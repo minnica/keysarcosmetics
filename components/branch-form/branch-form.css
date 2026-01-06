@@ -1,0 +1,71 @@
+/* Modal fondo */
+.modal-branch {
+  @apply fixed inset-0 bg-black/40 flex items-center justify-center z-50;
+}
+
+/* Tarjeta principal */
+.card-div {
+  @apply bg-white rounded-lg shadow-xl p-6 w-full max-w-lg relative;
+}
+
+/* Título */
+.card-title {
+  @apply text-2xl font-semibold mb-4;
+}
+
+/* Grid del formulario */
+.grid-div {
+  @apply grid grid-cols-1 gap-4;
+}
+
+/* Etiquetas comunes */
+.card-label,
+.card-label-col2 {
+  @apply block text-sm font-medium;
+}
+
+.card-label {
+  @apply mb-1;
+}
+
+.card-label-col2 {
+  @apply mb-2;
+}
+
+/* Inputs, selects y textareas con estilo uniforme */
+.card-input,
+.card-select,
+.card-textarea {
+  @apply w-full border border-gray-300 rounded-lg;
+}
+
+.card-input {
+  @apply col-span-3;
+}
+
+.card-select {
+  @apply col-span-7;
+}
+
+/* Contenedor de botones */
+.card-buttons {
+  @apply flex justify-end gap-2 pt-2;
+}
+
+/* Botones base */
+.close-btn,
+.agree-btn {
+  @apply px-4 py-2 rounded-md;
+}
+
+.close-btn {
+  @apply bg-gray-200 hover:bg-gray-300;
+}
+
+.agree-btn {
+  @apply bg-blue-600 text-white hover:bg-blue-700;
+}
+
+.new-form-btn {
+  @apply bg-[#efd8a1] text-white px-4 py-2 rounded-xl hover:bg-purple-600 transition mx-auto block;
+}
