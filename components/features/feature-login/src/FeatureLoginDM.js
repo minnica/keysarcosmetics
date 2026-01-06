@@ -1,5 +1,5 @@
 import { LitElement, html } from 'lit';
-import { LoginApiDm } from '../components/login-api-dm/index.js';
+import { LoginApiDm } from '@components/apis/login-api-dm/index.js';
 
 export class FeatureLoginDM extends LitElement {
   static get is() {
