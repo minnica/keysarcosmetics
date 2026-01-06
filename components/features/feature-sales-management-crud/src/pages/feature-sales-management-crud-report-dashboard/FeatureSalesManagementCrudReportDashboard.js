@@ -1,6 +1,6 @@
 import { LitElement, html, nothing } from 'lit';
-import '../../../components/keysar-chart/KeysarChart.js';
-import '../../../components/summary-card/SummaryCard.js';
+import '@components/basics/keysar-chart/KeysarChart.js';
+import '@components/basics/summary-card/SummaryCard.js';
 
 export class FeatureSalesManagementCrudReportDashboard extends LitElement {
   static get properties() {

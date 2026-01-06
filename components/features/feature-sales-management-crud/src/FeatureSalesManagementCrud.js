@@ -1,11 +1,11 @@
 import { LitElement, html } from 'lit';
 import { Router } from '@lit-labs/router';
-import '../components/seller-form/SellerForm.js';
-import '../components/employer-form/EmployerForm.js';
-import '../components/branch-form/BranchForm.js';
-import '../components/nav-bar/NavBar.js';
-import '../components/sales-api-dm/SalesApiDm.js';
-import '../components/loading-spinner/LoadingSpinner.js';
+import '@components/basics/seller-form/SellerForm.js';
+import '@components/basics/employer-form/EmployerForm.js';
+import '@components/basics/branch-form/BranchForm.js';
+import '@components/basics/nav-bar/NavBar.js';
+import '@components/apis/sales-api-dm/SalesApiDm.js';
+import '@components/basics/loading-spinner/LoadingSpinner.js';
 import './pages/feature-sales-management-crud-sales/FeatureSalesManagementCrudSales.js';
 import './pages/feature-sales-management-crud-employee/FeatureSalesManagementCrudEmployee.js';
 import './pages/feature-sales-management-crud-branch/FeatureSalesManagementCrudBranch.js';

@@ -1,9 +1,9 @@
 import { LitElement, html } from 'lit';
-import '../components/sales-api-dm/SalesApiDm.js';
-import '../components/employee-api-dm/EmployeeApiDm.js';
-import '../components/branches-api-dm/BranchesApiDm.js';
-import '../components/payment-method-api-dm/PaymentMethodApiDm.js';
-import '../components/report-api-dm/ReportApiDm.js';
+import '@components/apis/sales-api-dm/SalesApiDm.js';
+import '@components/apis/employee-api-dm/EmployeeApiDm.js';
+import '@components/apis/branches-api-dm/BranchesApiDm.js';
+import '@components/apis/payment-method-api-dm/PaymentMethodApiDm.js';
+import '@components/apis/report-api-dm/ReportApiDm.js';
 import { html as ghtml } from 'gridjs';
 import {
   chatColors,

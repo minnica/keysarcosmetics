@@ -1,6 +1,6 @@
 import { LitElement, html, nothing } from 'lit';
 import { repeat } from 'lit/directives/repeat.js';
-import '../input-select/InputSelect.js';
+import '@components/basics/input-select/InputSelect.js';
 
 export class SellerForm extends LitElement {
   static get properties() {

@@ -1,6 +1,6 @@
 import { LitElement, html, nothing } from 'lit';
-import '../../../components/payment-method-form/PaymentMethodForm.js';
-import '../../../components/grid-table/GridTable.js';
+import '@components/basics/payment-method-form/PaymentMethodForm.js';
+import '@components/basics/grid-table/GridTable.js';
 
 export class FeatureSalesManagementCrudPaymentMethod extends LitElement {
   static get properties() {

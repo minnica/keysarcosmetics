@@ -1,7 +1,7 @@
 import { LitElement, html, nothing } from 'lit';
-import '../../../components/input-select/InputSelect.js';
-import '../../../components/input-date/InputDate.js';
-import '../../../components/grid-table/GridTable.js';
+import '@components/basics/input-select/InputSelect.js';
+import '@components/basics/input-date/InputDate.js';
+import '@components/basics/grid-table/GridTable.js';
 
 export class FeatureSalesManagementCrudReportDailyPaymentMethod extends LitElement {
   static get properties() {

@@ -1,6 +1,6 @@
 import { LitElement, html, nothing } from 'lit';
-import '../../../components/employer-form/EmployerForm.js';
-import '../../../components/grid-table/GridTable.js';
+import '@components/basics/employer-form/EmployerForm.js';
+import '@components/basics/grid-table/GridTable.js';
 
 export class FeatureSalesManagementCrudEmployee extends LitElement {
   static get properties() {

@@ -1,7 +1,7 @@
 import { LitElement, html, nothing } from 'lit';
-import '../branch-form/BranchForm.js';
-import '../employer-form/EmployerForm.js';
-import '../seller-form/SellerForm.js';
+import '@components/basics/branch-form/BranchForm.js';
+import '@components/basics/employer-form/EmployerForm.js';
+import '@components/basics/seller-form/SellerForm.js';
 
 export class NavBar extends LitElement {
   static get properties() {
