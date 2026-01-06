@@ -36,7 +36,7 @@ export class KeysarCosmetics extends LitElement {
   }
 
   /**
-   * Handles the logout event.
+   * Handles the logout event
    * @private
    */
   _handleLogout() {
