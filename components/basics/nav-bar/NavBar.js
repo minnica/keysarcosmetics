@@ -52,7 +52,7 @@ export class NavBar extends LitElement {
         >
           ☰
         </button>
-        <h1 class="text-white ml-auto text-xl font-semibold">KEYSAR COSMETICS</h1>
+        <h1 class="text-[#efd8a1] ml-auto text-xl font-semibold">KEYSAR COSMETICS</h1>
       </header>
 
       <nav
