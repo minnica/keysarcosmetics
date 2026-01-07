@@ -198,7 +198,7 @@ _tplFormModal() {
             >
               Cerrar
             </button>
-            <button class="agree-btn" type="submit">Agregar</button>
+            <button class="agree-btn" type="submit">Agregar Empleado</button>
           </div>
         </form>
       </div>
