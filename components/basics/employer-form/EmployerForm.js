@@ -213,15 +213,17 @@ _tplFormModal() {
    */
   _tplButtonModal() {
     return html`
+     <slot name="trigger"></slot>
       <button
         class="new-form-btn"
+        type="button"
         @click=${() => {
           this.resetForm();
-          this.showForm = true;
         }}
       >
         Agregar Empleado
       </button>
+    </slot>
     `;
   }
 
@@ -236,6 +238,7 @@ _tplFormModal() {
     this.bank = '';
     this.accountNumber = '';
     this.position = '';
+    this.showForm = true;
   }
 
   /**
@@ -309,7 +312,7 @@ _tplFormModal() {
   }
 
   render() {
-    return html` ${this._tplButtonModal()} ${this.showForm ? this._tplFormModal() : nothing} `;
+    return html`${this.showForm ? this._tplFormModal() : nothing} `;
   }
 }
 
