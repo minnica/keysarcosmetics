@@ -72,23 +72,47 @@ export class FeatureSalesManagementCrudBranch extends LitElement {
     );
   }
 
-  render() {
-    return html`
-      ${Object.keys(this.dataGridBranch || {}).length
-        ? html`<branch-form
-            .inputBranch="${this.editBranch}"
+render() {
+  return html`
+    ${Object.keys(this.dataGridBranch || {}).length
+      ? html`
+          <branch-form
+            id="branchForm"
+            .inputBranch=${this.editBranch}
             @request-submit=${e => this.submitPage(e.detail)}
-          ></branch-form>`
-        : nothing}
-      ${this.hasValidGridConfig
-        ? html` <grid-table
-            .config=${this.dataGridBranch}
-            enable-actions
-            .actionBuilder=${FeatureSalesManagementCrudBranch._actionButtons}
-            @grid-action=${this._onGridAction}
-          ></grid-table>`
-        : nothing}
-    `;
-  }
+          ></branch-form>
+
+          <div class="k-panel">
+            ${this.hasValidGridConfig
+              ? html`
+                  <grid-table
+                    .config=${this.dataGridBranch}
+                    enable-actions
+                    .actionBuilder=${FeatureSalesManagementCrudBranch._actionButtons}
+                    @grid-action=${this._onGridAction}
+                  >
+                    <button
+                      slot="grid-actions"
+                      class="grid-primary-btn"
+                      @click=${() => {
+                        const bf = this.querySelector('#branchForm');
+                        if (!bf) return;
+                        bf.showForm = true;
+                        bf.inputBranch = {};
+                        bf.branchName = '';
+                      }}
+                    >
+                      Agregar Sucursal
+                    </button>
+                  </grid-table>
+                `
+              : nothing}
+          </div>
+        `
+      : nothing}
+  `;
+}
+
+
 }
 customElements.define('feature-sales-management-crud-branch', FeatureSalesManagementCrudBranch);

@@ -71,21 +71,71 @@ style.textContent = `
 .gridjs-head{
   display:flex;
   align-items:center;
-  justify-content: space-between;
   gap: .8rem;
   flex-wrap: wrap;
 
   padding: 16px 18px;
   border-bottom: 1px solid rgba(255,255,255,.08);
-
   background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
 }
 
-/* Search input premium */
-.gridjs-search{
+.gridjs-head .gridjs-search{
   flex: 1 1 auto;
-  max-width: 440px;
+  max-width: 520px;
 }
+
+/* Contenedor para botón */
+.gridjs-head .grid-actions-head{
+  margin-left: auto;
+  display:flex;
+  align-items:center;
+  gap: .5rem;
+}
+
+/* Botón en el header de GridJS (más especificidad para ganarle al theme) */
+.gridjs-head .grid-primary-btn{
+  appearance: none !important;
+  -webkit-appearance: none !important;
+  border: 1px solid rgba(243,240,233,.55) !important;
+  background: linear-gradient(
+    180deg,
+    rgba(243,240,233,.98),
+    rgba(195,165,131,.85)
+  ) !important;
+
+  color: rgba(10,12,16,.92) !important;
+
+  height: 40px !important;
+  padding: 0 16px !important;
+  border-radius: 999px !important;
+
+  font-weight: 800 !important;
+  font-size: 14px !important;
+  letter-spacing: .02em !important;
+
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+
+  box-shadow: 0 10px 22px rgba(0,0,0,.35) !important;
+  cursor: pointer !important;
+
+  transition: transform .12s ease, filter .15s ease, box-shadow .15s ease !important;
+}
+
+.gridjs-head .grid-primary-btn:hover{
+  transform: translateY(-1px) !important;
+  filter: brightness(1.06) !important;
+  box-shadow: 0 14px 28px rgba(0,0,0,.45) !important;
+}
+
+.gridjs-head .grid-primary-btn:active{
+  transform: translateY(0px) !important;
+  filter: brightness(0.98) !important;
+}
+
+
+
 .gridjs-search input{
   width: 100% !important;
   height: 42px !important;
@@ -237,7 +287,7 @@ style.textContent = `
   right: 0;
   z-index: 5;
 
-  background: rgba(248,250,252,1)) !important;
+  background: rgba(248,250,252,1) !important;
   border-left: 1px solid rgba(0,0,0,.08) !important;
 }
 
@@ -285,6 +335,16 @@ style.textContent = `
   .gridjs-footer{ padding: 12px 14px; }
   .gridjs-search{ max-width: 100%; }
 }
+
+.gridjs-head [slot="grid-actions"]{
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+}
+
+grid-table > slot[name="grid-actions"]{
+  display:none;
+}
 `;
 
     document.head.appendChild(style);
@@ -322,31 +382,54 @@ style.textContent = `
     return cols;
   }
 
-  _renderGrid() {
-    const container = this.querySelector('#grid-container');
-    if (!container) return;
 
-    const base = { ...(this.config || {}) };
-    base.columns = this._buildColumns(base.columns || []);
+_mountHeaderActions() {
+  const head = this.querySelector('.gridjs-head');
+  const slotted = this.querySelector('[slot="grid-actions"]');
+  if (!head || !slotted) return;
 
-    // Si ya existe, actualiza en lugar de destruir
-    if (this._grid) {
-      try {
-        this._grid.updateConfig(base).forceRender();
-        return;
-      } catch (err) {
-        console.log('Grid update falló, re-render completo.', err);
-        try {
-          this._grid.destroy();
-        } catch (e) {
-          console.log('Destroy falló:', e);
-        }
-        this._grid = null;
-      }
-    }
-
-    this._grid = new Grid(base).render(container);
+  let right = head.querySelector('.grid-actions-head');
+  if (!right) {
+    right = document.createElement('div');
+    right.className = 'grid-actions-head';
+    head.appendChild(right);
   }
+
+  if (!right.contains(slotted)) right.appendChild(slotted);
+}
+
+_renderGrid() {
+  const container = this.querySelector('#grid-container');
+  if (!container) return;
+
+  const base = { ...(this.config || {}) };
+  base.columns = this._buildColumns(base.columns || []);
+
+  // Si ya existe, actualiza en lugar de destruir
+  if (this._grid) {
+    try {
+      this._grid.updateConfig(base).forceRender();
+
+      // 👇 IMPORTANTE: GridJS re-renderiza el header, así que volvemos a montar acciones
+      queueMicrotask(() => this._mountHeaderActions());
+      return;
+    } catch (err) {
+      console.log('Grid update falló, re-render completo.', err);
+      try {
+        this._grid.destroy();
+      } catch (e) {
+        console.log('Destroy falló:', e);
+      }
+      this._grid = null;
+    }
+  }
+
+  this._grid = new Grid(base).render(container);
+
+  // 👇 Primera vez también
+  queueMicrotask(() => this._mountHeaderActions());
+}
+
 
   _onClick = e => {
     const btn = e.target.closest?.('[data-action]');
@@ -386,7 +469,8 @@ style.textContent = `
   }
 
   render() {
-    return html`<div id="grid-container"></div>`;
+    return html`    <div id="grid-container"></div>
+    <slot name="grid-actions"></slot>`;
   }
 }
 

@@ -45,8 +45,9 @@ html, body{
   color: var(--text);
 
   background:
-    radial-gradient(900px 600px at 20% 0%, rgba(195,165,131,.18), transparent 58%),
-    radial-gradient(900px 600px at 80% 15%, rgba(236,209,200,.10), transparent 60%),
+    radial-gradient(1200px 700px at 20% 0%, rgba(195,165,131,.18), transparent 60%),
+    radial-gradient(900px 600px at 78% 22%, rgba(236,209,200,.10), transparent 62%),
+    radial-gradient(900px 600px at 50% 75%, rgba(255,255,255,.04), transparent 60%),
     linear-gradient(180deg, var(--bg), var(--bg-2));
 }
 
@@ -134,4 +135,17 @@ html, body{
   background: rgba(239,68,68,.12);
   border-color: rgba(239,68,68,.22);
   color: rgba(254,202,202,.95);
+}
+
+/* Panel que contiene tablas/secciones */
+.k-panel{
+  width: min(1300px, 95vw);
+  margin: 22px auto 0;
+  padding: 18px;
+
+  background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  box-shadow: 0 30px 70px rgba(0,0,0,.45);
+  backdrop-filter: blur(10px);
 }

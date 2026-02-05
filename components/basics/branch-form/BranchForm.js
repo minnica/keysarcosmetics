@@ -150,24 +150,26 @@ export class BranchForm extends LitElement {
    * Method to show button and reset properties
    * @returns HTML Button Template
    */
-  _tplButtonModal() {
-    return html`
-      <button
-        class="new-form-btn"
-        @click=${() => {
-          this.showForm = true;
-          this.inputBranch = {};
-          this.branchName = '';
-        }}
-      >
+_tplButtonModal() {
+  return html`
+    <slot name="trigger">
+      <button class="new-form-btn" type="button" @click=${this._openForm}>
         Agregar Sucursal
       </button>
-    `;
-  }
+    </slot>
+  `;
+}
+
+_openForm = () => {
+  this.showForm = true;
+  this.inputBranch = {};
+  this.branchName = '';
+};
+
 
   render() {
     return html`
-      ${this._tplButtonModal()} ${this.showForm ? this._tplBranchFormModal() : nothing}
+      ${this.showForm ? this._tplBranchFormModal() : nothing}
     `;
   }
 }
