@@ -77,20 +77,39 @@ export class FeatureSalesManagementCrudPaymentMethod extends LitElement {
   render() {
     return html`
       ${Object.keys(this.dataGridPaymentMethod || {}).length
-        ? html` <payment-method-form
-            .inputPaymentMethod="${this.editPaymentMethod}"
+        ? html`
+         <payment-method-form
+            id="paymentMethodForm"
+            .inputPaymentMethod=${this.editPaymentMethod}
             @request-submit="${e => this.submitPage(e.detail)}"
-          ></payment-method-form>`
-        : nothing}
-      ${this.hasValidGridConfig
-        ? html` <grid-table
+          ></payment-method-form>
+          <div class="k-panel">
+            
+            ${this.hasValidGridConfig
+          ? html` <grid-table
             .config=${this.dataGridPaymentMethod}
             enable-actions
             .actionBuilder=${FeatureSalesManagementCrudPaymentMethod._actionButtons}
             @grid-action=${this._onGridAction}
-          ></grid-table>`
-        : nothing}
-    `;
+            >
+            <button
+            slot="grid-actions"
+            class="grid-primary-btn"
+            @click=${() => {
+              const bf = this.querySelector('#paymentMethodForm');
+              if (!bf) return;
+              bf.showForm = true;
+              bf.inputPaymentMethod = {};
+              bf.inputPaymentMethodName = '';
+              }}
+              >
+              Agregar Metodo de Pago
+            </button>
+          </grid-table>`
+          : nothing}
+        </div>
+        `: nothing}
+        `;
   }
 }
 customElements.define(

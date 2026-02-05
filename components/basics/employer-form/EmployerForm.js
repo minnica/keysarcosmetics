@@ -213,7 +213,7 @@ _tplFormModal() {
    */
   _tplButtonModal() {
     return html`
-     <slot name="trigger"></slot>
+     <slot name="trigger">
       <button
         class="new-form-btn"
         type="button"

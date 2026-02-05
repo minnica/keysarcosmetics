@@ -115,7 +115,7 @@ export class FeatureSalesManagementCrudEmployee extends LitElement {
                       bf.showForm = true;
                     }}
                   >
-                    Agregar Sucursal
+                    Agregar Empleado
                   </button>
                 </grid-table>`
               : nothing}
