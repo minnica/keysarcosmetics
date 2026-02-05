@@ -43,90 +43,250 @@ export class GridTable extends LitElement {
       document.head.appendChild(link);
     }
     const style = document.createElement('style');
-    style.textContent = `
-  /* Centra el grid completo */
-  #grid-container {
-    display: flex;
-    justify-content: center;
-    padding: 2rem 1rem;
-  }
+style.textContent = `
+/* Layout */
+#grid-container{
+  display:flex;
+  justify-content:center;
+  padding: 1.25rem 1rem;
+}
 
-  /* Contenedor principal */
-  .gridjs-container {
-    width: 100%;
-    max-width: 1200px; /* <- más ancho */
-    background-color: #f9fafb;
-    border-radius: 0.5rem;
-    padding: 1rem;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
-    box-sizing: border-box;
-  }
+/* Card premium */
+.gridjs-container{
+  width: 100%;
+  max-width: 1220px;
+  border-radius: 18px;
+  overflow: hidden;
 
-  /* Tabla */
-  .gridjs-table {
-    width: 100%;
-    table-layout: auto;
-    border-collapse: collapse;
-    background-color: #f3f4f6 !important;
-  }
+  background: radial-gradient(1200px 600px at 20% 0%, rgba(99,102,241,.10), transparent 60%),
+              radial-gradient(900px 500px at 80% 20%, rgba(34,211,238,.08), transparent 55%),
+              rgba(10, 12, 16, .86);
 
-  .gridjs-th {
-    background-color: #e5e7eb !important; /* ← Encabezado gris más oscuro */
-    color: #374151 !important;            /* ← Texto gris oscuro */
-    font-weight: 600;
-    text-align: center;
-    vertical-align: middle;
-    padding: 0.5rem 1rem;
-    min-width: 100px;
-  }
+  border: 1px solid rgba(255,255,255,.08);
+  box-shadow: 0 25px 60px rgba(0,0,0,.45);
+  backdrop-filter: blur(10px);
+}
 
+/* Header: search + acciones */
+.gridjs-head{
+  display:flex;
+  align-items:center;
+  justify-content: space-between;
+  gap: .8rem;
+  flex-wrap: wrap;
 
-  .gridjs-td {
-    text-align: center;
-    vertical-align: middle;
-    padding: 0.5rem 1rem;
-    min-width: 100px;
-    background-color: #f3f4f6 !important;
-  }
+  padding: 16px 18px;
+  border-bottom: 1px solid rgba(255,255,255,.08);
 
-  .gridjs-th:last-child,
-  .gridjs-td:last-child {
-    min-width: 140px;
-  }
+  background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
+}
 
-  /* Encabezado (buscador, botones, etc.) */
-  .gridjs-head {
-    display: flex;
-    justify-content: space-between; /* <- separa buscador y botones */
-    align-items: center;
-    flex-wrap: wrap;
-    margin-bottom: 1rem;
-  }
+/* Search input premium */
+.gridjs-search{
+  flex: 1 1 auto;
+  max-width: 440px;
+}
+.gridjs-search input{
+  width: 100% !important;
+  height: 42px !important;
+  padding: 0 14px !important;
+  border-radius: 12px !important;
 
-  .gridjs-search {
-    flex: 1 1 auto;
-    max-width: 400px;
-  }
+  background: rgba(255,255,255,.04) !important;
+  border: 1px solid rgba(255,255,255,.10) !important;
+  color: rgba(245,245,245,.95) !important;
+  outline: none !important;
 
-  /* Pie de página */
-  .gridjs-footer {
-    background-color: #e5e7eb !important; 
-    padding: 0.75rem 1rem;
-    border-top: 1px solid #d1d5db;
-    margin-top: 1rem;
-    border-radius: 0 0 0.5rem 0.5rem; 
-  }
-@media (max-width: 640px) {
-  .gridjs-pagination {
-    display: flex !important;
-    justify-content: center !important;
-    align-items: center;
-    gap: 0.5rem;
-    flex-wrap: wrap;
-  }
-    }
+  transition: border-color .15s ease, box-shadow .15s ease, background .15s ease;
+}
+.gridjs-search input::placeholder{
+  color: rgba(180,188,204,.75) !important;
+}
+.gridjs-search input:focus{
+  border-color: rgba(99,102,241,.55) !important;
+  box-shadow: 0 0 0 4px rgba(99,102,241,.18) !important;
+  background: rgba(255,255,255,.055) !important;
+}
 
+/* Wrapper tabla */
+.gridjs-wrapper{
+  border: 0 !important;
+  background: transparent !important;
+}
+
+/* Tabla */
+.gridjs-table{
+  width:100%;
+  border-collapse: separate !important;
+  border-spacing: 0 !important;
+  background: transparent !important;
+}
+
+/* Encabezado sticky */
+.gridjs-thead th{
+  position: sticky;
+  top: 0;
+  z-index: 10;
+
+  padding: 14px 14px !important;
+  font-size: .72rem !important;
+  font-weight: 700 !important;
+  letter-spacing: .08em !important;
+  text-transform: uppercase;
+
+  color: rgba(210,218,232,.92) !important;
+
+  background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02)) !important;
+  border-bottom: 1px solid rgba(255,255,255,.08) !important;
+
+  backdrop-filter: blur(10px);
+}
+
+/* Celdas */
+.gridjs-td{
+  padding: 14px 14px !important;
+  font-size: .92rem !important;
+
+  color: rgba(17,24,39,.92) !important;
+  border-bottom: 1px solid rgba(255,255,255,.06) !important;
+  opacity: 1 !important;
+
+  background: transparent !important;
+  vertical-align: middle;
+}
+
+.gridjs-tr:nth-child(odd) .gridjs-td{
+  background: rgba(255,255,255,1) !important;
+}
+.gridjs-tr:nth-child(even) .gridjs-td{
+  background: rgba(248,250,252,1) !important; /* slate-50 */
+}
+.gridjs-tr:hover .gridjs-td{
+  background: rgba(99,102,241,.08) !important;
+}
+
+/* Footer premium */
+.gridjs-footer{
+  display:flex;
+  align-items:center;
+  justify-content: space-between;
+  gap: .75rem;
+  flex-wrap: wrap;
+
+  padding: 14px 18px;
+  border-top: 1px solid rgba(255,255,255,.08);
+  background: rgba(255,255,255,.02) !important;
+}
+
+/* Summary */
+.gridjs-summary{
+  color: rgba(180,188,204,.9) !important;
+  font-size: .9rem;
+}
+
+/* Pagination buttons premium */
+.gridjs-pagination{
+  display:flex !important;
+  align-items:center;
+  gap: .45rem;
+  flex-wrap: wrap;
+}
+.gridjs-pagination .gridjs-pages button{
+  height: 36px !important;
+  min-width: 36px !important;
+  padding: 0 10px !important;
+  border-radius: 12px !important;
+
+  background: rgba(255,255,255,.04) !important;
+  border: 1px solid rgba(255,255,255,.10) !important;
+  color: rgba(241,245,249,.9) !important;
+
+  transition: transform .12s ease, background .15s ease, border-color .15s ease;
+}
+.gridjs-pagination .gridjs-pages button:hover{
+  background: rgba(255,255,255,.07) !important;
+  transform: translateY(-1px);
+}
+.gridjs-pagination .gridjs-pages button.gridjs-currentPage{
+  background: rgba(99,102,241,.22) !important;
+  border-color: rgba(99,102,241,.35) !important;
+  color: rgba(245,245,245,.96) !important;
+}
+
+/* Scrollbar (solo webkit) */
+.gridjs-wrapper::-webkit-scrollbar{ height: 10px; }
+.gridjs-wrapper::-webkit-scrollbar-thumb{
+  background: rgba(255,255,255,.12);
+  border-radius: 999px;
+}
+.gridjs-wrapper::-webkit-scrollbar-track{
+  background: rgba(255,255,255,.04);
+}
+
+/* --- ACCIONES STICKY a la derecha --- */
+.gridjs-thead th:last-child{
+  position: sticky;
+  right: 0;
+  z-index: 15;
+
+  background: linear-gradient(180deg, rgba(15,18,26,.96), rgba(15,18,26,.82)) !important;
+  border-left: 1px solid rgba(255,255,255,.10) !important;
+}
+.gridjs-tr .gridjs-td:last-child{
+  position: sticky;
+  right: 0;
+  z-index: 5;
+
+  background: rgba(248,250,252,1)) !important;
+  border-left: 1px solid rgba(0,0,0,.08) !important;
+}
+
+/* Contenedor para tus botones de acción */
+.grid-actions{
+  display:flex;
+  justify-content:center;
+  gap: .5rem;
+}
+
+/* Botones acción (compactos, premium) */
+.grid-actions .btn{
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 700;
+  background: rgba(255,255,255,.06);
+  border: 1px solid rgba(255,255,255,.14);
+  color: rgba(245,245,245,.92);
+}
+.grid-actions .btn:hover{
+  background: rgba(255,255,255,.075);
+  transform: translateY(-1px);
+}
+.grid-actions .btn.primary{
+  background: rgba(99,102,241,.20);
+  border-color: rgba(99,102,241,.35);
+}
+.grid-actions .btn.primary:hover{
+  background: rgba(99,102,241,.28);
+}
+.grid-actions .btn.danger{
+  background: rgba(239,68,68,.14);
+  border-color: rgba(239,68,68,.25);
+  color: rgba(254,202,202,.95);
+}
+.grid-actions .btn.danger:hover{
+  background: rgba(239,68,68,.22);
+}
+
+/* Responsive */
+@media (max-width: 640px){
+  .gridjs-head{ padding: 14px 14px; }
+  .gridjs-footer{ padding: 12px 14px; }
+  .gridjs-search{ max-width: 100%; }
+}
 `;
+
     document.head.appendChild(style);
   }
 
@@ -145,12 +305,13 @@ export class GridTable extends LitElement {
         return {
           ...c,
           sort: false,
-          minWidth: '33%',
+          width: '200px',
+          minWidth: '200px',
           formatter: (_, row) => {
             const id = row?.cells?.[0]?.data;
             const htmlStr = this.actionBuilder
-              ? `<div class="flex justify-center gap-2">${this.actionBuilder(row)}</div>`
-              : nothing;
+              ? `<div class="grid-actions">${this.actionBuilder(row)}</div>`
+              : '';
             return ghtml(htmlStr);
           },
         };
