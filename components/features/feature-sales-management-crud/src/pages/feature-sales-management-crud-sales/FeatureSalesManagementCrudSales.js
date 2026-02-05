@@ -61,7 +61,7 @@ export class FeatureSalesManagementCrudSales extends LitElement {
     `;
   };
 
-  static _onGridAction(e) {
+  _onGridAction(e) {
     const { action, rowData } = e.detail;
 
     const branchId = rowData[1];
@@ -84,6 +84,7 @@ export class FeatureSalesManagementCrudSales extends LitElement {
   _tplForm() {
     return html`
       <seller-form
+        id="sellerForm"
         .selectDataBranch=${this.optionValueBranch}
         .selectDataSeller=${this.optionValueSeller}
         .selectDataPaymentMethod=${this.optionValuePaymentMethod}
@@ -103,8 +104,20 @@ export class FeatureSalesManagementCrudSales extends LitElement {
         enable-actions
         .config=${this.dataGridSales}
         .actionBuilder=${FeatureSalesManagementCrudSales._actionButtons}
-        @grid-action=${FeatureSalesManagementCrudSales._onGridAction}
-      ></grid-table>
+        @grid-action=${this._onGridAction}
+      >
+      <button
+        slot="grid-actions"
+        class="grid-primary-btn"
+        @click=${() => {
+          const sf = this.querySelector('#sellerForm');
+          if (!sf) return;
+          sf.openForm();
+        }}
+      >
+        Agregar venta
+      </button>
+      </grid-table>
     `;
   }
 

@@ -169,6 +169,23 @@ export class SellerForm extends LitElement {
     this.requestUpdate();
   }
 
+  openForm() {
+  this.showForm = true;
+
+  // opcional: si quieres resetear cada vez que abres
+  this.branchValue = '';
+  this.dateValue = '';
+  this.notesValue = '';
+  this.sellerRows = [];
+  this.currentSellerId = '';
+  this.currentSellerName = '';
+  this.currentAmount = 0;
+  this.paymentRows = [];
+  this.currentPaymentMethodId = '';
+  this.currentPaymentMethodName = '';
+  this.currentPaymentAmount = 0;
+}
+
   /**
    * Convert a number to cents.
    * @private
@@ -363,14 +380,17 @@ export class SellerForm extends LitElement {
    */
   _tplButtonModal() {
     return html`
+    <slot name="trigger">
       <button
+        type="button"
         class="new-form-btn"
         @click=${() => {
           this.showForm = !this.showForm;
         }}
-      >
+        >
         AGREGAR
       </button>
+   </slot>
     `;
   }
 
@@ -691,7 +711,7 @@ export class SellerForm extends LitElement {
   }
 
   render() {
-    return html`${this._tplButtonModal()} ${this.showForm ? this._tplSaleFormModal() : nothing}`;
+    return html`${this.showForm ? this._tplSaleFormModal() : nothing}`;
   }
 }
 customElements.define('seller-form', SellerForm);
