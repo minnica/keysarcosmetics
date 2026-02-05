@@ -1,9 +1,9 @@
 import { LitElement, html } from 'lit';
-import './index.css';
 import '@components/basics/rg-login/RgLogin.js';
 import '@components/apis/login-api-dm/LoginApiDm.js';
 import '@components/basics/rg-spinner/RgSpinner.js';
 import './FeatureLoginDM.js';
+import './feature-login.css'
 
 export class FeatureLogin extends LitElement {
   static get properties() {
