@@ -401,15 +401,16 @@ export class SellerForm extends LitElement {
    */
   _tplSaleFormModal() {
     return html`
-      <div id="card-sell" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-        <div class="relative w-full max-w-lg rounded-lg bg-white p-6 shadow-xl">
-          <h2 class="mb-4 text-2xl font-semibold">Registro nuevo</h2>
+      <div id="card-sell" class="modal-employer">
+        <div class="card-div">
+          <h2 class="card-title">Registro nuevo</h2>
 
           <form class="space-y-4" @submit=${e => e.preventDefault()}>
-            <div class="grid grid-cols-1 gap-4 ">
+            <div class="grid-div">
               <div class="flex flex-col">
                 <label class="mb-1 text-sm font-medium text-gray-700">Sucursal:</label>
                 <input-select
+                  class="card-select"
                   select-type="branch"
                   .optionValue=${this.selectDataBranch}
                   @change=${e => {
@@ -424,7 +425,7 @@ export class SellerForm extends LitElement {
                 <input
                   type="date"
                   name="date"
-                  class="rounded-lg border border-gray-300 px-3 py-1.5 text-gray-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  class="card-input"
                   .value=${this.dateValue}
                   @input=${e => {
                     this.dateValue = e.target.value;
@@ -434,6 +435,7 @@ export class SellerForm extends LitElement {
               <div class="flex flex-col col-span-2">
                 <label class="mb-1 text-sm font-medium text-gray-700">Vendedor:</label>
                 <input-select
+                  class="card-select"
                   select-type="seller"
                   .optionValue=${this.selectDataSeller}
                   .value=${this.currentSellerId || ''}
@@ -441,28 +443,25 @@ export class SellerForm extends LitElement {
                 ></input-select>
               </div>
               <div class="col-span-2 -mt-1">
-                <div class="flex h-10 w-full overflow-hidden rounded-xl border border-gray-300">
-                  <span
-                    class="flex items-center justify-center px-3 min-w-10 border-r border-gray-200 bg-gray-100 text-gray-600"
-                  >
-                    $
-                  </span>
+                <div class="k-row">
+                  <span class="k-row-prefix">$</span>
+
                   <input
                     type="number"
                     min="0"
                     step=".01"
                     placeholder="VENTA"
-                    class="flex-1 px-3 text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-0 border-0"
+                    class="k-row-input"
                     .value=${this.currentAmount ? String(this.currentAmount) : ''}
-                    @input=${e => {
-                      this.currentAmount = parseFloat(e.target.value) || 0;
-                    }}
+                    @input=${e => { this.currentAmount = parseFloat(e.target.value) || 0; }}
                   />
+
                   <button
                     id="addRowSeller"
                     type="button"
-                    class="flex aspect-square h-full items-center justify-center bg-green-800 text-white"
+                    class="k-row-btn add"
                     @click=${this._onAddRowSeller}
+                    title="Agregar vendedor"
                   >
                     +
                   </button>
@@ -476,95 +475,60 @@ export class SellerForm extends LitElement {
               )}
 
               <div class="col-span-2 -mt-2">
-                <div
-                  class="flex h-9 w-full items-center rounded-lg border border-gray-300 bg-gray-200"
-                >
-                  <input
-                    type="text"
-                    placeholder="TOTAL VENDEDORES"
-                    class="flex-1 px-3 text-gray-500"
-                    .value=${`TOTAL VENDEDORES`}
-                    readonly
-                  />
-                  <input
-                    type="text"
-                    placeholder="$"
-                    class="w-40 px-3 text-right text-gray-500"
-                    .value=${SellerForm._formatMoney(this._totalAmount)}
-                    readonly
-                  />
-                  <button
-                    type="button"
-                    class="h-full px-3 rounded-r-lg bg-black text-white"
-                    title="Eliminar fila"
-                    disabled
-                  >
+                <div class="k-total">
+                  <div class="k-total-label">TOTAL VENDEDORES</div>
+                  <div class="k-total-amount">${SellerForm._formatMoney(this._totalAmount)}</div>
+                  <button type="button" class="k-row-btn eq" disabled title="Total">
                     =
                   </button>
                 </div>
               </div>
 
-              <div class="col-span-3">
-                <label class="mb-1 block text-sm font-medium text-gray-700">TIPO DE PAGO</label>
-                <div class="flex items-center gap-2">
-                  <input-select
-                    select-type="paymentMethod"
-                    .optionValue=${this.selectDataPaymentMethod}
-                    class="flex-1"
-                    .value=${this.currentPaymentMethodId || ''}
-                    @input-select-change=${this._onPaymentMethodChange}
-                  ></input-select>
-                  <input
-                    type="number"
-                    min="0"
-                    step=".01"
-                    placeholder="CANTIDAD"
-                    class="w-32 rounded-l-lg border border-gray-300 px-3 py-1.5 text-gray-700 shadow-sm"
-                    .value=${this.currentPaymentAmount ? String(this.currentPaymentAmount) : ''}
-                    @input=${e => {
-                      this.currentPaymentAmount = parseFloat(e.target.value) || 0;
-                    }}
-                  />
-                  <button
-                    type="button"
-                    class="-ml-2 h-10 w-10 rounded-r-lg bg-green-800 text-white"
-                    @click=${this._onAddRowPayment}
-                  >
-                    +
-                  </button>
+                <div class="col-span-2">
+                  <label class="card-label">Tipo de pago:</label>
+
+                  <div class="k-row">
+                    <input-select
+                      class="k-row-select"
+                      select-type="paymentMethod"
+                      .optionValue=${this.selectDataPaymentMethod}
+                      .value=${this.currentPaymentMethodId || ''}
+                      @input-select-change=${this._onPaymentMethodChange}
+                    ></input-select>
+
+                    <input
+                      type="number"
+                      min="0"
+                      step=".01"
+                      placeholder="CANTIDAD"
+                      class="k-row-input"
+                      .value=${this.currentPaymentAmount ? String(this.currentPaymentAmount) : ''}
+                      @input=${e => { this.currentPaymentAmount = parseFloat(e.target.value) || 0; }}
+                    />
+
+                    <button
+                      type="button"
+                      class="k-row-btn add"
+                      @click=${this._onAddRowPayment}
+                      title="Agregar método"
+                    >
+                      +
+                    </button>
+                  </div>
                 </div>
-              </div>
 
               ${repeat(
                 this.paymentRows,
                 r => r.id,
                 (row, i) => this._tplRowPayment(i, row),
               )}
-              <div class="col-span-2 -mt-2">
-                <div
-                  class="flex h-9 w-full items-center rounded-lg border border-gray-300 bg-gray-200"
-                >
-                  <input
-                    type="text"
-                    class="flex-1 px-3 text-gray-600"
-                    .value=${`MÉTODOS DE PAGO`}
-                    readonly
-                  />
-                  <input
-                    type="text"
-                    class="w-40 px-3 text-right text-gray-600"
-                    .value=${SellerForm._formatMoney(this._totalPaymentAmount)}
-                    readonly
-                  />
-                  <button
-                    type="button"
-                    class="h-full px-3 rounded-r-lg bg-black text-white"
-                    disabled
-                  >
-                    =
-                  </button>
+                <div class="col-span-2 -mt-2">
+                  <div class="k-total">
+                    <div class="k-total-label">MÉTODOS DE PAGO</div>
+                    <div class="k-total-amount">${SellerForm._formatMoney(this._totalPaymentAmount)}</div>
+                    <button type="button" class="k-row-btn eq" disabled title="Total">=</button>
+                  </div>
                 </div>
-              </div>
 
               <div class="col-span-2 flex flex-col">
                 <label class="mb-1 text-sm font-medium text-gray-700">Notas:</label>
@@ -572,7 +536,7 @@ export class SellerForm extends LitElement {
                   name="notes"
                   rows="3"
                   placeholder="Escribe una observación..."
-                  class="rounded-lg border border-gray-300 px-3 py-1.5 text-gray-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  class="card-input"
                   .value=${this.notesValue}
                   @input=${e => {
                     this.notesValue = e.target.value;
@@ -581,24 +545,21 @@ export class SellerForm extends LitElement {
               </div>
             </div>
 
-            <div class="flex justify-end gap-2 pt-2">
+            <div class="card-buttons">
               <button
                 type="button"
-                class="rounded-md border border-gray-300 bg-white px-4 py-2 text-gray-700 hover:bg-gray-100"
-                @click=${() => {
-                  this.showForm = false;
-                }}
+                class="close-btn"
+                @click=${() => { this.showForm = false; }}
               >
                 Cerrar
               </button>
+
               <button
-                type="submit"
-                class="rounded-md px-4 py-2 text-white
-                ${this._isBalanced
-                  ? 'bg-blue-600 hover:bg-blue-700'
-                  : 'bg-gray-300 cursor-not-allowed'}"
+                type="button"
+                class="agree-btn"
                 ?disabled=${!this._isBalanced}
-                @click="${this._requestPostData}"
+                style=${!this._isBalanced ? 'opacity:.55; pointer-events:none;' : ''}
+                @click=${this._requestPostData}
               >
                 Agregar
               </button>
@@ -643,72 +604,70 @@ export class SellerForm extends LitElement {
    * @returns {TemplateResult}
    * @private
    */
-  _tplRowSeller(index, row) {
-    return html`
-      <div class="col-span-2 -mt-2">
-        <div class="flex h-9 w-full items-center rounded-lg border border-gray-300 bg-gray-200">
-          <input type="hidden" name="seller_id_${index}" .value=${row?.sellerId ?? ''} />
-          <input
-            type="text"
-            name="seller_total_${index}"
-            class="flex-1 px-3 text-gray-500"
-            .value=${row?.sellerName ?? ''}
-            readonly
-          />
-          <input
-            type="text"
-            name="seller_amount_${index}"
-            class="w-40 px-3 text-right text-gray-500"
-            .value=${SellerForm._formatMoney(row?.amount)}
-            readonly
-          />
-          <button
-            type="button"
-            class="h-full px-3 bg-red-800 rounded-r-lg text-white"
-            @click=${() => this._removeRow(row.id)}
-          >
-            ✕
-          </button>
-        </div>
+_tplRowSeller(index, row) {
+  return html`
+    <div class="col-span-2 -mt-2">
+      <div class="k-row">
+        <input type="hidden" name="seller_id_${index}" .value=${row?.sellerId ?? ''} />
+
+        <input
+          type="text"
+          name="seller_total_${index}"
+          class="k-row-input"
+          .value=${row?.sellerName ?? ''}
+          readonly
+        />
+
+        <div class="k-row-amount">${SellerForm._formatMoney(row?.amount)}</div>
+
+        <button
+          type="button"
+          class="k-row-btn danger"
+          @click=${() => this._removeRow(row.id)}
+          title="Quitar"
+        >
+          ✕
+        </button>
       </div>
-    `;
-  }
+    </div>
+  `;
+}
+
 
   /**
    * Template for new row payment method.
    * @returns {TemplateResult}
    * @private
    */
-  _tplRowPayment(index, row) {
-    return html`
-      <div class="col-span-2 -mt-2">
-        <div class="flex h-9 w-full items-center rounded-lg border border-gray-300 bg-gray-200">
-          <input type="hidden" name="payment_method_id_${index}" .value=${row?.methodId ?? ''} />
-          <input
-            type="text"
-            name="payment_method_name_${index}"
-            class="flex-1 px-3 text-gray-600"
-            .value=${row?.methodName ?? ''}
-            readonly
-          />
-          <input
-            type="text"
-            name="payment_amount_${index}"
-            class="w-40 px-3 text-right text-gray-600"
-            .value=${SellerForm._formatMoney(row?.amount)}
-            readonly
-          />
-          <button
-            type="button"
-            class="h-full px-3 bg-red-800 rounded-r-lg text-white"
-            @click=${() => this._removePaymentRow(row.id)}
-          >
-            ✕
-          </button>
-        </div>
+_tplRowPayment(index, row) {
+  return html`
+    <div class="col-span-2 -mt-2">
+      <div class="k-row">
+        <input type="hidden" name="payment_method_id_${index}" .value=${row?.methodId ?? ''} />
+
+        <input
+          type="text"
+          name="payment_method_name_${index}"
+          class="k-row-input"
+          .value=${row?.methodName ?? ''}
+          readonly
+        />
+
+        <div class="k-row-amount">${SellerForm._formatMoney(row?.amount)}</div>
+
+        <button
+          type="button"
+          class="k-row-btn danger"
+          @click=${() => this._removePaymentRow(row.id)}
+          title="Quitar"
+        >
+          ✕
+        </button>
       </div>
-    `;
-  }
+    </div>
+  `;
+}
+
 
   render() {
     return html`${this.showForm ? this._tplSaleFormModal() : nothing}`;

@@ -117,7 +117,7 @@
   box-shadow: 0 14px 24px rgba(0,0,0,.14);
 }
 
-/* Botón trigger (Agregar Empleado en la tabla) */
+/* Botón trigger */
 .new-form-btn{
   @apply inline-flex items-center justify-center h-11 px-6 rounded-full font-extrabold;
   background: linear-gradient(180deg, rgba(243,240,233,.96), rgba(236,209,200,.75));
@@ -130,4 +130,148 @@
   transform: translateY(-1px);
   filter: brightness(1.02);
   box-shadow: 0 16px 26px rgba(0,0,0,.16);
+}
+
+/* =========================
+   KEYSAR - SELLER FORM EXTRAS
+   ========================= */
+
+/* Row tipo chip */
+.k-row{
+  @apply flex w-full overflow-hidden rounded-xl;
+  height: 44px;
+  align-items: stretch;
+  background: rgba(255,255,255,.66);
+  border: 1px solid rgba(195,165,131,.26);
+}
+
+/* prefijo $ */
+.k-row-prefix{
+  @apply flex items-center justify-center;
+  width: 44px;
+  flex: 0 0 44px;
+  height: 100%;
+  background: rgba(236,209,200,.25);
+  border-right: 1px solid rgba(195,165,131,.18);
+  color: rgba(31,35,40,.80);
+  font-weight: 900;
+  font-size: 16px;
+  line-height: 1;
+  transform: translateY(-.5px);
+}
+
+/* input dentro de row */
+.k-row-input{
+  @apply flex-1 outline-none border-0 bg-transparent;
+  height: 100%;
+  padding: 0 12px;
+  color: rgba(31,35,40,.92);
+}
+.k-row-input::placeholder{
+  color: rgba(96,96,96,.60);
+}
+
+/* ✅ amount dentro de row (para filas vendedor/pagos) */
+.k-row-amount{
+  width: 160px;                /* ajusta si quieres */
+  flex: 0 0 160px;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 12px;
+  font-weight: 900;
+  color: rgba(31,35,40,.85);   /* 🔑 visible */
+  background: rgba(236,209,200,.10);
+  border-left: 1px solid rgba(195,165,131,.12);
+}
+
+/* Botones cuadrados */
+.k-row-btn{
+  @apply flex items-center justify-center;
+  width: 44px;
+  flex: 0 0 44px;
+  height: 100%;
+  border-left: 1px solid rgba(195,165,131,.18);
+  font-weight: 900;
+  font-size: 16px;
+  line-height: 1;
+  transition: transform .12s ease, filter .15s ease;
+}
+.k-row-btn:hover{ transform: translateY(-1px); }
+
+.k-row-btn.add{
+  background: linear-gradient(180deg, rgba(236,209,200,.92), rgba(195,165,131,.55));
+  color: rgba(31,35,40,.92);
+}
+.k-row-btn.eq{
+  background: rgba(31,35,40,.92);
+  color: rgba(243,240,233,.92);
+}
+.k-row-btn.danger{
+  background: rgba(239,68,68,.12);
+  color: rgba(153,27,27,.92);
+}
+
+/* Totales tipo barra */
+.k-total{
+  @apply flex w-full rounded-xl overflow-hidden;
+  height: 44px;
+  align-items: stretch;
+  background: rgba(236,209,200,.18);
+  border: 1px solid rgba(195,165,131,.22);
+}
+
+/* 🔑 aquí regresamos padding para que NO se pegue */
+.k-total-label{
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+  color: rgba(96,96,96,.92);
+  letter-spacing: .06em;
+  font-size: .82rem;
+}
+
+.k-total-amount{
+  width: 160px;
+  flex: 0 0 160px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 12px;
+  font-weight: 900;
+  color: rgba(31,35,40,.80);
+}
+
+/* Select dentro de k-row (input-select) */
+.k-row-select{
+  flex: 1 1 auto;
+  height: 100%;
+  display: flex;
+  align-items: stretch;
+}
+
+/* Light DOM select */
+.k-row-select select{
+  width: 100%;
+  height: 100%;
+  padding: 0 12px;
+  background: transparent;
+  border: 0;
+  outline: none;
+}
+
+/* Shadow DOM con parts */
+.k-row-select::part(select),
+.k-row-select::part(control),
+.k-row-select::part(input){
+  height: 100%;
+  width: 100%;
+  padding: 0 12px;
+  background: transparent;
+  border: 0;
+  outline: none;
 }
