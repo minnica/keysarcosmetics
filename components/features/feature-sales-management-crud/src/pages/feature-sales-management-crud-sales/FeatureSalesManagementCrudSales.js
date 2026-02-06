@@ -100,13 +100,14 @@ export class FeatureSalesManagementCrudSales extends LitElement {
    */
   _tplTable() {
     return html`
+    <div class="k-panel">
       <grid-table
         enable-actions
         .config=${this.dataGridSales}
         .actionBuilder=${FeatureSalesManagementCrudSales._actionButtons}
         @grid-action=${this._onGridAction}
-      >
-      <button
+        >
+        <button
         slot="grid-actions"
         class="grid-primary-btn"
         @click=${() => {
@@ -114,10 +115,11 @@ export class FeatureSalesManagementCrudSales extends LitElement {
           if (!sf) return;
           sf.openForm();
         }}
-      >
-        Agregar venta
-      </button>
+          >
+          Agregar venta
+        </button>
       </grid-table>
+    </div>
     `;
   }
 

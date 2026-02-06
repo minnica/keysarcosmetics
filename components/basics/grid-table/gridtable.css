@@ -1,0 +1,319 @@
+
+:root{
+  /* Paleta Keysar (manual) */
+  --k-gold: #c3a583;
+  --k-nude: #ecd1c8;
+  --k-gray: #606060;
+  --k-ivory: #f3f0e9;
+
+  /* Neutrales UI */
+  --k-ink: #1f2328;          /* texto principal */
+  --k-ink-2: #3b4047;        /* texto secundario */
+  --k-border: rgba(96,96,96,.22);
+  --k-shadow: 0 18px 45px rgba(0,0,0,.12);
+}
+
+/* Layout */
+#grid-container{
+  display:flex;
+  justify-content:center;
+  padding: 1.25rem 1rem;
+
+  /* Fondo cálido, mucho menos oscuro */
+  background:
+    radial-gradient(900px 420px at 20% 0%, rgba(236,209,200,.60), transparent 60%),
+    radial-gradient(700px 420px at 80% 20%, rgba(195,165,131,.25), transparent 55%),
+    linear-gradient(180deg, rgba(243,240,233,.95), rgba(243,240,233,.80));
+  border-radius: 22px;
+}
+
+/* Card premium */
+.gridjs-container{
+  width: 100%;
+  max-width: 1220px;
+  border-radius: 18px;
+  overflow: hidden;
+
+  background: linear-gradient(180deg, rgba(243,240,233,.92), rgba(243,240,233,.78));
+  border: 1px solid var(--k-border);
+  box-shadow: var(--k-shadow);
+  backdrop-filter: blur(8px);
+}
+
+/* Header: search + acciones */
+.gridjs-head{
+  display:flex;
+  align-items:center;
+  gap: .8rem;
+  flex-wrap: wrap;
+
+  padding: 16px 18px;
+  border-bottom: 1px solid rgba(96,96,96,.18);
+  background: linear-gradient(180deg, rgba(236,209,200,.55), rgba(243,240,233,.55));
+}
+
+.gridjs-head .gridjs-search{
+  flex: 1 1 auto;
+  max-width: 520px;
+}
+
+/* Contenedor para botón */
+.gridjs-head .grid-actions-head{
+  margin-left: auto;
+  display:flex;
+  align-items:center;
+  gap: .5rem;
+}
+
+/* Botón en el header de GridJS */
+.gridjs-head .grid-primary-btn{
+  appearance: none !important;
+  -webkit-appearance: none !important;
+
+  border: 1px solid rgba(195,165,131,.55) !important;
+  background: linear-gradient(
+    180deg,
+    rgba(243,240,233,.98),
+    rgba(236,209,200,.85)
+  ) !important;
+
+  color: rgba(31,35,40,.92) !important;
+
+  height: 40px !important;
+  padding: 0 16px !important;
+  border-radius: 999px !important;
+
+  font-weight: 800 !important;
+  font-size: 14px !important;
+  letter-spacing: .02em !important;
+
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+
+  box-shadow: 0 10px 22px rgba(0,0,0,.12) !important;
+  cursor: pointer !important;
+
+  transition: transform .12s ease, filter .15s ease, box-shadow .15s ease !important;
+}
+
+.gridjs-head .grid-primary-btn:hover{
+  transform: translateY(-1px) !important;
+  filter: brightness(1.03) !important;
+  box-shadow: 0 14px 28px rgba(0,0,0,.16) !important;
+}
+
+.gridjs-head .grid-primary-btn:active{
+  transform: translateY(0px) !important;
+  filter: brightness(0.99) !important;
+}
+
+/* Search */
+.gridjs-search input{
+  width: 100% !important;
+  height: 42px !important;
+  padding: 0 14px !important;
+  border-radius: 12px !important;
+
+  background: rgba(255,255,255,.70) !important;
+  border: 1px solid rgba(195,165,131,.35) !important;
+  color: var(--k-ink) !important;
+  outline: none !important;
+
+  transition: border-color .15s ease, box-shadow .15s ease, background .15s ease;
+}
+.gridjs-search input::placeholder{
+  color: rgba(96,96,96,.70) !important;
+}
+.gridjs-search input:focus{
+  border-color: rgba(195,165,131,.70) !important;
+  box-shadow: 0 0 0 4px rgba(195,165,131,.20) !important;
+  background: rgba(255,255,255,.85) !important;
+}
+
+/* Wrapper tabla */
+.gridjs-wrapper{
+  border: 0 !important;
+  background: transparent !important;
+}
+
+/* Tabla */
+.gridjs-table{
+  width:100%;
+  border-collapse: separate !important;
+  border-spacing: 0 !important;
+  background: transparent !important;
+}
+
+/* Encabezado sticky */
+.gridjs-thead th{
+  position: sticky;
+  top: 0;
+  z-index: 10;
+
+  padding: 14px 14px !important;
+  font-size: .72rem !important;
+  font-weight: 700 !important;
+  letter-spacing: .08em !important;
+  text-transform: uppercase;
+
+  color: rgba(96,96,96,.95) !important;
+
+  background: linear-gradient(180deg, rgba(243,240,233,.95), rgba(243,240,233,.78)) !important;
+  border-bottom: 1px solid rgba(96,96,96,.20) !important;
+}
+
+/* Celdas */
+.gridjs-td{
+  padding: 14px 14px !important;
+  font-size: .92rem !important;
+
+  color: rgba(31,35,40,.92) !important;
+  border-bottom: 1px solid rgba(96,96,96,.14) !important;
+
+  background: rgba(243,240,233,.92) !important;
+  vertical-align: middle;
+}
+
+/* Zebra MUY sutil */
+.gridjs-tr:nth-child(even) .gridjs-td{
+  background: rgba(243,240,233,.78) !important;
+}
+.gridjs-tr:hover .gridjs-td{
+  background: rgba(236,209,200,.35) !important;
+}
+
+/* Footer premium */
+.gridjs-footer{
+  display:flex;
+  align-items:center;
+  justify-content: space-between;
+  gap: .75rem;
+  flex-wrap: wrap;
+
+  padding: 14px 18px;
+  border-top: 1px solid rgba(96,96,96,.18);
+  background: rgba(243,240,233,.70) !important;
+}
+
+/* Summary */
+.gridjs-summary{
+  color: rgba(96,96,96,.90) !important;
+  font-size: .9rem;
+}
+
+/* Pagination buttons */
+.gridjs-pagination{
+  display:flex !important;
+  align-items:center;
+  gap: .45rem;
+  flex-wrap: wrap;
+}
+.gridjs-pagination .gridjs-pages button{
+  height: 36px !important;
+  min-width: 36px !important;
+  padding: 0 10px !important;
+  border-radius: 12px !important;
+
+  background: rgba(255,255,255,.60) !important;
+  border: 1px solid rgba(195,165,131,.30) !important;
+  color: rgba(31,35,40,.88) !important;
+
+  transition: transform .12s ease, background .15s ease, border-color .15s ease;
+}
+.gridjs-pagination .gridjs-pages button:hover{
+  background: rgba(255,255,255,.78) !important;
+  transform: translateY(-1px);
+}
+.gridjs-pagination .gridjs-pages button.gridjs-currentPage{
+  background: rgba(195,165,131,.30) !important;
+  border-color: rgba(195,165,131,.55) !important;
+  color: rgba(31,35,40,.95) !important;
+}
+
+/* Scrollbar (solo webkit) */
+.gridjs-wrapper::-webkit-scrollbar{ height: 10px; }
+.gridjs-wrapper::-webkit-scrollbar-thumb{
+  background: rgba(195,165,131,.35);
+  border-radius: 999px;
+}
+.gridjs-wrapper::-webkit-scrollbar-track{
+  background: rgba(0,0,0,.04);
+}
+
+/* --- ACCIONES STICKY a la derecha --- */
+.gridjs-thead th:last-child{
+  position: sticky;
+  right: 0;
+  z-index: 15;
+
+  background: linear-gradient(180deg, rgba(243,240,233,.95), rgba(243,240,233,.78)) !important;
+  border-left: 1px solid rgba(96,96,96,.18) !important;
+}
+.gridjs-tr .gridjs-td:last-child{
+  position: sticky;
+  right: 0;
+  z-index: 5;
+
+  background: rgba(243,240,233,.92) !important;
+  border-left: 1px solid rgba(96,96,96,.14) !important;
+}
+
+/* Contenedor para tus botones de acción */
+.grid-actions{
+  display:flex;
+  justify-content:center;
+  gap: .5rem;
+}
+
+/* Botones acción */
+.grid-actions .btn{
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 700;
+
+  background: rgba(255,255,255,.60);
+  border: 1px solid rgba(195,165,131,.28);
+  color: rgba(31,35,40,.88);
+  transition: transform .12s ease, background .15s ease, border-color .15s ease;
+}
+.grid-actions .btn:hover{
+  background: rgba(255,255,255,.80);
+  transform: translateY(-1px);
+}
+.grid-actions .btn.primary{
+  background: rgba(195,165,131,.26);
+  border-color: rgba(195,165,131,.45);
+}
+.grid-actions .btn.primary:hover{
+  background: rgba(195,165,131,.34);
+}
+.grid-actions .btn.danger{
+  background: rgba(239,68,68,.10);
+  border-color: rgba(239,68,68,.18);
+  color: rgba(153,27,27,.92);
+}
+.grid-actions .btn.danger:hover{
+  background: rgba(239,68,68,.16);
+}
+
+/* Responsive */
+@media (max-width: 640px){
+  .gridjs-head{ padding: 14px 14px; }
+  .gridjs-footer{ padding: 12px 14px; }
+  .gridjs-search{ max-width: 100%; }
+}
+
+/* Slot actions: lo montas con _mountHeaderActions() */
+.gridjs-head [slot="grid-actions"]{
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+}
+
+/* Ocultamos el slot “en bruto” fuera del header */
+grid-table > slot[name="grid-actions"]{
+  display:none;
+}
