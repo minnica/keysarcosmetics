@@ -67,8 +67,8 @@ export class GridTable extends LitElement {
         return {
           ...c,
           sort: false,
-          width: '200px',
-          minWidth: '200px',
+          width: '120px',
+          minWidth: '120px',
           formatter: (_, row) => {
             const id = row?.cells?.[0]?.data;
             const htmlStr = this.actionBuilder

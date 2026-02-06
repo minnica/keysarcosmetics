@@ -39,8 +39,8 @@ export class FeatureSalesManagementCrudPaymentMethod extends LitElement {
     const id = row?.cells?.[0]?.data; // asumiendo que "ID" es la 1a columna
     return `
     <div class="flex items-center gap-2">
-      <button class="px-2 py-1 rounded-md border text-xs hover:bg-gray-50" data-action="edit" data-id="${id}">Edit</button>
-      <button class="px-2 py-1 rounded-md border text-xs hover:bg-red-50 text-red-600 border-red-200" data-action="delete" data-id="${id}">Delete</button>
+      <button class="btn primary" data-action="edit" data-id="${id}">Edit</button>
+      <button class="btn danger" data-action="delete" data-id="${id}">Delete</button>
     </div>
     `;
   };

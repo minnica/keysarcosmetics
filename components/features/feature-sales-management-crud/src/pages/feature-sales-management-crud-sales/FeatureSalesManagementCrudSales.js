@@ -56,7 +56,7 @@ export class FeatureSalesManagementCrudSales extends LitElement {
     const id = row?.cells?.[0]?.data;
     return `
     <div class="flex items-center">
-      <button class="px-2 py-1 rounded-md border text-xs hover:bg-red-50 text-red-600 border-red-200" data-action="delete" data-id="${id}">Delete</button>
+      <button class="btn danger" data-action="delete" data-id="${id}">Delete</button>
     </div>
     `;
   };
