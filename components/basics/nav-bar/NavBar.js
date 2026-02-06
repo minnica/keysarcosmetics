@@ -149,7 +149,7 @@ export class NavBar extends LitElement {
         >
           Dashboard
         </a>
-        <div class="border-b border-[#efd8a1]"></div>
+        <div class="border-b"></div>
         <button
           class="k-logout"
           @click=${this._handleLogout}
