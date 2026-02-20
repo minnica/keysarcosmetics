@@ -31,7 +31,7 @@ export class FeatureSalesManagementCrudReportPaymentMethod extends LitElement {
    * @private
    */
   _tplGridTable() {
-    return html` <grid-table .config=${this.paymentReportData}></grid-table> `;
+    return html`<div class="k-panel"> <grid-table .config=${this.paymentReportData}></grid-table> </div>`;
   }
 
   /**

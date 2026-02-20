@@ -57,7 +57,6 @@ export class EmployeeApiDm extends LitElement {
       successEvent: 'employee-api-dm-fetch',
       errorEvent: 'employee-api-dm-fetch-error',
     });
-    console.log('get');
 
     this.dispatchEvent(new CustomEvent('loading-end', { bubbles: true, composed: true }));
     return data || [];
