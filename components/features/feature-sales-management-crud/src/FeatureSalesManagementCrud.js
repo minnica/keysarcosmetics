@@ -16,6 +16,8 @@ import './pages/feature-sales-management-crud-report-sales-seller/FeatureSalesMa
 import './pages/feature-sales-management-crud-report-daily-sales-seller/FeatureSalesManagementCrudReportDailySalesSeller.js';
 import './pages/feature-sales-management-crud-report-payment-method/FeatureSalesManagementCrudReportPaymentMethod.js';
 import './pages/feature-sales-management-crud-report-daily-payment-method/FeatureSalesManagementCrudReportDailyPaymentMethod.js';
+import './pages/feature-sales-management-crud-home/FeatureSalesManagementCrudHome.js';
+
 import './FeatureSalesManagementCrud.css';
 import './FeatureSalesManagementCrudDM.js';
 
@@ -177,10 +179,14 @@ export class FeatureSalesManagementCrud extends LitElement {
    */
   get _routes() {
     return [
-      {
-        path: '/',
-        render: () => html`<p class="p-4 uppercase">pagina inicial</p>`,
-      },
+        {
+          path: '/',
+          render: () => html`
+            <feature-sales-management-crud-home
+              @feature-sales-management-crud-navigate=${(e) => this._router.goto(e.detail.path)}
+            ></feature-sales-management-crud-home>
+          `,
+        },
       {
         path: '/login',
         render: () => html`
