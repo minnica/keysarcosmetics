@@ -179,29 +179,12 @@ export class FeatureSalesManagementCrud extends LitElement {
    */
   get _routes() {
     return [
-        {
-          path: '/',
-          render: () => html`
-            <feature-sales-management-crud-home
-              @feature-sales-management-crud-navigate=${(e) => this._router.goto(e.detail.path)}
-            ></feature-sales-management-crud-home>
-          `,
-        },
       {
-        path: '/login',
+        path: '/',
         render: () => html`
-          <div class="p-4">
-            <p class="mb-2">Login placeholder</p>
-            <button
-              class="menu-buttons"
-              @click=${() => {
-                this._user = { role: 'admin' };
-                this._router.goto('/');
-              }}
-            >
-              Iniciar sesión
-            </button>
-          </div>
+          <feature-sales-management-crud-home
+            @feature-sales-management-crud-navigate=${e => this._router.goto(e.detail.path)}
+          ></feature-sales-management-crud-home>
         `,
       },
       {
@@ -350,7 +333,7 @@ export class FeatureSalesManagementCrud extends LitElement {
     return !!this._user;
   }
 
-  // pendiente de documentar
+  // Guard simple (mejorar esto cuando haya login real/JWT)
   _authorize(renderFn) {
     if (!this._isAuthenticated()) {
       queueMicrotask(() => this._router.goto('/login'));
@@ -363,7 +346,12 @@ export class FeatureSalesManagementCrud extends LitElement {
   _logout() {
     this._user = null;
     this._prefetched.clear();
-    this._router.goto('/login');
+    this.dispatchEvent(
+      new CustomEvent('nav-bar-logout', {
+        bubbles: true,
+        composed: true,
+      }),
+    );
   }
 
   /**
