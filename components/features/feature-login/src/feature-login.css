@@ -1,0 +1,104 @@
+/* Página login: centra y usa el fondo global */
+.login-page{
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+/* Card del login */
+.login-card{
+  width: min(720px, 92vw);
+  border-radius: 22px;
+  padding: 44px 46px;
+
+  background: linear-gradient(180deg, rgba(255,255,255,.07), rgba(255,255,255,.03));
+  border: 1px solid rgba(243,240,233,.10);
+  box-shadow: 0 35px 80px rgba(0,0,0,.55);
+  backdrop-filter: blur(10px);
+}
+
+/* Título */
+.login-title{
+  margin: 0 0 18px 0;
+  text-align: center;
+  font-size: 44px;
+  line-height: 1.05;
+  font-weight: 900;
+  letter-spacing: .02em;
+  color: var(--text);
+}
+
+/* Subtítulo opcional */
+.login-subtitle{
+  margin: 0 0 26px 0;
+  text-align: center;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+/* Form */
+.login-form{
+  display: grid;
+  gap: 16px;
+  max-width: 360px;
+  margin: 0 auto;
+}
+
+/* Labels */
+.login-label{
+  font-weight: 800;
+  letter-spacing: .02em;
+  color: rgba(243,240,233,.75);
+  margin-bottom: 6px;
+  display: block;
+}
+
+/* Inputs */
+.login-input{
+  height: 46px;
+  width: 100%;
+  padding: 0 14px;
+  border-radius: 14px;
+
+  background: rgba(255,255,255,.05);
+  border: 1px solid rgba(243,240,233,.14);
+  color: var(--text);
+  outline: none;
+
+  transition: border-color .15s ease, box-shadow .15s ease, background .15s ease;
+}
+.login-input::placeholder{
+  color: rgba(243,240,233,.42);
+}
+.login-input:focus{
+  border-color: rgba(195,165,131,.50); /* camel */
+  box-shadow: 0 0 0 4px rgba(195,165,131,.18);
+  background: rgba(255,255,255,.07);
+}
+
+/* Botón */
+.login-btn{
+  margin-top: 10px;
+  height: 46px;
+  border-radius: 14px;
+  font-weight: 900;
+  letter-spacing: .02em;
+
+  background: linear-gradient(135deg, rgba(195,165,131,.95), rgba(236,209,200,.65));
+  border: 1px solid rgba(195,165,131,.35);
+  color: rgba(10,12,16,.95);
+  cursor: pointer;
+
+  transition: transform .12s ease, filter .15s ease;
+}
+.login-btn:hover{
+  transform: translateY(-1px);
+  filter: brightness(1.05);
+}
+
+/* Responsive */
+@media (max-width: 520px){
+  .login-card{ padding: 34px 20px; }
+  .login-title{ font-size: 34px; }
+}

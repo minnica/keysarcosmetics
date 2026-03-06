@@ -152,22 +152,26 @@ export class PaymentMethodForm extends LitElement {
    */
   tplButtonModal() {
     return html`
-      <button
+      <slot name="trigger">
+
+        <button
         class="new-form-btn"
+        type="button"
         @click=${() => {
           this.showForm = true;
           this.inputPaymentMethod = {};
           this.inputPaymentMethodName = '';
         }}
-      >
-        Agregar
-      </button>
+          >
+          Agregar
+        </button>
+      </slot>
     `;
   }
 
   render() {
     return html`
-      ${this.tplButtonModal()} ${this.showForm ? this._tplPaymentMethodFormModal() : nothing}
+      ${this.showForm ? this._tplPaymentMethodFormModal() : nothing}
     `;
   }
 }

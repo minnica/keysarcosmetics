@@ -42,92 +42,14 @@ export class GridTable extends LitElement {
       link.href = href;
       document.head.appendChild(link);
     }
-    const style = document.createElement('style');
-    style.textContent = `
-  /* Centra el grid completo */
-  #grid-container {
-    display: flex;
-    justify-content: center;
-    padding: 2rem 1rem;
-  }
+  const localHref = new URL('./gridtable.css', import.meta.url).href;
 
-  /* Contenedor principal */
-  .gridjs-container {
-    width: 100%;
-    max-width: 1200px; /* <- más ancho */
-    background-color: #f9fafb;
-    border-radius: 0.5rem;
-    padding: 1rem;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
-    box-sizing: border-box;
+  if (!document.querySelector(`link[href="${localHref}"]`)) {
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = localHref;
+    document.head.appendChild(link);
   }
-
-  /* Tabla */
-  .gridjs-table {
-    width: 100%;
-    table-layout: auto;
-    border-collapse: collapse;
-    background-color: #f3f4f6 !important;
-  }
-
-  .gridjs-th {
-    background-color: #e5e7eb !important; /* ← Encabezado gris más oscuro */
-    color: #374151 !important;            /* ← Texto gris oscuro */
-    font-weight: 600;
-    text-align: center;
-    vertical-align: middle;
-    padding: 0.5rem 1rem;
-    min-width: 100px;
-  }
-
-
-  .gridjs-td {
-    text-align: center;
-    vertical-align: middle;
-    padding: 0.5rem 1rem;
-    min-width: 100px;
-    background-color: #f3f4f6 !important;
-  }
-
-  .gridjs-th:last-child,
-  .gridjs-td:last-child {
-    min-width: 140px;
-  }
-
-  /* Encabezado (buscador, botones, etc.) */
-  .gridjs-head {
-    display: flex;
-    justify-content: space-between; /* <- separa buscador y botones */
-    align-items: center;
-    flex-wrap: wrap;
-    margin-bottom: 1rem;
-  }
-
-  .gridjs-search {
-    flex: 1 1 auto;
-    max-width: 400px;
-  }
-
-  /* Pie de página */
-  .gridjs-footer {
-    background-color: #e5e7eb !important; 
-    padding: 0.75rem 1rem;
-    border-top: 1px solid #d1d5db;
-    margin-top: 1rem;
-    border-radius: 0 0 0.5rem 0.5rem; 
-  }
-@media (max-width: 640px) {
-  .gridjs-pagination {
-    display: flex !important;
-    justify-content: center !important;
-    align-items: center;
-    gap: 0.5rem;
-    flex-wrap: wrap;
-  }
-    }
-
-`;
-    document.head.appendChild(style);
   }
 
   static _normalizeColumns(columns) {
@@ -145,12 +67,13 @@ export class GridTable extends LitElement {
         return {
           ...c,
           sort: false,
-          minWidth: '33%',
+          width: '120px',
+          minWidth: '120px',
           formatter: (_, row) => {
             const id = row?.cells?.[0]?.data;
             const htmlStr = this.actionBuilder
-              ? `<div class="flex justify-center gap-2">${this.actionBuilder(row)}</div>`
-              : nothing;
+              ? `<div class="grid-actions">${this.actionBuilder(row)}</div>`
+              : '';
             return ghtml(htmlStr);
           },
         };
@@ -161,31 +84,54 @@ export class GridTable extends LitElement {
     return cols;
   }
 
-  _renderGrid() {
-    const container = this.querySelector('#grid-container');
-    if (!container) return;
 
-    const base = { ...(this.config || {}) };
-    base.columns = this._buildColumns(base.columns || []);
+_mountHeaderActions() {
+  const head = this.querySelector('.gridjs-head');
+  const slotted = this.querySelector('[slot="grid-actions"]');
+  if (!head || !slotted) return;
 
-    // Si ya existe, actualiza en lugar de destruir
-    if (this._grid) {
-      try {
-        this._grid.updateConfig(base).forceRender();
-        return;
-      } catch (err) {
-        console.log('Grid update falló, re-render completo.', err);
-        try {
-          this._grid.destroy();
-        } catch (e) {
-          console.log('Destroy falló:', e);
-        }
-        this._grid = null;
-      }
-    }
-
-    this._grid = new Grid(base).render(container);
+  let right = head.querySelector('.grid-actions-head');
+  if (!right) {
+    right = document.createElement('div');
+    right.className = 'grid-actions-head';
+    head.appendChild(right);
   }
+
+  if (!right.contains(slotted)) right.appendChild(slotted);
+}
+
+_renderGrid() {
+  const container = this.querySelector('#grid-container');
+  if (!container) return;
+
+  const base = { ...(this.config || {}) };
+  base.columns = this._buildColumns(base.columns || []);
+
+  // Si ya existe, actualiza en lugar de destruir
+  if (this._grid) {
+    try {
+      this._grid.updateConfig(base).forceRender();
+
+      // 👇 IMPORTANTE: GridJS re-renderiza el header, así que volvemos a montar acciones
+      queueMicrotask(() => this._mountHeaderActions());
+      return;
+    } catch (err) {
+      console.log('Grid update falló, re-render completo.', err);
+      try {
+        this._grid.destroy();
+      } catch (e) {
+        console.log('Destroy falló:', e);
+      }
+      this._grid = null;
+    }
+  }
+
+  this._grid = new Grid(base).render(container);
+
+  // 👇 Primera vez también
+  queueMicrotask(() => this._mountHeaderActions());
+}
+
 
   _onClick = e => {
     const btn = e.target.closest?.('[data-action]');
@@ -225,7 +171,8 @@ export class GridTable extends LitElement {
   }
 
   render() {
-    return html`<div id="grid-container"></div>`;
+    return html`    <div id="grid-container"></div>
+    <slot name="grid-actions"></slot>`;
   }
 }
 

@@ -31,7 +31,7 @@ export class FeatureSalesManagementCrudReportDailySalesSeller extends LitElement
    * @private
    */
   _tplGridTable() {
-    return html` <grid-table .config=${this.dailySalesSellerData}></grid-table> `;
+    return html`<div class="k-panel"> <grid-table .config=${this.dailySalesSellerData}></grid-table></div> `;
   }
 
   /**

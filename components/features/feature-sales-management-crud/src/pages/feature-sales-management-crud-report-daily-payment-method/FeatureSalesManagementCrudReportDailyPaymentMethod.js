@@ -41,7 +41,7 @@ export class FeatureSalesManagementCrudReportDailyPaymentMethod extends LitEleme
    * @private
    */
   _tplGridTable() {
-    return html` <grid-table .config=${this.paymentReportDailyData}></grid-table> `;
+    return html`<div class="k-panel"> <grid-table .config=${this.paymentReportDailyData}></grid-table></div> `;
   }
 
   /**

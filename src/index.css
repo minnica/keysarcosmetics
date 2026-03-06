@@ -1,3 +1,185 @@
 @import 'tailwindcss';
 @source "../node_modules/@web-components-features/feature-sales-management-crud";
 @source "../node_modules/@web-components-features/feature-login";
+
+/* =========================
+   KEYSAR THEME (DARK)
+   ========================= */
+:root{
+  color-scheme: dark;
+
+  /* base dark (más cálido, menos azul) */
+  --bg: #07070a;
+  --bg-2: #0b0b10;
+  --surface: #0f1016;
+  --surface-2: #141521;
+  --surface-3: rgba(243,240,233,.05);
+
+  /* texto */
+  --text: #f3f0e9;
+  --text-2: rgba(243,240,233,.82);
+  --muted: rgba(243,240,233,.62);
+
+  /* bordes (un pelín más visibles) */
+  --border: rgba(243,240,233,.12);
+  --border-2: rgba(243,240,233,.18);
+
+  /* acentos */
+  --brand: #c3a583;
+  --brand-2: #ecd1c8;
+  --steel: #606060;
+
+  --danger: #ef4444;
+  --success: #22c55e;
+  --warn: #f59e0b;
+
+  --shadow: 0 30px 70px rgba(0,0,0,.55);
+}
+
+/* Fondo general de la app */
+html, body{
+  height: 100%;
+  margin: 0;
+  color: var(--text);
+
+  /* Dark luxe: charcoal + halos cálidos */
+  background:
+    radial-gradient(1400px 900px at 12% 10%, rgba(195,165,131,.16), transparent 62%),
+    radial-gradient(1100px 800px at 88% 18%, rgba(236,209,200,.10), transparent 65%),
+    radial-gradient(900px 650px at 50% 90%, rgba(243,240,233,.05), transparent 60%),
+    radial-gradient(700px 520px at 35% 55%, rgba(195,165,131,.06), transparent 62%),
+    linear-gradient(180deg, var(--bg), var(--bg-2));
+}
+
+*{ box-sizing: border-box; }
+
+
+/* =========================
+   NAVBAR / SIDEBAR (Tokens)
+   ========================= */
+.k-topbar{
+  background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
+  border-bottom: 1px solid var(--border);
+  backdrop-filter: blur(10px);
+}
+
+.k-topbar-title{
+  color: var(--brand);
+  letter-spacing: .06em;
+}
+
+.k-icon-btn{
+  border: 1px solid rgba(243,240,233,.22);
+  border-radius: 12px;
+  padding: 6px 10px;
+  transition: background .15s ease, border-color .15s ease, transform .12s ease;
+  background: rgba(255,255,255,.04);
+  color: var(--text);
+}
+.k-icon-btn:hover{
+  background: rgba(255,255,255,.08);
+  border-color: rgba(243,240,233,.30);
+  transform: translateY(-1px);
+}
+
+/* Sidebar */
+.k-sidebar{
+  /* Dark cálido (no azul) + halos brand */
+  background:
+    radial-gradient(900px 520px at 15% 8%, rgba(195,165,131,.16), transparent 62%),
+    radial-gradient(700px 520px at 85% 22%, rgba(236,209,200,.10), transparent 65%),
+    linear-gradient(180deg, rgba(17,18,24,.94), rgba(9,10,14,.94));
+
+  border-right: 1px solid rgba(195,165,131,.22);
+  box-shadow: 0 25px 60px rgba(0,0,0,.55);
+  backdrop-filter: blur(12px);
+}
+
+.k-sidebar-section{
+  color: rgba(243,240,233,.55);
+  letter-spacing: .14em;
+  font-style: italic;
+}
+
+/* Links del sidebar */
+.k-navlink{
+  display:block;
+  padding: 10px 12px;
+  border-radius: 12px;
+
+  color: rgba(243,240,233,.80);
+  text-transform: uppercase;
+  font-weight: 800;
+  letter-spacing: .06em;
+
+  background: transparent;
+  border: 1px solid transparent;
+
+  transition: background .15s ease, border-color .15s ease, color .15s ease, transform .12s ease;
+}
+
+.k-navlink:hover{
+  background: rgba(236,209,200,.10);      /* nude */
+  border-color: rgba(195,165,131,.22);     /* gold suave */
+  color: rgba(243,240,233,.96);
+  transform: translateX(1px);
+}
+
+/* Separadores */
+.k-sep{
+  border-bottom: 1px solid rgba(195,165,131,.35);
+  opacity: .9;
+}
+
+/* Botón logout */
+.k-logout{
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  border-radius: 12px;
+  color: rgba(243,240,233,.78);
+  text-transform: uppercase;
+  font-weight: 900;
+  letter-spacing: .06em;
+  background: rgba(255,255,255,.03);
+  border: 1px solid rgba(243,240,233,.08);
+}
+.k-logout:hover{
+  background: rgba(239,68,68,.12);
+  border-color: rgba(239,68,68,.22);
+  color: rgba(254,202,202,.95);
+}
+
+/* Panel que contiene tablas/secciones */
+.k-panel{
+  width: min(1300px, 95vw);
+  margin: 22px auto 0;
+  padding: 18px;
+
+  /* Glass cálido */
+  background:
+    radial-gradient(900px 420px at 18% 0%, rgba(236,209,200,.10), transparent 60%),
+    radial-gradient(800px 420px at 82% 15%, rgba(195,165,131,.10), transparent 60%),
+    linear-gradient(180deg, rgba(255,255,255,.07), rgba(255,255,255,.03));
+
+  border: 1px solid rgba(195,165,131,.22);
+  border-radius: 18px;
+  box-shadow: 0 30px 70px rgba(0,0,0,.45);
+  backdrop-filter: blur(12px);
+}
+
+.k-panel::before{
+  content: "";
+  display:block;
+  height: 1px;
+  margin-bottom: 12px;
+  background: linear-gradient(90deg, transparent, rgba(195,165,131,.35), transparent);
+  opacity: .8;
+}
+
+.k-sidebar button[aria-label="Cerrar menú"]{
+  color: rgba(243,240,233,.90) !important;
+}
+.k-sidebar button[aria-label="Cerrar menú"]:hover{
+  color: rgba(195,165,131,.95) !important;
+}

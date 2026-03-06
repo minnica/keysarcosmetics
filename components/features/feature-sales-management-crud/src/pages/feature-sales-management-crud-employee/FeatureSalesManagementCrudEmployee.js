@@ -40,8 +40,8 @@ export class FeatureSalesManagementCrudEmployee extends LitElement {
     const id = row?.cells?.[0]?.data; // asumiendo que "ID" es la 1a columna
     return `
     <div class="flex items-center gap-2">
-      <button class="px-2 py-1 rounded-md border text-xs hover:bg-gray-50" data-action="edit" data-id="${id}">Edit</button>
-      <button class="px-2 py-1 rounded-md border text-xs hover:bg-red-50 text-red-600 border-red-200" data-action="delete" data-id="${id}">Delete</button>
+      <button class="btn primary" data-action="edit" data-id="${id}">Edit</button>
+      <button class="btn danger" data-action="delete" data-id="${id}">Delete</button>
     </div>
     `;
   };
@@ -85,17 +85,41 @@ export class FeatureSalesManagementCrudEmployee extends LitElement {
       ${Object.keys(this.dataGridEmployee || {}).length
         ? html`
             <employer-form
+              id="employerForm"
               .inputEmployee="${this.editEmployee}"
               @request-submit=${e => this.submitPage(e.detail)}
             ></employer-form>
+
+         <div class="k-panel">
             ${this.hasValidGridConfig
               ? html` <grid-table
                   .config=${this.dataGridEmployee}
                   enable-actions
                   .actionBuilder=${FeatureSalesManagementCrudEmployee._actionButtons}
                   @grid-action=${this._onGridAction}
-                ></grid-table>`
+                >
+                  <button
+                    slot="grid-actions"
+                    class="grid-primary-btn"
+                    @click=${() => {
+                      const bf = this.querySelector('#employerForm');
+                      if (!bf) return;
+                      bf.showForm = true;
+                      bf.inputEmployee = {};
+                      bf.firstName = '';
+                      bf.lastName = '';
+                      bf.middleName = '';
+                      bf.bank = '';
+                      bf.accountNumber = '';
+                      bf.position = '';
+                      bf.showForm = true;
+                    }}
+                  >
+                    Agregar Empleado
+                  </button>
+                </grid-table>`
               : nothing}
+          </div>
           `
         : nothing}
     `;

@@ -41,7 +41,7 @@ export class FeatureSalesManagementCrudReportDashboard extends LitElement {
    */
   _tplCards() {
     return html`
-      <div class="flex flex-wrap justify-center gap-x-30">
+      <div class="flex flex-wrap justify-center gap-x-30 k-panel">
         <summary-card
           title-card="VENTAS DEL DÍA"
           .dataBranch="${this.data?.card?.day}"
@@ -68,7 +68,7 @@ export class FeatureSalesManagementCrudReportDashboard extends LitElement {
    */
   _tplCharts() {
     return html`
-      <div class="flex flex-wrap justify-center gap-x-30">
+      <div class="flex flex-wrap justify-center gap-x-30 k-panel">
         <keysar-chart
           .labels="${this.data?.chart?.labels}"
           .sales="${this.data?.chart?.sales}"
