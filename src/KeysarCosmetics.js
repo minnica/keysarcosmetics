@@ -3,14 +3,11 @@ import './index.css';
 import '@components/features/feature-sales-management-crud/src/FeatureSalesManagementCrud.js';
 import '@components/features/feature-login/src/FeatureLogin.js';
 
+const REDIRECT_KEY = 'keysar_redirect_after_login';
+
 export class KeysarCosmetics extends LitElement {
   static get properties() {
     return {
-      /**
-       * Indicates if the user is authenticated
-       * @type {Boolean}
-       * @default false
-       */
       authenticated: {
         type: Boolean,
       },
@@ -20,7 +17,9 @@ export class KeysarCosmetics extends LitElement {
   constructor() {
     super();
     this.authenticated = false;
-    this._redirectAfterLogin = null;
+    this._handleLoginSuccess = this._handleLoginSuccess.bind(this);
+    this._handleLogout = this._handleLogout.bind(this);
+    this._handlePopState = this._handlePopState.bind(this);
   }
 
   createRenderRoot() {
@@ -29,28 +28,38 @@ export class KeysarCosmetics extends LitElement {
 
   connectedCallback() {
     super.connectedCallback();
+    window.addEventListener('popstate', this._handlePopState);
+    this._syncRouteWithAuth();
+  }
+
+  disconnectedCallback() {
+    window.removeEventListener('popstate', this._handlePopState);
+    super.disconnectedCallback();
+  }
+
+  _handlePopState() {
     this._syncRouteWithAuth();
   }
 
   /**
-   * Synchronizes the current route with the authentication state.
-   * If the user is not authenticated and tries to access a protected route,
-   * it saves the current route and redirects to the login page (/).
+   * If not authenticated and enters a protected route,
+   * saves the route and visually redirects to "/".
    * @private
    */
   _syncRouteWithAuth() {
     const currentPath = window.location.pathname;
 
     if (!this.authenticated && currentPath !== '/') {
-      this._redirectAfterLogin = currentPath;
+      sessionStorage.setItem(REDIRECT_KEY, currentPath);
       window.history.replaceState({}, '', '/');
+      window.dispatchEvent(new PopStateEvent('popstate'));
       this.requestUpdate();
     }
   }
 
   /**
-   * Handles the successful login event.
-   * @param {CustomEvent} e - The event object.
+   * Handle login success.
+   * @param {CustomEvent} e
    * @private
    */
   _handleLoginSuccess(e) {
@@ -58,21 +67,25 @@ export class KeysarCosmetics extends LitElement {
     this.authenticated = authenticated;
 
     if (authenticated) {
-      const targetPath = this._redirectAfterLogin || '/';
-      this._redirectAfterLogin = null;
-      window.history.pushState({}, '', targetPath);
+      const redirectPath = sessionStorage.getItem(REDIRECT_KEY) || '/';
+      sessionStorage.removeItem(REDIRECT_KEY);
+
+      window.history.pushState({}, '', redirectPath);
+      window.dispatchEvent(new PopStateEvent('popstate'));
       this.requestUpdate();
     }
   }
 
   /**
-   * Handles the logout event.
+   * Handle logout.
    * @private
    */
   _handleLogout() {
     this.authenticated = false;
-    this._redirectAfterLogin = null;
+    sessionStorage.removeItem(REDIRECT_KEY);
+
     window.history.replaceState({}, '', '/');
+    window.dispatchEvent(new PopStateEvent('popstate'));
     this.requestUpdate();
   }
 
