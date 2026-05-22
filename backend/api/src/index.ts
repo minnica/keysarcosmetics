@@ -52,7 +52,9 @@ app.use((_req, res) => {
   res.status(404).json({ success: false, message: 'Ruta no encontrada', data: null })
 })
 
-app.listen(PORT, () => {
-  console.log(`🚀 API corriendo en http://localhost:${PORT}`)
-  console.log(`   CORS habilitado para: ${allowedOrigins.join(', ') || '(todos)'}`)
+const HOST = '0.0.0.0'
+
+app.listen(PORT, HOST, () => {
+  console.log(`🚀 API corriendo en http://${HOST}:${PORT}`)
+  console.log(`   CORS habilitado para: ${allowedOrigins.join(', ') || '(ningún origen configurado)'}`)
 })

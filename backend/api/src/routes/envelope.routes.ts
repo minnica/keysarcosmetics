@@ -1,10 +1,10 @@
 // Rutas del módulo Envelope — ventas por sobre digitalizado
-import { Router } from 'express'
+import { Router, type Router as ExpressRouter } from 'express'
 import { authMiddleware } from '../middlewares/auth.middleware'
 import { requireRole } from '../middlewares/role.middleware'
 import { prisma } from '../prisma/client'
 
-const router = Router()
+const router: ExpressRouter = Router()
 
 // Todas las rutas de este módulo requieren autenticación
 router.use(authMiddleware)

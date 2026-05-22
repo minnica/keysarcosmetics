@@ -1,10 +1,9 @@
 // Rutas del módulo de autenticación
-import { Router } from 'express'
+import { Router, type Router as ExpressRouter } from 'express'
 import { login, me } from '../controllers/auth.controller'
 import { authMiddleware } from '../middlewares/auth.middleware'
 
-const router = Router()
-
+const router: ExpressRouter = Router()
 // POST /api/auth/login — pública
 router.post('/login', login)
 

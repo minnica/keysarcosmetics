@@ -1,0 +1,12 @@
+**/node_modules
+**/.next
+**/dist
+**/.env
+**/*.log
+.git
+.gitignore
+apps/landing
+apps/payroll
+apps/crm
+apps/scheduler
+apps/pos

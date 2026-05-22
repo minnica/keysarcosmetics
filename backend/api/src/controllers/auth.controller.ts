@@ -2,7 +2,7 @@
 // Maneja login y consulta del usuario autenticado
 import type { Request, Response } from 'express'
 import bcrypt from 'bcryptjs'
-import jwt from 'jsonwebtoken'
+import jwt, { type SignOptions } from 'jsonwebtoken'
 import { z } from 'zod'
 import { prisma } from '../prisma/client'
 import type { JwtPayload } from '../types/jwt'
@@ -68,10 +68,19 @@ export async function login(req: Request, res: Response): Promise<void> {
       sucursalId: usuario.sucursalId,
     }
 
-    const secret = process.env['JWT_SECRET']!
-    const expiresIn = (process.env['JWT_EXPIRES_IN'] ?? '7d') as jwt.SignOptions['expiresIn']
+    const secret = process.env['JWT_SECRET']
 
-    const token = jwt.sign(payload, secret, { expiresIn })
+    if (!secret) {
+      throw new Error('JWT_SECRET no está definido')
+    }
+
+    const expiresIn = (process.env['JWT_EXPIRES_IN'] ?? '7d') as SignOptions['expiresIn']
+
+    const signOptions: SignOptions = {
+      expiresIn,
+    }
+
+    const token = jwt.sign(payload, secret, signOptions)
 
     res.status(200).json({
       success: true,
