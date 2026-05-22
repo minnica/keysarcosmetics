@@ -28,7 +28,6 @@ export interface Empleado {
   numeroCuenta: string
   puesto: Puesto
   metaIndividual: number
-  sucursalId: string
 }
 
 export interface VentaItem {
@@ -66,37 +65,37 @@ export const INITIAL_EMPLEADOS: Empleado[] = [
     id: 'e1', nombres: 'María', apellidoPaterno: 'García',
     apellidoMaterno: 'López', nombreCompleto: 'María García López',
     banco: 'BBVA', numeroCuenta: '1234567890',
-    puesto: 'Vendedor', metaIndividual: 50000, sucursalId: 's1',
+    puesto: 'Vendedor', metaIndividual: 50000,
   },
   {
     id: 'e2', nombres: 'Juan Carlos', apellidoPaterno: 'Martínez',
     apellidoMaterno: 'Sánchez', nombreCompleto: 'Juan Carlos Martínez Sánchez',
     banco: 'Santander', numeroCuenta: '0987654321',
-    puesto: 'Vendedor', metaIndividual: 45000, sucursalId: 's1',
+    puesto: 'Vendedor', metaIndividual: 45000,
   },
   {
     id: 'e3', nombres: 'Ana', apellidoPaterno: 'Rodríguez',
     apellidoMaterno: 'Torres', nombreCompleto: 'Ana Rodríguez Torres',
     banco: 'Banorte', numeroCuenta: '1122334455',
-    puesto: 'Vendedor', metaIndividual: 55000, sucursalId: 's2',
+    puesto: 'Vendedor', metaIndividual: 55000,
   },
   {
     id: 'e4', nombres: 'Luis', apellidoPaterno: 'Hernández',
     apellidoMaterno: 'Cruz', nombreCompleto: 'Luis Hernández Cruz',
     banco: 'HSBC', numeroCuenta: '5544332211',
-    puesto: 'Vendedor', metaIndividual: 40000, sucursalId: 's2',
+    puesto: 'Vendedor', metaIndividual: 40000,
   },
   {
     id: 'e5', nombres: 'Sofía', apellidoPaterno: 'Pérez',
     apellidoMaterno: 'Morales', nombreCompleto: 'Sofía Pérez Morales',
     banco: 'Banamex', numeroCuenta: '9988776655',
-    puesto: 'Vendedor', metaIndividual: 60000, sucursalId: 's3',
+    puesto: 'Vendedor', metaIndividual: 60000,
   },
   {
     id: 'e6', nombres: 'Roberto', apellidoPaterno: 'Flores',
     apellidoMaterno: 'Vega', nombreCompleto: 'Roberto Flores Vega',
     banco: 'BBVA', numeroCuenta: '6677889900',
-    puesto: 'Gerente', metaIndividual: 80000, sucursalId: 's3',
+    puesto: 'Gerente', metaIndividual: 80000,
   },
 ]
 
@@ -138,9 +137,11 @@ function generateMockRegistros(): RegistroVenta[] {
         })
       }
 
+      // Asignar sucursal aleatoria — el vendedor puede trabajar en cualquier sucursal
+      const sucursalAleatoria = INITIAL_SUCURSALES[Math.floor(Math.random() * INITIAL_SUCURSALES.length)]!
       registros.push({
         id: generateId(),
-        sucursalId: emp.sucursalId,
+        sucursalId: sucursalAleatoria.id,
         vendedorId: emp.id,
         fecha: fechaStr,
         items,
