@@ -22,9 +22,9 @@ function toEmpleado(raw: Record<string, unknown>): Empleado {
     apellidoPaterno: raw['apellidoPaterno'] as string,
     apellidoMaterno: raw['apellidoMaterno'] as string,
     nombreCompleto: raw['nombreCompleto'] as string,
-    banco: raw['banco'] as string,
+    banco: raw['banco'] as Empleado['banco'],
     numeroCuenta: raw['numeroCuenta'] as string,
-    puesto: raw['puesto'] as string,
+    puesto: raw['puesto'] as Empleado['puesto'],
     metaIndividual: Number(raw['metaIndividual']),
   }
 }
