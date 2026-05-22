@@ -4,37 +4,36 @@ import { useState } from 'react'
 import { Select } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
 import { Table, TableHeader, TableBody, TableFooter, TableRow, TableHead, TableCell } from '@/components/ui/table'
-import { useStore } from '@/lib/store'
+import { useReportes } from '@/hooks'
 import { formatCurrency, formatDate } from '@/lib/utils'
 
 export default function MetodoPagoPorDiaPage() {
-  const { state: { registros, sucursales, metodosPago } } = useStore()
+  const { registros, sucursales, metodosPago, loading, error } = useReportes()
 
   const now = new Date()
-  const [metodoPagoId, setMetodoPagoId] = useState(metodosPago[0]?.id ?? '')
+  const [metodoPagoId, setMetodoPagoId] = useState('')
   const [year, setYear] = useState(now.getFullYear())
   const [month, setMonth] = useState(now.getMonth() + 1)
 
-  // Años disponibles: de 2023 al año actual
   const years = Array.from({ length: now.getFullYear() - 2022 }, (_, i) => 2023 + i)
   const months = [
     'Enero','Febrero','Marzo','Abril','Mayo','Junio',
     'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre',
   ]
 
-  // Filtrar registros del mes/año y método seleccionado
+  // Usa el primer método disponible si no se ha seleccionado
+  const efectivoId = metodoPagoId || (metodosPago[0]?.id ?? '')
+
   const prefix = `${year}-${String(month).padStart(2, '0')}`
   const filtered = registros.filter(r => r.fecha.startsWith(prefix))
 
-  // Días únicos
   const dias = [...new Set(filtered.map(r => r.fecha))].sort()
 
-  // Total por día y sucursal para el método seleccionado
   function totalDiaSucursal(fecha: string, sucursalId: string): number {
     return filtered
       .filter(r => r.fecha === fecha && r.sucursalId === sucursalId)
       .flatMap(r => r.items)
-      .filter(i => i.metodoPagoId === metodoPagoId)
+      .filter(i => i.metodoPagoId === efectivoId)
       .reduce((s, i) => s + i.cantidad, 0)
   }
 
@@ -58,7 +57,7 @@ export default function MetodoPagoPorDiaPage() {
       <div className="flex gap-4 flex-wrap items-end">
         <div className="space-y-1.5">
           <Label>Método de pago</Label>
-          <Select value={metodoPagoId} onChange={e => setMetodoPagoId(e.target.value)} className="w-44">
+          <Select value={efectivoId} onChange={e => setMetodoPagoId(e.target.value)} className="w-44">
             {metodosPago.map(m => <option key={m.id} value={m.id}>{m.nombre}</option>)}
           </Select>
         </div>
@@ -76,7 +75,10 @@ export default function MetodoPagoPorDiaPage() {
         </div>
       </div>
 
-      {dias.length === 0 ? (
+      {loading && <p className="text-sm text-gray-400">Cargando datos...</p>}
+      {error && <p className="text-sm text-red-500">{error}</p>}
+
+      {!loading && dias.length === 0 ? (
         <p className="text-sm text-gray-400">Sin ventas con ese método en el período seleccionado.</p>
       ) : (
         <Table>

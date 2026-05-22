@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { DateRangePicker, type DateRange } from '@/components/ui/date-range-picker'
 import { Table, TableHeader, TableBody, TableFooter, TableRow, TableHead, TableCell } from '@/components/ui/table'
-import { useStore } from '@/lib/store'
+import { useReportes } from '@/hooks'
 import { formatCurrency, todayISO } from '@/lib/utils'
 
 function firstDayOfMonth(): string {
@@ -11,13 +11,11 @@ function firstDayOfMonth(): string {
 }
 
 export default function DetalleMetodoPagoPage() {
-  const { state: { registros, sucursales, metodosPago } } = useStore()
+  const { registros, sucursales, metodosPago, loading, error } = useReportes()
   const [range, setRange] = useState<DateRange>({ from: firstDayOfMonth(), to: todayISO() })
 
-  // Filtrar registros en el rango
   const filtered = registros.filter(r => r.fecha >= range.from && r.fecha <= range.to)
 
-  // Agrupar: sucursal → metodo → total
   type Row = { sucursalId: string; metodoPagoId: string; total: number }
   const rows: Row[] = []
   for (const reg of filtered) {
@@ -31,7 +29,6 @@ export default function DetalleMetodoPagoPage() {
   const sucursalNombre = (id: string) => sucursales.find(s => s.id === id)?.nombre ?? id
   const metodoPagoNombre = (id: string) => metodosPago.find(m => m.id === id)?.nombre ?? id
   const grandTotal = rows.reduce((s, r) => s + r.total, 0)
-
   const sucursalesConDatos = [...new Set(rows.map(r => r.sucursalId))]
 
   return (
@@ -46,7 +43,10 @@ export default function DetalleMetodoPagoPage() {
         <DateRangePicker value={range} onChange={setRange} />
       </div>
 
-      {sucursalesConDatos.length === 0 ? (
+      {loading && <p className="text-sm text-gray-400">Cargando datos...</p>}
+      {error && <p className="text-sm text-red-500">{error}</p>}
+
+      {!loading && sucursalesConDatos.length === 0 ? (
         <p className="text-sm text-gray-400">Sin datos en el período seleccionado.</p>
       ) : (
         <Table>
@@ -70,7 +70,6 @@ export default function DetalleMetodoPagoPage() {
                       <TableCell className="text-right">{formatCurrency(row.total)}</TableCell>
                     </TableRow>
                   ))}
-                  {/* Subtotal por sucursal */}
                   <TableRow key={`subtotal-${sId}`} className="bg-gray-50 font-medium">
                     <TableCell colSpan={2} className="text-right text-xs text-gray-500 uppercase">Subtotal {sucursalNombre(sId)}</TableCell>
                     <TableCell className="text-right">{formatCurrency(subtotal)}</TableCell>

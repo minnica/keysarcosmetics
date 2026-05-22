@@ -12,8 +12,8 @@ import { Select } from '@/components/ui/select'
 import { Dialog, DialogFooter } from '@/components/ui/dialog'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
-import { useEmpleados } from '@/lib/store'
-import { formatCurrency, generateId } from '@/lib/utils'
+import { useEmpleados } from '@/hooks'
+import { formatCurrency } from '@/lib/utils'
 import type { Empleado, Banco, Puesto } from '@/lib/mock-data'
 
 const BANCOS: Banco[] = ['BBVA', 'Santander', 'Banorte', 'HSBC', 'Banamex', 'Otro']
@@ -32,16 +32,15 @@ const empleadoSchema = z.object({
 type EmpleadoForm = z.infer<typeof empleadoSchema>
 
 export default function EmpleadosPage() {
-  const { empleados, add, update, remove } = useEmpleados()
+  const { empleados, loading, error, add, update, remove } = useEmpleados()
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<Empleado | null>(null)
 
-  const { register, handleSubmit, watch, reset, formState: { errors } } = useForm<EmpleadoForm>({
+  const { register, handleSubmit, watch, reset, formState: { errors, isSubmitting } } = useForm<EmpleadoForm>({
     resolver: zodResolver(empleadoSchema),
     defaultValues: { nombres: '', apellidoPaterno: '', apellidoMaterno: '', banco: 'BBVA', numeroCuenta: '', puesto: 'Vendedor', metaIndividual: 0 },
   })
 
-  // Nombre completo calculado en tiempo real
   const nombres = watch('nombres')
   const apellidoP = watch('apellidoPaterno')
   const apellidoM = watch('apellidoMaterno')
@@ -55,21 +54,32 @@ export default function EmpleadosPage() {
 
   function openEdit(emp: Empleado) {
     setEditing(emp)
-    reset({ nombres: emp.nombres, apellidoPaterno: emp.apellidoPaterno, apellidoMaterno: emp.apellidoMaterno, banco: emp.banco, numeroCuenta: emp.numeroCuenta, puesto: emp.puesto, metaIndividual: emp.metaIndividual })
+    reset({
+      nombres: emp.nombres,
+      apellidoPaterno: emp.apellidoPaterno,
+      apellidoMaterno: emp.apellidoMaterno,
+      banco: emp.banco as Banco,
+      numeroCuenta: emp.numeroCuenta,
+      puesto: emp.puesto as Puesto,
+      metaIndividual: emp.metaIndividual,
+    })
     setModalOpen(true)
   }
 
-  function onSubmit(data: EmpleadoForm) {
-    const payload: Empleado = {
-      id: editing?.id ?? generateId(),
+  async function onSubmit(data: EmpleadoForm) {
+    const payload = {
       ...data,
       nombreCompleto: [data.nombres, data.apellidoPaterno, data.apellidoMaterno].filter(Boolean).join(' '),
     }
-    editing ? update(payload) : add(payload)
+    if (editing) {
+      await update({ ...editing, ...payload })
+    } else {
+      await add(payload)
+    }
     setModalOpen(false)
   }
 
-  const badgePuesto = (p: Puesto) => p === 'Gerente' ? 'default' : 'secondary' as const
+  const badgePuesto = (p: string) => p === 'Gerente' ? 'default' : 'secondary' as const
 
   return (
     <div className="space-y-6">
@@ -83,39 +93,44 @@ export default function EmpleadosPage() {
         </Button>
       </div>
 
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Nombre completo</TableHead>
-            <TableHead>Banco</TableHead>
-            <TableHead>No. cuenta</TableHead>
-            <TableHead>Puesto</TableHead>
-            <TableHead className="text-right">Meta individual</TableHead>
-            <TableHead className="text-right">Acciones</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {empleados.map(emp => (
-            <TableRow key={emp.id}>
-              <TableCell className="font-medium">{emp.nombreCompleto}</TableCell>
-              <TableCell>{emp.banco}</TableCell>
-              <TableCell className="font-mono text-xs">{emp.numeroCuenta}</TableCell>
-              <TableCell><Badge variant={badgePuesto(emp.puesto)}>{emp.puesto}</Badge></TableCell>
-              <TableCell className="text-right">{formatCurrency(emp.metaIndividual)}</TableCell>
-              <TableCell className="text-right">
-                <div className="flex justify-end gap-1">
-                  <Button size="icon" variant="ghost" onClick={() => openEdit(emp)}><Pencil className="h-4 w-4" /></Button>
-                  <Button size="icon" variant="ghost" onClick={() => remove(emp.id)}><Trash2 className="h-4 w-4 text-red-500" /></Button>
-                </div>
-              </TableCell>
+      {error && <p className="text-sm text-red-500">{error}</p>}
+
+      {loading ? (
+        <p className="text-sm text-gray-400">Cargando empleados...</p>
+      ) : (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Nombre completo</TableHead>
+              <TableHead>Banco</TableHead>
+              <TableHead>No. cuenta</TableHead>
+              <TableHead>Puesto</TableHead>
+              <TableHead className="text-right">Meta individual</TableHead>
+              <TableHead className="text-right">Acciones</TableHead>
             </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+          </TableHeader>
+          <TableBody>
+            {empleados.map(emp => (
+              <TableRow key={emp.id}>
+                <TableCell className="font-medium">{emp.nombreCompleto}</TableCell>
+                <TableCell>{emp.banco}</TableCell>
+                <TableCell className="font-mono text-xs">{emp.numeroCuenta}</TableCell>
+                <TableCell><Badge variant={badgePuesto(emp.puesto)}>{emp.puesto}</Badge></TableCell>
+                <TableCell className="text-right">{formatCurrency(emp.metaIndividual)}</TableCell>
+                <TableCell className="text-right">
+                  <div className="flex justify-end gap-1">
+                    <Button size="icon" variant="ghost" onClick={() => openEdit(emp)}><Pencil className="h-4 w-4" /></Button>
+                    <Button size="icon" variant="ghost" onClick={() => remove(emp.id)}><Trash2 className="h-4 w-4 text-red-500" /></Button>
+                  </div>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
 
       <Dialog open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Editar empleado' : 'Nuevo empleado'}>
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 pt-2">
-          {/* Nombre completo (calculado, deshabilitado) */}
           <div className="space-y-1.5">
             <Label>Nombre completo</Label>
             <Input value={nombreCompleto} disabled placeholder="Se construye automáticamente" />
@@ -155,7 +170,9 @@ export default function EmpleadosPage() {
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setModalOpen(false)}>Cancelar</Button>
-            <Button type="submit">{editing ? 'Guardar cambios' : 'Crear empleado'}</Button>
+            <Button type="submit" disabled={isSubmitting}>
+              {isSubmitting ? 'Guardando...' : editing ? 'Guardar cambios' : 'Crear empleado'}
+            </Button>
           </DialogFooter>
         </form>
       </Dialog>

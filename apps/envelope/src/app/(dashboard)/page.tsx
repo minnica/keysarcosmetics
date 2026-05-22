@@ -8,14 +8,18 @@ import {
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { useStore } from '@/lib/store'
+import { useSucursales, useEmpleados, useVentas } from '@/hooks'
 import { formatCurrency, formatDate, todayISO, monthName } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 
 const SUCURSAL_COLORS = ['#e11d48', '#f59e0b', '#10b981', '#3b82f6']
 
 export default function DashboardPage() {
-  const { state: { registros, sucursales, empleados } } = useStore()
+  const { sucursales, loading: lS } = useSucursales()
+  const { empleados, loading: lE } = useEmpleados()
+  const { registros, loading: lV } = useVentas()
+  const loading = lS || lE || lV
+
   const [selectedDate, setSelectedDate] = useState(todayISO())
 
   const selectedDateObj = new Date(selectedDate + 'T00:00:00')
@@ -24,7 +28,6 @@ export default function DashboardPage() {
   const selMonthPrefix = `${selYear}-${String(selMonth).padStart(2, '0')}`
   const selYearPrefix = String(selYear)
 
-  // ── Helpers de suma ─────────────────────────────────────────────────────────
   function sumForSucursal(sucursalId: string, dateFilter: (fecha: string) => boolean): number {
     return registros
       .filter(r => r.sucursalId === sucursalId && dateFilter(r.fecha))
@@ -42,7 +45,6 @@ export default function DashboardPage() {
     { label: `Ventas del año`, filter: (f: string) => f.startsWith(selYearPrefix) },
   ]
 
-  // ── Gráfica 1: Total mensual por sucursal (últimos 6 meses) ─────────────────
   const monthsData = Array.from({ length: 6 }, (_, i) => {
     const d = new Date(selYear, selMonth - 1 - (5 - i), 1)
     const prefix = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
@@ -56,7 +58,6 @@ export default function DashboardPage() {
     return entry
   })
 
-  // ── Gráfica 2: Ventas vs Meta por vendedor (mes seleccionado) ───────────────
   const vendedoresData = empleados.map(emp => {
     const totalVendido = registros
       .filter(r => r.vendedorId === emp.id && r.fecha.startsWith(selMonthPrefix))
@@ -69,6 +70,10 @@ export default function DashboardPage() {
   }).sort((a, b) => b.vendido - a.vendido)
 
   const formatK = (v: number) => v >= 1000 ? `$${(v / 1000).toFixed(0)}k` : `$${v}`
+
+  if (loading) {
+    return <div className="flex items-center justify-center h-64 text-gray-400">Cargando datos...</div>
+  }
 
   return (
     <div className="space-y-8">
@@ -144,9 +149,7 @@ export default function DashboardPage() {
                 <Tooltip formatter={(v: number) => formatCurrency(v)} />
                 <Legend wrapperStyle={{ fontSize: 12 }} />
                 <Bar dataKey="meta" fill="#e5e7eb" name="Meta" radius={[0, 3, 3, 0]}>
-                  {vendedoresData.map((entry, i) => (
-                    <Cell key={i} fill="#e5e7eb" />
-                  ))}
+                  {vendedoresData.map((_, i) => <Cell key={i} fill="#e5e7eb" />)}
                 </Bar>
                 <Bar dataKey="vendido" name="Vendido" radius={[0, 3, 3, 0]}>
                   {vendedoresData.map((entry, i) => {

@@ -32,6 +32,68 @@ model Sucursal {
   nombre        String
   activa        Boolean   @default(true)
   usuarios      Usuario[]
+  ventas        Venta[]
   creadoEn      DateTime  @default(now())
   actualizadoEn DateTime  @updatedAt
+}
+
+// ─── Módulo Envelope ──────────────────────────────────────────────────────────
+
+enum MetodoPagoTipo {
+  EFECTIVO
+  TARJETA
+  TRANSFERENCIA
+  OTRO
+}
+
+model MetodoPago {
+  id            String         @id @default(cuid())
+  nombre        String
+  tipo          MetodoPagoTipo
+  activo        Boolean        @default(true)
+  detalles      VentaDetalle[]
+  creadoEn      DateTime       @default(now())
+  actualizadoEn DateTime       @updatedAt
+}
+
+model Empleado {
+  id              String         @id @default(cuid())
+  nombres         String
+  apellidoPaterno String
+  apellidoMaterno String
+  nombreCompleto  String
+  banco           String
+  numeroCuenta    String
+  puesto          String
+  metaIndividual  Decimal        @db.Decimal(10, 2)
+  activo          Boolean        @default(true)
+  ventas          Venta[]
+  creadoEn        DateTime       @default(now())
+  actualizadoEn   DateTime       @updatedAt
+}
+
+// Agrupa todas las ventas de un vendedor en un día
+model Venta {
+  id            String         @id @default(cuid())
+  fecha         DateTime
+  notas         String?
+  sucursalId    String
+  sucursal      Sucursal       @relation(fields: [sucursalId], references: [id])
+  vendedorId    String
+  vendedor      Empleado       @relation(fields: [vendedorId], references: [id])
+  detalles      VentaDetalle[]
+  creadoEn      DateTime       @default(now())
+  actualizadoEn DateTime       @updatedAt
+}
+
+// Cada fila = una venta individual con monto y método de pago
+model VentaDetalle {
+  id            String     @id @default(cuid())
+  cantidad      Decimal    @db.Decimal(10, 2)
+  ventaId       String
+  venta         Venta      @relation(fields: [ventaId], references: [id], onDelete: Cascade)
+  metodoPagoId  String
+  metodoPago    MetodoPago @relation(fields: [metodoPagoId], references: [id])
+  creadoEn      DateTime   @default(now())
+  actualizadoEn DateTime   @updatedAt
 }

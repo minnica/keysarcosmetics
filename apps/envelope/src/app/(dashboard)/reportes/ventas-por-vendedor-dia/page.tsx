@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label'
 import { DateRangePicker, type DateRange } from '@/components/ui/date-range-picker'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableHeader, TableBody, TableFooter, TableRow, TableHead, TableCell } from '@/components/ui/table'
-import { useStore } from '@/lib/store'
+import { useReportes } from '@/hooks'
 import { formatCurrency, formatDate, todayISO } from '@/lib/utils'
 
 function firstDayOfMonth(): string {
@@ -14,18 +14,19 @@ function firstDayOfMonth(): string {
 }
 
 export default function VentasPorVendedorDiaPage() {
-  const { state: { registros, empleados, sucursales, metodosPago } } = useStore()
-  const [vendedorId, setVendedorId] = useState(empleados[0]?.id ?? '')
+  const { registros, empleados, sucursales, metodosPago, loading, error } = useReportes()
+  const [vendedorId, setVendedorId] = useState('')
   const [range, setRange] = useState<DateRange>({ from: firstDayOfMonth(), to: todayISO() })
+
+  const vendedorEfectivo = vendedorId || (empleados[0]?.id ?? '')
 
   const sucursalNombre = (id: string) => sucursales.find(s => s.id === id)?.nombre ?? id
   const metodoPagoNombre = (id: string) => metodosPago.find(m => m.id === id)?.nombre ?? id
 
   const filtered = registros.filter(r =>
-    r.vendedorId === vendedorId && r.fecha >= range.from && r.fecha <= range.to
+    r.vendedorId === vendedorEfectivo && r.fecha >= range.from && r.fecha <= range.to
   )
 
-  // Aplanar a filas de tabla: una fila por item de venta
   interface FilaTabla { fecha: string; sucursalId: string; cantidad: number; metodoPagoId: string; notas?: string }
   const filas: FilaTabla[] = filtered.flatMap(r =>
     r.items.map(item => ({
@@ -38,7 +39,7 @@ export default function VentasPorVendedorDiaPage() {
   ).sort((a, b) => a.fecha.localeCompare(b.fecha))
 
   const grandTotal = filas.reduce((s, f) => s + f.cantidad, 0)
-  const vendedor = empleados.find(e => e.id === vendedorId)
+  const vendedor = empleados.find(e => e.id === vendedorEfectivo)
 
   return (
     <div className="space-y-6">
@@ -50,7 +51,7 @@ export default function VentasPorVendedorDiaPage() {
       <div className="flex gap-4 flex-wrap items-end">
         <div className="space-y-1.5">
           <Label>Vendedor</Label>
-          <Select value={vendedorId} onChange={e => setVendedorId(e.target.value)} className="w-56">
+          <Select value={vendedorEfectivo} onChange={e => setVendedorId(e.target.value)} className="w-56">
             {empleados.map(e => <option key={e.id} value={e.id}>{e.nombreCompleto}</option>)}
           </Select>
         </div>
@@ -60,13 +61,16 @@ export default function VentasPorVendedorDiaPage() {
         </div>
       </div>
 
+      {loading && <p className="text-sm text-gray-400">Cargando datos...</p>}
+      {error && <p className="text-sm text-red-500">{error}</p>}
+
       {vendedor && (
         <div className="text-xs text-gray-400">
-          Sucursal: {sucursalNombre(vendedor.sucursalId)} · Meta: {formatCurrency(vendedor.metaIndividual)}
+          Meta mensual: {formatCurrency(vendedor.metaIndividual)}
         </div>
       )}
 
-      {filas.length === 0 ? (
+      {!loading && filas.length === 0 ? (
         <p className="text-sm text-gray-400">Sin ventas para el vendedor en el período.</p>
       ) : (
         <Table>

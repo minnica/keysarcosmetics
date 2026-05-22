@@ -13,7 +13,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Dialog, DialogFooter } from '@/components/ui/dialog'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
-import { useStore, useSucursales, useEmpleados, useMetodosPago, useRegistros } from '@/lib/store'
+import { useSucursales, useEmpleados, useMetodosPago, useVentas } from '@/hooks'
 import { formatCurrency, formatDate, todayISO, generateId } from '@/lib/utils'
 import type { VentaItem, RegistroVenta } from '@/lib/mock-data'
 
@@ -40,9 +40,8 @@ export default function VentasPage() {
   const { sucursales } = useSucursales()
   const { empleados } = useEmpleados()
   const { metodosPago } = useMetodosPago()
-  const { registros, add: addRegistro, update: updateRegistro, remove: deleteRegistro } = useRegistros()
+  const { registros, add: addRegistro, remove: deleteRegistro } = useVentas()
 
-  // Estado del selector (paso 1)
   const selectorForm = useForm<SelectorForm>({
     resolver: zodResolver(selectorSchema),
     defaultValues: { sucursalId: '', fecha: todayISO(), vendedorId: '' },
@@ -51,23 +50,17 @@ export default function VentasPage() {
   const watchedVendedor = selectorForm.watch('vendedorId')
   const watchedFecha = selectorForm.watch('fecha')
 
-  // Lista temporal de items antes de guardar
   const [tempItems, setTempItems] = useState<VentaItem[]>([])
   const [selectorLocked, setSelectorLocked] = useState(false)
-
-  // Modal de agregar venta
   const [modalOpen, setModalOpen] = useState(false)
   const [editingItem, setEditingItem] = useState<VentaItem | null>(null)
-
-  // Modal de editar registro guardado
-  const [editRegistroId, setEditRegistroId] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
 
   const itemForm = useForm<VentaItemForm>({
     resolver: zodResolver(ventaItemSchema),
     defaultValues: { cantidad: 0, metodoPagoId: '', notas: '' },
   })
 
-  // Paso 1 válido cuando todos los selectores tienen valor
   const selectorValido = watchedSucursal && watchedFecha && watchedVendedor
 
   function openAddModal() {
@@ -95,19 +88,24 @@ export default function VentasPage() {
     setTempItems(prev => prev.filter(i => i.id !== id))
   }
 
-  function handleGuardarRegistro() {
+  async function handleGuardarRegistro() {
     if (tempItems.length === 0) return
-    const registro: RegistroVenta = {
-      id: generateId(),
-      sucursalId: watchedSucursal,
-      vendedorId: watchedVendedor,
-      fecha: watchedFecha,
-      items: tempItems,
+    setSaving(true)
+    try {
+      const registro: RegistroVenta = {
+        id: generateId(),
+        sucursalId: watchedSucursal,
+        vendedorId: watchedVendedor,
+        fecha: watchedFecha,
+        items: tempItems,
+      }
+      await addRegistro(registro)
+      setTempItems([])
+      setSelectorLocked(false)
+      selectorForm.reset({ sucursalId: '', fecha: todayISO(), vendedorId: '' })
+    } finally {
+      setSaving(false)
     }
-    addRegistro(registro)
-    setTempItems([])
-    setSelectorLocked(false)
-    selectorForm.reset({ sucursalId: '', fecha: todayISO(), vendedorId: '' })
   }
 
   function handleNuevoRegistro() {
@@ -116,7 +114,6 @@ export default function VentasPage() {
     selectorForm.reset({ sucursalId: '', fecha: todayISO(), vendedorId: '' })
   }
 
-  // Nombre helpers
   const sucursalNombre = (id: string) => sucursales.find(s => s.id === id)?.nombre ?? id
   const vendedorNombre = (id: string) => empleados.find(e => e.id === id)?.nombreCompleto ?? id
   const metodoPagoNombre = (id: string) => metodosPago.find(m => m.id === id)?.nombre ?? id
@@ -216,8 +213,8 @@ export default function VentasPage() {
                 </p>
                 <div className="flex gap-2">
                   <Button variant="outline" size="sm" onClick={handleNuevoRegistro}>Cancelar</Button>
-                  <Button size="sm" onClick={handleGuardarRegistro}>
-                    <Save className="h-4 w-4 mr-1.5" /> Guardar registro
+                  <Button size="sm" onClick={handleGuardarRegistro} disabled={saving}>
+                    <Save className="h-4 w-4 mr-1.5" /> {saving ? 'Guardando...' : 'Guardar registro'}
                   </Button>
                 </div>
               </div>

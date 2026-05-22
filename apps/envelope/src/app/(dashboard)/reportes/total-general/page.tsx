@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { DateRangePicker, type DateRange } from '@/components/ui/date-range-picker'
 import { Table, TableHeader, TableBody, TableFooter, TableRow, TableHead, TableCell } from '@/components/ui/table'
-import { useStore } from '@/lib/store'
+import { useReportes } from '@/hooks'
 import { formatCurrency, formatDate, todayISO } from '@/lib/utils'
 
 function firstDayOfMonth(): string {
@@ -11,7 +11,7 @@ function firstDayOfMonth(): string {
 }
 
 export default function TotalGeneralPage() {
-  const { state: { registros, sucursales } } = useStore()
+  const { registros, sucursales, loading, error } = useReportes()
   const [range, setRange] = useState<DateRange>({ from: firstDayOfMonth(), to: todayISO() })
 
   const filtered = registros.filter(r => r.fecha >= range.from && r.fecha <= range.to)
@@ -46,7 +46,10 @@ export default function TotalGeneralPage() {
         <DateRangePicker value={range} onChange={setRange} />
       </div>
 
-      {dias.length === 0 ? (
+      {loading && <p className="text-sm text-gray-400">Cargando datos...</p>}
+      {error && <p className="text-sm text-red-500">{error}</p>}
+
+      {!loading && dias.length === 0 ? (
         <p className="text-sm text-gray-400">Sin ventas en el período seleccionado.</p>
       ) : (
         <Table>

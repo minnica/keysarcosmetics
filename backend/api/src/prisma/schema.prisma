@@ -1,16 +1,12 @@
-// Esquema Prisma para la plataforma de cosméticos
-// Documentación: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
-
-// ─── Enums ───────────────────────────────────────────────────────────────────
 
 enum Rol {
   SUPER_ADMIN
@@ -18,77 +14,86 @@ enum Rol {
   CAPTURISTA
 }
 
-enum MetodoPago {
+model Usuario {
+  id            String    @id @default(cuid())
+  nombre        String
+  email         String    @unique
+  passwordHash  String
+  rol           Rol
+  activo        Boolean   @default(true)
+  sucursalId    String?
+  sucursal      Sucursal? @relation(fields: [sucursalId], references: [id])
+  creadoEn      DateTime  @default(now())
+  actualizadoEn DateTime  @updatedAt
+}
+
+model Sucursal {
+  id            String    @id @default(cuid())
+  nombre        String
+  activa        Boolean   @default(true)
+  usuarios      Usuario[]
+  ventas        Venta[]
+  creadoEn      DateTime  @default(now())
+  actualizadoEn DateTime  @updatedAt
+}
+
+// ─── Módulo Envelope ──────────────────────────────────────────────────────────
+
+enum MetodoPagoTipo {
   EFECTIVO
   TARJETA
   TRANSFERENCIA
   OTRO
 }
 
-// ─── Modelos ─────────────────────────────────────────────────────────────────
-
-model Sucursal {
-  id        String     @id @default(cuid())
-  nombre    String
-  activa    Boolean    @default(true)
-  creadoEn DateTime   @default(now()) @map("creado_en")
-
-  usuarios  Usuario[]
-  empleados Empleado[]
-  ventas    Venta[]
-
-  @@map("sucursales")
-}
-
-model Usuario {
-  id          String   @id @default(cuid())
-  nombre      String
-  email       String   @unique
-  password    String
-  rol         Rol      @default(CAPTURISTA)
-  sucursalId  String?  @map("sucursal_id")
-  activo      Boolean  @default(true)
-  creadoEn    DateTime @default(now()) @map("creado_en")
-  actualizadoEn DateTime @updatedAt @map("actualizado_en")
-
-  sucursal Sucursal? @relation(fields: [sucursalId], references: [id])
-  ventas   Venta[]
-
-  @@map("usuarios")
+model MetodoPago {
+  id            String         @id @default(cuid())
+  nombre        String
+  tipo          MetodoPagoTipo
+  activo        Boolean        @default(true)
+  detalles      VentaDetalle[]
+  creadoEn      DateTime       @default(now())
+  actualizadoEn DateTime       @updatedAt
 }
 
 model Empleado {
-  id               String   @id @default(cuid())
-  nombres          String
-  apellidoPaterno  String   @map("apellido_paterno")
-  apellidoMaterno  String   @map("apellido_materno")
-  banco            String
-  numeroCuenta     String   @map("numero_cuenta")
-  puesto           String
-  metaIndividual   Float    @default(0) @map("meta_individual")
-  sucursalId       String   @map("sucursal_id")
-  activo           Boolean  @default(true)
-  creadoEn         DateTime @default(now()) @map("creado_en")
-
-  sucursal Sucursal @relation(fields: [sucursalId], references: [id])
-
-  // nombreCompleto se calcula en la aplicación, no se almacena
-
-  @@map("empleados")
+  id              String         @id @default(cuid())
+  nombres         String
+  apellidoPaterno String
+  apellidoMaterno String
+  nombreCompleto  String
+  banco           String
+  numeroCuenta    String
+  puesto          String
+  metaIndividual  Decimal        @db.Decimal(10, 2)
+  activo          Boolean        @default(true)
+  ventas          Venta[]
+  creadoEn        DateTime       @default(now())
+  actualizadoEn   DateTime       @updatedAt
 }
 
+// Agrupa todas las ventas de un vendedor en un día
 model Venta {
-  id          String     @id @default(cuid())
-  sucursalId  String     @map("sucursal_id")
-  vendedorId  String     @map("vendedor_id")
-  total       Float
-  metodoPago  MetodoPago @map("metodo_pago")
-  fecha       DateTime   @default(now())
-  notas       String?
-  creadoEn    DateTime   @default(now()) @map("creado_en")
+  id            String         @id @default(cuid())
+  fecha         DateTime
+  notas         String?
+  sucursalId    String
+  sucursal      Sucursal       @relation(fields: [sucursalId], references: [id])
+  vendedorId    String
+  vendedor      Empleado       @relation(fields: [vendedorId], references: [id])
+  detalles      VentaDetalle[]
+  creadoEn      DateTime       @default(now())
+  actualizadoEn DateTime       @updatedAt
+}
 
-  sucursal Sucursal @relation(fields: [sucursalId], references: [id])
-  vendedor Usuario  @relation(fields: [vendedorId], references: [id])
-
-  @@map("ventas")
+// Cada fila = una venta individual con monto y método de pago
+model VentaDetalle {
+  id            String     @id @default(cuid())
+  cantidad      Decimal    @db.Decimal(10, 2)
+  ventaId       String
+  venta         Venta      @relation(fields: [ventaId], references: [id], onDelete: Cascade)
+  metodoPagoId  String
+  metodoPago    MetodoPago @relation(fields: [metodoPagoId], references: [id])
+  creadoEn      DateTime   @default(now())
+  actualizadoEn DateTime   @updatedAt
 }

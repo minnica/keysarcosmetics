@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { DateRangePicker, type DateRange } from '@/components/ui/date-range-picker'
 import { Progress } from '@/components/ui/progress'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
-import { useStore } from '@/lib/store'
+import { useReportes } from '@/hooks'
 import { formatCurrency, todayISO } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 
@@ -13,15 +13,13 @@ function firstDayOfMonth(): string {
 }
 
 export default function VentasPorVendedorPage() {
-  const { state: { registros, empleados, sucursales } } = useStore()
+  const { registros, empleados, sucursales, loading, error } = useReportes()
   const [range, setRange] = useState<DateRange>({ from: firstDayOfMonth(), to: todayISO() })
 
   const filtered = registros.filter(r => r.fecha >= range.from && r.fecha <= range.to)
 
   const sucursalNombre = (id: string) => sucursales.find(s => s.id === id)?.nombre ?? id
 
-  // Agrupar por (vendedorId, sucursalId) — un vendedor puede aparecer varias veces
-  // si trabajó en distintas sucursales en el período
   interface Fila {
     emp: typeof empleados[number]
     sucursalId: string
@@ -66,6 +64,9 @@ export default function VentasPorVendedorPage() {
         <span className="text-sm font-medium text-gray-700">Período:</span>
         <DateRangePicker value={range} onChange={setRange} />
       </div>
+
+      {loading && <p className="text-sm text-gray-400">Cargando datos...</p>}
+      {error && <p className="text-sm text-red-500">{error}</p>}
 
       <Table>
         <TableHeader>
