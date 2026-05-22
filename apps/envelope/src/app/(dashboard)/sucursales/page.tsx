@@ -1,0 +1,99 @@
+'use client'
+// Pantalla de gestión de sucursales
+import { useState } from 'react'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
+import { PlusCircle, Pencil, Trash2 } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Dialog, DialogFooter } from '@/components/ui/dialog'
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
+import { useSucursales } from '@/lib/store'
+import { generateId } from '@/lib/utils'
+import type { Sucursal } from '@/lib/mock-data'
+
+const schema = z.object({ nombre: z.string().min(1, 'El nombre es requerido').max(60) })
+type FormData = z.infer<typeof schema>
+
+export default function SucursalesPage() {
+  const { sucursales, add, update, remove } = useSucursales()
+  const [modalOpen, setModalOpen] = useState(false)
+  const [editing, setEditing] = useState<Sucursal | null>(null)
+
+  const { register, handleSubmit, reset, formState: { errors } } = useForm<FormData>({
+    resolver: zodResolver(schema),
+    defaultValues: { nombre: '' },
+  })
+
+  function openNew() {
+    setEditing(null)
+    reset({ nombre: '' })
+    setModalOpen(true)
+  }
+
+  function openEdit(s: Sucursal) {
+    setEditing(s)
+    reset({ nombre: s.nombre })
+    setModalOpen(true)
+  }
+
+  function onSubmit(data: FormData) {
+    editing ? update({ ...editing, nombre: data.nombre }) : add({ id: generateId(), nombre: data.nombre })
+    setModalOpen(false)
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Sucursales</h1>
+          <p className="text-sm text-gray-500 mt-1">Administra las sucursales de la empresa</p>
+        </div>
+        <Button onClick={openNew}>
+          <PlusCircle className="h-4 w-4 mr-1.5" /> Nueva sucursal
+        </Button>
+      </div>
+
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Sucursal</TableHead>
+            <TableHead className="text-right">Acciones</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {sucursales.length === 0 && (
+            <TableRow><TableCell colSpan={2} className="text-center text-gray-400">Sin sucursales registradas</TableCell></TableRow>
+          )}
+          {sucursales.map(s => (
+            <TableRow key={s.id}>
+              <TableCell className="font-medium">{s.nombre}</TableCell>
+              <TableCell className="text-right">
+                <div className="flex justify-end gap-1">
+                  <Button size="icon" variant="ghost" onClick={() => openEdit(s)}><Pencil className="h-4 w-4" /></Button>
+                  <Button size="icon" variant="ghost" onClick={() => remove(s.id)}><Trash2 className="h-4 w-4 text-red-500" /></Button>
+                </div>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+
+      <Dialog open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Editar sucursal' : 'Nueva sucursal'}>
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 pt-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="nombre">Nombre de sucursal</Label>
+            <Input id="nombre" placeholder="Ej. Sucursal Centro" {...register('nombre')} />
+            {errors.nombre && <p className="text-xs text-red-500">{errors.nombre.message}</p>}
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setModalOpen(false)}>Cancelar</Button>
+            <Button type="submit">{editing ? 'Guardar cambios' : 'Crear sucursal'}</Button>
+          </DialogFooter>
+        </form>
+      </Dialog>
+    </div>
+  )
+}
