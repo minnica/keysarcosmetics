@@ -20,15 +20,40 @@ export default function VentasPorVendedorPage() {
 
   const sucursalNombre = (id: string) => sucursales.find(s => s.id === id)?.nombre ?? id
 
-  const filas = empleados.map(emp => {
-    const totalVendido = filtered
-      .filter(r => r.vendedorId === emp.id)
-      .flatMap(r => r.items)
-      .reduce((s, i) => s + i.cantidad, 0)
-    const porLlegar = Math.max(0, emp.metaIndividual - totalVendido)
-    const porcentaje = emp.metaIndividual > 0 ? (totalVendido / emp.metaIndividual) * 100 : 0
-    return { emp, totalVendido, porLlegar, porcentaje }
-  }).sort((a, b) => b.totalVendido - a.totalVendido)
+  // Agrupar por (vendedorId, sucursalId) — un vendedor puede aparecer varias veces
+  // si trabajó en distintas sucursales en el período
+  interface Fila {
+    emp: typeof empleados[number]
+    sucursalId: string
+    totalVendido: number
+    porLlegar: number
+    porcentaje: number
+  }
+
+  const filasMap = new Map<string, Fila>()
+
+  for (const reg of filtered) {
+    const emp = empleados.find(e => e.id === reg.vendedorId)
+    if (!emp) continue
+    const key = `${emp.id}__${reg.sucursalId}`
+    const totalItems = reg.items.reduce((s, i) => s + i.cantidad, 0)
+    const existing = filasMap.get(key)
+    if (existing) {
+      existing.totalVendido += totalItems
+      existing.porLlegar = Math.max(0, emp.metaIndividual - existing.totalVendido)
+      existing.porcentaje = emp.metaIndividual > 0 ? (existing.totalVendido / emp.metaIndividual) * 100 : 0
+    } else {
+      filasMap.set(key, {
+        emp,
+        sucursalId: reg.sucursalId,
+        totalVendido: totalItems,
+        porLlegar: Math.max(0, emp.metaIndividual - totalItems),
+        porcentaje: emp.metaIndividual > 0 ? (totalItems / emp.metaIndividual) * 100 : 0,
+      })
+    }
+  }
+
+  const filas = [...filasMap.values()].sort((a, b) => b.totalVendido - a.totalVendido)
 
   return (
     <div className="space-y-6">
@@ -54,12 +79,12 @@ export default function VentasPorVendedorPage() {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {filas.map(({ emp, totalVendido, porLlegar, porcentaje }) => {
+          {filas.map(({ emp, sucursalId, totalVendido, porLlegar, porcentaje }) => {
             const colorText = porcentaje < 50 ? 'text-red-600' : porcentaje < 80 ? 'text-yellow-600' : 'text-green-600'
             return (
-              <TableRow key={emp.id}>
+              <TableRow key={`${emp.id}__${sucursalId}`}>
                 <TableCell className="font-medium">{emp.nombreCompleto}</TableCell>
-                <TableCell className="text-gray-500 text-xs">{sucursalNombre(emp.sucursalId)}</TableCell>
+                <TableCell className="text-gray-500 text-xs">{sucursalNombre(sucursalId)}</TableCell>
                 <TableCell className="text-right">{formatCurrency(totalVendido)}</TableCell>
                 <TableCell className="text-right text-gray-500">{formatCurrency(emp.metaIndividual)}</TableCell>
                 <TableCell className="text-right text-gray-500">{formatCurrency(porLlegar)}</TableCell>

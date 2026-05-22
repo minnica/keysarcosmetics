@@ -67,9 +67,6 @@ export default function VentasPage() {
     defaultValues: { cantidad: 0, metodoPagoId: '', notas: '' },
   })
 
-  // Empleados filtrados por sucursal seleccionada
-  const empleadosFiltrados = empleados.filter(e => e.sucursalId === watchedSucursal)
-
   // Paso 1 válido cuando todos los selectores tienen valor
   const selectorValido = watchedSucursal && watchedFecha && watchedVendedor
 
@@ -158,10 +155,10 @@ export default function VentasPage() {
             <Select
               id="vendedor"
               placeholder="Seleccionar..."
-              disabled={selectorLocked || !watchedSucursal}
+              disabled={selectorLocked}
               {...selectorForm.register('vendedorId')}
             >
-              {empleadosFiltrados.map(e => <option key={e.id} value={e.id}>{e.nombreCompleto}</option>)}
+              {empleados.map(e => <option key={e.id} value={e.id}>{e.nombreCompleto}</option>)}
             </Select>
           </div>
         </div>

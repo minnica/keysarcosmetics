@@ -1,16 +1,11 @@
-// Layout del área autenticada — incluye sidebar y provider del store
-import { AppSidebar } from '@/components/layout/AppSidebar'
+// Layout del área autenticada — incluye sidebar colapsable y provider del store
 import { StoreProvider } from '@/lib/store'
+import { LayoutShell } from '@/components/layout/LayoutShell'
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   return (
     <StoreProvider>
-      <div className="flex h-screen overflow-hidden">
-        <AppSidebar />
-        <main className="flex-1 overflow-y-auto">
-          <div className="p-6">{children}</div>
-        </main>
-      </div>
+      <LayoutShell>{children}</LayoutShell>
     </StoreProvider>
   )
 }

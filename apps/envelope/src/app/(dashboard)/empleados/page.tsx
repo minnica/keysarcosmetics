@@ -12,7 +12,7 @@ import { Select } from '@/components/ui/select'
 import { Dialog, DialogFooter } from '@/components/ui/dialog'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
-import { useEmpleados, useSucursales } from '@/lib/store'
+import { useEmpleados } from '@/lib/store'
 import { formatCurrency, generateId } from '@/lib/utils'
 import type { Empleado, Banco, Puesto } from '@/lib/mock-data'
 
@@ -27,20 +27,18 @@ const empleadoSchema = z.object({
   numeroCuenta: z.string().min(1, 'Requerido'),
   puesto: z.enum(['Vendedor', 'Gerente', 'Capturista']),
   metaIndividual: z.coerce.number().positive('Debe ser mayor a 0'),
-  sucursalId: z.string().min(1, 'Selecciona una sucursal'),
 })
 
 type EmpleadoForm = z.infer<typeof empleadoSchema>
 
 export default function EmpleadosPage() {
   const { empleados, add, update, remove } = useEmpleados()
-  const { sucursales } = useSucursales()
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<Empleado | null>(null)
 
   const { register, handleSubmit, watch, reset, formState: { errors } } = useForm<EmpleadoForm>({
     resolver: zodResolver(empleadoSchema),
-    defaultValues: { nombres: '', apellidoPaterno: '', apellidoMaterno: '', banco: 'BBVA', numeroCuenta: '', puesto: 'Vendedor', metaIndividual: 0, sucursalId: '' },
+    defaultValues: { nombres: '', apellidoPaterno: '', apellidoMaterno: '', banco: 'BBVA', numeroCuenta: '', puesto: 'Vendedor', metaIndividual: 0 },
   })
 
   // Nombre completo calculado en tiempo real
@@ -51,13 +49,13 @@ export default function EmpleadosPage() {
 
   function openNew() {
     setEditing(null)
-    reset({ nombres: '', apellidoPaterno: '', apellidoMaterno: '', banco: 'BBVA', numeroCuenta: '', puesto: 'Vendedor', metaIndividual: 0, sucursalId: '' })
+    reset({ nombres: '', apellidoPaterno: '', apellidoMaterno: '', banco: 'BBVA', numeroCuenta: '', puesto: 'Vendedor', metaIndividual: 0 })
     setModalOpen(true)
   }
 
   function openEdit(emp: Empleado) {
     setEditing(emp)
-    reset({ nombres: emp.nombres, apellidoPaterno: emp.apellidoPaterno, apellidoMaterno: emp.apellidoMaterno, banco: emp.banco, numeroCuenta: emp.numeroCuenta, puesto: emp.puesto, metaIndividual: emp.metaIndividual, sucursalId: emp.sucursalId })
+    reset({ nombres: emp.nombres, apellidoPaterno: emp.apellidoPaterno, apellidoMaterno: emp.apellidoMaterno, banco: emp.banco, numeroCuenta: emp.numeroCuenta, puesto: emp.puesto, metaIndividual: emp.metaIndividual })
     setModalOpen(true)
   }
 
@@ -71,7 +69,6 @@ export default function EmpleadosPage() {
     setModalOpen(false)
   }
 
-  const sucursalNombre = (id: string) => sucursales.find(s => s.id === id)?.nombre ?? id
   const badgePuesto = (p: Puesto) => p === 'Gerente' ? 'default' : 'secondary' as const
 
   return (
@@ -90,7 +87,6 @@ export default function EmpleadosPage() {
         <TableHeader>
           <TableRow>
             <TableHead>Nombre completo</TableHead>
-            <TableHead>Sucursal</TableHead>
             <TableHead>Banco</TableHead>
             <TableHead>No. cuenta</TableHead>
             <TableHead>Puesto</TableHead>
@@ -102,7 +98,6 @@ export default function EmpleadosPage() {
           {empleados.map(emp => (
             <TableRow key={emp.id}>
               <TableCell className="font-medium">{emp.nombreCompleto}</TableCell>
-              <TableCell className="text-gray-500">{sucursalNombre(emp.sucursalId)}</TableCell>
               <TableCell>{emp.banco}</TableCell>
               <TableCell className="font-mono text-xs">{emp.numeroCuenta}</TableCell>
               <TableCell><Badge variant={badgePuesto(emp.puesto)}>{emp.puesto}</Badge></TableCell>
@@ -147,20 +142,11 @@ export default function EmpleadosPage() {
               {errors.numeroCuenta && <p className="text-xs text-red-500">{errors.numeroCuenta.message}</p>}
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <Label htmlFor="puesto">Puesto</Label>
-              <Select id="puesto" {...register('puesto')}>
-                {PUESTOS.map(p => <option key={p} value={p}>{p}</option>)}
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="sucursalId">Sucursal</Label>
-              <Select id="sucursalId" placeholder="Seleccionar..." {...register('sucursalId')}>
-                {sucursales.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
-              </Select>
-              {errors.sucursalId && <p className="text-xs text-red-500">{errors.sucursalId.message}</p>}
-            </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="puesto">Puesto</Label>
+            <Select id="puesto" {...register('puesto')}>
+              {PUESTOS.map(p => <option key={p} value={p}>{p}</option>)}
+            </Select>
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="metaIndividual">Meta individual (MXN)</Label>
