@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "outDir": "dist",
+    "rootDir": ".",
+    "lib": ["ES2022"],
+    "paths": {
+      "@cosmetics/types": ["../../packages/types/src/index.ts"],
+      "@cosmetics/auth": ["../../packages/auth/src/index.ts"]
+    }
+  },
+  "include": ["src", "prisma"],
+  "exclude": ["node_modules", "dist"]
+}

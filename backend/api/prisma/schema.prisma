@@ -1,0 +1,37 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum Rol {
+  SUPER_ADMIN
+  GERENTE
+  CAPTURISTA
+}
+
+model Usuario {
+  id            String    @id @default(cuid())
+  nombre        String
+  email         String    @unique
+  passwordHash  String
+  rol           Rol
+  activo        Boolean   @default(true)
+  sucursalId    String?
+  sucursal      Sucursal? @relation(fields: [sucursalId], references: [id])
+  creadoEn      DateTime  @default(now())
+  actualizadoEn DateTime  @updatedAt
+}
+
+model Sucursal {
+  id            String    @id @default(cuid())
+  nombre        String
+  activa        Boolean   @default(true)
+  usuarios      Usuario[]
+  creadoEn      DateTime  @default(now())
+  actualizadoEn DateTime  @updatedAt
+}

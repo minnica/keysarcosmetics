@@ -1,0 +1,20 @@
+{
+  "name": "cosmetics-platform",
+  "private": true,
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "type-check": "turbo run type-check",
+    "format": "prettier --write \"**/*.{ts,tsx,md}\""
+  },
+  "devDependencies": {
+    "turbo": "^1.13.4",
+    "typescript": "^5.4.5",
+    "prettier": "^3.3.2"
+  },
+  "packageManager": "pnpm@9.4.0",
+  "engines": {
+    "node": ">=20"
+  }
+}

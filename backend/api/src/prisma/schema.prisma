@@ -1,0 +1,94 @@
+// Esquema Prisma para la plataforma de cosméticos
+// Documentación: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ───────────────────────────────────────────────────────────────────
+
+enum Rol {
+  SUPER_ADMIN
+  GERENTE
+  CAPTURISTA
+}
+
+enum MetodoPago {
+  EFECTIVO
+  TARJETA
+  TRANSFERENCIA
+  OTRO
+}
+
+// ─── Modelos ─────────────────────────────────────────────────────────────────
+
+model Sucursal {
+  id        String     @id @default(cuid())
+  nombre    String
+  activa    Boolean    @default(true)
+  creadoEn DateTime   @default(now()) @map("creado_en")
+
+  usuarios  Usuario[]
+  empleados Empleado[]
+  ventas    Venta[]
+
+  @@map("sucursales")
+}
+
+model Usuario {
+  id          String   @id @default(cuid())
+  nombre      String
+  email       String   @unique
+  password    String
+  rol         Rol      @default(CAPTURISTA)
+  sucursalId  String?  @map("sucursal_id")
+  activo      Boolean  @default(true)
+  creadoEn    DateTime @default(now()) @map("creado_en")
+  actualizadoEn DateTime @updatedAt @map("actualizado_en")
+
+  sucursal Sucursal? @relation(fields: [sucursalId], references: [id])
+  ventas   Venta[]
+
+  @@map("usuarios")
+}
+
+model Empleado {
+  id               String   @id @default(cuid())
+  nombres          String
+  apellidoPaterno  String   @map("apellido_paterno")
+  apellidoMaterno  String   @map("apellido_materno")
+  banco            String
+  numeroCuenta     String   @map("numero_cuenta")
+  puesto           String
+  metaIndividual   Float    @default(0) @map("meta_individual")
+  sucursalId       String   @map("sucursal_id")
+  activo           Boolean  @default(true)
+  creadoEn         DateTime @default(now()) @map("creado_en")
+
+  sucursal Sucursal @relation(fields: [sucursalId], references: [id])
+
+  // nombreCompleto se calcula en la aplicación, no se almacena
+
+  @@map("empleados")
+}
+
+model Venta {
+  id          String     @id @default(cuid())
+  sucursalId  String     @map("sucursal_id")
+  vendedorId  String     @map("vendedor_id")
+  total       Float
+  metodoPago  MetodoPago @map("metodo_pago")
+  fecha       DateTime   @default(now())
+  notas       String?
+  creadoEn    DateTime   @default(now()) @map("creado_en")
+
+  sucursal Sucursal @relation(fields: [sucursalId], references: [id])
+  vendedor Usuario  @relation(fields: [vendedorId], references: [id])
+
+  @@map("ventas")
+}
