@@ -7,6 +7,7 @@ import {
   ShoppingCart, Users, Building2, CreditCard,
   LayoutDashboard, BarChart2, CalendarDays, UserCheck,
   CalendarRange, TrendingUp, Sun, Moon, X,
+  Landmark, Briefcase,
 } from 'lucide-react'
 import {
   Sidebar,
@@ -37,6 +38,8 @@ const FORMULARIOS: NavItem[] = [
   { label: 'Empleados',       href: '/empleados',    icon: Users },
   { label: 'Sucursales',      href: '/sucursales',   icon: Building2 },
   { label: 'Metodos de pago', href: '/metodos-pago', icon: CreditCard },
+  { label: 'Bancos',          href: '/bancos',        icon: Landmark },
+  { label: 'Puestos',         href: '/puestos',       icon: Briefcase },
 ]
 
 const REPORTES: NavItem[] = [
