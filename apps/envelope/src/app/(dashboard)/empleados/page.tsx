@@ -1,92 +1,155 @@
-'use client'
+"use client";
 // Pantalla de gestión de empleados
-import { useState } from 'react'
-import { useForm } from 'react-hook-form'
-import { zodResolver } from '@hookform/resolvers/zod'
-import { z } from 'zod'
-import { UserPlus, Pencil, Trash2 } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Select } from '@/components/ui/select'
-import { Dialog, DialogFooter } from '@/components/ui/dialog'
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
-import { Badge } from '@/components/ui/badge'
-import { useEmpleados } from '@/hooks'
-import { formatCurrency } from '@/lib/utils'
-import type { Empleado, Banco, Puesto } from '@/lib/mock-data'
-
-const BANCOS: Banco[] = ['BBVA', 'Santander', 'Banorte', 'HSBC', 'Banamex', 'Otro']
-const PUESTOS: Puesto[] = ['Vendedor', 'Gerente', 'Capturista']
+import { useState, type ChangeEvent } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { UserPlus, Pencil, Trash2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/select";
+import { Dialog, DialogFooter } from "@/components/ui/dialog";
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+} from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { useEmpleados } from "@/hooks";
+import { formatCurrency } from "@/lib/utils";
+import { PUESTOS, type Empleado, type Puesto } from "@/lib/mock-data";
 
 const empleadoSchema = z.object({
-  nombres: z.string().min(1, 'Requerido'),
-  apellidoPaterno: z.string().min(1, 'Requerido'),
-  apellidoMaterno: z.string().min(1, 'Requerido'),
-  banco: z.enum(['BBVA', 'Santander', 'Banorte', 'HSBC', 'Banamex', 'Otro']),
-  numeroCuenta: z.string().min(1, 'Requerido'),
-  puesto: z.enum(['Vendedor', 'Gerente', 'Capturista']),
-  metaIndividual: z.coerce.number().positive('Debe ser mayor a 0'),
-})
+  nombres: z.string().min(1, "Requerido"),
+  apellidoPaterno: z.string().min(1, "Requerido"),
+  apellidoMaterno: z.string().min(1, "Requerido"),
+  banco: z.string().min(1, "El banco es requerido").max(40),
+  numeroCuenta: z.string().trim().optional(),
+  puesto: z.enum(PUESTOS),
+  metaIndividual: z.coerce.number().min(0, "Debe ser mayor o igual a 0"),
+});
 
-type EmpleadoForm = z.infer<typeof empleadoSchema>
+type EmpleadoForm = z.infer<typeof empleadoSchema>;
 
 export default function EmpleadosPage() {
-  const { empleados, loading, error, add, update, remove } = useEmpleados()
-  const [modalOpen, setModalOpen] = useState(false)
-  const [editing, setEditing] = useState<Empleado | null>(null)
+  const { empleados, loading, error, add, update, remove } = useEmpleados();
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editing, setEditing] = useState<Empleado | null>(null);
 
-  const { register, handleSubmit, watch, reset, formState: { errors, isSubmitting } } = useForm<EmpleadoForm>({
+  const {
+    register,
+    handleSubmit,
+    watch,
+    reset,
+    formState: { errors, isSubmitting },
+  } = useForm<EmpleadoForm>({
     resolver: zodResolver(empleadoSchema),
-    defaultValues: { nombres: '', apellidoPaterno: '', apellidoMaterno: '', banco: 'BBVA', numeroCuenta: '', puesto: 'Vendedor', metaIndividual: 0 },
-  })
+    defaultValues: {
+      nombres: "",
+      apellidoPaterno: "",
+      apellidoMaterno: "",
+      banco: "BBVA",
+      numeroCuenta: "",
+      puesto: "VENDEDOR",
+      metaIndividual: 0,
+    },
+  });
 
-  const nombres = watch('nombres')
-  const apellidoP = watch('apellidoPaterno')
-  const apellidoM = watch('apellidoMaterno')
-  const nombreCompleto = [nombres, apellidoP, apellidoM].filter(Boolean).join(' ')
+  function registerUppercase(
+    field:
+      | "nombres"
+      | "apellidoPaterno"
+      | "apellidoMaterno"
+      | "banco"
+      | "numeroCuenta",
+  ) {
+    const registered = register(field);
+
+    return {
+      ...registered,
+      onChange: (event: ChangeEvent<HTMLInputElement>) => {
+        event.target.value = event.target.value.toUpperCase();
+        void registered.onChange(event);
+      },
+    };
+  }
+
+  const nombres = watch("nombres");
+  const apellidoP = watch("apellidoPaterno");
+  const apellidoM = watch("apellidoMaterno");
+  const nombreCompleto = [nombres, apellidoP, apellidoM]
+    .filter(Boolean)
+    .join(" ");
 
   function openNew() {
-    setEditing(null)
-    reset({ nombres: '', apellidoPaterno: '', apellidoMaterno: '', banco: 'BBVA', numeroCuenta: '', puesto: 'Vendedor', metaIndividual: 0 })
-    setModalOpen(true)
+    setEditing(null);
+    reset({
+      nombres: "",
+      apellidoPaterno: "",
+      apellidoMaterno: "",
+      banco: "BBVA",
+      numeroCuenta: "",
+      puesto: "VENDEDOR",
+      metaIndividual: 0,
+    });
+    setModalOpen(true);
   }
 
   function openEdit(emp: Empleado) {
-    setEditing(emp)
+    setEditing(emp);
     reset({
       nombres: emp.nombres,
       apellidoPaterno: emp.apellidoPaterno,
       apellidoMaterno: emp.apellidoMaterno,
-      banco: emp.banco as Banco,
+      banco: emp.banco,
       numeroCuenta: emp.numeroCuenta,
       puesto: emp.puesto as Puesto,
       metaIndividual: emp.metaIndividual,
-    })
-    setModalOpen(true)
+    });
+    setModalOpen(true);
   }
 
   async function onSubmit(data: EmpleadoForm) {
     const payload = {
       ...data,
-      nombreCompleto: [data.nombres, data.apellidoPaterno, data.apellidoMaterno].filter(Boolean).join(' '),
-    }
+      nombres: data.nombres.trim().toUpperCase(),
+      apellidoPaterno: data.apellidoPaterno.trim().toUpperCase(),
+      apellidoMaterno: data.apellidoMaterno.trim().toUpperCase(),
+      banco: data.banco.trim().toUpperCase(),
+      numeroCuenta: data.numeroCuenta?.trim().toUpperCase() ?? "",
+      nombreCompleto: [
+        data.nombres.trim().toUpperCase(),
+        data.apellidoPaterno.trim().toUpperCase(),
+        data.apellidoMaterno.trim().toUpperCase(),
+      ]
+        .filter(Boolean)
+        .join(" "),
+    };
+
     if (editing) {
-      await update({ ...editing, ...payload })
+      await update({ ...editing, ...payload });
     } else {
-      await add(payload)
+      await add(payload);
     }
-    setModalOpen(false)
+
+    setModalOpen(false);
   }
 
-  const badgePuesto = (p: string) => p === 'Gerente' ? 'default' : 'secondary' as const
+  const badgePuesto = (p: string) =>
+    p === "GERENTE" ? "default" : ("secondary" as const);
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Empleados</h1>
-          <p className="text-sm text-gray-500 mt-1">Gestión del catálogo de empleados</p>
+          <p className="text-sm text-gray-500 mt-1">
+            Gestión del catálogo de empleados
+          </p>
         </div>
         <Button onClick={openNew}>
           <UserPlus className="h-4 w-4 mr-1.5" /> Nuevo empleado
@@ -110,17 +173,37 @@ export default function EmpleadosPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {empleados.map(emp => (
+            {empleados.map((emp) => (
               <TableRow key={emp.id}>
-                <TableCell className="font-medium">{emp.nombreCompleto}</TableCell>
+                <TableCell className="font-medium">
+                  {emp.nombreCompleto}
+                </TableCell>
                 <TableCell>{emp.banco}</TableCell>
-                <TableCell className="font-mono text-xs">{emp.numeroCuenta}</TableCell>
-                <TableCell><Badge variant={badgePuesto(emp.puesto)}>{emp.puesto}</Badge></TableCell>
-                <TableCell className="text-right">{formatCurrency(emp.metaIndividual)}</TableCell>
+                <TableCell className="font-mono text-xs">
+                  {emp.numeroCuenta}
+                </TableCell>
+                <TableCell>
+                  <Badge variant={badgePuesto(emp.puesto)}>{emp.puesto}</Badge>
+                </TableCell>
+                <TableCell className="text-right">
+                  {formatCurrency(emp.metaIndividual)}
+                </TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-1">
-                    <Button size="icon" variant="ghost" onClick={() => openEdit(emp)}><Pencil className="h-4 w-4" /></Button>
-                    <Button size="icon" variant="ghost" onClick={() => remove(emp.id)}><Trash2 className="h-4 w-4 text-red-500" /></Button>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={() => openEdit(emp)}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={() => remove(emp.id)}
+                    >
+                      <Trash2 className="h-4 w-4 text-red-500" />
+                    </Button>
                   </div>
                 </TableCell>
               </TableRow>
@@ -129,53 +212,106 @@ export default function EmpleadosPage() {
         </Table>
       )}
 
-      <Dialog open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Editar empleado' : 'Nuevo empleado'}>
+      <Dialog
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        title={editing ? "Editar empleado" : "Nuevo empleado"}
+      >
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 pt-2">
           <div className="space-y-1.5">
             <Label>Nombre completo</Label>
-            <Input value={nombreCompleto} disabled placeholder="Se construye automáticamente" />
+            <Input
+              value={nombreCompleto}
+              disabled
+              placeholder="Se construye automáticamente"
+            />
           </div>
           <div className="grid grid-cols-1 gap-4">
-            {(['nombres', 'apellidoPaterno', 'apellidoMaterno'] as const).map(field => (
-              <div key={field} className="space-y-1.5">
-                <Label htmlFor={field}>{field === 'nombres' ? 'Nombre(s)' : field === 'apellidoPaterno' ? 'Apellido paterno' : 'Apellido materno'}</Label>
-                <Input id={field} {...register(field)} />
-                {errors[field] && <p className="text-xs text-red-500">{errors[field]?.message}</p>}
-              </div>
-            ))}
+            {(["nombres", "apellidoPaterno", "apellidoMaterno"] as const).map(
+              (field) => (
+                <div key={field} className="space-y-1.5">
+                  <Label htmlFor={field}>
+                    {field === "nombres"
+                      ? "Nombre(s)"
+                      : field === "apellidoPaterno"
+                        ? "Apellido paterno"
+                        : "Apellido materno"}
+                  </Label>
+                  <Input id={field} {...registerUppercase(field)} />
+                  {errors[field] && (
+                    <p className="text-xs text-red-500">
+                      {errors[field]?.message}
+                    </p>
+                  )}
+                </div>
+              ),
+            )}
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label htmlFor="banco">Banco</Label>
-              <Select id="banco" {...register('banco')}>
-                {BANCOS.map(b => <option key={b} value={b}>{b}</option>)}
-              </Select>
+              <Input
+                id="banco"
+                placeholder="Ej. BBVA"
+                {...registerUppercase("banco")}
+              />
+              {errors.banco && (
+                <p className="text-xs text-red-500">{errors.banco.message}</p>
+              )}
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="numeroCuenta">Número de cuenta</Label>
-              <Input id="numeroCuenta" {...register('numeroCuenta')} />
-              {errors.numeroCuenta && <p className="text-xs text-red-500">{errors.numeroCuenta.message}</p>}
+              <Input id="numeroCuenta" {...registerUppercase("numeroCuenta")} />
+              {errors.numeroCuenta && (
+                <p className="text-xs text-red-500">
+                  {errors.numeroCuenta.message}
+                </p>
+              )}
             </div>
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="puesto">Puesto</Label>
-            <Select id="puesto" {...register('puesto')}>
-              {PUESTOS.map(p => <option key={p} value={p}>{p}</option>)}
+            <Select id="puesto" {...register("puesto")}>
+              {PUESTOS.map((p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
             </Select>
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="metaIndividual">Meta individual (MXN)</Label>
-            <Input id="metaIndividual" type="number" step="100" min="0" {...register('metaIndividual')} />
-            {errors.metaIndividual && <p className="text-xs text-red-500">{errors.metaIndividual.message}</p>}
+            <Input
+              id="metaIndividual"
+              type="number"
+              step="100"
+              min="0"
+              {...register("metaIndividual")}
+            />
+            {errors.metaIndividual && (
+              <p className="text-xs text-red-500">
+                {errors.metaIndividual.message}
+              </p>
+            )}
           </div>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setModalOpen(false)}>Cancelar</Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setModalOpen(false)}
+            >
+              Cancelar
+            </Button>
             <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting ? 'Guardando...' : editing ? 'Guardar cambios' : 'Crear empleado'}
+              {isSubmitting
+                ? "Guardando..."
+                : editing
+                  ? "Guardar cambios"
+                  : "Crear empleado"}
             </Button>
           </DialogFooter>
         </form>
       </Dialog>
     </div>
-  )
+  );
 }

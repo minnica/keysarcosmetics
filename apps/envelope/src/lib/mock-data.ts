@@ -5,14 +5,21 @@ import { generateId } from "./utils";
 
 // ─── Tipos locales ────────────────────────────────────────────────────────────
 
-export type Banco =
-  | "BBVA"
-  | "Santander"
-  | "Banorte"
-  | "HSBC"
-  | "Banamex"
-  | "Otro";
-export type Puesto = "Vendedor" | "Gerente" | "Capturista";
+export type Banco = string;
+export const PUESTOS = [
+  "VENDEDOR",
+  "GERENTE",
+  "FACIALISTA",
+  "CERRADOR",
+  "ADMINISTRADOR GENERAL",
+  "CALL CENTER",
+  "CONTADOR",
+  "MANTENIMIENTO",
+  "EXTERNO",
+  "ADMINISTRADOR",
+] as const;
+
+export type Puesto = (typeof PUESTOS)[number];
 
 export interface Sucursal {
   id: string;
@@ -30,7 +37,7 @@ export interface Empleado {
   apellidoPaterno: string;
   apellidoMaterno: string;
   nombreCompleto: string;
-  banco: Banco;
+  banco: string;
   numeroCuenta: string;
   puesto: Puesto;
   metaIndividual: number;
@@ -75,7 +82,7 @@ export const INITIAL_EMPLEADOS: Empleado[] = [
     nombreCompleto: "María García López",
     banco: "BBVA",
     numeroCuenta: "1234567890",
-    puesto: "Vendedor",
+    puesto: "VENDEDOR",
     metaIndividual: 50000,
   },
   {
@@ -86,7 +93,7 @@ export const INITIAL_EMPLEADOS: Empleado[] = [
     nombreCompleto: "Juan Carlos Martínez Sánchez",
     banco: "Santander",
     numeroCuenta: "0987654321",
-    puesto: "Vendedor",
+    puesto: "VENDEDOR",
     metaIndividual: 45000,
   },
   {
@@ -97,7 +104,7 @@ export const INITIAL_EMPLEADOS: Empleado[] = [
     nombreCompleto: "Ana Rodríguez Torres",
     banco: "Banorte",
     numeroCuenta: "1122334455",
-    puesto: "Vendedor",
+    puesto: "VENDEDOR",
     metaIndividual: 55000,
   },
   {
@@ -108,7 +115,7 @@ export const INITIAL_EMPLEADOS: Empleado[] = [
     nombreCompleto: "Luis Hernández Cruz",
     banco: "HSBC",
     numeroCuenta: "5544332211",
-    puesto: "Vendedor",
+    puesto: "VENDEDOR",
     metaIndividual: 40000,
   },
   {
@@ -119,7 +126,7 @@ export const INITIAL_EMPLEADOS: Empleado[] = [
     nombreCompleto: "Sofía Pérez Morales",
     banco: "Banamex",
     numeroCuenta: "9988776655",
-    puesto: "Vendedor",
+    puesto: "VENDEDOR",
     metaIndividual: 60000,
   },
   {
@@ -130,7 +137,7 @@ export const INITIAL_EMPLEADOS: Empleado[] = [
     nombreCompleto: "Roberto Flores Vega",
     banco: "BBVA",
     numeroCuenta: "6677889900",
-    puesto: "Gerente",
+    puesto: "GERENTE",
     metaIndividual: 80000,
   },
 ];

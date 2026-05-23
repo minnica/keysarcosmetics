@@ -14,15 +14,14 @@ interface UseMetodosPagoReturn {
   remove: (id: string) => Promise<void>
 }
 
-// Mapeo del tipo enum del backend al nombre visual
-const TIPO_POR_NOMBRE: Record<string, string> = {
-  Efectivo: 'EFECTIVO',
-  Tarjeta: 'TARJETA',
-  Transferencia: 'TRANSFERENCIA',
-}
-
 function inferTipo(nombre: string): string {
-  return TIPO_POR_NOMBRE[nombre] ?? 'OTRO'
+  const normalized = nombre.trim().toUpperCase()
+
+  if (normalized.includes('EFECTIVO')) return 'EFECTIVO'
+  if (normalized.includes('TARJETA')) return 'TARJETA'
+  if (normalized.includes('TRANSFERENCIA')) return 'TRANSFERENCIA'
+
+  return 'OTRO'
 }
 
 export function useMetodosPago(): UseMetodosPagoReturn {
@@ -46,7 +45,10 @@ export function useMetodosPago(): UseMetodosPagoReturn {
   useEffect(() => { void refetch() }, [refetch])
 
   const add = useCallback(async (nombre: string, tipo?: string) => {
-    await api.post('/api/envelope/metodos-pago', { nombre, tipo: tipo ?? inferTipo(nombre) })
+    await api.post('/api/envelope/metodos-pago', {
+      nombre,
+      tipo: tipo ?? inferTipo(nombre),
+    })
     await refetch()
   }, [refetch])
 
