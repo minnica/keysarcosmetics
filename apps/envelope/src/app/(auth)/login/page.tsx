@@ -43,11 +43,34 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-      <div className="w-full max-w-sm space-y-6 bg-white rounded-xl border border-gray-200 p-8 shadow-sm">
-        <div className="space-y-1">
-          <h1 className="text-2xl font-bold text-gray-900">Iniciar sesión</h1>
-          <p className="text-sm text-gray-500">Control de ventas — Envelope</p>
+    <div
+      className="min-h-screen flex items-center justify-center px-4"
+      style={{ backgroundColor: 'var(--bg-primary)' }}
+    >
+      <div
+        className="w-full max-w-sm space-y-8 rounded-[14px] border p-8"
+        style={{
+          backgroundColor: 'var(--bg-card)',
+          borderColor: 'var(--border-color)',
+          boxShadow: '0 4px 24px rgba(195, 165, 131, 0.15)',
+        }}
+      >
+        {/* Logo y encabezado */}
+        <div className="space-y-4 text-center">
+          <img
+            src="/logo.svg"
+            alt="Keysar Cosmetics"
+            className="mx-auto"
+            style={{ maxWidth: '120px', height: 'auto' }}
+          />
+          <div>
+            <h1 className="text-xl font-semibold" style={{ color: 'var(--text-primary)' }}>
+              Iniciar sesión
+            </h1>
+            <p className="text-xs mt-1 tracking-wide" style={{ color: 'var(--text-muted)' }}>
+              Control de ventas — Envelope
+            </p>
+          </div>
         </div>
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
@@ -60,7 +83,9 @@ export default function LoginPage() {
               autoComplete="email"
               {...register('email')}
             />
-            {errors.email && <p className="text-xs text-red-500">{errors.email.message}</p>}
+            {errors.email && (
+              <p className="text-xs text-red-500">{errors.email.message}</p>
+            )}
           </div>
 
           <div className="space-y-1.5">
@@ -71,16 +96,25 @@ export default function LoginPage() {
               autoComplete="current-password"
               {...register('password')}
             />
-            {errors.password && <p className="text-xs text-red-500">{errors.password.message}</p>}
+            {errors.password && (
+              <p className="text-xs text-red-500">{errors.password.message}</p>
+            )}
           </div>
 
           {serverError && (
-            <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-md px-3 py-2">
+            <p
+              className="text-sm rounded-[8px] px-3 py-2 border"
+              style={{
+                color: '#c0392b',
+                backgroundColor: '#fdf0ef',
+                borderColor: '#f5c0bb',
+              }}
+            >
               {serverError}
             </p>
           )}
 
-          <Button type="submit" className="w-full" disabled={isSubmitting}>
+          <Button type="submit" className="w-full mt-2" disabled={isSubmitting}>
             {isSubmitting ? 'Entrando...' : 'Entrar'}
           </Button>
         </form>

@@ -33,27 +33,45 @@ export function Dialog({ open, onClose, title, description, children, className 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+      <div
+        className="absolute inset-0 backdrop-blur-sm"
+        style={{ backgroundColor: 'rgba(96, 96, 96, 0.45)' }}
+        onClick={onClose}
+      />
       {/* Panel */}
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby={title ? 'dialog-title' : undefined}
         className={cn(
-          'relative z-10 w-full max-w-lg rounded-xl bg-white shadow-xl',
+          'relative z-10 w-full max-w-lg rounded-[14px] shadow-[var(--card-shadow)]',
           'max-h-[90vh] flex flex-col',
           className
         )}
+        style={{
+          backgroundColor: 'var(--bg-card)',
+          border: '1px solid var(--border-color)',
+          boxShadow: '0 8px 32px rgba(195, 165, 131, 0.18)',
+        }}
       >
         {/* Header */}
         <div className="flex items-start justify-between gap-4 p-6 pb-4">
           <div>
-            {title && <h2 id="dialog-title" className="text-lg font-semibold text-gray-900">{title}</h2>}
-            {description && <p className="mt-1 text-sm text-gray-500">{description}</p>}
+            {title && (
+              <h2 id="dialog-title" className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>
+                {title}
+              </h2>
+            )}
+            {description && (
+              <p className="mt-1 text-sm" style={{ color: 'var(--text-muted)' }}>
+                {description}
+              </p>
+            )}
           </div>
           <button
             onClick={onClose}
-            className="rounded-md p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+            className="rounded-md p-1 transition-colors cursor-pointer hover:bg-[var(--accent-hover)]"
+            style={{ color: 'var(--text-muted)' }}
           >
             <X className="h-5 w-5" />
           </button>
@@ -67,5 +85,12 @@ export function Dialog({ open, onClose, title, description, children, className 
 
 interface DialogFooterProps { children: React.ReactNode; className?: string }
 export function DialogFooter({ children, className }: DialogFooterProps) {
-  return <div className={cn('flex justify-end gap-2 pt-4 border-t border-gray-100', className)}>{children}</div>
+  return (
+    <div
+      className={cn('flex justify-end gap-2 pt-4 border-t', className)}
+      style={{ borderColor: 'var(--border-color)' }}
+    >
+      {children}
+    </div>
+  )
 }

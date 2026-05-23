@@ -1,3 +1,145 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* ── Fuentes: Emofera Regular (títulos de marca) ──────────────────────────── */
+@font-face {
+  font-family: 'Emofera Regular';
+  src: url('/fonts/Emofera-Regular.woff2') format('woff2'),
+       url('/fonts/Emofera-Regular.woff') format('woff');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* ── Fuentes: Gilroy (interfaz principal) ─────────────────────────────────── */
+@font-face {
+  font-family: 'Gilroy';
+  src: url('/fonts/Gilroy-Regular.woff2') format('woff2'),
+       url('/fonts/Gilroy-Regular.woff') format('woff');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Gilroy';
+  src: url('/fonts/Gilroy-Medium.woff2') format('woff2'),
+       url('/fonts/Gilroy-Medium.woff') format('woff');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Gilroy';
+  src: url('/fonts/Gilroy-SemiBold.woff2') format('woff2'),
+       url('/fonts/Gilroy-SemiBold.woff') format('woff');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Gilroy';
+  src: url('/fonts/Gilroy-Bold.woff2') format('woff2'),
+       url('/fonts/Gilroy-Bold.woff') format('woff');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* ── Variables de marca Keysar Cosmetics ──────────────────────────────────── */
+@layer base {
+  :root {
+    /* Paleta principal */
+    --color-gold: #c3a583;
+    --color-nude: #ecd1c8;
+    --color-charcoal: #606060;
+    --color-ivory: #f3f0e9;
+
+    /* Paleta complementaria */
+    --color-blue-light: #6fc9db;
+    --color-blue-soft: #bae2e8;
+    --color-green-olive: #648672;
+    --color-green-sage: #8bb09b;
+
+    /* Tokens semánticos — Light mode (default) */
+    --bg-primary: #f3f0e9;
+    --bg-card: #ffffff;
+    --bg-sidebar: #ffffff;
+    --text-primary: #606060;
+    --text-secondary: #c3a583;
+    --text-muted: #9a9a9a;
+    --accent: #c3a583;
+    --accent-hover: #ecd1c8;
+    --border-color: #ecd1c8;
+    --sidebar-active-bg: #c3a583;
+    --sidebar-active-text: #ffffff;
+    --card-shadow: 0 1px 4px rgba(195, 165, 131, 0.14), 0 1px 2px rgba(195, 165, 131, 0.08);
+    --table-header-bg: #c3a583;
+    --table-header-text: #ffffff;
+    --table-row-alt: #f9f5f1;
+    --input-bg: #ffffff;
+    --input-disabled-bg: #faf8f5;
+  }
+
+  /* Dark mode — activado con clase .dark en <html> */
+  .dark {
+    --bg-primary: #1a1a1a;
+    --bg-card: #252525;
+    --bg-sidebar: #252525;
+    --text-primary: #f3f0e9;
+    --text-secondary: #c3a583;
+    --text-muted: #888888;
+    --accent: #c3a583;
+    --accent-hover: rgba(195, 165, 131, 0.22);
+    --border-color: #606060;
+    --sidebar-active-bg: #c3a583;
+    --sidebar-active-text: #1a1a1a;
+    --card-shadow: 0 1px 4px rgba(0, 0, 0, 0.35), 0 1px 2px rgba(0, 0, 0, 0.25);
+    --table-header-bg: #c3a583;
+    --table-header-text: #1a1a1a;
+    --table-row-alt: #2e2e2e;
+    --input-bg: #303030;
+    --input-disabled-bg: #2a2a2a;
+  }
+
+  /* ── Estilos globales ─────────────────────────────────────────────────────── */
+  html {
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+  }
+
+  body {
+    font-family: 'Gilroy', 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    transition: background-color 0.2s ease, color 0.2s ease;
+  }
+
+  /* Scrollbar elegante con paleta de marca */
+  ::-webkit-scrollbar {
+    width: 5px;
+    height: 5px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-nude);
+    border-radius: 4px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--color-gold);
+  }
+
+  /* Selección de texto con colores de marca */
+  ::selection {
+    background-color: var(--color-nude);
+    color: var(--color-charcoal);
+  }
+}
