@@ -6,9 +6,9 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { api } from '@/lib/api'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
+import { Button } from '@cosmetics/ui'
+import { Input } from '@cosmetics/ui'
+import { Label } from '@cosmetics/ui'
 
 const schema = z.object({
   email: z.string().email('Email inválido'),

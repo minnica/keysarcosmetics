@@ -1,4 +1,4 @@
-// Seed inicial: usuarios, sucursales, métodos de pago, empleados y ventas de prueba
+// Seed inicial: usuarios, sucursales, métodos de pago, bancos, puestos, empleados y ventas de prueba
 import { PrismaClient, Rol } from '@prisma/client'
 import bcrypt from 'bcryptjs'
 
@@ -72,7 +72,51 @@ async function main() {
   })
   console.log(`  ✅ Métodos de pago: ${mpEfectivo.nombre}, ${mpTarjeta.nombre}, ${mpTransferencia.nombre}`)
 
+  // ─── Bancos ────────────────────────────────────────────────────────────────
+  // IDs fijos para upsert idempotente en re-seeds
+  const bancos = [
+    { id: 'bank-bbva',      nombre: 'BBVA' },
+    { id: 'bank-santander', nombre: 'Santander' },
+    { id: 'bank-banorte',   nombre: 'Banorte' },
+    { id: 'bank-hsbc',      nombre: 'HSBC' },
+    { id: 'bank-banamex',   nombre: 'Banamex' },
+  ]
+  for (const b of bancos) {
+    await prisma.bank.upsert({
+      where: { id: b.id },
+      update: {},
+      create: { id: b.id, nombre: b.nombre, activo: true },
+    })
+  }
+  console.log(`  ✅ Bancos: ${bancos.map((b) => b.nombre).join(', ')}`)
+
+  // ─── Puestos ───────────────────────────────────────────────────────────────
+  // Valores en MAYÚSCULAS — normalización canónica del sistema
+  const puestos = [
+    { id: 'pos-vendedor',      nombre: 'VENDEDOR' },
+    { id: 'pos-gerente',       nombre: 'GERENTE' },
+    { id: 'pos-facialista',    nombre: 'FACIALISTA' },
+    { id: 'pos-cerrador',      nombre: 'CERRADOR' },
+    { id: 'pos-admin-general', nombre: 'ADMINISTRADOR GENERAL' },
+    { id: 'pos-call-center',   nombre: 'CALL CENTER' },
+    { id: 'pos-contador',      nombre: 'CONTADOR' },
+    { id: 'pos-mantenimiento', nombre: 'MANTENIMIENTO' },
+    { id: 'pos-externo',       nombre: 'EXTERNO' },
+    { id: 'pos-administrador', nombre: 'ADMINISTRADOR' },
+  ]
+  for (const p of puestos) {
+    await prisma.position.upsert({
+      where: { id: p.id },
+      update: {},
+      create: { id: p.id, nombre: p.nombre, activo: true },
+    })
+  }
+  console.log(`  ✅ Puestos: ${puestos.map((p) => p.nombre).join(', ')}`)
+
   // ─── Empleados de prueba ───────────────────────────────────────────────────
+  // bankId/positionId asignados por mapeo exacto a los IDs fijos del seed.
+  // El campo legacy banco/puesto se conserva intacto durante la transición (Fase 1-3).
+  // Normalización: puesto legacy "Vendedor"/"Gerente" → FK canónica UPPERCASE.
   const empleadosData = [
     {
       id: 'emp-maria',
@@ -84,6 +128,8 @@ async function main() {
       numeroCuenta: '1234567890',
       puesto: 'Vendedor',
       metaIndividual: 50000,
+      bankId: 'bank-bbva',
+      positionId: 'pos-vendedor',
     },
     {
       id: 'emp-juan',
@@ -95,6 +141,8 @@ async function main() {
       numeroCuenta: '0987654321',
       puesto: 'Vendedor',
       metaIndividual: 45000,
+      bankId: 'bank-santander',
+      positionId: 'pos-vendedor',
     },
     {
       id: 'emp-ana',
@@ -106,6 +154,8 @@ async function main() {
       numeroCuenta: '1122334455',
       puesto: 'Vendedor',
       metaIndividual: 55000,
+      bankId: 'bank-banorte',
+      positionId: 'pos-vendedor',
     },
     {
       id: 'emp-luis',
@@ -117,13 +167,15 @@ async function main() {
       numeroCuenta: '5544332211',
       puesto: 'Gerente',
       metaIndividual: 80000,
+      bankId: 'bank-hsbc',
+      positionId: 'pos-gerente',
     },
   ]
 
   for (const emp of empleadosData) {
     await prisma.empleado.upsert({
       where: { id: emp.id },
-      update: {},
+      update: { bankId: emp.bankId, positionId: emp.positionId },
       create: { ...emp, activo: true },
     })
     console.log(`  ✅ Empleado: ${emp.nombreCompleto}`)

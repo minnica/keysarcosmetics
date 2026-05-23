@@ -37,9 +37,15 @@ export interface Empleado {
   apellidoPaterno: string;
   apellidoMaterno: string;
   nombreCompleto: string;
+  // Campos legacy — se eliminan en Fase 4 tras backfill completo
   banco: string;
   numeroCuenta: string;
-  puesto: Puesto;
+  puesto: string;
+  // FK a catálogos dinámicos — nullable durante transición
+  bankId?: string | null;
+  bank?: { id: string; nombre: string; activo: boolean } | null;
+  positionId?: string | null;
+  position?: { id: string; nombre: string; activo: boolean } | null;
   metaIndividual: number;
 }
 

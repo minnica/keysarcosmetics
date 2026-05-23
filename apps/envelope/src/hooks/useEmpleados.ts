@@ -14,7 +14,7 @@ interface UseEmpleadosReturn {
   remove: (id: string) => Promise<void>
 }
 
-// Convierte la respuesta del backend al tipo local (Decimal → number)
+// Convierte la respuesta del backend al tipo local (Decimal → number, incluye relaciones FK)
 function toEmpleado(raw: Record<string, unknown>): Empleado {
   return {
     id: raw['id'] as string,
@@ -22,10 +22,14 @@ function toEmpleado(raw: Record<string, unknown>): Empleado {
     apellidoPaterno: raw['apellidoPaterno'] as string,
     apellidoMaterno: raw['apellidoMaterno'] as string,
     nombreCompleto: raw['nombreCompleto'] as string,
-    banco: raw['banco'] as Empleado['banco'],
+    banco: raw['banco'] as string,
     numeroCuenta: raw['numeroCuenta'] as string,
-    puesto: raw['puesto'] as Empleado['puesto'],
+    puesto: raw['puesto'] as string,
     metaIndividual: Number(raw['metaIndividual']),
+    bankId: (raw['bankId'] as string | null) ?? null,
+    bank: (raw['bank'] as Empleado['bank']) ?? null,
+    positionId: (raw['positionId'] as string | null) ?? null,
+    position: (raw['position'] as Empleado['position']) ?? null,
   }
 }
 

@@ -20,15 +20,33 @@ export interface Sucursal {
   activa: boolean
 }
 
+export interface Bank {
+  id: string
+  nombre: string
+  activo: boolean
+}
+
+export interface Position {
+  id: string
+  nombre: string
+  activo: boolean
+}
+
 export interface Empleado {
   id: string
   nombres: string
   apellidoPaterno: string
   apellidoMaterno: string
   nombreCompleto: string
+  // Campos legacy — se eliminan en Fase 4
   banco: string
   numeroCuenta: string
   puesto: string
+  // FK a catálogos dinámicos — nullable durante transición
+  bankId?: string | null
+  bank?: Bank | null
+  positionId?: string | null
+  position?: Position | null
   metaIndividual: number
   sucursalId: string
   activo: boolean

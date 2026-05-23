@@ -1,8 +1,7 @@
 'use client'
 // Reporte: Detalle de ventas por método de pago, agrupado por sucursal
 import { useState } from 'react'
-import { DateRangePicker, type DateRange } from '@/components/ui/date-range-picker'
-import { Table, TableHeader, TableBody, TableFooter, TableRow, TableHead, TableCell } from '@/components/ui/table'
+import { DateRangePicker, type DateRange, Table, TableHeader, TableBody, TableFooter, TableRow, TableHead, TableCell } from "@cosmetics/ui"
 import { useReportes } from '@/hooks'
 import { formatCurrency, todayISO } from '@/lib/utils'
 

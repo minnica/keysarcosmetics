@@ -1,14 +1,8 @@
 "use client";
 // Reporte: Ventas de un vendedor específico desglosadas por día
 import { useState } from "react";
-import { Select } from "@/components/ui/select";
-import { Label } from "@/components/ui/label";
 import {
-  DateRangePicker,
-  type DateRange,
-} from "@/components/ui/date-range-picker";
-import { Badge } from "@/components/ui/badge";
-import {
+  Label,
   Table,
   TableHeader,
   TableBody,
@@ -16,7 +10,18 @@ import {
   TableRow,
   TableHead,
   TableCell,
-} from "@/components/ui/table";
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from "@cosmetics/ui";
+import {
+  DateRangePicker,
+  type DateRange,
+} from "@cosmetics/ui";
+import { Badge } from "@cosmetics/ui";
+;
 import { useReportes } from "@/hooks";
 import { formatCurrency, formatDate, todayISO } from "@/lib/utils";
 
@@ -84,16 +89,17 @@ export default function VentasPorVendedorDiaPage() {
       <div className="flex gap-4 flex-wrap items-end">
         <div className="space-y-1.5">
           <Label>Vendedor</Label>
-          <Select
-            value={vendedorEfectivo}
-            onChange={(e) => setVendedorId(e.target.value)}
-            className="w-56"
-          >
-            {empleados.map((e) => (
-              <option key={e.id} value={e.id}>
-                {e.nombreCompleto}
-              </option>
-            ))}
+          <Select value={vendedorEfectivo} onValueChange={setVendedorId}>
+            <SelectTrigger className="w-56">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {empleados.map((e) => (
+                <SelectItem key={e.id} value={e.id}>
+                  {e.nombreCompleto}
+                </SelectItem>
+              ))}
+            </SelectContent>
           </Select>
         </div>
         <div className="space-y-1.5">

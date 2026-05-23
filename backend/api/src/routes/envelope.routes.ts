@@ -67,6 +67,7 @@ router.get('/empleados', async (_req, res) => {
     const data = await prisma.empleado.findMany({
       where: { activo: true },
       orderBy: { nombreCompleto: 'asc' },
+      include: { bank: true, position: true },
     })
     res.json({ success: true, data, message: 'OK' })
   } catch (err) {
@@ -77,19 +78,62 @@ router.get('/empleados', async (_req, res) => {
 
 router.post('/empleados', requireRole('GERENTE'), async (req, res) => {
   try {
-    const { nombres, apellidoPaterno, apellidoMaterno, banco, numeroCuenta, puesto, metaIndividual } =
+    const { nombres, apellidoPaterno, apellidoMaterno, banco, numeroCuenta, puesto, metaIndividual, bankId, positionId } =
       req.body as {
         nombres: string
         apellidoPaterno: string
         apellidoMaterno: string
-        banco: string
+        banco?: string
         numeroCuenta: string
-        puesto: string
+        puesto?: string
         metaIndividual: number
+        bankId?: string
+        positionId?: string
       }
+
+    // Resolver banco: si viene bankId, valida FK y deriva nombre legacy
+    let finalBanco = banco ?? ''
+    let finalBankId: string | undefined = undefined
+
+    if (bankId) {
+      const bank = await prisma.bank.findFirst({ where: { id: bankId, activo: true } })
+      if (!bank) {
+        res.status(400).json({ success: false, data: null, message: 'Banco no encontrado o inactivo' })
+        return
+      }
+      finalBanco = bank.nombre
+      finalBankId = bank.id
+    }
+
+    // Resolver puesto: si viene positionId, valida FK y deriva nombre legacy
+    let finalPuesto = puesto ?? ''
+    let finalPositionId: string | undefined = undefined
+
+    if (positionId) {
+      const position = await prisma.position.findFirst({ where: { id: positionId, activo: true } })
+      if (!position) {
+        res.status(400).json({ success: false, data: null, message: 'Puesto no encontrado o inactivo' })
+        return
+      }
+      finalPuesto = position.nombre
+      finalPositionId = position.id
+    }
+
     const nombreCompleto = [nombres, apellidoPaterno, apellidoMaterno].filter(Boolean).join(' ')
     const data = await prisma.empleado.create({
-      data: { nombres, apellidoPaterno, apellidoMaterno, nombreCompleto, banco, numeroCuenta, puesto, metaIndividual },
+      data: {
+        nombres,
+        apellidoPaterno,
+        apellidoMaterno,
+        nombreCompleto,
+        banco: finalBanco,
+        numeroCuenta,
+        puesto: finalPuesto,
+        metaIndividual,
+        ...(finalBankId !== undefined && { bankId: finalBankId }),
+        ...(finalPositionId !== undefined && { positionId: finalPositionId }),
+      },
+      include: { bank: true, position: true },
     })
     res.status(201).json({ success: true, data, message: 'Empleado creado' })
   } catch (err) {
@@ -100,7 +144,7 @@ router.post('/empleados', requireRole('GERENTE'), async (req, res) => {
 
 router.put('/empleados/:id', requireRole('GERENTE'), async (req, res) => {
   try {
-    const { nombres, apellidoPaterno, apellidoMaterno, banco, numeroCuenta, puesto, metaIndividual, activo } =
+    const { nombres, apellidoPaterno, apellidoMaterno, banco, numeroCuenta, puesto, metaIndividual, activo, bankId, positionId } =
       req.body as Partial<{
         nombres: string
         apellidoPaterno: string
@@ -110,12 +154,41 @@ router.put('/empleados/:id', requireRole('GERENTE'), async (req, res) => {
         puesto: string
         metaIndividual: number
         activo: boolean
+        bankId: string
+        positionId: string
       }>
     const existing = await prisma.empleado.findUnique({ where: { id: req.params['id'] } })
     if (!existing) {
       res.status(404).json({ success: false, data: null, message: 'Empleado no encontrado' })
       return
     }
+
+    // Resolver banco: si viene bankId, valida FK y deriva nombre legacy
+    let bankUpdate: { banco?: string; bankId?: string } = {}
+    if (bankId !== undefined) {
+      const bank = await prisma.bank.findFirst({ where: { id: bankId, activo: true } })
+      if (!bank) {
+        res.status(400).json({ success: false, data: null, message: 'Banco no encontrado o inactivo' })
+        return
+      }
+      bankUpdate = { banco: bank.nombre, bankId: bank.id }
+    } else if (banco !== undefined) {
+      bankUpdate = { banco }
+    }
+
+    // Resolver puesto: si viene positionId, valida FK y deriva nombre legacy
+    let positionUpdate: { puesto?: string; positionId?: string } = {}
+    if (positionId !== undefined) {
+      const position = await prisma.position.findFirst({ where: { id: positionId, activo: true } })
+      if (!position) {
+        res.status(400).json({ success: false, data: null, message: 'Puesto no encontrado o inactivo' })
+        return
+      }
+      positionUpdate = { puesto: position.nombre, positionId: position.id }
+    } else if (puesto !== undefined) {
+      positionUpdate = { puesto }
+    }
+
     const n = nombres ?? existing.nombres
     const ap = apellidoPaterno ?? existing.apellidoPaterno
     const am = apellidoMaterno ?? existing.apellidoMaterno
@@ -127,12 +200,13 @@ router.put('/empleados/:id', requireRole('GERENTE'), async (req, res) => {
         ...(apellidoPaterno !== undefined && { apellidoPaterno }),
         ...(apellidoMaterno !== undefined && { apellidoMaterno }),
         nombreCompleto,
-        ...(banco !== undefined && { banco }),
+        ...bankUpdate,
         ...(numeroCuenta !== undefined && { numeroCuenta }),
-        ...(puesto !== undefined && { puesto }),
+        ...positionUpdate,
         ...(metaIndividual !== undefined && { metaIndividual }),
         ...(activo !== undefined && { activo }),
       },
+      include: { bank: true, position: true },
     })
     res.json({ success: true, data, message: 'Empleado actualizado' })
   } catch (err) {
@@ -210,6 +284,164 @@ router.delete('/metodos-pago/:id', requireRole('GERENTE'), async (req, res) => {
   } catch (err) {
     console.error(err)
     res.status(500).json({ success: false, data: null, message: 'Error al eliminar método de pago' })
+  }
+})
+
+// ─── BANCOS ───────────────────────────────────────────────────────────────────
+
+router.get('/banks', async (_req, res) => {
+  try {
+    const data = await prisma.bank.findMany({
+      where: { activo: true },
+      orderBy: { nombre: 'asc' },
+    })
+    res.json({ success: true, data, message: 'OK' })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ success: false, data: null, message: 'Error al obtener bancos' })
+  }
+})
+
+router.post('/banks', requireRole('GERENTE'), async (req, res) => {
+  try {
+    const { nombre } = req.body as { nombre: string }
+    const trimmed = nombre?.trim()
+    if (!trimmed) {
+      res.status(400).json({ success: false, data: null, message: 'El nombre es requerido' })
+      return
+    }
+    const duplicate = await prisma.bank.findFirst({
+      where: { nombre: { equals: trimmed, mode: 'insensitive' } },
+    })
+    if (duplicate) {
+      res.status(409).json({ success: false, data: null, message: 'Ya existe un banco con ese nombre' })
+      return
+    }
+    const data = await prisma.bank.create({ data: { nombre: trimmed } })
+    res.status(201).json({ success: true, data, message: 'Banco creado' })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ success: false, data: null, message: 'Error al crear banco' })
+  }
+})
+
+router.put('/banks/:id', requireRole('GERENTE'), async (req, res) => {
+  try {
+    const { nombre } = req.body as { nombre?: string }
+    const trimmed = nombre?.trim()
+    if (!trimmed) {
+      res.status(400).json({ success: false, data: null, message: 'El nombre es requerido' })
+      return
+    }
+    const existing = await prisma.bank.findUnique({ where: { id: req.params['id'] } })
+    if (!existing) {
+      res.status(404).json({ success: false, data: null, message: 'Banco no encontrado' })
+      return
+    }
+    const duplicate = await prisma.bank.findFirst({
+      where: { nombre: { equals: trimmed, mode: 'insensitive' }, id: { not: req.params['id'] } },
+    })
+    if (duplicate) {
+      res.status(409).json({ success: false, data: null, message: 'Ya existe un banco con ese nombre' })
+      return
+    }
+    const data = await prisma.bank.update({ where: { id: req.params['id'] }, data: { nombre: trimmed } })
+    res.json({ success: true, data, message: 'Banco actualizado' })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ success: false, data: null, message: 'Error al actualizar banco' })
+  }
+})
+
+router.delete('/banks/:id', requireRole('GERENTE'), async (req, res) => {
+  try {
+    const data = await prisma.bank.update({
+      where: { id: req.params['id'] },
+      data: { activo: false },
+    })
+    res.json({ success: true, data, message: 'Banco desactivado' })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ success: false, data: null, message: 'Error al eliminar banco' })
+  }
+})
+
+// ─── PUESTOS ──────────────────────────────────────────────────────────────────
+
+router.get('/positions', async (_req, res) => {
+  try {
+    const data = await prisma.position.findMany({
+      where: { activo: true },
+      orderBy: { nombre: 'asc' },
+    })
+    res.json({ success: true, data, message: 'OK' })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ success: false, data: null, message: 'Error al obtener puestos' })
+  }
+})
+
+router.post('/positions', requireRole('GERENTE'), async (req, res) => {
+  try {
+    const { nombre } = req.body as { nombre: string }
+    const trimmed = nombre?.trim()
+    if (!trimmed) {
+      res.status(400).json({ success: false, data: null, message: 'El nombre es requerido' })
+      return
+    }
+    const duplicate = await prisma.position.findFirst({
+      where: { nombre: { equals: trimmed, mode: 'insensitive' } },
+    })
+    if (duplicate) {
+      res.status(409).json({ success: false, data: null, message: 'Ya existe un puesto con ese nombre' })
+      return
+    }
+    const data = await prisma.position.create({ data: { nombre: trimmed } })
+    res.status(201).json({ success: true, data, message: 'Puesto creado' })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ success: false, data: null, message: 'Error al crear puesto' })
+  }
+})
+
+router.put('/positions/:id', requireRole('GERENTE'), async (req, res) => {
+  try {
+    const { nombre } = req.body as { nombre?: string }
+    const trimmed = nombre?.trim()
+    if (!trimmed) {
+      res.status(400).json({ success: false, data: null, message: 'El nombre es requerido' })
+      return
+    }
+    const existing = await prisma.position.findUnique({ where: { id: req.params['id'] } })
+    if (!existing) {
+      res.status(404).json({ success: false, data: null, message: 'Puesto no encontrado' })
+      return
+    }
+    const duplicate = await prisma.position.findFirst({
+      where: { nombre: { equals: trimmed, mode: 'insensitive' }, id: { not: req.params['id'] } },
+    })
+    if (duplicate) {
+      res.status(409).json({ success: false, data: null, message: 'Ya existe un puesto con ese nombre' })
+      return
+    }
+    const data = await prisma.position.update({ where: { id: req.params['id'] }, data: { nombre: trimmed } })
+    res.json({ success: true, data, message: 'Puesto actualizado' })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ success: false, data: null, message: 'Error al actualizar puesto' })
+  }
+})
+
+router.delete('/positions/:id', requireRole('GERENTE'), async (req, res) => {
+  try {
+    const data = await prisma.position.update({
+      where: { id: req.params['id'] },
+      data: { activo: false },
+    })
+    res.json({ success: true, data, message: 'Puesto desactivado' })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ success: false, data: null, message: 'Error al eliminar puesto' })
   }
 })
 
