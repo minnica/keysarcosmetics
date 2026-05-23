@@ -34,20 +34,20 @@ export default function DetalleMetodoPagoPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Detalle método de pago</h1>
-        <p className="text-sm text-gray-500 mt-1">Total por sucursal y método de pago en el período</p>
+        <h1 className="text-2xl font-semibold" style={{ color: 'var(--text-primary)' }}>Detalle método de pago</h1>
+        <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>Total por sucursal y método de pago en el período</p>
       </div>
 
       <div className="flex items-center gap-3 flex-wrap">
-        <span className="text-sm font-medium text-gray-700">Período:</span>
+        <span className="text-sm font-medium" style={{ color: 'var(--text-muted)' }}>Período:</span>
         <DateRangePicker value={range} onChange={setRange} />
       </div>
 
-      {loading && <p className="text-sm text-gray-400">Cargando datos...</p>}
+      {loading && <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Cargando datos...</p>}
       {error && <p className="text-sm text-red-500">{error}</p>}
 
       {!loading && sucursalesConDatos.length === 0 ? (
-        <p className="text-sm text-gray-400">Sin datos en el período seleccionado.</p>
+        <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Sin datos en el período seleccionado.</p>
       ) : (
         <Table>
           <TableHeader>
@@ -70,8 +70,8 @@ export default function DetalleMetodoPagoPage() {
                       <TableCell className="text-right">{formatCurrency(row.total)}</TableCell>
                     </TableRow>
                   ))}
-                  <TableRow key={`subtotal-${sId}`} className="bg-gray-50 font-medium">
-                    <TableCell colSpan={2} className="text-right text-xs text-gray-500 uppercase">Subtotal {sucursalNombre(sId)}</TableCell>
+                  <TableRow key={`subtotal-${sId}`} className="font-medium" style={{ backgroundColor: 'var(--table-row-alt)' }}>
+                    <TableCell colSpan={2} className="text-right text-xs uppercase" style={{ color: 'var(--text-muted)' }}>Subtotal {sucursalNombre(sId)}</TableCell>
                     <TableCell className="text-right">{formatCurrency(subtotal)}</TableCell>
                   </TableRow>
                 </>

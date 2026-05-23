@@ -50,8 +50,8 @@ export default function MetodoPagoPorDiaPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Método de pago por día</h1>
-        <p className="text-sm text-gray-500 mt-1">Desglose diario por sucursal para un método y mes específico</p>
+        <h1 className="text-2xl font-semibold" style={{ color: 'var(--text-primary)' }}>Método de pago por día</h1>
+        <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>Desglose diario por sucursal para un método y mes específico</p>
       </div>
 
       <div className="flex gap-4 flex-wrap items-end">
@@ -75,11 +75,11 @@ export default function MetodoPagoPorDiaPage() {
         </div>
       </div>
 
-      {loading && <p className="text-sm text-gray-400">Cargando datos...</p>}
+      {loading && <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Cargando datos...</p>}
       {error && <p className="text-sm text-red-500">{error}</p>}
 
       {!loading && dias.length === 0 ? (
-        <p className="text-sm text-gray-400">Sin ventas con ese método en el período seleccionado.</p>
+        <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Sin ventas con ese método en el período seleccionado.</p>
       ) : (
         <Table>
           <TableHeader>
@@ -95,7 +95,7 @@ export default function MetodoPagoPorDiaPage() {
                 <TableCell>{formatDate(dia, 'EEEE dd')}</TableCell>
                 {sucursales.map(s => (
                   <TableCell key={s.id} className="text-right">
-                    {totalDiaSucursal(dia, s.id) > 0 ? formatCurrency(totalDiaSucursal(dia, s.id)) : <span className="text-gray-300">—</span>}
+                    {totalDiaSucursal(dia, s.id) > 0 ? formatCurrency(totalDiaSucursal(dia, s.id)) : <span style={{ color: 'var(--border-color)' }}>—</span>}
                   </TableCell>
                 ))}
                 <TableCell className="text-right font-medium">{formatCurrency(totalDia(dia))}</TableCell>

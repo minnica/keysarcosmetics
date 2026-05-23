@@ -73,10 +73,10 @@ export default function VentasPorVendedorDiaPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">
+        <h1 className="text-2xl font-semibold" style={{ color: 'var(--text-primary)' }}>
           Ventas por vendedor por día
         </h1>
-        <p className="text-sm text-gray-500 mt-1">
+        <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
           Detalle de cada venta registrada en el período
         </p>
       </div>
@@ -102,17 +102,17 @@ export default function VentasPorVendedorDiaPage() {
         </div>
       </div>
 
-      {loading && <p className="text-sm text-gray-400">Cargando datos...</p>}
+      {loading && <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Cargando datos...</p>}
       {error && <p className="text-sm text-red-500">{error}</p>}
 
       {vendedor && (
-        <div className="text-xs text-gray-400">
+        <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
           Meta mensual: {formatCurrency(vendedor.metaIndividual)}
         </div>
       )}
 
       {!loading && filas.length === 0 ? (
-        <p className="text-sm text-gray-400">
+        <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
           Sin ventas para el vendedor en el período.
         </p>
       ) : (
@@ -139,7 +139,7 @@ export default function VentasPorVendedorDiaPage() {
                     {metodoPagoNombre(fila.metodoPagoId)}
                   </Badge>
                 </TableCell>
-                <TableCell className="text-xs text-gray-400">
+                <TableCell className="text-xs" style={{ color: 'var(--text-muted)' }}>
                   {fila.notas ?? "—"}
                 </TableCell>
               </TableRow>

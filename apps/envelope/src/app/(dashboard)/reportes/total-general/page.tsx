@@ -37,20 +37,20 @@ export default function TotalGeneralPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Total general de ventas</h1>
-        <p className="text-sm text-gray-500 mt-1">Resumen diario por sucursal en el período</p>
+        <h1 className="text-2xl font-semibold" style={{ color: 'var(--text-primary)' }}>Total general de ventas</h1>
+        <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>Resumen diario por sucursal en el período</p>
       </div>
 
       <div className="flex items-center gap-3 flex-wrap">
-        <span className="text-sm font-medium text-gray-700">Período:</span>
+        <span className="text-sm font-medium" style={{ color: 'var(--text-muted)' }}>Período:</span>
         <DateRangePicker value={range} onChange={setRange} />
       </div>
 
-      {loading && <p className="text-sm text-gray-400">Cargando datos...</p>}
+      {loading && <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Cargando datos...</p>}
       {error && <p className="text-sm text-red-500">{error}</p>}
 
       {!loading && dias.length === 0 ? (
-        <p className="text-sm text-gray-400">Sin ventas en el período seleccionado.</p>
+        <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Sin ventas en el período seleccionado.</p>
       ) : (
         <Table>
           <TableHeader>
@@ -68,7 +68,7 @@ export default function TotalGeneralPage() {
                   const val = totalDiaSucursal(dia, s.id)
                   return (
                     <TableCell key={s.id} className="text-right">
-                      {val > 0 ? formatCurrency(val) : <span className="text-gray-300">—</span>}
+                      {val > 0 ? formatCurrency(val) : <span style={{ color: 'var(--border-color)' }}>—</span>}
                     </TableCell>
                   )
                 })}

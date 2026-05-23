@@ -56,16 +56,16 @@ export default function VentasPorVendedorPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Ventas por vendedor</h1>
-        <p className="text-sm text-gray-500 mt-1">Avance de cada vendedor respecto a su meta en el período</p>
+        <h1 className="text-2xl font-semibold" style={{ color: 'var(--text-primary)' }}>Ventas por vendedor</h1>
+        <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>Avance de cada vendedor respecto a su meta en el período</p>
       </div>
 
       <div className="flex items-center gap-3 flex-wrap">
-        <span className="text-sm font-medium text-gray-700">Período:</span>
+        <span className="text-sm font-medium" style={{ color: 'var(--text-muted)' }}>Período:</span>
         <DateRangePicker value={range} onChange={setRange} />
       </div>
 
-      {loading && <p className="text-sm text-gray-400">Cargando datos...</p>}
+      {loading && <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Cargando datos...</p>}
       {error && <p className="text-sm text-red-500">{error}</p>}
 
       <Table>
@@ -85,10 +85,10 @@ export default function VentasPorVendedorPage() {
             return (
               <TableRow key={`${emp.id}__${sucursalId}`}>
                 <TableCell className="font-medium">{emp.nombreCompleto}</TableCell>
-                <TableCell className="text-gray-500 text-xs">{sucursalNombre(sucursalId)}</TableCell>
+                <TableCell className="text-xs" style={{ color: 'var(--text-muted)' }}>{sucursalNombre(sucursalId)}</TableCell>
                 <TableCell className="text-right">{formatCurrency(totalVendido)}</TableCell>
-                <TableCell className="text-right text-gray-500">{formatCurrency(emp.metaIndividual)}</TableCell>
-                <TableCell className="text-right text-gray-500">{formatCurrency(porLlegar)}</TableCell>
+                <TableCell className="text-right" style={{ color: 'var(--text-muted)' }}>{formatCurrency(emp.metaIndividual)}</TableCell>
+                <TableCell className="text-right" style={{ color: 'var(--text-muted)' }}>{formatCurrency(porLlegar)}</TableCell>
                 <TableCell className="min-w-[140px]">
                   <div className="flex items-center gap-2">
                     <Progress value={porcentaje} className="flex-1" />

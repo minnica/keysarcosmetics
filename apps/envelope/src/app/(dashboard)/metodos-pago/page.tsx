@@ -70,8 +70,8 @@ export default function MetodosPagoPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Métodos de pago</h1>
-          <p className="text-sm text-gray-500 mt-1">
+          <h1 className="text-2xl font-semibold" style={{ color: 'var(--text-primary)' }}>Métodos de pago</h1>
+          <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
             Catálogo de formas de pago aceptadas
           </p>
         </div>
@@ -83,7 +83,7 @@ export default function MetodosPagoPage() {
       {error && <p className="text-sm text-red-500">{error}</p>}
 
       {loading ? (
-        <p className="text-sm text-gray-400">Cargando métodos de pago...</p>
+        <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Cargando métodos de pago...</p>
       ) : (
         <Table>
           <TableHeader>
@@ -95,7 +95,7 @@ export default function MetodosPagoPage() {
           <TableBody>
             {metodosPago.length === 0 && (
               <TableRow>
-                <TableCell colSpan={2} className="text-center text-gray-400">
+                <TableCell colSpan={2} className="text-center" style={{ color: 'var(--text-muted)' }}>
                   Sin métodos registrados
                 </TableCell>
               </TableRow>

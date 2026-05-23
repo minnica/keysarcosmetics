@@ -51,8 +51,8 @@ export default function SucursalesPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Sucursales</h1>
-          <p className="text-sm text-gray-500 mt-1">Administra las sucursales de la empresa</p>
+          <h1 className="text-2xl font-semibold" style={{ color: 'var(--text-primary)' }}>Sucursales</h1>
+          <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>Administra las sucursales de la empresa</p>
         </div>
         <Button onClick={openNew}>
           <PlusCircle className="h-4 w-4 mr-1.5" /> Nueva sucursal
@@ -62,7 +62,7 @@ export default function SucursalesPage() {
       {error && <p className="text-sm text-red-500">{error}</p>}
 
       {loading ? (
-        <p className="text-sm text-gray-400">Cargando sucursales...</p>
+        <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Cargando sucursales...</p>
       ) : (
         <Table>
           <TableHeader>
@@ -73,7 +73,7 @@ export default function SucursalesPage() {
           </TableHeader>
           <TableBody>
             {sucursales.length === 0 && (
-              <TableRow><TableCell colSpan={2} className="text-center text-gray-400">Sin sucursales registradas</TableCell></TableRow>
+              <TableRow><TableCell colSpan={2} className="text-center" style={{ color: 'var(--text-muted)' }}>Sin sucursales registradas</TableCell></TableRow>
             )}
             {sucursales.map(s => (
               <TableRow key={s.id}>

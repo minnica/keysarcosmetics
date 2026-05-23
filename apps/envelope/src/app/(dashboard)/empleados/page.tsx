@@ -146,8 +146,8 @@ export default function EmpleadosPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Empleados</h1>
-          <p className="text-sm text-gray-500 mt-1">
+          <h1 className="text-2xl font-semibold" style={{ color: 'var(--text-primary)' }}>Empleados</h1>
+          <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
             Gestión del catálogo de empleados
           </p>
         </div>
@@ -159,7 +159,7 @@ export default function EmpleadosPage() {
       {error && <p className="text-sm text-red-500">{error}</p>}
 
       {loading ? (
-        <p className="text-sm text-gray-400">Cargando empleados...</p>
+        <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Cargando empleados...</p>
       ) : (
         <Table>
           <TableHeader>

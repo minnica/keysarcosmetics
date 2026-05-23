@@ -153,15 +153,18 @@ export default function VentasPage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Registro de ventas</h1>
-        <p className="text-sm text-gray-500 mt-1">
+        <h1 className="text-2xl font-semibold" style={{ color: 'var(--text-primary)' }}>Registro de ventas</h1>
+        <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
           Captura las ventas del día por vendedor y sucursal
         </p>
       </div>
 
       {/* ── Paso 1: Selector ── */}
-      <div className="rounded-xl border border-gray-200 bg-white p-6">
-        <h2 className="text-base font-semibold text-gray-800 mb-4">
+      <div
+        className="rounded-xl border p-6"
+        style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border-color)' }}
+      >
+        <h2 className="text-base font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>
           1. Selección
         </h2>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -214,13 +217,16 @@ export default function VentasPage() {
 
       {/* ── Paso 2: Items temporales ── */}
       {selectorValido && (
-        <div className="rounded-xl border border-gray-200 bg-white p-6 space-y-4">
+        <div
+          className="rounded-xl border p-6 space-y-4"
+          style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border-color)' }}
+        >
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-base font-semibold text-gray-800">
+              <h2 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>
                 2. Ventas del vendedor
               </h2>
-              <p className="text-xs text-gray-500 mt-0.5">
+              <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
                 {vendedorNombre(watchedVendedor)} ·{" "}
                 {sucursalNombre(watchedSucursal)} · {formatDate(watchedFecha)}
               </p>
@@ -252,7 +258,7 @@ export default function VentasPage() {
                           {metodoPagoNombre(item.metodoPagoId)}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-gray-400 text-xs">
+                      <TableCell className="text-xs" style={{ color: 'var(--text-muted)' }}>
                         {item.notas ?? "—"}
                       </TableCell>
                       <TableCell className="text-right">
@@ -278,7 +284,7 @@ export default function VentasPage() {
                 </TableBody>
               </Table>
               <div className="flex items-center justify-between pt-2">
-                <p className="text-sm font-semibold text-gray-900">
+                <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
                   Total:{" "}
                   {formatCurrency(
                     tempItems.reduce((s, i) => s + i.cantidad, 0),
@@ -304,7 +310,7 @@ export default function VentasPage() {
               </div>
             </>
           ) : (
-            <div className="flex flex-col items-center justify-center py-10 text-gray-400">
+            <div className="flex flex-col items-center justify-center py-10" style={{ color: 'var(--text-muted)' }}>
               <ShoppingCartEmpty />
               <p className="mt-2 text-sm">Sin ventas agregadas aún</p>
             </div>
@@ -314,11 +320,11 @@ export default function VentasPage() {
 
       {/* ── Tabla de registros guardados ── */}
       <div className="space-y-3">
-        <h2 className="text-base font-semibold text-gray-800">
+        <h2 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>
           Registros guardados
         </h2>
         {registros.length === 0 ? (
-          <p className="text-sm text-gray-400">No hay registros guardados.</p>
+          <p className="text-sm" style={{ color: 'var(--text-muted)' }}>No hay registros guardados.</p>
         ) : (
           <Table>
             <TableHeader>
@@ -360,7 +366,7 @@ export default function VentasPage() {
                         ))}
                       </div>
                     </TableCell>
-                    <TableCell className="text-xs text-gray-400 max-w-xs truncate">
+                    <TableCell className="text-xs max-w-xs truncate" style={{ color: 'var(--text-muted)' }}>
                       {notas || "—"}
                     </TableCell>
                     <TableCell className="text-right">
@@ -454,7 +460,8 @@ export default function VentasPage() {
 function ShoppingCartEmpty() {
   return (
     <svg
-      className="h-12 w-12 text-gray-300"
+      className="h-12 w-12"
+      style={{ color: 'var(--border-color)' }}
       fill="none"
       viewBox="0 0 24 24"
       stroke="currentColor"
