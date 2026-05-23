@@ -1,9 +1,22 @@
 'use client'
 // Reporte: Ventas por método de pago desglosadas por día, columna por sucursal
 import { useState } from 'react'
-import { Select } from '@/components/ui/select'
-import { Label } from '@/components/ui/label'
-import { Table, TableHeader, TableBody, TableFooter, TableRow, TableHead, TableCell } from '@/components/ui/table'
+import {
+  Label,
+  Table,
+  TableHeader,
+  TableBody,
+  TableFooter,
+  TableRow,
+  TableHead,
+  TableCell,
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from "@cosmetics/ui"
+
 import { useReportes } from '@/hooks'
 import { formatCurrency, formatDate } from '@/lib/utils'
 
@@ -57,20 +70,41 @@ export default function MetodoPagoPorDiaPage() {
       <div className="flex gap-4 flex-wrap items-end">
         <div className="space-y-1.5">
           <Label>Método de pago</Label>
-          <Select value={efectivoId} onChange={e => setMetodoPagoId(e.target.value)} className="w-44">
-            {metodosPago.map(m => <option key={m.id} value={m.id}>{m.nombre}</option>)}
+          <Select value={efectivoId} onValueChange={setMetodoPagoId}>
+            <SelectTrigger className="w-44">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {metodosPago.map(m => (
+                <SelectItem key={m.id} value={m.id}>{m.nombre}</SelectItem>
+              ))}
+            </SelectContent>
           </Select>
         </div>
         <div className="space-y-1.5">
           <Label>Mes</Label>
-          <Select value={String(month)} onChange={e => setMonth(Number(e.target.value))} className="w-40">
-            {months.map((name, i) => <option key={i} value={String(i + 1)}>{name}</option>)}
+          <Select value={String(month)} onValueChange={v => setMonth(Number(v))}>
+            <SelectTrigger className="w-40">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {months.map((name, i) => (
+                <SelectItem key={i} value={String(i + 1)}>{name}</SelectItem>
+              ))}
+            </SelectContent>
           </Select>
         </div>
         <div className="space-y-1.5">
           <Label>Año</Label>
-          <Select value={String(year)} onChange={e => setYear(Number(e.target.value))} className="w-28">
-            {years.map(y => <option key={y} value={String(y)}>{y}</option>)}
+          <Select value={String(year)} onValueChange={v => setYear(Number(v))}>
+            <SelectTrigger className="w-28">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {years.map(y => (
+                <SelectItem key={y} value={String(y)}>{y}</SelectItem>
+              ))}
+            </SelectContent>
           </Select>
         </div>
       </div>

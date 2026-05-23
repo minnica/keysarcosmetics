@@ -5,18 +5,25 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { PlusCircle, Pencil, Trash2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Dialog, DialogFooter } from "@/components/ui/dialog";
 import {
+  Button,
   Table,
   TableHeader,
   TableBody,
   TableRow,
   TableHead,
   TableCell,
-} from "@/components/ui/table";
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogFooter,
+  DialogTitle,
+  DialogDescription,
+  Input,
+  Label,
+} from "@cosmetics/ui"
+
+;
 import { useMetodosPago } from "@/hooks";
 import type { MetodoPago } from "@/lib/mock-data";
 
@@ -127,11 +134,11 @@ export default function MetodosPagoPage() {
         </Table>
       )}
 
-      <Dialog
-        open={modalOpen}
-        onClose={() => setModalOpen(false)}
-        title={editing ? "Editar método" : "Nuevo método de pago"}
-      >
+      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{editing ? "Editar método" : "Nuevo método de pago"}</DialogTitle>
+          </DialogHeader>
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 pt-2">
           <div className="space-y-1.5">
             <Label htmlFor="nombre">Nombre del método de pago</Label>
@@ -165,6 +172,7 @@ export default function MetodosPagoPage() {
             </Button>
           </DialogFooter>
         </form>
+        </DialogContent>
       </Dialog>
     </div>
   );

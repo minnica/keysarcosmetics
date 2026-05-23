@@ -18,9 +18,9 @@ import {
   CardTitle,
   CardContent,
   CardDescription,
-} from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+} from "@cosmetics/ui";
+import { Input } from "@cosmetics/ui";
+import { Label } from "@cosmetics/ui";
 import { useSucursales, useEmpleados, useVentas } from "@/hooks";
 import { formatCurrency, formatDate, todayISO, monthName } from "@/lib/utils";
 import { cn } from "@/lib/utils";

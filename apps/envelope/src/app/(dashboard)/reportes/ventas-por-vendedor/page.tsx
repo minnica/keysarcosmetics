@@ -1,9 +1,17 @@
 'use client'
 // Reporte: Avance de vendedores vs meta mensual con barra de progreso coloreada
 import { useState } from 'react'
-import { DateRangePicker, type DateRange } from '@/components/ui/date-range-picker'
-import { Progress } from '@/components/ui/progress'
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
+import {
+  DateRangePicker,
+  type DateRange,
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+  ProgressKeysar,
+} from "@cosmetics/ui"
 import { useReportes } from '@/hooks'
 import { formatCurrency, todayISO } from '@/lib/utils'
 import { cn } from '@/lib/utils'
@@ -91,7 +99,7 @@ export default function VentasPorVendedorPage() {
                 <TableCell className="text-right" style={{ color: 'var(--text-muted)' }}>{formatCurrency(porLlegar)}</TableCell>
                 <TableCell className="min-w-[140px]">
                   <div className="flex items-center gap-2">
-                    <Progress value={porcentaje} className="flex-1" />
+                    <ProgressKeysar value={porcentaje} className="flex-1" />
                     <span className={cn('text-xs font-semibold w-10 text-right', colorText)}>
                       {porcentaje.toFixed(0)}%
                     </span>

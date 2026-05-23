@@ -82,6 +82,9 @@
     --table-row-alt: #f9f5f1;
     --input-bg: #ffffff;
     --input-disabled-bg: #faf8f5;
+    /* Dimensiones sidebar — usadas por el componente Sidebar oficial shadcn */
+    --sidebar-width: 16rem;
+    --sidebar-width-icon: 3rem;
   }
 
   /* Dark mode — activado con clase .dark en <html> */

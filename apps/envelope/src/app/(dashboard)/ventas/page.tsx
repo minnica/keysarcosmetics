@@ -1,25 +1,36 @@
 "use client";
 // Pantalla de captura de ventas — flujo de sobre físico digitalizado
 import { useState } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { PlusCircle, Trash2, Pencil, Save } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
-import { Dialog, DialogFooter } from "@/components/ui/dialog";
 import {
+  Button,
   Table,
   TableHeader,
   TableBody,
   TableRow,
   TableHead,
   TableCell,
-} from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogFooter,
+  DialogTitle,
+  DialogDescription,
+  Input,
+  Label,
+  Textarea,
+  Badge,
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from "@cosmetics/ui"
+
+;
 import {
   useSucursales,
   useEmpleados,
@@ -57,7 +68,8 @@ export default function VentasPage() {
   const selectorForm = useForm<SelectorForm>({
     resolver: zodResolver(selectorSchema),
     defaultValues: { sucursalId: "", fecha: todayISO(), vendedorId: "" },
-  });
+  })
+  const selectorControl = selectorForm.control
   const watchedSucursal = selectorForm.watch("sucursalId");
   const watchedVendedor = selectorForm.watch("vendedorId");
   const watchedFecha = selectorForm.watch("fecha");
@@ -71,7 +83,8 @@ export default function VentasPage() {
   const itemForm = useForm<VentaItemForm>({
     resolver: zodResolver(ventaItemSchema),
     defaultValues: { cantidad: 0, metodoPagoId: "", notas: "" },
-  });
+  })
+  const itemControl = itemForm.control
 
   const selectorValido = watchedSucursal && watchedFecha && watchedVendedor;
 
@@ -170,18 +183,22 @@ export default function VentasPage() {
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className="space-y-1.5">
             <Label htmlFor="sucursal">Sucursal</Label>
-            <Select
-              id="sucursal"
-              placeholder="Seleccionar..."
-              disabled={selectorLocked}
-              {...selectorForm.register("sucursalId")}
-            >
-              {sucursales.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.nombre}
-                </option>
-              ))}
-            </Select>
+            <Controller
+              control={selectorControl}
+              name="sucursalId"
+              render={({ field }) => (
+                <Select value={field.value} onValueChange={field.onChange} disabled={selectorLocked}>
+                  <SelectTrigger id="sucursal">
+                    <SelectValue placeholder="Seleccionar..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {sucursales.map((s) => (
+                      <SelectItem key={s.id} value={s.id}>{s.nombre}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            />
             {selectorForm.formState.errors.sucursalId && (
               <p className="text-xs text-red-500">
                 {selectorForm.formState.errors.sucursalId.message}
@@ -199,18 +216,22 @@ export default function VentasPage() {
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="vendedor">Vendedor</Label>
-            <Select
-              id="vendedor"
-              placeholder="Seleccionar..."
-              disabled={selectorLocked}
-              {...selectorForm.register("vendedorId")}
-            >
-              {empleados.map((e) => (
-                <option key={e.id} value={e.id}>
-                  {e.nombreCompleto}
-                </option>
-              ))}
-            </Select>
+            <Controller
+              control={selectorControl}
+              name="vendedorId"
+              render={({ field }) => (
+                <Select value={field.value} onValueChange={field.onChange} disabled={selectorLocked}>
+                  <SelectTrigger id="vendedor">
+                    <SelectValue placeholder="Seleccionar..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {empleados.map((e) => (
+                      <SelectItem key={e.id} value={e.id}>{e.nombreCompleto}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            />
           </div>
         </div>
       </div>
@@ -387,12 +408,12 @@ export default function VentasPage() {
       </div>
 
       {/* ── Modal de agregar/editar item ── */}
-      <Dialog
-        open={modalOpen}
-        onClose={() => setModalOpen(false)}
-        title={editingItem ? "Editar venta" : "Agregar venta"}
-        description="Ingresa los datos de la venta"
-      >
+      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{editingItem ? "Editar venta" : "Agregar venta"}</DialogTitle>
+            <DialogDescription>Ingresa los datos de la venta</DialogDescription>
+          </DialogHeader>
         <form
           onSubmit={itemForm.handleSubmit(handleSaveItem)}
           className="space-y-4 pt-2"
@@ -415,17 +436,22 @@ export default function VentasPage() {
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="metodoPago">Método de pago</Label>
-            <Select
-              id="metodoPago"
-              placeholder="Seleccionar..."
-              {...itemForm.register("metodoPagoId")}
-            >
-              {metodosPago.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.nombre}
-                </option>
-              ))}
-            </Select>
+            <Controller
+              control={itemControl}
+              name="metodoPagoId"
+              render={({ field }) => (
+                <Select value={field.value} onValueChange={field.onChange}>
+                  <SelectTrigger id="metodoPago">
+                    <SelectValue placeholder="Seleccionar..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {metodosPago.map((m) => (
+                      <SelectItem key={m.id} value={m.id}>{m.nombre}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            />
             {itemForm.formState.errors.metodoPagoId && (
               <p className="text-xs text-red-500">
                 {itemForm.formState.errors.metodoPagoId.message}
@@ -452,6 +478,7 @@ export default function VentasPage() {
             <Button type="submit">Guardar</Button>
           </DialogFooter>
         </form>
+        </DialogContent>
       </Dialog>
     </div>
   );

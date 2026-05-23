@@ -1,27 +1,125 @@
-// Barrel export de todos los componentes compartidos
-export { Button } from './components/Button'
-export type { ButtonProps } from './components/Button'
+// Componentes shadcn/ui canonicos - Fase 1, 2A, 2B y 2E (DateRangePicker)
 
-export { Input } from './components/Input'
-export type { InputProps } from './components/Input'
+export { Button, buttonVariants } from './components/ui/button'
+export type { ButtonProps } from './components/ui/button'
 
-export { Modal } from './components/Modal'
-export type { ModalProps } from './components/Modal'
+export { Input } from './components/ui/input'
 
-export { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from './components/Table'
+export { Label } from './components/ui/label'
 
-export { Card, CardHeader, CardTitle, CardContent } from './components/Card'
+export { Textarea } from './components/ui/textarea'
 
-export { Badge } from './components/Badge'
-export type { BadgeProps } from './components/Badge'
+export { Card, CardHeader, CardFooter, CardTitle, CardDescription, CardContent } from './components/ui/card'
 
-export { Dropdown } from './components/Dropdown'
-export type { DropdownProps, DropdownItem } from './components/Dropdown'
+export { Badge, badgeVariants } from './components/ui/badge'
+export type { BadgeProps } from './components/ui/badge'
 
-export { Sidebar, SidebarHeader, SidebarNav } from './components/Sidebar'
-export type { SidebarProps } from './components/Sidebar'
+// Fase 2D - Progress shadcn/ui canonico
+export { Progress } from './components/ui/progress'
 
-export { Navbar } from './components/Navbar'
-export type { NavbarProps } from './components/Navbar'
+// Fase 2D - Wrapper con colores de marca Keysar
+export { ProgressKeysar } from './components/custom/progress-keysar'
+
+// Fase 2C - Select shadcn/ui canonico
+export {
+  Select,
+  SelectGroup,
+  SelectValue,
+  SelectTrigger,
+  SelectContent,
+  SelectLabel,
+  SelectItem,
+  SelectSeparator,
+  SelectScrollUpButton,
+  SelectScrollDownButton,
+} from './components/ui/select'
+
+// Fase 2B - Dialog shadcn/ui canonico
+export {
+  Dialog,
+  DialogPortal,
+  DialogOverlay,
+  DialogClose,
+  DialogTrigger,
+  DialogContent,
+  DialogHeader,
+  DialogFooter,
+  DialogTitle,
+  DialogDescription,
+} from './components/ui/dialog'
+
+// Fase 2A - Table shadcn/ui canonico
+export {
+  Table,
+  TableHeader,
+  TableBody,
+  TableFooter,
+  TableHead,
+  TableRow,
+  TableCell,
+  TableCaption,
+} from './components/ui/table'
+
+// Fase 2E - Popover shadcn/ui canonico
+export { Popover, PopoverTrigger, PopoverContent, PopoverAnchor } from './components/ui/popover'
+
+// Fase 2E - Calendar shadcn/ui canonico
+export { Calendar } from './components/ui/calendar'
+export type { CalendarProps } from './components/ui/calendar'
+
+// Fase 2E - DateRangePicker shadcn/ui (Calendar + Popover)
+export { DateRangePicker } from './components/ui/date-range-picker'
+export type { DateRange } from './components/ui/date-range-picker'
+
+// Fase 3 - Sheet shadcn/ui canonico
+export {
+  Sheet,
+  SheetPortal,
+  SheetOverlay,
+  SheetTrigger,
+  SheetClose,
+  SheetContent,
+  SheetHeader,
+  SheetFooter,
+  SheetTitle,
+  SheetDescription,
+} from './components/ui/sheet'
+
+// Fase 3 - Tooltip shadcn/ui canonico
+export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from './components/ui/tooltip'
+
+// Fase 3 - Separator canonico
+export { Separator } from './components/ui/separator'
+
+// Fase 3 - Sidebar oficial shadcn/ui canonico
+export {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupAction,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarInput,
+  SidebarInset,
+  SidebarMenu,
+  SidebarMenuAction,
+  SidebarMenuBadge,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarMenuSkeleton,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
+  SidebarProvider,
+  SidebarRail,
+  SidebarSeparator,
+  SidebarTrigger,
+  useSidebar,
+} from './components/ui/sidebar'
+
+// Fase 3 - Hook mobile
+export { useIsMobile } from './hooks/use-mobile'
 
 export { cn } from './lib/utils'

@@ -1,24 +1,35 @@
 "use client";
 // Pantalla de gestión de empleados
 import { useState, type ChangeEvent } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { UserPlus, Pencil, Trash2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select } from "@/components/ui/select";
-import { Dialog, DialogFooter } from "@/components/ui/dialog";
 import {
+  Button,
   Table,
   TableHeader,
   TableBody,
   TableRow,
   TableHead,
   TableCell,
-} from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogFooter,
+  DialogTitle,
+  DialogDescription,
+  Input,
+  Label,
+  Badge,
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from "@cosmetics/ui"
+
+;
 import { useEmpleados } from "@/hooks";
 import { formatCurrency } from "@/lib/utils";
 import { PUESTOS, type Empleado, type Puesto } from "@/lib/mock-data";
@@ -45,6 +56,7 @@ export default function EmpleadosPage() {
     handleSubmit,
     watch,
     reset,
+    control,
     formState: { errors, isSubmitting },
   } = useForm<EmpleadoForm>({
     resolver: zodResolver(empleadoSchema),
@@ -212,11 +224,11 @@ export default function EmpleadosPage() {
         </Table>
       )}
 
-      <Dialog
-        open={modalOpen}
-        onClose={() => setModalOpen(false)}
-        title={editing ? "Editar empleado" : "Nuevo empleado"}
-      >
+      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{editing ? "Editar empleado" : "Nuevo empleado"}</DialogTitle>
+          </DialogHeader>
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 pt-2">
           <div className="space-y-1.5">
             <Label>Nombre completo</Label>
@@ -271,13 +283,22 @@ export default function EmpleadosPage() {
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="puesto">Puesto</Label>
-            <Select id="puesto" {...register("puesto")}>
-              {PUESTOS.map((p) => (
-                <option key={p} value={p}>
-                  {p}
-                </option>
-              ))}
-            </Select>
+            <Controller
+              control={control}
+              name="puesto"
+              render={({ field }) => (
+                <Select value={field.value} onValueChange={field.onChange}>
+                  <SelectTrigger id="puesto">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PUESTOS.map((p) => (
+                      <SelectItem key={p} value={p}>{p}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="metaIndividual">Meta individual (MXN)</Label>
@@ -311,6 +332,7 @@ export default function EmpleadosPage() {
             </Button>
           </DialogFooter>
         </form>
+        </DialogContent>
       </Dialog>
     </div>
   );
