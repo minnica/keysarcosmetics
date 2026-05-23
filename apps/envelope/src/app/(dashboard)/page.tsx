@@ -15,13 +15,16 @@ import { cn } from '@/lib/utils'
 // Paleta de sucursales con colores complementarios de la marca
 const SUCURSAL_COLORS = ['#6fc9db', '#8bb09b', '#c3a583', '#648672']
 
-// Colores de fondo para las cards de cada período
+const DEFAULT_PERIODO_STYLE = {
+  sectionBg: '#e8f6f9',
+  totalBg: '#c8ebf2',
+  totalText: '#3a8799',
+  border: '#a5dae6',
+}
+
 const PERIODO_STYLES = [
-  // Día → azul suave
-  { sectionBg: '#e8f6f9', totalBg: '#c8ebf2', totalText: '#3a8799', border: '#a5dae6' },
-  // Mes → nude/gold
+  DEFAULT_PERIODO_STYLE,
   { sectionBg: '#faf3ee', totalBg: '#f0dece', totalText: '#8a5f38', border: '#dfc4a8' },
-  // Año → verde salvia
   { sectionBg: '#eef5f0', totalBg: '#d0e8d9', totalText: '#3d6b52', border: '#9fcfb1' },
 ]
 
@@ -119,7 +122,7 @@ export default function DashboardPage() {
 
       {/* ── Cards de resumen por período ── */}
       {periodos.map(({ label, filter }, periodIdx) => {
-        const styles = PERIODO_STYLES[periodIdx] ?? PERIODO_STYLES[0]
+        const styles = PERIODO_STYLES[periodIdx] ?? DEFAULT_PERIODO_STYLE
         return (
           <section key={label}>
             <h2

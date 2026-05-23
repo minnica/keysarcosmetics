@@ -28,10 +28,9 @@ export function TableHeader({ className, ...props }: React.HTMLAttributes<HTMLTa
 export function TableBody({ className, ...props }: React.HTMLAttributes<HTMLTableSectionElement>) {
   return (
     <tbody
-      className={cn('divide-y', className)}
+      className={cn('divide-y divide-[var(--border-color)]', className)}
       style={{
         backgroundColor: 'var(--bg-card)',
-        divideColor: 'var(--border-color)',
       }}
       {...props}
     />
