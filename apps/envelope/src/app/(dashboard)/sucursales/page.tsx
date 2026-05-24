@@ -21,6 +21,16 @@ import {
   TableHead,
   TableHeader,
   TableRow,
+  AlertDialog,
+  AlertDialogTrigger,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogFooter,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogAction,
+  AlertDialogCancel,
+  toast,
 } from '@cosmetics/ui'
 
 import { useSucursales } from '@/hooks'
@@ -39,6 +49,8 @@ export default function SucursalesPage() {
     defaultValues: { nombre: '' },
   })
 
+  const nombreField = register('nombre')
+
   function openNew() {
     setEditing(null)
     reset({ nombre: '' })
@@ -52,10 +64,13 @@ export default function SucursalesPage() {
   }
 
   async function onSubmit(data: FormData) {
+    const nombre = data.nombre.trim().toUpperCase()
     if (editing) {
-      await update({ ...editing, nombre: data.nombre })
+      await update({ ...editing, nombre })
+      toast.success('Sucursal actualizada')
     } else {
-      await add(data.nombre)
+      await add(nombre)
+      toast.success('Sucursal creada')
     }
     setModalOpen(false)
   }
@@ -94,7 +109,30 @@ export default function SucursalesPage() {
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-1">
                     <Button size="icon" variant="ghost" onClick={() => openEdit(s)}><Pencil className="h-4 w-4" /></Button>
-                    <Button size="icon" variant="ghost" onClick={() => remove(s.id)}><Trash2 className="h-4 w-4 text-red-500" /></Button>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button size="icon" variant="ghost">
+                          <Trash2 className="h-4 w-4 text-red-500" />
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>¿Eliminar sucursal?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Esta acción no se puede deshacer. Se eliminará la sucursal <strong>{s.nombre}</strong>.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                          <AlertDialogAction
+                            className="bg-red-600 hover:bg-red-700"
+                            onClick={() => remove(s.id)}
+                          >
+                            Eliminar
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
                   </div>
                 </TableCell>
               </TableRow>
@@ -108,19 +146,27 @@ export default function SucursalesPage() {
           <DialogHeader>
             <DialogTitle>{editing ? 'Editar sucursal' : 'Nueva sucursal'}</DialogTitle>
           </DialogHeader>
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 pt-2">
-          <div className="space-y-1.5">
-            <Label htmlFor="nombre">Nombre de sucursal</Label>
-            <Input id="nombre" placeholder="Ej. Sucursal Centro" {...register('nombre')} />
-            {errors.nombre && <p className="text-xs text-red-500">{errors.nombre.message}</p>}
-          </div>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setModalOpen(false)}>Cancelar</Button>
-            <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting ? 'Guardando...' : editing ? 'Guardar cambios' : 'Crear sucursal'}
-            </Button>
-          </DialogFooter>
-        </form>
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 pt-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="nombre">Nombre de sucursal</Label>
+              <Input
+                id="nombre"
+                placeholder="Ej. SUCURSAL CENTRO"
+                {...nombreField}
+                onChange={(event) => {
+                  event.target.value = event.target.value.toUpperCase()
+                  void nombreField.onChange(event)
+                }}
+              />
+              {errors.nombre && <p className="text-xs text-red-500">{errors.nombre.message}</p>}
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setModalOpen(false)}>Cancelar</Button>
+              <Button type="submit" disabled={isSubmitting}>
+                {isSubmitting ? 'Guardando...' : editing ? 'Guardar cambios' : 'Crear sucursal'}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
     </div>

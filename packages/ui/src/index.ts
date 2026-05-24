@@ -20,6 +20,10 @@ export { Progress } from './components/ui/progress'
 // Fase 2D - Wrapper con colores de marca Keysar
 export { ProgressKeysar } from './components/custom/progress-keysar'
 
+// Combobox — Select con búsqueda integrada
+export { Combobox } from './components/custom/combobox'
+export type { ComboboxOption } from './components/custom/combobox'
+
 // Fase 2C - Select shadcn/ui canonico
 export {
   Select,
@@ -123,3 +127,22 @@ export {
 export { useIsMobile } from './hooks/use-mobile'
 
 export { cn } from './lib/utils'
+
+// AlertDialog shadcn/ui canónico
+export {
+  AlertDialog,
+  AlertDialogPortal,
+  AlertDialogOverlay,
+  AlertDialogTrigger,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogFooter,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogAction,
+  AlertDialogCancel,
+} from './components/ui/alert-dialog'
+
+// Sonner (Toaster) shadcn/ui canónico + toast helper
+export { Toaster } from './components/ui/sonner'
+export { toast } from 'sonner'

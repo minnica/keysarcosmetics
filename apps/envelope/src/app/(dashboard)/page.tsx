@@ -11,6 +11,7 @@ import {
   Legend,
   ResponsiveContainer,
   Cell,
+  LabelList,
 } from "recharts";
 import {
   Card,
@@ -28,27 +29,11 @@ import { cn } from "@/lib/utils";
 // Paleta de sucursales con colores complementarios de la marca
 const SUCURSAL_COLORS = ["#6fc9db", "#8bb09b", "#c3a583", "#648672"];
 
-const DEFAULT_PERIODO_STYLE = {
-  sectionBg: "#e8f6f9",
-  totalBg: "#c8ebf2",
-  totalText: "#3a8799",
-  border: "#a5dae6",
-};
-
+// Acento por período: gold → sage → blue-light (paleta de marca)
 const PERIODO_STYLES = [
-  DEFAULT_PERIODO_STYLE,
-  {
-    sectionBg: "#faf3ee",
-    totalBg: "#f0dece",
-    totalText: "#8a5f38",
-    border: "#dfc4a8",
-  },
-  {
-    sectionBg: "#eef5f0",
-    totalBg: "#d0e8d9",
-    totalText: "#3d6b52",
-    border: "#9fcfb1",
-  },
+  { accent: "#c3a583" }, // día — gold
+  { accent: "#8bb09b" }, // mes — green-sage
+  { accent: "#6fc9db" }, // año — blue-light
 ];
 
 export default function DashboardPage() {
@@ -111,6 +96,7 @@ export default function DashboardPage() {
   });
 
   const vendedoresData = empleados
+    .filter((emp) => emp.metaIndividual != null && emp.metaIndividual > 0)
     .map((emp) => {
       const totalVendido = registros
         .filter(
@@ -168,65 +154,75 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* ── Cards de resumen por período ── */}
-      {periodos.map(({ label, filter }, periodIdx) => {
-        const styles = PERIODO_STYLES[periodIdx] ?? DEFAULT_PERIODO_STYLE;
-        return (
-          <section key={label}>
-            <h2
-              className="text-xs font-semibold uppercase tracking-[0.12em] mb-3"
-              style={{ color: "var(--color-gold)" }}
+      {/* ── Cards de resumen por período ── 1 card por período, 3 cols desktop / 1 col mobile */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        {periodos.map(({ label, filter }, periodIdx) => {
+          const { accent } = (PERIODO_STYLES[periodIdx] ?? PERIODO_STYLES[0])!;
+          return (
+            <Card
+              key={label}
+              style={{
+                backgroundColor: "var(--bg-card)",
+                borderTop: `3px solid ${accent}`,
+                borderLeft: "1px solid var(--border-color)",
+                borderRight: "1px solid var(--border-color)",
+                borderBottom: "1px solid var(--border-color)",
+                boxShadow: "var(--card-shadow)",
+              }}
             >
-              {label}
-            </h2>
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              {sucursales.map((s, idx) => {
-                const total = sumForSucursal(s.id, filter);
-                return (
-                  <Card
-                    key={s.id}
-                    style={{
-                      borderColor: styles.border,
-                      backgroundColor: styles.totalBg,
-                    }}
-                  >
-                    <CardHeader>
-                      <CardDescription style={{ color: styles.totalText }}>
+              <CardHeader className="pb-2 pt-5 px-5">
+                <p
+                  className="text-[14px] font-bold uppercase tracking-widest"
+                  style={{ color: "var(--text-muted)" }}
+                >
+                  {label}
+                </p>
+              </CardHeader>
+              <CardContent className="px-5 pb-5 space-y-2">
+                {sucursales.map((s) => {
+                  const total = sumForSucursal(s.id, filter);
+                  return (
+                    <div
+                      key={s.id}
+                      className="flex justify-between items-center gap-4"
+                    >
+                      <span
+                        className="text-sm"
+                        style={{ color: "var(--text-muted)" }}
+                      >
                         {s.nombre}
-                      </CardDescription>
-                      <CardTitle
-                        className="text-2xl"
-                        style={{ color: styles.totalText }}
+                      </span>
+                      <span
+                        className="text-sm font-medium tabular-nums"
+                        style={{ color: "var(--text-primary)" }}
                       >
                         {formatCurrency(total)}
-                      </CardTitle>
-                    </CardHeader>
-                  </Card>
-                );
-              })}
-              {/* Card total general del período */}
-              <Card
-                style={{
-                  borderColor: styles.border,
-                  backgroundColor: styles.totalBg,
-                }}
-              >
-                <CardHeader>
-                  <CardDescription style={{ color: styles.totalText }}>
-                    Total general
-                  </CardDescription>
-                  <CardTitle
-                    className="text-2xl"
-                    style={{ color: styles.totalText }}
+                      </span>
+                    </div>
+                  );
+                })}
+                <div
+                  className="flex justify-between items-end pt-3 mt-1 border-t"
+                  style={{ borderColor: "var(--border-color)" }}
+                >
+                  <span
+                    className="text-[14px] font-bold uppercase tracking-widest"
+                    style={{ color: "var(--text-muted)" }}
+                  >
+                    Total
+                  </span>
+                  <span
+                    className="text-2xl font-bold tabular-nums leading-none"
+                    style={{ color: accent }}
                   >
                     {formatCurrency(totalForPeriod(filter))}
-                  </CardTitle>
-                </CardHeader>
-              </Card>
-            </div>
-          </section>
-        );
-      })}
+                  </span>
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
 
       {/* ── Gráfica 1: Total mensual por sucursal ── */}
       <section>
@@ -292,66 +288,112 @@ export default function DashboardPage() {
         </h2>
         <Card>
           <CardContent className="pt-6">
-            <ResponsiveContainer
-              width="100%"
-              height={Math.max(200, vendedoresData.length * 48)}
-            >
-              <BarChart
-                data={vendedoresData}
-                layout="vertical"
-                margin={{ top: 5, right: 30, left: 60, bottom: 5 }}
+            {vendedoresData.length === 0 ? (
+              <div
+                className="flex flex-col items-center justify-center py-12 gap-2"
+                style={{ color: "var(--text-muted)" }}
               >
-                <CartesianGrid
-                  strokeDasharray="3 3"
-                  stroke="var(--border-color)"
-                  horizontal={false}
-                />
-                <XAxis
-                  type="number"
-                  tickFormatter={formatK}
-                  tick={{ fontSize: 11, fill: "var(--text-muted)" }}
-                />
-                <YAxis
-                  type="category"
-                  dataKey="nombre"
-                  tick={{ fontSize: 12, fill: "var(--text-muted)" }}
-                  width={60}
-                />
-                <Tooltip
-                  formatter={(v: number) => formatCurrency(v)}
-                  contentStyle={{
-                    backgroundColor: "var(--bg-card)",
-                    border: "1px solid var(--border-color)",
-                    borderRadius: "10px",
-                    color: "var(--text-primary)",
-                    fontSize: "12px",
-                  }}
-                />
-                <Legend
-                  wrapperStyle={{ fontSize: 12, color: "var(--text-muted)" }}
-                />
-                {/* Barra de meta — fondo neutro */}
-                <Bar
-                  dataKey="meta"
-                  fill="var(--border-color)"
-                  name="Meta"
-                  radius={[0, 4, 4, 0]}
+                <p className="text-sm font-medium">Sin vendedores con meta asignada</p>
+                <p className="text-xs">
+                  Asigna una meta individual en el módulo de empleados para ver el avance.
+                </p>
+              </div>
+            ) : (
+              <ResponsiveContainer
+                width="100%"
+                height={Math.max(200, vendedoresData.length * 52)}
+              >
+                <BarChart
+                  data={vendedoresData}
+                  layout="vertical"
+                  margin={{ top: 5, right: 60, left: 60, bottom: 5 }}
                 >
-                  {vendedoresData.map((_, i) => (
-                    <Cell key={i} fill="var(--border-color)" />
-                  ))}
-                </Bar>
-                {/* Barra de vendido — color según porcentaje de meta */}
-                <Bar dataKey="vendido" name="Vendido" radius={[0, 4, 4, 0]}>
-                  {vendedoresData.map((entry, i) => {
-                    const pct = entry.meta > 0 ? entry.vendido / entry.meta : 0;
-                    const color =
-                      pct < 0.5 ? "#e07070" : pct < 0.8 ? "#c3a583" : "#648672";
-                    return <Cell key={i} fill={color} />;
-                  })}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    stroke="var(--border-color)"
+                    horizontal={false}
+                  />
+                  <XAxis
+                    type="number"
+                    tickFormatter={formatK}
+                    tick={{ fontSize: 11, fill: "var(--text-muted)" }}
+                  />
+                  <YAxis
+                    type="category"
+                    dataKey="nombre"
+                    tick={{ fontSize: 12, fill: "var(--text-muted)" }}
+                    width={60}
+                  />
+                  <Tooltip
+                    content={({ active, payload }) => {
+                      if (!active || !payload?.length) return null;
+                      const d = payload[0]?.payload as {
+                        nombre: string;
+                        vendido: number;
+                        meta: number;
+                      };
+                      const pct =
+                        d.meta > 0 ? Math.round((d.vendido / d.meta) * 100) : 0;
+                      return (
+                        <div
+                          style={{
+                            backgroundColor: "var(--bg-card)",
+                            border: "1px solid var(--border-color)",
+                            borderRadius: "10px",
+                            color: "var(--text-primary)",
+                            fontSize: "12px",
+                            padding: "10px 14px",
+                            lineHeight: "1.8",
+                          }}
+                        >
+                          <p className="font-semibold mb-1">{d.nombre}</p>
+                          <p>Vendido: {formatCurrency(d.vendido)}</p>
+                          <p style={{ color: "var(--text-muted)" }}>
+                            Meta: {formatCurrency(d.meta)}
+                          </p>
+                          <p
+                            style={{
+                              color:
+                                pct < 50
+                                  ? "#d4895a"
+                                  : pct < 80
+                                    ? "#c3a583"
+                                    : "#648672",
+                              fontWeight: 600,
+                            }}
+                          >
+                            {pct}% alcanzado
+                          </p>
+                        </div>
+                      );
+                    }}
+                  />
+                  <Legend
+                    wrapperStyle={{ fontSize: 12, color: "var(--text-muted)" }}
+                  />
+                  {/* Barra de meta */}
+                  <Bar
+                    dataKey="meta"
+                    fill="#f3f0e9"
+                    name="Meta"
+                    radius={[0, 4, 4, 0]}
+                  />
+                  {/* Barra de vendido */}
+                  <Bar dataKey="vendido" name="Vendido" fill="#ecd1c8" radius={[0, 4, 4, 0]}>
+                    <LabelList
+                      dataKey="vendido"
+                      position="right"
+                      style={{ fontSize: 11, fill: "var(--text-muted)" }}
+                      formatter={(v: number, entry: unknown) => {
+                        const d = entry as { meta?: number };
+                        if (!d?.meta || d.meta === 0) return "";
+                        return `${Math.round((v / d.meta) * 100)}%`;
+                      }}
+                    />
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            )}
           </CardContent>
         </Card>
       </section>

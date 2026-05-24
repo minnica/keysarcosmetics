@@ -68,7 +68,7 @@ export default function LoginPage() {
               Iniciar sesión
             </h1>
             <p className="text-xs mt-1 tracking-wide" style={{ color: 'var(--text-muted)' }}>
-              Control de ventas — Envelope
+              Control de ventas — Keysarcosmetics
             </p>
           </div>
         </div>
