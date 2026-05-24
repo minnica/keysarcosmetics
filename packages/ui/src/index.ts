@@ -20,6 +20,10 @@ export { Progress } from './components/ui/progress'
 // Fase 2D - Wrapper con colores de marca Keysar
 export { ProgressKeysar } from './components/custom/progress-keysar'
 
+// Combobox — Select con búsqueda integrada
+export { Combobox } from './components/custom/combobox'
+export type { ComboboxOption } from './components/custom/combobox'
+
 // Fase 2C - Select shadcn/ui canonico
 export {
   Select,

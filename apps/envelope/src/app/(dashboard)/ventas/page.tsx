@@ -37,6 +37,7 @@ import {
   AlertDialogDescription,
   AlertDialogAction,
   AlertDialogCancel,
+  Combobox,
   toast,
 } from "@cosmetics/ui";
 import {
@@ -231,16 +232,16 @@ export default function VentasPage() {
               control={selectorControl}
               name="vendedorId"
               render={({ field }) => (
-                <Select value={field.value} onValueChange={field.onChange} disabled={selectorLocked}>
-                  <SelectTrigger id="vendedor">
-                    <SelectValue placeholder="Seleccionar..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {empleados.map((e) => (
-                      <SelectItem key={e.id} value={e.id}>{e.nombreCompleto}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Combobox
+                  id="vendedor"
+                  options={empleados.map((e) => ({ value: e.id, label: e.nombreCompleto }))}
+                  value={field.value}
+                  onValueChange={field.onChange}
+                  disabled={selectorLocked}
+                  placeholder="Seleccionar..."
+                  searchPlaceholder="Buscar vendedor..."
+                  emptyMessage="Sin vendedores"
+                />
               )}
             />
           </div>

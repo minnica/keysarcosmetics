@@ -74,6 +74,7 @@ Componentes shadcn canónicos en `packages/ui/src/components/ui`:
 Wrappers custom en `packages/ui/src/components/custom`:
 
 - `ProgressKeysar` — wrapper custom sobre `Progress` oficial
+- `Combobox` — select con búsqueda integrada; usa `Popover` + `Input`. Props: `options`, `value`, `onValueChange`, `placeholder`, `searchPlaceholder`, `emptyMessage`, `disabled`, `id`. Exporta también `ComboboxOption` (interface `{ value: string; label: string }`).
 
 **Reglas de UI:**
 - Apps consumen UI exclusivamente desde `@cosmetics/ui`.
