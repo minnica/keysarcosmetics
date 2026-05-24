@@ -342,7 +342,7 @@ export default function EmpleadosPage() {
 
             <div className="space-y-1.5">
               <Label htmlFor="metaIndividual">Meta individual (MXN)</Label>
-              <Input id="metaIndividual" type="number" step="100" min="0" {...register('metaIndividual')} />
+              <Input id="metaIndividual" type="number" step="any" min="0" {...register('metaIndividual')} />
               {errors.metaIndividual && <p className="text-xs text-red-500">{errors.metaIndividual.message}</p>}
             </div>
 

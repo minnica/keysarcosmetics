@@ -3,7 +3,7 @@ import { Toaster } from '@cosmetics/ui'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'Envelope — Control de Ventas',
+  title: 'Keeysarcosmetics — Control de Ventas',
   description: 'Sistema de control de ventas por sucursal',
   icons: { icon: '/logo.svg' },
 }

@@ -54,6 +54,8 @@ export default function BancosPage() {
     defaultValues: { nombre: '' },
   })
 
+  const nombreField = register('nombre')
+
   function openNew() {
     setEditing(null)
     reset({ nombre: '' })
@@ -67,7 +69,7 @@ export default function BancosPage() {
   }
 
   async function onSubmit(data: FormData) {
-    const nombre = data.nombre.trim()
+    const nombre = data.nombre.trim().toUpperCase()
     if (editing) {
       await update({ ...editing, nombre })
       toast.success('Banco actualizado')
@@ -163,7 +165,11 @@ export default function BancosPage() {
               <Input
                 id="nombre"
                 placeholder="Ej. BBVA"
-                {...register('nombre')}
+                {...nombreField}
+                onChange={(event) => {
+                  event.target.value = event.target.value.toUpperCase()
+                  void nombreField.onChange(event)
+                }}
               />
               {errors.nombre && (
                 <p className="text-xs text-red-500">{errors.nombre.message}</p>

@@ -49,6 +49,8 @@ export default function SucursalesPage() {
     defaultValues: { nombre: '' },
   })
 
+  const nombreField = register('nombre')
+
   function openNew() {
     setEditing(null)
     reset({ nombre: '' })
@@ -62,11 +64,12 @@ export default function SucursalesPage() {
   }
 
   async function onSubmit(data: FormData) {
+    const nombre = data.nombre.trim().toUpperCase()
     if (editing) {
-      await update({ ...editing, nombre: data.nombre })
+      await update({ ...editing, nombre })
       toast.success('Sucursal actualizada')
     } else {
-      await add(data.nombre)
+      await add(nombre)
       toast.success('Sucursal creada')
     }
     setModalOpen(false)
@@ -146,7 +149,15 @@ export default function SucursalesPage() {
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 pt-2">
             <div className="space-y-1.5">
               <Label htmlFor="nombre">Nombre de sucursal</Label>
-              <Input id="nombre" placeholder="Ej. Sucursal Centro" {...register('nombre')} />
+              <Input
+                id="nombre"
+                placeholder="Ej. SUCURSAL CENTRO"
+                {...nombreField}
+                onChange={(event) => {
+                  event.target.value = event.target.value.toUpperCase()
+                  void nombreField.onChange(event)
+                }}
+              />
               {errors.nombre && <p className="text-xs text-red-500">{errors.nombre.message}</p>}
             </div>
             <DialogFooter>
