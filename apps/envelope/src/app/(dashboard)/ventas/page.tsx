@@ -28,9 +28,17 @@ import {
   SelectValue,
   SelectContent,
   SelectItem,
-} from "@cosmetics/ui"
-
-;
+  AlertDialog,
+  AlertDialogTrigger,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogFooter,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogAction,
+  AlertDialogCancel,
+  toast,
+} from "@cosmetics/ui";
 import {
   useSucursales,
   useEmpleados,
@@ -68,8 +76,8 @@ export default function VentasPage() {
   const selectorForm = useForm<SelectorForm>({
     resolver: zodResolver(selectorSchema),
     defaultValues: { sucursalId: "", fecha: todayISO(), vendedorId: "" },
-  })
-  const selectorControl = selectorForm.control
+  });
+  const selectorControl = selectorForm.control;
   const watchedSucursal = selectorForm.watch("sucursalId");
   const watchedVendedor = selectorForm.watch("vendedorId");
   const watchedFecha = selectorForm.watch("fecha");
@@ -83,8 +91,8 @@ export default function VentasPage() {
   const itemForm = useForm<VentaItemForm>({
     resolver: zodResolver(ventaItemSchema),
     defaultValues: { cantidad: 0, metodoPagoId: "", notas: "" },
-  })
-  const itemControl = itemForm.control
+  });
+  const itemControl = itemForm.control;
 
   const selectorValido = watchedSucursal && watchedFecha && watchedVendedor;
 
@@ -119,8 +127,10 @@ export default function VentasPage() {
           i.id === editingItem.id ? { id: editingItem.id, ...cleanData } : i,
         ),
       );
+      toast.success("Venta actualizada");
     } else {
       setTempItems((prev) => [...prev, { id: generateId(), ...cleanData }]);
+      toast.success("Venta agregada");
     }
 
     setModalOpen(false);
@@ -145,6 +155,7 @@ export default function VentasPage() {
       setTempItems([]);
       setSelectorLocked(false);
       selectorForm.reset({ sucursalId: "", fecha: todayISO(), vendedorId: "" });
+      toast.success("Registro guardado");
     } finally {
       setSaving(false);
     }
@@ -291,13 +302,30 @@ export default function VentasPage() {
                           >
                             <Pencil className="h-4 w-4" />
                           </Button>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            onClick={() => handleDeleteItem(item.id)}
-                          >
-                            <Trash2 className="h-4 w-4 text-red-500" />
-                          </Button>
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button size="icon" variant="ghost">
+                                <Trash2 className="h-4 w-4 text-red-500" />
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>¿Eliminar venta?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  Se eliminará esta venta de {formatCurrency(item.cantidad)} del registro actual.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                <AlertDialogAction
+                                  className="bg-red-600 hover:bg-red-700"
+                                  onClick={() => handleDeleteItem(item.id)}
+                                >
+                                  Eliminar
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
                         </div>
                       </TableCell>
                     </TableRow>
@@ -391,13 +419,31 @@ export default function VentasPage() {
                       {notas || "—"}
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        onClick={() => deleteRegistro(reg.id)}
-                      >
-                        <Trash2 className="h-4 w-4 text-red-500" />
-                      </Button>
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button size="icon" variant="ghost">
+                            <Trash2 className="h-4 w-4 text-red-500" />
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>¿Eliminar registro?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Esta acción no se puede deshacer. Se eliminará el registro de{" "}
+                              {vendedorNombre(reg.vendedorId)} del {formatDate(reg.fecha)} por {formatCurrency(total)}.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                            <AlertDialogAction
+                              className="bg-red-600 hover:bg-red-700"
+                              onClick={() => deleteRegistro(reg.id)}
+                            >
+                              Eliminar
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
                     </TableCell>
                   </TableRow>
                 );
@@ -414,70 +460,70 @@ export default function VentasPage() {
             <DialogTitle>{editingItem ? "Editar venta" : "Agregar venta"}</DialogTitle>
             <DialogDescription>Ingresa los datos de la venta</DialogDescription>
           </DialogHeader>
-        <form
-          onSubmit={itemForm.handleSubmit(handleSaveItem)}
-          className="space-y-4 pt-2"
-        >
-          <div className="space-y-1.5">
-            <Label htmlFor="cantidad">Cantidad (MXN)</Label>
-            <Input
-              id="cantidad"
-              type="number"
-              step="0.01"
-              min="0"
-              placeholder="0.00"
-              {...itemForm.register("cantidad")}
-            />
-            {itemForm.formState.errors.cantidad && (
-              <p className="text-xs text-red-500">
-                {itemForm.formState.errors.cantidad.message}
-              </p>
-            )}
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="metodoPago">Método de pago</Label>
-            <Controller
-              control={itemControl}
-              name="metodoPagoId"
-              render={({ field }) => (
-                <Select value={field.value} onValueChange={field.onChange}>
-                  <SelectTrigger id="metodoPago">
-                    <SelectValue placeholder="Seleccionar..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {metodosPago.map((m) => (
-                      <SelectItem key={m.id} value={m.id}>{m.nombre}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+          <form
+            onSubmit={itemForm.handleSubmit(handleSaveItem)}
+            className="space-y-4 pt-2"
+          >
+            <div className="space-y-1.5">
+              <Label htmlFor="cantidad">Cantidad (MXN)</Label>
+              <Input
+                id="cantidad"
+                type="number"
+                step="0.01"
+                min="0"
+                placeholder="0.00"
+                {...itemForm.register("cantidad")}
+              />
+              {itemForm.formState.errors.cantidad && (
+                <p className="text-xs text-red-500">
+                  {itemForm.formState.errors.cantidad.message}
+                </p>
               )}
-            />
-            {itemForm.formState.errors.metodoPagoId && (
-              <p className="text-xs text-red-500">
-                {itemForm.formState.errors.metodoPagoId.message}
-              </p>
-            )}
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="notas">Notas (opcional)</Label>
-            <Textarea
-              id="notas"
-              rows={3}
-              placeholder="Observaciones..."
-              {...itemForm.register("notas")}
-            />
-          </div>
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setModalOpen(false)}
-            >
-              Cancelar
-            </Button>
-            <Button type="submit">Guardar</Button>
-          </DialogFooter>
-        </form>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="metodoPago">Método de pago</Label>
+              <Controller
+                control={itemControl}
+                name="metodoPagoId"
+                render={({ field }) => (
+                  <Select value={field.value} onValueChange={field.onChange}>
+                    <SelectTrigger id="metodoPago">
+                      <SelectValue placeholder="Seleccionar..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {metodosPago.map((m) => (
+                        <SelectItem key={m.id} value={m.id}>{m.nombre}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+              {itemForm.formState.errors.metodoPagoId && (
+                <p className="text-xs text-red-500">
+                  {itemForm.formState.errors.metodoPagoId.message}
+                </p>
+              )}
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="notas">Notas (opcional)</Label>
+              <Textarea
+                id="notas"
+                rows={3}
+                placeholder="Observaciones..."
+                {...itemForm.register("notas")}
+              />
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setModalOpen(false)}
+              >
+                Cancelar
+              </Button>
+              <Button type="submit">Guardar</Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
     </div>

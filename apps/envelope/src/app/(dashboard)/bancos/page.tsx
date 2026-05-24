@@ -20,6 +20,16 @@ import {
   TableHead,
   TableHeader,
   TableRow,
+  AlertDialog,
+  AlertDialogTrigger,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogFooter,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogAction,
+  AlertDialogCancel,
+  toast,
 } from '@cosmetics/ui'
 import { useBanks } from '@/hooks'
 import type { Bank } from '@cosmetics/types'
@@ -60,8 +70,10 @@ export default function BancosPage() {
     const nombre = data.nombre.trim()
     if (editing) {
       await update({ ...editing, nombre })
+      toast.success('Banco actualizado')
     } else {
       await add(nombre)
+      toast.success('Banco creado')
     }
     setModalOpen(false)
   }
@@ -108,9 +120,30 @@ export default function BancosPage() {
                     <Button size="icon" variant="ghost" onClick={() => openEdit(b)}>
                       <Pencil className="h-4 w-4" />
                     </Button>
-                    <Button size="icon" variant="ghost" onClick={() => remove(b.id)}>
-                      <Trash2 className="h-4 w-4 text-red-500" />
-                    </Button>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button size="icon" variant="ghost">
+                          <Trash2 className="h-4 w-4 text-red-500" />
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>¿Eliminar banco?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Esta acción no se puede deshacer. Se eliminará el banco <strong>{b.nombre}</strong>.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                          <AlertDialogAction
+                            className="bg-red-600 hover:bg-red-700"
+                            onClick={() => remove(b.id)}
+                          >
+                            Eliminar
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
                   </div>
                 </TableCell>
               </TableRow>

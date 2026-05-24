@@ -21,9 +21,17 @@ import {
   DialogDescription,
   Input,
   Label,
-} from "@cosmetics/ui"
-
-;
+  AlertDialog,
+  AlertDialogTrigger,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogFooter,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogAction,
+  AlertDialogCancel,
+  toast,
+} from "@cosmetics/ui";
 import { useMetodosPago } from "@/hooks";
 import type { MetodoPago } from "@/lib/mock-data";
 
@@ -62,15 +70,15 @@ export default function MetodosPagoPage() {
   }
 
   async function onSubmit(data: FormData) {
-    const nombre = data.nombre.trim().toUpperCase()
-
+    const nombre = data.nombre.trim().toUpperCase();
     if (editing) {
-      await update({ ...editing, nombre })
+      await update({ ...editing, nombre });
+      toast.success("Método de pago actualizado");
     } else {
-      await add(nombre)
+      await add(nombre);
+      toast.success("Método de pago creado");
     }
-
-    setModalOpen(false)
+    setModalOpen(false);
   }
 
   return (
@@ -119,13 +127,30 @@ export default function MetodosPagoPage() {
                     >
                       <Pencil className="h-4 w-4" />
                     </Button>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      onClick={() => remove(m.id)}
-                    >
-                      <Trash2 className="h-4 w-4 text-red-500" />
-                    </Button>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button size="icon" variant="ghost">
+                          <Trash2 className="h-4 w-4 text-red-500" />
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>¿Eliminar método de pago?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Esta acción no se puede deshacer. Se eliminará <strong>{m.nombre}</strong>.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                          <AlertDialogAction
+                            className="bg-red-600 hover:bg-red-700"
+                            onClick={() => remove(m.id)}
+                          >
+                            Eliminar
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
                   </div>
                 </TableCell>
               </TableRow>
@@ -138,40 +163,41 @@ export default function MetodosPagoPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{editing ? "Editar método" : "Nuevo método de pago"}</DialogTitle>
+            <DialogDescription>Ingresa el nombre del método de pago</DialogDescription>
           </DialogHeader>
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 pt-2">
-          <div className="space-y-1.5">
-            <Label htmlFor="nombre">Nombre del método de pago</Label>
-            <Input
-              id="nombre"
-              placeholder="Ej. TARJETA DE DÉBITO"
-              {...nombreField}
-              onChange={(event) => {
-                event.target.value = event.target.value.toUpperCase();
-                void nombreField.onChange(event);
-              }}
-            />
-            {errors.nombre && (
-              <p className="text-xs text-red-500">{errors.nombre.message}</p>
-            )}
-          </div>
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setModalOpen(false)}
-            >
-              Cancelar
-            </Button>
-            <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting
-                ? "Guardando..."
-                : editing
-                  ? "Guardar cambios"
-                  : "Crear método"}
-            </Button>
-          </DialogFooter>
-        </form>
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 pt-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="nombre">Nombre del método de pago</Label>
+              <Input
+                id="nombre"
+                placeholder="Ej. TARJETA DE DÉBITO"
+                {...nombreField}
+                onChange={(event) => {
+                  event.target.value = event.target.value.toUpperCase();
+                  void nombreField.onChange(event);
+                }}
+              />
+              {errors.nombre && (
+                <p className="text-xs text-red-500">{errors.nombre.message}</p>
+              )}
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setModalOpen(false)}
+              >
+                Cancelar
+              </Button>
+              <Button type="submit" disabled={isSubmitting}>
+                {isSubmitting
+                  ? "Guardando..."
+                  : editing
+                    ? "Guardar cambios"
+                    : "Crear método"}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
     </div>

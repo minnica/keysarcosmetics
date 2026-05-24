@@ -1,9 +1,11 @@
 import type { Metadata } from 'next'
+import { Toaster } from '@cosmetics/ui'
 import './globals.css'
 
 export const metadata: Metadata = {
   title: 'Envelope — Control de Ventas',
   description: 'Sistema de control de ventas por sucursal',
+  icons: { icon: '/logo.svg' },
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -30,6 +32,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body className="bg-[var(--bg-primary)] text-[var(--text-primary)] antialiased">
         {children}
+        <Toaster position="bottom-center" />
       </body>
     </html>
   )

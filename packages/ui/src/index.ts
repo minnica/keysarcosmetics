@@ -123,3 +123,22 @@ export {
 export { useIsMobile } from './hooks/use-mobile'
 
 export { cn } from './lib/utils'
+
+// AlertDialog shadcn/ui canónico
+export {
+  AlertDialog,
+  AlertDialogPortal,
+  AlertDialogOverlay,
+  AlertDialogTrigger,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogFooter,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogAction,
+  AlertDialogCancel,
+} from './components/ui/alert-dialog'
+
+// Sonner (Toaster) shadcn/ui canónico + toast helper
+export { Toaster } from './components/ui/sonner'
+export { toast } from 'sonner'

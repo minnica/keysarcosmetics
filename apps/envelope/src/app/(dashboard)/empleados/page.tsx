@@ -26,6 +26,16 @@ import {
   SelectValue,
   SelectContent,
   SelectItem,
+  AlertDialog,
+  AlertDialogTrigger,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogFooter,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogAction,
+  AlertDialogCancel,
+  toast,
 } from '@cosmetics/ui'
 import { useEmpleados, useBanks, usePositions } from '@/hooks'
 import { formatCurrency } from '@/lib/utils'
@@ -153,9 +163,11 @@ export default function EmpleadosPage() {
 
     if (editing) {
       await update({ ...editing, ...payload })
+      toast.success('Empleado actualizado')
     } else {
       // banco/puesto requeridos por tipo legacy — backend los sobreescribe desde bankId/positionId
       await add({ ...payload, banco: '', puesto: '' })
+      toast.success('Empleado creado')
     }
 
     setModalOpen(false)
@@ -221,9 +233,30 @@ export default function EmpleadosPage() {
                     <Button size="icon" variant="ghost" onClick={() => openEdit(emp)}>
                       <Pencil className="h-4 w-4" />
                     </Button>
-                    <Button size="icon" variant="ghost" onClick={() => remove(emp.id)}>
-                      <Trash2 className="h-4 w-4 text-red-500" />
-                    </Button>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button size="icon" variant="ghost">
+                          <Trash2 className="h-4 w-4 text-red-500" />
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>¿Eliminar empleado?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Esta acción no se puede deshacer. Se eliminará a <strong>{emp.nombreCompleto}</strong>.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                          <AlertDialogAction
+                            className="bg-red-600 hover:bg-red-700"
+                            onClick={() => remove(emp.id)}
+                          >
+                            Eliminar
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
                   </div>
                 </TableCell>
               </TableRow>
