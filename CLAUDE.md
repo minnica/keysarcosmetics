@@ -66,6 +66,10 @@ Componentes shadcn canónicos en `packages/ui/src/components/ui`:
 - Button, Card, Input, Label, Textarea, Badge
 - Table, Dialog, Select, Progress, Popover
 - Calendar, DateRangePicker, Sheet, Tooltip, Separator, Sidebar
+- **AlertDialog** — diálogo de confirmación destructiva (botones de borrar)
+- **Sonner** — toasts con colores de marca (`#648672` green-olive, `#8bb09b` green-sage)
+
+`toast` helper re-exportado desde `@cosmetics/ui` (no importar `sonner` directamente en las apps).
 
 Wrappers custom en `packages/ui/src/components/custom`:
 
@@ -76,6 +80,8 @@ Wrappers custom en `packages/ui/src/components/custom`:
 - No recrear componentes manuales similares a shadcn en las apps.
 - No crear duplicados en `apps/envelope/src/components/ui`.
 - Si un componente no existe en shadcn, crear wrapper custom en `packages/ui/src/components/custom` usando primitivas oficiales cuando sea posible.
+- `toast` siempre desde `@cosmetics/ui`, nunca `import { toast } from 'sonner'` directo.
+- Botones de borrar siempre con `AlertDialog` de confirmación antes de ejecutar `remove`.
 
 ---
 
@@ -93,6 +99,10 @@ Módulos implementados:
 UI:
 - Sidebar responsive usando shadcn `Sidebar` + `Sheet` (Sheet para mobile).
 - Layout: `AppSidebar` + `LayoutShell` en `src/components/layout/`.
+- Todos los botones de borrar usan `AlertDialog` de confirmación.
+- Todos los formularios disparan `toast.success()` al crear o editar.
+- `<Toaster position="bottom-center" />` montado en `src/app/layout.tsx`.
+- Favicon configurado via metadata `icons: { icon: '/logo.svg' }` en root layout.
 
 Datos:
 - `useBanks` y `usePositions` cargan catálogos dinámicos desde backend.
@@ -328,4 +338,3 @@ npx ts-node --project tsconfig.json prisma/seed-catalogs.ts
 - Automatizar deploy backend con GitHub Actions si se decide.
 - Crear seeds separados seguros para dev/datos base si se requiere.
 - Limpieza futura de campos legacy `banco`/`puesto` en `Empleado` cuando todos los registros en prod tengan `bankId`/`positionId` asignados (Fase 4).
-- Opcional: ajustar backend para aceptar múltiples `CORS_ORIGINS` separados por coma (útil para usar localhost y Vercel develop simultáneamente).
