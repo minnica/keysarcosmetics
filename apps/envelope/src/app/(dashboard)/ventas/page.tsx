@@ -7,12 +7,6 @@ import { z } from "zod";
 import { PlusCircle, Trash2, Pencil, Save } from "lucide-react";
 import {
   Button,
-  Table,
-  TableHeader,
-  TableBody,
-  TableRow,
-  TableHead,
-  TableCell,
   Dialog,
   DialogContent,
   DialogHeader,
@@ -28,6 +22,12 @@ import {
   SelectValue,
   SelectContent,
   SelectItem,
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
   AlertDialog,
   AlertDialogTrigger,
   AlertDialogContent,
@@ -38,8 +38,10 @@ import {
   AlertDialogAction,
   AlertDialogCancel,
   Combobox,
+  DataTable,
   toast,
 } from "@cosmetics/ui";
+import type { ColumnDef } from "@cosmetics/ui";
 import {
   useSucursales,
   useEmpleados,
@@ -189,6 +191,104 @@ export default function VentasPage() {
   const metodoPagoNombre = (id: string) =>
     metodosPago.find((m) => m.id === id)?.nombre ?? id;
 
+  // ── Columnas tabla registros guardados ────────────────────────────────────────
+  const registroColumns: ColumnDef<RegistroVenta>[] = [
+    {
+      id: 'sucursal',
+      accessorFn: (row) => sucursalNombre(row.sucursalId),
+      header: 'Sucursal',
+      cell: ({ row }) => sucursalNombre(row.original.sucursalId),
+    },
+    {
+      accessorKey: 'fecha',
+      header: 'Fecha',
+      cell: ({ row }) => formatDate(row.original.fecha),
+    },
+    {
+      id: 'vendedor',
+      accessorFn: (row) => vendedorNombre(row.vendedorId),
+      header: 'Vendedor',
+      cell: ({ row }) => vendedorNombre(row.original.vendedorId),
+    },
+    {
+      id: 'total',
+      accessorFn: (row) => row.items.reduce((s, i) => s + i.cantidad, 0),
+      header: 'Total ventas',
+      cell: ({ row }) => {
+        const total = row.original.items.reduce((s, i) => s + i.cantidad, 0);
+        return <div className="text-right font-medium">{formatCurrency(total)}</div>;
+      },
+    },
+    {
+      id: 'metodos',
+      accessorFn: (row) =>
+        [...new Set(row.items.map((i) => metodoPagoNombre(i.metodoPagoId)))].join(' '),
+      header: 'Métodos usados',
+      cell: ({ row }) => {
+        const metodos = [...new Set(row.original.items.map((i) => metodoPagoNombre(i.metodoPagoId)))];
+        return (
+          <div className="flex gap-1 flex-wrap">
+            {metodos.map((m) => (
+              <Badge key={m} variant="secondary">{m}</Badge>
+            ))}
+          </div>
+        );
+      },
+    },
+    {
+      id: 'notas',
+      accessorFn: (row) => row.items.flatMap((i) => (i.notas ? [i.notas] : [])).join(', '),
+      header: 'Notas',
+      cell: ({ row }) => {
+        const notas = row.original.items.flatMap((i) => (i.notas ? [i.notas] : [])).join(", ");
+        return (
+          <span className="text-xs max-w-xs truncate" style={{ color: 'var(--text-muted)' }}>
+            {notas || "—"}
+          </span>
+        );
+      },
+    },
+    {
+      id: 'acciones',
+      header: () => <div className="text-right">Acciones</div>,
+      enableSorting: false,
+      enableGlobalFilter: false,
+      cell: ({ row }) => {
+        const reg = row.original;
+        const total = reg.items.reduce((s, i) => s + i.cantidad, 0);
+        return (
+          <div className="flex justify-end">
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button size="icon" variant="ghost">
+                  <Trash2 className="h-4 w-4 text-red-500" />
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>¿Eliminar registro?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Esta acción no se puede deshacer. Se eliminará el registro de{" "}
+                    {vendedorNombre(reg.vendedorId)} del {formatDate(reg.fecha)} por {formatCurrency(total)}.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                  <AlertDialogAction
+                    className="bg-red-600 hover:bg-red-700"
+                    onClick={() => deleteRegistro(reg.id)}
+                  >
+                    Eliminar
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
+        );
+      },
+    },
+  ];
+
   return (
     <div className="space-y-8">
       <div>
@@ -281,68 +381,66 @@ export default function VentasPage() {
 
           {tempItems.length > 0 ? (
             <>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Cantidad</TableHead>
-                    <TableHead>Método de pago</TableHead>
-                    <TableHead>Notas</TableHead>
-                    <TableHead className="text-right">Acciones</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {tempItems.map((item) => (
-                    <TableRow key={item.id}>
-                      <TableCell className="font-medium">
-                        {formatCurrency(item.cantidad)}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="secondary">
-                          {metodoPagoNombre(item.metodoPagoId)}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                        {item.notas ?? "—"}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-1">
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            onClick={() => openEditItemModal(item)}
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <AlertDialog>
-                            <AlertDialogTrigger asChild>
-                              <Button size="icon" variant="ghost">
-                                <Trash2 className="h-4 w-4 text-red-500" />
-                              </Button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent>
-                              <AlertDialogHeader>
-                                <AlertDialogTitle>¿Eliminar venta?</AlertDialogTitle>
-                                <AlertDialogDescription>
-                                  Se eliminará esta venta de {formatCurrency(item.cantidad)} del registro actual.
-                                </AlertDialogDescription>
-                              </AlertDialogHeader>
-                              <AlertDialogFooter>
-                                <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                                <AlertDialogAction
-                                  className="bg-red-600 hover:bg-red-700"
-                                  onClick={() => handleDeleteItem(item.id)}
-                                >
-                                  Eliminar
-                                </AlertDialogAction>
-                              </AlertDialogFooter>
-                            </AlertDialogContent>
-                          </AlertDialog>
-                        </div>
-                      </TableCell>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Cantidad</TableHead>
+                      <TableHead>Método de pago</TableHead>
+                      <TableHead>Notas</TableHead>
+                      <TableHead className="text-right">Acciones</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {tempItems.map((item) => (
+                      <TableRow key={item.id}>
+                        <TableCell className="font-medium">
+                          {formatCurrency(item.cantidad)}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="secondary">
+                            {metodoPagoNombre(item.metodoPagoId)}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                          {item.notas ?? "—"}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-1">
+                            <Button size="icon" variant="ghost" onClick={() => openEditItemModal(item)}>
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button size="icon" variant="ghost">
+                                  <Trash2 className="h-4 w-4 text-red-500" />
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>¿Eliminar venta?</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    Se eliminará esta venta de {formatCurrency(item.cantidad)} del registro actual.
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                  <AlertDialogAction
+                                    className="bg-red-600 hover:bg-red-700"
+                                    onClick={() => handleDeleteItem(item.id)}
+                                  >
+                                    Eliminar
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
               <div className="flex items-center justify-between pt-2">
                 <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
                   Total:{" "}
@@ -384,81 +482,12 @@ export default function VentasPage() {
         {registros.length === 0 ? (
           <p className="text-sm" style={{ color: 'var(--text-muted)' }}>No hay registros guardados.</p>
         ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Sucursal</TableHead>
-                <TableHead>Fecha</TableHead>
-                <TableHead>Vendedor</TableHead>
-                <TableHead className="text-right">Total ventas</TableHead>
-                <TableHead>Métodos usados</TableHead>
-                <TableHead>Notas</TableHead>
-                <TableHead className="text-right">Acciones</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {[...registros].reverse().map((reg) => {
-                const total = reg.items.reduce((s, i) => s + i.cantidad, 0);
-                const metodos = [
-                  ...new Set(
-                    reg.items.map((i) => metodoPagoNombre(i.metodoPagoId)),
-                  ),
-                ];
-                const notas = reg.items
-                  .flatMap((i) => (i.notas ? [i.notas] : []))
-                  .join(", ");
-                return (
-                  <TableRow key={reg.id}>
-                    <TableCell>{sucursalNombre(reg.sucursalId)}</TableCell>
-                    <TableCell>{formatDate(reg.fecha)}</TableCell>
-                    <TableCell>{vendedorNombre(reg.vendedorId)}</TableCell>
-                    <TableCell className="text-right font-medium">
-                      {formatCurrency(total)}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex gap-1 flex-wrap">
-                        {metodos.map((m) => (
-                          <Badge key={m} variant="secondary">
-                            {m}
-                          </Badge>
-                        ))}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-xs max-w-xs truncate" style={{ color: 'var(--text-muted)' }}>
-                      {notas || "—"}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button size="icon" variant="ghost">
-                            <Trash2 className="h-4 w-4 text-red-500" />
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>¿Eliminar registro?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              Esta acción no se puede deshacer. Se eliminará el registro de{" "}
-                              {vendedorNombre(reg.vendedorId)} del {formatDate(reg.fecha)} por {formatCurrency(total)}.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                            <AlertDialogAction
-                              className="bg-red-600 hover:bg-red-700"
-                              onClick={() => deleteRegistro(reg.id)}
-                            >
-                              Eliminar
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
+          <DataTable
+            columns={registroColumns}
+            data={[...registros].reverse()}
+            emptyMessage="Sin registros guardados"
+            searchPlaceholder="Buscar por vendedor, sucursal, fecha..."
+          />
         )}
       </div>
 

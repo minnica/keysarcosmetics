@@ -15,12 +15,6 @@ import {
   DialogTitle,
   Input,
   Label,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
   AlertDialog,
   AlertDialogTrigger,
   AlertDialogContent,
@@ -30,8 +24,10 @@ import {
   AlertDialogDescription,
   AlertDialogAction,
   AlertDialogCancel,
+  DataTable,
   toast,
 } from '@cosmetics/ui'
+import type { ColumnDef } from '@cosmetics/ui'
 
 import { useSucursales } from '@/hooks'
 import type { Sucursal } from '@/lib/mock-data'
@@ -75,6 +71,52 @@ export default function SucursalesPage() {
     setModalOpen(false)
   }
 
+  const columns: ColumnDef<Sucursal>[] = [
+    {
+      accessorKey: 'nombre',
+      header: 'Sucursal',
+      cell: ({ row }) => <span className="font-medium">{row.original.nombre}</span>,
+    },
+    {
+      id: 'acciones',
+      header: () => <div className="text-right">Acciones</div>,
+      cell: ({ row }) => {
+        const s = row.original
+        return (
+          <div className="flex justify-end gap-1">
+            <Button size="icon" variant="ghost" onClick={() => openEdit(s)}>
+              <Pencil className="h-4 w-4" />
+            </Button>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button size="icon" variant="ghost">
+                  <Trash2 className="h-4 w-4 text-red-500" />
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>¿Eliminar sucursal?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Esta acción no se puede deshacer. Se eliminará la sucursal <strong>{s.nombre}</strong>.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                  <AlertDialogAction
+                    className="bg-red-600 hover:bg-red-700"
+                    onClick={() => remove(s.id)}
+                  >
+                    Eliminar
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
+        )
+      },
+    },
+  ]
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -92,53 +134,12 @@ export default function SucursalesPage() {
       {loading ? (
         <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Cargando sucursales...</p>
       ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Sucursal</TableHead>
-              <TableHead className="text-right">Acciones</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {sucursales.length === 0 && (
-              <TableRow><TableCell colSpan={2} className="text-center" style={{ color: 'var(--text-muted)' }}>Sin sucursales registradas</TableCell></TableRow>
-            )}
-            {sucursales.map(s => (
-              <TableRow key={s.id}>
-                <TableCell className="font-medium">{s.nombre}</TableCell>
-                <TableCell className="text-right">
-                  <div className="flex justify-end gap-1">
-                    <Button size="icon" variant="ghost" onClick={() => openEdit(s)}><Pencil className="h-4 w-4" /></Button>
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <Button size="icon" variant="ghost">
-                          <Trash2 className="h-4 w-4 text-red-500" />
-                        </Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>¿Eliminar sucursal?</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            Esta acción no se puede deshacer. Se eliminará la sucursal <strong>{s.nombre}</strong>.
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                          <AlertDialogAction
-                            className="bg-red-600 hover:bg-red-700"
-                            onClick={() => remove(s.id)}
-                          >
-                            Eliminar
-                          </AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+        <DataTable
+          columns={columns}
+          data={sucursales}
+          emptyMessage="Sin sucursales registradas"
+          searchPlaceholder="Buscar sucursal..."
+        />
       )}
 
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>

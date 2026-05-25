@@ -120,6 +120,7 @@ export default function VentasPorVendedorDiaPage() {
           Sin ventas para el vendedor en el período.
         </p>
       ) : (
+        <div className="overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow>
@@ -161,6 +162,7 @@ export default function VentasPorVendedorDiaPage() {
             </TableRow>
           </TableFooter>
         </Table>
+        </div>
       )}
     </div>
   );

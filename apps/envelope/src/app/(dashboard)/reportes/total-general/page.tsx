@@ -51,6 +51,7 @@ export default function TotalGeneralPage() {
       {!loading && dias.length === 0 ? (
         <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Sin ventas en el período seleccionado.</p>
       ) : (
+        <div className="overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow>
@@ -87,6 +88,7 @@ export default function TotalGeneralPage() {
             </TableRow>
           </TableFooter>
         </Table>
+        </div>
       )}
     </div>
   )

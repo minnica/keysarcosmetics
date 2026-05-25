@@ -11,7 +11,7 @@ export function LayoutShell({ children }: LayoutShellProps) {
   return (
     <SidebarProvider>
       <AppSidebar />
-      <SidebarInset>
+      <SidebarInset className="min-w-0 overflow-x-hidden">
         {/* Barra de navegación superior — visible solo en móvil (md:hidden) */}
         <header
           className="flex h-12 shrink-0 items-center gap-3 border-b px-4 md:hidden"
@@ -25,7 +25,7 @@ export function LayoutShell({ children }: LayoutShellProps) {
             style={{ maxWidth: '100px' }}
           />
         </header>
-        <div className="p-6">
+        <div className="p-6 min-w-0">
           {children}
         </div>
       </SidebarInset>

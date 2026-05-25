@@ -68,6 +68,7 @@ Componentes shadcn canónicos en `packages/ui/src/components/ui`:
 - Calendar, DateRangePicker, Sheet, Tooltip, Separator, Sidebar
 - **AlertDialog** — diálogo de confirmación destructiva (botones de borrar)
 - **Sonner** — toasts con colores de marca (`#648672` green-olive, `#8bb09b` green-sage)
+- **DataTable** — tabla canónica shadcn sobre `@tanstack/react-table`. Props: `columns: ColumnDef<T>[]`, `data: T[]`, `emptyMessage?: string`, `searchPlaceholder?: string`, `pageSize?: number` (default 10). Incluye sorting por clic en header, globalFilter (search input), y pagination con controles prev/next. Re-exporta también `ColumnDef` desde `@cosmetics/ui` — las apps no deben importar `@tanstack/react-table` directamente.
 
 `toast` helper re-exportado desde `@cosmetics/ui` (no importar `sonner` directamente en las apps).
 
@@ -83,6 +84,8 @@ Wrappers custom en `packages/ui/src/components/custom`:
 - Si un componente no existe en shadcn, crear wrapper custom en `packages/ui/src/components/custom` usando primitivas oficiales cuando sea posible.
 - `toast` siempre desde `@cosmetics/ui`, nunca `import { toast } from 'sonner'` directo.
 - Botones de borrar siempre con `AlertDialog` de confirmación antes de ejecutar `remove`.
+- **Tablas de datos siempre con `DataTable` + `ColumnDef` desde `@cosmetics/ui`.** No usar `<Table>` + `<TableBody>` manual para listados CRUD — solo para tablas de reporte/estáticas.
+- Para columnas computadas (valor derivado de múltiples campos), usar `accessorFn` + `id` para que sorting y globalFilter funcionen. Columnas sin accessor (como acciones) no son sortables ni filtrables — marcar explícitamente con `enableSorting: false, enableGlobalFilter: false`.
 
 **Sistema tipográfico (envelope):**
 - Fuentes disponibles: `Emofera Regular` (display/decorativa, solo peso Regular) y `Gilroy` (400/500/600/700).

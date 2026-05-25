@@ -76,6 +76,7 @@ export default function VentasPorVendedorPage() {
       {loading && <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Cargando datos...</p>}
       {error && <p className="text-sm text-red-500">{error}</p>}
 
+      <div className="overflow-x-auto">
       <Table>
         <TableHeader>
           <TableRow>
@@ -110,6 +111,7 @@ export default function VentasPorVendedorPage() {
           })}
         </TableBody>
       </Table>
+      </div>
     </div>
   )
 }

@@ -7,12 +7,6 @@ import { z } from "zod";
 import { PlusCircle, Pencil, Trash2 } from "lucide-react";
 import {
   Button,
-  Table,
-  TableHeader,
-  TableBody,
-  TableRow,
-  TableHead,
-  TableCell,
   Dialog,
   DialogContent,
   DialogHeader,
@@ -30,8 +24,10 @@ import {
   AlertDialogDescription,
   AlertDialogAction,
   AlertDialogCancel,
+  DataTable,
   toast,
 } from "@cosmetics/ui";
+import type { ColumnDef } from "@cosmetics/ui";
 import { useMetodosPago } from "@/hooks";
 import type { MetodoPago } from "@/lib/mock-data";
 
@@ -81,6 +77,52 @@ export default function MetodosPagoPage() {
     setModalOpen(false);
   }
 
+  const columns: ColumnDef<MetodoPago>[] = [
+    {
+      accessorKey: "nombre",
+      header: "Método de pago",
+      cell: ({ row }) => <span className="font-medium">{row.original.nombre}</span>,
+    },
+    {
+      id: "acciones",
+      header: () => <div className="text-right">Acciones</div>,
+      cell: ({ row }) => {
+        const m = row.original;
+        return (
+          <div className="flex justify-end gap-1">
+            <Button size="icon" variant="ghost" onClick={() => openEdit(m)}>
+              <Pencil className="h-4 w-4" />
+            </Button>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button size="icon" variant="ghost">
+                  <Trash2 className="h-4 w-4 text-red-500" />
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>¿Eliminar método de pago?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Esta acción no se puede deshacer. Se eliminará <strong>{m.nombre}</strong>.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                  <AlertDialogAction
+                    className="bg-red-600 hover:bg-red-700"
+                    onClick={() => remove(m.id)}
+                  >
+                    Eliminar
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
+        );
+      },
+    },
+  ];
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -100,63 +142,12 @@ export default function MetodosPagoPage() {
       {loading ? (
         <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Cargando métodos de pago...</p>
       ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Método de pago</TableHead>
-              <TableHead className="text-right">Acciones</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {metodosPago.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={2} className="text-center" style={{ color: 'var(--text-muted)' }}>
-                  Sin métodos registrados
-                </TableCell>
-              </TableRow>
-            )}
-            {metodosPago.map((m) => (
-              <TableRow key={m.id}>
-                <TableCell className="font-medium">{m.nombre}</TableCell>
-                <TableCell className="text-right">
-                  <div className="flex justify-end gap-1">
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      onClick={() => openEdit(m)}
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <Button size="icon" variant="ghost">
-                          <Trash2 className="h-4 w-4 text-red-500" />
-                        </Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>¿Eliminar método de pago?</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            Esta acción no se puede deshacer. Se eliminará <strong>{m.nombre}</strong>.
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                          <AlertDialogAction
-                            className="bg-red-600 hover:bg-red-700"
-                            onClick={() => remove(m.id)}
-                          >
-                            Eliminar
-                          </AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+        <DataTable
+          columns={columns}
+          data={metodosPago}
+          emptyMessage="Sin métodos registrados"
+          searchPlaceholder="Buscar método de pago..."
+        />
       )}
 
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>

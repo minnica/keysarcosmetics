@@ -146,3 +146,7 @@ export {
 // Sonner (Toaster) shadcn/ui canónico + toast helper
 export { Toaster } from './components/ui/sonner'
 export { toast } from 'sonner'
+
+// DataTable canónico shadcn/ui — usa @tanstack/react-table
+export { DataTable } from './components/ui/data-table'
+export type { ColumnDef } from '@tanstack/react-table'

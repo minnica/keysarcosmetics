@@ -115,6 +115,7 @@ export default function MetodoPagoPorDiaPage() {
       {!loading && dias.length === 0 ? (
         <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Sin ventas con ese método en el período seleccionado.</p>
       ) : (
+        <div className="overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow>
@@ -146,6 +147,7 @@ export default function MetodoPagoPorDiaPage() {
             </TableRow>
           </TableFooter>
         </Table>
+        </div>
       )}
     </div>
   )

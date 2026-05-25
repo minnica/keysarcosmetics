@@ -48,6 +48,7 @@ export default function DetalleMetodoPagoPage() {
       {!loading && sucursalesConDatos.length === 0 ? (
         <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Sin datos en el período seleccionado.</p>
       ) : (
+        <div className="overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow>
@@ -84,6 +85,7 @@ export default function DetalleMetodoPagoPage() {
             </TableRow>
           </TableFooter>
         </Table>
+        </div>
       )}
     </div>
   )
