@@ -64,7 +64,7 @@ export default function VentasPorVendedorPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold" style={{ color: 'var(--text-primary)' }}>Ventas por vendedor</h1>
+        <h1 className="page-title font-semibold uppercase">Ventas por vendedor</h1>
         <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>Avance de cada vendedor respecto a su meta en el período</p>
       </div>
 
@@ -76,6 +76,7 @@ export default function VentasPorVendedorPage() {
       {loading && <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Cargando datos...</p>}
       {error && <p className="text-sm text-red-500">{error}</p>}
 
+      <div className="overflow-x-auto">
       <Table>
         <TableHeader>
           <TableRow>
@@ -110,6 +111,7 @@ export default function VentasPorVendedorPage() {
           })}
         </TableBody>
       </Table>
+      </div>
     </div>
   )
 }

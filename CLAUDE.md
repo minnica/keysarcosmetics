@@ -68,6 +68,7 @@ Componentes shadcn canónicos en `packages/ui/src/components/ui`:
 - Calendar, DateRangePicker, Sheet, Tooltip, Separator, Sidebar
 - **AlertDialog** — diálogo de confirmación destructiva (botones de borrar)
 - **Sonner** — toasts con colores de marca (`#648672` green-olive, `#8bb09b` green-sage)
+- **DataTable** — tabla canónica shadcn sobre `@tanstack/react-table`. Props: `columns: ColumnDef<T>[]`, `data: T[]`, `emptyMessage?: string`, `searchPlaceholder?: string`, `pageSize?: number` (default 10). Incluye sorting por clic en header, globalFilter (search input), y pagination con controles prev/next. Re-exporta también `ColumnDef` desde `@cosmetics/ui` — las apps no deben importar `@tanstack/react-table` directamente.
 
 `toast` helper re-exportado desde `@cosmetics/ui` (no importar `sonner` directamente en las apps).
 
@@ -83,6 +84,20 @@ Wrappers custom en `packages/ui/src/components/custom`:
 - Si un componente no existe en shadcn, crear wrapper custom en `packages/ui/src/components/custom` usando primitivas oficiales cuando sea posible.
 - `toast` siempre desde `@cosmetics/ui`, nunca `import { toast } from 'sonner'` directo.
 - Botones de borrar siempre con `AlertDialog` de confirmación antes de ejecutar `remove`.
+- **Tablas de datos siempre con `DataTable` + `ColumnDef` desde `@cosmetics/ui`.** No usar `<Table>` + `<TableBody>` manual para listados CRUD — solo para tablas de reporte/estáticas.
+- Para columnas computadas (valor derivado de múltiples campos), usar `accessorFn` + `id` para que sorting y globalFilter funcionen. Columnas sin accessor (como acciones) no son sortables ni filtrables — marcar explícitamente con `enableSorting: false, enableGlobalFilter: false`.
+
+**Sistema tipográfico (envelope):**
+- Fuentes disponibles: `Emofera Regular` (display/decorativa, solo peso Regular) y `Gilroy` (400/500/600/700).
+- Tailwind `font-brand` → Emofera. Tailwind `font-sans` → Gilroy (default del body).
+- **No usar `font-bold`/`font-semibold` con `font-brand`** — Emofera no tiene esos pesos; el navegador los sintetiza mal.
+- Jerarquía con clases CSS utilitarias definidas en `globals.css @layer components`:
+  - `.page-title` — H1 de página: Emofera 30px Regular, `letter-spacing: 0.015em`
+  - `.section-heading` — H2 dentro de página: Gilroy SemiBold 13px, `letter-spacing: 0.05em`
+  - `.label-caps` — etiqueta decorativa (gráficas, grupos): Gilroy SemiBold 11px uppercase gold
+  - `.number-display` — montos monetarios: Gilroy Bold tabular-nums
+- Todos los H1 de página usan `className="page-title"`.
+- `font-brand text-sm tracking-widest uppercase` para el nombre de marca en el sidebar.
 
 ---
 
@@ -101,9 +116,12 @@ UI:
 - Sidebar responsive usando shadcn `Sidebar` + `Sheet` (Sheet para mobile).
 - Layout: `AppSidebar` + `LayoutShell` en `src/components/layout/`.
 - Todos los botones de borrar usan `AlertDialog` de confirmación.
-- Todos los formularios disparan `toast.success()` al crear o editar.
+- Todos los formularios disparan `toast.success()` al crear o editar, **excepto** el modal "Agregar/Editar venta" en ventas: dispara `toast.info()` azul pastel (8 s) recordando al usuario que debe dar clic en «Guardar registro» para persistir.
 - `<Toaster position="bottom-center" />` montado en `src/app/layout.tsx`.
 - Favicon configurado via metadata `icons: { icon: '/logo.svg' }` en root layout.
+- Header del sidebar muestra logo (32px) + texto "Keysar Cosmetics" cuando expandido; solo logo (28px) cuando colapsado.
+- Switch dark/light mode en el header del sidebar (bajo la fila del logo), oculto en modo colapsado.
+- Botón "Cerrar sesión" en `SidebarFooter` — elimina `auth_token` de localStorage y redirige a `/login`. Usa `SidebarMenuButton` con tooltip para funcionar también en modo colapsado.
 
 Datos:
 - `useBanks` y `usePositions` cargan catálogos dinámicos desde backend.

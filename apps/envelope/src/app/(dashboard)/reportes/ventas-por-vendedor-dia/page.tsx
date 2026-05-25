@@ -78,9 +78,7 @@ export default function VentasPorVendedorDiaPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold" style={{ color: 'var(--text-primary)' }}>
-          Ventas por vendedor por día
-        </h1>
+        <h1 className="page-title font-semibold uppercase">Ventas por vendedor por día</h1>
         <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
           Detalle de cada venta registrada en el período
         </p>
@@ -122,6 +120,7 @@ export default function VentasPorVendedorDiaPage() {
           Sin ventas para el vendedor en el período.
         </p>
       ) : (
+        <div className="overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow>
@@ -163,6 +162,7 @@ export default function VentasPorVendedorDiaPage() {
             </TableRow>
           </TableFooter>
         </Table>
+        </div>
       )}
     </div>
   );

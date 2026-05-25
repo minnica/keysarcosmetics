@@ -7,12 +7,6 @@ import { z } from "zod";
 import { PlusCircle, Trash2, Pencil, Save } from "lucide-react";
 import {
   Button,
-  Table,
-  TableHeader,
-  TableBody,
-  TableRow,
-  TableHead,
-  TableCell,
   Dialog,
   DialogContent,
   DialogHeader,
@@ -28,6 +22,12 @@ import {
   SelectValue,
   SelectContent,
   SelectItem,
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
   AlertDialog,
   AlertDialogTrigger,
   AlertDialogContent,
@@ -38,8 +38,10 @@ import {
   AlertDialogAction,
   AlertDialogCancel,
   Combobox,
+  DataTable,
   toast,
 } from "@cosmetics/ui";
+import type { ColumnDef } from "@cosmetics/ui";
 import {
   useSucursales,
   useEmpleados,
@@ -65,6 +67,20 @@ const ventaItemSchema = z.object({
 
 type SelectorForm = z.infer<typeof selectorSchema>;
 type VentaItemForm = z.infer<typeof ventaItemSchema>;
+
+// ── Opciones para toast informativo de ventas enlistadas ──────────────────────
+const infoToastOptions = {
+  duration: 8000,
+  style: {
+    background: '#6fc9db',
+    color: '#ffffff',
+    border: '1px solid #bae2e8',
+    boxShadow: '0 4px 12px rgba(111, 201, 219, 0.25)',
+  },
+};
+
+const INFO_TOAST_MSG =
+  "Venta enlistada. Da clic en «Guardar registro» para guardar lista o en «Agregar venta» para registrar más ventas del mismo vendedor.";
 
 // ── Componente principal ──────────────────────────────────────────────────────
 
@@ -128,10 +144,10 @@ export default function VentasPage() {
           i.id === editingItem.id ? { id: editingItem.id, ...cleanData } : i,
         ),
       );
-      toast.success("Venta actualizada");
+      toast.info(INFO_TOAST_MSG, infoToastOptions);
     } else {
       setTempItems((prev) => [...prev, { id: generateId(), ...cleanData }]);
-      toast.success("Venta agregada");
+      toast.info(INFO_TOAST_MSG, infoToastOptions);
     }
 
     setModalOpen(false);
@@ -175,10 +191,108 @@ export default function VentasPage() {
   const metodoPagoNombre = (id: string) =>
     metodosPago.find((m) => m.id === id)?.nombre ?? id;
 
+  // ── Columnas tabla registros guardados ────────────────────────────────────────
+  const registroColumns: ColumnDef<RegistroVenta>[] = [
+    {
+      id: 'sucursal',
+      accessorFn: (row) => sucursalNombre(row.sucursalId),
+      header: 'Sucursal',
+      cell: ({ row }) => sucursalNombre(row.original.sucursalId),
+    },
+    {
+      accessorKey: 'fecha',
+      header: 'Fecha',
+      cell: ({ row }) => formatDate(row.original.fecha),
+    },
+    {
+      id: 'vendedor',
+      accessorFn: (row) => vendedorNombre(row.vendedorId),
+      header: 'Vendedor',
+      cell: ({ row }) => vendedorNombre(row.original.vendedorId),
+    },
+    {
+      id: 'total',
+      accessorFn: (row) => row.items.reduce((s, i) => s + i.cantidad, 0),
+      header: 'Total ventas',
+      cell: ({ row }) => {
+        const total = row.original.items.reduce((s, i) => s + i.cantidad, 0);
+        return <div className="text-right font-medium">{formatCurrency(total)}</div>;
+      },
+    },
+    {
+      id: 'metodos',
+      accessorFn: (row) =>
+        [...new Set(row.items.map((i) => metodoPagoNombre(i.metodoPagoId)))].join(' '),
+      header: 'Métodos usados',
+      cell: ({ row }) => {
+        const metodos = [...new Set(row.original.items.map((i) => metodoPagoNombre(i.metodoPagoId)))];
+        return (
+          <div className="flex gap-1 flex-wrap">
+            {metodos.map((m) => (
+              <Badge key={m} variant="secondary">{m}</Badge>
+            ))}
+          </div>
+        );
+      },
+    },
+    {
+      id: 'notas',
+      accessorFn: (row) => row.items.flatMap((i) => (i.notas ? [i.notas] : [])).join(', '),
+      header: 'Notas',
+      cell: ({ row }) => {
+        const notas = row.original.items.flatMap((i) => (i.notas ? [i.notas] : [])).join(", ");
+        return (
+          <span className="text-xs max-w-xs truncate" style={{ color: 'var(--text-muted)' }}>
+            {notas || "—"}
+          </span>
+        );
+      },
+    },
+    {
+      id: 'acciones',
+      header: () => <div className="text-right">Acciones</div>,
+      enableSorting: false,
+      enableGlobalFilter: false,
+      cell: ({ row }) => {
+        const reg = row.original;
+        const total = reg.items.reduce((s, i) => s + i.cantidad, 0);
+        return (
+          <div className="flex justify-end">
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button size="icon" variant="ghost">
+                  <Trash2 className="h-4 w-4 text-red-500" />
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>¿Eliminar registro?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Esta acción no se puede deshacer. Se eliminará el registro de{" "}
+                    {vendedorNombre(reg.vendedorId)} del {formatDate(reg.fecha)} por {formatCurrency(total)}.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                  <AlertDialogAction
+                    className="bg-red-600 hover:bg-red-700"
+                    onClick={() => deleteRegistro(reg.id)}
+                  >
+                    Eliminar
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
+        );
+      },
+    },
+  ];
+
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-semibold" style={{ color: 'var(--text-primary)' }}>Registro de ventas</h1>
+        <h1 className="page-title font-semibold uppercase">Registro de ventas</h1>
         <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
           Captura las ventas del día por vendedor y sucursal
         </p>
@@ -189,9 +303,7 @@ export default function VentasPage() {
         className="rounded-xl border p-6"
         style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border-color)' }}
       >
-        <h2 className="text-base font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>
-          1. Selección
-        </h2>
+        <h2 className="section-heading mb-4">1. Selección</h2>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className="space-y-1.5">
             <Label htmlFor="sucursal">Sucursal</Label>
@@ -256,9 +368,7 @@ export default function VentasPage() {
         >
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>
-                2. Ventas del vendedor
-              </h2>
+              <h2 className="section-heading">2. Ventas del vendedor</h2>
               <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
                 {vendedorNombre(watchedVendedor)} ·{" "}
                 {sucursalNombre(watchedSucursal)} · {formatDate(watchedFecha)}
@@ -271,68 +381,66 @@ export default function VentasPage() {
 
           {tempItems.length > 0 ? (
             <>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Cantidad</TableHead>
-                    <TableHead>Método de pago</TableHead>
-                    <TableHead>Notas</TableHead>
-                    <TableHead className="text-right">Acciones</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {tempItems.map((item) => (
-                    <TableRow key={item.id}>
-                      <TableCell className="font-medium">
-                        {formatCurrency(item.cantidad)}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="secondary">
-                          {metodoPagoNombre(item.metodoPagoId)}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                        {item.notas ?? "—"}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-1">
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            onClick={() => openEditItemModal(item)}
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <AlertDialog>
-                            <AlertDialogTrigger asChild>
-                              <Button size="icon" variant="ghost">
-                                <Trash2 className="h-4 w-4 text-red-500" />
-                              </Button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent>
-                              <AlertDialogHeader>
-                                <AlertDialogTitle>¿Eliminar venta?</AlertDialogTitle>
-                                <AlertDialogDescription>
-                                  Se eliminará esta venta de {formatCurrency(item.cantidad)} del registro actual.
-                                </AlertDialogDescription>
-                              </AlertDialogHeader>
-                              <AlertDialogFooter>
-                                <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                                <AlertDialogAction
-                                  className="bg-red-600 hover:bg-red-700"
-                                  onClick={() => handleDeleteItem(item.id)}
-                                >
-                                  Eliminar
-                                </AlertDialogAction>
-                              </AlertDialogFooter>
-                            </AlertDialogContent>
-                          </AlertDialog>
-                        </div>
-                      </TableCell>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Cantidad</TableHead>
+                      <TableHead>Método de pago</TableHead>
+                      <TableHead>Notas</TableHead>
+                      <TableHead className="text-right">Acciones</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {tempItems.map((item) => (
+                      <TableRow key={item.id}>
+                        <TableCell className="font-medium">
+                          {formatCurrency(item.cantidad)}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="secondary">
+                            {metodoPagoNombre(item.metodoPagoId)}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                          {item.notas ?? "—"}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-1">
+                            <Button size="icon" variant="ghost" onClick={() => openEditItemModal(item)}>
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button size="icon" variant="ghost">
+                                  <Trash2 className="h-4 w-4 text-red-500" />
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>¿Eliminar venta?</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    Se eliminará esta venta de {formatCurrency(item.cantidad)} del registro actual.
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                  <AlertDialogAction
+                                    className="bg-red-600 hover:bg-red-700"
+                                    onClick={() => handleDeleteItem(item.id)}
+                                  >
+                                    Eliminar
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
               <div className="flex items-center justify-between pt-2">
                 <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
                   Total:{" "}
@@ -370,87 +478,16 @@ export default function VentasPage() {
 
       {/* ── Tabla de registros guardados ── */}
       <div className="space-y-3">
-        <h2 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>
-          Registros guardados
-        </h2>
+        <h2 className="section-heading">Registros guardados</h2>
         {registros.length === 0 ? (
           <p className="text-sm" style={{ color: 'var(--text-muted)' }}>No hay registros guardados.</p>
         ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Sucursal</TableHead>
-                <TableHead>Fecha</TableHead>
-                <TableHead>Vendedor</TableHead>
-                <TableHead className="text-right">Total ventas</TableHead>
-                <TableHead>Métodos usados</TableHead>
-                <TableHead>Notas</TableHead>
-                <TableHead className="text-right">Acciones</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {[...registros].reverse().map((reg) => {
-                const total = reg.items.reduce((s, i) => s + i.cantidad, 0);
-                const metodos = [
-                  ...new Set(
-                    reg.items.map((i) => metodoPagoNombre(i.metodoPagoId)),
-                  ),
-                ];
-                const notas = reg.items
-                  .flatMap((i) => (i.notas ? [i.notas] : []))
-                  .join(", ");
-                return (
-                  <TableRow key={reg.id}>
-                    <TableCell>{sucursalNombre(reg.sucursalId)}</TableCell>
-                    <TableCell>{formatDate(reg.fecha)}</TableCell>
-                    <TableCell>{vendedorNombre(reg.vendedorId)}</TableCell>
-                    <TableCell className="text-right font-medium">
-                      {formatCurrency(total)}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex gap-1 flex-wrap">
-                        {metodos.map((m) => (
-                          <Badge key={m} variant="secondary">
-                            {m}
-                          </Badge>
-                        ))}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-xs max-w-xs truncate" style={{ color: 'var(--text-muted)' }}>
-                      {notas || "—"}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button size="icon" variant="ghost">
-                            <Trash2 className="h-4 w-4 text-red-500" />
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>¿Eliminar registro?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              Esta acción no se puede deshacer. Se eliminará el registro de{" "}
-                              {vendedorNombre(reg.vendedorId)} del {formatDate(reg.fecha)} por {formatCurrency(total)}.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                            <AlertDialogAction
-                              className="bg-red-600 hover:bg-red-700"
-                              onClick={() => deleteRegistro(reg.id)}
-                            >
-                              Eliminar
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
+          <DataTable
+            columns={registroColumns}
+            data={[...registros].reverse()}
+            emptyMessage="Sin registros guardados"
+            searchPlaceholder="Buscar por vendedor, sucursal, fecha..."
+          />
         )}
       </div>
 

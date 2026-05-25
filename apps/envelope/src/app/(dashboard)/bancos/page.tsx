@@ -14,12 +14,6 @@ import {
   DialogTitle,
   Input,
   Label,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
   AlertDialog,
   AlertDialogTrigger,
   AlertDialogContent,
@@ -29,8 +23,10 @@ import {
   AlertDialogDescription,
   AlertDialogAction,
   AlertDialogCancel,
+  DataTable,
   toast,
 } from '@cosmetics/ui'
+import type { ColumnDef } from '@cosmetics/ui'
 import { useBanks } from '@/hooks'
 import type { Bank } from '@cosmetics/types'
 
@@ -80,11 +76,57 @@ export default function BancosPage() {
     setModalOpen(false)
   }
 
+  const columns: ColumnDef<Bank>[] = [
+    {
+      accessorKey: 'nombre',
+      header: 'Banco',
+      cell: ({ row }) => <span className="font-medium">{row.original.nombre}</span>,
+    },
+    {
+      id: 'acciones',
+      header: () => <div className="text-right">Acciones</div>,
+      cell: ({ row }) => {
+        const b = row.original
+        return (
+          <div className="flex justify-end gap-1">
+            <Button size="icon" variant="ghost" onClick={() => openEdit(b)}>
+              <Pencil className="h-4 w-4" />
+            </Button>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button size="icon" variant="ghost">
+                  <Trash2 className="h-4 w-4 text-red-500" />
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>¿Eliminar banco?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Esta acción no se puede deshacer. Se eliminará el banco <strong>{b.nombre}</strong>.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                  <AlertDialogAction
+                    className="bg-red-600 hover:bg-red-700"
+                    onClick={() => remove(b.id)}
+                  >
+                    Eliminar
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
+        )
+      },
+    },
+  ]
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold" style={{ color: 'var(--text-primary)' }}>Bancos</h1>
+          <h1 className="page-title font-semibold uppercase">Bancos</h1>
           <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
             Catálogo de bancos para depósitos de empleados
           </p>
@@ -99,59 +141,12 @@ export default function BancosPage() {
       {loading ? (
         <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Cargando bancos...</p>
       ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Banco</TableHead>
-              <TableHead className="text-right">Acciones</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {banks.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={2} className="text-center" style={{ color: 'var(--text-muted)' }}>
-                  Sin bancos registrados
-                </TableCell>
-              </TableRow>
-            )}
-            {banks.map((b) => (
-              <TableRow key={b.id}>
-                <TableCell className="font-medium">{b.nombre}</TableCell>
-                <TableCell className="text-right">
-                  <div className="flex justify-end gap-1">
-                    <Button size="icon" variant="ghost" onClick={() => openEdit(b)}>
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <Button size="icon" variant="ghost">
-                          <Trash2 className="h-4 w-4 text-red-500" />
-                        </Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>¿Eliminar banco?</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            Esta acción no se puede deshacer. Se eliminará el banco <strong>{b.nombre}</strong>.
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                          <AlertDialogAction
-                            className="bg-red-600 hover:bg-red-700"
-                            onClick={() => remove(b.id)}
-                          >
-                            Eliminar
-                          </AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+        <DataTable
+          columns={columns}
+          data={banks}
+          emptyMessage="Sin bancos registrados"
+          searchPlaceholder="Buscar banco..."
+        />
       )}
 
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>

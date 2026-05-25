@@ -7,12 +7,6 @@ import { z } from 'zod'
 import { UserPlus, Pencil, Trash2 } from 'lucide-react'
 import {
   Button,
-  Table,
-  TableHeader,
-  TableBody,
-  TableRow,
-  TableHead,
-  TableCell,
   Dialog,
   DialogContent,
   DialogHeader,
@@ -35,8 +29,10 @@ import {
   AlertDialogDescription,
   AlertDialogAction,
   AlertDialogCancel,
+  DataTable,
   toast,
 } from '@cosmetics/ui'
+import type { ColumnDef } from '@cosmetics/ui'
 import { useEmpleados, useBanks, usePositions } from '@/hooks'
 import { formatCurrency } from '@/lib/utils'
 import type { Empleado } from '@/lib/mock-data'
@@ -181,11 +177,88 @@ export default function EmpleadosPage() {
   const displayBanco    = (emp: Empleado) => emp.bank?.nombre    ?? emp.banco
   const displayPuesto   = (emp: Empleado) => emp.position?.nombre ?? emp.puesto
 
+  const columns: ColumnDef<Empleado>[] = [
+    {
+      accessorKey: 'nombreCompleto',
+      header: 'Nombre completo',
+      cell: ({ row }) => <span className="font-medium">{row.original.nombreCompleto}</span>,
+    },
+    {
+      id: 'banco',
+      accessorFn: (row) => row.bank?.nombre ?? row.banco,
+      header: 'Banco',
+      cell: ({ row }) => displayBanco(row.original),
+    },
+    {
+      accessorKey: 'numeroCuenta',
+      header: 'No. cuenta',
+      cell: ({ row }) => (
+        <span className="font-mono text-xs">{row.original.numeroCuenta}</span>
+      ),
+    },
+    {
+      id: 'puesto',
+      accessorFn: (row) => row.position?.nombre ?? row.puesto,
+      header: 'Puesto',
+      cell: ({ row }) => {
+        const puesto = displayPuesto(row.original)
+        return <Badge variant={badgePuesto(puesto)}>{puesto}</Badge>
+      },
+    },
+    {
+      accessorKey: 'metaIndividual',
+      header: 'Meta individual',
+      cell: ({ row }) => (
+        <div className="text-right">{formatCurrency(row.original.metaIndividual)}</div>
+      ),
+    },
+    {
+      id: 'acciones',
+      header: () => <div className="text-right">Acciones</div>,
+      enableSorting: false,
+      enableGlobalFilter: false,
+      cell: ({ row }) => {
+        const emp = row.original
+        return (
+          <div className="flex justify-end gap-1">
+            <Button size="icon" variant="ghost" onClick={() => openEdit(emp)}>
+              <Pencil className="h-4 w-4" />
+            </Button>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button size="icon" variant="ghost">
+                  <Trash2 className="h-4 w-4 text-red-500" />
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>¿Eliminar empleado?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Esta acción no se puede deshacer. Se eliminará a <strong>{emp.nombreCompleto}</strong>.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                  <AlertDialogAction
+                    className="bg-red-600 hover:bg-red-700"
+                    onClick={() => remove(emp.id)}
+                  >
+                    Eliminar
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
+        )
+      },
+    },
+  ]
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold" style={{ color: 'var(--text-primary)' }}>Empleados</h1>
+          <h1 className="page-title font-semibold uppercase">Empleados</h1>
           <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
             Gestión del catálogo de empleados
           </p>
@@ -200,69 +273,12 @@ export default function EmpleadosPage() {
       {loading ? (
         <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Cargando empleados...</p>
       ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Nombre completo</TableHead>
-              <TableHead>Banco</TableHead>
-              <TableHead>No. cuenta</TableHead>
-              <TableHead>Puesto</TableHead>
-              <TableHead className="text-right">Meta individual</TableHead>
-              <TableHead className="text-right">Acciones</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {empleados.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={6} className="text-center" style={{ color: 'var(--text-muted)' }}>
-                  Sin empleados registrados
-                </TableCell>
-              </TableRow>
-            )}
-            {empleados.map((emp) => (
-              <TableRow key={emp.id}>
-                <TableCell className="font-medium">{emp.nombreCompleto}</TableCell>
-                <TableCell>{displayBanco(emp)}</TableCell>
-                <TableCell className="font-mono text-xs">{emp.numeroCuenta}</TableCell>
-                <TableCell>
-                  <Badge variant={badgePuesto(displayPuesto(emp))}>{displayPuesto(emp)}</Badge>
-                </TableCell>
-                <TableCell className="text-right">{formatCurrency(emp.metaIndividual)}</TableCell>
-                <TableCell className="text-right">
-                  <div className="flex justify-end gap-1">
-                    <Button size="icon" variant="ghost" onClick={() => openEdit(emp)}>
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <Button size="icon" variant="ghost">
-                          <Trash2 className="h-4 w-4 text-red-500" />
-                        </Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>¿Eliminar empleado?</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            Esta acción no se puede deshacer. Se eliminará a <strong>{emp.nombreCompleto}</strong>.
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                          <AlertDialogAction
-                            className="bg-red-600 hover:bg-red-700"
-                            onClick={() => remove(emp.id)}
-                          >
-                            Eliminar
-                          </AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+        <DataTable
+          columns={columns}
+          data={empleados}
+          emptyMessage="Sin empleados registrados"
+          searchPlaceholder="Buscar empleado..."
+        />
       )}
 
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>

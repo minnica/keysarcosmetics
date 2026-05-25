@@ -2,11 +2,11 @@
 // Sidebar de la app Envelope — usa el Sidebar canónico de shadcn desde @cosmetics/ui
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import {
   ShoppingCart, Users, Building2, CreditCard,
   LayoutDashboard, BarChart2, CalendarDays, UserCheck,
-  CalendarRange, TrendingUp, Sun, Moon, X,
+  CalendarRange, TrendingUp, Sun, Moon, X, LogOut,
   Landmark, Briefcase,
 } from 'lucide-react'
 import {
@@ -96,12 +96,16 @@ function ThemeToggle() {
 // ── AppSidebar ────────────────────────────────────────────────────────────────
 export function AppSidebar() {
   const pathname = usePathname()
-  // Fix 2 + 3: isMobile para botón X de cierre; setOpenMobile para auto-close al navegar
+  const router = useRouter()
   const { isMobile, setOpenMobile } = useSidebar()
 
   function handleNavClick() {
-    // Fix 3: cerrar el Sheet en mobile al seleccionar cualquier opción de navegación
     setOpenMobile(false)
+  }
+
+  function handleLogout() {
+    localStorage.removeItem('auth_token')
+    router.push('/login')
   }
 
   return (
@@ -112,37 +116,57 @@ export function AppSidebar() {
         - Desktop collapsed: solo SidebarTrigger centrado                         (Fix 1)
         - Mobile Sheet    : logo a la izquierda + botón X a la derecha            (Fix 2)
       */}
-      <SidebarHeader
-        className="h-16 flex-row items-center justify-between border-b px-3 group-data-[collapsible=icon]:justify-center"
-        style={{ borderColor: 'var(--border-color)' }}
-      >
-        {/* Logo: oculto cuando el sidebar está colapsado en desktop */}
-        <div className="min-w-0 flex-1 overflow-hidden group-data-[collapsible=icon]:hidden">
+      <SidebarHeader className="p-0 border-b" style={{ borderColor: 'var(--border-color)' }}>
+        {/* Colapsado: logo + trigger para expandir */}
+        <div className="hidden group-data-[collapsible=icon]:flex h-16 flex-col items-center justify-center gap-1">
           <img
             src="/logo.svg"
             alt="Keysar Cosmetics"
             className="object-contain"
-            style={{ maxWidth: '140px', height: 'auto', maxHeight: '44px' }}
+            style={{ width: '24px', height: '24px' }}
+          />
+          <SidebarTrigger
+            className="text-[var(--text-muted)] hover:bg-[var(--accent-hover)] hover:text-[var(--text-primary)]"
           />
         </div>
 
-        {/* Fix 1 + 2: botón diferente según contexto */}
-        {isMobile ? (
-          // Mobile: X explícita para cerrar el Sheet (universalmente entendida)
-          <button
-            onClick={() => setOpenMobile(false)}
-            aria-label="Cerrar menú"
-            className="shrink-0 rounded-md p-1.5 transition-colors hover:bg-[var(--accent-hover)]"
-            style={{ color: 'var(--text-muted)' }}
-          >
-            <X className="h-4 w-4" />
-          </button>
-        ) : (
-          // Desktop: SidebarTrigger visible para colapsar/expandir
-          <SidebarTrigger
-            className="shrink-0 text-[var(--text-muted)] hover:bg-[var(--accent-hover)] hover:text-[var(--text-primary)]"
+        {/* Expandido: logo arriba + texto abajo + trigger en esquina */}
+        <div className="group-data-[collapsible=icon]:hidden relative flex flex-col items-center gap-1 pt-3 pb-1 px-3">
+          {isMobile ? (
+            <button
+              onClick={() => setOpenMobile(false)}
+              aria-label="Cerrar menú"
+              className="absolute top-2 right-2 rounded-md p-1.5 transition-colors hover:bg-[var(--accent-hover)]"
+              style={{ color: 'var(--text-muted)' }}
+            >
+              <X className="h-4 w-4" />
+            </button>
+          ) : (
+            <SidebarTrigger
+              className="absolute top-2 right-2 text-[var(--text-muted)] hover:bg-[var(--accent-hover)] hover:text-[var(--text-primary)]"
+            />
+          )}
+          <img
+            src="/logo.svg"
+            alt="Keysar Cosmetics"
+            className="object-contain"
+            style={{ maxWidth: '52px', height: 'auto' }}
           />
-        )}
+          <span
+            className="font-brand font-bold text-lg tracking-widest uppercase"
+            style={{ color: 'var(--text-primary)' }}
+          >
+            Keysar Cosmetics
+          </span>
+        </div>
+
+        {/* Theme toggle — solo visible en expandido */}
+        <div
+          className="px-3 py-2 border-t group-data-[collapsible=icon]:hidden"
+          style={{ borderColor: 'var(--border-color)' }}
+        >
+          <ThemeToggle />
+        </div>
       </SidebarHeader>
 
       {/* Navegación */}
@@ -228,17 +252,27 @@ export function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
 
-      {/* Footer: toggle de tema + versión */}
-      <SidebarFooter className="border-t" style={{ borderColor: 'var(--border-color)' }}>
-        <div className="group-data-[collapsible=icon]:hidden">
-          <ThemeToggle />
-          <p
-            className="mt-1 text-center text-[10px] uppercase tracking-wider"
-            style={{ color: 'var(--text-muted)' }}
-          >
-            Envelope v1.0
-          </p>
-        </div>
+      {/* Footer: cerrar sesión + versión */}
+      <SidebarFooter className="border-t p-2" style={{ borderColor: 'var(--border-color)' }}>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              onClick={handleLogout}
+              tooltip="Cerrar sesión"
+              className="justify-center cursor-pointer rounded-lg transition-colors hover:opacity-90"
+              style={{ backgroundColor: '#ecd1c8', color: '#1a1a1a' }}
+            >
+              <LogOut className="h-4 w-4 shrink-0" />
+              <span>Cerrar sesión</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+        <p
+          className="text-center text-[10px] uppercase tracking-wider pb-1 group-data-[collapsible=icon]:hidden"
+          style={{ color: 'var(--text-muted)' }}
+        >
+          Envelope v1.0
+        </p>
       </SidebarFooter>
 
       {/* Rail — handle secundario para colapsar/expandir en desktop (complementa el trigger del header) */}

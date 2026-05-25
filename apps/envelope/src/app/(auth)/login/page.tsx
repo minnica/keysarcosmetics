@@ -64,7 +64,7 @@ export default function LoginPage() {
             style={{ maxWidth: '120px', height: 'auto' }}
           />
           <div>
-            <h1 className="text-xl font-semibold" style={{ color: 'var(--text-primary)' }}>
+            <h1 className="font-brand text-2xl tracking-wide" style={{ color: 'var(--text-primary)' }}>
               Iniciar sesión
             </h1>
             <p className="text-xs mt-1 tracking-wide" style={{ color: 'var(--text-muted)' }}>

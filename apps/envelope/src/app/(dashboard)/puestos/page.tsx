@@ -14,12 +14,6 @@ import {
   DialogTitle,
   Input,
   Label,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
   AlertDialog,
   AlertDialogTrigger,
   AlertDialogContent,
@@ -29,8 +23,10 @@ import {
   AlertDialogDescription,
   AlertDialogAction,
   AlertDialogCancel,
+  DataTable,
   toast,
 } from '@cosmetics/ui'
+import type { ColumnDef } from '@cosmetics/ui'
 import { usePositions } from '@/hooks'
 import type { Position } from '@cosmetics/types'
 
@@ -80,11 +76,57 @@ export default function PuestosPage() {
     setModalOpen(false)
   }
 
+  const columns: ColumnDef<Position>[] = [
+    {
+      accessorKey: 'nombre',
+      header: 'Puesto',
+      cell: ({ row }) => <span className="font-medium">{row.original.nombre}</span>,
+    },
+    {
+      id: 'acciones',
+      header: () => <div className="text-right">Acciones</div>,
+      cell: ({ row }) => {
+        const p = row.original
+        return (
+          <div className="flex justify-end gap-1">
+            <Button size="icon" variant="ghost" onClick={() => openEdit(p)}>
+              <Pencil className="h-4 w-4" />
+            </Button>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button size="icon" variant="ghost">
+                  <Trash2 className="h-4 w-4 text-red-500" />
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>¿Eliminar puesto?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Esta acción no se puede deshacer. Se eliminará el puesto <strong>{p.nombre}</strong>.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                  <AlertDialogAction
+                    className="bg-red-600 hover:bg-red-700"
+                    onClick={() => remove(p.id)}
+                  >
+                    Eliminar
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
+        )
+      },
+    },
+  ]
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold" style={{ color: 'var(--text-primary)' }}>Puestos</h1>
+          <h1 className="page-title font-semibold uppercase">Puestos</h1>
           <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
             Catálogo de puestos de trabajo
           </p>
@@ -99,59 +141,12 @@ export default function PuestosPage() {
       {loading ? (
         <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Cargando puestos...</p>
       ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Puesto</TableHead>
-              <TableHead className="text-right">Acciones</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {positions.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={2} className="text-center" style={{ color: 'var(--text-muted)' }}>
-                  Sin puestos registrados
-                </TableCell>
-              </TableRow>
-            )}
-            {positions.map((p) => (
-              <TableRow key={p.id}>
-                <TableCell className="font-medium">{p.nombre}</TableCell>
-                <TableCell className="text-right">
-                  <div className="flex justify-end gap-1">
-                    <Button size="icon" variant="ghost" onClick={() => openEdit(p)}>
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <Button size="icon" variant="ghost">
-                          <Trash2 className="h-4 w-4 text-red-500" />
-                        </Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>¿Eliminar puesto?</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            Esta acción no se puede deshacer. Se eliminará el puesto <strong>{p.nombre}</strong>.
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                          <AlertDialogAction
-                            className="bg-red-600 hover:bg-red-700"
-                            onClick={() => remove(p.id)}
-                          >
-                            Eliminar
-                          </AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+        <DataTable
+          columns={columns}
+          data={positions}
+          emptyMessage="Sin puestos registrados"
+          searchPlaceholder="Buscar puesto..."
+        />
       )}
 
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>

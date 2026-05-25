@@ -63,7 +63,7 @@ export default function MetodoPagoPorDiaPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold" style={{ color: 'var(--text-primary)' }}>Método de pago por día</h1>
+        <h1 className="page-title font-semibold uppercase">Método de pago por día</h1>
         <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>Desglose diario por sucursal para un método y mes específico</p>
       </div>
 
@@ -115,6 +115,7 @@ export default function MetodoPagoPorDiaPage() {
       {!loading && dias.length === 0 ? (
         <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Sin ventas con ese método en el período seleccionado.</p>
       ) : (
+        <div className="overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow>
@@ -146,6 +147,7 @@ export default function MetodoPagoPorDiaPage() {
             </TableRow>
           </TableFooter>
         </Table>
+        </div>
       )}
     </div>
   )
