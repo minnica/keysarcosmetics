@@ -66,6 +66,20 @@ const ventaItemSchema = z.object({
 type SelectorForm = z.infer<typeof selectorSchema>;
 type VentaItemForm = z.infer<typeof ventaItemSchema>;
 
+// ── Opciones para toast informativo de ventas enlistadas ──────────────────────
+const infoToastOptions = {
+  duration: 8000,
+  style: {
+    background: '#6fc9db',
+    color: '#ffffff',
+    border: '1px solid #bae2e8',
+    boxShadow: '0 4px 12px rgba(111, 201, 219, 0.25)',
+  },
+};
+
+const INFO_TOAST_MSG =
+  "Venta enlistada. Da clic en «Guardar registro» para guardar lista o en «Agregar venta» para registrar más ventas del mismo vendedor.";
+
 // ── Componente principal ──────────────────────────────────────────────────────
 
 export default function VentasPage() {
@@ -128,10 +142,10 @@ export default function VentasPage() {
           i.id === editingItem.id ? { id: editingItem.id, ...cleanData } : i,
         ),
       );
-      toast.success("Venta actualizada");
+      toast.info(INFO_TOAST_MSG, infoToastOptions);
     } else {
       setTempItems((prev) => [...prev, { id: generateId(), ...cleanData }]);
-      toast.success("Venta agregada");
+      toast.info(INFO_TOAST_MSG, infoToastOptions);
     }
 
     setModalOpen(false);
@@ -178,7 +192,7 @@ export default function VentasPage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-semibold" style={{ color: 'var(--text-primary)' }}>Registro de ventas</h1>
+        <h1 className="page-title font-semibold uppercase">Registro de ventas</h1>
         <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
           Captura las ventas del día por vendedor y sucursal
         </p>
@@ -189,9 +203,7 @@ export default function VentasPage() {
         className="rounded-xl border p-6"
         style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border-color)' }}
       >
-        <h2 className="text-base font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>
-          1. Selección
-        </h2>
+        <h2 className="section-heading mb-4">1. Selección</h2>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className="space-y-1.5">
             <Label htmlFor="sucursal">Sucursal</Label>
@@ -256,9 +268,7 @@ export default function VentasPage() {
         >
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>
-                2. Ventas del vendedor
-              </h2>
+              <h2 className="section-heading">2. Ventas del vendedor</h2>
               <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
                 {vendedorNombre(watchedVendedor)} ·{" "}
                 {sucursalNombre(watchedSucursal)} · {formatDate(watchedFecha)}
@@ -370,9 +380,7 @@ export default function VentasPage() {
 
       {/* ── Tabla de registros guardados ── */}
       <div className="space-y-3">
-        <h2 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>
-          Registros guardados
-        </h2>
+        <h2 className="section-heading">Registros guardados</h2>
         {registros.length === 0 ? (
           <p className="text-sm" style={{ color: 'var(--text-muted)' }}>No hay registros guardados.</p>
         ) : (

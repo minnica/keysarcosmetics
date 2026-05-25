@@ -84,6 +84,18 @@ Wrappers custom en `packages/ui/src/components/custom`:
 - `toast` siempre desde `@cosmetics/ui`, nunca `import { toast } from 'sonner'` directo.
 - Botones de borrar siempre con `AlertDialog` de confirmación antes de ejecutar `remove`.
 
+**Sistema tipográfico (envelope):**
+- Fuentes disponibles: `Emofera Regular` (display/decorativa, solo peso Regular) y `Gilroy` (400/500/600/700).
+- Tailwind `font-brand` → Emofera. Tailwind `font-sans` → Gilroy (default del body).
+- **No usar `font-bold`/`font-semibold` con `font-brand`** — Emofera no tiene esos pesos; el navegador los sintetiza mal.
+- Jerarquía con clases CSS utilitarias definidas en `globals.css @layer components`:
+  - `.page-title` — H1 de página: Emofera 30px Regular, `letter-spacing: 0.015em`
+  - `.section-heading` — H2 dentro de página: Gilroy SemiBold 13px, `letter-spacing: 0.05em`
+  - `.label-caps` — etiqueta decorativa (gráficas, grupos): Gilroy SemiBold 11px uppercase gold
+  - `.number-display` — montos monetarios: Gilroy Bold tabular-nums
+- Todos los H1 de página usan `className="page-title"`.
+- `font-brand text-sm tracking-widest uppercase` para el nombre de marca en el sidebar.
+
 ---
 
 ## Estado actual de apps/envelope
@@ -101,9 +113,12 @@ UI:
 - Sidebar responsive usando shadcn `Sidebar` + `Sheet` (Sheet para mobile).
 - Layout: `AppSidebar` + `LayoutShell` en `src/components/layout/`.
 - Todos los botones de borrar usan `AlertDialog` de confirmación.
-- Todos los formularios disparan `toast.success()` al crear o editar.
+- Todos los formularios disparan `toast.success()` al crear o editar, **excepto** el modal "Agregar/Editar venta" en ventas: dispara `toast.info()` azul pastel (8 s) recordando al usuario que debe dar clic en «Guardar registro» para persistir.
 - `<Toaster position="bottom-center" />` montado en `src/app/layout.tsx`.
 - Favicon configurado via metadata `icons: { icon: '/logo.svg' }` en root layout.
+- Header del sidebar muestra logo (32px) + texto "Keysar Cosmetics" cuando expandido; solo logo (28px) cuando colapsado.
+- Switch dark/light mode en el header del sidebar (bajo la fila del logo), oculto en modo colapsado.
+- Botón "Cerrar sesión" en `SidebarFooter` — elimina `auth_token` de localStorage y redirige a `/login`. Usa `SidebarMenuButton` con tooltip para funcionar también en modo colapsado.
 
 Datos:
 - `useBanks` y `usePositions` cargan catálogos dinámicos desde backend.

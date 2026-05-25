@@ -85,7 +85,7 @@ export default function MetodosPagoPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold" style={{ color: 'var(--text-primary)' }}>Métodos de pago</h1>
+          <h1 className="page-title font-semibold uppercase">Métodos de pago</h1>
           <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
             Catálogo de formas de pago aceptadas
           </p>

@@ -131,12 +131,7 @@ export default function DashboardPage() {
       {/* Header */}
       <div className="flex items-end justify-between gap-4 flex-wrap">
         <div>
-          <h1
-            className="text-2xl font-semibold"
-            style={{ color: "var(--text-primary)" }}
-          >
-            Dashboard
-          </h1>
+          <h1 className="page-title font-semibold uppercase">Dashboard</h1>
           <p className="text-sm mt-1" style={{ color: "var(--text-muted)" }}>
             Resumen de ventas —{" "}
             {formatDate(selectedDate, "EEEE d 'de' MMMM yyyy")}
@@ -226,12 +221,7 @@ export default function DashboardPage() {
 
       {/* ── Gráfica 1: Total mensual por sucursal ── */}
       <section>
-        <h2
-          className="text-xs font-semibold uppercase tracking-[0.12em] mb-3"
-          style={{ color: "var(--color-gold)" }}
-        >
-          Total mensual por sucursal
-        </h2>
+        <h2 className="label-caps mb-3">Total mensual por sucursal</h2>
         <Card>
           <CardContent className="pt-6">
             <ResponsiveContainer width="100%" height={280}>
@@ -280,12 +270,7 @@ export default function DashboardPage() {
 
       {/* ── Gráfica 2: Vendedor vs Meta ── */}
       <section>
-        <h2
-          className="text-xs font-semibold uppercase tracking-[0.12em] mb-3"
-          style={{ color: "var(--color-gold)" }}
-        >
-          Avance vendedores del mes
-        </h2>
+        <h2 className="label-caps mb-3">Avance vendedores del mes</h2>
         <Card>
           <CardContent className="pt-6">
             {vendedoresData.length === 0 ? (

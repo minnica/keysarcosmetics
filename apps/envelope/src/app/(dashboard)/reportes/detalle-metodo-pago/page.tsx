@@ -33,7 +33,7 @@ export default function DetalleMetodoPagoPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold" style={{ color: 'var(--text-primary)' }}>Detalle método de pago</h1>
+        <h1 className="page-title font-semibold uppercase">Detalle método de pago</h1>
         <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>Total por sucursal y método de pago en el período</p>
       </div>
 

@@ -36,7 +36,7 @@ export default function TotalGeneralPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold" style={{ color: 'var(--text-primary)' }}>Total general de ventas</h1>
+        <h1 className="page-title font-semibold uppercase">Total general de ventas</h1>
         <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>Resumen diario por sucursal en el período</p>
       </div>
 

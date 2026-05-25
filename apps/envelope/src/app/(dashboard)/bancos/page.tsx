@@ -84,7 +84,7 @@ export default function BancosPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold" style={{ color: 'var(--text-primary)' }}>Bancos</h1>
+          <h1 className="page-title font-semibold uppercase">Bancos</h1>
           <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
             Catálogo de bancos para depósitos de empleados
           </p>
