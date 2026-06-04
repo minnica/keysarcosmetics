@@ -62,6 +62,8 @@ export interface RegistroVenta {
   vendedorId: string;
   fecha: string; // YYYY-MM-DD
   items: VentaItem[];
+  // Comparte sesionId con otros registros del mismo voucher multi-vendedor; null = venta individual
+  sesionId?: string | null;
 }
 
 // ─── Catálogos base ──────────────────────────────────────────────────────────

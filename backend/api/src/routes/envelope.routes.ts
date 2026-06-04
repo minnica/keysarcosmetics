@@ -475,11 +475,12 @@ router.get('/ventas', async (req, res) => {
 
 router.post('/ventas', async (req, res) => {
   try {
-    const { sucursalId, vendedorId, fecha, notas, detalles } = req.body as {
+    const { sucursalId, vendedorId, fecha, notas, sesionId, detalles } = req.body as {
       sucursalId: string
       vendedorId: string
       fecha: string
       notas?: string
+      sesionId?: string
       detalles: { cantidad: number; metodoPagoId: string }[]
     }
     if (!sucursalId || !vendedorId || !fecha || !detalles?.length) {
@@ -490,6 +491,7 @@ router.post('/ventas', async (req, res) => {
       data: {
         fecha: new Date(fecha),
         notas,
+        ...(sesionId ? { sesionId } : {}),
         sucursalId,
         vendedorId,
         detalles: {

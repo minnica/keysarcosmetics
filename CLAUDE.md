@@ -104,7 +104,7 @@ Wrappers custom en `packages/ui/src/components/custom`:
 ## Estado actual de apps/envelope
 
 Módulos implementados:
-- **ventas** — captura y gestión de ventas diarias por sucursal
+- **ventas** — captura y gestión de ventas diarias por sucursal; soporta múltiples vendedores por sesión de captura (voucher compartido): `sucursal`+`fecha` se bloquean al agregar el primer ítem, `vendedor` permanece editable para acumular pilas de ítems por vendedor; «Guardar registros» crea un `RegistroVenta` separado por vendedor en un solo click, compartiendo un `sesionId` UUID cuando son >1 vendedores; la tabla de registros guardados muestra badge voucher compartido · $X» en todas las filas que comparten `sesionId`
 - **empleados** — CRUD, usa `bankId`/`positionId` dinámicos desde backend
 - **sucursales** — CRUD de sucursales
 - **metodos-pago** — CRUD de métodos de pago
@@ -139,6 +139,7 @@ Datos:
 - `Usuario`, `Sucursal`, `Empleado`, `Venta`, `VentaDetalle`, `MetodoPago`, `Bank`, `Position`.
 - `Empleado` tiene `bankId`/`positionId` nullable (FK a catálogos dinámicos).
 - `Empleado` también tiene campos legacy `banco`/`puesto` (String) — conservar por compatibilidad hasta backfill completo en prod.
+- `Venta` tiene `sesionId String?` — vincula registros del mismo voucher multi-vendedor; null = venta individual.
 - Soft delete: `activo = false` (Usuario, Empleado, Bank, Position, MetodoPago) o `activa = false` (Sucursal). **No hacer borrados físicos salvo instrucción explícita.**
 
 **Reglas de BD:**

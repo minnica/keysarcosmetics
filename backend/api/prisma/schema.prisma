@@ -101,6 +101,8 @@ model Venta {
   id            String         @id @default(cuid())
   fecha         DateTime
   notas         String?
+  // Vincula registros guardados juntos (mismo voucher multi-vendedor); nullable = venta individual
+  sesionId      String?
   sucursalId    String
   sucursal      Sucursal       @relation(fields: [sucursalId], references: [id])
   vendedorId    String
