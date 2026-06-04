@@ -56,7 +56,7 @@ import type { VentaItem, RegistroVenta } from "@/lib/mock-data";
 const selectorSchema = z.object({
   sucursalId: z.string().min(1, "Selecciona una sucursal"),
   fecha: z.string().min(1, "Selecciona una fecha"),
-  vendedorId: z.string().min(1, "Selecciona un vendedor"),
+  vendedorId: z.string().optional(),
 });
 
 const ventaItemSchema = z.object({
@@ -68,7 +68,10 @@ const ventaItemSchema = z.object({
 type SelectorForm = z.infer<typeof selectorSchema>;
 type VentaItemForm = z.infer<typeof ventaItemSchema>;
 
-// ── Opciones para toast informativo de ventas enlistadas ──────────────────────
+// Pila de ítems pendientes por vendedor
+type VendorStack = { vendedorId: string; items: VentaItem[] };
+
+// ── Toast informativo ─────────────────────────────────────────────────────────
 const infoToastOptions = {
   duration: 8000,
   style: {
@@ -80,7 +83,7 @@ const infoToastOptions = {
 };
 
 const INFO_TOAST_MSG =
-  "Venta enlistada. Da clic en «Guardar registro» para guardar lista o en «Agregar venta» para registrar más ventas del mismo vendedor.";
+  "Venta enlistada. Puedes cambiar de vendedor en el Paso 1 para agregar ventas a otro vendedor, o dar clic en «Guardar registros» para persistir todo.";
 
 // ── Componente principal ──────────────────────────────────────────────────────
 
@@ -96,13 +99,16 @@ export default function VentasPage() {
   });
   const selectorControl = selectorForm.control;
   const watchedSucursal = selectorForm.watch("sucursalId");
-  const watchedVendedor = selectorForm.watch("vendedorId");
+  const watchedVendedor = selectorForm.watch("vendedorId") ?? "";
   const watchedFecha = selectorForm.watch("fecha");
 
-  const [tempItems, setTempItems] = useState<VentaItem[]>([]);
+  // Pilas de ítems pendientes agrupadas por vendedorId
+  const [pendingVendors, setPendingVendors] = useState<VendorStack[]>([]);
+  // Bloquea sucursal + fecha cuando ya hay ítems (pero nunca vendedor)
   const [selectorLocked, setSelectorLocked] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<VentaItem | null>(null);
+  const [editingVendorId, setEditingVendorId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   const itemForm = useForm<VentaItemForm>({
@@ -111,16 +117,27 @@ export default function VentasPage() {
   });
   const itemControl = itemForm.control;
 
-  const selectorValido = watchedSucursal && watchedFecha && watchedVendedor;
+  // Paso 2 visible con solo sucursal + fecha
+  const contextValido = !!(watchedSucursal && watchedFecha);
+  // Agregar ítems requiere además un vendedor seleccionado
+  const canAddItem = !!(contextValido && watchedVendedor);
+
+  const hasPendingItems = pendingVendors.some((v) => v.items.length > 0);
+  const grandTotal = pendingVendors.reduce(
+    (s, v) => s + v.items.reduce((si, i) => si + i.cantidad, 0),
+    0,
+  );
 
   function openAddModal() {
     setEditingItem(null);
+    setEditingVendorId(null);
     itemForm.reset({ cantidad: 0, metodoPagoId: "", notas: "" });
     setModalOpen(true);
   }
 
-  function openEditItemModal(item: VentaItem) {
+  function openEditItemModal(vendedorId: string, item: VentaItem) {
     setEditingItem(item);
+    setEditingVendorId(vendedorId);
     itemForm.reset({
       cantidad: item.cantidad,
       metodoPagoId: item.metodoPagoId,
@@ -138,48 +155,96 @@ export default function VentasPage() {
         : {}),
     };
 
-    if (editingItem) {
-      setTempItems((prev) =>
-        prev.map((i) =>
-          i.id === editingItem.id ? { id: editingItem.id, ...cleanData } : i,
+    if (editingItem && editingVendorId) {
+      // Editar ítem existente en su pila de vendedor
+      setPendingVendors((prev) =>
+        prev.map((v) =>
+          v.vendedorId === editingVendorId
+            ? {
+                ...v,
+                items: v.items.map((i) =>
+                  i.id === editingItem.id
+                    ? { id: editingItem.id, ...cleanData }
+                    : i,
+                ),
+              }
+            : v,
         ),
       );
-      toast.info(INFO_TOAST_MSG, infoToastOptions);
     } else {
-      setTempItems((prev) => [...prev, { id: generateId(), ...cleanData }]);
-      toast.info(INFO_TOAST_MSG, infoToastOptions);
+      // Agregar nuevo ítem a la pila del vendedor activo
+      const newItem: VentaItem = { id: generateId(), ...cleanData };
+      setPendingVendors((prev) => {
+        const exists = prev.find((v) => v.vendedorId === watchedVendedor);
+        if (exists) {
+          return prev.map((v) =>
+            v.vendedorId === watchedVendedor
+              ? { ...v, items: [...v.items, newItem] }
+              : v,
+          );
+        }
+        return [...prev, { vendedorId: watchedVendedor, items: [newItem] }];
+      });
     }
 
+    setSelectorLocked(true);
+    toast.info(INFO_TOAST_MSG, infoToastOptions);
     setModalOpen(false);
   }
 
-  function handleDeleteItem(id: string) {
-    setTempItems((prev) => prev.filter((i) => i.id !== id));
+  function handleDeleteItem(vendedorId: string, itemId: string) {
+    setPendingVendors((prev) =>
+      prev
+        .map((v) =>
+          v.vendedorId === vendedorId
+            ? { ...v, items: v.items.filter((i) => i.id !== itemId) }
+            : v,
+        )
+        .filter((v) => v.items.length > 0),
+    );
+    // Si ya no quedan ítems, desbloquear selector
+    const remaining = pendingVendors
+      .map((v) =>
+        v.vendedorId === vendedorId
+          ? { ...v, items: v.items.filter((i) => i.id !== itemId) }
+          : v,
+      )
+      .filter((v) => v.items.length > 0);
+    if (remaining.length === 0) setSelectorLocked(false);
   }
 
   async function handleGuardarRegistro() {
-    if (tempItems.length === 0) return;
+    const toSave = pendingVendors.filter((v) => v.items.length > 0);
+    if (toSave.length === 0) return;
+    // Generar sesionId compartido solo cuando hay múltiples vendedores (mismo voucher)
+    const sesionId = toSave.length > 1 ? generateId() : null;
     setSaving(true);
     try {
-      const registro: RegistroVenta = {
-        id: generateId(),
-        sucursalId: watchedSucursal,
-        vendedorId: watchedVendedor,
-        fecha: watchedFecha,
-        items: tempItems,
-      };
-      await addRegistro(registro);
-      setTempItems([]);
+      for (const vs of toSave) {
+        await addRegistro({
+          id: generateId(),
+          sucursalId: watchedSucursal,
+          vendedorId: vs.vendedorId,
+          fecha: watchedFecha,
+          items: vs.items,
+          ...(sesionId ? { sesionId } : {}),
+        });
+      }
+      setPendingVendors([]);
       setSelectorLocked(false);
       selectorForm.reset({ sucursalId: "", fecha: todayISO(), vendedorId: "" });
-      toast.success("Registro guardado");
+      toast.success(
+        toSave.length > 1
+          ? `${toSave.length} registros guardados`
+          : "Registro guardado",
+      );
     } finally {
       setSaving(false);
     }
   }
 
   function handleNuevoRegistro() {
-    setTempItems([]);
+    setPendingVendors([]);
     setSelectorLocked(false);
     selectorForm.reset({ sucursalId: "", fecha: todayISO(), vendedorId: "" });
   }
@@ -217,6 +282,25 @@ export default function VentasPage() {
       cell: ({ row }) => {
         const total = row.original.items.reduce((s, i) => s + i.cantidad, 0);
         return <div className="text-right font-medium">{formatCurrency(total)}</div>;
+      },
+    },
+    {
+      id: 'voucher',
+      accessorFn: (row) => row.sesionId ?? '',
+      header: 'Voucher',
+      enableSorting: false,
+      enableGlobalFilter: false,
+      cell: ({ row }) => {
+        const { sesionId } = row.original;
+        if (!sesionId) return <span style={{ color: 'var(--text-muted)' }}>—</span>;
+        const voucherTotal = registros
+          .filter((r) => r.sesionId === sesionId)
+          .reduce((s, r) => s + r.items.reduce((si, i) => si + i.cantidad, 0), 0);
+        return (
+          <Badge variant="outline" className="text-xs whitespace-nowrap">
+            Voucher compartido · {formatCurrency(voucherTotal)}
+          </Badge>
+        );
       },
     },
     {
@@ -339,7 +423,14 @@ export default function VentasPage() {
             />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="vendedor">Vendedor</Label>
+            <Label htmlFor="vendedor">
+              Vendedor
+              {hasPendingItems && (
+                <span className="ml-1.5 text-xs font-normal" style={{ color: 'var(--text-muted)' }}>
+                  — cambia para agregar a otro vendedor
+                </span>
+              )}
+            </Label>
             <Controller
               control={selectorControl}
               name="vendedorId"
@@ -347,9 +438,8 @@ export default function VentasPage() {
                 <Combobox
                   id="vendedor"
                   options={empleados.map((e) => ({ value: e.id, label: e.nombreCompleto }))}
-                  value={field.value}
+                  value={field.value ?? ""}
                   onValueChange={field.onChange}
-                  disabled={selectorLocked}
                   placeholder="Seleccionar..."
                   searchPlaceholder="Buscar vendedor..."
                   emptyMessage="Sin vendedores"
@@ -360,94 +450,135 @@ export default function VentasPage() {
         </div>
       </div>
 
-      {/* ── Paso 2: Items temporales ── */}
-      {selectorValido && (
+      {/* ── Paso 2: Ventas del día (multi-vendedor) ── */}
+      {contextValido && (
         <div
           className="rounded-xl border p-6 space-y-4"
           style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border-color)' }}
         >
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="section-heading">2. Ventas del vendedor</h2>
+              <h2 className="section-heading">2. Ventas del día</h2>
               <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
-                {vendedorNombre(watchedVendedor)} ·{" "}
                 {sucursalNombre(watchedSucursal)} · {formatDate(watchedFecha)}
               </p>
             </div>
-            <Button onClick={openAddModal} size="sm">
-              <PlusCircle className="h-4 w-4 mr-1.5" /> Agregar venta
-            </Button>
+            <div className="flex items-center gap-2">
+              {watchedVendedor && (
+                <span className="text-xs hidden sm:inline" style={{ color: 'var(--text-muted)' }}>
+                  Para:{" "}
+                  <strong className="font-semibold">{vendedorNombre(watchedVendedor)}</strong>
+                </span>
+              )}
+              <Button
+                onClick={openAddModal}
+                size="sm"
+                disabled={!canAddItem}
+                title={!canAddItem ? "Selecciona un vendedor en el Paso 1" : undefined}
+              >
+                <PlusCircle className="h-4 w-4 mr-1.5" /> Agregar venta
+              </Button>
+            </div>
           </div>
 
-          {tempItems.length > 0 ? (
+          {hasPendingItems ? (
             <>
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Cantidad</TableHead>
-                      <TableHead>Método de pago</TableHead>
-                      <TableHead>Notas</TableHead>
-                      <TableHead className="text-right">Acciones</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {tempItems.map((item) => (
-                      <TableRow key={item.id}>
-                        <TableCell className="font-medium">
-                          {formatCurrency(item.cantidad)}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="secondary">
-                            {metodoPagoNombre(item.metodoPagoId)}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                          {item.notas ?? "—"}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex justify-end gap-1">
-                            <Button size="icon" variant="ghost" onClick={() => openEditItemModal(item)}>
-                              <Pencil className="h-4 w-4" />
-                            </Button>
-                            <AlertDialog>
-                              <AlertDialogTrigger asChild>
-                                <Button size="icon" variant="ghost">
-                                  <Trash2 className="h-4 w-4 text-red-500" />
-                                </Button>
-                              </AlertDialogTrigger>
-                              <AlertDialogContent>
-                                <AlertDialogHeader>
-                                  <AlertDialogTitle>¿Eliminar venta?</AlertDialogTitle>
-                                  <AlertDialogDescription>
-                                    Se eliminará esta venta de {formatCurrency(item.cantidad)} del registro actual.
-                                  </AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                                  <AlertDialogAction
-                                    className="bg-red-600 hover:bg-red-700"
-                                    onClick={() => handleDeleteItem(item.id)}
-                                  >
-                                    Eliminar
-                                  </AlertDialogAction>
-                                </AlertDialogFooter>
-                              </AlertDialogContent>
-                            </AlertDialog>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+              <div className="space-y-4">
+                {pendingVendors.map((vs) => {
+                  const subtotal = vs.items.reduce((s, i) => s + i.cantidad, 0);
+                  return (
+                    <div
+                      key={vs.vendedorId}
+                      className="rounded-lg border p-4 space-y-3"
+                      style={{ borderColor: 'var(--border-color)' }}
+                    >
+                      <div className="flex items-center justify-between">
+                        <h3 className="section-heading">{vendedorNombre(vs.vendedorId)}</h3>
+                        <span className="number-display text-sm">
+                          {formatCurrency(subtotal)}
+                        </span>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Cantidad</TableHead>
+                              <TableHead>Método de pago</TableHead>
+                              <TableHead>Notas</TableHead>
+                              <TableHead className="text-right">Acciones</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {vs.items.map((item) => (
+                              <TableRow key={item.id}>
+                                <TableCell className="font-medium">
+                                  {formatCurrency(item.cantidad)}
+                                </TableCell>
+                                <TableCell>
+                                  <Badge variant="secondary">
+                                    {metodoPagoNombre(item.metodoPagoId)}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                                  {item.notas ?? "—"}
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  <div className="flex justify-end gap-1">
+                                    <Button
+                                      size="icon"
+                                      variant="ghost"
+                                      onClick={() => openEditItemModal(vs.vendedorId, item)}
+                                    >
+                                      <Pencil className="h-4 w-4" />
+                                    </Button>
+                                    <AlertDialog>
+                                      <AlertDialogTrigger asChild>
+                                        <Button size="icon" variant="ghost">
+                                          <Trash2 className="h-4 w-4 text-red-500" />
+                                        </Button>
+                                      </AlertDialogTrigger>
+                                      <AlertDialogContent>
+                                        <AlertDialogHeader>
+                                          <AlertDialogTitle>¿Eliminar venta?</AlertDialogTitle>
+                                          <AlertDialogDescription>
+                                            Se eliminará esta venta de {formatCurrency(item.cantidad)} del registro actual.
+                                          </AlertDialogDescription>
+                                        </AlertDialogHeader>
+                                        <AlertDialogFooter>
+                                          <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                          <AlertDialogAction
+                                            className="bg-red-600 hover:bg-red-700"
+                                            onClick={() => handleDeleteItem(vs.vendedorId, item.id)}
+                                          >
+                                            Eliminar
+                                          </AlertDialogAction>
+                                        </AlertDialogFooter>
+                                      </AlertDialogContent>
+                                    </AlertDialog>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-              <div className="flex items-center justify-between pt-2">
-                <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
-                  Total:{" "}
-                  {formatCurrency(
-                    tempItems.reduce((s, i) => s + i.cantidad, 0),
+
+              <div className="flex items-center justify-between pt-2 border-t" style={{ borderColor: 'var(--border-color)' }}>
+                <div>
+                  <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                    Total acumulado:{" "}
+                    <span className="number-display">{formatCurrency(grandTotal)}</span>
+                  </p>
+                  {pendingVendors.length > 1 && (
+                    <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                      {pendingVendors.length} vendedores · voucher combinado
+                    </p>
                   )}
-                </p>
+                </div>
                 <div className="flex gap-2">
                   <Button
                     variant="outline"
@@ -462,7 +593,7 @@ export default function VentasPage() {
                     disabled={saving}
                   >
                     <Save className="h-4 w-4 mr-1.5" />{" "}
-                    {saving ? "Guardando..." : "Guardar registro"}
+                    {saving ? "Guardando..." : "Guardar registros"}
                   </Button>
                 </div>
               </div>
@@ -470,7 +601,11 @@ export default function VentasPage() {
           ) : (
             <div className="flex flex-col items-center justify-center py-10" style={{ color: 'var(--text-muted)' }}>
               <ShoppingCartEmpty />
-              <p className="mt-2 text-sm">Sin ventas agregadas aún</p>
+              <p className="mt-2 text-sm">
+                {watchedVendedor
+                  ? "Sin ventas agregadas. Haz clic en «Agregar venta»."
+                  : "Selecciona un vendedor en el Paso 1 para agregar ventas."}
+              </p>
             </div>
           )}
         </div>
@@ -491,12 +626,18 @@ export default function VentasPage() {
         )}
       </div>
 
-      {/* ── Modal de agregar/editar item ── */}
+      {/* ── Modal de agregar/editar ítem ── */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{editingItem ? "Editar venta" : "Agregar venta"}</DialogTitle>
-            <DialogDescription>Ingresa los datos de la venta</DialogDescription>
+            <DialogDescription>
+              {editingItem
+                ? `Editando venta de ${editingVendorId ? vendedorNombre(editingVendorId) : ""}`
+                : watchedVendedor
+                  ? `Para ${vendedorNombre(watchedVendedor)}`
+                  : "Ingresa los datos de la venta"}
+            </DialogDescription>
           </DialogHeader>
           <form
             onSubmit={itemForm.handleSubmit(handleSaveItem)}

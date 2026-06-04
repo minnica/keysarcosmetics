@@ -19,6 +19,7 @@ interface VentaRaw {
   id: string;
   fecha: string;
   notas?: string | null;
+  sesionId?: string | null;
   sucursalId: string;
   vendedorId: string;
   detalles: { id: string; cantidad: string; metodoPagoId: string }[];
@@ -32,6 +33,7 @@ function toRegistroVenta(v: VentaRaw): RegistroVenta {
     vendedorId: v.vendedorId,
     // El backend devuelve DateTime ISO; tomamos solo la parte de fecha
     fecha: v.fecha.slice(0, 10),
+    sesionId: v.sesionId ?? null,
     items: v.detalles.map(
       (d): VentaItem => ({
         id: d.id,
@@ -81,6 +83,7 @@ export function useVentas(): UseVentasReturn {
         vendedorId: registro.vendedorId,
         fecha: registro.fecha,
         ...(notas ? { notas } : {}),
+        ...(registro.sesionId ? { sesionId: registro.sesionId } : {}),
         detalles: registro.items.map((i) => ({
           cantidad: i.cantidad,
           metodoPagoId: i.metodoPagoId,
