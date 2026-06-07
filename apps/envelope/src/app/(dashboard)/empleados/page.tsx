@@ -4,7 +4,7 @@ import { useState, type ChangeEvent } from 'react'
 import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { UserPlus, Pencil, Trash2 } from 'lucide-react'
+import { UserPlus, Pencil, Trash2, Power } from 'lucide-react'
 import {
   Button,
   Dialog,
@@ -50,7 +50,7 @@ const empleadoSchema = z.object({
 type EmpleadoForm = z.infer<typeof empleadoSchema>
 
 export default function EmpleadosPage() {
-  const { empleados, loading, error, add, update, remove } = useEmpleados()
+  const { empleados, loading, error, add, update, remove, toggleStatus } = useEmpleados()
   const { banks, loading: banksLoading } = useBanks()
   const { positions, loading: positionsLoading } = usePositions()
 
@@ -162,16 +162,12 @@ export default function EmpleadosPage() {
       toast.success('Empleado actualizado')
     } else {
       // banco/puesto requeridos por tipo legacy — backend los sobreescribe desde bankId/positionId
-      await add({ ...payload, banco: '', puesto: '' })
+      await add({ ...payload, banco: '', puesto: '', activo: true })
       toast.success('Empleado creado')
     }
 
     setModalOpen(false)
   }
-
-  // GERENTE resalta distinto al resto de puestos
-  const badgePuesto = (p: string) =>
-    p.toUpperCase() === 'GERENTE' ? 'default' : ('secondary' as const)
 
   // Texto a mostrar: prefiere nombre del catálogo, cae en legacy
   const displayBanco    = (emp: Empleado) => emp.bank?.nombre    ?? emp.banco
@@ -200,16 +196,32 @@ export default function EmpleadosPage() {
       id: 'puesto',
       accessorFn: (row) => row.position?.nombre ?? row.puesto,
       header: 'Puesto',
-      cell: ({ row }) => {
-        const puesto = displayPuesto(row.original)
-        return <Badge variant={badgePuesto(puesto)}>{puesto}</Badge>
-      },
+      cell: ({ row }) => (
+        <span className="text-sm">{displayPuesto(row.original)}</span>
+      ),
     },
     {
       accessorKey: 'metaIndividual',
       header: 'Meta individual',
       cell: ({ row }) => (
         <div className="text-right">{formatCurrency(row.original.metaIndividual)}</div>
+      ),
+    },
+    {
+      id: 'estatus',
+      accessorFn: (row) => row.activo,
+      header: 'Estatus',
+      enableGlobalFilter: false,
+      cell: ({ row }) => (
+        row.original.activo ? (
+          <Badge style={{ backgroundColor: '#648672', color: 'white', borderColor: '#648672' }}>
+            Activo
+          </Badge>
+        ) : (
+          <Badge className="bg-muted-foreground text-white border-transparent">
+            Inactivo
+          </Badge>
+        )
       ),
     },
     {
@@ -220,14 +232,58 @@ export default function EmpleadosPage() {
       cell: ({ row }) => {
         const emp = row.original
         return (
-          <div className="flex justify-end gap-1">
-            <Button size="icon" variant="ghost" onClick={() => openEdit(emp)}>
-              <Pencil className="h-4 w-4" />
+          <div className="flex justify-end gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => openEdit(emp)}
+            >
+              <Pencil className="h-4 w-4" /> Editar
             </Button>
             <AlertDialog>
               <AlertDialogTrigger asChild>
-                <Button size="icon" variant="ghost">
-                  <Trash2 className="h-4 w-4 text-red-500" />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className={`w-[110px] ${emp.activo ? 'border-amber-400 text-amber-700 hover:bg-amber-50' : 'border-[#8bb09b] text-[#648672] hover:bg-[#648672]/10'}`}
+                >
+                  <Power className="h-4 w-4 shrink-0" />
+                  <span className="inline-block w-[68px] text-center">
+                    {emp.activo ? 'Desactivar' : 'Activar'}
+                  </span>
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>
+                    {emp.activo ? '¿Desactivar empleado?' : '¿Activar empleado?'}
+                  </AlertDialogTitle>
+                  <AlertDialogDescription>
+                    {emp.activo
+                      ? <>El empleado <strong>{emp.nombreCompleto}</strong> dejará de aparecer en la captura de ventas.</>
+                      : <>El empleado <strong>{emp.nombreCompleto}</strong> volverá a estar disponible para captura de ventas.</>
+                    }
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                  <AlertDialogAction
+                    className={emp.activo ? 'bg-amber-500 hover:bg-amber-600 text-white' : 'bg-[#648672] hover:bg-[#4f6a5a] text-white'}
+                    onClick={() => {
+                      void toggleStatus(emp.id, !emp.activo).then(() => {
+                        toast.success(emp.activo ? 'Empleado desactivado' : 'Empleado activado')
+                      })
+                    }}
+                  >
+                    {emp.activo ? 'Desactivar' : 'Activar'}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button size="sm" variant="outline" className="border-red-300 text-red-600 hover:bg-red-50 hover:text-red-600">
+                  <Trash2 className="h-4 w-4" /> Eliminar
                 </Button>
               </AlertDialogTrigger>
               <AlertDialogContent>

@@ -65,8 +65,7 @@ router.delete('/sucursales/:id', requireRole('GERENTE'), async (req, res) => {
 router.get('/empleados', async (_req, res) => {
   try {
     const data = await prisma.empleado.findMany({
-      where: { activo: true },
-      orderBy: { nombreCompleto: 'asc' },
+      orderBy: [{ activo: 'desc' }, { nombreCompleto: 'asc' }],
       include: { bank: true, position: true },
     })
     res.json({ success: true, data, message: 'OK' })
@@ -225,6 +224,30 @@ router.delete('/empleados/:id', requireRole('GERENTE'), async (req, res) => {
   } catch (err) {
     console.error(err)
     res.status(500).json({ success: false, data: null, message: 'Error al eliminar empleado' })
+  }
+})
+
+router.patch('/empleados/:id/status', requireRole('GERENTE'), async (req, res) => {
+  try {
+    const { activo } = req.body as { activo: boolean }
+    if (typeof activo !== 'boolean') {
+      res.status(400).json({ success: false, data: null, message: 'El campo activo debe ser boolean' })
+      return
+    }
+    const existing = await prisma.empleado.findUnique({ where: { id: req.params['id'] } })
+    if (!existing) {
+      res.status(404).json({ success: false, data: null, message: 'Empleado no encontrado' })
+      return
+    }
+    const data = await prisma.empleado.update({
+      where: { id: req.params['id'] },
+      data: { activo },
+      include: { bank: true, position: true },
+    })
+    res.json({ success: true, data, message: activo ? 'Empleado activado' : 'Empleado desactivado' })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ success: false, data: null, message: 'Error al actualizar estatus del empleado' })
   }
 })
 

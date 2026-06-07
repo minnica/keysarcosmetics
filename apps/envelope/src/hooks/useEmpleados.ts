@@ -12,6 +12,7 @@ interface UseEmpleadosReturn {
   add: (e: Omit<Empleado, 'id'>) => Promise<void>
   update: (e: Empleado) => Promise<void>
   remove: (id: string) => Promise<void>
+  toggleStatus: (id: string, activo: boolean) => Promise<void>
 }
 
 // Convierte la respuesta del backend al tipo local (Decimal → number, incluye relaciones FK)
@@ -30,6 +31,7 @@ function toEmpleado(raw: Record<string, unknown>): Empleado {
     bank: (raw['bank'] as Empleado['bank']) ?? null,
     positionId: (raw['positionId'] as string | null) ?? null,
     position: (raw['position'] as Empleado['position']) ?? null,
+    activo: (raw['activo'] as boolean) ?? true,
   }
 }
 
@@ -68,5 +70,10 @@ export function useEmpleados(): UseEmpleadosReturn {
     await refetch()
   }, [refetch])
 
-  return { empleados, loading, error, refetch, add, update, remove }
+  const toggleStatus = useCallback(async (id: string, activo: boolean) => {
+    await api.patch(`/api/envelope/empleados/${id}/status`, { activo })
+    await refetch()
+  }, [refetch])
+
+  return { empleados, loading, error, refetch, add, update, remove, toggleStatus }
 }

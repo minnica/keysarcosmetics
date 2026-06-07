@@ -105,7 +105,7 @@ Wrappers custom en `packages/ui/src/components/custom`:
 
 Módulos implementados:
 - **ventas** — captura y gestión de ventas diarias por sucursal; soporta múltiples vendedores por sesión de captura (voucher compartido): `sucursal`+`fecha` se bloquean al agregar el primer ítem, `vendedor` permanece editable para acumular pilas de ítems por vendedor; «Guardar registros» crea un `RegistroVenta` separado por vendedor en un solo click, compartiendo un `sesionId` UUID cuando son >1 vendedores; la tabla de registros guardados muestra badge voucher compartido · $X» en todas las filas que comparten `sesionId`
-- **empleados** — CRUD, usa `bankId`/`positionId` dinámicos desde backend
+- **empleados** — CRUD, usa `bankId`/`positionId` dinámicos desde backend; incluye toggle activo/inactivo con `PATCH /empleados/:id/status`; GET retorna todos los empleados (activos primero), la tabla muestra badge de estatus y botón `PowerOff`/`Power` con AlertDialog de confirmación
 - **sucursales** — CRUD de sucursales
 - **metodos-pago** — CRUD de métodos de pago
 - **bancos** — CRUD propio con catálogo `Bank`

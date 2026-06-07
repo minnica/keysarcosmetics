@@ -47,6 +47,7 @@ export interface Empleado {
   positionId?: string | null;
   position?: { id: string; nombre: string; activo: boolean } | null;
   metaIndividual: number;
+  activo: boolean;
 }
 
 export interface VentaItem {
@@ -92,6 +93,7 @@ export const INITIAL_EMPLEADOS: Empleado[] = [
     numeroCuenta: "1234567890",
     puesto: "VENDEDOR",
     metaIndividual: 50000,
+    activo: true,
   },
   {
     id: "e2",
@@ -103,6 +105,7 @@ export const INITIAL_EMPLEADOS: Empleado[] = [
     numeroCuenta: "0987654321",
     puesto: "VENDEDOR",
     metaIndividual: 45000,
+    activo: true,
   },
   {
     id: "e3",
@@ -114,6 +117,7 @@ export const INITIAL_EMPLEADOS: Empleado[] = [
     numeroCuenta: "1122334455",
     puesto: "VENDEDOR",
     metaIndividual: 55000,
+    activo: true,
   },
   {
     id: "e4",
@@ -125,6 +129,7 @@ export const INITIAL_EMPLEADOS: Empleado[] = [
     numeroCuenta: "5544332211",
     puesto: "VENDEDOR",
     metaIndividual: 40000,
+    activo: true,
   },
   {
     id: "e5",
@@ -136,6 +141,7 @@ export const INITIAL_EMPLEADOS: Empleado[] = [
     numeroCuenta: "9988776655",
     puesto: "VENDEDOR",
     metaIndividual: 60000,
+    activo: true,
   },
   {
     id: "e6",
@@ -147,6 +153,7 @@ export const INITIAL_EMPLEADOS: Empleado[] = [
     numeroCuenta: "6677889900",
     puesto: "GERENTE",
     metaIndividual: 80000,
+    activo: true,
   },
 ];
 

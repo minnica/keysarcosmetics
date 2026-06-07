@@ -437,7 +437,7 @@ export default function VentasPage() {
               render={({ field }) => (
                 <Combobox
                   id="vendedor"
-                  options={empleados.map((e) => ({ value: e.id, label: e.nombreCompleto }))}
+                  options={empleados.filter((e) => e.activo).map((e) => ({ value: e.id, label: e.nombreCompleto }))}
                   value={field.value ?? ""}
                   onValueChange={field.onChange}
                   placeholder="Seleccionar..."
