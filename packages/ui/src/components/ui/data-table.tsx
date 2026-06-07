@@ -14,7 +14,16 @@ import {
 import { ArrowDown, ArrowUp, ArrowUpDown, ChevronLeft, ChevronRight, Search } from 'lucide-react'
 import { Button } from './button'
 import { Input } from './input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './table'
+
+const PAGE_SIZE_OPTIONS = [
+  { label: '10', value: '10' },
+  { label: '20', value: '20' },
+  { label: '50', value: '50' },
+  { label: '100', value: '100' },
+  { label: 'Todos', value: 'all' },
+]
 
 interface DataTableProps<TData, TValue> {
   columns: ColumnDef<TData, TValue>[]
@@ -29,10 +38,11 @@ export function DataTable<TData, TValue>({
   data,
   emptyMessage = 'Sin resultados.',
   searchPlaceholder = 'Buscar...',
-  pageSize = 10,
+  pageSize = 20,
 }: DataTableProps<TData, TValue>) {
   const [sorting, setSorting] = useState<SortingState>([])
   const [globalFilter, setGlobalFilter] = useState('')
+  const [pageSizeOption, setPageSizeOption] = useState(String(pageSize))
 
   const table = useReactTable({
     data,
@@ -48,24 +58,51 @@ export function DataTable<TData, TValue>({
     autoResetPageIndex: true,
   })
 
+  function handlePageSizeChange(option: string) {
+    setPageSizeOption(option)
+    const size = option === 'all' ? 99999 : parseInt(option)
+    table.setPageSize(size)
+    table.setPageIndex(0)
+  }
+
   const pageCount = table.getPageCount()
   const pageIndex = table.getState().pagination.pageIndex
   const totalFiltered = table.getFilteredRowModel().rows.length
+  const showPagination = pageSizeOption !== 'all'
 
   return (
     <div className="space-y-3">
-      {/* Búsqueda global */}
-      <div className="relative">
-        <Search
-          className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 pointer-events-none"
-          style={{ color: 'var(--text-muted)' }}
-        />
-        <Input
-          placeholder={searchPlaceholder}
-          value={globalFilter}
-          onChange={(e) => setGlobalFilter(e.target.value)}
-          className="pl-9"
-        />
+      {/* Búsqueda global y selector de filas */}
+      <div className="flex items-center gap-3">
+        <div className="relative flex-1">
+          <Search
+            className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 pointer-events-none"
+            style={{ color: 'var(--text-muted)' }}
+          />
+          <Input
+            placeholder={searchPlaceholder}
+            value={globalFilter}
+            onChange={(e) => setGlobalFilter(e.target.value)}
+            className="pl-9"
+          />
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="text-xs whitespace-nowrap" style={{ color: 'var(--text-muted)' }}>
+            Registros
+          </span>
+          <Select value={pageSizeOption} onValueChange={handlePageSizeChange}>
+            <SelectTrigger className="h-9 w-24">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {PAGE_SIZE_OPTIONS.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>
+                  {opt.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       {/* Tabla */}
@@ -132,29 +169,31 @@ export function DataTable<TData, TValue>({
         <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
           {totalFiltered} resultado{totalFiltered !== 1 ? 's' : ''}
         </p>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={() => table.previousPage()}
-            disabled={!table.getCanPreviousPage()}
-            className="h-7 w-7"
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
-            {pageCount > 0 ? `${pageIndex + 1} / ${pageCount}` : '—'}
-          </span>
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={() => table.nextPage()}
-            disabled={!table.getCanNextPage()}
-            className="h-7 w-7"
-          >
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-        </div>
+        {showPagination && (
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => table.previousPage()}
+              disabled={!table.getCanPreviousPage()}
+              className="h-7 w-7"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+              {pageCount > 0 ? `${pageIndex + 1} / ${pageCount}` : '—'}
+            </span>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => table.nextPage()}
+              disabled={!table.getCanNextPage()}
+              className="h-7 w-7"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
       </div>
     </div>
   )

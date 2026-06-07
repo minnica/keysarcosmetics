@@ -54,12 +54,16 @@ export interface VentaItem {
   id: string;
   cantidad: number;
   metodoPagoId: string;
+  // Nombre embebido desde el include del backend — evita lookup en lista de métodos activos
+  metodoPagoNombre?: string;
   notas?: string;
 }
 
 export interface RegistroVenta {
   id: string;
   sucursalId: string;
+  // Nombre embebido desde el include del backend — evita lookup en lista de sucursales activas
+  sucursalNombre?: string;
   vendedorId: string;
   fecha: string; // YYYY-MM-DD
   items: VentaItem[];

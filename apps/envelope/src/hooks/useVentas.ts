@@ -21,8 +21,9 @@ interface VentaRaw {
   notas?: string | null;
   sesionId?: string | null;
   sucursalId: string;
+  sucursal?: { nombre: string };
   vendedorId: string;
-  detalles: { id: string; cantidad: string; metodoPagoId: string }[];
+  detalles: { id: string; cantidad: string; metodoPagoId: string; metodoPago?: { nombre: string } }[];
 }
 
 /** Convierte una Venta del backend al tipo RegistroVenta que usan las páginas */
@@ -30,6 +31,7 @@ function toRegistroVenta(v: VentaRaw): RegistroVenta {
   return {
     id: v.id,
     sucursalId: v.sucursalId,
+    ...(v.sucursal ? { sucursalNombre: v.sucursal.nombre } : {}),
     vendedorId: v.vendedorId,
     // El backend devuelve DateTime ISO; tomamos solo la parte de fecha
     fecha: v.fecha.slice(0, 10),
@@ -39,6 +41,7 @@ function toRegistroVenta(v: VentaRaw): RegistroVenta {
         id: d.id,
         cantidad: Number(d.cantidad),
         metodoPagoId: d.metodoPagoId,
+        ...(d.metodoPago ? { metodoPagoNombre: d.metodoPago.nombre } : {}),
         // notas está a nivel de Venta en el backend; se propaga al item para compatibilidad
         ...(v.notas ? { notas: v.notas } : {}),
       }),

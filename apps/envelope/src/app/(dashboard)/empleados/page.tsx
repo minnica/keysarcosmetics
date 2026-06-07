@@ -297,7 +297,14 @@ export default function EmpleadosPage() {
                   <AlertDialogCancel>Cancelar</AlertDialogCancel>
                   <AlertDialogAction
                     className="bg-red-600 hover:bg-red-700"
-                    onClick={() => remove(emp.id)}
+                    onClick={() => {
+                      void remove(emp.id)
+                        .then(() => toast.success('Empleado eliminado'))
+                        .catch((err: { response?: { data?: { message?: string } } }) => {
+                          const msg = err?.response?.data?.message ?? 'No se pudo eliminar el empleado'
+                          toast.error(msg)
+                        })
+                    }}
                   >
                     Eliminar
                   </AlertDialogAction>
