@@ -13,7 +13,7 @@ router.use(authMiddleware)
 
 router.get('/sucursales', async (_req, res) => {
   try {
-    const data = await prisma.sucursal.findMany({ orderBy: { nombre: 'asc' } })
+    const data = await prisma.sucursal.findMany({ where: { activa: true }, orderBy: { nombre: 'asc' } })
     res.json({ success: true, data, message: 'OK' })
   } catch (err) {
     console.error(err)
@@ -52,8 +52,8 @@ router.put('/sucursales/:id', requireRole('GERENTE'), async (req, res) => {
 
 router.delete('/sucursales/:id', requireRole('GERENTE'), async (req, res) => {
   try {
-    await prisma.sucursal.delete({ where: { id: req.params['id'] } })
-    res.json({ success: true, data: null, message: 'Sucursal eliminada' })
+    await prisma.sucursal.update({ where: { id: req.params['id'] }, data: { activa: false } })
+    res.json({ success: true, data: null, message: 'Sucursal desactivada' })
   } catch (err) {
     console.error(err)
     res.status(500).json({ success: false, data: null, message: 'Error al eliminar sucursal' })
@@ -65,8 +65,7 @@ router.delete('/sucursales/:id', requireRole('GERENTE'), async (req, res) => {
 router.get('/empleados', async (_req, res) => {
   try {
     const data = await prisma.empleado.findMany({
-      where: { activo: true },
-      orderBy: { nombreCompleto: 'asc' },
+      orderBy: [{ activo: 'desc' }, { nombreCompleto: 'asc' }],
       include: { bank: true, position: true },
     })
     res.json({ success: true, data, message: 'OK' })
@@ -217,14 +216,40 @@ router.put('/empleados/:id', requireRole('GERENTE'), async (req, res) => {
 
 router.delete('/empleados/:id', requireRole('GERENTE'), async (req, res) => {
   try {
-    const data = await prisma.empleado.update({
-      where: { id: req.params['id'] },
-      data: { activo: false },
-    })
-    res.json({ success: true, data, message: 'Empleado desactivado' })
+    const ventaCount = await prisma.venta.count({ where: { vendedorId: req.params['id'] } })
+    if (ventaCount > 0) {
+      res.status(409).json({ success: false, data: null, message: 'No se puede eliminar: el empleado tiene ventas registradas. Usa "Desactivar" en su lugar.' })
+      return
+    }
+    await prisma.empleado.delete({ where: { id: req.params['id'] } })
+    res.json({ success: true, data: null, message: 'Empleado eliminado' })
   } catch (err) {
     console.error(err)
     res.status(500).json({ success: false, data: null, message: 'Error al eliminar empleado' })
+  }
+})
+
+router.patch('/empleados/:id/status', requireRole('GERENTE'), async (req, res) => {
+  try {
+    const { activo } = req.body as { activo: boolean }
+    if (typeof activo !== 'boolean') {
+      res.status(400).json({ success: false, data: null, message: 'El campo activo debe ser boolean' })
+      return
+    }
+    const existing = await prisma.empleado.findUnique({ where: { id: req.params['id'] } })
+    if (!existing) {
+      res.status(404).json({ success: false, data: null, message: 'Empleado no encontrado' })
+      return
+    }
+    const data = await prisma.empleado.update({
+      where: { id: req.params['id'] },
+      data: { activo },
+      include: { bank: true, position: true },
+    })
+    res.json({ success: true, data, message: activo ? 'Empleado activado' : 'Empleado desactivado' })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ success: false, data: null, message: 'Error al actualizar estatus del empleado' })
   }
 })
 
@@ -314,6 +339,11 @@ router.post('/banks', requireRole('GERENTE'), async (req, res) => {
       where: { nombre: { equals: trimmed, mode: 'insensitive' } },
     })
     if (duplicate) {
+      if (!duplicate.activo) {
+        const data = await prisma.bank.update({ where: { id: duplicate.id }, data: { activo: true } })
+        res.status(201).json({ success: true, data, message: 'Banco reactivado' })
+        return
+      }
       res.status(409).json({ success: false, data: null, message: 'Ya existe un banco con ese nombre' })
       return
     }
@@ -339,7 +369,7 @@ router.put('/banks/:id', requireRole('GERENTE'), async (req, res) => {
       return
     }
     const duplicate = await prisma.bank.findFirst({
-      where: { nombre: { equals: trimmed, mode: 'insensitive' }, id: { not: req.params['id'] } },
+      where: { nombre: { equals: trimmed, mode: 'insensitive' }, id: { not: req.params['id'] }, activo: true },
     })
     if (duplicate) {
       res.status(409).json({ success: false, data: null, message: 'Ya existe un banco con ese nombre' })
@@ -393,6 +423,11 @@ router.post('/positions', requireRole('GERENTE'), async (req, res) => {
       where: { nombre: { equals: trimmed, mode: 'insensitive' } },
     })
     if (duplicate) {
+      if (!duplicate.activo) {
+        const data = await prisma.position.update({ where: { id: duplicate.id }, data: { activo: true } })
+        res.status(201).json({ success: true, data, message: 'Puesto reactivado' })
+        return
+      }
       res.status(409).json({ success: false, data: null, message: 'Ya existe un puesto con ese nombre' })
       return
     }
@@ -418,7 +453,7 @@ router.put('/positions/:id', requireRole('GERENTE'), async (req, res) => {
       return
     }
     const duplicate = await prisma.position.findFirst({
-      where: { nombre: { equals: trimmed, mode: 'insensitive' }, id: { not: req.params['id'] } },
+      where: { nombre: { equals: trimmed, mode: 'insensitive' }, id: { not: req.params['id'] }, activo: true },
     })
     if (duplicate) {
       res.status(409).json({ success: false, data: null, message: 'Ya existe un puesto con ese nombre' })

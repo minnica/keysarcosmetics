@@ -249,20 +249,20 @@ export default function VentasPage() {
     selectorForm.reset({ sucursalId: "", fecha: todayISO(), vendedorId: "" });
   }
 
-  const sucursalNombre = (id: string) =>
-    sucursales.find((s) => s.id === id)?.nombre ?? id;
+  const sucursalNombre = (id: string, embedded?: string) =>
+    embedded ?? sucursales.find((s) => s.id === id)?.nombre ?? id;
   const vendedorNombre = (id: string) =>
     empleados.find((e) => e.id === id)?.nombreCompleto ?? id;
-  const metodoPagoNombre = (id: string) =>
-    metodosPago.find((m) => m.id === id)?.nombre ?? id;
+  const metodoPagoNombre = (id: string, embedded?: string) =>
+    embedded ?? metodosPago.find((m) => m.id === id)?.nombre ?? id;
 
   // ── Columnas tabla registros guardados ────────────────────────────────────────
   const registroColumns: ColumnDef<RegistroVenta>[] = [
     {
       id: 'sucursal',
-      accessorFn: (row) => sucursalNombre(row.sucursalId),
+      accessorFn: (row) => sucursalNombre(row.sucursalId, row.sucursalNombre),
       header: 'Sucursal',
-      cell: ({ row }) => sucursalNombre(row.original.sucursalId),
+      cell: ({ row }) => sucursalNombre(row.original.sucursalId, row.original.sucursalNombre),
     },
     {
       accessorKey: 'fecha',
@@ -306,10 +306,10 @@ export default function VentasPage() {
     {
       id: 'metodos',
       accessorFn: (row) =>
-        [...new Set(row.items.map((i) => metodoPagoNombre(i.metodoPagoId)))].join(' '),
+        [...new Set(row.items.map((i) => metodoPagoNombre(i.metodoPagoId, i.metodoPagoNombre)))].join(' '),
       header: 'Métodos usados',
       cell: ({ row }) => {
-        const metodos = [...new Set(row.original.items.map((i) => metodoPagoNombre(i.metodoPagoId)))];
+        const metodos = [...new Set(row.original.items.map((i) => metodoPagoNombre(i.metodoPagoId, i.metodoPagoNombre)))];
         return (
           <div className="flex gap-1 flex-wrap">
             {metodos.map((m) => (
@@ -437,7 +437,7 @@ export default function VentasPage() {
               render={({ field }) => (
                 <Combobox
                   id="vendedor"
-                  options={empleados.map((e) => ({ value: e.id, label: e.nombreCompleto }))}
+                  options={empleados.filter((e) => e.activo).map((e) => ({ value: e.id, label: e.nombreCompleto }))}
                   value={field.value ?? ""}
                   onValueChange={field.onChange}
                   placeholder="Seleccionar..."

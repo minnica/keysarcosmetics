@@ -96,7 +96,7 @@ export default function DashboardPage() {
   });
 
   const vendedoresData = empleados
-    .filter((emp) => emp.metaIndividual != null && emp.metaIndividual > 0)
+    .filter((emp) => emp.activo && emp.metaIndividual != null && emp.metaIndividual > 0)
     .map((emp) => {
       const totalVendido = registros
         .filter(
@@ -105,7 +105,7 @@ export default function DashboardPage() {
         .flatMap((r) => r.items)
         .reduce((s, i) => s + i.cantidad, 0);
       return {
-        nombre: emp.nombreCompleto.split(" ")[0] ?? emp.nombreCompleto,
+        nombre: `${emp.nombres} ${emp.apellidoPaterno.charAt(0)}. ${emp.apellidoMaterno.charAt(0)}.`,
         vendido: totalVendido,
         meta: emp.metaIndividual,
       };
@@ -291,7 +291,7 @@ export default function DashboardPage() {
                 <BarChart
                   data={vendedoresData}
                   layout="vertical"
-                  margin={{ top: 5, right: 60, left: 60, bottom: 5 }}
+                  margin={{ top: 5, right: 58, left: 0, bottom: 5 }}
                 >
                   <CartesianGrid
                     strokeDasharray="3 3"
@@ -306,8 +306,12 @@ export default function DashboardPage() {
                   <YAxis
                     type="category"
                     dataKey="nombre"
-                    tick={{ fontSize: 12, fill: "var(--text-muted)" }}
-                    width={60}
+                    width={150}
+                    tick={({ x, y, payload }: { x: number; y: number; payload: { value: string } }) => (
+                      <text x={x} y={y} dy={4} textAnchor="end" fill="var(--text-muted)" fontSize={11}>
+                        {payload.value}
+                      </text>
+                    )}
                   />
                   <Tooltip
                     content={({ active, payload }) => {
