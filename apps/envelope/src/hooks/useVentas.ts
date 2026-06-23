@@ -11,6 +11,7 @@ interface UseVentasReturn {
   error: string | null;
   refetch: () => Promise<void>;
   add: (r: RegistroVenta) => Promise<void>;
+  addBatch: (records: RegistroVenta[]) => Promise<void>;
   remove: (id: string) => Promise<void>;
 }
 
@@ -97,6 +98,25 @@ export function useVentas(): UseVentasReturn {
     [refetch],
   );
 
+  const addBatch = useCallback(
+    async (records: RegistroVenta[]) => {
+      await api.post("/api/envelope/ventas/lote", {
+        ventas: records.map((record) => ({
+          sucursalId: record.sucursalId,
+          vendedorId: record.vendedorId,
+          fecha: record.fecha,
+          ...(record.sesionId ? { sesionId: record.sesionId } : {}),
+          detalles: record.items.map((item) => ({
+            cantidad: item.cantidad,
+            metodoPagoId: item.metodoPagoId,
+          })),
+        })),
+      });
+      await refetch();
+    },
+    [refetch],
+  );
+
   const remove = useCallback(
     async (id: string) => {
       await api.delete(`/api/envelope/ventas/${id}`);
@@ -105,5 +125,5 @@ export function useVentas(): UseVentasReturn {
     [refetch],
   );
 
-  return { registros, loading, error, refetch, add, remove };
+  return { registros, loading, error, refetch, add, addBatch, remove };
 }

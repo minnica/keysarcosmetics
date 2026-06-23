@@ -545,6 +545,57 @@ router.post('/ventas', async (req, res) => {
   }
 })
 
+// Guarda en una sola transacción las ventas que integran un voucher multiempleado.
+router.post('/ventas/lote', async (req, res) => {
+  try {
+    type VentaInput = {
+      sucursalId: string
+      vendedorId: string
+      fecha: string
+      notas?: string
+      sesionId?: string
+      detalles: { cantidad: number; metodoPagoId: string }[]
+    }
+    const { ventas } = req.body as { ventas?: VentaInput[] }
+
+    const invalidSale = !ventas?.length || ventas.some((venta) =>
+      !venta.sucursalId ||
+      !venta.vendedorId ||
+      !venta.fecha ||
+      !venta.detalles?.length ||
+      venta.detalles.some((detalle) => detalle.cantidad <= 0 || !detalle.metodoPagoId),
+    )
+    if (invalidSale) {
+      res.status(400).json({ success: false, data: null, message: 'Datos incompletos' })
+      return
+    }
+
+    const data = await prisma.$transaction(
+      ventas.map((venta) => prisma.venta.create({
+        data: {
+          fecha: new Date(venta.fecha),
+          ...(venta.notas ? { notas: venta.notas } : {}),
+          ...(venta.sesionId ? { sesionId: venta.sesionId } : {}),
+          sucursalId: venta.sucursalId,
+          vendedorId: venta.vendedorId,
+          detalles: {
+            create: venta.detalles.map((detalle) => ({
+              cantidad: detalle.cantidad,
+              metodoPagoId: detalle.metodoPagoId,
+            })),
+          },
+        },
+        include: { detalles: { include: { metodoPago: true } } },
+      })),
+    )
+
+    res.status(201).json({ success: true, data, message: 'Venta registrada' })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ success: false, data: null, message: 'Error al registrar venta' })
+  }
+})
+
 router.put('/ventas/:id', requireRole('GERENTE'), async (req, res) => {
   try {
     const { notas, detalles } = req.body as {
