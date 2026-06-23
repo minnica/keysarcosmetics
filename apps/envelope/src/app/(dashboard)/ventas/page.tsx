@@ -1,350 +1,446 @@
 "use client";
-// Pantalla de captura de ventas — flujo de sobre físico digitalizado
-import { useState } from "react";
-import { useForm, Controller } from "react-hook-form";
+
+// Pantalla de captura de ventas — distribución por empleado y conciliación de pagos
+import { useMemo, useState } from "react";
+import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { PlusCircle, Trash2, Pencil, Save } from "lucide-react";
 import {
-  Button,
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogFooter,
-  DialogTitle,
-  DialogDescription,
-  Input,
-  Label,
-  Textarea,
-  Badge,
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem,
-  Table,
-  TableHeader,
-  TableBody,
-  TableRow,
-  TableHead,
-  TableCell,
+  ArrowRight,
+  CheckCircle2,
+  CreditCard,
+  Plus,
+  RotateCcw,
+  Save,
+  Trash2,
+  Users,
+} from "lucide-react";
+import {
   AlertDialog,
-  AlertDialogTrigger,
-  AlertDialogContent,
-  AlertDialogHeader,
-  AlertDialogFooter,
-  AlertDialogTitle,
-  AlertDialogDescription,
   AlertDialogAction,
   AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
   Combobox,
   DataTable,
+  Input,
+  Label,
+  ProgressKeysar,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
   toast,
 } from "@cosmetics/ui";
 import type { ColumnDef } from "@cosmetics/ui";
 import {
-  useSucursales,
   useEmpleados,
   useMetodosPago,
+  useSucursales,
   useVentas,
 } from "@/hooks";
-import { formatCurrency, formatDate, todayISO, generateId } from "@/lib/utils";
-import type { VentaItem, RegistroVenta } from "@/lib/mock-data";
+import { formatCurrency, formatDate, generateId, todayISO } from "@/lib/utils";
+import type { RegistroVenta, VentaItem } from "@/lib/mock-data";
 
-// ── Esquemas Zod ──────────────────────────────────────────────────────────────
-
-const selectorSchema = z.object({
+const saleSchema = z.object({
   sucursalId: z.string().min(1, "Selecciona una sucursal"),
   fecha: z.string().min(1, "Selecciona una fecha"),
-  vendedorId: z.string().optional(),
+  vendedorId: z.string().min(1, "Selecciona un empleado"),
+  monto: z.coerce.number().positive("El monto debe ser mayor a 0"),
 });
 
-const ventaItemSchema = z.object({
-  cantidad: z.coerce.number().positive("La cantidad debe ser mayor a 0"),
+const paymentSchema = z.object({
   metodoPagoId: z.string().min(1, "Selecciona un método de pago"),
-  notas: z.string().optional(),
+  cantidad: z.coerce.number().positive("La cantidad debe ser mayor a 0"),
 });
 
-type SelectorForm = z.infer<typeof selectorSchema>;
-type VentaItemForm = z.infer<typeof ventaItemSchema>;
-
-// Pila de ítems pendientes por vendedor
-type VendorStack = { vendedorId: string; items: VentaItem[] };
-
-// ── Toast informativo ─────────────────────────────────────────────────────────
-const infoToastOptions = {
-  duration: 8000,
-  style: {
-    background: '#6fc9db',
-    color: '#ffffff',
-    border: '1px solid #bae2e8',
-    boxShadow: '0 4px 12px rgba(111, 201, 219, 0.25)',
-  },
+type SaleForm = z.infer<typeof saleSchema>;
+type PaymentForm = z.infer<typeof paymentSchema>;
+type SaleContext = SaleForm & { totalCents: number };
+type EmployeeAllocation = { empleadoId: string; amountCents: number };
+type PaymentAllocation = {
+  id: string;
+  metodoPagoId: string;
+  amountCents: number;
 };
 
-const INFO_TOAST_MSG =
-  "Venta enlistada. Puedes cambiar de vendedor en el Paso 1 para agregar ventas a otro vendedor, o dar clic en «Guardar registros» para persistir todo.";
+const toCents = (value: number) => Math.round(value * 100);
+const fromCents = (value: number) => value / 100;
 
-// ── Componente principal ──────────────────────────────────────────────────────
+/** Reparte centavos sin perder el total por redondeo. */
+function splitEvenly(
+  totalCents: number,
+  employeeIds: string[],
+): EmployeeAllocation[] {
+  const base = Math.floor(totalCents / employeeIds.length);
+  const remainder = totalCents % employeeIds.length;
+  return employeeIds.map((empleadoId, index) => ({
+    empleadoId,
+    amountCents: base + (index < remainder ? 1 : 0),
+  }));
+}
+
+/**
+ * Convierte dos distribuciones de un mismo total en detalles persistibles.
+ * La matriz conserva exactamente tanto el total por empleado como por método.
+ */
+function allocatePaymentsToEmployees(
+  employees: EmployeeAllocation[],
+  payments: PaymentAllocation[],
+): Map<string, VentaItem[]> {
+  const result = new Map<string, VentaItem[]>();
+  const remainingPayments = payments.map((payment) => ({
+    ...payment,
+    remainingCents: payment.amountCents,
+  }));
+  let paymentIndex = 0;
+
+  for (const employee of employees) {
+    let employeeRemaining = employee.amountCents;
+    const items: VentaItem[] = [];
+
+    while (employeeRemaining > 0 && paymentIndex < remainingPayments.length) {
+      const payment = remainingPayments[paymentIndex];
+      if (!payment) break;
+      const allocatedCents = Math.min(
+        employeeRemaining,
+        payment.remainingCents,
+      );
+
+      if (allocatedCents > 0) {
+        items.push({
+          id: generateId(),
+          cantidad: fromCents(allocatedCents),
+          metodoPagoId: payment.metodoPagoId,
+        });
+      }
+
+      employeeRemaining -= allocatedCents;
+      payment.remainingCents -= allocatedCents;
+      if (payment.remainingCents === 0) paymentIndex += 1;
+    }
+
+    result.set(employee.empleadoId, items);
+  }
+
+  return result;
+}
 
 export default function VentasPage() {
   const { sucursales } = useSucursales();
   const { empleados } = useEmpleados();
   const { metodosPago } = useMetodosPago();
-  const { registros, add: addRegistro, remove: deleteRegistro } = useVentas();
+  const { registros, addBatch, remove: deleteRegistro } = useVentas();
 
-  const selectorForm = useForm<SelectorForm>({
-    resolver: zodResolver(selectorSchema),
-    defaultValues: { sucursalId: "", fecha: todayISO(), vendedorId: "" },
+  const saleForm = useForm<SaleForm>({
+    resolver: zodResolver(saleSchema),
+    defaultValues: {
+      sucursalId: "",
+      fecha: todayISO(),
+      vendedorId: "",
+      monto: 0,
+    },
   });
-  const selectorControl = selectorForm.control;
-  const watchedSucursal = selectorForm.watch("sucursalId");
-  const watchedVendedor = selectorForm.watch("vendedorId") ?? "";
-  const watchedFecha = selectorForm.watch("fecha");
+  const paymentForm = useForm<PaymentForm>({
+    resolver: zodResolver(paymentSchema),
+    defaultValues: { metodoPagoId: "", cantidad: 0 },
+  });
 
-  // Pilas de ítems pendientes agrupadas por vendedorId
-  const [pendingVendors, setPendingVendors] = useState<VendorStack[]>([]);
-  // Bloquea sucursal + fecha cuando ya hay ítems (pero nunca vendedor)
-  const [selectorLocked, setSelectorLocked] = useState(false);
-  const [modalOpen, setModalOpen] = useState(false);
-  const [editingItem, setEditingItem] = useState<VentaItem | null>(null);
-  const [editingVendorId, setEditingVendorId] = useState<string | null>(null);
+  const [saleContext, setSaleContext] = useState<SaleContext | null>(null);
+  const [employeeAllocations, setEmployeeAllocations] = useState<
+    EmployeeAllocation[]
+  >([]);
+  const [employeeToAdd, setEmployeeToAdd] = useState("");
+  const [paymentAllocations, setPaymentAllocations] = useState<
+    PaymentAllocation[]
+  >([]);
   const [saving, setSaving] = useState(false);
 
-  const itemForm = useForm<VentaItemForm>({
-    resolver: zodResolver(ventaItemSchema),
-    defaultValues: { cantidad: 0, metodoPagoId: "", notas: "" },
-  });
-  const itemControl = itemForm.control;
-
-  // Paso 2 visible con solo sucursal + fecha
-  const contextValido = !!(watchedSucursal && watchedFecha);
-  // Agregar ítems requiere además un vendedor seleccionado
-  const canAddItem = !!(contextValido && watchedVendedor);
-
-  const hasPendingItems = pendingVendors.some((v) => v.items.length > 0);
-  const grandTotal = pendingVendors.reduce(
-    (s, v) => s + v.items.reduce((si, i) => si + i.cantidad, 0),
+  const selectedPaymentMethod = paymentForm.watch("metodoPagoId");
+  const allocatedEmployeeCents = employeeAllocations.reduce(
+    (sum, employee) => sum + employee.amountCents,
     0,
   );
+  const paidCents = paymentAllocations.reduce(
+    (sum, payment) => sum + payment.amountCents,
+    0,
+  );
+  const totalCents = saleContext?.totalCents ?? 0;
+  const remainingPaymentCents = totalCents - paidCents;
+  const remainingEmployeeCents = totalCents - allocatedEmployeeCents;
+  const employeesHavePositiveAmounts = employeeAllocations.every(
+    (allocation) => allocation.amountCents > 0,
+  );
+  const employeeDistributionMatches =
+    employeeAllocations.length > 0 &&
+    employeesHavePositiveAmounts &&
+    remainingEmployeeCents === 0;
+  const paymentsMatch =
+    paymentAllocations.length > 0 && remainingPaymentCents === 0;
+  const canSave = employeeDistributionMatches && paymentsMatch && !saving;
+  const paymentProgress =
+    totalCents > 0 ? Math.min(100, (paidCents / totalCents) * 100) : 0;
 
-  function openAddModal() {
-    setEditingItem(null);
-    setEditingVendorId(null);
-    itemForm.reset({ cantidad: 0, metodoPagoId: "", notas: "" });
-    setModalOpen(true);
-  }
-
-  function openEditItemModal(vendedorId: string, item: VentaItem) {
-    setEditingItem(item);
-    setEditingVendorId(vendedorId);
-    itemForm.reset({
-      cantidad: item.cantidad,
-      metodoPagoId: item.metodoPagoId,
-      notas: item.notas ?? "",
-    });
-    setModalOpen(true);
-  }
-
-  function handleSaveItem(data: VentaItemForm) {
-    const cleanData = {
-      cantidad: data.cantidad,
-      metodoPagoId: data.metodoPagoId,
-      ...(data.notas !== undefined && data.notas !== ""
-        ? { notas: data.notas }
-        : {}),
-    };
-
-    if (editingItem && editingVendorId) {
-      // Editar ítem existente en su pila de vendedor
-      setPendingVendors((prev) =>
-        prev.map((v) =>
-          v.vendedorId === editingVendorId
-            ? {
-                ...v,
-                items: v.items.map((i) =>
-                  i.id === editingItem.id
-                    ? { id: editingItem.id, ...cleanData }
-                    : i,
-                ),
-              }
-            : v,
+  const activeEmployees = useMemo(
+    () => empleados.filter((employee) => employee.activo),
+    [empleados],
+  );
+  const availableEmployees = activeEmployees
+    .filter(
+      (employee) =>
+        !employeeAllocations.some(
+          (allocation) => allocation.empleadoId === employee.id,
         ),
-      );
-    } else {
-      // Agregar nuevo ítem a la pila del vendedor activo
-      const newItem: VentaItem = { id: generateId(), ...cleanData };
-      setPendingVendors((prev) => {
-        const exists = prev.find((v) => v.vendedorId === watchedVendedor);
-        if (exists) {
-          return prev.map((v) =>
-            v.vendedorId === watchedVendedor
-              ? { ...v, items: [...v.items, newItem] }
-              : v,
-          );
-        }
-        return [...prev, { vendedorId: watchedVendedor, items: [newItem] }];
+    )
+    .map((employee) => ({
+      value: employee.id,
+      label: employee.nombreCompleto,
+    }));
+
+  const sucursalNombre = (id: string, embedded?: string) =>
+    embedded ?? sucursales.find((sucursal) => sucursal.id === id)?.nombre ?? id;
+  const vendedorNombre = (id: string) =>
+    empleados.find((employee) => employee.id === id)?.nombreCompleto ?? id;
+  const metodoPagoNombre = (id: string, embedded?: string) =>
+    embedded ?? metodosPago.find((method) => method.id === id)?.nombre ?? id;
+
+  function handleStartSale(data: SaleForm) {
+    const normalizedAmount = toCents(data.monto);
+    setSaleContext({
+      ...data,
+      monto: fromCents(normalizedAmount),
+      totalCents: normalizedAmount,
+    });
+    setEmployeeAllocations(splitEvenly(normalizedAmount, [data.vendedorId]));
+    setPaymentAllocations([]);
+    setEmployeeToAdd("");
+    paymentForm.reset({ metodoPagoId: "", cantidad: 0 });
+  }
+
+  function handleAddEmployee() {
+    if (!saleContext || !employeeToAdd) return;
+    const employeeIds = [
+      ...employeeAllocations.map((allocation) => allocation.empleadoId),
+      employeeToAdd,
+    ];
+    setEmployeeAllocations(splitEvenly(saleContext.totalCents, employeeIds));
+    setEmployeeToAdd("");
+  }
+
+  function handleRemoveEmployee(employeeId: string) {
+    if (!saleContext || employeeAllocations.length === 1) return;
+    const employeeIds = employeeAllocations
+      .filter((allocation) => allocation.empleadoId !== employeeId)
+      .map((allocation) => allocation.empleadoId);
+    setEmployeeAllocations(splitEvenly(saleContext.totalCents, employeeIds));
+  }
+
+  function handleEmployeeAmountChange(employeeId: string, value: string) {
+    const amountCents = Math.max(0, toCents(Number(value) || 0));
+    setEmployeeAllocations((current) =>
+      current.map((allocation) =>
+        allocation.empleadoId === employeeId
+          ? { ...allocation, amountCents }
+          : allocation,
+      ),
+    );
+  }
+
+  function handlePaymentMethodChange(methodId: string) {
+    paymentForm.setValue("metodoPagoId", methodId, { shouldValidate: true });
+    paymentForm.setValue(
+      "cantidad",
+      fromCents(Math.max(remainingPaymentCents, 0)),
+    );
+  }
+
+  function handleAddPayment(data: PaymentForm) {
+    const amountCents = toCents(data.cantidad);
+    if (amountCents > remainingPaymentCents) {
+      paymentForm.setError("cantidad", {
+        message: `El máximo pendiente es ${formatCurrency(fromCents(remainingPaymentCents))}`,
       });
+      return;
     }
 
-    setSelectorLocked(true);
-    toast.info(INFO_TOAST_MSG, infoToastOptions);
-    setModalOpen(false);
+    setPaymentAllocations((current) => [
+      ...current,
+      { id: generateId(), metodoPagoId: data.metodoPagoId, amountCents },
+    ]);
+    paymentForm.reset({ metodoPagoId: "", cantidad: 0 });
   }
 
-  function handleDeleteItem(vendedorId: string, itemId: string) {
-    setPendingVendors((prev) =>
-      prev
-        .map((v) =>
-          v.vendedorId === vendedorId
-            ? { ...v, items: v.items.filter((i) => i.id !== itemId) }
-            : v,
-        )
-        .filter((v) => v.items.length > 0),
+  function handleRemovePayment(paymentId: string) {
+    setPaymentAllocations((current) =>
+      current.filter((payment) => payment.id !== paymentId),
     );
-    // Si ya no quedan ítems, desbloquear selector
-    const remaining = pendingVendors
-      .map((v) =>
-        v.vendedorId === vendedorId
-          ? { ...v, items: v.items.filter((i) => i.id !== itemId) }
-          : v,
-      )
-      .filter((v) => v.items.length > 0);
-    if (remaining.length === 0) setSelectorLocked(false);
+    paymentForm.reset({ metodoPagoId: "", cantidad: 0 });
   }
 
-  async function handleGuardarRegistro() {
-    const toSave = pendingVendors.filter((v) => v.items.length > 0);
-    if (toSave.length === 0) return;
-    // Generar sesionId compartido solo cuando hay múltiples vendedores (mismo voucher)
-    const sesionId = toSave.length > 1 ? generateId() : null;
+  function resetCapture() {
+    setSaleContext(null);
+    setEmployeeAllocations([]);
+    setEmployeeToAdd("");
+    setPaymentAllocations([]);
+    setSaving(false);
+    saleForm.reset({
+      sucursalId: "",
+      fecha: todayISO(),
+      vendedorId: "",
+      monto: 0,
+    });
+    paymentForm.reset({ metodoPagoId: "", cantidad: 0 });
+  }
+
+  function editSaleContext() {
+    setSaleContext(null);
+    setEmployeeAllocations([]);
+    setEmployeeToAdd("");
+    setPaymentAllocations([]);
+    paymentForm.reset({ metodoPagoId: "", cantidad: 0 });
+  }
+
+  async function handleSaveSale() {
+    if (!saleContext || !canSave) return;
+    const itemsByEmployee = allocatePaymentsToEmployees(
+      employeeAllocations,
+      paymentAllocations,
+    );
+    const sesionId = employeeAllocations.length > 1 ? generateId() : null;
+    const sales: RegistroVenta[] = employeeAllocations.map((allocation) => ({
+      id: generateId(),
+      sucursalId: saleContext.sucursalId,
+      vendedorId: allocation.empleadoId,
+      fecha: saleContext.fecha,
+      items: itemsByEmployee.get(allocation.empleadoId) ?? [],
+      ...(sesionId ? { sesionId } : {}),
+    }));
+
     setSaving(true);
     try {
-      for (const vs of toSave) {
-        await addRegistro({
-          id: generateId(),
-          sucursalId: watchedSucursal,
-          vendedorId: vs.vendedorId,
-          fecha: watchedFecha,
-          items: vs.items,
-          ...(sesionId ? { sesionId } : {}),
-        });
-      }
-      setPendingVendors([]);
-      setSelectorLocked(false);
-      selectorForm.reset({ sucursalId: "", fecha: todayISO(), vendedorId: "" });
-      toast.success(
-        toSave.length > 1
-          ? `${toSave.length} registros guardados`
-          : "Registro guardado",
-      );
-    } finally {
+      await addBatch(sales);
+      toast.success("Venta registrada correctamente");
+      resetCapture();
+    } catch {
+      toast.error("No se pudo registrar la venta. Intenta nuevamente.");
       setSaving(false);
     }
   }
 
-  function handleNuevoRegistro() {
-    setPendingVendors([]);
-    setSelectorLocked(false);
-    selectorForm.reset({ sucursalId: "", fecha: todayISO(), vendedorId: "" });
-  }
-
-  const sucursalNombre = (id: string, embedded?: string) =>
-    embedded ?? sucursales.find((s) => s.id === id)?.nombre ?? id;
-  const vendedorNombre = (id: string) =>
-    empleados.find((e) => e.id === id)?.nombreCompleto ?? id;
-  const metodoPagoNombre = (id: string, embedded?: string) =>
-    embedded ?? metodosPago.find((m) => m.id === id)?.nombre ?? id;
-
-  // ── Columnas tabla registros guardados ────────────────────────────────────────
   const registroColumns: ColumnDef<RegistroVenta>[] = [
     {
-      id: 'sucursal',
+      id: "sucursal",
       accessorFn: (row) => sucursalNombre(row.sucursalId, row.sucursalNombre),
-      header: 'Sucursal',
-      cell: ({ row }) => sucursalNombre(row.original.sucursalId, row.original.sucursalNombre),
+      header: "Sucursal",
+      cell: ({ row }) =>
+        sucursalNombre(row.original.sucursalId, row.original.sucursalNombre),
     },
     {
-      accessorKey: 'fecha',
-      header: 'Fecha',
+      accessorKey: "fecha",
+      header: "Fecha",
       cell: ({ row }) => formatDate(row.original.fecha),
     },
     {
-      id: 'vendedor',
+      id: "vendedor",
       accessorFn: (row) => vendedorNombre(row.vendedorId),
-      header: 'Vendedor',
+      header: "Empleado",
       cell: ({ row }) => vendedorNombre(row.original.vendedorId),
     },
     {
-      id: 'total',
-      accessorFn: (row) => row.items.reduce((s, i) => s + i.cantidad, 0),
-      header: 'Total ventas',
-      cell: ({ row }) => {
-        const total = row.original.items.reduce((s, i) => s + i.cantidad, 0);
-        return <div className="text-right font-medium">{formatCurrency(total)}</div>;
-      },
+      id: "total",
+      accessorFn: (row) =>
+        row.items.reduce((sum, item) => sum + item.cantidad, 0),
+      header: "Venta asignada",
+      cell: ({ row }) => (
+        <div className="number-display text-right">
+          {formatCurrency(
+            row.original.items.reduce((sum, item) => sum + item.cantidad, 0),
+          )}
+        </div>
+      ),
     },
     {
-      id: 'voucher',
-      accessorFn: (row) => row.sesionId ?? '',
-      header: 'Voucher',
+      id: "voucher",
+      accessorFn: (row) => row.sesionId ?? "",
+      header: "Venta compartida",
       enableSorting: false,
       enableGlobalFilter: false,
       cell: ({ row }) => {
         const { sesionId } = row.original;
-        if (!sesionId) return <span style={{ color: 'var(--text-muted)' }}>—</span>;
+        if (!sesionId)
+          return <span style={{ color: "var(--text-muted)" }}>—</span>;
         const voucherTotal = registros
-          .filter((r) => r.sesionId === sesionId)
-          .reduce((s, r) => s + r.items.reduce((si, i) => si + i.cantidad, 0), 0);
+          .filter((record) => record.sesionId === sesionId)
+          .reduce(
+            (sum, record) =>
+              sum +
+              record.items.reduce(
+                (itemSum, item) => itemSum + item.cantidad,
+                0,
+              ),
+            0,
+          );
         return (
-          <Badge variant="outline" className="text-xs whitespace-nowrap">
-            Voucher compartido · {formatCurrency(voucherTotal)}
-          </Badge>
-        );
-      },
-    },
-    {
-      id: 'metodos',
-      accessorFn: (row) =>
-        [...new Set(row.items.map((i) => metodoPagoNombre(i.metodoPagoId, i.metodoPagoNombre)))].join(' '),
-      header: 'Métodos usados',
-      cell: ({ row }) => {
-        const metodos = [...new Set(row.original.items.map((i) => metodoPagoNombre(i.metodoPagoId, i.metodoPagoNombre)))];
-        return (
-          <div className="flex gap-1 flex-wrap">
-            {metodos.map((m) => (
-              <Badge key={m} variant="secondary">{m}</Badge>
-            ))}
-          </div>
-        );
-      },
-    },
-    {
-      id: 'notas',
-      accessorFn: (row) => row.items.flatMap((i) => (i.notas ? [i.notas] : [])).join(', '),
-      header: 'Notas',
-      cell: ({ row }) => {
-        const notas = row.original.items.flatMap((i) => (i.notas ? [i.notas] : [])).join(", ");
-        return (
-          <span className="text-xs max-w-xs truncate" style={{ color: 'var(--text-muted)' }}>
-            {notas || "—"}
+          <span className="whitespace-nowrap text-xs">
+            Compartida · {formatCurrency(voucherTotal)}
           </span>
         );
       },
     },
     {
-      id: 'acciones',
+      id: "metodos",
+      accessorFn: (row) =>
+        [
+          ...new Set(
+            row.items.map((item) =>
+              metodoPagoNombre(item.metodoPagoId, item.metodoPagoNombre),
+            ),
+          ),
+        ].join(" "),
+      header: "Métodos usados",
+      cell: ({ row }) => (
+        <span className="text-sm">
+          {[
+            ...new Set(
+              row.original.items.map((item) =>
+                metodoPagoNombre(item.metodoPagoId, item.metodoPagoNombre),
+              ),
+            ),
+          ].join(", ")}
+        </span>
+      ),
+    },
+    {
+      id: "acciones",
       header: () => <div className="text-right">Acciones</div>,
       enableSorting: false,
       enableGlobalFilter: false,
       cell: ({ row }) => {
-        const reg = row.original;
-        const total = reg.items.reduce((s, i) => s + i.cantidad, 0);
+        const record = row.original;
+        const total = record.items.reduce(
+          (sum, item) => sum + item.cantidad,
+          0,
+        );
         return (
           <div className="flex justify-end">
             <AlertDialog>
               <AlertDialogTrigger asChild>
-                <Button size="icon" variant="ghost">
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  aria-label="Eliminar registro"
+                >
                   <Trash2 className="h-4 w-4 text-red-500" />
                 </Button>
               </AlertDialogTrigger>
@@ -352,15 +448,16 @@ export default function VentasPage() {
                 <AlertDialogHeader>
                   <AlertDialogTitle>¿Eliminar registro?</AlertDialogTitle>
                   <AlertDialogDescription>
-                    Esta acción no se puede deshacer. Se eliminará el registro de{" "}
-                    {vendedorNombre(reg.vendedorId)} del {formatDate(reg.fecha)} por {formatCurrency(total)}.
+                    Se eliminará el registro de{" "}
+                    {vendedorNombre(record.vendedorId)} por{" "}
+                    {formatCurrency(total)}. Esta acción no se puede deshacer.
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
                   <AlertDialogCancel>Cancelar</AlertDialogCancel>
                   <AlertDialogAction
                     className="bg-red-600 hover:bg-red-700"
-                    onClick={() => deleteRegistro(reg.id)}
+                    onClick={() => deleteRegistro(record.id)}
                   >
                     Eliminar
                   </AlertDialogAction>
@@ -375,355 +472,593 @@ export default function VentasPage() {
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="page-title font-semibold uppercase">Registro de ventas</h1>
-        <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
-          Captura las ventas del día por vendedor y sucursal
+      <header>
+        <h1 className="page-title">Registro de ventas</h1>
+        <p className="mt-1 text-sm" style={{ color: "var(--text-muted)" }}>
+          Distribuye una venta entre empleados y concilia sus métodos de pago.
         </p>
-      </div>
+      </header>
 
-      {/* ── Paso 1: Selector ── */}
-      <div
-        className="rounded-xl border p-6"
-        style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border-color)' }}
+      <Card
+        aria-current={!saleContext ? "step" : undefined}
+        className="transition-[border-color,box-shadow] duration-200"
+        style={stepCardStyle(!saleContext ? "active" : "complete")}
       >
-        <h2 className="section-heading mb-4">1. Selección</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="space-y-1.5">
-            <Label htmlFor="sucursal">Sucursal</Label>
-            <Controller
-              control={selectorControl}
-              name="sucursalId"
-              render={({ field }) => (
-                <Select value={field.value} onValueChange={field.onChange} disabled={selectorLocked}>
-                  <SelectTrigger id="sucursal">
-                    <SelectValue placeholder="Seleccionar..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {sucursales.map((s) => (
-                      <SelectItem key={s.id} value={s.id}>{s.nombre}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-            />
-            {selectorForm.formState.errors.sucursalId && (
-              <p className="text-xs text-red-500">
-                {selectorForm.formState.errors.sucursalId.message}
-              </p>
-            )}
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="fecha">Fecha</Label>
-            <Input
-              id="fecha"
-              type="date"
-              disabled={selectorLocked}
-              {...selectorForm.register("fecha")}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="vendedor">
-              Vendedor
-              {hasPendingItems && (
-                <span className="ml-1.5 text-xs font-normal" style={{ color: 'var(--text-muted)' }}>
-                  — cambia para agregar a otro vendedor
-                </span>
-              )}
-            </Label>
-            <Controller
-              control={selectorControl}
-              name="vendedorId"
-              render={({ field }) => (
-                <Combobox
-                  id="vendedor"
-                  options={empleados.filter((e) => e.activo).map((e) => ({ value: e.id, label: e.nombreCompleto }))}
-                  value={field.value ?? ""}
-                  onValueChange={field.onChange}
-                  placeholder="Seleccionar..."
-                  searchPlaceholder="Buscar vendedor..."
-                  emptyMessage="Sin vendedores"
-                />
-              )}
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* ── Paso 2: Ventas del día (multi-vendedor) ── */}
-      {contextValido && (
-        <div
-          className="rounded-xl border p-6 space-y-4"
-          style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border-color)' }}
-        >
-          <div className="flex items-center justify-between">
+        <CardHeader className="pb-4">
+          <div className="flex items-start justify-between gap-4">
             <div>
-              <h2 className="section-heading">2. Ventas del día</h2>
-              <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
-                {sucursalNombre(watchedSucursal)} · {formatDate(watchedFecha)}
-              </p>
+              <p className="label-caps">Paso 1</p>
+              <CardTitle className="mt-1 text-lg">Datos de la venta</CardTitle>
             </div>
-            <div className="flex items-center gap-2">
-              {watchedVendedor && (
-                <span className="text-xs hidden sm:inline" style={{ color: 'var(--text-muted)' }}>
-                  Para:{" "}
-                  <strong className="font-semibold">{vendedorNombre(watchedVendedor)}</strong>
-                </span>
-              )}
-              <Button
-                onClick={openAddModal}
-                size="sm"
-                disabled={!canAddItem}
-                title={!canAddItem ? "Selecciona un vendedor en el Paso 1" : undefined}
-              >
-                <PlusCircle className="h-4 w-4 mr-1.5" /> Agregar venta
-              </Button>
-            </div>
+            <StepStatusBadge status={!saleContext ? "active" : "complete"} />
           </div>
-
-          {hasPendingItems ? (
-            <>
-              <div className="space-y-4">
-                {pendingVendors.map((vs) => {
-                  const subtotal = vs.items.reduce((s, i) => s + i.cantidad, 0);
-                  return (
-                    <div
-                      key={vs.vendedorId}
-                      className="rounded-lg border p-4 space-y-3"
-                      style={{ borderColor: 'var(--border-color)' }}
+        </CardHeader>
+        <CardContent>
+          <form
+            onSubmit={saleForm.handleSubmit(handleStartSale)}
+            className="space-y-5"
+          >
+            <fieldset
+              disabled={!!saleContext}
+              className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4"
+            >
+              <FormField
+                label="Sucursal"
+                htmlFor="sucursal"
+                error={saleForm.formState.errors.sucursalId?.message}
+              >
+                <Controller
+                  control={saleForm.control}
+                  name="sucursalId"
+                  render={({ field }) => (
+                    <Select
+                      value={field.value}
+                      onValueChange={field.onChange}
+                      disabled={!!saleContext}
                     >
-                      <div className="flex items-center justify-between">
-                        <h3 className="section-heading">{vendedorNombre(vs.vendedorId)}</h3>
-                        <span className="number-display text-sm">
-                          {formatCurrency(subtotal)}
-                        </span>
+                      <SelectTrigger id="sucursal">
+                        <SelectValue placeholder="Seleccionar..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {sucursales.map((sucursal) => (
+                          <SelectItem key={sucursal.id} value={sucursal.id}>
+                            {sucursal.nombre}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+              </FormField>
+              <FormField
+                label="Fecha"
+                htmlFor="fecha"
+                error={saleForm.formState.errors.fecha?.message}
+              >
+                <Input id="fecha" type="date" {...saleForm.register("fecha")} />
+              </FormField>
+              <FormField
+                label="Empleado inicial"
+                htmlFor="vendedor"
+                error={saleForm.formState.errors.vendedorId?.message}
+              >
+                <Controller
+                  control={saleForm.control}
+                  name="vendedorId"
+                  render={({ field }) => (
+                    <Combobox
+                      id="vendedor"
+                      options={activeEmployees.map((employee) => ({
+                        value: employee.id,
+                        label: employee.nombreCompleto,
+                      }))}
+                      value={field.value}
+                      onValueChange={field.onChange}
+                      placeholder="Seleccionar..."
+                      searchPlaceholder="Buscar empleado..."
+                      emptyMessage="Sin empleados activos"
+                      disabled={!!saleContext}
+                    />
+                  )}
+                />
+              </FormField>
+              <FormField
+                label="Monto total (MXN)"
+                htmlFor="monto"
+                error={saleForm.formState.errors.monto?.message}
+              >
+                <Input
+                  id="monto"
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  placeholder="0.00"
+                  {...saleForm.register("monto")}
+                />
+              </FormField>
+            </fieldset>
+
+            {!saleContext ? (
+              <div className="flex justify-end">
+                <Button type="submit">
+                  Continuar <ArrowRight className="ml-1.5 h-4 w-4" />
+                </Button>
+              </div>
+            ) : (
+              <div
+                className="flex flex-col gap-3 rounded-lg border p-4 sm:flex-row sm:items-center sm:justify-between"
+                style={{
+                  borderColor: "var(--border-color)",
+                  backgroundColor: "var(--table-row-alt)",
+                }}
+              >
+                <div>
+                  <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+                    {sucursalNombre(saleContext.sucursalId)} ·{" "}
+                    {formatDate(saleContext.fecha)}
+                  </p>
+                  <p className="number-display text-xl">
+                    {formatCurrency(saleContext.monto)}
+                  </p>
+                </div>
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button type="button" variant="outline" size="sm">
+                      <RotateCcw className="mr-1.5 h-4 w-4" /> Cambiar datos
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>
+                        ¿Cambiar los datos de la venta?
+                      </AlertDialogTitle>
+                      <AlertDialogDescription>
+                        Se descartarán la distribución de empleados y los pagos
+                        capturados.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Conservar captura</AlertDialogCancel>
+                      <AlertDialogAction onClick={editSaleContext}>
+                        Cambiar datos
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              </div>
+            )}
+          </form>
+        </CardContent>
+      </Card>
+
+      {saleContext && (
+        <section className="space-y-5" aria-labelledby="step-two-title">
+          <Card
+            aria-current={!canSave ? "step" : undefined}
+            className="transition-[border-color,box-shadow] duration-200"
+            style={stepCardStyle(canSave ? "complete" : "active")}
+          >
+            <CardHeader
+              className="border-b"
+              style={{ borderColor: "var(--border-color)" }}
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="label-caps">Paso 2</p>
+                  <CardTitle id="step-two-title" className="mt-1 text-xl">
+                    Distribución y pago
+                  </CardTitle>
+                </div>
+                <StepStatusBadge status={canSave ? "complete" : "active"} />
+              </div>
+            </CardHeader>
+
+            <CardContent
+              className="grid grid-cols-1 gap-8 pt-6 xl:grid-cols-2 xl:gap-0 xl:divide-x"
+              style={{ borderColor: "var(--border-color)" }}
+            >
+              <div className="space-y-4 xl:pr-8">
+                <div className="space-y-1.5">
+                  <h3 className="flex items-center gap-2 text-base font-semibold">
+                    <Users className="h-5 w-5" /> Empleados
+                  </h3>
+                </div>
+                <div className="space-y-2">
+                  {employeeAllocations.map((allocation) => (
+                    <div
+                      key={allocation.empleadoId}
+                      className="grid grid-cols-[minmax(0,1fr)_8.5rem_2.5rem] items-end gap-2 rounded-lg border p-3"
+                      style={{ borderColor: "var(--border-color)" }}
+                    >
+                      <div className="min-w-0 self-center">
+                        <p className="truncate text-sm font-semibold">
+                          {vendedorNombre(allocation.empleadoId)}
+                        </p>
+                        <p
+                          className="text-xs"
+                          style={{ color: "var(--text-muted)" }}
+                        >
+                          Venta asignada
+                        </p>
                       </div>
-                      <div className="overflow-x-auto">
-                        <Table>
-                          <TableHeader>
-                            <TableRow>
-                              <TableHead>Cantidad</TableHead>
-                              <TableHead>Método de pago</TableHead>
-                              <TableHead>Notas</TableHead>
-                              <TableHead className="text-right">Acciones</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {vs.items.map((item) => (
-                              <TableRow key={item.id}>
-                                <TableCell className="font-medium">
-                                  {formatCurrency(item.cantidad)}
-                                </TableCell>
-                                <TableCell>
-                                  <Badge variant="secondary">
-                                    {metodoPagoNombre(item.metodoPagoId)}
-                                  </Badge>
-                                </TableCell>
-                                <TableCell className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                                  {item.notas ?? "—"}
-                                </TableCell>
-                                <TableCell className="text-right">
-                                  <div className="flex justify-end gap-1">
-                                    <Button
-                                      size="icon"
-                                      variant="ghost"
-                                      onClick={() => openEditItemModal(vs.vendedorId, item)}
-                                    >
-                                      <Pencil className="h-4 w-4" />
-                                    </Button>
-                                    <AlertDialog>
-                                      <AlertDialogTrigger asChild>
-                                        <Button size="icon" variant="ghost">
-                                          <Trash2 className="h-4 w-4 text-red-500" />
-                                        </Button>
-                                      </AlertDialogTrigger>
-                                      <AlertDialogContent>
-                                        <AlertDialogHeader>
-                                          <AlertDialogTitle>¿Eliminar venta?</AlertDialogTitle>
-                                          <AlertDialogDescription>
-                                            Se eliminará esta venta de {formatCurrency(item.cantidad)} del registro actual.
-                                          </AlertDialogDescription>
-                                        </AlertDialogHeader>
-                                        <AlertDialogFooter>
-                                          <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                                          <AlertDialogAction
-                                            className="bg-red-600 hover:bg-red-700"
-                                            onClick={() => handleDeleteItem(vs.vendedorId, item.id)}
-                                          >
-                                            Eliminar
-                                          </AlertDialogAction>
-                                        </AlertDialogFooter>
-                                      </AlertDialogContent>
-                                    </AlertDialog>
-                                  </div>
-                                </TableCell>
-                              </TableRow>
-                            ))}
-                          </TableBody>
-                        </Table>
+                      <div>
+                        <Label
+                          htmlFor={`employee-${allocation.empleadoId}`}
+                          className="sr-only"
+                        >
+                          Monto para {vendedorNombre(allocation.empleadoId)}
+                        </Label>
+                        <Input
+                          id={`employee-${allocation.empleadoId}`}
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={fromCents(allocation.amountCents)}
+                          onChange={(event) =>
+                            handleEmployeeAmountChange(
+                              allocation.empleadoId,
+                              event.target.value,
+                            )
+                          }
+                          className="text-right tabular-nums"
+                        />
                       </div>
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="ghost"
+                        disabled={employeeAllocations.length === 1}
+                        onClick={() =>
+                          handleRemoveEmployee(allocation.empleadoId)
+                        }
+                        aria-label={`Quitar a ${vendedorNombre(allocation.empleadoId)}`}
+                      >
+                        <Trash2 className="h-4 w-4 text-red-500" />
+                      </Button>
                     </div>
-                  );
-                })}
+                  ))}
+                </div>
+
+                {availableEmployees.length > 0 && (
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+                    <Combobox
+                      id="new-employee"
+                      options={availableEmployees}
+                      value={employeeToAdd}
+                      onValueChange={setEmployeeToAdd}
+                      placeholder="Agregar otro empleado..."
+                      searchPlaceholder="Buscar empleado..."
+                      emptyMessage="Sin empleados disponibles"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={handleAddEmployee}
+                      disabled={!employeeToAdd}
+                    >
+                      <Plus className="mr-1.5 h-4 w-4" /> Agregar
+                    </Button>
+                  </div>
+                )}
+
+                <div
+                  className="border-t pt-4"
+                  style={{ borderColor: "var(--border-color)" }}
+                >
+                  <div aria-live="polite">
+                    <p
+                      className="text-xs"
+                      style={{ color: "var(--text-muted)" }}
+                    >
+                      Total asignado
+                    </p>
+                    <p className="number-display text-lg">
+                      {formatCurrency(fromCents(allocatedEmployeeCents))}
+                    </p>
+                    {!employeeDistributionMatches && (
+                      <p className="text-xs text-red-600" role="alert">
+                        {!employeesHavePositiveAmounts
+                          ? "Cada empleado necesita un monto mayor a $0.00"
+                          : `${remainingEmployeeCents > 0 ? "Faltan" : "Excede por"} ${formatCurrency(fromCents(Math.abs(remainingEmployeeCents)))}`}
+                      </p>
+                    )}
+                  </div>
+                </div>
               </div>
 
-              <div className="flex items-center justify-between pt-2 border-t" style={{ borderColor: 'var(--border-color)' }}>
-                <div>
-                  <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
-                    Total acumulado:{" "}
-                    <span className="number-display">{formatCurrency(grandTotal)}</span>
-                  </p>
-                  {pendingVendors.length > 1 && (
-                    <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
-                      {pendingVendors.length} vendedores · voucher combinado
-                    </p>
-                  )}
+              <div
+                className="space-y-4 border-t pt-8 xl:border-t-0 xl:pl-8 xl:pt-0"
+                style={{ borderColor: "var(--border-color)" }}
+              >
+                <div className="space-y-1.5">
+                  <h3 className="flex items-center gap-2 text-base font-semibold">
+                    <CreditCard className="h-5 w-5" /> Métodos de pago
+                  </h3>
                 </div>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleNuevoRegistro}
-                  >
-                    Cancelar
-                  </Button>
-                  <Button
-                    size="sm"
-                    onClick={handleGuardarRegistro}
-                    disabled={saving}
-                  >
-                    <Save className="h-4 w-4 mr-1.5" />{" "}
-                    {saving ? "Guardando..." : "Guardar registros"}
-                  </Button>
+                <div
+                  className="rounded-lg border p-4"
+                  style={{
+                    borderColor: "var(--border-color)",
+                    backgroundColor: "var(--table-row-alt)",
+                  }}
+                >
+                  <div className="mb-2 flex items-end justify-between gap-4">
+                    <div>
+                      <p
+                        className="text-xs"
+                        style={{ color: "var(--text-muted)" }}
+                      >
+                        Registrado
+                      </p>
+                      <p className="number-display text-lg">
+                        {formatCurrency(fromCents(paidCents))}
+                      </p>
+                    </div>
+                    <div className="text-right" aria-live="polite">
+                      <p
+                        className="text-xs"
+                        style={{ color: "var(--text-muted)" }}
+                      >
+                        Falta por registrar
+                      </p>
+                      <p
+                        className={`number-display text-lg ${paymentsMatch ? "text-green-700 dark:text-green-400" : ""}`}
+                      >
+                        {formatCurrency(
+                          fromCents(Math.max(remainingPaymentCents, 0)),
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                  <ProgressKeysar value={paymentProgress} />
                 </div>
+
+                {paymentAllocations.length > 0 && (
+                  <div className="space-y-2" aria-label="Pagos registrados">
+                    {paymentAllocations.map((payment) => (
+                      <div
+                        key={payment.id}
+                        className="grid grid-cols-[minmax(0,1fr)_auto_2.5rem] items-center gap-2 rounded-lg border px-3 py-2.5"
+                        style={{ borderColor: "var(--border-color)" }}
+                      >
+                        <span className="truncate text-sm font-medium">
+                          {metodoPagoNombre(payment.metodoPagoId)}
+                        </span>
+                        <span className="number-display whitespace-nowrap text-sm">
+                          {formatCurrency(fromCents(payment.amountCents))}
+                        </span>
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => handleRemovePayment(payment.id)}
+                          aria-label={`Eliminar pago con ${metodoPagoNombre(payment.metodoPagoId)}`}
+                        >
+                          <Trash2 className="h-4 w-4 text-red-500" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {!paymentsMatch && (
+                  <form
+                    onSubmit={paymentForm.handleSubmit(handleAddPayment)}
+                    className="space-y-3 rounded-lg border p-4"
+                    style={{ borderColor: "var(--border-color)" }}
+                  >
+                    <FormField
+                      label="Método de pago"
+                      htmlFor="payment-method"
+                      error={paymentForm.formState.errors.metodoPagoId?.message}
+                    >
+                      <Controller
+                        control={paymentForm.control}
+                        name="metodoPagoId"
+                        render={({ field }) => (
+                          <Select
+                            value={field.value}
+                            onValueChange={handlePaymentMethodChange}
+                          >
+                            <SelectTrigger id="payment-method">
+                              <SelectValue placeholder="Seleccionar..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {metodosPago.map((method) => (
+                                <SelectItem key={method.id} value={method.id}>
+                                  {method.nombre}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
+                      />
+                    </FormField>
+
+                    {selectedPaymentMethod && (
+                      <div className="grid grid-cols-1 items-end gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+                        <FormField
+                          label="Cantidad pagada (MXN)"
+                          htmlFor="payment-amount"
+                          error={paymentForm.formState.errors.cantidad?.message}
+                        >
+                          <Input
+                            id="payment-amount"
+                            type="number"
+                            min="0.01"
+                            max={fromCents(remainingPaymentCents)}
+                            step="0.01"
+                            {...paymentForm.register("cantidad")}
+                          />
+                        </FormField>
+                        <Button type="submit">
+                          <Plus className="mr-1.5 h-4 w-4" /> Registrar pago
+                        </Button>
+                      </div>
+                    )}
+                  </form>
+                )}
               </div>
-            </>
-          ) : (
-            <div className="flex flex-col items-center justify-center py-10" style={{ color: 'var(--text-muted)' }}>
-              <ShoppingCartEmpty />
-              <p className="mt-2 text-sm">
-                {watchedVendedor
-                  ? "Sin ventas agregadas. Haz clic en «Agregar venta»."
-                  : "Selecciona un vendedor en el Paso 1 para agregar ventas."}
-              </p>
-            </div>
-          )}
-        </div>
+            </CardContent>
+          </Card>
+
+          <Card
+            aria-current={canSave ? "step" : undefined}
+            className="sticky bottom-4 z-10 backdrop-blur transition-[border-color,box-shadow] duration-200"
+            style={stepCardStyle(canSave ? "active" : "pending", true)}
+          >
+            <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+              <div
+                className="flex min-w-0 flex-1 items-start justify-between gap-4"
+                aria-live="polite"
+              >
+                <div>
+                  <p className="label-caps">Paso 3</p>
+                  <h2 className="mt-1 text-base font-semibold">
+                    Guardar la venta
+                  </h2>
+                  <p className="mt-1 text-sm">
+                    {canSave
+                      ? "La venta está lista para guardarse"
+                      : "Completa la distribución y los pagos"}
+                  </p>
+                  <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+                    Total de la venta:{" "}
+                    <span className="number-display">
+                      {formatCurrency(saleContext.monto)}
+                    </span>
+                  </p>
+                </div>
+                <StepStatusBadge status={canSave ? "active" : "pending"} />
+              </div>
+              <Button
+                onClick={handleSaveSale}
+                disabled={!canSave}
+                className="sm:min-w-44"
+              >
+                <Save className="mr-1.5 h-4 w-4" />{" "}
+                {saving ? "Guardando..." : "Guardar venta"}
+              </Button>
+            </CardContent>
+          </Card>
+        </section>
       )}
 
-      {/* ── Tabla de registros guardados ── */}
-      <div className="space-y-3">
-        <h2 className="section-heading">Registros guardados</h2>
-        {registros.length === 0 ? (
-          <p className="text-sm" style={{ color: 'var(--text-muted)' }}>No hay registros guardados.</p>
-        ) : (
-          <DataTable
-            columns={registroColumns}
-            data={[...registros].reverse()}
-            emptyMessage="Sin registros guardados"
-            searchPlaceholder="Buscar por vendedor, sucursal, fecha..."
-          />
-        )}
-      </div>
-
-      {/* ── Modal de agregar/editar ítem ── */}
-      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{editingItem ? "Editar venta" : "Agregar venta"}</DialogTitle>
-            <DialogDescription>
-              {editingItem
-                ? `Editando venta de ${editingVendorId ? vendedorNombre(editingVendorId) : ""}`
-                : watchedVendedor
-                  ? `Para ${vendedorNombre(watchedVendedor)}`
-                  : "Ingresa los datos de la venta"}
-            </DialogDescription>
-          </DialogHeader>
-          <form
-            onSubmit={itemForm.handleSubmit(handleSaveItem)}
-            className="space-y-4 pt-2"
-          >
-            <div className="space-y-1.5">
-              <Label htmlFor="cantidad">Cantidad (MXN)</Label>
-              <Input
-                id="cantidad"
-                type="number"
-                step="0.01"
-                min="0"
-                placeholder="0.00"
-                {...itemForm.register("cantidad")}
-              />
-              {itemForm.formState.errors.cantidad && (
-                <p className="text-xs text-red-500">
-                  {itemForm.formState.errors.cantidad.message}
-                </p>
-              )}
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="metodoPago">Método de pago</Label>
-              <Controller
-                control={itemControl}
-                name="metodoPagoId"
-                render={({ field }) => (
-                  <Select value={field.value} onValueChange={field.onChange}>
-                    <SelectTrigger id="metodoPago">
-                      <SelectValue placeholder="Seleccionar..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {metodosPago.map((m) => (
-                        <SelectItem key={m.id} value={m.id}>{m.nombre}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-              />
-              {itemForm.formState.errors.metodoPagoId && (
-                <p className="text-xs text-red-500">
-                  {itemForm.formState.errors.metodoPagoId.message}
-                </p>
-              )}
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="notas">Notas (opcional)</Label>
-              <Textarea
-                id="notas"
-                rows={3}
-                placeholder="Observaciones..."
-                {...itemForm.register("notas")}
-              />
-            </div>
-            <DialogFooter>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setModalOpen(false)}
-              >
-                Cancelar
-              </Button>
-              <Button type="submit">Guardar</Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+      <section className="space-y-3" aria-labelledby="saved-sales-title">
+        <h2 id="saved-sales-title" className="section-heading">
+          Registros guardados
+        </h2>
+        <DataTable
+          columns={registroColumns}
+          data={[...registros].reverse()}
+          emptyMessage="Sin registros guardados"
+          searchPlaceholder="Buscar por empleado, sucursal o fecha..."
+        />
+      </section>
     </div>
   );
 }
 
-function ShoppingCartEmpty() {
+function FormField({
+  label,
+  htmlFor,
+  error,
+  children,
+}: {
+  label: string;
+  htmlFor: string;
+  error: string | undefined;
+  children: React.ReactNode;
+}) {
   return (
-    <svg
-      className="h-12 w-12"
-      style={{ color: 'var(--border-color)' }}
-      fill="none"
-      viewBox="0 0 24 24"
-      stroke="currentColor"
+    <div className="space-y-1.5">
+      <Label htmlFor={htmlFor}>{label}</Label>
+      {children}
+      {error && (
+        <p className="text-xs text-red-600" role="alert">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
+type StepStatus = "active" | "complete" | "pending";
+
+function stepCardStyle(status: StepStatus, translucent = false) {
+  const backgroundColor = translucent
+    ? "color-mix(in srgb, var(--bg-card) 94%, transparent)"
+    : "var(--bg-card)";
+
+  if (status === "active") {
+    return {
+      backgroundColor,
+      borderColor: "var(--color-gold)",
+      borderLeftColor: "var(--color-gold)",
+      borderLeftWidth: 4,
+      boxShadow:
+        "0 8px 24px rgba(195, 165, 131, 0.18), 0 2px 6px rgba(195, 165, 131, 0.12)",
+    };
+  }
+
+  if (status === "complete") {
+    return {
+      backgroundColor,
+      borderColor: "var(--color-green-sage)",
+      borderLeftColor: "var(--color-green-olive)",
+      borderLeftWidth: 4,
+      boxShadow: "var(--card-shadow)",
+    };
+  }
+
+  return {
+    backgroundColor: translucent
+      ? "color-mix(in srgb, var(--bg-card) 88%, transparent)"
+      : "var(--bg-card)",
+    borderColor: "var(--border-color)",
+    borderLeftColor: "var(--border-color)",
+    borderLeftWidth: 4,
+    boxShadow: "none",
+  };
+}
+
+function StepStatusBadge({ status }: { status: StepStatus }) {
+  if (status === "complete") {
+    return (
+      <Badge className="shrink-0 gap-1.5 border-green-200 bg-green-50 text-green-700 dark:border-green-900 dark:bg-green-950 dark:text-green-300">
+        <CheckCircle2 className="h-3.5 w-3.5" /> Completado
+      </Badge>
+    );
+  }
+
+  if (status === "active") {
+    return (
+      <Badge
+        variant="outline"
+        className="shrink-0 gap-1.5"
+        style={{
+          borderColor: "var(--color-gold)",
+          backgroundColor: "var(--color-nude)",
+          color: "var(--color-charcoal)",
+        }}
+      >
+        <span
+          className="h-2 w-2 rounded-full"
+          style={{ backgroundColor: "var(--color-gold)" }}
+          aria-hidden="true"
+        />
+        En curso
+      </Badge>
+    );
+  }
+
+  return (
+    <Badge
+      variant="outline"
+      className="shrink-0"
+      style={{ color: "var(--text-muted)" }}
     >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={1.5}
-        d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"
-      />
-    </svg>
+      Pendiente
+    </Badge>
   );
 }
