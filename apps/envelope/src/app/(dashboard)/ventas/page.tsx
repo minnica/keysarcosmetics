@@ -960,14 +960,37 @@ export default function VentasPage() {
                 </div>
                 <StepStatusBadge status={canSave ? "active" : "pending"} />
               </div>
-              <Button
-                onClick={handleSaveSale}
-                disabled={!canSave}
-                className="sm:min-w-44"
-              >
-                <Save className="mr-1.5 h-4 w-4" />{" "}
-                {saving ? t.common.saving : t.sales.savingSale}
-              </Button>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button
+                    type="button"
+                    disabled={!canSave}
+                    className="sm:min-w-44"
+                  >
+                    <Save className="mr-1.5 h-4 w-4" />{" "}
+                    {saving ? t.common.saving : t.sales.savingSale}
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>
+                      {t.sales.saveSaleTitle}
+                    </AlertDialogTitle>
+                    <AlertDialogDescription>
+                      {t.sales.saveSaleDescription}
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>{t.common.cancel}</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={handleSaveSale}
+                      disabled={saving}
+                    >
+                      {saving ? t.common.saving : t.sales.saveSaleConfirm}
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             </CardContent>
           </Card>
         </section>
