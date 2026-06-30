@@ -57,9 +57,9 @@ export default function TotalGeneralPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>{t.common.date}</TableHead>
+              <TableHead className="uppercase">{t.common.date}</TableHead>
               {sucursales.map(s => <TableHead key={s.id} className="text-right">{s.nombre}</TableHead>)}
-              <TableHead className="text-right">{t.reports.dayTotal}</TableHead>
+              <TableHead className="text-right uppercase">{t.reports.dayTotal}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>

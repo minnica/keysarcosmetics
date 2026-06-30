@@ -423,7 +423,7 @@ export default function VentasPage() {
           );
         return (
           <span className="whitespace-nowrap text-xs">
-            {t.sales.shared} · {formatCurrency(voucherTotal)}
+            <span className="uppercase">{t.sales.shared}</span> · {formatCurrency(voucherTotal)}
           </span>
         );
       },

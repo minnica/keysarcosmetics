@@ -162,15 +162,15 @@ export default function VentasPorVendedorDiaPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="sticky left-0 z-20 bg-background whitespace-nowrap min-w-56">
+                <TableHead className="sticky left-0 z-20 bg-background whitespace-nowrap min-w-56 uppercase">
                   {t.common.employee}
                 </TableHead>
                 {dias.map((dia) => (
-                  <TableHead key={dia} className="text-right whitespace-nowrap">
+                  <TableHead key={dia} className="text-right whitespace-nowrap uppercase">
                     {formatDate(dia, 'EEEE dd', locale)}
                   </TableHead>
                 ))}
-                <TableHead className="text-right whitespace-nowrap">{t.common.total}</TableHead>
+                <TableHead className="text-right whitespace-nowrap uppercase">{t.common.total}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>

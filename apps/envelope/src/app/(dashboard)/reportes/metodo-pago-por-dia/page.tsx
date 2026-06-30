@@ -118,9 +118,9 @@ export default function MetodoPagoPorDiaPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>{t.common.date}</TableHead>
+              <TableHead className="uppercase">{t.common.date}</TableHead>
               {sucursales.map(s => <TableHead key={s.id} className="text-right">{s.nombre}</TableHead>)}
-              <TableHead className="text-right">{t.reports.dayTotal}</TableHead>
+              <TableHead className="text-right uppercase">{t.reports.dayTotal}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -138,7 +138,7 @@ export default function MetodoPagoPorDiaPage() {
           </TableBody>
           <TableFooter>
             <TableRow>
-              <TableCell className="font-semibold">{t.common.grandTotal}</TableCell>
+              <TableCell className="font-semibold uppercase">{t.common.grandTotal}</TableCell>
               {sucursales.map(s => (
                 <TableCell key={s.id} className="text-right font-semibold">{formatCurrency(totalSucursal(s.id))}</TableCell>
               ))}

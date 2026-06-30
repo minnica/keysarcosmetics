@@ -82,12 +82,12 @@ export default function VentasPorVendedorPage() {
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>{t.common.employee}</TableHead>
-            <TableHead>{t.common.branch}</TableHead>
-            <TableHead className="text-right">{t.reports.totalSold}</TableHead>
-            <TableHead className="text-right">{t.reports.monthlyGoal}</TableHead>
-            <TableHead className="text-right">{t.reports.remaining}</TableHead>
-            <TableHead>{t.reports.progress}</TableHead>
+            <TableHead className="uppercase">{t.common.employee}</TableHead>
+            <TableHead className="uppercase">{t.common.branch}</TableHead>
+            <TableHead className="text-right uppercase">{t.reports.totalSold}</TableHead>
+            <TableHead className="text-right uppercase">{t.reports.monthlyGoal}</TableHead>
+            <TableHead className="text-right uppercase">{t.reports.remaining}</TableHead>
+            <TableHead className="uppercase">{t.reports.progress}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>

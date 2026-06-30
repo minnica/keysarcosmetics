@@ -54,9 +54,9 @@ export default function DetalleMetodoPagoPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>{t.common.branch}</TableHead>
-              <TableHead>{t.common.paymentMethod}</TableHead>
-              <TableHead className="text-right">{t.common.total}</TableHead>
+              <TableHead className="uppercase">{t.common.branch}</TableHead>
+              <TableHead className="uppercase">{t.common.paymentMethod}</TableHead>
+              <TableHead className="text-right uppercase">{t.common.total}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -73,7 +73,9 @@ export default function DetalleMetodoPagoPage() {
                     </TableRow>
                   ))}
                   <TableRow key={`subtotal-${sId}`} className="font-medium" style={{ backgroundColor: 'var(--table-row-alt)' }}>
-                    <TableCell colSpan={2} className="text-right text-xs uppercase" style={{ color: 'var(--text-muted)' }}>Subtotal {sucursalNombre(sId)}</TableCell>
+                    <TableCell colSpan={2} className="text-right text-xs" style={{ color: 'var(--text-muted)' }}>
+                      <span className="uppercase">Subtotal</span> {sucursalNombre(sId)}
+                    </TableCell>
                     <TableCell className="text-right">{formatCurrency(subtotal)}</TableCell>
                   </TableRow>
                 </>

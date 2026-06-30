@@ -194,18 +194,18 @@ export default function EmpleadosPage() {
   const columns: ColumnDef<Empleado>[] = [
     {
       accessorKey: 'nombreCompleto',
-      header: t.employees.fullName,
+      header: () => <span className="uppercase">{t.employees.fullName}</span>,
       cell: ({ row }) => <span className="font-medium">{row.original.nombreCompleto}</span>,
     },
     {
       id: 'banco',
       accessorFn: (row) => row.bank?.nombre ?? row.banco,
-      header: t.common.bank,
+      header: () => <span className="uppercase">{t.common.bank}</span>,
       cell: ({ row }) => displayBanco(row.original),
     },
     {
       accessorKey: 'numeroCuenta',
-      header: t.employees.accountNumber,
+      header: () => <span className="uppercase">{t.employees.accountNumber}</span>,
       cell: ({ row }) => (
         <span className="font-mono text-xs">{row.original.numeroCuenta}</span>
       ),
@@ -213,14 +213,14 @@ export default function EmpleadosPage() {
     {
       id: 'puesto',
       accessorFn: (row) => row.position?.nombre ?? row.puesto,
-      header: t.common.position,
+      header: () => <span className="uppercase">{t.common.position}</span>,
       cell: ({ row }) => (
         <span className="text-sm">{displayPuesto(row.original)}</span>
       ),
     },
     {
       accessorKey: 'metaIndividual',
-      header: t.employees.individualGoal,
+      header: () => <span className="uppercase">{t.employees.individualGoal}</span>,
       cell: ({ row }) => (
         <div className="text-right">{formatCurrency(row.original.metaIndividual)}</div>
       ),
@@ -228,15 +228,15 @@ export default function EmpleadosPage() {
     {
       id: 'estatus',
       accessorFn: (row) => row.activo,
-      header: t.common.status,
+      header: () => <span className="uppercase">{t.common.status}</span>,
       enableGlobalFilter: false,
       cell: ({ row }) => (
         row.original.activo ? (
-          <Badge style={{ backgroundColor: '#648672', color: 'white', borderColor: '#648672' }}>
+          <Badge className="uppercase" style={{ backgroundColor: '#648672', color: 'white', borderColor: '#648672' }}>
             {t.common.active}
           </Badge>
         ) : (
-          <Badge className="bg-muted-foreground text-white border-transparent">
+          <Badge className="bg-muted-foreground text-white border-transparent uppercase">
             {t.common.inactive}
           </Badge>
         )
@@ -244,7 +244,7 @@ export default function EmpleadosPage() {
     },
     {
       id: 'acciones',
-      header: () => <div className="text-right">{t.common.actions}</div>,
+      header: () => <div className="text-right uppercase">{t.common.actions}</div>,
       enableSorting: false,
       enableGlobalFilter: false,
       cell: ({ row }) => {
@@ -254,6 +254,7 @@ export default function EmpleadosPage() {
             <Button
               size="sm"
               variant="outline"
+              className="uppercase"
               onClick={() => openEdit(emp)}
             >
               <Pencil className="h-4 w-4" /> {t.common.edit}
@@ -263,7 +264,7 @@ export default function EmpleadosPage() {
                 <Button
                   size="sm"
                   variant="outline"
-                  className={`w-[110px] ${emp.activo ? 'border-amber-400 text-amber-700 hover:bg-amber-50' : 'border-[#8bb09b] text-[#648672] hover:bg-[#648672]/10'}`}
+                  className={`w-[110px] uppercase ${emp.activo ? 'border-amber-400 text-amber-700 hover:bg-amber-50' : 'border-[#8bb09b] text-[#648672] hover:bg-[#648672]/10'}`}
                 >
                   <Power className="h-4 w-4 shrink-0" />
                   <span className="inline-block w-[68px] text-center">
@@ -300,7 +301,7 @@ export default function EmpleadosPage() {
             </AlertDialog>
             <AlertDialog>
               <AlertDialogTrigger asChild>
-                <Button size="sm" variant="outline" className="border-red-300 text-red-600 hover:bg-red-50 hover:text-red-600">
+                <Button size="sm" variant="outline" className="border-red-300 text-red-600 hover:bg-red-50 hover:text-red-600 uppercase">
                   <Trash2 className="h-4 w-4" /> {t.common.delete}
                 </Button>
               </AlertDialogTrigger>

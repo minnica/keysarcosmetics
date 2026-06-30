@@ -77,8 +77,8 @@ export function DataTable<TData, TValue>({
   const pageIndex = table.getState().pagination.pageIndex
   const totalFiltered = table.getFilteredRowModel().rows.length
   const showPagination = pageSizeOption !== 'all'
-  const recordsLabel = labels?.records ?? 'Registros'
-  const allLabel = labels?.all ?? 'Todos'
+  const recordsLabel = (labels?.records ?? 'Registros').toUpperCase()
+  const allLabel = (labels?.all ?? 'Todos').toUpperCase()
   const resultsLabel = labels?.results ?? ((count: number) => `${count} resultado${count !== 1 ? 's' : ''}`)
 
   return (
@@ -91,7 +91,7 @@ export function DataTable<TData, TValue>({
             style={{ color: 'var(--text-muted)' }}
           />
           <Input
-            placeholder={searchPlaceholder}
+            placeholder={searchPlaceholder.toUpperCase()}
             value={globalFilter}
             onChange={(e) => setGlobalFilter(e.target.value)}
             className="pl-9"
@@ -125,7 +125,7 @@ export function DataTable<TData, TValue>({
                 {headerGroup.headers.map((header) => {
                   const canSort = header.column.getCanSort()
                   return (
-                    <TableHead key={header.id}>
+                    <TableHead key={header.id} className="uppercase">
                       {header.isPlaceholder ? null : canSort ? (
                         <button
                           className="flex items-center gap-1 hover:opacity-70 transition-opacity select-none"
@@ -167,7 +167,7 @@ export function DataTable<TData, TValue>({
                   className="h-24 text-center"
                   style={{ color: 'var(--text-muted)' }}
                 >
-                  {emptyMessage}
+                  {emptyMessage.toUpperCase()}
                 </TableCell>
               </TableRow>
             )}
@@ -178,7 +178,7 @@ export function DataTable<TData, TValue>({
       {/* Paginación */}
       <div className="flex items-center justify-between">
         <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-          {resultsLabel(totalFiltered)}
+          {resultsLabel(totalFiltered).toUpperCase()}
         </p>
         {showPagination && (
           <div className="flex items-center gap-2">
