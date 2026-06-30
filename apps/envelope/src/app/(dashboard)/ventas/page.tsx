@@ -50,23 +50,36 @@ import {
   useSucursales,
   useVentas,
 } from "@/hooks";
+import { useI18n } from "@/lib/i18n";
 import { formatCurrency, formatDate, generateId, todayISO } from "@/lib/utils";
 import type { RegistroVenta, VentaItem } from "@/lib/mock-data";
 
-const saleSchema = z.object({
-  sucursalId: z.string().min(1, "Selecciona una sucursal"),
-  fecha: z.string().min(1, "Selecciona una fecha"),
-  vendedorId: z.string().min(1, "Selecciona un empleado"),
-  monto: z.coerce.number().positive("El monto debe ser mayor a 0"),
-});
+function createSaleSchema(messages: {
+  selectBranch: string;
+  selectDate: string;
+  selectEmployee: string;
+  amountPositive: string;
+}) {
+  return z.object({
+    sucursalId: z.string().min(1, messages.selectBranch),
+    fecha: z.string().min(1, messages.selectDate),
+    vendedorId: z.string().min(1, messages.selectEmployee),
+    monto: z.coerce.number().positive(messages.amountPositive),
+  });
+}
 
-const paymentSchema = z.object({
-  metodoPagoId: z.string().min(1, "Selecciona un método de pago"),
-  cantidad: z.coerce.number().positive("La cantidad debe ser mayor a 0"),
-});
+function createPaymentSchema(messages: {
+  selectPaymentMethod: string;
+  quantityPositive: string;
+}) {
+  return z.object({
+    metodoPagoId: z.string().min(1, messages.selectPaymentMethod),
+    cantidad: z.coerce.number().positive(messages.quantityPositive),
+  });
+}
 
-type SaleForm = z.infer<typeof saleSchema>;
-type PaymentForm = z.infer<typeof paymentSchema>;
+type SaleForm = z.infer<ReturnType<typeof createSaleSchema>>;
+type PaymentForm = z.infer<ReturnType<typeof createPaymentSchema>>;
 type SaleContext = SaleForm & { totalCents: number };
 type EmployeeAllocation = { empleadoId: string; amountCents: number };
 type PaymentAllocation = {
@@ -142,6 +155,23 @@ export default function VentasPage() {
   const { empleados } = useEmpleados();
   const { metodosPago } = useMetodosPago();
   const { registros, addBatch, remove: deleteRegistro } = useVentas();
+  const { locale, t, dataTableLabels } = useI18n();
+  const saleSchema = useMemo(
+    () => createSaleSchema({
+      selectBranch: t.sales.selectBranch,
+      selectDate: t.sales.selectDate,
+      selectEmployee: t.sales.selectEmployee,
+      amountPositive: t.sales.amountPositive,
+    }),
+    [t],
+  );
+  const paymentSchema = useMemo(
+    () => createPaymentSchema({
+      selectPaymentMethod: t.sales.selectPaymentMethod,
+      quantityPositive: t.sales.quantityPositive,
+    }),
+    [t],
+  );
 
   const saleForm = useForm<SaleForm>({
     resolver: zodResolver(saleSchema),
@@ -269,7 +299,7 @@ export default function VentasPage() {
     const amountCents = toCents(data.cantidad);
     if (amountCents > remainingPaymentCents) {
       paymentForm.setError("cantidad", {
-        message: `El máximo pendiente es ${formatCurrency(fromCents(remainingPaymentCents))}`,
+        message: `${t.sales.maxPending} ${formatCurrency(fromCents(remainingPaymentCents))}`,
       });
       return;
     }
@@ -330,10 +360,10 @@ export default function VentasPage() {
     setSaving(true);
     try {
       await addBatch(sales);
-      toast.success("Venta registrada correctamente");
+      toast.success(t.sales.registeredSuccess);
       resetCapture();
     } catch {
-      toast.error("No se pudo registrar la venta. Intenta nuevamente.");
+      toast.error(t.sales.registeredError);
       setSaving(false);
     }
   }
@@ -342,26 +372,26 @@ export default function VentasPage() {
     {
       id: "sucursal",
       accessorFn: (row) => sucursalNombre(row.sucursalId, row.sucursalNombre),
-      header: "Sucursal",
+      header: t.common.branch,
       cell: ({ row }) =>
         sucursalNombre(row.original.sucursalId, row.original.sucursalNombre),
     },
     {
       accessorKey: "fecha",
-      header: "Fecha",
-      cell: ({ row }) => formatDate(row.original.fecha),
+      header: t.common.date,
+      cell: ({ row }) => formatDate(row.original.fecha, 'dd/MM/yyyy', locale),
     },
     {
       id: "vendedor",
       accessorFn: (row) => vendedorNombre(row.vendedorId),
-      header: "Empleado",
+      header: t.common.employee,
       cell: ({ row }) => vendedorNombre(row.original.vendedorId),
     },
     {
       id: "total",
       accessorFn: (row) =>
         row.items.reduce((sum, item) => sum + item.cantidad, 0),
-      header: "Venta asignada",
+      header: t.sales.assignedSaleColumn,
       cell: ({ row }) => (
         <div className="number-display text-right">
           {formatCurrency(
@@ -373,7 +403,7 @@ export default function VentasPage() {
     {
       id: "voucher",
       accessorFn: (row) => row.sesionId ?? "",
-      header: "Venta compartida",
+      header: t.sales.sharedSaleColumn,
       enableSorting: false,
       enableGlobalFilter: false,
       cell: ({ row }) => {
@@ -393,7 +423,7 @@ export default function VentasPage() {
           );
         return (
           <span className="whitespace-nowrap text-xs">
-            Compartida · {formatCurrency(voucherTotal)}
+            <span className="uppercase">{t.sales.shared}</span> · {formatCurrency(voucherTotal)}
           </span>
         );
       },
@@ -408,7 +438,7 @@ export default function VentasPage() {
             ),
           ),
         ].join(" "),
-      header: "Métodos usados",
+      header: t.sales.usedMethods,
       cell: ({ row }) => (
         <span className="text-sm">
           {[
@@ -423,7 +453,7 @@ export default function VentasPage() {
     },
     {
       id: "acciones",
-      header: () => <div className="text-right">Acciones</div>,
+      header: () => <div className="text-right">{t.common.actions}</div>,
       enableSorting: false,
       enableGlobalFilter: false,
       cell: ({ row }) => {
@@ -439,27 +469,27 @@ export default function VentasPage() {
                 <Button
                   size="icon"
                   variant="ghost"
-                  aria-label="Eliminar registro"
+                  aria-label={t.sales.deleteRecord}
                 >
                   <Trash2 className="h-4 w-4 text-red-500" />
                 </Button>
               </AlertDialogTrigger>
               <AlertDialogContent>
                 <AlertDialogHeader>
-                  <AlertDialogTitle>¿Eliminar registro?</AlertDialogTitle>
+                  <AlertDialogTitle>{t.sales.deleteRecordTitle}</AlertDialogTitle>
                   <AlertDialogDescription>
-                    Se eliminará el registro de{" "}
-                    {vendedorNombre(record.vendedorId)} por{" "}
-                    {formatCurrency(total)}. Esta acción no se puede deshacer.
+                    {t.sales.deleteRecordDescription}{" "}
+                    {vendedorNombre(record.vendedorId)} {t.sales.byAmount}{" "}
+                    {formatCurrency(total)}. {t.common.deleteCannotUndo}
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
-                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                  <AlertDialogCancel>{t.common.cancel}</AlertDialogCancel>
                   <AlertDialogAction
                     className="bg-red-600 hover:bg-red-700"
                     onClick={() => deleteRegistro(record.id)}
                   >
-                    Eliminar
+                    {t.common.delete}
                   </AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>
@@ -473,9 +503,9 @@ export default function VentasPage() {
   return (
     <div className="space-y-8">
       <header>
-        <h1 className="page-title">Registro de ventas</h1>
+        <h1 className="page-title">{t.sales.title}</h1>
         <p className="mt-1 text-sm" style={{ color: "var(--text-muted)" }}>
-          Distribuye una venta entre empleados y concilia sus métodos de pago.
+          {t.sales.description}
         </p>
       </header>
 
@@ -487,8 +517,8 @@ export default function VentasPage() {
         <CardHeader className="pb-4">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <p className="label-caps">Paso 1</p>
-              <CardTitle className="mt-1 text-lg">Datos de la venta</CardTitle>
+              <p className="label-caps">{t.sales.step} 1</p>
+              <CardTitle className="mt-1 text-lg">{t.sales.saleData}</CardTitle>
             </div>
             <StepStatusBadge status={!saleContext ? "active" : "complete"} />
           </div>
@@ -503,7 +533,7 @@ export default function VentasPage() {
               className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4"
             >
               <FormField
-                label="Sucursal"
+                label={t.common.branch}
                 htmlFor="sucursal"
                 error={saleForm.formState.errors.sucursalId?.message}
               >
@@ -517,7 +547,7 @@ export default function VentasPage() {
                       disabled={!!saleContext}
                     >
                       <SelectTrigger id="sucursal">
-                        <SelectValue placeholder="Seleccionar..." />
+                        <SelectValue placeholder={t.sales.select} />
                       </SelectTrigger>
                       <SelectContent>
                         {sucursales.map((sucursal) => (
@@ -531,14 +561,14 @@ export default function VentasPage() {
                 />
               </FormField>
               <FormField
-                label="Fecha"
+                label={t.common.date}
                 htmlFor="fecha"
                 error={saleForm.formState.errors.fecha?.message}
               >
                 <Input id="fecha" type="date" {...saleForm.register("fecha")} />
               </FormField>
               <FormField
-                label="Empleado inicial"
+                label={t.sales.initialEmployee}
                 htmlFor="vendedor"
                 error={saleForm.formState.errors.vendedorId?.message}
               >
@@ -554,16 +584,16 @@ export default function VentasPage() {
                       }))}
                       value={field.value}
                       onValueChange={field.onChange}
-                      placeholder="Seleccionar..."
-                      searchPlaceholder="Buscar empleado..."
-                      emptyMessage="Sin empleados activos"
+                      placeholder={t.sales.select}
+                      searchPlaceholder={t.employees.searchEmployee}
+                      emptyMessage={t.sales.noActiveEmployees}
                       disabled={!!saleContext}
                     />
                   )}
                 />
               </FormField>
               <FormField
-                label="Monto total (MXN)"
+                label={t.sales.totalAmountMxn}
                 htmlFor="monto"
                 error={saleForm.formState.errors.monto?.message}
               >
@@ -581,7 +611,7 @@ export default function VentasPage() {
             {!saleContext ? (
               <div className="flex justify-end">
                 <Button type="submit">
-                  Continuar <ArrowRight className="ml-1.5 h-4 w-4" />
+                  {t.sales.continue} <ArrowRight className="ml-1.5 h-4 w-4" />
                 </Button>
               </div>
             ) : (
@@ -595,7 +625,7 @@ export default function VentasPage() {
                 <div>
                   <p className="text-xs" style={{ color: "var(--text-muted)" }}>
                     {sucursalNombre(saleContext.sucursalId)} ·{" "}
-                    {formatDate(saleContext.fecha)}
+                    {formatDate(saleContext.fecha, 'dd/MM/yyyy', locale)}
                   </p>
                   <p className="number-display text-xl">
                     {formatCurrency(saleContext.monto)}
@@ -604,23 +634,22 @@ export default function VentasPage() {
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
                     <Button type="button" variant="outline" size="sm">
-                      <RotateCcw className="mr-1.5 h-4 w-4" /> Cambiar datos
+                      <RotateCcw className="mr-1.5 h-4 w-4" /> {t.sales.changeData}
                     </Button>
                   </AlertDialogTrigger>
                   <AlertDialogContent>
                     <AlertDialogHeader>
                       <AlertDialogTitle>
-                        ¿Cambiar los datos de la venta?
+                        {t.sales.changeSaleDataTitle}
                       </AlertDialogTitle>
                       <AlertDialogDescription>
-                        Se descartarán la distribución de empleados y los pagos
-                        capturados.
+                        {t.sales.changeSaleDataDescription}
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                      <AlertDialogCancel>Conservar captura</AlertDialogCancel>
+                      <AlertDialogCancel>{t.sales.keepCapture}</AlertDialogCancel>
                       <AlertDialogAction onClick={editSaleContext}>
-                        Cambiar datos
+                        {t.sales.changeData}
                       </AlertDialogAction>
                     </AlertDialogFooter>
                   </AlertDialogContent>
@@ -644,9 +673,9 @@ export default function VentasPage() {
             >
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <p className="label-caps">Paso 2</p>
+                  <p className="label-caps">{t.sales.step} 2</p>
                   <CardTitle id="step-two-title" className="mt-1 text-xl">
-                    Distribución y pago
+                    {t.sales.distributionAndPayment}
                   </CardTitle>
                 </div>
                 <StepStatusBadge status={canSave ? "complete" : "active"} />
@@ -660,7 +689,7 @@ export default function VentasPage() {
               <div className="space-y-4 xl:pr-8">
                 <div className="space-y-1.5">
                   <h3 className="flex items-center gap-2 text-base font-semibold">
-                    <Users className="h-5 w-5" /> Empleados
+                    <Users className="h-5 w-5" /> {t.sales.employees}
                   </h3>
                 </div>
                 <div className="space-y-2">
@@ -678,7 +707,7 @@ export default function VentasPage() {
                           className="text-xs"
                           style={{ color: "var(--text-muted)" }}
                         >
-                          Venta asignada
+                          {t.sales.assignedSale}
                         </p>
                       </div>
                       <div>
@@ -686,7 +715,7 @@ export default function VentasPage() {
                           htmlFor={`employee-${allocation.empleadoId}`}
                           className="sr-only"
                         >
-                          Monto para {vendedorNombre(allocation.empleadoId)}
+                          {t.sales.amountFor} {vendedorNombre(allocation.empleadoId)}
                         </Label>
                         <Input
                           id={`employee-${allocation.empleadoId}`}
@@ -711,7 +740,7 @@ export default function VentasPage() {
                         onClick={() =>
                           handleRemoveEmployee(allocation.empleadoId)
                         }
-                        aria-label={`Quitar a ${vendedorNombre(allocation.empleadoId)}`}
+                        aria-label={`${t.sales.removeEmployee} ${vendedorNombre(allocation.empleadoId)}`}
                       >
                         <Trash2 className="h-4 w-4 text-red-500" />
                       </Button>
@@ -726,9 +755,9 @@ export default function VentasPage() {
                       options={availableEmployees}
                       value={employeeToAdd}
                       onValueChange={setEmployeeToAdd}
-                      placeholder="Agregar otro empleado..."
-                      searchPlaceholder="Buscar empleado..."
-                      emptyMessage="Sin empleados disponibles"
+                      placeholder={t.sales.addAnotherEmployee}
+                      searchPlaceholder={t.employees.searchEmployee}
+                      emptyMessage={t.sales.noAvailableEmployees}
                     />
                     <Button
                       type="button"
@@ -736,7 +765,7 @@ export default function VentasPage() {
                       onClick={handleAddEmployee}
                       disabled={!employeeToAdd}
                     >
-                      <Plus className="mr-1.5 h-4 w-4" /> Agregar
+                      <Plus className="mr-1.5 h-4 w-4" /> {t.sales.add}
                     </Button>
                   </div>
                 )}
@@ -750,7 +779,7 @@ export default function VentasPage() {
                       className="text-xs"
                       style={{ color: "var(--text-muted)" }}
                     >
-                      Total asignado
+                      {t.sales.assignedTotal}
                     </p>
                     <p className="number-display text-lg">
                       {formatCurrency(fromCents(allocatedEmployeeCents))}
@@ -758,8 +787,8 @@ export default function VentasPage() {
                     {!employeeDistributionMatches && (
                       <p className="text-xs text-red-600" role="alert">
                         {!employeesHavePositiveAmounts
-                          ? "Cada empleado necesita un monto mayor a $0.00"
-                          : `${remainingEmployeeCents > 0 ? "Faltan" : "Excede por"} ${formatCurrency(fromCents(Math.abs(remainingEmployeeCents)))}`}
+                          ? t.sales.employeeAmountRequired
+                          : `${remainingEmployeeCents > 0 ? t.sales.missing : t.sales.exceedsBy} ${formatCurrency(fromCents(Math.abs(remainingEmployeeCents)))}`}
                       </p>
                     )}
                   </div>
@@ -772,7 +801,7 @@ export default function VentasPage() {
               >
                 <div className="space-y-1.5">
                   <h3 className="flex items-center gap-2 text-base font-semibold">
-                    <CreditCard className="h-5 w-5" /> Métodos de pago
+                    <CreditCard className="h-5 w-5" /> {t.sidebar.paymentMethods}
                   </h3>
                 </div>
                 <div
@@ -788,7 +817,7 @@ export default function VentasPage() {
                         className="text-xs"
                         style={{ color: "var(--text-muted)" }}
                       >
-                        Registrado
+                        {t.sales.registered}
                       </p>
                       <p className="number-display text-lg">
                         {formatCurrency(fromCents(paidCents))}
@@ -799,7 +828,7 @@ export default function VentasPage() {
                         className="text-xs"
                         style={{ color: "var(--text-muted)" }}
                       >
-                        Falta por registrar
+                        {t.sales.pendingToRegister}
                       </p>
                       <p
                         className={`number-display text-lg ${paymentsMatch ? "text-green-700 dark:text-green-400" : ""}`}
@@ -814,7 +843,7 @@ export default function VentasPage() {
                 </div>
 
                 {paymentAllocations.length > 0 && (
-                  <div className="space-y-2" aria-label="Pagos registrados">
+                  <div className="space-y-2" aria-label={t.sales.registeredPayments}>
                     {paymentAllocations.map((payment) => (
                       <div
                         key={payment.id}
@@ -832,7 +861,7 @@ export default function VentasPage() {
                           size="icon"
                           variant="ghost"
                           onClick={() => handleRemovePayment(payment.id)}
-                          aria-label={`Eliminar pago con ${metodoPagoNombre(payment.metodoPagoId)}`}
+                          aria-label={`${t.sales.deletePaymentWith} ${metodoPagoNombre(payment.metodoPagoId)}`}
                         >
                           <Trash2 className="h-4 w-4 text-red-500" />
                         </Button>
@@ -848,7 +877,7 @@ export default function VentasPage() {
                     style={{ borderColor: "var(--border-color)" }}
                   >
                     <FormField
-                      label="Método de pago"
+                      label={t.common.paymentMethod}
                       htmlFor="payment-method"
                       error={paymentForm.formState.errors.metodoPagoId?.message}
                     >
@@ -861,7 +890,7 @@ export default function VentasPage() {
                             onValueChange={handlePaymentMethodChange}
                           >
                             <SelectTrigger id="payment-method">
-                              <SelectValue placeholder="Seleccionar..." />
+                              <SelectValue placeholder={t.sales.select} />
                             </SelectTrigger>
                             <SelectContent>
                               {metodosPago.map((method) => (
@@ -878,7 +907,7 @@ export default function VentasPage() {
                     {selectedPaymentMethod && (
                       <div className="grid grid-cols-1 items-end gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
                         <FormField
-                          label="Cantidad pagada (MXN)"
+                          label={t.sales.paidAmountMxn}
                           htmlFor="payment-amount"
                           error={paymentForm.formState.errors.cantidad?.message}
                         >
@@ -892,7 +921,7 @@ export default function VentasPage() {
                           />
                         </FormField>
                         <Button type="submit">
-                          <Plus className="mr-1.5 h-4 w-4" /> Registrar pago
+                          <Plus className="mr-1.5 h-4 w-4" /> {t.sales.registerPayment}
                         </Button>
                       </div>
                     )}
@@ -913,17 +942,17 @@ export default function VentasPage() {
                 aria-live="polite"
               >
                 <div>
-                  <p className="label-caps">Paso 3</p>
+                  <p className="label-caps">{t.sales.step} 3</p>
                   <h2 className="mt-1 text-base font-semibold">
-                    Guardar la venta
+                    {t.sales.saveSale}
                   </h2>
                   <p className="mt-1 text-sm">
                     {canSave
-                      ? "La venta está lista para guardarse"
-                      : "Completa la distribución y los pagos"}
+                      ? t.sales.readyToSave
+                      : t.sales.completeDistributionAndPayments}
                   </p>
                   <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-                    Total de la venta:{" "}
+                    {t.sales.saleTotal}{" "}
                     <span className="number-display">
                       {formatCurrency(saleContext.monto)}
                     </span>
@@ -931,14 +960,37 @@ export default function VentasPage() {
                 </div>
                 <StepStatusBadge status={canSave ? "active" : "pending"} />
               </div>
-              <Button
-                onClick={handleSaveSale}
-                disabled={!canSave}
-                className="sm:min-w-44"
-              >
-                <Save className="mr-1.5 h-4 w-4" />{" "}
-                {saving ? "Guardando..." : "Guardar venta"}
-              </Button>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button
+                    type="button"
+                    disabled={!canSave}
+                    className="sm:min-w-44"
+                  >
+                    <Save className="mr-1.5 h-4 w-4" />{" "}
+                    {saving ? t.common.saving : t.sales.savingSale}
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>
+                      {t.sales.saveSaleTitle}
+                    </AlertDialogTitle>
+                    <AlertDialogDescription>
+                      {t.sales.saveSaleDescription}
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>{t.common.cancel}</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={handleSaveSale}
+                      disabled={saving}
+                    >
+                      {saving ? t.common.saving : t.sales.saveSaleConfirm}
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             </CardContent>
           </Card>
         </section>
@@ -946,13 +998,14 @@ export default function VentasPage() {
 
       <section className="space-y-3" aria-labelledby="saved-sales-title">
         <h2 id="saved-sales-title" className="section-heading">
-          Registros guardados
+          {t.sales.savedRecords}
         </h2>
         <DataTable
           columns={registroColumns}
           data={[...registros].reverse()}
-          emptyMessage="Sin registros guardados"
-          searchPlaceholder="Buscar por empleado, sucursal o fecha..."
+          emptyMessage={t.sales.noSavedRecords}
+          searchPlaceholder={t.sales.searchSavedRecords}
+          labels={dataTableLabels}
         />
       </section>
     </div>
@@ -1023,10 +1076,12 @@ function stepCardStyle(status: StepStatus, translucent = false) {
 }
 
 function StepStatusBadge({ status }: { status: StepStatus }) {
+  const { t } = useI18n();
+
   if (status === "complete") {
     return (
       <Badge className="shrink-0 gap-1.5 border-green-200 bg-green-50 text-green-700 dark:border-green-900 dark:bg-green-950 dark:text-green-300">
-        <CheckCircle2 className="h-3.5 w-3.5" /> Completado
+        <CheckCircle2 className="h-3.5 w-3.5" /> {t.sales.completed}
       </Badge>
     );
   }
@@ -1047,7 +1102,7 @@ function StepStatusBadge({ status }: { status: StepStatus }) {
           style={{ backgroundColor: "var(--color-gold)" }}
           aria-hidden="true"
         />
-        En curso
+        {t.sales.inProgress}
       </Badge>
     );
   }
@@ -1058,7 +1113,7 @@ function StepStatusBadge({ status }: { status: StepStatus }) {
       className="shrink-0"
       style={{ color: "var(--text-muted)" }}
     >
-      Pendiente
+      {t.sales.pending}
     </Badge>
   );
 }

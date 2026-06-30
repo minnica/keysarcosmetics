@@ -30,13 +30,15 @@ import {
 import type { ColumnDef } from '@cosmetics/ui'
 
 import { useSucursales } from '@/hooks'
+import { useI18n } from '@/lib/i18n'
 import type { Sucursal } from '@/lib/mock-data'
 
-const schema = z.object({ nombre: z.string().min(1, 'El nombre es requerido').max(60) })
+const schema = z.object({ nombre: z.string().min(1, 'Requerido').max(60) })
 type FormData = z.infer<typeof schema>
 
 export default function SucursalesPage() {
   const { sucursales, loading, error, add, update, remove } = useSucursales()
+  const { t, dataTableLabels } = useI18n()
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<Sucursal | null>(null)
 
@@ -63,10 +65,10 @@ export default function SucursalesPage() {
     const nombre = data.nombre.trim().toUpperCase()
     if (editing) {
       await update({ ...editing, nombre })
-      toast.success('Sucursal actualizada')
+      toast.success(t.catalogs.branchUpdated)
     } else {
       await add(nombre)
-      toast.success('Sucursal creada')
+      toast.success(t.catalogs.branchCreated)
     }
     setModalOpen(false)
   }
@@ -74,12 +76,12 @@ export default function SucursalesPage() {
   const columns: ColumnDef<Sucursal>[] = [
     {
       accessorKey: 'nombre',
-      header: 'Sucursal',
+      header: t.common.branch,
       cell: ({ row }) => <span className="font-medium">{row.original.nombre}</span>,
     },
     {
       id: 'acciones',
-      header: () => <div className="text-right">Acciones</div>,
+      header: () => <div className="text-right">{t.common.actions}</div>,
       cell: ({ row }) => {
         const s = row.original
         return (
@@ -95,18 +97,18 @@ export default function SucursalesPage() {
               </AlertDialogTrigger>
               <AlertDialogContent>
                 <AlertDialogHeader>
-                  <AlertDialogTitle>¿Eliminar sucursal?</AlertDialogTitle>
+                  <AlertDialogTitle>{t.catalogs.deleteBranchTitle}</AlertDialogTitle>
                   <AlertDialogDescription>
-                    Esta acción no se puede deshacer. Se eliminará la sucursal <strong>{s.nombre}</strong>.
+                    {t.common.deleteCannotUndo} {t.catalogs.deleteBranchDescription} <strong>{s.nombre}</strong>.
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
-                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                  <AlertDialogCancel>{t.common.cancel}</AlertDialogCancel>
                   <AlertDialogAction
                     className="bg-red-600 hover:bg-red-700"
                     onClick={() => remove(s.id)}
                   >
-                    Eliminar
+                    {t.common.delete}
                   </AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>
@@ -121,35 +123,36 @@ export default function SucursalesPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="page-title font-semibold uppercase">Sucursales</h1>
-          <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>Administra las sucursales de la empresa</p>
+          <h1 className="page-title font-semibold uppercase">{t.catalogs.branchesTitle}</h1>
+          <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>{t.catalogs.branchesDescription}</p>
         </div>
         <Button onClick={openNew}>
-          <PlusCircle className="h-4 w-4 mr-1.5" /> Nueva sucursal
+          <PlusCircle className="h-4 w-4 mr-1.5" /> {t.catalogs.newBranch}
         </Button>
       </div>
 
       {error && <p className="text-sm text-red-500">{error}</p>}
 
       {loading ? (
-        <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Cargando sucursales...</p>
+        <p className="text-sm" style={{ color: 'var(--text-muted)' }}>{t.catalogs.loadingBranches}</p>
       ) : (
         <DataTable
           columns={columns}
           data={sucursales}
-          emptyMessage="Sin sucursales registradas"
-          searchPlaceholder="Buscar sucursal..."
+          emptyMessage={t.catalogs.noBranches}
+          searchPlaceholder={t.catalogs.searchBranch}
+          labels={dataTableLabels}
         />
       )}
 
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{editing ? 'Editar sucursal' : 'Nueva sucursal'}</DialogTitle>
+            <DialogTitle>{editing ? t.catalogs.editBranch : t.catalogs.newBranch}</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 pt-2">
             <div className="space-y-1.5">
-              <Label htmlFor="nombre">Nombre de sucursal</Label>
+              <Label htmlFor="nombre">{t.catalogs.branchName}</Label>
               <Input
                 id="nombre"
                 placeholder="Ej. SUCURSAL CENTRO"
@@ -162,9 +165,9 @@ export default function SucursalesPage() {
               {errors.nombre && <p className="text-xs text-red-500">{errors.nombre.message}</p>}
             </div>
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setModalOpen(false)}>Cancelar</Button>
+              <Button type="button" variant="outline" onClick={() => setModalOpen(false)}>{t.common.cancel}</Button>
               <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? 'Guardando...' : editing ? 'Guardar cambios' : 'Crear sucursal'}
+                {isSubmitting ? t.common.saving : editing ? t.common.saveChanges : t.catalogs.createBranch}
               </Button>
             </DialogFooter>
           </form>

@@ -28,15 +28,17 @@ import {
 } from '@cosmetics/ui'
 import type { ColumnDef } from '@cosmetics/ui'
 import { useBanks } from '@/hooks'
+import { useI18n } from '@/lib/i18n'
 import type { Bank } from '@cosmetics/types'
 
 const schema = z.object({
-  nombre: z.string().min(1, 'El nombre es requerido').max(60),
+  nombre: z.string().min(1, 'Requerido').max(60),
 })
 type FormData = z.infer<typeof schema>
 
 export default function BancosPage() {
   const { banks, loading, error, add, update, remove } = useBanks()
+  const { t, dataTableLabels } = useI18n()
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<Bank | null>(null)
 
@@ -68,10 +70,10 @@ export default function BancosPage() {
     const nombre = data.nombre.trim().toUpperCase()
     if (editing) {
       await update({ ...editing, nombre })
-      toast.success('Banco actualizado')
+      toast.success(t.catalogs.bankUpdated)
     } else {
       await add(nombre)
-      toast.success('Banco creado')
+      toast.success(t.catalogs.bankCreated)
     }
     setModalOpen(false)
   }
@@ -79,12 +81,12 @@ export default function BancosPage() {
   const columns: ColumnDef<Bank>[] = [
     {
       accessorKey: 'nombre',
-      header: 'Banco',
+      header: t.common.bank,
       cell: ({ row }) => <span className="font-medium">{row.original.nombre}</span>,
     },
     {
       id: 'acciones',
-      header: () => <div className="text-right">Acciones</div>,
+      header: () => <div className="text-right">{t.common.actions}</div>,
       cell: ({ row }) => {
         const b = row.original
         return (
@@ -100,18 +102,18 @@ export default function BancosPage() {
               </AlertDialogTrigger>
               <AlertDialogContent>
                 <AlertDialogHeader>
-                  <AlertDialogTitle>¿Eliminar banco?</AlertDialogTitle>
+                  <AlertDialogTitle>{t.catalogs.deleteBankTitle}</AlertDialogTitle>
                   <AlertDialogDescription>
-                    Esta acción no se puede deshacer. Se eliminará el banco <strong>{b.nombre}</strong>.
+                    {t.common.deleteCannotUndo} {t.catalogs.deleteBankDescription} <strong>{b.nombre}</strong>.
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
-                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                  <AlertDialogCancel>{t.common.cancel}</AlertDialogCancel>
                   <AlertDialogAction
                     className="bg-red-600 hover:bg-red-700"
                     onClick={() => remove(b.id)}
                   >
-                    Eliminar
+                    {t.common.delete}
                   </AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>
@@ -126,37 +128,38 @@ export default function BancosPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="page-title font-semibold uppercase">Bancos</h1>
+          <h1 className="page-title font-semibold uppercase">{t.catalogs.banksTitle}</h1>
           <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
-            Catálogo de bancos para depósitos de empleados
+            {t.catalogs.banksDescription}
           </p>
         </div>
         <Button onClick={openNew}>
-          <PlusCircle className="h-4 w-4 mr-1.5" /> Nuevo banco
+          <PlusCircle className="h-4 w-4 mr-1.5" /> {t.catalogs.newBank}
         </Button>
       </div>
 
       {error && <p className="text-sm text-red-500">{error}</p>}
 
       {loading ? (
-        <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Cargando bancos...</p>
+        <p className="text-sm" style={{ color: 'var(--text-muted)' }}>{t.catalogs.loadingBanks}</p>
       ) : (
         <DataTable
           columns={columns}
           data={banks}
-          emptyMessage="Sin bancos registrados"
-          searchPlaceholder="Buscar banco..."
+          emptyMessage={t.catalogs.noBanks}
+          searchPlaceholder={t.catalogs.searchBank}
+          labels={dataTableLabels}
         />
       )}
 
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{editing ? 'Editar banco' : 'Nuevo banco'}</DialogTitle>
+            <DialogTitle>{editing ? t.catalogs.editBank : t.catalogs.newBank}</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 pt-2">
             <div className="space-y-1.5">
-              <Label htmlFor="nombre">Nombre del banco</Label>
+              <Label htmlFor="nombre">{t.catalogs.bankName}</Label>
               <Input
                 id="nombre"
                 placeholder="Ej. BBVA"
@@ -172,10 +175,10 @@ export default function BancosPage() {
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setModalOpen(false)}>
-                Cancelar
+                {t.common.cancel}
               </Button>
               <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? 'Guardando...' : editing ? 'Guardar cambios' : 'Crear banco'}
+                {isSubmitting ? t.common.saving : editing ? t.common.saveChanges : t.catalogs.createBank}
               </Button>
             </DialogFooter>
           </form>
