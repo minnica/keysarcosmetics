@@ -111,7 +111,7 @@ Módulos implementados:
 - **metodos-pago** — CRUD de métodos de pago
 - **bancos** — CRUD propio con catálogo `Bank`
 - **puestos** — CRUD propio con catálogo `Position`
-- **reportes** — múltiples subvistas: total-general, detalle-metodo-pago, metodo-pago-por-dia, ventas-por-vendedor, ventas-por-vendedor-dia
+- **reportes** — múltiples subvistas: total-general, detalle-metodo-pago, metodo-pago-por-dia, ventas-por-vendedor, ventas-por-vendedor-dia; la vista `ventas-por-vendedor-dia` ahora muestra `Días sin venta` y `Monto día aproximado` al final de la tabla, antes del total
 
 UI:
 - Sidebar responsive usando shadcn `Sidebar` + `Sheet` (Sheet para mobile).

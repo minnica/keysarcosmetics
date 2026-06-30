@@ -35,6 +35,8 @@ type SalesRow = {
   sellerName: string
   total: number
   byDate: Record<string, number>
+  daysWithoutSale: number
+  approximateDayAmount: number
 }
 
 export default function VentasPorVendedorDiaPage() {
@@ -49,6 +51,9 @@ export default function VentasPorVendedorDiaPage() {
   const prefix = `${year}-${String(month).padStart(2, '0')}`
   const filtered = registros.filter((r) => r.fecha.startsWith(prefix))
   const dias = monthDates(year, month)
+  const daysInMonth = new Date(year, month, 0).getDate()
+  const isCurrentMonth = year === now.getFullYear() && month === now.getMonth() + 1
+  const elapsedDays = isCurrentMonth ? now.getDate() : daysInMonth
 
   const rowsMap = new Map<string, SalesRow>()
 
@@ -69,18 +74,30 @@ export default function VentasPorVendedorDiaPage() {
         sellerName: seller.nombreCompleto,
         total: dayTotal,
         byDate: { [reg.fecha]: dayTotal },
+        daysWithoutSale: 0,
+        approximateDayAmount: 0,
       })
     }
   }
 
-  const rows = [...rowsMap.values()].sort((a, b) =>
-    b.total - a.total || a.sellerName.localeCompare(b.sellerName),
-  )
+  const rows = [...rowsMap.values()]
+    .map((row) => {
+      const saleDaysCount = Object.keys(row.byDate).length
+      const daysWithoutSale = Math.max(0, elapsedDays - saleDaysCount)
+
+      return {
+        ...row,
+        daysWithoutSale,
+        // Estimación proporcional al avance del mes consultado.
+        approximateDayAmount: row.total * (elapsedDays / daysInMonth),
+      }
+    })
+    .sort((a, b) =>
+      b.total - a.total || a.sellerName.localeCompare(b.sellerName),
+    )
 
   const hasData = rows.length > 0
   const zeroBadgeClassName = 'rounded-full bg-[#b85f5a] px-2 py-0.5 text-[11px] font-semibold text-white hover:bg-[#b85f5a] tabular-nums'
-  const positiveBadgeClassName = 'rounded-full bg-[#7d9f8a] px-2 py-0.5 text-[11px] font-semibold text-white hover:bg-[#7d9f8a] tabular-nums'
-
   function renderAmount(value: number) {
     if (value === 0) {
       return (
@@ -90,11 +107,7 @@ export default function VentasPorVendedorDiaPage() {
       )
     }
 
-    return (
-      <Badge className={positiveBadgeClassName}>
-        {formatCurrency(value)}
-      </Badge>
-    )
+    return formatCurrency(value)
   }
 
   function totalDia(fecha: string): number {
@@ -170,6 +183,8 @@ export default function VentasPorVendedorDiaPage() {
                     {formatDate(dia, 'EEEE dd', locale)}
                   </TableHead>
                 ))}
+                <TableHead className="whitespace-nowrap uppercase text-center">DÍAS SIN VENTA</TableHead>
+                <TableHead className="whitespace-nowrap uppercase text-right">MONTO DÍA APROX</TableHead>
                 <TableHead className="text-right whitespace-nowrap uppercase">{t.common.total}</TableHead>
               </TableRow>
             </TableHeader>
@@ -184,6 +199,18 @@ export default function VentasPorVendedorDiaPage() {
                       {renderAmount(row.byDate[dia] ?? 0)}
                     </TableCell>
                   ))}
+                  <TableCell className="text-center">
+                    {row.daysWithoutSale === 0 ? (
+                      <span className="inline-flex items-center rounded-full bg-[#7d9f8a] px-2 py-0.5 text-[11px] font-semibold text-white tabular-nums">
+                        0 DÍAS
+                      </span>
+                    ) : (
+                      <span className="tabular-nums">{row.daysWithoutSale} DÍAS</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {renderAmount(row.approximateDayAmount)}
+                  </TableCell>
                   <TableCell className="text-right font-medium">
                     {renderAmount(row.total)}
                   </TableCell>
@@ -200,6 +227,12 @@ export default function VentasPorVendedorDiaPage() {
                     {renderAmount(totalDia(dia))}
                   </TableCell>
                 ))}
+                <TableCell className="text-center font-semibold">
+                  <span style={{ color: 'var(--text-muted)' }}>—</span>
+                </TableCell>
+                <TableCell className="text-right font-semibold">
+                  {renderAmount(rows.reduce((sum, row) => sum + row.approximateDayAmount, 0))}
+                </TableCell>
                 <TableCell className="text-right font-bold text-base">
                   {renderAmount(grandTotal)}
                 </TableCell>
