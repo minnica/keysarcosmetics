@@ -38,6 +38,9 @@ const translations = {
       deleteCannotUndo: 'Esta acción no se puede deshacer.',
       noDataSelectedPeriod: 'Sin datos en el período seleccionado.',
       noSalesSelectedPeriod: 'Sin ventas en el período seleccionado.',
+      exportPdf: 'Exportar PDF',
+      exportExcel: 'Exportar Excel',
+      exporting: 'Exportando...',
     },
     sidebar: {
       forms: 'Formularios',
@@ -155,6 +158,7 @@ const translations = {
       monthlyGoal: 'Meta mensual',
       remaining: 'Por llegar',
       progress: '% Avance',
+      concept: 'Concepto',
       month: 'Mes',
       year: 'Año',
       dayTotal: 'Total del día',
@@ -163,6 +167,8 @@ const translations = {
       notes: 'Notas',
       noSalesPaymentMethodPeriod: 'Sin ventas con ese método en el período seleccionado.',
       noSalesSellerPeriod: 'Sin ventas en el mes seleccionado.',
+      exportPdf: 'Exportar PDF',
+      exportExcel: 'Exportar Excel',
       months: ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'],
     },
     employees: {
@@ -308,6 +314,9 @@ const translations = {
       deleteCannotUndo: 'This action cannot be undone.',
       noDataSelectedPeriod: 'No data in the selected period.',
       noSalesSelectedPeriod: 'No sales in the selected period.',
+      exportPdf: 'Export PDF',
+      exportExcel: 'Export Excel',
+      exporting: 'Exporting...',
     },
     sidebar: {
       forms: 'Forms',
@@ -425,6 +434,7 @@ const translations = {
       monthlyGoal: 'Monthly goal',
       remaining: 'Remaining',
       progress: '% Progress',
+      concept: 'Concept',
       month: 'Month',
       year: 'Year',
       dayTotal: 'Day total',
@@ -433,6 +443,8 @@ const translations = {
       notes: 'Notes',
       noSalesPaymentMethodPeriod: 'No sales with that method in the selected period.',
       noSalesSellerPeriod: 'No sales in the selected month.',
+      exportPdf: 'Export PDF',
+      exportExcel: 'Export Excel',
       months: ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'],
     },
     employees: {

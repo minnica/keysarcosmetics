@@ -20,6 +20,8 @@ import {
 import { useReportes } from '@/hooks'
 import { useI18n } from '@/lib/i18n'
 import { formatCurrency, formatDate } from '@/lib/utils'
+import { ReportExportButtons } from '@/components/reportes/ReportExportButtons'
+import { exportReportToExcel, exportReportToPdf, type ExportColumn } from '@/lib/report-export'
 
 export default function MetodoPagoPorDiaPage() {
   const { registros, sucursales, metodosPago, loading, error } = useReportes()
@@ -29,6 +31,7 @@ export default function MetodoPagoPorDiaPage() {
   const [metodoPagoId, setMetodoPagoId] = useState('')
   const [year, setYear] = useState(now.getFullYear())
   const [month, setMonth] = useState(now.getMonth() + 1)
+  const [exporting, setExporting] = useState<'pdf' | 'excel' | null>(null)
 
   const years = Array.from({ length: now.getFullYear() - 2022 }, (_, i) => 2023 + i)
   const months = t.reports.months
@@ -58,12 +61,88 @@ export default function MetodoPagoPorDiaPage() {
   }
 
   const grandTotal = dias.reduce((s, d) => s + totalDia(d), 0)
+  type ExportRow = {
+    fecha: string
+    bySucursal: Record<string, number>
+    total: number
+  }
+
+  const exportRows: ExportRow[] = dias.map((dia) => ({
+    fecha: dia,
+    bySucursal: Object.fromEntries(
+      sucursales.map((s) => [s.id, totalDiaSucursal(dia, s.id)]),
+    ),
+    total: totalDia(dia),
+  }))
+
+  const footerRow: ExportRow = {
+    fecha: t.common.grandTotal,
+    bySucursal: Object.fromEntries(
+      sucursales.map((s) => [s.id, totalSucursal(s.id)]),
+    ),
+    total: grandTotal,
+  }
+
+  const exportColumns: ExportColumn<ExportRow>[] = [
+    {
+      header: t.common.date,
+      accessor: (row) => formatDate(row.fecha, 'dd/MM/yyyy', locale),
+      width: 16,
+    },
+    ...sucursales.map((s) => ({
+      header: s.nombre,
+      accessor: (row: ExportRow) => row.bySucursal[s.id] ?? 0,
+      format: 'currency' as const,
+      width: 14,
+    })),
+    {
+      header: t.reports.dayTotal,
+      accessor: (row) => row.total,
+      format: 'currency',
+      width: 14,
+    },
+  ]
+
+  function handleExport(kind: 'pdf' | 'excel') {
+    setExporting(kind)
+    const selectedMethodName = metodosPago.find((m) => m.id === efectivoId)?.nombre ?? efectivoId
+    const config = {
+      title: t.reports.paymentMethodByDayTitle,
+      subtitle: `${selectedMethodName} - ${t.common.monthlyPeriod} ${month}/${year}`,
+      filename: `metodo-pago-por-dia-${year}-${String(month).padStart(2, '0')}-${selectedMethodName}`,
+      sheetName: 'Metodo Pago Por Dia',
+      orientation: 'landscape' as const,
+      columns: exportColumns,
+      rows: exportRows,
+      footerRow,
+    }
+
+    try {
+      if (kind === 'pdf') {
+        exportReportToPdf(config)
+      } else {
+        exportReportToExcel(config)
+      }
+    } finally {
+      setExporting(null)
+    }
+  }
 
   return (
     <div className="space-y-6">
-      <div>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
         <h1 className="page-title font-semibold uppercase">{t.reports.paymentMethodByDayTitle}</h1>
         <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>{t.reports.paymentMethodByDayDescription}</p>
+        </div>
+        <ReportExportButtons
+          disabled={loading || !!error || dias.length === 0}
+          exporting={exporting}
+          onExportPdf={() => handleExport('pdf')}
+          onExportExcel={() => handleExport('excel')}
+          pdfLabel={t.common.exportPdf}
+          excelLabel={t.common.exportExcel}
+        />
       </div>
 
       <div className="flex gap-4 flex-wrap items-end">

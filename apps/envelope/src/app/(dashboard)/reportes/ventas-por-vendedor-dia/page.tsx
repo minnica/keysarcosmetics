@@ -17,10 +17,14 @@ import {
   SelectContent,
   SelectItem,
 } from '@cosmetics/ui'
+import jsPDF from 'jspdf'
+import autoTable from 'jspdf-autotable'
 
 import { useReportes } from '@/hooks'
 import { useI18n } from '@/lib/i18n'
 import { formatCurrency, formatDate, monthName } from '@/lib/utils'
+import { ReportExportButtons } from '@/components/reportes/ReportExportButtons'
+import { exportReportToExcel, exportReportToPdf, type ExportColumn } from '@/lib/report-export'
 
 function monthDates(year: number, month: number): string[] {
   const totalDays = new Date(year, month, 0).getDate()
@@ -28,6 +32,14 @@ function monthDates(year: number, month: number): string[] {
     const day = String(i + 1).padStart(2, '0')
     return `${year}-${String(month).padStart(2, '0')}-${day}`
   })
+}
+
+function chunkArray<T>(values: T[], size: number): T[][] {
+  const chunks: T[][] = []
+  for (let i = 0; i < values.length; i += size) {
+    chunks.push(values.slice(i, i + size))
+  }
+  return chunks
 }
 
 type SalesRow = {
@@ -45,6 +57,7 @@ export default function VentasPorVendedorDiaPage() {
   const now = new Date()
   const [year, setYear] = useState(now.getFullYear())
   const [month, setMonth] = useState(now.getMonth() + 1)
+  const [exporting, setExporting] = useState<'pdf' | 'excel' | null>(null)
 
   const years = Array.from({ length: now.getFullYear() - 2022 }, (_, i) => 2023 + i)
   const months = t.reports.months
@@ -116,14 +129,217 @@ export default function VentasPorVendedorDiaPage() {
 
   const grandTotal = rows.reduce((sum, row) => sum + row.total, 0)
   const periodLabel = monthName(year, month, locale)
+  type ExportRow = {
+    empleado: string
+    byDate: Record<string, number>
+    daysWithoutSale: number
+    approximateDayAmount: number
+    total: number
+  }
+
+  const exportRows: ExportRow[] = rows.map((row) => ({
+    empleado: row.sellerName,
+    byDate: row.byDate,
+    daysWithoutSale: row.daysWithoutSale,
+    approximateDayAmount: row.approximateDayAmount,
+    total: row.total,
+  }))
+
+  const exportColumns: ExportColumn<ExportRow>[] = [
+    {
+      header: t.common.employee,
+      accessor: (row) => row.empleado,
+      width: 24,
+    },
+    ...dias.map((dia) => ({
+      header: formatDate(dia, 'dd/MM', locale),
+      accessor: (row: ExportRow) => row.byDate[dia] ?? 0,
+      format: 'currency' as const,
+      width: 11,
+    })),
+    {
+      header: 'DÍAS SIN VENTA',
+      accessor: (row) => row.daysWithoutSale,
+      format: 'number',
+      width: 12,
+    },
+    {
+      header: 'MONTO DÍA APROX',
+      accessor: (row) => row.approximateDayAmount,
+      format: 'currency',
+      width: 14,
+    },
+    {
+      header: t.common.total,
+      accessor: (row) => row.total,
+      format: 'currency',
+      width: 14,
+    },
+  ]
+
+  const exportFooterRow: ExportRow = {
+    empleado: t.common.grandTotal,
+    byDate: Object.fromEntries(
+      dias.map((dia) => [dia, totalDia(dia)]),
+    ),
+    daysWithoutSale: 0,
+    approximateDayAmount: rows.reduce((sum, row) => sum + row.approximateDayAmount, 0),
+    total: grandTotal,
+  }
+
+  function exportPdf() {
+    const doc = new jsPDF({
+      orientation: 'landscape',
+      unit: 'pt',
+      format: 'a4',
+    })
+
+    const chunks = chunkArray(dias, 10)
+    const summaryWidths = [52, 58, 50]
+    const pageBottom = doc.internal.pageSize.getHeight() - 28
+    let currentY = 70
+    const lastAutoTable = () => (doc as any).lastAutoTable?.finalY as number | undefined
+
+    function drawPageHeader() {
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(13)
+      doc.text(t.reports.salesBySellerDayTitle, 40, 32)
+      doc.setFont('helvetica', 'normal')
+      doc.setFontSize(8)
+      doc.text(`${t.common.monthlyPeriod} ${periodLabel}`, 40, 42)
+    }
+
+    chunks.forEach((dayChunk, index) => {
+      const newPage = index % 3 === 0
+      if (newPage) {
+        if (index > 0) {
+          doc.addPage()
+        }
+        currentY = 70
+        drawPageHeader()
+      } else {
+        currentY = (lastAutoTable() ?? currentY) + 22
+      }
+
+      const firstDay = dayChunk[0]!
+      const lastDay = dayChunk[dayChunk.length - 1]!
+      const subtitle = `${formatDate(firstDay, 'dd/MM/yyyy', locale)} - ${formatDate(lastDay, 'dd/MM/yyyy', locale)}`
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(8)
+      doc.text(subtitle, 40, currentY - 10)
+      doc.setFont('helvetica', 'normal')
+
+      const head = [[
+        t.common.employee,
+        ...dayChunk.map((dia) => formatDate(dia, 'dd/MM', locale)),
+        'DÍAS SIN VENTA',
+        'MONTO DÍA APROX',
+        t.common.total,
+      ]]
+
+      const body = rows.map((row) => [
+        row.sellerName,
+        ...dayChunk.map((dia) => formatCurrency(row.byDate[dia] ?? 0)),
+        row.daysWithoutSale === 0 ? '0 DÍAS' : `${row.daysWithoutSale} DÍAS`,
+        formatCurrency(row.approximateDayAmount),
+        formatCurrency(row.total),
+      ])
+
+      const foot = [[
+        t.common.grandTotal,
+        ...dayChunk.map((dia) => formatCurrency(totalDia(dia))),
+        '—',
+        formatCurrency(rows.reduce((sum, row) => sum + row.approximateDayAmount, 0)),
+        formatCurrency(grandTotal),
+      ]]
+
+      autoTable(doc, {
+        startY: currentY,
+        head,
+        body,
+        foot,
+        theme: 'striped',
+        styles: {
+          font: 'helvetica',
+          fontSize: 6.2,
+          cellPadding: 2,
+          overflow: 'ellipsize',
+          valign: 'middle',
+        },
+        headStyles: {
+          fillColor: [100, 134, 114],
+          textColor: 255,
+          fontStyle: 'bold',
+        },
+        footStyles: {
+          fillColor: [236, 240, 238],
+          textColor: 20,
+          fontStyle: 'bold',
+        },
+        alternateRowStyles: {
+          fillColor: [249, 250, 249],
+        },
+        margin: { top: 48, left: 26, right: 26, bottom: 24 },
+        tableWidth: 'wrap',
+        columnStyles: {
+          0: { cellWidth: 140 },
+          ...Object.fromEntries(dayChunk.map((_, dayIndex) => [dayIndex + 1, { cellWidth: 34 }])),
+          [dayChunk.length + 1]: { cellWidth: summaryWidths[0] },
+          [dayChunk.length + 2]: { cellWidth: summaryWidths[1] },
+          [dayChunk.length + 3]: { cellWidth: summaryWidths[2] },
+        },
+      })
+
+      currentY = (lastAutoTable() ?? currentY) + 10
+      if (currentY > pageBottom) {
+        doc.addPage()
+        currentY = 70
+        drawPageHeader()
+      }
+    })
+
+    doc.save(`ventas-vendedor-dia-${year}-${String(month).padStart(2, '0')}.pdf`)
+  }
+
+  function handleExport(kind: 'pdf' | 'excel') {
+    setExporting(kind)
+    try {
+      if (kind === 'pdf') {
+        exportPdf()
+      } else {
+        exportReportToExcel({
+          title: t.reports.salesBySellerDayTitle,
+          subtitle: `${t.common.monthlyPeriod} ${periodLabel}`,
+          filename: `ventas-vendedor-dia-${year}-${String(month).padStart(2, '0')}`,
+          sheetName: 'Ventas Vendedor Dia',
+          orientation: 'landscape',
+          columns: exportColumns,
+          rows: exportRows,
+          footerRow: exportFooterRow,
+        })
+      }
+    } finally {
+      setExporting(null)
+    }
+  }
 
   return (
     <div className="space-y-6">
-      <div>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
         <h1 className="page-title font-semibold uppercase">{t.reports.salesBySellerDayTitle}</h1>
         <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
           {t.reports.salesBySellerDayDescription}
         </p>
+        </div>
+        <ReportExportButtons
+          disabled={loading || !!error || !hasData}
+          exporting={exporting}
+          onExportPdf={() => handleExport('pdf')}
+          onExportExcel={() => handleExport('excel')}
+          pdfLabel={t.common.exportPdf}
+          excelLabel={t.common.exportExcel}
+        />
       </div>
 
       <div className="flex gap-4 flex-wrap items-end">
