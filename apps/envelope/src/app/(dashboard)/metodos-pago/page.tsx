@@ -29,15 +29,17 @@ import {
 } from "@cosmetics/ui";
 import type { ColumnDef } from "@cosmetics/ui";
 import { useMetodosPago } from "@/hooks";
+import { useI18n } from "@/lib/i18n";
 import type { MetodoPago } from "@/lib/mock-data";
 
 const schema = z.object({
-  nombre: z.string().min(1, "El nombre es requerido").max(40),
+  nombre: z.string().min(1, "Requerido").max(40),
 });
 type FormData = z.infer<typeof schema>;
 
 export default function MetodosPagoPage() {
   const { metodosPago, loading, error, add, update, remove } = useMetodosPago();
+  const { t, dataTableLabels } = useI18n();
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<MetodoPago | null>(null);
 
@@ -69,10 +71,10 @@ export default function MetodosPagoPage() {
     const nombre = data.nombre.trim().toUpperCase();
     if (editing) {
       await update({ ...editing, nombre });
-      toast.success("Método de pago actualizado");
+      toast.success(t.catalogs.paymentMethodUpdated);
     } else {
       await add(nombre);
-      toast.success("Método de pago creado");
+      toast.success(t.catalogs.paymentMethodCreated);
     }
     setModalOpen(false);
   }
@@ -80,12 +82,12 @@ export default function MetodosPagoPage() {
   const columns: ColumnDef<MetodoPago>[] = [
     {
       accessorKey: "nombre",
-      header: "Método de pago",
+      header: t.common.paymentMethod,
       cell: ({ row }) => <span className="font-medium">{row.original.nombre}</span>,
     },
     {
       id: "acciones",
-      header: () => <div className="text-right">Acciones</div>,
+      header: () => <div className="text-right">{t.common.actions}</div>,
       cell: ({ row }) => {
         const m = row.original;
         return (
@@ -101,18 +103,18 @@ export default function MetodosPagoPage() {
               </AlertDialogTrigger>
               <AlertDialogContent>
                 <AlertDialogHeader>
-                  <AlertDialogTitle>¿Eliminar método de pago?</AlertDialogTitle>
+                  <AlertDialogTitle>{t.catalogs.deletePaymentMethodTitle}</AlertDialogTitle>
                   <AlertDialogDescription>
-                    Esta acción no se puede deshacer. Se eliminará <strong>{m.nombre}</strong>.
+                    {t.common.deleteCannotUndo} {t.catalogs.deletePaymentMethodDescription} <strong>{m.nombre}</strong>.
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
-                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                  <AlertDialogCancel>{t.common.cancel}</AlertDialogCancel>
                   <AlertDialogAction
                     className="bg-red-600 hover:bg-red-700"
                     onClick={() => remove(m.id)}
                   >
-                    Eliminar
+                    {t.common.delete}
                   </AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>
@@ -127,38 +129,39 @@ export default function MetodosPagoPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="page-title font-semibold uppercase">Métodos de pago</h1>
+          <h1 className="page-title font-semibold uppercase">{t.catalogs.paymentMethodsTitle}</h1>
           <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
-            Catálogo de formas de pago aceptadas
+            {t.catalogs.paymentMethodsDescription}
           </p>
         </div>
         <Button onClick={openNew}>
-          <PlusCircle className="h-4 w-4 mr-1.5" /> Nuevo método
+          <PlusCircle className="h-4 w-4 mr-1.5" /> {t.catalogs.newPaymentMethod}
         </Button>
       </div>
 
       {error && <p className="text-sm text-red-500">{error}</p>}
 
       {loading ? (
-        <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Cargando métodos de pago...</p>
+        <p className="text-sm" style={{ color: 'var(--text-muted)' }}>{t.catalogs.loadingPaymentMethods}</p>
       ) : (
         <DataTable
           columns={columns}
           data={metodosPago}
-          emptyMessage="Sin métodos registrados"
-          searchPlaceholder="Buscar método de pago..."
+          emptyMessage={t.catalogs.noPaymentMethods}
+          searchPlaceholder={t.catalogs.searchPaymentMethod}
+          labels={dataTableLabels}
         />
       )}
 
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{editing ? "Editar método" : "Nuevo método de pago"}</DialogTitle>
-            <DialogDescription>Ingresa el nombre del método de pago</DialogDescription>
+            <DialogTitle>{editing ? t.catalogs.editPaymentMethod : t.catalogs.newPaymentMethod}</DialogTitle>
+            <DialogDescription>{t.catalogs.paymentMethodDialogDescription}</DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 pt-2">
             <div className="space-y-1.5">
-              <Label htmlFor="nombre">Nombre del método de pago</Label>
+              <Label htmlFor="nombre">{t.catalogs.paymentMethodName}</Label>
               <Input
                 id="nombre"
                 placeholder="Ej. TARJETA DE DÉBITO"
@@ -178,14 +181,14 @@ export default function MetodosPagoPage() {
                 variant="outline"
                 onClick={() => setModalOpen(false)}
               >
-                Cancelar
+                {t.common.cancel}
               </Button>
               <Button type="submit" disabled={isSubmitting}>
                 {isSubmitting
-                  ? "Guardando..."
+                  ? t.common.saving
                   : editing
-                    ? "Guardar cambios"
-                    : "Crear método"}
+                    ? t.common.saveChanges
+                    : t.catalogs.createPaymentMethod}
               </Button>
             </DialogFooter>
           </form>

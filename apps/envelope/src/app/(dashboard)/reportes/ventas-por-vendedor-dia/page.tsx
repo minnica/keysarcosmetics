@@ -23,6 +23,7 @@ import {
 import { Badge } from "@cosmetics/ui";
 ;
 import { useReportes } from "@/hooks";
+import { useI18n } from "@/lib/i18n";
 import { formatCurrency, formatDate, todayISO } from "@/lib/utils";
 
 function firstDayOfMonth(): string {
@@ -34,6 +35,7 @@ function firstDayOfMonth(): string {
 export default function VentasPorVendedorDiaPage() {
   const { registros, empleados, sucursales, metodosPago, loading, error } =
     useReportes();
+  const { locale, t } = useI18n();
   const [vendedorId, setVendedorId] = useState("");
   const [range, setRange] = useState<DateRange>({
     from: firstDayOfMonth(),
@@ -78,15 +80,15 @@ export default function VentasPorVendedorDiaPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="page-title font-semibold uppercase">Ventas por vendedor por día</h1>
+        <h1 className="page-title font-semibold uppercase">{t.reports.salesBySellerDayTitle}</h1>
         <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
-          Detalle de cada venta registrada en el período
+          {t.reports.salesBySellerDayDescription}
         </p>
       </div>
 
       <div className="flex gap-4 flex-wrap items-end">
         <div className="space-y-1.5">
-          <Label>Vendedor</Label>
+          <Label>{t.reports.seller}</Label>
           <Select value={vendedorEfectivo} onValueChange={setVendedorId}>
             <SelectTrigger className="w-56">
               <SelectValue />
@@ -101,40 +103,40 @@ export default function VentasPorVendedorDiaPage() {
           </Select>
         </div>
         <div className="space-y-1.5">
-          <Label>Período</Label>
+          <Label>{t.common.period}</Label>
           <DateRangePicker value={range} onChange={setRange} />
         </div>
       </div>
 
-      {loading && <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Cargando datos...</p>}
+      {loading && <p className="text-sm" style={{ color: 'var(--text-muted)' }}>{t.common.loadingData}</p>}
       {error && <p className="text-sm text-red-500">{error}</p>}
 
       {vendedor && (
         <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
-          Meta mensual: {formatCurrency(vendedor.metaIndividual)}
+          {t.reports.monthlyGoal}: {formatCurrency(vendedor.metaIndividual)}
         </div>
       )}
 
       {!loading && filas.length === 0 ? (
         <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-          Sin ventas para el vendedor en el período.
+          {t.reports.noSalesSellerPeriod}
         </p>
       ) : (
         <div className="overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Fecha</TableHead>
-              <TableHead>Sucursal</TableHead>
-              <TableHead className="text-right">Total</TableHead>
-              <TableHead>Método de pago</TableHead>
-              <TableHead>Notas</TableHead>
+              <TableHead>{t.common.date}</TableHead>
+              <TableHead>{t.common.branch}</TableHead>
+              <TableHead className="text-right">{t.common.total}</TableHead>
+              <TableHead>{t.common.paymentMethod}</TableHead>
+              <TableHead>{t.reports.notes}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {filas.map((fila, idx) => (
               <TableRow key={idx}>
-                <TableCell>{formatDate(fila.fecha)}</TableCell>
+                <TableCell>{formatDate(fila.fecha, 'dd/MM/yyyy', locale)}</TableCell>
                 <TableCell>{sucursalNombre(fila.sucursalId)}</TableCell>
                 <TableCell className="text-right font-medium">
                   {formatCurrency(fila.cantidad)}
@@ -153,7 +155,7 @@ export default function VentasPorVendedorDiaPage() {
           <TableFooter>
             <TableRow>
               <TableCell colSpan={2} className="text-right uppercase text-xs">
-                Total general
+                {t.common.grandTotal}
               </TableCell>
               <TableCell className="text-right font-bold text-base">
                 {formatCurrency(grandTotal)}

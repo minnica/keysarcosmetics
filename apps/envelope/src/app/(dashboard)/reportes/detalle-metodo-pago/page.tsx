@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { DateRangePicker, type DateRange, Table, TableHeader, TableBody, TableFooter, TableRow, TableHead, TableCell } from "@cosmetics/ui"
 import { useReportes } from '@/hooks'
+import { useI18n } from '@/lib/i18n'
 import { formatCurrency, todayISO } from '@/lib/utils'
 
 function firstDayOfMonth(): string {
@@ -11,6 +12,7 @@ function firstDayOfMonth(): string {
 
 export default function DetalleMetodoPagoPage() {
   const { registros, sucursales, metodosPago, loading, error } = useReportes()
+  const { t } = useI18n()
   const [range, setRange] = useState<DateRange>({ from: firstDayOfMonth(), to: todayISO() })
 
   const filtered = registros.filter(r => r.fecha >= range.from && r.fecha <= range.to)
@@ -33,28 +35,28 @@ export default function DetalleMetodoPagoPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="page-title font-semibold uppercase">Detalle método de pago</h1>
-        <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>Total por sucursal y método de pago en el período</p>
+        <h1 className="page-title font-semibold uppercase">{t.reports.paymentMethodDetailTitle}</h1>
+        <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>{t.reports.paymentMethodDetailDescription}</p>
       </div>
 
       <div className="flex items-center gap-3 flex-wrap">
-        <span className="text-sm font-medium" style={{ color: 'var(--text-muted)' }}>Período:</span>
+        <span className="text-sm font-medium" style={{ color: 'var(--text-muted)' }}>{t.common.period}</span>
         <DateRangePicker value={range} onChange={setRange} />
       </div>
 
-      {loading && <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Cargando datos...</p>}
+      {loading && <p className="text-sm" style={{ color: 'var(--text-muted)' }}>{t.common.loadingData}</p>}
       {error && <p className="text-sm text-red-500">{error}</p>}
 
       {!loading && sucursalesConDatos.length === 0 ? (
-        <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Sin datos en el período seleccionado.</p>
+        <p className="text-sm" style={{ color: 'var(--text-muted)' }}>{t.common.noDataSelectedPeriod}</p>
       ) : (
         <div className="overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Sucursal</TableHead>
-              <TableHead>Método de pago</TableHead>
-              <TableHead className="text-right">Total</TableHead>
+              <TableHead>{t.common.branch}</TableHead>
+              <TableHead>{t.common.paymentMethod}</TableHead>
+              <TableHead className="text-right">{t.common.total}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -80,7 +82,7 @@ export default function DetalleMetodoPagoPage() {
           </TableBody>
           <TableFooter>
             <TableRow>
-              <TableCell colSpan={2} className="text-right uppercase text-xs">Total general</TableCell>
+              <TableCell colSpan={2} className="text-right uppercase text-xs">{t.common.grandTotal}</TableCell>
               <TableCell className="text-right text-base font-bold">{formatCurrency(grandTotal)}</TableCell>
             </TableRow>
           </TableFooter>

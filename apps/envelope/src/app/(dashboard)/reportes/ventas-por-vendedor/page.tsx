@@ -13,6 +13,7 @@ import {
   ProgressKeysar,
 } from "@cosmetics/ui"
 import { useReportes } from '@/hooks'
+import { useI18n } from '@/lib/i18n'
 import { formatCurrency, todayISO } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 
@@ -22,6 +23,7 @@ function firstDayOfMonth(): string {
 
 export default function VentasPorVendedorPage() {
   const { registros, empleados, sucursales, loading, error } = useReportes()
+  const { t } = useI18n()
   const [range, setRange] = useState<DateRange>({ from: firstDayOfMonth(), to: todayISO() })
 
   const filtered = registros.filter(r => r.fecha >= range.from && r.fecha <= range.to)
@@ -64,28 +66,28 @@ export default function VentasPorVendedorPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="page-title font-semibold uppercase">Ventas por vendedor</h1>
-        <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>Avance de cada vendedor respecto a su meta en el período</p>
+        <h1 className="page-title font-semibold uppercase">{t.reports.salesBySellerTitle}</h1>
+        <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>{t.reports.salesBySellerDescription}</p>
       </div>
 
       <div className="flex items-center gap-3 flex-wrap">
-        <span className="text-sm font-medium" style={{ color: 'var(--text-muted)' }}>Período:</span>
+        <span className="text-sm font-medium" style={{ color: 'var(--text-muted)' }}>{t.common.period}</span>
         <DateRangePicker value={range} onChange={setRange} />
       </div>
 
-      {loading && <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Cargando datos...</p>}
+      {loading && <p className="text-sm" style={{ color: 'var(--text-muted)' }}>{t.common.loadingData}</p>}
       {error && <p className="text-sm text-red-500">{error}</p>}
 
       <div className="overflow-x-auto">
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>Empleado</TableHead>
-            <TableHead>Sucursal</TableHead>
-            <TableHead className="text-right">Total vendido</TableHead>
-            <TableHead className="text-right">Meta mensual</TableHead>
-            <TableHead className="text-right">Por llegar</TableHead>
-            <TableHead>% Avance</TableHead>
+            <TableHead>{t.common.employee}</TableHead>
+            <TableHead>{t.common.branch}</TableHead>
+            <TableHead className="text-right">{t.reports.totalSold}</TableHead>
+            <TableHead className="text-right">{t.reports.monthlyGoal}</TableHead>
+            <TableHead className="text-right">{t.reports.remaining}</TableHead>
+            <TableHead>{t.reports.progress}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>

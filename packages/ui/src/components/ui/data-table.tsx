@@ -25,12 +25,19 @@ const PAGE_SIZE_OPTIONS = [
   { label: 'Todos', value: 'all' },
 ]
 
+interface DataTableLabels {
+  records?: string
+  all?: string
+  results?: (count: number) => string
+}
+
 interface DataTableProps<TData, TValue> {
   columns: ColumnDef<TData, TValue>[]
   data: TData[]
   emptyMessage?: string
   searchPlaceholder?: string
   pageSize?: number
+  labels?: DataTableLabels
 }
 
 export function DataTable<TData, TValue>({
@@ -39,6 +46,7 @@ export function DataTable<TData, TValue>({
   emptyMessage = 'Sin resultados.',
   searchPlaceholder = 'Buscar...',
   pageSize = 20,
+  labels,
 }: DataTableProps<TData, TValue>) {
   const [sorting, setSorting] = useState<SortingState>([])
   const [globalFilter, setGlobalFilter] = useState('')
@@ -69,6 +77,9 @@ export function DataTable<TData, TValue>({
   const pageIndex = table.getState().pagination.pageIndex
   const totalFiltered = table.getFilteredRowModel().rows.length
   const showPagination = pageSizeOption !== 'all'
+  const recordsLabel = labels?.records ?? 'Registros'
+  const allLabel = labels?.all ?? 'Todos'
+  const resultsLabel = labels?.results ?? ((count: number) => `${count} resultado${count !== 1 ? 's' : ''}`)
 
   return (
     <div className="space-y-3">
@@ -88,7 +99,7 @@ export function DataTable<TData, TValue>({
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <span className="text-xs whitespace-nowrap" style={{ color: 'var(--text-muted)' }}>
-            Registros
+            {recordsLabel}
           </span>
           <Select value={pageSizeOption} onValueChange={handlePageSizeChange}>
             <SelectTrigger className="h-9 w-24">
@@ -97,7 +108,7 @@ export function DataTable<TData, TValue>({
             <SelectContent>
               {PAGE_SIZE_OPTIONS.map((opt) => (
                 <SelectItem key={opt.value} value={opt.value}>
-                  {opt.label}
+                  {opt.value === 'all' ? allLabel : opt.label}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -167,7 +178,7 @@ export function DataTable<TData, TValue>({
       {/* Paginación */}
       <div className="flex items-center justify-between">
         <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-          {totalFiltered} resultado{totalFiltered !== 1 ? 's' : ''}
+          {resultsLabel(totalFiltered)}
         </p>
         {showPagination && (
           <div className="flex items-center gap-2">

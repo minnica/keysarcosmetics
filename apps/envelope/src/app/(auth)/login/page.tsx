@@ -1,6 +1,6 @@
 'use client'
 // Pantalla de login — guarda el JWT en localStorage para que el interceptor de axios lo use
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -9,16 +9,27 @@ import { api } from '@/lib/api'
 import { Button } from '@cosmetics/ui'
 import { Input } from '@cosmetics/ui'
 import { Label } from '@cosmetics/ui'
+import { useI18n } from '@/lib/i18n'
 
-const schema = z.object({
-  email: z.string().email('Email inválido'),
-  password: z.string().min(1, 'La contraseña es requerida'),
-})
-type LoginForm = z.infer<typeof schema>
+function createSchema(messages: { invalidEmail: string; passwordRequired: string }) {
+  return z.object({
+    email: z.string().email(messages.invalidEmail),
+    password: z.string().min(1, messages.passwordRequired),
+  })
+}
+type LoginForm = z.infer<ReturnType<typeof createSchema>>
 
 export default function LoginPage() {
   const router = useRouter()
+  const { t } = useI18n()
   const [serverError, setServerError] = useState<string | null>(null)
+  const schema = useMemo(
+    () => createSchema({
+      invalidEmail: t.login.invalidEmail,
+      passwordRequired: t.login.passwordRequired,
+    }),
+    [t],
+  )
 
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<LoginForm>({
     resolver: zodResolver(schema),
@@ -37,7 +48,7 @@ export default function LoginPage() {
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { message?: string } } })?.response?.data?.message ??
-        'Error al iniciar sesión'
+        t.login.submitError
       setServerError(msg)
     }
   }
@@ -65,17 +76,17 @@ export default function LoginPage() {
           />
           <div>
             <h1 className="font-brand text-2xl tracking-wide" style={{ color: 'var(--text-primary)' }}>
-              Iniciar sesión
+              {t.login.title}
             </h1>
             <p className="text-xs mt-1 tracking-wide" style={{ color: 'var(--text-muted)' }}>
-              Control de ventas — Keysarcosmetics
+              {t.login.subtitle}
             </p>
           </div>
         </div>
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <div className="space-y-1.5">
-            <Label htmlFor="email">Correo electrónico</Label>
+            <Label htmlFor="email">{t.login.email}</Label>
             <Input
               id="email"
               type="email"
@@ -89,7 +100,7 @@ export default function LoginPage() {
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="password">Contraseña</Label>
+            <Label htmlFor="password">{t.login.password}</Label>
             <Input
               id="password"
               type="password"
@@ -115,7 +126,7 @@ export default function LoginPage() {
           )}
 
           <Button type="submit" className="w-full mt-2" disabled={isSubmitting}>
-            {isSubmitting ? 'Entrando...' : 'Entrar'}
+            {isSubmitting ? t.login.entering : t.login.enter}
           </Button>
         </form>
       </div>

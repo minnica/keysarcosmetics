@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { Toaster } from '@cosmetics/ui'
+import { I18nProvider } from '@/lib/i18n'
 import './globals.css'
 
 export const metadata: Metadata = {
@@ -31,8 +32,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
       <body className="bg-[var(--bg-primary)] text-[var(--text-primary)] antialiased">
-        {children}
-        <Toaster position="bottom-center" />
+        <I18nProvider>
+          {children}
+          <Toaster position="bottom-center" />
+        </I18nProvider>
       </body>
     </html>
   )

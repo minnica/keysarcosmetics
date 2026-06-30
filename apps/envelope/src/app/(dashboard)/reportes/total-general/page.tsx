@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { DateRangePicker, type DateRange, Table, TableHeader, TableBody, TableFooter, TableRow, TableHead, TableCell } from "@cosmetics/ui"
 import { useReportes } from '@/hooks'
+import { useI18n } from '@/lib/i18n'
 import { formatCurrency, formatDate, todayISO } from '@/lib/utils'
 
 function firstDayOfMonth(): string {
@@ -11,6 +12,7 @@ function firstDayOfMonth(): string {
 
 export default function TotalGeneralPage() {
   const { registros, sucursales, loading, error } = useReportes()
+  const { locale, t } = useI18n()
   const [range, setRange] = useState<DateRange>({ from: firstDayOfMonth(), to: todayISO() })
 
   const filtered = registros.filter(r => r.fecha >= range.from && r.fecha <= range.to)
@@ -36,34 +38,34 @@ export default function TotalGeneralPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="page-title font-semibold uppercase">Total general de ventas</h1>
-        <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>Resumen diario por sucursal en el período</p>
+        <h1 className="page-title font-semibold uppercase">{t.reports.totalGeneralTitle}</h1>
+        <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>{t.reports.totalGeneralDescription}</p>
       </div>
 
       <div className="flex items-center gap-3 flex-wrap">
-        <span className="text-sm font-medium" style={{ color: 'var(--text-muted)' }}>Período:</span>
+        <span className="text-sm font-medium" style={{ color: 'var(--text-muted)' }}>{t.common.period}</span>
         <DateRangePicker value={range} onChange={setRange} />
       </div>
 
-      {loading && <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Cargando datos...</p>}
+      {loading && <p className="text-sm" style={{ color: 'var(--text-muted)' }}>{t.common.loadingData}</p>}
       {error && <p className="text-sm text-red-500">{error}</p>}
 
       {!loading && dias.length === 0 ? (
-        <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Sin ventas en el período seleccionado.</p>
+        <p className="text-sm" style={{ color: 'var(--text-muted)' }}>{t.common.noSalesSelectedPeriod}</p>
       ) : (
         <div className="overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Fecha</TableHead>
+              <TableHead>{t.common.date}</TableHead>
               {sucursales.map(s => <TableHead key={s.id} className="text-right">{s.nombre}</TableHead>)}
-              <TableHead className="text-right">Total del día</TableHead>
+              <TableHead className="text-right">{t.reports.dayTotal}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {dias.map(dia => (
               <TableRow key={dia}>
-                <TableCell>{formatDate(dia)}</TableCell>
+                <TableCell>{formatDate(dia, 'dd/MM/yyyy', locale)}</TableCell>
                 {sucursales.map(s => {
                   const val = totalDiaSucursal(dia, s.id)
                   return (
@@ -78,7 +80,7 @@ export default function TotalGeneralPage() {
           </TableBody>
           <TableFooter>
             <TableRow>
-              <TableCell className="font-semibold text-xs uppercase">Total por sucursal</TableCell>
+              <TableCell className="font-semibold text-xs uppercase">{t.reports.branchTotal}</TableCell>
               {sucursales.map(s => (
                 <TableCell key={s.id} className="text-right font-semibold">
                   {formatCurrency(totalSucursalGeneral(s.id))}

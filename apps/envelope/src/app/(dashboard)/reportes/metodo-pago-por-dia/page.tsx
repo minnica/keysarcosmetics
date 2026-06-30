@@ -18,10 +18,12 @@ import {
 } from "@cosmetics/ui"
 
 import { useReportes } from '@/hooks'
+import { useI18n } from '@/lib/i18n'
 import { formatCurrency, formatDate } from '@/lib/utils'
 
 export default function MetodoPagoPorDiaPage() {
   const { registros, sucursales, metodosPago, loading, error } = useReportes()
+  const { locale, t } = useI18n()
 
   const now = new Date()
   const [metodoPagoId, setMetodoPagoId] = useState('')
@@ -29,10 +31,7 @@ export default function MetodoPagoPorDiaPage() {
   const [month, setMonth] = useState(now.getMonth() + 1)
 
   const years = Array.from({ length: now.getFullYear() - 2022 }, (_, i) => 2023 + i)
-  const months = [
-    'Enero','Febrero','Marzo','Abril','Mayo','Junio',
-    'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre',
-  ]
+  const months = t.reports.months
 
   // Usa el primer método disponible si no se ha seleccionado
   const efectivoId = metodoPagoId || (metodosPago[0]?.id ?? '')
@@ -63,13 +62,13 @@ export default function MetodoPagoPorDiaPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="page-title font-semibold uppercase">Método de pago por día</h1>
-        <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>Desglose diario por sucursal para un método y mes específico</p>
+        <h1 className="page-title font-semibold uppercase">{t.reports.paymentMethodByDayTitle}</h1>
+        <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>{t.reports.paymentMethodByDayDescription}</p>
       </div>
 
       <div className="flex gap-4 flex-wrap items-end">
         <div className="space-y-1.5">
-          <Label>Método de pago</Label>
+          <Label>{t.common.paymentMethod}</Label>
           <Select value={efectivoId} onValueChange={setMetodoPagoId}>
             <SelectTrigger className="w-44">
               <SelectValue />
@@ -82,7 +81,7 @@ export default function MetodoPagoPorDiaPage() {
           </Select>
         </div>
         <div className="space-y-1.5">
-          <Label>Mes</Label>
+          <Label>{t.reports.month}</Label>
           <Select value={String(month)} onValueChange={v => setMonth(Number(v))}>
             <SelectTrigger className="w-40">
               <SelectValue />
@@ -95,7 +94,7 @@ export default function MetodoPagoPorDiaPage() {
           </Select>
         </div>
         <div className="space-y-1.5">
-          <Label>Año</Label>
+          <Label>{t.reports.year}</Label>
           <Select value={String(year)} onValueChange={v => setYear(Number(v))}>
             <SelectTrigger className="w-28">
               <SelectValue />
@@ -109,25 +108,25 @@ export default function MetodoPagoPorDiaPage() {
         </div>
       </div>
 
-      {loading && <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Cargando datos...</p>}
+      {loading && <p className="text-sm" style={{ color: 'var(--text-muted)' }}>{t.common.loadingData}</p>}
       {error && <p className="text-sm text-red-500">{error}</p>}
 
       {!loading && dias.length === 0 ? (
-        <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Sin ventas con ese método en el período seleccionado.</p>
+        <p className="text-sm" style={{ color: 'var(--text-muted)' }}>{t.reports.noSalesPaymentMethodPeriod}</p>
       ) : (
         <div className="overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Fecha</TableHead>
+              <TableHead>{t.common.date}</TableHead>
               {sucursales.map(s => <TableHead key={s.id} className="text-right">{s.nombre}</TableHead>)}
-              <TableHead className="text-right">Total del día</TableHead>
+              <TableHead className="text-right">{t.reports.dayTotal}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {dias.map(dia => (
               <TableRow key={dia}>
-                <TableCell>{formatDate(dia, 'EEEE dd')}</TableCell>
+                <TableCell>{formatDate(dia, 'EEEE dd', locale)}</TableCell>
                 {sucursales.map(s => (
                   <TableCell key={s.id} className="text-right">
                     {totalDiaSucursal(dia, s.id) > 0 ? formatCurrency(totalDiaSucursal(dia, s.id)) : <span style={{ color: 'var(--border-color)' }}>—</span>}
@@ -139,7 +138,7 @@ export default function MetodoPagoPorDiaPage() {
           </TableBody>
           <TableFooter>
             <TableRow>
-              <TableCell className="font-semibold">Total general</TableCell>
+              <TableCell className="font-semibold">{t.common.grandTotal}</TableCell>
               {sucursales.map(s => (
                 <TableCell key={s.id} className="text-right font-semibold">{formatCurrency(totalSucursal(s.id))}</TableCell>
               ))}
