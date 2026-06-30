@@ -1,4 +1,5 @@
-// Página principal del dashboard — pendiente de implementar
+import { SchedulerWorkspace } from '@/components/SchedulerWorkspace'
+
 export default function DashboardPage() {
-  return null
+  return <SchedulerWorkspace />
 }
