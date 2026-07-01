@@ -1,13 +1,28 @@
 // Rutas del módulo Envelope — ventas por sobre digitalizado
 import { Router, type Router as ExpressRouter } from 'express'
 import { authMiddleware } from '../middlewares/auth.middleware'
-import { requireRole } from '../middlewares/role.middleware'
+import { requireScreenAccess } from '../lib/access'
 import { prisma } from '../prisma/client'
 
 const router: ExpressRouter = Router()
 
 // Todas las rutas de este módulo requieren autenticación
 router.use(authMiddleware)
+
+const access = {
+  dashboard: requireScreenAccess('dashboard'),
+  ventas: requireScreenAccess('ventas'),
+  empleados: requireScreenAccess('empleados'),
+  sucursales: requireScreenAccess('sucursales'),
+  metodosPago: requireScreenAccess('metodos-pago'),
+  banks: requireScreenAccess('bancos'),
+  positions: requireScreenAccess('puestos'),
+  detalleMetodoPago: requireScreenAccess('reportes/detalle-metodo-pago'),
+  metodoPagoPorDia: requireScreenAccess('reportes/metodo-pago-por-dia'),
+  ventasPorVendedor: requireScreenAccess('reportes/ventas-por-vendedor'),
+  ventasPorVendedorDia: requireScreenAccess('reportes/ventas-por-vendedor-dia'),
+  totalGeneral: requireScreenAccess('reportes/total-general'),
+}
 
 function normalizeDateInput(value?: string | null): Date | null | undefined {
   if (value === undefined) return undefined
@@ -20,7 +35,7 @@ function normalizeDateInput(value?: string | null): Date | null | undefined {
 
 // ─── SUCURSALES ───────────────────────────────────────────────────────────────
 
-router.get('/sucursales', async (_req, res) => {
+router.get('/sucursales', access.sucursales, async (_req, res) => {
   try {
     const data = await prisma.sucursal.findMany({ where: { activa: true }, orderBy: { nombre: 'asc' } })
     res.json({ success: true, data, message: 'OK' })
@@ -30,7 +45,7 @@ router.get('/sucursales', async (_req, res) => {
   }
 })
 
-router.post('/sucursales', requireRole('GERENTE'), async (req, res) => {
+router.post('/sucursales', access.sucursales, async (req, res) => {
   try {
     const { nombre } = req.body as { nombre: string }
     if (!nombre?.trim()) {
@@ -45,7 +60,7 @@ router.post('/sucursales', requireRole('GERENTE'), async (req, res) => {
   }
 })
 
-router.put('/sucursales/:id', requireRole('GERENTE'), async (req, res) => {
+router.put('/sucursales/:id', access.sucursales, async (req, res) => {
   try {
     const { nombre, activa } = req.body as { nombre?: string; activa?: boolean }
     const data = await prisma.sucursal.update({
@@ -59,7 +74,7 @@ router.put('/sucursales/:id', requireRole('GERENTE'), async (req, res) => {
   }
 })
 
-router.delete('/sucursales/:id', requireRole('GERENTE'), async (req, res) => {
+router.delete('/sucursales/:id', access.sucursales, async (req, res) => {
   try {
     await prisma.sucursal.update({ where: { id: req.params['id'] }, data: { activa: false } })
     res.json({ success: true, data: null, message: 'Sucursal desactivada' })
@@ -71,7 +86,7 @@ router.delete('/sucursales/:id', requireRole('GERENTE'), async (req, res) => {
 
 // ─── EMPLEADOS ────────────────────────────────────────────────────────────────
 
-router.get('/empleados', async (_req, res) => {
+router.get('/empleados', access.empleados, async (_req, res) => {
   try {
     const data = await prisma.empleado.findMany({
       orderBy: [{ activo: 'desc' }, { nombreCompleto: 'asc' }],
@@ -84,7 +99,7 @@ router.get('/empleados', async (_req, res) => {
   }
 })
 
-router.post('/empleados', requireRole('GERENTE'), async (req, res) => {
+router.post('/empleados', access.empleados, async (req, res) => {
   try {
     const { nombres, apellidoPaterno, apellidoMaterno, banco, numeroCuenta, puesto, metaIndividual, bankId, positionId, sueldo, fechaNacimiento, numeroTelefono } =
       req.body as {
@@ -157,7 +172,7 @@ router.post('/empleados', requireRole('GERENTE'), async (req, res) => {
   }
 })
 
-router.put('/empleados/:id', requireRole('GERENTE'), async (req, res) => {
+router.put('/empleados/:id', access.empleados, async (req, res) => {
   try {
     const { nombres, apellidoPaterno, apellidoMaterno, banco, numeroCuenta, puesto, metaIndividual, activo, bankId, positionId, sueldo, fechaNacimiento, numeroTelefono } =
       req.body as Partial<{
@@ -237,7 +252,7 @@ router.put('/empleados/:id', requireRole('GERENTE'), async (req, res) => {
   }
 })
 
-router.delete('/empleados/:id', requireRole('GERENTE'), async (req, res) => {
+router.delete('/empleados/:id', access.empleados, async (req, res) => {
   try {
     const ventaCount = await prisma.venta.count({ where: { vendedorId: req.params['id'] } })
     if (ventaCount > 0) {
@@ -252,7 +267,7 @@ router.delete('/empleados/:id', requireRole('GERENTE'), async (req, res) => {
   }
 })
 
-router.patch('/empleados/:id/status', requireRole('GERENTE'), async (req, res) => {
+router.patch('/empleados/:id/status', access.empleados, async (req, res) => {
   try {
     const { activo } = req.body as { activo: boolean }
     if (typeof activo !== 'boolean') {
@@ -278,7 +293,7 @@ router.patch('/empleados/:id/status', requireRole('GERENTE'), async (req, res) =
 
 // ─── MÉTODOS DE PAGO ──────────────────────────────────────────────────────────
 
-router.get('/metodos-pago', async (_req, res) => {
+router.get('/metodos-pago', access.metodosPago, async (_req, res) => {
   try {
     const data = await prisma.metodoPago.findMany({
       where: { activo: true },
@@ -291,7 +306,7 @@ router.get('/metodos-pago', async (_req, res) => {
   }
 })
 
-router.post('/metodos-pago', requireRole('GERENTE'), async (req, res) => {
+router.post('/metodos-pago', access.metodosPago, async (req, res) => {
   try {
     const { nombre, tipo } = req.body as { nombre: string; tipo: string }
     const data = await prisma.metodoPago.create({
@@ -304,7 +319,7 @@ router.post('/metodos-pago', requireRole('GERENTE'), async (req, res) => {
   }
 })
 
-router.put('/metodos-pago/:id', requireRole('GERENTE'), async (req, res) => {
+router.put('/metodos-pago/:id', access.metodosPago, async (req, res) => {
   try {
     const { nombre, tipo, activo } = req.body as Partial<{ nombre: string; tipo: string; activo: boolean }>
     const data = await prisma.metodoPago.update({
@@ -322,7 +337,7 @@ router.put('/metodos-pago/:id', requireRole('GERENTE'), async (req, res) => {
   }
 })
 
-router.delete('/metodos-pago/:id', requireRole('GERENTE'), async (req, res) => {
+router.delete('/metodos-pago/:id', access.metodosPago, async (req, res) => {
   try {
     const data = await prisma.metodoPago.update({
       where: { id: req.params['id'] },
@@ -337,7 +352,7 @@ router.delete('/metodos-pago/:id', requireRole('GERENTE'), async (req, res) => {
 
 // ─── BANCOS ───────────────────────────────────────────────────────────────────
 
-router.get('/banks', async (_req, res) => {
+router.get('/banks', access.banks, async (_req, res) => {
   try {
     const data = await prisma.bank.findMany({
       where: { activo: true },
@@ -350,7 +365,7 @@ router.get('/banks', async (_req, res) => {
   }
 })
 
-router.post('/banks', requireRole('GERENTE'), async (req, res) => {
+router.post('/banks', access.banks, async (req, res) => {
   try {
     const { nombre } = req.body as { nombre: string }
     const trimmed = nombre?.trim()
@@ -378,7 +393,7 @@ router.post('/banks', requireRole('GERENTE'), async (req, res) => {
   }
 })
 
-router.put('/banks/:id', requireRole('GERENTE'), async (req, res) => {
+router.put('/banks/:id', access.banks, async (req, res) => {
   try {
     const { nombre } = req.body as { nombre?: string }
     const trimmed = nombre?.trim()
@@ -406,7 +421,7 @@ router.put('/banks/:id', requireRole('GERENTE'), async (req, res) => {
   }
 })
 
-router.delete('/banks/:id', requireRole('GERENTE'), async (req, res) => {
+router.delete('/banks/:id', access.banks, async (req, res) => {
   try {
     const data = await prisma.bank.update({
       where: { id: req.params['id'] },
@@ -421,7 +436,7 @@ router.delete('/banks/:id', requireRole('GERENTE'), async (req, res) => {
 
 // ─── PUESTOS ──────────────────────────────────────────────────────────────────
 
-router.get('/positions', async (_req, res) => {
+router.get('/positions', access.positions, async (_req, res) => {
   try {
     const data = await prisma.position.findMany({
       where: { activo: true },
@@ -434,7 +449,7 @@ router.get('/positions', async (_req, res) => {
   }
 })
 
-router.post('/positions', requireRole('GERENTE'), async (req, res) => {
+router.post('/positions', access.positions, async (req, res) => {
   try {
     const { nombre } = req.body as { nombre: string }
     const trimmed = nombre?.trim()
@@ -462,7 +477,7 @@ router.post('/positions', requireRole('GERENTE'), async (req, res) => {
   }
 })
 
-router.put('/positions/:id', requireRole('GERENTE'), async (req, res) => {
+router.put('/positions/:id', access.positions, async (req, res) => {
   try {
     const { nombre } = req.body as { nombre?: string }
     const trimmed = nombre?.trim()
@@ -490,7 +505,7 @@ router.put('/positions/:id', requireRole('GERENTE'), async (req, res) => {
   }
 })
 
-router.delete('/positions/:id', requireRole('GERENTE'), async (req, res) => {
+router.delete('/positions/:id', access.positions, async (req, res) => {
   try {
     const data = await prisma.position.update({
       where: { id: req.params['id'] },
@@ -505,7 +520,7 @@ router.delete('/positions/:id', requireRole('GERENTE'), async (req, res) => {
 
 // ─── VENTAS ───────────────────────────────────────────────────────────────────
 
-router.get('/ventas', async (req, res) => {
+router.get('/ventas', access.ventas, async (req, res) => {
   try {
     const { fechaInicio, fechaFin } = req.query as { fechaInicio?: string; fechaFin?: string }
     const where: Record<string, unknown> = {}
@@ -531,7 +546,7 @@ router.get('/ventas', async (req, res) => {
   }
 })
 
-router.post('/ventas', async (req, res) => {
+router.post('/ventas', access.ventas, async (req, res) => {
   try {
     const { sucursalId, vendedorId, fecha, notas, sesionId, detalles } = req.body as {
       sucursalId: string
@@ -569,7 +584,7 @@ router.post('/ventas', async (req, res) => {
 })
 
 // Guarda en una sola transacción las ventas que integran un voucher multiempleado.
-router.post('/ventas/lote', async (req, res) => {
+router.post('/ventas/lote', access.ventas, async (req, res) => {
   try {
     type VentaInput = {
       sucursalId: string
@@ -619,7 +634,7 @@ router.post('/ventas/lote', async (req, res) => {
   }
 })
 
-router.put('/ventas/:id', requireRole('GERENTE'), async (req, res) => {
+router.put('/ventas/:id', access.ventas, async (req, res) => {
   try {
     const { notas, detalles } = req.body as {
       notas?: string
@@ -650,7 +665,7 @@ router.put('/ventas/:id', requireRole('GERENTE'), async (req, res) => {
   }
 })
 
-router.delete('/ventas/:id', requireRole('GERENTE'), async (req, res) => {
+router.delete('/ventas/:id', access.ventas, async (req, res) => {
   try {
     await prisma.venta.delete({ where: { id: req.params['id'] } })
     res.json({ success: true, data: null, message: 'Venta eliminada' })
@@ -662,7 +677,7 @@ router.delete('/ventas/:id', requireRole('GERENTE'), async (req, res) => {
 
 // ─── REPORTES ─────────────────────────────────────────────────────────────────
 
-router.get('/reportes/detalle-metodo-pago', requireRole('GERENTE'), async (req, res) => {
+router.get('/reportes/detalle-metodo-pago', access.detalleMetodoPago, async (req, res) => {
   try {
     const { fechaInicio, fechaFin } = req.query as { fechaInicio?: string; fechaFin?: string }
     const ventas = await prisma.venta.findMany({
@@ -693,7 +708,7 @@ router.get('/reportes/detalle-metodo-pago', requireRole('GERENTE'), async (req, 
   }
 })
 
-router.get('/reportes/metodo-pago-por-dia', requireRole('GERENTE'), async (req, res) => {
+router.get('/reportes/metodo-pago-por-dia', access.metodoPagoPorDia, async (req, res) => {
   try {
     const { metodoPagoId, mes, anio } = req.query as { metodoPagoId?: string; mes?: string; anio?: string }
     const year = Number(anio ?? new Date().getFullYear())
@@ -721,7 +736,7 @@ router.get('/reportes/metodo-pago-por-dia', requireRole('GERENTE'), async (req, 
   }
 })
 
-router.get('/reportes/ventas-por-vendedor', requireRole('GERENTE'), async (req, res) => {
+router.get('/reportes/ventas-por-vendedor', access.ventasPorVendedor, async (req, res) => {
   try {
     const { fechaInicio, fechaFin } = req.query as { fechaInicio?: string; fechaFin?: string }
     const ventas = await prisma.venta.findMany({
@@ -744,7 +759,7 @@ router.get('/reportes/ventas-por-vendedor', requireRole('GERENTE'), async (req, 
   }
 })
 
-router.get('/reportes/ventas-por-vendedor-dia', requireRole('GERENTE'), async (req, res) => {
+router.get('/reportes/ventas-por-vendedor-dia', access.ventasPorVendedorDia, async (req, res) => {
   try {
     const { vendedorId, fechaInicio, fechaFin } = req.query as { vendedorId?: string; fechaInicio?: string; fechaFin?: string }
     const ventas = await prisma.venta.findMany({
@@ -760,7 +775,7 @@ router.get('/reportes/ventas-por-vendedor-dia', requireRole('GERENTE'), async (r
   }
 })
 
-router.get('/reportes/total-general', requireRole('GERENTE'), async (req, res) => {
+router.get('/reportes/total-general', access.totalGeneral, async (req, res) => {
   try {
     const { fechaInicio, fechaFin } = req.query as { fechaInicio?: string; fechaFin?: string }
     const ventas = await prisma.venta.findMany({
@@ -789,7 +804,7 @@ router.get('/reportes/total-general', requireRole('GERENTE'), async (req, res) =
   }
 })
 
-router.get('/reportes/dashboard', requireRole('GERENTE'), async (req, res) => {
+router.get('/reportes/dashboard', access.dashboard, async (req, res) => {
   try {
     const { fecha } = req.query as { fecha?: string }
     const ref = fecha ? new Date(fecha) : new Date()

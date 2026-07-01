@@ -1,7 +1,6 @@
 'use client'
 // Pantalla de login — guarda el JWT en localStorage para que el interceptor de axios lo use
 import { useMemo, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -9,7 +8,9 @@ import { api } from '@/lib/api'
 import { Button } from '@cosmetics/ui'
 import { Input } from '@cosmetics/ui'
 import { Label } from '@cosmetics/ui'
+import type { ScreenKey } from '@cosmetics/types'
 import { useI18n } from '@/lib/i18n'
+import { getFirstAccessiblePath } from '@/lib/access'
 
 function createSchema(messages: { invalidEmail: string; passwordRequired: string }) {
   return z.object({
@@ -20,7 +21,6 @@ function createSchema(messages: { invalidEmail: string; passwordRequired: string
 type LoginForm = z.infer<ReturnType<typeof createSchema>>
 
 export default function LoginPage() {
-  const router = useRouter()
   const { t } = useI18n()
   const [serverError, setServerError] = useState<string | null>(null)
   const schema = useMemo(
@@ -38,13 +38,27 @@ export default function LoginPage() {
   async function onSubmit(data: LoginForm) {
     setServerError(null)
     try {
-      const res = await api.post<{ success: boolean; data: { token: string } }>(
+      const res = await api.post<{
+        success: boolean
+        data: {
+          token: string
+          usuario?: {
+            canManageAccess: boolean
+            screenPermissions: string[]
+          }
+        }
+      }>(
         '/api/auth/login',
         { email: data.email, password: data.password }
       )
       // Guardar el token con la misma clave que lee el interceptor de @cosmetics/api-client
       localStorage.setItem('auth_token', res.data.data.token)
-      router.push('/')
+      const usuario = res.data.data.usuario
+      const destination =
+        usuario?.canManageAccess
+          ? '/accesos'
+          : getFirstAccessiblePath((usuario?.screenPermissions ?? []) as ScreenKey[], false) ?? '/'
+      window.location.assign(destination)
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { message?: string } } })?.response?.data?.message ??

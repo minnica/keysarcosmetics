@@ -17,6 +17,7 @@
     "seed": "ts-node --project tsconfig.json prisma/seed.ts"
   },
   "dependencies": {
+    "@cosmetics/types": "workspace:*",
     "@prisma/client": "^5.16.1",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",

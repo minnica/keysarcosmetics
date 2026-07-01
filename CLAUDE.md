@@ -56,6 +56,9 @@ Todas las apps son internas (detrás de login), excepto `landing` que es públic
 - `SUPER_ADMIN` → acceso total a todas las apps
 - `GERENTE` → acceso a su sucursal: ventas, empleados, reportes locales
 - `CAPTURISTA` → solo registro de ventas
+- `Position.canManageAccess` marca el puesto que administra permisos y credenciales de `envelope`.
+- El acceso efectivo a pantallas de `envelope` ya no depende solo del rol: también se resuelve por puesto/permisos por pantalla.
+- La pantalla `accesos` guarda permisos por clic inmediato en cada pantalla con autosave sin recarga, administra credenciales en un dialog dedicado y desactiva cuentas desde la tabla de estatus.
 
 ---
 
@@ -117,6 +120,7 @@ Módulos implementados:
 UI:
 - Sidebar responsive usando shadcn `Sidebar` + `Sheet` (Sheet para mobile).
 - Layout: `AppSidebar` + `LayoutShell` en `src/components/layout/`.
+- Sidebar filtrado por permisos efectivos; incluye pantalla de `Control de accesos` para puestos con acceso administrador.
 - Todos los botones de borrar usan `AlertDialog` de confirmación.
 - Todos los formularios disparan `toast.success()` al crear o editar, **excepto** el modal "Agregar/Editar venta" en ventas: dispara `toast.info()` azul pastel (8 s) recordando al usuario que debe dar clic en «Guardar registro» para persistir.
 - En `ventas`, el botón final de guardado debe pasar por un `AlertDialog` de confirmación antes de persistir la venta.
@@ -124,7 +128,8 @@ UI:
 - Favicon configurado via metadata `icons: { icon: '/logo.svg' }` en root layout.
 - Header del sidebar muestra logo (32px) + texto "Keysar Cosmetics" cuando expandido; solo logo (28px) cuando colapsado.
 - Switch dark/light mode y switch visual de idioma `ES/EN` en `SidebarFooter`, encima del botón "Cerrar sesión", ocultos en modo colapsado. Ambos usan el mismo diseño segmentado. Envelope usa `I18nProvider` + `useI18n()` en `src/lib/i18n.tsx`, persiste en `localStorage` con key `keysar-envelope-language` y solo traduce textos estáticos de UI. No traducir ni transformar datos provenientes de BD/API (nombres de sucursales, empleados, bancos, puestos, métodos de pago, mensajes explícitos de backend, etc.).
-- Botón "Cerrar sesión" en `SidebarFooter` — elimina `auth_token` de localStorage y redirige a `/login`. Usa `SidebarMenuButton` con tooltip para funcionar también en modo colapsado.
+- Botón "Cerrar sesión" en `SidebarFooter` — limpia `auth_token`, resetea la sesión en memoria y redirige a `/login`. Usa `SidebarMenuButton` con tooltip para funcionar también en modo colapsado.
+- El login de `envelope` ya usa sesión híbrida: credenciales temporales hoy, con soporte de base para invitación futura por enlace. El redirect post-login usa `window.location.assign(...)` para evitar quedarse atrapado en la pantalla de login.
 
 Datos:
 - `useBanks` y `usePositions` cargan catálogos dinámicos desde backend.
@@ -140,11 +145,15 @@ Datos:
 
 **Modelos relevantes:**
 - `Usuario`, `Sucursal`, `Empleado`, `Venta`, `VentaDetalle`, `MetodoPago`, `Bank`, `Position`.
+- `Usuario` puede vincularse opcionalmente a `Empleado` mediante `empleadoId` y guarda metadatos para el futuro flujo de invitación/alta de contraseña.
+- `Position` incluye `canManageAccess` y la relación `PositionScreenPermission`.
+- `PositionScreenPermission` guarda permisos por pantalla para cada puesto.
+- El acceso admin expone `PUT /api/envelope/access/positions/:id/permissions`, `PUT /api/envelope/access/users/:employeeId/credentials` y `DELETE /api/envelope/access/users/:id` para desactivar cuentas.
 - `Empleado` tiene `bankId`/`positionId` nullable (FK a catálogos dinámicos).
 - `Empleado` también tiene campos legacy `banco`/`puesto` (String) — conservar por compatibilidad hasta backfill completo en prod.
 - `Empleado` ahora incluye `sueldo Decimal?`, `fechaNacimiento DateTime?` y `numeroTelefono String?` para el crecimiento del módulo RH.
 - `Venta` tiene `sesionId String?` — vincula registros del mismo voucher multi-vendedor; null = venta individual.
-- Soft delete: `activo = false` (Usuario, Empleado, Bank, Position, MetodoPago) o `activa = false` (Sucursal). **No hacer borrados físicos salvo instrucción explícita.**
+- Soft delete: `activo = false` (Usuario, Empleado, Bank, Position, MetodoPago) o `activa = false` (Sucursal). **No hacer borrados físicos salvo instrucción explícita**; la ruta admin de `accesos` desactiva cuentas de login en vez de eliminarlas.
 
 **Reglas de BD:**
 - No ejecutar `migrate reset` ni `db push` en ambientes compartidos/productivos.
@@ -194,6 +203,7 @@ apps/envelope/
 │   │   ├── metodos-pago/          → CRUD métodos de pago
 │   │   ├── bancos/                → CRUD catálogo Bank
 │   │   ├── puestos/               → CRUD catálogo Position
+│   │   ├── accesos/               → administración de permisos por puesto, credenciales independientes y borrado de cuentas
 │   │   └── reportes/              → subvistas de reportes del módulo envelope
 │   └── layout.tsx                 → layout raíz de la app
 ├── src/components/
@@ -235,6 +245,7 @@ backend/api/
     │   └── client.ts              → PrismaClient compartido
     ├── routes/
     │   ├── auth.routes.ts
+    │   ├── access.routes.ts      → bootstrap y guardado de permisos/credenciales de acceso de envelope
     │   ├── envelope.routes.ts     → endpoints del módulo envelope
     │   ├── crm.routes.ts
     │   ├── payroll.routes.ts
@@ -280,6 +291,7 @@ packages/ui/
 | Rutas envelope frontend | `apps/envelope/src/app/(dashboard)/` |
 | Hooks envelope | `apps/envelope/src/hooks/` |
 | API client envelope | `apps/envelope/src/lib/api.ts` |
+| Sesión/permisos envelope | `apps/envelope/src/lib/session.tsx` |
 | Endpoints envelope backend | `backend/api/src/routes/envelope.routes.ts` |
 | Prisma schema | `backend/api/prisma/schema.prisma` |
 | Migraciones | `backend/api/prisma/migrations/` |

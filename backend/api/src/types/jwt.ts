@@ -7,6 +7,7 @@ export interface JwtPayload {
   email: string
   rol: Rol
   sucursalId: string | null
+  empleadoId?: string | null
   iat?: number
   exp?: number
 }

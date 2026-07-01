@@ -6,6 +6,7 @@ import jwt, { type SignOptions } from 'jsonwebtoken'
 import { z } from 'zod'
 import { prisma } from '../prisma/client'
 import type { JwtPayload } from '../types/jwt'
+import { resolveAccess, toSessionUser } from '../lib/access'
 
 // Esquema de validación para el cuerpo del login
 const loginSchema = z.object({
@@ -33,10 +34,21 @@ export async function login(req: Request, res: Response): Promise<void> {
 
   try {
     // Buscar usuario activo por email
-    const usuario = await prisma.usuario.findFirst({
+    const usuario = (await (prisma as any).usuario.findFirst({
       where: { email, activo: true },
       include: { sucursal: { select: { id: true, nombre: true } } },
-    })
+    })) as {
+      id: string
+      nombre: string
+      email: string
+      passwordHash: string
+      rol: JwtPayload['rol']
+      activo: boolean
+      sucursalId: string | null
+      empleadoId: string | null
+      sucursal: { id: string; nombre: string } | null
+      creadoEn: Date
+    } | null
 
     // Mismo mensaje para usuario no encontrado y contraseña incorrecta
     // (evitar enumeración de usuarios)
@@ -66,6 +78,7 @@ export async function login(req: Request, res: Response): Promise<void> {
       email: usuario.email,
       rol: usuario.rol,
       sucursalId: usuario.sucursalId,
+      empleadoId: usuario.empleadoId ?? null,
     }
 
     const secret = process.env['JWT_SECRET']
@@ -81,19 +94,32 @@ export async function login(req: Request, res: Response): Promise<void> {
     }
 
     const token = jwt.sign(payload, secret, signOptions)
+    const access = await resolveAccess(usuario.id)
+
+    if (!access) {
+      res.status(401).json({
+        success: false,
+        message: 'Usuario no encontrado o inactivo',
+        data: null,
+      })
+      return
+    }
 
     res.status(200).json({
       success: true,
       message: 'Autenticación exitosa',
       data: {
         token,
-        usuario: {
+        usuario: toSessionUser(access, {
           id: usuario.id,
           nombre: usuario.nombre,
           email: usuario.email,
           rol: usuario.rol,
-          sucursal: usuario.sucursal,
-        },
+          activo: usuario.activo,
+          sucursalId: usuario.sucursalId,
+          creadoEn: usuario.creadoEn,
+        }),
+        sucursal: usuario.sucursal,
       },
     })
   } catch (err) {
@@ -121,7 +147,7 @@ export async function me(req: Request, res: Response): Promise<void> {
 
   try {
     // Refrescar datos desde la BD (por si cambiaron desde que se emitió el token)
-    const usuario = await prisma.usuario.findUnique({
+    const usuario = (await (prisma as any).usuario.findUnique({
       where: { id: payload.id },
       select: {
         id: true,
@@ -130,12 +156,34 @@ export async function me(req: Request, res: Response): Promise<void> {
         rol: true,
         activo: true,
         sucursalId: true,
+        empleadoId: true,
         sucursal: { select: { id: true, nombre: true } },
         creadoEn: true,
       },
-    })
+    })) as {
+      id: string
+      nombre: string
+      email: string
+      rol: JwtPayload['rol']
+      activo: boolean
+      sucursalId: string | null
+      empleadoId: string | null
+      sucursal: { id: string; nombre: string } | null
+      creadoEn: Date
+    } | null
 
     if (!usuario || !usuario.activo) {
+      res.status(401).json({
+        success: false,
+        message: 'Usuario no encontrado o inactivo',
+        data: null,
+      })
+      return
+    }
+
+    const access = await resolveAccess(usuario.id)
+
+    if (!access) {
       res.status(401).json({
         success: false,
         message: 'Usuario no encontrado o inactivo',
@@ -147,7 +195,18 @@ export async function me(req: Request, res: Response): Promise<void> {
     res.status(200).json({
       success: true,
       message: 'OK',
-      data: usuario,
+      data: {
+        ...toSessionUser(access, {
+          id: usuario.id,
+          nombre: usuario.nombre,
+          email: usuario.email,
+          rol: usuario.rol,
+          activo: usuario.activo,
+          sucursalId: usuario.sucursalId,
+          creadoEn: usuario.creadoEn,
+        }),
+        sucursal: usuario.sucursal,
+      },
     })
   } catch (err) {
     console.error('[auth.me]', err)
