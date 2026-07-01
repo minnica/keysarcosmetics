@@ -1,6 +1,7 @@
 // Seed inicial: usuarios, sucursales, métodos de pago, bancos, puestos, empleados y ventas de prueba
 import { PrismaClient, Rol } from '@prisma/client'
 import bcrypt from 'bcryptjs'
+import { SCREEN_KEYS } from '@cosmetics/types'
 
 const prisma = new PrismaClient()
 
@@ -107,11 +108,61 @@ async function main() {
   for (const p of puestos) {
     await prisma.position.upsert({
       where: { id: p.id },
-      update: {},
-      create: { id: p.id, nombre: p.nombre, activo: true },
+      update: {
+        canManageAccess: p.id === 'pos-admin-general',
+      },
+      create: {
+        id: p.id,
+        nombre: p.nombre,
+        activo: true,
+        canManageAccess: p.id === 'pos-admin-general',
+      },
     })
   }
   console.log(`  ✅ Puestos: ${puestos.map((p) => p.nombre).join(', ')}`)
+
+  await prisma.positionScreenPermission.deleteMany({
+    where: { positionId: { in: puestos.map((p) => p.id) } },
+  })
+
+  const permisosBase = [
+    {
+      positionId: 'pos-vendedor',
+      screenKeys: ['ventas'],
+    },
+    {
+      positionId: 'pos-gerente',
+      screenKeys: [
+        'dashboard',
+        'ventas',
+        'empleados',
+        'sucursales',
+        'metodos-pago',
+        'bancos',
+        'puestos',
+        'reportes/detalle-metodo-pago',
+        'reportes/metodo-pago-por-dia',
+        'reportes/ventas-por-vendedor',
+        'reportes/ventas-por-vendedor-dia',
+        'reportes/total-general',
+      ],
+    },
+    {
+      positionId: 'pos-admin-general',
+      screenKeys: [...SCREEN_KEYS],
+    },
+  ] as const
+
+  await prisma.positionScreenPermission.createMany({
+    data: permisosBase.flatMap((group) =>
+      group.screenKeys.map((screenKey) => ({
+        positionId: group.positionId,
+        screenKey,
+        allowed: true,
+      })),
+    ),
+  })
+  console.log('  ✅ Permisos de pantalla por defecto creados')
 
   // ─── Empleados de prueba ───────────────────────────────────────────────────
   // bankId/positionId asignados por mapeo exacto a los IDs fijos del seed.

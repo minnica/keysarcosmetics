@@ -4,6 +4,7 @@ import express from 'express'
 import cors from 'cors'
 
 import authRoutes from './routes/auth.routes'
+import accessRoutes from './routes/access.routes'
 import envelopeRoutes from './routes/envelope.routes'
 import payrollRoutes from './routes/payroll.routes'
 import crmRoutes from './routes/crm.routes'
@@ -37,6 +38,7 @@ app.use(express.urlencoded({ extended: true }))
 // ─── Rutas ───────────────────────────────────────────────────────────────────
 app.use('/api/auth', authRoutes)
 app.use('/api/envelope', envelopeRoutes)
+app.use('/api/envelope/access', accessRoutes)
 app.use('/api/payroll', payrollRoutes)
 app.use('/api/crm', crmRoutes)
 app.use('/api/scheduler', schedulerRoutes)

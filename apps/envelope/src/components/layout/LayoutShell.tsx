@@ -2,6 +2,7 @@
 // Shell del layout autenticado — usa SidebarProvider + SidebarInset del Sidebar canónico shadcn
 import { SidebarProvider, SidebarInset, SidebarTrigger } from '@cosmetics/ui'
 import { AppSidebar } from './AppSidebar'
+import { SessionGate } from '@/lib/session'
 
 interface LayoutShellProps {
   children: React.ReactNode
@@ -26,7 +27,7 @@ export function LayoutShell({ children }: LayoutShellProps) {
           />
         </header>
         <div className="p-6 min-w-0">
-          {children}
+          <SessionGate>{children}</SessionGate>
         </div>
       </SidebarInset>
     </SidebarProvider>

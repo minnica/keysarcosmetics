@@ -46,8 +46,8 @@ async function main() {
   for (const p of puestos) {
     await prisma.position.upsert({
       where:  { id: p.id },
-      update: {},
-      create: { id: p.id, nombre: p.nombre, activo: true },
+      update: { canManageAccess: p.id === 'pos-admin-general' },
+      create: { id: p.id, nombre: p.nombre, activo: true, canManageAccess: p.id === 'pos-admin-general' },
     })
   }
   console.log(`✅ Positions: ${puestos.map((p) => p.nombre).join(', ')}`)

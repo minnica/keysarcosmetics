@@ -1,6 +1,6 @@
 'use client'
 // Pantalla de login — guarda el JWT en localStorage para que el interceptor de axios lo use
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -10,6 +10,7 @@ import { Button } from '@cosmetics/ui'
 import { Input } from '@cosmetics/ui'
 import { Label } from '@cosmetics/ui'
 import { useI18n } from '@/lib/i18n'
+import { useSession } from '@/lib/session'
 
 function createSchema(messages: { invalidEmail: string; passwordRequired: string }) {
   return z.object({
@@ -22,6 +23,7 @@ type LoginForm = z.infer<ReturnType<typeof createSchema>>
 export default function LoginPage() {
   const router = useRouter()
   const { t } = useI18n()
+  const { status, firstAccessiblePath } = useSession()
   const [serverError, setServerError] = useState<string | null>(null)
   const schema = useMemo(
     () => createSchema({
@@ -34,6 +36,12 @@ export default function LoginPage() {
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<LoginForm>({
     resolver: zodResolver(schema),
   })
+
+  useEffect(() => {
+    if (status === 'authenticated' && firstAccessiblePath) {
+      router.replace(firstAccessiblePath ?? '/')
+    }
+  }, [firstAccessiblePath, router, status])
 
   async function onSubmit(data: LoginForm) {
     setServerError(null)

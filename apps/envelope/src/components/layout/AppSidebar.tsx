@@ -26,6 +26,8 @@ import {
   useSidebar,
 } from '@cosmetics/ui'
 import { useI18n, type Locale } from '@/lib/i18n'
+import { SCREEN_CONFIG, type AccessSection } from '@/lib/access'
+import { useSession } from '@/lib/session'
 
 type PreferenceOption<T extends string> = {
   value: T
@@ -33,30 +35,29 @@ type PreferenceOption<T extends string> = {
   icon?: React.ElementType
 }
 
-// ── Navegación ────────────────────────────────────────────────────────────────
-interface NavItem {
-  labelKey: keyof ReturnType<typeof useI18n>['t']['sidebar']
-  href: string
-  icon: React.ElementType
+const ICONS: Record<string, React.ElementType> = {
+  dashboard: LayoutDashboard,
+  ventas: ShoppingCart,
+  empleados: Users,
+  sucursales: Building2,
+  'metodos-pago': CreditCard,
+  bancos: Landmark,
+  puestos: Briefcase,
+  'reportes/detalle-metodo-pago': BarChart2,
+  'reportes/metodo-pago-por-dia': CalendarDays,
+  'reportes/ventas-por-vendedor': UserCheck,
+  'reportes/ventas-por-vendedor-dia': CalendarRange,
+  'reportes/total-general': TrendingUp,
+  accesos: LayoutDashboard,
 }
 
-const FORMULARIOS: NavItem[] = [
-  { labelKey: 'sales',          href: '/ventas',       icon: ShoppingCart },
-  { labelKey: 'employees',      href: '/empleados',    icon: Users },
-  { labelKey: 'branches',       href: '/sucursales',   icon: Building2 },
-  { labelKey: 'paymentMethods', href: '/metodos-pago', icon: CreditCard },
-  { labelKey: 'banks',          href: '/bancos',        icon: Landmark },
-  { labelKey: 'positions',      href: '/puestos',       icon: Briefcase },
-]
+type NavItem = (typeof SCREEN_CONFIG)[number]
 
-const REPORTES: NavItem[] = [
-  { labelKey: 'dashboard',            href: '/',                                 icon: LayoutDashboard },
-  { labelKey: 'paymentMethodDetail',  href: '/reportes/detalle-metodo-pago',     icon: BarChart2 },
-  { labelKey: 'paymentMethodByDay',   href: '/reportes/metodo-pago-por-dia',     icon: CalendarDays },
-  { labelKey: 'salesBySeller',        href: '/reportes/ventas-por-vendedor',     icon: UserCheck },
-  { labelKey: 'salesBySellerDay',     href: '/reportes/ventas-por-vendedor-dia', icon: CalendarRange },
-  { labelKey: 'totalGeneral',         href: '/reportes/total-general',           icon: TrendingUp },
-]
+const SECTION_LABELS: Record<AccessSection, 'forms' | 'reports' | 'admin'> = {
+  forms: 'forms',
+  reports: 'reports',
+  admin: 'admin',
+}
 
 function PreferenceSegmentedControl<T extends string>({
   label,
@@ -153,13 +154,14 @@ export function AppSidebar() {
   const router = useRouter()
   const { isMobile, setOpenMobile } = useSidebar()
   const { t } = useI18n()
+  const { canAccess, isAccessManager, logout } = useSession()
 
   function handleNavClick() {
     setOpenMobile(false)
   }
 
   function handleLogout() {
-    localStorage.removeItem('auth_token')
+    logout()
     router.push('/login')
   }
 
@@ -219,87 +221,55 @@ export function AppSidebar() {
 
       {/* Navegación */}
       <SidebarContent className="py-2">
-        {/* Grupo Formularios */}
-        <SidebarGroup>
-          <SidebarGroupLabel
-            className="text-[10px] font-semibold uppercase tracking-[0.14em]"
-            style={{ color: 'rgba(195, 165, 131, 0.75)' }}
-          >
-            {t.sidebar.forms}
-          </SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {FORMULARIOS.map((item) => {
-                const isActive = pathname === item.href
-                const Icon = item.icon
-                const label = t.sidebar[item.labelKey]
-                return (
-                  <SidebarMenuItem key={item.href}>
-                    <SidebarMenuButton
-                      asChild
-                      isActive={isActive}
-                      tooltip={label}
-                      // Fix 3: cerrar sidebar mobile al navegar
-                      onClick={handleNavClick}
-                      className={
-                        isActive
-                          ? '!bg-[var(--sidebar-active-bg)] !text-[var(--sidebar-active-text)] hover:!bg-[var(--sidebar-active-bg)] hover:!text-[var(--sidebar-active-text)]'
-                          : undefined
-                      }
-                    >
-                      <Link href={item.href}>
-                        <Icon />
-                        <span>{label}</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                )
-              })}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+        {(['forms', 'reports', 'admin'] as const).map((section) => {
+          const items = SCREEN_CONFIG.filter((item) => {
+            if (item.section !== section) return false
+            if (item.key === 'accesos') return isAccessManager
+            return isAccessManager || canAccess(item.key)
+          })
 
-        <SidebarSeparator />
+          if (items.length === 0) return null
 
-        {/* Grupo Reportes */}
-        <SidebarGroup>
-          <SidebarGroupLabel
-            className="text-[10px] font-semibold uppercase tracking-[0.14em]"
-            style={{ color: 'rgba(195, 165, 131, 0.75)' }}
-          >
-            {t.sidebar.reports}
-          </SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {REPORTES.map((item) => {
-                const isActive = pathname === item.href
-                const Icon = item.icon
-                const label = t.sidebar[item.labelKey]
-                return (
-                  <SidebarMenuItem key={item.href}>
-                    <SidebarMenuButton
-                      asChild
-                      isActive={isActive}
-                      tooltip={label}
-                      // Fix 3: cerrar sidebar mobile al navegar
-                      onClick={handleNavClick}
-                      className={
-                        isActive
-                          ? '!bg-[var(--sidebar-active-bg)] !text-[var(--sidebar-active-text)] hover:!bg-[var(--sidebar-active-bg)] hover:!text-[var(--sidebar-active-text)]'
-                          : undefined
-                      }
-                    >
-                      <Link href={item.href}>
-                        <Icon />
-                        <span>{label}</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                )
-              })}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+          return (
+            <SidebarGroup key={section}>
+              <SidebarGroupLabel
+                className="text-[10px] font-semibold uppercase tracking-[0.14em]"
+                style={{ color: 'rgba(195, 165, 131, 0.75)' }}
+              >
+                {t.sidebar[SECTION_LABELS[section] as keyof typeof t.sidebar]}
+              </SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {items.map((item: NavItem) => {
+                    const isActive = pathname === item.path
+                    const Icon = ICONS[item.key] ?? LayoutDashboard
+                    const label = t.sidebar[item.labelKey]
+                    return (
+                      <SidebarMenuItem key={item.path}>
+                        <SidebarMenuButton
+                          asChild
+                          isActive={isActive}
+                          tooltip={label}
+                          onClick={handleNavClick}
+                          className={
+                            isActive
+                              ? '!bg-[var(--sidebar-active-bg)] !text-[var(--sidebar-active-text)] hover:!bg-[var(--sidebar-active-bg)] hover:!text-[var(--sidebar-active-text)]'
+                              : undefined
+                          }
+                        >
+                          <Link href={item.path}>
+                            <Icon />
+                            <span>{label}</span>
+                          </Link>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    )
+                  })}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          )
+        })}
       </SidebarContent>
 
       {/* Footer: preferencias + cerrar sesión + versión */}
