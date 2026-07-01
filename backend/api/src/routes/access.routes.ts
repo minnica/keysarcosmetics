@@ -27,7 +27,7 @@ const permissionSchema = z.object({
 
 const credentialsSchema = z.object({
   email: z.string().email(),
-  password: z.string().min(8),
+  password: z.string().min(8).optional(),
   rol: z.enum(['SUPER_ADMIN', 'GERENTE', 'CAPTURISTA'] as const).optional(),
   sucursalId: z.string().nullable().optional(),
   activo: z.boolean().optional(),
@@ -161,12 +161,18 @@ router.put('/users/:employeeId/credentials', async (req, res) => {
       return
     }
 
-    const passwordHash = await bcrypt.hash(parsed.data.password, 12)
-    const rol = parsed.data.rol ?? (employee.position?.canManageAccess ? 'SUPER_ADMIN' : 'CAPTURISTA')
-
     const existing = await db.usuario.findFirst({
       where: { empleadoId: employee.id },
     })
+
+    if (!existing && !parsed.data.password) {
+      res.status(400).json({ success: false, data: null, message: 'La contraseña es obligatoria para crear la cuenta' })
+      return
+    }
+
+    const rol = parsed.data.rol ?? existing?.rol ?? (employee.position?.canManageAccess ? 'SUPER_ADMIN' : 'CAPTURISTA')
+    const activo = parsed.data.activo ?? existing?.activo ?? true
+    const passwordHash = parsed.data.password ? await bcrypt.hash(parsed.data.password, 12) : null
 
     const data = await db.usuario.upsert({
       where: {
@@ -175,20 +181,19 @@ router.put('/users/:employeeId/credentials', async (req, res) => {
       update: {
         nombre: employee.nombreCompleto,
         email: parsed.data.email,
-        passwordHash,
         rol,
-        activo: parsed.data.activo ?? true,
+        activo,
         sucursalId: parsed.data.sucursalId === undefined ? undefined : parsed.data.sucursalId,
-        passwordChangedAt: new Date(),
+        ...(passwordHash ? { passwordHash, passwordChangedAt: new Date() } : {}),
         passwordSetupTokenHash: null,
         passwordSetupTokenExpiresAt: null,
       },
       create: {
         nombre: employee.nombreCompleto,
         email: parsed.data.email,
-        passwordHash,
+        passwordHash: passwordHash ?? '',
         rol,
-        activo: parsed.data.activo ?? true,
+        activo,
         sucursalId: parsed.data.sucursalId ?? null,
         empleadoId: employee.id,
         passwordChangedAt: new Date(),
@@ -212,6 +217,29 @@ router.put('/users/:employeeId/credentials', async (req, res) => {
 
     console.error(err)
     res.status(500).json({ success: false, data: null, message: 'Error al guardar credenciales' })
+  }
+})
+
+router.delete('/users/:id', async (req, res) => {
+  try {
+    const user = await db.usuario.findUnique({
+      where: { id: req.params['id'] },
+    })
+
+    if (!user) {
+      res.status(404).json({ success: false, data: null, message: 'Cuenta no encontrada' })
+      return
+    }
+
+    await db.usuario.update({
+      where: { id: req.params['id'] },
+      data: { activo: false },
+    })
+
+    res.json({ success: true, data: null, message: 'Cuenta desactivada' })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ success: false, data: null, message: 'Error al desactivar la cuenta' })
   }
 })
 

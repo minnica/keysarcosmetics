@@ -60,7 +60,7 @@ interface AccessBootstrapResponse {
 
 interface SaveCredentialsInput {
   email: string
-  password: string
+  password?: string
   rol?: Rol
   sucursalId?: string | null
   activo?: boolean
@@ -74,8 +74,13 @@ interface UseAccessAdminReturn {
   loading: boolean
   error: string | null
   refetch: () => Promise<void>
-  savePositionPermissions: (positionId: string, payload: { canManageAccess: boolean; permissions: AccessPermission[] }) => Promise<void>
+  savePositionPermissions: (
+    positionId: string,
+    payload: { canManageAccess: boolean; permissions: AccessPermission[] },
+    options?: { refetch?: boolean },
+  ) => Promise<void>
   saveCredentials: (employeeId: string, payload: SaveCredentialsInput) => Promise<void>
+  deleteUser: (userId: string) => Promise<void>
 }
 
 export function useAccessAdmin(): UseAccessAdminReturn {
@@ -107,9 +112,11 @@ export function useAccessAdmin(): UseAccessAdminReturn {
   }, [refetch])
 
   const savePositionPermissions = useCallback(
-    async (positionId: string, payload: { canManageAccess: boolean; permissions: AccessPermission[] }) => {
+    async (positionId: string, payload: { canManageAccess: boolean; permissions: AccessPermission[] }, options?: { refetch?: boolean }) => {
       await api.put(`/api/envelope/access/positions/${positionId}/permissions`, payload)
-      await refetch()
+      if (options?.refetch !== false) {
+        await refetch()
+      }
     },
     [refetch],
   )
@@ -117,6 +124,14 @@ export function useAccessAdmin(): UseAccessAdminReturn {
   const saveCredentials = useCallback(
     async (employeeId: string, payload: SaveCredentialsInput) => {
       await api.put(`/api/envelope/access/users/${employeeId}/credentials`, payload)
+      await refetch()
+    },
+    [refetch],
+  )
+
+  const deleteUser = useCallback(
+    async (userId: string) => {
+      await api.delete(`/api/envelope/access/users/${userId}`)
       await refetch()
     },
     [refetch],
@@ -132,5 +147,6 @@ export function useAccessAdmin(): UseAccessAdminReturn {
     refetch,
     savePositionPermissions,
     saveCredentials,
+    deleteUser,
   }
 }

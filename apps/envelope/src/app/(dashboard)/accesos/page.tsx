@@ -1,12 +1,20 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Check, Lock, Pencil, Save, Shield, UserPlus } from 'lucide-react'
+import { Check, Info, Pencil, Shield, Trash2, UserPlus } from 'lucide-react'
 import type { ColumnDef } from '@cosmetics/ui'
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
   Badge,
   Button,
   Card,
@@ -16,6 +24,12 @@ import {
   CardTitle,
   Combobox,
   DataTable,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
   Input,
   Label,
   Select,
@@ -26,25 +40,51 @@ import {
   toast,
 } from '@cosmetics/ui'
 import { useAccessAdmin } from '@/hooks'
+import type { AccessPermission, AccessUser } from '@/hooks/useAccessAdmin'
 import { SCREEN_CONFIG } from '@/lib/access'
 import { useI18n } from '@/lib/i18n'
 
 const credentialsSchema = z.object({
   email: z.string().email(),
-  password: z.string().min(8),
+  password: z.string().optional().or(z.literal('')),
 })
 
 type CredentialsForm = z.infer<typeof credentialsSchema>
 
+function getApiMessage(error: unknown, fallback: string) {
+  if (typeof error === 'object' && error && 'response' in error) {
+    const response = (error as { response?: { data?: { message?: string } } }).response
+    if (response?.data?.message) {
+      return response.data.message
+    }
+  }
+
+  return fallback
+}
+
 export default function AccessControlPage() {
   const { t, dataTableLabels } = useI18n()
-  const { screens, positions, employees, users, loading, error, savePositionPermissions, saveCredentials } = useAccessAdmin()
+  const { positions, employees, users, loading, error, savePositionPermissions, saveCredentials, deleteUser } = useAccessAdmin()
   const [selectedPositionId, setSelectedPositionId] = useState('')
   const [draftCanManageAccess, setDraftCanManageAccess] = useState(false)
   const [draftPermissions, setDraftPermissions] = useState<Record<string, boolean>>({})
   const [selectedEmployeeId, setSelectedEmployeeId] = useState('')
   const [savingPermissions, setSavingPermissions] = useState(false)
   const [savingCredentials, setSavingCredentials] = useState(false)
+  const [credentialsDialogOpen, setCredentialsDialogOpen] = useState(false)
+  const [credentialsConfirmOpen, setCredentialsConfirmOpen] = useState(false)
+  const [pendingCredentials, setPendingCredentials] = useState<{ employeeId: string; isUpdate: boolean; data: CredentialsForm } | null>(null)
+  const [userToDelete, setUserToDelete] = useState<AccessUser | null>(null)
+  const permissionSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const permissionSaveInFlightRef = useRef(false)
+  const permissionLatestSnapshotRef = useRef<{
+    positionId: string
+    canManageAccess: boolean
+    permissions: Array<{ screenKey: string; allowed: boolean }>
+    signature: string
+  } | null>(null)
+  const committedCanManageAccessRef = useRef(false)
+  const committedPermissionMapRef = useRef<Record<string, boolean>>({})
 
   const { register, handleSubmit, reset, setValue, formState: { errors } } = useForm<CredentialsForm>({
     resolver: zodResolver(credentialsSchema),
@@ -66,26 +106,60 @@ export default function AccessControlPage() {
     [selectedEmployeeId, users],
   )
 
+  const selectedPermissionMap = useMemo(() => {
+    if (!selectedPosition) {
+      return null
+    }
+
+    return Object.fromEntries(
+      SCREEN_CONFIG.map((screen) => [
+        screen.key,
+        selectedPosition.canManageAccess
+          || selectedPosition.screenPermissions.some((permission) => permission.screenKey === screen.key && permission.allowed),
+      ]),
+    ) as Record<string, boolean>
+  }, [selectedPosition])
+
+  const permissionStateChanged = useMemo(() => {
+    if (!selectedPosition || !selectedPermissionMap) {
+      return false
+    }
+
+    if (draftCanManageAccess !== committedCanManageAccessRef.current) {
+      return true
+    }
+
+    return SCREEN_CONFIG.some((screen) => Boolean(draftPermissions[screen.key]) !== Boolean(committedPermissionMapRef.current[screen.key]))
+  }, [draftCanManageAccess, draftPermissions, selectedPermissionMap, selectedPosition])
+
+  const enabledScreenCount = useMemo(
+    () => (draftCanManageAccess ? SCREEN_CONFIG.length : Object.values(draftPermissions).filter(Boolean).length),
+    [draftCanManageAccess, draftPermissions],
+  )
+
   useEffect(() => {
     if (!selectedPositionId && positions[0]) {
       setSelectedPositionId(positions[0].id)
       return
     }
 
-    if (!selectedPosition) {
+    if (!selectedPosition || !selectedPermissionMap) {
       return
     }
 
     setDraftCanManageAccess(selectedPosition.canManageAccess)
-    setDraftPermissions(
-      Object.fromEntries(
-        SCREEN_CONFIG.map((screen) => [
-          screen.key,
-          selectedPosition.canManageAccess || selectedPosition.screenPermissions.some((permission) => permission.screenKey === screen.key && permission.allowed),
-        ]),
-      ) as Record<string, boolean>,
-    )
-  }, [positions, selectedPosition, selectedPositionId])
+    setDraftPermissions(selectedPermissionMap)
+    committedCanManageAccessRef.current = selectedPosition.canManageAccess
+    committedPermissionMapRef.current = selectedPermissionMap
+  }, [positions, selectedPermissionMap, selectedPosition, selectedPositionId])
+
+  useEffect(() => {
+    return () => {
+      if (permissionSaveTimerRef.current) {
+        clearTimeout(permissionSaveTimerRef.current)
+      }
+    }
+  }, [])
 
   useEffect(() => {
     if (!selectedEmployeeId) {
@@ -95,10 +169,11 @@ export default function AccessControlPage() {
 
     if (selectedUser) {
       setValue('email', selectedUser.email)
+      setValue('password', '')
       return
     }
 
-    setValue('email', '')
+    reset({ email: '', password: '' })
   }, [reset, selectedEmployeeId, selectedUser, setValue])
 
   const employeeOptions = useMemo(
@@ -110,47 +185,164 @@ export default function AccessControlPage() {
     [employees],
   )
 
-  async function handleSavePermissions() {
-    if (!selectedPosition) return
-    setSavingPermissions(true)
-    try {
-      await savePositionPermissions(selectedPosition.id, {
-        canManageAccess: draftCanManageAccess,
-        permissions: SCREEN_CONFIG.map((screen) => ({
-          screenKey: screen.key,
-          allowed: draftCanManageAccess ? true : Boolean(draftPermissions[screen.key]),
-        })),
-      })
-      toast.success(t.access.permissionsSaved)
-    } catch {
-      toast.error('No se pudieron guardar los permisos')
-    } finally {
-      setSavingPermissions(false)
+  function openEmployeeEditor(user: AccessUser) {
+    if (!user.empleadoId) {
+      return
     }
+
+    setSelectedEmployeeId(user.empleadoId)
+    setValue('email', user.email)
+    setValue('password', '')
+    setCredentialsDialogOpen(true)
   }
 
-  async function onSaveCredentials(data: CredentialsForm) {
+  function openCredentialsDialog() {
     if (!selectedEmployeeId) {
       toast.error(t.access.employeeSelect)
       return
     }
 
+    setValue('email', selectedUser?.email ?? '')
+    setValue('password', '')
+    setCredentialsDialogOpen(true)
+  }
+
+  function schedulePermissionSave(nextCanManageAccess: boolean, nextPermissions: Record<string, boolean>) {
+    if (!selectedPosition) {
+      return
+    }
+
+    const snapshot: {
+      positionId: string
+      canManageAccess: boolean
+      permissions: AccessPermission[]
+    } = {
+      positionId: selectedPosition.id,
+      canManageAccess: nextCanManageAccess,
+      permissions: SCREEN_CONFIG.map((screen): AccessPermission => ({
+        screenKey: screen.key as AccessPermission['screenKey'],
+        allowed: nextCanManageAccess ? true : Boolean(nextPermissions[screen.key]),
+      })),
+    }
+
+    permissionLatestSnapshotRef.current = {
+      ...snapshot,
+      signature: JSON.stringify(snapshot),
+    }
+
+    if (permissionSaveTimerRef.current) {
+      clearTimeout(permissionSaveTimerRef.current)
+    }
+
+    permissionSaveTimerRef.current = setTimeout(() => {
+      const flush = async () => {
+        const current = permissionLatestSnapshotRef.current
+        if (!current || permissionSaveInFlightRef.current) {
+          return
+        }
+
+        permissionSaveInFlightRef.current = true
+        setSavingPermissions(true)
+
+        try {
+          await savePositionPermissions(
+            current.positionId,
+            {
+              canManageAccess: current.canManageAccess,
+              permissions: current.permissions as AccessPermission[],
+            },
+            { refetch: false },
+          )
+
+          committedCanManageAccessRef.current = current.canManageAccess
+          committedPermissionMapRef.current = Object.fromEntries(
+            current.permissions.map((permission) => [permission.screenKey, permission.allowed]),
+          ) as Record<string, boolean>
+          toast.success(t.access.permissionsSaved)
+        } catch (error) {
+          setDraftCanManageAccess(committedCanManageAccessRef.current)
+          setDraftPermissions(committedPermissionMapRef.current)
+          toast.error(getApiMessage(error, 'No se pudieron guardar los permisos'))
+        } finally {
+          permissionSaveInFlightRef.current = false
+          setSavingPermissions(false)
+
+          const latest = permissionLatestSnapshotRef.current
+          if (latest && latest.signature !== current.signature) {
+            void flush()
+          }
+        }
+      }
+
+      void flush()
+    }, 250)
+  }
+
+  const requestSaveCredentials = handleSubmit((data) => {
+    if (!selectedEmployeeId || !selectedEmployee) {
+      toast.error(t.access.employeeSelect)
+      return
+    }
+
+    if (!selectedUser && !data.password?.trim()) {
+      toast.error(t.access.passwordRequiredHelp)
+      return
+    }
+
+    setPendingCredentials({
+      employeeId: selectedEmployeeId,
+      isUpdate: Boolean(selectedUser),
+      data,
+    })
+    setCredentialsConfirmOpen(true)
+  })
+
+  async function confirmSaveCredentials() {
+    if (!pendingCredentials) {
+      return
+    }
+
     setSavingCredentials(true)
     try {
-      await saveCredentials(selectedEmployeeId, {
-        email: data.email,
-        password: data.password,
-      })
-      toast.success(t.access.credentialsSaved)
-      reset({ email: data.email, password: '' })
-    } catch {
-      toast.error('No se pudieron guardar las credenciales')
+      const payload = {
+        email: pendingCredentials.data.email,
+        ...(pendingCredentials.data.password?.trim()
+          ? { password: pendingCredentials.data.password }
+          : {}),
+      }
+
+      await saveCredentials(pendingCredentials.employeeId, payload)
+      toast.success(pendingCredentials.isUpdate ? t.access.credentialsUpdated : t.access.credentialsCreated)
+      setCredentialsConfirmOpen(false)
+      setCredentialsDialogOpen(false)
+      setPendingCredentials(null)
+      reset({ email: pendingCredentials.data.email, password: '' })
+    } catch (error) {
+      toast.error(getApiMessage(error, 'No se pudieron guardar las credenciales'))
     } finally {
       setSavingCredentials(false)
     }
   }
 
-  const accountColumns: ColumnDef<(typeof users)[number]>[] = [
+  async function confirmDeleteUser() {
+    if (!userToDelete) {
+      return
+    }
+
+    try {
+      await deleteUser(userToDelete.id)
+      toast.success(t.access.accountDeleted)
+      if (userToDelete.empleadoId === selectedEmployeeId) {
+        setSelectedEmployeeId('')
+        reset({ email: '', password: '' })
+      }
+      setUserToDelete(null)
+    } catch (error) {
+      toast.error(getApiMessage(error, 'No se pudo desactivar la cuenta'))
+    }
+  }
+
+  const accountColumns: ColumnDef<AccessUser>[] = [
     {
       accessorFn: (row) => row.empleado?.nombreCompleto ?? row.nombre,
       id: 'empleado',
@@ -192,15 +384,21 @@ export default function AccessControlPage() {
             <Button
               size="sm"
               variant="outline"
-              onClick={() => {
-                if (!user.empleadoId) return
-                setSelectedEmployeeId(user.empleadoId)
-                setValue('email', user.email)
-                setValue('password', '')
-              }}
+              onClick={() => openEmployeeEditor(user)}
+              disabled={!user.empleadoId}
             >
               <Pencil className="h-4 w-4" />
               {t.common.edit}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="border-red-300 text-red-600 hover:bg-red-50 hover:text-red-600"
+              disabled={!user.activo}
+              onClick={() => setUserToDelete(user)}
+            >
+              <Trash2 className="h-4 w-4" />
+              {user.activo ? t.common.deactivate : t.common.inactive}
             </Button>
           </div>
         )
@@ -213,7 +411,7 @@ export default function AccessControlPage() {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="page-title font-semibold uppercase">{t.access.title}</h1>
-          <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
+          <p className="mt-1 text-sm" style={{ color: 'var(--text-muted)' }}>
             {t.access.description}
           </p>
         </div>
@@ -226,19 +424,43 @@ export default function AccessControlPage() {
       {error && <p className="text-sm text-red-500">{error}</p>}
 
       {loading ? (
-        <p className="text-sm" style={{ color: 'var(--text-muted)' }}>{t.common.loadingData}</p>
+        <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+          {t.common.loadingData}
+        </p>
       ) : (
         <div className="grid gap-6 xl:grid-cols-[1.2fr_0.95fr]">
           <Card>
-            <CardHeader>
+            <CardHeader className="space-y-2">
               <CardTitle className="uppercase">{t.access.permissionsTitle}</CardTitle>
               <CardDescription>{t.access.permissionsDescription}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              <div
+                className="flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50/70 px-4 py-3"
+              >
+                <Info className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" />
+                <div className="min-w-0 flex-1 space-y-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-sm font-medium uppercase tracking-wide">
+                      {savingPermissions || permissionStateChanged ? t.common.saving : t.access.permissionsSavedState}
+                    </p>
+                    <Badge className="uppercase" style={{ backgroundColor: '#648672', color: 'white' }}>
+                      {t.access.permissionsSelectedCount(enabledScreenCount)}
+                    </Badge>
+                  </div>
+                  <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+                    {t.access.permissionsHint}
+                  </p>
+                </div>
+              </div>
+
               <div className="grid gap-4 md:grid-cols-[1fr_auto] md:items-end">
                 <div className="space-y-1.5">
                   <Label htmlFor="position">{t.access.positionLabel}</Label>
-                  <Select value={selectedPositionId} onValueChange={setSelectedPositionId}>
+                  <Select
+                    value={selectedPositionId}
+                    onValueChange={setSelectedPositionId}
+                  >
                     <SelectTrigger id="position">
                       <SelectValue placeholder={t.access.selectPosition} />
                     </SelectTrigger>
@@ -251,61 +473,54 @@ export default function AccessControlPage() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="flex items-center gap-2 rounded-md border px-3 py-2" style={{ borderColor: 'var(--border-color)' }}>
-                  <Lock className="h-4 w-4" />
-                  <div>
-                    <p className="text-xs uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>
-                      {t.access.accessManagerLabel}
-                    </p>
-                    <button
-                      type="button"
-                      className="text-sm font-medium uppercase"
-                      onClick={() => setDraftCanManageAccess((value) => !value)}
-                    >
-                      {draftCanManageAccess ? t.common.active : t.common.inactive}
-                    </button>
-                  </div>
-                </div>
               </div>
 
-              <div className="grid gap-2">
+              <div className="grid gap-3">
                 {SCREEN_CONFIG.map((screen) => {
-                  const enabled = draftCanManageAccess || Boolean(draftPermissions[screen.key])
-                  const disabled = draftCanManageAccess
+                  const enabled = Boolean(draftPermissions[screen.key])
+                  const pending = enabled !== Boolean(committedPermissionMapRef.current[screen.key])
                   return (
                     <button
                       key={screen.key}
                       type="button"
-                      className="flex items-center justify-between rounded-md border px-3 py-2 text-left transition-colors hover:bg-[var(--accent-hover)]"
+                      className={`flex items-center justify-between rounded-lg border px-4 py-3 text-left transition-colors duration-200 ${
+                        enabled ? 'border-[#8bb09b] bg-[#648672]/10' : 'hover:border-slate-300 hover:bg-slate-50'
+                      }`}
                       style={{ borderColor: 'var(--border-color)' }}
                       onClick={() => {
-                        if (disabled) return
-                        setDraftPermissions((current) => ({
-                          ...current,
-                          [screen.key]: !current[screen.key],
-                        }))
+                        const nextPermissions = {
+                          ...draftPermissions,
+                          [screen.key]: !enabled,
+                        }
+                        setDraftPermissions(nextPermissions)
+                        schedulePermissionSave(draftCanManageAccess, nextPermissions)
                       }}
                     >
-                      <div>
+                      <div className="space-y-1">
                         <div className="flex items-center gap-2">
                           <span className="font-medium">{t.sidebar[screen.labelKey as keyof typeof t.sidebar]}</span>
                           {screen.path === '/' ? (
-                            <Badge variant="secondary" className="uppercase text-[10px]">root</Badge>
+                            <Badge variant="secondary" className="uppercase text-[10px]">
+                              root
+                            </Badge>
                           ) : null}
                         </div>
                         <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
                           {screen.path}
                         </p>
                       </div>
-                      <Badge
-                        className="uppercase"
-                        style={{
-                          backgroundColor: enabled ? '#648672' : '#9ca3af',
-                          color: 'white',
-                        }}
-                      >
-                        {enabled ? t.access.screenEnabled : t.access.screenDisabled}
-                      </Badge>
+                      <div className="flex items-center gap-2">
+                        {enabled ? <Check className="h-4 w-4 text-[#648672]" /> : null}
+                        <Badge
+                          className="uppercase"
+                          style={{
+                            backgroundColor: pending ? '#f59e0b' : enabled ? '#648672' : '#9ca3af',
+                            color: 'white',
+                          }}
+                        >
+                          {pending ? t.common.saving : enabled ? t.access.screenEnabled : t.access.screenDisabled}
+                        </Badge>
+                      </div>
                     </button>
                   )
                 })}
@@ -313,21 +528,22 @@ export default function AccessControlPage() {
 
               <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border px-4 py-3" style={{ borderColor: 'var(--border-color)' }}>
                 <div className="space-y-1">
-                  <p className="text-sm font-medium uppercase">{selectedPosition?.nombre ?? t.common.noRecord}</p>
+                  <p className="text-sm font-medium uppercase">
+                    {selectedPosition?.nombre ?? t.common.noRecord}
+                  </p>
                   <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                    {draftCanManageAccess ? t.access.allScreens : `${Object.values(draftPermissions).filter(Boolean).length} / ${SCREEN_CONFIG.length}`}
+                    {draftCanManageAccess ? t.access.allScreens : `${enabledScreenCount} / ${SCREEN_CONFIG.length}`}
                   </p>
                 </div>
-                <Button onClick={handleSavePermissions} disabled={!selectedPosition || savingPermissions}>
-                  <Save className="mr-1.5 h-4 w-4" />
-                  {savingPermissions ? t.common.saving : t.access.savePermissions}
-                </Button>
+                <Badge className="uppercase" style={{ backgroundColor: '#ecd1c8', color: '#1a1a1a' }}>
+                  {savingPermissions || permissionStateChanged ? t.common.saving : t.access.permissionsSavedState}
+                </Badge>
               </div>
             </CardContent>
           </Card>
 
           <Card>
-            <CardHeader>
+            <CardHeader className="space-y-2">
               <CardTitle className="uppercase">{t.access.credentialsTitle}</CardTitle>
               <CardDescription>{t.access.credentialsDescription}</CardDescription>
             </CardHeader>
@@ -340,40 +556,51 @@ export default function AccessControlPage() {
                   onValueChange={setSelectedEmployeeId}
                   placeholder={t.access.employeeSelect}
                   searchPlaceholder={t.access.searchEmployee}
-                  emptyMessage={t.access.noAccessUsers}
+                  emptyMessage={t.access.noEmployeesAvailable}
                 />
                 <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                  {selectedEmployee ? `${selectedEmployee.nombreCompleto} · ${selectedEmployee.position?.nombre ?? t.common.noRecord}` : t.access.passwordHint}
+                  {selectedEmployee
+                    ? `${selectedEmployee.nombreCompleto} · ${selectedEmployee.position?.nombre ?? t.common.noRecord}`
+                    : t.access.accountEditHint}
                 </p>
               </div>
 
-              <form className="space-y-4" onSubmit={handleSubmit(onSaveCredentials)}>
-                <div className="space-y-1.5">
-                  <Label htmlFor="email">{t.access.email}</Label>
-                  <Input id="email" type="email" autoComplete="email" {...register('email')} />
-                  {errors.email && <p className="text-xs text-red-500">{errors.email.message}</p>}
+              <div className="rounded-lg border px-4 py-3" style={{ borderColor: 'var(--border-color)' }}>
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium uppercase tracking-wide">
+                      {selectedUser ? t.access.editCredentialTitle : t.access.createCredentialTitle}
+                    </p>
+                    <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+                      {selectedEmployee
+                        ? `${selectedEmployee.nombreCompleto} · ${selectedEmployee.position?.nombre ?? t.common.noRecord}`
+                        : t.access.passwordHint}
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    onClick={openCredentialsDialog}
+                    disabled={!selectedEmployeeId}
+                  >
+                    <UserPlus className="mr-1.5 h-4 w-4" />
+                    {selectedUser ? t.access.updateCredentials : t.access.saveCredentials}
+                  </Button>
                 </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="password">{t.access.password}</Label>
-                  <Input id="password" type="password" autoComplete="new-password" {...register('password')} />
-                  {errors.password && <p className="text-xs text-red-500">{errors.password.message}</p>}
-                </div>
-                <Button type="submit" className="w-full" disabled={savingCredentials}>
-                  <UserPlus className="mr-1.5 h-4 w-4" />
-                  {savingCredentials ? t.common.saving : t.access.saveCredentials}
-                </Button>
-              </form>
+              </div>
             </CardContent>
           </Card>
         </div>
       )}
 
       <Card>
-        <CardHeader>
+        <CardHeader className="space-y-2">
           <CardTitle className="uppercase">{t.access.accountStatus}</CardTitle>
-          <CardDescription>{t.access.credentialsDescription}</CardDescription>
+          <CardDescription>{t.access.accountEditHint}</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
+          <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+            {t.access.accountDeleteHint}
+          </p>
           <DataTable
             columns={accountColumns}
             data={users}
@@ -383,6 +610,110 @@ export default function AccessControlPage() {
           />
         </CardContent>
       </Card>
+
+      <Dialog
+        open={credentialsDialogOpen}
+        onOpenChange={(open) => {
+          setCredentialsDialogOpen(open)
+          if (!open) {
+            setPendingCredentials(null)
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {selectedUser ? t.access.editCredentialTitle : t.access.createCredentialTitle}
+            </DialogTitle>
+            <DialogDescription>
+              {selectedEmployee
+                ? `${selectedEmployee.nombreCompleto} · ${selectedEmployee.position?.nombre ?? t.common.noRecord}`
+                : t.access.passwordHint}
+            </DialogDescription>
+          </DialogHeader>
+          <form className="space-y-4 pt-2" onSubmit={requestSaveCredentials}>
+            <div className="space-y-1.5">
+              <Label htmlFor="email">{t.access.email}</Label>
+              <Input id="email" type="email" autoComplete="email" {...register('email')} />
+              {errors.email && <p className="text-xs text-red-500">{errors.email.message}</p>}
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="password">{t.access.password}</Label>
+              <Input id="password" type="password" autoComplete="new-password" {...register('password')} />
+              {errors.password && <p className="text-xs text-red-500">{errors.password.message}</p>}
+            </div>
+
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setCredentialsDialogOpen(false)}>
+                {t.common.cancel}
+              </Button>
+              <Button type="submit" disabled={savingCredentials}>
+                <UserPlus className="mr-1.5 h-4 w-4" />
+                {savingCredentials ? t.common.saving : selectedUser ? t.access.updateCredentials : t.access.saveCredentials}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={credentialsConfirmOpen} onOpenChange={setCredentialsConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t.access.saveCredentialsConfirmTitle}</AlertDialogTitle>
+            <AlertDialogDescription>
+              <strong>{selectedEmployee?.nombreCompleto ?? t.common.noRecord}</strong> {t.access.saveCredentialsConfirmDescription}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              onClick={() => {
+                setPendingCredentials(null)
+              }}
+            >
+              {t.common.cancel}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-[#648672] hover:bg-[#4f6a5a]"
+              onClick={() => {
+                void confirmSaveCredentials()
+              }}
+            >
+              {selectedUser ? t.access.updateCredentials : t.access.saveCredentials}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={Boolean(userToDelete)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setUserToDelete(null)
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t.access.deleteAccountTitle}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t.common.deleteCannotUndo} {t.access.deleteAccountDescription}{' '}
+              <strong>{userToDelete?.empleado?.nombreCompleto ?? userToDelete?.nombre ?? t.common.noRecord}</strong>.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t.common.cancel}</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700"
+              onClick={() => {
+                void confirmDeleteUser()
+              }}
+            >
+              {t.access.deleteAccountCta}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
