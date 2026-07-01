@@ -9,6 +9,7 @@ export interface BranchOption {
 
 export interface Professional {
   id: string
+  branchId: string
   name: string
   shortName: string
   avatar: string
@@ -17,6 +18,7 @@ export interface Professional {
 
 export interface Booking {
   id: string
+  date?: string
   customerName: string
   serviceName: string
   professionalId: string
@@ -31,6 +33,7 @@ export interface Booking {
 
 export interface AvailabilityBlock {
   id: string
+  date?: string
   professionalId: string
   start: string
   end: string
@@ -52,6 +55,7 @@ export interface SchedulerLegendItem {
 }
 
 export const schedulerReferenceDate = new Date('2026-06-30T11:00:00')
+export const schedulerReferenceDateKey = '2026-06-30'
 
 export const schedulerBranches: BranchOption[] = [
   { id: 'opatra', name: 'OPATRA MEXICO' },
@@ -64,7 +68,7 @@ export const bookingStatusOptions: Array<{ value: BookingStatus | 'active'; labe
   { value: 'reserved', label: 'Reservado' },
   { value: 'confirmed', label: 'Confirmado' },
   { value: 'arrived', label: 'Asiste' },
-  { value: 'no-show', label: 'No asistió' },
+  { value: 'no-show', label: 'No asistio' },
   { value: 'pending', label: 'Pendiente' },
   { value: 'waiting', label: 'En espera' },
 ]
@@ -92,7 +96,7 @@ export const bookingStatuses: Record<
     dotClassName: 'bg-fuchsia-300',
   },
   'no-show': {
-    label: 'No asistió',
+    label: 'No asistio',
     badgeClassName: 'bg-rose-100 text-rose-700 border-rose-200',
     cardClassName: 'bg-rose-100/95 border-rose-200 text-rose-800',
     dotClassName: 'bg-rose-300',
@@ -114,6 +118,7 @@ export const bookingStatuses: Record<
 export const schedulerProfessionals: Professional[] = [
   {
     id: 'mitikah-1',
+    branchId: 'mitikah',
     name: 'MITIKAH 1',
     shortName: 'M1',
     avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=96&q=80',
@@ -121,6 +126,7 @@ export const schedulerProfessionals: Professional[] = [
   },
   {
     id: 'mitikah-vip-b',
+    branchId: 'mitikah',
     name: 'MITIKAH VIP B-DOBLE',
     shortName: 'MB',
     avatar: 'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?auto=format&fit=crop&w=96&q=80',
@@ -128,13 +134,23 @@ export const schedulerProfessionals: Professional[] = [
   },
   {
     id: 'mitikah-vip-ind',
+    branchId: 'mitikah',
     name: 'MITIKAH VIP INDIVIDUAL',
     shortName: 'MI',
     avatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=96&q=80',
     accent: '#8fc8de',
   },
   {
+    id: 'mitikah-vip-c',
+    branchId: 'mitikah',
+    name: 'MITIKAH VIP C-DOBLE',
+    shortName: 'MC',
+    avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=96&q=80',
+    accent: '#d7b779',
+  },
+  {
     id: 'opatra-cabina-1',
+    branchId: 'opatra',
     name: 'OPATRA CABINA 1',
     shortName: 'OC1',
     avatar: 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?auto=format&fit=crop&w=96&q=80',
@@ -142,6 +158,7 @@ export const schedulerProfessionals: Professional[] = [
   },
   {
     id: 'opatra-cabina-2',
+    branchId: 'opatra',
     name: 'OPATRA CABINA 2',
     shortName: 'OC2',
     avatar: 'https://images.unsplash.com/photo-1487412720507-e7ab37603c6f?auto=format&fit=crop&w=96&q=80',
@@ -149,23 +166,51 @@ export const schedulerProfessionals: Professional[] = [
   },
   {
     id: 'masaryk-cabina-doble',
+    branchId: 'masaryk',
     name: 'MASARYK CAB DOBLE',
     shortName: 'MC',
     avatar: '',
     accent: '#b6a6ca',
   },
+  {
+    id: 'masaryk-cabina-1',
+    branchId: 'masaryk',
+    name: 'MASARYK',
+    shortName: 'M',
+    avatar: '',
+    accent: '#c9b7a5',
+  },
+  {
+    id: 'pending-1',
+    branchId: 'opatra',
+    name: 'CITAS PENDIENTES 1',
+    shortName: 'CP',
+    avatar: '',
+    accent: '#c5bccf',
+  },
+  {
+    id: 'pending-2',
+    branchId: 'opatra',
+    name: 'CITAS PENDIENTES 2',
+    shortName: 'CP',
+    avatar: '',
+    accent: '#d0c7d9',
+  },
 ]
 
 export const schedulerServices: ServiceOption[] = [
-  { id: 'svc-1', name: 'FACIAL VIP CORTESÍA', durationMinutes: 60, price: 0 },
+  { id: 'svc-1', name: 'FACIAL VIP CORTESIA', durationMinutes: 60, price: 0 },
   { id: 'svc-2', name: 'FACIAL + 10 MIN OXYCURA', durationMinutes: 60, price: 2200 },
   { id: 'svc-3', name: 'MEMBRESIA 7 SESIONES', durationMinutes: 60, price: 16500 },
   { id: 'svc-4', name: 'FACIAL ANTI ACNE', durationMinutes: 45, price: 1700 },
   { id: 'svc-5', name: 'CORPORAL DOBLE INSTAGRAM', durationMinutes: 90, price: 3500 },
+  { id: 'svc-6', name: 'FACIAL PREMIUM', durationMinutes: 60, price: 2900 },
+  { id: 'svc-7', name: 'KEYSAR LEAD (SR)', durationMinutes: 60, price: 1850 },
+  { id: 'svc-8', name: 'DOBLE FACIAL', durationMinutes: 120, price: 4200 },
 ]
 
-export const schedulerTimeSlots = Array.from({ length: 12 }, (_value, index) => {
-  const hour = 10 + index
+export const schedulerTimeSlots = Array.from({ length: 13 }, (_value, index) => {
+  const hour = 9 + index
   return `${hour.toString().padStart(2, '0')}:00`
 })
 
@@ -173,7 +218,7 @@ export const schedulerDayBookings: Booking[] = [
   {
     id: 'booking-1',
     customerName: 'Patricia Delgado',
-    serviceName: 'FACIAL VIP CORTESÍA',
+    serviceName: 'FACIAL VIP CORTESIA',
     professionalId: 'opatra-cabina-1',
     start: '11:00',
     end: '12:00',
@@ -183,15 +228,15 @@ export const schedulerDayBookings: Booking[] = [
   },
   {
     id: 'booking-2',
-    customerName: 'Juan Manuel García / Marcos Marcial',
+    customerName: 'Juan Manuel Garcia / Marcos Marcial',
     serviceName: 'MEMBRESIA 7 SESIONES',
     professionalId: 'mitikah-vip-ind',
     start: '12:00',
     end: '13:00',
     status: 'waiting',
     phone: '+52 55 2501 8821',
-    paymentLabel: 'Pagado con membresía',
-    sessionLabel: 'Sesión 2 de 7',
+    paymentLabel: 'Pagado con membresia',
+    sessionLabel: 'Sesion 2 de 7',
   },
   {
     id: 'booking-3',
@@ -206,7 +251,7 @@ export const schedulerDayBookings: Booking[] = [
   },
   {
     id: 'booking-4',
-    customerName: 'José Luis Vite Rivera',
+    customerName: 'Jose Luis Vite Rivera',
     serviceName: 'KEYSAR LEAD (SR)',
     professionalId: 'opatra-cabina-1',
     start: '14:00',
@@ -239,7 +284,7 @@ export const schedulerDayBookings: Booking[] = [
   },
   {
     id: 'booking-7',
-    customerName: 'María Camila Celis',
+    customerName: 'Maria Camila Celis',
     serviceName: 'KEYSAR LEAD (SR)',
     professionalId: 'mitikah-vip-ind',
     start: '18:00',
@@ -261,7 +306,7 @@ export const schedulerDayBookings: Booking[] = [
   },
   {
     id: 'booking-9',
-    customerName: 'Rosa Domínguez',
+    customerName: 'Rosa Dominguez',
     serviceName: 'KEYSAR LEAD (SR)',
     professionalId: 'masaryk-cabina-doble',
     start: '19:00',
@@ -269,6 +314,106 @@ export const schedulerDayBookings: Booking[] = [
     status: 'confirmed',
     phone: '+52 55 2211 3355',
     paymentLabel: 'Reserva abonada',
+  },
+  {
+    id: 'booking-10',
+    customerName: 'Adriana Rincon Lopez / Daniel Molina',
+    serviceName: 'DOBLE FACIAL',
+    professionalId: 'mitikah-vip-c',
+    start: '11:00',
+    end: '13:00',
+    status: 'confirmed',
+    phone: '+52 55 6310 4498',
+    paymentLabel: 'Reserva abonada',
+  },
+  {
+    id: 'booking-11',
+    customerName: 'Ana Karen Vaca Robles',
+    serviceName: 'KEYSAR LEAD (SR)',
+    professionalId: 'mitikah-vip-ind',
+    start: '11:00',
+    end: '12:00',
+    status: 'no-show',
+    phone: '+52 55 6300 9981',
+    paymentLabel: 'No pagado',
+  },
+  {
+    id: 'booking-12',
+    customerName: 'Martha Ducker / Carlos Politicas',
+    serviceName: 'FACIAL PREMIUM',
+    professionalId: 'opatra-cabina-1',
+    start: '15:00',
+    end: '16:00',
+    status: 'confirmed',
+    phone: '+52 55 6322 0014',
+    paymentLabel: 'Reserva abonada',
+  },
+  {
+    id: 'booking-13',
+    customerName: 'Maria Rosa Riverol / Loreto Politicas',
+    serviceName: 'FACIAL PREMIUM',
+    professionalId: 'opatra-cabina-2',
+    start: '13:00',
+    end: '14:00',
+    status: 'confirmed',
+    phone: '+52 55 7811 0092',
+    paymentLabel: 'Reserva abonada',
+  },
+  {
+    id: 'booking-14',
+    customerName: 'Yumi Hirasawa',
+    serviceName: 'KEYSAR LEAD (SR)',
+    professionalId: 'opatra-cabina-2',
+    start: '17:00',
+    end: '18:00',
+    status: 'confirmed',
+    phone: '+52 55 7712 3389',
+    paymentLabel: 'Pago pendiente',
+  },
+  {
+    id: 'booking-15',
+    customerName: 'Ruth Valverde / Saul',
+    serviceName: 'MEMBRESIA 7 SESIONES',
+    professionalId: 'masaryk-cabina-doble',
+    start: '13:00',
+    end: '14:00',
+    status: 'confirmed',
+    phone: '+52 55 6622 3318',
+    paymentLabel: 'Pagado con membresia',
+    sessionLabel: 'Sesion 4 de 7',
+  },
+  {
+    id: 'booking-16',
+    customerName: 'Erika Monzon',
+    serviceName: 'KEYSAR LEAD (SR)',
+    professionalId: 'masaryk-cabina-1',
+    start: '11:00',
+    end: '12:00',
+    status: 'no-show',
+    phone: '+52 55 6211 3997',
+    paymentLabel: 'No pagado',
+  },
+  {
+    id: 'booking-17',
+    customerName: 'Llamada pendiente / seguimiento',
+    serviceName: 'KEYSAR LEAD (SR)',
+    professionalId: 'pending-1',
+    start: '12:00',
+    end: '13:00',
+    status: 'pending',
+    phone: '+52 55 7100 1110',
+    paymentLabel: 'Pendiente de confirmar',
+  },
+  {
+    id: 'booking-18',
+    customerName: 'Reserva web por asignar',
+    serviceName: 'FACIAL PREMIUM',
+    professionalId: 'pending-2',
+    start: '16:00',
+    end: '17:00',
+    status: 'pending',
+    phone: '+52 55 7220 4488',
+    paymentLabel: 'Pendiente de confirmar',
   },
 ]
 
@@ -298,6 +443,14 @@ export const schedulerDayBlocks: AvailabilityBlock[] = [
     variant: 'unavailable',
   },
   {
+    id: 'block-3b',
+    professionalId: 'mitikah-vip-c',
+    start: '10:00',
+    end: '11:00',
+    label: 'Profesional no disponible',
+    variant: 'unavailable',
+  },
+  {
     id: 'block-4',
     professionalId: 'opatra-cabina-1',
     start: '10:00',
@@ -316,8 +469,32 @@ export const schedulerDayBlocks: AvailabilityBlock[] = [
   {
     id: 'block-6',
     professionalId: 'masaryk-cabina-doble',
-    start: '21:00',
-    end: '22:00',
+    start: '10:00',
+    end: '11:00',
+    label: 'Profesional no disponible',
+    variant: 'unavailable',
+  },
+  {
+    id: 'block-6b',
+    professionalId: 'masaryk-cabina-1',
+    start: '10:00',
+    end: '11:00',
+    label: 'Profesional no disponible',
+    variant: 'unavailable',
+  },
+  {
+    id: 'block-6c',
+    professionalId: 'pending-1',
+    start: '10:00',
+    end: '11:00',
+    label: 'Profesional no disponible',
+    variant: 'unavailable',
+  },
+  {
+    id: 'block-6d',
+    professionalId: 'pending-2',
+    start: '10:00',
+    end: '11:00',
     label: 'Profesional no disponible',
     variant: 'unavailable',
   },
@@ -335,7 +512,7 @@ export const schedulerWeekBookings: Array<Booking & { dayOffset: number }> = [
   {
     id: 'week-1',
     customerName: 'Hora bloqueada',
-    serviceName: 'Sábado alta demanda',
+    serviceName: 'Sabado alta demanda',
     professionalId: 'mitikah-1',
     start: '11:00',
     end: '21:00',
@@ -369,5 +546,5 @@ export const schedulerLegendItems: SchedulerLegendItem[] = [
   { id: 'payment', label: 'Agregar pago', icon: 'dollar' },
   { id: 'link', label: 'Copiar link', icon: 'link' },
   { id: 'pos', label: 'Pagada con POS', icon: 'wallet' },
-  { id: 'scan', label: 'Reserva en escaneo rápido', icon: 'scan' },
+  { id: 'scan', label: 'Reserva en escaneo rapido', icon: 'scan' },
 ]

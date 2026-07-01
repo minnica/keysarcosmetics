@@ -20,7 +20,7 @@ export { Progress } from './components/ui/progress'
 // Fase 2D - Wrapper con colores de marca Keysar
 export { ProgressKeysar } from './components/custom/progress-keysar'
 
-// Combobox — Select con búsqueda integrada
+// Combobox - Select con busqueda integrada
 export { Combobox } from './components/custom/combobox'
 export type { ComboboxOption } from './components/custom/combobox'
 
@@ -128,7 +128,7 @@ export { useIsMobile } from './hooks/use-mobile'
 
 export { cn } from './lib/utils'
 
-// AlertDialog shadcn/ui canónico
+// AlertDialog shadcn/ui canonico
 export {
   AlertDialog,
   AlertDialogPortal,
@@ -143,10 +143,10 @@ export {
   AlertDialogCancel,
 } from './components/ui/alert-dialog'
 
-// Sonner (Toaster) shadcn/ui canónico + toast helper
+// Sonner (Toaster) shadcn/ui canonico + toast helper
 export { Toaster } from './components/ui/sonner'
 export { toast } from 'sonner'
 
-// DataTable canónico shadcn/ui — usa @tanstack/react-table
+// DataTable canonico shadcn/ui - usa @tanstack/react-table
 export { DataTable } from './components/ui/data-table'
 export type { ColumnDef } from '@tanstack/react-table'

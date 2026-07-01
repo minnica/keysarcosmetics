@@ -225,9 +225,10 @@ apps/scheduler/
 │   ├── globals.css                → tokens visuales del scheduler
 │   └── layout.tsx                 → metadata + Toaster global
 ├── src/components/
-│   └── SchedulerWorkspace.tsx     → experiencia principal de agenda
+│   ├── SchedulerWorkspace.tsx     → shell principal con estado local, filtros y modales
+│   └── scheduler/                 → header, sidebar, grid agenda, tarjetas y diálogos del scheduler
 └── src/lib/
-    └── mock-scheduler-data.ts     → datos mock de sucursales, profesionales, citas y leyenda
+    └── mock-scheduler-data.ts     → datos mock de sucursales, profesionales, citas, bloqueos y leyenda
 ```
 
 ### backend/api
@@ -309,7 +310,15 @@ packages/ui/
 ```bash
 pnpm install
 pnpm --filter @cosmetics/envelope dev
+pnpm --filter @cosmetics/scheduler dev
 pnpm --filter @cosmetics/api dev
+```
+
+Si `pnpm` local no reconstruye bien `node_modules` del workspace en Windows, usar los scripts directos:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\repair-scheduler-workspace.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\dev-scheduler.ps1
 ```
 
 ### Type-check y build
@@ -317,8 +326,16 @@ pnpm --filter @cosmetics/api dev
 ```bash
 pnpm --filter @cosmetics/envelope type-check
 pnpm --filter @cosmetics/envelope build
+pnpm --filter @cosmetics/scheduler type-check
+pnpm --filter @cosmetics/scheduler build
 pnpm --filter @cosmetics/api type-check
 pnpm --filter @cosmetics/api build
+```
+
+Validacion directa del scheduler sin depender de `pnpm run`:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\check-scheduler.ps1
 ```
 
 ### Deploy backend (ejecutar desde raíz del repo)
@@ -376,5 +393,6 @@ npx ts-node --project tsconfig.json prisma/seed-catalogs.ts
 - Automatizar deploy backend con GitHub Actions si se decide.
 - Crear seeds separados seguros para dev/datos base si se requiere.
 - Limpieza futura de campos legacy `banco`/`puesto` en `Empleado` cuando todos los registros en prod tengan `bankId`/`positionId` asignados (Fase 4).
-- `apps/scheduler` está en **Fase 1 visual/mock**: agenda tipo día/semana, panel lateral, filtros, leyenda y modal de nueva reserva sin backend ni Prisma todavía.
+- `apps/scheduler` sigue en **Fase 1 local/mock**, pero ya incluye timeline editable estilo AgendaPro, filtros por sucursal/profesional/estatus/hora, bloqueos manuales, actualización local de pagos/estatus y modales de detalle/edición; aún no tiene backend, Prisma ni persistencia real.
+- Los bloques manuales de `apps/scheduler` (`Hora bloqueada`) ya se pueden abrir desde la tarjeta rayada para editar horario/profesional o quitar el bloqueo en la agenda local/mock.
 - Próxima fase sugerida para `scheduler`: modelar `Cliente`, `Servicio`, `Cita`, `BloqueHorario` y endpoints en `/api/scheduler` antes de conectar persistencia real.
