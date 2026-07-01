@@ -62,6 +62,12 @@ export function SchedulerBlockDialog({
       ...(patch.blockId ?? currentDraft.blockId
         ? { blockId: patch.blockId ?? currentDraft.blockId }
         : {}),
+      ...(patch.label ?? currentDraft.label
+        ? { label: patch.label ?? currentDraft.label }
+        : {}),
+      ...(patch.variant ?? currentDraft.variant
+        ? { variant: patch.variant ?? currentDraft.variant }
+        : {}),
     }
 
     onDraftChange(nextDraft)
@@ -205,16 +211,21 @@ export function SchedulerBlockDialog({
                         Quitar bloqueo
                       </Button>
                     </AlertDialogTrigger>
-                    <AlertDialogContent>
+                    <AlertDialogContent className="z-[80] rounded-[24px] border border-[rgba(236,209,200,0.95)] bg-white p-6 text-[var(--scheduler-ink-strong)] shadow-[0_24px_64px_rgba(15,23,42,0.28)]">
                       <AlertDialogHeader>
-                        <AlertDialogTitle>Quitar bloqueo manual</AlertDialogTitle>
-                        <AlertDialogDescription>
+                        <AlertDialogTitle className="text-[1.25rem] font-semibold">Quitar bloqueo</AlertDialogTitle>
+                        <AlertDialogDescription className="text-[0.95rem] leading-6 text-slate-600">
                           Esta accion vuelve a dejar disponible ese espacio dentro de la agenda local.
                         </AlertDialogDescription>
                       </AlertDialogHeader>
                       <AlertDialogFooter>
-                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                        <AlertDialogAction onClick={onDelete}>Quitar bloqueo</AlertDialogAction>
+                        <AlertDialogCancel className="scheduler-modal-secondary mt-0">Cancelar</AlertDialogCancel>
+                        <AlertDialogAction
+                          className="scheduler-modal-secondary border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 hover:text-rose-800"
+                          onClick={onDelete}
+                        >
+                          Quitar bloqueo
+                        </AlertDialogAction>
                       </AlertDialogFooter>
                     </AlertDialogContent>
                   </AlertDialog>

@@ -220,6 +220,7 @@
     position: relative;
     display: grid;
     min-width: max-content;
+    grid-template-rows: 124px;
     grid-auto-rows: 78px;
   }
 

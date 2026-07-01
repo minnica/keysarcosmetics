@@ -19,13 +19,11 @@ import {
   getAppointmentStyle,
   getCurrentTimeLineStyle,
   getMinutesFromTime,
+  getSchedulerCardTop,
   getSingleCellAppointmentStyle,
-  schedulerAppointmentVisualOffset,
   schedulerBaseMinutes,
   schedulerClosingMinutes,
-  schedulerCardTopInset,
-  schedulerHeaderOffset,
-  schedulerRowHeight,
+  schedulerSlotMinutes,
   type EmptySlotAction,
 } from './scheduler-utils'
 import { SchedulerBookingCard } from './SchedulerBookingCard'
@@ -158,11 +156,11 @@ export function SchedulerAgendaGrid({
     if (columnIndex == null) return null
 
     const startMinutes = getMinutesFromTime(emptySlotAction.startTime)
-    const top =
-      schedulerHeaderOffset +
-      (startMinutes - schedulerBaseMinutes) * (schedulerRowHeight / 60) +
-      schedulerCardTopInset -
-      schedulerAppointmentVisualOffset
+    const startCellIndex = Math.max(
+      0,
+      Math.floor((startMinutes - schedulerBaseMinutes) / schedulerSlotMinutes),
+    )
+    const top = getSchedulerCardTop(startCellIndex)
 
     return {
       professionalId: emptySlotAction.professionalId,
@@ -239,33 +237,24 @@ export function SchedulerAgendaGrid({
               ))}
 
               {dayBlocks.map(({ block, style }) => (
-                block.variant === 'blocked' ? (
-                  <button
-                    key={block.id}
-                    className={cn(
-                      'scheduler-appointment scheduler-appointment-blocked scheduler-appointment-contained text-left transition hover:-translate-y-0.5 hover:shadow-[0_18px_34px_rgba(15,23,42,0.1)]',
-                    )}
-                    style={style}
-                    type="button"
-                    onClick={() => onEditBlock(block)}
-                  >
-                    <p className="truncate text-[0.9rem] font-semibold">{block.label}</p>
-                    <p className="text-[0.72rem] uppercase tracking-[0.16em]">
-                      {block.start} - {block.end}
-                    </p>
-                  </button>
-                ) : (
-                  <div
-                    key={block.id}
-                    className="scheduler-appointment scheduler-appointment-contained scheduler-appointment-unavailable text-left"
-                    style={style}
-                  >
-                    <p className="truncate text-[0.9rem] font-semibold">{block.label}</p>
-                    <p className="text-[0.72rem] uppercase tracking-[0.16em]">
-                      {block.start} - {block.end}
-                    </p>
-                  </div>
-                )
+                <button
+                  key={block.id}
+                  aria-label={`Editar disponibilidad de ${block.start} a ${block.end}`}
+                  className={cn(
+                    'scheduler-appointment scheduler-appointment-contained cursor-pointer text-left transition hover:-translate-y-0.5 hover:shadow-[0_18px_34px_rgba(15,23,42,0.1)]',
+                    block.variant === 'blocked'
+                      ? 'scheduler-appointment-blocked'
+                      : 'scheduler-appointment-unavailable',
+                  )}
+                  style={style}
+                  type="button"
+                  onClick={() => onEditBlock(block)}
+                >
+                  <p className="truncate text-[0.9rem] font-semibold">{block.label}</p>
+                  <p className="text-[0.72rem] uppercase tracking-[0.16em]">
+                    {block.start} - {block.end}
+                  </p>
+                </button>
               ))}
 
               {dayAppointments.map(({ booking, style }) => {

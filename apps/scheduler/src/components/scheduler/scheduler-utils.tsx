@@ -45,7 +45,10 @@ export const schedulerCardBottomInset = 12
 export const schedulerCardHeight = schedulerRowHeight - schedulerCardTopInset - schedulerCardBottomInset
 export const schedulerBaseMinutes = schedulerOpeningHour * 60
 export const schedulerClosingMinutes = schedulerClosingHour * 60
-export const schedulerAppointmentVisualOffset = schedulerRowHeight / 2
+
+export function getSchedulerCardTop(startCellIndex: number): number {
+  return schedulerHeaderOffset + startCellIndex * schedulerRowHeight + schedulerCardTopInset
+}
 
 export interface BookingDraft {
   bookingId?: string
@@ -75,6 +78,8 @@ export interface BlockDraft {
   startMinute: string
   endHour: string
   endMinute: string
+  label?: string
+  variant?: AvailabilityBlock['variant']
 }
 
 export function getMinutesFromTime(value: string): number {
@@ -104,7 +109,7 @@ export function getAppointmentStyle(start: string, end: string): { top: string; 
   const rowSpan = endCellIndex - startCellIndex
 
   return {
-    top: `${schedulerHeaderOffset + startCellIndex * schedulerRowHeight - schedulerAppointmentVisualOffset + schedulerCardTopInset}px`,
+    top: `${getSchedulerCardTop(startCellIndex)}px`,
     height: `${Math.max(rowSpan * schedulerRowHeight - schedulerCardTopInset - schedulerCardBottomInset, 34)}px`,
   }
 }
@@ -120,7 +125,7 @@ export function getSingleCellAppointmentStyle(start: string): { top: string; hei
   )
 
   return {
-    top: `${schedulerHeaderOffset + startCellIndex * schedulerRowHeight - schedulerAppointmentVisualOffset + schedulerCardTopInset}px`,
+    top: `${getSchedulerCardTop(startCellIndex)}px`,
     height: `${schedulerCardHeight}px`,
   }
 }
@@ -229,6 +234,8 @@ export function createBlockDraftFromBlock(block: AvailabilityBlock, selectedDate
     startMinute,
     endHour,
     endMinute,
+    label: block.label,
+    variant: block.variant,
   }
 }
 

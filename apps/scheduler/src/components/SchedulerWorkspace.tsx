@@ -39,6 +39,8 @@ import { SchedulerSidebar } from './scheduler/SchedulerSidebar'
 import { SchedulerHeader } from './scheduler/SchedulerHeader'
 import { SchedulerAgendaGrid } from './scheduler/SchedulerAgendaGrid'
 
+const initialAvailabilityBlocksById = new Map(schedulerDayBlocks.map((block) => [block.id, block]))
+
 export function SchedulerWorkspace() {
   const [selectedDate, setSelectedDate] = useState(schedulerReferenceDate)
   const [monthCursor, setMonthCursor] = useState(startOfMonth(schedulerReferenceDate))
@@ -328,14 +330,16 @@ export function SchedulerWorkspace() {
       return
     }
 
+    const initialBlock = blockDraft.blockId ? initialAvailabilityBlocksById.get(blockDraft.blockId) : undefined
+    const shouldKeepInitialUnavailableStyle = initialBlock?.variant === 'unavailable'
     const nextBlock: AvailabilityBlock = {
       id: blockDraft.blockId ?? `block-mock-${Date.now()}`,
       date: blockDateKey,
       professionalId: blockDraft.professionalId,
       start,
       end,
-      label: 'Hora bloqueada',
-      variant: 'blocked',
+      label: shouldKeepInitialUnavailableStyle ? initialBlock.label : blockDraft.label ?? 'Hora bloqueada',
+      variant: shouldKeepInitialUnavailableStyle ? initialBlock.variant : blockDraft.variant ?? 'blocked',
     }
 
     setAvailabilityBlocks((current) => {
