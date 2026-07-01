@@ -42,6 +42,9 @@ export interface Empleado {
   banco: string
   numeroCuenta: string
   puesto: string
+  sueldo?: number | null
+  fechaNacimiento?: string | null
+  numeroTelefono?: string | null
   // FK a catálogos dinámicos — nullable durante transición
   bankId?: string | null
   bank?: Bank | null

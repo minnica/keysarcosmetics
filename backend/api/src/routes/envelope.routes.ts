@@ -9,6 +9,15 @@ const router: ExpressRouter = Router()
 // Todas las rutas de este módulo requieren autenticación
 router.use(authMiddleware)
 
+function normalizeDateInput(value?: string | null): Date | null | undefined {
+  if (value === undefined) return undefined
+  if (value === null) return null
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  const parsed = new Date(trimmed)
+  return Number.isNaN(parsed.getTime()) ? null : parsed
+}
+
 // ─── SUCURSALES ───────────────────────────────────────────────────────────────
 
 router.get('/sucursales', async (_req, res) => {
@@ -77,7 +86,7 @@ router.get('/empleados', async (_req, res) => {
 
 router.post('/empleados', requireRole('GERENTE'), async (req, res) => {
   try {
-    const { nombres, apellidoPaterno, apellidoMaterno, banco, numeroCuenta, puesto, metaIndividual, bankId, positionId } =
+    const { nombres, apellidoPaterno, apellidoMaterno, banco, numeroCuenta, puesto, metaIndividual, bankId, positionId, sueldo, fechaNacimiento, numeroTelefono } =
       req.body as {
         nombres: string
         apellidoPaterno: string
@@ -88,6 +97,9 @@ router.post('/empleados', requireRole('GERENTE'), async (req, res) => {
         metaIndividual: number
         bankId?: string
         positionId?: string
+        sueldo?: number | null
+        fechaNacimiento?: string | null
+        numeroTelefono?: string | null
       }
 
     // Resolver banco: si viene bankId, valida FK y deriva nombre legacy
@@ -119,6 +131,7 @@ router.post('/empleados', requireRole('GERENTE'), async (req, res) => {
     }
 
     const nombreCompleto = [nombres, apellidoPaterno, apellidoMaterno].filter(Boolean).join(' ')
+    const normalizedFechaNacimiento = normalizeDateInput(fechaNacimiento)
     const data = await prisma.empleado.create({
       data: {
         nombres,
@@ -129,6 +142,9 @@ router.post('/empleados', requireRole('GERENTE'), async (req, res) => {
         numeroCuenta,
         puesto: finalPuesto,
         metaIndividual,
+        ...(normalizedFechaNacimiento !== undefined && { fechaNacimiento: normalizedFechaNacimiento }),
+        ...(sueldo !== undefined && { sueldo }),
+        ...(numeroTelefono !== undefined && { numeroTelefono }),
         ...(finalBankId !== undefined && { bankId: finalBankId }),
         ...(finalPositionId !== undefined && { positionId: finalPositionId }),
       },
@@ -143,7 +159,7 @@ router.post('/empleados', requireRole('GERENTE'), async (req, res) => {
 
 router.put('/empleados/:id', requireRole('GERENTE'), async (req, res) => {
   try {
-    const { nombres, apellidoPaterno, apellidoMaterno, banco, numeroCuenta, puesto, metaIndividual, activo, bankId, positionId } =
+    const { nombres, apellidoPaterno, apellidoMaterno, banco, numeroCuenta, puesto, metaIndividual, activo, bankId, positionId, sueldo, fechaNacimiento, numeroTelefono } =
       req.body as Partial<{
         nombres: string
         apellidoPaterno: string
@@ -155,6 +171,9 @@ router.put('/empleados/:id', requireRole('GERENTE'), async (req, res) => {
         activo: boolean
         bankId: string
         positionId: string
+        sueldo: number | null
+        fechaNacimiento: string | null
+        numeroTelefono: string | null
       }>
     const existing = await prisma.empleado.findUnique({ where: { id: req.params['id'] } })
     if (!existing) {
@@ -192,6 +211,7 @@ router.put('/empleados/:id', requireRole('GERENTE'), async (req, res) => {
     const ap = apellidoPaterno ?? existing.apellidoPaterno
     const am = apellidoMaterno ?? existing.apellidoMaterno
     const nombreCompleto = [n, ap, am].filter(Boolean).join(' ')
+    const normalizedFechaNacimiento = normalizeDateInput(fechaNacimiento)
     const data = await prisma.empleado.update({
       where: { id: req.params['id'] },
       data: {
@@ -203,6 +223,9 @@ router.put('/empleados/:id', requireRole('GERENTE'), async (req, res) => {
         ...(numeroCuenta !== undefined && { numeroCuenta }),
         ...positionUpdate,
         ...(metaIndividual !== undefined && { metaIndividual }),
+        ...(normalizedFechaNacimiento !== undefined && { fechaNacimiento: normalizedFechaNacimiento }),
+        ...(sueldo !== undefined && { sueldo }),
+        ...(numeroTelefono !== undefined && { numeroTelefono }),
         ...(activo !== undefined && { activo }),
       },
       include: { bank: true, position: true },

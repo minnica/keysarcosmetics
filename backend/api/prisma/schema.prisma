@@ -84,6 +84,9 @@ model Empleado {
   banco           String
   numeroCuenta    String
   puesto          String
+  sueldo          Decimal?   @db.Decimal(10, 2)
+  fechaNacimiento DateTime?
+  numeroTelefono  String?
   // FK a catálogos dinámicos — nullable durante transición
   bankId          String?
   bank            Bank?      @relation(fields: [bankId], references: [id])
