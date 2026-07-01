@@ -58,7 +58,7 @@ Todas las apps son internas (detrás de login), excepto `landing` que es públic
 - `CAPTURISTA` → solo registro de ventas
 - `Position.canManageAccess` marca el puesto que administra permisos y credenciales de `envelope`.
 - El acceso efectivo a pantallas de `envelope` ya no depende solo del rol: también se resuelve por puesto/permisos por pantalla.
-- La pantalla `accesos` guarda permisos por clic inmediato en cada pantalla con autosave sin recarga, administra credenciales en un dialog dedicado y desactiva cuentas desde la tabla de estatus.
+- La pantalla `accesos` guarda permisos por clic inmediato en cada pantalla con autosave sin recarga, administra credenciales en un dialog dedicado y desactiva cuentas desde la tabla de estatus, excepto la cuenta principal `SUPER_ADMIN`, que queda protegida.
 
 ---
 
@@ -153,7 +153,7 @@ Datos:
 - `Empleado` también tiene campos legacy `banco`/`puesto` (String) — conservar por compatibilidad hasta backfill completo en prod.
 - `Empleado` ahora incluye `sueldo Decimal?`, `fechaNacimiento DateTime?` y `numeroTelefono String?` para el crecimiento del módulo RH.
 - `Venta` tiene `sesionId String?` — vincula registros del mismo voucher multi-vendedor; null = venta individual.
-- Soft delete: `activo = false` (Usuario, Empleado, Bank, Position, MetodoPago) o `activa = false` (Sucursal). **No hacer borrados físicos salvo instrucción explícita**; la ruta admin de `accesos` desactiva cuentas de login en vez de eliminarlas.
+- Soft delete: `activo = false` (Usuario, Empleado, Bank, Position, MetodoPago) o `activa = false` (Sucursal). **No hacer borrados físicos salvo instrucción explícita**; la ruta admin de `accesos` desactiva cuentas de login en vez de eliminarlas, excepto la cuenta principal `SUPER_ADMIN`, que no se puede desactivar desde la UI.
 
 **Reglas de BD:**
 - No ejecutar `migrate reset` ni `db push` en ambientes compartidos/productivos.

@@ -329,6 +329,12 @@ export default function AccessControlPage() {
       return
     }
 
+    if (userToDelete.rol === 'SUPER_ADMIN') {
+      toast.error('La cuenta principal no se puede desactivar')
+      setUserToDelete(null)
+      return
+    }
+
     try {
       await deleteUser(userToDelete.id)
       toast.success(t.access.accountDeleted)
@@ -390,16 +396,20 @@ export default function AccessControlPage() {
               <Pencil className="h-4 w-4" />
               {t.common.edit}
             </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              className="border-red-300 text-red-600 hover:bg-red-50 hover:text-red-600"
-              disabled={!user.activo}
-              onClick={() => setUserToDelete(user)}
-            >
-              <Trash2 className="h-4 w-4" />
-              {user.activo ? t.common.deactivate : t.common.inactive}
-            </Button>
+            {user.rol !== 'SUPER_ADMIN' ? (
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-red-300 text-red-600 hover:bg-red-50 hover:text-red-600"
+                disabled={!user.activo}
+                onClick={() => {
+                  setUserToDelete(user)
+                }}
+              >
+                <Trash2 className="h-4 w-4" />
+                {user.activo ? t.common.deactivate : t.common.inactive}
+              </Button>
+            ) : null}
           </div>
         )
       },
