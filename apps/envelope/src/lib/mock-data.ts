@@ -41,6 +41,9 @@ export interface Empleado {
   banco: string;
   numeroCuenta: string;
   puesto: string;
+  sueldo?: number | null;
+  fechaNacimiento?: string | null;
+  numeroTelefono?: string | null;
   // FK a catálogos dinámicos — nullable durante transición
   bankId?: string | null;
   bank?: { id: string; nombre: string; activo: boolean } | null;
@@ -96,6 +99,9 @@ export const INITIAL_EMPLEADOS: Empleado[] = [
     banco: "BBVA",
     numeroCuenta: "1234567890",
     puesto: "VENDEDOR",
+    sueldo: 18000,
+    fechaNacimiento: "1994-03-15",
+    numeroTelefono: "5551234567",
     metaIndividual: 50000,
     activo: true,
   },
@@ -108,6 +114,9 @@ export const INITIAL_EMPLEADOS: Empleado[] = [
     banco: "Santander",
     numeroCuenta: "0987654321",
     puesto: "VENDEDOR",
+    sueldo: 17500,
+    fechaNacimiento: "1991-08-09",
+    numeroTelefono: "5552345678",
     metaIndividual: 45000,
     activo: true,
   },
@@ -120,6 +129,9 @@ export const INITIAL_EMPLEADOS: Empleado[] = [
     banco: "Banorte",
     numeroCuenta: "1122334455",
     puesto: "VENDEDOR",
+    sueldo: 18250,
+    fechaNacimiento: "1996-11-22",
+    numeroTelefono: "5553456789",
     metaIndividual: 55000,
     activo: true,
   },
@@ -132,6 +144,9 @@ export const INITIAL_EMPLEADOS: Empleado[] = [
     banco: "HSBC",
     numeroCuenta: "5544332211",
     puesto: "VENDEDOR",
+    sueldo: 19000,
+    fechaNacimiento: "1990-01-30",
+    numeroTelefono: "5554567890",
     metaIndividual: 40000,
     activo: true,
   },
@@ -144,6 +159,9 @@ export const INITIAL_EMPLEADOS: Empleado[] = [
     banco: "Banamex",
     numeroCuenta: "9988776655",
     puesto: "VENDEDOR",
+    sueldo: 19500,
+    fechaNacimiento: "1993-06-18",
+    numeroTelefono: "5555678901",
     metaIndividual: 60000,
     activo: true,
   },
@@ -156,6 +174,9 @@ export const INITIAL_EMPLEADOS: Empleado[] = [
     banco: "BBVA",
     numeroCuenta: "6677889900",
     puesto: "GERENTE",
+    sueldo: 28000,
+    fechaNacimiento: "1988-12-05",
+    numeroTelefono: "5556789012",
     metaIndividual: 80000,
     activo: true,
   },

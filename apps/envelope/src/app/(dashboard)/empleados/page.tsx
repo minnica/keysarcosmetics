@@ -35,7 +35,7 @@ import {
 import type { ColumnDef } from '@cosmetics/ui'
 import { useEmpleados, useBanks, usePositions } from '@/hooks'
 import { useI18n } from '@/lib/i18n'
-import { formatCurrency } from '@/lib/utils'
+import { formatCurrency, formatDate } from '@/lib/utils'
 import type { Empleado } from '@/lib/mock-data'
 
 function createEmpleadoSchema(messages: {
@@ -52,6 +52,9 @@ function createEmpleadoSchema(messages: {
     numeroCuenta:   z.string().trim().optional(),
     positionId:     z.string().min(1, messages.positionRequired),
     metaIndividual: z.coerce.number().min(0, messages.goalMin),
+    sueldo:         z.string().trim().optional(),
+    fechaNacimiento: z.string().trim().optional(),
+    numeroTelefono: z.string().trim().optional(),
   })
 }
 
@@ -92,6 +95,9 @@ export default function EmpleadosPage() {
       numeroCuenta: '',
       positionId: '',
       metaIndividual: 0,
+      sueldo: '',
+      fechaNacimiento: '',
+      numeroTelefono: '',
     },
   })
 
@@ -124,6 +130,9 @@ export default function EmpleadosPage() {
       numeroCuenta: '',
       positionId: '',
       metaIndividual: 0,
+      sueldo: '',
+      fechaNacimiento: '',
+      numeroTelefono: '',
     })
     setModalOpen(true)
   }
@@ -153,6 +162,9 @@ export default function EmpleadosPage() {
       numeroCuenta:    emp.numeroCuenta,
       positionId:      resolvedPositionId,
       metaIndividual:  emp.metaIndividual,
+      sueldo:          emp.sueldo != null ? String(emp.sueldo) : '',
+      fechaNacimiento: emp.fechaNacimiento ?? '',
+      numeroTelefono:  emp.numeroTelefono ?? '',
     })
     setModalOpen(true)
   }
@@ -173,6 +185,9 @@ export default function EmpleadosPage() {
       metaIndividual:  data.metaIndividual,
       bankId:          data.bankId,
       positionId:      data.positionId,
+      sueldo:          data.sueldo?.trim() ? Number(data.sueldo) : null,
+      fechaNacimiento: data.fechaNacimiento?.trim() ? data.fechaNacimiento.trim() : null,
+      numeroTelefono:  data.numeroTelefono?.trim() ? data.numeroTelefono.trim() : null,
     }
 
     if (editing) {
@@ -190,6 +205,9 @@ export default function EmpleadosPage() {
   // Texto a mostrar: prefiere nombre del catálogo, cae en legacy
   const displayBanco    = (emp: Empleado) => emp.bank?.nombre    ?? emp.banco
   const displayPuesto   = (emp: Empleado) => emp.position?.nombre ?? emp.puesto
+  const displayDate = (value?: string | null) => (value ? formatDate(value, 'dd/MM/yyyy') : t.common.noRecord)
+  const displayPhone = (value?: string | null) => (value?.trim() ? value : t.common.noRecord)
+  const displaySalary = (value?: number | null) => (value != null ? formatCurrency(value) : t.common.noRecord)
 
   const columns: ColumnDef<Empleado>[] = [
     {
@@ -204,6 +222,20 @@ export default function EmpleadosPage() {
       cell: ({ row }) => displayBanco(row.original),
     },
     {
+      id: 'fechaNacimiento',
+      accessorFn: (row) => row.fechaNacimiento ?? '',
+      header: () => <span className="uppercase">{t.employees.birthDate}</span>,
+      cell: ({ row }) => displayDate(row.original.fechaNacimiento),
+    },
+    {
+      id: 'telefono',
+      accessorFn: (row) => row.numeroTelefono ?? '',
+      header: () => <span className="uppercase">{t.employees.phoneNumber}</span>,
+      cell: ({ row }) => (
+        <span className="font-mono text-xs">{displayPhone(row.original.numeroTelefono)}</span>
+      ),
+    },
+    {
       accessorKey: 'numeroCuenta',
       header: () => <span className="uppercase">{t.employees.accountNumber}</span>,
       cell: ({ row }) => (
@@ -216,6 +248,14 @@ export default function EmpleadosPage() {
       header: () => <span className="uppercase">{t.common.position}</span>,
       cell: ({ row }) => (
         <span className="text-sm">{displayPuesto(row.original)}</span>
+      ),
+    },
+    {
+      id: 'sueldo',
+      accessorFn: (row) => row.sueldo ?? 0,
+      header: () => <span className="uppercase">{t.employees.salary}</span>,
+      cell: ({ row }) => (
+        <div className="text-right">{displaySalary(row.original.sueldo)}</div>
       ),
     },
     {
@@ -387,7 +427,7 @@ export default function EmpleadosPage() {
               ))}
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               {/* Banco — Select dinámico desde useBanks() */}
               <div className="space-y-1.5">
                 <Label htmlFor="bankId">{t.common.bank}</Label>
@@ -414,6 +454,26 @@ export default function EmpleadosPage() {
                 <Label htmlFor="numeroCuenta">{t.employees.accountNumber}</Label>
                 <Input id="numeroCuenta" {...registerUppercase('numeroCuenta')} />
                 {errors.numeroCuenta && <p className="text-xs text-red-500">{errors.numeroCuenta.message}</p>}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="sueldo">{t.employees.salary}</Label>
+                <Input id="sueldo" type="number" step="any" min="0" {...register('sueldo')} />
+                {errors.sueldo && <p className="text-xs text-red-500">{errors.sueldo.message}</p>}
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="fechaNacimiento">{t.employees.birthDate}</Label>
+                <Input id="fechaNacimiento" type="date" {...register('fechaNacimiento')} />
+                {errors.fechaNacimiento && <p className="text-xs text-red-500">{errors.fechaNacimiento.message}</p>}
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="numeroTelefono">{t.employees.phoneNumber}</Label>
+                <Input id="numeroTelefono" type="tel" inputMode="tel" {...register('numeroTelefono')} />
+                {errors.numeroTelefono && <p className="text-xs text-red-500">{errors.numeroTelefono.message}</p>}
               </div>
             </div>
 

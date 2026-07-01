@@ -65,6 +65,9 @@ model Empleado {
   banco           String
   numeroCuenta    String
   puesto          String
+  sueldo          Decimal?       @db.Decimal(10, 2)
+  fechaNacimiento DateTime?
+  numeroTelefono  String?
   metaIndividual  Decimal        @db.Decimal(10, 2)
   activo          Boolean        @default(true)
   ventas          Venta[]
