@@ -23,6 +23,11 @@ model Usuario {
   activo        Boolean   @default(true)
   sucursalId    String?
   sucursal      Sucursal? @relation(fields: [sucursalId], references: [id])
+  empleadoId    String?   @unique
+  empleado      Empleado? @relation(fields: [empleadoId], references: [id])
+  passwordChangedAt        DateTime?
+  passwordSetupTokenHash   String?
+  passwordSetupTokenExpiresAt DateTime?
   creadoEn      DateTime  @default(now())
   actualizadoEn DateTime  @updatedAt
 }
@@ -69,9 +74,23 @@ model Position {
   id            String     @id @default(cuid())
   nombre        String     @unique
   activo        Boolean    @default(true)
+  canManageAccess Boolean   @default(false)
   empleados     Empleado[]
+  screenPermissions PositionScreenPermission[]
   creadoEn      DateTime   @default(now())
   actualizadoEn DateTime   @updatedAt
+}
+
+model PositionScreenPermission {
+  id           String   @id @default(cuid())
+  positionId   String
+  position     Position @relation(fields: [positionId], references: [id], onDelete: Cascade)
+  screenKey    String
+  allowed      Boolean  @default(true)
+  creadoEn     DateTime @default(now())
+  actualizadoEn DateTime @updatedAt
+
+  @@unique([positionId, screenKey])
 }
 
 model Empleado {
@@ -84,11 +103,15 @@ model Empleado {
   banco           String
   numeroCuenta    String
   puesto          String
+  sueldo          Decimal?   @db.Decimal(10, 2)
+  fechaNacimiento DateTime?
+  numeroTelefono  String?
   // FK a catálogos dinámicos — nullable durante transición
   bankId          String?
   bank            Bank?      @relation(fields: [bankId], references: [id])
   positionId      String?
   position        Position?  @relation(fields: [positionId], references: [id])
+  usuario         Usuario?
   metaIndividual  Decimal    @db.Decimal(10, 2)
   activo          Boolean    @default(true)
   ventas          Venta[]

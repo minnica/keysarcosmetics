@@ -1,6 +1,6 @@
 'use client'
 // Pantalla de gestión de empleados
-import { useState, type ChangeEvent } from 'react'
+import { useMemo, useState, type ChangeEvent } from 'react'
 import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -34,25 +34,46 @@ import {
 } from '@cosmetics/ui'
 import type { ColumnDef } from '@cosmetics/ui'
 import { useEmpleados, useBanks, usePositions } from '@/hooks'
-import { formatCurrency } from '@/lib/utils'
+import { useI18n } from '@/lib/i18n'
+import { formatCurrency, formatDate } from '@/lib/utils'
 import type { Empleado } from '@/lib/mock-data'
 
-const empleadoSchema = z.object({
-  nombres:        z.string().min(1, 'Requerido'),
-  apellidoPaterno: z.string().min(1, 'Requerido'),
-  apellidoMaterno: z.string().min(1, 'Requerido'),
-  bankId:         z.string().min(1, 'El banco es requerido'),
-  numeroCuenta:   z.string().trim().optional(),
-  positionId:     z.string().min(1, 'El puesto es requerido'),
-  metaIndividual: z.coerce.number().min(0, 'Debe ser mayor o igual a 0'),
-})
+function createEmpleadoSchema(messages: {
+  required: string
+  bankRequired: string
+  positionRequired: string
+  goalMin: string
+}) {
+  return z.object({
+    nombres:        z.string().min(1, messages.required),
+    apellidoPaterno: z.string().min(1, messages.required),
+    apellidoMaterno: z.string().min(1, messages.required),
+    bankId:         z.string().min(1, messages.bankRequired),
+    numeroCuenta:   z.string().trim().optional(),
+    positionId:     z.string().min(1, messages.positionRequired),
+    metaIndividual: z.coerce.number().min(0, messages.goalMin),
+    sueldo:         z.string().trim().optional(),
+    fechaNacimiento: z.string().trim().optional(),
+    numeroTelefono: z.string().trim().optional(),
+  })
+}
 
-type EmpleadoForm = z.infer<typeof empleadoSchema>
+type EmpleadoForm = z.infer<ReturnType<typeof createEmpleadoSchema>>
 
 export default function EmpleadosPage() {
   const { empleados, loading, error, add, update, remove, toggleStatus } = useEmpleados()
   const { banks, loading: banksLoading } = useBanks()
   const { positions, loading: positionsLoading } = usePositions()
+  const { t, dataTableLabels } = useI18n()
+  const empleadoSchema = useMemo(
+    () => createEmpleadoSchema({
+      required: t.employees.required,
+      bankRequired: t.employees.bankRequired,
+      positionRequired: t.employees.positionRequired,
+      goalMin: t.employees.goalMin,
+    }),
+    [t],
+  )
 
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<Empleado | null>(null)
@@ -74,6 +95,9 @@ export default function EmpleadosPage() {
       numeroCuenta: '',
       positionId: '',
       metaIndividual: 0,
+      sueldo: '',
+      fechaNacimiento: '',
+      numeroTelefono: '',
     },
   })
 
@@ -106,6 +130,9 @@ export default function EmpleadosPage() {
       numeroCuenta: '',
       positionId: '',
       metaIndividual: 0,
+      sueldo: '',
+      fechaNacimiento: '',
+      numeroTelefono: '',
     })
     setModalOpen(true)
   }
@@ -135,6 +162,9 @@ export default function EmpleadosPage() {
       numeroCuenta:    emp.numeroCuenta,
       positionId:      resolvedPositionId,
       metaIndividual:  emp.metaIndividual,
+      sueldo:          emp.sueldo != null ? String(emp.sueldo) : '',
+      fechaNacimiento: emp.fechaNacimiento ?? '',
+      numeroTelefono:  emp.numeroTelefono ?? '',
     })
     setModalOpen(true)
   }
@@ -155,15 +185,18 @@ export default function EmpleadosPage() {
       metaIndividual:  data.metaIndividual,
       bankId:          data.bankId,
       positionId:      data.positionId,
+      sueldo:          data.sueldo?.trim() ? Number(data.sueldo) : null,
+      fechaNacimiento: data.fechaNacimiento?.trim() ? data.fechaNacimiento.trim() : null,
+      numeroTelefono:  data.numeroTelefono?.trim() ? data.numeroTelefono.trim() : null,
     }
 
     if (editing) {
       await update({ ...editing, ...payload })
-      toast.success('Empleado actualizado')
+      toast.success(t.employees.employeeUpdated)
     } else {
       // banco/puesto requeridos por tipo legacy — backend los sobreescribe desde bankId/positionId
       await add({ ...payload, banco: '', puesto: '', activo: true })
-      toast.success('Empleado creado')
+      toast.success(t.employees.employeeCreated)
     }
 
     setModalOpen(false)
@@ -172,22 +205,39 @@ export default function EmpleadosPage() {
   // Texto a mostrar: prefiere nombre del catálogo, cae en legacy
   const displayBanco    = (emp: Empleado) => emp.bank?.nombre    ?? emp.banco
   const displayPuesto   = (emp: Empleado) => emp.position?.nombre ?? emp.puesto
+  const displayDate = (value?: string | null) => (value ? formatDate(value, 'dd/MM/yyyy') : t.common.noRecord)
+  const displayPhone = (value?: string | null) => (value?.trim() ? value : t.common.noRecord)
+  const displaySalary = (value?: number | null) => (value != null ? formatCurrency(value) : t.common.noRecord)
 
   const columns: ColumnDef<Empleado>[] = [
     {
       accessorKey: 'nombreCompleto',
-      header: 'Nombre completo',
+      header: () => <span className="uppercase">{t.employees.fullName}</span>,
       cell: ({ row }) => <span className="font-medium">{row.original.nombreCompleto}</span>,
     },
     {
       id: 'banco',
       accessorFn: (row) => row.bank?.nombre ?? row.banco,
-      header: 'Banco',
+      header: () => <span className="uppercase">{t.common.bank}</span>,
       cell: ({ row }) => displayBanco(row.original),
     },
     {
+      id: 'fechaNacimiento',
+      accessorFn: (row) => row.fechaNacimiento ?? '',
+      header: () => <span className="uppercase">{t.employees.birthDate}</span>,
+      cell: ({ row }) => displayDate(row.original.fechaNacimiento),
+    },
+    {
+      id: 'telefono',
+      accessorFn: (row) => row.numeroTelefono ?? '',
+      header: () => <span className="uppercase">{t.employees.phoneNumber}</span>,
+      cell: ({ row }) => (
+        <span className="font-mono text-xs">{displayPhone(row.original.numeroTelefono)}</span>
+      ),
+    },
+    {
       accessorKey: 'numeroCuenta',
-      header: 'No. cuenta',
+      header: () => <span className="uppercase">{t.employees.accountNumber}</span>,
       cell: ({ row }) => (
         <span className="font-mono text-xs">{row.original.numeroCuenta}</span>
       ),
@@ -195,14 +245,22 @@ export default function EmpleadosPage() {
     {
       id: 'puesto',
       accessorFn: (row) => row.position?.nombre ?? row.puesto,
-      header: 'Puesto',
+      header: () => <span className="uppercase">{t.common.position}</span>,
       cell: ({ row }) => (
         <span className="text-sm">{displayPuesto(row.original)}</span>
       ),
     },
     {
+      id: 'sueldo',
+      accessorFn: (row) => row.sueldo ?? 0,
+      header: () => <span className="uppercase">{t.employees.salary}</span>,
+      cell: ({ row }) => (
+        <div className="text-right">{displaySalary(row.original.sueldo)}</div>
+      ),
+    },
+    {
       accessorKey: 'metaIndividual',
-      header: 'Meta individual',
+      header: () => <span className="uppercase">{t.employees.individualGoal}</span>,
       cell: ({ row }) => (
         <div className="text-right">{formatCurrency(row.original.metaIndividual)}</div>
       ),
@@ -210,23 +268,23 @@ export default function EmpleadosPage() {
     {
       id: 'estatus',
       accessorFn: (row) => row.activo,
-      header: 'Estatus',
+      header: () => <span className="uppercase">{t.common.status}</span>,
       enableGlobalFilter: false,
       cell: ({ row }) => (
         row.original.activo ? (
-          <Badge style={{ backgroundColor: '#648672', color: 'white', borderColor: '#648672' }}>
-            Activo
+          <Badge className="uppercase" style={{ backgroundColor: '#648672', color: 'white', borderColor: '#648672' }}>
+            {t.common.active}
           </Badge>
         ) : (
-          <Badge className="bg-muted-foreground text-white border-transparent">
-            Inactivo
+          <Badge className="bg-muted-foreground text-white border-transparent uppercase">
+            {t.common.inactive}
           </Badge>
         )
       ),
     },
     {
       id: 'acciones',
-      header: () => <div className="text-right">Acciones</div>,
+      header: () => <div className="text-right uppercase">{t.common.actions}</div>,
       enableSorting: false,
       enableGlobalFilter: false,
       cell: ({ row }) => {
@@ -236,77 +294,78 @@ export default function EmpleadosPage() {
             <Button
               size="sm"
               variant="outline"
+              className="uppercase"
               onClick={() => openEdit(emp)}
             >
-              <Pencil className="h-4 w-4" /> Editar
+              <Pencil className="h-4 w-4" /> {t.common.edit}
             </Button>
             <AlertDialog>
               <AlertDialogTrigger asChild>
                 <Button
                   size="sm"
                   variant="outline"
-                  className={`w-[110px] ${emp.activo ? 'border-amber-400 text-amber-700 hover:bg-amber-50' : 'border-[#8bb09b] text-[#648672] hover:bg-[#648672]/10'}`}
+                  className={`w-[110px] uppercase ${emp.activo ? 'border-amber-400 text-amber-700 hover:bg-amber-50' : 'border-[#8bb09b] text-[#648672] hover:bg-[#648672]/10'}`}
                 >
                   <Power className="h-4 w-4 shrink-0" />
                   <span className="inline-block w-[68px] text-center">
-                    {emp.activo ? 'Desactivar' : 'Activar'}
+                    {emp.activo ? t.common.deactivate : t.common.activate}
                   </span>
                 </Button>
               </AlertDialogTrigger>
               <AlertDialogContent>
                 <AlertDialogHeader>
                   <AlertDialogTitle>
-                    {emp.activo ? '¿Desactivar empleado?' : '¿Activar empleado?'}
+                    {emp.activo ? t.employees.deactivateEmployeeTitle : t.employees.activateEmployeeTitle}
                   </AlertDialogTitle>
                   <AlertDialogDescription>
                     {emp.activo
-                      ? <>El empleado <strong>{emp.nombreCompleto}</strong> dejará de aparecer en la captura de ventas.</>
-                      : <>El empleado <strong>{emp.nombreCompleto}</strong> volverá a estar disponible para captura de ventas.</>
+                      ? <><strong>{emp.nombreCompleto}</strong> {t.employees.deactivateEmployeeDescription}</>
+                      : <><strong>{emp.nombreCompleto}</strong> {t.employees.activateEmployeeDescription}</>
                     }
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
-                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                  <AlertDialogCancel>{t.common.cancel}</AlertDialogCancel>
                   <AlertDialogAction
                     className={emp.activo ? 'bg-amber-500 hover:bg-amber-600 text-white' : 'bg-[#648672] hover:bg-[#4f6a5a] text-white'}
                     onClick={() => {
                       void toggleStatus(emp.id, !emp.activo).then(() => {
-                        toast.success(emp.activo ? 'Empleado desactivado' : 'Empleado activado')
+                        toast.success(emp.activo ? t.employees.employeeDeactivated : t.employees.employeeActivated)
                       })
                     }}
                   >
-                    {emp.activo ? 'Desactivar' : 'Activar'}
+                    {emp.activo ? t.common.deactivate : t.common.activate}
                   </AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>
             <AlertDialog>
               <AlertDialogTrigger asChild>
-                <Button size="sm" variant="outline" className="border-red-300 text-red-600 hover:bg-red-50 hover:text-red-600">
-                  <Trash2 className="h-4 w-4" /> Eliminar
+                <Button size="sm" variant="outline" className="border-red-300 text-red-600 hover:bg-red-50 hover:text-red-600 uppercase">
+                  <Trash2 className="h-4 w-4" /> {t.common.delete}
                 </Button>
               </AlertDialogTrigger>
               <AlertDialogContent>
                 <AlertDialogHeader>
-                  <AlertDialogTitle>¿Eliminar empleado?</AlertDialogTitle>
+                  <AlertDialogTitle>{t.employees.deleteEmployeeTitle}</AlertDialogTitle>
                   <AlertDialogDescription>
-                    Esta acción no se puede deshacer. Se eliminará a <strong>{emp.nombreCompleto}</strong>.
+                    {t.common.deleteCannotUndo} {t.employees.deleteEmployeeDescription} <strong>{emp.nombreCompleto}</strong>.
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
-                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                  <AlertDialogCancel>{t.common.cancel}</AlertDialogCancel>
                   <AlertDialogAction
                     className="bg-red-600 hover:bg-red-700"
                     onClick={() => {
                       void remove(emp.id)
-                        .then(() => toast.success('Empleado eliminado'))
+                        .then(() => toast.success(t.employees.employeeDeleted))
                         .catch((err: { response?: { data?: { message?: string } } }) => {
-                          const msg = err?.response?.data?.message ?? 'No se pudo eliminar el empleado'
+                          const msg = err?.response?.data?.message ?? t.employees.deleteEmployeeFailed
                           toast.error(msg)
                         })
                     }}
                   >
-                    Eliminar
+                    {t.common.delete}
                   </AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>
@@ -321,45 +380,46 @@ export default function EmpleadosPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="page-title font-semibold uppercase">Empleados</h1>
+          <h1 className="page-title font-semibold uppercase">{t.employees.title}</h1>
           <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
-            Gestión del catálogo de empleados
+            {t.employees.description}
           </p>
         </div>
         <Button onClick={openNew}>
-          <UserPlus className="h-4 w-4 mr-1.5" /> Nuevo empleado
+          <UserPlus className="h-4 w-4 mr-1.5" /> {t.employees.newEmployee}
         </Button>
       </div>
 
       {error && <p className="text-sm text-red-500">{error}</p>}
 
       {loading ? (
-        <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Cargando empleados...</p>
+        <p className="text-sm" style={{ color: 'var(--text-muted)' }}>{t.employees.loadingEmployees}</p>
       ) : (
         <DataTable
           columns={columns}
           data={empleados}
-          emptyMessage="Sin empleados registrados"
-          searchPlaceholder="Buscar empleado..."
+          emptyMessage={t.employees.noEmployees}
+          searchPlaceholder={t.employees.searchEmployee}
+          labels={dataTableLabels}
         />
       )}
 
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{editing ? 'Editar empleado' : 'Nuevo empleado'}</DialogTitle>
+            <DialogTitle>{editing ? t.employees.editEmployee : t.employees.newEmployee}</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 pt-2">
             <div className="space-y-1.5">
-              <Label>Nombre completo</Label>
-              <Input value={nombreCompleto} disabled placeholder="Se construye automáticamente" />
+              <Label>{t.employees.fullName}</Label>
+              <Input value={nombreCompleto} disabled placeholder={t.employees.fullNamePlaceholder} />
             </div>
 
             <div className="grid grid-cols-1 gap-4">
               {(['nombres', 'apellidoPaterno', 'apellidoMaterno'] as const).map((field) => (
                 <div key={field} className="space-y-1.5">
                   <Label htmlFor={field}>
-                    {field === 'nombres' ? 'Nombre(s)' : field === 'apellidoPaterno' ? 'Apellido paterno' : 'Apellido materno'}
+                    {field === 'nombres' ? t.employees.firstNames : field === 'apellidoPaterno' ? t.employees.paternalLastName : t.employees.maternalLastName}
                   </Label>
                   <Input id={field} {...registerUppercase(field)} />
                   {errors[field] && <p className="text-xs text-red-500">{errors[field]?.message}</p>}
@@ -367,17 +427,17 @@ export default function EmpleadosPage() {
               ))}
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               {/* Banco — Select dinámico desde useBanks() */}
               <div className="space-y-1.5">
-                <Label htmlFor="bankId">Banco</Label>
+                <Label htmlFor="bankId">{t.common.bank}</Label>
                 <Controller
                   control={control}
                   name="bankId"
                   render={({ field }) => (
                     <Select value={field.value} onValueChange={field.onChange} disabled={banksLoading}>
                       <SelectTrigger id="bankId">
-                        <SelectValue placeholder={banksLoading ? 'Cargando...' : 'Selecciona un banco'} />
+                        <SelectValue placeholder={banksLoading ? t.common.loading : t.employees.selectBank} />
                       </SelectTrigger>
                       <SelectContent>
                         {banks.map((b) => (
@@ -391,22 +451,42 @@ export default function EmpleadosPage() {
               </div>
 
               <div className="space-y-1.5">
-                <Label htmlFor="numeroCuenta">Número de cuenta</Label>
+                <Label htmlFor="numeroCuenta">{t.employees.accountNumber}</Label>
                 <Input id="numeroCuenta" {...registerUppercase('numeroCuenta')} />
                 {errors.numeroCuenta && <p className="text-xs text-red-500">{errors.numeroCuenta.message}</p>}
               </div>
             </div>
 
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="sueldo">{t.employees.salary}</Label>
+                <Input id="sueldo" type="number" step="any" min="0" {...register('sueldo')} />
+                {errors.sueldo && <p className="text-xs text-red-500">{errors.sueldo.message}</p>}
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="fechaNacimiento">{t.employees.birthDate}</Label>
+                <Input id="fechaNacimiento" type="date" {...register('fechaNacimiento')} />
+                {errors.fechaNacimiento && <p className="text-xs text-red-500">{errors.fechaNacimiento.message}</p>}
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="numeroTelefono">{t.employees.phoneNumber}</Label>
+                <Input id="numeroTelefono" type="tel" inputMode="tel" {...register('numeroTelefono')} />
+                {errors.numeroTelefono && <p className="text-xs text-red-500">{errors.numeroTelefono.message}</p>}
+              </div>
+            </div>
+
             {/* Puesto — Select dinámico desde usePositions() */}
             <div className="space-y-1.5">
-              <Label htmlFor="positionId">Puesto</Label>
+              <Label htmlFor="positionId">{t.common.position}</Label>
               <Controller
                 control={control}
                 name="positionId"
                 render={({ field }) => (
                   <Select value={field.value} onValueChange={field.onChange} disabled={positionsLoading}>
                     <SelectTrigger id="positionId">
-                      <SelectValue placeholder={positionsLoading ? 'Cargando...' : 'Selecciona un puesto'} />
+                      <SelectValue placeholder={positionsLoading ? t.common.loading : t.employees.selectPosition} />
                     </SelectTrigger>
                     <SelectContent>
                       {positions.map((p) => (
@@ -420,17 +500,17 @@ export default function EmpleadosPage() {
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="metaIndividual">Meta individual (MXN)</Label>
+              <Label htmlFor="metaIndividual">{t.employees.individualGoalMxn}</Label>
               <Input id="metaIndividual" type="number" step="any" min="0" {...register('metaIndividual')} />
               {errors.metaIndividual && <p className="text-xs text-red-500">{errors.metaIndividual.message}</p>}
             </div>
 
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setModalOpen(false)}>
-                Cancelar
+                {t.common.cancel}
               </Button>
               <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? 'Guardando...' : editing ? 'Guardar cambios' : 'Crear empleado'}
+                {isSubmitting ? t.common.saving : editing ? t.common.saveChanges : t.employees.createEmployee}
               </Button>
             </DialogFooter>
           </form>

@@ -2,6 +2,24 @@
 
 export type Rol = 'SUPER_ADMIN' | 'GERENTE' | 'CAPTURISTA'
 
+export const SCREEN_KEYS = [
+  'dashboard',
+  'ventas',
+  'empleados',
+  'sucursales',
+  'metodos-pago',
+  'bancos',
+  'puestos',
+  'reportes/detalle-metodo-pago',
+  'reportes/metodo-pago-por-dia',
+  'reportes/ventas-por-vendedor',
+  'reportes/ventas-por-vendedor-dia',
+  'reportes/total-general',
+  'accesos',
+] as const
+
+export type ScreenKey = (typeof SCREEN_KEYS)[number]
+
 export interface Usuario {
   id: string
   nombre: string
@@ -10,6 +28,14 @@ export interface Usuario {
   sucursalId?: string
   activo: boolean
   creadoEn: Date
+}
+
+export interface UsuarioSession extends Usuario {
+  empleadoId?: string | null
+  positionId?: string | null
+  positionName?: string | null
+  canManageAccess: boolean
+  screenPermissions: ScreenKey[]
 }
 
 export type MetodoPago = 'EFECTIVO' | 'TARJETA' | 'TRANSFERENCIA' | 'OTRO'
@@ -42,6 +68,9 @@ export interface Empleado {
   banco: string
   numeroCuenta: string
   puesto: string
+  sueldo?: number | null
+  fechaNacimiento?: string | null
+  numeroTelefono?: string | null
   // FK a catálogos dinámicos — nullable durante transición
   bankId?: string | null
   bank?: Bank | null

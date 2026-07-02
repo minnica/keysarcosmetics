@@ -15,16 +15,21 @@ enum Rol {
 }
 
 model Usuario {
-  id            String    @id @default(cuid())
-  nombre        String
-  email         String    @unique
-  passwordHash  String
-  rol           Rol
-  activo        Boolean   @default(true)
-  sucursalId    String?
-  sucursal      Sucursal? @relation(fields: [sucursalId], references: [id])
-  creadoEn      DateTime  @default(now())
-  actualizadoEn DateTime  @updatedAt
+  id                           String    @id @default(cuid())
+  nombre                       String
+  email                        String    @unique
+  passwordHash                 String
+  rol                          Rol
+  activo                       Boolean   @default(true)
+  sucursalId                   String?
+  sucursal                     Sucursal? @relation(fields: [sucursalId], references: [id])
+  empleadoId                   String?   @unique
+  empleado                     Empleado? @relation(fields: [empleadoId], references: [id])
+  passwordChangedAt            DateTime?
+  passwordSetupTokenHash       String?
+  passwordSetupTokenExpiresAt  DateTime?
+  creadoEn                     DateTime  @default(now())
+  actualizadoEn                DateTime  @updatedAt
 }
 
 model Sucursal {
@@ -56,20 +61,62 @@ model MetodoPago {
   actualizadoEn DateTime       @updatedAt
 }
 
+model Bank {
+  id            String     @id @default(cuid())
+  nombre        String     @unique
+  activo        Boolean    @default(true)
+  empleados     Empleado[]
+  creadoEn      DateTime   @default(now())
+  actualizadoEn DateTime   @updatedAt
+}
+
+model Position {
+  id               String     @id @default(cuid())
+  nombre           String     @unique
+  activo           Boolean    @default(true)
+  canManageAccess   Boolean    @default(false)
+  empleados        Empleado[]
+  screenPermissions PositionScreenPermission[]
+  creadoEn         DateTime   @default(now())
+  actualizadoEn    DateTime   @updatedAt
+}
+
+model PositionScreenPermission {
+  id            String   @id @default(cuid())
+  positionId    String
+  position      Position @relation(fields: [positionId], references: [id], onDelete: Cascade)
+  screenKey     String
+  allowed       Boolean  @default(true)
+  creadoEn      DateTime @default(now())
+  actualizadoEn DateTime @updatedAt
+
+  @@unique([positionId, screenKey])
+}
+
 model Empleado {
-  id              String         @id @default(cuid())
+  id              String     @id @default(cuid())
   nombres         String
   apellidoPaterno String
   apellidoMaterno String
   nombreCompleto  String
+  // Campos legacy — se eliminan en Fase 4 tras backfill completo en producción
   banco           String
   numeroCuenta    String
   puesto          String
-  metaIndividual  Decimal        @db.Decimal(10, 2)
-  activo          Boolean        @default(true)
+  sueldo          Decimal?   @db.Decimal(10, 2)
+  fechaNacimiento DateTime?
+  numeroTelefono  String?
+  // FK a catálogos dinámicos — nullable durante transición
+  bankId          String?
+  bank            Bank?      @relation(fields: [bankId], references: [id])
+  positionId      String?
+  position        Position?  @relation(fields: [positionId], references: [id])
+  usuario         Usuario?
+  metaIndividual  Decimal    @db.Decimal(10, 2)
+  activo          Boolean    @default(true)
   ventas          Venta[]
-  creadoEn        DateTime       @default(now())
-  actualizadoEn   DateTime       @updatedAt
+  creadoEn        DateTime   @default(now())
+  actualizadoEn   DateTime   @updatedAt
 }
 
 // Agrupa todas las ventas de un vendedor en un día
@@ -77,6 +124,8 @@ model Venta {
   id            String         @id @default(cuid())
   fecha         DateTime
   notas         String?
+  // Vincula registros guardados juntos (mismo voucher multi-vendedor); nullable = venta individual
+  sesionId      String?
   sucursalId    String
   sucursal      Sucursal       @relation(fields: [sucursalId], references: [id])
   vendedorId    String

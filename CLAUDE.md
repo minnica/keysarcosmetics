@@ -56,6 +56,9 @@ Todas las apps son internas (detrás de login), excepto `landing` que es públic
 - `SUPER_ADMIN` → acceso total a todas las apps
 - `GERENTE` → acceso a su sucursal: ventas, empleados, reportes locales
 - `CAPTURISTA` → solo registro de ventas
+- `Position.canManageAccess` marca el puesto que administra permisos y credenciales de `envelope`.
+- El acceso efectivo a pantallas de `envelope` ya no depende solo del rol: también se resuelve por puesto/permisos por pantalla.
+- La pantalla `accesos` guarda permisos por clic inmediato en cada pantalla con autosave sin recarga, administra credenciales en un dialog dedicado y desactiva cuentas desde la tabla de estatus, excepto la cuenta principal `SUPER_ADMIN`, que queda protegida.
 
 ---
 
@@ -68,7 +71,7 @@ Componentes shadcn canónicos en `packages/ui/src/components/ui`:
 - Calendar, DateRangePicker, Sheet, Tooltip, Separator, Sidebar
 - **AlertDialog** — diálogo de confirmación destructiva (botones de borrar)
 - **Sonner** — toasts con colores de marca (`#648672` green-olive, `#8bb09b` green-sage)
-- **DataTable** — tabla canónica shadcn sobre `@tanstack/react-table`. Props: `columns: ColumnDef<T>[]`, `data: T[]`, `emptyMessage?: string`, `searchPlaceholder?: string`, `pageSize?: number` (default 20). Incluye sorting por clic en header, globalFilter (search input), selector de filas por página (opciones: 10, 20, 50, 100, Todos) y pagination con controles prev/next (ocultos en modo Todos). Re-exporta también `ColumnDef` desde `@cosmetics/ui` — las apps no deben importar `@tanstack/react-table` directamente.
+- **DataTable** — tabla canónica shadcn sobre `@tanstack/react-table`. Props: `columns: ColumnDef<T>[]`, `data: T[]`, `emptyMessage?: string`, `searchPlaceholder?: string`, `pageSize?: number` (default 20), `labels?: { records?: string; all?: string; results?: (count: number) => string }`. Incluye sorting por clic en header, globalFilter (search input), selector de filas por página (opciones: 10, 20, 50, 100, Todos) y pagination con controles prev/next (ocultos en modo Todos). Re-exporta también `ColumnDef` desde `@cosmetics/ui` — las apps no deben importar `@tanstack/react-table` directamente.
 
 `toast` helper re-exportado desde `@cosmetics/ui` (no importar `sonner` directamente en las apps).
 
@@ -85,6 +88,8 @@ Wrappers custom en `packages/ui/src/components/custom`:
 - `toast` siempre desde `@cosmetics/ui`, nunca `import { toast } from 'sonner'` directo.
 - Botones de borrar siempre con `AlertDialog` de confirmación antes de ejecutar `remove`.
 - **Tablas de datos siempre con `DataTable` + `ColumnDef` desde `@cosmetics/ui`.** No usar `<Table>` + `<TableBody>` manual para listados CRUD — solo para tablas de reporte/estáticas.
+- **Reportes exportables**: cuando una pantalla de reporte necesite PDF/Excel, reutilizar `apps/envelope/src/lib/report-export.ts` y `apps/envelope/src/components/reportes/ReportExportButtons.tsx`. Exportar siempre desde el dataset ya agregado, nunca desde captura visual de la tabla.
+- En cualquier tabla, los encabezados y textos estáticos visibles van en MAYÚSCULAS; no transformar valores de datos dinámicos como nombres, fechas o importes.
 - Para columnas computadas (valor derivado de múltiples campos), usar `accessorFn` + `id` para que sorting y globalFilter funcionen. Columnas sin accessor (como acciones) no son sortables ni filtrables — marcar explícitamente con `enableSorting: false, enableGlobalFilter: false`.
 
 **Sistema tipográfico (envelope):**
@@ -105,23 +110,26 @@ Wrappers custom en `packages/ui/src/components/custom`:
 
 Módulos implementados:
 - **ventas** — captura una venta total por `sucursal`+`fecha`+empleado inicial+monto; después permite agregar empleados con reparto equitativo automático y montos editables, y conciliar métodos de pago uno por uno contra el total. El guardado solo se habilita cuando tanto la distribución por empleado como la suma de pagos coinciden con el monto. Cada empleado se persiste como un `RegistroVenta`, compartiendo un `sesionId` cuando participa más de uno; `POST /api/envelope/ventas/lote` guarda todo el voucher en una transacción atómica.
-- **empleados** — CRUD, usa `bankId`/`positionId` dinámicos desde backend; incluye toggle activo/inactivo con `PATCH /empleados/:id/status`; GET retorna todos los empleados (activos primero), la tabla muestra badge de estatus y botón `PowerOff`/`Power` con AlertDialog de confirmación
+- **empleados** — CRUD, usa `bankId`/`positionId` dinámicos desde backend; incluye toggle activo/inactivo con `PATCH /empleados/:id/status`; GET retorna todos los empleados (activos primero), la tabla muestra badge de estatus y botón `PowerOff`/`Power` con AlertDialog de confirmación. Además de `banco`/`puesto` legacy, ya expone `sueldo`, `fechaNacimiento` y `numeroTelefono` en formulario, tabla, backend, Prisma y seed; `fechaNacimiento` se captura completo para que después se derive el cumpleaños y la base de RH para nómina
 - **sucursales** — CRUD de sucursales
 - **metodos-pago** — CRUD de métodos de pago
 - **bancos** — CRUD propio con catálogo `Bank`
 - **puestos** — CRUD propio con catálogo `Position`
-- **reportes** — múltiples subvistas: total-general, detalle-metodo-pago, metodo-pago-por-dia, ventas-por-vendedor, ventas-por-vendedor-dia
+- **reportes** — múltiples subvistas: total-general, detalle-metodo-pago, metodo-pago-por-dia, ventas-por-vendedor, ventas-por-vendedor-dia; exportan PDF y Excel desde los datos agregados en cliente usando `report-export.ts` + `ReportExportButtons`; la vista `ventas-por-vendedor-dia` ahora muestra `Días sin venta` y `Monto día aproximado` al final de la tabla, antes del total
 
 UI:
 - Sidebar responsive usando shadcn `Sidebar` + `Sheet` (Sheet para mobile).
 - Layout: `AppSidebar` + `LayoutShell` en `src/components/layout/`.
+- Sidebar filtrado por permisos efectivos; incluye pantalla de `Control de accesos` para puestos con acceso administrador.
 - Todos los botones de borrar usan `AlertDialog` de confirmación.
 - Todos los formularios disparan `toast.success()` al crear o editar, **excepto** el modal "Agregar/Editar venta" en ventas: dispara `toast.info()` azul pastel (8 s) recordando al usuario que debe dar clic en «Guardar registro» para persistir.
+- En `ventas`, el botón final de guardado debe pasar por un `AlertDialog` de confirmación antes de persistir la venta.
 - `<Toaster position="bottom-center" />` montado en `src/app/layout.tsx`.
 - Favicon configurado via metadata `icons: { icon: '/logo.svg' }` en root layout.
 - Header del sidebar muestra logo (32px) + texto "Keysar Cosmetics" cuando expandido; solo logo (28px) cuando colapsado.
-- Switch dark/light mode en el header del sidebar (bajo la fila del logo), oculto en modo colapsado.
-- Botón "Cerrar sesión" en `SidebarFooter` — elimina `auth_token` de localStorage y redirige a `/login`. Usa `SidebarMenuButton` con tooltip para funcionar también en modo colapsado.
+- Switch dark/light mode y switch visual de idioma `ES/EN` en `SidebarFooter`, encima del botón "Cerrar sesión", ocultos en modo colapsado. Ambos usan el mismo diseño segmentado. Envelope usa `I18nProvider` + `useI18n()` en `src/lib/i18n.tsx`, persiste en `localStorage` con key `keysar-envelope-language` y solo traduce textos estáticos de UI. No traducir ni transformar datos provenientes de BD/API (nombres de sucursales, empleados, bancos, puestos, métodos de pago, mensajes explícitos de backend, etc.).
+- Botón "Cerrar sesión" en `SidebarFooter` — limpia `auth_token`, resetea la sesión en memoria y redirige a `/login`. Usa `SidebarMenuButton` con tooltip para funcionar también en modo colapsado.
+- El login de `envelope` ya usa sesión híbrida: credenciales temporales hoy, con soporte de base para invitación futura por enlace. El redirect post-login usa `window.location.assign(...)` para evitar quedarse atrapado en la pantalla de login.
 
 Datos:
 - `useBanks` y `usePositions` cargan catálogos dinámicos desde backend.
@@ -137,10 +145,15 @@ Datos:
 
 **Modelos relevantes:**
 - `Usuario`, `Sucursal`, `Empleado`, `Venta`, `VentaDetalle`, `MetodoPago`, `Bank`, `Position`.
+- `Usuario` puede vincularse opcionalmente a `Empleado` mediante `empleadoId` y guarda metadatos para el futuro flujo de invitación/alta de contraseña.
+- `Position` incluye `canManageAccess` y la relación `PositionScreenPermission`.
+- `PositionScreenPermission` guarda permisos por pantalla para cada puesto.
+- El acceso admin expone `PUT /api/envelope/access/positions/:id/permissions`, `PUT /api/envelope/access/users/:employeeId/credentials` y `DELETE /api/envelope/access/users/:id` para desactivar cuentas.
 - `Empleado` tiene `bankId`/`positionId` nullable (FK a catálogos dinámicos).
 - `Empleado` también tiene campos legacy `banco`/`puesto` (String) — conservar por compatibilidad hasta backfill completo en prod.
+- `Empleado` ahora incluye `sueldo Decimal?`, `fechaNacimiento DateTime?` y `numeroTelefono String?` para el crecimiento del módulo RH.
 - `Venta` tiene `sesionId String?` — vincula registros del mismo voucher multi-vendedor; null = venta individual.
-- Soft delete: `activo = false` (Usuario, Empleado, Bank, Position, MetodoPago) o `activa = false` (Sucursal). **No hacer borrados físicos salvo instrucción explícita.**
+- Soft delete: `activo = false` (Usuario, Empleado, Bank, Position, MetodoPago) o `activa = false` (Sucursal). **No hacer borrados físicos salvo instrucción explícita**; la ruta admin de `accesos` desactiva cuentas de login en vez de eliminarlas, excepto la cuenta principal `SUPER_ADMIN`, que no se puede desactivar desde la UI.
 
 **Reglas de BD:**
 - No ejecutar `migrate reset` ni `db push` en ambientes compartidos/productivos.
@@ -190,6 +203,7 @@ apps/envelope/
 │   │   ├── metodos-pago/          → CRUD métodos de pago
 │   │   ├── bancos/                → CRUD catálogo Bank
 │   │   ├── puestos/               → CRUD catálogo Position
+│   │   ├── accesos/               → administración de permisos por puesto, credenciales independientes y borrado de cuentas
 │   │   └── reportes/              → subvistas de reportes del módulo envelope
 │   └── layout.tsx                 → layout raíz de la app
 ├── src/components/
@@ -231,6 +245,7 @@ backend/api/
     │   └── client.ts              → PrismaClient compartido
     ├── routes/
     │   ├── auth.routes.ts
+    │   ├── access.routes.ts      → bootstrap y guardado de permisos/credenciales de acceso de envelope
     │   ├── envelope.routes.ts     → endpoints del módulo envelope
     │   ├── crm.routes.ts
     │   ├── payroll.routes.ts
@@ -276,6 +291,7 @@ packages/ui/
 | Rutas envelope frontend | `apps/envelope/src/app/(dashboard)/` |
 | Hooks envelope | `apps/envelope/src/hooks/` |
 | API client envelope | `apps/envelope/src/lib/api.ts` |
+| Sesión/permisos envelope | `apps/envelope/src/lib/session.tsx` |
 | Endpoints envelope backend | `backend/api/src/routes/envelope.routes.ts` |
 | Prisma schema | `backend/api/prisma/schema.prisma` |
 | Migraciones | `backend/api/prisma/migrations/` |

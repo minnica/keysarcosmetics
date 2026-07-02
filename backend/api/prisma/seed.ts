@@ -1,6 +1,7 @@
 // Seed inicial: usuarios, sucursales, métodos de pago, bancos, puestos, empleados y ventas de prueba
 import { PrismaClient, Rol } from '@prisma/client'
 import bcrypt from 'bcryptjs'
+import { SCREEN_KEYS } from '@cosmetics/types'
 
 const prisma = new PrismaClient()
 
@@ -107,11 +108,61 @@ async function main() {
   for (const p of puestos) {
     await prisma.position.upsert({
       where: { id: p.id },
-      update: {},
-      create: { id: p.id, nombre: p.nombre, activo: true },
+      update: {
+        canManageAccess: p.id === 'pos-admin-general',
+      },
+      create: {
+        id: p.id,
+        nombre: p.nombre,
+        activo: true,
+        canManageAccess: p.id === 'pos-admin-general',
+      },
     })
   }
   console.log(`  ✅ Puestos: ${puestos.map((p) => p.nombre).join(', ')}`)
+
+  await prisma.positionScreenPermission.deleteMany({
+    where: { positionId: { in: puestos.map((p) => p.id) } },
+  })
+
+  const permisosBase = [
+    {
+      positionId: 'pos-vendedor',
+      screenKeys: ['ventas'],
+    },
+    {
+      positionId: 'pos-gerente',
+      screenKeys: [
+        'dashboard',
+        'ventas',
+        'empleados',
+        'sucursales',
+        'metodos-pago',
+        'bancos',
+        'puestos',
+        'reportes/detalle-metodo-pago',
+        'reportes/metodo-pago-por-dia',
+        'reportes/ventas-por-vendedor',
+        'reportes/ventas-por-vendedor-dia',
+        'reportes/total-general',
+      ],
+    },
+    {
+      positionId: 'pos-admin-general',
+      screenKeys: [...SCREEN_KEYS],
+    },
+  ] as const
+
+  await prisma.positionScreenPermission.createMany({
+    data: permisosBase.flatMap((group) =>
+      group.screenKeys.map((screenKey) => ({
+        positionId: group.positionId,
+        screenKey,
+        allowed: true,
+      })),
+    ),
+  })
+  console.log('  ✅ Permisos de pantalla por defecto creados')
 
   // ─── Empleados de prueba ───────────────────────────────────────────────────
   // bankId/positionId asignados por mapeo exacto a los IDs fijos del seed.
@@ -127,6 +178,9 @@ async function main() {
       banco: 'BBVA',
       numeroCuenta: '1234567890',
       puesto: 'Vendedor',
+      sueldo: 18000,
+      fechaNacimiento: new Date('1994-03-15T00:00:00.000Z'),
+      numeroTelefono: '5551234567',
       metaIndividual: 50000,
       bankId: 'bank-bbva',
       positionId: 'pos-vendedor',
@@ -140,6 +194,9 @@ async function main() {
       banco: 'Santander',
       numeroCuenta: '0987654321',
       puesto: 'Vendedor',
+      sueldo: 17500,
+      fechaNacimiento: new Date('1991-08-09T00:00:00.000Z'),
+      numeroTelefono: '5552345678',
       metaIndividual: 45000,
       bankId: 'bank-santander',
       positionId: 'pos-vendedor',
@@ -153,6 +210,9 @@ async function main() {
       banco: 'Banorte',
       numeroCuenta: '1122334455',
       puesto: 'Vendedor',
+      sueldo: 18250,
+      fechaNacimiento: new Date('1996-11-22T00:00:00.000Z'),
+      numeroTelefono: '5553456789',
       metaIndividual: 55000,
       bankId: 'bank-banorte',
       positionId: 'pos-vendedor',
@@ -166,6 +226,9 @@ async function main() {
       banco: 'HSBC',
       numeroCuenta: '5544332211',
       puesto: 'Gerente',
+      sueldo: 28000,
+      fechaNacimiento: new Date('1988-12-05T00:00:00.000Z'),
+      numeroTelefono: '5554567890',
       metaIndividual: 80000,
       bankId: 'bank-hsbc',
       positionId: 'pos-gerente',
@@ -175,7 +238,13 @@ async function main() {
   for (const emp of empleadosData) {
     await prisma.empleado.upsert({
       where: { id: emp.id },
-      update: { bankId: emp.bankId, positionId: emp.positionId },
+      update: {
+        bankId: emp.bankId,
+        positionId: emp.positionId,
+        sueldo: emp.sueldo,
+        fechaNacimiento: emp.fechaNacimiento,
+        numeroTelefono: emp.numeroTelefono,
+      },
       create: { ...emp, activo: true },
     })
     console.log(`  ✅ Empleado: ${emp.nombreCompleto}`)

@@ -2,7 +2,12 @@
 import { clsx, type ClassValue } from 'clsx'
 import { twMerge } from 'tailwind-merge'
 import { format, parseISO } from 'date-fns'
-import { es } from 'date-fns/locale'
+import { enUS, es } from 'date-fns/locale'
+import type { Locale } from './i18n'
+
+function dateLocale(locale: Locale = 'es') {
+  return locale === 'en' ? enUS : es
+}
 
 /** Combina clases de Tailwind evitando conflictos */
 export function cn(...inputs: ClassValue[]): string {
@@ -19,9 +24,9 @@ export function formatCurrency(amount: number): string {
 }
 
 /** Formatea una fecha ISO a formato legible */
-export function formatDate(isoDate: string, fmt = 'dd/MM/yyyy'): string {
+export function formatDate(isoDate: string, fmt = 'dd/MM/yyyy', locale: Locale = 'es'): string {
   try {
-    return format(parseISO(isoDate), fmt, { locale: es })
+    return format(parseISO(isoDate), fmt, { locale: dateLocale(locale) })
   } catch {
     return isoDate
   }
@@ -38,6 +43,6 @@ export function generateId(): string {
 }
 
 /** Nombre del mes en español */
-export function monthName(year: number, month: number): string {
-  return format(new Date(year, month - 1, 1), 'MMMM yyyy', { locale: es })
+export function monthName(year: number, month: number, locale: Locale = 'es'): string {
+  return format(new Date(year, month - 1, 1), 'MMMM yyyy', { locale: dateLocale(locale) })
 }

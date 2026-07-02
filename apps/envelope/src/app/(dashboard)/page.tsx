@@ -23,6 +23,7 @@ import {
 import { Input } from "@cosmetics/ui";
 import { Label } from "@cosmetics/ui";
 import { useSucursales, useEmpleados, useVentas } from "@/hooks";
+import { useI18n } from "@/lib/i18n";
 import { formatCurrency, formatDate, todayISO, monthName } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 
@@ -40,6 +41,7 @@ export default function DashboardPage() {
   const { sucursales, loading: lS } = useSucursales();
   const { empleados, loading: lE } = useEmpleados();
   const { registros, loading: lV } = useVentas();
+  const { locale, t } = useI18n();
   const loading = lS || lE || lV;
 
   const [selectedDate, setSelectedDate] = useState(todayISO());
@@ -68,13 +70,13 @@ export default function DashboardPage() {
   }
 
   const periodos = [
-    { label: "Ventas del día", filter: (f: string) => f === selectedDate },
+    { label: t.dashboard.dailySales, filter: (f: string) => f === selectedDate },
     {
-      label: `Ventas del mes`,
+      label: t.dashboard.monthlySales,
       filter: (f: string) => f.startsWith(selMonthPrefix),
     },
     {
-      label: `Ventas del año`,
+      label: t.dashboard.yearlySales,
       filter: (f: string) => f.startsWith(selYearPrefix),
     },
   ];
@@ -82,7 +84,7 @@ export default function DashboardPage() {
   const monthsData = Array.from({ length: 6 }, (_, i) => {
     const d = new Date(selYear, selMonth - 1 - (5 - i), 1);
     const prefix = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-    const label = monthName(d.getFullYear(), d.getMonth() + 1)
+    const label = monthName(d.getFullYear(), d.getMonth() + 1, locale)
       .slice(0, 3)
       .toUpperCase();
     const entry: Record<string, string | number> = { mes: label };
@@ -121,7 +123,7 @@ export default function DashboardPage() {
         className="flex items-center justify-center h-64 text-sm"
         style={{ color: "var(--text-muted)" }}
       >
-        Cargando datos...
+        {t.common.loadingData}
       </div>
     );
   }
@@ -131,14 +133,14 @@ export default function DashboardPage() {
       {/* Header */}
       <div className="flex items-end justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="page-title font-semibold uppercase">Dashboard</h1>
+          <h1 className="page-title font-semibold uppercase">{t.dashboard.title}</h1>
           <p className="text-sm mt-1" style={{ color: "var(--text-muted)" }}>
-            Resumen de ventas —{" "}
-            {formatDate(selectedDate, "EEEE d 'de' MMMM yyyy")}
+            {t.dashboard.salesSummary} —{" "}
+            {formatDate(selectedDate, locale === 'en' ? "EEEE, MMMM d yyyy" : "EEEE d 'de' MMMM yyyy", locale)}
           </p>
         </div>
         <div className="space-y-1">
-          <Label htmlFor="fecha-dashboard">Fecha de referencia</Label>
+          <Label htmlFor="fecha-dashboard">{t.dashboard.referenceDate}</Label>
           <Input
             id="fecha-dashboard"
             type="date"
@@ -204,7 +206,7 @@ export default function DashboardPage() {
                     className="text-[14px] font-bold uppercase tracking-widest"
                     style={{ color: "var(--text-muted)" }}
                   >
-                    Total
+                    {t.common.total}
                   </span>
                   <span
                     className="text-2xl font-bold tabular-nums leading-none"
@@ -221,7 +223,7 @@ export default function DashboardPage() {
 
       {/* ── Gráfica 1: Total mensual por sucursal ── */}
       <section>
-        <h2 className="label-caps mb-3">Total mensual por sucursal</h2>
+        <h2 className="label-caps mb-3">{t.dashboard.monthlyTotalByBranch}</h2>
         <Card>
           <CardContent className="pt-6">
             <ResponsiveContainer width="100%" height={280}>
@@ -270,7 +272,7 @@ export default function DashboardPage() {
 
       {/* ── Gráfica 2: Vendedor vs Meta ── */}
       <section>
-        <h2 className="label-caps mb-3">Avance vendedores del mes</h2>
+        <h2 className="label-caps mb-3">{t.dashboard.sellersMonthlyProgress}</h2>
         <Card>
           <CardContent className="pt-6">
             {vendedoresData.length === 0 ? (
@@ -278,9 +280,9 @@ export default function DashboardPage() {
                 className="flex flex-col items-center justify-center py-12 gap-2"
                 style={{ color: "var(--text-muted)" }}
               >
-                <p className="text-sm font-medium">Sin vendedores con meta asignada</p>
+                <p className="text-sm font-medium">{t.dashboard.noSellersWithGoal}</p>
                 <p className="text-xs">
-                  Asigna una meta individual en el módulo de empleados para ver el avance.
+                  {t.dashboard.assignGoalHint}
                 </p>
               </div>
             ) : (
@@ -336,9 +338,9 @@ export default function DashboardPage() {
                           }}
                         >
                           <p className="font-semibold mb-1">{d.nombre}</p>
-                          <p>Vendido: {formatCurrency(d.vendido)}</p>
+                          <p>{t.dashboard.sold}: {formatCurrency(d.vendido)}</p>
                           <p style={{ color: "var(--text-muted)" }}>
-                            Meta: {formatCurrency(d.meta)}
+                            {t.dashboard.goal}: {formatCurrency(d.meta)}
                           </p>
                           <p
                             style={{
@@ -351,7 +353,7 @@ export default function DashboardPage() {
                               fontWeight: 600,
                             }}
                           >
-                            {pct}% alcanzado
+                            {pct}% {t.dashboard.reached}
                           </p>
                         </div>
                       );
@@ -364,11 +366,11 @@ export default function DashboardPage() {
                   <Bar
                     dataKey="meta"
                     fill="#f3f0e9"
-                    name="Meta"
+                    name={t.dashboard.goal}
                     radius={[0, 4, 4, 0]}
                   />
                   {/* Barra de vendido */}
-                  <Bar dataKey="vendido" name="Vendido" fill="#ecd1c8" radius={[0, 4, 4, 0]}>
+                  <Bar dataKey="vendido" name={t.dashboard.sold} fill="#ecd1c8" radius={[0, 4, 4, 0]}>
                     <LabelList
                       dataKey="vendido"
                       position="right"

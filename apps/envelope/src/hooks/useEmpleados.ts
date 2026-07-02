@@ -17,6 +17,7 @@ interface UseEmpleadosReturn {
 
 // Convierte la respuesta del backend al tipo local (Decimal → number, incluye relaciones FK)
 function toEmpleado(raw: Record<string, unknown>): Empleado {
+  const rawBirthDate = raw['fechaNacimiento']
   return {
     id: raw['id'] as string,
     nombres: raw['nombres'] as string,
@@ -26,6 +27,12 @@ function toEmpleado(raw: Record<string, unknown>): Empleado {
     banco: raw['banco'] as string,
     numeroCuenta: raw['numeroCuenta'] as string,
     puesto: raw['puesto'] as string,
+    sueldo: raw['sueldo'] != null ? Number(raw['sueldo']) : null,
+    fechaNacimiento:
+      typeof rawBirthDate === 'string' && rawBirthDate.length >= 10
+        ? rawBirthDate.slice(0, 10)
+        : null,
+    numeroTelefono: (raw['numeroTelefono'] as string | null) ?? null,
     metaIndividual: Number(raw['metaIndividual']),
     bankId: (raw['bankId'] as string | null) ?? null,
     bank: (raw['bank'] as Empleado['bank']) ?? null,
