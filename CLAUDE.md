@@ -137,6 +137,54 @@ Datos:
 
 ---
 
+## Estado actual de apps/scheduler
+
+Estado actual:
+- Fase 1 local/mock, sin backend real, sin Prisma y sin persistencia.
+- La app ya modela una agenda operativa estilo AgendaPro con vistas `day` y `week`, filtro por sucursal, selección de profesionales, filtro de estatus, búsqueda rápida por hora, calendario mensual y acciones directas sobre slots vacíos.
+- La entrada principal es `SchedulerWorkspace`, que compone `SchedulerHeader`, `SchedulerSidebar` y `SchedulerAgendaGrid`, y abre tres diálogos especializados: `SchedulerBookingDialog`, `SchedulerBlockDialog` y `SchedulerDetailDialog`.
+- Los datos salen de `src/lib/mock-scheduler-data.ts` y se manipulan con helpers en `src/components/scheduler/scheduler-utils.tsx`.
+- El login temporal solo redirige a la agenda principal; no hay flujo auth real para esta app todavía.
+
+UI y comportamiento:
+- Header superior con navegación de vista `día/semana`, selector de fecha, leyenda, refresh y CTA `Nuevo`.
+- Sidebar con sucursal, profesionales visibles, filtro de estatus, búsqueda por hora y calendario mensual.
+- Agenda con tarjetas de reservas, bloqueos manuales, línea de hora actual en vista diaria y vista semanal resumida.
+- Reservas locales con edición, eliminación, cambio de estatus y cambio de pago desde la tarjeta de cita.
+- Bloqueos locales con alta, edición, eliminación y validaciones de horario/conflictos.
+- Todo sigue usando `@cosmetics/ui` para primitives y `toast` compartido; las pantallas montan `<Toaster />` en `src/app/layout.tsx`.
+
+```text
+apps/scheduler/
+├── public/
+│   ├── logo.svg                   → logo compartido Keysar
+│   └── fonts/                     → Emofera + Gilroy para identidad visual
+├── src/app/
+│   ├── (auth)/login/              → login temporal/mock, hoy solo redirige a la agenda
+│   ├── (dashboard)/page.tsx       → agenda principal (día / semana)
+│   ├── globals.css                → tokens visuales, layout y componentes del scheduler
+│   └── layout.tsx                 → metadata + Toaster global
+├── src/components/
+│   ├── SchedulerWorkspace.tsx     → shell principal con estado local, filtros y modales
+│   └── scheduler/
+│       ├── SchedulerHeader.tsx    → header con vista, fecha, leyenda y acciones globales
+│       ├── SchedulerSidebar.tsx   → filtros, profesionales y calendario mensual
+│       ├── SchedulerAgendaGrid.tsx → grilla día/semana con reservas y bloqueos
+│       ├── SchedulerBookingCard.tsx → tarjeta de reserva con acciones
+│       ├── SchedulerBookingDialog.tsx → alta/edición de reserva
+│       ├── SchedulerBlockDialog.tsx → alta/edición/eliminación de bloqueo
+│       ├── SchedulerDetailDialog.tsx → detalle de pago o ficha
+│       ├── SchedulerAvatar.tsx    → avatar reutilizable de profesionales
+│       └── scheduler-utils.tsx    → cálculos de hora, estilos y helpers de drafts
+├── src/hooks/
+│   └── index.ts                   → barrel de hooks locales
+└── src/lib/
+    ├── index.ts                   → barrel de utilidades y mock data
+    └── mock-scheduler-data.ts     → sucursales, profesionales, servicios, reservas y bloqueos mock
+```
+
+---
+
 ## Backend / Prisma
 
 - Express + Prisma, PostgreSQL en Supabase.
@@ -226,6 +274,37 @@ apps/envelope/
     └── utils.ts
 ```
 
+### apps/scheduler
+
+```
+apps/scheduler/
+├── public/
+│   ├── logo.svg                   → logo compartido Keysar
+│   └── fonts/                     → Emofera + Gilroy para identidad visual
+├── src/app/
+│   ├── (auth)/login/              → login temporal/mock, hoy solo redirige a la agenda
+│   ├── (dashboard)/page.tsx       → agenda principal (día / semana)
+│   ├── globals.css                → tokens visuales, layout y componentes del scheduler
+│   └── layout.tsx                 → metadata + Toaster global
+├── src/components/
+│   ├── SchedulerWorkspace.tsx     → shell principal con estado local, filtros y modales
+│   └── scheduler/
+│       ├── SchedulerHeader.tsx    → header con vista, fecha, leyenda y acciones globales
+│       ├── SchedulerSidebar.tsx   → filtros, profesionales y calendario mensual
+│       ├── SchedulerAgendaGrid.tsx → grilla día/semana con reservas y bloqueos
+│       ├── SchedulerBookingCard.tsx → tarjeta de reserva con acciones
+│       ├── SchedulerBookingDialog.tsx → alta/edición de reserva
+│       ├── SchedulerBlockDialog.tsx → alta/edición/eliminación de bloqueo
+│       ├── SchedulerDetailDialog.tsx → detalle de pago o ficha
+│       ├── SchedulerAvatar.tsx    → avatar reutilizable de profesionales
+│       └── scheduler-utils.tsx    → cálculos de hora, estilos y helpers de drafts
+├── src/hooks/
+│   └── index.ts                   → barrel de hooks locales
+└── src/lib/
+    ├── index.ts                   → barrel de utilidades y mock data
+    └── mock-scheduler-data.ts     → sucursales, profesionales, servicios, reservas y bloqueos mock
+```
+
 ### backend/api
 
 ```
@@ -292,6 +371,10 @@ packages/ui/
 | Hooks envelope | `apps/envelope/src/hooks/` |
 | API client envelope | `apps/envelope/src/lib/api.ts` |
 | Sesión/permisos envelope | `apps/envelope/src/lib/session.tsx` |
+| Ruta scheduler principal | `apps/scheduler/src/app/(dashboard)/page.tsx` |
+| Layout scheduler | `apps/scheduler/src/components/SchedulerWorkspace.tsx` |
+| Componentes scheduler | `apps/scheduler/src/components/scheduler/` |
+| Mock data scheduler | `apps/scheduler/src/lib/mock-scheduler-data.ts` |
 | Endpoints envelope backend | `backend/api/src/routes/envelope.routes.ts` |
 | Prisma schema | `backend/api/prisma/schema.prisma` |
 | Migraciones | `backend/api/prisma/migrations/` |
@@ -307,6 +390,7 @@ packages/ui/
 ```bash
 pnpm install
 pnpm --filter @cosmetics/envelope dev
+pnpm --filter @cosmetics/scheduler dev
 pnpm --filter @cosmetics/api dev
 ```
 
@@ -315,6 +399,8 @@ pnpm --filter @cosmetics/api dev
 ```bash
 pnpm --filter @cosmetics/envelope type-check
 pnpm --filter @cosmetics/envelope build
+pnpm --filter @cosmetics/scheduler type-check
+pnpm --filter @cosmetics/scheduler build
 pnpm --filter @cosmetics/api type-check
 pnpm --filter @cosmetics/api build
 ```
