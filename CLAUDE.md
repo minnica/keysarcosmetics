@@ -195,7 +195,7 @@ Módulos implementados:
 - **metodos-pago** — CRUD de métodos de pago
 - **bancos** — CRUD propio con catálogo `Bank`
 - **puestos** — CRUD propio con catálogo `Position`
-- **reportes** — múltiples subvistas: total-general, detalle-metodo-pago, metodo-pago-por-dia, ventas-por-vendedor, ventas-por-vendedor-dia; exportan PDF y Excel desde los datos agregados en cliente usando `report-export.ts` + `ReportExportButtons`; la vista `ventas-por-vendedor-dia` muestra `Días sin venta` y `Monto día aproximado` al final de la tabla, antes del total, y cuando consulta el mes en curso solo renderiza días transcurridos hasta hoy
+- **reportes** — múltiples subvistas: total-general, detalle-metodo-pago, metodo-pago-por-dia, ventas-por-vendedor, ventas-por-vendedor-dia; exportan PDF y Excel desde los datos agregados en cliente usando `report-export.ts` + `ReportExportButtons`; la vista `ventas-por-vendedor-dia` muestra `Días sin venta` y `Monto día aproximado` al final de la tabla, antes del total, calcula ese monto como `venta total del mes / días con venta` por vendedor, y cuando consulta el mes en curso solo renderiza días transcurridos hasta hoy
 
 UI:
 - Sidebar responsive usando shadcn `Sidebar` + `Sheet` (Sheet para mobile).

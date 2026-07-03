@@ -4,13 +4,6 @@ import { useState } from 'react'
 import {
   Badge,
   Label,
-  Table,
-  TableHeader,
-  TableBody,
-  TableFooter,
-  TableRow,
-  TableHead,
-  TableCell,
   Select,
   SelectTrigger,
   SelectValue,
@@ -101,8 +94,8 @@ export default function VentasPorVendedorDiaPage() {
       return {
         ...row,
         daysWithoutSale,
-        // Estimación proporcional al avance del mes consultado.
-        approximateDayAmount: row.total * (elapsedDays / daysInMonth),
+        // Promedio real: total del mes dividido entre los días con venta.
+        approximateDayAmount: saleDaysCount > 0 ? row.total / saleDaysCount : 0,
       }
     })
     .sort((a, b) =>
@@ -110,6 +103,7 @@ export default function VentasPorVendedorDiaPage() {
     )
 
   const hasData = rows.length > 0
+
   const zeroBadgeClassName = 'rounded-full bg-[#b85f5a] px-2 py-0.5 text-[11px] font-semibold text-white hover:bg-[#b85f5a] tabular-nums'
   function renderAmount(value: number) {
     if (value === 0) {
@@ -327,10 +321,10 @@ export default function VentasPorVendedorDiaPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-        <h1 className="page-title font-semibold uppercase">{t.reports.salesBySellerDayTitle}</h1>
-        <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
-          {t.reports.salesBySellerDayDescription}
-        </p>
+          <h1 className="page-title font-semibold uppercase">{t.reports.salesBySellerDayTitle}</h1>
+          <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
+            {t.reports.salesBySellerDayDescription}
+          </p>
         </div>
         <ReportExportButtons
           disabled={loading || !!error || !hasData}
@@ -387,35 +381,44 @@ export default function VentasPorVendedorDiaPage() {
           {t.reports.noSalesSellerPeriod}
         </p>
       ) : (
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="sticky left-0 z-20 bg-background whitespace-nowrap min-w-56 uppercase">
+        <div className="max-h-[calc(100vh-22rem)] overflow-auto rounded-2xl border border-[color:var(--border-color)] bg-[color:var(--color-ivory)] shadow-sm">
+          <table className="min-w-max w-full border-separate border-spacing-0">
+            <thead>
+              <tr>
+                <th className="sticky top-0 left-0 z-30 border-b border-[color:var(--border-color)] bg-[color:var(--color-ivory)] px-2 py-3 text-left text-xs font-medium uppercase text-[color:var(--text-muted)] whitespace-nowrap min-w-56 shadow-[1px_0_0_var(--border-color)]">
                   {t.common.employee}
-                </TableHead>
+                </th>
                 {dias.map((dia) => (
-                  <TableHead key={dia} className="text-right whitespace-nowrap uppercase">
+                  <th
+                    key={dia}
+                    className="sticky top-0 z-20 border-b border-[color:var(--border-color)] bg-[color:var(--color-ivory)] px-2 py-3 text-right text-xs font-medium uppercase text-[color:var(--text-muted)] whitespace-nowrap"
+                  >
                     {formatDate(dia, 'EEEE dd', locale)}
-                  </TableHead>
+                  </th>
                 ))}
-                <TableHead className="whitespace-nowrap uppercase text-center">DÍAS SIN VENTA</TableHead>
-                <TableHead className="whitespace-nowrap uppercase text-right">MONTO DÍA APROX</TableHead>
-                <TableHead className="text-right whitespace-nowrap uppercase">{t.common.total}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map((row) => (
-                <TableRow key={row.sellerId}>
-                  <TableCell className="sticky left-0 z-10 bg-background whitespace-nowrap font-medium">
-                    {row.sellerName}
-                  </TableCell>
+                <th className="sticky top-0 z-20 border-b border-[color:var(--border-color)] bg-[color:var(--color-ivory)] px-2 py-3 text-center text-xs font-medium uppercase text-[color:var(--text-muted)] whitespace-nowrap">
+                  DÍAS SIN VENTA
+                </th>
+                <th className="sticky top-0 z-20 border-b border-[color:var(--border-color)] bg-[color:var(--color-ivory)] px-2 py-3 text-right text-xs font-medium uppercase text-[color:var(--text-muted)] whitespace-nowrap">
+                  MONTO DÍA APROX
+                </th>
+                <th className="sticky top-0 z-20 border-b border-[color:var(--border-color)] bg-[color:var(--color-ivory)] px-2 py-3 text-right text-xs font-medium uppercase text-[color:var(--text-muted)] whitespace-nowrap">
+                  {t.common.total}
+                </th>
+              </tr>
+            </thead>
+              <tbody>
+                {rows.map((row) => (
+                  <tr key={row.sellerId} className="border-b border-[color:var(--border-color)]">
+                    <td className="sticky left-0 z-10 bg-[color:var(--color-ivory)] px-2 py-3 whitespace-nowrap font-medium shadow-[1px_0_0_var(--border-color)]">
+                      {row.sellerName}
+                    </td>
                   {dias.map((dia) => (
-                    <TableCell key={dia} className="text-right">
+                    <td key={dia} className="px-2 py-3 text-right whitespace-nowrap">
                       {renderAmount(row.byDate[dia] ?? 0)}
-                    </TableCell>
+                    </td>
                   ))}
-                  <TableCell className="text-center">
+                  <td className="px-2 py-3 text-center whitespace-nowrap">
                     {row.daysWithoutSale === 0 ? (
                       <span className="inline-flex items-center rounded-full bg-[#7d9f8a] px-2 py-0.5 text-[11px] font-semibold text-white tabular-nums">
                         0 DÍAS
@@ -423,38 +426,38 @@ export default function VentasPorVendedorDiaPage() {
                     ) : (
                       <span className="tabular-nums">{row.daysWithoutSale} DÍAS</span>
                     )}
-                  </TableCell>
-                  <TableCell className="text-right">
+                  </td>
+                  <td className="px-2 py-3 text-right whitespace-nowrap">
                     {renderAmount(row.approximateDayAmount)}
-                  </TableCell>
-                  <TableCell className="text-right font-medium">
+                  </td>
+                  <td className="px-2 py-3 text-right whitespace-nowrap font-medium">
                     {renderAmount(row.total)}
-                  </TableCell>
-                </TableRow>
+                  </td>
+                </tr>
               ))}
-            </TableBody>
-            <TableFooter>
-              <TableRow>
-                <TableCell className="sticky left-0 z-20 bg-background font-semibold text-xs uppercase">
+            </tbody>
+              <tfoot className="border-t border-[color:var(--border-color)] bg-[color:var(--color-ivory)] font-medium">
+                <tr>
+                <td className="sticky left-0 z-30 bg-[color:var(--color-ivory)] px-2 py-3 text-xs font-semibold uppercase whitespace-nowrap shadow-[1px_0_0_var(--border-color)]">
                   {t.common.grandTotal}
-                </TableCell>
+                </td>
                 {dias.map((dia) => (
-                  <TableCell key={dia} className="text-right font-semibold">
+                  <td key={dia} className="px-2 py-3 text-right font-semibold whitespace-nowrap">
                     {renderAmount(totalDia(dia))}
-                  </TableCell>
+                  </td>
                 ))}
-                <TableCell className="text-center font-semibold">
+                <td className="px-2 py-3 text-center font-semibold whitespace-nowrap">
                   <span style={{ color: 'var(--text-muted)' }}>—</span>
-                </TableCell>
-                <TableCell className="text-right font-semibold">
+                </td>
+                <td className="px-2 py-3 text-right font-semibold whitespace-nowrap">
                   {renderAmount(rows.reduce((sum, row) => sum + row.approximateDayAmount, 0))}
-                </TableCell>
-                <TableCell className="text-right font-bold text-base">
+                </td>
+                <td className="px-2 py-3 text-right font-bold text-base whitespace-nowrap">
                   {renderAmount(grandTotal)}
-                </TableCell>
-              </TableRow>
-            </TableFooter>
-          </Table>
+                </td>
+              </tr>
+            </tfoot>
+          </table>
         </div>
       )}
     </div>
