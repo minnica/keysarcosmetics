@@ -19,8 +19,8 @@ import {
   CardTitle,
   CardContent,
   CardDescription,
+  DatePicker,
 } from "@cosmetics/ui";
-import { Input } from "@cosmetics/ui";
 import { Label } from "@cosmetics/ui";
 import { useSucursales, useEmpleados, useVentas } from "@/hooks";
 import { useI18n } from "@/lib/i18n";
@@ -141,12 +141,12 @@ export default function DashboardPage() {
         </div>
         <div className="space-y-1">
           <Label htmlFor="fecha-dashboard">{t.dashboard.referenceDate}</Label>
-          <Input
+          <DatePicker
             id="fecha-dashboard"
-            type="date"
             value={selectedDate}
-            onChange={(e) => setSelectedDate(e.target.value)}
+            onChange={setSelectedDate}
             className="w-44"
+            placeholder={t.dashboard.referenceDate}
           />
         </div>
       </div>

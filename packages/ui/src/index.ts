@@ -75,6 +75,9 @@ export type { CalendarProps } from './components/ui/calendar'
 export { DateRangePicker } from './components/ui/date-range-picker'
 export type { DateRange } from './components/ui/date-range-picker'
 
+// Fase 2E - DatePicker shadcn/ui (Calendar + Popover)
+export { DatePicker } from './components/ui/date-picker'
+
 // Fase 3 - Sheet shadcn/ui canonico
 export {
   Sheet,
