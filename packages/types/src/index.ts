@@ -7,6 +7,7 @@ export const SCREEN_KEYS = [
   'ventas',
   'ventas/generar-sobre',
   'empleados',
+  'empleados/sueldo',
   'sucursales',
   'metodos-pago',
   'bancos',

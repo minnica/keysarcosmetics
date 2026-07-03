@@ -1,7 +1,7 @@
 // Rutas del módulo Envelope — ventas por sobre digitalizado
 import { Router, type Router as ExpressRouter } from 'express'
 import { authMiddleware } from '../middlewares/auth.middleware'
-import { requireScreenAccess } from '../lib/access'
+import { requireScreenAccess, resolveAccessForRequest } from '../lib/access'
 import { prisma } from '../prisma/client'
 
 const router: ExpressRouter = Router()
@@ -31,6 +31,18 @@ function normalizeDateInput(value?: string | null): Date | null | undefined {
   if (!trimmed) return null
   const parsed = new Date(trimmed)
   return Number.isNaN(parsed.getTime()) ? null : parsed
+}
+
+async function canViewSalary(req: Parameters<typeof resolveAccessForRequest>[0]): Promise<boolean> {
+  const access = await resolveAccessForRequest(req)
+  return Boolean(access?.canManageAccess || access?.screenPermissions.includes('empleados/sueldo'))
+}
+
+function redactSalary<T extends { sueldo?: unknown }>(record: T, visible: boolean): T & { sueldo: unknown } {
+  return {
+    ...record,
+    sueldo: visible ? record.sueldo ?? null : null,
+  }
 }
 
 // ─── SUCURSALES ───────────────────────────────────────────────────────────────
@@ -86,13 +98,15 @@ router.delete('/sucursales/:id', access.sucursales, async (req, res) => {
 
 // ─── EMPLEADOS ────────────────────────────────────────────────────────────────
 
-router.get('/empleados', access.empleados, async (_req, res) => {
+router.get('/empleados', access.empleados, async (req, res) => {
   try {
     const data = await prisma.empleado.findMany({
       orderBy: [{ activo: 'desc' }, { nombreCompleto: 'asc' }],
       include: { bank: true, position: true },
     })
-    res.json({ success: true, data, message: 'OK' })
+    const salaryVisible = await canViewSalary(req)
+    const response = data.map((empleado) => redactSalary(empleado as typeof empleado & { sueldo?: unknown }, salaryVisible))
+    res.json({ success: true, data: response, message: 'OK' })
   } catch (err) {
     console.error(err)
     res.status(500).json({ success: false, data: null, message: 'Error al obtener empleados' })
@@ -165,7 +179,12 @@ router.post('/empleados', access.empleados, async (req, res) => {
       },
       include: { bank: true, position: true },
     })
-    res.status(201).json({ success: true, data, message: 'Empleado creado' })
+    const salaryVisible = await canViewSalary(req)
+    res.status(201).json({
+      success: true,
+      data: redactSalary(data as typeof data & { sueldo?: unknown }, salaryVisible),
+      message: 'Empleado creado',
+    })
   } catch (err) {
     console.error(err)
     res.status(500).json({ success: false, data: null, message: 'Error al crear empleado' })
@@ -245,7 +264,12 @@ router.put('/empleados/:id', access.empleados, async (req, res) => {
       },
       include: { bank: true, position: true },
     })
-    res.json({ success: true, data, message: 'Empleado actualizado' })
+    const salaryVisible = await canViewSalary(req)
+    res.json({
+      success: true,
+      data: redactSalary(data as typeof data & { sueldo?: unknown }, salaryVisible),
+      message: 'Empleado actualizado',
+    })
   } catch (err) {
     console.error(err)
     res.status(500).json({ success: false, data: null, message: 'Error al actualizar empleado' })
@@ -284,7 +308,12 @@ router.patch('/empleados/:id/status', access.empleados, async (req, res) => {
       data: { activo },
       include: { bank: true, position: true },
     })
-    res.json({ success: true, data, message: activo ? 'Empleado activado' : 'Empleado desactivado' })
+    const salaryVisible = await canViewSalary(req)
+    res.json({
+      success: true,
+      data: redactSalary(data as typeof data & { sueldo?: unknown }, salaryVisible),
+      message: activo ? 'Empleado activado' : 'Empleado desactivado',
+    })
   } catch (err) {
     console.error(err)
     res.status(500).json({ success: false, data: null, message: 'Error al actualizar estatus del empleado' })
