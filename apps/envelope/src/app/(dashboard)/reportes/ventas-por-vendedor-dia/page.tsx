@@ -3,15 +3,26 @@
 import { useState } from 'react'
 import {
   Badge,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  Input,
   Label,
   Select,
   SelectTrigger,
   SelectValue,
   SelectContent,
   SelectItem,
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
 } from '@cosmetics/ui'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
+import { BarChart3, ChevronRight, DollarSign } from 'lucide-react'
 
 import { useReportes } from '@/hooks'
 import { useI18n } from '@/lib/i18n'
@@ -51,6 +62,7 @@ export default function VentasPorVendedorDiaPage() {
   const [year, setYear] = useState(now.getFullYear())
   const [month, setMonth] = useState(now.getMonth() + 1)
   const [exporting, setExporting] = useState<'pdf' | 'excel' | null>(null)
+  const [mobileSearch, setMobileSearch] = useState('')
 
   const years = Array.from({ length: now.getFullYear() - 2022 }, (_, i) => 2023 + i)
   const months = t.reports.months
@@ -103,6 +115,11 @@ export default function VentasPorVendedorDiaPage() {
     )
 
   const hasData = rows.length > 0
+  const [selectedSellerId, setSelectedSellerId] = useState<string | null>(null)
+  const selectedRow = selectedSellerId ? rows.find((row) => row.sellerId === selectedSellerId) ?? null : null
+  const mobileRows = rows.filter((row) =>
+    row.sellerName.toLowerCase().includes(mobileSearch.trim().toLowerCase()),
+  )
 
   const zeroBadgeClassName = 'rounded-full bg-[#b85f5a] px-2 py-0.5 text-[11px] font-semibold text-white hover:bg-[#b85f5a] tabular-nums'
   function renderAmount(value: number) {
@@ -381,36 +398,191 @@ export default function VentasPorVendedorDiaPage() {
           {t.reports.noSalesSellerPeriod}
         </p>
       ) : (
-        <div className="max-h-[calc(100vh-22rem)] overflow-auto rounded-2xl border border-[color:var(--border-color)] bg-[color:var(--color-ivory)] shadow-sm">
-          <table className="min-w-max w-full border-separate border-spacing-0">
+        <>
+          <div className="space-y-3 md:hidden">
+            <div className="space-y-1.5">
+              <Label className="text-xs uppercase tracking-[0.12em]">Buscar empleado</Label>
+              <Input
+                value={mobileSearch}
+                onChange={(e) => setMobileSearch(e.target.value)}
+                placeholder="Escribe el nombre del vendedor"
+                className="h-11 border-[color:var(--border-color)] bg-[var(--bg-card)]"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <Card className="border-[color:var(--border-color)] bg-[var(--bg-card)] shadow-sm">
+                <CardHeader className="p-4 pb-2">
+                  <div className="text-[11px] uppercase tracking-[0.12em] text-[color:var(--text-muted)]">VENDEDORES</div>
+                  <CardTitle className="text-xl number-display">{rows.length}</CardTitle>
+                </CardHeader>
+              </Card>
+              <Card className="border-[color:var(--border-color)] bg-[var(--bg-card)] shadow-sm">
+                <CardHeader className="p-4 pb-2">
+                  <div className="text-[11px] uppercase tracking-[0.12em] text-[color:var(--text-muted)]">TOTAL MES</div>
+                  <CardTitle className="text-xl number-display">{formatCurrency(grandTotal)}</CardTitle>
+                </CardHeader>
+              </Card>
+            </div>
+
+            <div className="space-y-3">
+              {mobileRows.map((row) => (
+                <Card
+                  key={row.sellerId}
+                  className="border-[color:var(--border-color)] bg-[var(--bg-card)] shadow-sm"
+                >
+                  <button
+                    type="button"
+                    className="block w-full text-left"
+                    onClick={() => setSelectedSellerId(row.sellerId)}
+                  >
+                    <CardHeader className="flex-row items-start justify-between gap-3 p-4">
+                      <div className="space-y-1">
+                        <CardTitle className="text-base leading-snug">{row.sellerName}</CardTitle>
+                      </div>
+                      <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-[color:var(--text-muted)]" />
+                    </CardHeader>
+                    <CardContent className="grid grid-cols-2 gap-3 px-4 pb-4">
+                      <div className="rounded-xl bg-[color:var(--bg-primary)] px-3 py-2">
+                        <div className="text-[10px] uppercase tracking-[0.12em] text-[color:var(--text-muted)]">TOTAL</div>
+                        <div className="mt-1 number-display text-sm">{formatCurrency(row.total)}</div>
+                      </div>
+                      <div className="rounded-xl bg-[color:var(--bg-primary)] px-3 py-2">
+                        <div className="text-[10px] uppercase tracking-[0.12em] text-[color:var(--text-muted)]">PROMEDIO</div>
+                        <div className="mt-1 number-display text-sm">{formatCurrency(row.approximateDayAmount)}</div>
+                      </div>
+                      <div className="col-span-2 flex items-center justify-between rounded-xl bg-[color:var(--bg-primary)] px-3 py-2">
+                        <div>
+                          <div className="text-[10px] uppercase tracking-[0.12em] text-[color:var(--text-muted)]">DÍAS SIN VENTA</div>
+                          <div className="mt-1 number-display text-sm">
+                            {row.daysWithoutSale === 0 ? '0' : row.daysWithoutSale}
+                          </div>
+                        </div>
+                        <span className="inline-flex shrink-0 items-center rounded-md border border-[color:var(--border-color)] px-3 py-1 text-xs font-medium text-[color:var(--text-primary)]">
+                          Ver detalle
+                        </span>
+                      </div>
+                    </CardContent>
+                  </button>
+                </Card>
+              ))}
+            </div>
+
+            {mobileRows.length === 0 && (
+              <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+                No hay empleados que coincidan con la búsqueda.
+              </p>
+            )}
+
+            <Sheet
+              open={!!selectedRow}
+              onOpenChange={(open) => {
+                if (!open) setSelectedSellerId(null)
+              }}
+            >
+              <SheetContent
+                side="bottom"
+                className="h-[88vh] rounded-t-[28px] border-[color:var(--border-color)] bg-[var(--bg-card)] p-0"
+              >
+                {selectedRow ? (
+                  <div className="flex h-full flex-col">
+                    <SheetHeader className="border-b border-[color:var(--border-color)] px-5 pb-4 pt-6 text-left">
+                      <SheetTitle className="text-left text-xl">{selectedRow.sellerName}</SheetTitle>
+                      <SheetDescription className="text-left">
+                        {t.common.monthlyPeriod}: {periodLabel}
+                      </SheetDescription>
+                    </SheetHeader>
+
+                    <div className="grid grid-cols-2 gap-3 px-5 py-4">
+                      <div className="rounded-2xl bg-[color:var(--bg-primary)] px-4 py-3">
+                        <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.12em] text-[color:var(--text-muted)]">
+                          <DollarSign className="h-3.5 w-3.5" />
+                          Total del mes
+                        </div>
+                        <div className="mt-2 number-display text-lg">{formatCurrency(selectedRow.total)}</div>
+                      </div>
+                      <div className="rounded-2xl bg-[color:var(--bg-primary)] px-4 py-3">
+                        <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.12em] text-[color:var(--text-muted)]">
+                          <BarChart3 className="h-3.5 w-3.5" />
+                          Monto día aprox
+                        </div>
+                        <div className="mt-2 number-display text-lg">{formatCurrency(selectedRow.approximateDayAmount)}</div>
+                      </div>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto px-5 pb-5">
+                      <div className="space-y-2">
+                        {dias.map((dia) => {
+                          const value = selectedRow.byDate[dia] ?? 0
+
+                          return (
+                            <div
+                              key={dia}
+                              className="flex items-center justify-between rounded-2xl border border-[color:var(--border-color)] bg-[color:var(--bg-primary)] px-4 py-3"
+                            >
+                              <div>
+                                <div className="text-sm font-medium">
+                                  {formatDate(dia, 'EEEE dd', locale)}
+                                </div>
+                                <div className="text-[11px] uppercase tracking-[0.12em] text-[color:var(--text-muted)]">
+                                  {value === 0 ? 'Sin venta' : 'Con venta'}
+                                </div>
+                              </div>
+                              {value === 0 ? (
+                                <Badge variant="destructive" className={zeroBadgeClassName}>
+                                  {formatCurrency(value)}
+                                </Badge>
+                              ) : (
+                                <div className="number-display text-sm">{formatCurrency(value)}</div>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+              </SheetContent>
+            </Sheet>
+          </div>
+
+          <div className="hidden max-h-[calc(100vh-22rem)] overflow-auto rounded-2xl border border-[color:var(--border-color)] bg-[color:var(--bg-card)] shadow-sm md:block">
+            <table className="min-w-max w-full border-separate border-spacing-0">
             <thead>
               <tr>
-                <th className="sticky top-0 left-0 z-30 border-b border-[color:var(--border-color)] bg-[color:var(--color-ivory)] px-2 py-3 text-left text-xs font-medium uppercase text-[color:var(--text-muted)] whitespace-nowrap min-w-56 shadow-[1px_0_0_var(--border-color)]">
+                <th className="sticky top-0 left-0 z-30 border-b border-[color:var(--border-color)] bg-[color:var(--table-header-bg)] px-2 py-3 text-left text-xs font-medium uppercase text-[color:var(--table-header-text)] whitespace-nowrap min-w-56 shadow-[1px_0_0_var(--border-color)]">
                   {t.common.employee}
                 </th>
                 {dias.map((dia) => (
                   <th
                     key={dia}
-                    className="sticky top-0 z-20 border-b border-[color:var(--border-color)] bg-[color:var(--color-ivory)] px-2 py-3 text-right text-xs font-medium uppercase text-[color:var(--text-muted)] whitespace-nowrap"
+                    className="sticky top-0 z-20 border-b border-[color:var(--border-color)] bg-[color:var(--table-header-bg)] px-2 py-3 text-right text-xs font-medium uppercase text-[color:var(--table-header-text)] whitespace-nowrap"
                   >
                     {formatDate(dia, 'EEEE dd', locale)}
                   </th>
                 ))}
-                <th className="sticky top-0 z-20 border-b border-[color:var(--border-color)] bg-[color:var(--color-ivory)] px-2 py-3 text-center text-xs font-medium uppercase text-[color:var(--text-muted)] whitespace-nowrap">
+                <th className="sticky top-0 z-20 border-b border-[color:var(--border-color)] bg-[color:var(--table-header-bg)] px-2 py-3 text-center text-xs font-medium uppercase text-[color:var(--table-header-text)] whitespace-nowrap">
                   DÍAS SIN VENTA
                 </th>
-                <th className="sticky top-0 z-20 border-b border-[color:var(--border-color)] bg-[color:var(--color-ivory)] px-2 py-3 text-right text-xs font-medium uppercase text-[color:var(--text-muted)] whitespace-nowrap">
+                <th className="sticky top-0 z-20 border-b border-[color:var(--border-color)] bg-[color:var(--table-header-bg)] px-2 py-3 text-right text-xs font-medium uppercase text-[color:var(--table-header-text)] whitespace-nowrap">
                   MONTO DÍA APROX
                 </th>
-                <th className="sticky top-0 z-20 border-b border-[color:var(--border-color)] bg-[color:var(--color-ivory)] px-2 py-3 text-right text-xs font-medium uppercase text-[color:var(--text-muted)] whitespace-nowrap">
+                <th className="sticky top-0 z-20 border-b border-[color:var(--border-color)] bg-[color:var(--table-header-bg)] px-2 py-3 text-right text-xs font-medium uppercase text-[color:var(--table-header-text)] whitespace-nowrap">
                   {t.common.total}
                 </th>
               </tr>
             </thead>
               <tbody>
-                {rows.map((row) => (
-                  <tr key={row.sellerId} className="border-b border-[color:var(--border-color)]">
-                    <td className="sticky left-0 z-10 bg-[color:var(--color-ivory)] px-2 py-3 whitespace-nowrap font-medium shadow-[1px_0_0_var(--border-color)]">
+                {rows.map((row, rowIndex) => (
+                  <tr
+                    key={row.sellerId}
+                    className="border-b border-[color:var(--border-color)]"
+                    style={{ backgroundColor: rowIndex % 2 === 1 ? 'var(--table-row-alt)' : 'transparent' }}
+                  >
+                    <td
+                      className="sticky left-0 z-10 px-2 py-3 whitespace-nowrap font-medium shadow-[1px_0_0_var(--border-color)]"
+                      style={{ backgroundColor: rowIndex % 2 === 1 ? 'var(--table-row-alt)' : 'var(--bg-card)' }}
+                    >
                       {row.sellerName}
                     </td>
                   {dias.map((dia) => (
@@ -436,9 +608,9 @@ export default function VentasPorVendedorDiaPage() {
                 </tr>
               ))}
             </tbody>
-              <tfoot className="border-t border-[color:var(--border-color)] bg-[color:var(--color-ivory)] font-medium">
+              <tfoot className="border-t border-[color:var(--border-color)] bg-[color:var(--bg-card)] font-medium">
                 <tr>
-                <td className="sticky left-0 z-30 bg-[color:var(--color-ivory)] px-2 py-3 text-xs font-semibold uppercase whitespace-nowrap shadow-[1px_0_0_var(--border-color)]">
+                <td className="sticky left-0 z-30 bg-[color:var(--bg-card)] px-2 py-3 text-xs font-semibold uppercase whitespace-nowrap shadow-[1px_0_0_var(--border-color)]">
                   {t.common.grandTotal}
                 </td>
                 {dias.map((dia) => (
@@ -459,6 +631,7 @@ export default function VentasPorVendedorDiaPage() {
             </tfoot>
           </table>
         </div>
+        </>
       )}
     </div>
   )
