@@ -4,7 +4,7 @@ import { useMemo, useState, type ChangeEvent } from 'react'
 import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { UserPlus, Pencil, Trash2, Power } from 'lucide-react'
+import { UserPlus, Pencil, Trash2, Power, RotateCcw } from 'lucide-react'
 import {
   Button,
   Dialog,
@@ -59,6 +59,8 @@ function createEmpleadoSchema(messages: {
 }
 
 type EmpleadoForm = z.infer<ReturnType<typeof createEmpleadoSchema>>
+type StatusFilter = 'all' | 'active' | 'inactive'
+type SalaryFilter = 'all' | 'no-record' | 'under-15k' | '15k-to-25k' | '25k-plus'
 
 export default function EmpleadosPage() {
   const { empleados, loading, error, add, update, remove, toggleStatus } = useEmpleados()
@@ -77,6 +79,9 @@ export default function EmpleadosPage() {
 
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<Empleado | null>(null)
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
+  const [positionFilter, setPositionFilter] = useState('all')
+  const [salaryFilter, setSalaryFilter] = useState<SalaryFilter>('all')
 
   const {
     register,
@@ -119,6 +124,46 @@ export default function EmpleadosPage() {
   const apellidoP = watch('apellidoPaterno')
   const apellidoM = watch('apellidoMaterno')
   const nombreCompleto = [nombres, apellidoP, apellidoM].filter(Boolean).join(' ')
+  const positionIdByName = useMemo(
+    () => new Map(positions.map((position) => [position.nombre.trim().toUpperCase(), position.id])),
+    [positions],
+  )
+
+  const filteredEmpleados = useMemo(
+    () =>
+      empleados.filter((emp) => {
+        if (statusFilter === 'active' && !emp.activo) return false
+        if (statusFilter === 'inactive' && emp.activo) return false
+
+        const empPositionId =
+          emp.positionId ??
+          emp.position?.id ??
+          positionIdByName.get(emp.puesto.trim().toUpperCase()) ??
+          null
+
+        if (positionFilter !== 'all' && empPositionId !== positionFilter) return false
+
+        if (salaryFilter !== 'all') {
+          const salary = emp.sueldo ?? null
+          if (salaryFilter === 'no-record') return salary == null
+          if (salary == null) return false
+          if (salaryFilter === 'under-15k') return salary < 15000
+          if (salaryFilter === '15k-to-25k') return salary >= 15000 && salary < 25000
+          if (salaryFilter === '25k-plus') return salary >= 25000
+        }
+
+        return true
+      }),
+    [empleados, positionFilter, positionIdByName, salaryFilter, statusFilter],
+  )
+  const hasActiveFilters =
+    statusFilter !== 'all' || positionFilter !== 'all' || salaryFilter !== 'all'
+
+  function clearFilters() {
+    setStatusFilter('all')
+    setPositionFilter('all')
+    setSalaryFilter('all')
+  }
 
   function openNew() {
     setEditing(null)
@@ -395,13 +440,79 @@ export default function EmpleadosPage() {
       {loading ? (
         <p className="text-sm" style={{ color: 'var(--text-muted)' }}>{t.employees.loadingEmployees}</p>
       ) : (
-        <DataTable
-          columns={columns}
-          data={empleados}
-          emptyMessage={t.employees.noEmployees}
-          searchPlaceholder={t.employees.searchEmployee}
-          labels={dataTableLabels}
-        />
+        <div className="space-y-4">
+          <div className="rounded-lg border p-4" style={{ borderColor: 'var(--border-color)' }}>
+            <div className="flex items-center justify-between gap-3 pb-3">
+              <p className="section-heading">{t.employees.filtersTitle}</p>
+              <Button
+                type="button"
+                size="sm"
+                onClick={clearFilters}
+                disabled={!hasActiveFilters}
+                className="uppercase bg-[#648672] text-white hover:bg-[#4f6a5a] disabled:bg-muted disabled:text-muted-foreground"
+              >
+                <RotateCcw className="h-4 w-4" />
+                {t.employees.clearFilters}
+              </Button>
+            </div>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="filter-status">{t.employees.filterStatus}</Label>
+                <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as StatusFilter)}>
+                  <SelectTrigger id="filter-status">
+                    <SelectValue placeholder={t.employees.filterStatus} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">{t.employees.allStatuses}</SelectItem>
+                    <SelectItem value="active">{t.common.active}</SelectItem>
+                    <SelectItem value="inactive">{t.common.inactive}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="filter-position">{t.employees.filterPosition}</Label>
+                <Select value={positionFilter} onValueChange={setPositionFilter}>
+                  <SelectTrigger id="filter-position">
+                    <SelectValue placeholder={t.employees.filterPosition} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">{t.employees.allPositions}</SelectItem>
+                    {positions.map((position) => (
+                      <SelectItem key={position.id} value={position.id}>
+                        {position.nombre}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="filter-salary">{t.employees.filterSalary}</Label>
+                <Select value={salaryFilter} onValueChange={(value) => setSalaryFilter(value as SalaryFilter)}>
+                  <SelectTrigger id="filter-salary">
+                    <SelectValue placeholder={t.employees.filterSalary} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">{t.employees.allSalaries}</SelectItem>
+                    <SelectItem value="no-record">{t.employees.salaryNoRecord}</SelectItem>
+                    <SelectItem value="under-15k">{t.employees.salaryUnder15k}</SelectItem>
+                    <SelectItem value="15k-to-25k">{t.employees.salary15kTo25k}</SelectItem>
+                    <SelectItem value="25k-plus">{t.employees.salary25kOrMore}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+
+          <DataTable
+            columns={columns}
+            data={filteredEmpleados}
+            emptyMessage={t.dataTable.empty}
+            searchPlaceholder={t.employees.searchEmployee}
+            labels={dataTableLabels}
+          />
+        </div>
       )}
 
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
