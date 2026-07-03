@@ -186,4 +186,22 @@
     background-color: var(--color-nude);
     color: var(--color-charcoal);
   }
+
+  /* Autofill controlado para inputs oscuros en auth/login */
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus,
+  input:-webkit-autofill:active {
+    -webkit-box-shadow: 0 0 0 1000px rgba(255, 255, 255, 0.04) inset !important;
+    box-shadow: 0 0 0 1000px rgba(255, 255, 255, 0.04) inset !important;
+    -webkit-text-fill-color: #f6efe6 !important;
+    caret-color: #f6efe6 !important;
+    transition: background-color 9999s ease-out 0s;
+  }
+
+  input:autofill {
+    box-shadow: 0 0 0 1000px rgba(255, 255, 255, 0.04) inset !important;
+    color: #f6efe6 !important;
+    caret-color: #f6efe6 !important;
+  }
 }

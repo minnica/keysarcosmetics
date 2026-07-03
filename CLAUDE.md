@@ -12,6 +12,80 @@ Todas las apps son internas (detrás de login), excepto `landing` que es públic
 
 ---
 
+## Identidad de marca
+
+```text
+Introducción
+Keysar Cosmetics nace con el propósito de redefinir la bel-
+leza desde una visión sofisticada, minimalista y consciente.
+Este manual de marca es la guía fundamental que asegura
+la coherencia visual y conceptual de nuestra identidad en
+todos los puntos de contacto de la marca.
+Aquí encontrarás los lineamientos esenciales para el uso
+correcto del logotipo, la paleta cromática, las tipografías y
+demás elementos visuales. Cada decisión estética ha sido
+cuidadosamente diseñada para transmitir elegancia, con-
+fianza y feminidad moderna: los pilares que definen la
+esencia de Keysar.
+Nuestro objetivo es mantener una presencia visual fuerte,
+reconocible y alineada con los valores que nos inspiran: cali-
+dad, autenticidad y sofisticación. Este manual es una herra-
+mienta viva que garantiza que todos los esfuerzos de co-
+municación y diseño reflejen fielmente nuestra identidad,
+sin importar el medio o el contexto.El logo de Keysar Cosmetics está construido a partir de un
+monograma tipográfico que fusiona las letras “L” y “K”, cre-
+ando una forma única, sofisticada y memorable. Esta com-
+binación representa más que iniciales: simboliza el balance
+entre lo clásico y lo moderno, entre estructura y dinamismo.
+La “L” aporta verticalidad y sobriedad, mientras que la “K”
+introduce un gesto visual distintivo y fluido. Juntas forman
+un símbolo elegante que funciona como sello visual para la
+marca, fácilmente aplicable en distintos formatos y escalas.
+El nombre de la marca está compuesto en una tipografía
+serif en mayúsculas, con un alto espaciado entre letras. Esta
+decisión estilística refuerza la percepción de lujo, sofisticaci-
+ón y atemporalidad, manteniendo una lectura clara, serena
+y profesional. La tipografía actúa como contraparte sobria
+del isotipo, logrando un equilibrio visual refinado.
+Dorado/beige suave: transmite lujo sutil, estabilidad y con-
+fianza.
+Rosado nude o palo de rosa: sugiere feminidad contempo-
+ránea y sensibilidad sin caer en clichés.
+Gris antracita y blanco marfil: aportan contraste, equilibrio
+visual y aplicabilidad en diversos fondos.
+Esta combinación posiciona la marca en el segmento pre-
+mium, con un enfoque minimalista y estético.
+Paleta Complementaria
+La marca se enriquece con una paleta secundaria que in-
+cluye tonos azules y verdes suaves:
+Paleta PrincipalAzules claros: inspiran frescura, limpieza y serenidad.
+La identidad visual se sostiene en una paleta cromática
+neutra y elegante, donde predominan:Verdes oliva y salvia: evocan naturalidad, sostenibilidad y
+salud.Estos tonos complementarios permiten extender la identi-
+dad visual hacia líneas específicas de productos (dermocos-
+mética, natural, hidratación), reforzando el concepto de bel-
+leza consciente y bienestar integral.
+Posicionamiento y Valores
+El conjunto de elementos construye una marca que se co-
+munica desde el detalle y la intención. El diseño visual ex-
+presa valores como calidad, confianza, exclusividad, sensibi-
+lidad estética y consciencia. Es una identidad pensada para
+un público femenino sofisticado, exigente y conectado con
+el diseño y el autocuidado.
+```
+
+### Resumen ejecutivo
+
+- Marca con enfoque sofisticado, minimalista y consciente.
+- La identidad busca transmitir elegancia, confianza y feminidad moderna.
+- El isotipo se basa en un monograma tipográfico que fusiona `L` y `K`.
+- La tipografía principal es serif, en mayúsculas y con alto espaciado entre letras.
+- La paleta principal privilegia dorados/beige suaves, rosados nude, gris antracita y blanco marfil.
+- La paleta complementaria incluye azules y verdes suaves para líneas como dermocosmética, natural e hidratación.
+- Los valores centrales son calidad, autenticidad, sofisticación, sensibilidad estética y consciencia.
+
+---
+
 ## Apps del monorepo
 
 | App | Tipo | Puerto dev | Descripción |
