@@ -122,7 +122,7 @@ export default function TotalGeneralPage() {
 
       <div className="flex items-center gap-3 flex-wrap">
         <span className="text-sm font-medium" style={{ color: 'var(--text-muted)' }}>{t.common.period}</span>
-        <DateRangePicker value={range} onChange={setRange} />
+        <DateRangePicker value={range} onChange={setRange} fromLabel={t.common.from} toLabel={t.common.to} />
       </div>
 
       {loading && <p className="text-sm" style={{ color: 'var(--text-muted)' }}>{t.common.loadingData}</p>}

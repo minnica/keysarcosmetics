@@ -5,16 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import {
-  ArrowRight,
-  CheckCircle2,
-  CreditCard,
-  Plus,
-  RotateCcw,
-  Save,
-  Trash2,
-  Users,
-} from "lucide-react";
+import { ArrowRight, CheckCircle2, CreditCard, Plus, RotateCcw, Save, Trash2, Users } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -32,6 +23,8 @@ import {
   CardHeader,
   CardTitle,
   Combobox,
+  DatePicker,
+  DateRangePicker,
   DataTable,
   Input,
   Label,
@@ -42,6 +35,7 @@ import {
   SelectTrigger,
   SelectValue,
   toast,
+  type DateRange,
 } from "@cosmetics/ui";
 import type { ColumnDef } from "@cosmetics/ui";
 import {
@@ -199,6 +193,10 @@ export default function VentasPage() {
     PaymentAllocation[]
   >([]);
   const [saving, setSaving] = useState(false);
+  const [saleRange, setSaleRange] = useState<DateRange>({
+    from: todayISO(),
+    to: todayISO(),
+  });
 
   const selectedPaymentMethod = paymentForm.watch("metodoPagoId");
   const allocatedEmployeeCents = employeeAllocations.reduce(
@@ -224,6 +222,18 @@ export default function VentasPage() {
   const canSave = employeeDistributionMatches && paymentsMatch && !saving;
   const paymentProgress =
     totalCents > 0 ? Math.min(100, (paidCents / totalCents) * 100) : 0;
+  const filteredRegistros = useMemo(
+    () =>
+      [...registros].filter(
+        (record) =>
+          record.fecha >= saleRange.from && record.fecha <= saleRange.to,
+      ),
+    [registros, saleRange],
+  );
+  const visibleRegistros = useMemo(
+    () => [...filteredRegistros].reverse(),
+    [filteredRegistros],
+  );
 
   const visibleSucursales = useMemo(() => {
     const merged = new Map(sucursales.map((sucursal) => [sucursal.id, sucursal]));
@@ -436,7 +446,7 @@ export default function VentasPage() {
         const { sesionId } = row.original;
         if (!sesionId)
           return <span style={{ color: "var(--text-muted)" }}>—</span>;
-        const voucherTotal = registros
+        const voucherTotal = filteredRegistros
           .filter((record) => record.sesionId === sesionId)
           .reduce(
             (sum, record) =>
@@ -599,7 +609,19 @@ export default function VentasPage() {
                 htmlFor="fecha"
                 error={saleForm.formState.errors.fecha?.message}
               >
-                <Input id="fecha" type="date" {...saleForm.register("fecha")} />
+                <Controller
+                  control={saleForm.control}
+                  name="fecha"
+                  render={({ field }) => (
+                    <DatePicker
+                      id="fecha"
+                      value={field.value}
+                      onChange={field.onChange}
+                      placeholder={t.common.date}
+                      disabled={!!saleContext}
+                    />
+                  )}
+                />
               </FormField>
               <FormField
                 label={t.sales.initialEmployee}
@@ -1034,10 +1056,20 @@ export default function VentasPage() {
         <h2 id="saved-sales-title" className="section-heading">
           {t.sales.savedRecords}
         </h2>
+        <DateRangePicker
+          value={saleRange}
+          onChange={setSaleRange}
+          fromLabel={t.common.from}
+          toLabel={t.common.to}
+        />
         <DataTable
           columns={registroColumns}
-          data={[...registros].reverse()}
-          emptyMessage={t.sales.noSavedRecords}
+          data={visibleRegistros}
+          emptyMessage={
+            filteredRegistros.length === 0
+              ? t.common.noSalesSelectedPeriod
+              : t.dataTable.empty
+          }
           searchPlaceholder={t.sales.searchSavedRecords}
           labels={dataTableLabels}
         />
