@@ -63,10 +63,10 @@ export default function VentasPorVendedorDiaPage() {
   const months = t.reports.months
   const prefix = `${year}-${String(month).padStart(2, '0')}`
   const filtered = registros.filter((r) => r.fecha.startsWith(prefix))
-  const dias = monthDates(year, month)
   const daysInMonth = new Date(year, month, 0).getDate()
   const isCurrentMonth = year === now.getFullYear() && month === now.getMonth() + 1
   const elapsedDays = isCurrentMonth ? now.getDate() : daysInMonth
+  const dias = monthDates(year, month).slice(0, elapsedDays)
 
   const rowsMap = new Map<string, SalesRow>()
 
