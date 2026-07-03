@@ -35,7 +35,7 @@ function normalizeDateInput(value?: string | null): Date | null | undefined {
 
 // ─── SUCURSALES ───────────────────────────────────────────────────────────────
 
-router.get('/sucursales', access.sucursales, async (_req, res) => {
+router.get('/sucursales', async (_req, res) => {
   try {
     const data = await prisma.sucursal.findMany({ where: { activa: true }, orderBy: { nombre: 'asc' } })
     res.json({ success: true, data, message: 'OK' })

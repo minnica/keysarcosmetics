@@ -23,6 +23,7 @@ import {
   SelectValue,
   toast,
 } from "@cosmetics/ui";
+import { api } from "@/lib/api";
 import { useSession } from "@/lib/session";
 import { useI18n } from "@/lib/i18n";
 import { formatCurrency, formatDate, todayISO } from "@/lib/utils";
@@ -318,7 +319,6 @@ export function GenerateEnvelopeDialog({
   const hasSelectedSales = selectedSales.length > 0;
 
   const sellerRows = useMemo(() => {
-    const employeeMap = new Map(empleados.map((employee) => [employee.id, employee]));
     const rows = new Map<string, { vendedorId: string; totalCents: number; notes: string[]; order: number }>();
 
     selectedSales.forEach((sale, index) => {
@@ -347,7 +347,10 @@ export function GenerateEnvelopeDialog({
       .sort((a, b) => a.order - b.order)
       .map((row) => ({
         vendedorId: row.vendedorId,
-        nombre: employeeMap.get(row.vendedorId)?.nombreCompleto ?? row.vendedorId,
+        nombre:
+          selectedSales.find((sale) => sale.vendedorId === row.vendedorId)?.vendedorNombre
+          ?? empleados.find((employee) => employee.id === row.vendedorId)?.nombreCompleto
+          ?? row.vendedorId,
         totalCents: row.totalCents,
         notes: [...new Set(row.notes)],
       }));
@@ -404,7 +407,7 @@ export function GenerateEnvelopeDialog({
     setSelectedBranchId(sucursales[0]?.id ?? "");
   }
 
-  function buildEnvelopeCanvas(signatureCanvas: HTMLCanvasElement) {
+  function buildEnvelopeCanvas(signatureCanvas: HTMLCanvasElement, signerName: string) {
     const width = 1060;
     const rowHeight = 52;
     const topBoxHeight = 104;
@@ -547,7 +550,7 @@ export function GenerateEnvelopeDialog({
     ctx.fillText("FIRMA:", 72, footerY + 94);
 
     ctx.font = "400 26px sans-serif";
-    const userName = user?.nombre ?? "—";
+    const userName = signerName || user?.nombre || "—";
     ctx.fillText(userName, 208, footerY + 50);
     ctx.beginPath();
     ctx.moveTo(206, footerY + 58);
@@ -597,7 +600,12 @@ export function GenerateEnvelopeDialog({
 
     setGenerating(true);
     try {
-      const canvas = buildEnvelopeCanvas(signatureCanvas);
+      const { data } = await api.get<{
+        success: boolean;
+        data: { nombre: string };
+      }>("/api/auth/me");
+      const signerName = data.data.nombre;
+      const canvas = buildEnvelopeCanvas(signatureCanvas, signerName);
       const blob = await new Promise<Blob | null>((resolve) => {
         canvas.toBlob((result) => resolve(result), "image/png");
       });

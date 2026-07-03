@@ -36,7 +36,10 @@ export async function login(req: Request, res: Response): Promise<void> {
     // Buscar usuario activo por email
     const usuario = (await (prisma as any).usuario.findFirst({
       where: { email, activo: true },
-      include: { sucursal: { select: { id: true, nombre: true } } },
+      include: {
+        sucursal: { select: { id: true, nombre: true } },
+        empleado: { select: { id: true, nombreCompleto: true } },
+      },
     })) as {
       id: string
       nombre: string
@@ -46,6 +49,7 @@ export async function login(req: Request, res: Response): Promise<void> {
       activo: boolean
       sucursalId: string | null
       empleadoId: string | null
+      empleado: { id: string; nombreCompleto: string } | null
       sucursal: { id: string; nombre: string } | null
       creadoEn: Date
     } | null
@@ -112,13 +116,14 @@ export async function login(req: Request, res: Response): Promise<void> {
         token,
         usuario: toSessionUser(access, {
           id: usuario.id,
-          nombre: usuario.nombre,
+          nombre: usuario.empleado?.nombreCompleto ?? usuario.nombre,
           email: usuario.email,
           rol: usuario.rol,
           activo: usuario.activo,
           sucursalId: usuario.sucursalId,
           creadoEn: usuario.creadoEn,
         }),
+        empleado: usuario.empleado,
         sucursal: usuario.sucursal,
       },
     })
@@ -157,6 +162,12 @@ export async function me(req: Request, res: Response): Promise<void> {
         activo: true,
         sucursalId: true,
         empleadoId: true,
+        empleado: {
+          select: {
+            id: true,
+            nombreCompleto: true,
+          },
+        },
         sucursal: { select: { id: true, nombre: true } },
         creadoEn: true,
       },
@@ -168,6 +179,7 @@ export async function me(req: Request, res: Response): Promise<void> {
       activo: boolean
       sucursalId: string | null
       empleadoId: string | null
+      empleado: { id: string; nombreCompleto: string } | null
       sucursal: { id: string; nombre: string } | null
       creadoEn: Date
     } | null
@@ -198,13 +210,14 @@ export async function me(req: Request, res: Response): Promise<void> {
       data: {
         ...toSessionUser(access, {
           id: usuario.id,
-          nombre: usuario.nombre,
+          nombre: usuario.empleado?.nombreCompleto ?? usuario.nombre,
           email: usuario.email,
           rol: usuario.rol,
           activo: usuario.activo,
           sucursalId: usuario.sucursalId,
           creadoEn: usuario.creadoEn,
         }),
+        empleado: usuario.empleado,
         sucursal: usuario.sucursal,
       },
     })
