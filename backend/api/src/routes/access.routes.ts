@@ -231,15 +231,19 @@ router.delete('/users/:id', async (req, res) => {
       return
     }
 
-    await db.usuario.update({
+    if (user.rol === 'SUPER_ADMIN') {
+      res.status(403).json({ success: false, data: null, message: 'La cuenta principal no se puede eliminar' })
+      return
+    }
+
+    await db.usuario.delete({
       where: { id: req.params['id'] },
-      data: { activo: false },
     })
 
-    res.json({ success: true, data: null, message: 'Cuenta desactivada' })
+    res.json({ success: true, data: null, message: 'Cuenta eliminada' })
   } catch (err) {
     console.error(err)
-    res.status(500).json({ success: false, data: null, message: 'Error al desactivar la cuenta' })
+    res.status(500).json({ success: false, data: null, message: 'Error al eliminar la cuenta' })
   }
 })
 

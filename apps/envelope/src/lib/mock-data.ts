@@ -29,6 +29,7 @@ export interface Sucursal {
 export interface MetodoPago {
   id: string;
   nombre: string;
+  tipo?: string;
 }
 
 export interface Empleado {
@@ -68,6 +69,8 @@ export interface RegistroVenta {
   // Nombre embebido desde el include del backend — evita lookup en lista de sucursales activas
   sucursalNombre?: string;
   vendedorId: string;
+  // Nombre embebido desde el include del backend — evita depender del catálogo de empleados
+  vendedorNombre?: string;
   fecha: string; // YYYY-MM-DD
   items: VentaItem[];
   // Comparte sesionId con otros registros del mismo voucher multi-vendedor; null = venta individual

@@ -5,6 +5,7 @@ export type Rol = 'SUPER_ADMIN' | 'GERENTE' | 'CAPTURISTA'
 export const SCREEN_KEYS = [
   'dashboard',
   'ventas',
+  'ventas/generar-sobre',
   'empleados',
   'sucursales',
   'metodos-pago',

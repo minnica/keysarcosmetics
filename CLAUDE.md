@@ -12,6 +12,80 @@ Todas las apps son internas (detrás de login), excepto `landing` que es públic
 
 ---
 
+## Identidad de marca
+
+```text
+Introducción
+Keysar Cosmetics nace con el propósito de redefinir la bel-
+leza desde una visión sofisticada, minimalista y consciente.
+Este manual de marca es la guía fundamental que asegura
+la coherencia visual y conceptual de nuestra identidad en
+todos los puntos de contacto de la marca.
+Aquí encontrarás los lineamientos esenciales para el uso
+correcto del logotipo, la paleta cromática, las tipografías y
+demás elementos visuales. Cada decisión estética ha sido
+cuidadosamente diseñada para transmitir elegancia, con-
+fianza y feminidad moderna: los pilares que definen la
+esencia de Keysar.
+Nuestro objetivo es mantener una presencia visual fuerte,
+reconocible y alineada con los valores que nos inspiran: cali-
+dad, autenticidad y sofisticación. Este manual es una herra-
+mienta viva que garantiza que todos los esfuerzos de co-
+municación y diseño reflejen fielmente nuestra identidad,
+sin importar el medio o el contexto.El logo de Keysar Cosmetics está construido a partir de un
+monograma tipográfico que fusiona las letras “L” y “K”, cre-
+ando una forma única, sofisticada y memorable. Esta com-
+binación representa más que iniciales: simboliza el balance
+entre lo clásico y lo moderno, entre estructura y dinamismo.
+La “L” aporta verticalidad y sobriedad, mientras que la “K”
+introduce un gesto visual distintivo y fluido. Juntas forman
+un símbolo elegante que funciona como sello visual para la
+marca, fácilmente aplicable en distintos formatos y escalas.
+El nombre de la marca está compuesto en una tipografía
+serif en mayúsculas, con un alto espaciado entre letras. Esta
+decisión estilística refuerza la percepción de lujo, sofisticaci-
+ón y atemporalidad, manteniendo una lectura clara, serena
+y profesional. La tipografía actúa como contraparte sobria
+del isotipo, logrando un equilibrio visual refinado.
+Dorado/beige suave: transmite lujo sutil, estabilidad y con-
+fianza.
+Rosado nude o palo de rosa: sugiere feminidad contempo-
+ránea y sensibilidad sin caer en clichés.
+Gris antracita y blanco marfil: aportan contraste, equilibrio
+visual y aplicabilidad en diversos fondos.
+Esta combinación posiciona la marca en el segmento pre-
+mium, con un enfoque minimalista y estético.
+Paleta Complementaria
+La marca se enriquece con una paleta secundaria que in-
+cluye tonos azules y verdes suaves:
+Paleta PrincipalAzules claros: inspiran frescura, limpieza y serenidad.
+La identidad visual se sostiene en una paleta cromática
+neutra y elegante, donde predominan:Verdes oliva y salvia: evocan naturalidad, sostenibilidad y
+salud.Estos tonos complementarios permiten extender la identi-
+dad visual hacia líneas específicas de productos (dermocos-
+mética, natural, hidratación), reforzando el concepto de bel-
+leza consciente y bienestar integral.
+Posicionamiento y Valores
+El conjunto de elementos construye una marca que se co-
+munica desde el detalle y la intención. El diseño visual ex-
+presa valores como calidad, confianza, exclusividad, sensibi-
+lidad estética y consciencia. Es una identidad pensada para
+un público femenino sofisticado, exigente y conectado con
+el diseño y el autocuidado.
+```
+
+### Resumen ejecutivo
+
+- Marca con enfoque sofisticado, minimalista y consciente.
+- La identidad busca transmitir elegancia, confianza y feminidad moderna.
+- El isotipo se basa en un monograma tipográfico que fusiona `L` y `K`.
+- La tipografía principal es serif, en mayúsculas y con alto espaciado entre letras.
+- La paleta principal privilegia dorados/beige suaves, rosados nude, gris antracita y blanco marfil.
+- La paleta complementaria incluye azules y verdes suaves para líneas como dermocosmética, natural e hidratación.
+- Los valores centrales son calidad, autenticidad, sofisticación, sensibilidad estética y consciencia.
+
+---
+
 ## Apps del monorepo
 
 | App | Tipo | Puerto dev | Descripción |
@@ -58,7 +132,7 @@ Todas las apps son internas (detrás de login), excepto `landing` que es públic
 - `CAPTURISTA` → solo registro de ventas
 - `Position.canManageAccess` marca el puesto que administra permisos y credenciales de `envelope`.
 - El acceso efectivo a pantallas de `envelope` ya no depende solo del rol: también se resuelve por puesto/permisos por pantalla.
-- La pantalla `accesos` guarda permisos por clic inmediato en cada pantalla con autosave sin recarga, administra credenciales en un dialog dedicado y desactiva cuentas desde la tabla de estatus, excepto la cuenta principal `SUPER_ADMIN`, que queda protegida.
+- La pantalla `accesos` guarda permisos por clic inmediato en cada pantalla con autosave sin recarga, administra credenciales en un dialog dedicado, también autoriza permisos virtuales de acción como `ventas/generar-sobre` y elimina cuentas desde la tabla de estatus cuando se necesita re-crear el acceso después, excepto la cuenta principal `SUPER_ADMIN`, que queda protegida.
 
 ---
 
@@ -109,7 +183,10 @@ Wrappers custom en `packages/ui/src/components/custom`:
 ## Estado actual de apps/envelope
 
 Módulos implementados:
-- **ventas** — captura una venta total por `sucursal`+`fecha`+empleado inicial+monto; después permite agregar empleados con reparto equitativo automático y montos editables, y conciliar métodos de pago uno por uno contra el total. El guardado solo se habilita cuando tanto la distribución por empleado como la suma de pagos coinciden con el monto. Cada empleado se persiste como un `RegistroVenta`, compartiendo un `sesionId` cuando participa más de uno; `POST /api/envelope/ventas/lote` guarda todo el voucher en una transacción atómica.
+- **ventas** — captura una venta total por `sucursal`+`fecha`+empleado inicial+monto; después permite agregar empleados con reparto equitativo automático y montos editables, y conciliar métodos de pago uno por uno contra el total. El guardado solo se habilita cuando tanto la distribución por empleado como la suma de pagos coinciden con el monto. Además incluye `Generar sobre`, que arma y descarga un PNG de sobre blanco con el detalle real del día y sucursal seleccionados, firma del usuario y permisos de acción virtual, sin vista previa inline. La firma del sobre usa `signature_pad` para trazo suave y fondo transparente. Cada empleado se persiste como un `RegistroVenta`, compartiendo un `sesionId` cuando participa más de uno; `POST /api/envelope/ventas/lote` guarda todo el voucher en una transacción atómica.
+  El catálogo de sucursales se lee desde `GET /api/envelope/sucursales`, que está disponible para cualquier sesión autenticada; las mutaciones (`POST`/`PUT`/`DELETE`) siguen protegidas por permiso de pantalla `sucursales`. Si solo hay una sucursal activa disponible, la UI la preselecciona automáticamente.
+  En `Generar sobre`, el nombre de cada vendedor debe resolverse desde el payload de ventas embebido (`vendedorNombre`) y no depender del catálogo de empleados, para que el resultado sea igual con `SUPER_ADMIN` y `CAPTURISTA`.
+  El nombre arriba de la firma debe salir de `GET /api/auth/me` justo al generar el PNG, usando el nombre actual del empleado ligado a la cuenta cuando exista, para no quedarse con el valor histórico guardado en `Usuario.nombre`.
 - **empleados** — CRUD, usa `bankId`/`positionId` dinámicos desde backend; incluye toggle activo/inactivo con `PATCH /empleados/:id/status`; GET retorna todos los empleados (activos primero), la tabla muestra badge de estatus y botón `PowerOff`/`Power` con AlertDialog de confirmación. Además de `banco`/`puesto` legacy, ya expone `sueldo`, `fechaNacimiento` y `numeroTelefono` en formulario, tabla, backend, Prisma y seed; `fechaNacimiento` se captura completo para que después se derive el cumpleaños y la base de RH para nómina. La page de empleados también tiene filtros de tabla por estatus, puesto y sueldo antes de pasar los datos a `DataTable`.
 - **sucursales** — CRUD de sucursales
 - **metodos-pago** — CRUD de métodos de pago
@@ -147,13 +224,13 @@ Datos:
 - `Usuario`, `Sucursal`, `Empleado`, `Venta`, `VentaDetalle`, `MetodoPago`, `Bank`, `Position`.
 - `Usuario` puede vincularse opcionalmente a `Empleado` mediante `empleadoId` y guarda metadatos para el futuro flujo de invitación/alta de contraseña.
 - `Position` incluye `canManageAccess` y la relación `PositionScreenPermission`.
-- `PositionScreenPermission` guarda permisos por pantalla para cada puesto.
-- El acceso admin expone `PUT /api/envelope/access/positions/:id/permissions`, `PUT /api/envelope/access/users/:employeeId/credentials` y `DELETE /api/envelope/access/users/:id` para desactivar cuentas.
+- `PositionScreenPermission` guarda permisos por pantalla para cada puesto y también puede almacenar claves de acción virtual como `ventas/generar-sobre`.
+- El acceso admin expone `PUT /api/envelope/access/positions/:id/permissions`, `PUT /api/envelope/access/users/:employeeId/credentials` y `DELETE /api/envelope/access/users/:id` para eliminar cuentas de acceso cuando se requiera volver a crearlas.
 - `Empleado` tiene `bankId`/`positionId` nullable (FK a catálogos dinámicos).
 - `Empleado` también tiene campos legacy `banco`/`puesto` (String) — conservar por compatibilidad hasta backfill completo en prod.
 - `Empleado` ahora incluye `sueldo Decimal?`, `fechaNacimiento DateTime?` y `numeroTelefono String?` para el crecimiento del módulo RH.
 - `Venta` tiene `sesionId String?` — vincula registros del mismo voucher multi-vendedor; null = venta individual.
-- Soft delete: `activo = false` (Usuario, Empleado, Bank, Position, MetodoPago) o `activa = false` (Sucursal). **No hacer borrados físicos salvo instrucción explícita**; la ruta admin de `accesos` desactiva cuentas de login en vez de eliminarlas, excepto la cuenta principal `SUPER_ADMIN`, que no se puede desactivar desde la UI.
+- Soft delete: `activo = false` (Usuario, Empleado, Bank, Position, MetodoPago) o `activa = false` (Sucursal). **No hacer borrados físicos salvo instrucción explícita**; la ruta admin de `accesos` elimina físicamente cuentas de login solo cuando se pide explícitamente desde esa tabla para volver a crear el acceso después, excepto la cuenta principal `SUPER_ADMIN`, que no se puede eliminar desde la UI.
 
 **Reglas de BD:**
 - No ejecutar `migrate reset` ni `db push` en ambientes compartidos/productivos.
@@ -203,7 +280,7 @@ apps/envelope/
 │   │   ├── metodos-pago/          → CRUD métodos de pago
 │   │   ├── bancos/                → CRUD catálogo Bank
 │   │   ├── puestos/               → CRUD catálogo Position
-│   │   ├── accesos/               → administración de permisos por puesto, credenciales independientes y borrado de cuentas
+│   │   ├── accesos/               → administración de permisos por puesto, acciones virtuales, credenciales independientes y borrado de cuentas
 │   │   └── reportes/              → subvistas de reportes del módulo envelope
 │   └── layout.tsx                 → layout raíz de la app
 ├── src/components/

@@ -1,7 +1,7 @@
 "use client";
 
 // Pantalla de captura de ventas — distribución por empleado y conciliación de pagos
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -50,7 +50,9 @@ import {
   useSucursales,
   useVentas,
 } from "@/hooks";
+import { GenerateEnvelopeDialog } from "@/components/GenerateEnvelopeDialog";
 import { useI18n } from "@/lib/i18n";
+import { useSession } from "@/lib/session";
 import { formatCurrency, formatDate, generateId, todayISO } from "@/lib/utils";
 import type { RegistroVenta, VentaItem } from "@/lib/mock-data";
 
@@ -151,6 +153,7 @@ function allocatePaymentsToEmployees(
 }
 
 export default function VentasPage() {
+  const { user } = useSession();
   const { sucursales } = useSucursales();
   const { empleados } = useEmpleados();
   const { metodosPago } = useMetodosPago();
@@ -222,6 +225,29 @@ export default function VentasPage() {
   const paymentProgress =
     totalCents > 0 ? Math.min(100, (paidCents / totalCents) * 100) : 0;
 
+  const visibleSucursales = useMemo(() => {
+    const merged = new Map(sucursales.map((sucursal) => [sucursal.id, sucursal]));
+
+    if (user?.sucursal && !merged.has(user.sucursal.id)) {
+      merged.set(user.sucursal.id, user.sucursal);
+    }
+
+    return [...merged.values()];
+  }, [sucursales, user?.sucursal]);
+
+  useEffect(() => {
+    if (saleContext || saleForm.getValues("sucursalId")) return;
+    if (visibleSucursales.length !== 1) return;
+    const [singleSucursal] = visibleSucursales;
+    if (!singleSucursal) return;
+
+    saleForm.setValue("sucursalId", singleSucursal.id, {
+      shouldDirty: false,
+      shouldTouch: false,
+      shouldValidate: true,
+    });
+  }, [saleContext, saleForm, visibleSucursales]);
+
   const activeEmployees = useMemo(
     () => empleados.filter((employee) => employee.activo),
     [empleados],
@@ -239,7 +265,7 @@ export default function VentasPage() {
     }));
 
   const sucursalNombre = (id: string, embedded?: string) =>
-    embedded ?? sucursales.find((sucursal) => sucursal.id === id)?.nombre ?? id;
+    embedded ?? visibleSucursales.find((sucursal) => sucursal.id === id)?.nombre ?? id;
   const vendedorNombre = (id: string) =>
     empleados.find((employee) => employee.id === id)?.nombreCompleto ?? id;
   const metodoPagoNombre = (id: string, embedded?: string) =>
@@ -502,11 +528,19 @@ export default function VentasPage() {
 
   return (
     <div className="space-y-8">
-      <header>
-        <h1 className="page-title">{t.sales.title}</h1>
-        <p className="mt-1 text-sm" style={{ color: "var(--text-muted)" }}>
-          {t.sales.description}
-        </p>
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h1 className="page-title">{t.sales.title}</h1>
+          <p className="mt-1 text-sm" style={{ color: "var(--text-muted)" }}>
+            {t.sales.description}
+          </p>
+        </div>
+        <GenerateEnvelopeDialog
+          registros={registros}
+          sucursales={visibleSucursales}
+          empleados={empleados}
+          metodosPago={metodosPago}
+        />
       </header>
 
       <Card
@@ -550,7 +584,7 @@ export default function VentasPage() {
                         <SelectValue placeholder={t.sales.select} />
                       </SelectTrigger>
                       <SelectContent>
-                        {sucursales.map((sucursal) => (
+                        {visibleSucursales.map((sucursal) => (
                           <SelectItem key={sucursal.id} value={sucursal.id}>
                             {sucursal.nombre}
                           </SelectItem>

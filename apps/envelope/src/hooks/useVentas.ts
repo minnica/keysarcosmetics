@@ -24,6 +24,7 @@ interface VentaRaw {
   sucursalId: string;
   sucursal?: { nombre: string };
   vendedorId: string;
+  vendedor?: { nombreCompleto: string };
   detalles: { id: string; cantidad: string; metodoPagoId: string; metodoPago?: { nombre: string } }[];
 }
 
@@ -34,6 +35,7 @@ function toRegistroVenta(v: VentaRaw): RegistroVenta {
     sucursalId: v.sucursalId,
     ...(v.sucursal ? { sucursalNombre: v.sucursal.nombre } : {}),
     vendedorId: v.vendedorId,
+    ...(v.vendedor ? { vendedorNombre: v.vendedor.nombreCompleto } : {}),
     // El backend devuelve DateTime ISO; tomamos solo la parte de fecha
     fecha: v.fecha.slice(0, 10),
     sesionId: v.sesionId ?? null,
