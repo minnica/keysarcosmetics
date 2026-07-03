@@ -7,6 +7,7 @@ export const ACCESS_SCREEN_ORDER = [
   'ventas',
   'ventas/generar-sobre',
   'empleados',
+  'empleados/sueldo',
   'sucursales',
   'metodos-pago',
   'bancos',

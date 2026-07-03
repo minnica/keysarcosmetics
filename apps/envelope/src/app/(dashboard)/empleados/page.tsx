@@ -35,6 +35,7 @@ import {
 import type { ColumnDef } from '@cosmetics/ui'
 import { useEmpleados, useBanks, usePositions } from '@/hooks'
 import { useI18n } from '@/lib/i18n'
+import { useSession } from '@/lib/session'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import type { Empleado } from '@/lib/mock-data'
 
@@ -63,6 +64,7 @@ type StatusFilter = 'all' | 'active' | 'inactive'
 type SalaryFilter = 'all' | 'no-record' | 'under-15k' | '15k-to-25k' | '25k-plus'
 
 export default function EmpleadosPage() {
+  const { user, canAccess } = useSession()
   const { empleados, loading, error, add, update, remove, toggleStatus } = useEmpleados()
   const { banks, loading: banksLoading } = useBanks()
   const { positions, loading: positionsLoading } = usePositions()
@@ -82,6 +84,7 @@ export default function EmpleadosPage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [positionFilter, setPositionFilter] = useState('all')
   const [salaryFilter, setSalaryFilter] = useState<SalaryFilter>('all')
+  const canViewSalary = user?.rol === 'SUPER_ADMIN' || canAccess('empleados/sueldo')
 
   const {
     register,
@@ -143,7 +146,7 @@ export default function EmpleadosPage() {
 
         if (positionFilter !== 'all' && empPositionId !== positionFilter) return false
 
-        if (salaryFilter !== 'all') {
+        if (canViewSalary && salaryFilter !== 'all') {
           const salary = emp.sueldo ?? null
           if (salaryFilter === 'no-record') return salary == null
           if (salary == null) return false
@@ -154,10 +157,10 @@ export default function EmpleadosPage() {
 
         return true
       }),
-    [empleados, positionFilter, positionIdByName, salaryFilter, statusFilter],
+    [canViewSalary, empleados, positionFilter, positionIdByName, salaryFilter, statusFilter],
   )
   const hasActiveFilters =
-    statusFilter !== 'all' || positionFilter !== 'all' || salaryFilter !== 'all'
+    statusFilter !== 'all' || positionFilter !== 'all' || (canViewSalary && salaryFilter !== 'all')
 
   function clearFilters() {
     setStatusFilter('all')
@@ -207,7 +210,7 @@ export default function EmpleadosPage() {
       numeroCuenta:    emp.numeroCuenta,
       positionId:      resolvedPositionId,
       metaIndividual:  emp.metaIndividual,
-      sueldo:          emp.sueldo != null ? String(emp.sueldo) : '',
+      sueldo:          canViewSalary && emp.sueldo != null ? String(emp.sueldo) : '',
       fechaNacimiento: emp.fechaNacimiento ?? '',
       numeroTelefono:  emp.numeroTelefono ?? '',
     })
@@ -230,13 +233,19 @@ export default function EmpleadosPage() {
       metaIndividual:  data.metaIndividual,
       bankId:          data.bankId,
       positionId:      data.positionId,
-      sueldo:          data.sueldo?.trim() ? Number(data.sueldo) : null,
+      ...(canViewSalary ? { sueldo: data.sueldo?.trim() ? Number(data.sueldo) : null } : {}),
       fechaNacimiento: data.fechaNacimiento?.trim() ? data.fechaNacimiento.trim() : null,
       numeroTelefono:  data.numeroTelefono?.trim() ? data.numeroTelefono.trim() : null,
     }
 
     if (editing) {
-      await update({ ...editing, ...payload })
+      const nextEmployee = {
+        ...editing,
+        ...payload,
+        ...(canViewSalary ? {} : { sueldo: undefined }),
+      } as Partial<Empleado> & Pick<Empleado, 'id'>
+
+      await update(nextEmployee)
       toast.success(t.employees.employeeUpdated)
     } else {
       // banco/puesto requeridos por tipo legacy — backend los sobreescribe desde bankId/positionId
@@ -253,6 +262,14 @@ export default function EmpleadosPage() {
   const displayDate = (value?: string | null) => (value ? formatDate(value, 'dd/MM/yyyy') : t.common.noRecord)
   const displayPhone = (value?: string | null) => (value?.trim() ? value : t.common.noRecord)
   const displaySalary = (value?: number | null) => (value != null ? formatCurrency(value) : t.common.noRecord)
+  const salaryColumn: ColumnDef<Empleado> = {
+    id: 'sueldo',
+    accessorFn: (row) => row.sueldo ?? 0,
+    header: () => <span className="uppercase">{t.employees.salary}</span>,
+    cell: ({ row }) => (
+      <div className="text-right">{displaySalary(row.original.sueldo)}</div>
+    ),
+  }
 
   const columns: ColumnDef<Empleado>[] = [
     {
@@ -295,14 +312,7 @@ export default function EmpleadosPage() {
         <span className="text-sm">{displayPuesto(row.original)}</span>
       ),
     },
-    {
-      id: 'sueldo',
-      accessorFn: (row) => row.sueldo ?? 0,
-      header: () => <span className="uppercase">{t.employees.salary}</span>,
-      cell: ({ row }) => (
-        <div className="text-right">{displaySalary(row.original.sueldo)}</div>
-      ),
-    },
+    ...(canViewSalary ? [salaryColumn] : []),
     {
       accessorKey: 'metaIndividual',
       header: () => <span className="uppercase">{t.employees.individualGoal}</span>,
@@ -455,7 +465,7 @@ export default function EmpleadosPage() {
                 {t.employees.clearFilters}
               </Button>
             </div>
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            <div className={`grid grid-cols-1 gap-4 ${canViewSalary ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
               <div className="space-y-1.5">
                 <Label htmlFor="filter-status">{t.employees.filterStatus}</Label>
                 <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as StatusFilter)}>
@@ -487,21 +497,23 @@ export default function EmpleadosPage() {
                 </Select>
               </div>
 
-              <div className="space-y-1.5">
-                <Label htmlFor="filter-salary">{t.employees.filterSalary}</Label>
-                <Select value={salaryFilter} onValueChange={(value) => setSalaryFilter(value as SalaryFilter)}>
-                  <SelectTrigger id="filter-salary">
-                    <SelectValue placeholder={t.employees.filterSalary} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">{t.employees.allSalaries}</SelectItem>
-                    <SelectItem value="no-record">{t.employees.salaryNoRecord}</SelectItem>
-                    <SelectItem value="under-15k">{t.employees.salaryUnder15k}</SelectItem>
-                    <SelectItem value="15k-to-25k">{t.employees.salary15kTo25k}</SelectItem>
-                    <SelectItem value="25k-plus">{t.employees.salary25kOrMore}</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+              {canViewSalary ? (
+                <div className="space-y-1.5">
+                  <Label htmlFor="filter-salary">{t.employees.filterSalary}</Label>
+                  <Select value={salaryFilter} onValueChange={(value) => setSalaryFilter(value as SalaryFilter)}>
+                    <SelectTrigger id="filter-salary">
+                      <SelectValue placeholder={t.employees.filterSalary} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">{t.employees.allSalaries}</SelectItem>
+                      <SelectItem value="no-record">{t.employees.salaryNoRecord}</SelectItem>
+                      <SelectItem value="under-15k">{t.employees.salaryUnder15k}</SelectItem>
+                      <SelectItem value="15k-to-25k">{t.employees.salary15kTo25k}</SelectItem>
+                      <SelectItem value="25k-plus">{t.employees.salary25kOrMore}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : null}
             </div>
           </div>
 
@@ -568,12 +580,14 @@ export default function EmpleadosPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-              <div className="space-y-1.5">
-                <Label htmlFor="sueldo">{t.employees.salary}</Label>
-                <Input id="sueldo" type="number" step="any" min="0" {...register('sueldo')} />
-                {errors.sueldo && <p className="text-xs text-red-500">{errors.sueldo.message}</p>}
-              </div>
+            <div className={`grid grid-cols-1 gap-4 ${canViewSalary ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
+              {canViewSalary ? (
+                <div className="space-y-1.5">
+                  <Label htmlFor="sueldo">{t.employees.salary}</Label>
+                  <Input id="sueldo" type="number" step="any" min="0" {...register('sueldo')} />
+                  {errors.sueldo && <p className="text-xs text-red-500">{errors.sueldo.message}</p>}
+                </div>
+              ) : null}
 
               <div className="space-y-1.5">
                 <Label htmlFor="fechaNacimiento">{t.employees.birthDate}</Label>

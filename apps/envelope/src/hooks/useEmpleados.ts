@@ -10,7 +10,7 @@ interface UseEmpleadosReturn {
   error: string | null
   refetch: () => Promise<void>
   add: (e: Omit<Empleado, 'id'>) => Promise<void>
-  update: (e: Empleado) => Promise<void>
+  update: (e: Partial<Empleado> & Pick<Empleado, 'id'>) => Promise<void>
   remove: (id: string) => Promise<void>
   toggleStatus: (id: string, activo: boolean) => Promise<void>
 }
@@ -67,7 +67,7 @@ export function useEmpleados(): UseEmpleadosReturn {
     await refetch()
   }, [refetch])
 
-  const update = useCallback(async (e: Empleado) => {
+  const update = useCallback(async (e: Partial<Empleado> & Pick<Empleado, 'id'>) => {
     await api.put(`/api/envelope/empleados/${e.id}`, e)
     await refetch()
   }, [refetch])

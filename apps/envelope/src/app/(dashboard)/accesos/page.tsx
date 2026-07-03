@@ -52,7 +52,8 @@ const credentialsSchema = z.object({
 type CredentialsForm = z.infer<typeof credentialsSchema>
 
 const GENERATE_ENVELOPE_PERMISSION_KEY = 'ventas/generar-sobre' as const
-const ACCESS_PERMISSION_KEYS = [...SCREEN_CONFIG.map((screen) => screen.key), GENERATE_ENVELOPE_PERMISSION_KEY]
+const EMPLOYEE_SALARY_PERMISSION_KEY = 'empleados/sueldo' as const
+const ACCESS_PERMISSION_KEYS = [...SCREEN_CONFIG.map((screen) => screen.key), GENERATE_ENVELOPE_PERMISSION_KEY, EMPLOYEE_SALARY_PERMISSION_KEY]
 
 function getApiMessage(error: unknown, fallback: string) {
   if (typeof error === 'object' && error && 'response' in error) {
@@ -501,9 +502,12 @@ export default function AccessControlPage() {
                   const enabled = Boolean(draftPermissions[screen.key])
                   const pending = enabled !== Boolean(committedPermissionMapRef.current[screen.key])
 
-                  if (screen.key === 'ventas') {
-                    const generateEnabled = Boolean(draftPermissions[GENERATE_ENVELOPE_PERMISSION_KEY])
-                    const generatePending = generateEnabled !== Boolean(committedPermissionMapRef.current[GENERATE_ENVELOPE_PERMISSION_KEY])
+                  if (screen.key === 'ventas' || screen.key === 'empleados') {
+                    const permissionKey = screen.key === 'ventas'
+                      ? GENERATE_ENVELOPE_PERMISSION_KEY
+                      : EMPLOYEE_SALARY_PERMISSION_KEY
+                    const actionEnabled = Boolean(draftPermissions[permissionKey])
+                    const actionPending = actionEnabled !== Boolean(committedPermissionMapRef.current[permissionKey])
 
                     return (
                       <div key={screen.key} className="space-y-3 rounded-2xl border border-slate-200 bg-white/80 p-3 shadow-sm">
@@ -545,13 +549,13 @@ export default function AccessControlPage() {
                         <button
                           type="button"
                           className={`flex w-full items-stretch gap-3 rounded-xl border border-dashed px-4 py-3 text-left transition-colors duration-200 ${
-                            generateEnabled
+                            actionEnabled
                               ? 'border-[#8bb09b] bg-[#648672]/10'
                               : 'hover:border-slate-300 hover:bg-slate-50'
                           }`}
                           style={{ borderColor: 'var(--border-color)' }}
                           onClick={() => {
-                            togglePermission(GENERATE_ENVELOPE_PERMISSION_KEY)
+                            togglePermission(permissionKey)
                           }}
                         >
                           <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#648672]/10 text-[#648672]">
@@ -559,27 +563,31 @@ export default function AccessControlPage() {
                           </div>
                           <div className="min-w-0 flex-1 space-y-1">
                             <div className="flex items-center gap-2">
-                              <span className="font-medium">{t.access.generateEnvelopePermission}</span>
+                              <span className="font-medium">
+                                {screen.key === 'ventas' ? t.access.generateEnvelopePermission : t.access.viewSalaryPermission}
+                              </span>
                               <Badge variant="secondary" className="uppercase text-[10px] tracking-wide">
-                                {t.access.salesAction}
+                                {screen.key === 'ventas' ? t.access.salesAction : t.access.employeesAction}
                               </Badge>
                             </div>
                             <p className="text-xs leading-5" style={{ color: 'var(--text-muted)' }}>
-                              {t.access.generateEnvelopePermissionDescription}
+                              {screen.key === 'ventas'
+                                ? t.access.generateEnvelopePermissionDescription
+                                : t.access.viewSalaryPermissionDescription}
                             </p>
                           </div>
                           <div className="flex items-center gap-2">
-                            {generateEnabled ? <Check className="h-4 w-4 text-[#648672]" /> : null}
+                            {actionEnabled ? <Check className="h-4 w-4 text-[#648672]" /> : null}
                             <Badge
                               className="uppercase"
                               style={{
-                                backgroundColor: generatePending ? '#f59e0b' : generateEnabled ? '#648672' : '#9ca3af',
+                                backgroundColor: actionPending ? '#f59e0b' : actionEnabled ? '#648672' : '#9ca3af',
                                 color: 'white',
                               }}
                             >
-                              {generatePending
+                              {actionPending
                                 ? t.common.saving
-                                : generateEnabled
+                                : actionEnabled
                                   ? t.access.screenEnabled
                                   : t.access.screenDisabled}
                             </Badge>
