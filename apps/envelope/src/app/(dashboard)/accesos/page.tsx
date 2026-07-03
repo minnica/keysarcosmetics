@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Check, Info, Pencil, Shield, Trash2, UserPlus } from 'lucide-react'
+import { Check, CornerDownRight, Info, Pencil, Shield, Trash2, UserPlus } from 'lucide-react'
 import type { ColumnDef } from '@cosmetics/ui'
 import {
   AlertDialog,
@@ -139,6 +139,15 @@ export default function AccessControlPage() {
     () => (draftCanManageAccess ? ACCESS_PERMISSION_KEYS.length : Object.values(draftPermissions).filter(Boolean).length),
     [draftCanManageAccess, draftPermissions],
   )
+
+  function togglePermission(permissionKey: string) {
+    const nextPermissions = {
+      ...draftPermissions,
+      [permissionKey]: !draftPermissions[permissionKey],
+    }
+    setDraftPermissions(nextPermissions)
+    schedulePermissionSave(draftCanManageAccess, nextPermissions)
+  }
 
   useEffect(() => {
     if (!selectedPositionId && positions[0]) {
@@ -404,13 +413,12 @@ export default function AccessControlPage() {
                 size="sm"
                 variant="outline"
                 className="border-red-300 text-red-600 hover:bg-red-50 hover:text-red-600"
-                disabled={!user.activo}
                 onClick={() => {
                   setUserToDelete(user)
                 }}
               >
                 <Trash2 className="h-4 w-4" />
-                {user.activo ? t.common.deactivate : t.common.inactive}
+                {t.common.delete}
               </Button>
             ) : null}
           </div>
@@ -492,11 +500,100 @@ export default function AccessControlPage() {
                 {SCREEN_CONFIG.map((screen) => {
                   const enabled = Boolean(draftPermissions[screen.key])
                   const pending = enabled !== Boolean(committedPermissionMapRef.current[screen.key])
+
+                  if (screen.key === 'ventas') {
+                    const generateEnabled = Boolean(draftPermissions[GENERATE_ENVELOPE_PERMISSION_KEY])
+                    const generatePending = generateEnabled !== Boolean(committedPermissionMapRef.current[GENERATE_ENVELOPE_PERMISSION_KEY])
+
+                    return (
+                      <div key={screen.key} className="space-y-3 rounded-2xl border border-slate-200 bg-white/80 p-3 shadow-sm">
+                        <button
+                          type="button"
+                          className={`flex w-full items-center justify-between rounded-xl border px-4 py-3 text-left transition-colors duration-200 ${
+                            enabled ? 'border-[#8bb09b] bg-[#648672]/10' : 'hover:border-slate-300 hover:bg-slate-50'
+                          }`}
+                          style={{ borderColor: 'var(--border-color)' }}
+                          onClick={() => {
+                            togglePermission(screen.key)
+                          }}
+                        >
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium">{t.sidebar[screen.labelKey as keyof typeof t.sidebar]}</span>
+                              <Badge variant="secondary" className="uppercase text-[10px] tracking-wide">
+                                {t.access.primaryScreen}
+                              </Badge>
+                            </div>
+                            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                              {screen.path}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {enabled ? <Check className="h-4 w-4 text-[#648672]" /> : null}
+                            <Badge
+                              className="uppercase"
+                              style={{
+                                backgroundColor: pending ? '#f59e0b' : enabled ? '#648672' : '#9ca3af',
+                                color: 'white',
+                              }}
+                            >
+                              {pending ? t.common.saving : enabled ? t.access.screenEnabled : t.access.screenDisabled}
+                            </Badge>
+                          </div>
+                        </button>
+
+                        <button
+                          type="button"
+                          className={`flex w-full items-stretch gap-3 rounded-xl border border-dashed px-4 py-3 text-left transition-colors duration-200 ${
+                            generateEnabled
+                              ? 'border-[#8bb09b] bg-[#648672]/10'
+                              : 'hover:border-slate-300 hover:bg-slate-50'
+                          }`}
+                          style={{ borderColor: 'var(--border-color)' }}
+                          onClick={() => {
+                            togglePermission(GENERATE_ENVELOPE_PERMISSION_KEY)
+                          }}
+                        >
+                          <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#648672]/10 text-[#648672]">
+                            <CornerDownRight className="h-4 w-4" />
+                          </div>
+                          <div className="min-w-0 flex-1 space-y-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium">{t.access.generateEnvelopePermission}</span>
+                              <Badge variant="secondary" className="uppercase text-[10px] tracking-wide">
+                                {t.access.salesAction}
+                              </Badge>
+                            </div>
+                            <p className="text-xs leading-5" style={{ color: 'var(--text-muted)' }}>
+                              {t.access.generateEnvelopePermissionDescription}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {generateEnabled ? <Check className="h-4 w-4 text-[#648672]" /> : null}
+                            <Badge
+                              className="uppercase"
+                              style={{
+                                backgroundColor: generatePending ? '#f59e0b' : generateEnabled ? '#648672' : '#9ca3af',
+                                color: 'white',
+                              }}
+                            >
+                              {generatePending
+                                ? t.common.saving
+                                : generateEnabled
+                                  ? t.access.screenEnabled
+                                  : t.access.screenDisabled}
+                            </Badge>
+                          </div>
+                        </button>
+                      </div>
+                    )
+                  }
+
                   return (
                     <button
                       key={screen.key}
                       type="button"
-                      className={`flex items-center justify-between rounded-lg border px-4 py-3 text-left transition-colors duration-200 ${
+                      className={`flex items-center justify-between rounded-xl border px-4 py-3 text-left transition-colors duration-200 ${
                         enabled ? 'border-[#8bb09b] bg-[#648672]/10' : 'hover:border-slate-300 hover:bg-slate-50'
                       }`}
                       style={{ borderColor: 'var(--border-color)' }}
@@ -537,56 +634,6 @@ export default function AccessControlPage() {
                     </button>
                   )
                 })}
-
-                <button
-                  type="button"
-                  className={`flex items-center justify-between rounded-lg border px-4 py-3 text-left transition-colors duration-200 ${
-                    draftPermissions[GENERATE_ENVELOPE_PERMISSION_KEY]
-                      ? 'border-[#8bb09b] bg-[#648672]/10'
-                      : 'hover:border-slate-300 hover:bg-slate-50'
-                  }`}
-                  style={{ borderColor: 'var(--border-color)' }}
-                  onClick={() => {
-                    const nextPermissions = {
-                      ...draftPermissions,
-                      [GENERATE_ENVELOPE_PERMISSION_KEY]: !draftPermissions[GENERATE_ENVELOPE_PERMISSION_KEY],
-                    }
-                    setDraftPermissions(nextPermissions)
-                    schedulePermissionSave(draftCanManageAccess, nextPermissions)
-                  }}
-                >
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">{t.access.generateEnvelopePermission}</span>
-                      <Badge variant="secondary" className="uppercase text-[10px]">
-                        acción
-                      </Badge>
-                    </div>
-                    <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                      {t.access.generateEnvelopePermissionDescription}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {draftPermissions[GENERATE_ENVELOPE_PERMISSION_KEY] ? <Check className="h-4 w-4 text-[#648672]" /> : null}
-                    <Badge
-                      className="uppercase"
-                      style={{
-                        backgroundColor: Boolean(committedPermissionMapRef.current[GENERATE_ENVELOPE_PERMISSION_KEY]) !== Boolean(draftPermissions[GENERATE_ENVELOPE_PERMISSION_KEY])
-                          ? '#f59e0b'
-                          : draftPermissions[GENERATE_ENVELOPE_PERMISSION_KEY]
-                            ? '#648672'
-                            : '#9ca3af',
-                        color: 'white',
-                      }}
-                    >
-                      {Boolean(committedPermissionMapRef.current[GENERATE_ENVELOPE_PERMISSION_KEY]) !== Boolean(draftPermissions[GENERATE_ENVELOPE_PERMISSION_KEY])
-                        ? t.common.saving
-                        : draftPermissions[GENERATE_ENVELOPE_PERMISSION_KEY]
-                          ? t.access.screenEnabled
-                          : t.access.screenDisabled}
-                    </Badge>
-                  </div>
-                </button>
               </div>
 
               <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border px-4 py-3" style={{ borderColor: 'var(--border-color)' }}>

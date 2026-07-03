@@ -1,8 +1,11 @@
 "use client";
 
-import type { PointerEvent } from "react";
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
-import { FileDown, PenLine, Trash2 } from "lucide-react";
+import { PenLine, Trash2 } from "lucide-react";
+import SignaturePadLib, {
+  type Options as SignaturePadOptions,
+  type PointGroup,
+} from "signature_pad";
 import {
   Button,
   Dialog,
@@ -41,6 +44,16 @@ interface SignaturePadHandle {
   hasSignature: () => boolean;
   getCanvas: () => HTMLCanvasElement | null;
 }
+
+type SignaturePadInstance = {
+  clear: () => void;
+  off: () => void;
+  isEmpty: () => boolean;
+  toData: () => PointGroup[];
+  fromData: (data: PointGroup[], options?: { clear?: boolean }) => void;
+  addEventListener: (type: string, listener: () => void) => void;
+  removeEventListener: (type: string, listener: () => void) => void;
+};
 
 function normalize(value: string) {
   return value
@@ -158,29 +171,42 @@ function drawRoundedRect(
 
 const SignaturePad = forwardRef<SignaturePadHandle>(function SignaturePad(_, ref) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const drawingRef = useRef(false);
-  const lastPointRef = useRef<{ x: number; y: number } | null>(null);
+  const padRef = useRef<SignaturePadInstance | null>(null);
   const hasSignatureRef = useRef(false);
 
-  const paintBackground = () => {
+  const resizeCanvas = () => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    const pad = padRef.current;
+    if (!canvas || !pad) return;
+
+    const rect = canvas.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+
+    const ratio = Math.max(window.devicePixelRatio || 1, 1);
+    const width = Math.round(rect.width * ratio);
+    const height = Math.round(rect.height * ratio);
+    const wasEmpty = pad.isEmpty();
+    const data = wasEmpty ? null : pad.toData();
+
+    canvas.width = width;
+    canvas.height = height;
     const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.lineWidth = 2.5;
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-    ctx.strokeStyle = "#1f2937";
+    if (ctx) {
+      ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+    }
+
+    if (data && data.length > 0) {
+      pad.fromData(data, { clear: true });
+      hasSignatureRef.current = true;
+    } else {
+      pad.clear();
+      hasSignatureRef.current = false;
+    }
   };
 
   const clear = () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    paintBackground();
+    padRef.current?.clear();
     hasSignatureRef.current = false;
-    lastPointRef.current = null;
   };
 
   useImperativeHandle(ref, () => ({
@@ -190,70 +216,62 @@ const SignaturePad = forwardRef<SignaturePadHandle>(function SignaturePad(_, ref
   }));
 
   useEffect(() => {
-    clear();
-  }, []);
-
-  function pointFromEvent(event: PointerEvent<HTMLCanvasElement>) {
     const canvas = canvasRef.current;
-    if (!canvas) return null;
-    const rect = canvas.getBoundingClientRect();
-    return {
-      x: ((event.clientX - rect.left) / rect.width) * canvas.width,
-      y: ((event.clientY - rect.top) / rect.height) * canvas.height,
+    if (!canvas) return;
+
+    const SignaturePadCtor = SignaturePadLib as unknown as new (
+      canvas: HTMLCanvasElement,
+      options?: SignaturePadOptions,
+    ) => SignaturePadInstance;
+
+    const pad = new SignaturePadCtor(canvas, {
+      backgroundColor: "rgba(0,0,0,0)",
+      penColor: "#1f2937",
+      minWidth: 1.1,
+      maxWidth: 2.6,
+      velocityFilterWeight: 0.6,
+      throttle: 0,
+      minDistance: 0,
+    });
+    padRef.current = pad;
+
+    const updateSignatureState = () => {
+      hasSignatureRef.current = !pad.isEmpty();
     };
-  }
 
-  function handlePointerDown(event: PointerEvent<HTMLCanvasElement>) {
-    const canvas = canvasRef.current;
-    const ctx = canvas?.getContext("2d");
-    if (!canvas || !ctx) return;
+    const handleBeginStroke = () => {
+      hasSignatureRef.current = true;
+    };
 
-    canvas.setPointerCapture(event.pointerId);
-    const point = pointFromEvent(event);
-    if (!point) return;
+    const handleEndStroke = () => {
+      updateSignatureState();
+    };
 
-    drawingRef.current = true;
-    lastPointRef.current = point;
-    hasSignatureRef.current = true;
+    pad.addEventListener("beginStroke", handleBeginStroke);
+    pad.addEventListener("endStroke", handleEndStroke);
 
-    ctx.beginPath();
-    ctx.moveTo(point.x, point.y);
-  }
+    const observer = new ResizeObserver(() => {
+      resizeCanvas();
+    });
+    observer.observe(canvas);
 
-  function handlePointerMove(event: PointerEvent<HTMLCanvasElement>) {
-    const canvas = canvasRef.current;
-    const ctx = canvas?.getContext("2d");
-    if (!drawingRef.current || !canvas || !ctx) return;
+    resizeCanvas();
 
-    const point = pointFromEvent(event);
-    const lastPoint = lastPointRef.current;
-    if (!point || !lastPoint) return;
-
-    ctx.beginPath();
-    ctx.moveTo(lastPoint.x, lastPoint.y);
-    ctx.lineTo(point.x, point.y);
-    ctx.stroke();
-    lastPointRef.current = point;
-  }
-
-  function stopDrawing() {
-    drawingRef.current = false;
-    lastPointRef.current = null;
-  }
+    return () => {
+      pad.removeEventListener("beginStroke", handleBeginStroke);
+      pad.removeEventListener("endStroke", handleEndStroke);
+      pad.off();
+      padRef.current = null;
+      observer.disconnect();
+    };
+  }, []);
 
   return (
     <div className="space-y-2">
       <canvas
         ref={canvasRef}
-        width={640}
-        height={220}
-        className="h-44 w-full rounded-xl border bg-white"
+        className="h-44 w-full rounded-xl border bg-transparent"
         style={{ touchAction: "none", borderColor: "var(--border-color)" }}
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={stopDrawing}
-        onPointerCancel={stopDrawing}
-        onPointerLeave={stopDrawing}
       />
       <p className="text-xs" style={{ color: "var(--text-muted)" }}>
         Firma con el dedo o con el mouse dentro del recuadro.
@@ -273,7 +291,6 @@ export function GenerateEnvelopeDialog({
   const [open, setOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState(todayISO());
   const [selectedBranchId, setSelectedBranchId] = useState<string>(sucursales[0]?.id ?? "");
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
   const signatureRef = useRef<SignaturePadHandle | null>(null);
 
@@ -298,6 +315,7 @@ export function GenerateEnvelopeDialog({
       ),
     [registros, selectedBranchId, selectedDate],
   );
+  const hasSelectedSales = selectedSales.length > 0;
 
   const sellerRows = useMemo(() => {
     const employeeMap = new Map(empleados.map((employee) => [employee.id, employee]));
@@ -382,13 +400,12 @@ export function GenerateEnvelopeDialog({
 
   function resetDialogState() {
     signatureRef.current?.clear();
-    setPreviewUrl(null);
     setSelectedDate(todayISO());
     setSelectedBranchId(sucursales[0]?.id ?? "");
   }
 
   function buildEnvelopeCanvas(signatureCanvas: HTMLCanvasElement) {
-    const width = 1240;
+    const width = 1060;
     const rowHeight = 52;
     const topBoxHeight = 104;
     const sellerRowsCount = Math.max(sellerRows.length, 8);
@@ -406,7 +423,7 @@ export function GenerateEnvelopeDialog({
       throw new Error("No se pudo crear el lienzo del sobre");
     }
 
-    ctx.fillStyle = "#f6f1e8";
+    ctx.fillStyle = "#ffffff";
     ctx.fillRect(0, 0, width, height);
 
     ctx.strokeStyle = "#2f2a27";
@@ -422,17 +439,17 @@ export function GenerateEnvelopeDialog({
     ctx.font = "700 26px sans-serif";
     ctx.fillText("SUCURSAL:", 68, 88);
     ctx.font = "400 26px sans-serif";
-    ctx.fillText(selectedBranch?.nombre ?? "—", 220, 88);
+    ctx.fillText(selectedBranch?.nombre ?? "—", 226, 88);
     ctx.beginPath();
-    ctx.moveTo(216, 96);
-    ctx.lineTo(500, 96);
+    ctx.moveTo(226, 96);
+    ctx.lineTo(456, 96);
     ctx.stroke();
     ctx.font = "700 26px sans-serif";
-    ctx.fillText("FECHA:", width - 400, 88);
+    ctx.fillText("FECHA:", width - 320, 88);
     ctx.font = "400 26px sans-serif";
-    ctx.fillText(formatDate(selectedDate, "dd MMM yyyy", locale), width - 285, 88);
+    ctx.fillText(formatDate(selectedDate, "dd MMM yyyy", locale), width - 220, 88);
     ctx.beginPath();
-    ctx.moveTo(width - 288, 96);
+    ctx.moveTo(width - 223, 96);
     ctx.lineTo(width - 70, 96);
     ctx.stroke();
 
@@ -442,13 +459,13 @@ export function GenerateEnvelopeDialog({
     ctx.stroke();
     ctx.font = "700 26px sans-serif";
     ctx.fillText("REPRESENTANTE:", 76, sellersY + 52);
-    ctx.fillText("VENTA:", width - 430, sellersY + 52);
+    ctx.fillText("VENTA:", width - 330, sellersY + 52);
 
     const lineStartY = sellersY + 110;
-    const leftX = 88;
-    const leftLineW = 410;
-    const rightX = width - 410;
-    const rightLineW = 260;
+    const leftX = 80;
+    const leftLineW = 340;
+    const rightX = width - 330;
+    const rightLineW = 210;
     const firstSellerRow = lineStartY;
 
     for (let index = 0; index < sellerRowsCount; index += 1) {
@@ -485,7 +502,7 @@ export function GenerateEnvelopeDialog({
     ctx.fillText("TRANSFERENCIA", 76, paymentsY + 270);
     ctx.fillText("TOTAL VENTA", 76, paymentsY + 314);
 
-    const paymentValueX = width - 400;
+    const paymentValueX = width - 320;
     const paymentLines: PaymentLine[] = [
       ...paymentRows,
       { label: "TOTAL VENTA", totalCents },
@@ -495,7 +512,7 @@ export function GenerateEnvelopeDialog({
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.moveTo(paymentValueX, rowY + 18);
-      ctx.lineTo(paymentValueX + 280, rowY + 18);
+      ctx.lineTo(paymentValueX + 210, rowY + 18);
       ctx.stroke();
       ctx.font = payment.label === "TOTAL VENTA" ? "700 24px sans-serif" : "400 24px sans-serif";
       ctx.fillText(formatCurrency(fromCents(payment.totalCents)), paymentValueX + 8, rowY + 10);
@@ -509,16 +526,15 @@ export function GenerateEnvelopeDialog({
     ctx.fillText("NOTAS", 72, notesY + 50);
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(170, notesY + 52);
+    ctx.moveTo(160, notesY + 52);
     ctx.lineTo(width - 72, notesY + 52);
     ctx.stroke();
 
-    ctx.font = "400 22px sans-serif";
-    ctx.fillStyle = "#374151";
-    const noteLines = wrapText(ctx, notes || "—", boxW - 90);
-    noteLines.slice(0, 5).forEach((line, index) => {
-      ctx.fillText(line, 72, notesY + 92 + index * 28);
-    });
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(72, notesY + 98);
+    ctx.lineTo(width - 72, notesY + 98);
+    ctx.stroke();
 
     // Footer
     const footerY = notesY + notesHeight + 28;
@@ -532,15 +548,15 @@ export function GenerateEnvelopeDialog({
 
     ctx.font = "400 26px sans-serif";
     const userName = user?.nombre ?? "—";
-    ctx.fillText(userName, 230, footerY + 50);
+    ctx.fillText(userName, 208, footerY + 50);
     ctx.beginPath();
-    ctx.moveTo(228, footerY + 58);
+    ctx.moveTo(206, footerY + 58);
     ctx.lineTo(width - 80, footerY + 58);
     ctx.stroke();
 
-    const signatureTargetWidth = 300;
+    const signatureTargetWidth = 240;
     const signatureTargetHeight = 70;
-    const signatureX = 230;
+    const signatureX = 198;
     const signatureY = footerY + 58;
     ctx.drawImage(
       signatureCanvas,
@@ -582,22 +598,24 @@ export function GenerateEnvelopeDialog({
     setGenerating(true);
     try {
       const canvas = buildEnvelopeCanvas(signatureCanvas);
-      const dataUrl = canvas.toDataURL("image/png");
-      setPreviewUrl(dataUrl);
+      const blob = await new Promise<Blob | null>((resolve) => {
+        canvas.toBlob((result) => resolve(result), "image/png");
+      });
+      if (!blob) {
+        throw new Error("No se pudo generar el PNG del sobre");
+      }
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = downloadName;
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
       toast.success(t.sales.generateEnvelopeReady);
     } catch {
       toast.error(t.sales.generateEnvelopeError);
     } finally {
       setGenerating(false);
     }
-  }
-
-  function handleDownload() {
-    if (!previewUrl) return;
-    const link = document.createElement("a");
-    link.href = previewUrl;
-    link.download = downloadName;
-    link.click();
   }
 
   if (!canGenerateEnvelope) {
@@ -619,7 +637,7 @@ export function GenerateEnvelopeDialog({
         {t.sales.generateEnvelope}
       </Button>
 
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle className="uppercase">{t.sales.generateEnvelopeDialogTitle}</DialogTitle>
           <DialogDescription>{t.sales.generateEnvelopeDialogDescription}</DialogDescription>
@@ -634,7 +652,6 @@ export function GenerateEnvelopeDialog({
               value={selectedDate}
               onChange={(event) => {
                 setSelectedDate(event.target.value);
-                setPreviewUrl(null);
               }}
             />
           </div>
@@ -645,7 +662,6 @@ export function GenerateEnvelopeDialog({
               value={selectedBranchId}
               onValueChange={(value) => {
                 setSelectedBranchId(value);
-                setPreviewUrl(null);
               }}
             >
               <SelectTrigger id="envelope-branch">
@@ -662,70 +678,22 @@ export function GenerateEnvelopeDialog({
           </div>
         </div>
 
-        <div className="rounded-xl border bg-white p-4" style={{ borderColor: "var(--border-color)" }}>
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <div>
-              <p className="text-sm font-semibold uppercase">{t.sales.generateEnvelopePreview}</p>
-              <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-                {selectedSales.length
-                  ? `${selectedSales.length} registro${selectedSales.length !== 1 ? "s" : ""} · ${formatCurrency(fromCents(totalCents))}`
-                  : t.sales.generateEnvelopeNoData}
-              </p>
-            </div>
-            <Button type="button" variant="outline" size="sm" onClick={handleGenerate} disabled={generating || !selectedSales.length}>
-              {generating ? t.sales.generateEnvelopeGenerating : t.sales.generateEnvelope}
-            </Button>
-          </div>
-
-          {previewUrl ? (
-            <img
-              src={previewUrl}
-              alt={t.sales.generateEnvelopePreview}
-              className="max-h-[32rem] w-full rounded-lg border object-contain"
-              style={{ borderColor: "var(--border-color)" }}
-            />
-          ) : (
-            <div className="rounded-lg border border-dashed px-4 py-10 text-center text-sm" style={{ color: "var(--text-muted)" }}>
-              {t.sales.generateEnvelopeDialogDescription}
-            </div>
-          )}
+        <div
+          className="rounded-xl border px-4 py-3 text-sm"
+          style={{
+            borderColor: hasSelectedSales ? "var(--border-color)" : "#d6b66a",
+            backgroundColor: hasSelectedSales ? "transparent" : "rgba(214, 182, 106, 0.08)",
+            color: hasSelectedSales ? "var(--text-muted)" : "#8a6d1a",
+          }}
+        >
+          {hasSelectedSales
+            ? `${selectedSales.length} registro${selectedSales.length !== 1 ? "s" : ""} · ${formatCurrency(fromCents(totalCents))}`
+            : t.sales.generateEnvelopeNoData}
         </div>
 
-        <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
-          <div className="space-y-2">
-            <Label>{t.sales.generateEnvelopeSignatureLabel}</Label>
-            <SignaturePad ref={signatureRef} />
-          </div>
-
-          <div className="space-y-3 rounded-xl border p-4" style={{ borderColor: "var(--border-color)" }}>
-            <div>
-              <p className="text-sm font-semibold uppercase">{t.sales.generateEnvelopeNameLabel}</p>
-              <p className="text-sm" style={{ color: "var(--text-muted)" }}>
-                {user?.nombre ?? "—"}
-              </p>
-            </div>
-            <div>
-              <p className="text-sm font-semibold uppercase">{t.sales.generateEnvelopeNotesLabel}</p>
-              <p className="text-sm" style={{ color: "var(--text-muted)" }}>
-                {notes || "—"}
-              </p>
-            </div>
-            <div className="space-y-1">
-              <p className="text-sm font-semibold uppercase">{t.common.paymentMethod}</p>
-              <div className="space-y-1 text-sm" style={{ color: "var(--text-muted)" }}>
-                {paymentRows.map((row) => (
-                  <div key={row.label} className="flex items-center justify-between gap-3">
-                    <span>{row.label}</span>
-                    <span className="font-medium text-[var(--text-primary)]">{formatCurrency(fromCents(row.totalCents))}</span>
-                  </div>
-                ))}
-                <div className="flex items-center justify-between gap-3 border-t pt-2 font-semibold" style={{ borderColor: "var(--border-color)" }}>
-                  <span>TOTAL VENTA</span>
-                  <span>{formatCurrency(fromCents(totalCents))}</span>
-                </div>
-              </div>
-            </div>
-          </div>
+        <div className="space-y-2">
+          <Label>{t.sales.generateEnvelopeSignatureLabel}</Label>
+          <SignaturePad ref={signatureRef} />
         </div>
 
         <DialogFooter className="gap-2 sm:justify-between">
@@ -734,20 +702,18 @@ export function GenerateEnvelopeDialog({
             variant="outline"
             onClick={() => {
               signatureRef.current?.clear();
-              setPreviewUrl(null);
             }}
           >
             <Trash2 className="mr-1.5 h-4 w-4" />
             {t.sales.generateEnvelopeClearSignature}
           </Button>
-          <div className="flex gap-2">
-            {previewUrl ? (
-              <Button type="button" onClick={handleDownload}>
-                <FileDown className="mr-1.5 h-4 w-4" />
-                {t.sales.generateEnvelopeDownload}
-              </Button>
-            ) : null}
-          </div>
+          <Button
+            type="button"
+            onClick={handleGenerate}
+            disabled={generating || !hasSelectedSales}
+          >
+            {generating ? t.sales.generateEnvelopeGenerating : t.sales.generateEnvelope}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
