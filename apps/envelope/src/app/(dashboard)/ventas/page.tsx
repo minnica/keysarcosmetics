@@ -50,6 +50,7 @@ import {
   useSucursales,
   useVentas,
 } from "@/hooks";
+import { GenerateEnvelopeDialog } from "@/components/GenerateEnvelopeDialog";
 import { useI18n } from "@/lib/i18n";
 import { formatCurrency, formatDate, generateId, todayISO } from "@/lib/utils";
 import type { RegistroVenta, VentaItem } from "@/lib/mock-data";
@@ -502,11 +503,19 @@ export default function VentasPage() {
 
   return (
     <div className="space-y-8">
-      <header>
-        <h1 className="page-title">{t.sales.title}</h1>
-        <p className="mt-1 text-sm" style={{ color: "var(--text-muted)" }}>
-          {t.sales.description}
-        </p>
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h1 className="page-title">{t.sales.title}</h1>
+          <p className="mt-1 text-sm" style={{ color: "var(--text-muted)" }}>
+            {t.sales.description}
+          </p>
+        </div>
+        <GenerateEnvelopeDialog
+          registros={registros}
+          sucursales={sucursales}
+          empleados={empleados}
+          metodosPago={metodosPago}
+        />
       </header>
 
       <Card

@@ -29,6 +29,7 @@ export interface Sucursal {
 export interface MetodoPago {
   id: string;
   nombre: string;
+  tipo?: string;
 }
 
 export interface Empleado {

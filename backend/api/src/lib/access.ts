@@ -5,6 +5,7 @@ import { prisma } from '../prisma/client'
 export const ACCESS_SCREEN_ORDER = [
   'dashboard',
   'ventas',
+  'ventas/generar-sobre',
   'empleados',
   'sucursales',
   'metodos-pago',

@@ -51,6 +51,9 @@ const credentialsSchema = z.object({
 
 type CredentialsForm = z.infer<typeof credentialsSchema>
 
+const GENERATE_ENVELOPE_PERMISSION_KEY = 'ventas/generar-sobre' as const
+const ACCESS_PERMISSION_KEYS = [...SCREEN_CONFIG.map((screen) => screen.key), GENERATE_ENVELOPE_PERMISSION_KEY]
+
 function getApiMessage(error: unknown, fallback: string) {
   if (typeof error === 'object' && error && 'response' in error) {
     const response = (error as { response?: { data?: { message?: string } } }).response
@@ -112,10 +115,10 @@ export default function AccessControlPage() {
     }
 
     return Object.fromEntries(
-      SCREEN_CONFIG.map((screen) => [
-        screen.key,
+      ACCESS_PERMISSION_KEYS.map((screenKey) => [
+        screenKey,
         selectedPosition.canManageAccess
-          || selectedPosition.screenPermissions.some((permission) => permission.screenKey === screen.key && permission.allowed),
+          || selectedPosition.screenPermissions.some((permission) => permission.screenKey === screenKey && permission.allowed),
       ]),
     ) as Record<string, boolean>
   }, [selectedPosition])
@@ -129,11 +132,11 @@ export default function AccessControlPage() {
       return true
     }
 
-    return SCREEN_CONFIG.some((screen) => Boolean(draftPermissions[screen.key]) !== Boolean(committedPermissionMapRef.current[screen.key]))
+    return ACCESS_PERMISSION_KEYS.some((screenKey) => Boolean(draftPermissions[screenKey]) !== Boolean(committedPermissionMapRef.current[screenKey]))
   }, [draftCanManageAccess, draftPermissions, selectedPermissionMap, selectedPosition])
 
   const enabledScreenCount = useMemo(
-    () => (draftCanManageAccess ? SCREEN_CONFIG.length : Object.values(draftPermissions).filter(Boolean).length),
+    () => (draftCanManageAccess ? ACCESS_PERMISSION_KEYS.length : Object.values(draftPermissions).filter(Boolean).length),
     [draftCanManageAccess, draftPermissions],
   )
 
@@ -219,9 +222,9 @@ export default function AccessControlPage() {
     } = {
       positionId: selectedPosition.id,
       canManageAccess: nextCanManageAccess,
-      permissions: SCREEN_CONFIG.map((screen): AccessPermission => ({
-        screenKey: screen.key as AccessPermission['screenKey'],
-        allowed: nextCanManageAccess ? true : Boolean(nextPermissions[screen.key]),
+      permissions: ACCESS_PERMISSION_KEYS.map((screenKey): AccessPermission => ({
+        screenKey: screenKey as AccessPermission['screenKey'],
+        allowed: nextCanManageAccess ? true : Boolean(nextPermissions[screenKey]),
       })),
     }
 
@@ -534,6 +537,56 @@ export default function AccessControlPage() {
                     </button>
                   )
                 })}
+
+                <button
+                  type="button"
+                  className={`flex items-center justify-between rounded-lg border px-4 py-3 text-left transition-colors duration-200 ${
+                    draftPermissions[GENERATE_ENVELOPE_PERMISSION_KEY]
+                      ? 'border-[#8bb09b] bg-[#648672]/10'
+                      : 'hover:border-slate-300 hover:bg-slate-50'
+                  }`}
+                  style={{ borderColor: 'var(--border-color)' }}
+                  onClick={() => {
+                    const nextPermissions = {
+                      ...draftPermissions,
+                      [GENERATE_ENVELOPE_PERMISSION_KEY]: !draftPermissions[GENERATE_ENVELOPE_PERMISSION_KEY],
+                    }
+                    setDraftPermissions(nextPermissions)
+                    schedulePermissionSave(draftCanManageAccess, nextPermissions)
+                  }}
+                >
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">{t.access.generateEnvelopePermission}</span>
+                      <Badge variant="secondary" className="uppercase text-[10px]">
+                        acción
+                      </Badge>
+                    </div>
+                    <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                      {t.access.generateEnvelopePermissionDescription}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {draftPermissions[GENERATE_ENVELOPE_PERMISSION_KEY] ? <Check className="h-4 w-4 text-[#648672]" /> : null}
+                    <Badge
+                      className="uppercase"
+                      style={{
+                        backgroundColor: Boolean(committedPermissionMapRef.current[GENERATE_ENVELOPE_PERMISSION_KEY]) !== Boolean(draftPermissions[GENERATE_ENVELOPE_PERMISSION_KEY])
+                          ? '#f59e0b'
+                          : draftPermissions[GENERATE_ENVELOPE_PERMISSION_KEY]
+                            ? '#648672'
+                            : '#9ca3af',
+                        color: 'white',
+                      }}
+                    >
+                      {Boolean(committedPermissionMapRef.current[GENERATE_ENVELOPE_PERMISSION_KEY]) !== Boolean(draftPermissions[GENERATE_ENVELOPE_PERMISSION_KEY])
+                        ? t.common.saving
+                        : draftPermissions[GENERATE_ENVELOPE_PERMISSION_KEY]
+                          ? t.access.screenEnabled
+                          : t.access.screenDisabled}
+                    </Badge>
+                  </div>
+                </button>
               </div>
 
               <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border px-4 py-3" style={{ borderColor: 'var(--border-color)' }}>
@@ -542,7 +595,7 @@ export default function AccessControlPage() {
                     {selectedPosition?.nombre ?? t.common.noRecord}
                   </p>
                   <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                    {draftCanManageAccess ? t.access.allScreens : `${enabledScreenCount} / ${SCREEN_CONFIG.length}`}
+                    {draftCanManageAccess ? t.access.allScreens : `${enabledScreenCount} / ${ACCESS_PERMISSION_KEYS.length}`}
                   </p>
                 </div>
                 <Badge className="uppercase" style={{ backgroundColor: '#ecd1c8', color: '#1a1a1a' }}>

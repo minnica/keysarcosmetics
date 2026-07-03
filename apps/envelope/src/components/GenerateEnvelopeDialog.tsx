@@ -1,0 +1,755 @@
+"use client";
+
+import type { PointerEvent } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
+import { FileDown, PenLine, Trash2 } from "lucide-react";
+import {
+  Button,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  Input,
+  Label,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  toast,
+} from "@cosmetics/ui";
+import { useSession } from "@/lib/session";
+import { useI18n } from "@/lib/i18n";
+import { formatCurrency, formatDate, todayISO } from "@/lib/utils";
+import type { RegistroVenta } from "@/lib/mock-data";
+
+type BranchOption = { id: string; nombre: string };
+type EmployeeOption = { id: string; nombreCompleto: string };
+type PaymentMethodOption = { id: string; nombre: string; tipo?: string | null };
+
+interface GenerateEnvelopeDialogProps {
+  registros: RegistroVenta[];
+  sucursales: BranchOption[];
+  empleados: EmployeeOption[];
+  metodosPago: PaymentMethodOption[];
+}
+
+interface SignaturePadHandle {
+  clear: () => void;
+  hasSignature: () => boolean;
+  getCanvas: () => HTMLCanvasElement | null;
+}
+
+function normalize(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase();
+}
+
+function toCents(amount: number) {
+  return Math.round(amount * 100);
+}
+
+function fromCents(amount: number) {
+  return amount / 100;
+}
+
+const PAYMENT_BUCKETS = [
+  {
+    label: "EFECTIVO",
+    matches: (name: string, type?: string | null) =>
+      normalize(name).includes("EFECTIVO") || normalize(type ?? "") === "EFECTIVO",
+  },
+  {
+    label: "NETPAY LINK",
+    matches: (name: string, type?: string | null) => {
+      const text = normalize(name);
+      return text.includes("NETPAY") && text.includes("LINK")
+        || normalize(type ?? "") === "NETPAY LINK";
+    },
+  },
+  {
+    label: "NETPAY TERMINAL",
+    matches: (name: string, type?: string | null) => {
+      const text = normalize(name);
+      return text.includes("NETPAY") && !text.includes("LINK")
+        || normalize(type ?? "") === "NETPAY TERMINAL";
+    },
+  },
+  {
+    label: "MERCADO PAGO LINK",
+    matches: (name: string, type?: string | null) => {
+      const text = normalize(name);
+      return text.includes("MERCADO") && text.includes("LINK")
+        || normalize(type ?? "") === "MERCADO PAGO LINK";
+    },
+  },
+  {
+    label: "MERCADO PAGO TERMINAL",
+    matches: (name: string, type?: string | null) => {
+      const text = normalize(name);
+      return text.includes("MERCADO") && !text.includes("LINK")
+        || normalize(type ?? "") === "MERCADO PAGO TERMINAL";
+    },
+  },
+  {
+    label: "TRANSFERENCIA",
+    matches: (name: string, type?: string | null) =>
+      normalize(name).includes("TRANSFER") || normalize(type ?? "") === "TRANSFERENCIA",
+  },
+] as const;
+
+type PaymentBucketLabel = (typeof PAYMENT_BUCKETS)[number]["label"];
+type PaymentLine = { label: PaymentBucketLabel | "TOTAL VENTA"; totalCents: number };
+
+function resolvePaymentBucket(name: string, type?: string | null) {
+  return PAYMENT_BUCKETS.find((bucket) => bucket.matches(name, type))?.label ?? null;
+}
+
+function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number) {
+  const words = text.split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  let current = "";
+
+  for (const word of words) {
+    const next = current ? `${current} ${word}` : word;
+    if (ctx.measureText(next).width <= maxWidth) {
+      current = next;
+      continue;
+    }
+
+    if (current) {
+      lines.push(current);
+    }
+    current = word;
+  }
+
+  if (current) {
+    lines.push(current);
+  }
+
+  return lines;
+}
+
+function drawRoundedRect(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number,
+) {
+  const radius = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + radius, y);
+  ctx.lineTo(x + w - radius, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + radius);
+  ctx.lineTo(x + w, y + h - radius);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - radius, y + h);
+  ctx.lineTo(x + radius, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - radius);
+  ctx.lineTo(x, y + radius);
+  ctx.quadraticCurveTo(x, y, x + radius, y);
+  ctx.closePath();
+}
+
+const SignaturePad = forwardRef<SignaturePadHandle>(function SignaturePad(_, ref) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const drawingRef = useRef(false);
+  const lastPointRef = useRef<{ x: number; y: number } | null>(null);
+  const hasSignatureRef = useRef(false);
+
+  const paintBackground = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.strokeStyle = "#1f2937";
+  };
+
+  const clear = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    paintBackground();
+    hasSignatureRef.current = false;
+    lastPointRef.current = null;
+  };
+
+  useImperativeHandle(ref, () => ({
+    clear,
+    hasSignature: () => hasSignatureRef.current,
+    getCanvas: () => canvasRef.current,
+  }));
+
+  useEffect(() => {
+    clear();
+  }, []);
+
+  function pointFromEvent(event: PointerEvent<HTMLCanvasElement>) {
+    const canvas = canvasRef.current;
+    if (!canvas) return null;
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: ((event.clientX - rect.left) / rect.width) * canvas.width,
+      y: ((event.clientY - rect.top) / rect.height) * canvas.height,
+    };
+  }
+
+  function handlePointerDown(event: PointerEvent<HTMLCanvasElement>) {
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext("2d");
+    if (!canvas || !ctx) return;
+
+    canvas.setPointerCapture(event.pointerId);
+    const point = pointFromEvent(event);
+    if (!point) return;
+
+    drawingRef.current = true;
+    lastPointRef.current = point;
+    hasSignatureRef.current = true;
+
+    ctx.beginPath();
+    ctx.moveTo(point.x, point.y);
+  }
+
+  function handlePointerMove(event: PointerEvent<HTMLCanvasElement>) {
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext("2d");
+    if (!drawingRef.current || !canvas || !ctx) return;
+
+    const point = pointFromEvent(event);
+    const lastPoint = lastPointRef.current;
+    if (!point || !lastPoint) return;
+
+    ctx.beginPath();
+    ctx.moveTo(lastPoint.x, lastPoint.y);
+    ctx.lineTo(point.x, point.y);
+    ctx.stroke();
+    lastPointRef.current = point;
+  }
+
+  function stopDrawing() {
+    drawingRef.current = false;
+    lastPointRef.current = null;
+  }
+
+  return (
+    <div className="space-y-2">
+      <canvas
+        ref={canvasRef}
+        width={640}
+        height={220}
+        className="h-44 w-full rounded-xl border bg-white"
+        style={{ touchAction: "none", borderColor: "var(--border-color)" }}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={stopDrawing}
+        onPointerCancel={stopDrawing}
+        onPointerLeave={stopDrawing}
+      />
+      <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+        Firma con el dedo o con el mouse dentro del recuadro.
+      </p>
+    </div>
+  );
+});
+
+export function GenerateEnvelopeDialog({
+  registros,
+  sucursales,
+  empleados,
+  metodosPago,
+}: GenerateEnvelopeDialogProps) {
+  const { user, canAccess } = useSession();
+  const { t, locale } = useI18n();
+  const [open, setOpen] = useState(false);
+  const [selectedDate, setSelectedDate] = useState(todayISO());
+  const [selectedBranchId, setSelectedBranchId] = useState<string>(sucursales[0]?.id ?? "");
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [generating, setGenerating] = useState(false);
+  const signatureRef = useRef<SignaturePadHandle | null>(null);
+
+  const canGenerateEnvelope = canAccess("ventas/generar-sobre");
+
+  useEffect(() => {
+    if (!selectedBranchId && sucursales[0]) {
+      setSelectedBranchId(sucursales[0].id);
+    }
+  }, [selectedBranchId, sucursales]);
+
+  const selectedBranch = useMemo(
+    () => sucursales.find((branch) => branch.id === selectedBranchId) ?? null,
+    [selectedBranchId, sucursales],
+  );
+
+  const selectedSales = useMemo(
+    () =>
+      registros.filter(
+        (record) =>
+          record.fecha === selectedDate && record.sucursalId === selectedBranchId,
+      ),
+    [registros, selectedBranchId, selectedDate],
+  );
+
+  const sellerRows = useMemo(() => {
+    const employeeMap = new Map(empleados.map((employee) => [employee.id, employee]));
+    const rows = new Map<string, { vendedorId: string; totalCents: number; notes: string[]; order: number }>();
+
+    selectedSales.forEach((sale, index) => {
+      const totalCents = sale.items.reduce((sum, item) => sum + toCents(item.cantidad), 0);
+      const existing = rows.get(sale.vendedorId) ?? {
+        vendedorId: sale.vendedorId,
+        totalCents: 0,
+        notes: [],
+        order: rows.size,
+      };
+
+      existing.totalCents += totalCents;
+      existing.notes.push(
+        ...sale.items
+          .map((item) => item.notas?.trim())
+          .filter((value): value is string => Boolean(value)),
+      );
+      if (!rows.has(sale.vendedorId)) {
+        existing.order = index;
+      }
+
+      rows.set(sale.vendedorId, existing);
+    });
+
+    return [...rows.values()]
+      .sort((a, b) => a.order - b.order)
+      .map((row) => ({
+        vendedorId: row.vendedorId,
+        nombre: employeeMap.get(row.vendedorId)?.nombreCompleto ?? row.vendedorId,
+        totalCents: row.totalCents,
+        notes: [...new Set(row.notes)],
+      }));
+  }, [empleados, selectedSales]);
+
+  const paymentRows = useMemo(() => {
+    const paymentMap = new Map(metodosPago.map((method) => [method.id, method]));
+    const totals = new Map<string, number>();
+
+    selectedSales.forEach((sale) => {
+      sale.items.forEach((item) => {
+        const method = paymentMap.get(item.metodoPagoId);
+        const bucket = resolvePaymentBucket(
+          item.metodoPagoNombre ?? method?.nombre ?? "",
+          method?.tipo ?? null,
+        );
+
+        if (!bucket) {
+          return;
+        }
+
+        totals.set(bucket, (totals.get(bucket) ?? 0) + toCents(item.cantidad));
+      });
+    });
+
+    return PAYMENT_BUCKETS.map((bucket) => ({
+      label: bucket.label,
+      totalCents: totals.get(bucket.label) ?? 0,
+    }));
+  }, [metodosPago, selectedSales]);
+
+  const totalCents = useMemo(
+    () => selectedSales.reduce((sum, sale) => sum + sale.items.reduce((itemSum, item) => itemSum + toCents(item.cantidad), 0), 0),
+    [selectedSales],
+  );
+
+  const notes = useMemo(() => {
+    const values = selectedSales.flatMap((sale) =>
+      sale.items
+        .map((item) => item.notas?.trim())
+        .filter((value): value is string => Boolean(value)),
+    );
+    return [...new Set(values)].join(" · ");
+  }, [selectedSales]);
+
+  const downloadName = useMemo(() => {
+    const branch = selectedBranch?.nombre ?? "sucursal";
+    return `sobre-${normalize(branch).toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${selectedDate}.png`;
+  }, [selectedBranch?.nombre, selectedDate]);
+
+  function resetDialogState() {
+    signatureRef.current?.clear();
+    setPreviewUrl(null);
+    setSelectedDate(todayISO());
+    setSelectedBranchId(sucursales[0]?.id ?? "");
+  }
+
+  function buildEnvelopeCanvas(signatureCanvas: HTMLCanvasElement) {
+    const width = 1240;
+    const rowHeight = 52;
+    const topBoxHeight = 104;
+    const sellerRowsCount = Math.max(sellerRows.length, 8);
+    const sellersHeight = 108 + sellerRowsCount * rowHeight;
+    const paymentHeight = 92 + PAYMENT_BUCKETS.length * 44;
+    const notesHeight = 180;
+    const footerHeight = 128;
+    const height = 48 + topBoxHeight + 28 + sellersHeight + 28 + paymentHeight + 28 + notesHeight + 28 + footerHeight + 48;
+
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      throw new Error("No se pudo crear el lienzo del sobre");
+    }
+
+    ctx.fillStyle = "#f6f1e8";
+    ctx.fillRect(0, 0, width, height);
+
+    ctx.strokeStyle = "#2f2a27";
+    ctx.lineWidth = 3;
+
+    const boxX = 40;
+    const boxW = width - 80;
+
+    // Top box
+    drawRoundedRect(ctx, boxX, 36, boxW, topBoxHeight, 24);
+    ctx.stroke();
+    ctx.fillStyle = "#2f2a27";
+    ctx.font = "700 26px sans-serif";
+    ctx.fillText("SUCURSAL:", 68, 88);
+    ctx.font = "400 26px sans-serif";
+    ctx.fillText(selectedBranch?.nombre ?? "—", 220, 88);
+    ctx.beginPath();
+    ctx.moveTo(216, 96);
+    ctx.lineTo(500, 96);
+    ctx.stroke();
+    ctx.font = "700 26px sans-serif";
+    ctx.fillText("FECHA:", width - 400, 88);
+    ctx.font = "400 26px sans-serif";
+    ctx.fillText(formatDate(selectedDate, "dd MMM yyyy", locale), width - 285, 88);
+    ctx.beginPath();
+    ctx.moveTo(width - 288, 96);
+    ctx.lineTo(width - 70, 96);
+    ctx.stroke();
+
+    // Sellers box
+    const sellersY = 168;
+    drawRoundedRect(ctx, boxX, sellersY, boxW, sellersHeight, 28);
+    ctx.stroke();
+    ctx.font = "700 26px sans-serif";
+    ctx.fillText("REPRESENTANTE:", 76, sellersY + 52);
+    ctx.fillText("VENTA:", width - 430, sellersY + 52);
+
+    const lineStartY = sellersY + 110;
+    const leftX = 88;
+    const leftLineW = 410;
+    const rightX = width - 410;
+    const rightLineW = 260;
+    const firstSellerRow = lineStartY;
+
+    for (let index = 0; index < sellerRowsCount; index += 1) {
+      const rowY = firstSellerRow + index * rowHeight;
+      const row = sellerRows[index];
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(leftX - 18, rowY + 20);
+      ctx.lineTo(leftX + leftLineW, rowY + 20);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(rightX, rowY + 20);
+      ctx.lineTo(rightX + rightLineW, rowY + 20);
+      ctx.stroke();
+      ctx.font = "400 24px sans-serif";
+      ctx.fillStyle = "#4b5563";
+      ctx.fillText(row?.nombre ?? "", leftX, rowY + 10);
+      ctx.fillStyle = "#2f2a27";
+      ctx.fillText(row ? formatCurrency(fromCents(row.totalCents)) : "", rightX + 10, rowY + 10);
+    }
+
+    // Payment section
+    const paymentsY = sellersY + sellersHeight + 28;
+    const paymentBoxHeight = paymentHeight;
+    drawRoundedRect(ctx, boxX, paymentsY, boxW, paymentBoxHeight, 28);
+    ctx.stroke();
+
+    ctx.font = "700 24px sans-serif";
+    ctx.fillText("EFECTIVO", 76, paymentsY + 50);
+    ctx.fillText("NETPAY TERMINAL", 76, paymentsY + 94);
+    ctx.fillText("NETPAY LINK", 76, paymentsY + 138);
+    ctx.fillText("MERCADO PAGO TERMINAL", 76, paymentsY + 182);
+    ctx.fillText("MERCADO PAGO LINK", 76, paymentsY + 226);
+    ctx.fillText("TRANSFERENCIA", 76, paymentsY + 270);
+    ctx.fillText("TOTAL VENTA", 76, paymentsY + 314);
+
+    const paymentValueX = width - 400;
+    const paymentLines: PaymentLine[] = [
+      ...paymentRows,
+      { label: "TOTAL VENTA", totalCents },
+    ];
+    paymentLines.forEach((payment, index) => {
+      const rowY = paymentsY + 48 + index * 44;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(paymentValueX, rowY + 18);
+      ctx.lineTo(paymentValueX + 280, rowY + 18);
+      ctx.stroke();
+      ctx.font = payment.label === "TOTAL VENTA" ? "700 24px sans-serif" : "400 24px sans-serif";
+      ctx.fillText(formatCurrency(fromCents(payment.totalCents)), paymentValueX + 8, rowY + 10);
+    });
+
+    // Notes section
+    const notesY = paymentsY + paymentBoxHeight + 28;
+    drawRoundedRect(ctx, boxX, notesY, boxW, notesHeight, 22);
+    ctx.stroke();
+    ctx.font = "700 28px sans-serif";
+    ctx.fillText("NOTAS", 72, notesY + 50);
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(170, notesY + 52);
+    ctx.lineTo(width - 72, notesY + 52);
+    ctx.stroke();
+
+    ctx.font = "400 22px sans-serif";
+    ctx.fillStyle = "#374151";
+    const noteLines = wrapText(ctx, notes || "—", boxW - 90);
+    noteLines.slice(0, 5).forEach((line, index) => {
+      ctx.fillText(line, 72, notesY + 92 + index * 28);
+    });
+
+    // Footer
+    const footerY = notesY + notesHeight + 28;
+    drawRoundedRect(ctx, boxX, footerY, boxW, footerHeight, 22);
+    ctx.stroke();
+
+    ctx.fillStyle = "#111827";
+    ctx.font = "700 28px sans-serif";
+    ctx.fillText("NOMBRE:", 72, footerY + 50);
+    ctx.fillText("FIRMA:", 72, footerY + 94);
+
+    ctx.font = "400 26px sans-serif";
+    const userName = user?.nombre ?? "—";
+    ctx.fillText(userName, 230, footerY + 50);
+    ctx.beginPath();
+    ctx.moveTo(228, footerY + 58);
+    ctx.lineTo(width - 80, footerY + 58);
+    ctx.stroke();
+
+    const signatureTargetWidth = 300;
+    const signatureTargetHeight = 70;
+    const signatureX = 230;
+    const signatureY = footerY + 58;
+    ctx.drawImage(
+      signatureCanvas,
+      0,
+      0,
+      signatureCanvas.width,
+      signatureCanvas.height,
+      signatureX,
+      signatureY - 10,
+      signatureTargetWidth,
+      signatureTargetHeight,
+    );
+
+    return canvas;
+  }
+
+  async function handleGenerate() {
+    if (!canGenerateEnvelope) {
+      toast.error(t.sales.generateEnvelopeNoPermission);
+      return;
+    }
+
+    if (!selectedBranchId || !selectedBranch) {
+      toast.error(t.common.branch);
+      return;
+    }
+
+    if (!selectedSales.length) {
+      toast.error(t.sales.generateEnvelopeNoData);
+      return;
+    }
+
+    const signatureCanvas = signatureRef.current?.getCanvas();
+    if (!signatureCanvas || !signatureRef.current?.hasSignature()) {
+      toast.error(t.sales.generateEnvelopeNoSignature);
+      return;
+    }
+
+    setGenerating(true);
+    try {
+      const canvas = buildEnvelopeCanvas(signatureCanvas);
+      const dataUrl = canvas.toDataURL("image/png");
+      setPreviewUrl(dataUrl);
+      toast.success(t.sales.generateEnvelopeReady);
+    } catch {
+      toast.error(t.sales.generateEnvelopeError);
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  function handleDownload() {
+    if (!previewUrl) return;
+    const link = document.createElement("a");
+    link.href = previewUrl;
+    link.download = downloadName;
+    link.click();
+  }
+
+  if (!canGenerateEnvelope) {
+    return null;
+  }
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        setOpen(nextOpen);
+        if (!nextOpen) {
+          resetDialogState();
+        }
+      }}
+    >
+      <Button type="button" variant="outline" onClick={() => setOpen(true)}>
+        <PenLine className="mr-1.5 h-4 w-4" />
+        {t.sales.generateEnvelope}
+      </Button>
+
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
+        <DialogHeader>
+          <DialogTitle className="uppercase">{t.sales.generateEnvelopeDialogTitle}</DialogTitle>
+          <DialogDescription>{t.sales.generateEnvelopeDialogDescription}</DialogDescription>
+        </DialogHeader>
+
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="envelope-date">{t.common.date}</Label>
+            <Input
+              id="envelope-date"
+              type="date"
+              value={selectedDate}
+              onChange={(event) => {
+                setSelectedDate(event.target.value);
+                setPreviewUrl(null);
+              }}
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="envelope-branch">{t.common.branch}</Label>
+            <Select
+              value={selectedBranchId}
+              onValueChange={(value) => {
+                setSelectedBranchId(value);
+                setPreviewUrl(null);
+              }}
+            >
+              <SelectTrigger id="envelope-branch">
+                <SelectValue placeholder={t.sales.selectBranch} />
+              </SelectTrigger>
+              <SelectContent>
+                {sucursales.map((branch) => (
+                  <SelectItem key={branch.id} value={branch.id}>
+                    {branch.nombre}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        <div className="rounded-xl border bg-white p-4" style={{ borderColor: "var(--border-color)" }}>
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold uppercase">{t.sales.generateEnvelopePreview}</p>
+              <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+                {selectedSales.length
+                  ? `${selectedSales.length} registro${selectedSales.length !== 1 ? "s" : ""} · ${formatCurrency(fromCents(totalCents))}`
+                  : t.sales.generateEnvelopeNoData}
+              </p>
+            </div>
+            <Button type="button" variant="outline" size="sm" onClick={handleGenerate} disabled={generating || !selectedSales.length}>
+              {generating ? t.sales.generateEnvelopeGenerating : t.sales.generateEnvelope}
+            </Button>
+          </div>
+
+          {previewUrl ? (
+            <img
+              src={previewUrl}
+              alt={t.sales.generateEnvelopePreview}
+              className="max-h-[32rem] w-full rounded-lg border object-contain"
+              style={{ borderColor: "var(--border-color)" }}
+            />
+          ) : (
+            <div className="rounded-lg border border-dashed px-4 py-10 text-center text-sm" style={{ color: "var(--text-muted)" }}>
+              {t.sales.generateEnvelopeDialogDescription}
+            </div>
+          )}
+        </div>
+
+        <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
+          <div className="space-y-2">
+            <Label>{t.sales.generateEnvelopeSignatureLabel}</Label>
+            <SignaturePad ref={signatureRef} />
+          </div>
+
+          <div className="space-y-3 rounded-xl border p-4" style={{ borderColor: "var(--border-color)" }}>
+            <div>
+              <p className="text-sm font-semibold uppercase">{t.sales.generateEnvelopeNameLabel}</p>
+              <p className="text-sm" style={{ color: "var(--text-muted)" }}>
+                {user?.nombre ?? "—"}
+              </p>
+            </div>
+            <div>
+              <p className="text-sm font-semibold uppercase">{t.sales.generateEnvelopeNotesLabel}</p>
+              <p className="text-sm" style={{ color: "var(--text-muted)" }}>
+                {notes || "—"}
+              </p>
+            </div>
+            <div className="space-y-1">
+              <p className="text-sm font-semibold uppercase">{t.common.paymentMethod}</p>
+              <div className="space-y-1 text-sm" style={{ color: "var(--text-muted)" }}>
+                {paymentRows.map((row) => (
+                  <div key={row.label} className="flex items-center justify-between gap-3">
+                    <span>{row.label}</span>
+                    <span className="font-medium text-[var(--text-primary)]">{formatCurrency(fromCents(row.totalCents))}</span>
+                  </div>
+                ))}
+                <div className="flex items-center justify-between gap-3 border-t pt-2 font-semibold" style={{ borderColor: "var(--border-color)" }}>
+                  <span>TOTAL VENTA</span>
+                  <span>{formatCurrency(fromCents(totalCents))}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <DialogFooter className="gap-2 sm:justify-between">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              signatureRef.current?.clear();
+              setPreviewUrl(null);
+            }}
+          >
+            <Trash2 className="mr-1.5 h-4 w-4" />
+            {t.sales.generateEnvelopeClearSignature}
+          </Button>
+          <div className="flex gap-2">
+            {previewUrl ? (
+              <Button type="button" onClick={handleDownload}>
+                <FileDown className="mr-1.5 h-4 w-4" />
+                {t.sales.generateEnvelopeDownload}
+              </Button>
+            ) : null}
+          </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
