@@ -10,7 +10,7 @@ export default function LoginPage() {
         <CardContent className="p-6">
           <div className="mb-8 text-center">
             <div className="mx-auto grid h-14 w-14 place-items-center rounded-full border border-[color:var(--border-color)] bg-[#080706] font-brand text-2xl text-[color:var(--text-strong)] shadow-[0_14px_30px_rgba(0,0,0,0.34)]">K</div>
-            <p className="label-caps mt-5">PAYROLL DEMO</p>
+            <p className="label-caps mt-5">NÓMINA DEMO</p>
             <h1 className="page-title mt-2 text-4xl tracking-[-0.06em]">Acceso interno</h1>
             <p className="payroll-muted mt-3 text-[0.88rem]">Pantalla mock para presentacion. No autentica contra backend.</p>
           </div>

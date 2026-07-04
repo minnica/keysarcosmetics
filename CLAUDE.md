@@ -206,6 +206,7 @@ Módulos implementados:
 - **bancos** — CRUD propio con catálogo `Bank`
 - **puestos** — CRUD propio con catálogo `Position`
 - **reportes** — múltiples subvistas: total-general, detalle-metodo-pago, metodo-pago-por-dia, ventas-por-vendedor, ventas-por-vendedor-dia; exportan PDF y Excel desde los datos agregados en cliente usando `report-export.ts` + `ReportExportButtons`; la vista `ventas-por-vendedor-dia` muestra `Días sin venta` y `Monto día aproximado` al final de la tabla, antes del total, calcula ese monto como `venta total del mes / días con venta` por vendedor, y cuando consulta el mes en curso solo renderiza días transcurridos hasta hoy
+- **esquemas** — demo mock en cliente separada en dos capas: catálogo de esquemas por rangos `De / Hasta / Tasa` y asignación de esquema a empleado. No persiste en backend ni BD todavía.
 
 UI:
 - Sidebar responsive usando shadcn `Sidebar` + `Sheet` (Sheet para mobile).
@@ -271,11 +272,12 @@ Reglas visuales de `payroll`:
 - El texto secundario debe seguir siendo legible en fondo oscuro, evitando grises demasiado apagados.
 
 Pantallas mock implementadas:
-- `/` — Corridas de nómina: resumen tipo `PANTALLA SUMARY`, KPIs, selector de rango, modo con IVA/sin IVA y tabla por empleado.
-- `/movimientos` — Bonos, ajustes, multas, viáticos e insumos: tabla, formulario mock en modal, división entre personas, confirmación y aviso de adjuntos.
-- `/esquemas` — Esquemas de comisión: listado, rangos `de/hasta/tasa`, flat %, vigencia y visualización de tiers.
+- `/` — Summary de nómina: resumen tipo `PANTALLA SUMARY`, KPIs, selector de rango, modo con IVA/sin IVA y tabla por empleado con ventas, esquema, comisión, bonos, multas, sueldo base, préstamos, ajustes, viáticos y total.
+- `/bonos` — Catálogo mock de bonos predefinidos con alta/edición/borrado.
+- `/movimientos` — Ajustes, multas, viáticos e insumos: tabla, formulario mock en modal, división entre personas, confirmación y aviso de adjuntos; consume el catálogo de bonos cuando el tipo es bono.
+- `/esquemas` — Esquemas de comisión: catálogo por rangos `de/hasta/tasa` y asignación por empleado.
 - `/prestamos-adelantos` — Amortización: préstamos, adelantos, pagos, saldo y estatus.
-- `/reportes/desglose-sucursal` — Costo de nómina por punto de venta: tabla y barras de distribución.
+- `/reportes/desglose-sucursal` — Payroll breakdown: reporte mock de costo por punto de venta con desglose por empleado/sucursal, resumen por sucursal y barras de distribución.
 - `/recibos` — Recibos por empleado: estatus generado/enviado/confirmado y acción mock de visualización/envío.
 - `/login` — Login visual mock sin autenticación real.
 
@@ -314,7 +316,7 @@ Nota importante:
 | Proceso | Datos/modelos faltantes |
 |---|---|
 | Bonos, multas y ajustes | Tipos de movimiento, monto, estatus, aprobaciones, notas, adjuntos, división entre empleados, flag comisionable/no comisionable |
-| Esquemas de comisión | Esquemas, rangos `de/hasta/tasa`, flat %, vigencia histórica, asignación por empleado |
+| Esquemas de comisión | Catálogo de esquemas, rangos `de/hasta/tasa`, asignación por empleado |
 | Corrida de nómina | Periodo, día de pago, modo con IVA/sin IVA, líneas calculadas, snapshots, estado borrador/aprobado/pagado |
 | IVA / sin IVA | Configuración de IVA y modo de cálculo por corrida |
 | Préstamos / adelantos | Solicitud, calendario de pagos, saldo, estatus pendiente/pagado/perdido |
@@ -342,7 +344,7 @@ Debe cubrir:
 - Estatus: pendiente, aprobado, rechazado.
 - Confirmación antes de guardar.
 
-No crear una page separada solo para catálogo de bonos al inicio. Puede vivir como configuración/modal/tab dentro de Movimientos de nómina.
+La administración de bonos ya vive en una page mock separada `bonos`, y el dialog de nuevo movimiento en `movimientos` consume ese catálogo cuando el tipo es bono.
 
 #### `pantalla de esquemas`
 
@@ -353,11 +355,10 @@ Debe cubrir:
 - Rangos `de / hasta / tasa`.
 - Flat %.
 - Asignación de esquema a empleado.
-- Vigencia desde/hasta.
 - Solo empleados activos en selectores.
 - Historial: cambiar un esquema no debe recalcular nóminas pasadas.
 
-Punto crítico: el Excel indica que el esquema puede cambiar, incluso de rango, con autorización previa, y que este cambio no debe afectar registros anteriores. Esto exige snapshots en corridas o vigencias históricas por esquema/asignación.
+Punto crítico: el Excel indica que el esquema puede cambiar, incluso de rango, con autorización previa, y que este cambio no debe afectar registros anteriores. Esto exige snapshots en corridas o historial por esquema/asignación.
 
 #### `PANTALLA SUMARY`
 
@@ -391,6 +392,9 @@ Debe cubrir:
 - Costo de nómina por sucursal.
 - Bonos por sucursal.
 - Ventas por sucursal.
+- Desglose por empleado.
+- Ventas por punto de venta.
+- Comisión, bonos, multas, préstamos, ajustes y viáticos.
 - Distribución de costos.
 - Exportación PDF/Excel si se requiere operación recurrente.
 
@@ -427,15 +431,16 @@ Debe cubrir:
 
 ### Pages recomendadas para `apps/payroll`
 
-Recomendación completa: 6 nuevas pages.
+Recomendación completa: 7 nuevas pages.
 
 | Page | Ruta sugerida | Fuente Excel |
 |---|---|---|
-| Corridas de nómina | `/` o `/corridas` | `PANTALLA SUMARY` |
+| Summary | `/` o `/corridas` | `PANTALLA SUMARY` |
+| Bonos | `/bonos` | catálogo de bonos del flujo de movimientos |
 | Movimientos de nómina | `/movimientos` | `pantalla de bonos` |
 | Esquemas de comisión | `/esquemas` | `pantalla de esquemas` |
 | Préstamos y adelantos | `/prestamos-adelantos` | `panatalla prestamos-adelantos` |
-| Desglose por sucursal | `/reportes/desglose-sucursal` | `payroll breakdown` |
+| Payroll breakdown | `/reportes/desglose-sucursal` | `payroll breakdown` |
 | Recibos | `/recibos` | `pantalla de recibos` |
 
 No duplicar en `payroll` estas pantallas ya existentes en `envelope`:
@@ -454,7 +459,7 @@ Nombres orientativos; validar antes de migrar:
 - `PayrollRunLine` — snapshot calculado por empleado dentro de una corrida.
 - `CommissionScheme` — esquema de comisión.
 - `CommissionSchemeTier` — rangos `fromAmount`, `toAmount`, `rate`.
-- `EmployeeCommissionAssignment` — asignación de esquema a empleado con vigencia.
+- `EmployeeCommissionAssignment` — asignación de esquema a empleado.
 - `PayrollMovement` — bonos, multas, ajustes, viáticos, insumos, etc.
 - `PayrollMovementType` — catálogo configurable de tipos de movimiento.
 - `LoanAdvance` — préstamo o adelanto.
@@ -471,18 +476,19 @@ Estados sugeridos:
 ### Fases sugeridas de implementación
 
 1. Base de `payroll`: layout, auth, sidebar, permisos y lectura de empleados/ventas.
-2. Esquemas de comisión con vigencia histórica.
-3. Movimientos de nómina: bonos, ajustes, multas, viáticos, insumos y adjuntos.
-4. Préstamos y adelantos con calendario de pagos.
-5. Corrida de nómina calculada y guardada como snapshot.
-6. Recibos, desglose por sucursal y exportaciones PDF/Excel.
+2. Bonos predefinidos como catálogo independiente.
+3. Esquemas de comisión con historial de cambios.
+4. Movimientos de nómina: ajustes, multas, viáticos, insumos y adjuntos.
+5. Préstamos y adelantos con calendario de pagos.
+6. Corrida de nómina calculada y guardada como snapshot.
+7. Recibos, desglose por sucursal y exportaciones PDF/Excel.
 
 ### Fases cubiertas por la demo frontend mock
 
 Cubierto parcialmente, solo a nivel UI/mock:
 - Fase 1: layout, shell/sidebar, login visual y navegación. Pendiente auth real, permisos y lectura real de empleados/ventas.
-- Fase 2: pantalla visual de esquemas, rangos y vigencias. Pendiente modelo real, asignación real por empleado y reglas históricas.
-- Fase 3: pantalla visual de movimientos, estatus, división y adjuntos simulados. Pendiente persistencia, aprobaciones reales y subida de archivos.
+- Fase 2: pantalla visual de esquemas y rangos. Pendiente modelo real, asignación real por empleado y reglas históricas.
+- Fase 3: pantalla visual de bonos independientes y movimientos, estatus, división y adjuntos simulados. Pendiente persistencia, aprobaciones reales y subida de archivos.
 - Fase 4: pantalla visual de préstamos/adelantos con saldo y amortización mock. Pendiente calendario real y conexión a corridas.
 - Fase 5: pantalla visual de corrida y tabla por empleado. Pendiente cálculo backend, snapshots y bloqueo/aprobación real.
 - Fase 6: pantalla visual de recibos y desglose por sucursal. Pendiente PDF/Excel, envío por WhatsApp y confirmación real.

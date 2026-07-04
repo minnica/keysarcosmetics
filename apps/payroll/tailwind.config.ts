@@ -31,7 +31,7 @@ const config: Config = {
           foreground: 'var(--text-primary)',
         },
         popover: {
-          DEFAULT: 'var(--bg-card)',
+          DEFAULT: '#0c0a09',
           foreground: 'var(--text-primary)',
         },
         primary: {
@@ -39,16 +39,16 @@ const config: Config = {
           foreground: 'var(--sidebar-active-text)',
         },
         secondary: {
-          DEFAULT: 'var(--accent-hover)',
-          foreground: 'var(--text-primary)',
+          DEFAULT: '#211a14',
+          foreground: 'var(--text-strong)',
         },
         muted: {
-          DEFAULT: 'var(--accent-hover)',
+          DEFAULT: '#1a1511',
           foreground: 'var(--text-muted)',
         },
         accent: {
-          DEFAULT: 'var(--accent-hover)',
-          foreground: 'var(--text-primary)',
+          DEFAULT: '#271f18',
+          foreground: 'var(--text-strong)',
         },
         destructive: {
           DEFAULT: '#7A2E46',

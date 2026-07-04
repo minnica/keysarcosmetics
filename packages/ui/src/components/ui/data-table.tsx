@@ -31,6 +31,12 @@ interface DataTableLabels {
   results?: (count: number) => string
 }
 
+type ColumnAlignment = 'left' | 'center' | 'right'
+
+type ColumnMeta = {
+  align?: ColumnAlignment
+}
+
 interface DataTableProps<TData, TValue> {
   columns: ColumnDef<TData, TValue>[]
   data: TData[]
@@ -126,14 +132,16 @@ export function DataTable<TData, TValue>({
               <TableRow key={headerGroup.id}>
                 {headerGroup.headers.map((header) => {
                   const canSort = header.column.getCanSort()
+                  const align = (header.column.columnDef.meta as ColumnMeta | undefined)?.align
+                  const headAlignClass = align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'
                   return (
                     <TableHead
                       key={header.id}
-                      className="uppercase text-[0.72rem] tracking-[0.14em] text-[#8c7357]"
+                      className={`${headAlignClass} uppercase text-[0.72rem] tracking-[0.14em] text-[#8c7357]`}
                     >
                       {header.isPlaceholder ? null : canSort ? (
                         <button
-                          className="flex items-center gap-1 select-none transition-opacity hover:opacity-70"
+                          className={`flex w-full items-center gap-1 select-none transition-opacity hover:opacity-70 ${align === 'right' ? 'justify-end' : align === 'center' ? 'justify-center' : 'justify-start'}`}
                           onClick={() => header.column.toggleSorting()}
                         >
                           {flexRender(header.column.columnDef.header, header.getContext())}
@@ -163,7 +171,10 @@ export function DataTable<TData, TValue>({
                   className="border-[#2c241c] hover:bg-[rgba(255,255,255,0.02)] data-[state=selected]:bg-[rgba(255,255,255,0.03)]"
                 >
                   {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id} className="border-[#2c241c] text-[0.88rem] text-[#d9d3ca]">
+                    <TableCell
+                      key={cell.id}
+                      className={`border-[#2c241c] text-[0.88rem] text-[#d9d3ca] ${(cell.column.columnDef.meta as ColumnMeta | undefined)?.align === 'right' ? 'text-right' : (cell.column.columnDef.meta as ColumnMeta | undefined)?.align === 'center' ? 'text-center' : 'text-left'}`}
+                    >
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </TableCell>
                   ))}

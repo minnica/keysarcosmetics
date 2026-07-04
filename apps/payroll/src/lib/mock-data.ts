@@ -64,7 +64,14 @@ export interface PayrollMovement {
   commissionable: boolean
 }
 
-export interface CommissionTier {
+export interface PayrollBonus {
+  id: string
+  name: string
+  amount: number
+  notes: string
+}
+
+export interface CommissionRange {
   from: number
   to: number
   rate: number
@@ -73,13 +80,14 @@ export interface CommissionTier {
 export interface CommissionScheme {
   id: string
   name: string
-  role: string
-  flatRate: number
-  bonusRule: string
-  activeEmployees: number
-  effectiveFrom: string
-  effectiveTo: string | null
-  tiers: CommissionTier[]
+  ranges: CommissionRange[]
+}
+
+export interface SchemeAssignment {
+  id: string
+  employeeId: string
+  schemeId: string
+  assignedAt: string
 }
 
 export interface LoanAdvance {
@@ -107,6 +115,34 @@ export interface BranchBreakdown {
   payrollWeight: number
 }
 
+export interface PayrollBreakdownLine {
+  employeeId: string
+  employeeName: string
+  totalSales: number
+  deltaSales: number
+  galeriasInsurgentesSales: number
+  masarykSales: number
+  mitikahSales: number
+  mitikahVipSales: number
+  opatraSales: number
+  rate: number
+  commission: number
+  bonus: number
+  fine: number
+  loanPayment: number
+  payrollAdjustmentPositive: number
+  payrollAdjustmentNegative: number
+  totalPayment: number
+  deltaCost: number
+  galeriasInsurgentesCost: number
+  masarykCost: number
+  mitikahCost: number
+  mitikahVipCost: number
+  opatraCost: number
+  perDiem: number
+  totalCost: number
+}
+
 export interface PayrollReceipt {
   id: string
   employeeName: string
@@ -119,13 +155,13 @@ export interface PayrollReceipt {
 
 export const employees: PayrollEmployee[] = [
   { id: 'emp-01', name: 'Natalia Mendez Sarmiento', position: 'GERENTE', branch: 'MITIKAH', bank: 'BBVA', account: '**** 7291', salary: 17500, active: true },
-  { id: 'emp-02', name: 'Orlando Jose Saavedra Diaz', position: 'CERRADOR', branch: 'MITIKAH', bank: 'Santander', account: '**** 2248', salary: 0, active: true },
+  { id: 'emp-02', name: 'Orlando Jose Saavedra Diaz', position: 'CERRADOR', branch: 'MITIKAH VIP', bank: 'Santander', account: '**** 2248', salary: 0, active: true },
   { id: 'emp-03', name: 'Daniel Molina', position: 'VENDEDOR', branch: 'OPATRA', bank: 'Banorte', account: '**** 1180', salary: 0, active: true },
   { id: 'emp-04', name: 'Carlos Francisco Martinez Ayala', position: 'GERENTE', branch: 'OPATRA', bank: 'HSBC', account: '**** 8841', salary: 0, active: true },
-  { id: 'emp-05', name: 'Andrea Stephani Rada Castillo', position: 'GERENTE', branch: 'CARRETA INSURGENTES', bank: 'BBVA', account: '**** 6144', salary: 0, active: true },
+  { id: 'emp-05', name: 'Andrea Stephani Rada Castillo', position: 'GERENTE', branch: 'DELTA', bank: 'BBVA', account: '**** 6144', salary: 0, active: true },
   { id: 'emp-06', name: 'Maria Magdalena Cruz Rosales', position: 'VENDEDOR', branch: 'GALERIAS INSURGENTES', bank: 'Banamex', account: '**** 3562', salary: 0, active: true },
   { id: 'emp-07', name: 'Blanca Elizabeth Garcia Padilla', position: 'FACIALISTA', branch: 'OPATRA', bank: 'BBVA', account: '**** 9070', salary: 0, active: true },
-  { id: 'emp-08', name: 'Manuel Ortega Gutierrez', position: 'CALL CENTER', branch: 'REMOTO', bank: 'Santander', account: '**** 5106', salary: 0, active: true },
+  { id: 'emp-08', name: 'Manuel Ortega Gutierrez', position: 'CALL CENTER', branch: 'MASARYK', bank: 'Santander', account: '**** 5106', salary: 0, active: true },
 ]
 
 export const currentRun: PayrollRun = {
@@ -137,14 +173,14 @@ export const currentRun: PayrollRun = {
   mode: 'WITH_VAT',
   status: 'CALCULATED',
   lines: [
-    { employeeId: 'emp-01', employeeName: 'Natalia Mendez Sarmiento', position: 'GERENTE', branch: 'MITIKAH', salesWithVat: 99450, salesWithoutVat: 85733, scheme: 'GERENTE 32%', individualRate: 0.32, commission: 31824, bonus: 3600, fine: 0, salaryBase: 0, loanBalance: 0, loanPayment: 0, payrollAdjustmentPositive: 0, payrollAdjustmentNegative: 0, perDiem: 0, totalPayment: 35424 },
-    { employeeId: 'emp-02', employeeName: 'Orlando Jose Saavedra Diaz', position: 'CERRADOR', branch: 'MITIKAH', salesWithVat: 55450, salesWithoutVat: 47802, scheme: 'CERRADOR A', individualRate: 0.32, commission: 17744, bonus: 5300, fine: 0, salaryBase: 0, loanBalance: 0, loanPayment: 0, payrollAdjustmentPositive: 0, payrollAdjustmentNegative: 0, perDiem: 0, totalPayment: 23044 },
-    { employeeId: 'emp-03', employeeName: 'Daniel Molina', position: 'VENDEDOR', branch: 'OPATRA', salesWithVat: 61050, salesWithoutVat: 52629, scheme: 'VENDEDOR 30%', individualRate: 0.3, commission: 18315, bonus: 5550, fine: 0, salaryBase: 0, loanBalance: 0, loanPayment: 0, payrollAdjustmentPositive: 0, payrollAdjustmentNegative: 0, perDiem: 0, totalPayment: 23865 },
-    { employeeId: 'emp-04', employeeName: 'Carlos Francisco Martinez Ayala', position: 'GERENTE', branch: 'OPATRA', salesWithVat: 171563, salesWithoutVat: 147899, scheme: 'GERENTE OPATRA', individualRate: 0.3, commission: 51469, bonus: 9500, fine: 0, salaryBase: 0, loanBalance: 0, loanPayment: 0, payrollAdjustmentPositive: 3510, payrollAdjustmentNegative: 0, perDiem: 0, totalPayment: 64479 },
-    { employeeId: 'emp-05', employeeName: 'Andrea Stephani Rada Castillo', position: 'GERENTE', branch: 'CARRETA INSURGENTES', salesWithVat: 12350, salesWithoutVat: 10647, scheme: 'GERENTE INSURGENTES', individualRate: 0.3, commission: 3705, bonus: 3750, fine: 0, salaryBase: 0, loanBalance: 0, loanPayment: 5000, payrollAdjustmentPositive: 490, payrollAdjustmentNegative: 0, perDiem: 0, totalPayment: 2945 },
-    { employeeId: 'emp-06', employeeName: 'Maria Magdalena Cruz Rosales', position: 'VENDEDOR', branch: 'GALERIAS INSURGENTES', salesWithVat: 41967, salesWithoutVat: 36178, scheme: 'VENDEDOR 24%', individualRate: 0.24, commission: 10072, bonus: 200, fine: 0, salaryBase: 0, loanBalance: 0, loanPayment: 0, payrollAdjustmentPositive: 0, payrollAdjustmentNegative: 0, perDiem: 0, totalPayment: 10272 },
-    { employeeId: 'emp-07', employeeName: 'Blanca Elizabeth Garcia Padilla', position: 'FACIALISTA', branch: 'OPATRA', salesWithVat: 0, salesWithoutVat: 0, scheme: 'FACIALISTA', individualRate: 0, commission: 0, bonus: 10950, fine: 0, salaryBase: 0, loanBalance: 0, loanPayment: 0, payrollAdjustmentPositive: 380, payrollAdjustmentNegative: 0, perDiem: 0, totalPayment: 11330 },
-    { employeeId: 'emp-08', employeeName: 'Manuel Ortega Gutierrez', position: 'CALL CENTER', branch: 'REMOTO', salesWithVat: 0, salesWithoutVat: 0, scheme: 'CALL CENTER', individualRate: 0, commission: 0, bonus: 2750, fine: 0, salaryBase: 0, loanBalance: 0, loanPayment: 0, payrollAdjustmentPositive: 0, payrollAdjustmentNegative: 0, perDiem: 0, totalPayment: 2750 },
+    { employeeId: 'emp-01', employeeName: 'Natalia Mendez Sarmiento', position: 'GERENTE', branch: 'MITIKAH', salesWithVat: 99450, salesWithoutVat: 85733, scheme: '1', individualRate: 0.32, commission: 31824, bonus: 3600, fine: 0, salaryBase: 0, loanBalance: 0, loanPayment: 0, payrollAdjustmentPositive: 0, payrollAdjustmentNegative: 0, perDiem: 0, totalPayment: 35424 },
+    { employeeId: 'emp-02', employeeName: 'Orlando Jose Saavedra Diaz', position: 'CERRADOR', branch: 'MITIKAH VIP', salesWithVat: 55450, salesWithoutVat: 47802, scheme: '4', individualRate: 0.32, commission: 17744, bonus: 5300, fine: 0, salaryBase: 0, loanBalance: 0, loanPayment: 0, payrollAdjustmentPositive: 0, payrollAdjustmentNegative: 0, perDiem: 0, totalPayment: 23044 },
+    { employeeId: 'emp-03', employeeName: 'Daniel Molina', position: 'VENDEDOR', branch: 'OPATRA', salesWithVat: 61050, salesWithoutVat: 52629, scheme: '3', individualRate: 0.3, commission: 18315, bonus: 5550, fine: 0, salaryBase: 0, loanBalance: 0, loanPayment: 0, payrollAdjustmentPositive: 0, payrollAdjustmentNegative: 0, perDiem: 0, totalPayment: 23865 },
+    { employeeId: 'emp-04', employeeName: 'Carlos Francisco Martinez Ayala', position: 'GERENTE', branch: 'OPATRA', salesWithVat: 171563, salesWithoutVat: 147899, scheme: '2', individualRate: 0.3, commission: 51469, bonus: 9500, fine: 0, salaryBase: 0, loanBalance: 0, loanPayment: 0, payrollAdjustmentPositive: 3510, payrollAdjustmentNegative: 0, perDiem: 0, totalPayment: 64479 },
+    { employeeId: 'emp-05', employeeName: 'Andrea Stephani Rada Castillo', position: 'GERENTE', branch: 'DELTA', salesWithVat: 12350, salesWithoutVat: 10647, scheme: '2', individualRate: 0.3, commission: 3705, bonus: 3750, fine: 0, salaryBase: 0, loanBalance: 0, loanPayment: 5000, payrollAdjustmentPositive: 490, payrollAdjustmentNegative: 0, perDiem: 0, totalPayment: 2945 },
+    { employeeId: 'emp-06', employeeName: 'Maria Magdalena Cruz Rosales', position: 'VENDEDOR', branch: 'GALERIAS INSURGENTES', salesWithVat: 41967, salesWithoutVat: 36178, scheme: '3', individualRate: 0.24, commission: 10072, bonus: 200, fine: 0, salaryBase: 0, loanBalance: 0, loanPayment: 0, payrollAdjustmentPositive: 0, payrollAdjustmentNegative: 0, perDiem: 0, totalPayment: 10272 },
+    { employeeId: 'emp-07', employeeName: 'Blanca Elizabeth Garcia Padilla', position: 'FACIALISTA', branch: 'OPATRA', salesWithVat: 0, salesWithoutVat: 0, scheme: '5', individualRate: 0, commission: 0, bonus: 10950, fine: 0, salaryBase: 0, loanBalance: 0, loanPayment: 0, payrollAdjustmentPositive: 380, payrollAdjustmentNegative: 0, perDiem: 0, totalPayment: 11330 },
+    { employeeId: 'emp-08', employeeName: 'Manuel Ortega Gutierrez', position: 'CALL CENTER', branch: 'MASARYK', salesWithVat: 0, salesWithoutVat: 0, scheme: '3', individualRate: 0, commission: 0, bonus: 2750, fine: 0, salaryBase: 0, loanBalance: 0, loanPayment: 0, payrollAdjustmentPositive: 0, payrollAdjustmentNegative: 0, perDiem: 0, totalPayment: 2750 },
   ],
 }
 
@@ -157,11 +193,30 @@ export const movements: PayrollMovement[] = [
   { id: 'mov-06', date: '2025-06-06', employeeName: 'Daniel Molina', branch: 'OPATRA', kind: 'SUPPLIES', concept: 'INSUMOS', amount: 460, status: 'PENDING', notes: 'Pendiente de factura', sharedWith: 1, attachmentRequired: true, commissionable: false },
 ]
 
+export const bonusTemplates: PayrollBonus[] = [
+  { id: 'bonus-01', name: 'HIT', amount: 200, notes: 'Bono por venta individual' },
+  { id: 'bonus-02', name: 'FULL HOUSE', amount: 150, notes: 'Bono compartido 50/50' },
+  { id: 'bonus-03', name: 'BONO STAR', amount: 350, notes: 'Bono premium por cierre destacado' },
+  { id: 'bonus-04', name: 'BONO GRUPO', amount: 500, notes: 'Bono grupal por meta de equipo' },
+]
+
 export const schemes: CommissionScheme[] = [
-  { id: 'scheme-01', name: 'GERENTE 32%', role: 'GERENTE', flatRate: 0.32, bonusRule: '1% + 600,000 / 4% record', activeEmployees: 3, effectiveFrom: '2025-06-01', effectiveTo: null, tiers: [{ from: 1, to: 599999, rate: 0.32 }, { from: 600000, to: 999999, rate: 0.35 }] },
-  { id: 'scheme-02', name: 'VENDEDOR 30%', role: 'VENDEDOR', flatRate: 0.3, bonusRule: '30% flat', activeEmployees: 8, effectiveFrom: '2025-06-01', effectiveTo: null, tiers: [{ from: 1, to: 999999, rate: 0.3 }] },
-  { id: 'scheme-03', name: 'CERRADOR A', role: 'CERRADOR', flatRate: 0.28, bonusRule: 'Variable por rango', activeEmployees: 4, effectiveFrom: '2025-05-16', effectiveTo: null, tiers: [{ from: 1, to: 59999, rate: 0.24 }, { from: 60000, to: 119999, rate: 0.26 }, { from: 120000, to: 999999, rate: 0.28 }] },
-  { id: 'scheme-04', name: 'FACIALISTA', role: 'FACIALISTA', flatRate: 0.24, bonusRule: 'Bono por servicio', activeEmployees: 5, effectiveFrom: '2025-05-01', effectiveTo: null, tiers: [{ from: 1, to: 79999, rate: 0.24 }, { from: 80000, to: 149999, rate: 0.26 }, { from: 150000, to: 999999, rate: 0.28 }] },
+  { id: 'scheme-01', name: '1', ranges: [{ from: 1, to: 599999.99, rate: 0.34 }, { from: 600000, to: 999999.99, rate: 0.35 }] },
+  { id: 'scheme-02', name: '2', ranges: [{ from: 1, to: 59999.99, rate: 0.25 }, { from: 60000, to: 119999.99, rate: 0.27 }, { from: 120000, to: 999999.99, rate: 0.28 }] },
+  { id: 'scheme-03', name: '3', ranges: [{ from: 1, to: 79999.99, rate: 0.3 }, { from: 80000, to: 999999.99, rate: 0.32 }] },
+  { id: 'scheme-04', name: '4', ranges: [{ from: 1, to: 39999.99, rate: 0.28 }, { from: 40000, to: 999999.99, rate: 0.3 }] },
+  { id: 'scheme-05', name: '5', ranges: [{ from: 1, to: 59999.99, rate: 0.27 }, { from: 60000, to: 999999.99, rate: 0.28 }] },
+]
+
+export const schemeAssignments: SchemeAssignment[] = [
+  { id: 'assign-01', employeeId: 'emp-01', schemeId: 'scheme-01', assignedAt: '2025-06-01' },
+  { id: 'assign-02', employeeId: 'emp-02', schemeId: 'scheme-04', assignedAt: '2025-06-01' },
+  { id: 'assign-03', employeeId: 'emp-03', schemeId: 'scheme-03', assignedAt: '2025-06-02' },
+  { id: 'assign-04', employeeId: 'emp-04', schemeId: 'scheme-02', assignedAt: '2025-06-03' },
+  { id: 'assign-05', employeeId: 'emp-05', schemeId: 'scheme-02', assignedAt: '2025-06-03' },
+  { id: 'assign-06', employeeId: 'emp-06', schemeId: 'scheme-03', assignedAt: '2025-06-04' },
+  { id: 'assign-07', employeeId: 'emp-07', schemeId: 'scheme-05', assignedAt: '2025-06-04' },
+  { id: 'assign-08', employeeId: 'emp-08', schemeId: 'scheme-03', assignedAt: '2025-06-05' },
 ]
 
 export const loans: LoanAdvance[] = [
@@ -171,11 +226,231 @@ export const loans: LoanAdvance[] = [
 ]
 
 export const branchBreakdown: BranchBreakdown[] = [
-  { branch: 'MITIKAH', sales: 147200, commissions: 49568, bonus: 8900, salary: 0, adjustments: 0, totalCost: 58468, payrollWeight: 0.29 },
-  { branch: 'OPATRA', sales: 232613, commissions: 69784, bonus: 28750, salary: 0, adjustments: 4350, totalCost: 102884, payrollWeight: 0.51 },
-  { branch: 'GALERIAS INSURGENTES', sales: 41967, commissions: 10072, bonus: 3200, salary: 0, adjustments: 0, totalCost: 13272, payrollWeight: 0.07 },
-  { branch: 'CARRETA INSURGENTES', sales: 12350, commissions: 3705, bonus: 3750, salary: 0, adjustments: -4510, totalCost: 2945, payrollWeight: 0.02 },
-  { branch: 'REMOTO', sales: 0, commissions: 0, bonus: 2750, salary: 0, adjustments: 0, totalCost: 2750, payrollWeight: 0.01 },
+  { branch: 'DELTA', sales: 15800, commissions: 4740, bonus: 3750, salary: 0, adjustments: -4510, totalCost: 3980, payrollWeight: 0.02 },
+  { branch: 'GALERIAS INSURGENTES', sales: 42167, commissions: 10132, bonus: 200, salary: 0, adjustments: 500, totalCost: 10832, payrollWeight: 0.06 },
+  { branch: 'MASARYK', sales: 0, commissions: 0, bonus: 2750, salary: 0, adjustments: 0, totalCost: 2750, payrollWeight: 0.02 },
+  { branch: 'MITIKAH', sales: 121600, commissions: 38931, bonus: 3600, salary: 0, adjustments: 3038, totalCost: 45569, payrollWeight: 0.26 },
+  { branch: 'MITIKAH VIP', sales: 55450, commissions: 17744, bonus: 5300, salary: 0, adjustments: 0, totalCost: 23044, payrollWeight: 0.13 },
+  { branch: 'OPATRA', sales: 206813, commissions: 62016, bonus: 20450, salary: 0, adjustments: 5468, totalCost: 87934, payrollWeight: 0.51 },
+]
+
+export const payrollBreakdownLines: PayrollBreakdownLine[] = [
+  {
+    employeeId: 'emp-01',
+    employeeName: 'Natalia Mendez Sarmiento',
+    totalSales: 99450,
+    deltaSales: 0,
+    galeriasInsurgentesSales: 0,
+    masarykSales: 0,
+    mitikahSales: 99450,
+    mitikahVipSales: 0,
+    opatraSales: 0,
+    rate: 0.32,
+    commission: 31824,
+    bonus: 3600,
+    fine: 0,
+    loanPayment: 0,
+    payrollAdjustmentPositive: 0,
+    payrollAdjustmentNegative: 0,
+    totalPayment: 35424,
+    deltaCost: 0,
+    galeriasInsurgentesCost: 0,
+    masarykCost: 0,
+    mitikahCost: 35424,
+    mitikahVipCost: 0,
+    opatraCost: 0,
+    perDiem: 0,
+    totalCost: 35424,
+  },
+  {
+    employeeId: 'emp-02',
+    employeeName: 'Orlando Jose Saavedra Diaz',
+    totalSales: 55450,
+    deltaSales: 0,
+    galeriasInsurgentesSales: 0,
+    masarykSales: 0,
+    mitikahSales: 0,
+    mitikahVipSales: 55450,
+    opatraSales: 0,
+    rate: 0.32,
+    commission: 17744,
+    bonus: 5300,
+    fine: 0,
+    loanPayment: 0,
+    payrollAdjustmentPositive: 0,
+    payrollAdjustmentNegative: 0,
+    totalPayment: 23044,
+    deltaCost: 0,
+    galeriasInsurgentesCost: 0,
+    masarykCost: 0,
+    mitikahCost: 0,
+    mitikahVipCost: 23044,
+    opatraCost: 0,
+    perDiem: 0,
+    totalCost: 23044,
+  },
+  {
+    employeeId: 'emp-03',
+    employeeName: 'Daniel Molina',
+    totalSales: 61050,
+    deltaSales: 3450,
+    galeriasInsurgentesSales: 200,
+    masarykSales: 0,
+    mitikahSales: 22150,
+    mitikahVipSales: 0,
+    opatraSales: 35250,
+    rate: 0.3,
+    commission: 18315,
+    bonus: 5550,
+    fine: 0,
+    loanPayment: 0,
+    payrollAdjustmentPositive: 0,
+    payrollAdjustmentNegative: 0,
+    totalPayment: 23865,
+    deltaCost: 1035,
+    galeriasInsurgentesCost: 560,
+    masarykCost: 0,
+    mitikahCost: 10145,
+    mitikahVipCost: 0,
+    opatraCost: 12125,
+    perDiem: 0,
+    totalCost: 23865,
+  },
+  {
+    employeeId: 'emp-04',
+    employeeName: 'Carlos Francisco Martinez Ayala',
+    totalSales: 171563,
+    deltaSales: 0,
+    galeriasInsurgentesSales: 0,
+    masarykSales: 0,
+    mitikahSales: 0,
+    mitikahVipSales: 0,
+    opatraSales: 171563,
+    rate: 0.3,
+    commission: 51469,
+    bonus: 9500,
+    fine: 0,
+    loanPayment: 0,
+    payrollAdjustmentPositive: 3510,
+    payrollAdjustmentNegative: 0,
+    totalPayment: 64479,
+    deltaCost: 0,
+    galeriasInsurgentesCost: 0,
+    masarykCost: 0,
+    mitikahCost: 0,
+    mitikahVipCost: 0,
+    opatraCost: 64479,
+    perDiem: 0,
+    totalCost: 64479,
+  },
+  {
+    employeeId: 'emp-05',
+    employeeName: 'Andrea Stephani Rada Castillo',
+    totalSales: 12350,
+    deltaSales: 12350,
+    galeriasInsurgentesSales: 0,
+    masarykSales: 0,
+    mitikahSales: 0,
+    mitikahVipSales: 0,
+    opatraSales: 0,
+    rate: 0.3,
+    commission: 3705,
+    bonus: 3750,
+    fine: 0,
+    loanPayment: 5000,
+    payrollAdjustmentPositive: 490,
+    payrollAdjustmentNegative: 0,
+    totalPayment: 2945,
+    deltaCost: 2945,
+    galeriasInsurgentesCost: 0,
+    masarykCost: 0,
+    mitikahCost: 0,
+    mitikahVipCost: 0,
+    opatraCost: 0,
+    perDiem: 0,
+    totalCost: 2945,
+  },
+  {
+    employeeId: 'emp-06',
+    employeeName: 'Maria Magdalena Cruz Rosales',
+    totalSales: 41967,
+    deltaSales: 0,
+    galeriasInsurgentesSales: 41967,
+    masarykSales: 0,
+    mitikahSales: 0,
+    mitikahVipSales: 0,
+    opatraSales: 0,
+    rate: 0.24,
+    commission: 10072,
+    bonus: 200,
+    fine: 0,
+    loanPayment: 0,
+    payrollAdjustmentPositive: 0,
+    payrollAdjustmentNegative: 0,
+    totalPayment: 10272,
+    deltaCost: 0,
+    galeriasInsurgentesCost: 10272,
+    masarykCost: 0,
+    mitikahCost: 0,
+    mitikahVipCost: 0,
+    opatraCost: 0,
+    perDiem: 0,
+    totalCost: 10272,
+  },
+  {
+    employeeId: 'emp-07',
+    employeeName: 'Blanca Elizabeth Garcia Padilla',
+    totalSales: 0,
+    deltaSales: 0,
+    galeriasInsurgentesSales: 0,
+    masarykSales: 0,
+    mitikahSales: 0,
+    mitikahVipSales: 0,
+    opatraSales: 0,
+    rate: 0,
+    commission: 0,
+    bonus: 10950,
+    fine: 0,
+    loanPayment: 0,
+    payrollAdjustmentPositive: 380,
+    payrollAdjustmentNegative: 0,
+    totalPayment: 11330,
+    deltaCost: 0,
+    galeriasInsurgentesCost: 0,
+    masarykCost: 0,
+    mitikahCost: 0,
+    mitikahVipCost: 0,
+    opatraCost: 11330,
+    perDiem: 0,
+    totalCost: 11330,
+  },
+  {
+    employeeId: 'emp-08',
+    employeeName: 'Manuel Ortega Gutierrez',
+    totalSales: 0,
+    deltaSales: 0,
+    galeriasInsurgentesSales: 0,
+    masarykSales: 0,
+    mitikahSales: 0,
+    mitikahVipSales: 0,
+    opatraSales: 0,
+    rate: 0,
+    commission: 0,
+    bonus: 2750,
+    fine: 0,
+    loanPayment: 0,
+    payrollAdjustmentPositive: 0,
+    payrollAdjustmentNegative: 0,
+    totalPayment: 2750,
+    deltaCost: 0,
+    galeriasInsurgentesCost: 0,
+    masarykCost: 2750,
+    mitikahCost: 0,
+    mitikahVipCost: 0,
+    opatraCost: 0,
+    perDiem: 0,
+    totalCost: 2750,
+  },
 ]
 
 export const receipts: PayrollReceipt[] = currentRun.lines.map((line, index) => ({

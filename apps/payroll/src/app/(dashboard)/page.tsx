@@ -17,11 +17,13 @@ import { MetricCard } from '@/components/payroll/metric-card'
 import { SectionCard } from '@/components/payroll/section-card'
 import { StatusBadge } from '@/components/payroll/status-badge'
 import { currentRun, payrollTotals, type PayrollRunLine } from '@/lib/mock-data'
-import { formatCurrency, formatDate, formatPercent } from '@/lib/format'
+import { formatCurrency, formatDate, formatPercent, sumBy } from '@/lib/format'
 
 export default function DashboardPage() {
   const [mode, setMode] = useState(currentRun.mode)
   const [range, setRange] = useState({ from: currentRun.from, to: currentRun.to })
+  const netAdjustments = sumBy(currentRun.lines, (line) => line.bonus + line.payrollAdjustmentPositive + line.perDiem - line.fine - line.payrollAdjustmentNegative)
+  const deductions = sumBy(currentRun.lines, (line) => line.fine + line.loanPayment + line.payrollAdjustmentNegative)
 
   const columns: ColumnDef<PayrollRunLine>[] = [
     {
@@ -37,7 +39,14 @@ export default function DashboardPage() {
     {
       accessorKey: 'salesWithVat',
       header: 'Ventas con IVA',
+      meta: { align: 'right' },
       cell: ({ row }) => <div className="text-right tabular-nums">{formatCurrency(row.original.salesWithVat)}</div>,
+    },
+    {
+      accessorKey: 'salesWithoutVat',
+      header: 'Ventas sin IVA',
+      meta: { align: 'right' },
+      cell: ({ row }) => <div className="text-right tabular-nums">{formatCurrency(row.original.salesWithoutVat)}</div>,
     },
     {
       accessorKey: 'scheme',
@@ -47,26 +56,61 @@ export default function DashboardPage() {
     {
       accessorKey: 'individualRate',
       header: 'Porcentaje',
+      meta: { align: 'right' },
       cell: ({ row }) => <div className="text-right tabular-nums">{formatPercent(row.original.individualRate)}</div>,
     },
     {
       accessorKey: 'commission',
       header: 'Comision',
+      meta: { align: 'right' },
       cell: ({ row }) => <div className="text-right tabular-nums">{formatCurrency(row.original.commission)}</div>,
     },
     {
       accessorKey: 'bonus',
       header: 'Bono',
+      meta: { align: 'right' },
       cell: ({ row }) => <div className="text-right tabular-nums">{formatCurrency(row.original.bonus)}</div>,
+    },
+    {
+      accessorKey: 'fine',
+      header: 'Multa',
+      meta: { align: 'right' },
+      cell: ({ row }) => <div className="text-right tabular-nums">{formatCurrency(row.original.fine)}</div>,
+    },
+    {
+      accessorKey: 'salaryBase',
+      header: 'Sueldo base',
+      meta: { align: 'right' },
+      cell: ({ row }) => <div className="text-right tabular-nums">{formatCurrency(row.original.salaryBase)}</div>,
     },
     {
       accessorKey: 'loanPayment',
       header: 'Pago prestamo',
+      meta: { align: 'right' },
       cell: ({ row }) => <div className="text-right tabular-nums">{formatCurrency(row.original.loanPayment)}</div>,
+    },
+    {
+      accessorKey: 'payrollAdjustmentPositive',
+      header: 'Ajuste nomina +',
+      meta: { align: 'right' },
+      cell: ({ row }) => <div className="text-right tabular-nums">{formatCurrency(row.original.payrollAdjustmentPositive)}</div>,
+    },
+    {
+      accessorKey: 'payrollAdjustmentNegative',
+      header: 'Ajuste nomina -',
+      meta: { align: 'right' },
+      cell: ({ row }) => <div className="text-right tabular-nums">{formatCurrency(row.original.payrollAdjustmentNegative)}</div>,
+    },
+    {
+      accessorKey: 'perDiem',
+      header: 'Viaticos',
+      meta: { align: 'right' },
+      cell: ({ row }) => <div className="text-right tabular-nums">{formatCurrency(row.original.perDiem)}</div>,
     },
     {
       accessorKey: 'totalPayment',
       header: 'Total pago',
+      meta: { align: 'right' },
       cell: ({ row }) => <div className="number-display text-right text-base font-black">{formatCurrency(row.original.totalPayment)}</div>,
     },
   ]
@@ -94,7 +138,7 @@ export default function DashboardPage() {
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <MetricCard label="Ventas con IVA" value={formatCurrency(payrollTotals.salesWithVat)} tone="gold" />
         <MetricCard label="Comisiones" value={formatCurrency(payrollTotals.commissions)} tone="sage" />
-        <MetricCard label="Bonos y ajustes" value={formatCurrency(payrollTotals.bonuses)} tone="rose" />
+        <MetricCard label="Ajustes netos" value={formatCurrency(netAdjustments)} tone="rose" />
         <MetricCard label="Total a pagar" value={formatCurrency(payrollTotals.totalPayment)} tone="blue" />
       </div>
 
@@ -126,8 +170,22 @@ export default function DashboardPage() {
 
       <SectionCard
         eyebrow="Resumen"
-        title="DETALLE POR EMPLEADO"
+        title="DETALLE DE PAGO POR EMPLEADO"
       >
+        <div className="mb-4 grid gap-3 md:grid-cols-3">
+          <div className="rounded-lg border border-[#2c241c] bg-[#080706] p-3">
+            <p className="label-caps">Ventas sin IVA</p>
+            <p className="number-display mt-2 text-[1.05rem] font-black text-[color:var(--text-strong)]">{formatCurrency(payrollTotals.salesWithoutVat)}</p>
+          </div>
+          <div className="rounded-lg border border-[#2c241c] bg-[#080706] p-3">
+            <p className="label-caps">Deducciones</p>
+            <p className="number-display mt-2 text-[1.05rem] font-black text-[color:var(--text-strong)]">{formatCurrency(deductions)}</p>
+          </div>
+          <div className="rounded-lg border border-[#2c241c] bg-[#080706] p-3">
+            <p className="label-caps">Pago prestamo</p>
+            <p className="number-display mt-2 text-[1.05rem] font-black text-[color:var(--text-strong)]">{formatCurrency(payrollTotals.loanPayments)}</p>
+          </div>
+        </div>
         <DataTable
           columns={columns}
           data={currentRun.lines}
