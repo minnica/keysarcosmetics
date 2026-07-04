@@ -100,6 +100,15 @@ el diseño y el autocuidado.
 
 ---
 
+## Estado actual de `payroll`
+
+- Tipografía actual: `Bodoni Moda` para titulares y `Inter` para cuerpo/UI.
+- Las cards principales usan una superficie inspirada en el login de `envelope`: fondo oscuro translúcido, borde fino, blur y shadow suave.
+- La dirección visual de `payroll` debe mantenerse más limpia y minimalista que antes: evitar textos secundarios redundantes, descripciones largas y copy explicativo dentro de cards cuando el dato principal ya comunica el estado.
+- En métricas y bloques resumen, priorizar `label + value`; si hace falta contexto, usarlo solo de forma puntual.
+
+---
+
 ## Stack actual
 
 - **Monorepo**: Turborepo + pnpm workspaces
@@ -253,6 +262,13 @@ Archivos principales:
 - `apps/payroll/src/components/payroll/section-card.tsx` — contenedor estándar de secciones.
 - `apps/payroll/src/components/payroll/status-badge.tsx` — badges de estados mock.
 - `apps/payroll/src/app/globals.css` — diseño visual premium/glass adaptado a paleta Keysar, independiente de `envelope`.
+- `apps/payroll/src/app/layout.tsx` — carga tipográfica con `Bodoni Moda` para headlines y `Inter` para body.
+
+Reglas visuales de `payroll`:
+- Títulos y headlines usan `Bodoni Moda` vía `font-brand` o `.page-title`.
+- El cuerpo y texto de soporte usan `Inter` vía `font-sans`.
+- Los botones primarios deben mantener contraste alto en hover; no usar hovers que reduzcan legibilidad sobre el fondo oscuro.
+- El texto secundario debe seguir siendo legible en fondo oscuro, evitando grises demasiado apagados.
 
 Pantallas mock implementadas:
 - `/` — Corridas de nómina: resumen tipo `PANTALLA SUMARY`, KPIs, selector de rango, modo con IVA/sin IVA y tabla por empleado.

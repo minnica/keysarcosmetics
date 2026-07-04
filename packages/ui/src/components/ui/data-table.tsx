@@ -94,15 +94,15 @@ export function DataTable<TData, TValue>({
             placeholder={searchPlaceholder.toUpperCase()}
             value={globalFilter}
             onChange={(e) => setGlobalFilter(e.target.value)}
-            className="pl-9"
+            className="pl-9 text-[0.9rem]"
           />
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <span className="text-xs whitespace-nowrap" style={{ color: 'var(--text-muted)' }}>
+          <span className="text-[0.82rem] whitespace-nowrap" style={{ color: 'var(--text-muted)' }}>
             {recordsLabel}
           </span>
           <Select value={pageSizeOption} onValueChange={handlePageSizeChange}>
-            <SelectTrigger className="h-9 w-24">
+            <SelectTrigger className="h-9 w-24 text-[0.88rem]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -118,8 +118,7 @@ export function DataTable<TData, TValue>({
 
       {/* Tabla */}
       <div
-        className="payroll-panel overflow-x-auto rounded-[2rem]"
-        style={{ borderColor: 'var(--border-color)' }}
+        className="overflow-x-auto rounded-xl border border-[color:var(--border-color)] bg-[color:var(--bg-card)]"
       >
         <Table>
           <TableHeader className="[&_tr]:border-[#2c241c]">
@@ -130,7 +129,7 @@ export function DataTable<TData, TValue>({
                   return (
                     <TableHead
                       key={header.id}
-                      className="uppercase text-[10px] tracking-[0.14em] text-[#8c7357]"
+                      className="uppercase text-[0.72rem] tracking-[0.14em] text-[#8c7357]"
                     >
                       {header.isPlaceholder ? null : canSort ? (
                         <button
@@ -164,7 +163,7 @@ export function DataTable<TData, TValue>({
                   className="border-[#2c241c] hover:bg-[rgba(255,255,255,0.02)] data-[state=selected]:bg-[rgba(255,255,255,0.03)]"
                 >
                   {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id} className="border-[#2c241c] text-[#d9d3ca]">
+                    <TableCell key={cell.id} className="border-[#2c241c] text-[0.88rem] text-[#d9d3ca]">
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </TableCell>
                   ))}
@@ -174,7 +173,7 @@ export function DataTable<TData, TValue>({
               <TableRow>
                 <TableCell
                   colSpan={columns.length}
-                  className="h-24 text-center text-[#655746]"
+                  className="h-24 text-center text-[0.9rem] text-[#655746]"
                   style={{ color: 'var(--text-muted)' }}
                 >
                   {emptyMessage.toUpperCase()}
@@ -187,7 +186,7 @@ export function DataTable<TData, TValue>({
 
       {/* Paginación */}
       <div className="flex items-center justify-between">
-        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+        <p className="text-[0.82rem]" style={{ color: 'var(--text-muted)' }}>
           {resultsLabel(totalFiltered).toUpperCase()}
         </p>
         {showPagination && (
@@ -201,7 +200,7 @@ export function DataTable<TData, TValue>({
             >
               <ChevronLeft className="h-4 w-4" />
             </Button>
-            <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+            <span className="text-[0.82rem]" style={{ color: 'var(--text-muted)' }}>
               {pageCount > 0 ? `${pageIndex + 1} / ${pageCount}` : '—'}
             </span>
             <Button

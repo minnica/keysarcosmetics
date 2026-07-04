@@ -13,7 +13,7 @@ export default function PrestamosAdelantosPage() {
     {
       accessorKey: 'employeeName',
       header: 'Empleado',
-      cell: ({ row }) => <span className="font-semibold">{row.original.employeeName}</span>,
+      cell: ({ row }) => <span className="font-semibold text-[color:var(--text-strong)]">{row.original.employeeName}</span>,
     },
     { accessorKey: 'nature', header: 'Naturaleza' },
     { accessorKey: 'requestedAmount', header: 'Monto solicitado', cell: ({ row }) => <div className="text-right">{formatCurrency(row.original.requestedAmount)}</div> },
@@ -26,28 +26,25 @@ export default function PrestamosAdelantosPage() {
 
   return (
     <div className="space-y-6">
-      <section className="payroll-glass rounded-[2.4rem] p-6 md:p-8">
+      <section className="payroll-glass rounded-xl p-6 md:p-8">
         <p className="label-caps">PRESTAMOS Y ADELANTOS</p>
         <div className="mt-4 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <h1 className="page-title">Amortizacion sin perder historico.</h1>
-            <p className="mt-4 max-w-2xl text-sm leading-7 text-[color:var(--text-muted)]">
-              Flujo mock para programar descuentos por periodo y conservar casos pagados, pendientes o perdidos.
-            </p>
           </div>
-          <Button className="cursor-pointer rounded-full bg-[#d7b488] text-[#050404] hover:bg-[#e7c89a]" onClick={() => toast.info('Solicitud mock abierta.')}>
+          <Button className="payroll-button-primary cursor-pointer rounded-full" onClick={() => toast.info('Solicitud mock abierta.')}>
             Nueva solicitud
           </Button>
         </div>
       </section>
 
       <div className="grid gap-4 md:grid-cols-3">
-        <MetricCard label="Prestado" value={formatCurrency(sumBy(loans, (loan) => loan.requestedAmount))} detail="Total historico mock" tone="gold" />
-        <MetricCard label="Cobrado" value={formatCurrency(sumBy(loans, (loan) => loan.paidAmount))} detail="Pagos aplicados" tone="sage" />
-        <MetricCard label="Saldo" value={formatCurrency(sumBy(loans, (loan) => loan.balance))} detail="Pendiente o perdido" tone="rose" />
+        <MetricCard label="Prestado" value={formatCurrency(sumBy(loans, (loan) => loan.requestedAmount))} tone="gold" />
+        <MetricCard label="Cobrado" value={formatCurrency(sumBy(loans, (loan) => loan.paidAmount))} tone="sage" />
+        <MetricCard label="Saldo" value={formatCurrency(sumBy(loans, (loan) => loan.balance))} tone="rose" />
       </div>
 
-      <SectionCard eyebrow="Control" title="AMORTIZACION" description="Los pagos se conectaran a corridas futuras para descontarse automaticamente.">
+      <SectionCard eyebrow="Control" title="AMORTIZACION">
         <DataTable columns={columns} data={loans} searchPlaceholder="Buscar empleado o naturaleza" emptyMessage="Sin prestamos" pageSize={10} />
       </SectionCard>
     </div>

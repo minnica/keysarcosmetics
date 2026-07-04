@@ -64,15 +64,15 @@ export default function MovimientosPage() {
       header: 'Empleado',
       cell: ({ row }) => (
         <div>
-          <p className="font-semibold">{row.original.employeeName}</p>
-          <p className="text-xs text-[color:var(--text-muted)]">{row.original.branch}</p>
+          <p className="font-semibold text-[color:var(--text-strong)]">{row.original.employeeName}</p>
+          <p className="text-[0.92rem] text-[color:var(--text-muted)]">{row.original.branch}</p>
         </div>
       ),
     },
     {
       accessorKey: 'kind',
       header: 'Tipo',
-      cell: ({ row }) => <span className="text-xs font-bold uppercase tracking-[0.12em]">{KIND_LABEL[row.original.kind]}</span>,
+      cell: ({ row }) => <span className="text-[0.92rem] font-bold uppercase tracking-[0.12em]">{KIND_LABEL[row.original.kind]}</span>,
     },
     {
       accessorKey: 'concept',
@@ -97,20 +97,17 @@ export default function MovimientosPage() {
 
   return (
     <div className="space-y-6">
-      <section className="payroll-glass rounded-[2.4rem] p-6 md:p-8">
+      <section className="payroll-glass rounded-xl p-6 md:p-8">
         <p className="label-caps">MOVIMIENTOS DE NOMINA</p>
         <div className="mt-4 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <h1 className="page-title">Bonos, ajustes y evidencias.</h1>
-            <p className="mt-4 max-w-2xl text-sm leading-7 text-[color:var(--text-muted)]">
-              Captura mock de bonos compartidos, multas, viaticos e insumos con estatus de aprobacion.
-            </p>
           </div>
           <Dialog>
             <DialogTrigger asChild>
-              <Button className="cursor-pointer rounded-full bg-[#d7b488] px-5 text-[#050404] hover:bg-[#e7c89a]">Nuevo movimiento</Button>
+              <Button className="payroll-button-primary cursor-pointer rounded-full px-5">Nuevo movimiento</Button>
             </DialogTrigger>
-            <DialogContent className="max-w-2xl rounded-[2rem]">
+            <DialogContent className="max-w-2xl rounded-xl">
               <DialogHeader>
                 <DialogTitle>Nuevo movimiento demo</DialogTitle>
                 <DialogDescription>Formulario visual sin persistencia. Sirve para validar campos y flujo.</DialogDescription>
@@ -143,8 +140,8 @@ export default function MovimientosPage() {
                   </Select>
                 </div>
                 {(movementKind === 'PER_DIEM' || movementKind === 'SUPPLIES') ? (
-                  <div className="md:col-span-2 rounded-2xl border border-dashed border-[#2c241c] bg-[#080706] p-4 text-sm text-[color:var(--text-muted)]">
-                    Este tipo solicitara comprobante/foto en la version conectada.
+                  <div className="md:col-span-2 rounded-lg border border-dashed border-[#2c241c] bg-[#080706] p-3 text-[0.84rem] text-[color:var(--text-muted)]">
+                    Requiere evidencia en la version conectada.
                   </div>
                 ) : null}
                 <div className="space-y-2 md:col-span-2">
@@ -154,7 +151,7 @@ export default function MovimientosPage() {
               </div>
               <AlertDialog>
                 <AlertDialogTrigger asChild>
-                  <Button className="mt-2 cursor-pointer rounded-full bg-[#5d402f] text-[#f0d0c8] hover:bg-[#9c846a]">Guardar movimiento mock</Button>
+                  <Button className="payroll-button-secondary mt-2 cursor-pointer rounded-full">Guardar movimiento mock</Button>
                 </AlertDialogTrigger>
                 <AlertDialogContent>
                   <AlertDialogHeader>
@@ -173,12 +170,12 @@ export default function MovimientosPage() {
       </section>
 
       <div className="grid gap-4 md:grid-cols-3">
-        <MetricCard label="Aprobado" value={formatCurrency(approvedTotal)} detail="Entra a la corrida" tone="sage" />
-        <MetricCard label="Pendiente" value={formatCurrency(pendingTotal)} detail="Requiere autorizacion" tone="gold" />
-        <MetricCard label="Con evidencia" value={`${attachments}`} detail="Viaticos e insumos" tone="blue" />
+        <MetricCard label="Aprobado" value={formatCurrency(approvedTotal)} tone="sage" />
+        <MetricCard label="Pendiente" value={formatCurrency(pendingTotal)} tone="gold" />
+        <MetricCard label="Con evidencia" value={`${attachments}`} tone="blue" />
       </div>
 
-      <SectionCard eyebrow="Listado" title="MOVIMIENTOS CAPTURADOS" description="El estatus puede mostrarse con iconos en produccion; en demo se usan badges para claridad.">
+      <SectionCard eyebrow="Listado" title="MOVIMIENTOS CAPTURADOS">
         <DataTable columns={columns} data={movements} searchPlaceholder="Buscar movimiento" emptyMessage="Sin movimientos" pageSize={10} />
       </SectionCard>
     </div>

@@ -69,8 +69,8 @@ const config: Config = {
         },
       },
       fontFamily: {
-        sans: ['Gilroy', 'Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
-        brand: ['Emofera Regular', 'Georgia', 'serif'],
+        sans: ['Inter', 'system-ui', 'sans-serif'],
+        brand: ['Bodoni Moda', 'Georgia', 'serif'],
       },
       boxShadow: {
         brand: 'var(--card-shadow)',

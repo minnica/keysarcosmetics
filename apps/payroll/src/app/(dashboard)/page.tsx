@@ -3,8 +3,6 @@
 import { useState } from 'react'
 import {
   Button,
-  Card,
-  CardContent,
   ColumnDef,
   DataTable,
   DateRangePicker,
@@ -31,8 +29,8 @@ export default function DashboardPage() {
       header: 'Empleado',
       cell: ({ row }) => (
         <div>
-          <p className="font-semibold text-[color:var(--payroll-ivory)]">{row.original.employeeName}</p>
-          <p className="text-xs text-[color:var(--text-muted)]">{row.original.position} / {row.original.branch}</p>
+          <p className="font-semibold text-[color:var(--text-strong)]">{row.original.employeeName}</p>
+          <p className="text-[0.86rem] text-[color:var(--text-muted)]">{row.original.position} / {row.original.branch}</p>
         </div>
       ),
     },
@@ -44,7 +42,7 @@ export default function DashboardPage() {
     {
       accessorKey: 'scheme',
       header: 'Esquema',
-      cell: ({ row }) => <span className="text-xs font-semibold uppercase tracking-[0.08em]">{row.original.scheme}</span>,
+      cell: ({ row }) => <span className="text-[0.86rem] font-semibold uppercase tracking-[0.08em]">{row.original.scheme}</span>,
     },
     {
       accessorKey: 'individualRate',
@@ -75,44 +73,37 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      <section className="payroll-glass relative overflow-hidden rounded-[2.4rem] p-6 md:p-8">
+      <section className="payroll-glass relative overflow-hidden rounded-[2rem] p-6 md:p-8">
         <div className="absolute right-[-7rem] top-[-9rem] h-72 w-72 rounded-full bg-[#d7b488]/18 blur-3xl" />
         <div className="absolute bottom-[-8rem] left-[35%] h-56 w-56 rounded-full bg-[#9c846a]/14 blur-3xl" />
         <div className="relative grid gap-6 lg:grid-cols-[1fr_24rem] lg:items-end">
           <div>
             <p className="label-caps">CORRIDA DE NOMINA</p>
             <h1 className="page-title mt-4 max-w-4xl">Nomina clara antes de aprobar el pago.</h1>
-            <p className="mt-5 max-w-2xl text-sm leading-7 text-[color:var(--text-muted)]">
-              Demo de la corrida quincenal con ventas, esquemas, bonos, prestamos y recibos. Los datos son mock y sirven para validar la funcionalidad con cliente.
-            </p>
           </div>
-          <Card className="rounded-[2rem] border border-[#2c241c] bg-[#080706] text-[#d9d3ca]">
-            <CardContent className="p-5">
-              <p className="text-xs uppercase tracking-[0.2em] text-[#8c7357]">Periodo activo</p>
-              <p className="mt-3 text-2xl font-black">{formatDate(currentRun.from)} - {formatDate(currentRun.to)}</p>
+          <div className="payroll-login-card rounded-[2rem] p-5 text-[color:var(--text-primary)]">
+              <p className="label-caps">Periodo activo</p>
+              <p className="mt-3 text-[1.35rem] font-black text-[color:var(--text-strong)]">{formatDate(currentRun.from)} - {formatDate(currentRun.to)}</p>
               <div className="mt-4 flex items-center justify-between gap-3">
                 <StatusBadge status={currentRun.status} />
-                <span className="text-sm text-[#655746]">Pago: {formatDate(currentRun.payDate)}</span>
               </div>
-            </CardContent>
-          </Card>
+          </div>
         </div>
       </section>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <MetricCard label="Ventas con IVA" value={formatCurrency(payrollTotals.salesWithVat)} detail="Suma desde sobres de venta" tone="gold" />
-        <MetricCard label="Comisiones" value={formatCurrency(payrollTotals.commissions)} detail="Calculadas por esquema" tone="sage" />
-        <MetricCard label="Bonos y ajustes" value={formatCurrency(payrollTotals.bonuses)} detail="Movimientos aprobados" tone="rose" />
-        <MetricCard label="Total a pagar" value={formatCurrency(payrollTotals.totalPayment)} detail="Antes de aprobacion final" tone="blue" />
+        <MetricCard label="Ventas con IVA" value={formatCurrency(payrollTotals.salesWithVat)} tone="gold" />
+        <MetricCard label="Comisiones" value={formatCurrency(payrollTotals.commissions)} tone="sage" />
+        <MetricCard label="Bonos y ajustes" value={formatCurrency(payrollTotals.bonuses)} tone="rose" />
+        <MetricCard label="Total a pagar" value={formatCurrency(payrollTotals.totalPayment)} tone="blue" />
       </div>
 
       <SectionCard
         eyebrow="Calculo"
         title="SIMULADOR DE CORRIDA"
-        description="El usuario puede cambiar periodo y modo de calculo para validar la experiencia. En integracion real esto recalculara desde backend y guardara snapshot."
         action={(
           <Button
-            className="cursor-pointer rounded-full bg-[#d7b488] px-5 text-[#050404] hover:bg-[#e7c89a]"
+            className="payroll-button-primary cursor-pointer rounded-full px-5"
             onClick={() => toast.success('Corrida mock recalculada. En backend se guardaria snapshot.')}
           >
             Recalcular demo
@@ -122,9 +113,9 @@ export default function DashboardPage() {
         <div className="grid gap-4 lg:grid-cols-[1fr_16rem]">
           <DateRangePicker value={range} onChange={setRange} fromLabel="Desde" toLabel="Hasta" />
           <Select value={mode} onValueChange={(value) => setMode(value as typeof mode)}>
-            <SelectTrigger className="h-9 rounded-full bg-[#080706]">
-              <SelectValue />
-            </SelectTrigger>
+          <SelectTrigger className="h-10 rounded-md border border-[color:var(--border-color)] bg-[#080706] text-[color:var(--text-primary)]">
+            <SelectValue />
+          </SelectTrigger>
             <SelectContent>
               <SelectItem value="WITH_VAT">Calcular con IVA</SelectItem>
               <SelectItem value="WITHOUT_VAT">Calcular sin IVA</SelectItem>
@@ -136,7 +127,6 @@ export default function DashboardPage() {
       <SectionCard
         eyebrow="Resumen"
         title="DETALLE POR EMPLEADO"
-        description="Tabla equivalente a SUMARY, pero convertida en flujo auditado de nomina."
       >
         <DataTable
           columns={columns}

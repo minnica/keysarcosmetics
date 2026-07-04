@@ -1,25 +1,21 @@
-import { Card, CardContent, CardHeader, CardTitle } from '@cosmetics/ui'
-
 interface SectionCardProps {
   eyebrow?: string
   title: string
-  description?: string
   action?: React.ReactNode
   children: React.ReactNode
 }
 
-export function SectionCard({ eyebrow, title, description, action, children }: SectionCardProps) {
+export function SectionCard({ eyebrow, title, action, children }: SectionCardProps) {
   return (
-    <Card className="payroll-glass rounded-[2rem] border-0">
-      <CardHeader className="flex flex-col gap-4 pb-3 md:flex-row md:items-start md:justify-between">
+    <div className="payroll-login-card overflow-hidden rounded-[2rem]">
+      <div className="flex flex-col gap-4 p-6 md:flex-row md:items-start md:justify-between">
         <div>
           {eyebrow ? <p className="label-caps mb-2">{eyebrow}</p> : null}
-          <CardTitle className="section-heading text-[color:var(--payroll-ink)]">{title}</CardTitle>
-          {description ? <p className="mt-2 max-w-3xl text-sm text-[color:var(--text-muted)]">{description}</p> : null}
+          <h3 className="section-heading">{title}</h3>
         </div>
         {action}
-      </CardHeader>
-      <CardContent>{children}</CardContent>
-    </Card>
+      </div>
+      <div className="px-6 pb-6">{children}</div>
+    </div>
   )
 }

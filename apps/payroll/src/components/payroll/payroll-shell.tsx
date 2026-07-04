@@ -76,8 +76,8 @@ function PayrollSidebar() {
     <Sidebar collapsible="icon" className="border-r border-[color:var(--border-color)]">
       <SidebarHeader className="border-b p-0" style={{ borderColor: 'var(--border-color)' }}>
         <div className="hidden h-16 flex-col items-center justify-center gap-1 group-data-[collapsible=icon]:flex">
-          <div className="grid h-7 w-7 place-items-center rounded-full border border-[color:var(--border-color)] bg-[#080706] font-serif text-sm text-[#d9d3ca] shadow-[0_10px_24px_rgba(0,0,0,0.35)]">K</div>
-          <SidebarTrigger className="text-[var(--text-muted)] hover:bg-[var(--accent-hover)] hover:text-[var(--text-primary)]" />
+          <div className="grid h-7 w-7 place-items-center rounded-full border border-[color:var(--border-color)] bg-[#080706] font-brand text-sm text-[color:var(--text-strong)] shadow-[0_10px_24px_rgba(0,0,0,0.35)]">K</div>
+          <SidebarTrigger className="text-[var(--text-muted)] hover:bg-[rgba(239,207,155,0.12)] hover:text-[color:var(--text-strong)]" />
         </div>
 
         <div className="relative flex flex-col items-center gap-1 px-3 pb-3 pt-4 group-data-[collapsible=icon]:hidden">
@@ -86,17 +86,17 @@ function PayrollSidebar() {
               type="button"
               onClick={() => setOpenMobile(false)}
               aria-label="Cerrar menu"
-              className="absolute right-2 top-2 rounded-md p-1.5 text-[color:var(--text-muted)] transition-colors hover:bg-[var(--accent-hover)] hover:text-[color:var(--text-primary)]"
+              className="absolute right-2 top-2 rounded-md p-1.5 text-[color:var(--text-muted)] transition-colors hover:bg-[rgba(239,207,155,0.12)] hover:text-[color:var(--text-strong)]"
             >
               <CloseIcon />
             </button>
           ) : (
-            <SidebarTrigger className="absolute right-2 top-2 text-[var(--text-muted)] hover:bg-[var(--accent-hover)] hover:text-[var(--text-primary)]" />
+            <SidebarTrigger className="absolute right-2 top-2 text-[var(--text-muted)] hover:bg-[rgba(239,207,155,0.12)] hover:text-[color:var(--text-strong)]" />
           )}
-          <div className="grid h-12 w-12 place-items-center rounded-full border border-[color:var(--border-color)] bg-[#080706] font-serif text-2xl text-[#d9d3ca] shadow-[0_12px_28px_rgba(0,0,0,0.36)]">
+          <div className="grid h-12 w-12 place-items-center rounded-full border border-[color:var(--border-color)] bg-[#080706] font-brand text-2xl text-[color:var(--text-strong)] shadow-[0_12px_28px_rgba(0,0,0,0.36)]">
             K
           </div>
-          <span className="mt-1 font-serif text-xl tracking-[-0.04em]" style={{ color: 'var(--text-primary)' }}>
+          <span className="mt-1 font-brand text-xl tracking-[-0.04em]" style={{ color: 'var(--text-strong)' }}>
             Keysar Cosmetics
           </span>
           <span className="text-[10px] font-semibold uppercase tracking-[0.22em]" style={{ color: 'var(--accent)' }}>
@@ -108,7 +108,7 @@ function PayrollSidebar() {
       <SidebarContent className="py-2">
         {sections.map((section) => (
           <SidebarGroup key={section.label}>
-            <SidebarGroupLabel className="text-[10px] font-semibold uppercase tracking-[0.14em]" style={{ color: 'rgba(140, 117, 106, 0.82)' }}>
+            <SidebarGroupLabel className="text-[10px] font-semibold uppercase tracking-[0.14em]" style={{ color: 'var(--text-muted)' }}>
               {section.label}
             </SidebarGroupLabel>
             <SidebarGroupContent>
@@ -125,7 +125,7 @@ function PayrollSidebar() {
                         className={
                           isActive
                             ? '!bg-[var(--sidebar-active-bg)] !text-[var(--sidebar-active-text)] hover:!bg-[var(--sidebar-active-bg)] hover:!text-[var(--sidebar-active-text)]'
-                            : 'hover:!bg-[var(--accent-hover)] hover:!text-[var(--text-primary)]'
+                            : 'hover:!bg-[rgba(239,207,155,0.12)] hover:!text-[color:var(--text-strong)]'
                         }
                       >
                         <Link href={item.href}>
@@ -143,28 +143,21 @@ function PayrollSidebar() {
       </SidebarContent>
 
       <SidebarFooter className="border-t p-2" style={{ borderColor: 'var(--border-color)' }}>
-        <div className="space-y-1.5 rounded-xl border border-[#2c241c] bg-[#080706] p-3 group-data-[collapsible=icon]:hidden">
+        <div className="rounded-xl border border-[#2c241c] bg-[#080706] px-3 py-2 group-data-[collapsible=icon]:hidden">
           <p className="text-[10px] font-bold uppercase tracking-[0.18em]" style={{ color: 'var(--accent)' }}>Modo demo</p>
-          <p className="text-xs leading-5" style={{ color: 'var(--text-muted)' }}>
-            Datos mock, sin backend ni base de datos.
-          </p>
         </div>
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton
               onClick={() => router.push('/login')}
               tooltip="Salir"
-              className="cursor-pointer justify-center rounded-lg transition-colors hover:opacity-90"
-              style={{ backgroundColor: '#d7b488', color: '#050404' }}
+              className="payroll-button-primary cursor-pointer justify-center rounded-lg"
             >
               <LogoutIcon />
               <span>Salir</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
-        <p className="pb-1 text-center text-[10px] uppercase tracking-wider group-data-[collapsible=icon]:hidden" style={{ color: 'var(--text-muted)' }}>
-          Payroll mock v0.1
-        </p>
       </SidebarFooter>
 
       <SidebarRail />
@@ -181,9 +174,9 @@ export function PayrollShell({ children }: { children: React.ReactNode }) {
           className="flex h-12 shrink-0 items-center gap-3 border-b px-4 md:hidden"
           style={{ borderColor: 'var(--border-color)', backgroundColor: 'var(--bg-card)' }}
         >
-          <SidebarTrigger className="text-[var(--text-muted)] hover:text-[var(--text-primary)]" />
-          <div className="grid h-7 w-7 place-items-center rounded-full border border-[color:var(--border-color)] bg-[#080706] font-serif text-sm text-[#d9d3ca]">K</div>
-          <span className="text-sm font-semibold">Keysar Payroll</span>
+          <SidebarTrigger className="text-[var(--text-muted)] hover:text-[color:var(--text-strong)]" />
+          <div className="grid h-7 w-7 place-items-center rounded-full border border-[color:var(--border-color)] bg-[#080706] font-brand text-sm text-[color:var(--text-strong)]">K</div>
+          <span className="font-brand text-sm text-[color:var(--text-strong)]">Keysar Payroll</span>
         </header>
         <div className="min-w-0 p-4 pb-10 md:p-6">
           {children}

@@ -1,47 +1,59 @@
+@import url('https://fonts.googleapis.com/css2?family=Bodoni+Moda:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
   :root {
-    --color-gold: #c5a785;
-    --color-nude: #d7b488;
-    --color-charcoal: #050404;
-    --color-ivory: #d9d3ca;
-    --color-blue-light: #a59b8e;
-    --color-blue-soft: #7f756a;
-    --color-green-olive: #9c846a;
-    --color-green-sage: #b39671;
-    --payroll-ivory: #d9d3ca;
+    --color-gold: #d7b488;
+    --color-nude: #e2c295;
+    --color-charcoal: #0b0908;
+    --color-ivory: #f1e7d8;
+    --color-blue-light: #b5a894;
+    --color-blue-soft: #8f7f6b;
+    --color-green-olive: #a98d68;
+    --color-green-sage: #bea174;
+    --payroll-ivory: #f1e7d8;
     --payroll-porcelain: #0e0d0c;
-    --payroll-champagne: #d7b488;
-    --payroll-bronze: #9c846a;
-    --payroll-ink: #d9d3ca;
-    --payroll-muted: #655746;
-    --payroll-sage: #b39671;
-    --payroll-rose: #c5a785;
-    --payroll-clay: #5d402f;
-    --payroll-blue: #a59b8e;
+    --payroll-champagne: #e2c295;
+    --payroll-bronze: #a98d68;
+    --payroll-ink: #f6efe4;
+    --payroll-muted: #b09b84;
+    --payroll-sage: #bea174;
+    --payroll-rose: #d7b488;
+    --payroll-clay: #7a5a42;
+    --payroll-blue: #b5a894;
     --bg-primary: #050403;
     --bg-card: #080706;
     --bg-sidebar: #12100f;
     --text-primary: var(--payroll-ivory);
     --text-muted: var(--payroll-muted);
+    --text-soft: #cdbba4;
+    --text-strong: #fff4e6;
     --border-color: #2c241c;
     --accent: #d7b488;
-    --accent-hover: #e7c89a;
+    --accent-hover: #efcf9b;
+    --accent-pressed: #cfa56f;
+    --button-text: #120e0a;
+    --button-hover-text: #0f0c08;
     --sidebar-active-text: #050403;
-    --sidebar-active-bg: #b39671;
+    --sidebar-active-bg: #c9a471;
     --table-header-bg: #12100f;
-    --table-header-text: #050403;
+    --table-header-text: #f5eadb;
     --table-row-alt: rgba(255, 255, 255, 0.025);
     --input-bg: #100c09;
     --input-disabled-bg: #0e0d0c;
     --card-shadow: 0 30px 100px rgba(0, 0, 0, 0.56), 0 1px 0 rgba(255, 255, 255, 0.03) inset;
+    --payroll-card-border: #120f0b;
+    --payroll-card-bg: rgba(0, 0, 0, 0.2);
+    --payroll-card-shadow: 0 0 0 1px rgba(215, 180, 136, 0.16), 0 30px 90px rgba(215, 180, 136, 0.18), 0 54px 150px rgba(0, 0, 0, 0.72);
+    --payroll-card-blur: 40px;
   }
 
   html {
     min-height: 100%;
+    font-size: 15.5px;
     color-scheme: dark;
     background:
       radial-gradient(circle at 12% 8%, rgba(215, 180, 136, 0.16), transparent 28rem),
@@ -59,7 +71,9 @@
       linear-gradient(180deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
     background-size: 44px 44px;
     color: var(--text-primary);
-    font-family: "Avenir Next", "Gill Sans", "Trebuchet MS", ui-sans-serif, system-ui, sans-serif;
+    font-family: "Inter", system-ui, sans-serif;
+    font-size: 0.95rem;
+    line-height: 1.55;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
   }
@@ -72,26 +86,30 @@
 
 @layer components {
   .page-title {
-    font-family: Georgia, "Times New Roman", serif;
-    font-size: clamp(2.1rem, 4vw, 4.2rem);
+    font-family: "Bodoni Moda", Georgia, serif;
+    font-size: clamp(2rem, 3.8vw, 4rem);
     font-weight: 400;
     letter-spacing: -0.055em;
     line-height: 0.94;
+    color: var(--text-strong);
   }
 
   .section-heading {
-    font-size: 0.78rem;
+    font-family: "Bodoni Moda", Georgia, serif;
+    font-size: 0.84rem;
     font-weight: 700;
-    letter-spacing: 0.14em;
+    letter-spacing: 0.1em;
     text-transform: uppercase;
+    color: var(--text-strong);
   }
 
   .label-caps {
+    font-family: "Inter", system-ui, sans-serif;
     font-size: 0.68rem;
     font-weight: 700;
-    letter-spacing: 0.16em;
+    letter-spacing: 0.14em;
     text-transform: uppercase;
-    color: #8c7357;
+    color: var(--accent);
   }
 
   .number-display {
@@ -99,17 +117,119 @@
     letter-spacing: -0.035em;
   }
 
+  .payroll-body {
+    color: var(--text-primary);
+  }
+
+  .payroll-muted {
+    color: var(--text-muted);
+  }
+
+  .payroll-body-copy {
+    font-size: 0.92rem;
+    line-height: 1.6;
+    color: var(--text-primary);
+  }
+
+  .payroll-note {
+    font-size: 0.84rem;
+    line-height: 1.5;
+    color: var(--text-muted);
+    font-style: italic;
+  }
+
+  .payroll-surface {
+    border: 1px solid var(--payroll-card-border);
+    background: var(--payroll-card-bg);
+    box-shadow: var(--payroll-card-shadow);
+    backdrop-filter: blur(var(--payroll-card-blur));
+  }
+
   .payroll-glass {
-    border: 1px solid var(--border-color);
-    background: linear-gradient(180deg, rgba(9, 8, 6, 0.99), rgba(5, 4, 4, 0.99));
-    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.52), 0 1px 0 rgba(255, 255, 255, 0.02) inset;
-    backdrop-filter: blur(12px);
+    border: 1px solid var(--payroll-card-border);
+    background: var(--payroll-card-bg);
+    box-shadow: var(--payroll-card-shadow);
+    backdrop-filter: blur(var(--payroll-card-blur));
   }
 
   .payroll-panel {
+    border: 1px solid var(--payroll-card-border);
+    background: var(--payroll-card-bg);
+    box-shadow: var(--payroll-card-shadow);
+    backdrop-filter: blur(var(--payroll-card-blur));
+  }
+
+  .payroll-login-card {
+    border: 1px solid var(--payroll-card-border);
+    background: var(--payroll-card-bg);
+    box-shadow: var(--payroll-card-shadow);
+    backdrop-filter: blur(var(--payroll-card-blur));
+    color: #f7f0e7;
+  }
+
+  .payroll-login-card .label-caps {
+    color: #d7b488;
+    font-family: "Inter", system-ui, sans-serif;
+    font-size: 0.66rem;
+  }
+
+  .payroll-login-card .section-heading,
+  .payroll-login-card .page-title {
+    color: #f7f0e7;
+    font-family: "Bodoni Moda", Georgia, serif;
+  }
+
+  .payroll-login-card .payroll-muted {
+    color: rgba(255, 255, 255, 0.58);
+    font-family: "Inter", system-ui, sans-serif;
+    font-size: 0.88rem;
+  }
+
+  .payroll-login-card .number-display {
+    color: #f7f0e7;
+  }
+
+  .payroll-button-primary {
+    background-color: var(--accent);
+    color: var(--button-text);
+    transition: background-color 180ms ease, color 180ms ease, border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+  }
+
+  .payroll-button-primary:hover {
+    background-color: var(--accent-hover);
+    color: var(--button-hover-text);
+    box-shadow: 0 12px 30px rgba(215, 180, 136, 0.18);
+  }
+
+  .payroll-button-primary:active {
+    background-color: var(--accent-pressed);
+  }
+
+  .payroll-button-secondary {
     border: 1px solid var(--border-color);
-    background: linear-gradient(180deg, rgba(9, 8, 6, 0.99), rgba(5, 4, 4, 0.99));
-    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.26);
-    backdrop-filter: blur(10px);
+    background-color: rgba(8, 7, 6, 0.88);
+    color: var(--text-primary);
+    transition: background-color 180ms ease, color 180ms ease, border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+  }
+
+  .payroll-button-secondary:hover {
+    border-color: rgba(239, 207, 155, 0.55);
+    background-color: rgba(215, 180, 136, 0.15);
+    color: var(--text-strong);
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.26);
+  }
+
+  .payroll-button-secondary:active {
+    background-color: rgba(215, 180, 136, 0.22);
+  }
+
+  .payroll-button-ghost {
+    color: var(--text-muted);
+    transition: background-color 180ms ease, color 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+  }
+
+  .payroll-button-ghost:hover {
+    background-color: rgba(239, 207, 155, 0.12);
+    color: var(--text-strong);
   }
 }

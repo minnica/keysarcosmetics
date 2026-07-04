@@ -12,7 +12,7 @@ export default function RecibosPage() {
     {
       accessorKey: 'employeeName',
       header: 'Empleado',
-      cell: ({ row }) => <span className="font-semibold">{row.original.employeeName}</span>,
+      cell: ({ row }) => <span className="font-semibold text-[color:var(--text-strong)]">{row.original.employeeName}</span>,
     },
     { accessorKey: 'period', header: 'Periodo' },
     {
@@ -20,7 +20,7 @@ export default function RecibosPage() {
       header: 'Total pago',
       cell: ({ row }) => <div className="number-display text-right font-black">{formatCurrency(row.original.totalPayment)}</div>,
     },
-    { accessorKey: 'sentTo', header: 'Envio', cell: ({ row }) => <span className="font-mono text-xs">{row.original.sentTo}</span> },
+    { accessorKey: 'sentTo', header: 'Envio', cell: ({ row }) => <span className="font-mono text-[0.9rem]">{row.original.sentTo}</span> },
     {
       accessorKey: 'confirmedAt',
       header: 'Confirmado',
@@ -35,7 +35,7 @@ export default function RecibosPage() {
       cell: ({ row }) => (
         <Button
           variant="outline"
-          className="h-8 cursor-pointer rounded-full"
+          className="payroll-button-secondary h-8 cursor-pointer rounded-full"
           onClick={() => toast.success(`Recibo mock preparado para ${row.original.employeeName}`)}
         >
           Ver recibo
@@ -46,28 +46,25 @@ export default function RecibosPage() {
 
   return (
     <div className="space-y-6">
-      <section className="payroll-glass rounded-[2.4rem] p-6 md:p-8">
+      <section className="payroll-glass rounded-xl p-6 md:p-8">
         <p className="label-caps">RECIBOS</p>
         <div className="mt-4 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <h1 className="page-title">Confirmacion lista para WhatsApp.</h1>
-            <p className="mt-4 max-w-2xl text-sm leading-7 text-[color:var(--text-muted)]">
-              Pantalla mock para generar, enviar y confirmar recibos derivados de la corrida.
-            </p>
           </div>
-          <Button className="cursor-pointer rounded-full bg-[#d7b488] text-[#050404] hover:bg-[#e7c89a]" onClick={() => toast.info('Envio masivo mock preparado.')}>
+          <Button className="payroll-button-primary cursor-pointer rounded-full" onClick={() => toast.info('Envio masivo mock preparado.')}>
             Enviar seleccion
           </Button>
         </div>
       </section>
 
       <div className="grid gap-4 md:grid-cols-3">
-        <MetricCard label="Generados" value={`${receipts.length}`} detail="Recibos de la corrida" tone="gold" />
-        <MetricCard label="Confirmados" value={`${receipts.filter((receipt) => receipt.status === 'CONFIRMED').length}`} detail="Respuesta recibida" tone="sage" />
-        <MetricCard label="Total emitido" value={formatCurrency(sumBy(receipts, (receipt) => receipt.totalPayment))} detail="Monto en recibos" tone="blue" />
+        <MetricCard label="Generados" value={`${receipts.length}`} tone="gold" />
+        <MetricCard label="Confirmados" value={`${receipts.filter((receipt) => receipt.status === 'CONFIRMED').length}`} tone="sage" />
+        <MetricCard label="Total emitido" value={formatCurrency(sumBy(receipts, (receipt) => receipt.totalPayment))} tone="blue" />
       </div>
 
-      <SectionCard eyebrow="Listado" title="RECIBOS POR EMPLEADO" description="Los campos editables de recibo se reservaran para administracion en la version conectada.">
+      <SectionCard eyebrow="Listado" title="RECIBOS POR EMPLEADO">
         <DataTable columns={columns} data={receipts} searchPlaceholder="Buscar recibo o empleado" emptyMessage="Sin recibos" pageSize={10} />
       </SectionCard>
     </div>
