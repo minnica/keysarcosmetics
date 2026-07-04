@@ -117,18 +117,24 @@ export function DataTable<TData, TValue>({
       </div>
 
       {/* Tabla */}
-      <div className="overflow-x-auto rounded-md border" style={{ borderColor: 'var(--border-color)' }}>
+      <div
+        className="payroll-panel overflow-x-auto rounded-[2rem]"
+        style={{ borderColor: 'var(--border-color)' }}
+      >
         <Table>
-          <TableHeader>
+          <TableHeader className="[&_tr]:border-[#2c241c]">
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id}>
                 {headerGroup.headers.map((header) => {
                   const canSort = header.column.getCanSort()
                   return (
-                    <TableHead key={header.id} className="uppercase">
+                    <TableHead
+                      key={header.id}
+                      className="uppercase text-[10px] tracking-[0.14em] text-[#8c7357]"
+                    >
                       {header.isPlaceholder ? null : canSort ? (
                         <button
-                          className="flex items-center gap-1 hover:opacity-70 transition-opacity select-none"
+                          className="flex items-center gap-1 select-none transition-opacity hover:opacity-70"
                           onClick={() => header.column.toggleSorting()}
                         >
                           {flexRender(header.column.columnDef.header, header.getContext())}
@@ -152,9 +158,13 @@ export function DataTable<TData, TValue>({
           <TableBody>
             {table.getRowModel().rows.length ? (
               table.getRowModel().rows.map((row) => (
-                <TableRow key={row.id} data-state={row.getIsSelected() && 'selected'}>
+                <TableRow
+                  key={row.id}
+                  data-state={row.getIsSelected() && 'selected'}
+                  className="border-[#2c241c] hover:bg-[rgba(255,255,255,0.02)] data-[state=selected]:bg-[rgba(255,255,255,0.03)]"
+                >
                   {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>
+                    <TableCell key={cell.id} className="border-[#2c241c] text-[#d9d3ca]">
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </TableCell>
                   ))}
@@ -164,7 +174,7 @@ export function DataTable<TData, TValue>({
               <TableRow>
                 <TableCell
                   colSpan={columns.length}
-                  className="h-24 text-center"
+                  className="h-24 text-center text-[#655746]"
                   style={{ color: 'var(--text-muted)' }}
                 >
                   {emptyMessage.toUpperCase()}

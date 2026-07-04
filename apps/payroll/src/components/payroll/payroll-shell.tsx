@@ -76,7 +76,7 @@ function PayrollSidebar() {
     <Sidebar collapsible="icon" className="border-r border-[color:var(--border-color)]">
       <SidebarHeader className="border-b p-0" style={{ borderColor: 'var(--border-color)' }}>
         <div className="hidden h-16 flex-col items-center justify-center gap-1 group-data-[collapsible=icon]:flex">
-          <div className="grid h-7 w-7 place-items-center rounded-full bg-[#342b25] font-serif text-sm text-[#fffaf3]">K</div>
+          <div className="grid h-7 w-7 place-items-center rounded-full border border-[color:var(--border-color)] bg-[#080706] font-serif text-sm text-[#d9d3ca] shadow-[0_10px_24px_rgba(0,0,0,0.35)]">K</div>
           <SidebarTrigger className="text-[var(--text-muted)] hover:bg-[var(--accent-hover)] hover:text-[var(--text-primary)]" />
         </div>
 
@@ -93,7 +93,7 @@ function PayrollSidebar() {
           ) : (
             <SidebarTrigger className="absolute right-2 top-2 text-[var(--text-muted)] hover:bg-[var(--accent-hover)] hover:text-[var(--text-primary)]" />
           )}
-          <div className="grid h-12 w-12 place-items-center rounded-full bg-[#342b25] font-serif text-2xl text-[#fffaf3] shadow-[0_12px_28px_rgba(52,43,37,0.2)]">
+          <div className="grid h-12 w-12 place-items-center rounded-full border border-[color:var(--border-color)] bg-[#080706] font-serif text-2xl text-[#d9d3ca] shadow-[0_12px_28px_rgba(0,0,0,0.36)]">
             K
           </div>
           <span className="mt-1 font-serif text-xl tracking-[-0.04em]" style={{ color: 'var(--text-primary)' }}>
@@ -108,7 +108,7 @@ function PayrollSidebar() {
       <SidebarContent className="py-2">
         {sections.map((section) => (
           <SidebarGroup key={section.label}>
-            <SidebarGroupLabel className="text-[10px] font-semibold uppercase tracking-[0.14em]" style={{ color: 'rgba(168, 121, 73, 0.78)' }}>
+            <SidebarGroupLabel className="text-[10px] font-semibold uppercase tracking-[0.14em]" style={{ color: 'rgba(140, 117, 106, 0.82)' }}>
               {section.label}
             </SidebarGroupLabel>
             <SidebarGroupContent>
@@ -143,7 +143,7 @@ function PayrollSidebar() {
       </SidebarContent>
 
       <SidebarFooter className="border-t p-2" style={{ borderColor: 'var(--border-color)' }}>
-        <div className="space-y-1.5 rounded-xl border border-[#d2b48c]/25 bg-[#fffaf3]/55 p-3 group-data-[collapsible=icon]:hidden">
+        <div className="space-y-1.5 rounded-xl border border-[#2c241c] bg-[#080706] p-3 group-data-[collapsible=icon]:hidden">
           <p className="text-[10px] font-bold uppercase tracking-[0.18em]" style={{ color: 'var(--accent)' }}>Modo demo</p>
           <p className="text-xs leading-5" style={{ color: 'var(--text-muted)' }}>
             Datos mock, sin backend ni base de datos.
@@ -155,7 +155,7 @@ function PayrollSidebar() {
               onClick={() => router.push('/login')}
               tooltip="Salir"
               className="cursor-pointer justify-center rounded-lg transition-colors hover:opacity-90"
-              style={{ backgroundColor: '#ecd1c8', color: '#1a1a1a' }}
+              style={{ backgroundColor: '#d7b488', color: '#050404' }}
             >
               <LogoutIcon />
               <span>Salir</span>
@@ -182,7 +182,7 @@ export function PayrollShell({ children }: { children: React.ReactNode }) {
           style={{ borderColor: 'var(--border-color)', backgroundColor: 'var(--bg-card)' }}
         >
           <SidebarTrigger className="text-[var(--text-muted)] hover:text-[var(--text-primary)]" />
-          <div className="grid h-7 w-7 place-items-center rounded-full bg-[#342b25] font-serif text-sm text-[#fffaf3]">K</div>
+          <div className="grid h-7 w-7 place-items-center rounded-full border border-[color:var(--border-color)] bg-[#080706] font-serif text-sm text-[#d9d3ca]">K</div>
           <span className="text-sm font-semibold">Keysar Payroll</span>
         </header>
         <div className="min-w-0 p-4 pb-10 md:p-6">

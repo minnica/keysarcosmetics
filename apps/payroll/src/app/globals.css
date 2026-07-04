@@ -4,40 +4,50 @@
 
 @layer base {
   :root {
-    --payroll-ivory: #f6f0e7;
-    --payroll-porcelain: #fffaf3;
-    --payroll-champagne: #d2b48c;
-    --payroll-bronze: #a87949;
-    --payroll-ink: #342b25;
-    --payroll-muted: #7d7067;
-    --payroll-sage: #6f8f78;
-    --payroll-rose: #d8a99b;
-    --payroll-clay: #b45f4d;
-    --payroll-blue: #6e9aa7;
-    --bg-primary: var(--payroll-ivory);
-    --bg-card: rgba(255, 250, 243, 0.86);
-    --bg-sidebar: rgba(255, 250, 243, 0.94);
-    --text-primary: var(--payroll-ink);
+    --color-gold: #c5a785;
+    --color-nude: #d7b488;
+    --color-charcoal: #050404;
+    --color-ivory: #d9d3ca;
+    --color-blue-light: #a59b8e;
+    --color-blue-soft: #7f756a;
+    --color-green-olive: #9c846a;
+    --color-green-sage: #b39671;
+    --payroll-ivory: #d9d3ca;
+    --payroll-porcelain: #0e0d0c;
+    --payroll-champagne: #d7b488;
+    --payroll-bronze: #9c846a;
+    --payroll-ink: #d9d3ca;
+    --payroll-muted: #655746;
+    --payroll-sage: #b39671;
+    --payroll-rose: #c5a785;
+    --payroll-clay: #5d402f;
+    --payroll-blue: #a59b8e;
+    --bg-primary: #050403;
+    --bg-card: #080706;
+    --bg-sidebar: #12100f;
+    --text-primary: var(--payroll-ivory);
     --text-muted: var(--payroll-muted);
-    --border-color: rgba(168, 121, 73, 0.22);
-    --accent: var(--payroll-bronze);
-    --accent-hover: rgba(210, 180, 140, 0.28);
-    --sidebar-active-bg: var(--payroll-bronze);
-    --sidebar-active-text: #fffaf3;
-    --table-header-bg: #a87949;
-    --table-header-text: #fffaf3;
-    --table-row-alt: rgba(255, 250, 243, 0.58);
-    --input-bg: rgba(255, 250, 243, 0.82);
-    --input-disabled-bg: rgba(246, 240, 231, 0.72);
-    --card-shadow: 0 24px 80px rgba(62, 49, 40, 0.12), 0 1px 0 rgba(255, 255, 255, 0.7) inset;
+    --border-color: #2c241c;
+    --accent: #d7b488;
+    --accent-hover: #e7c89a;
+    --sidebar-active-text: #050403;
+    --sidebar-active-bg: #b39671;
+    --table-header-bg: #12100f;
+    --table-header-text: #050403;
+    --table-row-alt: rgba(255, 255, 255, 0.025);
+    --input-bg: #100c09;
+    --input-disabled-bg: #0e0d0c;
+    --card-shadow: 0 30px 100px rgba(0, 0, 0, 0.56), 0 1px 0 rgba(255, 255, 255, 0.03) inset;
   }
 
   html {
     min-height: 100%;
+    color-scheme: dark;
     background:
-      radial-gradient(circle at 12% 8%, rgba(216, 169, 155, 0.34), transparent 34rem),
-      radial-gradient(circle at 82% 0%, rgba(111, 143, 120, 0.24), transparent 30rem),
-      linear-gradient(135deg, #f7efe3 0%, #f3eadf 48%, #ead9c4 100%);
+      radial-gradient(circle at 12% 8%, rgba(215, 180, 136, 0.16), transparent 28rem),
+      radial-gradient(circle at 84% 0%, rgba(92, 64, 47, 0.18), transparent 26rem),
+      radial-gradient(circle at 20% 92%, rgba(93, 64, 47, 0.12), transparent 24rem),
+      linear-gradient(135deg, #17130f 0%, #0b0a09 56%, #050404 100%);
     color: var(--text-primary);
   }
 
@@ -45,8 +55,8 @@
     min-height: 100vh;
     overflow-x: hidden;
     background:
-      linear-gradient(90deg, rgba(255, 250, 243, 0.34) 1px, transparent 1px),
-      linear-gradient(180deg, rgba(255, 250, 243, 0.34) 1px, transparent 1px);
+      linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+      linear-gradient(180deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
     background-size: 44px 44px;
     color: var(--text-primary);
     font-family: "Avenir Next", "Gill Sans", "Trebuchet MS", ui-sans-serif, system-ui, sans-serif;
@@ -55,8 +65,8 @@
   }
 
   ::selection {
-    background: rgba(210, 180, 140, 0.55);
-    color: var(--payroll-ink);
+    background: rgba(215, 180, 136, 0.42);
+    color: #07070a;
   }
 }
 
@@ -81,7 +91,7 @@
     font-weight: 700;
     letter-spacing: 0.16em;
     text-transform: uppercase;
-    color: var(--payroll-bronze);
+    color: #8c7357;
   }
 
   .number-display {
@@ -91,15 +101,15 @@
 
   .payroll-glass {
     border: 1px solid var(--border-color);
-    background: linear-gradient(145deg, rgba(255, 250, 243, 0.86), rgba(255, 255, 255, 0.56));
-    box-shadow: var(--card-shadow);
-    backdrop-filter: blur(20px);
+    background: linear-gradient(180deg, rgba(9, 8, 6, 0.99), rgba(5, 4, 4, 0.99));
+    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.52), 0 1px 0 rgba(255, 255, 255, 0.02) inset;
+    backdrop-filter: blur(12px);
   }
 
   .payroll-panel {
     border: 1px solid var(--border-color);
-    background: rgba(255, 250, 243, 0.72);
-    box-shadow: 0 16px 48px rgba(62, 49, 40, 0.08);
-    backdrop-filter: blur(16px);
+    background: linear-gradient(180deg, rgba(9, 8, 6, 0.99), rgba(5, 4, 4, 0.99));
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.26);
+    backdrop-filter: blur(10px);
   }
 }

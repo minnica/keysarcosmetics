@@ -51,8 +51,8 @@ const config: Config = {
           foreground: 'var(--text-primary)',
         },
         destructive: {
-          DEFAULT: '#ef4444',
-          foreground: '#ffffff',
+          DEFAULT: '#7A2E46',
+          foreground: '#F0D0C8',
         },
         border: 'var(--border-color)',
         input: 'var(--border-color)',
@@ -74,7 +74,7 @@ const config: Config = {
       },
       boxShadow: {
         brand: 'var(--card-shadow)',
-        'brand-md': '0 4px 16px rgba(195, 165, 131, 0.20)',
+        'brand-md': '0 4px 16px rgba(140, 111, 90, 0.20)',
       },
       borderRadius: {
         brand: '10px',

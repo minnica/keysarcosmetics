@@ -43,8 +43,8 @@ export default function DesgloseSucursalPage() {
           {branchBreakdown.map((branch) => (
             <div key={branch.branch} className="grid gap-2 md:grid-cols-[12rem_1fr_7rem] md:items-center">
               <p className="text-sm font-semibold">{branch.branch}</p>
-              <div className="h-4 overflow-hidden rounded-full bg-[#ead9c4]">
-                <div className="h-full rounded-full bg-gradient-to-r from-[#a87949] to-[#6f8f78]" style={{ width: `${branch.payrollWeight * 100}%` }} />
+              <div className="h-4 overflow-hidden rounded-full bg-[#080706]">
+                <div className="h-full rounded-full bg-gradient-to-r from-[#d7b488] via-[#c5a785] to-[#9c846a]" style={{ width: `${branch.payrollWeight * 100}%` }} />
               </div>
               <p className="number-display text-right font-black">{formatCurrency(branch.totalCost)}</p>
             </div>

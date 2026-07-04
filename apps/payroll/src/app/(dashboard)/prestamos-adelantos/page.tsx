@@ -35,7 +35,7 @@ export default function PrestamosAdelantosPage() {
               Flujo mock para programar descuentos por periodo y conservar casos pagados, pendientes o perdidos.
             </p>
           </div>
-          <Button className="cursor-pointer rounded-full bg-[#342b25] text-[#fffaf3] hover:bg-[#4b3d35]" onClick={() => toast.info('Solicitud mock abierta.')}>
+          <Button className="cursor-pointer rounded-full bg-[#d7b488] text-[#050404] hover:bg-[#e7c89a]" onClick={() => toast.info('Solicitud mock abierta.')}>
             Nueva solicitud
           </Button>
         </div>

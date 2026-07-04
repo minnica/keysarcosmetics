@@ -31,7 +31,7 @@ export default function DashboardPage() {
       header: 'Empleado',
       cell: ({ row }) => (
         <div>
-          <p className="font-semibold text-[color:var(--payroll-ink)]">{row.original.employeeName}</p>
+          <p className="font-semibold text-[color:var(--payroll-ivory)]">{row.original.employeeName}</p>
           <p className="text-xs text-[color:var(--text-muted)]">{row.original.position} / {row.original.branch}</p>
         </div>
       ),
@@ -76,8 +76,8 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6">
       <section className="payroll-glass relative overflow-hidden rounded-[2.4rem] p-6 md:p-8">
-        <div className="absolute right-[-7rem] top-[-9rem] h-72 w-72 rounded-full bg-[#d8a99b]/30 blur-3xl" />
-        <div className="absolute bottom-[-8rem] left-[35%] h-56 w-56 rounded-full bg-[#6f8f78]/20 blur-3xl" />
+        <div className="absolute right-[-7rem] top-[-9rem] h-72 w-72 rounded-full bg-[#d7b488]/18 blur-3xl" />
+        <div className="absolute bottom-[-8rem] left-[35%] h-56 w-56 rounded-full bg-[#9c846a]/14 blur-3xl" />
         <div className="relative grid gap-6 lg:grid-cols-[1fr_24rem] lg:items-end">
           <div>
             <p className="label-caps">CORRIDA DE NOMINA</p>
@@ -86,13 +86,13 @@ export default function DashboardPage() {
               Demo de la corrida quincenal con ventas, esquemas, bonos, prestamos y recibos. Los datos son mock y sirven para validar la funcionalidad con cliente.
             </p>
           </div>
-          <Card className="rounded-[2rem] border border-[#d2b48c]/25 bg-[#342b25] text-[#fffaf3]">
+          <Card className="rounded-[2rem] border border-[#2c241c] bg-[#080706] text-[#d9d3ca]">
             <CardContent className="p-5">
-              <p className="text-xs uppercase tracking-[0.2em] text-[#d2b48c]">Periodo activo</p>
+              <p className="text-xs uppercase tracking-[0.2em] text-[#8c7357]">Periodo activo</p>
               <p className="mt-3 text-2xl font-black">{formatDate(currentRun.from)} - {formatDate(currentRun.to)}</p>
               <div className="mt-4 flex items-center justify-between gap-3">
                 <StatusBadge status={currentRun.status} />
-                <span className="text-sm text-[#ead9c4]">Pago: {formatDate(currentRun.payDate)}</span>
+                <span className="text-sm text-[#655746]">Pago: {formatDate(currentRun.payDate)}</span>
               </div>
             </CardContent>
           </Card>
@@ -112,7 +112,7 @@ export default function DashboardPage() {
         description="El usuario puede cambiar periodo y modo de calculo para validar la experiencia. En integracion real esto recalculara desde backend y guardara snapshot."
         action={(
           <Button
-            className="cursor-pointer rounded-full bg-[#342b25] px-5 text-[#fffaf3] hover:bg-[#4b3d35]"
+            className="cursor-pointer rounded-full bg-[#d7b488] px-5 text-[#050404] hover:bg-[#e7c89a]"
             onClick={() => toast.success('Corrida mock recalculada. En backend se guardaria snapshot.')}
           >
             Recalcular demo
@@ -122,7 +122,7 @@ export default function DashboardPage() {
         <div className="grid gap-4 lg:grid-cols-[1fr_16rem]">
           <DateRangePicker value={range} onChange={setRange} fromLabel="Desde" toLabel="Hasta" />
           <Select value={mode} onValueChange={(value) => setMode(value as typeof mode)}>
-            <SelectTrigger className="h-9 rounded-full bg-[#fffaf3]/80">
+            <SelectTrigger className="h-9 rounded-full bg-[#080706]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

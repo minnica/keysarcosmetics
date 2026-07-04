@@ -108,7 +108,7 @@ export default function MovimientosPage() {
           </div>
           <Dialog>
             <DialogTrigger asChild>
-              <Button className="cursor-pointer rounded-full bg-[#342b25] px-5 text-[#fffaf3] hover:bg-[#4b3d35]">Nuevo movimiento</Button>
+              <Button className="cursor-pointer rounded-full bg-[#d7b488] px-5 text-[#050404] hover:bg-[#e7c89a]">Nuevo movimiento</Button>
             </DialogTrigger>
             <DialogContent className="max-w-2xl rounded-[2rem]">
               <DialogHeader>
@@ -143,7 +143,7 @@ export default function MovimientosPage() {
                   </Select>
                 </div>
                 {(movementKind === 'PER_DIEM' || movementKind === 'SUPPLIES') ? (
-                  <div className="md:col-span-2 rounded-2xl border border-dashed border-[#a87949]/40 bg-[#d2b48c]/10 p-4 text-sm text-[color:var(--text-muted)]">
+                  <div className="md:col-span-2 rounded-2xl border border-dashed border-[#2c241c] bg-[#080706] p-4 text-sm text-[color:var(--text-muted)]">
                     Este tipo solicitara comprobante/foto en la version conectada.
                   </div>
                 ) : null}
@@ -154,7 +154,7 @@ export default function MovimientosPage() {
               </div>
               <AlertDialog>
                 <AlertDialogTrigger asChild>
-                  <Button className="mt-2 cursor-pointer rounded-full bg-[#a87949] text-[#fffaf3] hover:bg-[#8f6238]">Guardar movimiento mock</Button>
+                  <Button className="mt-2 cursor-pointer rounded-full bg-[#5d402f] text-[#f0d0c8] hover:bg-[#9c846a]">Guardar movimiento mock</Button>
                 </AlertDialogTrigger>
                 <AlertDialogContent>
                   <AlertDialogHeader>

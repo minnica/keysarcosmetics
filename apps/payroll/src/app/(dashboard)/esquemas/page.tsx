@@ -50,7 +50,7 @@ export default function EsquemasPage() {
               Mock de esquemas con vigencia para evitar que cambios futuros alteren corridas ya calculadas.
             </p>
           </div>
-          <Button className="cursor-pointer rounded-full bg-[#342b25] text-[#fffaf3] hover:bg-[#4b3d35]" onClick={() => toast.info('En demo no se crean esquemas reales.')}>
+          <Button className="cursor-pointer rounded-full bg-[#d7b488] text-[#050404] hover:bg-[#e7c89a]" onClick={() => toast.info('En demo no se crean esquemas reales.')}>
             Nuevo esquema
           </Button>
         </div>
@@ -71,11 +71,11 @@ export default function EsquemasPage() {
           <SectionCard key={scheme.id} eyebrow={scheme.role} title={scheme.name} description={scheme.bonusRule}>
             <div className="space-y-3">
               {scheme.tiers.map((tier, index) => (
-                <div key={`${scheme.id}-${index}`} className="grid grid-cols-[1fr_auto] items-center gap-4 rounded-2xl bg-[#fffaf3]/60 p-3">
+                <div key={`${scheme.id}-${index}`} className="grid grid-cols-[1fr_auto] items-center gap-4 rounded-2xl border border-[#2c241c] bg-[#080706] p-3">
                   <div>
                     <p className="text-sm font-semibold">{formatCurrency(tier.from)} a {formatCurrency(tier.to)}</p>
-                    <div className="mt-2 h-2 overflow-hidden rounded-full bg-[#ead9c4]">
-                      <div className="h-full rounded-full bg-[#a87949]" style={{ width: `${Math.min(100, tier.rate * 260)}%` }} />
+                    <div className="mt-2 h-2 overflow-hidden rounded-full bg-[#080706]">
+                      <div className="h-full rounded-full bg-[#d7b488]" style={{ width: `${Math.min(100, tier.rate * 260)}%` }} />
                     </div>
                   </div>
                   <p className="number-display text-xl font-black">{formatPercent(tier.rate)}</p>

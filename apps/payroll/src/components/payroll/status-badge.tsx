@@ -16,16 +16,16 @@ const STATUS_LABELS: Record<Status, string> = {
 }
 
 const STATUS_CLASSES: Record<Status, string> = {
-  DRAFT: 'border-stone-300 bg-stone-100 text-stone-700',
-  CALCULATED: 'border-[#6e9aa7]/30 bg-[#6e9aa7]/15 text-[#315966]',
-  APPROVED: 'border-[#6f8f78]/30 bg-[#6f8f78]/15 text-[#3d6848]',
-  PAID: 'border-[#a87949]/30 bg-[#d2b48c]/25 text-[#7a4c25]',
-  PENDING: 'border-[#d2b48c]/40 bg-[#d2b48c]/20 text-[#7a4c25]',
-  REJECTED: 'border-[#b45f4d]/30 bg-[#b45f4d]/15 text-[#843b30]',
-  LOST: 'border-[#342b25]/20 bg-[#342b25]/10 text-[#342b25]',
-  GENERATED: 'border-stone-300 bg-stone-100 text-stone-700',
-  SENT: 'border-[#6e9aa7]/30 bg-[#6e9aa7]/15 text-[#315966]',
-  CONFIRMED: 'border-[#6f8f78]/30 bg-[#6f8f78]/15 text-[#3d6848]',
+  DRAFT: 'border-[#2c241c] bg-[#0e0d0c] text-[#d9d3ca]',
+  CALCULATED: 'border-[#9c846a]/30 bg-[#9c846a]/12 text-[#e7dbc8]',
+  APPROVED: 'border-[#b39671]/30 bg-[#b39671]/12 text-[#f0e1cf]',
+  PAID: 'border-[#d7b488]/30 bg-[#d7b488]/12 text-[#f2dfc2]',
+  PENDING: 'border-[#c5a785]/32 bg-[#c5a785]/12 text-[#efd8cf]',
+  REJECTED: 'border-[#5d402f]/30 bg-[#5d402f]/12 text-[#e6d8cc]',
+  LOST: 'border-[#2c241c]/34 bg-[#080706]/90 text-[#d9d3ca]',
+  GENERATED: 'border-[#2c241c] bg-[#0e0d0c] text-[#d9d3ca]',
+  SENT: 'border-[#9c846a]/30 bg-[#9c846a]/12 text-[#e7dbc8]',
+  CONFIRMED: 'border-[#b39671]/30 bg-[#b39671]/12 text-[#f0e1cf]',
 }
 
 export function StatusBadge({ status }: { status: Status }) {
