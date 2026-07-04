@@ -1,10 +1,10 @@
-// Layout raíz de la aplicación payroll
 import type { Metadata } from 'next'
+import { Toaster } from '@cosmetics/ui'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'Cosmetics — Payroll',
-  description: 'Plataforma de cosméticos',
+  title: 'Keysar Cosmetics — Payroll',
+  description: 'Demo frontend de administracion de nomina',
 }
 
 export default function RootLayout({
@@ -14,7 +14,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="es">
-      <body>{children}</body>
+      <body>
+        {children}
+        <Toaster position="bottom-center" />
+      </body>
     </html>
   )
 }

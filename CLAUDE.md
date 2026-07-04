@@ -218,6 +218,279 @@ Datos:
 
 ---
 
+## Contexto futuro: módulo Payroll desde `nomina.xlsx`
+
+Archivo de referencia analizado: `nomina.xlsx`.
+Cada hoja del Excel describe procesos actuales de nómina que hoy se resuelven con archivos de Excel. No debe copiarse literalmente el formato visual ni las fórmulas rotas/externas (`#REF!`, referencias tipo `[1]!Tabla...`); debe modelarse el proceso en el sistema.
+
+### Decisión arquitectónica recomendada
+
+Implementar nómina en `apps/payroll`, no dentro de `apps/envelope`.
+
+Razones:
+- `apps/payroll` ya existe como app interna en puerto `3002`; actualmente tiene una demo frontend con mocks para validación de cliente, mientras `backend/api/src/routes/payroll.routes.ts` sigue pendiente de implementar.
+- `envelope` ya tiene una responsabilidad clara: captura/control de ventas por sucursal, sobres, empleados, catálogos y reportes de ventas.
+- Payroll introduce datos más sensibles y reglas diferentes: préstamos, adelantos, recibos, sueldos, ajustes, aprobaciones, cálculos históricos y pagos.
+- Payroll debe reutilizar fuentes de `envelope` (`Empleado`, `Sucursal`, `Venta`, `VentaDetalle`, `Bank`, `Position`), pero no vivir visualmente ni conceptualmente dentro del flujo de sobre.
+- Separar apps evita que el sidebar, permisos y reportes de `envelope` crezcan demasiado y mezclen operación diaria de ventas con administración de nómina.
+
+Modelo recomendado:
+- Frontend: implementar pantallas en `apps/payroll`.
+- Backend: implementar endpoints nuevos en `/api/payroll/*` dentro de `backend/api/src/routes/payroll.routes.ts`.
+- Base de datos: agregar modelos Prisma nuevos para nómina, manteniendo relación con modelos existentes.
+- Cálculos de nómina: hacerlos en backend y guardar snapshots por corrida; no depender solo de cálculos en cliente.
+- UI: reutilizar `@cosmetics/ui`, `DataTable`, `DatePicker`/`DateRangePicker`, `AlertDialog`, `toast` y reglas visuales existentes.
+
+### Estado actual de `apps/payroll` demo frontend
+
+Implementado solo frontend con datos mock locales. No toca backend, Prisma ni base de datos.
+
+Archivos principales:
+- `apps/payroll/src/lib/mock-data.ts` — fixtures mock de empleados, corridas, movimientos, esquemas, préstamos, desglose por sucursal y recibos.
+- `apps/payroll/src/lib/format.ts` — helpers de moneda, porcentaje, fecha y sumatorias.
+- `apps/payroll/src/components/payroll/payroll-shell.tsx` — shell/sidebar responsive de Payroll.
+- `apps/payroll/src/components/payroll/metric-card.tsx` — tarjetas KPI.
+- `apps/payroll/src/components/payroll/section-card.tsx` — contenedor estándar de secciones.
+- `apps/payroll/src/components/payroll/status-badge.tsx` — badges de estados mock.
+- `apps/payroll/src/app/globals.css` — diseño visual premium/glass adaptado a paleta Keysar, independiente de `envelope`.
+
+Pantallas mock implementadas:
+- `/` — Corridas de nómina: resumen tipo `PANTALLA SUMARY`, KPIs, selector de rango, modo con IVA/sin IVA y tabla por empleado.
+- `/movimientos` — Bonos, ajustes, multas, viáticos e insumos: tabla, formulario mock en modal, división entre personas, confirmación y aviso de adjuntos.
+- `/esquemas` — Esquemas de comisión: listado, rangos `de/hasta/tasa`, flat %, vigencia y visualización de tiers.
+- `/prestamos-adelantos` — Amortización: préstamos, adelantos, pagos, saldo y estatus.
+- `/reportes/desglose-sucursal` — Costo de nómina por punto de venta: tabla y barras de distribución.
+- `/recibos` — Recibos por empleado: estatus generado/enviado/confirmado y acción mock de visualización/envío.
+- `/login` — Login visual mock sin autenticación real.
+
+Limitaciones actuales de la demo:
+- No persiste información.
+- No consume API.
+- No autentica ni valida permisos reales.
+- No sube archivos reales.
+- No genera PDF/Excel reales.
+- No guarda snapshots reales de corridas.
+- Los movimientos/formularios disparan `toast` y diálogos de confirmación solo para simular flujo.
+
+### Datos existentes que Payroll debe reutilizar
+
+| Dato | Estado actual | Fuente |
+|---|---|---|
+| Empleados activos/inactivos | Existe | `Empleado.activo` |
+| Nombre completo | Existe | `Empleado.nombreCompleto` |
+| Banco | Existe | `Empleado.bankId` / `Bank` |
+| Cuenta bancaria | Existe | `Empleado.numeroCuenta` |
+| Puesto | Existe | `Empleado.positionId` / `Position` |
+| Sueldo base | Existe | `Empleado.sueldo` |
+| Teléfono | Existe | `Empleado.numeroTelefono` |
+| Fecha nacimiento | Existe | `Empleado.fechaNacimiento` |
+| Meta individual | Existe | `Empleado.metaIndividual` |
+| Sucursales | Existe | `Sucursal` |
+| Ventas por fecha/sucursal/vendedor | Existe | `Venta` + `VentaDetalle` |
+| Métodos de pago | Existe | `MetodoPago` |
+
+Nota importante:
+- En Prisma, `Empleado` no tiene `sucursalId`; la sucursal se obtiene desde ventas o desde la cuenta `Usuario.sucursalId` cuando aplique.
+- `packages/types/src/index.ts` actualmente expone `Empleado.sucursalId`, pero el schema real no lo tiene. No asumir "sucursal base del empleado" hasta agregarla formalmente o definir una regla de derivación.
+
+### Datos faltantes para Payroll
+
+| Proceso | Datos/modelos faltantes |
+|---|---|
+| Bonos, multas y ajustes | Tipos de movimiento, monto, estatus, aprobaciones, notas, adjuntos, división entre empleados, flag comisionable/no comisionable |
+| Esquemas de comisión | Esquemas, rangos `de/hasta/tasa`, flat %, vigencia histórica, asignación por empleado |
+| Corrida de nómina | Periodo, día de pago, modo con IVA/sin IVA, líneas calculadas, snapshots, estado borrador/aprobado/pagado |
+| IVA / sin IVA | Configuración de IVA y modo de cálculo por corrida |
+| Préstamos / adelantos | Solicitud, calendario de pagos, saldo, estatus pendiente/pagado/perdido |
+| Recibos | Generación, PDF, envío, confirmación del empleado, historial |
+| Desglose por sucursal | Reglas de asignación de costo por punto de venta |
+| Retenciones | Modelo de deducciones/retenciones si se usarán realmente |
+| Kiosco | Definición de comisión kiosco y porcentaje si sigue vigente |
+
+### Análisis por hoja de `nomina.xlsx`
+
+#### `pantalla de bonos`
+
+Convertir en una pantalla de **Movimientos de nómina**, no solo "Bonos".
+
+Debe cubrir:
+- Bonos positivos.
+- Ajustes positivos.
+- Ajustes negativos.
+- Multas.
+- Viáticos.
+- Insumos.
+- Bono personal.
+- Movimiento compartido entre 2 a 5 personas.
+- Evidencia/adjunto para viáticos e insumos.
+- Estatus: pendiente, aprobado, rechazado.
+- Confirmación antes de guardar.
+
+No crear una page separada solo para catálogo de bonos al inicio. Puede vivir como configuración/modal/tab dentro de Movimientos de nómina.
+
+#### `pantalla de esquemas`
+
+Convertir en una pantalla propia de **Esquemas de comisión**.
+
+Debe cubrir:
+- Listado de esquemas.
+- Rangos `de / hasta / tasa`.
+- Flat %.
+- Asignación de esquema a empleado.
+- Vigencia desde/hasta.
+- Solo empleados activos en selectores.
+- Historial: cambiar un esquema no debe recalcular nóminas pasadas.
+
+Punto crítico: el Excel indica que el esquema puede cambiar, incluso de rango, con autorización previa, y que este cambio no debe afectar registros anteriores. Esto exige snapshots en corridas o vigencias históricas por esquema/asignación.
+
+#### `PANTALLA SUMARY`
+
+Convertir en la pantalla principal de **Corridas de nómina**.
+
+Debe generar resumen por periodo:
+- Desde / hasta.
+- Día de pago.
+- Botón/modo para calcular con IVA o sin IVA.
+- Ventas con IVA desde `Venta`.
+- Ventas sin IVA calculadas.
+- Esquema aplicado.
+- Porcentaje individual.
+- Comisión individual.
+- Bonos.
+- Multas.
+- Sueldo base.
+- Préstamos.
+- Pago de préstamo.
+- Ajustes.
+- Viáticos.
+- Total pago.
+
+Esta pantalla no debe ser captura manual libre. Debe calcularse desde fuentes del sistema, con ajustes controlados y auditables.
+
+#### `payroll breakdown`
+
+No modelarlo como CRUD. Usarlo como reporte o pestaña dentro de corrida: **Desglose por punto de venta**.
+
+Debe cubrir:
+- Costo de nómina por sucursal.
+- Bonos por sucursal.
+- Ventas por sucursal.
+- Distribución de costos.
+- Exportación PDF/Excel si se requiere operación recurrente.
+
+Puede ser page separada bajo reportes si el usuario lo consulta con frecuencia.
+
+#### `panatalla prestamos-adelantos`
+
+Convertir en pantalla propia de **Préstamos y adelantos**.
+
+Debe cubrir:
+- Fecha de solicitud.
+- Naturaleza: préstamo o adelanto de nómina.
+- Empleado.
+- Monto solicitado.
+- Número de pagos.
+- Monto por pago.
+- Periodos programados.
+- Monto pagado.
+- Saldo.
+- Estatus: pendiente, pagado, perdido.
+- Mantener histórico aunque el empleado quede inactivo.
+
+#### `pantalla de recibos`
+
+Puede ser pantalla propia si se enviarán/confirmarán recibos por WhatsApp. Si el MVP es menor, puede iniciar como acción dentro de Corridas de nómina.
+
+Debe cubrir:
+- Recibo por empleado.
+- Datos provenientes de la corrida.
+- Campos editables solo por administrador.
+- Exportar PDF.
+- Enviar por WhatsApp o preparar mensaje.
+- Estatus: generado, enviado, confirmado.
+
+### Pages recomendadas para `apps/payroll`
+
+Recomendación completa: 6 nuevas pages.
+
+| Page | Ruta sugerida | Fuente Excel |
+|---|---|---|
+| Corridas de nómina | `/` o `/corridas` | `PANTALLA SUMARY` |
+| Movimientos de nómina | `/movimientos` | `pantalla de bonos` |
+| Esquemas de comisión | `/esquemas` | `pantalla de esquemas` |
+| Préstamos y adelantos | `/prestamos-adelantos` | `panatalla prestamos-adelantos` |
+| Desglose por sucursal | `/reportes/desglose-sucursal` | `payroll breakdown` |
+| Recibos | `/recibos` | `pantalla de recibos` |
+
+No duplicar en `payroll` estas pantallas ya existentes en `envelope`:
+- Empleados.
+- Sucursales.
+- Bancos.
+- Puestos.
+- Métodos de pago.
+
+Payroll debe consumir esos datos desde backend compartido o endpoints específicos de lectura para nómina.
+
+### Modelos Prisma sugeridos para Payroll
+
+Nombres orientativos; validar antes de migrar:
+- `PayrollRun` — corrida/periodo de nómina.
+- `PayrollRunLine` — snapshot calculado por empleado dentro de una corrida.
+- `CommissionScheme` — esquema de comisión.
+- `CommissionSchemeTier` — rangos `fromAmount`, `toAmount`, `rate`.
+- `EmployeeCommissionAssignment` — asignación de esquema a empleado con vigencia.
+- `PayrollMovement` — bonos, multas, ajustes, viáticos, insumos, etc.
+- `PayrollMovementType` — catálogo configurable de tipos de movimiento.
+- `LoanAdvance` — préstamo o adelanto.
+- `LoanAdvanceInstallment` — calendario y pagos de préstamo/adelanto.
+- `PayrollReceipt` — recibo generado/enviado/confirmado.
+- `PayrollAttachment` — evidencias para viáticos, insumos u otros movimientos.
+
+Estados sugeridos:
+- Corrida: `DRAFT`, `CALCULATED`, `APPROVED`, `PAID`, `CANCELED`.
+- Movimiento: `PENDING`, `APPROVED`, `REJECTED`.
+- Préstamo/adelanto: `PENDING`, `PAID`, `LOST`, `CANCELED`.
+- Recibo: `GENERATED`, `SENT`, `CONFIRMED`.
+
+### Fases sugeridas de implementación
+
+1. Base de `payroll`: layout, auth, sidebar, permisos y lectura de empleados/ventas.
+2. Esquemas de comisión con vigencia histórica.
+3. Movimientos de nómina: bonos, ajustes, multas, viáticos, insumos y adjuntos.
+4. Préstamos y adelantos con calendario de pagos.
+5. Corrida de nómina calculada y guardada como snapshot.
+6. Recibos, desglose por sucursal y exportaciones PDF/Excel.
+
+### Fases cubiertas por la demo frontend mock
+
+Cubierto parcialmente, solo a nivel UI/mock:
+- Fase 1: layout, shell/sidebar, login visual y navegación. Pendiente auth real, permisos y lectura real de empleados/ventas.
+- Fase 2: pantalla visual de esquemas, rangos y vigencias. Pendiente modelo real, asignación real por empleado y reglas históricas.
+- Fase 3: pantalla visual de movimientos, estatus, división y adjuntos simulados. Pendiente persistencia, aprobaciones reales y subida de archivos.
+- Fase 4: pantalla visual de préstamos/adelantos con saldo y amortización mock. Pendiente calendario real y conexión a corridas.
+- Fase 5: pantalla visual de corrida y tabla por empleado. Pendiente cálculo backend, snapshots y bloqueo/aprobación real.
+- Fase 6: pantalla visual de recibos y desglose por sucursal. Pendiente PDF/Excel, envío por WhatsApp y confirmación real.
+
+Pendiente para implementación real:
+- Diseñar y migrar modelos Prisma de Payroll.
+- Implementar `/api/payroll/*`.
+- Definir permisos específicos de Payroll.
+- Resolver discrepancia `Empleado.sucursalId` en types vs schema real.
+- Integrar lectura real de ventas, empleados, sucursales, bancos y puestos.
+- Implementar cálculo backend de comisiones, bonos, préstamos y totales.
+- Implementar snapshots inmutables por corrida.
+- Implementar carga de comprobantes.
+- Implementar exportaciones y recibos reales.
+- Implementar pruebas de cálculo para evitar regresiones de nómina.
+
+Reglas para futuras sesiones:
+- Antes de implementar Payroll, no mezclar rutas/pantallas nuevas dentro de `apps/envelope` salvo instrucción explícita.
+- No recalcular corridas históricas cuando cambien esquemas, puestos, sueldos o empleados; guardar snapshot en `PayrollRunLine`.
+- Toda migración de nómina debe ser aditiva y explicarse antes de ejecutarse.
+- No crear datos sensibles de nómina como mocks realistas si podrían confundirse con datos reales.
+
+---
+
 ## Backend / Prisma
 
 - Express + Prisma, PostgreSQL en Supabase.

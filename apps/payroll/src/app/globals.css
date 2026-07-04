@@ -1,3 +1,105 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  :root {
+    --payroll-ivory: #f6f0e7;
+    --payroll-porcelain: #fffaf3;
+    --payroll-champagne: #d2b48c;
+    --payroll-bronze: #a87949;
+    --payroll-ink: #342b25;
+    --payroll-muted: #7d7067;
+    --payroll-sage: #6f8f78;
+    --payroll-rose: #d8a99b;
+    --payroll-clay: #b45f4d;
+    --payroll-blue: #6e9aa7;
+    --bg-primary: var(--payroll-ivory);
+    --bg-card: rgba(255, 250, 243, 0.86);
+    --bg-sidebar: rgba(255, 250, 243, 0.94);
+    --text-primary: var(--payroll-ink);
+    --text-muted: var(--payroll-muted);
+    --border-color: rgba(168, 121, 73, 0.22);
+    --accent: var(--payroll-bronze);
+    --accent-hover: rgba(210, 180, 140, 0.28);
+    --sidebar-active-bg: var(--payroll-bronze);
+    --sidebar-active-text: #fffaf3;
+    --table-header-bg: #a87949;
+    --table-header-text: #fffaf3;
+    --table-row-alt: rgba(255, 250, 243, 0.58);
+    --input-bg: rgba(255, 250, 243, 0.82);
+    --input-disabled-bg: rgba(246, 240, 231, 0.72);
+    --card-shadow: 0 24px 80px rgba(62, 49, 40, 0.12), 0 1px 0 rgba(255, 255, 255, 0.7) inset;
+  }
+
+  html {
+    min-height: 100%;
+    background:
+      radial-gradient(circle at 12% 8%, rgba(216, 169, 155, 0.34), transparent 34rem),
+      radial-gradient(circle at 82% 0%, rgba(111, 143, 120, 0.24), transparent 30rem),
+      linear-gradient(135deg, #f7efe3 0%, #f3eadf 48%, #ead9c4 100%);
+    color: var(--text-primary);
+  }
+
+  body {
+    min-height: 100vh;
+    overflow-x: hidden;
+    background:
+      linear-gradient(90deg, rgba(255, 250, 243, 0.34) 1px, transparent 1px),
+      linear-gradient(180deg, rgba(255, 250, 243, 0.34) 1px, transparent 1px);
+    background-size: 44px 44px;
+    color: var(--text-primary);
+    font-family: "Avenir Next", "Gill Sans", "Trebuchet MS", ui-sans-serif, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection {
+    background: rgba(210, 180, 140, 0.55);
+    color: var(--payroll-ink);
+  }
+}
+
+@layer components {
+  .page-title {
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: clamp(2.1rem, 4vw, 4.2rem);
+    font-weight: 400;
+    letter-spacing: -0.055em;
+    line-height: 0.94;
+  }
+
+  .section-heading {
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+
+  .label-caps {
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--payroll-bronze);
+  }
+
+  .number-display {
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.035em;
+  }
+
+  .payroll-glass {
+    border: 1px solid var(--border-color);
+    background: linear-gradient(145deg, rgba(255, 250, 243, 0.86), rgba(255, 255, 255, 0.56));
+    box-shadow: var(--card-shadow);
+    backdrop-filter: blur(20px);
+  }
+
+  .payroll-panel {
+    border: 1px solid var(--border-color);
+    background: rgba(255, 250, 243, 0.72);
+    box-shadow: 0 16px 48px rgba(62, 49, 40, 0.08);
+    backdrop-filter: blur(16px);
+  }
+}
