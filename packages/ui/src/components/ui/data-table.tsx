@@ -127,7 +127,7 @@ export function DataTable<TData, TValue>({
         className="overflow-x-auto rounded-xl border border-[color:var(--border-color)] bg-[color:var(--bg-card)]"
       >
         <Table>
-          <TableHeader className="[&_tr]:border-[#2c241c]">
+          <TableHeader className="[&_tr]:border-[color:var(--border-color)]">
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id}>
                 {headerGroup.headers.map((header) => {
@@ -137,7 +137,7 @@ export function DataTable<TData, TValue>({
                   return (
                     <TableHead
                       key={header.id}
-                      className={`${headAlignClass} uppercase text-[0.72rem] tracking-[0.14em] text-[#8c7357]`}
+                      className={`${headAlignClass} uppercase text-[0.72rem] tracking-[0.14em] text-[color:var(--table-header-label)]`}
                     >
                       {header.isPlaceholder ? null : canSort ? (
                         <button
@@ -168,12 +168,12 @@ export function DataTable<TData, TValue>({
                 <TableRow
                   key={row.id}
                   data-state={row.getIsSelected() && 'selected'}
-                  className="border-[#2c241c] hover:bg-[rgba(255,255,255,0.02)] data-[state=selected]:bg-[rgba(255,255,255,0.03)]"
+                  className="border-[color:var(--border-color)] hover:bg-[color:var(--table-row-hover)] data-[state=selected]:bg-[color:var(--table-row-selected)]"
                 >
                   {row.getVisibleCells().map((cell) => (
                     <TableCell
                       key={cell.id}
-                      className={`border-[#2c241c] text-[0.88rem] text-[#d9d3ca] ${(cell.column.columnDef.meta as ColumnMeta | undefined)?.align === 'right' ? 'text-right' : (cell.column.columnDef.meta as ColumnMeta | undefined)?.align === 'center' ? 'text-center' : 'text-left'}`}
+                      className={`border-[color:var(--border-color)] text-[0.88rem] text-[color:var(--table-body-text)] ${(cell.column.columnDef.meta as ColumnMeta | undefined)?.align === 'right' ? 'text-right' : (cell.column.columnDef.meta as ColumnMeta | undefined)?.align === 'center' ? 'text-center' : 'text-left'}`}
                     >
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </TableCell>
@@ -184,7 +184,7 @@ export function DataTable<TData, TValue>({
               <TableRow>
                 <TableCell
                   colSpan={columns.length}
-                  className="h-24 text-center text-[0.9rem] text-[#655746]"
+                  className="h-24 text-center text-[0.9rem]"
                   style={{ color: 'var(--text-muted)' }}
                 >
                   {emptyMessage.toUpperCase()}
