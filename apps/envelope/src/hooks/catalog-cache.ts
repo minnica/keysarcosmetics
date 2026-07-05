@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react'
 type CatalogSnapshot<T> = {
   items: T[]
   loading: boolean
+  loaded: boolean
   error: string | null
 }
 
@@ -29,6 +30,7 @@ export function createCatalogStore<T>(
     return {
       items,
       loading: loading || (!loaded && error === null),
+      loaded,
       error,
     }
   }

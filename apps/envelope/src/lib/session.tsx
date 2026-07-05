@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import type { ScreenKey, UsuarioSession } from '@cosmetics/types'
 import { api } from '@/lib/api'
 import { getFirstAccessiblePath, getScreenConfigByPath } from './access'
+import { PageLoadingSkeleton } from '@/components/layout/PageLoadingSkeleton'
 
 export interface SessionUser extends UsuarioSession {
   sucursal?: { id: string; nombre: string } | null
@@ -117,11 +118,7 @@ export function SessionGate({ children }: { children: React.ReactNode }) {
   }, [firstAccessiblePath, isAccessManager, pathname, router, status, user])
 
   if (status === 'loading') {
-    return (
-      <div className="flex min-h-[40vh] items-center justify-center text-sm" style={{ color: 'var(--text-muted)' }}>
-        Cargando sesión...
-      </div>
-    )
+    return <PageLoadingSkeleton />
   }
 
   if (!user) {

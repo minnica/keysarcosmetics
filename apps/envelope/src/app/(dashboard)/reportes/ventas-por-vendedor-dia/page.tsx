@@ -26,6 +26,7 @@ import { api } from '@/lib/api'
 import { useI18n } from '@/lib/i18n'
 import { formatCurrency, formatDate, monthName } from '@/lib/utils'
 import { ReportExportButtons } from '@/components/reportes/ReportExportButtons'
+import { TableLoadingSkeleton } from '@/components/layout/DataLoadingSkeleton'
 import { exportReportToExcel, exportReportToPdf, type ExportColumn } from '@/lib/report-export'
 
 function monthDates(year: number, month: number): string[] {
@@ -423,10 +424,11 @@ export default function VentasPorVendedorDiaPage() {
         {t.common.monthlyPeriod}: {periodLabel}
       </div>
 
-      {loading && <p className="text-sm" style={{ color: 'var(--text-muted)' }}>{t.common.loadingData}</p>}
       {error && <p className="text-sm text-red-500">{error}</p>}
 
-      {!loading && !hasData ? (
+      {loading ? (
+        <TableLoadingSkeleton columns={8} rows={6} label={t.common.loadingData} />
+      ) : !hasData ? (
         <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
           {t.reports.noSalesSellerPeriod}
         </p>

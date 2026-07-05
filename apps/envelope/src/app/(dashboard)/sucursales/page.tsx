@@ -30,6 +30,8 @@ import {
 import type { ColumnDef } from '@cosmetics/ui'
 
 import { useSucursales } from '@/hooks'
+import { RefreshingDataIndicator } from '@/components/RefreshingDataIndicator'
+import { TableLoadingSkeleton } from '@/components/layout/DataLoadingSkeleton'
 import { useI18n } from '@/lib/i18n'
 import type { Sucursal } from '@/lib/mock-data'
 
@@ -37,10 +39,12 @@ const schema = z.object({ nombre: z.string().min(1, 'Requerido').max(60) })
 type FormData = z.infer<typeof schema>
 
 export default function SucursalesPage() {
-  const { sucursales, loading, error, add, update, remove } = useSucursales()
+  const { sucursales, loading, loaded, error, add, update, remove } = useSucursales()
   const { t, dataTableLabels } = useI18n()
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<Sucursal | null>(null)
+  const isInitialLoading = loading && !loaded
+  const isRefreshing = loading && loaded
 
   const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -132,9 +136,10 @@ export default function SucursalesPage() {
       </div>
 
       {error && <p className="text-sm text-red-500">{error}</p>}
+      {isRefreshing ? <RefreshingDataIndicator label={t.common.refreshingData} /> : null}
 
-      {loading ? (
-        <p className="text-sm" style={{ color: 'var(--text-muted)' }}>{t.catalogs.loadingBranches}</p>
+      {isInitialLoading ? (
+        <TableLoadingSkeleton columns={2} label={t.catalogs.loadingBranches} />
       ) : (
         <DataTable
           columns={columns}

@@ -17,6 +17,9 @@ export type { BadgeProps } from './components/ui/badge'
 // Fase 2D - Progress shadcn/ui canonico
 export { Progress } from './components/ui/progress'
 
+// Skeleton shadcn/ui canonico
+export { Skeleton } from './components/ui/skeleton'
+
 // Fase 2D - Wrapper con colores de marca Keysar
 export { ProgressKeysar } from './components/custom/progress-keysar'
 

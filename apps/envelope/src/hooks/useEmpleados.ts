@@ -8,6 +8,7 @@ import { createCatalogStore } from './catalog-cache'
 interface UseEmpleadosReturn {
   empleados: Empleado[]
   loading: boolean
+  loaded: boolean
   error: string | null
   refetch: () => Promise<void>
   add: (e: Omit<Empleado, 'id'>) => Promise<void>
@@ -52,7 +53,7 @@ const empleadosStore = createCatalogStore<Empleado>(
 )
 
 export function useEmpleados(): UseEmpleadosReturn {
-  const { items: empleados, loading, error, refetch } = empleadosStore.useStore()
+  const { items: empleados, loading, loaded, error, refetch } = empleadosStore.useStore()
 
   const add = useCallback(async (e: Omit<Empleado, 'id'>) => {
     await api.post('/api/envelope/empleados', e)
@@ -74,5 +75,5 @@ export function useEmpleados(): UseEmpleadosReturn {
     await refetch()
   }, [refetch])
 
-  return { empleados, loading, error, refetch, add, update, remove, toggleStatus }
+  return { empleados, loading, loaded, error, refetch, add, update, remove, toggleStatus }
 }

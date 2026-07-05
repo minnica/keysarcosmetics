@@ -8,6 +8,7 @@ import { createCatalogStore } from './catalog-cache'
 interface UsePositionsReturn {
   positions: Position[]
   loading: boolean
+  loaded: boolean
   error: string | null
   refetch: () => Promise<void>
   add: (nombre: string) => Promise<void>
@@ -24,7 +25,7 @@ const positionsStore = createCatalogStore<Position>(
 )
 
 export function usePositions(): UsePositionsReturn {
-  const { items: positions, loading, error, refetch } = positionsStore.useStore()
+  const { items: positions, loading, loaded, error, refetch } = positionsStore.useStore()
 
   const add = useCallback(async (nombre: string) => {
     await api.post('/api/envelope/positions', { nombre })
@@ -41,5 +42,5 @@ export function usePositions(): UsePositionsReturn {
     await refetch()
   }, [refetch])
 
-  return { positions, loading, error, refetch, add, update, remove }
+  return { positions, loading, loaded, error, refetch, add, update, remove }
 }

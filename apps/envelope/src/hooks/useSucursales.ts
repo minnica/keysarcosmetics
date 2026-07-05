@@ -8,6 +8,7 @@ import { createCatalogStore } from './catalog-cache'
 interface UseSucursalesReturn {
   sucursales: Sucursal[]
   loading: boolean
+  loaded: boolean
   error: string | null
   refetch: () => Promise<void>
   add: (nombre: string) => Promise<void>
@@ -24,7 +25,7 @@ const sucursalesStore = createCatalogStore<Sucursal>(
 )
 
 export function useSucursales(): UseSucursalesReturn {
-  const { items: sucursales, loading, error, refetch } = sucursalesStore.useStore()
+  const { items: sucursales, loading, loaded, error, refetch } = sucursalesStore.useStore()
 
   const add = useCallback(async (nombre: string) => {
     await api.post('/api/envelope/sucursales', { nombre })
@@ -41,5 +42,5 @@ export function useSucursales(): UseSucursalesReturn {
     await refetch()
   }, [refetch])
 
-  return { sucursales, loading, error, refetch, add, update, remove }
+  return { sucursales, loading, loaded, error, refetch, add, update, remove }
 }

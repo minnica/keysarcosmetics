@@ -7,6 +7,7 @@ import { api } from '@/lib/api'
 import { useI18n } from '@/lib/i18n'
 import { formatCurrency, todayISO } from '@/lib/utils'
 import { ReportExportButtons } from '@/components/reportes/ReportExportButtons'
+import { TableLoadingSkeleton } from '@/components/layout/DataLoadingSkeleton'
 import { exportReportToExcel, exportReportToPdf, type ExportColumn } from '@/lib/report-export'
 
 function firstDayOfMonth(): string {
@@ -134,10 +135,11 @@ export default function DetalleMetodoPagoPage() {
         <DateRangePicker value={range} onChange={setRange} fromLabel={t.common.from} toLabel={t.common.to} />
       </div>
 
-      {loading && <p className="text-sm" style={{ color: 'var(--text-muted)' }}>{t.common.loadingData}</p>}
       {error && <p className="text-sm text-red-500">{error}</p>}
 
-      {!loading && sucursalesConDatos.length === 0 ? (
+      {loading ? (
+        <TableLoadingSkeleton columns={3} rows={6} label={t.common.loadingData} />
+      ) : sucursalesConDatos.length === 0 ? (
         <p className="text-sm" style={{ color: 'var(--text-muted)' }}>{t.common.noDataSelectedPeriod}</p>
       ) : (
         <div className="overflow-x-auto">
