@@ -8,6 +8,7 @@ import { createCatalogStore } from './catalog-cache'
 interface UseBanksReturn {
   banks: Bank[]
   loading: boolean
+  loaded: boolean
   error: string | null
   refetch: () => Promise<void>
   add: (nombre: string) => Promise<void>
@@ -24,7 +25,7 @@ const banksStore = createCatalogStore<Bank>(
 )
 
 export function useBanks(): UseBanksReturn {
-  const { items: banks, loading, error, refetch } = banksStore.useStore()
+  const { items: banks, loading, loaded, error, refetch } = banksStore.useStore()
 
   const add = useCallback(async (nombre: string) => {
     await api.post('/api/envelope/banks', { nombre })
@@ -41,5 +42,5 @@ export function useBanks(): UseBanksReturn {
     await refetch()
   }, [refetch])
 
-  return { banks, loading, error, refetch, add, update, remove }
+  return { banks, loading, loaded, error, refetch, add, update, remove }
 }

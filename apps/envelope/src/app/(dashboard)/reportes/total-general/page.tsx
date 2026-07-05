@@ -8,6 +8,7 @@ import { useSucursales } from '@/hooks'
 import { useI18n } from '@/lib/i18n'
 import { formatCurrency, formatDate, todayISO } from '@/lib/utils'
 import { ReportExportButtons } from '@/components/reportes/ReportExportButtons'
+import { TableLoadingSkeleton } from '@/components/layout/DataLoadingSkeleton'
 import { exportReportToExcel, exportReportToPdf, type ExportColumn } from '@/lib/report-export'
 
 function firstDayOfMonth(): string {
@@ -153,10 +154,11 @@ export default function TotalGeneralPage() {
         <DateRangePicker value={range} onChange={setRange} fromLabel={t.common.from} toLabel={t.common.to} />
       </div>
 
-      {loading && <p className="text-sm" style={{ color: 'var(--text-muted)' }}>{t.common.loadingData}</p>}
       {error && <p className="text-sm text-red-500">{error}</p>}
 
-      {!loading && dias.length === 0 ? (
+      {loading ? (
+        <TableLoadingSkeleton columns={Math.max(3, sucursales.length + 2)} rows={6} label={t.common.loadingData} />
+      ) : dias.length === 0 ? (
         <p className="text-sm" style={{ color: 'var(--text-muted)' }}>{t.common.noSalesSelectedPeriod}</p>
       ) : (
         <div className="overflow-x-auto">

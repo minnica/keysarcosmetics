@@ -34,6 +34,8 @@ import {
 } from '@cosmetics/ui'
 import type { ColumnDef } from '@cosmetics/ui'
 import { useEmpleados, useBanks, usePositions } from '@/hooks'
+import { RefreshingDataIndicator } from '@/components/RefreshingDataIndicator'
+import { TableLoadingSkeleton } from '@/components/layout/DataLoadingSkeleton'
 import { useI18n } from '@/lib/i18n'
 import { useSession } from '@/lib/session'
 import { formatCurrency, formatDate } from '@/lib/utils'
@@ -65,7 +67,7 @@ type SalaryFilter = 'all' | 'no-record' | 'under-15k' | '15k-to-25k' | '25k-plus
 
 export default function EmpleadosPage() {
   const { user, canAccess } = useSession()
-  const { empleados, loading, error, add, update, remove, toggleStatus } = useEmpleados()
+  const { empleados, loading, loaded, error, add, update, remove, toggleStatus } = useEmpleados()
   const { banks, loading: banksLoading } = useBanks()
   const { positions, loading: positionsLoading } = usePositions()
   const { t, dataTableLabels } = useI18n()
@@ -85,6 +87,8 @@ export default function EmpleadosPage() {
   const [positionFilter, setPositionFilter] = useState('all')
   const [salaryFilter, setSalaryFilter] = useState<SalaryFilter>('all')
   const canViewSalary = user?.rol === 'SUPER_ADMIN' || canAccess('empleados/sueldo')
+  const isInitialLoading = loading && !loaded
+  const isRefreshing = loading && loaded
 
   const {
     register,
@@ -446,9 +450,10 @@ export default function EmpleadosPage() {
       </div>
 
       {error && <p className="text-sm text-red-500">{error}</p>}
+      {isRefreshing ? <RefreshingDataIndicator label={t.common.refreshingData} /> : null}
 
-      {loading ? (
-        <p className="text-sm" style={{ color: 'var(--text-muted)' }}>{t.employees.loadingEmployees}</p>
+      {isInitialLoading ? (
+        <TableLoadingSkeleton columns={6} rows={6} showFilters label={t.employees.loadingEmployees} />
       ) : (
         <div className="space-y-4">
           <div className="rounded-lg border p-4" style={{ borderColor: 'var(--border-color)' }}>

@@ -43,6 +43,7 @@ import { useAccessAdmin } from '@/hooks'
 import type { AccessPermission, AccessUser } from '@/hooks/useAccessAdmin'
 import { SCREEN_CONFIG } from '@/lib/access'
 import { useI18n } from '@/lib/i18n'
+import { AccessLoadingSkeleton } from '@/components/layout/DataLoadingSkeleton'
 
 const credentialsSchema = z.object({
   email: z.string().email(),
@@ -446,9 +447,7 @@ export default function AccessControlPage() {
       {error && <p className="text-sm text-red-500">{error}</p>}
 
       {loading ? (
-        <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-          {t.common.loadingData}
-        </p>
+        <AccessLoadingSkeleton />
       ) : (
         <div className="grid gap-6 xl:grid-cols-[1.2fr_0.95fr]">
           <Card>

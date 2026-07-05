@@ -28,6 +28,8 @@ import {
 } from '@cosmetics/ui'
 import type { ColumnDef } from '@cosmetics/ui'
 import { useBanks } from '@/hooks'
+import { RefreshingDataIndicator } from '@/components/RefreshingDataIndicator'
+import { TableLoadingSkeleton } from '@/components/layout/DataLoadingSkeleton'
 import { useI18n } from '@/lib/i18n'
 import type { Bank } from '@cosmetics/types'
 
@@ -37,10 +39,12 @@ const schema = z.object({
 type FormData = z.infer<typeof schema>
 
 export default function BancosPage() {
-  const { banks, loading, error, add, update, remove } = useBanks()
+  const { banks, loading, loaded, error, add, update, remove } = useBanks()
   const { t, dataTableLabels } = useI18n()
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<Bank | null>(null)
+  const isInitialLoading = loading && !loaded
+  const isRefreshing = loading && loaded
 
   const {
     register,
@@ -139,9 +143,10 @@ export default function BancosPage() {
       </div>
 
       {error && <p className="text-sm text-red-500">{error}</p>}
+      {isRefreshing ? <RefreshingDataIndicator label={t.common.refreshingData} /> : null}
 
-      {loading ? (
-        <p className="text-sm" style={{ color: 'var(--text-muted)' }}>{t.catalogs.loadingBanks}</p>
+      {isInitialLoading ? (
+        <TableLoadingSkeleton columns={2} label={t.catalogs.loadingBanks} />
       ) : (
         <DataTable
           columns={columns}

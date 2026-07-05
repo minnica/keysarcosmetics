@@ -22,6 +22,7 @@ import { Label } from "@cosmetics/ui";
 import { api } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 import { formatCurrency, formatDate, todayISO, monthName } from "@/lib/utils";
+import { DashboardLoadingSkeleton } from "@/components/layout/DataLoadingSkeleton";
 
 // Paleta de sucursales con colores complementarios de la marca
 const SUCURSAL_COLORS = ["#6fc9db", "#8bb09b", "#c3a583", "#648672"];
@@ -130,14 +131,7 @@ export default function DashboardPage() {
     v >= 1000 ? `$${(v / 1000).toFixed(0)}k` : `$${v}`;
 
   if (loading) {
-    return (
-      <div
-        className="flex items-center justify-center h-64 text-sm"
-        style={{ color: "var(--text-muted)" }}
-      >
-        {t.common.loadingData}
-      </div>
-    );
+    return <DashboardLoadingSkeleton />;
   }
 
   if (error) {

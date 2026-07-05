@@ -20,9 +20,11 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuSkeleton,
   SidebarRail,
   SidebarSeparator,
   SidebarTrigger,
+  Skeleton,
   useSidebar,
 } from '@cosmetics/ui'
 import { useI18n, type Locale } from '@/lib/i18n'
@@ -154,7 +156,7 @@ export function AppSidebar() {
   const router = useRouter()
   const { isMobile, setOpenMobile } = useSidebar()
   const { t } = useI18n()
-  const { canAccess, isAccessManager, logout } = useSession()
+  const { canAccess, isAccessManager, logout, status } = useSession()
 
   function handleNavClick() {
     setOpenMobile(false)
@@ -221,7 +223,9 @@ export function AppSidebar() {
 
       {/* Navegación */}
       <SidebarContent className="py-2">
-        {(['forms', 'reports', 'admin'] as const).map((section) => {
+        {status === 'loading' ? (
+          <SidebarLoadingNavigation />
+        ) : (['forms', 'reports', 'admin'] as const).map((section) => {
           const items = SCREEN_CONFIG.filter((item) => {
             if (item.section !== section) return false
             if (item.key === 'accesos') return isAccessManager
@@ -274,35 +278,91 @@ export function AppSidebar() {
 
       {/* Footer: preferencias + cerrar sesión + versión */}
       <SidebarFooter className="border-t p-2" style={{ borderColor: 'var(--border-color)' }}>
-        <div
-          className="space-y-0.5 pb-1.5 group-data-[collapsible=icon]:hidden"
-        >
-          <ThemeToggle />
-          <LanguageToggle />
-        </div>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              onClick={handleLogout}
-              tooltip={t.sidebar.logout}
-              className="justify-center cursor-pointer rounded-lg transition-colors hover:opacity-90"
-              style={{ backgroundColor: '#ecd1c8', color: '#1a1a1a' }}
+        {status === 'loading' ? (
+          <SidebarLoadingFooter />
+        ) : (
+          <>
+            <div
+              className="space-y-0.5 pb-1.5 group-data-[collapsible=icon]:hidden"
             >
-              <LogOut className="h-4 w-4 shrink-0" />
-              <span>{t.sidebar.logout}</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
-        <p
-          className="text-center text-[10px] uppercase tracking-wider pb-1 group-data-[collapsible=icon]:hidden"
-          style={{ color: 'var(--text-muted)' }}
-        >
-          Envelope v1.0
-        </p>
+              <ThemeToggle />
+              <LanguageToggle />
+            </div>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  onClick={handleLogout}
+                  tooltip={t.sidebar.logout}
+                  className="justify-center cursor-pointer rounded-lg transition-colors hover:opacity-90"
+                  style={{ backgroundColor: '#ecd1c8', color: '#1a1a1a' }}
+                >
+                  <LogOut className="h-4 w-4 shrink-0" />
+                  <span>{t.sidebar.logout}</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+            <p
+              className="text-center text-[10px] uppercase tracking-wider pb-1 group-data-[collapsible=icon]:hidden"
+              style={{ color: 'var(--text-muted)' }}
+            >
+              Envelope v1.0
+            </p>
+          </>
+        )}
       </SidebarFooter>
 
       {/* Rail — handle secundario para colapsar/expandir en desktop (complementa el trigger del header) */}
       <SidebarRail />
     </Sidebar>
+  )
+}
+
+function SidebarLoadingNavigation() {
+  return (
+    <>
+      {[
+        { labelWidth: 'w-16', items: 4 },
+        { labelWidth: 'w-20', items: 3 },
+        { labelWidth: 'w-14', items: 2 },
+      ].map((section, sectionIndex) => (
+        <SidebarGroup key={sectionIndex}>
+          <SidebarGroupLabel className="group-data-[collapsible=icon]:hidden">
+            <Skeleton className={`h-2.5 ${section.labelWidth} opacity-70`} />
+          </SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {Array.from({ length: section.items }).map((_, itemIndex) => (
+                <SidebarMenuItem key={itemIndex}>
+                  <SidebarMenuSkeleton showIcon />
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+      ))}
+    </>
+  )
+}
+
+function SidebarLoadingFooter() {
+  return (
+    <>
+      <div className="space-y-2 pb-1.5 group-data-[collapsible=icon]:hidden">
+        <div className="space-y-1 px-2">
+          <Skeleton className="h-2.5 w-12 opacity-70" />
+          <Skeleton className="h-8 w-full" />
+        </div>
+        <div className="space-y-1 px-2">
+          <Skeleton className="h-2.5 w-14 opacity-70" />
+          <Skeleton className="h-8 w-full" />
+        </div>
+      </div>
+      <SidebarMenu>
+        <SidebarMenuItem>
+          <SidebarMenuSkeleton showIcon className="h-9" />
+        </SidebarMenuItem>
+      </SidebarMenu>
+      <Skeleton className="mx-auto h-2.5 w-24 opacity-60 group-data-[collapsible=icon]:hidden" />
+    </>
   )
 }

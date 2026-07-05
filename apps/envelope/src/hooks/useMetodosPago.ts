@@ -8,6 +8,7 @@ import { createCatalogStore } from './catalog-cache'
 interface UseMetodosPagoReturn {
   metodosPago: MetodoPago[]
   loading: boolean
+  loaded: boolean
   error: string | null
   refetch: () => Promise<void>
   add: (nombre: string, tipo?: string) => Promise<void>
@@ -34,7 +35,7 @@ const metodosPagoStore = createCatalogStore<MetodoPago>(
 )
 
 export function useMetodosPago(): UseMetodosPagoReturn {
-  const { items: metodosPago, loading, error, refetch } = metodosPagoStore.useStore()
+  const { items: metodosPago, loading, loaded, error, refetch } = metodosPagoStore.useStore()
 
   const add = useCallback(async (nombre: string, tipo?: string) => {
     await api.post('/api/envelope/metodos-pago', {
@@ -54,5 +55,5 @@ export function useMetodosPago(): UseMetodosPagoReturn {
     await refetch()
   }, [refetch])
 
-  return { metodosPago, loading, error, refetch, add, update, remove }
+  return { metodosPago, loading, loaded, error, refetch, add, update, remove }
 }

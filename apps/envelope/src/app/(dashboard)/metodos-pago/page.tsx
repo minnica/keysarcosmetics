@@ -29,6 +29,8 @@ import {
 } from "@cosmetics/ui";
 import type { ColumnDef } from "@cosmetics/ui";
 import { useMetodosPago } from "@/hooks";
+import { RefreshingDataIndicator } from "@/components/RefreshingDataIndicator";
+import { TableLoadingSkeleton } from "@/components/layout/DataLoadingSkeleton";
 import { useI18n } from "@/lib/i18n";
 import type { MetodoPago } from "@/lib/mock-data";
 
@@ -38,10 +40,12 @@ const schema = z.object({
 type FormData = z.infer<typeof schema>;
 
 export default function MetodosPagoPage() {
-  const { metodosPago, loading, error, add, update, remove } = useMetodosPago();
+  const { metodosPago, loading, loaded, error, add, update, remove } = useMetodosPago();
   const { t, dataTableLabels } = useI18n();
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<MetodoPago | null>(null);
+  const isInitialLoading = loading && !loaded;
+  const isRefreshing = loading && loaded;
 
   const {
     register,
@@ -140,9 +144,10 @@ export default function MetodosPagoPage() {
       </div>
 
       {error && <p className="text-sm text-red-500">{error}</p>}
+      {isRefreshing ? <RefreshingDataIndicator label={t.common.refreshingData} /> : null}
 
-      {loading ? (
-        <p className="text-sm" style={{ color: 'var(--text-muted)' }}>{t.catalogs.loadingPaymentMethods}</p>
+      {isInitialLoading ? (
+        <TableLoadingSkeleton columns={2} label={t.catalogs.loadingPaymentMethods} />
       ) : (
         <DataTable
           columns={columns}
