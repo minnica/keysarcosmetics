@@ -20,8 +20,6 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@cosmetics/ui'
-import jsPDF from 'jspdf'
-import autoTable from 'jspdf-autotable'
 import { BarChart3, ChevronRight, DollarSign } from 'lucide-react'
 
 import { api } from '@/lib/api'
@@ -229,7 +227,11 @@ export default function VentasPorVendedorDiaPage() {
     total: grandTotal,
   }
 
-  function exportPdf() {
+  async function exportPdf() {
+    const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+      import('jspdf'),
+      import('jspdf-autotable'),
+    ])
     const doc = new jsPDF({
       orientation: 'landscape',
       unit: 'pt',
@@ -343,13 +345,13 @@ export default function VentasPorVendedorDiaPage() {
     doc.save(`ventas-vendedor-dia-${year}-${String(month).padStart(2, '0')}.pdf`)
   }
 
-  function handleExport(kind: 'pdf' | 'excel') {
+  async function handleExport(kind: 'pdf' | 'excel') {
     setExporting(kind)
     try {
       if (kind === 'pdf') {
-        exportPdf()
+        await exportPdf()
       } else {
-        exportReportToExcel({
+        await exportReportToExcel({
           title: t.reports.salesBySellerDayTitle,
           subtitle: `${t.common.monthlyPeriod} ${periodLabel}`,
           filename: `ventas-vendedor-dia-${year}-${String(month).padStart(2, '0')}`,

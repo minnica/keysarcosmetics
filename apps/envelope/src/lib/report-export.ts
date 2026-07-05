@@ -1,8 +1,7 @@
 'use client'
 
-import jsPDF from 'jspdf'
-import autoTable, { type UserOptions } from 'jspdf-autotable'
-import * as XLSX from 'xlsx'
+import type { CellObject } from 'xlsx'
+import type { UserOptions } from 'jspdf-autotable'
 
 export type ExportCellValue = string | number | null | undefined
 
@@ -64,7 +63,7 @@ function formatForDisplay<T>(column: ExportColumn<T>, value: ExportCellValue): s
 function toExcelCell<T>(
   column: ExportColumn<T>,
   value: ExportCellValue,
-): XLSX.CellObject {
+): CellObject {
   if (value === null || value === undefined || value === '') {
     return { t: 's', v: '—' }
   }
@@ -96,7 +95,8 @@ function toExcelCell<T>(
   return { t: 's', v: String(value) }
 }
 
-export function exportReportToExcel<T>(config: ReportExportConfig<T>): void {
+export async function exportReportToExcel<T>(config: ReportExportConfig<T>): Promise<void> {
+  const XLSX = await import('xlsx')
   const filename = `${sanitizeFilename(config.filename)}.xlsx`
   const workbook = XLSX.utils.book_new()
 
@@ -144,7 +144,11 @@ export function exportReportToExcel<T>(config: ReportExportConfig<T>): void {
   XLSX.writeFile(workbook, filename)
 }
 
-export function exportReportToPdf<T>(config: ReportExportConfig<T>): void {
+export async function exportReportToPdf<T>(config: ReportExportConfig<T>): Promise<void> {
+  const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+    import('jspdf'),
+    import('jspdf-autotable'),
+  ])
   const doc = new jsPDF({
     orientation: config.orientation ?? 'landscape',
     unit: 'pt',

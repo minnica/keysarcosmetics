@@ -1,8 +1,9 @@
 'use client'
 // Hook para gestión de puestos — CRUD contra el backend real
-import { useState, useEffect, useCallback } from 'react'
+import { useCallback } from 'react'
 import { api } from '@/lib/api'
 import type { Position } from '@cosmetics/types'
+import { createCatalogStore } from './catalog-cache'
 
 interface UsePositionsReturn {
   positions: Position[]
@@ -14,25 +15,16 @@ interface UsePositionsReturn {
   remove: (id: string) => Promise<void>
 }
 
+const positionsStore = createCatalogStore<Position>(
+  async () => {
+    const { data } = await api.get<{ success: boolean; data: Position[] }>('/api/envelope/positions')
+    return data.data
+  },
+  'Error al cargar puestos',
+)
+
 export function usePositions(): UsePositionsReturn {
-  const [positions, setPositions] = useState<Position[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
-  const refetch = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const { data } = await api.get<{ success: boolean; data: Position[] }>('/api/envelope/positions')
-      setPositions(data.data)
-    } catch {
-      setError('Error al cargar puestos')
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => { void refetch() }, [refetch])
+  const { items: positions, loading, error, refetch } = positionsStore.useStore()
 
   const add = useCallback(async (nombre: string) => {
     await api.post('/api/envelope/positions', { nombre })

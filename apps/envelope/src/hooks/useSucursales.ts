@@ -1,8 +1,9 @@
 'use client'
 // Hook para gestión de sucursales — CRUD contra el backend real
-import { useState, useEffect, useCallback } from 'react'
+import { useCallback } from 'react'
 import { api } from '@/lib/api'
 import type { Sucursal } from '@/lib/mock-data'
+import { createCatalogStore } from './catalog-cache'
 
 interface UseSucursalesReturn {
   sucursales: Sucursal[]
@@ -14,25 +15,16 @@ interface UseSucursalesReturn {
   remove: (id: string) => Promise<void>
 }
 
+const sucursalesStore = createCatalogStore<Sucursal>(
+  async () => {
+    const { data } = await api.get<{ success: boolean; data: Sucursal[] }>('/api/envelope/sucursales')
+    return data.data
+  },
+  'Error al cargar sucursales',
+)
+
 export function useSucursales(): UseSucursalesReturn {
-  const [sucursales, setSucursales] = useState<Sucursal[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
-  const refetch = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const { data } = await api.get<{ success: boolean; data: Sucursal[] }>('/api/envelope/sucursales')
-      setSucursales(data.data)
-    } catch {
-      setError('Error al cargar sucursales')
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => { void refetch() }, [refetch])
+  const { items: sucursales, loading, error, refetch } = sucursalesStore.useStore()
 
   const add = useCallback(async (nombre: string) => {
     await api.post('/api/envelope/sucursales', { nombre })

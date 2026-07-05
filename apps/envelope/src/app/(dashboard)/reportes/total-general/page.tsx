@@ -107,7 +107,7 @@ export default function TotalGeneralPage() {
     },
   ]
 
-  function handleExport(kind: 'pdf' | 'excel') {
+  async function handleExport(kind: 'pdf' | 'excel') {
     setExporting(kind)
     const config = {
       title: t.reports.totalGeneralTitle,
@@ -122,9 +122,9 @@ export default function TotalGeneralPage() {
 
     try {
       if (kind === 'pdf') {
-        exportReportToPdf(config)
+        await exportReportToPdf(config)
       } else {
-        exportReportToExcel(config)
+        await exportReportToExcel(config)
       }
     } finally {
       setExporting(null)
