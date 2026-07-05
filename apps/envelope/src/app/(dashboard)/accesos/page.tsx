@@ -367,11 +367,16 @@ export default function AccessControlPage() {
       accessorFn: (row) => row.empleado?.nombreCompleto ?? row.nombre,
       id: 'empleado',
       header: () => <span className="uppercase">{t.access.employee}</span>,
-      cell: ({ row }) => <span className="font-medium">{row.original.empleado?.nombreCompleto ?? row.original.nombre}</span>,
+      cell: ({ row }) => (
+        <span className="block min-w-[11rem] max-w-[16rem] whitespace-normal font-medium leading-5">
+          {row.original.empleado?.nombreCompleto ?? row.original.nombre}
+        </span>
+      ),
     },
     {
       accessorKey: 'email',
       header: () => <span className="uppercase">{t.access.email}</span>,
+      cell: ({ row }) => <span className="block min-w-[12rem] max-w-[18rem] break-all">{row.original.email}</span>,
     },
     {
       accessorFn: (row) => row.empleado?.position?.nombre ?? t.common.noRecord,
@@ -400,10 +405,11 @@ export default function AccessControlPage() {
       cell: ({ row }) => {
         const user = row.original
         return (
-          <div className="flex justify-end gap-2">
+          <div className="flex min-w-[10rem] flex-col justify-end gap-2 sm:flex-row">
             <Button
               size="sm"
               variant="outline"
+              className="w-full justify-center whitespace-nowrap sm:w-auto"
               onClick={() => openEmployeeEditor(user)}
               disabled={!user.empleadoId}
             >
@@ -414,7 +420,7 @@ export default function AccessControlPage() {
               <Button
                 size="sm"
                 variant="outline"
-                className="border-red-300 text-red-600 hover:bg-red-50 hover:text-red-600"
+                className="w-full justify-center whitespace-nowrap border-red-300 text-red-600 hover:bg-red-50 hover:text-red-600 sm:w-auto"
                 onClick={() => {
                   setUserToDelete(user)
                 }}
@@ -431,14 +437,14 @@ export default function AccessControlPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
+      <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:gap-4">
+        <div className="min-w-0">
           <h1 className="page-title font-semibold uppercase">{t.access.title}</h1>
           <p className="mt-1 text-sm" style={{ color: 'var(--text-muted)' }}>
             {t.access.description}
           </p>
         </div>
-        <Badge className="uppercase" style={{ backgroundColor: '#ecd1c8', color: '#1a1a1a' }}>
+        <Badge className="max-w-full uppercase" style={{ backgroundColor: '#ecd1c8', color: '#1a1a1a' }}>
           <Shield className="mr-1.5 h-3.5 w-3.5" />
           {t.access.accessManagerLabel}
         </Badge>
@@ -457,7 +463,7 @@ export default function AccessControlPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div
-                className="flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50/70 px-4 py-3"
+                className="flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-3 sm:px-4"
               >
                 <Info className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" />
                 <div className="min-w-0 flex-1 space-y-1">
@@ -509,10 +515,10 @@ export default function AccessControlPage() {
                     const actionPending = actionEnabled !== Boolean(committedPermissionMapRef.current[permissionKey])
 
                     return (
-                      <div key={screen.key} className="space-y-3 rounded-2xl border border-slate-200 bg-white/80 p-3 shadow-sm">
+                      <div key={screen.key} className="space-y-3 rounded-xl border border-slate-200 bg-white/80 p-3 shadow-sm">
                         <button
                           type="button"
-                          className={`flex w-full items-center justify-between rounded-xl border px-4 py-3 text-left transition-colors duration-200 ${
+                          className={`flex w-full flex-col gap-3 rounded-xl border px-3 py-3 text-left transition-colors duration-200 sm:flex-row sm:items-center sm:justify-between sm:px-4 ${
                             enabled ? 'border-[#8bb09b] bg-[#648672]/10' : 'hover:border-slate-300 hover:bg-slate-50'
                           }`}
                           style={{ borderColor: 'var(--border-color)' }}
@@ -520,18 +526,18 @@ export default function AccessControlPage() {
                             togglePermission(screen.key)
                           }}
                         >
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-2">
+                          <div className="min-w-0 space-y-1">
+                            <div className="flex flex-wrap items-center gap-2">
                               <span className="font-medium">{t.sidebar[screen.labelKey as keyof typeof t.sidebar]}</span>
                               <Badge variant="secondary" className="uppercase text-[10px] tracking-wide">
                                 {t.access.primaryScreen}
                               </Badge>
                             </div>
-                            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                            <p className="break-all text-xs" style={{ color: 'var(--text-muted)' }}>
                               {screen.path}
                             </p>
                           </div>
-                          <div className="flex items-center gap-2">
+                          <div className="flex shrink-0 items-center gap-2 self-start sm:self-center">
                             {enabled ? <Check className="h-4 w-4 text-[#648672]" /> : null}
                             <Badge
                               className="uppercase"
@@ -547,7 +553,7 @@ export default function AccessControlPage() {
 
                         <button
                           type="button"
-                          className={`flex w-full items-stretch gap-3 rounded-xl border border-dashed px-4 py-3 text-left transition-colors duration-200 ${
+                          className={`flex w-full flex-col gap-3 rounded-xl border border-dashed px-3 py-3 text-left transition-colors duration-200 sm:flex-row sm:items-stretch sm:px-4 ${
                             actionEnabled
                               ? 'border-[#8bb09b] bg-[#648672]/10'
                               : 'hover:border-slate-300 hover:bg-slate-50'
@@ -557,25 +563,27 @@ export default function AccessControlPage() {
                             togglePermission(permissionKey)
                           }}
                         >
-                          <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#648672]/10 text-[#648672]">
-                            <CornerDownRight className="h-4 w-4" />
-                          </div>
-                          <div className="min-w-0 flex-1 space-y-1">
-                            <div className="flex items-center gap-2">
-                              <span className="font-medium">
-                                {screen.key === 'ventas' ? t.access.generateEnvelopePermission : t.access.viewSalaryPermission}
-                              </span>
-                              <Badge variant="secondary" className="uppercase text-[10px] tracking-wide">
-                                {screen.key === 'ventas' ? t.access.salesAction : t.access.employeesAction}
-                              </Badge>
+                          <div className="flex min-w-0 flex-1 gap-3">
+                            <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#648672]/10 text-[#648672]">
+                              <CornerDownRight className="h-4 w-4" />
                             </div>
-                            <p className="text-xs leading-5" style={{ color: 'var(--text-muted)' }}>
-                              {screen.key === 'ventas'
-                                ? t.access.generateEnvelopePermissionDescription
-                                : t.access.viewSalaryPermissionDescription}
-                            </p>
+                            <div className="min-w-0 flex-1 space-y-1">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="font-medium">
+                                  {screen.key === 'ventas' ? t.access.generateEnvelopePermission : t.access.viewSalaryPermission}
+                                </span>
+                                <Badge variant="secondary" className="uppercase text-[10px] tracking-wide">
+                                  {screen.key === 'ventas' ? t.access.salesAction : t.access.employeesAction}
+                                </Badge>
+                              </div>
+                              <p className="text-xs leading-5" style={{ color: 'var(--text-muted)' }}>
+                                {screen.key === 'ventas'
+                                  ? t.access.generateEnvelopePermissionDescription
+                                  : t.access.viewSalaryPermissionDescription}
+                              </p>
+                            </div>
                           </div>
-                          <div className="flex items-center gap-2">
+                          <div className="flex shrink-0 items-center gap-2 self-start sm:self-center">
                             {actionEnabled ? <Check className="h-4 w-4 text-[#648672]" /> : null}
                             <Badge
                               className="uppercase"
@@ -600,7 +608,7 @@ export default function AccessControlPage() {
                     <button
                       key={screen.key}
                       type="button"
-                      className={`flex items-center justify-between rounded-xl border px-4 py-3 text-left transition-colors duration-200 ${
+                      className={`flex flex-col gap-3 rounded-xl border px-3 py-3 text-left transition-colors duration-200 sm:flex-row sm:items-center sm:justify-between sm:px-4 ${
                         enabled ? 'border-[#8bb09b] bg-[#648672]/10' : 'hover:border-slate-300 hover:bg-slate-50'
                       }`}
                       style={{ borderColor: 'var(--border-color)' }}
@@ -613,8 +621,8 @@ export default function AccessControlPage() {
                         schedulePermissionSave(draftCanManageAccess, nextPermissions)
                       }}
                     >
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
+                      <div className="min-w-0 space-y-1">
+                        <div className="flex flex-wrap items-center gap-2">
                           <span className="font-medium">{t.sidebar[screen.labelKey as keyof typeof t.sidebar]}</span>
                           {screen.path === '/' ? (
                             <Badge variant="secondary" className="uppercase text-[10px]">
@@ -622,11 +630,11 @@ export default function AccessControlPage() {
                             </Badge>
                           ) : null}
                         </div>
-                        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                        <p className="break-all text-xs" style={{ color: 'var(--text-muted)' }}>
                           {screen.path}
                         </p>
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex shrink-0 items-center gap-2 self-start sm:self-center">
                         {enabled ? <Check className="h-4 w-4 text-[#648672]" /> : null}
                         <Badge
                           className="uppercase"
@@ -643,8 +651,8 @@ export default function AccessControlPage() {
                 })}
               </div>
 
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border px-4 py-3" style={{ borderColor: 'var(--border-color)' }}>
-                <div className="space-y-1">
+              <div className="flex flex-col items-start justify-between gap-3 rounded-md border px-3 py-3 sm:flex-row sm:items-center sm:px-4" style={{ borderColor: 'var(--border-color)' }}>
+                <div className="min-w-0 space-y-1">
                   <p className="text-sm font-medium uppercase">
                     {selectedPosition?.nombre ?? t.common.noRecord}
                   </p>
@@ -682,13 +690,13 @@ export default function AccessControlPage() {
                 </p>
               </div>
 
-              <div className="rounded-lg border px-4 py-3" style={{ borderColor: 'var(--border-color)' }}>
-                <div className="flex items-center justify-between gap-3">
-                  <div className="min-w-0">
+              <div className="rounded-lg border px-3 py-3 sm:px-4" style={{ borderColor: 'var(--border-color)' }}>
+                <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
+                  <div className="min-w-0 space-y-1">
                     <p className="text-sm font-medium uppercase tracking-wide">
                       {selectedUser ? t.access.editCredentialTitle : t.access.createCredentialTitle}
                     </p>
-                    <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+                    <p className="text-sm leading-5" style={{ color: 'var(--text-muted)' }}>
                       {selectedEmployee
                         ? `${selectedEmployee.nombreCompleto} · ${selectedEmployee.position?.nombre ?? t.common.noRecord}`
                         : t.access.passwordHint}
@@ -696,6 +704,7 @@ export default function AccessControlPage() {
                   </div>
                   <Button
                     type="button"
+                    className="w-full justify-center sm:w-auto"
                     onClick={openCredentialsDialog}
                     disabled={!selectedEmployeeId}
                   >
