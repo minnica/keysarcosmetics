@@ -1,8 +1,9 @@
 'use client'
 // Hook para gestión de métodos de pago — CRUD contra el backend real
-import { useState, useEffect, useCallback } from 'react'
+import { useCallback } from 'react'
 import { api } from '@/lib/api'
 import type { MetodoPago } from '@/lib/mock-data'
+import { createCatalogStore } from './catalog-cache'
 
 interface UseMetodosPagoReturn {
   metodosPago: MetodoPago[]
@@ -24,25 +25,16 @@ function inferTipo(nombre: string): string {
   return 'OTRO'
 }
 
+const metodosPagoStore = createCatalogStore<MetodoPago>(
+  async () => {
+    const { data } = await api.get<{ success: boolean; data: MetodoPago[] }>('/api/envelope/metodos-pago')
+    return data.data
+  },
+  'Error al cargar métodos de pago',
+)
+
 export function useMetodosPago(): UseMetodosPagoReturn {
-  const [metodosPago, setMetodosPago] = useState<MetodoPago[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
-  const refetch = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const { data } = await api.get<{ success: boolean; data: MetodoPago[] }>('/api/envelope/metodos-pago')
-      setMetodosPago(data.data)
-    } catch {
-      setError('Error al cargar métodos de pago')
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => { void refetch() }, [refetch])
+  const { items: metodosPago, loading, error, refetch } = metodosPagoStore.useStore()
 
   const add = useCallback(async (nombre: string, tipo?: string) => {
     await api.post('/api/envelope/metodos-pago', {

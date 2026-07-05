@@ -94,7 +94,7 @@ export default function VentasPorVendedorPage() {
     { header: t.reports.progress, accessor: (row) => row.porcentaje, format: 'percent', width: 12 },
   ]
 
-  function handleExport(kind: 'pdf' | 'excel') {
+  async function handleExport(kind: 'pdf' | 'excel') {
     setExporting(kind)
     const config = {
       title: t.reports.salesBySellerTitle,
@@ -108,9 +108,9 @@ export default function VentasPorVendedorPage() {
 
     try {
       if (kind === 'pdf') {
-        exportReportToPdf(config)
+        await exportReportToPdf(config)
       } else {
-        exportReportToExcel(config)
+        await exportReportToExcel(config)
       }
     } finally {
       setExporting(null)

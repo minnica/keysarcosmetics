@@ -136,7 +136,7 @@ export default function MetodoPagoPorDiaPage() {
     },
   ]
 
-  function handleExport(kind: 'pdf' | 'excel') {
+  async function handleExport(kind: 'pdf' | 'excel') {
     setExporting(kind)
     const selectedMethodName = metodosPago.find((m) => m.id === efectivoId)?.nombre ?? efectivoId
     const config = {
@@ -152,9 +152,9 @@ export default function MetodoPagoPorDiaPage() {
 
     try {
       if (kind === 'pdf') {
-        exportReportToPdf(config)
+        await exportReportToPdf(config)
       } else {
-        exportReportToExcel(config)
+        await exportReportToExcel(config)
       }
     } finally {
       setExporting(null)

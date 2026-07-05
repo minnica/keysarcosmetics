@@ -6,6 +6,9 @@ import { requireScreenAccess, resolveAccessForRequest } from '../lib/access'
 import { prisma } from '../prisma/client'
 
 const router: ExpressRouter = Router()
+const DEFAULT_VENTAS_LOOKBACK_DAYS = 31
+const MAX_VENTAS_RANGE_DAYS = 366
+const MAX_VENTAS_LIMIT = 5000
 
 // Todas las rutas de este módulo requieren autenticación
 router.use(authMiddleware)
@@ -34,6 +37,20 @@ function normalizeDateInput(value?: string | null): Date | null | undefined {
   return Number.isNaN(parsed.getTime()) ? null : parsed
 }
 
+function parseQueryDate(value?: string): Date | null | undefined {
+  if (value === undefined) return undefined
+  const trimmed = value.trim()
+  if (!trimmed) return null
+
+  const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(trimmed)
+  if (dateOnly) {
+    const [, year, month, day] = dateOnly
+    return new Date(Number(year), Number(month) - 1, Number(day))
+  }
+
+  return normalizeDateInput(trimmed)
+}
+
 function dateRangeSql(fechaInicio?: string, fechaFin?: string): Prisma.Sql {
   const conditions: Prisma.Sql[] = []
   if (fechaInicio) {
@@ -53,6 +70,28 @@ function monthRange(year: number, month: number) {
     start: new Date(year, month - 1, 1),
     end: new Date(year, month, 0, 23, 59, 59),
   }
+}
+
+function startOfDay(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate())
+}
+
+function endOfDay(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59)
+}
+
+function addDays(date: Date, days: number): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate() + days)
+}
+
+function daysBetween(start: Date, end: Date): number {
+  return Math.floor((end.getTime() - start.getTime()) / 86_400_000) + 1
+}
+
+function parsePositiveInt(value: string | undefined): number | undefined {
+  if (!value) return undefined
+  const parsed = Number(value)
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined
 }
 
 async function canViewSalary(req: Parameters<typeof resolveAccessForRequest>[0]): Promise<boolean> {
@@ -573,23 +612,56 @@ router.delete('/positions/:id', access.positions, async (req, res) => {
 
 router.get('/ventas', access.ventas, async (req, res) => {
   try {
-    const { fechaInicio, fechaFin } = req.query as { fechaInicio?: string; fechaFin?: string }
-    const where: Record<string, unknown> = {}
-    if (fechaInicio ?? fechaFin) {
-      where['fecha'] = {
-        ...(fechaInicio && { gte: new Date(fechaInicio) }),
-        ...(fechaFin && { lte: new Date(`${fechaFin}T23:59:59`) }),
-      }
+    const { fechaInicio, fechaFin, limit, page } = req.query as {
+      fechaInicio?: string
+      fechaFin?: string
+      limit?: string
+      page?: string
     }
+    const parsedStart = parseQueryDate(fechaInicio)
+    const parsedEnd = parseQueryDate(fechaFin)
+
+    if (parsedStart === null || parsedEnd === null) {
+      res.status(400).json({ success: false, data: null, message: 'Rango de fechas inválido' })
+      return
+    }
+
+    const rangeEnd = endOfDay(parsedEnd ?? parsedStart ?? new Date())
+    const rangeStart = startOfDay(parsedStart ?? addDays(rangeEnd, -(DEFAULT_VENTAS_LOOKBACK_DAYS - 1)))
+
+    if (rangeStart > rangeEnd) {
+      res.status(400).json({ success: false, data: null, message: 'La fecha inicial no puede ser mayor a la fecha final' })
+      return
+    }
+
+    if (daysBetween(rangeStart, rangeEnd) > MAX_VENTAS_RANGE_DAYS) {
+      res.status(400).json({ success: false, data: null, message: `El rango máximo de consulta es de ${MAX_VENTAS_RANGE_DAYS} días` })
+      return
+    }
+
+    const requestedLimit = parsePositiveInt(limit)
+    const take = requestedLimit ? Math.min(requestedLimit, MAX_VENTAS_LIMIT) : undefined
+    const requestedPage = parsePositiveInt(page) ?? 1
+
     const data = await prisma.venta.findMany({
-      where,
+      where: {
+        fecha: {
+          gte: rangeStart,
+          lte: rangeEnd,
+        },
+      },
       include: {
         detalles: { include: { metodoPago: true } },
         sucursal: true,
         vendedor: true,
       },
       orderBy: { fecha: 'desc' },
+      ...(take ? { take, skip: (requestedPage - 1) * take } : {}),
     })
+    if (take) {
+      res.setHeader('X-Result-Limit', String(take))
+      res.setHeader('X-Result-Page', String(requestedPage))
+    }
     res.json({ success: true, data, message: 'OK' })
   } catch (err) {
     console.error(err)
@@ -884,23 +956,6 @@ router.get('/reportes/dashboard', access.dashboard, async (req, res) => {
     const inicioAnio = new Date(refYear, 0, 1)
     const finAnio = new Date(refYear, 11, 31, 23, 59, 59)
 
-    async function totalPorSucursal(start: Date, end: Date) {
-      return prisma.$queryRaw<Array<{ sucursalId: string; sucursalNombre: string; total: number }>>`
-        SELECT
-          s."id" AS "sucursalId",
-          s."nombre" AS "sucursalNombre",
-          COALESCE(SUM(vd."cantidad"), 0)::float AS "total"
-        FROM "Sucursal" s
-        LEFT JOIN "Venta" v
-          ON v."sucursalId" = s."id"
-          AND v."fecha" >= ${start}
-          AND v."fecha" <= ${end}
-        LEFT JOIN "VentaDetalle" vd ON vd."ventaId" = v."id"
-        GROUP BY s."id", s."nombre"
-        ORDER BY s."nombre" ASC
-      `
-    }
-
     const monthRanges = Array.from({ length: 6 }, (_, index) => {
       const date = new Date(refYear, refMonth - (5 - index), 1)
       return {
@@ -911,10 +966,42 @@ router.get('/reportes/dashboard', access.dashboard, async (req, res) => {
       }
     })
 
-    const [dia, mes, anio, ventasPorVendedor, ...monthTotals] = await Promise.all([
-      totalPorSucursal(inicioDia, finDia),
-      totalPorSucursal(inicioMesDate, finMesDate),
-      totalPorSucursal(inicioAnio, finAnio),
+    const periods = [
+      { key: 'dia', start: inicioDia, end: finDia },
+      { key: 'mes', start: inicioMesDate, end: finMesDate },
+      { key: 'anio', start: inicioAnio, end: finAnio },
+      ...monthRanges.map((range, index) => ({
+        key: `month_${index}`,
+        start: range.start,
+        end: range.end,
+      })),
+    ]
+    const periodValues = Prisma.join(periods.map((period) => Prisma.sql`(
+      ${period.key},
+      ${period.start},
+      ${period.end}
+    )`))
+
+    const [branchTotals, ventasPorVendedor] = await Promise.all([
+      prisma.$queryRaw<Array<{ period: string; sucursalId: string; sucursalNombre: string; total: number }>>`
+        WITH periods("period", "startDate", "endDate") AS (
+          VALUES ${periodValues}
+        )
+        SELECT
+          p."period",
+          s."id" AS "sucursalId",
+          s."nombre" AS "sucursalNombre",
+          COALESCE(SUM(vd."cantidad"), 0)::float AS "total"
+        FROM periods p
+        CROSS JOIN "Sucursal" s
+        LEFT JOIN "Venta" v
+          ON v."sucursalId" = s."id"
+          AND v."fecha" >= p."startDate"
+          AND v."fecha" <= p."endDate"
+        LEFT JOIN "VentaDetalle" vd ON vd."ventaId" = v."id"
+        GROUP BY p."period", s."id", s."nombre"
+        ORDER BY p."period" ASC, s."nombre" ASC
+      `,
       prisma.$queryRaw<Array<{ empleadoId: string; nombre: string; vendido: number; meta: number }>>`
         SELECT
           e."id" AS "empleadoId",
@@ -931,13 +1018,26 @@ router.get('/reportes/dashboard', access.dashboard, async (req, res) => {
         GROUP BY e."id", e."nombreCompleto", e."metaIndividual"
         ORDER BY "vendido" DESC, e."nombreCompleto" ASC
       `,
-      ...monthRanges.map((range) => totalPorSucursal(range.start, range.end)),
     ])
 
+    const totalsByPeriod = new Map<string, Array<{ sucursalId: string; sucursalNombre: string; total: number }>>()
+    for (const total of branchTotals) {
+      const rows = totalsByPeriod.get(total.period) ?? []
+      rows.push({
+        sucursalId: total.sucursalId,
+        sucursalNombre: total.sucursalNombre,
+        total: total.total,
+      })
+      totalsByPeriod.set(total.period, rows)
+    }
+
+    const dia = totalsByPeriod.get('dia') ?? []
+    const mes = totalsByPeriod.get('mes') ?? []
+    const anio = totalsByPeriod.get('anio') ?? []
     const monthsData = monthRanges.map((range, index) => ({
       year: range.year,
       month: range.month,
-      totals: monthTotals[index] ?? [],
+      totals: totalsByPeriod.get(`month_${index}`) ?? [],
     }))
 
     res.json({ success: true, data: { dia, mes, anio, monthsData, ventasPorVendedor }, message: 'OK' })

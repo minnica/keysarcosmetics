@@ -84,7 +84,7 @@ export default function DetalleMetodoPagoPage() {
     { header: t.common.total, accessor: (row) => row.total, format: 'currency', width: 14 },
   ]
 
-  function handleExport(kind: 'pdf' | 'excel') {
+  async function handleExport(kind: 'pdf' | 'excel') {
     setExporting(kind)
     const config = {
       title: t.reports.paymentMethodDetailTitle,
@@ -103,9 +103,9 @@ export default function DetalleMetodoPagoPage() {
 
     try {
       if (kind === 'pdf') {
-        exportReportToPdf(config)
+        await exportReportToPdf(config)
       } else {
-        exportReportToExcel(config)
+        await exportReportToExcel(config)
       }
     } finally {
       setExporting(null)
