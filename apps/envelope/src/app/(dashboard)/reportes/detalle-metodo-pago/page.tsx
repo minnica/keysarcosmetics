@@ -1,8 +1,9 @@
 'use client'
 // Reporte: Detalle de ventas por método de pago, agrupado por sucursal
 import { useState } from 'react'
+import { useEffect } from 'react'
 import { DateRangePicker, type DateRange, Table, TableHeader, TableBody, TableFooter, TableRow, TableHead, TableCell } from "@cosmetics/ui"
-import { useReportes } from '@/hooks'
+import { api } from '@/lib/api'
 import { useI18n } from '@/lib/i18n'
 import { formatCurrency, todayISO } from '@/lib/utils'
 import { ReportExportButtons } from '@/components/reportes/ReportExportButtons'
@@ -13,25 +14,41 @@ function firstDayOfMonth(): string {
 }
 
 export default function DetalleMetodoPagoPage() {
-  const { registros, sucursales, metodosPago, loading, error } = useReportes()
   const { t } = useI18n()
   const [range, setRange] = useState<DateRange>({ from: firstDayOfMonth(), to: todayISO() })
   const [exporting, setExporting] = useState<'pdf' | 'excel' | null>(null)
+  type Row = { sucursalId: string; sucursalNombre: string; metodoPagoId: string; metodoPagoNombre: string; total: number }
+  const [rows, setRows] = useState<Row[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
-  const filtered = registros.filter(r => r.fecha >= range.from && r.fecha <= range.to)
+  useEffect(() => {
+    let cancelled = false
 
-  type Row = { sucursalId: string; metodoPagoId: string; total: number }
-  const rows: Row[] = []
-  for (const reg of filtered) {
-    for (const item of reg.items) {
-      const existing = rows.find(r => r.sucursalId === reg.sucursalId && r.metodoPagoId === item.metodoPagoId)
-      if (existing) existing.total += item.cantidad
-      else rows.push({ sucursalId: reg.sucursalId, metodoPagoId: item.metodoPagoId, total: item.cantidad })
+    async function loadReport() {
+      setLoading(true)
+      setError(null)
+      try {
+        const { data } = await api.get<{ success: boolean; data: Row[] }>('/api/envelope/reportes/detalle-metodo-pago', {
+          params: { fechaInicio: range.from, fechaFin: range.to },
+        })
+        if (!cancelled) setRows(data.data)
+      } catch {
+        if (!cancelled) setError('Error al cargar reporte')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
     }
-  }
 
-  const sucursalNombre = (id: string) => sucursales.find(s => s.id === id)?.nombre ?? id
-  const metodoPagoNombre = (id: string) => metodosPago.find(m => m.id === id)?.nombre ?? id
+    void loadReport()
+
+    return () => {
+      cancelled = true
+    }
+  }, [range.from, range.to])
+
+  const sucursalNombre = (id: string) => rows.find(s => s.sucursalId === id)?.sucursalNombre ?? id
+  const metodoPagoNombre = (id: string) => rows.find(m => m.metodoPagoId === id)?.metodoPagoNombre ?? id
   const grandTotal = rows.reduce((s, r) => s + r.total, 0)
   const sucursalesConDatos = [...new Set(rows.map(r => r.sucursalId))]
   type ExportRow = {

@@ -1,6 +1,6 @@
 'use client'
 // Reporte: Ventas mensuales por vendedor
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   Badge,
   Card,
@@ -24,7 +24,7 @@ import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { BarChart3, ChevronRight, DollarSign } from 'lucide-react'
 
-import { useReportes } from '@/hooks'
+import { api } from '@/lib/api'
 import { useI18n } from '@/lib/i18n'
 import { formatCurrency, formatDate, monthName } from '@/lib/utils'
 import { ReportExportButtons } from '@/components/reportes/ReportExportButtons'
@@ -55,43 +55,74 @@ type SalesRow = {
   approximateDayAmount: number
 }
 
+type ReportRow = {
+  fecha: string
+  vendedorId: string
+  vendedorNombre: string
+  total: number
+}
+
 export default function VentasPorVendedorDiaPage() {
-  const { registros, empleados, loading, error } = useReportes()
   const { locale, t } = useI18n()
   const now = new Date()
   const [year, setYear] = useState(now.getFullYear())
   const [month, setMonth] = useState(now.getMonth() + 1)
   const [exporting, setExporting] = useState<'pdf' | 'excel' | null>(null)
   const [mobileSearch, setMobileSearch] = useState('')
+  const [reportRows, setReportRows] = useState<ReportRow[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   const years = Array.from({ length: now.getFullYear() - 2022 }, (_, i) => 2023 + i)
   const months = t.reports.months
-  const prefix = `${year}-${String(month).padStart(2, '0')}`
-  const filtered = registros.filter((r) => r.fecha.startsWith(prefix))
   const daysInMonth = new Date(year, month, 0).getDate()
   const isCurrentMonth = year === now.getFullYear() && month === now.getMonth() + 1
   const elapsedDays = isCurrentMonth ? now.getDate() : daysInMonth
   const dias = monthDates(year, month).slice(0, elapsedDays)
 
+  useEffect(() => {
+    let cancelled = false
+    const fechaInicio = `${year}-${String(month).padStart(2, '0')}-01`
+    const fechaFin = `${year}-${String(month).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`
+
+    async function loadReport() {
+      setLoading(true)
+      setError(null)
+      try {
+        const { data } = await api.get<{ success: boolean; data: ReportRow[] }>('/api/envelope/reportes/ventas-por-vendedor-dia', {
+          params: { fechaInicio, fechaFin },
+        })
+        if (!cancelled) setReportRows(data.data)
+      } catch {
+        if (!cancelled) setError('Error al cargar reporte')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+
+    void loadReport()
+
+    return () => {
+      cancelled = true
+    }
+  }, [daysInMonth, month, year])
+
   const rowsMap = new Map<string, SalesRow>()
 
-  for (const reg of filtered) {
-    const seller = empleados.find((e) => e.id === reg.vendedorId)
-    if (!seller) continue
-
-    const key = seller.id
-    const dayTotal = reg.items.reduce((sum, item) => sum + item.cantidad, 0)
+  for (const row of reportRows) {
+    const key = row.vendedorId
+    const dayTotal = row.total
     const existing = rowsMap.get(key)
 
     if (existing) {
       existing.total += dayTotal
-      existing.byDate[reg.fecha] = (existing.byDate[reg.fecha] ?? 0) + dayTotal
+      existing.byDate[row.fecha] = (existing.byDate[row.fecha] ?? 0) + dayTotal
     } else {
       rowsMap.set(key, {
-        sellerId: seller.id,
-        sellerName: seller.nombreCompleto,
+        sellerId: row.vendedorId,
+        sellerName: row.vendedorNombre,
         total: dayTotal,
-        byDate: { [reg.fecha]: dayTotal },
+        byDate: { [row.fecha]: dayTotal },
         daysWithoutSale: 0,
         approximateDayAmount: 0,
       })

@@ -1,6 +1,6 @@
 "use client";
 // Dashboard principal — Cards de resumen + gráficas Recharts
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   BarChart,
   Bar,
@@ -10,22 +10,18 @@ import {
   Tooltip,
   Legend,
   ResponsiveContainer,
-  Cell,
   LabelList,
 } from "recharts";
 import {
   Card,
   CardHeader,
-  CardTitle,
   CardContent,
-  CardDescription,
   DatePicker,
 } from "@cosmetics/ui";
 import { Label } from "@cosmetics/ui";
-import { useSucursales, useEmpleados, useVentas } from "@/hooks";
+import { api } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 import { formatCurrency, formatDate, todayISO, monthName } from "@/lib/utils";
-import { cn } from "@/lib/utils";
 
 // Paleta de sucursales con colores complementarios de la marca
 const SUCURSAL_COLORS = ["#6fc9db", "#8bb09b", "#c3a583", "#648672"];
@@ -37,81 +33,97 @@ const PERIODO_STYLES = [
   { accent: "#6fc9db" }, // año — blue-light
 ];
 
+interface DashboardBranchTotal {
+  sucursalId: string;
+  sucursalNombre: string;
+  total: number;
+}
+
+interface DashboardMonthTotal {
+  year: number;
+  month: number;
+  totals: DashboardBranchTotal[];
+}
+
+interface DashboardSellerTotal {
+  empleadoId: string;
+  nombre: string;
+  vendido: number;
+  meta: number;
+}
+
+interface DashboardData {
+  dia: DashboardBranchTotal[];
+  mes: DashboardBranchTotal[];
+  anio: DashboardBranchTotal[];
+  monthsData: DashboardMonthTotal[];
+  ventasPorVendedor: DashboardSellerTotal[];
+}
+
 export default function DashboardPage() {
-  const { sucursales, loading: lS } = useSucursales();
-  const { empleados, loading: lE } = useEmpleados();
-  const { registros, loading: lV } = useVentas();
   const { locale, t } = useI18n();
-  const loading = lS || lE || lV;
-
   const [selectedDate, setSelectedDate] = useState(todayISO());
+  const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const selectedDateObj = new Date(selectedDate + "T00:00:00");
-  const selYear = selectedDateObj.getFullYear();
-  const selMonth = selectedDateObj.getMonth() + 1;
-  const selMonthPrefix = `${selYear}-${String(selMonth).padStart(2, "0")}`;
-  const selYearPrefix = String(selYear);
+  useEffect(() => {
+    let cancelled = false;
 
-  function sumForSucursal(
-    sucursalId: string,
-    dateFilter: (fecha: string) => boolean,
-  ): number {
-    return registros
-      .filter((r) => r.sucursalId === sucursalId && dateFilter(r.fecha))
-      .flatMap((r) => r.items)
-      .reduce((s, i) => s + i.cantidad, 0);
-  }
+    async function loadDashboard() {
+      setLoading(true);
+      setError(null);
+      try {
+        const { data } = await api.get<{ success: boolean; data: DashboardData }>(
+          "/api/envelope/reportes/dashboard",
+          { params: { fecha: selectedDate } },
+        );
+        if (!cancelled) {
+          setDashboardData(data.data);
+        }
+      } catch {
+        if (!cancelled) {
+          setError(t.common.loadingData);
+          setDashboardData(null);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    }
 
-  function totalForPeriod(dateFilter: (fecha: string) => boolean): number {
-    return registros
-      .filter((r) => dateFilter(r.fecha))
-      .flatMap((r) => r.items)
-      .reduce((s, i) => s + i.cantidad, 0);
-  }
+    void loadDashboard();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedDate, t.common.loadingData]);
+
+  const sucursales = dashboardData?.anio.map((row) => ({
+    id: row.sucursalId,
+    nombre: row.sucursalNombre,
+  })) ?? [];
 
   const periodos = [
-    { label: t.dashboard.dailySales, filter: (f: string) => f === selectedDate },
-    {
-      label: t.dashboard.monthlySales,
-      filter: (f: string) => f.startsWith(selMonthPrefix),
-    },
-    {
-      label: t.dashboard.yearlySales,
-      filter: (f: string) => f.startsWith(selYearPrefix),
-    },
+    { label: t.dashboard.dailySales, rows: dashboardData?.dia ?? [] },
+    { label: t.dashboard.monthlySales, rows: dashboardData?.mes ?? [] },
+    { label: t.dashboard.yearlySales, rows: dashboardData?.anio ?? [] },
   ];
 
-  const monthsData = Array.from({ length: 6 }, (_, i) => {
-    const d = new Date(selYear, selMonth - 1 - (5 - i), 1);
-    const prefix = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-    const label = monthName(d.getFullYear(), d.getMonth() + 1, locale)
+  const monthsData = (dashboardData?.monthsData ?? []).map((period) => {
+    const label = monthName(period.year, period.month, locale)
       .slice(0, 3)
       .toUpperCase();
     const entry: Record<string, string | number> = { mes: label };
-    sucursales.forEach((s) => {
-      entry[s.nombre] = registros
-        .filter((r) => r.sucursalId === s.id && r.fecha.startsWith(prefix))
-        .flatMap((r) => r.items)
-        .reduce((acc, item) => acc + item.cantidad, 0);
+    period.totals.forEach((row) => {
+      entry[row.sucursalNombre] = row.total;
     });
     return entry;
   });
 
-  const vendedoresData = empleados
-    .filter((emp) => emp.activo && emp.metaIndividual != null && emp.metaIndividual > 0)
-    .map((emp) => {
-      const totalVendido = registros
-        .filter(
-          (r) => r.vendedorId === emp.id && r.fecha.startsWith(selMonthPrefix),
-        )
-        .flatMap((r) => r.items)
-        .reduce((s, i) => s + i.cantidad, 0);
-      return {
-        nombre: `${emp.nombres} ${emp.apellidoPaterno.charAt(0)}. ${emp.apellidoMaterno.charAt(0)}.`,
-        vendido: totalVendido,
-        meta: emp.metaIndividual,
-      };
-    })
+  const vendedoresData = (dashboardData?.ventasPorVendedor ?? [])
+    .filter((emp) => emp.meta > 0)
     .sort((a, b) => b.vendido - a.vendido);
 
   const formatK = (v: number) =>
@@ -124,6 +136,14 @@ export default function DashboardPage() {
         style={{ color: "var(--text-muted)" }}
       >
         {t.common.loadingData}
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex h-64 items-center justify-center text-sm text-red-500">
+        {error}
       </div>
     );
   }
@@ -153,8 +173,9 @@ export default function DashboardPage() {
 
       {/* ── Cards de resumen por período ── 1 card por período, 3 cols desktop / 1 col mobile */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        {periodos.map(({ label, filter }, periodIdx) => {
+        {periodos.map(({ label, rows }, periodIdx) => {
           const { accent } = (PERIODO_STYLES[periodIdx] ?? PERIODO_STYLES[0])!;
+          const totalPeriod = rows.reduce((sum, row) => sum + row.total, 0);
           return (
             <Card
               key={label}
@@ -177,7 +198,7 @@ export default function DashboardPage() {
               </CardHeader>
               <CardContent className="px-5 pb-5 space-y-2">
                 {sucursales.map((s) => {
-                  const total = sumForSucursal(s.id, filter);
+                  const total = rows.find((row) => row.sucursalId === s.id)?.total ?? 0;
                   return (
                     <div
                       key={s.id}
@@ -212,7 +233,7 @@ export default function DashboardPage() {
                     className="text-2xl font-bold tabular-nums leading-none"
                     style={{ color: accent }}
                   >
-                    {formatCurrency(totalForPeriod(filter))}
+                    {formatCurrency(totalPeriod)}
                   </span>
                 </div>
               </CardContent>

@@ -1,5 +1,6 @@
 // Rutas del módulo Envelope — ventas por sobre digitalizado
 import { Router, type Router as ExpressRouter } from 'express'
+import { Prisma } from '@prisma/client'
 import { authMiddleware } from '../middlewares/auth.middleware'
 import { requireScreenAccess, resolveAccessForRequest } from '../lib/access'
 import { prisma } from '../prisma/client'
@@ -31,6 +32,27 @@ function normalizeDateInput(value?: string | null): Date | null | undefined {
   if (!trimmed) return null
   const parsed = new Date(trimmed)
   return Number.isNaN(parsed.getTime()) ? null : parsed
+}
+
+function dateRangeSql(fechaInicio?: string, fechaFin?: string): Prisma.Sql {
+  const conditions: Prisma.Sql[] = []
+  if (fechaInicio) {
+    conditions.push(Prisma.sql`v."fecha" >= ${new Date(fechaInicio)}`)
+  }
+  if (fechaFin) {
+    conditions.push(Prisma.sql`v."fecha" <= ${new Date(`${fechaFin}T23:59:59`)}`)
+  }
+
+  return conditions.length > 0
+    ? Prisma.sql`WHERE ${Prisma.join(conditions, ' AND ')}`
+    : Prisma.empty
+}
+
+function monthRange(year: number, month: number) {
+  return {
+    start: new Date(year, month - 1, 1),
+    end: new Date(year, month, 0, 23, 59, 59),
+  }
 }
 
 async function canViewSalary(req: Parameters<typeof resolveAccessForRequest>[0]): Promise<boolean> {
@@ -709,28 +731,22 @@ router.delete('/ventas/:id', access.ventas, async (req, res) => {
 router.get('/reportes/detalle-metodo-pago', access.detalleMetodoPago, async (req, res) => {
   try {
     const { fechaInicio, fechaFin } = req.query as { fechaInicio?: string; fechaFin?: string }
-    const ventas = await prisma.venta.findMany({
-      where: {
-        fecha: {
-          ...(fechaInicio && { gte: new Date(fechaInicio) }),
-          ...(fechaFin && { lte: new Date(`${fechaFin}T23:59:59`) }),
-        },
-      },
-      include: { sucursal: true, detalles: { include: { metodoPago: true } } },
-    })
-    const mapa = new Map<string, { sucursalId: string; sucursalNombre: string; metodoPagoId: string; metodoPagoNombre: string; total: number }>()
-    for (const venta of ventas) {
-      for (const detalle of venta.detalles) {
-        const key = `${venta.sucursalId}||${detalle.metodoPagoId}`
-        const existing = mapa.get(key)
-        if (existing) {
-          existing.total += Number(detalle.cantidad)
-        } else {
-          mapa.set(key, { sucursalId: venta.sucursalId, sucursalNombre: venta.sucursal.nombre, metodoPagoId: detalle.metodoPagoId, metodoPagoNombre: detalle.metodoPago.nombre, total: Number(detalle.cantidad) })
-        }
-      }
-    }
-    res.json({ success: true, data: [...mapa.values()], message: 'OK' })
+    const data = await prisma.$queryRaw<Array<{ sucursalId: string; sucursalNombre: string; metodoPagoId: string; metodoPagoNombre: string; total: number }>>`
+      SELECT
+        v."sucursalId",
+        s."nombre" AS "sucursalNombre",
+        vd."metodoPagoId",
+        mp."nombre" AS "metodoPagoNombre",
+        SUM(vd."cantidad")::float AS "total"
+      FROM "VentaDetalle" vd
+      JOIN "Venta" v ON v."id" = vd."ventaId"
+      JOIN "Sucursal" s ON s."id" = v."sucursalId"
+      JOIN "MetodoPago" mp ON mp."id" = vd."metodoPagoId"
+      ${dateRangeSql(fechaInicio, fechaFin)}
+      GROUP BY v."sucursalId", s."nombre", vd."metodoPagoId", mp."nombre"
+      ORDER BY s."nombre" ASC, mp."nombre" ASC
+    `
+    res.json({ success: true, data, message: 'OK' })
   } catch (err) {
     console.error(err)
     res.status(500).json({ success: false, data: null, message: 'Error al generar reporte' })
@@ -742,23 +758,24 @@ router.get('/reportes/metodo-pago-por-dia', access.metodoPagoPorDia, async (req,
     const { metodoPagoId, mes, anio } = req.query as { metodoPagoId?: string; mes?: string; anio?: string }
     const year = Number(anio ?? new Date().getFullYear())
     const month = Number(mes ?? new Date().getMonth() + 1)
-    const inicio = new Date(year, month - 1, 1)
-    const fin = new Date(year, month, 0, 23, 59, 59)
-    const ventas = await prisma.venta.findMany({
-      where: { fecha: { gte: inicio, lte: fin } },
-      include: { sucursal: true, detalles: { where: metodoPagoId ? { metodoPagoId } : undefined, include: { metodoPago: true } } },
-    })
-    const mapa = new Map<string, { fecha: string; sucursalId: string; sucursalNombre: string; total: number }>()
-    for (const venta of ventas) {
-      const fecha = venta.fecha.toISOString().slice(0, 10)
-      for (const detalle of venta.detalles) {
-        const key = `${fecha}||${venta.sucursalId}`
-        const existing = mapa.get(key)
-        if (existing) { existing.total += Number(detalle.cantidad) }
-        else { mapa.set(key, { fecha, sucursalId: venta.sucursalId, sucursalNombre: venta.sucursal.nombre, total: Number(detalle.cantidad) }) }
-      }
-    }
-    res.json({ success: true, data: [...mapa.values()].sort((a, b) => a.fecha.localeCompare(b.fecha)), message: 'OK' })
+    const { start, end } = monthRange(year, month)
+    const methodFilter = metodoPagoId ? Prisma.sql`AND vd."metodoPagoId" = ${metodoPagoId}` : Prisma.empty
+    const data = await prisma.$queryRaw<Array<{ fecha: string; sucursalId: string; sucursalNombre: string; total: number }>>`
+      SELECT
+        TO_CHAR(v."fecha", 'YYYY-MM-DD') AS "fecha",
+        v."sucursalId",
+        s."nombre" AS "sucursalNombre",
+        SUM(vd."cantidad")::float AS "total"
+      FROM "VentaDetalle" vd
+      JOIN "Venta" v ON v."id" = vd."ventaId"
+      JOIN "Sucursal" s ON s."id" = v."sucursalId"
+      WHERE v."fecha" >= ${start}
+        AND v."fecha" <= ${end}
+        ${methodFilter}
+      GROUP BY TO_CHAR(v."fecha", 'YYYY-MM-DD'), v."sucursalId", s."nombre"
+      ORDER BY "fecha" ASC, s."nombre" ASC
+    `
+    res.json({ success: true, data, message: 'OK' })
   } catch (err) {
     console.error(err)
     res.status(500).json({ success: false, data: null, message: 'Error al generar reporte' })
@@ -768,19 +785,23 @@ router.get('/reportes/metodo-pago-por-dia', access.metodoPagoPorDia, async (req,
 router.get('/reportes/ventas-por-vendedor', access.ventasPorVendedor, async (req, res) => {
   try {
     const { fechaInicio, fechaFin } = req.query as { fechaInicio?: string; fechaFin?: string }
-    const ventas = await prisma.venta.findMany({
-      where: { fecha: { ...(fechaInicio && { gte: new Date(fechaInicio) }), ...(fechaFin && { lte: new Date(`${fechaFin}T23:59:59`) }) } },
-      include: { sucursal: true, vendedor: true, detalles: true },
-    })
-    const mapa = new Map<string, { empleadoId: string; nombreCompleto: string; sucursalId: string; sucursalNombre: string; totalVendido: number; meta: number }>()
-    for (const venta of ventas) {
-      const key = `${venta.vendedorId}||${venta.sucursalId}`
-      const totalVenta = venta.detalles.reduce((s, d) => s + Number(d.cantidad), 0)
-      const existing = mapa.get(key)
-      if (existing) { existing.totalVendido += totalVenta }
-      else { mapa.set(key, { empleadoId: venta.vendedorId, nombreCompleto: venta.vendedor.nombreCompleto, sucursalId: venta.sucursalId, sucursalNombre: venta.sucursal.nombre, totalVendido: totalVenta, meta: Number(venta.vendedor.metaIndividual) }) }
-    }
-    const data = [...mapa.values()].map((row) => ({ ...row, porLlegar: Math.max(0, row.meta - row.totalVendido), porcentaje: row.meta > 0 ? (row.totalVendido / row.meta) * 100 : 0 })).sort((a, b) => b.totalVendido - a.totalVendido)
+    const rows = await prisma.$queryRaw<Array<{ empleadoId: string; nombreCompleto: string; sucursalId: string; sucursalNombre: string; totalVendido: number; meta: number }>>`
+      SELECT
+        v."vendedorId" AS "empleadoId",
+        e."nombreCompleto",
+        v."sucursalId",
+        s."nombre" AS "sucursalNombre",
+        SUM(vd."cantidad")::float AS "totalVendido",
+        e."metaIndividual"::float AS "meta"
+      FROM "VentaDetalle" vd
+      JOIN "Venta" v ON v."id" = vd."ventaId"
+      JOIN "Empleado" e ON e."id" = v."vendedorId"
+      JOIN "Sucursal" s ON s."id" = v."sucursalId"
+      ${dateRangeSql(fechaInicio, fechaFin)}
+      GROUP BY v."vendedorId", e."nombreCompleto", v."sucursalId", s."nombre", e."metaIndividual"
+      ORDER BY "totalVendido" DESC
+    `
+    const data = rows.map((row) => ({ ...row, porLlegar: Math.max(0, row.meta - row.totalVendido), porcentaje: row.meta > 0 ? (row.totalVendido / row.meta) * 100 : 0 }))
     res.json({ success: true, data, message: 'OK' })
   } catch (err) {
     console.error(err)
@@ -791,12 +812,24 @@ router.get('/reportes/ventas-por-vendedor', access.ventasPorVendedor, async (req
 router.get('/reportes/ventas-por-vendedor-dia', access.ventasPorVendedorDia, async (req, res) => {
   try {
     const { vendedorId, fechaInicio, fechaFin } = req.query as { vendedorId?: string; fechaInicio?: string; fechaFin?: string }
-    const ventas = await prisma.venta.findMany({
-      where: { ...(vendedorId && { vendedorId }), fecha: { ...(fechaInicio && { gte: new Date(fechaInicio) }), ...(fechaFin && { lte: new Date(`${fechaFin}T23:59:59`) }) } },
-      include: { sucursal: true, detalles: { include: { metodoPago: true } } },
-      orderBy: { fecha: 'asc' },
-    })
-    const data = ventas.flatMap((venta) => venta.detalles.map((detalle) => ({ fecha: venta.fecha.toISOString().slice(0, 10), sucursalId: venta.sucursalId, sucursalNombre: venta.sucursal.nombre, cantidad: Number(detalle.cantidad), metodoPagoId: detalle.metodoPagoId, metodoPagoNombre: detalle.metodoPago.nombre, notas: venta.notas })))
+    const conditions: Prisma.Sql[] = []
+    if (fechaInicio) conditions.push(Prisma.sql`v."fecha" >= ${new Date(fechaInicio)}`)
+    if (fechaFin) conditions.push(Prisma.sql`v."fecha" <= ${new Date(`${fechaFin}T23:59:59`)}`)
+    if (vendedorId) conditions.push(Prisma.sql`v."vendedorId" = ${vendedorId}`)
+    const where = conditions.length > 0 ? Prisma.sql`WHERE ${Prisma.join(conditions, ' AND ')}` : Prisma.empty
+    const data = await prisma.$queryRaw<Array<{ fecha: string; vendedorId: string; vendedorNombre: string; total: number }>>`
+      SELECT
+        TO_CHAR(v."fecha", 'YYYY-MM-DD') AS "fecha",
+        v."vendedorId",
+        e."nombreCompleto" AS "vendedorNombre",
+        SUM(vd."cantidad")::float AS "total"
+      FROM "VentaDetalle" vd
+      JOIN "Venta" v ON v."id" = vd."ventaId"
+      JOIN "Empleado" e ON e."id" = v."vendedorId"
+      ${where}
+      GROUP BY TO_CHAR(v."fecha", 'YYYY-MM-DD'), v."vendedorId", e."nombreCompleto"
+      ORDER BY "fecha" ASC, e."nombreCompleto" ASC
+    `
     res.json({ success: true, data, message: 'OK' })
   } catch (err) {
     console.error(err)
@@ -807,25 +840,30 @@ router.get('/reportes/ventas-por-vendedor-dia', access.ventasPorVendedorDia, asy
 router.get('/reportes/total-general', access.totalGeneral, async (req, res) => {
   try {
     const { fechaInicio, fechaFin } = req.query as { fechaInicio?: string; fechaFin?: string }
-    const ventas = await prisma.venta.findMany({
-      where: { fecha: { ...(fechaInicio && { gte: new Date(fechaInicio) }), ...(fechaFin && { lte: new Date(`${fechaFin}T23:59:59`) }) } },
-      include: { sucursal: true, detalles: true },
-      orderBy: { fecha: 'asc' },
-    })
-    const mapaFecha = new Map<string, Map<string, { sucursalNombre: string; total: number }>>()
-    for (const venta of ventas) {
-      const fecha = venta.fecha.toISOString().slice(0, 10)
-      const totalVenta = venta.detalles.reduce((s, d) => s + Number(d.cantidad), 0)
-      if (!mapaFecha.has(fecha)) mapaFecha.set(fecha, new Map())
-      const diaMap = mapaFecha.get(fecha)!
-      const existing = diaMap.get(venta.sucursalId)
-      if (existing) { existing.total += totalVenta }
-      else { diaMap.set(venta.sucursalId, { sucursalNombre: venta.sucursal.nombre, total: totalVenta }) }
+    const rows = await prisma.$queryRaw<Array<{ fecha: string; sucursalId: string; sucursalNombre: string; total: number }>>`
+      SELECT
+        TO_CHAR(v."fecha", 'YYYY-MM-DD') AS "fecha",
+        v."sucursalId",
+        s."nombre" AS "sucursalNombre",
+        SUM(vd."cantidad")::float AS "total"
+      FROM "VentaDetalle" vd
+      JOIN "Venta" v ON v."id" = vd."ventaId"
+      JOIN "Sucursal" s ON s."id" = v."sucursalId"
+      ${dateRangeSql(fechaInicio, fechaFin)}
+      GROUP BY TO_CHAR(v."fecha", 'YYYY-MM-DD'), v."sucursalId", s."nombre"
+      ORDER BY "fecha" ASC, s."nombre" ASC
+    `
+    const grouped = new Map<string, Array<{ sucursalId: string; sucursalNombre: string; total: number }>>()
+    for (const row of rows) {
+      const current = grouped.get(row.fecha) ?? []
+      current.push({ sucursalId: row.sucursalId, sucursalNombre: row.sucursalNombre, total: row.total })
+      grouped.set(row.fecha, current)
     }
-    const data = [...mapaFecha.entries()].map(([fecha, sucursalesMap]) => {
-      const porSucursal = [...sucursalesMap.entries()].map(([sucursalId, { sucursalNombre, total }]) => ({ sucursalId, sucursalNombre, total }))
-      return { fecha, porSucursal, totalDia: porSucursal.reduce((s, r) => s + r.total, 0) }
-    })
+    const data = [...grouped.entries()].map(([fecha, porSucursal]) => ({
+      fecha,
+      porSucursal,
+      totalDia: porSucursal.reduce((sum, row) => sum + row.total, 0),
+    }))
     res.json({ success: true, data, message: 'OK' })
   } catch (err) {
     console.error(err)
@@ -837,33 +875,72 @@ router.get('/reportes/dashboard', access.dashboard, async (req, res) => {
   try {
     const { fecha } = req.query as { fecha?: string }
     const ref = fecha ? new Date(fecha) : new Date()
-    const refStr = ref.toISOString().slice(0, 10)
     const refYear = ref.getFullYear()
     const refMonth = ref.getMonth()
+    const inicioDia = new Date(refYear, refMonth, ref.getDate())
+    const finDia = new Date(refYear, refMonth, ref.getDate(), 23, 59, 59)
+    const inicioMesDate = new Date(refYear, refMonth, 1)
+    const finMesDate = new Date(refYear, refMonth + 1, 0, 23, 59, 59)
     const inicioAnio = new Date(refYear, 0, 1)
     const finAnio = new Date(refYear, 11, 31, 23, 59, 59)
-    const ventasAnio = await prisma.venta.findMany({
-      where: { fecha: { gte: inicioAnio, lte: finAnio } },
-      include: { sucursal: true, vendedor: true, detalles: true },
-    })
-    const sucursales = await prisma.sucursal.findMany({ orderBy: { nombre: 'asc' } })
-    const empleados = await prisma.empleado.findMany({ where: { activo: true } })
-    const inicioMes = new Date(refYear, refMonth, 1).toISOString().slice(0, 10)
-    const finMes = new Date(refYear, refMonth + 1, 0).toISOString().slice(0, 10)
-    function totalPorSucursal(fechaFilter: (f: string) => boolean) {
-      return sucursales.map((s) => {
-        const total = ventasAnio.filter((v) => v.sucursalId === s.id && fechaFilter(v.fecha.toISOString().slice(0, 10))).flatMap((v) => v.detalles).reduce((acc, d) => acc + Number(d.cantidad), 0)
-        return { sucursalId: s.id, sucursalNombre: s.nombre, total }
-      })
+
+    async function totalPorSucursal(start: Date, end: Date) {
+      return prisma.$queryRaw<Array<{ sucursalId: string; sucursalNombre: string; total: number }>>`
+        SELECT
+          s."id" AS "sucursalId",
+          s."nombre" AS "sucursalNombre",
+          COALESCE(SUM(vd."cantidad"), 0)::float AS "total"
+        FROM "Sucursal" s
+        LEFT JOIN "Venta" v
+          ON v."sucursalId" = s."id"
+          AND v."fecha" >= ${start}
+          AND v."fecha" <= ${end}
+        LEFT JOIN "VentaDetalle" vd ON vd."ventaId" = v."id"
+        GROUP BY s."id", s."nombre"
+        ORDER BY s."nombre" ASC
+      `
     }
-    const dia = totalPorSucursal((f) => f === refStr)
-    const mes = totalPorSucursal((f) => f >= inicioMes && f <= finMes)
-    const anio = totalPorSucursal(() => true)
-    const ventasPorVendedor = empleados.map((emp) => {
-      const vendido = ventasAnio.filter((v) => v.vendedorId === emp.id && v.fecha.toISOString().slice(0, 10) >= inicioMes && v.fecha.toISOString().slice(0, 10) <= finMes).flatMap((v) => v.detalles).reduce((acc, d) => acc + Number(d.cantidad), 0)
-      return { empleadoId: emp.id, nombre: emp.nombreCompleto, vendido, meta: Number(emp.metaIndividual) }
+
+    const monthRanges = Array.from({ length: 6 }, (_, index) => {
+      const date = new Date(refYear, refMonth - (5 - index), 1)
+      return {
+        year: date.getFullYear(),
+        month: date.getMonth() + 1,
+        start: new Date(date.getFullYear(), date.getMonth(), 1),
+        end: new Date(date.getFullYear(), date.getMonth() + 1, 0, 23, 59, 59),
+      }
     })
-    res.json({ success: true, data: { dia, mes, anio, ventasPorVendedor }, message: 'OK' })
+
+    const [dia, mes, anio, ventasPorVendedor, ...monthTotals] = await Promise.all([
+      totalPorSucursal(inicioDia, finDia),
+      totalPorSucursal(inicioMesDate, finMesDate),
+      totalPorSucursal(inicioAnio, finAnio),
+      prisma.$queryRaw<Array<{ empleadoId: string; nombre: string; vendido: number; meta: number }>>`
+        SELECT
+          e."id" AS "empleadoId",
+          e."nombreCompleto" AS "nombre",
+          COALESCE(SUM(vd."cantidad"), 0)::float AS "vendido",
+          e."metaIndividual"::float AS "meta"
+        FROM "Empleado" e
+        LEFT JOIN "Venta" v
+          ON v."vendedorId" = e."id"
+          AND v."fecha" >= ${inicioMesDate}
+          AND v."fecha" <= ${finMesDate}
+        LEFT JOIN "VentaDetalle" vd ON vd."ventaId" = v."id"
+        WHERE e."activo" = true
+        GROUP BY e."id", e."nombreCompleto", e."metaIndividual"
+        ORDER BY "vendido" DESC, e."nombreCompleto" ASC
+      `,
+      ...monthRanges.map((range) => totalPorSucursal(range.start, range.end)),
+    ])
+
+    const monthsData = monthRanges.map((range, index) => ({
+      year: range.year,
+      month: range.month,
+      totals: monthTotals[index] ?? [],
+    }))
+
+    res.json({ success: true, data: { dia, mes, anio, monthsData, ventasPorVendedor }, message: 'OK' })
   } catch (err) {
     console.error(err)
     res.status(500).json({ success: false, data: null, message: 'Error al generar dashboard' })
