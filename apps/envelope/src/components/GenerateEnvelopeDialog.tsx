@@ -24,17 +24,16 @@ import {
   toast,
 } from "@cosmetics/ui";
 import { api } from "@/lib/api";
+import { useVentas } from "@/hooks";
 import { useSession } from "@/lib/session";
 import { useI18n } from "@/lib/i18n";
 import { formatCurrency, formatDate, todayISO } from "@/lib/utils";
-import type { RegistroVenta } from "@/lib/mock-data";
 
 type BranchOption = { id: string; nombre: string };
 type EmployeeOption = { id: string; nombreCompleto: string };
 type PaymentMethodOption = { id: string; nombre: string; tipo?: string | null };
 
 interface GenerateEnvelopeDialogProps {
-  registros: RegistroVenta[];
   sucursales: BranchOption[];
   empleados: EmployeeOption[];
   metodosPago: PaymentMethodOption[];
@@ -282,7 +281,6 @@ const SignaturePad = forwardRef<SignaturePadHandle>(function SignaturePad(_, ref
 });
 
 export function GenerateEnvelopeDialog({
-  registros,
   sucursales,
   empleados,
   metodosPago,
@@ -296,6 +294,14 @@ export function GenerateEnvelopeDialog({
   const signatureRef = useRef<SignaturePadHandle | null>(null);
 
   const canGenerateEnvelope = canAccess("ventas/generar-sobre");
+  const {
+    registros,
+    loading: loadingSales,
+  } = useVentas({
+    fechaInicio: selectedDate,
+    fechaFin: selectedDate,
+    enabled: open && canGenerateEnvelope,
+  });
 
   useEffect(() => {
     if (!selectedBranchId && sucursales[0]) {
@@ -696,7 +702,7 @@ export function GenerateEnvelopeDialog({
         >
           {hasSelectedSales
             ? `${selectedSales.length} registro${selectedSales.length !== 1 ? "s" : ""} · ${formatCurrency(fromCents(totalCents))}`
-            : t.sales.generateEnvelopeNoData}
+            : loadingSales ? t.common.loadingData : t.sales.generateEnvelopeNoData}
         </div>
 
         <div className="space-y-2">
@@ -718,7 +724,7 @@ export function GenerateEnvelopeDialog({
           <Button
             type="button"
             onClick={handleGenerate}
-            disabled={generating || !hasSelectedSales}
+            disabled={generating || loadingSales || !hasSelectedSales}
           >
             {generating ? t.sales.generateEnvelopeGenerating : t.sales.generateEnvelope}
           </Button>

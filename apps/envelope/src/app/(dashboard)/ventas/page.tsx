@@ -148,10 +148,17 @@ function allocatePaymentsToEmployees(
 
 export default function VentasPage() {
   const { user } = useSession();
+  const [saleRange, setSaleRange] = useState<DateRange>({
+    from: todayISO(),
+    to: todayISO(),
+  });
   const { sucursales } = useSucursales();
   const { empleados } = useEmpleados();
   const { metodosPago } = useMetodosPago();
-  const { registros, addBatch, remove: deleteRegistro } = useVentas();
+  const { registros, addBatch, remove: deleteRegistro } = useVentas({
+    fechaInicio: saleRange.from,
+    fechaFin: saleRange.to,
+  });
   const { locale, t, dataTableLabels } = useI18n();
   const saleSchema = useMemo(
     () => createSaleSchema({
@@ -193,11 +200,6 @@ export default function VentasPage() {
     PaymentAllocation[]
   >([]);
   const [saving, setSaving] = useState(false);
-  const [saleRange, setSaleRange] = useState<DateRange>({
-    from: todayISO(),
-    to: todayISO(),
-  });
-
   const selectedPaymentMethod = paymentForm.watch("metodoPagoId");
   const allocatedEmployeeCents = employeeAllocations.reduce(
     (sum, employee) => sum + employee.amountCents,
@@ -546,7 +548,6 @@ export default function VentasPage() {
           </p>
         </div>
         <GenerateEnvelopeDialog
-          registros={registros}
           sucursales={visibleSucursales}
           empleados={empleados}
           metodosPago={metodosPago}

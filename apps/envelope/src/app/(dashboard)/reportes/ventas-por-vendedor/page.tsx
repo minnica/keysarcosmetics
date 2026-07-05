@@ -1,6 +1,7 @@
 'use client'
 // Reporte: Avance de vendedores vs meta mensual con barra de progreso coloreada
 import { useState } from 'react'
+import { useEffect } from 'react'
 import {
   DateRangePicker,
   type DateRange,
@@ -12,7 +13,7 @@ import {
   TableCell,
   ProgressKeysar,
 } from "@cosmetics/ui"
-import { useReportes } from '@/hooks'
+import { api } from '@/lib/api'
 import { useI18n } from '@/lib/i18n'
 import { formatCurrency, todayISO } from '@/lib/utils'
 import { cn } from '@/lib/utils'
@@ -24,47 +25,48 @@ function firstDayOfMonth(): string {
 }
 
 export default function VentasPorVendedorPage() {
-  const { registros, empleados, sucursales, loading, error } = useReportes()
   const { t } = useI18n()
   const [range, setRange] = useState<DateRange>({ from: firstDayOfMonth(), to: todayISO() })
   const [exporting, setExporting] = useState<'pdf' | 'excel' | null>(null)
-
-  const filtered = registros.filter(r => r.fecha >= range.from && r.fecha <= range.to)
-
-  const sucursalNombre = (id: string) => sucursales.find(s => s.id === id)?.nombre ?? id
-
   interface Fila {
-    emp: typeof empleados[number]
+    empleadoId: string
+    nombreCompleto: string
     sucursalId: string
+    sucursalNombre: string
     totalVendido: number
+    meta: number
     porLlegar: number
     porcentaje: number
   }
+  const [filas, setFilas] = useState<Fila[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
-  const filasMap = new Map<string, Fila>()
+  useEffect(() => {
+    let cancelled = false
 
-  for (const reg of filtered) {
-    const emp = empleados.find(e => e.id === reg.vendedorId)
-    if (!emp) continue
-    const key = `${emp.id}__${reg.sucursalId}`
-    const totalItems = reg.items.reduce((s, i) => s + i.cantidad, 0)
-    const existing = filasMap.get(key)
-    if (existing) {
-      existing.totalVendido += totalItems
-      existing.porLlegar = Math.max(0, emp.metaIndividual - existing.totalVendido)
-      existing.porcentaje = emp.metaIndividual > 0 ? (existing.totalVendido / emp.metaIndividual) * 100 : 0
-    } else {
-      filasMap.set(key, {
-        emp,
-        sucursalId: reg.sucursalId,
-        totalVendido: totalItems,
-        porLlegar: Math.max(0, emp.metaIndividual - totalItems),
-        porcentaje: emp.metaIndividual > 0 ? (totalItems / emp.metaIndividual) * 100 : 0,
-      })
+    async function loadReport() {
+      setLoading(true)
+      setError(null)
+      try {
+        const { data } = await api.get<{ success: boolean; data: Fila[] }>('/api/envelope/reportes/ventas-por-vendedor', {
+          params: { fechaInicio: range.from, fechaFin: range.to },
+        })
+        if (!cancelled) setFilas(data.data)
+      } catch {
+        if (!cancelled) setError('Error al cargar reporte')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
     }
-  }
 
-  const filas = [...filasMap.values()].sort((a, b) => b.totalVendido - a.totalVendido)
+    void loadReport()
+
+    return () => {
+      cancelled = true
+    }
+  }, [range.from, range.to])
+
   type ExportRow = {
     empleado: string
     sucursal: string
@@ -74,11 +76,11 @@ export default function VentasPorVendedorPage() {
     porcentaje: number
   }
 
-  const exportRows: ExportRow[] = filas.map(({ emp, sucursalId, totalVendido, porLlegar, porcentaje }) => ({
-    empleado: emp.nombreCompleto,
-    sucursal: sucursalNombre(sucursalId),
+  const exportRows: ExportRow[] = filas.map(({ nombreCompleto, sucursalNombre, totalVendido, meta, porLlegar, porcentaje }) => ({
+    empleado: nombreCompleto,
+    sucursal: sucursalNombre,
     totalVendido,
-    metaMensual: emp.metaIndividual,
+    metaMensual: meta,
     porLlegar,
     porcentaje,
   }))
@@ -153,14 +155,14 @@ export default function VentasPorVendedorPage() {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {filas.map(({ emp, sucursalId, totalVendido, porLlegar, porcentaje }) => {
+          {filas.map(({ empleadoId, sucursalId, nombreCompleto, sucursalNombre, totalVendido, meta, porLlegar, porcentaje }) => {
             const colorText = porcentaje < 50 ? 'text-red-600' : porcentaje < 80 ? 'text-yellow-600' : 'text-green-600'
             return (
-              <TableRow key={`${emp.id}__${sucursalId}`}>
-                <TableCell className="font-medium">{emp.nombreCompleto}</TableCell>
-                <TableCell className="text-xs" style={{ color: 'var(--text-muted)' }}>{sucursalNombre(sucursalId)}</TableCell>
+              <TableRow key={`${empleadoId}__${sucursalId}`}>
+                <TableCell className="font-medium">{nombreCompleto}</TableCell>
+                <TableCell className="text-xs" style={{ color: 'var(--text-muted)' }}>{sucursalNombre}</TableCell>
                 <TableCell className="text-right">{formatCurrency(totalVendido)}</TableCell>
-                <TableCell className="text-right" style={{ color: 'var(--text-muted)' }}>{formatCurrency(emp.metaIndividual)}</TableCell>
+                <TableCell className="text-right" style={{ color: 'var(--text-muted)' }}>{formatCurrency(meta)}</TableCell>
                 <TableCell className="text-right" style={{ color: 'var(--text-muted)' }}>{formatCurrency(porLlegar)}</TableCell>
                 <TableCell className="min-w-[140px]">
                   <div className="flex items-center gap-2">

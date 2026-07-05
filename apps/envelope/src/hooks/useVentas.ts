@@ -15,6 +15,12 @@ interface UseVentasReturn {
   remove: (id: string) => Promise<void>;
 }
 
+interface UseVentasOptions {
+  fechaInicio?: string;
+  fechaFin?: string;
+  enabled?: boolean;
+}
+
 // Respuesta cruda de la API para una Venta
 interface VentaRaw {
   id: string;
@@ -52,17 +58,31 @@ function toRegistroVenta(v: VentaRaw): RegistroVenta {
   };
 }
 
-export function useVentas(): UseVentasReturn {
+export function useVentas(options: UseVentasOptions = {}): UseVentasReturn {
+  const { fechaInicio, fechaFin, enabled = true } = options;
   const [registros, setRegistros] = useState<RegistroVenta[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(enabled);
   const [error, setError] = useState<string | null>(null);
 
   const refetch = useCallback(async () => {
+    if (!enabled) {
+      setRegistros([]);
+      setLoading(false);
+      setError(null);
+      return;
+    }
+
     setLoading(true);
     setError(null);
     try {
       const { data } = await api.get<{ success: boolean; data: VentaRaw[] }>(
         "/api/envelope/ventas",
+        {
+          params: {
+            ...(fechaInicio ? { fechaInicio } : {}),
+            ...(fechaFin ? { fechaFin } : {}),
+          },
+        },
       );
       setRegistros(data.data.map(toRegistroVenta));
     } catch {
@@ -70,7 +90,7 @@ export function useVentas(): UseVentasReturn {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [enabled, fechaFin, fechaInicio]);
 
   useEffect(() => {
     void refetch();

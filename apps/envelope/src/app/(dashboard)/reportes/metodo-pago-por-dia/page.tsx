@@ -1,6 +1,7 @@
 'use client'
 // Reporte: Ventas por método de pago desglosadas por día, columna por sucursal
 import { useState } from 'react'
+import { useEffect } from 'react'
 import {
   Label,
   Table,
@@ -17,14 +18,16 @@ import {
   SelectItem,
 } from "@cosmetics/ui"
 
-import { useReportes } from '@/hooks'
+import { api } from '@/lib/api'
+import { useMetodosPago, useSucursales } from '@/hooks'
 import { useI18n } from '@/lib/i18n'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { ReportExportButtons } from '@/components/reportes/ReportExportButtons'
 import { exportReportToExcel, exportReportToPdf, type ExportColumn } from '@/lib/report-export'
 
 export default function MetodoPagoPorDiaPage() {
-  const { registros, sucursales, metodosPago, loading, error } = useReportes()
+  const { sucursales, loading: loadingSucursales, error: sucursalesError } = useSucursales()
+  const { metodosPago, loading: loadingMetodos, error: metodosError } = useMetodosPago()
   const { locale, t } = useI18n()
 
   const now = new Date()
@@ -32,6 +35,10 @@ export default function MetodoPagoPorDiaPage() {
   const [year, setYear] = useState(now.getFullYear())
   const [month, setMonth] = useState(now.getMonth() + 1)
   const [exporting, setExporting] = useState<'pdf' | 'excel' | null>(null)
+  type ReportRow = { fecha: string; sucursalId: string; sucursalNombre: string; total: number }
+  const [rows, setRows] = useState<ReportRow[]>([])
+  const [loadingReport, setLoadingReport] = useState(true)
+  const [reportError, setReportError] = useState<string | null>(null)
 
   const years = Array.from({ length: now.getFullYear() - 2022 }, (_, i) => 2023 + i)
   const months = t.reports.months
@@ -39,17 +46,43 @@ export default function MetodoPagoPorDiaPage() {
   // Usa el primer método disponible si no se ha seleccionado
   const efectivoId = metodoPagoId || (metodosPago[0]?.id ?? '')
 
-  const prefix = `${year}-${String(month).padStart(2, '0')}`
-  const filtered = registros.filter(r => r.fecha.startsWith(prefix))
+  useEffect(() => {
+    if (!efectivoId) {
+      setRows([])
+      setLoadingReport(false)
+      return
+    }
 
-  const dias = [...new Set(filtered.map(r => r.fecha))].sort()
+    let cancelled = false
+
+    async function loadReport() {
+      setLoadingReport(true)
+      setReportError(null)
+      try {
+        const { data } = await api.get<{ success: boolean; data: ReportRow[] }>('/api/envelope/reportes/metodo-pago-por-dia', {
+          params: { metodoPagoId: efectivoId, mes: month, anio: year },
+        })
+        if (!cancelled) setRows(data.data)
+      } catch {
+        if (!cancelled) setReportError('Error al cargar reporte')
+      } finally {
+        if (!cancelled) setLoadingReport(false)
+      }
+    }
+
+    void loadReport()
+
+    return () => {
+      cancelled = true
+    }
+  }, [efectivoId, month, year])
+
+  const loading = loadingSucursales || loadingMetodos || loadingReport
+  const error = sucursalesError ?? metodosError ?? reportError
+  const dias = [...new Set(rows.map(r => r.fecha))].sort()
 
   function totalDiaSucursal(fecha: string, sucursalId: string): number {
-    return filtered
-      .filter(r => r.fecha === fecha && r.sucursalId === sucursalId)
-      .flatMap(r => r.items)
-      .filter(i => i.metodoPagoId === efectivoId)
-      .reduce((s, i) => s + i.cantidad, 0)
+    return rows.find(r => r.fecha === fecha && r.sucursalId === sucursalId)?.total ?? 0
   }
 
   function totalDia(fecha: string): number {

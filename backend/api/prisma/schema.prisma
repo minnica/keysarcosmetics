@@ -133,6 +133,11 @@ model Venta {
   detalles      VentaDetalle[]
   creadoEn      DateTime       @default(now())
   actualizadoEn DateTime       @updatedAt
+
+  @@index([fecha])
+  @@index([sucursalId, fecha])
+  @@index([vendedorId, fecha])
+  @@index([sesionId])
 }
 
 // Cada fila = una venta individual con monto y método de pago
@@ -145,4 +150,7 @@ model VentaDetalle {
   metodoPago    MetodoPago @relation(fields: [metodoPagoId], references: [id])
   creadoEn      DateTime   @default(now())
   actualizadoEn DateTime   @updatedAt
+
+  @@index([ventaId])
+  @@index([metodoPagoId])
 }
