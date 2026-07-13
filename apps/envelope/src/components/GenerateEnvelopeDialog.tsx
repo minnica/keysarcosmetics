@@ -77,19 +77,19 @@ const PAYMENT_BUCKETS = [
       normalize(name).includes("EFECTIVO") || normalize(type ?? "") === "EFECTIVO",
   },
   {
-    label: "NETPAY LINK",
-    matches: (name: string, type?: string | null) => {
-      const text = normalize(name);
-      return text.includes("NETPAY") && text.includes("LINK")
-        || normalize(type ?? "") === "NETPAY LINK";
-    },
-  },
-  {
     label: "NETPAY TERMINAL",
     matches: (name: string, type?: string | null) => {
       const text = normalize(name);
       return text.includes("NETPAY") && !text.includes("LINK")
         || normalize(type ?? "") === "NETPAY TERMINAL";
+    },
+  },
+  {
+    label: "NETPAY LINK",
+    matches: (name: string, type?: string | null) => {
+      const text = normalize(name);
+      return text.includes("NETPAY") && text.includes("LINK")
+        || normalize(type ?? "") === "NETPAY LINK";
     },
   },
   {
