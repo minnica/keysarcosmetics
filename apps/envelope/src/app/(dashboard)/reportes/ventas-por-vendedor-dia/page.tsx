@@ -27,7 +27,7 @@ import { useI18n } from '@/lib/i18n'
 import { formatCurrency, formatDate, monthName } from '@/lib/utils'
 import { ReportExportButtons } from '@/components/reportes/ReportExportButtons'
 import { TableLoadingSkeleton } from '@/components/layout/DataLoadingSkeleton'
-import { exportReportToExcel, exportReportToPdf, type ExportColumn } from '@/lib/report-export'
+import { exportReportToExcel, type ExportColumn } from '@/lib/report-export'
 
 function monthDates(year: number, month: number): string[] {
   const totalDays = new Date(year, month, 0).getDate()
@@ -37,12 +37,25 @@ function monthDates(year: number, month: number): string[] {
   })
 }
 
-function chunkArray<T>(values: T[], size: number): T[][] {
-  const chunks: T[][] = []
-  for (let i = 0; i < values.length; i += size) {
-    chunks.push(values.slice(i, i + size))
+function formatPdfCurrency(value: number, includeCurrencySymbol = true): string {
+  const roundedValue = Math.round((value + Number.EPSILON) * 100) / 100
+  const cents = Math.abs(Math.round(roundedValue * 100)) % 100
+
+  if (!includeCurrencySymbol) {
+    const fractionDigits = roundedValue === 0 ? 2 : cents === 0 ? 0 : 2
+
+    return new Intl.NumberFormat('es-MX', {
+      minimumFractionDigits: fractionDigits,
+      maximumFractionDigits: fractionDigits,
+    }).format(roundedValue)
   }
-  return chunks
+
+  return new Intl.NumberFormat('es-MX', {
+    style: 'currency',
+    currency: 'MXN',
+    minimumFractionDigits: cents === 0 ? 0 : 2,
+    maximumFractionDigits: 2,
+  }).format(roundedValue)
 }
 
 type SalesRow = {
@@ -239,11 +252,13 @@ export default function VentasPorVendedorDiaPage() {
       format: 'a4',
     })
 
-    const chunks = chunkArray(dias, 10)
-    const summaryWidths = [52, 58, 50]
-    const pageBottom = doc.internal.pageSize.getHeight() - 28
-    let currentY = 70
-    const lastAutoTable = () => (doc as any).lastAutoTable?.finalY as number | undefined
+    // Cada tabla corresponde a una quincena. No se apilan varios bloques en
+    // una misma página porque eso puede separar una quincena entre dos hojas.
+    const periods = [dias.slice(0, 15), dias.slice(15)].filter((period) => period.length > 0)
+    const tableMargin = 26
+    const employeeWidth = 125
+    const summaryWidths = [50, 62, 54]
+    const availableTableWidth = doc.internal.pageSize.getWidth() - tableMargin * 2
 
     function drawPageHeader() {
       doc.setFont('helvetica', 'bold')
@@ -251,27 +266,21 @@ export default function VentasPorVendedorDiaPage() {
       doc.text(t.reports.salesBySellerDayTitle, 40, 32)
       doc.setFont('helvetica', 'normal')
       doc.setFontSize(8)
-      doc.text(`${t.common.monthlyPeriod} ${periodLabel}`, 40, 42)
+      doc.text(`${t.common.monthlyPeriod} ${periodLabel} · IMPORTES EN MXN`, 40, 42)
     }
 
-    chunks.forEach((dayChunk, index) => {
-      const newPage = index % 3 === 0
-      if (newPage) {
-        if (index > 0) {
-          doc.addPage()
-        }
-        currentY = 70
-        drawPageHeader()
-      } else {
-        currentY = (lastAutoTable() ?? currentY) + 22
+    periods.forEach((dayChunk, index) => {
+      if (index > 0) {
+        doc.addPage()
       }
+      drawPageHeader()
 
       const firstDay = dayChunk[0]!
       const lastDay = dayChunk[dayChunk.length - 1]!
       const subtitle = `${formatDate(firstDay, 'dd/MM/yyyy', locale)} - ${formatDate(lastDay, 'dd/MM/yyyy', locale)}`
       doc.setFont('helvetica', 'bold')
       doc.setFontSize(8)
-      doc.text(subtitle, 40, currentY - 10)
+      doc.text(subtitle, 40, 60)
       doc.setFont('helvetica', 'normal')
 
       const head = [[
@@ -284,30 +293,55 @@ export default function VentasPorVendedorDiaPage() {
 
       const body = rows.map((row) => [
         row.sellerName,
-        ...dayChunk.map((dia) => formatCurrency(row.byDate[dia] ?? 0)),
+        ...dayChunk.map((dia) => formatPdfCurrency(row.byDate[dia] ?? 0, false)),
         row.daysWithoutSale === 0 ? '0 DÍAS' : `${row.daysWithoutSale} DÍAS`,
-        formatCurrency(row.approximateDayAmount),
-        formatCurrency(row.total),
+        formatPdfCurrency(row.approximateDayAmount),
+        formatPdfCurrency(row.total),
       ])
 
       const foot = [[
         t.common.grandTotal,
-        ...dayChunk.map((dia) => formatCurrency(totalDia(dia))),
+        ...dayChunk.map((dia) => formatPdfCurrency(totalDia(dia), false)),
         '—',
-        formatCurrency(rows.reduce((sum, row) => sum + row.approximateDayAmount, 0)),
-        formatCurrency(grandTotal),
+        formatPdfCurrency(rows.reduce((sum, row) => sum + row.approximateDayAmount, 0)),
+        formatPdfCurrency(grandTotal),
       ]]
+      // Distribuye el ancho disponible entre los días de cada quincena. La
+      // segunda puede tener 13 a 16 días, por lo que necesita su propio cálculo.
+      const dayColumnWidth = (
+        availableTableWidth
+        - employeeWidth
+        - summaryWidths.reduce((sum, width) => sum + width, 0)
+      ) / dayChunk.length
+      const dayCellPadding = 0.7
+      const baseDayFontSize = 5.8
+      const dailyAmounts = [
+        ...body.flatMap((row) => row.slice(1, dayChunk.length + 1)),
+        ...foot[0]!.slice(1, dayChunk.length + 1),
+      ]
+
+      doc.setFont('helvetica', 'normal')
+      doc.setFontSize(baseDayFontSize)
+      const widestDailyAmount = Math.max(
+        ...dailyAmounts.map((amount) => doc.getTextWidth(amount)),
+      )
+      // Reduce solo la fuente de las columnas diarias cuando el importe más
+      // largo de la quincena lo requiera; así ningún monto se trunca.
+      const dayFontSize = Math.min(
+        baseDayFontSize,
+        baseDayFontSize * ((dayColumnWidth - dayCellPadding * 2) / widestDailyAmount),
+      )
 
       autoTable(doc, {
-        startY: currentY,
+        startY: 70,
         head,
         body,
         foot,
         theme: 'striped',
         styles: {
           font: 'helvetica',
-          fontSize: 6.2,
-          cellPadding: 2,
+          fontSize: 5.8,
+          cellPadding: 1.6,
           overflow: 'ellipsize',
           valign: 'middle',
         },
@@ -324,23 +358,20 @@ export default function VentasPorVendedorDiaPage() {
         alternateRowStyles: {
           fillColor: [249, 250, 249],
         },
-        margin: { top: 48, left: 26, right: 26, bottom: 24 },
+        margin: { top: 48, left: tableMargin, right: tableMargin, bottom: 24 },
         tableWidth: 'wrap',
         columnStyles: {
-          0: { cellWidth: 140 },
-          ...Object.fromEntries(dayChunk.map((_, dayIndex) => [dayIndex + 1, { cellWidth: 34 }])),
+          0: { cellWidth: employeeWidth },
+          ...Object.fromEntries(dayChunk.map((_, dayIndex) => [dayIndex + 1, {
+            cellPadding: dayCellPadding,
+            cellWidth: dayColumnWidth,
+            fontSize: dayFontSize,
+          }])),
           [dayChunk.length + 1]: { cellWidth: summaryWidths[0] },
           [dayChunk.length + 2]: { cellWidth: summaryWidths[1] },
           [dayChunk.length + 3]: { cellWidth: summaryWidths[2] },
         },
       })
-
-      currentY = (lastAutoTable() ?? currentY) + 10
-      if (currentY > pageBottom) {
-        doc.addPage()
-        currentY = 70
-        drawPageHeader()
-      }
     })
 
     doc.save(`ventas-vendedor-dia-${year}-${String(month).padStart(2, '0')}.pdf`)
@@ -517,7 +548,7 @@ export default function VentasPorVendedorDiaPage() {
             >
               <SheetContent
                 side="bottom"
-                className="h-[88vh] rounded-t-[28px] border-[color:var(--border-color)] bg-[var(--bg-card)] p-0"
+                className="h-[100dvh] max-h-[100dvh] rounded-none border-none bg-[var(--bg-card)] p-0"
               >
                 {selectedRow ? (
                   <div className="flex h-full flex-col">

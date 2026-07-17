@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import {
   BarChart,
   Bar,
+  Cell,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -17,6 +18,8 @@ import {
   CardHeader,
   CardContent,
   DatePicker,
+  Input,
+  ProgressKeysar,
 } from "@cosmetics/ui";
 import { Label } from "@cosmetics/ui";
 import { api } from "@/lib/api";
@@ -61,12 +64,20 @@ interface DashboardData {
   ventasPorVendedor: DashboardSellerTotal[];
 }
 
+function abbreviateBranchName(name: string): string {
+  const words = name.trim().split(/\s+/);
+  return words.length > 1
+    ? `${words[0]} ${words.slice(1).map((word) => `${word.charAt(0)}.`).join(" ")}`
+    : name;
+}
+
 export default function DashboardPage() {
   const { locale, t } = useI18n();
   const [selectedDate, setSelectedDate] = useState(todayISO());
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [sellerSearch, setSellerSearch] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -126,6 +137,22 @@ export default function DashboardPage() {
   const vendedoresData = (dashboardData?.ventasPorVendedor ?? [])
     .filter((emp) => emp.meta > 0)
     .sort((a, b) => b.vendido - a.vendido);
+  const sellersSummary = vendedoresData.reduce(
+    (summary, seller) => ({
+      vendido: summary.vendido + seller.vendido,
+      meta: summary.meta + seller.meta,
+    }),
+    { vendido: 0, meta: 0 },
+  );
+  const sellersProgress = sellersSummary.meta > 0
+    ? (sellersSummary.vendido / sellersSummary.meta) * 100
+    : 0;
+  const mobileSellers = vendedoresData.filter((seller) =>
+    seller.nombre.toLowerCase().includes(sellerSearch.trim().toLowerCase()),
+  );
+  const monthlyBranches = [...(dashboardData?.mes ?? [])]
+    .sort((a, b) => b.total - a.total);
+  const monthlyTotal = monthlyBranches.reduce((sum, branch) => sum + branch.total, 0);
 
   const formatK = (v: number) =>
     v >= 1000 ? `$${(v / 1000).toFixed(0)}k` : `$${v}`;
@@ -239,7 +266,56 @@ export default function DashboardPage() {
       {/* ── Gráfica 1: Total mensual por sucursal ── */}
       <section>
         <h2 className="label-caps mb-3">{t.dashboard.monthlyTotalByBranch}</h2>
-        <Card>
+        <div className="md:hidden">
+          <Card className="border-[color:var(--border-color)] bg-[var(--bg-card)] shadow-sm">
+            <CardHeader className="p-4 pb-2">
+              <div className="text-[11px] uppercase tracking-[0.12em] text-[color:var(--text-muted)]">
+                {formatDate(selectedDate, "MMMM yyyy", locale)}
+              </div>
+              <div className="mt-1 number-display text-xl">{formatCurrency(monthlyTotal)}</div>
+            </CardHeader>
+            <CardContent className="px-2 pb-4 pt-2">
+              {monthlyBranches.length === 0 ? (
+                <p className="py-4 text-center text-sm text-[color:var(--text-muted)]">Sin ventas en el mes seleccionado.</p>
+              ) : (
+                <ResponsiveContainer width="100%" height={310}>
+                  <BarChart data={monthlyBranches} margin={{ top: 18, right: 8, left: -16, bottom: 54 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" vertical={false} />
+                    <XAxis
+                      dataKey="sucursalNombre"
+                      interval={0}
+                      angle={-38}
+                      textAnchor="end"
+                      height={60}
+                      tickFormatter={abbreviateBranchName}
+                      tick={{ fontSize: 10, fill: "var(--text-muted)" }}
+                    />
+                    <YAxis tickFormatter={formatK} tick={{ fontSize: 10, fill: "var(--text-muted)" }} />
+                    <Tooltip
+                      formatter={(value: number) => formatCurrency(value)}
+                      labelFormatter={(label) => label}
+                      contentStyle={{
+                        backgroundColor: "var(--bg-card)",
+                        border: "1px solid var(--border-color)",
+                        borderRadius: "10px",
+                        color: "var(--text-primary)",
+                        fontSize: "12px",
+                      }}
+                    />
+                    <Bar dataKey="total" name={t.common.total} radius={[4, 4, 0, 0]}>
+                      {monthlyBranches.map((branch, index) => (
+                        <Cell key={branch.sucursalId} fill={SUCURSAL_COLORS[index % SUCURSAL_COLORS.length]} />
+                      ))}
+                      <LabelList dataKey="total" position="top" style={{ fontSize: 9, fill: "var(--text-muted)" }} formatter={formatK} />
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        <Card className="hidden md:block">
           <CardContent className="pt-6">
             <ResponsiveContainer width="100%" height={280}>
               <BarChart
@@ -288,9 +364,9 @@ export default function DashboardPage() {
       {/* ── Gráfica 2: Vendedor vs Meta ── */}
       <section>
         <h2 className="label-caps mb-3">{t.dashboard.sellersMonthlyProgress}</h2>
-        <Card>
-          <CardContent className="pt-6">
-            {vendedoresData.length === 0 ? (
+        {vendedoresData.length === 0 ? (
+          <Card>
+            <CardContent className="pt-6">
               <div
                 className="flex flex-col items-center justify-center py-12 gap-2"
                 style={{ color: "var(--text-muted)" }}
@@ -300,7 +376,84 @@ export default function DashboardPage() {
                   {t.dashboard.assignGoalHint}
                 </p>
               </div>
-            ) : (
+            </CardContent>
+          </Card>
+        ) : (
+          <>
+            <div className="space-y-3 md:hidden">
+              <Card className="border-[color:var(--border-color)] bg-[var(--bg-card)] shadow-sm">
+                <CardContent className="p-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <div className="text-[11px] uppercase tracking-[0.12em] text-[color:var(--text-muted)]">AVANCE GLOBAL</div>
+                      <div className="mt-1 number-display text-2xl">{sellersProgress.toFixed(0)}%</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-[11px] uppercase tracking-[0.12em] text-[color:var(--text-muted)]">{t.dashboard.sold}</div>
+                      <div className="mt-1 text-sm font-semibold tabular-nums">{formatCurrency(sellersSummary.vendido)}</div>
+                    </div>
+                  </div>
+                  <ProgressKeysar value={sellersProgress} className="mt-3" />
+                  <div className="mt-2 flex justify-between text-xs text-[color:var(--text-muted)]">
+                    <span>{vendedoresData.length} VENDEDORES CON META</span>
+                    <span>{t.dashboard.goal}: {formatCurrency(sellersSummary.meta)}</span>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="buscar-vendedor-dashboard" className="text-xs uppercase tracking-[0.12em]">BUSCAR EMPLEADO</Label>
+                <Input
+                  id="buscar-vendedor-dashboard"
+                  value={sellerSearch}
+                  onChange={(event) => setSellerSearch(event.target.value)}
+                  placeholder="Escribe el nombre del vendedor"
+                  className="h-11 border-[color:var(--border-color)] bg-[var(--bg-card)]"
+                />
+              </div>
+
+              <div className="space-y-3">
+                {mobileSellers.map((seller) => {
+                  const progress = seller.meta > 0 ? (seller.vendido / seller.meta) * 100 : 0;
+                  const remaining = Math.max(0, seller.meta - seller.vendido);
+                  const progressColor = progress < 50 ? "text-red-600" : progress < 80 ? "text-yellow-600" : "text-green-600";
+
+                  return (
+                    <Card key={seller.empleadoId} className="border-[color:var(--border-color)] bg-[var(--bg-card)] shadow-sm">
+                      <CardHeader className="flex-row items-start justify-between gap-3 p-4 pb-3">
+                        <div className="min-w-0">
+                          <h3 className="truncate text-base font-semibold">{seller.nombre}</h3>
+                          <div className="mt-1 text-[11px] uppercase tracking-[0.12em] text-[color:var(--text-muted)]">{t.dashboard.sold}</div>
+                          <div className="mt-1 number-display text-lg">{formatCurrency(seller.vendido)}</div>
+                        </div>
+                        <span className={`shrink-0 text-lg font-semibold tabular-nums ${progressColor}`}>{progress.toFixed(0)}%</span>
+                      </CardHeader>
+                      <CardContent className="space-y-3 px-4 pb-4">
+                        <ProgressKeysar value={progress} />
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="rounded-xl bg-[color:var(--bg-primary)] px-3 py-2">
+                            <div className="text-[10px] uppercase tracking-[0.12em] text-[color:var(--text-muted)]">{t.dashboard.goal}</div>
+                            <div className="mt-1 text-sm font-medium tabular-nums">{formatCurrency(seller.meta)}</div>
+                          </div>
+                          <div className="rounded-xl bg-[color:var(--bg-primary)] px-3 py-2">
+                            <div className="text-[10px] uppercase tracking-[0.12em] text-[color:var(--text-muted)]">POR LLEGAR</div>
+                            <div className="mt-1 text-sm font-medium tabular-nums">{formatCurrency(remaining)}</div>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+                {mobileSellers.length === 0 && (
+                  <p className="py-6 text-center text-sm text-[color:var(--text-muted)]">
+                    No hay empleados que coincidan con la búsqueda.
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <Card className="hidden md:block">
+              <CardContent className="pt-6">
               <ResponsiveContainer
                 width="100%"
                 height={Math.max(200, vendedoresData.length * 52)}
@@ -399,9 +552,10 @@ export default function DashboardPage() {
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
-            )}
-          </CardContent>
-        </Card>
+              </CardContent>
+            </Card>
+          </>
+        )}
       </section>
     </div>
   );
