@@ -517,7 +517,7 @@ export default function VentasPorVendedorDiaPage() {
             >
               <SheetContent
                 side="bottom"
-                className="h-[88vh] rounded-t-[28px] border-[color:var(--border-color)] bg-[var(--bg-card)] p-0"
+                className="h-[100dvh] max-h-[100dvh] rounded-none border-none bg-[var(--bg-card)] p-0"
               >
                 {selectedRow ? (
                   <div className="flex h-full flex-col">

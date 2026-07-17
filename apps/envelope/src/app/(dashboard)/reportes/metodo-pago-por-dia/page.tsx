@@ -3,6 +3,10 @@
 import { useState } from 'react'
 import { useEffect } from 'react'
 import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
   Label,
   Table,
   TableHeader,
@@ -95,6 +99,7 @@ export default function MetodoPagoPorDiaPage() {
   }
 
   const grandTotal = dias.reduce((s, d) => s + totalDia(d), 0)
+  const selectedMethodName = metodosPago.find((m) => m.id === efectivoId)?.nombre ?? efectivoId
   type ExportRow = {
     fecha: string
     bySucursal: Record<string, number>
@@ -139,7 +144,6 @@ export default function MetodoPagoPorDiaPage() {
 
   async function handleExport(kind: 'pdf' | 'excel') {
     setExporting(kind)
-    const selectedMethodName = metodosPago.find((m) => m.id === efectivoId)?.nombre ?? efectivoId
     const config = {
       title: t.reports.paymentMethodByDayTitle,
       subtitle: `${selectedMethodName} - ${t.common.monthlyPeriod} ${month}/${year}`,
@@ -228,7 +232,49 @@ export default function MetodoPagoPorDiaPage() {
       ) : dias.length === 0 ? (
         <p className="text-sm" style={{ color: 'var(--text-muted)' }}>{t.reports.noSalesPaymentMethodPeriod}</p>
       ) : (
-        <div className="overflow-x-auto">
+        <>
+        <div className="space-y-3 md:hidden">
+          <Card className="border-[color:var(--border-color)] bg-[var(--bg-card)] shadow-sm">
+            <CardHeader className="p-4 pb-2">
+              <div className="text-[11px] uppercase tracking-[0.12em] text-[color:var(--text-muted)]">MÉTODO SELECCIONADO</div>
+              <CardTitle className="mt-1 text-base">{selectedMethodName}</CardTitle>
+            </CardHeader>
+            <CardContent className="p-4 pt-1">
+              <div className="text-[11px] uppercase tracking-[0.12em] text-[color:var(--text-muted)]">TOTAL DEL PERÍODO</div>
+              <div className="mt-1 number-display text-xl">{formatCurrency(grandTotal)}</div>
+            </CardContent>
+          </Card>
+
+          <div className="space-y-3">
+            {dias.map((dia) => {
+              const branchSales = sucursales
+                .map((sucursal) => ({ ...sucursal, total: totalDiaSucursal(dia, sucursal.id) }))
+                .filter((sucursal) => sucursal.total > 0)
+
+              return (
+                <Card key={dia} className="border-[color:var(--border-color)] bg-[var(--bg-card)] shadow-sm">
+                  <CardHeader className="flex-row items-start justify-between gap-4 p-4 pb-3">
+                    <div>
+                      <CardTitle className="text-base capitalize">{formatDate(dia, 'EEEE dd', locale)}</CardTitle>
+                      <div className="mt-1 text-[11px] uppercase tracking-[0.12em] text-[color:var(--text-muted)]">VENTAS DEL DÍA</div>
+                    </div>
+                    <div className="number-display shrink-0 text-base">{formatCurrency(totalDia(dia))}</div>
+                  </CardHeader>
+                  <CardContent className="space-y-2 px-4 pb-4">
+                    {branchSales.map((sucursal) => (
+                      <div key={sucursal.id} className="flex items-center justify-between gap-4 rounded-xl bg-[color:var(--bg-primary)] px-3 py-2.5">
+                        <span className="min-w-0 truncate text-sm font-medium">{sucursal.nombre}</span>
+                        <span className="shrink-0 text-sm font-semibold tabular-nums">{formatCurrency(sucursal.total)}</span>
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+              )
+            })}
+          </div>
+        </div>
+
+        <div className="hidden overflow-x-auto md:block">
         <Table>
           <TableHeader>
             <TableRow>
@@ -261,6 +307,7 @@ export default function MetodoPagoPorDiaPage() {
           </TableFooter>
         </Table>
         </div>
+        </>
       )}
     </div>
   )
