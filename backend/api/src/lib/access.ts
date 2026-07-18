@@ -8,6 +8,7 @@ export const ACCESS_SCREEN_ORDER = [
   'ventas/generar-sobre',
   'empleados',
   'empleados/sueldo',
+  'reportes/ver-datos-keysar-home',
   'sucursales',
   'metodos-pago',
   'bancos',
@@ -154,6 +155,28 @@ export function requireScreenAccess(screenKey: ScreenKey) {
     }
 
     if (!access.canManageAccess && !access.screenPermissions.includes(screenKey)) {
+      res.status(403).json({
+        success: false,
+        message: 'No tienes permisos para ver esta pantalla',
+        data: null,
+      })
+      return
+    }
+
+    next()
+  }
+}
+
+export function requireAnyScreenAccess(screenKeys: readonly ScreenKey[]) {
+  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    const access = await resolveAccessForRequest(req)
+
+    if (!access) {
+      res.status(401).json({ success: false, message: 'No autenticado', data: null })
+      return
+    }
+
+    if (!access.canManageAccess && !screenKeys.some((screenKey) => access.screenPermissions.includes(screenKey))) {
       res.status(403).json({
         success: false,
         message: 'No tienes permisos para ver esta pantalla',

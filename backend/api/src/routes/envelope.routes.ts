@@ -2,7 +2,7 @@
 import { Router, type Router as ExpressRouter } from 'express'
 import { Prisma } from '@prisma/client'
 import { authMiddleware } from '../middlewares/auth.middleware'
-import { requireScreenAccess, resolveAccessForRequest } from '../lib/access'
+import { requireAnyScreenAccess, requireScreenAccess, resolveAccessForRequest } from '../lib/access'
 import { prisma } from '../prisma/client'
 
 const router: ExpressRouter = Router()
@@ -19,6 +19,7 @@ const access = {
   empleados: requireScreenAccess('empleados'),
   sucursales: requireScreenAccess('sucursales'),
   metodosPago: requireScreenAccess('metodos-pago'),
+  lecturaMetodosPago: requireAnyScreenAccess(['metodos-pago', 'reportes/metodo-pago-por-dia']),
   banks: requireScreenAccess('bancos'),
   positions: requireScreenAccess('puestos'),
   detalleMetodoPago: requireScreenAccess('reportes/detalle-metodo-pago'),
@@ -51,8 +52,8 @@ function parseQueryDate(value?: string): Date | null | undefined {
   return normalizeDateInput(trimmed)
 }
 
-function dateRangeSql(fechaInicio?: string, fechaFin?: string): Prisma.Sql {
-  const conditions: Prisma.Sql[] = []
+function dateRangeSql(fechaInicio?: string, fechaFin?: string, extraConditions: Prisma.Sql[] = []): Prisma.Sql {
+  const conditions: Prisma.Sql[] = [...extraConditions]
   if (fechaInicio) {
     conditions.push(Prisma.sql`v."fecha" >= ${new Date(fechaInicio)}`)
   }
@@ -97,6 +98,11 @@ function parsePositiveInt(value: string | undefined): number | undefined {
 async function canViewSalary(req: Parameters<typeof resolveAccessForRequest>[0]): Promise<boolean> {
   const access = await resolveAccessForRequest(req)
   return Boolean(access?.canManageAccess || access?.screenPermissions.includes('empleados/sueldo'))
+}
+
+async function canViewKeysarHomeData(req: Parameters<typeof resolveAccessForRequest>[0]): Promise<boolean> {
+  const access = await resolveAccessForRequest(req)
+  return Boolean(access?.canManageAccess || access?.screenPermissions.includes('reportes/ver-datos-keysar-home'))
 }
 
 function redactSalary<T extends { sueldo?: unknown }>(record: T, visible: boolean): T & { sueldo: unknown } {
@@ -383,7 +389,7 @@ router.patch('/empleados/:id/status', access.empleados, async (req, res) => {
 
 // ─── MÉTODOS DE PAGO ──────────────────────────────────────────────────────────
 
-router.get('/metodos-pago', access.metodosPago, async (_req, res) => {
+router.get('/metodos-pago', access.lecturaMetodosPago, async (_req, res) => {
   try {
     const data = await prisma.metodoPago.findMany({
       where: { activo: true },
@@ -857,6 +863,7 @@ router.get('/reportes/metodo-pago-por-dia', access.metodoPagoPorDia, async (req,
 router.get('/reportes/ventas-por-vendedor', access.ventasPorVendedor, async (req, res) => {
   try {
     const { fechaInicio, fechaFin } = req.query as { fechaInicio?: string; fechaFin?: string }
+    const includeKeysarHome = await canViewKeysarHomeData(req)
     const rows = await prisma.$queryRaw<Array<{ empleadoId: string; nombreCompleto: string; sucursalId: string; sucursalNombre: string; totalVendido: number; meta: number }>>`
       SELECT
         v."vendedorId" AS "empleadoId",
@@ -869,7 +876,11 @@ router.get('/reportes/ventas-por-vendedor', access.ventasPorVendedor, async (req
       JOIN "Venta" v ON v."id" = vd."ventaId"
       JOIN "Empleado" e ON e."id" = v."vendedorId"
       JOIN "Sucursal" s ON s."id" = v."sucursalId"
-      ${dateRangeSql(fechaInicio, fechaFin)}
+      ${dateRangeSql(
+        fechaInicio,
+        fechaFin,
+        includeKeysarHome ? [] : [Prisma.sql`e."nombreCompleto" <> ${'KEYSAR HOME'}`],
+      )}
       GROUP BY v."vendedorId", e."nombreCompleto", v."sucursalId", s."nombre", e."metaIndividual"
       ORDER BY "totalVendido" DESC
     `
@@ -885,9 +896,11 @@ router.get('/reportes/ventas-por-vendedor-dia', access.ventasPorVendedorDia, asy
   try {
     const { vendedorId, fechaInicio, fechaFin } = req.query as { vendedorId?: string; fechaInicio?: string; fechaFin?: string }
     const conditions: Prisma.Sql[] = []
+    const includeKeysarHome = await canViewKeysarHomeData(req)
     if (fechaInicio) conditions.push(Prisma.sql`v."fecha" >= ${new Date(fechaInicio)}`)
     if (fechaFin) conditions.push(Prisma.sql`v."fecha" <= ${new Date(`${fechaFin}T23:59:59`)}`)
     if (vendedorId) conditions.push(Prisma.sql`v."vendedorId" = ${vendedorId}`)
+    if (!includeKeysarHome) conditions.push(Prisma.sql`e."nombreCompleto" <> ${'KEYSAR HOME'}`)
     const where = conditions.length > 0 ? Prisma.sql`WHERE ${Prisma.join(conditions, ' AND ')}` : Prisma.empty
     const data = await prisma.$queryRaw<Array<{ fecha: string; vendedorId: string; vendedorNombre: string; total: number }>>`
       SELECT

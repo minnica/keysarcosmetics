@@ -54,7 +54,13 @@ type CredentialsForm = z.infer<typeof credentialsSchema>
 
 const GENERATE_ENVELOPE_PERMISSION_KEY = 'ventas/generar-sobre' as const
 const EMPLOYEE_SALARY_PERMISSION_KEY = 'empleados/sueldo' as const
-const ACCESS_PERMISSION_KEYS = [...SCREEN_CONFIG.map((screen) => screen.key), GENERATE_ENVELOPE_PERMISSION_KEY, EMPLOYEE_SALARY_PERMISSION_KEY]
+const KEYSAR_HOME_DATA_PERMISSION_KEY = 'reportes/ver-datos-keysar-home' as const
+const ACCESS_PERMISSION_KEYS = [
+  ...SCREEN_CONFIG.map((screen) => screen.key),
+  GENERATE_ENVELOPE_PERMISSION_KEY,
+  EMPLOYEE_SALARY_PERMISSION_KEY,
+  KEYSAR_HOME_DATA_PERMISSION_KEY,
+]
 
 function getApiMessage(error: unknown, fallback: string) {
   if (typeof error === 'object' && error && 'response' in error) {
@@ -362,6 +368,9 @@ export default function AccessControlPage() {
     }
   }
 
+  const keysarHomeDataEnabled = Boolean(draftPermissions[KEYSAR_HOME_DATA_PERMISSION_KEY])
+  const keysarHomeDataPending = keysarHomeDataEnabled !== Boolean(committedPermissionMapRef.current[KEYSAR_HOME_DATA_PERMISSION_KEY])
+
   const accountColumns: ColumnDef<AccessUser>[] = [
     {
       accessorFn: (row) => row.empleado?.nombreCompleto ?? row.nombre,
@@ -503,6 +512,43 @@ export default function AccessControlPage() {
               </div>
 
               <div className="grid gap-3">
+                <button
+                  type="button"
+                  className={`flex flex-col gap-3 rounded-xl border px-3 py-3 text-left transition-colors duration-200 sm:flex-row sm:items-center sm:justify-between sm:px-4 ${
+                    keysarHomeDataEnabled ? 'border-[#8bb09b] bg-[#648672]/10' : 'hover:border-slate-300 hover:bg-slate-50'
+                  }`}
+                  style={{ borderColor: 'var(--border-color)' }}
+                  onClick={() => togglePermission(KEYSAR_HOME_DATA_PERMISSION_KEY)}
+                >
+                  <div className="min-w-0 space-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-medium">{t.access.viewKeysarHomeDataPermission}</span>
+                      <Badge variant="secondary" className="uppercase text-[10px] tracking-wide">
+                        {t.access.reportsAction}
+                      </Badge>
+                    </div>
+                    <p className="text-xs leading-5" style={{ color: 'var(--text-muted)' }}>
+                      {t.access.viewKeysarHomeDataPermissionDescription}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2 self-start sm:self-center">
+                    {keysarHomeDataEnabled ? <Check className="h-4 w-4 text-[#648672]" /> : null}
+                    <Badge
+                      className="uppercase"
+                      style={{
+                        backgroundColor: keysarHomeDataPending ? '#f59e0b' : keysarHomeDataEnabled ? '#648672' : '#9ca3af',
+                        color: 'white',
+                      }}
+                    >
+                      {keysarHomeDataPending
+                        ? t.common.saving
+                        : keysarHomeDataEnabled
+                          ? t.access.screenEnabled
+                          : t.access.screenDisabled}
+                    </Badge>
+                  </div>
+                </button>
+
                 {SCREEN_CONFIG.map((screen) => {
                   const enabled = Boolean(draftPermissions[screen.key])
                   const pending = enabled !== Boolean(committedPermissionMapRef.current[screen.key])
@@ -570,10 +616,14 @@ export default function AccessControlPage() {
                             <div className="min-w-0 flex-1 space-y-1">
                               <div className="flex flex-wrap items-center gap-2">
                                 <span className="font-medium">
-                                  {screen.key === 'ventas' ? t.access.generateEnvelopePermission : t.access.viewSalaryPermission}
+                                  {screen.key === 'ventas'
+                                    ? t.access.generateEnvelopePermission
+                                    : t.access.viewSalaryPermission}
                                 </span>
                                 <Badge variant="secondary" className="uppercase text-[10px] tracking-wide">
-                                  {screen.key === 'ventas' ? t.access.salesAction : t.access.employeesAction}
+                                  {screen.key === 'ventas'
+                                    ? t.access.salesAction
+                                    : t.access.employeesAction}
                                 </Badge>
                               </div>
                               <p className="text-xs leading-5" style={{ color: 'var(--text-muted)' }}>

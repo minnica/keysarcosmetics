@@ -8,6 +8,7 @@ export const SCREEN_KEYS = [
   'ventas/generar-sobre',
   'empleados',
   'empleados/sueldo',
+  'reportes/ver-datos-keysar-home',
   'sucursales',
   'metodos-pago',
   'bancos',
