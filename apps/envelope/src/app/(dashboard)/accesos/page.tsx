@@ -626,8 +626,8 @@ export default function AccessControlPage() {
       {loading ? (
         <AccessLoadingSkeleton />
       ) : (
-        <div className="grid gap-6 xl:grid-cols-[1.2fr_0.95fr]">
-          <Card>
+        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.95fr)]">
+          <Card className="min-w-0">
             <CardHeader className="space-y-2">
               <CardTitle className="uppercase">
                 {t.access.permissionsTitle}
@@ -948,7 +948,7 @@ export default function AccessControlPage() {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="min-w-0">
             <CardHeader className="space-y-2">
               <CardTitle className="uppercase">
                 {t.access.credentialsTitle}
