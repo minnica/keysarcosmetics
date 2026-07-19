@@ -1,8 +1,9 @@
 // Rutas del módulo Envelope — ventas por sobre digitalizado
 import { Router, type Router as ExpressRouter } from 'express'
-import { Prisma } from '@prisma/client'
+import { EstatusCita, Prisma, TipoAtencionCita, TipoCompraCita } from '@prisma/client'
+import { z } from 'zod'
 import { authMiddleware } from '../middlewares/auth.middleware'
-import { requireScreenAccess, resolveAccessForRequest } from '../lib/access'
+import { requireAnyScreenAccess, requireScreenAccess, resolveAccessForRequest } from '../lib/access'
 import { prisma } from '../prisma/client'
 
 const router: ExpressRouter = Router()
@@ -16,9 +17,12 @@ router.use(authMiddleware)
 const access = {
   dashboard: requireScreenAccess('dashboard'),
   ventas: requireScreenAccess('ventas'),
+  citas: requireScreenAccess('citas'),
+  lecturaCitas: requireAnyScreenAccess(['citas', 'reportes/citas']),
   empleados: requireScreenAccess('empleados'),
   sucursales: requireScreenAccess('sucursales'),
   metodosPago: requireScreenAccess('metodos-pago'),
+  lecturaMetodosPago: requireAnyScreenAccess(['metodos-pago', 'reportes/metodo-pago-por-dia']),
   banks: requireScreenAccess('bancos'),
   positions: requireScreenAccess('puestos'),
   detalleMetodoPago: requireScreenAccess('reportes/detalle-metodo-pago'),
@@ -26,7 +30,36 @@ const access = {
   ventasPorVendedor: requireScreenAccess('reportes/ventas-por-vendedor'),
   ventasPorVendedorDia: requireScreenAccess('reportes/ventas-por-vendedor-dia'),
   totalGeneral: requireScreenAccess('reportes/total-general'),
+  reporteCitas: requireScreenAccess('reportes/citas'),
 }
+
+const registroCitaSchema = z.object({
+  fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  hora: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+  tipoAtencion: z.nativeEnum(TipoAtencionCita),
+  estatus: z.nativeEnum(EstatusCita),
+  nombreCliente: z.string().trim().min(1).max(160),
+  sucursalId: z.string().trim().min(1),
+  vendedorId: z.string().trim().min(1),
+  facialistaId: z.string().trim().min(1),
+  tipoCompra: z.nativeEnum(TipoCompraCita).nullable(),
+  montoCompra: z.coerce.number().finite().min(0).max(99_999_999.99),
+  bonoSalidaTarde: z.boolean().default(false),
+  bonoComida: z.boolean().default(false),
+}).superRefine((data, ctx) => {
+  if (data.tipoCompra === null && data.montoCompra !== 0) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['montoCompra'], message: 'Una cita sin compra debe tener monto cero' })
+  }
+  if (data.tipoCompra !== null && data.montoCompra <= 0) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['montoCompra'], message: 'El monto debe ser mayor a cero' })
+  }
+  if (data.estatus !== EstatusCita.ATENDIDA && (data.tipoCompra !== null || data.montoCompra !== 0)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['estatus'], message: 'Una cita no atendida no puede registrar compra' })
+  }
+  if (data.estatus !== EstatusCita.ATENDIDA && (data.bonoSalidaTarde || data.bonoComida)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['estatus'], message: 'Una cita no atendida no puede registrar bonos' })
+  }
+})
 
 function normalizeDateInput(value?: string | null): Date | null | undefined {
   if (value === undefined) return undefined
@@ -51,8 +84,8 @@ function parseQueryDate(value?: string): Date | null | undefined {
   return normalizeDateInput(trimmed)
 }
 
-function dateRangeSql(fechaInicio?: string, fechaFin?: string): Prisma.Sql {
-  const conditions: Prisma.Sql[] = []
+function dateRangeSql(fechaInicio?: string, fechaFin?: string, extraConditions: Prisma.Sql[] = []): Prisma.Sql {
+  const conditions: Prisma.Sql[] = [...extraConditions]
   if (fechaInicio) {
     conditions.push(Prisma.sql`v."fecha" >= ${new Date(fechaInicio)}`)
   }
@@ -84,6 +117,53 @@ function addDays(date: Date, days: number): Date {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate() + days)
 }
 
+function currentFortnightRange(): { start: Date; end: Date } {
+  const today = new Date()
+  const startDay = today.getDate() <= 15 ? 1 : 16
+  const endDay = today.getDate() <= 15
+    ? 15
+    : new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate()
+  return {
+    start: new Date(today.getFullYear(), today.getMonth(), startDay),
+    end: new Date(today.getFullYear(), today.getMonth(), endDay, 23, 59, 59),
+  }
+}
+
+function resolveAppointmentDateRange(fechaInicio?: string, fechaFin?: string): { start: Date; end: Date } | null {
+  if (!fechaInicio && !fechaFin) return currentFortnightRange()
+  if (!fechaInicio || !fechaFin) return null
+
+  const start = parseQueryDate(fechaInicio)
+  const parsedEnd = parseQueryDate(fechaFin)
+  if (!start || !parsedEnd) return null
+  const end = endOfDay(parsedEnd)
+  if (start > end || daysBetween(start, end) > MAX_VENTAS_RANGE_DAYS) return null
+  return { start: startOfDay(start), end }
+}
+
+const appointmentInclude = Prisma.validator<Prisma.RegistroCitaInclude>()({
+  sucursal: { select: { nombre: true } },
+  vendedor: { select: { nombreCompleto: true } },
+  facialista: { select: { nombreCompleto: true } },
+  creadoPor: { select: { nombre: true } },
+})
+
+type AppointmentWithRelations = Prisma.RegistroCitaGetPayload<{ include: typeof appointmentInclude }>
+
+function serializeAppointment(record: AppointmentWithRelations) {
+  const montoCompra = Number(record.montoCompra)
+  return {
+    ...record,
+    fecha: record.fecha.toISOString().slice(0, 10),
+    montoCompra,
+    total: montoCompra,
+    sucursalNombre: record.sucursal.nombre,
+    vendedorNombre: record.vendedor.nombreCompleto,
+    facialistaNombre: record.facialista.nombreCompleto,
+    creadoPorNombre: record.creadoPor.nombre,
+  }
+}
+
 function daysBetween(start: Date, end: Date): number {
   return Math.floor((end.getTime() - start.getTime()) / 86_400_000) + 1
 }
@@ -97,6 +177,26 @@ function parsePositiveInt(value: string | undefined): number | undefined {
 async function canViewSalary(req: Parameters<typeof resolveAccessForRequest>[0]): Promise<boolean> {
   const access = await resolveAccessForRequest(req)
   return Boolean(access?.canManageAccess || access?.screenPermissions.includes('empleados/sueldo'))
+}
+
+async function canViewKeysarHomeData(req: Parameters<typeof resolveAccessForRequest>[0]): Promise<boolean> {
+  const access = await resolveAccessForRequest(req)
+  return Boolean(access?.canManageAccess || access?.screenPermissions.includes('reportes/ver-datos-keysar-home'))
+}
+
+async function selfDataEmployeeId(req: Parameters<typeof resolveAccessForRequest>[0]): Promise<string | null> {
+  const resolved = await resolveAccessForRequest(req)
+  if (!resolved?.selfDataOnly) return null
+  return resolved.empleadoId ?? '__missing_employee_for_self_data_scope__'
+}
+
+function selfDataCondition(employeeId: string | null): Prisma.Sql {
+  return employeeId ? Prisma.sql`v."vendedorId" = ${employeeId}` : Prisma.sql`TRUE`
+}
+
+async function canManageSale(req: Parameters<typeof resolveAccessForRequest>[0], vendedorId: string): Promise<boolean> {
+  const ownEmployeeId = await selfDataEmployeeId(req)
+  return !ownEmployeeId || ownEmployeeId === vendedorId
 }
 
 function redactSalary<T extends { sueldo?: unknown }>(record: T, visible: boolean): T & { sueldo: unknown } {
@@ -161,7 +261,9 @@ router.delete('/sucursales/:id', access.sucursales, async (req, res) => {
 
 router.get('/empleados', access.empleados, async (req, res) => {
   try {
+    const ownEmployeeId = await selfDataEmployeeId(req)
     const data = await prisma.empleado.findMany({
+      where: ownEmployeeId ? { id: ownEmployeeId } : undefined,
       orderBy: [{ activo: 'desc' }, { nombreCompleto: 'asc' }],
       include: { bank: true, position: true },
     })
@@ -383,7 +485,7 @@ router.patch('/empleados/:id/status', access.empleados, async (req, res) => {
 
 // ─── MÉTODOS DE PAGO ──────────────────────────────────────────────────────────
 
-router.get('/metodos-pago', access.metodosPago, async (_req, res) => {
+router.get('/metodos-pago', access.lecturaMetodosPago, async (_req, res) => {
   try {
     const data = await prisma.metodoPago.findMany({
       where: { activo: true },
@@ -608,6 +710,181 @@ router.delete('/positions/:id', access.positions, async (req, res) => {
   }
 })
 
+// ─── REGISTRO DE CITAS ───────────────────────────────────────────────────────
+
+router.get('/citas/catalogos', access.lecturaCitas, async (_req, res) => {
+  try {
+    const empleados = await prisma.empleado.findMany({
+      where: { activo: true },
+      orderBy: { nombreCompleto: 'asc' },
+      select: {
+        id: true,
+        nombreCompleto: true,
+        puesto: true,
+        position: { select: { id: true, nombre: true } },
+      },
+    })
+    res.json({ success: true, data: { empleados }, message: 'OK' })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ success: false, data: null, message: 'Error al obtener catálogos de citas' })
+  }
+})
+
+router.get('/citas', access.citas, async (req, res) => {
+  try {
+    const { fechaInicio, fechaFin } = req.query as { fechaInicio?: string; fechaFin?: string }
+    const range = resolveAppointmentDateRange(fechaInicio, fechaFin)
+    if (!range) {
+      res.status(400).json({ success: false, data: null, message: 'Rango de fechas inválido o mayor a 366 días' })
+      return
+    }
+
+    const records = await prisma.registroCita.findMany({
+      where: { fecha: { gte: range.start, lte: range.end } },
+      orderBy: [{ fecha: 'desc' }, { creadoEn: 'desc' }],
+      include: appointmentInclude,
+    })
+
+    res.json({ success: true, data: records.map(serializeAppointment), message: 'OK' })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ success: false, data: null, message: 'Error al obtener citas' })
+  }
+})
+
+router.post('/citas', access.citas, async (req, res) => {
+  try {
+    const parsed = registroCitaSchema.safeParse(req.body)
+    if (!parsed.success) {
+      res.status(400).json({
+        success: false,
+        data: null,
+        message: parsed.error.issues[0]?.message ?? 'Datos de cita inválidos',
+      })
+      return
+    }
+
+    const fecha = parseQueryDate(parsed.data.fecha)
+    if (!fecha || !req.user) {
+      res.status(400).json({ success: false, data: null, message: 'Fecha o sesión inválida' })
+      return
+    }
+
+    const [sucursal, vendedor, facialista] = await Promise.all([
+      prisma.sucursal.findFirst({ where: { id: parsed.data.sucursalId, activa: true }, select: { id: true } }),
+      prisma.empleado.findFirst({ where: { id: parsed.data.vendedorId, activo: true }, select: { id: true } }),
+      prisma.empleado.findFirst({ where: { id: parsed.data.facialistaId, activo: true }, select: { id: true } }),
+    ])
+    if (!sucursal || !vendedor || !facialista) {
+      res.status(400).json({ success: false, data: null, message: 'Sucursal, vendedor o facialista inválido' })
+      return
+    }
+
+    const record = await prisma.registroCita.create({
+      data: {
+        fecha: new Date(fecha.getFullYear(), fecha.getMonth(), fecha.getDate(), 12),
+        hora: parsed.data.hora,
+        tipoAtencion: parsed.data.tipoAtencion,
+        estatus: parsed.data.estatus,
+        nombreCliente: parsed.data.nombreCliente.toLocaleUpperCase('es-MX'),
+        sucursalId: parsed.data.sucursalId,
+        vendedorId: parsed.data.vendedorId,
+        facialistaId: parsed.data.facialistaId,
+        tipoCompra: parsed.data.tipoCompra,
+        montoCompra: new Prisma.Decimal(parsed.data.montoCompra),
+        bonoSalidaTarde: parsed.data.bonoSalidaTarde,
+        bonoComida: parsed.data.bonoComida,
+        creadoPorId: req.user.id,
+      },
+      include: appointmentInclude,
+    })
+
+    res.status(201).json({ success: true, data: serializeAppointment(record), message: 'Cita registrada' })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ success: false, data: null, message: 'Error al registrar cita' })
+  }
+})
+
+router.put('/citas/:id', access.citas, async (req, res) => {
+  try {
+    const parsed = registroCitaSchema.safeParse(req.body)
+    if (!parsed.success) {
+      res.status(400).json({
+        success: false,
+        data: null,
+        message: parsed.error.issues[0]?.message ?? 'Datos de cita inválidos',
+      })
+      return
+    }
+
+    const fecha = parseQueryDate(parsed.data.fecha)
+    if (!fecha) {
+      res.status(400).json({ success: false, data: null, message: 'Fecha inválida' })
+      return
+    }
+
+    const [existing, sucursal, vendedor, facialista] = await Promise.all([
+      prisma.registroCita.findUnique({ where: { id: req.params['id'] }, select: { id: true } }),
+      prisma.sucursal.findFirst({ where: { id: parsed.data.sucursalId, activa: true }, select: { id: true } }),
+      prisma.empleado.findFirst({ where: { id: parsed.data.vendedorId, activo: true }, select: { id: true } }),
+      prisma.empleado.findFirst({ where: { id: parsed.data.facialistaId, activo: true }, select: { id: true } }),
+    ])
+    if (!existing) {
+      res.status(404).json({ success: false, data: null, message: 'Cita no encontrada' })
+      return
+    }
+    if (!sucursal || !vendedor || !facialista) {
+      res.status(400).json({ success: false, data: null, message: 'Sucursal, vendedor o facialista inválido' })
+      return
+    }
+
+    const record = await prisma.registroCita.update({
+      where: { id: existing.id },
+      data: {
+        fecha: new Date(fecha.getFullYear(), fecha.getMonth(), fecha.getDate(), 12),
+        hora: parsed.data.hora,
+        tipoAtencion: parsed.data.tipoAtencion,
+        estatus: parsed.data.estatus,
+        nombreCliente: parsed.data.nombreCliente.toLocaleUpperCase('es-MX'),
+        sucursalId: parsed.data.sucursalId,
+        vendedorId: parsed.data.vendedorId,
+        facialistaId: parsed.data.facialistaId,
+        tipoCompra: parsed.data.tipoCompra,
+        montoCompra: new Prisma.Decimal(parsed.data.montoCompra),
+        bonoSalidaTarde: parsed.data.bonoSalidaTarde,
+        bonoComida: parsed.data.bonoComida,
+      },
+      include: appointmentInclude,
+    })
+
+    res.json({ success: true, data: serializeAppointment(record), message: 'Cita actualizada' })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ success: false, data: null, message: 'Error al actualizar cita' })
+  }
+})
+
+router.delete('/citas/:id', access.citas, async (req, res) => {
+  try {
+    const existing = await prisma.registroCita.findUnique({
+      where: { id: req.params['id'] },
+      select: { id: true },
+    })
+    if (!existing) {
+      res.status(404).json({ success: false, data: null, message: 'Cita no encontrada' })
+      return
+    }
+
+    await prisma.registroCita.delete({ where: { id: existing.id } })
+    res.json({ success: true, data: null, message: 'Cita eliminada' })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ success: false, data: null, message: 'Error al eliminar cita' })
+  }
+})
+
 // ─── VENTAS ───────────────────────────────────────────────────────────────────
 
 router.get('/ventas', access.ventas, async (req, res) => {
@@ -642,9 +919,11 @@ router.get('/ventas', access.ventas, async (req, res) => {
     const requestedLimit = parsePositiveInt(limit)
     const take = requestedLimit ? Math.min(requestedLimit, MAX_VENTAS_LIMIT) : undefined
     const requestedPage = parsePositiveInt(page) ?? 1
+    const ownEmployeeId = await selfDataEmployeeId(req)
 
     const data = await prisma.venta.findMany({
       where: {
+        ...(ownEmployeeId ? { vendedorId: ownEmployeeId } : {}),
         fecha: {
           gte: rangeStart,
           lte: rangeEnd,
@@ -681,6 +960,10 @@ router.post('/ventas', access.ventas, async (req, res) => {
     }
     if (!sucursalId || !vendedorId || !fecha || !detalles?.length) {
       res.status(400).json({ success: false, data: null, message: 'Datos incompletos' })
+      return
+    }
+    if (!await canManageSale(req, vendedorId)) {
+      res.status(403).json({ success: false, data: null, message: 'Solo puedes registrar ventas propias' })
       return
     }
     const data = await prisma.venta.create({
@@ -730,6 +1013,11 @@ router.post('/ventas/lote', access.ventas, async (req, res) => {
       res.status(400).json({ success: false, data: null, message: 'Datos incompletos' })
       return
     }
+    const ownEmployeeId = await selfDataEmployeeId(req)
+    if (ownEmployeeId && ventas.some((venta) => venta.vendedorId !== ownEmployeeId)) {
+      res.status(403).json({ success: false, data: null, message: 'Solo puedes registrar ventas propias' })
+      return
+    }
 
     const data = await prisma.$transaction(
       ventas.map((venta) => prisma.venta.create({
@@ -763,6 +1051,14 @@ router.put('/ventas/:id', access.ventas, async (req, res) => {
       notas?: string
       detalles?: { cantidad: number; metodoPagoId: string }[]
     }
+    const ownEmployeeId = await selfDataEmployeeId(req)
+    if (ownEmployeeId) {
+      const sale = await prisma.venta.findFirst({ where: { id: req.params['id'], vendedorId: ownEmployeeId }, select: { id: true } })
+      if (!sale) {
+        res.status(403).json({ success: false, data: null, message: 'Solo puedes modificar ventas propias' })
+        return
+      }
+    }
     if (detalles) {
       await prisma.ventaDetalle.deleteMany({ where: { ventaId: req.params['id'] } })
     }
@@ -790,6 +1086,14 @@ router.put('/ventas/:id', access.ventas, async (req, res) => {
 
 router.delete('/ventas/:id', access.ventas, async (req, res) => {
   try {
+    const ownEmployeeId = await selfDataEmployeeId(req)
+    if (ownEmployeeId) {
+      const sale = await prisma.venta.findFirst({ where: { id: req.params['id'], vendedorId: ownEmployeeId }, select: { id: true } })
+      if (!sale) {
+        res.status(403).json({ success: false, data: null, message: 'Solo puedes eliminar ventas propias' })
+        return
+      }
+    }
     await prisma.venta.delete({ where: { id: req.params['id'] } })
     res.json({ success: true, data: null, message: 'Venta eliminada' })
   } catch (err) {
@@ -800,9 +1104,83 @@ router.delete('/ventas/:id', access.ventas, async (req, res) => {
 
 // ─── REPORTES ─────────────────────────────────────────────────────────────────
 
+router.get('/reportes/citas', access.reporteCitas, async (req, res) => {
+  try {
+    const { fechaInicio, fechaFin, facialistaId, sucursalId } = req.query as {
+      fechaInicio?: string
+      fechaFin?: string
+      facialistaId?: string
+      sucursalId?: string
+    }
+    const range = resolveAppointmentDateRange(fechaInicio, fechaFin)
+    if (!range) {
+      res.status(400).json({ success: false, data: null, message: 'Rango de fechas inválido o mayor a 366 días' })
+      return
+    }
+
+    const conditions: Prisma.Sql[] = [
+      Prisma.sql`rc."fecha" >= ${range.start}`,
+      Prisma.sql`rc."fecha" <= ${range.end}`,
+    ]
+    if (facialistaId) conditions.push(Prisma.sql`rc."facialistaId" = ${facialistaId}`)
+    if (sucursalId) conditions.push(Prisma.sql`rc."sucursalId" = ${sucursalId}`)
+
+    const data = await prisma.$queryRaw<Array<{
+      facialistaId: string
+      facialistaNombre: string
+      sucursalId: string
+      sucursalNombre: string
+      totalCitas: number
+      faciales: number
+      facialesDobles: number
+      atendidas: number
+      noLlegaron: number
+      canceladas: number
+      citasSinCompra: number
+      pagoNeto: number
+      compraConApartado: number
+      pagoDeApartado: number
+      total: number
+      bonosSalidaTarde: number
+      bonosComida: number
+    }>>`
+      SELECT
+        rc."facialistaId",
+        e."nombreCompleto" AS "facialistaNombre",
+        rc."sucursalId",
+        s."nombre" AS "sucursalNombre",
+        COUNT(*)::int AS "totalCitas",
+        COUNT(*) FILTER (WHERE rc."estatus" = 'ATENDIDA' AND rc."tipoAtencion" = 'FACIAL')::int AS "faciales",
+        COUNT(*) FILTER (WHERE rc."estatus" = 'ATENDIDA' AND rc."tipoAtencion" = 'FACIAL_DOBLE')::int AS "facialesDobles",
+        COUNT(*) FILTER (WHERE rc."estatus" = 'ATENDIDA')::int AS "atendidas",
+        COUNT(*) FILTER (WHERE rc."estatus" = 'NO_LLEGO')::int AS "noLlegaron",
+        COUNT(*) FILTER (WHERE rc."estatus" = 'CANCELADA')::int AS "canceladas",
+        COUNT(*) FILTER (WHERE rc."estatus" = 'ATENDIDA' AND rc."tipoCompra" IS NULL)::int AS "citasSinCompra",
+        COALESCE(SUM(CASE WHEN rc."tipoCompra" = 'PAGO_NETO' THEN rc."montoCompra" ELSE 0 END), 0)::float AS "pagoNeto",
+        COALESCE(SUM(CASE WHEN rc."tipoCompra" = 'COMPRA_CON_APARTADO' THEN rc."montoCompra" ELSE 0 END), 0)::float AS "compraConApartado",
+        COALESCE(SUM(CASE WHEN rc."tipoCompra" = 'PAGO_DE_APARTADO' THEN rc."montoCompra" ELSE 0 END), 0)::float AS "pagoDeApartado",
+        COALESCE(SUM(rc."montoCompra"), 0)::float AS "total",
+        COUNT(*) FILTER (WHERE rc."bonoSalidaTarde")::int AS "bonosSalidaTarde",
+        COUNT(*) FILTER (WHERE rc."bonoComida")::int AS "bonosComida"
+      FROM "RegistroCita" rc
+      JOIN "Empleado" e ON e."id" = rc."facialistaId"
+      JOIN "Sucursal" s ON s."id" = rc."sucursalId"
+      WHERE ${Prisma.join(conditions, ' AND ')}
+      GROUP BY rc."facialistaId", e."nombreCompleto", rc."sucursalId", s."nombre"
+      ORDER BY e."nombreCompleto" ASC, s."nombre" ASC
+    `
+
+    res.json({ success: true, data, message: 'OK' })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ success: false, data: null, message: 'Error al generar reporte de citas' })
+  }
+})
+
 router.get('/reportes/detalle-metodo-pago', access.detalleMetodoPago, async (req, res) => {
   try {
     const { fechaInicio, fechaFin } = req.query as { fechaInicio?: string; fechaFin?: string }
+    const ownEmployeeId = await selfDataEmployeeId(req)
     const data = await prisma.$queryRaw<Array<{ sucursalId: string; sucursalNombre: string; metodoPagoId: string; metodoPagoNombre: string; total: number }>>`
       SELECT
         v."sucursalId",
@@ -814,7 +1192,7 @@ router.get('/reportes/detalle-metodo-pago', access.detalleMetodoPago, async (req
       JOIN "Venta" v ON v."id" = vd."ventaId"
       JOIN "Sucursal" s ON s."id" = v."sucursalId"
       JOIN "MetodoPago" mp ON mp."id" = vd."metodoPagoId"
-      ${dateRangeSql(fechaInicio, fechaFin)}
+      ${dateRangeSql(fechaInicio, fechaFin, [selfDataCondition(ownEmployeeId)])}
       GROUP BY v."sucursalId", s."nombre", vd."metodoPagoId", mp."nombre"
       ORDER BY s."nombre" ASC, mp."nombre" ASC
     `
@@ -831,6 +1209,7 @@ router.get('/reportes/metodo-pago-por-dia', access.metodoPagoPorDia, async (req,
     const year = Number(anio ?? new Date().getFullYear())
     const month = Number(mes ?? new Date().getMonth() + 1)
     const { start, end } = monthRange(year, month)
+    const ownEmployeeId = await selfDataEmployeeId(req)
     const methodFilter = metodoPagoId ? Prisma.sql`AND vd."metodoPagoId" = ${metodoPagoId}` : Prisma.empty
     const data = await prisma.$queryRaw<Array<{ fecha: string; sucursalId: string; sucursalNombre: string; total: number }>>`
       SELECT
@@ -843,6 +1222,7 @@ router.get('/reportes/metodo-pago-por-dia', access.metodoPagoPorDia, async (req,
       JOIN "Sucursal" s ON s."id" = v."sucursalId"
       WHERE v."fecha" >= ${start}
         AND v."fecha" <= ${end}
+        AND ${selfDataCondition(ownEmployeeId)}
         ${methodFilter}
       GROUP BY TO_CHAR(v."fecha", 'YYYY-MM-DD'), v."sucursalId", s."nombre"
       ORDER BY "fecha" ASC, s."nombre" ASC
@@ -857,6 +1237,8 @@ router.get('/reportes/metodo-pago-por-dia', access.metodoPagoPorDia, async (req,
 router.get('/reportes/ventas-por-vendedor', access.ventasPorVendedor, async (req, res) => {
   try {
     const { fechaInicio, fechaFin } = req.query as { fechaInicio?: string; fechaFin?: string }
+    const includeKeysarHome = await canViewKeysarHomeData(req)
+    const ownEmployeeId = await selfDataEmployeeId(req)
     const rows = await prisma.$queryRaw<Array<{ empleadoId: string; nombreCompleto: string; sucursalId: string; sucursalNombre: string; totalVendido: number; meta: number }>>`
       SELECT
         v."vendedorId" AS "empleadoId",
@@ -869,7 +1251,14 @@ router.get('/reportes/ventas-por-vendedor', access.ventasPorVendedor, async (req
       JOIN "Venta" v ON v."id" = vd."ventaId"
       JOIN "Empleado" e ON e."id" = v."vendedorId"
       JOIN "Sucursal" s ON s."id" = v."sucursalId"
-      ${dateRangeSql(fechaInicio, fechaFin)}
+      ${dateRangeSql(
+        fechaInicio,
+        fechaFin,
+        [
+          ...(includeKeysarHome ? [] : [Prisma.sql`e."nombreCompleto" <> ${'KEYSAR HOME'}`]),
+          selfDataCondition(ownEmployeeId),
+        ],
+      )}
       GROUP BY v."vendedorId", e."nombreCompleto", v."sucursalId", s."nombre", e."metaIndividual"
       ORDER BY "totalVendido" DESC
     `
@@ -885,9 +1274,13 @@ router.get('/reportes/ventas-por-vendedor-dia', access.ventasPorVendedorDia, asy
   try {
     const { vendedorId, fechaInicio, fechaFin } = req.query as { vendedorId?: string; fechaInicio?: string; fechaFin?: string }
     const conditions: Prisma.Sql[] = []
+    const includeKeysarHome = await canViewKeysarHomeData(req)
+    const ownEmployeeId = await selfDataEmployeeId(req)
     if (fechaInicio) conditions.push(Prisma.sql`v."fecha" >= ${new Date(fechaInicio)}`)
     if (fechaFin) conditions.push(Prisma.sql`v."fecha" <= ${new Date(`${fechaFin}T23:59:59`)}`)
     if (vendedorId) conditions.push(Prisma.sql`v."vendedorId" = ${vendedorId}`)
+    if (!includeKeysarHome) conditions.push(Prisma.sql`e."nombreCompleto" <> ${'KEYSAR HOME'}`)
+    if (ownEmployeeId) conditions.push(selfDataCondition(ownEmployeeId))
     const where = conditions.length > 0 ? Prisma.sql`WHERE ${Prisma.join(conditions, ' AND ')}` : Prisma.empty
     const data = await prisma.$queryRaw<Array<{ fecha: string; vendedorId: string; vendedorNombre: string; total: number }>>`
       SELECT
@@ -912,6 +1305,7 @@ router.get('/reportes/ventas-por-vendedor-dia', access.ventasPorVendedorDia, asy
 router.get('/reportes/total-general', access.totalGeneral, async (req, res) => {
   try {
     const { fechaInicio, fechaFin } = req.query as { fechaInicio?: string; fechaFin?: string }
+    const ownEmployeeId = await selfDataEmployeeId(req)
     const rows = await prisma.$queryRaw<Array<{ fecha: string; sucursalId: string; sucursalNombre: string; total: number }>>`
       SELECT
         TO_CHAR(v."fecha", 'YYYY-MM-DD') AS "fecha",
@@ -921,7 +1315,7 @@ router.get('/reportes/total-general', access.totalGeneral, async (req, res) => {
       FROM "VentaDetalle" vd
       JOIN "Venta" v ON v."id" = vd."ventaId"
       JOIN "Sucursal" s ON s."id" = v."sucursalId"
-      ${dateRangeSql(fechaInicio, fechaFin)}
+      ${dateRangeSql(fechaInicio, fechaFin, [selfDataCondition(ownEmployeeId)])}
       GROUP BY TO_CHAR(v."fecha", 'YYYY-MM-DD'), v."sucursalId", s."nombre"
       ORDER BY "fecha" ASC, s."nombre" ASC
     `
@@ -981,6 +1375,8 @@ router.get('/reportes/dashboard', access.dashboard, async (req, res) => {
       ${period.start},
       ${period.end}
     )`))
+    const ownEmployeeId = await selfDataEmployeeId(req)
+    const ownDataCondition = selfDataCondition(ownEmployeeId)
 
     const [branchTotals, ventasPorVendedor] = await Promise.all([
       prisma.$queryRaw<Array<{ period: string; sucursalId: string; sucursalNombre: string; total: number }>>`
@@ -998,6 +1394,7 @@ router.get('/reportes/dashboard', access.dashboard, async (req, res) => {
           ON v."sucursalId" = s."id"
           AND v."fecha" >= p."startDate"
           AND v."fecha" <= p."endDate"
+          AND ${ownDataCondition}
         LEFT JOIN "VentaDetalle" vd ON vd."ventaId" = v."id"
         GROUP BY p."period", s."id", s."nombre"
         ORDER BY p."period" ASC, s."nombre" ASC
@@ -1014,7 +1411,7 @@ router.get('/reportes/dashboard', access.dashboard, async (req, res) => {
           AND v."fecha" >= ${inicioMesDate}
           AND v."fecha" <= ${finMesDate}
         LEFT JOIN "VentaDetalle" vd ON vd."ventaId" = v."id"
-        WHERE e."activo" = true
+        WHERE e."activo" = true AND ${ownDataCondition}
         GROUP BY e."id", e."nombreCompleto", e."metaIndividual"
         ORDER BY "vendido" DESC, e."nombreCompleto" ASC
       `,

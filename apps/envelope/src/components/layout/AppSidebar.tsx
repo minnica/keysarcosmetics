@@ -8,6 +8,7 @@ import {
   LayoutDashboard, BarChart2, CalendarDays, UserCheck,
   CalendarRange, TrendingUp, Sun, Moon, X, LogOut,
   Landmark, Briefcase,
+  CalendarCheck2, ClipboardList,
 } from 'lucide-react'
 import {
   Sidebar,
@@ -40,6 +41,7 @@ type PreferenceOption<T extends string> = {
 const ICONS: Record<string, React.ElementType> = {
   dashboard: LayoutDashboard,
   ventas: ShoppingCart,
+  citas: CalendarCheck2,
   empleados: Users,
   sucursales: Building2,
   'metodos-pago': CreditCard,
@@ -50,6 +52,7 @@ const ICONS: Record<string, React.ElementType> = {
   'reportes/ventas-por-vendedor': UserCheck,
   'reportes/ventas-por-vendedor-dia': CalendarRange,
   'reportes/total-general': TrendingUp,
+  'reportes/citas': ClipboardList,
   accesos: LayoutDashboard,
 }
 

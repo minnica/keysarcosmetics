@@ -5,6 +5,7 @@ export type SidebarLabelKey =
   | 'forms'
   | 'reports'
   | 'sales'
+  | 'appointments'
   | 'employees'
   | 'branches'
   | 'paymentMethods'
@@ -16,6 +17,7 @@ export type SidebarLabelKey =
   | 'salesBySeller'
   | 'salesBySellerDay'
   | 'totalGeneral'
+  | 'appointmentReport'
   | 'accessControl'
 
 export interface ScreenConfig {
@@ -28,6 +30,7 @@ export interface ScreenConfig {
 export const SCREEN_CONFIG: ScreenConfig[] = [
   { key: 'dashboard', path: '/', section: 'reports', labelKey: 'dashboard' },
   { key: 'ventas', path: '/ventas', section: 'forms', labelKey: 'sales' },
+  { key: 'citas', path: '/citas', section: 'forms', labelKey: 'appointments' },
   { key: 'empleados', path: '/empleados', section: 'forms', labelKey: 'employees' },
   { key: 'sucursales', path: '/sucursales', section: 'forms', labelKey: 'branches' },
   { key: 'metodos-pago', path: '/metodos-pago', section: 'forms', labelKey: 'paymentMethods' },
@@ -38,6 +41,7 @@ export const SCREEN_CONFIG: ScreenConfig[] = [
   { key: 'reportes/ventas-por-vendedor', path: '/reportes/ventas-por-vendedor', section: 'reports', labelKey: 'salesBySeller' },
   { key: 'reportes/ventas-por-vendedor-dia', path: '/reportes/ventas-por-vendedor-dia', section: 'reports', labelKey: 'salesBySellerDay' },
   { key: 'reportes/total-general', path: '/reportes/total-general', section: 'reports', labelKey: 'totalGeneral' },
+  { key: 'reportes/citas', path: '/reportes/citas', section: 'reports', labelKey: 'appointmentReport' },
   { key: 'accesos', path: '/accesos', section: 'admin', labelKey: 'accessControl' },
 ]
 
