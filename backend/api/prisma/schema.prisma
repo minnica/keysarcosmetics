@@ -75,6 +75,7 @@ model Position {
   nombre        String     @unique
   activo        Boolean    @default(true)
   canManageAccess Boolean   @default(false)
+  selfDataOnly  Boolean    @default(false)
   empleados     Empleado[]
   screenPermissions PositionScreenPermission[]
   creadoEn      DateTime   @default(now())

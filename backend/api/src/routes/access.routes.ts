@@ -14,6 +14,7 @@ router.use(requireAccessManager)
 
 const permissionSchema = z.object({
   canManageAccess: z.boolean(),
+  selfDataOnly: z.boolean().default(false),
   permissions: z.array(
     z.object({
       screenKey: z.custom<ScreenKey>(
@@ -89,7 +90,7 @@ router.put('/positions/:id/manage-access', async (req, res) => {
 
     const position = await db.position.update({
       where: { id: req.params['id'] },
-      data: { canManageAccess: parsed.data.canManageAccess },
+      data: { canManageAccess: parsed.data.canManageAccess, selfDataOnly: false },
       include: { screenPermissions: true },
     })
 
@@ -109,11 +110,24 @@ router.put('/positions/:id/permissions', async (req, res) => {
     }
 
     const positionId = req.params['id']
+    const position = await db.position.findUnique({ where: { id: positionId }, select: { nombre: true } })
+    if (!position) {
+      res.status(404).json({ success: false, data: null, message: 'Puesto no encontrado' })
+      return
+    }
+    const isSellerPosition = position.nombre.trim().toLocaleUpperCase('es-MX') === 'VENDEDOR'
+    if (parsed.data.selfDataOnly && (!isSellerPosition || parsed.data.canManageAccess)) {
+      res.status(400).json({ success: false, data: null, message: 'La restricción de datos propios solo está disponible para el puesto VENDEDOR' })
+      return
+    }
 
     await db.$transaction(async (tx: any) => {
       await tx.position.update({
         where: { id: positionId },
-        data: { canManageAccess: parsed.data.canManageAccess },
+        data: {
+          canManageAccess: parsed.data.canManageAccess,
+          selfDataOnly: isSellerPosition && !parsed.data.canManageAccess ? parsed.data.selfDataOnly : false,
+        },
       })
 
       await tx.positionScreenPermission.deleteMany({

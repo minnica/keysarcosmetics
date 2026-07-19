@@ -78,6 +78,7 @@ export default function AccessControlPage() {
   const { positions, employees, users, loading, error, savePositionPermissions, saveCredentials, deleteUser } = useAccessAdmin()
   const [selectedPositionId, setSelectedPositionId] = useState('')
   const [draftCanManageAccess, setDraftCanManageAccess] = useState(false)
+  const [draftSelfDataOnly, setDraftSelfDataOnly] = useState(false)
   const [draftPermissions, setDraftPermissions] = useState<Record<string, boolean>>({})
   const [selectedEmployeeId, setSelectedEmployeeId] = useState('')
   const [savingPermissions, setSavingPermissions] = useState(false)
@@ -91,10 +92,12 @@ export default function AccessControlPage() {
   const permissionLatestSnapshotRef = useRef<{
     positionId: string
     canManageAccess: boolean
+    selfDataOnly: boolean
     permissions: Array<{ screenKey: string; allowed: boolean }>
     signature: string
   } | null>(null)
   const committedCanManageAccessRef = useRef(false)
+  const committedSelfDataOnlyRef = useRef(false)
   const committedPermissionMapRef = useRef<Record<string, boolean>>({})
 
   const { register, handleSubmit, reset, setValue, formState: { errors } } = useForm<CredentialsForm>({
@@ -140,8 +143,12 @@ export default function AccessControlPage() {
       return true
     }
 
+    if (draftSelfDataOnly !== committedSelfDataOnlyRef.current) {
+      return true
+    }
+
     return ACCESS_PERMISSION_KEYS.some((screenKey) => Boolean(draftPermissions[screenKey]) !== Boolean(committedPermissionMapRef.current[screenKey]))
-  }, [draftCanManageAccess, draftPermissions, selectedPermissionMap, selectedPosition])
+  }, [draftCanManageAccess, draftPermissions, draftSelfDataOnly, selectedPermissionMap, selectedPosition])
 
   const enabledScreenCount = useMemo(
     () => (draftCanManageAccess ? ACCESS_PERMISSION_KEYS.length : Object.values(draftPermissions).filter(Boolean).length),
@@ -168,8 +175,10 @@ export default function AccessControlPage() {
     }
 
     setDraftCanManageAccess(selectedPosition.canManageAccess)
+    setDraftSelfDataOnly(selectedPosition.selfDataOnly)
     setDraftPermissions(selectedPermissionMap)
     committedCanManageAccessRef.current = selectedPosition.canManageAccess
+    committedSelfDataOnlyRef.current = selectedPosition.selfDataOnly
     committedPermissionMapRef.current = selectedPermissionMap
   }, [positions, selectedPermissionMap, selectedPosition, selectedPositionId])
 
@@ -227,7 +236,7 @@ export default function AccessControlPage() {
     setCredentialsDialogOpen(true)
   }
 
-  function schedulePermissionSave(nextCanManageAccess: boolean, nextPermissions: Record<string, boolean>) {
+  function schedulePermissionSave(nextCanManageAccess: boolean, nextPermissions: Record<string, boolean>, nextSelfDataOnly = draftSelfDataOnly) {
     if (!selectedPosition) {
       return
     }
@@ -235,10 +244,12 @@ export default function AccessControlPage() {
     const snapshot: {
       positionId: string
       canManageAccess: boolean
+      selfDataOnly: boolean
       permissions: AccessPermission[]
     } = {
       positionId: selectedPosition.id,
       canManageAccess: nextCanManageAccess,
+      selfDataOnly: nextSelfDataOnly,
       permissions: ACCESS_PERMISSION_KEYS.map((screenKey): AccessPermission => ({
         screenKey: screenKey as AccessPermission['screenKey'],
         allowed: nextCanManageAccess ? true : Boolean(nextPermissions[screenKey]),
@@ -269,18 +280,21 @@ export default function AccessControlPage() {
             current.positionId,
             {
               canManageAccess: current.canManageAccess,
+              selfDataOnly: current.selfDataOnly,
               permissions: current.permissions as AccessPermission[],
             },
             { refetch: false },
           )
 
           committedCanManageAccessRef.current = current.canManageAccess
+          committedSelfDataOnlyRef.current = current.selfDataOnly
           committedPermissionMapRef.current = Object.fromEntries(
             current.permissions.map((permission) => [permission.screenKey, permission.allowed]),
           ) as Record<string, boolean>
           toast.success(t.access.permissionsSaved)
         } catch (error) {
           setDraftCanManageAccess(committedCanManageAccessRef.current)
+          setDraftSelfDataOnly(committedSelfDataOnlyRef.current)
           setDraftPermissions(committedPermissionMapRef.current)
           toast.error(getApiMessage(error, 'No se pudieron guardar los permisos'))
         } finally {
@@ -370,6 +384,8 @@ export default function AccessControlPage() {
 
   const keysarHomeDataEnabled = Boolean(draftPermissions[KEYSAR_HOME_DATA_PERMISSION_KEY])
   const keysarHomeDataPending = keysarHomeDataEnabled !== Boolean(committedPermissionMapRef.current[KEYSAR_HOME_DATA_PERMISSION_KEY])
+  const isSellerPosition = selectedPosition?.nombre.trim().toLocaleUpperCase('es-MX') === 'VENDEDOR'
+  const selfDataOnlyPending = draftSelfDataOnly !== committedSelfDataOnlyRef.current
 
   const accountColumns: ColumnDef<AccessUser>[] = [
     {
@@ -512,6 +528,45 @@ export default function AccessControlPage() {
               </div>
 
               <div className="grid gap-3">
+                {isSellerPosition ? (
+                  <button
+                    type="button"
+                    className={`flex flex-col gap-3 rounded-xl border px-3 py-3 text-left transition-colors duration-200 sm:flex-row sm:items-center sm:justify-between sm:px-4 ${
+                      draftSelfDataOnly ? 'border-[#8bb09b] bg-[#648672]/10' : 'hover:border-slate-300 hover:bg-slate-50'
+                    }`}
+                    style={{ borderColor: 'var(--border-color)' }}
+                    onClick={() => {
+                      const nextSelfDataOnly = !draftSelfDataOnly
+                      setDraftSelfDataOnly(nextSelfDataOnly)
+                      schedulePermissionSave(draftCanManageAccess, draftPermissions, nextSelfDataOnly)
+                    }}
+                  >
+                    <div className="min-w-0 space-y-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-medium">{t.access.selfDataOnlyPermission}</span>
+                        <Badge variant="secondary" className="uppercase text-[10px] tracking-wide">
+                          {t.access.reportsAction}
+                        </Badge>
+                      </div>
+                      <p className="text-xs leading-5" style={{ color: 'var(--text-muted)' }}>
+                        {t.access.selfDataOnlyPermissionDescription}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2 self-start sm:self-center">
+                      {draftSelfDataOnly ? <Check className="h-4 w-4 text-[#648672]" /> : null}
+                      <Badge
+                        className="uppercase"
+                        style={{
+                          backgroundColor: selfDataOnlyPending ? '#f59e0b' : draftSelfDataOnly ? '#648672' : '#9ca3af',
+                          color: 'white',
+                        }}
+                      >
+                        {selfDataOnlyPending ? t.common.saving : draftSelfDataOnly ? t.access.screenEnabled : t.access.screenDisabled}
+                      </Badge>
+                    </div>
+                  </button>
+                ) : null}
+
                 <button
                   type="button"
                   className={`flex flex-col gap-3 rounded-xl border px-3 py-3 text-left transition-colors duration-200 sm:flex-row sm:items-center sm:justify-between sm:px-4 ${

@@ -142,6 +142,8 @@ el diseño y el autocuidado.
 - `Position.canManageAccess` marca el puesto que administra permisos y credenciales de `envelope`.
 - El acceso efectivo a pantallas de `envelope` ya no depende solo del rol: también se resuelve por puesto/permisos por pantalla.
 - La pantalla `accesos` guarda permisos por clic inmediato en cada pantalla con autosave sin recarga, administra credenciales en un dialog dedicado, también autoriza permisos virtuales de acción como `ventas/generar-sobre` y elimina cuentas desde la tabla de estatus cuando se necesita re-crear el acceso después, excepto la cuenta principal `SUPER_ADMIN`, que queda protegida.
+- En `accesos`, cuando el puesto se llama exactamente `VENDEDOR`, se puede activar `Solo ver datos propios`. El ajuste se persiste en `Position.selfDataOnly` y se aplica en backend a ventas, dashboard, reportes y sus exportaciones: el usuario solo recibe sus registros y sus propios totales. También impide registrar, editar o eliminar ventas de otros vendedores. Un puesto sin empleado vinculado no recibe datos bajo esta restricción.
+- Prisma genera el cliente desde `backend/api/prisma/schema.prisma`; el duplicado histórico `backend/api/src/prisma/schema.prisma` debe mantenerse sincronizado mientras exista. Toda modificación de modelo debe actualizar ambos para evitar que el cliente desplegado quede desfasado.
 
 ---
 

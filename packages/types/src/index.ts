@@ -38,6 +38,7 @@ export interface UsuarioSession extends Usuario {
   positionId?: string | null
   positionName?: string | null
   canManageAccess: boolean
+  selfDataOnly: boolean
   screenPermissions: ScreenKey[]
 }
 
@@ -59,6 +60,7 @@ export interface Position {
   id: string
   nombre: string
   activo: boolean
+  selfDataOnly?: boolean
 }
 
 export interface Empleado {

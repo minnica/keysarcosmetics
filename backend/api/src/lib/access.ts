@@ -31,6 +31,7 @@ export interface ResolvedAccess {
   positionId: string | null
   positionName: string | null
   canManageAccess: boolean
+  selfDataOnly: boolean
   screenPermissions: ScreenKey[]
 }
 
@@ -45,6 +46,7 @@ export interface AccessUserRecord {
   positionId: string | null
   positionName: string | null
   canManageAccess: boolean
+  selfDataOnly: boolean
   screenPermissions: ScreenKey[]
   creadoEn: Date
 }
@@ -66,6 +68,7 @@ async function fetchAccess(userId: string): Promise<ResolvedAccess | null> {
               id: true,
               nombre: true,
               canManageAccess: true,
+              selfDataOnly: true,
               screenPermissions: {
                 select: { screenKey: true, allowed: true },
               },
@@ -86,6 +89,7 @@ async function fetchAccess(userId: string): Promise<ResolvedAccess | null> {
         id: string
         nombre: string
         canManageAccess: boolean
+        selfDataOnly: boolean
         screenPermissions: Array<{ screenKey: ScreenKey; allowed: boolean }>
       } | null
     } | null
@@ -113,6 +117,7 @@ async function fetchAccess(userId: string): Promise<ResolvedAccess | null> {
     positionId: position?.id ?? null,
     positionName: position?.nombre ?? null,
     canManageAccess,
+    selfDataOnly: Boolean(!canManageAccess && position?.selfDataOnly),
     screenPermissions: [...new Set(screenPermissions)],
   }
 }
@@ -210,6 +215,7 @@ export function toSessionUser(access: ResolvedAccess, usuario: {
     positionId: access.positionId,
     positionName: access.positionName,
     canManageAccess: access.canManageAccess,
+    selfDataOnly: access.selfDataOnly,
     screenPermissions: access.screenPermissions,
   }
 }
