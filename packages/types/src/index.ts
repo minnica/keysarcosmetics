@@ -6,6 +6,7 @@ export const SCREEN_KEYS = [
   'dashboard',
   'ventas',
   'ventas/generar-sobre',
+  'citas',
   'empleados',
   'empleados/sueldo',
   'reportes/ver-datos-keysar-home',
@@ -18,6 +19,7 @@ export const SCREEN_KEYS = [
   'reportes/ventas-por-vendedor',
   'reportes/ventas-por-vendedor-dia',
   'reportes/total-general',
+  'reportes/citas',
   'accesos',
 ] as const
 
@@ -95,6 +97,34 @@ export interface Venta {
   fecha: Date
   notas?: string
   creadoEn: Date
+}
+
+export type TipoCompraCita = 'PAGO_NETO' | 'COMPRA_CON_APARTADO' | 'PAGO_DE_APARTADO'
+export type TipoAtencionCita = 'FACIAL' | 'FACIAL_DOBLE'
+export type EstatusCita = 'ATENDIDA' | 'NO_LLEGO' | 'CANCELADA'
+
+export interface RegistroCita {
+  id: string
+  fecha: string
+  hora: string | null
+  tipoAtencion: TipoAtencionCita
+  estatus: EstatusCita
+  nombreCliente: string
+  sucursalId: string
+  sucursalNombre: string
+  vendedorId: string
+  vendedorNombre: string
+  facialistaId: string
+  facialistaNombre: string
+  tipoCompra: TipoCompraCita | null
+  montoCompra: number
+  total: number
+  bonoSalidaTarde: boolean
+  bonoComida: boolean
+  creadoPorId: string
+  creadoPorNombre: string
+  creadoEn: string
+  actualizadoEn: string
 }
 
 export interface ApiResponse<T> {

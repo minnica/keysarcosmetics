@@ -6,6 +6,7 @@ export const ACCESS_SCREEN_ORDER = [
   'dashboard',
   'ventas',
   'ventas/generar-sobre',
+  'citas',
   'empleados',
   'empleados/sueldo',
   'reportes/ver-datos-keysar-home',
@@ -18,6 +19,7 @@ export const ACCESS_SCREEN_ORDER = [
   'reportes/ventas-por-vendedor',
   'reportes/ventas-por-vendedor-dia',
   'reportes/total-general',
+  'reportes/citas',
   'accesos',
 ] as const
 

@@ -15,31 +15,33 @@ enum Rol {
 }
 
 model Usuario {
-  id                           String    @id @default(cuid())
-  nombre                       String
-  email                        String    @unique
-  passwordHash                 String
-  rol                          Rol
-  activo                       Boolean   @default(true)
-  sucursalId                   String?
-  sucursal                     Sucursal? @relation(fields: [sucursalId], references: [id])
-  empleadoId                   String?   @unique
-  empleado                     Empleado? @relation(fields: [empleadoId], references: [id])
-  passwordChangedAt            DateTime?
-  passwordSetupTokenHash       String?
-  passwordSetupTokenExpiresAt  DateTime?
-  creadoEn                     DateTime  @default(now())
-  actualizadoEn                DateTime  @updatedAt
+  id                          String         @id @default(cuid())
+  nombre                      String
+  email                       String         @unique
+  passwordHash                String
+  rol                         Rol
+  activo                      Boolean        @default(true)
+  sucursalId                  String?
+  sucursal                    Sucursal?      @relation(fields: [sucursalId], references: [id])
+  empleadoId                  String?        @unique
+  empleado                    Empleado?      @relation(fields: [empleadoId], references: [id])
+  registrosCitaCreados        RegistroCita[]
+  passwordChangedAt           DateTime?
+  passwordSetupTokenHash      String?
+  passwordSetupTokenExpiresAt DateTime?
+  creadoEn                    DateTime       @default(now())
+  actualizadoEn               DateTime       @updatedAt
 }
 
 model Sucursal {
-  id            String    @id @default(cuid())
+  id            String         @id @default(cuid())
   nombre        String
-  activa        Boolean   @default(true)
+  activa        Boolean        @default(true)
   usuarios      Usuario[]
   ventas        Venta[]
-  creadoEn      DateTime  @default(now())
-  actualizadoEn DateTime  @updatedAt
+  registrosCita RegistroCita[]
+  creadoEn      DateTime       @default(now())
+  actualizadoEn DateTime       @updatedAt
 }
 
 // ─── Módulo Envelope ──────────────────────────────────────────────────────────
@@ -71,15 +73,15 @@ model Bank {
 }
 
 model Position {
-  id               String     @id @default(cuid())
-  nombre           String     @unique
-  activo           Boolean    @default(true)
-  canManageAccess   Boolean    @default(false)
-  selfDataOnly      Boolean    @default(false)
-  empleados        Empleado[]
+  id                String                     @id @default(cuid())
+  nombre            String                     @unique
+  activo            Boolean                    @default(true)
+  canManageAccess   Boolean                    @default(false)
+  selfDataOnly      Boolean                    @default(false)
+  empleados         Empleado[]
   screenPermissions PositionScreenPermission[]
-  creadoEn         DateTime   @default(now())
-  actualizadoEn    DateTime   @updatedAt
+  creadoEn          DateTime                   @default(now())
+  actualizadoEn     DateTime                   @updatedAt
 }
 
 model PositionScreenPermission {
@@ -95,29 +97,79 @@ model PositionScreenPermission {
 }
 
 model Empleado {
-  id              String     @id @default(cuid())
-  nombres         String
-  apellidoPaterno String
-  apellidoMaterno String
-  nombreCompleto  String
+  id                  String         @id @default(cuid())
+  nombres             String
+  apellidoPaterno     String
+  apellidoMaterno     String
+  nombreCompleto      String
   // Campos legacy — se eliminan en Fase 4 tras backfill completo en producción
-  banco           String
-  numeroCuenta    String
-  puesto          String
-  sueldo          Decimal?   @db.Decimal(10, 2)
-  fechaNacimiento DateTime?
-  numeroTelefono  String?
+  banco               String
+  numeroCuenta        String
+  puesto              String
+  sueldo              Decimal?       @db.Decimal(10, 2)
+  fechaNacimiento     DateTime?
+  numeroTelefono      String?
   // FK a catálogos dinámicos — nullable durante transición
-  bankId          String?
-  bank            Bank?      @relation(fields: [bankId], references: [id])
-  positionId      String?
-  position        Position?  @relation(fields: [positionId], references: [id])
-  usuario         Usuario?
-  metaIndividual  Decimal    @db.Decimal(10, 2)
-  activo          Boolean    @default(true)
-  ventas          Venta[]
-  creadoEn        DateTime   @default(now())
-  actualizadoEn   DateTime   @updatedAt
+  bankId              String?
+  bank                Bank?          @relation(fields: [bankId], references: [id])
+  positionId          String?
+  position            Position?      @relation(fields: [positionId], references: [id])
+  usuario             Usuario?
+  metaIndividual      Decimal        @db.Decimal(10, 2)
+  activo              Boolean        @default(true)
+  ventas              Venta[]
+  citasComoVendedor   RegistroCita[] @relation("RegistroCitaVendedor")
+  citasComoFacialista RegistroCita[] @relation("RegistroCitaFacialista")
+  creadoEn            DateTime       @default(now())
+  actualizadoEn       DateTime       @updatedAt
+}
+
+enum TipoCompraCita {
+  PAGO_NETO
+  COMPRA_CON_APARTADO
+  PAGO_DE_APARTADO
+}
+
+enum TipoAtencionCita {
+  FACIAL
+  FACIAL_DOBLE
+}
+
+enum EstatusCita {
+  ATENDIDA
+  NO_LLEGO
+  CANCELADA
+}
+
+// Registro operativo de una cita atendida; más adelante podrá vincularse con Scheduler.
+model RegistroCita {
+  id              String           @id @default(cuid())
+  fecha           DateTime
+  hora            String?          @db.VarChar(5)
+  tipoAtencion    TipoAtencionCita @default(FACIAL)
+  estatus         EstatusCita      @default(ATENDIDA)
+  nombreCliente   String
+  sucursalId      String
+  sucursal        Sucursal         @relation(fields: [sucursalId], references: [id])
+  vendedorId      String
+  vendedor        Empleado         @relation("RegistroCitaVendedor", fields: [vendedorId], references: [id])
+  facialistaId    String
+  facialista      Empleado         @relation("RegistroCitaFacialista", fields: [facialistaId], references: [id])
+  tipoCompra      TipoCompraCita?
+  montoCompra     Decimal          @default(0) @db.Decimal(10, 2)
+  bonoSalidaTarde Boolean          @default(false)
+  bonoComida      Boolean          @default(false)
+  creadoPorId     String
+  creadoPor       Usuario          @relation(fields: [creadoPorId], references: [id])
+  creadoEn        DateTime         @default(now())
+  actualizadoEn   DateTime         @updatedAt
+
+  @@index([fecha])
+  @@index([estatus, fecha])
+  @@index([sucursalId, fecha])
+  @@index([facialistaId, fecha])
+  @@index([vendedorId, fecha])
+  @@index([creadoPorId])
 }
 
 // Agrupa todas las ventas de un vendedor en un día
@@ -134,6 +186,11 @@ model Venta {
   detalles      VentaDetalle[]
   creadoEn      DateTime       @default(now())
   actualizadoEn DateTime       @updatedAt
+
+  @@index([fecha])
+  @@index([sucursalId, fecha])
+  @@index([vendedorId, fecha])
+  @@index([sesionId])
 }
 
 // Cada fila = una venta individual con monto y método de pago
@@ -146,4 +203,7 @@ model VentaDetalle {
   metodoPago    MetodoPago @relation(fields: [metodoPagoId], references: [id])
   creadoEn      DateTime   @default(now())
   actualizadoEn DateTime   @updatedAt
+
+  @@index([ventaId])
+  @@index([metodoPagoId])
 }
