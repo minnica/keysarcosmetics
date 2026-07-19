@@ -90,7 +90,7 @@ export function DataTable<TData, TValue>({
   return (
     <div className="space-y-3">
       {/* Búsqueda global y selector de filas */}
-      <div className="flex items-center gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <div className="relative flex-1">
           <Search
             className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 pointer-events-none"
@@ -103,7 +103,7 @@ export function DataTable<TData, TValue>({
             className="pl-9 text-[0.9rem]"
           />
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center justify-between gap-2 sm:shrink-0 sm:justify-start">
           <span className="text-[0.82rem] whitespace-nowrap" style={{ color: 'var(--text-muted)' }}>
             {recordsLabel}
           </span>
