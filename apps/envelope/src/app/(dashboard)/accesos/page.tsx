@@ -4,7 +4,14 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Check, CornerDownRight, Info, Pencil, Shield, Trash2, UserPlus } from 'lucide-react'
+import {
+  Check,
+  CornerDownRight,
+  Pencil,
+  Shield,
+  Trash2,
+  UserPlus,
+} from 'lucide-react'
 import type { ColumnDef } from '@cosmetics/ui'
 import {
   AlertDialog,
@@ -35,13 +42,14 @@ import {
   Select,
   SelectContent,
   SelectItem,
+  Separator,
   SelectTrigger,
   SelectValue,
   toast,
 } from '@cosmetics/ui'
 import { useAccessAdmin } from '@/hooks'
 import type { AccessPermission, AccessUser } from '@/hooks/useAccessAdmin'
-import { SCREEN_CONFIG } from '@/lib/access'
+import { SCREEN_CONFIG, SECTION_ORDER, type AccessSection } from '@/lib/access'
 import { useI18n } from '@/lib/i18n'
 import { AccessLoadingSkeleton } from '@/components/layout/DataLoadingSkeleton'
 
@@ -54,7 +62,8 @@ type CredentialsForm = z.infer<typeof credentialsSchema>
 
 const GENERATE_ENVELOPE_PERMISSION_KEY = 'ventas/generar-sobre' as const
 const EMPLOYEE_SALARY_PERMISSION_KEY = 'empleados/sueldo' as const
-const KEYSAR_HOME_DATA_PERMISSION_KEY = 'reportes/ver-datos-keysar-home' as const
+const KEYSAR_HOME_DATA_PERMISSION_KEY =
+  'reportes/ver-datos-keysar-home' as const
 const ACCESS_PERMISSION_KEYS = [
   ...SCREEN_CONFIG.map((screen) => screen.key),
   GENERATE_ENVELOPE_PERMISSION_KEY,
@@ -62,9 +71,43 @@ const ACCESS_PERMISSION_KEYS = [
   KEYSAR_HOME_DATA_PERMISSION_KEY,
 ]
 
+const SCREEN_ACTIONS: Partial<
+  Record<
+    string,
+    {
+      key: string
+      label: 'generateEnvelopePermission' | 'viewSalaryPermission'
+      description:
+        | 'generateEnvelopePermissionDescription'
+        | 'viewSalaryPermissionDescription'
+    }
+  >
+> = {
+  ventas: {
+    key: GENERATE_ENVELOPE_PERMISSION_KEY,
+    label: 'generateEnvelopePermission',
+    description: 'generateEnvelopePermissionDescription',
+  },
+  empleados: {
+    key: EMPLOYEE_SALARY_PERMISSION_KEY,
+    label: 'viewSalaryPermission',
+    description: 'viewSalaryPermissionDescription',
+  },
+}
+
+const SECTION_LABELS: Record<
+  AccessSection,
+  'forms' | 'reports' | 'accessControl'
+> = {
+  forms: 'forms',
+  reports: 'reports',
+  admin: 'accessControl',
+}
+
 function getApiMessage(error: unknown, fallback: string) {
   if (typeof error === 'object' && error && 'response' in error) {
-    const response = (error as { response?: { data?: { message?: string } } }).response
+    const response = (error as { response?: { data?: { message?: string } } })
+      .response
     if (response?.data?.message) {
       return response.data.message
     }
@@ -75,19 +118,36 @@ function getApiMessage(error: unknown, fallback: string) {
 
 export default function AccessControlPage() {
   const { t, dataTableLabels } = useI18n()
-  const { positions, employees, users, loading, error, savePositionPermissions, saveCredentials, deleteUser } = useAccessAdmin()
+  const {
+    positions,
+    employees,
+    users,
+    loading,
+    error,
+    savePositionPermissions,
+    saveCredentials,
+    deleteUser,
+  } = useAccessAdmin()
   const [selectedPositionId, setSelectedPositionId] = useState('')
   const [draftCanManageAccess, setDraftCanManageAccess] = useState(false)
   const [draftSelfDataOnly, setDraftSelfDataOnly] = useState(false)
-  const [draftPermissions, setDraftPermissions] = useState<Record<string, boolean>>({})
+  const [draftPermissions, setDraftPermissions] = useState<
+    Record<string, boolean>
+  >({})
   const [selectedEmployeeId, setSelectedEmployeeId] = useState('')
   const [savingPermissions, setSavingPermissions] = useState(false)
   const [savingCredentials, setSavingCredentials] = useState(false)
   const [credentialsDialogOpen, setCredentialsDialogOpen] = useState(false)
   const [credentialsConfirmOpen, setCredentialsConfirmOpen] = useState(false)
-  const [pendingCredentials, setPendingCredentials] = useState<{ employeeId: string; isUpdate: boolean; data: CredentialsForm } | null>(null)
+  const [pendingCredentials, setPendingCredentials] = useState<{
+    employeeId: string
+    isUpdate: boolean
+    data: CredentialsForm
+  } | null>(null)
   const [userToDelete, setUserToDelete] = useState<AccessUser | null>(null)
-  const permissionSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const permissionSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  )
   const permissionSaveInFlightRef = useRef(false)
   const permissionLatestSnapshotRef = useRef<{
     positionId: string
@@ -100,18 +160,26 @@ export default function AccessControlPage() {
   const committedSelfDataOnlyRef = useRef(false)
   const committedPermissionMapRef = useRef<Record<string, boolean>>({})
 
-  const { register, handleSubmit, reset, setValue, formState: { errors } } = useForm<CredentialsForm>({
+  const {
+    register,
+    handleSubmit,
+    reset,
+    setValue,
+    formState: { errors },
+  } = useForm<CredentialsForm>({
     resolver: zodResolver(credentialsSchema),
     defaultValues: { email: '', password: '' },
   })
 
   const selectedPosition = useMemo(
-    () => positions.find((position) => position.id === selectedPositionId) ?? null,
+    () =>
+      positions.find((position) => position.id === selectedPositionId) ?? null,
     [positions, selectedPositionId],
   )
 
   const selectedEmployee = useMemo(
-    () => employees.find((employee) => employee.id === selectedEmployeeId) ?? null,
+    () =>
+      employees.find((employee) => employee.id === selectedEmployeeId) ?? null,
     [employees, selectedEmployeeId],
   )
 
@@ -128,8 +196,11 @@ export default function AccessControlPage() {
     return Object.fromEntries(
       ACCESS_PERMISSION_KEYS.map((screenKey) => [
         screenKey,
-        selectedPosition.canManageAccess
-          || selectedPosition.screenPermissions.some((permission) => permission.screenKey === screenKey && permission.allowed),
+        selectedPosition.canManageAccess ||
+          selectedPosition.screenPermissions.some(
+            (permission) =>
+              permission.screenKey === screenKey && permission.allowed,
+          ),
       ]),
     ) as Record<string, boolean>
   }, [selectedPosition])
@@ -147,11 +218,24 @@ export default function AccessControlPage() {
       return true
     }
 
-    return ACCESS_PERMISSION_KEYS.some((screenKey) => Boolean(draftPermissions[screenKey]) !== Boolean(committedPermissionMapRef.current[screenKey]))
-  }, [draftCanManageAccess, draftPermissions, draftSelfDataOnly, selectedPermissionMap, selectedPosition])
+    return ACCESS_PERMISSION_KEYS.some(
+      (screenKey) =>
+        Boolean(draftPermissions[screenKey]) !==
+        Boolean(committedPermissionMapRef.current[screenKey]),
+    )
+  }, [
+    draftCanManageAccess,
+    draftPermissions,
+    draftSelfDataOnly,
+    selectedPermissionMap,
+    selectedPosition,
+  ])
 
   const enabledScreenCount = useMemo(
-    () => (draftCanManageAccess ? ACCESS_PERMISSION_KEYS.length : Object.values(draftPermissions).filter(Boolean).length),
+    () =>
+      draftCanManageAccess
+        ? ACCESS_PERMISSION_KEYS.length
+        : Object.values(draftPermissions).filter(Boolean).length,
     [draftCanManageAccess, draftPermissions],
   )
 
@@ -160,6 +244,28 @@ export default function AccessControlPage() {
       ...draftPermissions,
       [permissionKey]: !draftPermissions[permissionKey],
     }
+    setDraftPermissions(nextPermissions)
+    schedulePermissionSave(draftCanManageAccess, nextPermissions)
+  }
+
+  function setSectionPermissions(section: AccessSection, allowed: boolean) {
+    const screenKeys = SCREEN_CONFIG.filter(
+      (screen) => screen.section === section,
+    ).flatMap(
+      (screen) =>
+        [screen.key, SCREEN_ACTIONS[screen.key]?.key].filter(
+          Boolean,
+        ) as string[],
+    )
+
+    if (section === 'reports') {
+      screenKeys.push(KEYSAR_HOME_DATA_PERMISSION_KEY)
+    }
+
+    const nextPermissions = { ...draftPermissions }
+    screenKeys.forEach((permissionKey) => {
+      nextPermissions[permissionKey] = allowed
+    })
     setDraftPermissions(nextPermissions)
     schedulePermissionSave(draftCanManageAccess, nextPermissions)
   }
@@ -236,7 +342,11 @@ export default function AccessControlPage() {
     setCredentialsDialogOpen(true)
   }
 
-  function schedulePermissionSave(nextCanManageAccess: boolean, nextPermissions: Record<string, boolean>, nextSelfDataOnly = draftSelfDataOnly) {
+  function schedulePermissionSave(
+    nextCanManageAccess: boolean,
+    nextPermissions: Record<string, boolean>,
+    nextSelfDataOnly = draftSelfDataOnly,
+  ) {
     if (!selectedPosition) {
       return
     }
@@ -250,10 +360,14 @@ export default function AccessControlPage() {
       positionId: selectedPosition.id,
       canManageAccess: nextCanManageAccess,
       selfDataOnly: nextSelfDataOnly,
-      permissions: ACCESS_PERMISSION_KEYS.map((screenKey): AccessPermission => ({
-        screenKey: screenKey as AccessPermission['screenKey'],
-        allowed: nextCanManageAccess ? true : Boolean(nextPermissions[screenKey]),
-      })),
+      permissions: ACCESS_PERMISSION_KEYS.map(
+        (screenKey): AccessPermission => ({
+          screenKey: screenKey as AccessPermission['screenKey'],
+          allowed: nextCanManageAccess
+            ? true
+            : Boolean(nextPermissions[screenKey]),
+        }),
+      ),
     }
 
     permissionLatestSnapshotRef.current = {
@@ -289,14 +403,19 @@ export default function AccessControlPage() {
           committedCanManageAccessRef.current = current.canManageAccess
           committedSelfDataOnlyRef.current = current.selfDataOnly
           committedPermissionMapRef.current = Object.fromEntries(
-            current.permissions.map((permission) => [permission.screenKey, permission.allowed]),
+            current.permissions.map((permission) => [
+              permission.screenKey,
+              permission.allowed,
+            ]),
           ) as Record<string, boolean>
           toast.success(t.access.permissionsSaved)
         } catch (error) {
           setDraftCanManageAccess(committedCanManageAccessRef.current)
           setDraftSelfDataOnly(committedSelfDataOnlyRef.current)
           setDraftPermissions(committedPermissionMapRef.current)
-          toast.error(getApiMessage(error, 'No se pudieron guardar los permisos'))
+          toast.error(
+            getApiMessage(error, 'No se pudieron guardar los permisos'),
+          )
         } finally {
           permissionSaveInFlightRef.current = false
           setSavingPermissions(false)
@@ -346,13 +465,19 @@ export default function AccessControlPage() {
       }
 
       await saveCredentials(pendingCredentials.employeeId, payload)
-      toast.success(pendingCredentials.isUpdate ? t.access.credentialsUpdated : t.access.credentialsCreated)
+      toast.success(
+        pendingCredentials.isUpdate
+          ? t.access.credentialsUpdated
+          : t.access.credentialsCreated,
+      )
       setCredentialsConfirmOpen(false)
       setCredentialsDialogOpen(false)
       setPendingCredentials(null)
       reset({ email: pendingCredentials.data.email, password: '' })
     } catch (error) {
-      toast.error(getApiMessage(error, 'No se pudieron guardar las credenciales'))
+      toast.error(
+        getApiMessage(error, 'No se pudieron guardar las credenciales'),
+      )
     } finally {
       setSavingCredentials(false)
     }
@@ -382,10 +507,16 @@ export default function AccessControlPage() {
     }
   }
 
-  const keysarHomeDataEnabled = Boolean(draftPermissions[KEYSAR_HOME_DATA_PERMISSION_KEY])
-  const keysarHomeDataPending = keysarHomeDataEnabled !== Boolean(committedPermissionMapRef.current[KEYSAR_HOME_DATA_PERMISSION_KEY])
-  const isSellerPosition = selectedPosition?.nombre.trim().toLocaleUpperCase('es-MX') === 'VENDEDOR'
-  const selfDataOnlyPending = draftSelfDataOnly !== committedSelfDataOnlyRef.current
+  const keysarHomeDataEnabled = Boolean(
+    draftPermissions[KEYSAR_HOME_DATA_PERMISSION_KEY],
+  )
+  const keysarHomeDataPending =
+    keysarHomeDataEnabled !==
+    Boolean(committedPermissionMapRef.current[KEYSAR_HOME_DATA_PERMISSION_KEY])
+  const isSellerPosition =
+    selectedPosition?.nombre.trim().toLocaleUpperCase('es-MX') === 'VENDEDOR'
+  const selfDataOnlyPending =
+    draftSelfDataOnly !== committedSelfDataOnlyRef.current
 
   const accountColumns: ColumnDef<AccessUser>[] = [
     {
@@ -401,7 +532,11 @@ export default function AccessControlPage() {
     {
       accessorKey: 'email',
       header: () => <span className="uppercase">{t.access.email}</span>,
-      cell: ({ row }) => <span className="block min-w-[12rem] max-w-[18rem] break-all">{row.original.email}</span>,
+      cell: ({ row }) => (
+        <span className="block min-w-[12rem] max-w-[18rem] break-all">
+          {row.original.email}
+        </span>
+      ),
     },
     {
       accessorFn: (row) => row.empleado?.position?.nombre ?? t.common.noRecord,
@@ -417,14 +552,22 @@ export default function AccessControlPage() {
       accessorFn: (row) => row.activo,
       header: () => <span className="uppercase">{t.common.status}</span>,
       cell: ({ row }) => (
-        <Badge className="uppercase" style={{ backgroundColor: row.original.activo ? '#648672' : '#9ca3af', color: 'white' }}>
+        <Badge
+          className="uppercase"
+          style={{
+            backgroundColor: row.original.activo ? '#648672' : '#9ca3af',
+            color: 'white',
+          }}
+        >
           {row.original.activo ? t.common.active : t.common.inactive}
         </Badge>
       ),
     },
     {
       id: 'acciones',
-      header: () => <div className="text-right uppercase">{t.common.actions}</div>,
+      header: () => (
+        <div className="text-right uppercase">{t.common.actions}</div>
+      ),
       enableSorting: false,
       enableGlobalFilter: false,
       cell: ({ row }) => {
@@ -464,12 +607,15 @@ export default function AccessControlPage() {
     <div className="space-y-6">
       <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:gap-4">
         <div className="min-w-0">
-          <h1 className="page-title font-semibold uppercase">{t.access.title}</h1>
+          <h1 className="page-title uppercase">{t.access.title}</h1>
           <p className="mt-1 text-sm" style={{ color: 'var(--text-muted)' }}>
             {t.access.description}
           </p>
         </div>
-        <Badge className="max-w-full uppercase" style={{ backgroundColor: '#ecd1c8', color: '#1a1a1a' }}>
+        <Badge
+          className="max-w-full uppercase"
+          style={{ backgroundColor: '#ecd1c8', color: '#1a1a1a' }}
+        >
           <Shield className="mr-1.5 h-3.5 w-3.5" />
           {t.access.accessManagerLabel}
         </Badge>
@@ -483,29 +629,14 @@ export default function AccessControlPage() {
         <div className="grid gap-6 xl:grid-cols-[1.2fr_0.95fr]">
           <Card>
             <CardHeader className="space-y-2">
-              <CardTitle className="uppercase">{t.access.permissionsTitle}</CardTitle>
-              <CardDescription>{t.access.permissionsDescription}</CardDescription>
+              <CardTitle className="uppercase">
+                {t.access.permissionsTitle}
+              </CardTitle>
+              <CardDescription>
+                {t.access.permissionsDescription}
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div
-                className="flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-3 sm:px-4"
-              >
-                <Info className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" />
-                <div className="min-w-0 flex-1 space-y-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="text-sm font-medium uppercase tracking-wide">
-                      {savingPermissions || permissionStateChanged ? t.common.saving : t.access.permissionsSavedState}
-                    </p>
-                    <Badge className="uppercase" style={{ backgroundColor: '#648672', color: 'white' }}>
-                      {t.access.permissionsSelectedCount(enabledScreenCount)}
-                    </Badge>
-                  </div>
-                  <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-                    {t.access.permissionsHint}
-                  </p>
-                </div>
-              </div>
-
               <div className="grid gap-4 md:grid-cols-[1fr_auto] md:items-end">
                 <div className="space-y-1.5">
                   <Label htmlFor="position">{t.access.positionLabel}</Label>
@@ -532,241 +663,286 @@ export default function AccessControlPage() {
                   <button
                     type="button"
                     className={`flex flex-col gap-3 rounded-xl border px-3 py-3 text-left transition-colors duration-200 sm:flex-row sm:items-center sm:justify-between sm:px-4 ${
-                      draftSelfDataOnly ? 'border-[#8bb09b] bg-[#648672]/10' : 'hover:border-slate-300 hover:bg-slate-50'
+                      draftSelfDataOnly
+                        ? 'border-[#8bb09b] bg-[#648672]/10'
+                        : 'hover:border-slate-300 hover:bg-slate-50'
                     }`}
                     style={{ borderColor: 'var(--border-color)' }}
                     onClick={() => {
                       const nextSelfDataOnly = !draftSelfDataOnly
                       setDraftSelfDataOnly(nextSelfDataOnly)
-                      schedulePermissionSave(draftCanManageAccess, draftPermissions, nextSelfDataOnly)
+                      schedulePermissionSave(
+                        draftCanManageAccess,
+                        draftPermissions,
+                        nextSelfDataOnly,
+                      )
                     }}
                   >
                     <div className="min-w-0 space-y-1">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-medium">{t.access.selfDataOnlyPermission}</span>
-                        <Badge variant="secondary" className="uppercase text-[10px] tracking-wide">
+                        <span className="font-medium">
+                          {t.access.selfDataOnlyPermission}
+                        </span>
+                        <Badge
+                          variant="secondary"
+                          className="uppercase text-[10px] tracking-wide"
+                        >
                           {t.access.reportsAction}
                         </Badge>
                       </div>
-                      <p className="text-xs leading-5" style={{ color: 'var(--text-muted)' }}>
+                      <p
+                        className="text-xs leading-5"
+                        style={{ color: 'var(--text-muted)' }}
+                      >
                         {t.access.selfDataOnlyPermissionDescription}
                       </p>
                     </div>
                     <div className="flex shrink-0 items-center gap-2 self-start sm:self-center">
-                      {draftSelfDataOnly ? <Check className="h-4 w-4 text-[#648672]" /> : null}
+                      {draftSelfDataOnly ? (
+                        <Check className="h-4 w-4 text-[#648672]" />
+                      ) : null}
                       <Badge
                         className="uppercase"
                         style={{
-                          backgroundColor: selfDataOnlyPending ? '#f59e0b' : draftSelfDataOnly ? '#648672' : '#9ca3af',
+                          backgroundColor: selfDataOnlyPending
+                            ? '#f59e0b'
+                            : draftSelfDataOnly
+                              ? '#648672'
+                              : '#9ca3af',
                           color: 'white',
                         }}
                       >
-                        {selfDataOnlyPending ? t.common.saving : draftSelfDataOnly ? t.access.screenEnabled : t.access.screenDisabled}
+                        {selfDataOnlyPending
+                          ? t.common.saving
+                          : draftSelfDataOnly
+                            ? t.access.screenEnabled
+                            : t.access.screenDisabled}
                       </Badge>
                     </div>
                   </button>
                 ) : null}
 
-                <button
-                  type="button"
-                  className={`flex flex-col gap-3 rounded-xl border px-3 py-3 text-left transition-colors duration-200 sm:flex-row sm:items-center sm:justify-between sm:px-4 ${
-                    keysarHomeDataEnabled ? 'border-[#8bb09b] bg-[#648672]/10' : 'hover:border-slate-300 hover:bg-slate-50'
-                  }`}
-                  style={{ borderColor: 'var(--border-color)' }}
-                  onClick={() => togglePermission(KEYSAR_HOME_DATA_PERMISSION_KEY)}
-                >
-                  <div className="min-w-0 space-y-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-medium">{t.access.viewKeysarHomeDataPermission}</span>
-                      <Badge variant="secondary" className="uppercase text-[10px] tracking-wide">
-                        {t.access.reportsAction}
-                      </Badge>
-                    </div>
-                    <p className="text-xs leading-5" style={{ color: 'var(--text-muted)' }}>
-                      {t.access.viewKeysarHomeDataPermissionDescription}
-                    </p>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-2 self-start sm:self-center">
-                    {keysarHomeDataEnabled ? <Check className="h-4 w-4 text-[#648672]" /> : null}
-                    <Badge
-                      className="uppercase"
-                      style={{
-                        backgroundColor: keysarHomeDataPending ? '#f59e0b' : keysarHomeDataEnabled ? '#648672' : '#9ca3af',
-                        color: 'white',
-                      }}
-                    >
-                      {keysarHomeDataPending
-                        ? t.common.saving
-                        : keysarHomeDataEnabled
-                          ? t.access.screenEnabled
-                          : t.access.screenDisabled}
-                    </Badge>
-                  </div>
-                </button>
-
-                {SCREEN_CONFIG.map((screen) => {
-                  const enabled = Boolean(draftPermissions[screen.key])
-                  const pending = enabled !== Boolean(committedPermissionMapRef.current[screen.key])
-
-                  if (screen.key === 'ventas' || screen.key === 'empleados') {
-                    const permissionKey = screen.key === 'ventas'
-                      ? GENERATE_ENVELOPE_PERMISSION_KEY
-                      : EMPLOYEE_SALARY_PERMISSION_KEY
-                    const actionEnabled = Boolean(draftPermissions[permissionKey])
-                    const actionPending = actionEnabled !== Boolean(committedPermissionMapRef.current[permissionKey])
-
-                    return (
-                      <div key={screen.key} className="space-y-3 rounded-xl border border-slate-200 bg-white/80 p-3 shadow-sm">
-                        <button
-                          type="button"
-                          className={`flex w-full flex-col gap-3 rounded-xl border px-3 py-3 text-left transition-colors duration-200 sm:flex-row sm:items-center sm:justify-between sm:px-4 ${
-                            enabled ? 'border-[#8bb09b] bg-[#648672]/10' : 'hover:border-slate-300 hover:bg-slate-50'
-                          }`}
-                          style={{ borderColor: 'var(--border-color)' }}
-                          onClick={() => {
-                            togglePermission(screen.key)
-                          }}
-                        >
-                          <div className="min-w-0 space-y-1">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span className="font-medium">{t.sidebar[screen.labelKey as keyof typeof t.sidebar]}</span>
-                              <Badge variant="secondary" className="uppercase text-[10px] tracking-wide">
-                                {t.access.primaryScreen}
-                              </Badge>
-                            </div>
-                            <p className="break-all text-xs" style={{ color: 'var(--text-muted)' }}>
-                              {screen.path}
-                            </p>
-                          </div>
-                          <div className="flex shrink-0 items-center gap-2 self-start sm:self-center">
-                            {enabled ? <Check className="h-4 w-4 text-[#648672]" /> : null}
-                            <Badge
-                              className="uppercase"
-                              style={{
-                                backgroundColor: pending ? '#f59e0b' : enabled ? '#648672' : '#9ca3af',
-                                color: 'white',
-                              }}
-                            >
-                              {pending ? t.common.saving : enabled ? t.access.screenEnabled : t.access.screenDisabled}
-                            </Badge>
-                          </div>
-                        </button>
-
-                        <button
-                          type="button"
-                          className={`flex w-full flex-col gap-3 rounded-xl border border-dashed px-3 py-3 text-left transition-colors duration-200 sm:flex-row sm:items-stretch sm:px-4 ${
-                            actionEnabled
-                              ? 'border-[#8bb09b] bg-[#648672]/10'
-                              : 'hover:border-slate-300 hover:bg-slate-50'
-                          }`}
-                          style={{ borderColor: 'var(--border-color)' }}
-                          onClick={() => {
-                            togglePermission(permissionKey)
-                          }}
-                        >
-                          <div className="flex min-w-0 flex-1 gap-3">
-                            <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#648672]/10 text-[#648672]">
-                              <CornerDownRight className="h-4 w-4" />
-                            </div>
-                            <div className="min-w-0 flex-1 space-y-1">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <span className="font-medium">
-                                  {screen.key === 'ventas'
-                                    ? t.access.generateEnvelopePermission
-                                    : t.access.viewSalaryPermission}
-                                </span>
-                                <Badge variant="secondary" className="uppercase text-[10px] tracking-wide">
-                                  {screen.key === 'ventas'
-                                    ? t.access.salesAction
-                                    : t.access.employeesAction}
-                                </Badge>
-                              </div>
-                              <p className="text-xs leading-5" style={{ color: 'var(--text-muted)' }}>
-                                {screen.key === 'ventas'
-                                  ? t.access.generateEnvelopePermissionDescription
-                                  : t.access.viewSalaryPermissionDescription}
-                              </p>
-                            </div>
-                          </div>
-                          <div className="flex shrink-0 items-center gap-2 self-start sm:self-center">
-                            {actionEnabled ? <Check className="h-4 w-4 text-[#648672]" /> : null}
-                            <Badge
-                              className="uppercase"
-                              style={{
-                                backgroundColor: actionPending ? '#f59e0b' : actionEnabled ? '#648672' : '#9ca3af',
-                                color: 'white',
-                              }}
-                            >
-                              {actionPending
-                                ? t.common.saving
-                                : actionEnabled
-                                  ? t.access.screenEnabled
-                                  : t.access.screenDisabled}
-                            </Badge>
-                          </div>
-                        </button>
-                      </div>
-                    )
-                  }
+                {SECTION_ORDER.map((section) => {
+                  const screens = SCREEN_CONFIG.filter(
+                    (screen) => screen.section === section,
+                  )
+                  const permissionKeys = screens.flatMap(
+                    (screen) =>
+                      [screen.key, SCREEN_ACTIONS[screen.key]?.key].filter(
+                        Boolean,
+                      ) as string[],
+                  )
+                  if (section === 'reports')
+                    permissionKeys.push(KEYSAR_HOME_DATA_PERMISSION_KEY)
+                  const enabledInSection = permissionKeys.filter(
+                    (permissionKey) => draftPermissions[permissionKey],
+                  ).length
 
                   return (
-                    <button
-                      key={screen.key}
-                      type="button"
-                      className={`flex flex-col gap-3 rounded-xl border px-3 py-3 text-left transition-colors duration-200 sm:flex-row sm:items-center sm:justify-between sm:px-4 ${
-                        enabled ? 'border-[#8bb09b] bg-[#648672]/10' : 'hover:border-slate-300 hover:bg-slate-50'
-                      }`}
+                    <section
+                      key={section}
+                      className="overflow-hidden rounded-xl border"
                       style={{ borderColor: 'var(--border-color)' }}
-                      onClick={() => {
-                        const nextPermissions = {
-                          ...draftPermissions,
-                          [screen.key]: !enabled,
-                        }
-                        setDraftPermissions(nextPermissions)
-                        schedulePermissionSave(draftCanManageAccess, nextPermissions)
-                      }}
                     >
-                      <div className="min-w-0 space-y-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-medium">{t.sidebar[screen.labelKey as keyof typeof t.sidebar]}</span>
-                          {screen.path === '/' ? (
-                            <Badge variant="secondary" className="uppercase text-[10px]">
-                              root
-                            </Badge>
-                          ) : null}
+                      <div
+                        className="flex flex-col gap-3 border-b bg-slate-50/70 px-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-4"
+                        style={{ borderColor: 'var(--border-color)' }}
+                      >
+                        <div className="flex items-baseline gap-2">
+                          <h2 className="section-heading uppercase">
+                            {t.sidebar[SECTION_LABELS[section]]}
+                          </h2>
+                          <span
+                            className="text-xs"
+                            style={{ color: 'var(--text-muted)' }}
+                          >
+                            {t.access.screensSelected(
+                              enabledInSection,
+                              permissionKeys.length,
+                            )}
+                          </span>
                         </div>
-                        <p className="break-all text-xs" style={{ color: 'var(--text-muted)' }}>
-                          {screen.path}
-                        </p>
+                        <div className="flex gap-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setSectionPermissions(section, true)}
+                          >
+                            {t.access.selectAll}
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            onClick={() =>
+                              setSectionPermissions(section, false)
+                            }
+                          >
+                            {t.access.clearAll}
+                          </Button>
+                        </div>
                       </div>
-                      <div className="flex shrink-0 items-center gap-2 self-start sm:self-center">
-                        {enabled ? <Check className="h-4 w-4 text-[#648672]" /> : null}
-                        <Badge
-                          className="uppercase"
-                          style={{
-                            backgroundColor: pending ? '#f59e0b' : enabled ? '#648672' : '#9ca3af',
-                            color: 'white',
-                          }}
-                        >
-                          {pending ? t.common.saving : enabled ? t.access.screenEnabled : t.access.screenDisabled}
-                        </Badge>
+
+                      <div
+                        className="divide-y"
+                        style={{ borderColor: 'var(--border-color)' }}
+                      >
+                        {screens.map((screen) => {
+                          const enabled = Boolean(draftPermissions[screen.key])
+                          const pending =
+                            enabled !==
+                            Boolean(
+                              committedPermissionMapRef.current[screen.key],
+                            )
+                          const action = SCREEN_ACTIONS[screen.key]
+                          const actionEnabled = action
+                            ? Boolean(draftPermissions[action.key])
+                            : false
+                          const actionPending = action
+                            ? actionEnabled !==
+                              Boolean(
+                                committedPermissionMapRef.current[action.key],
+                              )
+                            : false
+
+                          return (
+                            <div
+                              key={screen.key}
+                              className="px-3 py-2.5 sm:px-4"
+                            >
+                              <div className="flex items-center gap-3">
+                                <button
+                                  type="button"
+                                  aria-pressed={enabled}
+                                  className={`flex min-w-0 flex-1 items-center gap-3 rounded-md px-1.5 py-1 text-left transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#648672] ${enabled ? 'text-[#355241]' : 'hover:bg-slate-50'}`}
+                                  onClick={() => togglePermission(screen.key)}
+                                >
+                                  <span
+                                    className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border ${enabled ? 'border-[#648672] bg-[#648672] text-white' : 'border-slate-300 bg-white'}`}
+                                  >
+                                    {enabled ? (
+                                      <Check className="h-3.5 w-3.5" />
+                                    ) : null}
+                                  </span>
+                                  <span className="min-w-0 flex-1 truncate text-sm font-medium">
+                                    {
+                                      t.sidebar[
+                                        screen.labelKey as keyof typeof t.sidebar
+                                      ]
+                                    }
+                                  </span>
+                                  {pending ? (
+                                    <span className="text-xs text-amber-600">
+                                      {t.common.saving}
+                                    </span>
+                                  ) : null}
+                                </button>
+                                <Badge
+                                  className="shrink-0 uppercase"
+                                  style={{
+                                    backgroundColor: enabled
+                                      ? '#648672'
+                                      : '#9ca3af',
+                                    color: 'white',
+                                  }}
+                                >
+                                  {enabled
+                                    ? t.access.screenEnabled
+                                    : t.access.screenDisabled}
+                                </Badge>
+                              </div>
+
+                              {action ? (
+                                <button
+                                  type="button"
+                                  aria-pressed={actionEnabled}
+                                  title={t.access[action.description]}
+                                  className={`mt-1.5 ml-8 flex w-[calc(100%-2rem)] items-center gap-2 rounded-md px-1.5 py-1 text-left text-xs transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#648672] ${actionEnabled ? 'text-[#355241]' : 'text-slate-600 hover:bg-slate-50'}`}
+                                  onClick={() => togglePermission(action.key)}
+                                >
+                                  <CornerDownRight className="h-3.5 w-3.5 shrink-0" />
+                                  <span className="min-w-0 flex-1 truncate">
+                                    {t.access[action.label]}
+                                  </span>
+                                  <span
+                                    className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${actionEnabled ? 'border-[#648672] bg-[#648672] text-white' : 'border-slate-300 bg-white'}`}
+                                  >
+                                    {actionEnabled ? (
+                                      <Check className="h-3 w-3" />
+                                    ) : null}
+                                  </span>
+                                  {actionPending ? (
+                                    <span className="text-amber-600">
+                                      {t.common.saving}
+                                    </span>
+                                  ) : null}
+                                </button>
+                              ) : null}
+                            </div>
+                          )
+                        })}
+
+                        {section === 'reports' ? (
+                          <div className="px-3 py-2.5 sm:px-4">
+                            <button
+                              type="button"
+                              aria-pressed={keysarHomeDataEnabled}
+                              title={
+                                t.access.viewKeysarHomeDataPermissionDescription
+                              }
+                              className={`flex w-full items-center gap-3 rounded-md px-1.5 py-1 text-left text-sm transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#648672] ${keysarHomeDataEnabled ? 'text-[#355241]' : 'hover:bg-slate-50'}`}
+                              onClick={() =>
+                                togglePermission(
+                                  KEYSAR_HOME_DATA_PERMISSION_KEY,
+                                )
+                              }
+                            >
+                              <span
+                                className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border ${keysarHomeDataEnabled ? 'border-[#648672] bg-[#648672] text-white' : 'border-slate-300 bg-white'}`}
+                              >
+                                {keysarHomeDataEnabled ? (
+                                  <Check className="h-3.5 w-3.5" />
+                                ) : null}
+                              </span>
+                              <span className="min-w-0 flex-1 truncate font-medium">
+                                {t.access.viewKeysarHomeDataPermission}
+                              </span>
+                              {keysarHomeDataPending ? (
+                                <span className="text-xs text-amber-600">
+                                  {t.common.saving}
+                                </span>
+                              ) : null}
+                            </button>
+                          </div>
+                        ) : null}
                       </div>
-                    </button>
+                    </section>
                   )
                 })}
               </div>
 
-              <div className="flex flex-col items-start justify-between gap-3 rounded-md border px-3 py-3 sm:flex-row sm:items-center sm:px-4" style={{ borderColor: 'var(--border-color)' }}>
+              <div
+                className="flex flex-col items-start justify-between gap-3 rounded-md border px-3 py-3 sm:flex-row sm:items-center sm:px-4"
+                style={{ borderColor: 'var(--border-color)' }}
+              >
                 <div className="min-w-0 space-y-1">
                   <p className="text-sm font-medium uppercase">
                     {selectedPosition?.nombre ?? t.common.noRecord}
                   </p>
                   <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                    {draftCanManageAccess ? t.access.allScreens : `${enabledScreenCount} / ${ACCESS_PERMISSION_KEYS.length}`}
+                    {draftCanManageAccess
+                      ? t.access.allScreens
+                      : `${enabledScreenCount} / ${ACCESS_PERMISSION_KEYS.length}`}
                   </p>
                 </div>
-                <Badge className="uppercase" style={{ backgroundColor: '#ecd1c8', color: '#1a1a1a' }}>
-                  {savingPermissions || permissionStateChanged ? t.common.saving : t.access.permissionsSavedState}
+                <Badge
+                  className="uppercase"
+                  style={{ backgroundColor: '#ecd1c8', color: '#1a1a1a' }}
+                >
+                  {savingPermissions || permissionStateChanged
+                    ? t.common.saving
+                    : t.access.permissionsSavedState}
                 </Badge>
               </div>
             </CardContent>
@@ -774,8 +950,12 @@ export default function AccessControlPage() {
 
           <Card>
             <CardHeader className="space-y-2">
-              <CardTitle className="uppercase">{t.access.credentialsTitle}</CardTitle>
-              <CardDescription>{t.access.credentialsDescription}</CardDescription>
+              <CardTitle className="uppercase">
+                {t.access.credentialsTitle}
+              </CardTitle>
+              <CardDescription>
+                {t.access.credentialsDescription}
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-1.5">
@@ -795,13 +975,21 @@ export default function AccessControlPage() {
                 </p>
               </div>
 
-              <div className="rounded-lg border px-3 py-3 sm:px-4" style={{ borderColor: 'var(--border-color)' }}>
+              <div
+                className="rounded-lg border px-3 py-3 sm:px-4"
+                style={{ borderColor: 'var(--border-color)' }}
+              >
                 <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
                   <div className="min-w-0 space-y-1">
                     <p className="text-sm font-medium uppercase tracking-wide">
-                      {selectedUser ? t.access.editCredentialTitle : t.access.createCredentialTitle}
+                      {selectedUser
+                        ? t.access.editCredentialTitle
+                        : t.access.createCredentialTitle}
                     </p>
-                    <p className="text-sm leading-5" style={{ color: 'var(--text-muted)' }}>
+                    <p
+                      className="text-sm leading-5"
+                      style={{ color: 'var(--text-muted)' }}
+                    >
                       {selectedEmployee
                         ? `${selectedEmployee.nombreCompleto} · ${selectedEmployee.position?.nombre ?? t.common.noRecord}`
                         : t.access.passwordHint}
@@ -814,33 +1002,36 @@ export default function AccessControlPage() {
                     disabled={!selectedEmployeeId}
                   >
                     <UserPlus className="mr-1.5 h-4 w-4" />
-                    {selectedUser ? t.access.updateCredentials : t.access.saveCredentials}
+                    {selectedUser
+                      ? t.access.updateCredentials
+                      : t.access.saveCredentials}
                   </Button>
                 </div>
               </div>
+
+              <Separator />
+
+              <section className="space-y-3">
+                <div className="space-y-1">
+                  <h2 className="section-heading uppercase">
+                    {t.access.accountStatus}
+                  </h2>
+                  <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+                    {t.access.accountDeleteHint}
+                  </p>
+                </div>
+                <DataTable
+                  columns={accountColumns}
+                  data={users}
+                  emptyMessage={t.access.noAccessUsers}
+                  searchPlaceholder={t.access.searchUser}
+                  labels={dataTableLabels}
+                />
+              </section>
             </CardContent>
           </Card>
         </div>
       )}
-
-      <Card>
-        <CardHeader className="space-y-2">
-          <CardTitle className="uppercase">{t.access.accountStatus}</CardTitle>
-          <CardDescription>{t.access.accountEditHint}</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-            {t.access.accountDeleteHint}
-          </p>
-          <DataTable
-            columns={accountColumns}
-            data={users}
-            emptyMessage={t.access.noAccessUsers}
-            searchPlaceholder={t.access.searchUser}
-            labels={dataTableLabels}
-          />
-        </CardContent>
-      </Card>
 
       <Dialog
         open={credentialsDialogOpen}
@@ -854,7 +1045,9 @@ export default function AccessControlPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {selectedUser ? t.access.editCredentialTitle : t.access.createCredentialTitle}
+              {selectedUser
+                ? t.access.editCredentialTitle
+                : t.access.createCredentialTitle}
             </DialogTitle>
             <DialogDescription>
               {selectedEmployee
@@ -865,35 +1058,67 @@ export default function AccessControlPage() {
           <form className="space-y-4 pt-2" onSubmit={requestSaveCredentials}>
             <div className="space-y-1.5">
               <Label htmlFor="email">{t.access.email}</Label>
-              <Input id="email" type="email" autoComplete="email" {...register('email')} />
-              {errors.email && <p className="text-xs text-red-500">{errors.email.message}</p>}
+              <Input
+                id="email"
+                type="email"
+                autoComplete="email"
+                {...register('email')}
+              />
+              {errors.email && (
+                <p className="text-xs text-red-500">{errors.email.message}</p>
+              )}
             </div>
 
             <div className="space-y-1.5">
               <Label htmlFor="password">{t.access.password}</Label>
-              <Input id="password" type="password" autoComplete="new-password" {...register('password')} />
-              {errors.password && <p className="text-xs text-red-500">{errors.password.message}</p>}
+              <Input
+                id="password"
+                type="password"
+                autoComplete="new-password"
+                {...register('password')}
+              />
+              {errors.password && (
+                <p className="text-xs text-red-500">
+                  {errors.password.message}
+                </p>
+              )}
             </div>
 
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setCredentialsDialogOpen(false)}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setCredentialsDialogOpen(false)}
+              >
                 {t.common.cancel}
               </Button>
               <Button type="submit" disabled={savingCredentials}>
                 <UserPlus className="mr-1.5 h-4 w-4" />
-                {savingCredentials ? t.common.saving : selectedUser ? t.access.updateCredentials : t.access.saveCredentials}
+                {savingCredentials
+                  ? t.common.saving
+                  : selectedUser
+                    ? t.access.updateCredentials
+                    : t.access.saveCredentials}
               </Button>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={credentialsConfirmOpen} onOpenChange={setCredentialsConfirmOpen}>
+      <AlertDialog
+        open={credentialsConfirmOpen}
+        onOpenChange={setCredentialsConfirmOpen}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>{t.access.saveCredentialsConfirmTitle}</AlertDialogTitle>
+            <AlertDialogTitle>
+              {t.access.saveCredentialsConfirmTitle}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              <strong>{selectedEmployee?.nombreCompleto ?? t.common.noRecord}</strong> {t.access.saveCredentialsConfirmDescription}
+              <strong>
+                {selectedEmployee?.nombreCompleto ?? t.common.noRecord}
+              </strong>{' '}
+              {t.access.saveCredentialsConfirmDescription}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -910,7 +1135,9 @@ export default function AccessControlPage() {
                 void confirmSaveCredentials()
               }}
             >
-              {selectedUser ? t.access.updateCredentials : t.access.saveCredentials}
+              {selectedUser
+                ? t.access.updateCredentials
+                : t.access.saveCredentials}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -929,7 +1156,12 @@ export default function AccessControlPage() {
             <AlertDialogTitle>{t.access.deleteAccountTitle}</AlertDialogTitle>
             <AlertDialogDescription>
               {t.common.deleteCannotUndo} {t.access.deleteAccountDescription}{' '}
-              <strong>{userToDelete?.empleado?.nombreCompleto ?? userToDelete?.nombre ?? t.common.noRecord}</strong>.
+              <strong>
+                {userToDelete?.empleado?.nombreCompleto ??
+                  userToDelete?.nombre ??
+                  t.common.noRecord}
+              </strong>
+              .
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

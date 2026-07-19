@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Check, Clock3, Pencil, Save, ShoppingBag, Trash2, Utensils, X } from 'lucide-react'
+import { ArrowRight, Check, CheckCircle2, Clock3, Pencil, Plus, Save, Trash2, Utensils, X } from 'lucide-react'
 import type { EstatusCita, RegistroCita, TipoAtencionCita, TipoCompraCita } from '@cosmetics/types'
 import type { ColumnDef, DateRange } from '@cosmetics/ui'
 import {
@@ -20,13 +20,17 @@ import {
   Button,
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
   Combobox,
   DataTable,
   DatePicker,
   DateRangePicker,
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
   Input,
   Label,
   Select,
@@ -34,7 +38,9 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  Separator,
   toast,
+  useIsMobile,
 } from '@cosmetics/ui'
 import { RefreshingDataIndicator } from '@/components/RefreshingDataIndicator'
 import { TableLoadingSkeleton } from '@/components/layout/DataLoadingSkeleton'
@@ -79,41 +85,37 @@ type AppointmentForm = z.infer<typeof appointmentSchema>
 const copy = {
   es: {
     title: 'Registro de citas',
-    description: 'Captura cada cita y su resultado operativo.',
+    step: 'Paso', details: 'Datos de la cita', team: 'Atención y equipo', next: 'Continuar', back: 'Volver', inProgress: 'En curso', completed: 'Completado',
     service: 'Datos de la atención',
-    serviceHelp: 'Identifica a la clienta, el equipo que la atendió y la sucursal.',
     date: 'Fecha', time: 'Hora', client: 'Nombre de la clienta', branch: 'Sucursal', seller: 'Vendedor', facialist: 'Facialista',
     attentionType: 'Tipo de atención', facial: 'Facial', facialDouble: 'Facial doble', status: 'Estatus', attended: 'Atendida', noShow: 'No llegó', cancelled: 'Cancelada',
     searchSeller: 'Buscar vendedor...', searchFacialist: 'Buscar facialista...',
-    purchase: 'Resultado de compra', purchaseHelp: 'Las opciones de compra solo se solicitan cuando la clienta sí compró.',
-    boughtQuestion: '¿La clienta compró?', no: 'No compró', yes: 'Sí compró',
+    purchase: 'Resultado de compra',
+    boughtQuestion: '¿La clienta compró?', no: 'No compró', yes: 'Sí compró', applies: 'Aplica', notApplies: 'No aplica',
     concept: 'Concepto de compra', amount: 'Monto', net: 'Pago neto', withDeposit: 'Compra con apartado', depositPayment: 'Pago de apartado',
     bonuses: 'Bonos aplicables', late: 'Bono salida tarde', meal: 'Bono de comida',
     total: 'Total del registro', save: 'Guardar cita', saved: 'Cita registrada correctamente', edit: 'Editar', editing: 'Editando cita', update: 'Guardar cambios', updated: 'Cita actualizada correctamente', cancelEdit: 'Cancelar edición',
-    recent: 'Citas registradas', recentHelp: 'Consulta los registros del rango seleccionado.',
+    recent: 'Citas registradas',
     noRecords: 'Sin citas registradas en este período.', search: 'Buscar citas...', loading: 'Cargando citas',
     registeredBy: 'Registró', purchaseColumn: 'Compra', bonusColumn: 'Bonos', none: 'Sin compra', noBonus: 'Sin bono',
-    records: 'Registros', appointments: 'Citas', withPurchase: 'Con compra', totalSales: 'Total',
     notAttendedHelp: 'La compra y los bonos no aplican para una cita cancelada o cuando la clienta no llegó.',
     delete: 'Eliminar', deleteTitle: '¿Eliminar esta cita?', deleteDescription: 'Se eliminará permanentemente el registro de', deleteConfirm: 'Eliminar cita', deleted: 'Cita eliminada correctamente', deleting: 'Eliminando...',
   },
   en: {
     title: 'Appointment records',
-    description: 'Capture every appointment and its operational result.',
+    step: 'Step', details: 'Appointment details', team: 'Service and team', next: 'Continue', back: 'Back', inProgress: 'In progress', completed: 'Completed',
     service: 'Appointment details',
-    serviceHelp: 'Identify the client, the team that assisted her, and the branch.',
     date: 'Date', time: 'Time', client: 'Client name', branch: 'Branch', seller: 'Seller', facialist: 'Facialist',
     attentionType: 'Appointment type', facial: 'Facial', facialDouble: 'Double facial', status: 'Status', attended: 'Completed', noShow: 'No show', cancelled: 'Cancelled',
     searchSeller: 'Search seller...', searchFacialist: 'Search facialist...',
-    purchase: 'Purchase result', purchaseHelp: 'Purchase details are only requested when the client made a purchase.',
-    boughtQuestion: 'Did the client buy?', no: 'No purchase', yes: 'Purchased',
+    purchase: 'Purchase result',
+    boughtQuestion: 'Did the client buy?', no: 'No purchase', yes: 'Purchased', applies: 'Applies', notApplies: 'Does not apply',
     concept: 'Purchase type', amount: 'Amount', net: 'Net payment', withDeposit: 'Purchase with deposit', depositPayment: 'Deposit payment',
     bonuses: 'Applicable bonuses', late: 'Late departure bonus', meal: 'Meal bonus',
     total: 'Record total', save: 'Save appointment', saved: 'Appointment saved successfully', edit: 'Edit', editing: 'Editing appointment', update: 'Save changes', updated: 'Appointment updated successfully', cancelEdit: 'Cancel editing',
-    recent: 'Saved appointments', recentHelp: 'Review records within the selected range.',
+    recent: 'Saved appointments',
     noRecords: 'No appointments in this period.', search: 'Search appointments...', loading: 'Loading appointments',
     registeredBy: 'Recorded by', purchaseColumn: 'Purchase', bonusColumn: 'Bonuses', none: 'No purchase', noBonus: 'No bonus',
-    records: 'Records', appointments: 'Appointments', withPurchase: 'With purchase', totalSales: 'Total',
     notAttendedHelp: 'Purchases and bonuses do not apply to cancelled or no-show appointments.',
     delete: 'Delete', deleteTitle: 'Delete this appointment?', deleteDescription: 'The appointment record for', deleteConfirm: 'Delete appointment', deleted: 'Appointment deleted successfully', deleting: 'Deleting...',
   },
@@ -122,6 +124,7 @@ const copy = {
 export default function AppointmentsPage() {
   const { locale, t, dataTableLabels } = useI18n()
   const text = copy[locale]
+  const isMobile = useIsMobile()
   const { user } = useSession()
   const { sucursales } = useSucursales()
   const { employees, loading: catalogsLoading, error: catalogsError } = useAppointmentCatalogs()
@@ -129,6 +132,8 @@ export default function AppointmentsPage() {
   const [editing, setEditing] = useState<RegistroCita | null>(null)
   const [recordToDelete, setRecordToDelete] = useState<RegistroCita | null>(null)
   const [deleting, setDeleting] = useState(false)
+  const [mobileDialogOpen, setMobileDialogOpen] = useState(false)
+  const [desktopStep, setDesktopStep] = useState(1)
   const formRef = useRef<HTMLFormElement>(null)
   const appointmentFilters = useMemo(() => ({ fechaInicio: range.from, fechaFin: range.to }), [range.from, range.to])
   const { records, loading, loaded, error, add, update, remove } = useAppointments(appointmentFilters)
@@ -140,7 +145,7 @@ export default function AppointmentsPage() {
       compro: false, tipoCompra: '', montoCompra: 0, bonoSalidaTarde: false, bonoComida: false,
     },
   })
-  const { control, register, handleSubmit, reset, setValue, watch, formState: { errors, isSubmitting } } = form
+  const { control, register, handleSubmit, reset, setValue, trigger, watch, formState: { errors, isSubmitting } } = form
   const bought = watch('compro')
   const status = watch('estatus')
   const attended = status === 'ATENDIDA'
@@ -183,11 +188,6 @@ export default function AppointmentsPage() {
   }
   const attentionLabels: Record<TipoAtencionCita, string> = { FACIAL: text.facial, FACIAL_DOBLE: text.facialDouble }
   const statusLabels: Record<EstatusCita, string> = { ATENDIDA: text.attended, NO_LLEGO: text.noShow, CANCELADA: text.cancelled }
-
-  const summary = useMemo(() => records.reduce((acc, record) => ({
-    withPurchase: acc.withPurchase + (record.tipoCompra ? 1 : 0),
-    total: acc.total + record.total,
-  }), { withPurchase: 0, total: 0 }), [records])
 
   const columns = useMemo<ColumnDef<RegistroCita>[]>(() => [
     { accessorKey: 'fecha', header: text.date.toUpperCase(), cell: ({ row }) => formatDate(row.original.fecha, 'dd/MM/yyyy', locale) },
@@ -266,6 +266,8 @@ export default function AppointmentsPage() {
         toast.success(text.saved)
       }
       setEditing(null)
+      setMobileDialogOpen(false)
+      setDesktopStep(1)
       reset({
         fecha: data.fecha, hora: '', tipoAtencion: data.tipoAtencion, estatus: 'ATENDIDA', nombreCliente: '', sucursalId: data.sucursalId, vendedorId: '', facialistaId: data.facialistaId,
         compro: false, tipoCompra: '', montoCompra: 0, bonoSalidaTarde: false, bonoComida: false,
@@ -277,6 +279,7 @@ export default function AppointmentsPage() {
 
   function openEdit(record: RegistroCita) {
     setEditing(record)
+    setDesktopStep(isMobile ? 1 : 3)
     reset({
       fecha: record.fecha,
       hora: record.hora ?? '',
@@ -292,11 +295,14 @@ export default function AppointmentsPage() {
       bonoSalidaTarde: record.bonoSalidaTarde,
       bonoComida: record.bonoComida,
     })
-    requestAnimationFrame(() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
+    if (isMobile) setMobileDialogOpen(true)
+    else requestAnimationFrame(() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
   }
 
   function cancelEdit() {
     setEditing(null)
+    setMobileDialogOpen(false)
+    setDesktopStep(1)
     reset({
       fecha: todayISO(), hora: '', tipoAtencion: 'FACIAL', estatus: 'ATENDIDA', nombreCliente: '',
       sucursalId: visibleBranches.length === 1 ? visibleBranches[0]?.id ?? '' : '',
@@ -339,11 +345,25 @@ export default function AppointmentsPage() {
     }
   }
 
+  async function continueDesktopStep(step: 1 | 2) {
+    const fields = step === 1
+      ? ['fecha', 'hora', 'nombreCliente', 'sucursalId'] as const
+      : ['tipoAtencion', 'estatus', 'vendedorId', 'facialistaId'] as const
+    if (await trigger(fields)) setDesktopStep(step + 1)
+  }
+
+  function openTimePicker(input: HTMLInputElement) {
+    try {
+      input.showPicker?.()
+    } catch {
+      // Algunos navegadores solo permiten el selector nativo desde su propio control.
+    }
+  }
+
   return (
-    <div className="space-y-7">
-      <div>
+    <div className="mx-auto max-w-6xl space-y-6 md:mx-0 md:max-w-none md:space-y-8">
+      <div className="flex items-center justify-between gap-4">
         <h1 className="page-title uppercase">{text.title}</h1>
-        <p className="mt-1 text-sm text-[color:var(--text-muted)]">{text.description}</p>
       </div>
 
       {editing && (
@@ -356,74 +376,78 @@ export default function AppointmentsPage() {
         </div>
       )}
 
-      <form ref={formRef} onSubmit={handleSubmit(onSubmit)} className="scroll-mt-4 space-y-5">
-        <Card className="border-[color:var(--border-color)] bg-[var(--bg-card)] shadow-sm">
-          <CardHeader>
-            <CardTitle className="section-heading uppercase">{text.service}</CardTitle>
-            <CardDescription>{text.serviceHelp}</CardDescription>
+      {!isMobile && <form ref={formRef} onSubmit={handleSubmit(onSubmit)} className="scroll-mt-4 space-y-5">
+        <Card aria-current={desktopStep === 1 ? 'step' : undefined} className={`border-l-4 transition-[border-color,box-shadow] duration-200 ${desktopStep === 1 ? 'border-l-[color:var(--color-gold)] shadow-[0_8px_24px_rgba(195,165,131,0.18)]' : 'border-l-[color:var(--color-green-olive)]'}`}>
+          <CardHeader className="pb-4">
+            <div className="flex items-start justify-between gap-4"><div><p className="label-caps">{text.step} 1</p><CardTitle className="mt-1 text-lg">{text.details}</CardTitle></div>{desktopStep > 1 ? <Badge className="gap-1.5 border-green-200 bg-green-50 text-green-700"><CheckCircle2 className="h-3.5 w-3.5" />{text.completed}</Badge> : <Badge variant="outline" className="border-[color:var(--color-gold)]">{text.inProgress}</Badge>}</div>
           </CardHeader>
-          <CardContent className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-            <div className="space-y-2">
+          <CardContent className="grid gap-x-3 gap-y-4 md:grid-cols-12">
+            <div className="space-y-1.5 md:col-span-3">
               <Label htmlFor="appointment-date" className="uppercase">{text.date}</Label>
               <Controller name="fecha" control={control} render={({ field }) => <DatePicker id="appointment-date" value={field.value} onChange={field.onChange} />} />
               {errors.fecha && <p className="text-xs text-red-500">{errors.fecha.message}</p>}
             </div>
-            <div className="space-y-2">
+            <div className="space-y-1.5 md:col-span-1">
               <Label htmlFor="appointment-time" className="uppercase">{text.time}</Label>
-              <Input id="appointment-time" type="time" step="60" aria-invalid={Boolean(errors.hora)} aria-describedby={errors.hora ? 'appointment-time-error' : undefined} className="tabular-nums" {...register('hora')} />
+              <Input id="appointment-time" type="time" step="60" aria-invalid={Boolean(errors.hora)} aria-describedby={errors.hora ? 'appointment-time-error' : undefined} className="cursor-pointer tabular-nums md:max-w-36" {...register('hora')} onClick={(event) => openTimePicker(event.currentTarget)} />
               {errors.hora && <p id="appointment-time-error" className="text-xs text-red-500">{errors.hora.message}</p>}
             </div>
-            <div className="space-y-2">
+            <div className="col-span-full space-y-1.5 md:order-4 md:col-span-5">
               <Label htmlFor="client-name" className="uppercase">{text.client}</Label>
               <Input id="client-name" autoComplete="off" className="uppercase" {...register('nombreCliente')} />
               {errors.nombreCliente && <p className="text-xs text-red-500">{errors.nombreCliente.message}</p>}
             </div>
-            <div className="space-y-2">
-              <Label className="uppercase">{text.attentionType}</Label>
-              <Controller name="tipoAtencion" control={control} render={({ field }) => (
-                <Select value={field.value} onValueChange={field.onChange}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{attentionTypes.map((type) => <SelectItem key={type} value={type}>{attentionLabels[type]}</SelectItem>)}</SelectContent></Select>
-              )} />
-            </div>
-            <div className="space-y-2">
-              <Label className="uppercase">{text.status}</Label>
-              <Controller name="estatus" control={control} render={({ field }) => (
-                <Select value={field.value} onValueChange={(value) => selectStatus(value as EstatusCita)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{appointmentStatuses.map((appointmentStatus) => <SelectItem key={appointmentStatus} value={appointmentStatus}>{statusLabels[appointmentStatus]}</SelectItem>)}</SelectContent></Select>
-              )} />
-              {errors.estatus && <p className="text-xs text-red-500">{errors.estatus.message}</p>}
-            </div>
-            <div className="space-y-2">
+            <div className="space-y-1.5 md:order-3 md:col-span-3">
               <Label className="uppercase">{text.branch}</Label>
               <Controller name="sucursalId" control={control} render={({ field }) => (
                 <Select value={field.value} onValueChange={field.onChange}><SelectTrigger><SelectValue placeholder={text.branch} /></SelectTrigger><SelectContent>{visibleBranches.map((branch) => <SelectItem key={branch.id} value={branch.id}>{branch.nombre}</SelectItem>)}</SelectContent></Select>
               )} />
               {errors.sucursalId && <p className="text-xs text-red-500">{errors.sucursalId.message}</p>}
             </div>
-            <div className="space-y-2">
+            <div className="col-span-full flex justify-end md:order-5"><Button type="button" onClick={() => void continueDesktopStep(1)} className="cursor-pointer">{text.next}<ArrowRight className="ml-2 h-4 w-4" /></Button></div>
+          </CardContent>
+        </Card>
+
+        {desktopStep >= 2 && <Card aria-current={desktopStep === 2 ? 'step' : undefined} className={`border-l-4 transition-[border-color,box-shadow] duration-200 ${desktopStep === 2 ? 'border-l-[color:var(--color-gold)] shadow-[0_8px_24px_rgba(195,165,131,0.18)]' : 'border-l-[color:var(--color-green-olive)]'}`}>
+          <CardHeader className="pb-4"><div className="flex items-start justify-between gap-4"><div><p className="label-caps">{text.step} 2</p><CardTitle className="mt-1 text-lg">{text.team}</CardTitle></div>{desktopStep > 2 ? <Badge className="gap-1.5 border-green-200 bg-green-50 text-green-700"><CheckCircle2 className="h-3.5 w-3.5" />{text.completed}</Badge> : <Badge variant="outline" className="border-[color:var(--color-gold)]">{text.inProgress}</Badge>}</div></CardHeader>
+          <CardContent className="grid gap-x-3 gap-y-4 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="space-y-1.5">
+              <Label className="uppercase">{text.attentionType}</Label>
+              <Controller name="tipoAtencion" control={control} render={({ field }) => (
+                <Select value={field.value} onValueChange={field.onChange}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{attentionTypes.map((type) => <SelectItem key={type} value={type}>{attentionLabels[type]}</SelectItem>)}</SelectContent></Select>
+              )} />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="uppercase">{text.status}</Label>
+              <Controller name="estatus" control={control} render={({ field }) => (
+                <Select value={field.value} onValueChange={(value) => selectStatus(value as EstatusCita)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{appointmentStatuses.map((appointmentStatus) => <SelectItem key={appointmentStatus} value={appointmentStatus}>{statusLabels[appointmentStatus]}</SelectItem>)}</SelectContent></Select>
+              )} />
+              {errors.estatus && <p className="text-xs text-red-500">{errors.estatus.message}</p>}
+            </div>
+            <div className="space-y-1.5">
               <Label className="uppercase">{text.seller}</Label>
               <Controller name="vendedorId" control={control} render={({ field }) => <Combobox options={sellers.map(employeeOption)} value={field.value} onValueChange={field.onChange} placeholder={text.seller} searchPlaceholder={text.searchSeller} emptyMessage={text.searchSeller} disabled={catalogsLoading} />} />
               {errors.vendedorId && <p className="text-xs text-red-500">{errors.vendedorId.message}</p>}
             </div>
-            <div className="space-y-2">
+            <div className="space-y-1.5 xl:col-span-2">
               <Label className="uppercase">{text.facialist}</Label>
               <Controller name="facialistaId" control={control} render={({ field }) => <Combobox options={facialists.map(employeeOption)} value={field.value} onValueChange={field.onChange} placeholder={text.facialist} searchPlaceholder={text.searchFacialist} emptyMessage={text.searchFacialist} disabled={catalogsLoading} />} />
               {errors.facialistaId && <p className="text-xs text-red-500">{errors.facialistaId.message}</p>}
             </div>
+            <div className="col-span-full flex items-center justify-between"><Button type="button" variant="outline" onClick={() => setDesktopStep(1)} className="cursor-pointer">{text.back}</Button><Button type="button" onClick={() => void continueDesktopStep(2)} className="cursor-pointer">{text.next}<ArrowRight className="ml-2 h-4 w-4" /></Button></div>
           </CardContent>
-        </Card>
+        </Card>}
 
-        <Card className="border-[color:var(--border-color)] bg-[var(--bg-card)] shadow-sm">
-          <CardHeader>
-            <CardTitle className="section-heading uppercase">{text.purchase}</CardTitle>
-            <CardDescription>{text.purchaseHelp}</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
+        {desktopStep >= 3 && <Card aria-current="step" className="border-l-4 border-l-[color:var(--color-gold)] shadow-[0_8px_24px_rgba(195,165,131,0.18)]">
+          <CardHeader className="pb-4"><div className="flex items-start justify-between gap-4"><div><p className="label-caps">{text.step} 3</p><CardTitle className="mt-1 text-lg">{text.purchase}</CardTitle></div><Badge variant="outline" className="border-[color:var(--color-gold)]">{text.inProgress}</Badge></div></CardHeader>
+          <CardContent className="space-y-4">
             {attended ? (
               <>
             <fieldset className="space-y-2">
-              <legend className="text-sm font-medium uppercase">{text.boughtQuestion}</legend>
-              <div className="grid max-w-xl grid-cols-2 gap-2 rounded-xl bg-[color:var(--bg-primary)] p-1.5">
-                <button type="button" aria-pressed={!bought} onClick={() => selectPurchase(false)} className={`flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-lg px-3 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-gold)] ${!bought ? 'bg-[var(--bg-card)] text-[color:var(--text-primary)] shadow-sm' : 'text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)]'}`}><X className="h-4 w-4" />{text.no}</button>
-                <button type="button" aria-pressed={bought} onClick={() => selectPurchase(true)} className={`flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-lg px-3 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-gold)] ${bought ? 'bg-[var(--color-green-olive)] text-white shadow-sm' : 'text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)]'}`}><Check className="h-4 w-4" />{text.yes}</button>
+              <legend className="text-xs font-semibold uppercase tracking-[0.08em] text-[color:var(--text-muted)]">{text.boughtQuestion}</legend>
+              <div className="grid max-w-md grid-cols-2 gap-1 rounded-lg bg-[color:var(--bg-primary)] p-1">
+                <button type="button" aria-pressed={!bought} onClick={() => selectPurchase(false)} className={`flex min-h-10 cursor-pointer items-center justify-center gap-2 rounded-md px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-gold)] ${!bought ? 'bg-[var(--bg-card)] text-[color:var(--text-primary)] shadow-sm' : 'text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)]'}`}><X className="h-4 w-4" />{text.no}</button>
+                <button type="button" aria-pressed={bought} onClick={() => selectPurchase(true)} className={`flex min-h-10 cursor-pointer items-center justify-center gap-2 rounded-md px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-gold)] ${bought ? 'bg-[var(--color-green-olive)] text-white shadow-sm' : 'text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)]'}`}><Check className="h-4 w-4" />{text.yes}</button>
               </div>
             </fieldset>
 
@@ -447,39 +471,77 @@ export default function AppointmentsPage() {
             <div className="space-y-2">
               <div className="text-sm font-medium uppercase">{text.bonuses}</div>
               <div className="grid gap-2 sm:grid-cols-2 lg:max-w-2xl">
-                <button type="button" aria-pressed={lateBonus} onClick={() => setValue('bonoSalidaTarde', !lateBonus)} className={`flex min-h-11 cursor-pointer items-center gap-3 rounded-xl border px-4 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-gold)] ${lateBonus ? 'border-[color:var(--color-gold)] bg-[color:var(--accent-hover)]' : 'border-[color:var(--border-color)] hover:bg-[color:var(--bg-primary)]'}`}><Clock3 className="h-4 w-4" /><span className="flex-1">{text.late}</span>{lateBonus && <Check className="h-4 w-4" />}</button>
-                <button type="button" aria-pressed={mealBonus} onClick={() => setValue('bonoComida', !mealBonus)} className={`flex min-h-11 cursor-pointer items-center gap-3 rounded-xl border px-4 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-gold)] ${mealBonus ? 'border-[color:var(--color-gold)] bg-[color:var(--accent-hover)]' : 'border-[color:var(--border-color)] hover:bg-[color:var(--bg-primary)]'}`}><Utensils className="h-4 w-4" /><span className="flex-1">{text.meal}</span>{mealBonus && <Check className="h-4 w-4" />}</button>
+                <button type="button" aria-pressed={lateBonus} onClick={() => setValue('bonoSalidaTarde', !lateBonus)} className={`flex min-h-10 cursor-pointer items-center gap-3 rounded-lg border px-3 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-gold)] ${lateBonus ? 'border-[color:var(--color-gold)] bg-[color:var(--accent-hover)]' : 'border-[color:var(--border-color)] hover:bg-[color:var(--bg-primary)]'}`}><Clock3 className="h-4 w-4" /><span className="flex-1">{text.late}</span>{lateBonus && <Check className="h-4 w-4" />}</button>
+                <button type="button" aria-pressed={mealBonus} onClick={() => setValue('bonoComida', !mealBonus)} className={`flex min-h-10 cursor-pointer items-center gap-3 rounded-lg border px-3 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-gold)] ${mealBonus ? 'border-[color:var(--color-gold)] bg-[color:var(--accent-hover)]' : 'border-[color:var(--border-color)] hover:bg-[color:var(--bg-primary)]'}`}><Utensils className="h-4 w-4" /><span className="flex-1">{text.meal}</span>{mealBonus && <Check className="h-4 w-4" />}</button>
               </div>
             </div>
               </>
             ) : (
-              <div role="status" className="rounded-xl border border-[color:var(--border-color)] bg-[color:var(--bg-primary)] p-5 text-sm text-[color:var(--text-muted)]">
+              <div role="status" className="rounded-xl border border-[color:var(--border-color)] bg-[color:var(--bg-primary)] p-4 text-sm text-[color:var(--text-muted)]">
                 {text.notAttendedHelp}
               </div>
             )}
 
-            <div className="flex flex-col gap-4 border-t border-[color:var(--border-color)] pt-5 sm:flex-row sm:items-end sm:justify-between">
-              <div><div className="label-caps">{text.total}</div><div className="number-display mt-1 text-2xl">{formatCurrency(attended && bought ? Number(amount) : 0)}</div></div>
-              <Button type="submit" disabled={isSubmitting || catalogsLoading} className="min-h-11 cursor-pointer sm:min-w-48"><Save className="mr-2 h-4 w-4" />{isSubmitting ? t.common.saving : editing ? text.update : text.save}</Button>
+            <div className="flex items-center justify-between gap-4 border-t border-[color:var(--border-color)] pt-4">
+              {bought && attended ? <div className="number-display text-lg">{formatCurrency(Number(amount))}</div> : <span />}
+              <Button type="submit" disabled={isSubmitting || catalogsLoading} className="min-h-11 flex-1 cursor-pointer sm:max-w-52"><Save className="mr-2 h-4 w-4" />{isSubmitting ? t.common.saving : editing ? text.update : text.save}</Button>
             </div>
           </CardContent>
-        </Card>
-      </form>
+        </Card>}
+      </form>}
+
+      {isMobile && <Dialog open={mobileDialogOpen} onOpenChange={(open) => { setMobileDialogOpen(open); if (!open && editing) cancelEdit() }}>
+        <Button type="button" onClick={() => setMobileDialogOpen(true)} className="min-h-11 w-full cursor-pointer">
+          <Plus className="mr-2 h-4 w-4" />{text.save}
+        </Button>
+        <DialogContent className="inset-0 flex h-[100dvh] w-screen max-h-none max-w-none translate-x-0 translate-y-0 flex-col gap-3 overflow-hidden rounded-none border-0 p-4">
+          <DialogHeader><DialogTitle className="section-heading uppercase">{editing ? text.editing : text.title}</DialogTitle></DialogHeader>
+          <Separator />
+          <form id="mobile-appointment-form" onSubmit={handleSubmit(onSubmit)} className="grid min-h-0 flex-1 content-start grid-cols-2 gap-x-3 gap-y-3 overflow-y-auto">
+            <div className="space-y-1"><Label htmlFor="mobile-appointment-date" className="text-[10px] uppercase">{text.date}</Label><Controller name="fecha" control={control} render={({ field }) => <DatePicker id="mobile-appointment-date" value={field.value} onChange={field.onChange} />} />{errors.fecha && <p className="text-xs text-red-500">{errors.fecha.message}</p>}</div>
+            <div className="space-y-1"><Label htmlFor="mobile-appointment-time" className="text-[10px] uppercase">{text.time}</Label><Input id="mobile-appointment-time" type="time" step="60" className="cursor-pointer tabular-nums" {...register('hora')} onClick={(event) => openTimePicker(event.currentTarget)} />{errors.hora && <p className="text-xs text-red-500">{errors.hora.message}</p>}</div>
+            <div className="col-span-2 space-y-1"><Label htmlFor="mobile-client-name" className="text-[10px] uppercase">{text.client}</Label><Input id="mobile-client-name" autoComplete="off" className="uppercase" {...register('nombreCliente')} />{errors.nombreCliente && <p className="text-xs text-red-500">{errors.nombreCliente.message}</p>}</div>
+            <div className="space-y-1"><Label className="text-[10px] uppercase">{text.attentionType}</Label><Controller name="tipoAtencion" control={control} render={({ field }) => <Select value={field.value} onValueChange={field.onChange}><SelectTrigger className="h-10"><SelectValue /></SelectTrigger><SelectContent>{attentionTypes.map((type) => <SelectItem key={type} value={type}>{attentionLabels[type]}</SelectItem>)}</SelectContent></Select>} /></div>
+            <div className="space-y-1"><Label className="text-[10px] uppercase">{text.status}</Label><Controller name="estatus" control={control} render={({ field }) => <Select value={field.value} onValueChange={(value) => selectStatus(value as EstatusCita)}><SelectTrigger className="h-10"><SelectValue /></SelectTrigger><SelectContent>{appointmentStatuses.map((appointmentStatus) => <SelectItem key={appointmentStatus} value={appointmentStatus}>{statusLabels[appointmentStatus]}</SelectItem>)}</SelectContent></Select>} /></div>
+            <div className="space-y-1"><Label className="text-[10px] uppercase">{text.branch}</Label><Controller name="sucursalId" control={control} render={({ field }) => <Select value={field.value} onValueChange={field.onChange}><SelectTrigger className="h-10"><SelectValue placeholder={text.branch} /></SelectTrigger><SelectContent>{visibleBranches.map((branch) => <SelectItem key={branch.id} value={branch.id}>{branch.nombre}</SelectItem>)}</SelectContent></Select>} />{errors.sucursalId && <p className="text-xs text-red-500">{errors.sucursalId.message}</p>}</div>
+            <div className="col-span-2 space-y-1"><Label className="text-[10px] uppercase">{text.seller}</Label><Controller name="vendedorId" control={control} render={({ field }) => <Combobox options={sellers.map(employeeOption)} value={field.value} onValueChange={field.onChange} placeholder={text.seller} searchPlaceholder={text.searchSeller} emptyMessage={text.searchSeller} disabled={catalogsLoading} />} />{errors.vendedorId && <p className="text-xs text-red-500">{errors.vendedorId.message}</p>}</div>
+            <div className="col-span-2 space-y-1"><Label className="text-[10px] uppercase">{text.facialist}</Label><Controller name="facialistaId" control={control} render={({ field }) => <Combobox options={facialists.map(employeeOption)} value={field.value} onValueChange={field.onChange} placeholder={text.facialist} searchPlaceholder={text.searchFacialist} emptyMessage={text.searchFacialist} disabled={catalogsLoading} />} />{errors.facialistaId && <p className="text-xs text-red-500">{errors.facialistaId.message}</p>}</div>
+            {attended && <>
+              <div className="col-span-2 flex items-center gap-3 py-1"><Separator className="flex-1" /><span className="label-caps shrink-0">{text.purchase}</span><Separator className="flex-1" /></div>
+              <div className="space-y-1"><Label className="text-[10px] uppercase">{text.boughtQuestion}</Label><Select value={bought ? 'yes' : 'no'} onValueChange={(value) => selectPurchase(value === 'yes')}><SelectTrigger className="h-10"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="no">{text.no}</SelectItem><SelectItem value="yes">{text.yes}</SelectItem></SelectContent></Select></div>
+              {bought && <div className="space-y-1"><Label htmlFor="mobile-purchase-amount" className="text-[10px] uppercase">{text.amount}</Label><Input id="mobile-purchase-amount" type="number" min="0" step="0.01" inputMode="decimal" className="h-10 text-right tabular-nums" {...register('montoCompra')} />{errors.montoCompra && <p className="text-xs text-red-500">{errors.montoCompra.message}</p>}</div>}
+              {bought && <div className="col-span-2 space-y-1"><Label className="text-[10px] uppercase">{text.concept}</Label><Controller name="tipoCompra" control={control} render={({ field }) => <Select value={field.value} onValueChange={field.onChange}><SelectTrigger className="h-10"><SelectValue placeholder={text.concept} /></SelectTrigger><SelectContent>{purchaseTypes.map((type) => <SelectItem key={type} value={type}>{conceptLabels[type]}</SelectItem>)}</SelectContent></Select>} />{errors.tipoCompra && <p className="text-xs text-red-500">{errors.tipoCompra.message}</p>}</div>}
+              <div className="col-span-2 flex items-center gap-3 py-1"><Separator className="flex-1" /><span className="label-caps shrink-0">{text.bonuses}</span><Separator className="flex-1" /></div>
+              <div className="col-span-2 grid grid-cols-2 gap-3"><div className="space-y-1"><Label className="text-[10px] uppercase">{text.late}</Label><Select value={lateBonus ? 'yes' : 'no'} onValueChange={(value) => setValue('bonoSalidaTarde', value === 'yes')}><SelectTrigger className="h-10"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="no">{text.notApplies}</SelectItem><SelectItem value="yes">{text.applies}</SelectItem></SelectContent></Select></div><div className="space-y-1"><Label className="text-[10px] uppercase">{text.meal}</Label><Select value={mealBonus ? 'yes' : 'no'} onValueChange={(value) => setValue('bonoComida', value === 'yes')}><SelectTrigger className="h-10"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="no">{text.notApplies}</SelectItem><SelectItem value="yes">{text.applies}</SelectItem></SelectContent></Select></div></div>
+            </>}
+          </form>
+          <DialogFooter className="shrink-0 border-t border-[color:var(--border-color)] pt-3 flex-row justify-end gap-2 space-x-0"><Button type="button" variant="outline" onClick={cancelEdit} className="cursor-pointer">{t.common.cancel}</Button><Button form="mobile-appointment-form" type="submit" disabled={isSubmitting || catalogsLoading} className="cursor-pointer"><Save className="mr-2 h-4 w-4" />{isSubmitting ? t.common.saving : editing ? text.update : text.save}</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>}
 
       {(catalogsError || error) && <p role="alert" className="text-sm text-red-500">{catalogsError ?? error}</p>}
 
-      <section className="space-y-4">
+      <section className="space-y-3 border-t border-[color:var(--border-color)] pt-6">
         <div className="flex flex-wrap items-end justify-between gap-4">
-          <div><h2 className="section-heading uppercase">{text.recent}</h2><p className="mt-1 text-sm text-[color:var(--text-muted)]">{text.recentHelp}</p></div>
+          <h2 className="section-heading uppercase">{text.recent}</h2>
           <DateRangePicker value={range} onChange={setRange} fromLabel={t.common.from} toLabel={t.common.to} />
         </div>
-        <div className="grid gap-3 sm:grid-cols-3">
-          {[{ label: text.appointments, value: String(records.length), icon: ShoppingBag }, { label: text.withPurchase, value: String(summary.withPurchase), icon: Check }, { label: text.totalSales, value: formatCurrency(summary.total), icon: ShoppingBag }].map(({ label, value, icon: Icon }) => (
-            <Card key={label} className="border-[color:var(--border-color)] bg-[var(--bg-card)] shadow-sm"><CardContent className="flex items-center justify-between p-4"><div><div className="label-caps">{label}</div><div className="number-display mt-1 text-xl">{value}</div></div><Icon className="h-5 w-5 text-[color:var(--color-gold)]" /></CardContent></Card>
-          ))}
-        </div>
         {loading && loaded && <RefreshingDataIndicator label={t.common.refreshingData} />}
-        {loading && !loaded ? <TableLoadingSkeleton columns={13} rows={6} label={text.loading} /> : <DataTable columns={columns} data={records} emptyMessage={text.noRecords} searchPlaceholder={text.search} pageSize={20} labels={dataTableLabels} />}
+        {loading && !loaded ? <TableLoadingSkeleton columns={13} rows={6} label={text.loading} /> : <>
+          <div className="space-y-1 divide-y divide-[color:var(--border-color)] md:hidden">
+            {records.length === 0 ? <p className="py-8 text-center text-sm text-[color:var(--text-muted)]">{text.noRecords}</p> : records.map((record) => (
+              <article key={record.id} className="flex items-center gap-2 py-3">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-baseline gap-2"><time className="shrink-0 text-sm font-semibold tabular-nums underline decoration-[color:var(--border-color)] underline-offset-4">{record.hora ?? '—'}</time><p className="truncate text-sm font-medium">{record.nombreCliente}</p>{record.estatus !== 'ATENDIDA' && <Badge variant={record.estatus === 'NO_LLEGO' ? 'destructive' : 'secondary'} className="shrink-0 text-[10px]">{statusLabels[record.estatus].toUpperCase()}</Badge>}</div>
+                  <p className="mt-1 truncate text-xs text-[color:var(--text-muted)]">{record.vendedorNombre} · {attentionLabels[record.tipoAtencion]} · {record.facialistaNombre}{record.tipoCompra ? ` · ${formatCurrency(record.total)}` : ''}</p>
+                </div>
+                <Button type="button" variant="ghost" size="icon" aria-label={`${text.edit}: ${record.nombreCliente}`} onClick={() => openEdit(record)} className="h-9 w-9 shrink-0 cursor-pointer"><Pencil className="h-4 w-4" /></Button>
+                <Button type="button" variant="ghost" size="icon" aria-label={`${text.delete}: ${record.nombreCliente}`} onClick={() => setRecordToDelete(record)} className="h-9 w-9 shrink-0 cursor-pointer text-red-600 hover:bg-red-50 hover:text-red-700 dark:hover:bg-red-950/30"><Trash2 className="h-4 w-4" /></Button>
+              </article>
+            ))}
+          </div>
+          <div className="hidden md:block"><DataTable columns={columns} data={records} emptyMessage={text.noRecords} searchPlaceholder={text.search} pageSize={20} labels={dataTableLabels} /></div>
+        </>}
       </section>
 
       <AlertDialog open={Boolean(recordToDelete)} onOpenChange={(open) => { if (!open && !deleting) setRecordToDelete(null) }}>

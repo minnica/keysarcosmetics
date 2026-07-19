@@ -146,20 +146,25 @@ const translations = {
       monthlyTotalByBranch: 'Total mensual por sucursal',
       sellersMonthlyProgress: 'Avance vendedores del mes',
       noSellersWithGoal: 'Sin vendedores con meta asignada',
-      assignGoalHint: 'Asigna una meta individual en el módulo de empleados para ver el avance.',
+      assignGoalHint:
+        'Asigna una meta individual en el módulo de empleados para ver el avance.',
       sold: 'Vendido',
       goal: 'Meta',
       reached: 'alcanzado',
     },
     reports: {
       paymentMethodDetailTitle: 'Detalle método de pago',
-      paymentMethodDetailDescription: 'Total por sucursal y método de pago en el período',
+      paymentMethodDetailDescription:
+        'Total por sucursal y método de pago en el período',
       paymentMethodByDayTitle: 'Método de pago por día',
-      paymentMethodByDayDescription: 'Desglose diario por sucursal para un método y mes específico',
+      paymentMethodByDayDescription:
+        'Desglose diario por sucursal para un método y mes específico',
       salesBySellerTitle: 'Ventas por vendedor',
-      salesBySellerDescription: 'Avance de cada vendedor respecto a su meta en el período',
+      salesBySellerDescription:
+        'Avance de cada vendedor respecto a su meta en el período',
       salesBySellerDayTitle: 'Ventas por vendedor por día',
-      salesBySellerDayDescription: 'Resumen mensual de ventas por vendedor y sucursal',
+      salesBySellerDayDescription:
+        'Resumen mensual de ventas por vendedor y sucursal',
       totalGeneralTitle: 'Total general de ventas',
       totalGeneralDescription: 'Resumen diario por sucursal en el período',
       totalSold: 'Total vendido',
@@ -173,31 +178,55 @@ const translations = {
       branchTotal: 'Total por sucursal',
       seller: 'Vendedor',
       notes: 'Notas',
-      noSalesPaymentMethodPeriod: 'Sin ventas con ese método en el período seleccionado.',
+      noSalesPaymentMethodPeriod:
+        'Sin ventas con ese método en el período seleccionado.',
       noSalesSellerPeriod: 'Sin ventas en el mes seleccionado.',
       exportPdf: 'Exportar PDF',
       exportExcel: 'Exportar Excel',
-      months: ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'],
+      months: [
+        'Enero',
+        'Febrero',
+        'Marzo',
+        'Abril',
+        'Mayo',
+        'Junio',
+        'Julio',
+        'Agosto',
+        'Septiembre',
+        'Octubre',
+        'Noviembre',
+        'Diciembre',
+      ],
     },
     access: {
       title: 'Control de accesos',
-      description: 'Define qué pantallas puede ver cada puesto, administra las credenciales de acceso y autoriza acciones sensibles.',
+      description:
+        'Define qué pantallas puede ver cada puesto, administra las credenciales de acceso y autoriza acciones sensibles.',
       positionLabel: 'Puesto',
       permissionsTitle: 'Pantallas permitidas',
-      permissionsDescription: 'Activa o desactiva cada pantalla para este puesto.',
+      permissionsDescription:
+        'Activa o desactiva las pantallas de este puesto. Los cambios se guardan automáticamente al tocar cada pantalla.',
       permissionsHint: 'Se guarda automáticamente al tocar cada pantalla.',
       permissionsSavedState: 'Autoguardado',
-      permissionsSelectedCount: (count: number) => `${count} pantalla${count !== 1 ? 's' : ''} seleccionada${count !== 1 ? 's' : ''}`,
+      permissionsSelectedCount: (count: number) =>
+        `${count} pantalla${count !== 1 ? 's' : ''} seleccionada${count !== 1 ? 's' : ''}`,
+      selectAll: 'Activar todas',
+      clearAll: 'Quitar todas',
+      screensSelected: (selected: number, total: number) =>
+        `${selected} de ${total} activadas`,
       accessManagerLabel: 'Administrador de accesos',
       accessManagerHelp: 'Este puesto puede ver todo y administrar permisos.',
       savePermissions: 'Guardar permisos',
       permissionsSaved: 'Permisos guardados',
       credentialsTitle: 'Credenciales de empleados',
-      credentialsDescription: 'Crea o actualiza el acceso de un empleado con correo y contraseña temporal.',
+      credentialsDescription:
+        'Crea o actualiza el acceso de un empleado con correo y contraseña temporal.',
       editAccount: 'Editar cuenta',
       updateCredentials: 'Actualizar credenciales',
-      passwordOptionalHelp: 'Si la dejas vacía, se conserva la contraseña actual.',
-      passwordRequiredHelp: 'Necesitas una contraseña temporal para crear la cuenta.',
+      passwordOptionalHelp:
+        'Si la dejas vacía, se conserva la contraseña actual.',
+      passwordRequiredHelp:
+        'Necesitas una contraseña temporal para crear la cuenta.',
       employee: 'Empleado',
       employeeSelect: 'Selecciona un empleado',
       email: 'Correo',
@@ -208,8 +237,10 @@ const translations = {
       linked: 'Vinculado',
       noAccessUsers: 'Sin cuentas registradas',
       passwordHint: 'Se guardará como contraseña temporal para pruebas.',
-      accountEditHint: 'Selecciona una cuenta para editar su correo o cambiar la contraseña.',
-      accountDeleteHint: 'El empleado seguirá existiendo; solo se eliminará su cuenta de acceso.',
+      accountEditHint:
+        'Selecciona una cuenta para editar su correo o cambiar la contraseña.',
+      accountDeleteHint:
+        'El empleado seguirá existiendo; solo se eliminará su cuenta de acceso.',
       deleteAccountTitle: '¿Eliminar cuenta de acceso?',
       deleteAccountDescription: 'Se eliminará el acceso de',
       deleteAccountCta: 'Eliminar cuenta',
@@ -217,9 +248,11 @@ const translations = {
       credentialsCreated: 'Credenciales creadas',
       credentialsUpdated: 'Credenciales actualizadas',
       savePermissionsConfirmTitle: '¿Guardar permisos?',
-      savePermissionsConfirmDescription: 'Vas a publicar los cambios de visibilidad para este puesto.',
+      savePermissionsConfirmDescription:
+        'Vas a publicar los cambios de visibilidad para este puesto.',
       saveCredentialsConfirmTitle: '¿Guardar credenciales?',
-      saveCredentialsConfirmDescription: 'Vas a guardar el acceso de login para este empleado.',
+      saveCredentialsConfirmDescription:
+        'Vas a guardar el acceso de login para este empleado.',
       active: 'Activo',
       inactive: 'Inactivo',
       screenEnabled: 'Habilitada',
@@ -227,15 +260,19 @@ const translations = {
       primaryScreen: 'Pantalla principal',
       salesAction: 'Acción de ventas',
       generateEnvelopePermission: 'Generar sobre',
-      generateEnvelopePermissionDescription: 'Permite crear el sobre digital con firma para una fecha y sucursal.',
+      generateEnvelopePermissionDescription:
+        'Permite crear el sobre digital con firma para una fecha y sucursal.',
       employeesAction: 'Acción de empleados',
       viewSalaryPermission: 'Ver sueldo',
-      viewSalaryPermissionDescription: 'Permite mostrar el sueldo en la tabla y en el formulario de empleados.',
+      viewSalaryPermissionDescription:
+        'Permite mostrar el sueldo en la tabla y en el formulario de empleados.',
       reportsAction: 'Acción de reportes',
       viewKeysarHomeDataPermission: 'Ver datos de Keysar Home',
-      viewKeysarHomeDataPermissionDescription: 'Permite incluir al empleado KEYSAR HOME en los reportes de ventas por vendedor y sus exportaciones.',
+      viewKeysarHomeDataPermissionDescription:
+        'Permite incluir al empleado KEYSAR HOME en los reportes de ventas por vendedor y sus exportaciones.',
       selfDataOnlyPermission: 'Solo ver datos propios',
-      selfDataOnlyPermissionDescription: 'Restringe todas las pantallas, reportes y exportaciones autorizadas a las ventas y totales de cada vendedor.',
+      selfDataOnlyPermissionDescription:
+        'Restringe todas las pantallas, reportes y exportaciones autorizadas a las ventas y totales de cada vendedor.',
       allScreens: 'Todas las pantallas',
       selectPosition: 'Selecciona un puesto',
       searchEmployee: 'Buscar empleado...',
@@ -276,8 +313,10 @@ const translations = {
       individualGoalMxn: 'Meta individual (MXN)',
       deactivateEmployeeTitle: '¿Desactivar empleado?',
       activateEmployeeTitle: '¿Activar empleado?',
-      deactivateEmployeeDescription: 'dejará de aparecer en la captura de ventas.',
-      activateEmployeeDescription: 'volverá a estar disponible para captura de ventas.',
+      deactivateEmployeeDescription:
+        'dejará de aparecer en la captura de ventas.',
+      activateEmployeeDescription:
+        'volverá a estar disponible para captura de ventas.',
       deleteEmployeeTitle: '¿Eliminar empleado?',
       deleteEmployeeDescription: 'Se eliminará a',
       loadingEmployees: 'Cargando empleados...',
@@ -317,7 +356,8 @@ const translations = {
       registeredSuccess: 'Venta registrada correctamente',
       registeredError: 'No se pudo registrar la venta. Intenta nuevamente.',
       title: 'Registro de ventas',
-      description: 'Distribuye una venta entre empleados y concilia sus métodos de pago.',
+      description:
+        'Distribuye una venta entre empleados y concilia sus métodos de pago.',
       step: 'Paso',
       saleData: 'Datos de la venta',
       select: 'Seleccionar...',
@@ -326,7 +366,8 @@ const translations = {
       continue: 'Continuar',
       changeData: 'Cambiar datos',
       changeSaleDataTitle: '¿Cambiar los datos de la venta?',
-      changeSaleDataDescription: 'Se descartarán la distribución de empleados y los pagos capturados.',
+      changeSaleDataDescription:
+        'Se descartarán la distribución de empleados y los pagos capturados.',
       keepCapture: 'Conservar captura',
       distributionAndPayment: 'Distribución y pago',
       employees: 'Empleados',
@@ -348,14 +389,17 @@ const translations = {
       paidAmountMxn: 'Cantidad pagada (MXN)',
       registerPayment: 'Registrar pago',
       saveSaleTitle: '¿Guardar la venta?',
-      saveSaleDescription: 'Confirma que la distribución y los pagos registrados son correctos antes de guardar.',
+      saveSaleDescription:
+        'Confirma que la distribución y los pagos registrados son correctos antes de guardar.',
       saveSaleConfirm: 'Sí, guardar',
       saveSale: 'Guardar la venta',
       generateEnvelope: 'Generar sobre',
       generateEnvelopeDialogTitle: 'Generar sobre',
-      generateEnvelopeDialogDescription: 'Selecciona fecha, sucursal y agrega tu firma para construir el sobre con ventas reales.',
+      generateEnvelopeDialogDescription:
+        'Selecciona fecha, sucursal y agrega tu firma para construir el sobre con ventas reales.',
       generateEnvelopeNoPermission: 'No tienes permiso para generar el sobre.',
-      generateEnvelopeNoData: 'No hay ventas en la fecha y sucursal seleccionadas.',
+      generateEnvelopeNoData:
+        'No hay ventas en la fecha y sucursal seleccionadas.',
       generateEnvelopeNoSignature: 'La firma es obligatoria.',
       generateEnvelopePreview: 'Vista previa del sobre',
       generateEnvelopeDownload: 'Descargar imagen',
@@ -527,20 +571,25 @@ const translations = {
       monthlyTotalByBranch: 'Monthly total by branch',
       sellersMonthlyProgress: 'Monthly seller progress',
       noSellersWithGoal: 'No sellers with assigned goals',
-      assignGoalHint: 'Assign an individual goal in the employees module to see progress.',
+      assignGoalHint:
+        'Assign an individual goal in the employees module to see progress.',
       sold: 'Sold',
       goal: 'Goal',
       reached: 'reached',
     },
     reports: {
       paymentMethodDetailTitle: 'Payment method detail',
-      paymentMethodDetailDescription: 'Total by branch and payment method in the period',
+      paymentMethodDetailDescription:
+        'Total by branch and payment method in the period',
       paymentMethodByDayTitle: 'Payment method by day',
-      paymentMethodByDayDescription: 'Daily breakdown by branch for a specific method and month',
+      paymentMethodByDayDescription:
+        'Daily breakdown by branch for a specific method and month',
       salesBySellerTitle: 'Sales by seller',
-      salesBySellerDescription: 'Each seller progress against their goal in the period',
+      salesBySellerDescription:
+        'Each seller progress against their goal in the period',
       salesBySellerDayTitle: 'Sales by seller by month',
-      salesBySellerDayDescription: 'Monthly summary of sales by seller and branch',
+      salesBySellerDayDescription:
+        'Monthly summary of sales by seller and branch',
       totalGeneralTitle: 'Grand total sales',
       totalGeneralDescription: 'Daily summary by branch in the period',
       totalSold: 'Total sold',
@@ -554,31 +603,55 @@ const translations = {
       branchTotal: 'Total by branch',
       seller: 'Seller',
       notes: 'Notes',
-      noSalesPaymentMethodPeriod: 'No sales with that method in the selected period.',
+      noSalesPaymentMethodPeriod:
+        'No sales with that method in the selected period.',
       noSalesSellerPeriod: 'No sales in the selected month.',
       exportPdf: 'Export PDF',
       exportExcel: 'Export Excel',
-      months: ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'],
+      months: [
+        'January',
+        'February',
+        'March',
+        'April',
+        'May',
+        'June',
+        'July',
+        'August',
+        'September',
+        'October',
+        'November',
+        'December',
+      ],
     },
     access: {
       title: 'Access control',
-      description: 'Define which screens each position can see, manage employee credentials, and authorize sensitive actions.',
+      description:
+        'Define which screens each position can see, manage employee credentials, and authorize sensitive actions.',
       positionLabel: 'Position',
       permissionsTitle: 'Allowed screens',
-      permissionsDescription: 'Enable or disable each screen for this position.',
+      permissionsDescription:
+        "Enable or disable this position's screens. Changes save automatically.",
       permissionsHint: 'It saves automatically when you tap each screen.',
       permissionsSavedState: 'Auto-saved',
-      permissionsSelectedCount: (count: number) => `${count} selected screen${count !== 1 ? 's' : ''}`,
+      permissionsSelectedCount: (count: number) =>
+        `${count} selected screen${count !== 1 ? 's' : ''}`,
+      selectAll: 'Enable all',
+      clearAll: 'Clear all',
+      screensSelected: (selected: number, total: number) =>
+        `${selected} of ${total} enabled`,
       accessManagerLabel: 'Access administrator',
-      accessManagerHelp: 'This position can see everything and manage permissions.',
+      accessManagerHelp:
+        'This position can see everything and manage permissions.',
       savePermissions: 'Save permissions',
       permissionsSaved: 'Permissions saved',
       credentialsTitle: 'Employee credentials',
-      credentialsDescription: 'Create or update employee access with email and a temporary password.',
+      credentialsDescription:
+        'Create or update employee access with email and a temporary password.',
       editAccount: 'Edit account',
       updateCredentials: 'Update credentials',
       passwordOptionalHelp: 'Leave it blank to keep the current password.',
-      passwordRequiredHelp: 'You need a temporary password to create the account.',
+      passwordRequiredHelp:
+        'You need a temporary password to create the account.',
       employee: 'Employee',
       employeeSelect: 'Select an employee',
       email: 'Email',
@@ -589,8 +662,10 @@ const translations = {
       linked: 'Linked',
       noAccessUsers: 'No accounts registered',
       passwordHint: 'Stored as a temporary password for testing.',
-      accountEditHint: 'Select an account to edit its email or change the password.',
-      accountDeleteHint: 'The employee will remain; only the login account will be deleted.',
+      accountEditHint:
+        'Select an account to edit its email or change the password.',
+      accountDeleteHint:
+        'The employee will remain; only the login account will be deleted.',
       deleteAccountTitle: 'Delete access account?',
       deleteAccountDescription: 'The login access will be deleted for',
       deleteAccountCta: 'Delete account',
@@ -598,9 +673,11 @@ const translations = {
       credentialsCreated: 'Credentials created',
       credentialsUpdated: 'Credentials updated',
       savePermissionsConfirmTitle: 'Save permissions?',
-      savePermissionsConfirmDescription: 'You are about to publish the screen visibility changes for this position.',
+      savePermissionsConfirmDescription:
+        'You are about to publish the screen visibility changes for this position.',
       saveCredentialsConfirmTitle: 'Save credentials?',
-      saveCredentialsConfirmDescription: 'You are about to save the login access for this employee.',
+      saveCredentialsConfirmDescription:
+        'You are about to save the login access for this employee.',
       active: 'Active',
       inactive: 'Inactive',
       screenEnabled: 'Enabled',
@@ -608,15 +685,19 @@ const translations = {
       primaryScreen: 'Primary screen',
       salesAction: 'Sales action',
       generateEnvelopePermission: 'Generate envelope',
-      generateEnvelopePermissionDescription: 'Allows creating the digital envelope with a signature for a selected date and branch.',
+      generateEnvelopePermissionDescription:
+        'Allows creating the digital envelope with a signature for a selected date and branch.',
       employeesAction: 'Employee action',
       viewSalaryPermission: 'View salary',
-      viewSalaryPermissionDescription: 'Allows showing salary in the employees table and form.',
+      viewSalaryPermissionDescription:
+        'Allows showing salary in the employees table and form.',
       reportsAction: 'Reports action',
       viewKeysarHomeDataPermission: 'View Keysar Home data',
-      viewKeysarHomeDataPermissionDescription: 'Allows including the KEYSAR HOME employee in sales-by-seller reports and exports.',
+      viewKeysarHomeDataPermissionDescription:
+        'Allows including the KEYSAR HOME employee in sales-by-seller reports and exports.',
       selfDataOnlyPermission: 'View own data only',
-      selfDataOnlyPermissionDescription: 'Restricts every authorized screen, report, and export to each seller’s own sales and totals.',
+      selfDataOnlyPermissionDescription:
+        'Restricts every authorized screen, report, and export to each seller’s own sales and totals.',
       allScreens: 'All screens',
       selectPosition: 'Select a position',
       searchEmployee: 'Search employee...',
@@ -698,7 +779,8 @@ const translations = {
       registeredSuccess: 'Sale registered successfully',
       registeredError: 'Could not register the sale. Try again.',
       title: 'Sales entry',
-      description: 'Distribute one sale between employees and reconcile its payment methods.',
+      description:
+        'Distribute one sale between employees and reconcile its payment methods.',
       step: 'Step',
       saleData: 'Sale data',
       select: 'Select...',
@@ -707,7 +789,8 @@ const translations = {
       continue: 'Continue',
       changeData: 'Change data',
       changeSaleDataTitle: 'Change sale data?',
-      changeSaleDataDescription: 'Employee distribution and captured payments will be discarded.',
+      changeSaleDataDescription:
+        'Employee distribution and captured payments will be discarded.',
       keepCapture: 'Keep capture',
       distributionAndPayment: 'Distribution and payment',
       employees: 'Employees',
@@ -719,7 +802,8 @@ const translations = {
       noAvailableEmployees: 'No available employees',
       add: 'Add',
       assignedTotal: 'Assigned total',
-      employeeAmountRequired: 'Each employee needs an amount greater than $0.00',
+      employeeAmountRequired:
+        'Each employee needs an amount greater than $0.00',
       missing: 'Missing',
       exceedsBy: 'Exceeds by',
       registered: 'Registered',
@@ -729,14 +813,18 @@ const translations = {
       paidAmountMxn: 'Paid amount (MXN)',
       registerPayment: 'Register payment',
       saveSaleTitle: 'Save the sale?',
-      saveSaleDescription: 'Confirm that the employee distribution and registered payments are correct before saving.',
+      saveSaleDescription:
+        'Confirm that the employee distribution and registered payments are correct before saving.',
       saveSaleConfirm: 'Yes, save',
       saveSale: 'Save sale',
       generateEnvelope: 'Generate envelope',
       generateEnvelopeDialogTitle: 'Generate envelope',
-      generateEnvelopeDialogDescription: 'Select a date, branch, and signature to build the envelope from real sales.',
-      generateEnvelopeNoPermission: 'You do not have permission to generate the envelope.',
-      generateEnvelopeNoData: 'There are no sales for the selected date and branch.',
+      generateEnvelopeDialogDescription:
+        'Select a date, branch, and signature to build the envelope from real sales.',
+      generateEnvelopeNoPermission:
+        'You do not have permission to generate the envelope.',
+      generateEnvelopeNoData:
+        'There are no sales for the selected date and branch.',
       generateEnvelopeNoSignature: 'A signature is required.',
       generateEnvelopePreview: 'Envelope preview',
       generateEnvelopeDownload: 'Download image',
