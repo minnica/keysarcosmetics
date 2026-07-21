@@ -268,12 +268,20 @@ const translations = {
       viewSalaryPermissionDescription:
         'Permite mostrar el sueldo en la tabla y en el formulario de empleados.',
       reportsAction: 'Acción de reportes',
-      viewKeysarHomeDataPermission: 'Ver datos de Keysar Home',
+      viewKeysarHomeDataPermission: 'Incluir registros de Keysar Home',
       viewKeysarHomeDataPermissionDescription:
-        'Permite incluir al empleado KEYSAR HOME en los reportes de ventas por vendedor y sus exportaciones.',
-      selfDataOnlyPermission: 'Solo ver datos propios',
-      selfDataOnlyPermissionDescription:
-        'Restringe todas las pantallas, reportes y exportaciones autorizadas a las ventas y totales de cada vendedor.',
+        'Muestra sus ventas en la tabla de ventas guardadas, los reportes por vendedor y sus exportaciones.',
+      viewKeysarHomeOwnScopeHint:
+        'Con alcance individual, esta opción solo afecta a la cuenta vinculada a Keysar Home; las demás personas continúan viendo únicamente sus propios registros.',
+      dataScopeTitle: '¿Qué registros puede ver este puesto?',
+      dataScopeDescription:
+        'Elige el alcance de la información dentro de las pantallas que habilites abajo.',
+      allRecordsOption: 'Registros de todo el equipo',
+      allRecordsDescription:
+        'Cada persona con este puesto podrá consultar los registros de todos los empleados.',
+      ownRecordsOption: 'Solo registros vinculados a cada empleado',
+      ownRecordsDescription:
+        'Cada persona verá únicamente sus ventas como vendedor y sus citas como facialista. La misma restricción se aplica en dashboard, reportes y exportaciones.',
       allScreens: 'Todas las pantallas',
       selectPosition: 'Selecciona un puesto',
       searchEmployee: 'Buscar empleado...',
@@ -692,12 +700,20 @@ const translations = {
       viewSalaryPermissionDescription:
         'Allows showing salary in the employees table and form.',
       reportsAction: 'Reports action',
-      viewKeysarHomeDataPermission: 'View Keysar Home data',
+      viewKeysarHomeDataPermission: 'Include Keysar Home records',
       viewKeysarHomeDataPermissionDescription:
-        'Allows including the KEYSAR HOME employee in sales-by-seller reports and exports.',
-      selfDataOnlyPermission: 'View own data only',
-      selfDataOnlyPermissionDescription:
-        'Restricts every authorized screen, report, and export to each seller’s own sales and totals.',
+        'Shows their sales in the saved sales table, sales-by-seller reports, and exports.',
+      viewKeysarHomeOwnScopeHint:
+        'With individual scope, this option only affects the account linked to Keysar Home; everyone else continues to see only their own records.',
+      dataScopeTitle: 'Which records can this position see?',
+      dataScopeDescription:
+        'Choose the information scope within the screens enabled below.',
+      allRecordsOption: 'Records from the entire team',
+      allRecordsDescription:
+        'Each person with this position can view records from every employee.',
+      ownRecordsOption: 'Only records linked to each employee',
+      ownRecordsDescription:
+        'Each person will only see their sales as seller and appointments as facialist. The same restriction applies to the dashboard, reports, and exports.',
       allScreens: 'All screens',
       selectPosition: 'Select a position',
       searchEmployee: 'Search employee...',

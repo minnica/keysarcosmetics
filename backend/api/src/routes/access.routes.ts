@@ -115,9 +115,8 @@ router.put('/positions/:id/permissions', async (req, res) => {
       res.status(404).json({ success: false, data: null, message: 'Puesto no encontrado' })
       return
     }
-    const isSellerPosition = position.nombre.trim().toLocaleUpperCase('es-MX') === 'VENDEDOR'
-    if (parsed.data.selfDataOnly && (!isSellerPosition || parsed.data.canManageAccess)) {
-      res.status(400).json({ success: false, data: null, message: 'La restricción de datos propios solo está disponible para el puesto VENDEDOR' })
+    if (parsed.data.selfDataOnly && parsed.data.canManageAccess) {
+      res.status(400).json({ success: false, data: null, message: 'Un puesto con administración global no puede limitarse a datos propios' })
       return
     }
 
@@ -126,7 +125,7 @@ router.put('/positions/:id/permissions', async (req, res) => {
         where: { id: positionId },
         data: {
           canManageAccess: parsed.data.canManageAccess,
-          selfDataOnly: isSellerPosition && !parsed.data.canManageAccess ? parsed.data.selfDataOnly : false,
+          selfDataOnly: !parsed.data.canManageAccess ? parsed.data.selfDataOnly : false,
         },
       })
 

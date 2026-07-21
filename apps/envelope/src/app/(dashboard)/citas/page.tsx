@@ -300,6 +300,13 @@ export default function AppointmentsPage() {
   const text = copy[locale];
   const isMobile = useIsMobile();
   const { user } = useSession();
+  const isFacialistPosition = Boolean(
+    user?.positionName
+      ?.trim()
+      .toLocaleUpperCase("es-MX")
+      .includes("FACIALISTA"),
+  );
+  const canModifyExistingAppointments = !isFacialistPosition;
   const { sucursales } = useSucursales();
   const {
     employees,
@@ -388,8 +395,11 @@ export default function AppointmentsPage() {
         .toUpperCase()
         .includes("FACIALISTA"),
     );
-    return matched.length > 0 ? matched : employees;
-  }, [employees]);
+    const available = matched.length > 0 ? matched : employees;
+    return user?.selfDataOnly && user.empleadoId
+      ? available.filter((employee) => employee.id === user.empleadoId)
+      : available;
+  }, [employees, user?.empleadoId, user?.selfDataOnly]);
 
   useEffect(() => {
     if (
@@ -542,7 +552,7 @@ export default function AppointmentsPage() {
         accessorKey: "creadoPorNombre",
         header: text.registeredBy.toUpperCase(),
       },
-      {
+      ...(canModifyExistingAppointments ? [{
         id: "actions",
         header: t.common.actions.toUpperCase(),
         enableSorting: false,
@@ -574,9 +584,16 @@ export default function AppointmentsPage() {
           </div>
         ),
         meta: { align: "right" },
-      },
+      } satisfies ColumnDef<RegistroCita>] : []),
     ],
-    [conceptLabels, locale, statusLabels, t.common.actions, text],
+    [
+      canModifyExistingAppointments,
+      conceptLabels,
+      locale,
+      statusLabels,
+      t.common.actions,
+      text,
+    ],
   );
 
   async function onSubmit(data: AppointmentForm) {
@@ -1897,26 +1914,30 @@ export default function AppointmentsPage() {
                           : ""}
                       </p>
                     </div>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      aria-label={`${text.edit}: ${record.nombreCliente}`}
-                      onClick={() => openEdit(record)}
-                      className="h-9 w-9 shrink-0 cursor-pointer"
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      aria-label={`${text.delete}: ${record.nombreCliente}`}
-                      onClick={() => setRecordToDelete(record)}
-                      className="h-9 w-9 shrink-0 cursor-pointer text-red-600 hover:bg-red-50 hover:text-red-700 dark:hover:bg-red-950/30"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    {canModifyExistingAppointments ? (
+                      <>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          aria-label={`${text.edit}: ${record.nombreCliente}`}
+                          onClick={() => openEdit(record)}
+                          className="h-9 w-9 shrink-0 cursor-pointer"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          aria-label={`${text.delete}: ${record.nombreCliente}`}
+                          onClick={() => setRecordToDelete(record)}
+                          className="h-9 w-9 shrink-0 cursor-pointer text-red-600 hover:bg-red-50 hover:text-red-700 dark:hover:bg-red-950/30"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </>
+                    ) : null}
                   </article>
                 ))
               )}

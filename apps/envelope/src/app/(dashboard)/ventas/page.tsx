@@ -148,6 +148,10 @@ function allocatePaymentsToEmployees(
 
 export default function VentasPage() {
   const { user } = useSession();
+  const canViewKeysarHomeData = Boolean(
+    user?.canManageAccess ||
+      user?.screenPermissions.includes("reportes/ver-datos-keysar-home"),
+  );
   const [saleRange, setSaleRange] = useState<DateRange>({
     from: todayISO(),
     to: todayISO(),
@@ -228,9 +232,18 @@ export default function VentasPage() {
     () =>
       [...registros].filter(
         (record) =>
-          record.fecha >= saleRange.from && record.fecha <= saleRange.to,
+          record.fecha >= saleRange.from &&
+          record.fecha <= saleRange.to &&
+          (canViewKeysarHomeData ||
+            (record.vendedorNombre ??
+              empleados.find((employee) => employee.id === record.vendedorId)
+                ?.nombreCompleto ??
+              "")
+              .trim()
+              .toLocaleUpperCase("es-MX") !==
+              "KEYSAR HOME"),
       ),
-    [registros, saleRange],
+    [canViewKeysarHomeData, empleados, registros, saleRange],
   );
   const visibleRegistros = useMemo(
     () => [...filteredRegistros].reverse(),
@@ -278,8 +291,10 @@ export default function VentasPage() {
 
   const sucursalNombre = (id: string, embedded?: string) =>
     embedded ?? visibleSucursales.find((sucursal) => sucursal.id === id)?.nombre ?? id;
-  const vendedorNombre = (id: string) =>
-    empleados.find((employee) => employee.id === id)?.nombreCompleto ?? id;
+  const vendedorNombre = (id: string, embedded?: string) =>
+    embedded ??
+    empleados.find((employee) => employee.id === id)?.nombreCompleto ??
+    id;
   const metodoPagoNombre = (id: string, embedded?: string) =>
     embedded ?? metodosPago.find((method) => method.id === id)?.nombre ?? id;
 
@@ -421,9 +436,13 @@ export default function VentasPage() {
     },
     {
       id: "vendedor",
-      accessorFn: (row) => vendedorNombre(row.vendedorId),
+      accessorFn: (row) => vendedorNombre(row.vendedorId, row.vendedorNombre),
       header: t.common.employee,
-      cell: ({ row }) => vendedorNombre(row.original.vendedorId),
+      cell: ({ row }) =>
+        vendedorNombre(
+          row.original.vendedorId,
+          row.original.vendedorNombre,
+        ),
     },
     {
       id: "total",
@@ -517,7 +536,7 @@ export default function VentasPage() {
                   <AlertDialogTitle>{t.sales.deleteRecordTitle}</AlertDialogTitle>
                   <AlertDialogDescription>
                     {t.sales.deleteRecordDescription}{" "}
-                    {vendedorNombre(record.vendedorId)} {t.sales.byAmount}{" "}
+                    {vendedorNombre(record.vendedorId, record.vendedorNombre)} {t.sales.byAmount}{" "}
                     {formatCurrency(total)}. {t.common.deleteCannotUndo}
                   </AlertDialogDescription>
                 </AlertDialogHeader>

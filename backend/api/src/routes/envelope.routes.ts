@@ -322,6 +322,30 @@ async function canManageSale(
   return !ownEmployeeId || ownEmployeeId === vendedorId;
 }
 
+function isFacialistPosition(positionName: string | null): boolean {
+  return Boolean(
+    positionName
+      ?.trim()
+      .toLocaleUpperCase("es-MX")
+      .includes("FACIALISTA"),
+  );
+}
+
+async function canModifyExistingAppointments(
+  req: Parameters<typeof resolveAccessForRequest>[0],
+): Promise<boolean> {
+  const resolved = await resolveAccessForRequest(req);
+  return Boolean(resolved && !isFacialistPosition(resolved.positionName));
+}
+
+async function canManageAppointmentForFacialist(
+  req: Parameters<typeof resolveAccessForRequest>[0],
+  facialistaId: string,
+): Promise<boolean> {
+  const ownEmployeeId = await selfDataEmployeeId(req);
+  return !ownEmployeeId || ownEmployeeId === facialistaId;
+}
+
 function redactSalary<T extends { sueldo?: unknown }>(
   record: T,
   visible: boolean,
@@ -1405,8 +1429,12 @@ router.get("/citas", access.citas, async (req, res) => {
       return;
     }
 
+    const ownEmployeeId = await selfDataEmployeeId(req);
     const records = await prisma.registroCita.findMany({
-      where: { fecha: { gte: range.start, lte: range.end } },
+      where: {
+        fecha: { gte: range.start, lte: range.end },
+        ...(ownEmployeeId ? { facialistaId: ownEmployeeId } : {}),
+      },
       orderBy: [{ fecha: "desc" }, { creadoEn: "desc" }],
       include: appointmentInclude,
     });
@@ -1445,6 +1473,15 @@ router.post("/citas", access.citas, async (req, res) => {
           data: null,
           message: "Fecha o sesión inválida",
         });
+      return;
+    }
+
+    if (!(await canManageAppointmentForFacialist(req, parsed.data.facialistaId))) {
+      res.status(403).json({
+        success: false,
+        data: null,
+        message: "Solo puedes registrar citas asignadas a tu propio usuario",
+      });
       return;
     }
 
@@ -1523,6 +1560,15 @@ router.post("/citas", access.citas, async (req, res) => {
 
 router.put("/citas/:id", access.citas, async (req, res) => {
   try {
+    if (!(await canModifyExistingAppointments(req))) {
+      res.status(403).json({
+        success: false,
+        data: null,
+        message: "El puesto FACIALISTA solo puede agregar citas nuevas",
+      });
+      return;
+    }
+
     const parsed = registroCitaSchema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({
@@ -1545,7 +1591,7 @@ router.put("/citas/:id", access.citas, async (req, res) => {
       await Promise.all([
         prisma.registroCita.findUnique({
           where: { id: req.params["id"] },
-          select: { id: true },
+          select: { id: true, facialistaId: true },
         }),
         prisma.sucursal.findFirst({
           where: { id: parsed.data.sucursalId, activa: true },
@@ -1572,6 +1618,17 @@ router.put("/citas/:id", access.citas, async (req, res) => {
       res
         .status(404)
         .json({ success: false, data: null, message: "Cita no encontrada" });
+      return;
+    }
+    if (
+      !(await canManageAppointmentForFacialist(req, existing.facialistaId)) ||
+      !(await canManageAppointmentForFacialist(req, parsed.data.facialistaId))
+    ) {
+      res.status(403).json({
+        success: false,
+        data: null,
+        message: "Solo puedes modificar citas asignadas a tu propio usuario",
+      });
       return;
     }
     if (!sucursal || !vendedor || !facialista || !subcategoria) {
@@ -1629,14 +1686,32 @@ router.put("/citas/:id", access.citas, async (req, res) => {
 
 router.delete("/citas/:id", access.citas, async (req, res) => {
   try {
+    if (!(await canModifyExistingAppointments(req))) {
+      res.status(403).json({
+        success: false,
+        data: null,
+        message: "El puesto FACIALISTA solo puede agregar citas nuevas",
+      });
+      return;
+    }
+
     const existing = await prisma.registroCita.findUnique({
       where: { id: req.params["id"] },
-      select: { id: true },
+      select: { id: true, facialistaId: true },
     });
     if (!existing) {
       res
         .status(404)
         .json({ success: false, data: null, message: "Cita no encontrada" });
+      return;
+    }
+
+    if (!(await canManageAppointmentForFacialist(req, existing.facialistaId))) {
+      res.status(403).json({
+        success: false,
+        data: null,
+        message: "Solo puedes eliminar citas asignadas a tu propio usuario",
+      });
       return;
     }
 
@@ -1984,6 +2059,9 @@ router.get("/reportes/citas", access.reporteCitas, async (req, res) => {
       Prisma.sql`rc."fecha" >= ${range.start}`,
       Prisma.sql`rc."fecha" <= ${range.end}`,
     ];
+    const ownEmployeeId = await selfDataEmployeeId(req);
+    if (ownEmployeeId)
+      conditions.push(Prisma.sql`rc."facialistaId" = ${ownEmployeeId}`);
     if (facialistaId)
       conditions.push(Prisma.sql`rc."facialistaId" = ${facialistaId}`);
     if (sucursalId)

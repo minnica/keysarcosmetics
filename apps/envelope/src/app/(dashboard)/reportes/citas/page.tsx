@@ -10,6 +10,7 @@ import { useAppointmentCatalogs, useAppointmentReport, useSucursales } from '@/h
 import type { AppointmentReportRow } from '@/hooks'
 import { currentFortnightRange } from '@/lib/date-periods'
 import { useI18n } from '@/lib/i18n'
+import { useSession } from '@/lib/session'
 import { exportReportToExcel, exportReportToPdf, type ExportColumn } from '@/lib/report-export'
 import { formatCurrency, formatDate } from '@/lib/utils'
 
@@ -59,6 +60,7 @@ const emptyTotals = {
 export default function AppointmentReportPage() {
   const { locale, t, dataTableLabels } = useI18n()
   const text = copy[locale]
+  const { user } = useSession()
   const [range, setRange] = useState<DateRange>(() => currentFortnightRange())
   const [facialistId, setFacialistId] = useState('all')
   const [branchId, setBranchId] = useState('all')
@@ -68,14 +70,21 @@ export default function AppointmentReportPage() {
 
   const facialists = useMemo(() => {
     const matched = employees.filter((employee) => (employee.position?.nombre ?? employee.puesto).trim().toUpperCase().includes('FACIALISTA'))
-    return matched.length > 0 ? matched : employees
-  }, [employees])
+    const available = matched.length > 0 ? matched : employees
+    return user?.selfDataOnly && user.empleadoId
+      ? available.filter((employee) => employee.id === user.empleadoId)
+      : available
+  }, [employees, user?.empleadoId, user?.selfDataOnly])
   const filters = useMemo(() => ({
     fechaInicio: range.from,
     fechaFin: range.to,
-    ...(facialistId !== 'all' ? { facialistaId: facialistId } : {}),
+    ...(user?.selfDataOnly && user.empleadoId
+      ? { facialistaId: user.empleadoId }
+      : facialistId !== 'all'
+        ? { facialistaId: facialistId }
+        : {}),
     ...(branchId !== 'all' ? { sucursalId: branchId } : {}),
-  }), [branchId, facialistId, range.from, range.to])
+  }), [branchId, facialistId, range.from, range.to, user?.empleadoId, user?.selfDataOnly])
   const { rows, loading, error } = useAppointmentReport(filters)
 
   const totals = useMemo(() => rows.reduce((acc, row) => ({
