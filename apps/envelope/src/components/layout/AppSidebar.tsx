@@ -42,6 +42,7 @@ const ICONS: Record<string, React.ElementType> = {
   dashboard: LayoutDashboard,
   ventas: ShoppingCart,
   citas: CalendarCheck2,
+  servicios: ClipboardList,
   empleados: Users,
   sucursales: Building2,
   'metodos-pago': CreditCard,

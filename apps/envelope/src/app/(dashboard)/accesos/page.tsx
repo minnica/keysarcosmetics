@@ -258,10 +258,6 @@ export default function AccessControlPage() {
         ) as string[],
     )
 
-    if (section === 'reports') {
-      screenKeys.push(KEYSAR_HOME_DATA_PERMISSION_KEY)
-    }
-
     const nextPermissions = { ...draftPermissions }
     screenKeys.forEach((permissionKey) => {
       nextPermissions[permissionKey] = allowed
@@ -513,8 +509,6 @@ export default function AccessControlPage() {
   const keysarHomeDataPending =
     keysarHomeDataEnabled !==
     Boolean(committedPermissionMapRef.current[KEYSAR_HOME_DATA_PERMISSION_KEY])
-  const isSellerPosition =
-    selectedPosition?.nombre.trim().toLocaleUpperCase('es-MX') === 'VENDEDOR'
   const selfDataOnlyPending =
     draftSelfDataOnly !== committedSelfDataOnlyRef.current
 
@@ -544,20 +538,16 @@ export default function AccessControlPage() {
       header: () => <span className="uppercase">{t.common.position}</span>,
     },
     {
-      accessorKey: 'rol',
-      header: () => <span className="uppercase">Rol</span>,
-    },
-    {
       id: 'activo',
       accessorFn: (row) => row.activo,
       header: () => <span className="uppercase">{t.common.status}</span>,
       cell: ({ row }) => (
         <Badge
-          className="uppercase"
-          style={{
-            backgroundColor: row.original.activo ? '#648672' : '#9ca3af',
-            color: 'white',
-          }}
+          className={`uppercase ${
+            row.original.activo
+              ? 'bg-[#648672] text-white dark:bg-[#8bb09b] dark:text-[#1a1a1a]'
+              : 'bg-[#606060] text-white dark:bg-[#4a4a4a]'
+          }`}
         >
           {row.original.activo ? t.common.active : t.common.inactive}
         </Badge>
@@ -588,7 +578,7 @@ export default function AccessControlPage() {
               <Button
                 size="sm"
                 variant="outline"
-                className="w-full justify-center whitespace-nowrap border-red-300 text-red-600 hover:bg-red-50 hover:text-red-600 sm:w-auto"
+                className="w-full justify-center whitespace-nowrap border-red-300 text-red-600 hover:bg-red-50 hover:text-red-700 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-950/40 dark:hover:text-red-200 sm:w-auto"
                 onClick={() => {
                   setUserToDelete(user)
                 }}
@@ -613,15 +603,16 @@ export default function AccessControlPage() {
           </p>
         </div>
         <Badge
-          className="max-w-full uppercase"
-          style={{ backgroundColor: '#ecd1c8', color: '#1a1a1a' }}
+          className="max-w-full bg-[#ecd1c8] text-[#1a1a1a] uppercase dark:bg-[#c3a583] dark:text-[#1a1a1a]"
         >
           <Shield className="mr-1.5 h-3.5 w-3.5" />
           {t.access.accessManagerLabel}
         </Badge>
       </div>
 
-      {error && <p className="text-sm text-red-500">{error}</p>}
+      {error && (
+        <p className="text-sm text-red-600 dark:text-red-300">{error}</p>
+      )}
 
       {loading ? (
         <AccessLoadingSkeleton />
@@ -659,67 +650,189 @@ export default function AccessControlPage() {
               </div>
 
               <div className="grid gap-3">
-                {isSellerPosition ? (
-                  <button
-                    type="button"
-                    className={`flex flex-col gap-3 rounded-xl border px-3 py-3 text-left transition-colors duration-200 sm:flex-row sm:items-center sm:justify-between sm:px-4 ${
-                      draftSelfDataOnly
-                        ? 'border-[#8bb09b] bg-[#648672]/10'
-                        : 'hover:border-slate-300 hover:bg-slate-50'
-                    }`}
+                {selectedPosition && !draftCanManageAccess ? (
+                  <fieldset
+                    className="space-y-3 rounded-xl border p-3 sm:p-4"
                     style={{ borderColor: 'var(--border-color)' }}
-                    onClick={() => {
-                      const nextSelfDataOnly = !draftSelfDataOnly
-                      setDraftSelfDataOnly(nextSelfDataOnly)
-                      schedulePermissionSave(
-                        draftCanManageAccess,
-                        draftPermissions,
-                        nextSelfDataOnly,
-                      )
-                    }}
                   >
-                    <div className="min-w-0 space-y-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-medium">
-                          {t.access.selfDataOnlyPermission}
-                        </span>
-                        <Badge
-                          variant="secondary"
-                          className="uppercase text-[10px] tracking-wide"
+                    <legend className="sr-only">
+                      {t.access.dataScopeTitle}
+                    </legend>
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0 space-y-1">
+                        <p
+                          id="position-data-scope-title"
+                          className="text-sm font-semibold"
                         >
-                          {t.access.reportsAction}
-                        </Badge>
+                          {t.access.dataScopeTitle}
+                        </p>
+                        <p
+                          className="text-xs leading-5"
+                          style={{ color: 'var(--text-muted)' }}
+                        >
+                          {t.access.dataScopeDescription}
+                        </p>
                       </div>
-                      <p
-                        className="text-xs leading-5"
-                        style={{ color: 'var(--text-muted)' }}
-                      >
-                        {t.access.selfDataOnlyPermissionDescription}
-                      </p>
-                    </div>
-                    <div className="flex shrink-0 items-center gap-2 self-start sm:self-center">
-                      {draftSelfDataOnly ? (
-                        <Check className="h-4 w-4 text-[#648672]" />
-                      ) : null}
                       <Badge
-                        className="uppercase"
-                        style={{
-                          backgroundColor: selfDataOnlyPending
-                            ? '#f59e0b'
-                            : draftSelfDataOnly
-                              ? '#648672'
-                              : '#9ca3af',
-                          color: 'white',
-                        }}
+                        variant={
+                          selfDataOnlyPending || keysarHomeDataPending
+                            ? 'default'
+                            : 'secondary'
+                        }
+                        className="w-fit shrink-0 uppercase"
                       >
-                        {selfDataOnlyPending
+                        {selfDataOnlyPending || keysarHomeDataPending
                           ? t.common.saving
-                          : draftSelfDataOnly
-                            ? t.access.screenEnabled
-                            : t.access.screenDisabled}
+                          : t.access.permissionsSavedState}
                       </Badge>
                     </div>
-                  </button>
+
+                    <div
+                      role="radiogroup"
+                      aria-labelledby="position-data-scope-title"
+                      className="grid gap-2 md:grid-cols-2"
+                    >
+                      <button
+                        type="button"
+                        role="radio"
+                        aria-checked={!draftSelfDataOnly}
+                        className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 text-left transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#648672] focus-visible:ring-offset-2 dark:focus-visible:ring-[#8bb09b] dark:focus-visible:ring-offset-[#252525] ${
+                          !draftSelfDataOnly
+                            ? 'border-[#648672] bg-[#648672]/10 dark:border-[#8bb09b] dark:bg-[#648672]/25'
+                            : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:hover:border-slate-600 dark:hover:bg-slate-900/40'
+                        }`}
+                        onClick={() => {
+                          if (!draftSelfDataOnly) return
+                          setDraftSelfDataOnly(false)
+                          schedulePermissionSave(
+                            draftCanManageAccess,
+                            draftPermissions,
+                            false,
+                          )
+                        }}
+                      >
+                        <span
+                          aria-hidden="true"
+                          className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${
+                            !draftSelfDataOnly
+                              ? 'border-[#648672] bg-[#648672] text-white'
+                              : 'border-slate-400 dark:border-slate-500'
+                          }`}
+                        >
+                          {!draftSelfDataOnly ? (
+                            <Check className="h-3.5 w-3.5" />
+                          ) : null}
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block text-sm font-medium">
+                            {t.access.allRecordsOption}
+                          </span>
+                          <span
+                            className="mt-1 block text-xs leading-5"
+                            style={{ color: 'var(--text-muted)' }}
+                          >
+                            {t.access.allRecordsDescription}
+                          </span>
+                        </span>
+                      </button>
+
+                      <button
+                        type="button"
+                        role="radio"
+                        aria-checked={draftSelfDataOnly}
+                        className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 text-left transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#648672] focus-visible:ring-offset-2 dark:focus-visible:ring-[#8bb09b] dark:focus-visible:ring-offset-[#252525] ${
+                          draftSelfDataOnly
+                            ? 'border-[#648672] bg-[#648672]/10 dark:border-[#8bb09b] dark:bg-[#648672]/25'
+                            : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:hover:border-slate-600 dark:hover:bg-slate-900/40'
+                        }`}
+                        onClick={() => {
+                          if (draftSelfDataOnly) return
+                          setDraftSelfDataOnly(true)
+                          schedulePermissionSave(
+                            draftCanManageAccess,
+                            draftPermissions,
+                            true,
+                          )
+                        }}
+                      >
+                        <span
+                          aria-hidden="true"
+                          className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${
+                            draftSelfDataOnly
+                              ? 'border-[#648672] bg-[#648672] text-white'
+                              : 'border-slate-400 dark:border-slate-500'
+                          }`}
+                        >
+                          {draftSelfDataOnly ? (
+                            <Check className="h-3.5 w-3.5" />
+                          ) : null}
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block text-sm font-medium">
+                            {t.access.ownRecordsOption}
+                          </span>
+                          <span
+                            className="mt-1 block text-xs leading-5"
+                            style={{ color: 'var(--text-muted)' }}
+                          >
+                            {t.access.ownRecordsDescription}
+                          </span>
+                        </span>
+                      </button>
+                    </div>
+
+                    <div
+                      className="border-t pt-3"
+                      style={{ borderColor: 'var(--border-color)' }}
+                    >
+                      <button
+                        type="button"
+                        aria-pressed={keysarHomeDataEnabled}
+                        className={`flex w-full cursor-pointer items-start gap-3 rounded-lg px-2 py-2 text-left transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#648672] focus-visible:ring-offset-2 dark:focus-visible:ring-[#8bb09b] dark:focus-visible:ring-offset-[#252525] ${
+                          keysarHomeDataEnabled
+                            ? 'bg-[#648672]/10 text-[#355241] dark:bg-[#648672]/25 dark:text-[#c6dfce]'
+                            : 'hover:bg-slate-50 dark:hover:bg-slate-900/40'
+                        }`}
+                        onClick={() =>
+                          togglePermission(KEYSAR_HOME_DATA_PERMISSION_KEY)
+                        }
+                      >
+                        <span
+                          aria-hidden="true"
+                          className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border ${
+                            keysarHomeDataEnabled
+                              ? 'border-[#648672] bg-[#648672] text-white'
+                              : 'border-slate-400 bg-white dark:border-slate-500 dark:bg-[#303030]'
+                          }`}
+                        >
+                          {keysarHomeDataEnabled ? (
+                            <Check className="h-3.5 w-3.5" />
+                          ) : null}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-sm font-medium">
+                            {t.access.viewKeysarHomeDataPermission}
+                          </span>
+                          <span
+                            className="mt-1 block text-xs leading-5"
+                            style={{ color: 'var(--text-muted)' }}
+                          >
+                            {t.access.viewKeysarHomeDataPermissionDescription}
+                          </span>
+                          {draftSelfDataOnly ? (
+                            <span className="mt-1.5 block text-xs font-medium leading-5 text-amber-700 dark:text-amber-300">
+                              {t.access.viewKeysarHomeOwnScopeHint}
+                            </span>
+                          ) : null}
+                        </span>
+                        {keysarHomeDataPending ? (
+                          <span className="shrink-0 text-xs text-amber-600 dark:text-amber-300">
+                            {t.common.saving}
+                          </span>
+                        ) : null}
+                      </button>
+                    </div>
+                  </fieldset>
                 ) : null}
 
                 {SECTION_ORDER.map((section) => {
@@ -732,8 +845,6 @@ export default function AccessControlPage() {
                         Boolean,
                       ) as string[],
                   )
-                  if (section === 'reports')
-                    permissionKeys.push(KEYSAR_HOME_DATA_PERMISSION_KEY)
                   const enabledInSection = permissionKeys.filter(
                     (permissionKey) => draftPermissions[permissionKey],
                   ).length
@@ -745,7 +856,7 @@ export default function AccessControlPage() {
                       style={{ borderColor: 'var(--border-color)' }}
                     >
                       <div
-                        className="flex flex-col gap-3 border-b bg-slate-50/70 px-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-4"
+                        className="flex flex-col gap-3 border-b bg-slate-50/70 px-3 py-3 dark:bg-white/[0.04] sm:flex-row sm:items-center sm:justify-between sm:px-4"
                         style={{ borderColor: 'var(--border-color)' }}
                       >
                         <div className="flex items-baseline gap-2">
@@ -815,11 +926,11 @@ export default function AccessControlPage() {
                                 <button
                                   type="button"
                                   aria-pressed={enabled}
-                                  className={`flex min-w-0 flex-1 items-center gap-3 rounded-md px-1.5 py-1 text-left transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#648672] ${enabled ? 'text-[#355241]' : 'hover:bg-slate-50'}`}
+                                  className={`flex min-w-0 flex-1 items-center gap-3 rounded-md px-1.5 py-1 text-left transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#648672] dark:focus-visible:ring-[#8bb09b] ${enabled ? 'text-[#355241] dark:text-[#c6dfce]' : 'hover:bg-slate-50 dark:hover:bg-white/[0.04]'}`}
                                   onClick={() => togglePermission(screen.key)}
                                 >
                                   <span
-                                    className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border ${enabled ? 'border-[#648672] bg-[#648672] text-white' : 'border-slate-300 bg-white'}`}
+                                    className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border ${enabled ? 'border-[#648672] bg-[#648672] text-white dark:border-[#8bb09b]' : 'border-slate-300 bg-white dark:border-slate-500 dark:bg-[#303030]'}`}
                                   >
                                     {enabled ? (
                                       <Check className="h-3.5 w-3.5" />
@@ -833,19 +944,17 @@ export default function AccessControlPage() {
                                     }
                                   </span>
                                   {pending ? (
-                                    <span className="text-xs text-amber-600">
+                                    <span className="text-xs text-amber-600 dark:text-amber-300">
                                       {t.common.saving}
                                     </span>
                                   ) : null}
                                 </button>
                                 <Badge
-                                  className="shrink-0 uppercase"
-                                  style={{
-                                    backgroundColor: enabled
-                                      ? '#648672'
-                                      : '#9ca3af',
-                                    color: 'white',
-                                  }}
+                                  className={`shrink-0 uppercase ${
+                                    enabled
+                                      ? 'bg-[#648672] text-white dark:bg-[#8bb09b] dark:text-[#1a1a1a]'
+                                      : 'bg-[#606060] text-white dark:bg-[#4a4a4a]'
+                                  }`}
                                 >
                                   {enabled
                                     ? t.access.screenEnabled
@@ -858,7 +967,7 @@ export default function AccessControlPage() {
                                   type="button"
                                   aria-pressed={actionEnabled}
                                   title={t.access[action.description]}
-                                  className={`mt-1.5 ml-8 flex w-[calc(100%-2rem)] items-center gap-2 rounded-md px-1.5 py-1 text-left text-xs transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#648672] ${actionEnabled ? 'text-[#355241]' : 'text-slate-600 hover:bg-slate-50'}`}
+                                  className={`mt-1.5 ml-8 flex w-[calc(100%-2rem)] items-center gap-2 rounded-md px-1.5 py-1 text-left text-xs transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#648672] dark:focus-visible:ring-[#8bb09b] ${actionEnabled ? 'text-[#355241] dark:text-[#c6dfce]' : 'text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-white/[0.04]'}`}
                                   onClick={() => togglePermission(action.key)}
                                 >
                                   <CornerDownRight className="h-3.5 w-3.5 shrink-0" />
@@ -866,14 +975,14 @@ export default function AccessControlPage() {
                                     {t.access[action.label]}
                                   </span>
                                   <span
-                                    className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${actionEnabled ? 'border-[#648672] bg-[#648672] text-white' : 'border-slate-300 bg-white'}`}
+                                    className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${actionEnabled ? 'border-[#648672] bg-[#648672] text-white dark:border-[#8bb09b]' : 'border-slate-300 bg-white dark:border-slate-500 dark:bg-[#303030]'}`}
                                   >
                                     {actionEnabled ? (
                                       <Check className="h-3 w-3" />
                                     ) : null}
                                   </span>
                                   {actionPending ? (
-                                    <span className="text-amber-600">
+                                    <span className="text-amber-600 dark:text-amber-300">
                                       {t.common.saving}
                                     </span>
                                   ) : null}
@@ -882,40 +991,6 @@ export default function AccessControlPage() {
                             </div>
                           )
                         })}
-
-                        {section === 'reports' ? (
-                          <div className="px-3 py-2.5 sm:px-4">
-                            <button
-                              type="button"
-                              aria-pressed={keysarHomeDataEnabled}
-                              title={
-                                t.access.viewKeysarHomeDataPermissionDescription
-                              }
-                              className={`flex w-full items-center gap-3 rounded-md px-1.5 py-1 text-left text-sm transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#648672] ${keysarHomeDataEnabled ? 'text-[#355241]' : 'hover:bg-slate-50'}`}
-                              onClick={() =>
-                                togglePermission(
-                                  KEYSAR_HOME_DATA_PERMISSION_KEY,
-                                )
-                              }
-                            >
-                              <span
-                                className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border ${keysarHomeDataEnabled ? 'border-[#648672] bg-[#648672] text-white' : 'border-slate-300 bg-white'}`}
-                              >
-                                {keysarHomeDataEnabled ? (
-                                  <Check className="h-3.5 w-3.5" />
-                                ) : null}
-                              </span>
-                              <span className="min-w-0 flex-1 truncate font-medium">
-                                {t.access.viewKeysarHomeDataPermission}
-                              </span>
-                              {keysarHomeDataPending ? (
-                                <span className="text-xs text-amber-600">
-                                  {t.common.saving}
-                                </span>
-                              ) : null}
-                            </button>
-                          </div>
-                        ) : null}
                       </div>
                     </section>
                   )
@@ -937,8 +1012,7 @@ export default function AccessControlPage() {
                   </p>
                 </div>
                 <Badge
-                  className="uppercase"
-                  style={{ backgroundColor: '#ecd1c8', color: '#1a1a1a' }}
+                  className="bg-[#ecd1c8] text-[#1a1a1a] uppercase dark:bg-[#c3a583] dark:text-[#1a1a1a]"
                 >
                   {savingPermissions || permissionStateChanged
                     ? t.common.saving
@@ -1065,7 +1139,9 @@ export default function AccessControlPage() {
                 {...register('email')}
               />
               {errors.email && (
-                <p className="text-xs text-red-500">{errors.email.message}</p>
+                <p className="text-xs text-red-600 dark:text-red-300">
+                  {errors.email.message}
+                </p>
               )}
             </div>
 
@@ -1078,7 +1154,7 @@ export default function AccessControlPage() {
                 {...register('password')}
               />
               {errors.password && (
-                <p className="text-xs text-red-500">
+                <p className="text-xs text-red-600 dark:text-red-300">
                   {errors.password.message}
                 </p>
               )}
@@ -1130,7 +1206,7 @@ export default function AccessControlPage() {
               {t.common.cancel}
             </AlertDialogCancel>
             <AlertDialogAction
-              className="bg-[#648672] hover:bg-[#4f6a5a]"
+              className="bg-[#648672] hover:bg-[#4f6a5a] dark:bg-[#8bb09b] dark:text-[#1a1a1a] dark:hover:bg-[#a8c7b2]"
               onClick={() => {
                 void confirmSaveCredentials()
               }}

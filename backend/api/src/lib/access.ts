@@ -7,6 +7,7 @@ export const ACCESS_SCREEN_ORDER = [
   'ventas',
   'ventas/generar-sobre',
   'citas',
+  'servicios',
   'empleados',
   'empleados/sueldo',
   'reportes/ver-datos-keysar-home',

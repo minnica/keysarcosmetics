@@ -63,7 +63,6 @@ function createEmpleadoSchema(messages: {
 
 type EmpleadoForm = z.infer<ReturnType<typeof createEmpleadoSchema>>
 type StatusFilter = 'all' | 'active' | 'inactive'
-type SalaryFilter = 'all' | 'no-record' | 'under-15k' | '15k-to-25k' | '25k-plus'
 
 export default function EmpleadosPage() {
   const { user, canAccess } = useSession()
@@ -85,7 +84,8 @@ export default function EmpleadosPage() {
   const [editing, setEditing] = useState<Empleado | null>(null)
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [positionFilter, setPositionFilter] = useState('all')
-  const [salaryFilter, setSalaryFilter] = useState<SalaryFilter>('all')
+  const [salaryMin, setSalaryMin] = useState('')
+  const [salaryMax, setSalaryMax] = useState('')
   const canViewSalary = user?.rol === 'SUPER_ADMIN' || canAccess('empleados/sueldo')
   const isInitialLoading = loading && !loaded
   const isRefreshing = loading && loaded
@@ -135,6 +135,8 @@ export default function EmpleadosPage() {
     () => new Map(positions.map((position) => [position.nombre.trim().toUpperCase(), position.id])),
     [positions],
   )
+  const salaryRangeError =
+    salaryMin !== '' && salaryMax !== '' && Number(salaryMin) > Number(salaryMax)
 
   const filteredEmpleados = useMemo(
     () =>
@@ -150,26 +152,33 @@ export default function EmpleadosPage() {
 
         if (positionFilter !== 'all' && empPositionId !== positionFilter) return false
 
-        if (canViewSalary && salaryFilter !== 'all') {
+        if (canViewSalary && (salaryMin !== '' || salaryMax !== '')) {
           const salary = emp.sueldo ?? null
-          if (salaryFilter === 'no-record') return salary == null
           if (salary == null) return false
-          if (salaryFilter === 'under-15k') return salary < 15000
-          if (salaryFilter === '15k-to-25k') return salary >= 15000 && salary < 25000
-          if (salaryFilter === '25k-plus') return salary >= 25000
+          if (salaryMin !== '' && salary < Number(salaryMin)) return false
+          if (salaryMax !== '' && salary > Number(salaryMax)) return false
         }
 
         return true
       }),
-    [canViewSalary, empleados, positionFilter, positionIdByName, salaryFilter, statusFilter],
+    [canViewSalary, empleados, positionFilter, positionIdByName, salaryMax, salaryMin, statusFilter],
   )
   const hasActiveFilters =
-    statusFilter !== 'all' || positionFilter !== 'all' || (canViewSalary && salaryFilter !== 'all')
+    statusFilter !== 'all' || positionFilter !== 'all' || (canViewSalary && (salaryMin !== '' || salaryMax !== ''))
 
   function clearFilters() {
     setStatusFilter('all')
     setPositionFilter('all')
-    setSalaryFilter('all')
+    setSalaryMin('')
+    setSalaryMax('')
+  }
+
+  function updateSalaryBound(value: string, setValue: (nextValue: string) => void) {
+    const amount = Number(value)
+
+    if (value === '' || (Number.isFinite(amount) && amount >= 0)) {
+      setValue(value)
+    }
   }
 
   function openNew() {
@@ -504,19 +513,40 @@ export default function EmpleadosPage() {
 
               {canViewSalary ? (
                 <div className="space-y-1.5">
-                  <Label htmlFor="filter-salary">{t.employees.filterSalary}</Label>
-                  <Select value={salaryFilter} onValueChange={(value) => setSalaryFilter(value as SalaryFilter)}>
-                    <SelectTrigger id="filter-salary">
-                      <SelectValue placeholder={t.employees.filterSalary} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">{t.employees.allSalaries}</SelectItem>
-                      <SelectItem value="no-record">{t.employees.salaryNoRecord}</SelectItem>
-                      <SelectItem value="under-15k">{t.employees.salaryUnder15k}</SelectItem>
-                      <SelectItem value="15k-to-25k">{t.employees.salary15kTo25k}</SelectItem>
-                      <SelectItem value="25k-plus">{t.employees.salary25kOrMore}</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <Label>{t.employees.filterSalary}</Label>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    <Input
+                      id="filter-salary-min"
+                      type="number"
+                      min="0"
+                      step="any"
+                      inputMode="decimal"
+                      value={salaryMin}
+                      onChange={(event) => updateSalaryBound(event.target.value, setSalaryMin)}
+                      placeholder={t.employees.salaryFrom}
+                      aria-label={t.employees.salaryFrom}
+                      aria-describedby={salaryRangeError ? 'filter-salary-error' : undefined}
+                      aria-invalid={salaryRangeError}
+                    />
+                    <Input
+                      id="filter-salary-max"
+                      type="number"
+                      min="0"
+                      step="any"
+                      inputMode="decimal"
+                      value={salaryMax}
+                      onChange={(event) => updateSalaryBound(event.target.value, setSalaryMax)}
+                      placeholder={t.employees.salaryTo}
+                      aria-label={t.employees.salaryTo}
+                      aria-describedby={salaryRangeError ? 'filter-salary-error' : undefined}
+                      aria-invalid={salaryRangeError}
+                    />
+                  </div>
+                  {salaryRangeError ? (
+                    <p id="filter-salary-error" role="alert" className="text-xs text-red-500">
+                      {t.employees.salaryRangeError}
+                    </p>
+                  ) : null}
                 </div>
               ) : null}
             </div>

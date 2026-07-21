@@ -44,6 +44,29 @@ model Sucursal {
   actualizadoEn DateTime       @updatedAt
 }
 
+model CategoriaAtencion {
+  id             String                 @id @default(cuid())
+  nombre         String                 @unique
+  activa         Boolean                @default(true)
+  subcategorias  SubcategoriaAtencion[]
+  creadoEn       DateTime               @default(now())
+  actualizadoEn  DateTime               @updatedAt
+}
+
+model SubcategoriaAtencion {
+  id             String            @id @default(cuid())
+  nombre         String
+  activa         Boolean           @default(true)
+  categoriaId    String
+  categoria      CategoriaAtencion @relation(fields: [categoriaId], references: [id], onDelete: Restrict)
+  registrosCita  RegistroCita[]
+  creadoEn       DateTime          @default(now())
+  actualizadoEn  DateTime          @updatedAt
+
+  @@unique([categoriaId, nombre])
+  @@index([categoriaId, activa])
+}
+
 // ─── Módulo Envelope ──────────────────────────────────────────────────────────
 
 enum MetodoPagoTipo {
@@ -130,11 +153,6 @@ enum TipoCompraCita {
   PAGO_DE_APARTADO
 }
 
-enum TipoAtencionCita {
-  FACIAL
-  FACIAL_DOBLE
-}
-
 enum EstatusCita {
   ATENDIDA
   NO_LLEGO
@@ -146,7 +164,8 @@ model RegistroCita {
   id              String           @id @default(cuid())
   fecha           DateTime
   hora            String?          @db.VarChar(5)
-  tipoAtencion    TipoAtencionCita @default(FACIAL)
+  subcategoriaId  String
+  subcategoria    SubcategoriaAtencion @relation(fields: [subcategoriaId], references: [id], onDelete: Restrict)
   estatus         EstatusCita      @default(ATENDIDA)
   nombreCliente   String
   sucursalId      String
@@ -157,6 +176,7 @@ model RegistroCita {
   facialista      Empleado         @relation("RegistroCitaFacialista", fields: [facialistaId], references: [id])
   tipoCompra      TipoCompraCita?
   montoCompra     Decimal          @default(0) @db.Decimal(10, 2)
+  montoApartado   Decimal          @default(0) @db.Decimal(10, 2)
   bonoSalidaTarde Boolean          @default(false)
   bonoComida      Boolean          @default(false)
   creadoPorId     String
@@ -170,6 +190,7 @@ model RegistroCita {
   @@index([facialistaId, fecha])
   @@index([vendedorId, fecha])
   @@index([creadoPorId])
+  @@index([subcategoriaId])
 }
 
 // Agrupa todas las ventas de un vendedor en un día

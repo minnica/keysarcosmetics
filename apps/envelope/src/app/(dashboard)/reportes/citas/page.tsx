@@ -10,6 +10,7 @@ import { useAppointmentCatalogs, useAppointmentReport, useSucursales } from '@/h
 import type { AppointmentReportRow } from '@/hooks'
 import { currentFortnightRange } from '@/lib/date-periods'
 import { useI18n } from '@/lib/i18n'
+import { useSession } from '@/lib/session'
 import { exportReportToExcel, exportReportToPdf, type ExportColumn } from '@/lib/report-export'
 import { formatCurrency, formatDate } from '@/lib/utils'
 
@@ -20,7 +21,7 @@ const copy = {
     searchFacialist: 'Buscar facialista...', noFacialists: 'Sin facialistas', reset: 'Limpiar filtros',
     appointments: 'Citas', noPurchase: 'Sin compra', net: 'Pago neto', withDeposit: 'Compra con apartado', depositPayment: 'Pago de apartado',
     attended: 'Atendidas', noShow: 'No llegaron', cancelled: 'Canceladas',
-    facial: 'Faciales', facialDouble: 'Faciales dobles',
+    facial: 'Faciales', corporal: 'Corporales',
     total: 'Total', late: 'Bono salida tarde', meal: 'Bono de comida',
     totalAppointments: 'Total de citas', withPurchase: 'Citas con compra', totalSales: 'Total registrado', totalBonuses: 'Bonos registrados',
     noData: 'Sin registros para los filtros seleccionados.', search: 'Buscar en el reporte...', sheet: 'Reporte de Citas', period: 'Período',
@@ -32,7 +33,7 @@ const copy = {
     searchFacialist: 'Search facialist...', noFacialists: 'No facialists', reset: 'Clear filters',
     appointments: 'Appointments', noPurchase: 'No purchase', net: 'Net payment', withDeposit: 'Purchase with deposit', depositPayment: 'Deposit payment',
     attended: 'Completed', noShow: 'No shows', cancelled: 'Cancelled',
-    facial: 'Facials', facialDouble: 'Double facials',
+    facial: 'Facials', corporal: 'Body services',
     total: 'Total', late: 'Late departure bonus', meal: 'Meal bonus',
     totalAppointments: 'Total appointments', withPurchase: 'Appointments with purchase', totalSales: 'Recorded total', totalBonuses: 'Recorded bonuses',
     noData: 'No records for the selected filters.', search: 'Search report...', sheet: 'Appointment Report', period: 'Period',
@@ -43,7 +44,7 @@ const copy = {
 const emptyTotals = {
   totalCitas: 0,
   faciales: 0,
-  facialesDobles: 0,
+  corporales: 0,
   atendidas: 0,
   noLlegaron: 0,
   canceladas: 0,
@@ -59,6 +60,7 @@ const emptyTotals = {
 export default function AppointmentReportPage() {
   const { locale, t, dataTableLabels } = useI18n()
   const text = copy[locale]
+  const { user } = useSession()
   const [range, setRange] = useState<DateRange>(() => currentFortnightRange())
   const [facialistId, setFacialistId] = useState('all')
   const [branchId, setBranchId] = useState('all')
@@ -68,20 +70,27 @@ export default function AppointmentReportPage() {
 
   const facialists = useMemo(() => {
     const matched = employees.filter((employee) => (employee.position?.nombre ?? employee.puesto).trim().toUpperCase().includes('FACIALISTA'))
-    return matched.length > 0 ? matched : employees
-  }, [employees])
+    const available = matched.length > 0 ? matched : employees
+    return user?.selfDataOnly && user.empleadoId
+      ? available.filter((employee) => employee.id === user.empleadoId)
+      : available
+  }, [employees, user?.empleadoId, user?.selfDataOnly])
   const filters = useMemo(() => ({
     fechaInicio: range.from,
     fechaFin: range.to,
-    ...(facialistId !== 'all' ? { facialistaId: facialistId } : {}),
+    ...(user?.selfDataOnly && user.empleadoId
+      ? { facialistaId: user.empleadoId }
+      : facialistId !== 'all'
+        ? { facialistaId: facialistId }
+        : {}),
     ...(branchId !== 'all' ? { sucursalId: branchId } : {}),
-  }), [branchId, facialistId, range.from, range.to])
+  }), [branchId, facialistId, range.from, range.to, user?.empleadoId, user?.selfDataOnly])
   const { rows, loading, error } = useAppointmentReport(filters)
 
   const totals = useMemo(() => rows.reduce((acc, row) => ({
     totalCitas: acc.totalCitas + row.totalCitas,
     faciales: acc.faciales + row.faciales,
-    facialesDobles: acc.facialesDobles + row.facialesDobles,
+    corporales: acc.corporales + row.corporales,
     atendidas: acc.atendidas + row.atendidas,
     noLlegaron: acc.noLlegaron + row.noLlegaron,
     canceladas: acc.canceladas + row.canceladas,
@@ -99,7 +108,7 @@ export default function AppointmentReportPage() {
     { accessorKey: 'sucursalNombre', header: text.branch.toUpperCase() },
     { accessorKey: 'totalCitas', header: text.appointments.toUpperCase(), meta: { align: 'right' } },
     { accessorKey: 'faciales', header: text.facial.toUpperCase(), meta: { align: 'right' } },
-    { accessorKey: 'facialesDobles', header: text.facialDouble.toUpperCase(), meta: { align: 'right' } },
+    { accessorKey: 'corporales', header: text.corporal.toUpperCase(), meta: { align: 'right' } },
     { accessorKey: 'atendidas', header: text.attended.toUpperCase(), meta: { align: 'right' } },
     { accessorKey: 'noLlegaron', header: text.noShow.toUpperCase(), meta: { align: 'right' } },
     { accessorKey: 'canceladas', header: text.cancelled.toUpperCase(), meta: { align: 'right' } },
@@ -117,7 +126,7 @@ export default function AppointmentReportPage() {
     { header: text.branch.toUpperCase(), accessor: (row) => row.sucursalNombre, width: 20 },
     { header: text.appointments.toUpperCase(), accessor: (row) => row.totalCitas, format: 'number', width: 12 },
     { header: text.facial.toUpperCase(), accessor: (row) => row.faciales, format: 'number', width: 12 },
-    { header: text.facialDouble.toUpperCase(), accessor: (row) => row.facialesDobles, format: 'number', width: 15 },
+    { header: text.corporal.toUpperCase(), accessor: (row) => row.corporales, format: 'number', width: 15 },
     { header: text.attended.toUpperCase(), accessor: (row) => row.atendidas, format: 'number', width: 12 },
     { header: text.noShow.toUpperCase(), accessor: (row) => row.noLlegaron, format: 'number', width: 12 },
     { header: text.cancelled.toUpperCase(), accessor: (row) => row.canceladas, format: 'number', width: 12 },
