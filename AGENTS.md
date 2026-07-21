@@ -222,13 +222,16 @@ apps/scheduler/
 ├── src/app/
 │   ├── (auth)/login/              → acceso temporal/mock al scheduler
 │   ├── (dashboard)/page.tsx       → agenda principal (día / semana)
+│   ├── (dashboard)/administracion/ → workspace administrativo completo
 │   ├── globals.css                → tokens visuales del scheduler
 │   └── layout.tsx                 → metadata + Toaster global
 ├── src/components/
 │   ├── SchedulerWorkspace.tsx     → shell principal con estado local, filtros y modales
 │   └── scheduler/                 → header, sidebar, grid agenda, tarjetas y diálogos del scheduler
+├── src/components/administration/ → navegación y CRUDs mock de Administración
 └── src/lib/
-    └── mock-scheduler-data.ts     → datos mock de sucursales, profesionales, citas, bloqueos y leyenda
+    ├── mock-scheduler-data.ts     → datos mock de sucursales, profesionales, citas, bloqueos y leyenda
+    └── mock-administration-data.ts → catálogos mock de locales, profesionales, servicios y módulos administrativos
 ```
 
 ### backend/api
@@ -309,9 +312,16 @@ packages/ui/
 
 ```bash
 pnpm install
+pnpm dev                         # inicia los seis proyectos frontend; también abre POS (Electron)
 pnpm --filter @cosmetics/envelope dev
 pnpm --filter @cosmetics/scheduler dev
 pnpm --filter @cosmetics/api dev
+```
+
+Para trabajar únicamente en Scheduler y evitar abrir POS:
+
+```powershell
+pnpm.cmd --filter @cosmetics/scheduler dev
 ```
 
 Si `pnpm` local no reconstruye bien `node_modules` del workspace en Windows, usar los scripts directos:
@@ -393,6 +403,7 @@ npx ts-node --project tsconfig.json prisma/seed-catalogs.ts
 - Automatizar deploy backend con GitHub Actions si se decide.
 - Crear seeds separados seguros para dev/datos base si se requiere.
 - Limpieza futura de campos legacy `banco`/`puesto` en `Empleado` cuando todos los registros en prod tengan `bankId`/`positionId` asignados (Fase 4).
-- `apps/scheduler` sigue en **Fase 1 local/mock**, pero ya incluye timeline editable estilo AgendaPro, filtros por sucursal/profesional/estatus/hora, bloqueos manuales, actualización local de pagos/estatus y modales de detalle/edición; aún no tiene backend, Prisma ni persistencia real.
-- Los bloques manuales de `apps/scheduler` (`Hora bloqueada`) ya se pueden abrir desde la tarjeta rayada para editar horario/profesional o quitar el bloqueo en la agenda local/mock.
-- Próxima fase sugerida para `scheduler`: modelar `Cliente`, `Servicio`, `Cita`, `BloqueHorario` y endpoints en `/api/scheduler` antes de conectar persistencia real.
+- `apps/scheduler` conserva la agenda principal en modo local/mock. La ruta `/administracion` ahora contiene el workspace completo de Administración, también local/mock y sin conexión a backend.
+- Administración incluye Locales, Profesionales, Grupos personalizados, Servicios, Clases, Paquetes, Adicionales, Comisiones, Recursos, Encuestas, Consentimientos, WhatsApp y Gift cards. Sus CRUDs, filtros, estados, modales y confirmaciones se mantienen en estado local durante esta fase.
+- `Local` y `Profesional` son entidades separadas; `Planes` no se implementa. `Consentimientos` administra documentos, pero todavía no incluye firma ni resultados; `Encuestas` configura preguntas, pero todavía no incluye resultados.
+- Siguiente etapa de integración: modelar `Cliente`, `Servicio`, `Cita`, `BloqueHorario`, horarios, recursos y relaciones en `/api/scheduler` antes de conectar persistencia real.

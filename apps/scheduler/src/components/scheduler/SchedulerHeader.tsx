@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { Button, Popover, PopoverContent, PopoverTrigger } from '@cosmetics/ui'
 import {
   ArrowLeft,
@@ -59,23 +60,39 @@ export function SchedulerHeader({
               </div>
             </div>
             <nav className="hidden items-center gap-2 xl:flex">
-              {['Agenda', 'Clientes', 'Servicios', 'Reportes'].map((item, index) => (
+              <Link
+                className="rounded-full bg-white/12 px-5 py-2.5 text-[0.92rem] font-medium text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] transition"
+                href="/"
+              >
+                Agenda
+              </Link>
+              {['Clientes', 'Servicios', 'Reportes'].map((item) => (
                 <button
                   key={item}
-                  className={
-                    index === 0
-                      ? 'rounded-full bg-white/12 px-5 py-2.5 text-[0.92rem] font-medium text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] transition'
-                      : 'rounded-full px-5 py-2.5 text-[0.92rem] font-medium text-white/60 transition hover:bg-white/6 hover:text-white'
-                  }
+                  className="rounded-full px-5 py-2.5 text-[0.92rem] font-medium text-white/60 transition hover:bg-white/6 hover:text-white"
                   type="button"
                 >
                   {item}
                 </button>
               ))}
+              <Link
+                className="rounded-full border border-[#c3a583]/45 bg-[#c3a583]/20 px-5 py-2.5 text-[0.92rem] font-medium text-white transition hover:bg-[#c3a583]/30"
+                href="/administracion"
+              >
+                Administración
+              </Link>
             </nav>
           </div>
 
-          <div className="hidden items-center gap-3 lg:flex">
+          <div className="flex items-center gap-3">
+            <Link
+              aria-label="Abrir Administración"
+              className="scheduler-header-button lg:hidden"
+              href="/administracion"
+            >
+              <SlidersHorizontal className="h-5 w-5" />
+            </Link>
+            <div className="hidden items-center gap-3 lg:flex">
             <button className="scheduler-header-button" type="button">
               <Search className="h-5 w-5" />
             </button>
@@ -87,6 +104,7 @@ export function SchedulerHeader({
             </button>
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white text-sm font-semibold text-slate-700 shadow-[0_10px_24px_rgba(0,0,0,0.2)]">
               ER
+            </div>
             </div>
           </div>
         </div>

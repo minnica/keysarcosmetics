@@ -1,0 +1,536 @@
+export type EntityStatus = "active" | "inactive" | "draft";
+
+export interface ScheduleDay {
+  day: string;
+  enabled: boolean;
+  open: string;
+  close: string;
+  breakStart: string | undefined;
+  breakEnd: string | undefined;
+}
+
+export interface SpecialDay {
+  id: string;
+  date: string;
+  open: string;
+  close: string;
+}
+
+export interface LocalRecord {
+  id: string;
+  name: string;
+  address: string;
+  additionalInfo: string;
+  timezone: string;
+  phone: string;
+  whatsappEnabled: boolean;
+  email: string;
+  status: "active" | "inactive";
+  onlineBooking: boolean;
+  homeServiceOnly: boolean;
+  secondaryPhone: string;
+  description: string;
+  coverImage: string | null;
+  schedule: ScheduleDay[];
+  specialDays: SpecialDay[];
+}
+
+export interface ProfessionalRecord {
+  id: string;
+  localId: string;
+  name: string;
+  role: string;
+  email: string;
+  acceptsOnline: boolean;
+  createsUser: boolean;
+  services: string[];
+  biography: string;
+  avatar: string | null;
+  status: "active" | "inactive";
+  schedule: ScheduleDay[];
+  specialDays: SpecialDay[];
+}
+
+export interface ProfessionalGroup {
+  id: string;
+  name: string;
+  localId: string;
+  professionalIds: string[];
+}
+
+export interface ServiceRecord {
+  id: string;
+  name: string;
+  category: string;
+  type: "service" | "class" | "package" | "add-on";
+  price: number;
+  duration: number;
+  status: "active" | "inactive";
+  featured: boolean;
+  professionalIds: string[];
+  description: string;
+  sessions?: number;
+  capacity?: number;
+}
+
+export interface CommissionRecord {
+  id: string;
+  professionalId?: string;
+  name: string;
+  serviceCount?: number;
+  value: number;
+  unit: "$" | "%";
+}
+
+export interface ScheduledResourceRecord {
+  id: string;
+  name: string;
+  localId: string;
+  interval: number;
+  acceptsOnline: boolean;
+  serviceIds: string[];
+  status: "active" | "inactive";
+  schedule: ScheduleDay[];
+  specialDays: SpecialDay[];
+}
+
+export interface ResourceRecord {
+  id: string;
+  name: string;
+  category: string;
+  serviceIds: string[];
+  localQuantities: Record<string, number>;
+}
+
+export interface SurveyQuestion {
+  id: string;
+  category: string;
+  type: "rating" | "comment";
+  text: string;
+  description: string;
+}
+
+export interface SurveyRecord {
+  id: string;
+  name: string;
+  serviceIds: string[];
+  questionIds: string[];
+  updatedAt: string;
+}
+
+export interface ConsentRecord {
+  id: string;
+  name: string;
+  description: string;
+  fileName: string | null;
+  updatedAt: string;
+  status: "active" | "draft";
+}
+
+export interface WhatsAppMessageRecord {
+  id: string;
+  name: string;
+  message: string;
+  status: "active" | "inactive";
+  updatedAt: string;
+}
+
+export interface GiftCardRecord {
+  id: string;
+  name: string;
+  type: "service" | "amount";
+  serviceIds: string[];
+  amount: number;
+  salePrice: number;
+  expiration: number;
+  description: string;
+  design: string;
+  status: "active" | "inactive" | "draft";
+}
+
+export const scheduleDays = [
+  "Lunes",
+  "Martes",
+  "Miércoles",
+  "Jueves",
+  "Viernes",
+  "Sábado",
+  "Domingo",
+] as const;
+
+export const createSchedule = (
+  open = "10:00",
+  close = "19:00",
+): ScheduleDay[] =>
+  scheduleDays.map((day, index) => ({
+    day,
+    enabled: index < 6,
+    open,
+    close,
+    breakStart: undefined,
+    breakEnd: undefined,
+  }));
+
+export const createEmptyLocal = (): LocalRecord => ({
+  id: `local-${Date.now()}`,
+  name: "",
+  address: "",
+  additionalInfo: "",
+  timezone: "America/Mexico_City",
+  phone: "",
+  whatsappEnabled: true,
+  email: "",
+  status: "active",
+  onlineBooking: true,
+  homeServiceOnly: false,
+  secondaryPhone: "",
+  description: "",
+  coverImage: null,
+  schedule: createSchedule(),
+  specialDays: [],
+});
+
+export const initialLocals: LocalRecord[] = [
+  {
+    ...createEmptyLocal(),
+    id: "local-keysar",
+    name: "Keysar Cosmetics",
+    address: "Av. Paseo de la Reforma, Ciudad de México",
+    additionalInfo: "Local principal",
+    phone: "+52 55 0000 0000",
+    email: "contacto@keysarcosmetics.com",
+    description:
+      "Espacio de cosmetología, belleza y bienestar de Keysar Cosmetics.",
+  },
+  {
+    ...createEmptyLocal(),
+    id: "local-polanco",
+    name: "Keysar Polanco",
+    address: "Av. Presidente Masaryk 212, Ciudad de México",
+    additionalInfo: "Segundo piso",
+    phone: "+52 55 0000 0001",
+    email: "polanco@keysarcosmetics.com",
+    description: "Una experiencia privada de cuidado y belleza en Polanco.",
+    status: "inactive",
+  },
+];
+
+export const initialProfessionals: ProfessionalRecord[] = [
+  {
+    id: "professional-patricia",
+    localId: "local-keysar",
+    name: "Patricia Delgado",
+    role: "Especialista en faciales",
+    email: "patricia@keysarcosmetics.com",
+    acceptsOnline: true,
+    createsUser: true,
+    services: ["service-facial", "service-masaje"],
+    biography:
+      "Especialista en rituales faciales y experiencias de relajación.",
+    avatar: null,
+    status: "active",
+    schedule: createSchedule("09:00", "18:00"),
+    specialDays: [],
+  },
+  {
+    id: "professional-mariana",
+    localId: "local-keysar",
+    name: "Mariana Ortega",
+    role: "Cosmetóloga",
+    email: "mariana@keysarcosmetics.com",
+    acceptsOnline: true,
+    createsUser: false,
+    services: ["service-facial", "service-masaje", "service-cejas"],
+    biography:
+      "Acompaña cada visita con precisión, calidez y atención al detalle.",
+    avatar: null,
+    status: "active",
+    schedule: createSchedule("10:00", "19:00"),
+    specialDays: [],
+  },
+  {
+    id: "professional-sofia",
+    localId: "local-polanco",
+    name: "Sofía Ramírez",
+    role: "Terapeuta corporal",
+    email: "sofia@keysarcosmetics.com",
+    acceptsOnline: false,
+    createsUser: false,
+    services: ["service-masaje"],
+    biography:
+      "Terapias corporales personalizadas para recuperar el equilibrio.",
+    avatar: null,
+    status: "inactive",
+    schedule: createSchedule("11:00", "20:00"),
+    specialDays: [],
+  },
+];
+
+export const initialServices: ServiceRecord[] = [
+  {
+    id: "service-facial",
+    name: "Facial Keysar Signature",
+    category: "Faciales",
+    type: "service",
+    price: 950,
+    duration: 60,
+    status: "active",
+    featured: true,
+    professionalIds: ["professional-patricia", "professional-mariana"],
+    description: "Limpieza, hidratación y masaje facial personalizado.",
+  },
+  {
+    id: "service-masaje",
+    name: "Masaje relajante",
+    category: "Bienestar",
+    type: "service",
+    price: 800,
+    duration: 60,
+    status: "active",
+    featured: false,
+    professionalIds: [
+      "professional-patricia",
+      "professional-mariana",
+      "professional-sofia",
+    ],
+    description: "Sesión corporal para liberar tensión y descansar.",
+  },
+  {
+    id: "service-cejas",
+    name: "Diseño de cejas",
+    category: "Mirada",
+    type: "service",
+    price: 420,
+    duration: 30,
+    status: "active",
+    featured: false,
+    professionalIds: ["professional-mariana"],
+    description: "Diseño y definición de cejas según tu rostro.",
+  },
+  {
+    id: "class-yoga",
+    name: "Yoga facial en grupo",
+    category: "Clases",
+    type: "class",
+    price: 380,
+    duration: 45,
+    status: "active",
+    featured: false,
+    professionalIds: ["professional-patricia"],
+    description: "Clase guiada para activar y relajar los músculos del rostro.",
+    capacity: 8,
+  },
+  {
+    id: "package-reset",
+    name: "Ritual Reset",
+    category: "Experiencias",
+    type: "package",
+    price: 1450,
+    duration: 120,
+    status: "active",
+    featured: true,
+    professionalIds: ["professional-patricia", "professional-mariana"],
+    description:
+      "Facial Signature y masaje relajante en una experiencia completa.",
+  },
+  {
+    id: "addon-mask",
+    name: "Mascarilla premium",
+    category: "Adicionales",
+    type: "add-on",
+    price: 180,
+    duration: 15,
+    status: "active",
+    featured: false,
+    professionalIds: [],
+    description: "Complemento nutritivo para potenciar tu tratamiento.",
+  },
+];
+
+export const initialGroups: ProfessionalGroup[] = [
+  {
+    id: "group-cabinas",
+    name: "Cabinas principales",
+    localId: "local-keysar",
+    professionalIds: ["professional-patricia", "professional-mariana"],
+  },
+];
+
+export const initialCommissions: CommissionRecord[] = [
+  {
+    id: "commission-patricia",
+    professionalId: "professional-patricia",
+    name: "Patricia Delgado",
+    serviceCount: 2,
+    value: 15,
+    unit: "%",
+  },
+  {
+    id: "commission-mariana",
+    professionalId: "professional-mariana",
+    name: "Mariana Ortega",
+    serviceCount: 3,
+    value: 12,
+    unit: "%",
+  },
+  {
+    id: "commission-sofia",
+    professionalId: "professional-sofia",
+    name: "Sofía Ramírez",
+    serviceCount: 1,
+    value: 10,
+    unit: "%",
+  },
+];
+
+export const initialScheduledResources: ScheduledResourceRecord[] = [
+  {
+    id: "scheduled-cabina-1",
+    name: "Cabina facial 1",
+    localId: "local-keysar",
+    interval: 15,
+    acceptsOnline: true,
+    serviceIds: ["service-facial"],
+    status: "active",
+    schedule: createSchedule("09:00", "19:00"),
+    specialDays: [],
+  },
+  {
+    id: "scheduled-cabina-2",
+    name: "Cabina corporal 2",
+    localId: "local-keysar",
+    interval: 30,
+    acceptsOnline: true,
+    serviceIds: ["service-masaje"],
+    status: "active",
+    schedule: createSchedule("10:00", "20:00"),
+    specialDays: [],
+  },
+];
+
+export const initialResources: ResourceRecord[] = [
+  {
+    id: "resource-led",
+    name: "Máscara LED",
+    category: "Tecnología",
+    serviceIds: ["service-facial"],
+    localQuantities: { "local-keysar": 2 },
+  },
+  {
+    id: "resource-aromatherapy",
+    name: "Kit de aromaterapia",
+    category: "Bienestar",
+    serviceIds: ["service-masaje"],
+    localQuantities: { "local-keysar": 4, "local-polanco": 2 },
+  },
+];
+
+export const surveyCategories = [
+  "Precio",
+  "Calidad",
+  "Puntualidad",
+  "Limpieza y orden",
+  "Recomendabilidad",
+  "Retornabilidad",
+  "Agendamiento",
+  "Atención del personal",
+];
+
+export const initialSurveyQuestions: SurveyQuestion[] = [
+  {
+    id: "question-quality",
+    category: "Calidad",
+    type: "rating",
+    text: "¿Cómo calificarías la calidad del servicio?",
+    description: "Evalúa tu experiencia general.",
+  },
+  {
+    id: "question-recommend",
+    category: "Recomendabilidad",
+    type: "rating",
+    text: "¿Qué tan probable es que nos recomiendes?",
+    description: "Tu recomendación nos ayuda a crecer.",
+  },
+  {
+    id: "question-comment",
+    category: "Atención del personal",
+    type: "comment",
+    text: "¿Qué podríamos mejorar en tu próxima visita?",
+    description: "Comparte cualquier comentario.",
+  },
+];
+
+export const initialSurveys: SurveyRecord[] = [
+  {
+    id: "survey-post-service",
+    name: "Experiencia después de tu visita",
+    serviceIds: ["service-facial", "service-masaje"],
+    questionIds: ["question-quality", "question-recommend", "question-comment"],
+    updatedAt: "Hace 2 días",
+  },
+];
+
+export const initialConsents: ConsentRecord[] = [
+  {
+    id: "consent-treatment",
+    name: "Consentimiento para tratamientos faciales",
+    description: "Autorización para realizar tratamientos cosméticos faciales.",
+    fileName: "consentimiento-facial.pdf",
+    updatedAt: "Hace 1 semana",
+    status: "active",
+  },
+  {
+    id: "consent-photo",
+    name: "Autorización de uso de imagen",
+    description: "Permiso opcional para utilizar fotografías de resultados.",
+    fileName: null,
+    updatedAt: "Hace 3 semanas",
+    status: "draft",
+  },
+];
+
+export const initialWhatsAppMessages: WhatsAppMessageRecord[] = [
+  {
+    id: "whatsapp-confirmation",
+    name: "Confirmación de reserva",
+    message:
+      "Hola {{nombre_cliente}}, confirmamos tu cita de {{nombre_servicio}} el {{fecha_hora_reserva}} en {{nombre_local}}.",
+    status: "active",
+    updatedAt: "Hace 4 días",
+  },
+  {
+    id: "whatsapp-welcome",
+    name: "Bienvenida Keysar",
+    message:
+      "Hola {{nombre_cliente}}, bienvenida a Keysar Cosmetics. Estamos felices de recibirte.",
+    status: "active",
+    updatedAt: "Hace 2 semanas",
+  },
+];
+
+export const initialGiftCards: GiftCardRecord[] = [
+  {
+    id: "gift-facial",
+    name: "Ritual facial Signature",
+    type: "service",
+    serviceIds: ["service-facial"],
+    amount: 950,
+    salePrice: 950,
+    expiration: 90,
+    description: "Regala una experiencia de cuidado facial.",
+    design: "arena",
+    status: "active",
+  },
+  {
+    id: "gift-1500",
+    name: "Gift card Keysar $1,500",
+    type: "amount",
+    serviceIds: [],
+    amount: 1500,
+    salePrice: 1500,
+    expiration: 180,
+    description: "Un regalo abierto para elegir cualquier experiencia Keysar.",
+    design: "lavanda",
+    status: "draft",
+  },
+];
