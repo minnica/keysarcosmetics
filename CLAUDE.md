@@ -88,15 +88,15 @@ el diseño y el autocuidado.
 
 ## Apps del monorepo
 
-| App | Tipo | Puerto dev | Descripción |
-|---|---|---|---|
-| `landing` | Next.js | 3000 | Página pública con SEO |
-| `envelope` | Next.js | 3001 | Control de ventas por sucursal (reemplaza sobre físico) |
-| `payroll` | Next.js | 3002 | Administración de nómina |
-| `crm` | Next.js | 3003 | Gestión de mensajes: WhatsApp, Messenger, Instagram |
-| `scheduler` | Next.js | 3004 | Agenda de citas con notificaciones y recordatorios |
-| `pos` | Electron + React + Vite | 3005 | Punto de venta offline con hardware |
-| `backend/api` | Express | 4000 | API REST compartida |
+| App           | Tipo                    | Puerto dev | Descripción                                             |
+| ------------- | ----------------------- | ---------- | ------------------------------------------------------- |
+| `landing`     | Next.js                 | 3000       | Página pública con SEO                                  |
+| `envelope`    | Next.js                 | 3001       | Control de ventas por sucursal (reemplaza sobre físico) |
+| `payroll`     | Next.js                 | 3002       | Administración de nómina                                |
+| `crm`         | Next.js                 | 3003       | Gestión de mensajes: WhatsApp, Messenger, Instagram     |
+| `scheduler`   | Next.js                 | 3004       | Agenda de citas con notificaciones y recordatorios      |
+| `pos`         | Electron + React + Vite | 3005       | Punto de venta offline con hardware                     |
+| `backend/api` | Express                 | 4000       | API REST compartida                                     |
 
 ---
 
@@ -125,12 +125,12 @@ el diseño y el autocuidado.
 
 ## Paquetes compartidos
 
-| Paquete | Propósito |
-|---|---|
-| `@cosmetics/ui` | Componentes shadcn/ui compartidos + wrappers custom |
-| `@cosmetics/types` | Tipos TypeScript compartidos entre frontend y backend |
-| `@cosmetics/auth` | Lógica JWT y roles compartida |
-| `@cosmetics/api-client` | Cliente axios compartido |
+| Paquete                 | Propósito                                             |
+| ----------------------- | ----------------------------------------------------- |
+| `@cosmetics/ui`         | Componentes shadcn/ui compartidos + wrappers custom   |
+| `@cosmetics/types`      | Tipos TypeScript compartidos entre frontend y backend |
+| `@cosmetics/auth`       | Lógica JWT y roles compartida                         |
+| `@cosmetics/api-client` | Cliente axios compartido                              |
 
 ---
 
@@ -166,6 +166,7 @@ Wrappers custom en `packages/ui/src/components/custom`:
 - `Combobox` — select con búsqueda integrada; usa `Popover` + `Input`. Props: `options`, `value`, `onValueChange`, `placeholder`, `searchPlaceholder`, `emptyMessage`, `disabled`, `id`. Exporta también `ComboboxOption` (interface `{ value: string; label: string }`).
 
 **Reglas de UI:**
+
 - Apps consumen UI exclusivamente desde `@cosmetics/ui`.
 - No recrear componentes manuales similares a shadcn en las apps.
 - No crear duplicados en `apps/envelope/src/components/ui`.
@@ -180,6 +181,7 @@ Wrappers custom en `packages/ui/src/components/custom`:
 - Para columnas computadas (valor derivado de múltiples campos), usar `accessorFn` + `id` para que sorting y globalFilter funcionen. Columnas sin accessor (como acciones) no son sortables ni filtrables — marcar explícitamente con `enableSorting: false, enableGlobalFilter: false`.
 
 **Sistema tipográfico (envelope):**
+
 - Fuentes disponibles: `Emofera Regular` (display/decorativa, solo peso Regular) y `Gilroy` (400/500/600/700).
 - Tailwind `font-brand` → Emofera. Tailwind `font-sans` → Gilroy (default del body).
 - **No usar `font-bold`/`font-semibold` con `font-brand`** — Emofera no tiene esos pesos; el navegador los sintetiza mal.
@@ -196,12 +198,13 @@ Wrappers custom en `packages/ui/src/components/custom`:
 ## Estado actual de apps/envelope
 
 Módulos implementados:
+
 - **ventas** — captura una venta total por `sucursal`+`fecha`+empleado inicial+monto; después permite agregar empleados con reparto equitativo automático y montos editables, y conciliar métodos de pago uno por uno contra el total. El guardado solo se habilita cuando tanto la distribución por empleado como la suma de pagos coinciden con el monto. Además incluye `Generar sobre`, que arma y descarga un PNG de sobre blanco con el detalle real del día y sucursal seleccionados, firma del usuario y permisos de acción virtual, sin vista previa inline. La firma del sobre usa `signature_pad` para trazo suave y fondo transparente. Cada empleado se persiste como un `RegistroVenta`, compartiendo un `sesionId` cuando participa más de uno; `POST /api/envelope/ventas/lote` guarda todo el voucher en una transacción atómica.
   La tabla de ventas guardadas filtra por rango de fechas con dos selectores de calendario separados y arranca por defecto en el día en curso, para mostrar solo las ventas del día presente al abrir la pantalla.
   El catálogo de sucursales se lee desde `GET /api/envelope/sucursales`, que está disponible para cualquier sesión autenticada; las mutaciones (`POST`/`PUT`/`DELETE`) siguen protegidas por permiso de pantalla `sucursales`. Si solo hay una sucursal activa disponible, la UI la preselecciona automáticamente. `GET /api/envelope/metodos-pago` también está disponible para quien tenga la pantalla `metodos-pago` o el reporte `reportes/metodo-pago-por-dia`, para que ese reporte pueda cargar su selector sin conceder permisos de administración; sus mutaciones siguen requiriendo `metodos-pago`.
   En `Generar sobre`, el nombre de cada vendedor debe resolverse desde el payload de ventas embebido (`vendedorNombre`) y no depender del catálogo de empleados, para que el resultado sea igual con `SUPER_ADMIN` y `CAPTURISTA`.
   El nombre arriba de la firma debe salir de `GET /api/auth/me` justo al generar el PNG, usando el nombre actual del empleado ligado a la cuenta cuando exista, para no quedarse con el valor histórico guardado en `Usuario.nombre`.
-- **citas** — captura citas en `/citas` con fecha, hora, clienta, categoría y servicio de atención, estatus (`ATENDIDA`/`NO_LLEGO`/`CANCELADA`), sucursal, vendedor, facialista, resultado de compra y bonos de salida tarde/comida. Las categorías y subcategorías/servicios se administran en `/servicios`; los valores activos se cargan en cascada en el formulario de citas. La compra se normaliza en `RegistroCita.tipoCompra` (`PAGO_NETO`, `COMPRA_CON_APARTADO`, `PAGO_DE_APARTADO`) + `montoCompra`; cuando no existe compra, el tipo queda `null` y el monto en cero. `total` se deriva del monto y no se duplica en BD. Una cita atendida sin compra es distinta de una clienta que no llegó o canceló; en estos dos últimos estatus el formulario limpia/oculta compra y bonos, y backend/BD rechazan esos datos si se envían. Cada registro guarda `creadoPorId` hacia `Usuario`, además de `creadoEn`/`actualizadoEn`. La hora es obligatoria para registros nuevos y nullable en BD solo por compatibilidad histórica. El listado conserva filtro por la quincena actual y permite editar mediante `PUT /api/envelope/citas/:id` reutilizando el formulario; la edición conserva el creador original y actualiza `actualizadoEn`. También permite eliminación física mediante `DELETE /api/envelope/citas/:id`, siempre detrás de un `AlertDialog` de confirmación explícita.
+- **citas** — captura citas en `/citas` con fecha, hora, clienta, categoría y servicio de atención, estatus (`ATENDIDA`/`NO_LLEGO`/`CANCELADA`), sucursal, vendedor, facialista, resultado de compra y bonos de salida tarde/comida. Las categorías y subcategorías/servicios se administran en `/servicios`; los valores activos se cargan en cascada en el formulario de citas. La compra se normaliza en `RegistroCita.tipoCompra` (`PAGO_NETO`, `COMPRA_CON_APARTADO`, `PAGO_DE_APARTADO`) + `montoCompra`; en `COMPRA_CON_APARTADO`, `montoCompra` es la compra tentativa y `montoApartado` es el pago recibido, obligatorio y no mayor a la compra. La UI apila ambos conceptos y calcula el pendiente; `total` representa el pago recibido (apartado o pago neto) y no se duplica en BD. `PAGO_DE_APARTADO` se conserva para compatibilidad histórica; los registros nuevos lo capturan como parte de `COMPRA_CON_APARTADO`. Cuando no existe compra, el tipo queda `null` y ambos montos en cero. Una cita atendida sin compra es distinta de una clienta que no llegó o canceló; en estos dos últimos estatus el formulario limpia/oculta compra y bonos, y backend/BD rechazan esos datos si se envían. Cada registro guarda `creadoPorId` hacia `Usuario`, además de `creadoEn`/`actualizadoEn`. La hora es obligatoria para registros nuevos y nullable en BD solo por compatibilidad histórica. El listado conserva filtro por la quincena actual y permite editar mediante `PUT /api/envelope/citas/:id` reutilizando el formulario; la edición conserva el creador original y actualiza `actualizadoEn`. También permite eliminación física mediante `DELETE /api/envelope/citas/:id`, siempre detrás de un `AlertDialog` de confirmación explícita.
   El selector de vendedor incluye todos los empleados salvo los puestos `ADMINISTRADOR`, `ADMINISTRADOR GENERAL`, `MANTENIMIENTO`, `RECURSOS HUMANOS` y `EXTERNO`.
 - **empleados** — CRUD, usa `bankId`/`positionId` dinámicos desde backend; incluye toggle activo/inactivo con `PATCH /empleados/:id/status`; GET retorna todos los empleados (activos primero), la tabla muestra badge de estatus y botón `PowerOff`/`Power` con AlertDialog de confirmación. Además de `banco`/`puesto` legacy, ya expone `sueldo`, `fechaNacimiento` y `numeroTelefono` en formulario, tabla, backend, Prisma y seed; `fechaNacimiento` se captura completo para que después se derive el cumpleaños y la base de RH para nómina. La page de empleados también tiene filtros de tabla por estatus, puesto y sueldo antes de pasar los datos a `DataTable`.
   El filtro de sueldo usa límites numéricos opcionales `Desde`/`Hasta`, no rangos preestablecidos; si ambos están vacíos no restringe resultados y, al establecer cualquiera, excluye los registros sin sueldo.
@@ -216,6 +219,7 @@ Módulos implementados:
 - **esquemas** — demo mock en cliente separada en dos capas: catálogo de esquemas por rangos `De / Hasta / Tasa` y asignación de esquema a empleado. No persiste en backend ni BD todavía.
 
 UI:
+
 - Sidebar responsive usando shadcn `Sidebar` + `Sheet` (Sheet para mobile).
 - Layout: `AppSidebar` + `LayoutShell` en `src/components/layout/`.
 - Sidebar filtrado por permisos efectivos; incluye pantalla de `Control de accesos` para puestos con acceso administrador.
@@ -232,6 +236,7 @@ UI:
 - El login de `envelope` ya usa sesión híbrida: credenciales temporales hoy, con soporte de base para invitación futura por enlace. El redirect post-login usa `window.location.assign(...)` para evitar quedarse atrapado en la pantalla de login.
 
 Datos:
+
 - `useSucursales`, `useEmpleados`, `useMetodosPago`, `useBanks` y `usePositions` usan caché liviano compartido por hook (`catalog-cache.ts`) para evitar requests repetidos cuando varios componentes montan los mismos catálogos. Después de mutaciones, el hook afectado invalida mediante `refetch()`.
 - Campos legacy `banco`/`puesto` (string) aún existen en `Empleado` durante transición.
 - Rendimiento `envelope`: `useVentas` acepta `fechaInicio`/`fechaFin` y las pantallas no deben volver a cargar el histórico completo de ventas para reportes o dashboard. La pantalla `ventas` carga por defecto solo el rango visible; `Generar sobre` consulta únicamente el día seleccionado al abrir el dialog. El backend aplica un rango por defecto seguro cuando faltan fechas, rechaza rangos mayores a 366 días y soporta `limit`/`page` opcionales en `GET /api/envelope/ventas`.
@@ -250,6 +255,7 @@ Cada hoja del Excel describe procesos actuales de nómina que hoy se resuelven c
 Implementar nómina en `apps/payroll`, no dentro de `apps/envelope`.
 
 Razones:
+
 - `apps/payroll` ya existe como app interna en puerto `3002`; actualmente tiene una demo frontend con mocks para validación de cliente, mientras `backend/api/src/routes/payroll.routes.ts` sigue pendiente de implementar.
 - `envelope` ya tiene una responsabilidad clara: captura/control de ventas por sucursal, sobres, empleados, catálogos y reportes de ventas.
 - Payroll introduce datos más sensibles y reglas diferentes: préstamos, adelantos, recibos, sueldos, ajustes, aprobaciones, cálculos históricos y pagos.
@@ -257,6 +263,7 @@ Razones:
 - Separar apps evita que el sidebar, permisos y reportes de `envelope` crezcan demasiado y mezclen operación diaria de ventas con administración de nómina.
 
 Modelo recomendado:
+
 - Frontend: implementar pantallas en `apps/payroll`.
 - Backend: implementar endpoints nuevos en `/api/payroll/*` dentro de `backend/api/src/routes/payroll.routes.ts`.
 - Base de datos: agregar modelos Prisma nuevos para nómina, manteniendo relación con modelos existentes.
@@ -268,6 +275,7 @@ Modelo recomendado:
 Implementado solo frontend con datos mock locales. No toca backend, Prisma ni base de datos.
 
 Archivos principales:
+
 - `apps/payroll/src/lib/mock-data.ts` — fixtures mock de empleados, corridas, movimientos, esquemas, préstamos, desglose por sucursal y recibos.
 - `apps/payroll/src/lib/format.ts` — helpers de moneda, porcentaje, fecha y sumatorias.
 - `apps/payroll/src/components/payroll/payroll-shell.tsx` — shell/sidebar responsive de Payroll.
@@ -278,12 +286,14 @@ Archivos principales:
 - `apps/payroll/src/app/layout.tsx` — carga tipográfica con `Bodoni Moda` para headlines y `Inter` para body.
 
 Reglas visuales de `payroll`:
+
 - Títulos y headlines usan `Bodoni Moda` vía `font-brand` o `.page-title`.
 - El cuerpo y texto de soporte usan `Inter` vía `font-sans`.
 - Los botones primarios deben mantener contraste alto en hover; no usar hovers que reduzcan legibilidad sobre el fondo oscuro.
 - El texto secundario debe seguir siendo legible en fondo oscuro, evitando grises demasiado apagados.
 
 Pantallas mock implementadas:
+
 - `/` — Summary de nómina: resumen tipo `PANTALLA SUMARY`, KPIs, selector de rango, modo con IVA/sin IVA y tabla por empleado con ventas, esquema, comisión, bonos, multas, sueldo base, préstamos, ajustes, viáticos y total.
 - `/bonos` — Catálogo mock de bonos predefinidos con alta/edición/borrado.
 - `/movimientos` — Ajustes, multas, viáticos e insumos: tabla, formulario mock en modal, división entre personas, confirmación y aviso de adjuntos; consume el catálogo de bonos cuando el tipo es bono.
@@ -294,6 +304,7 @@ Pantallas mock implementadas:
 - `/login` — Login visual mock sin autenticación real.
 
 Limitaciones actuales de la demo:
+
 - No persiste información.
 - No consume API.
 - No autentica ni valida permisos reales.
@@ -304,38 +315,39 @@ Limitaciones actuales de la demo:
 
 ### Datos existentes que Payroll debe reutilizar
 
-| Dato | Estado actual | Fuente |
-|---|---|---|
-| Empleados activos/inactivos | Existe | `Empleado.activo` |
-| Nombre completo | Existe | `Empleado.nombreCompleto` |
-| Banco | Existe | `Empleado.bankId` / `Bank` |
-| Cuenta bancaria | Existe | `Empleado.numeroCuenta` |
-| Puesto | Existe | `Empleado.positionId` / `Position` |
-| Sueldo base | Existe | `Empleado.sueldo` |
-| Teléfono | Existe | `Empleado.numeroTelefono` |
-| Fecha nacimiento | Existe | `Empleado.fechaNacimiento` |
-| Meta individual | Existe | `Empleado.metaIndividual` |
-| Sucursales | Existe | `Sucursal` |
-| Ventas por fecha/sucursal/vendedor | Existe | `Venta` + `VentaDetalle` |
-| Métodos de pago | Existe | `MetodoPago` |
+| Dato                               | Estado actual | Fuente                             |
+| ---------------------------------- | ------------- | ---------------------------------- |
+| Empleados activos/inactivos        | Existe        | `Empleado.activo`                  |
+| Nombre completo                    | Existe        | `Empleado.nombreCompleto`          |
+| Banco                              | Existe        | `Empleado.bankId` / `Bank`         |
+| Cuenta bancaria                    | Existe        | `Empleado.numeroCuenta`            |
+| Puesto                             | Existe        | `Empleado.positionId` / `Position` |
+| Sueldo base                        | Existe        | `Empleado.sueldo`                  |
+| Teléfono                           | Existe        | `Empleado.numeroTelefono`          |
+| Fecha nacimiento                   | Existe        | `Empleado.fechaNacimiento`         |
+| Meta individual                    | Existe        | `Empleado.metaIndividual`          |
+| Sucursales                         | Existe        | `Sucursal`                         |
+| Ventas por fecha/sucursal/vendedor | Existe        | `Venta` + `VentaDetalle`           |
+| Métodos de pago                    | Existe        | `MetodoPago`                       |
 
 Nota importante:
+
 - En Prisma, `Empleado` no tiene `sucursalId`; la sucursal se obtiene desde ventas o desde la cuenta `Usuario.sucursalId` cuando aplique.
 - `packages/types/src/index.ts` actualmente expone `Empleado.sucursalId`, pero el schema real no lo tiene. No asumir "sucursal base del empleado" hasta agregarla formalmente o definir una regla de derivación.
 
 ### Datos faltantes para Payroll
 
-| Proceso | Datos/modelos faltantes |
-|---|---|
+| Proceso                 | Datos/modelos faltantes                                                                                                         |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
 | Bonos, multas y ajustes | Tipos de movimiento, monto, estatus, aprobaciones, notas, adjuntos, división entre empleados, flag comisionable/no comisionable |
-| Esquemas de comisión | Catálogo de esquemas, rangos `de/hasta/tasa`, asignación por empleado |
-| Corrida de nómina | Periodo, día de pago, modo con IVA/sin IVA, líneas calculadas, snapshots, estado borrador/aprobado/pagado |
-| IVA / sin IVA | Configuración de IVA y modo de cálculo por corrida |
-| Préstamos / adelantos | Solicitud, calendario de pagos, saldo, estatus pendiente/pagado/perdido |
-| Recibos | Generación, PDF, envío, confirmación del empleado, historial |
-| Desglose por sucursal | Reglas de asignación de costo por punto de venta |
-| Retenciones | Modelo de deducciones/retenciones si se usarán realmente |
-| Kiosco | Definición de comisión kiosco y porcentaje si sigue vigente |
+| Esquemas de comisión    | Catálogo de esquemas, rangos `de/hasta/tasa`, asignación por empleado                                                           |
+| Corrida de nómina       | Periodo, día de pago, modo con IVA/sin IVA, líneas calculadas, snapshots, estado borrador/aprobado/pagado                       |
+| IVA / sin IVA           | Configuración de IVA y modo de cálculo por corrida                                                                              |
+| Préstamos / adelantos   | Solicitud, calendario de pagos, saldo, estatus pendiente/pagado/perdido                                                         |
+| Recibos                 | Generación, PDF, envío, confirmación del empleado, historial                                                                    |
+| Desglose por sucursal   | Reglas de asignación de costo por punto de venta                                                                                |
+| Retenciones             | Modelo de deducciones/retenciones si se usarán realmente                                                                        |
+| Kiosco                  | Definición de comisión kiosco y porcentaje si sigue vigente                                                                     |
 
 ### Análisis por hoja de `nomina.xlsx`
 
@@ -344,6 +356,7 @@ Nota importante:
 Convertir en una pantalla de **Movimientos de nómina**, no solo "Bonos".
 
 Debe cubrir:
+
 - Bonos positivos.
 - Ajustes positivos.
 - Ajustes negativos.
@@ -363,6 +376,7 @@ La administración de bonos ya vive en una page mock separada `bonos`, y el dial
 Convertir en una pantalla propia de **Esquemas de comisión**.
 
 Debe cubrir:
+
 - Listado de esquemas.
 - Rangos `de / hasta / tasa`.
 - Flat %.
@@ -377,6 +391,7 @@ Punto crítico: el Excel indica que el esquema puede cambiar, incluso de rango, 
 Convertir en la pantalla principal de **Corridas de nómina**.
 
 Debe generar resumen por periodo:
+
 - Desde / hasta.
 - Día de pago.
 - Botón/modo para calcular con IVA o sin IVA.
@@ -401,6 +416,7 @@ Esta pantalla no debe ser captura manual libre. Debe calcularse desde fuentes de
 No modelarlo como CRUD. Usarlo como reporte o pestaña dentro de corrida: **Desglose por punto de venta**.
 
 Debe cubrir:
+
 - Costo de nómina por sucursal.
 - Bonos por sucursal.
 - Ventas por sucursal.
@@ -417,6 +433,7 @@ Puede ser page separada bajo reportes si el usuario lo consulta con frecuencia.
 Convertir en pantalla propia de **Préstamos y adelantos**.
 
 Debe cubrir:
+
 - Fecha de solicitud.
 - Naturaleza: préstamo o adelanto de nómina.
 - Empleado.
@@ -434,6 +451,7 @@ Debe cubrir:
 Puede ser pantalla propia si se enviarán/confirmarán recibos por WhatsApp. Si el MVP es menor, puede iniciar como acción dentro de Corridas de nómina.
 
 Debe cubrir:
+
 - Recibo por empleado.
 - Datos provenientes de la corrida.
 - Campos editables solo por administrador.
@@ -445,17 +463,18 @@ Debe cubrir:
 
 Recomendación completa: 7 nuevas pages.
 
-| Page | Ruta sugerida | Fuente Excel |
-|---|---|---|
-| Summary | `/` o `/corridas` | `PANTALLA SUMARY` |
-| Bonos | `/bonos` | catálogo de bonos del flujo de movimientos |
-| Movimientos de nómina | `/movimientos` | `pantalla de bonos` |
-| Esquemas de comisión | `/esquemas` | `pantalla de esquemas` |
-| Préstamos y adelantos | `/prestamos-adelantos` | `panatalla prestamos-adelantos` |
-| Payroll breakdown | `/reportes/desglose-sucursal` | `payroll breakdown` |
-| Recibos | `/recibos` | `pantalla de recibos` |
+| Page                  | Ruta sugerida                 | Fuente Excel                               |
+| --------------------- | ----------------------------- | ------------------------------------------ |
+| Summary               | `/` o `/corridas`             | `PANTALLA SUMARY`                          |
+| Bonos                 | `/bonos`                      | catálogo de bonos del flujo de movimientos |
+| Movimientos de nómina | `/movimientos`                | `pantalla de bonos`                        |
+| Esquemas de comisión  | `/esquemas`                   | `pantalla de esquemas`                     |
+| Préstamos y adelantos | `/prestamos-adelantos`        | `panatalla prestamos-adelantos`            |
+| Payroll breakdown     | `/reportes/desglose-sucursal` | `payroll breakdown`                        |
+| Recibos               | `/recibos`                    | `pantalla de recibos`                      |
 
 No duplicar en `payroll` estas pantallas ya existentes en `envelope`:
+
 - Empleados.
 - Sucursales.
 - Bancos.
@@ -467,6 +486,7 @@ Payroll debe consumir esos datos desde backend compartido o endpoints específic
 ### Modelos Prisma sugeridos para Payroll
 
 Nombres orientativos; validar antes de migrar:
+
 - `PayrollRun` — corrida/periodo de nómina.
 - `PayrollRunLine` — snapshot calculado por empleado dentro de una corrida.
 - `CommissionScheme` — esquema de comisión.
@@ -480,6 +500,7 @@ Nombres orientativos; validar antes de migrar:
 - `PayrollAttachment` — evidencias para viáticos, insumos u otros movimientos.
 
 Estados sugeridos:
+
 - Corrida: `DRAFT`, `CALCULATED`, `APPROVED`, `PAID`, `CANCELED`.
 - Movimiento: `PENDING`, `APPROVED`, `REJECTED`.
 - Préstamo/adelanto: `PENDING`, `PAID`, `LOST`, `CANCELED`.
@@ -498,6 +519,7 @@ Estados sugeridos:
 ### Fases cubiertas por la demo frontend mock
 
 Cubierto parcialmente, solo a nivel UI/mock:
+
 - Fase 1: layout, shell/sidebar, login visual y navegación. Pendiente auth real, permisos y lectura real de empleados/ventas.
 - Fase 2: pantalla visual de esquemas y rangos. Pendiente modelo real, asignación real por empleado y reglas históricas.
 - Fase 3: pantalla visual de bonos independientes y movimientos, estatus, división y adjuntos simulados. Pendiente persistencia, aprobaciones reales y subida de archivos.
@@ -506,6 +528,7 @@ Cubierto parcialmente, solo a nivel UI/mock:
 - Fase 6: pantalla visual de recibos y desglose por sucursal. Pendiente PDF/Excel, envío por WhatsApp y confirmación real.
 
 Pendiente para implementación real:
+
 - Diseñar y migrar modelos Prisma de Payroll.
 - Implementar `/api/payroll/*`.
 - Definir permisos específicos de Payroll.
@@ -518,6 +541,7 @@ Pendiente para implementación real:
 - Implementar pruebas de cálculo para evitar regresiones de nómina.
 
 Reglas para futuras sesiones:
+
 - Antes de implementar Payroll, no mezclar rutas/pantallas nuevas dentro de `apps/envelope` salvo instrucción explícita.
 - No recalcular corridas históricas cuando cambien esquemas, puestos, sueldos o empleados; guardar snapshot en `PayrollRunLine`.
 - Toda migración de nómina debe ser aditiva y explicarse antes de ejecutarse.
@@ -532,6 +556,7 @@ Reglas para futuras sesiones:
 - PrismaClient compartido: `backend/api/src/prisma/client.ts`.
 
 **Modelos relevantes:**
+
 - `Usuario`, `Sucursal`, `Empleado`, `Venta`, `VentaDetalle`, `RegistroCita`, `MetodoPago`, `Bank`, `Position`.
 - `Usuario` puede vincularse opcionalmente a `Empleado` mediante `empleadoId` y guarda metadatos para el futuro flujo de invitación/alta de contraseña.
 - `Position` incluye `canManageAccess` y la relación `PositionScreenPermission`.
@@ -542,12 +567,13 @@ Reglas para futuras sesiones:
 - `Empleado` también tiene campos legacy `banco`/`puesto` (String) — conservar por compatibilidad hasta backfill completo en prod.
 - `Empleado` ahora incluye `sueldo Decimal?`, `fechaNacimiento DateTime?` y `numeroTelefono String?` para el crecimiento del módulo RH.
 - `Venta` tiene `sesionId String?` — vincula registros del mismo voucher multi-vendedor; null = venta individual.
-- `RegistroCita` relaciona sucursal, vendedor, facialista, usuario creador y `SubcategoriaAtencion`; indexa fecha, `estatus+fecha`, `sucursalId+fecha`, `facialistaId+fecha`, `vendedorId+fecha`, `creadoPorId` y servicio. `CategoriaAtencion` y `SubcategoriaAtencion` forman el catálogo administrable para el flujo de citas. La migración `20260721000000_replace_cita_attention_with_service_catalog` reemplaza el enum temporal de tipo de atención; presupone que `RegistroCita` aún está vacío y no toca ventas ni sobres. Aplicarla con `prisma migrate deploy` antes de habilitar el flujo en un ambiente.
+- `RegistroCita` relaciona sucursal, vendedor, facialista, usuario creador y `SubcategoriaAtencion`; indexa fecha, `estatus+fecha`, `sucursalId+fecha`, `facialistaId+fecha`, `vendedorId+fecha`, `creadoPorId` y servicio. Para compras con apartado guarda el importe tentativo en `montoCompra` y el pago recibido en `montoApartado`. `CategoriaAtencion` y `SubcategoriaAtencion` forman el catálogo administrable para el flujo de citas. La migración `20260721000000_replace_cita_attention_with_service_catalog` reemplaza el enum temporal de tipo de atención; presupone que `RegistroCita` aún está vacío y no toca ventas ni sobres. La migración `20260721000001_add_monto_apartado_to_registro_cita` agrega el importe de apartado sin alterar registros históricos. Aplicarlas con `prisma migrate deploy` antes de habilitar el flujo en un ambiente.
 - `Venta` y `VentaDetalle` tienen índices de rendimiento para filtros/reportes: `Venta.fecha`, `Venta.sucursalId+fecha`, `Venta.vendedorId+fecha`, `Venta.sesionId`, `VentaDetalle.ventaId` y `VentaDetalle.metodoPagoId`.
 - `GET /api/envelope/ventas` siempre filtra por rango: si el cliente no manda fechas usa un lookback seguro de 31 días, rechaza rangos mayores a 366 días y acepta `limit`/`page` opcionales. No volver a permitir histórico completo sin rango explícito.
 - Soft delete: `activo = false` (Usuario, Empleado, Bank, Position, MetodoPago) o `activa = false` (Sucursal). **No hacer borrados físicos salvo instrucción explícita**; la ruta admin de `accesos` elimina físicamente cuentas de login solo cuando se pide explícitamente desde esa tabla para volver a crear el acceso después, excepto la cuenta principal `SUPER_ADMIN`, que no se puede eliminar desde la UI.
 
 **Reglas de BD:**
+
 - No ejecutar `migrate reset` ni `db push` en ambientes compartidos/productivos.
 - Usar migraciones Prisma controladas (`prisma migrate deploy`).
 - `seed.ts` contiene datos demo — usar con cuidado, puede sobreescribir datos.
@@ -558,6 +584,7 @@ Reglas para futuras sesiones:
 ## Ambientes y deploy
 
 ### Producción
+
 ```
 master → Vercel Production → cosmetics-api.fly.dev → Supabase prod
 ```
@@ -565,11 +592,13 @@ master → Vercel Production → cosmetics-api.fly.dev → Supabase prod
 El backend Fly.io de producción está configurado para evitar cold start con `auto_stop_machines = 'off'` y `min_machines_running = 1`; esto requiere deploy de backend para reflejarse en Fly.
 
 ### Desarrollo
+
 ```
 develop → Vercel Preview → cosmetics-api-dev.fly.dev → Supabase dev
 ```
 
 **Notas importantes:**
+
 - Frontend en Vercel se despliega automáticamente por push a `master`/`develop`.
 - Backend en Fly.io se despliega **manualmente** por ahora.
 - Migraciones de BD se aplican manualmente y con cuidado.
@@ -678,21 +707,21 @@ packages/ui/
 
 ## Puntos de entrada frecuentes
 
-| Tarea | Archivo |
-|---|---|
-| UI compartida (exports) | `packages/ui/src/index.ts` |
-| Componentes shadcn | `packages/ui/src/components/ui/` |
-| Wrappers custom UI | `packages/ui/src/components/custom/` |
-| Layout envelope | `apps/envelope/src/components/layout/` |
-| Rutas envelope frontend | `apps/envelope/src/app/(dashboard)/` |
-| Hooks envelope | `apps/envelope/src/hooks/` |
-| API client envelope | `apps/envelope/src/lib/api.ts` |
-| Sesión/permisos envelope | `apps/envelope/src/lib/session.tsx` |
+| Tarea                      | Archivo                                     |
+| -------------------------- | ------------------------------------------- |
+| UI compartida (exports)    | `packages/ui/src/index.ts`                  |
+| Componentes shadcn         | `packages/ui/src/components/ui/`            |
+| Wrappers custom UI         | `packages/ui/src/components/custom/`        |
+| Layout envelope            | `apps/envelope/src/components/layout/`      |
+| Rutas envelope frontend    | `apps/envelope/src/app/(dashboard)/`        |
+| Hooks envelope             | `apps/envelope/src/hooks/`                  |
+| API client envelope        | `apps/envelope/src/lib/api.ts`              |
+| Sesión/permisos envelope   | `apps/envelope/src/lib/session.tsx`         |
 | Endpoints envelope backend | `backend/api/src/routes/envelope.routes.ts` |
-| Prisma schema | `backend/api/prisma/schema.prisma` |
-| Migraciones | `backend/api/prisma/migrations/` |
-| Seed seguro catálogos | `backend/api/prisma/seed-catalogs.ts` |
-| Tipos compartidos | `packages/types/src/index.ts` |
+| Prisma schema              | `backend/api/prisma/schema.prisma`          |
+| Migraciones                | `backend/api/prisma/migrations/`            |
+| Seed seguro catálogos      | `backend/api/prisma/seed-catalogs.ts`       |
+| Tipos compartidos          | `packages/types/src/index.ts`               |
 
 ---
 

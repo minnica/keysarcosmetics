@@ -1,0 +1,2 @@
+ALTER TABLE "RegistroCita"
+  ADD COLUMN "montoApartado" DECIMAL(10,2) NOT NULL DEFAULT 0;

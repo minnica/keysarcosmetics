@@ -176,6 +176,7 @@ model RegistroCita {
   facialista      Empleado         @relation("RegistroCitaFacialista", fields: [facialistaId], references: [id])
   tipoCompra      TipoCompraCita?
   montoCompra     Decimal          @default(0) @db.Decimal(10, 2)
+  montoApartado   Decimal          @default(0) @db.Decimal(10, 2)
   bonoSalidaTarde Boolean          @default(false)
   bonoComida      Boolean          @default(false)
   creadoPorId     String
