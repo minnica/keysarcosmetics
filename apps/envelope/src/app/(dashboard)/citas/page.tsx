@@ -5,7 +5,7 @@ import { Controller, useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { ArrowRight, Check, CheckCircle2, Clock3, Pencil, Plus, Save, Trash2, Utensils, X } from 'lucide-react'
-import type { EstatusCita, RegistroCita, TipoAtencionCita, TipoCompraCita } from '@cosmetics/types'
+import type { EstatusCita, RegistroCita, TipoCompraCita } from '@cosmetics/types'
 import type { ColumnDef, DateRange } from '@cosmetics/ui'
 import {
   Badge,
@@ -51,7 +51,6 @@ import { useSession } from '@/lib/session'
 import { formatCurrency, formatDate, todayISO } from '@/lib/utils'
 
 const purchaseTypes = ['PAGO_NETO', 'COMPRA_CON_APARTADO', 'PAGO_DE_APARTADO'] as const
-const attentionTypes = ['FACIAL', 'FACIAL_DOBLE'] as const
 const appointmentStatuses = ['ATENDIDA', 'NO_LLEGO', 'CANCELADA'] as const
 const excludedSellerPositions = new Set([
   'ADMINISTRADOR',
@@ -64,7 +63,8 @@ const excludedSellerPositions = new Set([
 const appointmentSchema = z.object({
   fecha: z.string().min(1, 'Selecciona una fecha'),
   hora: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Selecciona una hora válida'),
-  tipoAtencion: z.enum(attentionTypes),
+  categoriaId: z.string().min(1, 'Selecciona una categoría'),
+  subcategoriaId: z.string().min(1, 'Selecciona un servicio'),
   estatus: z.enum(appointmentStatuses),
   nombreCliente: z.string().trim().min(2, 'Escribe el nombre de la clienta').max(160),
   sucursalId: z.string().min(1, 'Selecciona una sucursal'),
@@ -95,7 +95,7 @@ const copy = {
     step: 'Paso', details: 'Datos de la cita', team: 'Atención y equipo', next: 'Continuar', back: 'Volver', inProgress: 'En curso', completed: 'Completado',
     service: 'Datos de la atención',
     date: 'Fecha', time: 'Hora', client: 'Nombre de la clienta', branch: 'Sucursal', seller: 'Vendedor', facialist: 'Facialista',
-    attentionType: 'Tipo de atención', facial: 'Facial', facialDouble: 'Facial doble', status: 'Estatus', attended: 'Atendida', noShow: 'No llegó', cancelled: 'Cancelada',
+    attentionType: 'Servicio de atención', category: 'Categoría', subcategory: 'Servicio', noServices: 'Primero da de alta una categoría y un servicio.', status: 'Estatus', attended: 'Atendida', noShow: 'No llegó', cancelled: 'Cancelada',
     searchSeller: 'Buscar vendedor...', searchFacialist: 'Buscar facialista...',
     purchase: 'Resultado de compra',
     boughtQuestion: '¿La clienta compró?', no: 'No compró', yes: 'Sí compró', applies: 'Aplica', notApplies: 'No aplica',
@@ -113,7 +113,7 @@ const copy = {
     step: 'Step', details: 'Appointment details', team: 'Service and team', next: 'Continue', back: 'Back', inProgress: 'In progress', completed: 'Completed',
     service: 'Appointment details',
     date: 'Date', time: 'Time', client: 'Client name', branch: 'Branch', seller: 'Seller', facialist: 'Facialist',
-    attentionType: 'Appointment type', facial: 'Facial', facialDouble: 'Double facial', status: 'Status', attended: 'Completed', noShow: 'No show', cancelled: 'Cancelled',
+    attentionType: 'Care service', category: 'Category', subcategory: 'Service', noServices: 'Create a category and service first.', status: 'Status', attended: 'Completed', noShow: 'No show', cancelled: 'Cancelled',
     searchSeller: 'Search seller...', searchFacialist: 'Search facialist...',
     purchase: 'Purchase result',
     boughtQuestion: 'Did the client buy?', no: 'No purchase', yes: 'Purchased', applies: 'Applies', notApplies: 'Does not apply',
@@ -134,7 +134,7 @@ export default function AppointmentsPage() {
   const isMobile = useIsMobile()
   const { user } = useSession()
   const { sucursales } = useSucursales()
-  const { employees, loading: catalogsLoading, error: catalogsError } = useAppointmentCatalogs()
+  const { employees, categories, loading: catalogsLoading, error: catalogsError } = useAppointmentCatalogs()
   const [range, setRange] = useState<DateRange>(() => currentFortnightRange())
   const [editing, setEditing] = useState<RegistroCita | null>(null)
   const [recordToDelete, setRecordToDelete] = useState<RegistroCita | null>(null)
@@ -148,7 +148,7 @@ export default function AppointmentsPage() {
   const form = useForm<AppointmentForm>({
     resolver: zodResolver(appointmentSchema),
     defaultValues: {
-      fecha: todayISO(), hora: '', tipoAtencion: 'FACIAL', estatus: 'ATENDIDA', nombreCliente: '', sucursalId: '', vendedorId: '', facialistaId: '',
+      fecha: todayISO(), hora: '', categoriaId: '', subcategoriaId: '', estatus: 'ATENDIDA', nombreCliente: '', sucursalId: '', vendedorId: '', facialistaId: '',
       compro: false, tipoCompra: '', montoCompra: 0, bonoSalidaTarde: false, bonoComida: false,
     },
   })
@@ -195,13 +195,15 @@ export default function AppointmentsPage() {
     COMPRA_CON_APARTADO: text.withDeposit,
     PAGO_DE_APARTADO: text.depositPayment,
   }
-  const attentionLabels: Record<TipoAtencionCita, string> = { FACIAL: text.facial, FACIAL_DOBLE: text.facialDouble }
+  const selectedCategoryId = watch('categoriaId')
+  const selectedCategory = categories.find((category) => category.id === selectedCategoryId)
+  const availableSubcategories = selectedCategory?.subcategorias ?? []
   const statusLabels: Record<EstatusCita, string> = { ATENDIDA: text.attended, NO_LLEGO: text.noShow, CANCELADA: text.cancelled }
 
   const columns = useMemo<ColumnDef<RegistroCita>[]>(() => [
     { accessorKey: 'fecha', header: text.date.toUpperCase(), cell: ({ row }) => formatDate(row.original.fecha, 'dd/MM/yyyy', locale) },
     { accessorKey: 'hora', header: text.time.toUpperCase(), cell: ({ row }) => row.original.hora ?? '—' },
-    { accessorKey: 'tipoAtencion', header: text.attentionType.toUpperCase(), cell: ({ row }) => attentionLabels[row.original.tipoAtencion] },
+    { accessorKey: 'subcategoriaNombre', header: text.attentionType.toUpperCase(), cell: ({ row }) => <div><div>{row.original.subcategoriaNombre}</div><div className="text-xs text-[color:var(--text-muted)]">{row.original.categoriaNombre}</div></div> },
     {
       accessorKey: 'estatus',
       header: text.status.toUpperCase(),
@@ -249,14 +251,14 @@ export default function AppointmentsPage() {
       ),
       meta: { align: 'right' },
     },
-  ], [attentionLabels, conceptLabels, locale, statusLabels, t.common.actions, text])
+  ], [conceptLabels, locale, statusLabels, t.common.actions, text])
 
   async function onSubmit(data: AppointmentForm) {
     try {
       const input = {
         fecha: data.fecha,
         hora: data.hora,
-        tipoAtencion: data.tipoAtencion,
+        subcategoriaId: data.subcategoriaId,
         estatus: data.estatus,
         nombreCliente: data.nombreCliente.trim(),
         sucursalId: data.sucursalId,
@@ -278,7 +280,7 @@ export default function AppointmentsPage() {
       setMobileDialogOpen(false)
       setDesktopStep(1)
       reset({
-        fecha: data.fecha, hora: '', tipoAtencion: data.tipoAtencion, estatus: 'ATENDIDA', nombreCliente: '', sucursalId: data.sucursalId, vendedorId: '', facialistaId: data.facialistaId,
+        fecha: data.fecha, hora: '', categoriaId: data.categoriaId, subcategoriaId: data.subcategoriaId, estatus: 'ATENDIDA', nombreCliente: '', sucursalId: data.sucursalId, vendedorId: '', facialistaId: data.facialistaId,
         compro: false, tipoCompra: '', montoCompra: 0, bonoSalidaTarde: false, bonoComida: false,
       })
     } catch (saveError) {
@@ -292,7 +294,8 @@ export default function AppointmentsPage() {
     reset({
       fecha: record.fecha,
       hora: record.hora ?? '',
-      tipoAtencion: record.tipoAtencion,
+      categoriaId: record.categoriaId,
+      subcategoriaId: record.subcategoriaId,
       estatus: record.estatus,
       nombreCliente: record.nombreCliente,
       sucursalId: record.sucursalId,
@@ -313,7 +316,7 @@ export default function AppointmentsPage() {
     setMobileDialogOpen(false)
     setDesktopStep(1)
     reset({
-      fecha: todayISO(), hora: '', tipoAtencion: 'FACIAL', estatus: 'ATENDIDA', nombreCliente: '',
+      fecha: todayISO(), hora: '', categoriaId: '', subcategoriaId: '', estatus: 'ATENDIDA', nombreCliente: '',
       sucursalId: visibleBranches.length === 1 ? visibleBranches[0]?.id ?? '' : '',
       vendedorId: '', facialistaId: user?.empleadoId && facialists.some((employee) => employee.id === user.empleadoId) ? user.empleadoId : '',
       compro: false, tipoCompra: '', montoCompra: 0, bonoSalidaTarde: false, bonoComida: false,
@@ -354,10 +357,15 @@ export default function AppointmentsPage() {
     }
   }
 
+  function selectCategory(categoryId: string) {
+    setValue('categoriaId', categoryId, { shouldValidate: true })
+    setValue('subcategoriaId', '', { shouldValidate: true })
+  }
+
   async function continueDesktopStep(step: 1 | 2) {
     const fields = step === 1
       ? ['fecha', 'hora', 'nombreCliente', 'sucursalId'] as const
-      : ['tipoAtencion', 'estatus', 'vendedorId', 'facialistaId'] as const
+      : ['categoriaId', 'subcategoriaId', 'estatus', 'vendedorId', 'facialistaId'] as const
     if (await trigger(fields)) setDesktopStep(step + 1)
   }
 
@@ -421,10 +429,18 @@ export default function AppointmentsPage() {
           <CardHeader className="pb-4"><div className="flex items-start justify-between gap-4"><div><p className="label-caps">{text.step} 2</p><CardTitle className="mt-1 text-lg">{text.team}</CardTitle></div>{desktopStep > 2 ? <Badge className="gap-1.5 border-green-200 bg-green-50 text-green-700"><CheckCircle2 className="h-3.5 w-3.5" />{text.completed}</Badge> : <Badge variant="outline" className="border-[color:var(--color-gold)]">{text.inProgress}</Badge>}</div></CardHeader>
           <CardContent className="grid gap-x-3 gap-y-4 sm:grid-cols-2 xl:grid-cols-4">
             <div className="space-y-1.5">
-              <Label className="uppercase">{text.attentionType}</Label>
-              <Controller name="tipoAtencion" control={control} render={({ field }) => (
-                <Select value={field.value} onValueChange={field.onChange}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{attentionTypes.map((type) => <SelectItem key={type} value={type}>{attentionLabels[type]}</SelectItem>)}</SelectContent></Select>
+              <Label className="uppercase">{text.category}</Label>
+              <Controller name="categoriaId" control={control} render={({ field }) => (
+                <Select value={field.value} onValueChange={selectCategory}><SelectTrigger><SelectValue placeholder={text.category} /></SelectTrigger><SelectContent>{categories.map((category) => <SelectItem key={category.id} value={category.id}>{category.nombre}</SelectItem>)}</SelectContent></Select>
               )} />
+              {errors.categoriaId && <p className="text-xs text-red-500">{errors.categoriaId.message}</p>}
+            </div>
+            <div className="space-y-1.5">
+              <Label className="uppercase">{text.subcategory}</Label>
+              <Controller name="subcategoriaId" control={control} render={({ field }) => (
+                <Select value={field.value} onValueChange={field.onChange} disabled={!selectedCategoryId}><SelectTrigger><SelectValue placeholder={text.subcategory} /></SelectTrigger><SelectContent>{availableSubcategories.map((subcategory) => <SelectItem key={subcategory.id} value={subcategory.id}>{subcategory.nombre}</SelectItem>)}</SelectContent></Select>
+              )} />
+              {errors.subcategoriaId && <p className="text-xs text-red-500">{errors.subcategoriaId.message}</p>}
             </div>
             <div className="space-y-1.5">
               <Label className="uppercase">{text.status}</Label>
@@ -510,7 +526,8 @@ export default function AppointmentsPage() {
             <div className="space-y-1"><Label htmlFor="mobile-appointment-date" className="text-[10px] uppercase">{text.date}</Label><Controller name="fecha" control={control} render={({ field }) => <DatePicker id="mobile-appointment-date" value={field.value} onChange={field.onChange} />} />{errors.fecha && <p className="text-xs text-red-500">{errors.fecha.message}</p>}</div>
             <div className="space-y-1"><Label htmlFor="mobile-appointment-time" className="text-[10px] uppercase">{text.time}</Label><Input id="mobile-appointment-time" type="time" step="60" className="cursor-pointer tabular-nums" {...register('hora')} onClick={(event) => openTimePicker(event.currentTarget)} />{errors.hora && <p className="text-xs text-red-500">{errors.hora.message}</p>}</div>
             <div className="col-span-2 space-y-1"><Label htmlFor="mobile-client-name" className="text-[10px] uppercase">{text.client}</Label><Input id="mobile-client-name" autoComplete="off" className="uppercase" {...register('nombreCliente')} />{errors.nombreCliente && <p className="text-xs text-red-500">{errors.nombreCliente.message}</p>}</div>
-            <div className="space-y-1"><Label className="text-[10px] uppercase">{text.attentionType}</Label><Controller name="tipoAtencion" control={control} render={({ field }) => <Select value={field.value} onValueChange={field.onChange}><SelectTrigger className="h-10"><SelectValue /></SelectTrigger><SelectContent>{attentionTypes.map((type) => <SelectItem key={type} value={type}>{attentionLabels[type]}</SelectItem>)}</SelectContent></Select>} /></div>
+            <div className="space-y-1"><Label className="text-[10px] uppercase">{text.category}</Label><Controller name="categoriaId" control={control} render={({ field }) => <Select value={field.value} onValueChange={selectCategory}><SelectTrigger className="h-10"><SelectValue placeholder={text.category} /></SelectTrigger><SelectContent>{categories.map((category) => <SelectItem key={category.id} value={category.id}>{category.nombre}</SelectItem>)}</SelectContent></Select>} />{errors.categoriaId && <p className="text-xs text-red-500">{errors.categoriaId.message}</p>}</div>
+            <div className="space-y-1"><Label className="text-[10px] uppercase">{text.subcategory}</Label><Controller name="subcategoriaId" control={control} render={({ field }) => <Select value={field.value} onValueChange={field.onChange} disabled={!selectedCategoryId}><SelectTrigger className="h-10"><SelectValue placeholder={text.subcategory} /></SelectTrigger><SelectContent>{availableSubcategories.map((subcategory) => <SelectItem key={subcategory.id} value={subcategory.id}>{subcategory.nombre}</SelectItem>)}</SelectContent></Select>} />{errors.subcategoriaId && <p className="text-xs text-red-500">{errors.subcategoriaId.message}</p>}</div>
             <div className="space-y-1"><Label className="text-[10px] uppercase">{text.status}</Label><Controller name="estatus" control={control} render={({ field }) => <Select value={field.value} onValueChange={(value) => selectStatus(value as EstatusCita)}><SelectTrigger className="h-10"><SelectValue /></SelectTrigger><SelectContent>{appointmentStatuses.map((appointmentStatus) => <SelectItem key={appointmentStatus} value={appointmentStatus}>{statusLabels[appointmentStatus]}</SelectItem>)}</SelectContent></Select>} /></div>
             <div className="space-y-1"><Label className="text-[10px] uppercase">{text.branch}</Label><Controller name="sucursalId" control={control} render={({ field }) => <Select value={field.value} onValueChange={field.onChange}><SelectTrigger className="h-10"><SelectValue placeholder={text.branch} /></SelectTrigger><SelectContent>{visibleBranches.map((branch) => <SelectItem key={branch.id} value={branch.id}>{branch.nombre}</SelectItem>)}</SelectContent></Select>} />{errors.sucursalId && <p className="text-xs text-red-500">{errors.sucursalId.message}</p>}</div>
             <div className="col-span-2 space-y-1"><Label className="text-[10px] uppercase">{text.seller}</Label><Controller name="vendedorId" control={control} render={({ field }) => <Combobox options={sellers.map(employeeOption)} value={field.value} onValueChange={field.onChange} placeholder={text.seller} searchPlaceholder={text.searchSeller} emptyMessage={text.searchSeller} disabled={catalogsLoading} />} />{errors.vendedorId && <p className="text-xs text-red-500">{errors.vendedorId.message}</p>}</div>
@@ -542,7 +559,7 @@ export default function AppointmentsPage() {
               <article key={record.id} className="flex items-center gap-2 py-3">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-baseline gap-2"><time className="shrink-0 text-sm font-semibold tabular-nums underline decoration-[color:var(--border-color)] underline-offset-4">{record.hora ?? '—'}</time><p className="truncate text-sm font-medium">{record.nombreCliente}</p>{record.estatus !== 'ATENDIDA' && <Badge variant={record.estatus === 'NO_LLEGO' ? 'destructive' : 'secondary'} className="shrink-0 text-[10px]">{statusLabels[record.estatus].toUpperCase()}</Badge>}</div>
-                  <p className="mt-1 truncate text-xs text-[color:var(--text-muted)]">{record.vendedorNombre} · {attentionLabels[record.tipoAtencion]} · {record.facialistaNombre}{record.tipoCompra ? ` · ${formatCurrency(record.total)}` : ''}</p>
+                  <p className="mt-1 truncate text-xs text-[color:var(--text-muted)]">{record.vendedorNombre} · {record.categoriaNombre}: {record.subcategoriaNombre} · {record.facialistaNombre}{record.tipoCompra ? ` · ${formatCurrency(record.total)}` : ''}</p>
                 </div>
                 <Button type="button" variant="ghost" size="icon" aria-label={`${text.edit}: ${record.nombreCliente}`} onClick={() => openEdit(record)} className="h-9 w-9 shrink-0 cursor-pointer"><Pencil className="h-4 w-4" /></Button>
                 <Button type="button" variant="ghost" size="icon" aria-label={`${text.delete}: ${record.nombreCliente}`} onClick={() => setRecordToDelete(record)} className="h-9 w-9 shrink-0 cursor-pointer text-red-600 hover:bg-red-50 hover:text-red-700 dark:hover:bg-red-950/30"><Trash2 className="h-4 w-4" /></Button>

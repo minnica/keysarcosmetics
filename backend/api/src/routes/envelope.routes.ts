@@ -1,6 +1,6 @@
 // Rutas del módulo Envelope — ventas por sobre digitalizado
 import { Router, type Router as ExpressRouter } from 'express'
-import { EstatusCita, Prisma, TipoAtencionCita, TipoCompraCita } from '@prisma/client'
+import { EstatusCita, Prisma, TipoCompraCita } from '@prisma/client'
 import { z } from 'zod'
 import { authMiddleware } from '../middlewares/auth.middleware'
 import { requireAnyScreenAccess, requireScreenAccess, resolveAccessForRequest } from '../lib/access'
@@ -18,6 +18,7 @@ const access = {
   dashboard: requireScreenAccess('dashboard'),
   ventas: requireScreenAccess('ventas'),
   citas: requireScreenAccess('citas'),
+  servicios: requireScreenAccess('servicios'),
   lecturaCitas: requireAnyScreenAccess(['citas', 'reportes/citas']),
   empleados: requireScreenAccess('empleados'),
   sucursales: requireScreenAccess('sucursales'),
@@ -36,7 +37,7 @@ const access = {
 const registroCitaSchema = z.object({
   fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   hora: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
-  tipoAtencion: z.nativeEnum(TipoAtencionCita),
+  subcategoriaId: z.string().trim().min(1),
   estatus: z.nativeEnum(EstatusCita),
   nombreCliente: z.string().trim().min(1).max(160),
   sucursalId: z.string().trim().min(1),
@@ -146,6 +147,7 @@ const appointmentInclude = Prisma.validator<Prisma.RegistroCitaInclude>()({
   vendedor: { select: { nombreCompleto: true } },
   facialista: { select: { nombreCompleto: true } },
   creadoPor: { select: { nombre: true } },
+  subcategoria: { select: { id: true, nombre: true, categoria: { select: { id: true, nombre: true } } } },
 })
 
 type AppointmentWithRelations = Prisma.RegistroCitaGetPayload<{ include: typeof appointmentInclude }>
@@ -161,6 +163,10 @@ function serializeAppointment(record: AppointmentWithRelations) {
     vendedorNombre: record.vendedor.nombreCompleto,
     facialistaNombre: record.facialista.nombreCompleto,
     creadoPorNombre: record.creadoPor.nombre,
+    subcategoriaId: record.subcategoria.id,
+    subcategoriaNombre: record.subcategoria.nombre,
+    categoriaId: record.subcategoria.categoria.id,
+    categoriaNombre: record.subcategoria.categoria.nombre,
   }
 }
 
@@ -714,7 +720,8 @@ router.delete('/positions/:id', access.positions, async (req, res) => {
 
 router.get('/citas/catalogos', access.lecturaCitas, async (_req, res) => {
   try {
-    const empleados = await prisma.empleado.findMany({
+    const [empleados, categorias] = await Promise.all([
+      prisma.empleado.findMany({
       where: { activo: true },
       orderBy: { nombreCompleto: 'asc' },
       select: {
@@ -723,11 +730,104 @@ router.get('/citas/catalogos', access.lecturaCitas, async (_req, res) => {
         puesto: true,
         position: { select: { id: true, nombre: true } },
       },
-    })
-    res.json({ success: true, data: { empleados }, message: 'OK' })
+      }),
+      prisma.categoriaAtencion.findMany({
+        where: { activa: true },
+        orderBy: { nombre: 'asc' },
+        select: {
+          id: true,
+          nombre: true,
+          subcategorias: {
+            where: { activa: true },
+            orderBy: { nombre: 'asc' },
+            select: { id: true, nombre: true, categoriaId: true },
+          },
+        },
+      }),
+    ])
+    res.json({ success: true, data: { empleados, categorias }, message: 'OK' })
   } catch (err) {
     console.error(err)
     res.status(500).json({ success: false, data: null, message: 'Error al obtener catálogos de citas' })
+  }
+})
+
+router.get('/servicios', access.servicios, async (_req, res) => {
+  try {
+    const data = await prisma.categoriaAtencion.findMany({
+      orderBy: [{ activa: 'desc' }, { nombre: 'asc' }],
+      include: { subcategorias: { orderBy: [{ activa: 'desc' }, { nombre: 'asc' }] } },
+    })
+    res.json({ success: true, data, message: 'OK' })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ success: false, data: null, message: 'Error al obtener servicios de atención' })
+  }
+})
+
+router.post('/servicios/categorias', access.servicios, async (req, res) => {
+  try {
+    const parsed = z.object({ nombre: z.string().trim().min(2).max(80) }).safeParse(req.body)
+    if (!parsed.success) {
+      res.status(400).json({ success: false, data: null, message: 'Nombre de categoría inválido' })
+      return
+    }
+    const data = await prisma.categoriaAtencion.create({ data: { nombre: parsed.data.nombre.toLocaleUpperCase('es-MX') } })
+    res.status(201).json({ success: true, data, message: 'Categoría creada' })
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+      res.status(409).json({ success: false, data: null, message: 'Ya existe una categoría con ese nombre' })
+      return
+    }
+    console.error(err)
+    res.status(500).json({ success: false, data: null, message: 'Error al crear categoría' })
+  }
+})
+
+router.post('/servicios/subcategorias', access.servicios, async (req, res) => {
+  try {
+    const parsed = z.object({ categoriaId: z.string().trim().min(1), nombre: z.string().trim().min(2).max(80) }).safeParse(req.body)
+    if (!parsed.success) {
+      res.status(400).json({ success: false, data: null, message: 'Datos de subcategoría inválidos' })
+      return
+    }
+    const categoria = await prisma.categoriaAtencion.findFirst({ where: { id: parsed.data.categoriaId, activa: true }, select: { id: true } })
+    if (!categoria) {
+      res.status(400).json({ success: false, data: null, message: 'Categoría inválida o inactiva' })
+      return
+    }
+    const data = await prisma.subcategoriaAtencion.create({ data: { categoriaId: categoria.id, nombre: parsed.data.nombre.toLocaleUpperCase('es-MX') } })
+    res.status(201).json({ success: true, data, message: 'Subcategoría creada' })
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+      res.status(409).json({ success: false, data: null, message: 'Ya existe esta subcategoría dentro de la categoría seleccionada' })
+      return
+    }
+    console.error(err)
+    res.status(500).json({ success: false, data: null, message: 'Error al crear subcategoría' })
+  }
+})
+
+router.delete('/servicios/categorias/:id', access.servicios, async (req, res) => {
+  try {
+    await prisma.$transaction([
+      prisma.categoriaAtencion.update({ where: { id: req.params['id'] }, data: { activa: false } }),
+      prisma.subcategoriaAtencion.updateMany({ where: { categoriaId: req.params['id'] }, data: { activa: false } }),
+    ])
+    res.json({ success: true, data: null, message: 'Categoría desactivada' })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ success: false, data: null, message: 'Error al desactivar categoría' })
+  }
+})
+
+router.delete('/servicios/subcategorias/:id', access.servicios, async (req, res) => {
+  try {
+    await prisma.subcategoriaAtencion.update({ where: { id: req.params['id'] }, data: { activa: false } })
+    res.json({ success: true, data: null, message: 'Subcategoría desactivada' })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ success: false, data: null, message: 'Error al desactivar subcategoría' })
   }
 })
 
@@ -771,13 +871,14 @@ router.post('/citas', access.citas, async (req, res) => {
       return
     }
 
-    const [sucursal, vendedor, facialista] = await Promise.all([
+    const [sucursal, vendedor, facialista, subcategoria] = await Promise.all([
       prisma.sucursal.findFirst({ where: { id: parsed.data.sucursalId, activa: true }, select: { id: true } }),
       prisma.empleado.findFirst({ where: { id: parsed.data.vendedorId, activo: true }, select: { id: true } }),
       prisma.empleado.findFirst({ where: { id: parsed.data.facialistaId, activo: true }, select: { id: true } }),
+      prisma.subcategoriaAtencion.findFirst({ where: { id: parsed.data.subcategoriaId, activa: true, categoria: { activa: true } }, select: { id: true } }),
     ])
-    if (!sucursal || !vendedor || !facialista) {
-      res.status(400).json({ success: false, data: null, message: 'Sucursal, vendedor o facialista inválido' })
+    if (!sucursal || !vendedor || !facialista || !subcategoria) {
+      res.status(400).json({ success: false, data: null, message: 'Sucursal, vendedor, facialista o servicio inválido' })
       return
     }
 
@@ -785,7 +886,7 @@ router.post('/citas', access.citas, async (req, res) => {
       data: {
         fecha: new Date(fecha.getFullYear(), fecha.getMonth(), fecha.getDate(), 12),
         hora: parsed.data.hora,
-        tipoAtencion: parsed.data.tipoAtencion,
+        subcategoriaId: parsed.data.subcategoriaId,
         estatus: parsed.data.estatus,
         nombreCliente: parsed.data.nombreCliente.toLocaleUpperCase('es-MX'),
         sucursalId: parsed.data.sucursalId,
@@ -825,18 +926,19 @@ router.put('/citas/:id', access.citas, async (req, res) => {
       return
     }
 
-    const [existing, sucursal, vendedor, facialista] = await Promise.all([
+    const [existing, sucursal, vendedor, facialista, subcategoria] = await Promise.all([
       prisma.registroCita.findUnique({ where: { id: req.params['id'] }, select: { id: true } }),
       prisma.sucursal.findFirst({ where: { id: parsed.data.sucursalId, activa: true }, select: { id: true } }),
       prisma.empleado.findFirst({ where: { id: parsed.data.vendedorId, activo: true }, select: { id: true } }),
       prisma.empleado.findFirst({ where: { id: parsed.data.facialistaId, activo: true }, select: { id: true } }),
+      prisma.subcategoriaAtencion.findFirst({ where: { id: parsed.data.subcategoriaId, activa: true, categoria: { activa: true } }, select: { id: true } }),
     ])
     if (!existing) {
       res.status(404).json({ success: false, data: null, message: 'Cita no encontrada' })
       return
     }
-    if (!sucursal || !vendedor || !facialista) {
-      res.status(400).json({ success: false, data: null, message: 'Sucursal, vendedor o facialista inválido' })
+    if (!sucursal || !vendedor || !facialista || !subcategoria) {
+      res.status(400).json({ success: false, data: null, message: 'Sucursal, vendedor, facialista o servicio inválido' })
       return
     }
 
@@ -845,7 +947,7 @@ router.put('/citas/:id', access.citas, async (req, res) => {
       data: {
         fecha: new Date(fecha.getFullYear(), fecha.getMonth(), fecha.getDate(), 12),
         hora: parsed.data.hora,
-        tipoAtencion: parsed.data.tipoAtencion,
+        subcategoriaId: parsed.data.subcategoriaId,
         estatus: parsed.data.estatus,
         nombreCliente: parsed.data.nombreCliente.toLocaleUpperCase('es-MX'),
         sucursalId: parsed.data.sucursalId,
@@ -1132,7 +1234,7 @@ router.get('/reportes/citas', access.reporteCitas, async (req, res) => {
       sucursalNombre: string
       totalCitas: number
       faciales: number
-      facialesDobles: number
+      corporales: number
       atendidas: number
       noLlegaron: number
       canceladas: number
@@ -1150,8 +1252,8 @@ router.get('/reportes/citas', access.reporteCitas, async (req, res) => {
         rc."sucursalId",
         s."nombre" AS "sucursalNombre",
         COUNT(*)::int AS "totalCitas",
-        COUNT(*) FILTER (WHERE rc."estatus" = 'ATENDIDA' AND rc."tipoAtencion" = 'FACIAL')::int AS "faciales",
-        COUNT(*) FILTER (WHERE rc."estatus" = 'ATENDIDA' AND rc."tipoAtencion" = 'FACIAL_DOBLE')::int AS "facialesDobles",
+        COUNT(*) FILTER (WHERE rc."estatus" = 'ATENDIDA' AND ca."nombre" = 'FACIAL')::int AS "faciales",
+        COUNT(*) FILTER (WHERE rc."estatus" = 'ATENDIDA' AND ca."nombre" = 'CORPORAL')::int AS "corporales",
         COUNT(*) FILTER (WHERE rc."estatus" = 'ATENDIDA')::int AS "atendidas",
         COUNT(*) FILTER (WHERE rc."estatus" = 'NO_LLEGO')::int AS "noLlegaron",
         COUNT(*) FILTER (WHERE rc."estatus" = 'CANCELADA')::int AS "canceladas",
@@ -1165,6 +1267,8 @@ router.get('/reportes/citas', access.reporteCitas, async (req, res) => {
       FROM "RegistroCita" rc
       JOIN "Empleado" e ON e."id" = rc."facialistaId"
       JOIN "Sucursal" s ON s."id" = rc."sucursalId"
+      JOIN "SubcategoriaAtencion" sa ON sa."id" = rc."subcategoriaId"
+      JOIN "CategoriaAtencion" ca ON ca."id" = sa."categoriaId"
       WHERE ${Prisma.join(conditions, ' AND ')}
       GROUP BY rc."facialistaId", e."nombreCompleto", rc."sucursalId", s."nombre"
       ORDER BY e."nombreCompleto" ASC, s."nombre" ASC

@@ -7,6 +7,7 @@ export const SCREEN_KEYS = [
   'ventas',
   'ventas/generar-sobre',
   'citas',
+  'servicios',
   'empleados',
   'empleados/sueldo',
   'reportes/ver-datos-keysar-home',
@@ -100,14 +101,30 @@ export interface Venta {
 }
 
 export type TipoCompraCita = 'PAGO_NETO' | 'COMPRA_CON_APARTADO' | 'PAGO_DE_APARTADO'
-export type TipoAtencionCita = 'FACIAL' | 'FACIAL_DOBLE'
 export type EstatusCita = 'ATENDIDA' | 'NO_LLEGO' | 'CANCELADA'
+
+export interface CategoriaAtencion {
+  id: string
+  nombre: string
+  activa: boolean
+}
+
+export interface SubcategoriaAtencion {
+  id: string
+  nombre: string
+  activa: boolean
+  categoriaId: string
+  categoria: CategoriaAtencion
+}
 
 export interface RegistroCita {
   id: string
   fecha: string
   hora: string | null
-  tipoAtencion: TipoAtencionCita
+  subcategoriaId: string
+  subcategoriaNombre: string
+  categoriaId: string
+  categoriaNombre: string
   estatus: EstatusCita
   nombreCliente: string
   sucursalId: string

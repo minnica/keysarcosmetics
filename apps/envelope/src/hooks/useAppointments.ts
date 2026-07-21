@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import type { EstatusCita, RegistroCita, TipoAtencionCita, TipoCompraCita } from '@cosmetics/types'
+import type { CategoriaAtencion, EstatusCita, RegistroCita, TipoCompraCita } from '@cosmetics/types'
 import { api } from '@/lib/api'
 
 export interface AppointmentEmployee {
@@ -14,7 +14,7 @@ export interface AppointmentEmployee {
 export interface AppointmentInput {
   fecha: string
   hora: string
-  tipoAtencion: TipoAtencionCita
+  subcategoriaId: string
   estatus: EstatusCita
   nombreCliente: string
   sucursalId: string
@@ -33,7 +33,7 @@ export interface AppointmentReportRow {
   sucursalNombre: string
   totalCitas: number
   faciales: number
-  facialesDobles: number
+  corporales: number
   atendidas: number
   noLlegaron: number
   canceladas: number
@@ -44,6 +44,10 @@ export interface AppointmentReportRow {
   total: number
   bonosSalidaTarde: number
   bonosComida: number
+}
+
+export type AppointmentCategory = CategoriaAtencion & {
+  subcategorias: Array<{ id: string; nombre: string; categoriaId: string }>
 }
 
 type DateFilters = {
@@ -66,6 +70,7 @@ function apiErrorMessage(error: unknown, fallback: string): string {
 
 export function useAppointmentCatalogs() {
   const [employees, setEmployees] = useState<AppointmentEmployee[]>([])
+  const [categories, setCategories] = useState<AppointmentCategory[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -73,8 +78,9 @@ export function useAppointmentCatalogs() {
     let active = true
     async function load() {
       try {
-        const response = await api.get<{ success: boolean; data: { empleados: AppointmentEmployee[] } }>('/api/envelope/citas/catalogos')
+        const response = await api.get<{ success: boolean; data: { empleados: AppointmentEmployee[]; categorias: AppointmentCategory[] } }>('/api/envelope/citas/catalogos')
         if (active) setEmployees(response.data.data.empleados)
+        if (active) setCategories(response.data.data.categorias)
       } catch (loadError) {
         if (active) setError(apiErrorMessage(loadError, 'No se pudieron cargar los empleados'))
       } finally {
@@ -85,7 +91,7 @@ export function useAppointmentCatalogs() {
     return () => { active = false }
   }, [])
 
-  return { employees, loading, error }
+  return { employees, categories, loading, error }
 }
 
 export function useAppointments(filters: DateFilters) {

@@ -6,6 +6,7 @@ export type SidebarLabelKey =
   | 'reports'
   | 'sales'
   | 'appointments'
+  | 'services'
   | 'employees'
   | 'branches'
   | 'paymentMethods'
@@ -31,6 +32,7 @@ export const SCREEN_CONFIG: ScreenConfig[] = [
   { key: 'dashboard', path: '/', section: 'reports', labelKey: 'dashboard' },
   { key: 'ventas', path: '/ventas', section: 'forms', labelKey: 'sales' },
   { key: 'citas', path: '/citas', section: 'forms', labelKey: 'appointments' },
+  { key: 'servicios', path: '/servicios', section: 'forms', labelKey: 'services' },
   { key: 'empleados', path: '/empleados', section: 'forms', labelKey: 'employees' },
   { key: 'sucursales', path: '/sucursales', section: 'forms', labelKey: 'branches' },
   { key: 'metodos-pago', path: '/metodos-pago', section: 'forms', labelKey: 'paymentMethods' },
