@@ -53,6 +53,13 @@ import { formatCurrency, formatDate, todayISO } from '@/lib/utils'
 const purchaseTypes = ['PAGO_NETO', 'COMPRA_CON_APARTADO', 'PAGO_DE_APARTADO'] as const
 const attentionTypes = ['FACIAL', 'FACIAL_DOBLE'] as const
 const appointmentStatuses = ['ATENDIDA', 'NO_LLEGO', 'CANCELADA'] as const
+const excludedSellerPositions = new Set([
+  'ADMINISTRADOR',
+  'ADMINISTRADOR GENERAL',
+  'MANTENIMIENTO',
+  'RECURSOS HUMANOS',
+  'EXTERNO',
+])
 
 const appointmentSchema = z.object({
   fecha: z.string().min(1, 'Selecciona una fecha'),
@@ -160,8 +167,10 @@ export default function AppointmentsPage() {
   }, [sucursales, user?.sucursal])
 
   const sellers = useMemo(() => {
-    const matched = employees.filter((employee) => (employee.position?.nombre ?? employee.puesto).trim().toUpperCase().includes('VENDEDOR'))
-    return matched.length > 0 ? matched : employees
+    return employees.filter((employee) => {
+      const positionName = (employee.position?.nombre ?? employee.puesto).trim().toUpperCase()
+      return !excludedSellerPositions.has(positionName)
+    })
   }, [employees])
   const facialists = useMemo(() => {
     const matched = employees.filter((employee) => (employee.position?.nombre ?? employee.puesto).trim().toUpperCase().includes('FACIALISTA'))

@@ -2,6 +2,7 @@
 // Reporte: Total general de ventas por día con columna por sucursal
 import { useState } from 'react'
 import {
+  Badge,
   Card,
   CardContent,
   CardHeader,
@@ -80,6 +81,20 @@ export default function TotalGeneralPage() {
   }
 
   const granTotal = dias.reduce((s, d) => s + totalDia(d), 0)
+  const zeroBadgeClassName = 'rounded-full bg-[#b85f5a] px-2 py-0.5 text-[11px] font-semibold text-white hover:bg-[#b85f5a] tabular-nums'
+
+  function renderAmount(value: number) {
+    if (value === 0) {
+      return (
+        <Badge variant="destructive" className={zeroBadgeClassName}>
+          {formatCurrency(value)}
+        </Badge>
+      )
+    }
+
+    return formatCurrency(value)
+  }
+
   type ExportRow = {
     fecha: string
     bySucursal: Record<string, number>
@@ -199,7 +214,7 @@ export default function TotalGeneralPage() {
               {sucursales.map((sucursal) => (
                 <div key={sucursal.id} className="flex items-center justify-between gap-4 rounded-xl bg-[color:var(--bg-primary)] px-3 py-2.5">
                   <span className="min-w-0 truncate text-sm font-medium">{sucursal.nombre}</span>
-                  <span className="shrink-0 text-sm font-semibold tabular-nums">{formatCurrency(totalSucursalGeneral(sucursal.id))}</span>
+                  <span className="shrink-0 text-sm font-semibold tabular-nums">{renderAmount(totalSucursalGeneral(sucursal.id))}</span>
                 </div>
               ))}
             </CardContent>
@@ -207,10 +222,6 @@ export default function TotalGeneralPage() {
 
           <div className="space-y-3">
             {dias.map((dia) => {
-              const branchSales = sucursales
-                .map((sucursal) => ({ ...sucursal, total: totalDiaSucursal(dia, sucursal.id) }))
-                .filter((sucursal) => sucursal.total > 0)
-
               return (
                 <Card key={dia} className="border-[color:var(--border-color)] bg-[var(--bg-card)] shadow-sm">
                   <CardHeader className="flex-row items-start justify-between gap-4 p-4 pb-3">
@@ -221,12 +232,16 @@ export default function TotalGeneralPage() {
                     <div className="number-display shrink-0 text-base">{formatCurrency(totalDia(dia))}</div>
                   </CardHeader>
                   <CardContent className="space-y-2 px-4 pb-4">
-                    {branchSales.map((sucursal) => (
-                      <div key={sucursal.id} className="flex items-center justify-between gap-4 rounded-xl bg-[color:var(--bg-primary)] px-3 py-2.5">
-                        <span className="min-w-0 truncate text-sm font-medium">{sucursal.nombre}</span>
-                        <span className="shrink-0 text-sm font-semibold tabular-nums">{formatCurrency(sucursal.total)}</span>
-                      </div>
-                    ))}
+                    {sucursales.map((sucursal) => {
+                      const total = totalDiaSucursal(dia, sucursal.id)
+
+                      return (
+                        <div key={sucursal.id} className="flex items-center justify-between gap-4 rounded-xl bg-[color:var(--bg-primary)] px-3 py-2.5">
+                          <span className="min-w-0 truncate text-sm font-medium">{sucursal.nombre}</span>
+                          <span className="shrink-0 text-sm font-semibold tabular-nums">{renderAmount(total)}</span>
+                        </div>
+                      )
+                    })}
                   </CardContent>
                 </Card>
               )
@@ -252,7 +267,7 @@ export default function TotalGeneralPage() {
                   const val = totalDiaSucursal(dia, s.id)
                   return (
                     <TableCell key={s.id} className="text-right">
-                      {val > 0 ? formatCurrency(val) : <span style={{ color: 'var(--border-color)' }}>—</span>}
+                      {renderAmount(val)}
                     </TableCell>
                   )
                 })}
@@ -265,7 +280,7 @@ export default function TotalGeneralPage() {
               <TableCell className="font-semibold text-xs uppercase">{t.reports.branchTotal}</TableCell>
               {sucursales.map(s => (
                 <TableCell key={s.id} className="text-right font-semibold">
-                  {formatCurrency(totalSucursalGeneral(s.id))}
+                  {renderAmount(totalSucursalGeneral(s.id))}
                 </TableCell>
               ))}
               <TableCell className="text-right font-bold text-base">{formatCurrency(granTotal)}</TableCell>
