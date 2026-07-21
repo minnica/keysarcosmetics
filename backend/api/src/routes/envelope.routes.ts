@@ -1259,8 +1259,31 @@ router.post("/servicios/categorias", access.servicios, async (req, res) => {
         });
       return;
     }
+    const nombre = parsed.data.nombre.toLocaleUpperCase("es-MX");
+    const existingCategory = await prisma.categoriaAtencion.findUnique({
+      where: { nombre },
+      select: { id: true, activa: true },
+    });
+    if (existingCategory?.activa) {
+      res
+        .status(409)
+        .json({
+          success: false,
+          data: null,
+          message: "Ya existe una categoría con ese nombre",
+        });
+      return;
+    }
+    if (existingCategory) {
+      const data = await prisma.categoriaAtencion.update({
+        where: { id: existingCategory.id },
+        data: { activa: true },
+      });
+      res.json({ success: true, data, message: "Categoría reactivada" });
+      return;
+    }
     const data = await prisma.categoriaAtencion.create({
-      data: { nombre: parsed.data.nombre.toLocaleUpperCase("es-MX") },
+      data: { nombre },
     });
     res.status(201).json({ success: true, data, message: "Categoría creada" });
   } catch (err) {
@@ -1320,10 +1343,37 @@ router.post("/servicios/subcategorias", access.servicios, async (req, res) => {
         });
       return;
     }
+    const nombre = parsed.data.nombre.toLocaleUpperCase("es-MX");
+    const existingSubcategory =
+      await prisma.subcategoriaAtencion.findUnique({
+        where: {
+          categoriaId_nombre: { categoriaId: categoria.id, nombre },
+        },
+        select: { id: true, activa: true },
+      });
+    if (existingSubcategory?.activa) {
+      res
+        .status(409)
+        .json({
+          success: false,
+          data: null,
+          message:
+            "Ya existe esta subcategoría dentro de la categoría seleccionada",
+        });
+      return;
+    }
+    if (existingSubcategory) {
+      const data = await prisma.subcategoriaAtencion.update({
+        where: { id: existingSubcategory.id },
+        data: { activa: true },
+      });
+      res.json({ success: true, data, message: "Subcategoría reactivada" });
+      return;
+    }
     const data = await prisma.subcategoriaAtencion.create({
       data: {
         categoriaId: categoria.id,
-        nombre: parsed.data.nombre.toLocaleUpperCase("es-MX"),
+        nombre,
       },
     });
     res
