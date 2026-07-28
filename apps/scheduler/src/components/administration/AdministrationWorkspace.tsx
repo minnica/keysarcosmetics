@@ -472,6 +472,55 @@ function InfoBanner({
   );
 }
 
+const scheduleHours = Array.from({ length: 24 }, (_, index) =>
+  index.toString().padStart(2, "0"),
+);
+const scheduleMinutes = ["00", "15", "30", "45"];
+
+function ScheduleTime({
+  value,
+  onChange,
+  disabled = false,
+  label,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  disabled?: boolean;
+  label: string;
+}) {
+  const [hour = "10", minute = "00"] = value.split(":");
+  return (
+    <div className="schedule-time" aria-label={label}>
+      <select
+        className="schedule-time-select"
+        value={hour}
+        disabled={disabled}
+        aria-label={`${label}, hora`}
+        onChange={(event) => onChange(`${event.target.value}:${minute}`)}
+      >
+        {scheduleHours.map((option) => (
+          <option key={option} value={option}>
+            {option}
+          </option>
+        ))}
+      </select>
+      <select
+        className="schedule-time-select"
+        value={minute}
+        disabled={disabled}
+        aria-label={`${label}, minutos`}
+        onChange={(event) => onChange(`${hour}:${event.target.value}`)}
+      >
+        {scheduleMinutes.map((option) => (
+          <option key={option} value={option}>
+            {option}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
 function ScheduleRows({
   schedule,
   onChange,
@@ -501,89 +550,64 @@ function ScheduleRows({
     toast.success("Horario copiado en todos los días.");
   };
   return (
-    <div className="space-y-2">
+    <div className="schedule-table">
+      <div className="schedule-table-header" aria-hidden="true">
+        <span>Día</span>
+        <span>Estado</span>
+        <span>Inicio de la jornada</span>
+        <span>Fin de la jornada</span>
+        <span />
+      </div>
       {schedule.map((item, index) => (
-        <div
-          key={item.day}
-          className="rounded-2xl border border-[#eee7e2] bg-white p-3"
-        >
-          <div className="grid gap-3 sm:grid-cols-[112px_58px_1fr_auto] sm:items-center">
-            <span className="text-sm font-medium text-[#263649]">
-              {item.day}
-            </span>
-            <Toggle
-              checked={item.enabled}
-              label={`${item.enabled ? "Desactivar" : "Activar"} ${item.day}`}
-              onChange={(checked) => update(item.day, { enabled: checked })}
-            />
-            <div className="grid grid-cols-2 gap-2">
-              <select
-                className="admin-select h-10"
-                disabled={!item.enabled}
-                value={item.open}
-                onChange={(event) =>
-                  update(item.day, { open: event.target.value })
-                }
-              >
-                {timeOptions.map((time) => (
-                  <option key={time}>{time}</option>
-                ))}
-              </select>
-              <select
-                className="admin-select h-10"
-                disabled={!item.enabled}
-                value={item.close}
-                onChange={(event) =>
-                  update(item.day, { close: event.target.value })
-                }
-              >
-                {timeOptions.map((time) => (
-                  <option key={time}>{time}</option>
-                ))}
-              </select>
-            </div>
-            {index === 0 ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={copyFirst}
-              >
-                Copiar en todos
-              </Button>
-            ) : (
-              <span />
-            )}
-          </div>
+        <div key={item.day} className="schedule-table-row">
+          <span className="schedule-day">{item.day}</span>
+          <Toggle
+            checked={item.enabled}
+            label={`${item.enabled ? "Desactivar" : "Activar"} ${item.day}`}
+            onChange={(checked) => update(item.day, { enabled: checked })}
+          />
+          <ScheduleTime
+            label={`Inicio de la jornada de ${item.day}`}
+            value={item.open}
+            disabled={!item.enabled}
+            onChange={(open) => update(item.day, { open })}
+          />
+          <ScheduleTime
+            label={`Fin de la jornada de ${item.day}`}
+            value={item.close}
+            disabled={!item.enabled}
+            onChange={(close) => update(item.day, { close })}
+          />
+          {index === 0 ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="schedule-copy-button"
+              onClick={copyFirst}
+            >
+              Copiar en todos
+            </Button>
+          ) : (
+            <span />
+          )}
           {withBreak && item.enabled ? (
-            <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-dashed border-slate-100 pt-3 text-xs text-slate-500">
+            <div className="schedule-break mt-3 flex flex-wrap items-center gap-3 border-t border-dashed border-slate-100 pt-3 text-xs text-slate-500">
               <Clock3 className="h-4 w-4" />
               {item.breakStart ? (
                 <>
                   <span>Descanso</span>
-                  <select
-                    className="admin-select h-9 w-28"
+                  <ScheduleTime
+                    label={`Inicio del descanso de ${item.day}`}
                     value={item.breakStart}
-                    onChange={(event) =>
-                      update(item.day, { breakStart: event.target.value })
-                    }
-                  >
-                    {timeOptions.map((time) => (
-                      <option key={time}>{time}</option>
-                    ))}
-                  </select>
+                    onChange={(breakStart) => update(item.day, { breakStart })}
+                  />
                   <span>a</span>
-                  <select
-                    className="admin-select h-9 w-28"
-                    value={item.breakEnd}
-                    onChange={(event) =>
-                      update(item.day, { breakEnd: event.target.value })
-                    }
-                  >
-                    {timeOptions.map((time) => (
-                      <option key={time}>{time}</option>
-                    ))}
-                  </select>
+                  <ScheduleTime
+                    label={`Fin del descanso de ${item.day}`}
+                    value={item.breakEnd ?? "15:00"}
+                    onChange={(breakEnd) => update(item.day, { breakEnd })}
+                  />
                   <button
                     type="button"
                     className="text-rose-600 hover:underline"
@@ -636,7 +660,7 @@ function ModalShell({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className={`admin-dialog ${wide ? "sm:max-w-5xl" : "sm:max-w-2xl"}`}
+        className={`admin-dialog ${wide ? "admin-dialog-wide sm:max-w-4xl" : "sm:max-w-2xl"}`}
       >
         <DialogHeader className="border-b border-[#eee7e2] pb-4">
           <DialogTitle className="text-xl text-[#263649]">{title}</DialogTitle>
@@ -678,7 +702,7 @@ function ConfirmDialog({
 }) {
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent>
+      <AlertDialogContent className="admin-alert-dialog">
         <AlertDialogHeader>
           <AlertDialogTitle>{title}</AlertDialogTitle>
           <AlertDialogDescription>{description}</AlertDialogDescription>
@@ -712,12 +736,20 @@ function LocalDialog({
   const [draft, setDraft] = useState<LocalRecord>(
     local ? cloneLocal(local) : createEmptyLocal(),
   );
+  const [coverPreview, setCoverPreview] = useState<string | null>(null);
   useEffect(() => {
     if (open) {
       setDraft(local ? cloneLocal(local) : createEmptyLocal());
       setTab("basic");
+      setCoverPreview(null);
     }
   }, [local, open]);
+  useEffect(
+    () => () => {
+      if (coverPreview) URL.revokeObjectURL(coverPreview);
+    },
+    [coverPreview],
+  );
   const update = (patch: Partial<LocalRecord>) =>
     setDraft((current) => ({ ...current, ...patch }));
   const save = () => {
@@ -794,14 +826,22 @@ function LocalDialog({
                 { value: "America/Monterrey", label: "Monterrey (GMT-06:00)" },
               ]}
             />
-            <Field
-              id="local-phone"
-              label="Teléfono"
-              required
-              value={draft.phone}
-              onChange={(value) => update({ phone: value })}
-              type="tel"
-            />
+            <div className="space-y-2">
+              <Field
+                id="local-phone"
+                label="Teléfono"
+                required
+                value={draft.phone}
+                onChange={(value) => update({ phone: value })}
+                type="tel"
+              />
+              <CheckRow
+                checked={draft.whatsappEnabled}
+                onChange={(checked) => update({ whatsappEnabled: checked })}
+              >
+                Permitir que mis clientes me contacten por WhatsApp
+              </CheckRow>
+            </div>
             <Field
               id="local-email"
               label="Email"
@@ -811,16 +851,12 @@ function LocalDialog({
               type="email"
             />
           </div>
-          <CheckRow
-            checked={draft.whatsappEnabled}
-            onChange={(checked) => update({ whatsappEnabled: checked })}
-          >
-            Permitir que mis clientes me contacten por WhatsApp
-          </CheckRow>
           <div>
-            <h3 className="admin-section-title">Horario semanal</h3>
+            <h3 className="admin-schedule-title">
+              Horario de inicio y fin de la jornada
+            </h3>
             <p className="admin-help">
-              Activa los días de atención y configura la jornada del local.
+              Activa los días en que atiendes y configura tus horas laborales.
             </p>
             <div className="mt-3">
               <ScheduleRows
@@ -890,6 +926,14 @@ function LocalDialog({
             recommendation="Recomendado: 820 × 360 px, máximo 3 MB."
             value={draft.coverImage}
             onChange={(fileName) => update({ coverImage: fileName })}
+            previewUrl={coverPreview}
+            onFileChange={(file) => {
+              const nextPreview = URL.createObjectURL(file);
+              setCoverPreview((current) => {
+                if (current) URL.revokeObjectURL(current);
+                return nextPreview;
+              });
+            }}
           />
         </div>
       )}
@@ -902,6 +946,8 @@ function FilePicker({
   recommendation,
   value,
   onChange,
+  previewUrl,
+  onFileChange,
   accept = "image/png,image/jpeg",
   maxSizeMb = 3,
 }: {
@@ -909,6 +955,8 @@ function FilePicker({
   recommendation: string;
   value: string | null;
   onChange: (value: string | null) => void;
+  previewUrl?: string | null;
+  onFileChange?: (file: File) => void;
   accept?: string;
   maxSizeMb?: number;
 }) {
@@ -917,6 +965,22 @@ function FilePicker({
     <div className="space-y-2">
       <p className="admin-label">{label}</p>
       <p className="admin-help">{recommendation}</p>
+      {previewUrl !== undefined ? (
+        <div className="cover-preview-frame">
+          {previewUrl ? (
+            <img
+              src={previewUrl}
+              alt="Vista previa de la portada del local"
+              className="cover-preview-image"
+            />
+          ) : (
+            <div className="cover-preview-placeholder">
+              <ImagePlus className="h-8 w-8" />
+              <span>Vista previa de portada 820 × 360 px</span>
+            </div>
+          )}
+        </div>
+      ) : null}
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-dashed border-[#d8cde2] bg-[#fbf9fd] p-4">
         <div className="flex items-center gap-3 text-sm text-slate-600">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white text-[#7460a4]">
@@ -937,6 +1001,7 @@ function FilePicker({
               return;
             }
             onChange(file.name);
+            onFileChange?.(file);
           }}
         />
         <Button asChild type="button" variant="outline">
@@ -1196,7 +1261,7 @@ function LocalSection({
                         Ver horario
                       </Button>
                     </PopoverTrigger>
-                    <PopoverContent align="end" className="w-80">
+                    <PopoverContent align="end" className="admin-popover w-80">
                       <div className="mb-3 flex items-center gap-2 font-semibold text-[#263649]">
                         <Clock3 className="h-4 w-4 text-[#7460a4]" />
                         Horario semanal
@@ -1246,7 +1311,10 @@ function LocalSection({
                         <MoreHorizontal className="h-4 w-4" />
                       </Button>
                     </PopoverTrigger>
-                    <PopoverContent align="end" className="w-56 p-1">
+                    <PopoverContent
+                      align="end"
+                      className="admin-popover w-56 p-1"
+                    >
                       <Button
                         variant="ghost"
                         className="w-full justify-start"
@@ -1371,7 +1439,7 @@ function Toolbar({
                 Filtrar por
               </Button>
             </PopoverTrigger>
-            <PopoverContent align="start" className="w-56 p-2">
+            <PopoverContent align="start" className="admin-popover w-56 p-2">
               <p className="px-2 py-1 text-xs font-semibold uppercase tracking-wider text-slate-400">
                 Estado
               </p>
@@ -1936,7 +2004,10 @@ function ProfessionalsSection({
                                   Horario
                                 </Button>
                               </PopoverTrigger>
-                              <PopoverContent align="end" className="w-72">
+                              <PopoverContent
+                                align="end"
+                                className="admin-popover w-72"
+                              >
                                 <p className="mb-3 font-semibold">
                                   Horario de {professional.name}
                                 </p>
@@ -1976,7 +2047,10 @@ function ProfessionalsSection({
                                   <MoreHorizontal className="h-4 w-4" />
                                 </Button>
                               </PopoverTrigger>
-                              <PopoverContent align="end" className="w-56 p-1">
+                              <PopoverContent
+                                align="end"
+                                className="admin-popover w-56 p-1"
+                              >
                                 <Button
                                   variant="ghost"
                                   className="w-full justify-start"
@@ -2673,7 +2747,7 @@ function ServicesSection({
                   Nuevo
                 </Button>
               </PopoverTrigger>
-              <PopoverContent align="end" className="w-60 p-2">
+              <PopoverContent align="end" className="admin-popover w-60 p-2">
                 {(
                   [
                     ["service", "Servicio"],
@@ -2785,7 +2859,10 @@ function ServicesSection({
                       <MoreHorizontal className="h-4 w-4" />
                     </Button>
                   </PopoverTrigger>
-                  <PopoverContent align="end" className="w-48 p-1">
+                  <PopoverContent
+                    align="end"
+                    className="admin-popover w-48 p-1"
+                  >
                     <Button
                       variant="ghost"
                       className="w-full justify-start"
@@ -2865,7 +2942,10 @@ function ServicesSection({
                                 <MoreHorizontal className="h-4 w-4" />
                               </Button>
                             </PopoverTrigger>
-                            <PopoverContent align="end" className="w-48 p-1">
+                            <PopoverContent
+                              align="end"
+                              className="admin-popover w-48 p-1"
+                            >
                               <Button
                                 variant="ghost"
                                 className="w-full justify-start"
@@ -5076,7 +5156,7 @@ function GiftCardsSection({ services }: { services: ServiceRecord[] }) {
                   Nueva gift card
                 </Button>
               </PopoverTrigger>
-              <PopoverContent align="end" className="w-60 p-2">
+              <PopoverContent align="end" className="admin-popover w-60 p-2">
                 <button
                   type="button"
                   className="flex w-full rounded-xl px-3 py-2.5 text-left text-sm hover:bg-[#f0ebf6]"
@@ -5203,7 +5283,10 @@ function GiftCardsSection({ services }: { services: ServiceRecord[] }) {
                       <MoreHorizontal className="h-4 w-4" />
                     </Button>
                   </PopoverTrigger>
-                  <PopoverContent align="end" className="w-48 p-1">
+                  <PopoverContent
+                    align="end"
+                    className="admin-popover w-48 p-1"
+                  >
                     <Button
                       variant="ghost"
                       className="w-full justify-start"
@@ -5479,7 +5562,7 @@ export function AdministrationWorkspace() {
     }
   };
   return (
-    <div className="min-h-screen bg-[#f4f1ed] text-[#263649]">
+    <div className="admin-workspace min-h-screen bg-[#f4f1ed] text-[#263649]">
       <AdministrationHeader
         active={active}
         onOpenMenu={() => setMobileOpen(true)}

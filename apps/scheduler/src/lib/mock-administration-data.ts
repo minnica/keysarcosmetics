@@ -160,7 +160,7 @@ export const scheduleDays = [
 
 export const createSchedule = (
   open = "10:00",
-  close = "19:00",
+  close = "22:00",
 ): ScheduleDay[] =>
   scheduleDays.map((day, index) => ({
     day,
