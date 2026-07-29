@@ -229,7 +229,7 @@ export const initialProfessionals: ProfessionalRecord[] = [
       "Especialista en rituales faciales y experiencias de relajación.",
     avatar: null,
     status: "active",
-    schedule: createSchedule("09:00", "18:00"),
+    schedule: createSchedule("09:00", "22:00"),
     specialDays: [],
   },
   {
@@ -240,12 +240,12 @@ export const initialProfessionals: ProfessionalRecord[] = [
     email: "mariana@keysarcosmetics.com",
     acceptsOnline: true,
     createsUser: false,
-    services: ["service-facial", "service-masaje", "service-cejas"],
+    services: ["service-facial", "service-masaje", "service-facial-2"],
     biography:
       "Acompaña cada visita con precisión, calidez y atención al detalle.",
     avatar: null,
     status: "active",
-    schedule: createSchedule("10:00", "19:00"),
+    schedule: createSchedule("10:00", "22:00"),
     specialDays: [],
   },
   {
@@ -261,12 +261,12 @@ export const initialProfessionals: ProfessionalRecord[] = [
       "Terapias corporales personalizadas para recuperar el equilibrio.",
     avatar: null,
     status: "inactive",
-    schedule: createSchedule("11:00", "20:00"),
+    schedule: createSchedule("11:00", "22:00"),
     specialDays: [],
   },
 ];
 
-export const initialServices: ServiceRecord[] = [
+const legacyServices: ServiceRecord[] = [
   {
     id: "service-facial",
     name: "Facial Keysar Signature",
@@ -345,6 +345,145 @@ export const initialServices: ServiceRecord[] = [
     professionalIds: [],
     description: "Complemento nutritivo para potenciar tu tratamiento.",
   },
+];
+
+const createRealService = (
+  id: string,
+  name: string,
+  category: string,
+  type: ServiceRecord["type"] = "service",
+  price = 0,
+  duration = 60,
+  professionalIds: string[] = [],
+): ServiceRecord => ({
+  id,
+  name,
+  category,
+  type,
+  price,
+  duration,
+  status: "active",
+  featured: false,
+  professionalIds,
+  description: `Servicio de la categoría ${category}.`,
+  ...(type === "package" ? { sessions: 5 } : {}),
+});
+
+const realFacialServices = [
+  "Acné Neuronova Instagram",
+  "FACIAL + 10 MIN OXYCURA",
+  "MOMENTS 2X1 INSTAGRAM",
+  "FACIAL ANTI ACNE",
+  "FACIAL DOBLE INSTAGRAM",
+  "FACIAL ETERNAL AGE",
+  "Facial express Instagram",
+  "Facial sumer scape doble",
+  "Facial sumer scape individual",
+  "WOW BIO-LIFTING INSTAGRAM",
+  "FACIAL VIP CORTESÍA",
+  "BIO LIFTING FACIAL INSTAGRAM",
+  "FACIAL VIP INSTAGRAM",
+  "FACIAL + REDUCTIVO INSTAGRAM",
+  "OXYCURA FACIAL INSTAGRAM",
+  "FACIAL DE CUMPLEAÑOS",
+  "FACIAL PEEL OFF",
+  "FACIAL OXYCURA",
+  "FACIAL HYDRATING REGIMEN SET",
+  "FACIAL RITUAL EYE VIP",
+  "FACIAL CRYOSKIN",
+  "FACIAL REFLEXOLOGIA",
+];
+
+const realMassageServices = [
+  "CORPORAL DIA DEL PADRE DOBLE INSTAGRAM",
+  "CORPORAL DEL PADRE INSTAGRAM",
+  "Corporal doble Instagram",
+  "CORTESIAS LEAD",
+  "MASAJE DOBLE HOTSALE",
+  "Masaje doble mundial",
+  "MASAJE HOT SALE",
+  "MASAJE CORPORAL CORTESÍA",
+  "Masaje descontracturante Doble",
+  "MEMBRESIA 5 SESIONES CORPORAL",
+  "MASAJE CORPORAL RELAJANTE",
+  "MASAJE CORPORAL REDUCTIVO",
+  "DRENAJE LINFATICO",
+  "TERAPIA DE REFLEXOLOGIA",
+  "MASAJE DESCONTRACTURANTE",
+  "MASAJE PIERNAS CANSADAS",
+  "CORPORAL INSTAGRAM",
+];
+
+const realMembershipServices = [
+  "MEMBRESIA OXYCURA 5 SESIONES",
+  "MEMBRESIA 14 SESIONES CELESTIAL RENEWAL SYSTEM",
+  "MEMBRESIA CRYOSKIN 14 SESIONES.",
+  "MEMBRESIA CRYOSKIN 7 SESIONES.",
+  "MEMBRESIA ETERNAL AGE 7 SESIONES",
+  "MEMBRESIA EYE RITUAL",
+  "MEMBRESIA NEURONOVA",
+  "MEMBRESIA 7 SESIONES CELESTIAL RENEWAL SYSTEM",
+  "MEMBRESIA PEEL OFF",
+  "MEMBRESIA PURE GOLDEN GLOW (LAMINAS DE ORO )",
+  "MEMBRESIA 16 SESIONES DIVINE NECK AND CHEST SYSTEM",
+  "MEMBRESIA PURE GOLDEN GLOW 5 SESIONES",
+  "MEMBRESIAS 8 SESIONES DIVINE NECK AND CHEST SYSTEM",
+];
+
+const realFollowUpServices = ["FACIAL DE CORTESIA", "RECUPERACION"];
+
+export const initialServices: ServiceRecord[] = [
+  ...realFacialServices.map((name, index) =>
+    createRealService(
+      index === 0 ? "service-facial" : `service-facial-${index}`,
+      name,
+      "Faciales",
+      "service",
+      index === 0 ? 950 : 0,
+      60,
+      index === 0
+        ? ["professional-patricia", "professional-mariana"]
+        : [],
+    ),
+  ),
+  ...realMassageServices.map((name, index) =>
+    createRealService(
+      index === 0 ? "service-masaje" : `service-masaje-${index}`,
+      name,
+      "Masajes",
+      "service",
+      index === 0 ? 800 : 0,
+      60,
+      index === 0
+        ? [
+            "professional-patricia",
+            "professional-mariana",
+            "professional-sofia",
+          ]
+        : [],
+    ),
+  ),
+  ...realMembershipServices.map((name, index) =>
+    createRealService(
+      index === 0 ? "package-reset" : `package-membership-${index}`,
+      name,
+      "Membresias",
+      "package",
+      index === 0 ? 1450 : 0,
+      60,
+      index === 0
+        ? ["professional-patricia", "professional-mariana"]
+        : [],
+    ),
+  ),
+  ...realFollowUpServices.map((name, index) =>
+    createRealService(
+      index === 0 ? "class-yoga" : "follow-up-recovery",
+      name,
+      "Seguimientos",
+    ),
+  ),
+  legacyServices[5]!,
 ];
 
 export const initialGroups: ProfessionalGroup[] = [

@@ -1,6 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+  type ChangeEvent,
+  type ReactNode,
+} from "react";
 import Link from "next/link";
 import {
   AlertCircle,
@@ -383,13 +389,15 @@ function Tabs({
   items,
   active,
   onChange,
+  className = "",
 }: {
   items: { id: string; label: string }[];
   active: string;
   onChange: (value: string) => void;
+  className?: string;
 }) {
   return (
-    <div className="admin-tabs">
+    <div className={`admin-tabs ${className}`.trim()}>
       {items.map((item) => (
         <button
           key={item.id}
@@ -549,6 +557,107 @@ function ScheduleRows({
     );
     toast.success("Horario copiado en todos los días.");
   };
+  if (withBreak) {
+    return (
+      <div className="schedule-break-table">
+        <div className="schedule-break-table-header" aria-hidden="true">
+          <span>Día</span>
+          <span>Estado</span>
+          <span>Inicio de la jornada</span>
+          <span>Fin de la jornada</span>
+          <span>Descanso</span>
+          <span />
+        </div>
+        {schedule.map((item, index) => (
+          <div key={item.day}>
+            <div className="schedule-break-table-row">
+              <span className="schedule-day">{item.day}</span>
+              <Toggle
+                checked={item.enabled}
+                label={`${item.enabled ? "Desactivar" : "Activar"} ${item.day}`}
+                onChange={(checked) => update(item.day, { enabled: checked })}
+              />
+              <ScheduleTime
+                label={`Inicio de la jornada de ${item.day}`}
+                value={item.open}
+                disabled={!item.enabled}
+                onChange={(open) => update(item.day, { open })}
+              />
+              <ScheduleTime
+                label={`Fin de la jornada de ${item.day}`}
+                value={item.close}
+                disabled={!item.enabled}
+                onChange={(close) => update(item.day, { close })}
+              />
+              {item.enabled ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="schedule-break-button"
+                  onClick={() =>
+                    update(item.day, {
+                      breakStart: item.breakStart ?? "10:00",
+                      breakEnd: item.breakEnd ?? "22:00",
+                    })
+                  }
+                >
+                  <Plus className="mr-2 h-4 w-4" />
+                  Descanso
+                </Button>
+              ) : null}
+              {index === 0 ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="schedule-copy-button gap-1.5 whitespace-nowrap"
+                  onClick={copyFirst}
+                >
+                  <Copy className="h-3.5 w-3.5" />
+                  Copiar en todos
+                </Button>
+              ) : (
+                <span />
+              )}
+            </div>
+            {item.enabled && item.breakStart ? (
+              <div className="schedule-break-row">
+                <span>Descanso</span>
+                <span />
+                <ScheduleTime
+                  label={`Inicio del descanso de ${item.day}`}
+                  value={item.breakStart}
+                  onChange={(breakStart) => update(item.day, { breakStart })}
+                />
+                <ScheduleTime
+                  label={`Fin del descanso de ${item.day}`}
+                  value={item.breakEnd ?? "22:00"}
+                  onChange={(breakEnd) => update(item.day, { breakEnd })}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="schedule-break-remove"
+                  aria-label={`Quitar descanso de ${item.day}`}
+                  onClick={() =>
+                    update(item.day, {
+                      breakStart: undefined,
+                      breakEnd: undefined,
+                    })
+                  }
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+                <span />
+              </div>
+            ) : null}
+          </div>
+        ))}
+      </div>
+    );
+  }
   return (
     <div className="schedule-table">
       <div className="schedule-table-header" aria-hidden="true">
@@ -581,59 +690,17 @@ function ScheduleRows({
           {index === 0 ? (
             <Button
               type="button"
-              variant="ghost"
+              variant="outline"
               size="sm"
-              className="schedule-copy-button"
+              className="schedule-copy-button gap-1.5 whitespace-nowrap"
               onClick={copyFirst}
             >
+              <Copy className="h-3.5 w-3.5" />
               Copiar en todos
             </Button>
           ) : (
             <span />
           )}
-          {withBreak && item.enabled ? (
-            <div className="schedule-break mt-3 flex flex-wrap items-center gap-3 border-t border-dashed border-slate-100 pt-3 text-xs text-slate-500">
-              <Clock3 className="h-4 w-4" />
-              {item.breakStart ? (
-                <>
-                  <span>Descanso</span>
-                  <ScheduleTime
-                    label={`Inicio del descanso de ${item.day}`}
-                    value={item.breakStart}
-                    onChange={(breakStart) => update(item.day, { breakStart })}
-                  />
-                  <span>a</span>
-                  <ScheduleTime
-                    label={`Fin del descanso de ${item.day}`}
-                    value={item.breakEnd ?? "15:00"}
-                    onChange={(breakEnd) => update(item.day, { breakEnd })}
-                  />
-                  <button
-                    type="button"
-                    className="text-rose-600 hover:underline"
-                    onClick={() =>
-                      update(item.day, {
-                        breakStart: undefined,
-                        breakEnd: undefined,
-                      })
-                    }
-                  >
-                    Quitar descanso
-                  </button>
-                </>
-              ) : (
-                <button
-                  type="button"
-                  className="text-[#7460a4] hover:underline"
-                  onClick={() =>
-                    update(item.day, { breakStart: "14:00", breakEnd: "15:00" })
-                  }
-                >
-                  + Agregar descanso
-                </button>
-              )}
-            </div>
-          ) : null}
         </div>
       ))}
     </div>
@@ -950,6 +1017,7 @@ function FilePicker({
   onFileChange,
   accept = "image/png,image/jpeg",
   maxSizeMb = 3,
+  variant = "default",
 }: {
   label: string;
   recommendation: string;
@@ -959,8 +1027,52 @@ function FilePicker({
   onFileChange?: (file: File) => void;
   accept?: string;
   maxSizeMb?: number;
+  variant?: "default" | "avatar";
 }) {
   const inputId = `file-${label.toLocaleLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+  const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (file.size > maxSizeMb * 1024 * 1024) {
+      toast.error(`El archivo no puede superar ${maxSizeMb} MB.`);
+      return;
+    }
+    onChange(file.name);
+    onFileChange?.(file);
+  };
+  if (variant === "avatar") {
+    return (
+      <div className="space-y-2">
+        <p className="admin-label">{label}</p>
+        <p className="admin-help">{recommendation}</p>
+        <div className="professional-avatar-picker">
+          <div className="professional-avatar-placeholder">
+            <ImagePlus className="h-8 w-8" />
+            <span>Arrastra o selecciona la imagen</span>
+            {value ? <small>{value}</small> : null}
+          </div>
+          <input
+            id={inputId}
+            type="file"
+            accept={accept}
+            className="sr-only"
+            onChange={handleFileChange}
+          />
+          <Button
+            asChild
+            type="button"
+            variant="outline"
+            className="professional-avatar-upload"
+          >
+            <label htmlFor={inputId}>
+              <Upload className="mr-2 h-4 w-4" />
+              Subir imagen
+            </label>
+          </Button>
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="space-y-2">
       <p className="admin-label">{label}</p>
@@ -993,16 +1105,7 @@ function FilePicker({
           type="file"
           accept={accept}
           className="sr-only"
-          onChange={(event) => {
-            const file = event.target.files?.[0];
-            if (!file) return;
-            if (file.size > maxSizeMb * 1024 * 1024) {
-              toast.error(`El archivo no puede superar ${maxSizeMb} MB.`);
-              return;
-            }
-            onChange(file.name);
-            onFileChange?.(file);
-          }}
+          onChange={handleFileChange}
         />
         <Button asChild type="button" variant="outline">
           <label htmlFor={inputId}>
@@ -1494,6 +1597,7 @@ function ProfessionalDialog({
   onSave: (professional: ProfessionalRecord) => void;
 }) {
   const [tab, setTab] = useState<FormTab>("basic");
+  const [expandedCategories, setExpandedCategories] = useState<string[]>([]);
   const [draft, setDraft] = useState<ProfessionalRecord>(
     professional
       ? cloneProfessional(professional)
@@ -1504,7 +1608,7 @@ function ProfessionalDialog({
           role: "",
           email: "",
           acceptsOnline: true,
-          createsUser: false,
+          createsUser: true,
           services: [],
           biography: "",
           avatar: null,
@@ -1525,7 +1629,7 @@ function ProfessionalDialog({
               role: "",
               email: "",
               acceptsOnline: true,
-              createsUser: false,
+              createsUser: true,
               services: [],
               biography: "",
               avatar: null,
@@ -1535,8 +1639,10 @@ function ProfessionalDialog({
             },
       );
       setTab("basic");
+      const firstCategory = services.find((service) => service.type !== "add-on")?.category;
+      setExpandedCategories(firstCategory ? [firstCategory] : []);
     }
-  }, [locals, open, professional]);
+  }, [locals, open, professional, services]);
   const update = (patch: Partial<ProfessionalRecord>) =>
     setDraft((current) => ({ ...current, ...patch }));
   const toggleService = (id: string, checked: boolean) =>
@@ -1545,17 +1651,54 @@ function ProfessionalDialog({
         ? [...draft.services, id]
         : draft.services.filter((serviceId) => serviceId !== id),
     });
+  const serviceGroups = useMemo(() => {
+    const groups = new Map<string, ServiceRecord[]>();
+    services
+      .filter((service) => service.type !== "add-on")
+      .forEach((service) => {
+        const group = groups.get(service.category) ?? [];
+        group.push(service);
+        groups.set(service.category, group);
+      });
+    return [...groups.entries()].map(([category, items]) => ({
+      category,
+      items,
+    }));
+  }, [services]);
+  const allServicesSelected = serviceGroups.every((group) =>
+    group.items.every((service) => draft.services.includes(service.id)),
+  );
+  const toggleCategory = (category: string) =>
+    setExpandedCategories((current) =>
+      current.includes(category)
+        ? current.filter((item) => item !== category)
+        : [...current, category],
+    );
+  const toggleCategoryServices = (items: ServiceRecord[], checked: boolean) =>
+    update({
+      services: checked
+        ? [...new Set([...draft.services, ...items.map((item) => item.id)])]
+        : draft.services.filter(
+            (serviceId) => !items.some((item) => item.id === serviceId),
+          ),
+    });
   const save = () => {
     if (
       !draft.name.trim() ||
-      !draft.role.trim() ||
-      !draft.email.includes("@") ||
       !draft.localId
     ) {
-      toast.error("Completa nombre, cargo, local y un email válido.");
+      toast.error("Completa el nombre y el local del profesional.");
       return;
     }
-    onSave({ ...draft, name: draft.name.trim() });
+    if (draft.createsUser && !draft.email.includes("@")) {
+      toast.error("Ingresa un email válido para crear el usuario.");
+      return;
+    }
+    onSave({
+      ...draft,
+      name: draft.name.trim(),
+      role: draft.role.trim() || "Profesional",
+    });
     onOpenChange(false);
   };
   return (
@@ -1567,6 +1710,7 @@ function ProfessionalDialog({
       wide
     >
       <Tabs
+        className="professional-tabs"
         items={[
           { id: "basic", label: "Datos básicos" },
           { id: "schedule", label: "Horario" },
@@ -1577,111 +1721,162 @@ function ProfessionalDialog({
       />
       {tab === "basic" ? (
         <div className="space-y-5">
-          <div className="admin-form-grid">
+          <div className="professional-basic-card">
             <Field
               id="professional-name"
-              label="Nombre público"
-              required
+              label="Nombre Público"
               value={draft.name}
               onChange={(value) => update({ name: value })}
-              placeholder="Ej. Ana López"
+              placeholder="Nombre Público"
             />
-            <Field
-              id="professional-role"
-              label="Especialidad o cargo"
-              required
-              value={draft.role}
-              onChange={(value) => update({ role: value })}
-              placeholder="Ej. Cosmetóloga"
-            />
-            <SelectField
-              id="professional-local"
-              label="Local"
-              value={draft.localId}
-              onChange={(value) => update({ localId: value })}
-              options={locals.map((local) => ({
-                value: local.id,
-                label: local.name,
-              }))}
-            />
-            <Field
-              id="professional-email"
-              label="Email"
-              required
-              value={draft.email}
-              onChange={(value) => update({ email: value })}
-              type="email"
-            />
-          </div>
-          <div className="space-y-2">
-            <div className="admin-setting-row">
-              <div>
-                <p className="font-medium">Acepta reservas en línea</p>
-                <p className="admin-help">
-                  El profesional aparecerá como opción en el sitio web.
-                </p>
-              </div>
-              <Toggle
-                checked={draft.acceptsOnline}
-                onChange={(checked) => update({ acceptsOnline: checked })}
+            <div className="admin-form-grid mt-4">
+              <Field
+                id="professional-role"
+                label="Especialidad o cargo"
+                value={draft.role}
+                onChange={(value) => update({ role: value })}
+                placeholder="Ej. Cosmetóloga"
+              />
+              <SelectField
+                id="professional-local"
+                label="Local"
+                value={draft.localId}
+                onChange={(value) => update({ localId: value })}
+                options={locals.map((local) => ({
+                  value: local.id,
+                  label: local.name,
+                }))}
               />
             </div>
-            <div className="admin-setting-row">
-              <div>
-                <p className="font-medium">
-                  Crear usuario para este profesional
-                </p>
-                <p className="admin-help">
-                  Podrá acceder con el email configurado.
-                </p>
+            <div className="professional-toggle-list">
+              <div className="professional-toggle-row">
+                <Toggle
+                  checked={draft.acceptsOnline}
+                  label="Acepta reservas en línea"
+                  onChange={(checked) => update({ acceptsOnline: checked })}
+                />
+                <div>
+                  <p className="font-medium">
+                    Este profesional acepta reservas en línea
+                  </p>
+                </div>
               </div>
-              <Toggle
-                checked={draft.createsUser}
-                onChange={(checked) => update({ createsUser: checked })}
-              />
+              <div className="professional-toggle-row">
+                <Toggle
+                  checked={draft.createsUser}
+                  label="Crear un usuario para este profesional"
+                  onChange={(checked) => update({ createsUser: checked })}
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium">
+                    Crear un usuario a este profesional
+                  </p>
+                  <p className="admin-help">
+                    Ingresa el email para que el profesional pueda ver su propia agenda
+                  </p>
+                  {draft.createsUser ? (
+                    <div className="mt-3">
+                      <Input
+                        id="professional-email"
+                        type="email"
+                        value={draft.email}
+                        placeholder="Ingresa el email del profesional"
+                        onChange={(event) =>
+                          update({ email: event.target.value })
+                        }
+                        className="admin-input"
+                      />
+                    </div>
+                  ) : null}
+                </div>
+              </div>
             </div>
           </div>
-          <div>
-            <div className="mb-3 flex items-end justify-between">
+          <div className="professional-services-section">
+            <div className="mb-3 flex items-end justify-between gap-4">
               <div>
-                <h3 className="admin-section-title">Servicios que realiza</h3>
-                <p className="admin-help">
-                  {draft.services.length} seleccionados de {services.length}
-                </p>
+                <h3 className="professional-section-title">
+                  Selecciona los servicios que realiza el profesional
+                </h3>
               </div>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() =>
-                  update({
-                    services:
-                      draft.services.length === services.length
-                        ? []
-                        : services.map((service) => service.id),
-                  })
-                }
+              <label
+                className="professional-select-all"
               >
-                {draft.services.length === services.length
-                  ? "Quitar todos"
-                  : "Seleccionar todo"}
-              </Button>
+                <input
+                  type="checkbox"
+                  checked={allServicesSelected}
+                  onChange={() =>
+                    update({
+                      services: allServicesSelected
+                        ? []
+                        : serviceGroups.flatMap((group) =>
+                            group.items.map((service) => service.id),
+                          ),
+                    })
+                  }
+                  className="h-4 w-4 accent-[#9860df]"
+                />
+                Seleccionar Todo
+              </label>
             </div>
-            <div className="grid gap-2 md:grid-cols-2">
-              {services
-                .filter((service) => service.type !== "add-on")
-                .map((service) => (
-                  <CheckRow
-                    key={service.id}
-                    checked={draft.services.includes(service.id)}
-                    onChange={(checked) => toggleService(service.id, checked)}
-                  >
-                    {service.name}
-                    <span className="ml-2 text-xs text-slate-400">
-                      {service.category}
-                    </span>
-                  </CheckRow>
-                ))}
+            <div className="professional-category-list">
+              {serviceGroups.map((group) => {
+                const expanded = expandedCategories.includes(group.category);
+                const selected = group.items.filter((item) =>
+                  draft.services.includes(item.id),
+                ).length;
+                const allSelected = selected === group.items.length;
+                return (
+                  <div key={group.category} className="professional-category">
+                    <div className="professional-category-header">
+                      <label className="professional-category-label">
+                        <input
+                          type="checkbox"
+                          checked={allSelected}
+                          onChange={(event) =>
+                            toggleCategoryServices(group.items, event.target.checked)
+                          }
+                          className="h-4 w-4 accent-[#9860df]"
+                        />
+                        <span>{group.category}</span>
+                      </label>
+                      <span className="professional-category-count">
+                        ({group.items.length})
+                      </span>
+                      <button
+                        type="button"
+                        className="professional-category-expand"
+                        aria-label={`${expanded ? "Ocultar" : "Mostrar"} servicios de ${group.category}`}
+                        onClick={() => toggleCategory(group.category)}
+                      >
+                        <ChevronDown
+                          className={`h-5 w-5 transition-transform ${expanded ? "rotate-180" : ""}`}
+                        />
+                      </button>
+                    </div>
+                    {expanded ? (
+                      <div className="professional-service-grid">
+                        {group.items.map((service) => (
+                          <label
+                            key={service.id}
+                            className="professional-service-option"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={draft.services.includes(service.id)}
+                              onChange={(event) =>
+                                toggleService(service.id, event.target.checked)
+                              }
+                              className="h-4 w-4 accent-[#9860df]"
+                            />
+                            <span>{service.name}</span>
+                          </label>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
@@ -1700,26 +1895,30 @@ function ProfessionalDialog({
           </div>
         </div>
       ) : (
-        <div className="space-y-5">
-          <FilePicker
-            label="Foto del profesional"
-            recommendation="Recomendado: 100 × 100 px, máximo 3 MB."
-            value={draft.avatar}
-            onChange={(avatar) => update({ avatar })}
-          />
+        <div className="professional-profile-card">
           <div>
             <label htmlFor="professional-bio" className="admin-label">
               Biografía
             </label>
+            <p className="admin-help">
+              Será visible en el sitio y marketplace. Máximo 600 caracteres
+            </p>
             <Textarea
               id="professional-bio"
-              rows={6}
+              rows={5}
               className="admin-textarea"
               value={draft.biography}
               onChange={(event) => update({ biography: event.target.value })}
-              placeholder="Cuéntale a tus clientes quién te atenderá."
+              placeholder="Incluye una breve biografía del profesional"
             />
           </div>
+          <FilePicker
+            label="Foto del profesional"
+            recommendation="Te recomendamos tenga un tamaño mínimo de 100x100px y un peso máximo de 3MB."
+            value={draft.avatar}
+            onChange={(avatar) => update({ avatar })}
+            variant="avatar"
+          />
         </div>
       )}
     </ModalShell>
@@ -1870,6 +2069,8 @@ function ProfessionalsSection({
   const [groups, setGroups] = useState<ProfessionalGroup[]>(initialGroups);
   const [editing, setEditing] = useState<ProfessionalRecord | null>(null);
   const [proDialog, setProDialog] = useState(false);
+  const [specialProfessional, setSpecialProfessional] =
+    useState<ProfessionalRecord | null>(null);
   const [groupEditing, setGroupEditing] = useState<ProfessionalGroup | null>(
     null,
   );
@@ -2055,12 +2256,11 @@ function ProfessionalsSection({
                                   variant="ghost"
                                   className="w-full justify-start"
                                   onClick={() => {
-                                    setEditing(cloneProfessional(professional));
-                                    setProDialog(true);
+                                    setSpecialProfessional(professional);
                                   }}
                                 >
                                   <CalendarDays className="mr-2 h-4 w-4" />
-                                  Editar jornada
+                                  Habilitar jornada especial
                                 </Button>
                                 <Button
                                   variant="ghost"
@@ -2172,6 +2372,29 @@ function ProfessionalsSection({
         services={services}
         onOpenChange={setProDialog}
         onSave={saveProfessional}
+      />
+      <SpecialDayDialog
+        open={Boolean(specialProfessional)}
+        title={
+          specialProfessional
+            ? `Abrir día para ${specialProfessional.name}`
+            : "Jornada especial"
+        }
+        days={specialProfessional?.specialDays ?? []}
+        onOpenChange={(open) => {
+          if (!open) setSpecialProfessional(null);
+        }}
+        onSave={(days) => {
+          if (!specialProfessional) return;
+          setProfessionals((current) =>
+            current.map((professional) =>
+              professional.id === specialProfessional.id
+                ? { ...professional, specialDays: days }
+                : professional,
+            ),
+          );
+          setSpecialProfessional(null);
+        }}
       />
       <GroupDialog
         open={groupDialog}
