@@ -1,14 +1,22 @@
+import { Card, CardContent } from "@cosmetics/ui";
+
 interface MetricCardProps {
-  label: string
-  value: string
-  tone?: 'gold' | 'sage' | 'rose' | 'blue'
+  label: string;
+  value: string;
+  tone?: "gold" | "sage" | "rose" | "blue";
 }
 
-export function MetricCard({ label, value, tone = 'gold' }: MetricCardProps) {
+export function MetricCard({ label, value, tone = "gold" }: MetricCardProps) {
   return (
-    <div data-tone={tone} className="payroll-login-card overflow-hidden rounded-[2rem] p-5">
-      <p className="label-caps">{label}</p>
-      <p className="number-display mt-4 text-[1.7rem] font-black text-[color:var(--text-strong)]">{value}</p>
-    </div>
-  )
+    <Card data-tone={tone}>
+      <CardContent className="p-5">
+        <p className="text-sm font-bold uppercase tracking-widest text-[color:var(--text-muted)]">
+          {label}
+        </p>
+        <p className="number-display mt-2 text-2xl text-[color:var(--text-primary)]">
+          {value}
+        </p>
+      </CardContent>
+    </Card>
+  );
 }

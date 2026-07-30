@@ -102,10 +102,15 @@ el diseño y el autocuidado.
 
 ## Estado actual de `payroll`
 
-- Tipografía actual: `Bodoni Moda` para titulares y `Inter` para cuerpo/UI.
-- Las cards principales usan una superficie inspirada en el login de `envelope`: fondo oscuro translúcido, borde fino, blur y shadow suave.
+- `payroll` comparte el sistema visual canónico de `envelope`: `Emofera Regular` para títulos de página y marca, y `Gilroy` (400/500/600/700) para cuerpo/UI.
+- La paleta, tokens semánticos, sidebar, logo, favicon, login editorial, radios, sombras, inputs y estados light/dark de `payroll` deben mantenerse alineados con `apps/envelope`.
+- Los elementos de interfaz de `payroll` deben reutilizar los mismos primitivos y variantes que `envelope`: `Button`, `Badge`, `Card`, `DataTable`, `Dialog`, `AlertDialog`, `Select`, `DatePicker`/`DateRangePicker`, `ProgressKeysar`, sidebar shadcn e iconos de `lucide-react`. No crear SVGs manuales ni clases locales que reemplacen estilos de botones, cards o badges. Las acciones CRUD siguen el patrón de `envelope`: editar/borrar como botones `ghost` con iconos `Pencil`/`Trash2`, acciones de alta con icono Lucide y confirmaciones destructivas con `AlertDialogAction` rojo. Las tablas `DataTable` no deben anidarse dentro de otra card decorativa.
+- Las cards principales de `payroll` usan el componente `Card` de `@cosmetics/ui`, con sus subcomponentes `CardContent`/`CardHeader` cuando correspondan; no recrear la superficie con `<div>`, no anidar una `DataTable` dentro de otra card decorativa y no reintroducir glass oscuro ni colores de superficie hardcodeados.
+- `payroll` soporta tema claro y oscuro con la misma preferencia `keysar-theme` usada por `envelope`; cualquier componente nuevo debe funcionar correctamente en ambos modos.
 - La dirección visual de `payroll` debe mantenerse más limpia y minimalista que antes: evitar textos secundarios redundantes, descripciones largas y copy explicativo dentro de cards cuando el dato principal ya comunica el estado.
-- En métricas y bloques resumen, priorizar `label + value`; si hace falta contexto, usarlo solo de forma puntual.
+- En métricas y bloques resumen, priorizar `label + value`; si hace falta contexto, usarlo solo de forma puntual. La page resumen agrupa periodo, estado, exportaciones y KPIs en una única card, mantiene la configuración de corrida en un solo bloque compacto y muestra las métricas secundarias junto al encabezado de la tabla; no volver a fragmentar estas áreas en múltiples mini-cards.
+- Los encabezados de todas las pages de `payroll` replican el patrón de `envelope`: nombre de pantalla en un H1 con `.page-title`, subtítulo inmediato con `mt-1 text-sm` y `--text-muted`, y acciones alineadas al extremo derecho en desktop/apiladas en móvil. Título, subtítulo y acciones se muestran directamente sobre el fondo de la página, sin card; las cards funcionales cercanas se colocan debajo del encabezado para no alterar su posición.
+- Excepción exclusiva de `payroll`: solo los valores textuales que se capturan/guardarían en BD y los datos dinámicos mostrados en inputs, selects y cuerpos de tabla van en MAYÚSCULAS. Los formularios convierten esos valores mientras se escriben y vuelven a normalizarlos antes de guardarlos en estado; PDF/Excel exportan las celdas de datos en mayúsculas. Navegación, títulos, subtítulos, botones, descripciones y placeholders conservan su capitalización normal. No aplicar esta excepción automáticamente a otras apps.
 
 ---
 
@@ -246,7 +251,80 @@ Datos:
 
 ---
 
-## Contexto futuro: módulo Payroll desde `nomina.xlsx`
+## Payroll: implementación actual
+
+`apps/payroll` es una app operativa conectada a `backend/api` y PostgreSQL; ya no usa fixtures ni contextos mock. La referencia funcional original fue `nomina.xlsx`, pero las fórmulas viven en backend y cada corrida conserva snapshots históricos.
+
+### Límites y seguridad
+
+- La UI y todos los endpoints `/api/payroll/*` requieren sesión JWT y rol `SUPER_ADMIN`.
+- Payroll reutiliza en modo lectura `Empleado`, `Bank`, `Position`, `Sucursal`, `Venta` y `VentaDetalle`. No duplica ni modifica esos datos de Envelope.
+- `Empleado` no tiene sucursal base: las ventas determinan el desglose y los importes sin ventas se asignan a `CORPORATIVO`.
+- Los cambios de Payroll deben limitarse a `apps/payroll`, rutas/servicios/modelos Payroll en `backend/api` y documentación relacionada. No modificar `apps/envelope` para extender nómina.
+- La migración `20260730000000_add_payroll_models` es aditiva. Debe revisarse y ejecutarse manualmente con `prisma migrate deploy`; nunca usar `db push`, `migrate reset` ni seeds demo contra producción.
+- Los adjuntos usan un bucket privado de Supabase Storage. Configurar `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` y opcionalmente `PAYROLL_STORAGE_BUCKET`; no exponer la service-role key al frontend.
+
+### Fuentes reales reutilizadas
+
+| Dato                                         | Fuente                                                                                        |
+| -------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| Empleado, activo/inactivo, sueldo y teléfono | `Empleado`                                                                                    |
+| Banco y cuenta                               | `Empleado.bankId`/`Bank`, con compatibilidad para `Empleado.banco`, y `Empleado.numeroCuenta` |
+| Puesto                                       | `Empleado.positionId`/`Position`, con compatibilidad para `Empleado.puesto`                   |
+| Ventas por fecha, vendedor y sucursal        | `Venta` + suma de `VentaDetalle.cantidad`                                                     |
+| Sucursales                                   | `Sucursal`                                                                                    |
+
+Los catálogos de métodos de pago no participan en el cálculo de comisión. Los empleados inactivos se conservan en históricos y entran en una corrida si tienen actividad dentro del periodo.
+
+### Backend y modelos
+
+- Router: `backend/api/src/routes/payroll.routes.ts`.
+- Motor puro: `backend/api/src/services/payroll-calculation.ts`.
+- Ciclo de corridas y snapshots: `backend/api/src/services/payroll.service.ts`.
+- Storage privado: `backend/api/src/services/payroll-storage.ts`.
+- Modelos: `PayrollCatalogItem`, `CommissionScheme`, `CommissionSchemeVersion`, `CommissionSchemeTier`, `EmployeeCommissionAssignment`, `PayrollRun`, `PayrollRunLine`, `PayrollRunBranchLine`, `PayrollMovement`, `PayrollMovementAllocation`, `PayrollAttachment`, `PayrollExpense`, `LoanAdvance`, `LoanAdvanceInstallment`, `PayrollReceipt` y `PayrollAuditEvent`.
+- El schema canónico y el duplicado en `backend/api/src/prisma/schema.prisma` deben mantenerse sincronizados. Payroll usa el cliente estándar `@prisma/client`, regenerado durante el build del backend; no importar clientes generados desde rutas relativas porque `dist` no incluye esos artefactos.
+
+La API cubre bootstrap de fuentes compartidas; CRUD de catálogos, esquemas/versiones/asignaciones, movimientos, gastos y préstamos; adjuntos; corridas y transiciones; desglose por sucursal; recibos y seguimiento de WhatsApp.
+
+### Reglas de cálculo y ciclo de vida
+
+- Solo se aceptan quincenas completas: días 1–15 o 16–último día del mes. El sueldo quincenal es `Empleado.sueldo / 2`; sueldo nulo equivale a cero y genera advertencia.
+- Cada corrida elige `WITH_VAT` o `WITHOUT_VAT`. Con IVA se usa venta bruta; sin IVA se usa `venta / 1.16`. La misma base selecciona el rango y calcula `base × tasa`.
+- Rangos de comisión son continuos, inician en cero y el último no tiene límite superior. Versiones y asignaciones tienen vigencia; cambios existentes solo aplican desde la siguiente quincena.
+- Sueldo, comisión y préstamos se distribuyen proporcionalmente entre las sucursales donde el empleado tuvo ventas; los centavos residuales quedan en la última asignación. Sin ventas se asignan a `CORPORATIVO`. Los movimientos conservan su sucursal explícita.
+- Una corrida transita `DRAFT → APPROVED → PAID`; puede cancelarse antes de pagar. Aprobar congela líneas y reserva movimientos, gastos y cuotas. Pagar liquida cuotas reservadas y genera recibos. Una corrida pagada no se recalcula ni cancela.
+- Bloquea aprobación: ventas sin esquema/rango, pago total negativo o viáticos/insumos sin evidencia. Sueldo faltante es advertencia. Banco o cuenta faltante bloquean pago. Teléfono faltante bloquea solo la preparación de WhatsApp.
+- Préstamos y adelantos generan cuotas quincenales automáticas; el último pago absorbe el ajuste de centavos. Los estados históricos no se eliminan.
+- Recibos se generan desde el snapshot pagado, se descargan en PDF y WhatsApp se abre mediante `wa.me`; el archivo se adjunta manualmente. Estados: `GENERATED`, `SENT`, `CONFIRMED`.
+
+### Frontend operativo
+
+Rutas: `/`, `/bonos`, `/multas`, `/viaticos`, `/movimientos`, `/gastos`, `/esquemas`, `/prestamos-adelantos`, `/reportes/desglose-sucursal`, `/recibos` y `/login`.
+
+- `apps/payroll/src/lib/session.tsx` gestiona sesión real y el guard `SUPER_ADMIN`.
+- `apps/payroll/src/components/payroll/payroll-data-context.tsx` conecta toda la UI a `/api/payroll/*`.
+- Exportaciones PDF/Excel se generan desde datasets reales con imports dinámicos.
+- Los catálogos arrancan vacíos: no crear seed de bonos, multas, viáticos, esquemas ni préstamos salvo instrucción explícita.
+- Mantener snapshots y datos históricos; las ediciones solo afectan registros en borrador/pendientes que todavía no pertenecen a una corrida aprobada.
+
+### Validación
+
+```bash
+pnpm --filter @cosmetics/payroll type-check
+pnpm --filter @cosmetics/payroll build
+pnpm --filter @cosmetics/api test
+pnpm --filter @cosmetics/api type-check
+pnpm --filter @cosmetics/api build
+```
+
+El motor tiene pruebas de base con/sin IVA, selección de tasa, distribución exacta por sucursal, advertencias/bloqueos y amortización quincenal. Probar flujos integrados únicamente en una BD de desarrollo con la migración aplicada; no usar producción como ambiente de QA.
+
+---
+
+## Referencia histórica: diseño de Payroll desde `nomina.xlsx`
+
+> Esta sección conserva el análisis de origen del Excel. Si contradice “Payroll: implementación actual”, prevalece la implementación actual.
 
 Archivo de referencia analizado: `nomina.xlsx`.
 Cada hoja del Excel describe procesos actuales de nómina que hoy se resuelven con archivos de Excel. No debe copiarse literalmente el formato visual ni las fórmulas rotas/externas (`#REF!`, referencias tipo `[1]!Tabla...`); debe modelarse el proceso en el sistema.
@@ -271,36 +349,46 @@ Modelo recomendado:
 - Cálculos de nómina: hacerlos en backend y guardar snapshots por corrida; no depender solo de cálculos en cliente.
 - UI: reutilizar `@cosmetics/ui`, `DataTable`, `DatePicker`/`DateRangePicker`, `AlertDialog`, `toast` y reglas visuales existentes.
 
-### Estado actual de `apps/payroll` demo frontend
+### Estado anterior de `apps/payroll` como demo frontend
 
-Implementado solo frontend con datos mock locales. No toca backend, Prisma ni base de datos.
+Antes de la implementación real existió un frontend con datos mock locales. Esos mocks ya fueron eliminados.
 
 Archivos principales:
 
-- `apps/payroll/src/lib/mock-data.ts` — fixtures mock de empleados, corridas, movimientos, esquemas, préstamos, desglose por sucursal y recibos.
+- `apps/payroll/src/lib/mock-data.ts` — fixtures mock de empleados, corridas, movimientos, catálogos de bonos/multas/viáticos, gastos, esquemas, préstamos, desglose por sucursal y recibos.
 - `apps/payroll/src/lib/format.ts` — helpers de moneda, porcentaje, fecha y sumatorias.
-- `apps/payroll/src/components/payroll/payroll-shell.tsx` — shell/sidebar responsive de Payroll.
+- `apps/payroll/src/lib/report-export.ts` — exportación cliente PDF/Excel con dependencias pesadas cargadas mediante imports dinámicos.
+- `apps/payroll/src/components/payroll/payroll-shell.tsx` — shell/sidebar responsive alineado con `envelope`, con logo real, navegación colapsable y switch light/dark.
+- `apps/payroll/src/components/payroll/bonus-catalog-context.tsx` — contexto mock compartido para catálogos y gastos; conserva cambios durante la navegación cliente sin persistirlos.
+- `apps/payroll/src/components/payroll/report-export-buttons.tsx` — botones reutilizables de PDF/Excel con estados de carga y feedback por toast.
 - `apps/payroll/src/components/payroll/metric-card.tsx` — tarjetas KPI.
 - `apps/payroll/src/components/payroll/section-card.tsx` — contenedor estándar de secciones.
 - `apps/payroll/src/components/payroll/status-badge.tsx` — badges de estados mock.
-- `apps/payroll/src/app/globals.css` — diseño visual premium/glass adaptado a paleta Keysar, independiente de `envelope`.
-- `apps/payroll/src/app/layout.tsx` — carga tipográfica con `Bodoni Moda` para headlines y `Inter` para body.
+- `apps/payroll/src/app/globals.css` — tokens y sistema tipográfico compartidos con `envelope`, más aliases de compatibilidad para los componentes mock existentes.
+- `apps/payroll/src/app/layout.tsx` — metadatos, favicon, tipografía y script anti-flash del tema alineados con `envelope`.
+- `apps/payroll/public/` — copia local del logo, fondo editorial del login y fuentes Emofera/Gilroy canónicas de `envelope` para que la app sea autónoma en runtime.
 
 Reglas visuales de `payroll`:
 
-- Títulos y headlines usan `Bodoni Moda` vía `font-brand` o `.page-title`.
-- El cuerpo y texto de soporte usan `Inter` vía `font-sans`.
-- Los botones primarios deben mantener contraste alto en hover; no usar hovers que reduzcan legibilidad sobre el fondo oscuro.
-- El texto secundario debe seguir siendo legible en fondo oscuro, evitando grises demasiado apagados.
+- Todos los H1 usan `.page-title` con `Emofera Regular`; no aplicar `font-bold` ni `font-semibold` a `font-brand`.
+- El cuerpo y texto de soporte usan `Gilroy` vía `font-sans`; `Inter` queda solo como fallback.
+- Reutilizar los tokens `--bg-primary`, `--bg-card`, `--text-primary`, `--text-muted`, `--accent`, `--accent-hover` y `--border-color`; evitar hexadecimales de superficie dentro de pages/components.
+- Cards y paneles deben conservar el lenguaje compacto de `envelope`: fondo sólido legible en light/dark, borde nude, shadow sutil y radios de 10px/12px.
+- Los botones primarios deben mantener contraste alto y los botones destructivos deben incluir texto además del color; todos los elementos interactivos deben mostrar cursor, hover y foco visibles.
+- El login de `payroll` replica la composición editorial de `envelope` pero conserva el acceso mock sin autenticación real.
+- Todo componente nuevo debe validarse a 375px, 768px, 1024px y 1440px, sin scroll horizontal, y respetar `prefers-reduced-motion`.
 
 Pantallas mock implementadas:
 
-- `/` — Summary de nómina: resumen tipo `PANTALLA SUMARY`, KPIs, selector de rango, modo con IVA/sin IVA y tabla por empleado con ventas, esquema, comisión, bonos, multas, sueldo base, préstamos, ajustes, viáticos y total.
+- `/` — Summary de nómina: resumen tipo `PANTALLA SUMARY`, KPIs, selector de rango, modo con IVA/sin IVA y tabla por empleado con ventas, esquema, comisión, bonos, multas, préstamos, ajustes, viáticos y total. La tabla ya no muestra `sueldo base`; el balance general mock descuenta nómina y gastos de las ventas con IVA.
 - `/bonos` — Catálogo mock de bonos predefinidos con alta/edición/borrado.
-- `/movimientos` — Ajustes, multas, viáticos e insumos: tabla, formulario mock en modal, división entre personas, confirmación y aviso de adjuntos; consume el catálogo de bonos cuando el tipo es bono.
+- `/multas` — Catálogo mock de multas predefinidas con alta/edición/borrado.
+- `/viaticos` — Catálogo mock de viáticos predefinidos con alta/edición/borrado.
+- `/movimientos` — Ajustes, multas, viáticos e insumos: tabla, formulario mock en modal, división entre personas, confirmación y aviso de adjuntos; bonos, multas y viáticos abren un select secundario conectado a su catálogo. Los movimientos creados se agregan a la tabla durante la sesión.
+- `/gastos` — Formulario y tabla mock para gastos fijos/variables; los registros compartidos por contexto se descuentan del balance general de `/`.
 - `/esquemas` — Esquemas de comisión: catálogo por rangos `de/hasta/tasa` y asignación por empleado.
 - `/prestamos-adelantos` — Amortización: préstamos, adelantos, pagos, saldo y estatus.
-- `/reportes/desglose-sucursal` — Payroll breakdown: reporte mock de costo por punto de venta con desglose por empleado/sucursal, resumen por sucursal y barras de distribución.
+- `/reportes/desglose-sucursal` — Payroll breakdown: reporte mock de costo por punto de venta con desglose por empleado/sucursal, resumen por sucursal, barras de distribución y exportación PDF/Excel.
 - `/recibos` — Recibos por empleado: estatus generado/enviado/confirmado y acción mock de visualización/envío.
 - `/login` — Login visual mock sin autenticación real.
 
@@ -310,7 +398,7 @@ Limitaciones actuales de la demo:
 - No consume API.
 - No autentica ni valida permisos reales.
 - No sube archivos reales.
-- No genera PDF/Excel reales.
+- Las exportaciones PDF/Excel se generan realmente en cliente para resumen, movimientos, préstamos/adelantos y desglose por sucursal, pero contienen exclusivamente datasets mock. Los valores de estatus se traducen al español antes de construir el archivo; no exportar los enums internos en inglés.
 - No guarda snapshots reales de corridas.
 - Los movimientos/formularios disparan `toast` y diálogos de confirmación solo para simular flujo.
 
@@ -462,13 +550,16 @@ Debe cubrir:
 
 ### Pages recomendadas para `apps/payroll`
 
-Recomendación completa: 7 nuevas pages.
+Recomendación completa actual: 10 pages de operación y reportes.
 
 | Page                  | Ruta sugerida                 | Fuente Excel                               |
 | --------------------- | ----------------------------- | ------------------------------------------ |
 | Summary               | `/` o `/corridas`             | `PANTALLA SUMARY`                          |
 | Bonos                 | `/bonos`                      | catálogo de bonos del flujo de movimientos |
+| Multas                | `/multas`                     | catálogo mock de multas                    |
+| Viáticos              | `/viaticos`                   | catálogo mock de viáticos                  |
 | Movimientos de nómina | `/movimientos`                | `pantalla de bonos`                        |
+| Gastos                | `/gastos`                     | captura mock de gastos fijos/variables     |
 | Esquemas de comisión  | `/esquemas`                   | `pantalla de esquemas`                     |
 | Préstamos y adelantos | `/prestamos-adelantos`        | `panatalla prestamos-adelantos`            |
 | Payroll breakdown     | `/reportes/desglose-sucursal` | `payroll breakdown`                        |
@@ -523,10 +614,11 @@ Cubierto parcialmente, solo a nivel UI/mock:
 
 - Fase 1: layout, shell/sidebar, login visual y navegación. Pendiente auth real, permisos y lectura real de empleados/ventas.
 - Fase 2: pantalla visual de esquemas y rangos. Pendiente modelo real, asignación real por empleado y reglas históricas.
-- Fase 3: pantalla visual de bonos independientes y movimientos, estatus, división y adjuntos simulados. Pendiente persistencia, aprobaciones reales y subida de archivos.
+- Fase 3: catálogos visuales independientes de bonos, multas y viáticos; movimientos con selects dependientes, estatus, división y adjuntos simulados. Pendiente persistencia, aprobaciones reales y subida de archivos.
 - Fase 4: pantalla visual de préstamos/adelantos con saldo y amortización mock. Pendiente calendario real y conexión a corridas.
 - Fase 5: pantalla visual de corrida y tabla por empleado. Pendiente cálculo backend, snapshots y bloqueo/aprobación real.
-- Fase 6: pantalla visual de recibos y desglose por sucursal. Pendiente PDF/Excel, envío por WhatsApp y confirmación real.
+- Fase 6: pantalla visual de recibos y desglose por sucursal; exportación PDF/Excel cliente implementada para resumen, movimientos, préstamos y desglose. Pendiente envío por WhatsApp, confirmación real y exportación desde datos backend.
+- Fase mock adicional: gastos fijos/variables compartidos en contexto y descontados del balance general. Pendiente reglas contables y persistencia real.
 
 Pendiente para implementación real:
 
@@ -538,7 +630,7 @@ Pendiente para implementación real:
 - Implementar cálculo backend de comisiones, bonos, préstamos y totales.
 - Implementar snapshots inmutables por corrida.
 - Implementar carga de comprobantes.
-- Implementar exportaciones y recibos reales.
+- Conectar las exportaciones existentes a datasets backend e implementar recibos reales.
 - Implementar pruebas de cálculo para evitar regresiones de nómina.
 
 Reglas para futuras sesiones:

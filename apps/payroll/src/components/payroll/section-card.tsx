@@ -1,21 +1,30 @@
 interface SectionCardProps {
-  eyebrow?: string
-  title: string
-  action?: React.ReactNode
-  children: React.ReactNode
+  eyebrow?: string;
+  title: string;
+  action?: React.ReactNode;
+  children: React.ReactNode;
 }
 
-export function SectionCard({ eyebrow, title, action, children }: SectionCardProps) {
+export function SectionCard({
+  eyebrow,
+  title,
+  action,
+  children,
+}: SectionCardProps) {
   return (
-    <div className="payroll-login-card overflow-hidden rounded-[2rem]">
-      <div className="flex flex-col gap-4 p-6 md:flex-row md:items-start md:justify-between">
+    <section className="space-y-4">
+      <header className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div>
-          {eyebrow ? <p className="label-caps mb-2">{eyebrow}</p> : null}
-          <h3 className="section-heading">{title}</h3>
+          <h2 className="section-heading uppercase">{title}</h2>
+          {eyebrow ? (
+            <p className="mt-1 text-sm text-[color:var(--text-muted)]">
+              {eyebrow}
+            </p>
+          ) : null}
         </div>
         {action}
-      </div>
-      <div className="px-6 pb-6">{children}</div>
-    </div>
-  )
+      </header>
+      {children}
+    </section>
+  );
 }
