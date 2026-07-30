@@ -262,7 +262,7 @@ Datos:
 - `Empleado` no tiene sucursal base: las ventas determinan el desglose y los importes sin ventas se asignan a `CORPORATIVO`.
 - Los cambios de Payroll deben limitarse a `apps/payroll`, rutas/servicios/modelos Payroll en `backend/api` y documentación relacionada. No modificar `apps/envelope` para extender nómina.
 - La migración `20260730000000_add_payroll_models` es aditiva. Debe revisarse y ejecutarse manualmente con `prisma migrate deploy`; nunca usar `db push`, `migrate reset` ni seeds demo contra producción.
-- Los adjuntos usan un bucket privado de Supabase Storage. Configurar `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` y opcionalmente `PAYROLL_STORAGE_BUCKET`; no exponer la service-role key al frontend.
+- Los adjuntos están preparados para un bucket privado de Supabase Storage, pero su habilitación está pospuesta. Cuando se cree el bucket, configurar `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` y opcionalmente `PAYROLL_STORAGE_BUCKET`; nunca exponer la service-role key al frontend.
 
 ### Fuentes reales reutilizadas
 
@@ -308,6 +308,27 @@ Rutas: `/`, `/bonos`, `/multas`, `/viaticos`, `/movimientos`, `/gastos`, `/esque
 - Los catálogos arrancan vacíos: no crear seed de bonos, multas, viáticos, esquemas ni préstamos salvo instrucción explícita.
 - Mantener snapshots y datos históricos; las ediciones solo afectan registros en borrador/pendientes que todavía no pertenecen a una corrida aprobada.
 
+#### Captura de esquemas de comisión
+
+La page `apps/payroll/src/app/(dashboard)/esquemas/page.tsx` guía la captura y conserva el contrato decimal del backend sin exponerlo al usuario:
+
+- La UI usa el término **Comisión** y recibe un porcentaje humano entre `0` y `100`; por ejemplo, el usuario escribe `10` para `10%`. Antes de llamar a `/api/payroll/schemes`, el frontend lo convierte a `0.10`.
+- El primer nivel siempre inicia en `$0.00` y el campo es de solo lectura.
+- El último nivel siempre muestra `Sin límite`; el usuario no captura `toAmount` para ese nivel.
+- Al agregar niveles, `Ventas desde` se calcula automáticamente como el límite anterior más `$0.01`. El usuario solo captura los cortes intermedios y el porcentaje de cada nivel.
+- Se permiten de 1 a 12 niveles. Los límites deben ser montos válidos y ascendentes; la automatización mantiene continuidad sin huecos ni traslapes.
+- El nombre es obligatorio, único y de máximo 80 caracteres. La vigencia debe comenzar el día 1 o 16 del mes.
+- Los errores se muestran junto al campo, con `role="alert"`/`aria-invalid`, ejemplos y mensajes de recuperación. No volver a sustituirlos por un único toast genérico.
+- Editar un esquema programa una nueva versión; no muta versiones usadas por corridas históricas.
+- Las reglas equivalentes siguen validadas en backend. No relajarlas: la UI debe automatizarlas y explicarlas.
+
+### Documentación operativa de Payroll
+
+- `apps/payroll/PENDIENTES.md` registra despliegues por ambiente, el bucket pospuesto y las decisiones/preguntas de implementación.
+- `apps/payroll/GUIA_PRIMERA_NOMINA.md` explica al usuario qué capturar cuando Payroll está vacío y cómo recorrer una primera corrida.
+- El bucket privado de comprobantes está pospuesto. Sin configurarlo funcionan empleados, ventas, catálogos, esquemas, movimientos sin evidencia, gastos, préstamos, corridas, reportes, PDF/Excel, recibos y preparación de WhatsApp. Viáticos e insumos pueden guardarse pendientes, pero no aprobarse sin evidencia.
+- Mientras el bucket no exista, no configurar `SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY` de Storage en Fly; hacerlo habilitaría una carga que después fallaría.
+
 ### Validación
 
 ```bash
@@ -324,7 +345,7 @@ El motor tiene pruebas de base con/sin IVA, selección de tasa, distribución ex
 
 ## Referencia histórica: diseño de Payroll desde `nomina.xlsx`
 
-> Esta sección conserva el análisis de origen del Excel. Si contradice “Payroll: implementación actual”, prevalece la implementación actual.
+> Esta sección conserva únicamente el análisis que originó la implementación. **No representa pendientes ni el estado actual.** Si contradice “Payroll: implementación actual”, prevalece siempre la implementación actual.
 
 Archivo de referencia analizado: `nomina.xlsx`.
 Cada hoja del Excel describe procesos actuales de nómina que hoy se resuelven con archivos de Excel. No debe copiarse literalmente el formato visual ni las fórmulas rotas/externas (`#REF!`, referencias tipo `[1]!Tabla...`); debe modelarse el proceso en el sistema.
@@ -335,7 +356,7 @@ Implementar nómina en `apps/payroll`, no dentro de `apps/envelope`.
 
 Razones:
 
-- `apps/payroll` ya existe como app interna en puerto `3002`; actualmente tiene una demo frontend con mocks para validación de cliente, mientras `backend/api/src/routes/payroll.routes.ts` sigue pendiente de implementar.
+- `apps/payroll` ya existía como app interna en puerto `3002`; inicialmente tuvo una demo frontend con mocks. La implementación real y `backend/api/src/routes/payroll.routes.ts` ya están terminados.
 - `envelope` ya tiene una responsabilidad clara: captura/control de ventas por sucursal, sobres, empleados, catálogos y reportes de ventas.
 - Payroll introduce datos más sensibles y reglas diferentes: préstamos, adelantos, recibos, sueldos, ajustes, aprobaciones, cálculos históricos y pagos.
 - Payroll debe reutilizar fuentes de `envelope` (`Empleado`, `Sucursal`, `Venta`, `VentaDetalle`, `Bank`, `Position`), pero no vivir visualmente ni conceptualmente dentro del flujo de sobre.
@@ -343,10 +364,10 @@ Razones:
 
 Modelo recomendado:
 
-- Frontend: implementar pantallas en `apps/payroll`.
-- Backend: implementar endpoints nuevos en `/api/payroll/*` dentro de `backend/api/src/routes/payroll.routes.ts`.
-- Base de datos: agregar modelos Prisma nuevos para nómina, manteniendo relación con modelos existentes.
-- Cálculos de nómina: hacerlos en backend y guardar snapshots por corrida; no depender solo de cálculos en cliente.
+- Frontend: pantallas implementadas en `apps/payroll`.
+- Backend: endpoints `/api/payroll/*` implementados dentro de `backend/api/src/routes/payroll.routes.ts`.
+- Base de datos: modelos Prisma de nómina agregados mediante migración aditiva y relacionados con modelos existentes.
+- Cálculos de nómina: implementados en backend con snapshots por corrida; no dependen de cálculos en cliente.
 - UI: reutilizar `@cosmetics/ui`, `DataTable`, `DatePicker`/`DateRangePicker`, `AlertDialog`, `toast` y reglas visuales existentes.
 
 ### Estado anterior de `apps/payroll` como demo frontend
@@ -375,10 +396,10 @@ Reglas visuales de `payroll`:
 - Reutilizar los tokens `--bg-primary`, `--bg-card`, `--text-primary`, `--text-muted`, `--accent`, `--accent-hover` y `--border-color`; evitar hexadecimales de superficie dentro de pages/components.
 - Cards y paneles deben conservar el lenguaje compacto de `envelope`: fondo sólido legible en light/dark, borde nude, shadow sutil y radios de 10px/12px.
 - Los botones primarios deben mantener contraste alto y los botones destructivos deben incluir texto además del color; todos los elementos interactivos deben mostrar cursor, hover y foco visibles.
-- El login de `payroll` replica la composición editorial de `envelope` pero conserva el acceso mock sin autenticación real.
+- El login de `payroll` replica la composición editorial de `envelope` y usa autenticación JWT real con guard exclusivo `SUPER_ADMIN`.
 - Todo componente nuevo debe validarse a 375px, 768px, 1024px y 1440px, sin scroll horizontal, y respetar `prefers-reduced-motion`.
 
-Pantallas mock implementadas:
+Pantallas que se prototiparon originalmente con mocks y después se conectaron al backend real:
 
 - `/` — Summary de nómina: resumen tipo `PANTALLA SUMARY`, KPIs, selector de rango, modo con IVA/sin IVA y tabla por empleado con ventas, esquema, comisión, bonos, multas, préstamos, ajustes, viáticos y total. La tabla ya no muestra `sueldo base`; el balance general mock descuenta nómina y gastos de las ventas con IVA.
 - `/bonos` — Catálogo mock de bonos predefinidos con alta/edición/borrado.
@@ -390,9 +411,9 @@ Pantallas mock implementadas:
 - `/prestamos-adelantos` — Amortización: préstamos, adelantos, pagos, saldo y estatus.
 - `/reportes/desglose-sucursal` — Payroll breakdown: reporte mock de costo por punto de venta con desglose por empleado/sucursal, resumen por sucursal, barras de distribución y exportación PDF/Excel.
 - `/recibos` — Recibos por empleado: estatus generado/enviado/confirmado y acción mock de visualización/envío.
-- `/login` — Login visual mock sin autenticación real.
+- `/login` — En la demo original era un login visual mock; hoy usa autenticación JWT real y guard `SUPER_ADMIN`.
 
-Limitaciones actuales de la demo:
+Limitaciones históricas de la demo eliminada (no describen la implementación actual):
 
 - No persiste información.
 - No consume API.
@@ -424,7 +445,7 @@ Nota importante:
 - En Prisma, `Empleado` no tiene `sucursalId`; la sucursal se obtiene desde ventas o desde la cuenta `Usuario.sucursalId` cuando aplique.
 - `packages/types/src/index.ts` actualmente expone `Empleado.sucursalId`, pero el schema real no lo tiene. No asumir "sucursal base del empleado" hasta agregarla formalmente o definir una regla de derivación.
 
-### Datos faltantes para Payroll
+### Datos que faltaban antes de la implementación
 
 | Proceso                 | Datos/modelos faltantes                                                                                                         |
 | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
@@ -575,7 +596,7 @@ No duplicar en `payroll` estas pantallas ya existentes en `envelope`:
 
 Payroll debe consumir esos datos desde backend compartido o endpoints específicos de lectura para nómina.
 
-### Modelos Prisma sugeridos para Payroll
+### Modelos Prisma propuestos originalmente
 
 Nombres orientativos; validar antes de migrar:
 
@@ -598,7 +619,7 @@ Estados sugeridos:
 - Préstamo/adelanto: `PENDING`, `PAID`, `LOST`, `CANCELED`.
 - Recibo: `GENERATED`, `SENT`, `CONFIRMED`.
 
-### Fases sugeridas de implementación
+### Fases originales de implementación (completadas)
 
 1. Base de `payroll`: layout, auth, sidebar, permisos y lectura de empleados/ventas.
 2. Bonos predefinidos como catálogo independiente.
@@ -608,7 +629,7 @@ Estados sugeridos:
 6. Corrida de nómina calculada y guardada como snapshot.
 7. Recibos, desglose por sucursal y exportaciones PDF/Excel.
 
-### Fases cubiertas por la demo frontend mock
+### Cobertura histórica de la demo frontend mock
 
 Cubierto parcialmente, solo a nivel UI/mock:
 
@@ -620,22 +641,21 @@ Cubierto parcialmente, solo a nivel UI/mock:
 - Fase 6: pantalla visual de recibos y desglose por sucursal; exportación PDF/Excel cliente implementada para resumen, movimientos, préstamos y desglose. Pendiente envío por WhatsApp, confirmación real y exportación desde datos backend.
 - Fase mock adicional: gastos fijos/variables compartidos en contexto y descontados del balance general. Pendiente reglas contables y persistencia real.
 
-Pendiente para implementación real:
+Estado final del checklist histórico:
 
-- Diseñar y migrar modelos Prisma de Payroll.
-- Implementar `/api/payroll/*`.
-- Definir permisos específicos de Payroll.
-- Resolver discrepancia `Empleado.sucursalId` en types vs schema real.
-- Integrar lectura real de ventas, empleados, sucursales, bancos y puestos.
-- Implementar cálculo backend de comisiones, bonos, préstamos y totales.
-- Implementar snapshots inmutables por corrida.
-- Implementar carga de comprobantes.
-- Conectar las exportaciones existentes a datasets backend e implementar recibos reales.
-- Implementar pruebas de cálculo para evitar regresiones de nómina.
+- [x] Diseñar modelos Prisma y crear la migración aditiva de Payroll.
+- [x] Implementar `/api/payroll/*` con guard `SUPER_ADMIN`.
+- [x] Integrar lectura real de ventas, empleados, sucursales, bancos y puestos sin duplicarlos.
+- [x] Resolver la ausencia de `Empleado.sucursalId` mediante ventas y fallback `CORPORATIVO`.
+- [x] Implementar cálculo backend de sueldo, comisiones, movimientos, préstamos y totales.
+- [x] Implementar snapshots inmutables por corrida y auditoría.
+- [x] Implementar servicio/endpoints de comprobantes; solo queda pendiente crear/configurar el bucket por ambiente.
+- [x] Conectar exportaciones, recibos y WhatsApp a datasets reales.
+- [x] Implementar pruebas del motor para evitar regresiones.
 
 Reglas para futuras sesiones:
 
-- Antes de implementar Payroll, no mezclar rutas/pantallas nuevas dentro de `apps/envelope` salvo instrucción explícita.
+- Al extender Payroll, no mezclar rutas/pantallas nuevas dentro de `apps/envelope` salvo instrucción explícita.
 - No recalcular corridas históricas cuando cambien esquemas, puestos, sueldos o empleados; guardar snapshot en `PayrollRunLine`.
 - Toda migración de nómina debe ser aditiva y explicarse antes de ejecutarse.
 - No crear datos sensibles de nómina como mocks realistas si podrían confundirse con datos reales.
@@ -651,6 +671,7 @@ Reglas para futuras sesiones:
 **Modelos relevantes:**
 
 - `Usuario`, `Sucursal`, `Empleado`, `Venta`, `VentaDetalle`, `RegistroCita`, `MetodoPago`, `Bank`, `Position`.
+- Payroll agrega `PayrollCatalogItem`, `CommissionScheme`, `CommissionSchemeVersion`, `CommissionSchemeTier`, `EmployeeCommissionAssignment`, `PayrollRun`, `PayrollRunLine`, `PayrollRunBranchLine`, `PayrollMovement`, `PayrollMovementAllocation`, `PayrollAttachment`, `PayrollExpense`, `LoanAdvance`, `LoanAdvanceInstallment`, `PayrollReceipt` y `PayrollAuditEvent`.
 - `Usuario` puede vincularse opcionalmente a `Empleado` mediante `empleadoId` y guarda metadatos para el futuro flujo de invitación/alta de contraseña.
 - `Position` incluye `canManageAccess` y la relación `PositionScreenPermission`.
 - `PositionScreenPermission` guarda permisos por pantalla para cada puesto y también puede almacenar claves de acción virtual como `ventas/generar-sobre`.
@@ -669,6 +690,8 @@ Reglas para futuras sesiones:
 
 - No ejecutar `migrate reset` ni `db push` en ambientes compartidos/productivos.
 - Usar migraciones Prisma controladas (`prisma migrate deploy`).
+- La migración Payroll `20260730000000_add_payroll_models` es aditiva: crea tablas, enums, índices, relaciones y restricciones de nómina; no elimina ni transforma ventas, empleados ni otros registros productivos de Envelope.
+- Aplicar Payroll por ambiente en este orden: confirmar conexión y respaldo/PITR, ejecutar `prisma migrate status`, aplicar `prisma migrate deploy`, desplegar el backend correspondiente y después desplegar/verificar el frontend.
 - `seed.ts` contiene datos demo — usar con cuidado, puede sobreescribir datos.
 - `seed-catalogs.ts` es el seed seguro para catálogos `Bank`/`Position`.
 
@@ -679,16 +702,43 @@ Reglas para futuras sesiones:
 ### Producción
 
 ```
-master → Vercel Production → cosmetics-api.fly.dev → Supabase prod
+master → https://keysarcosmetics-payroll.vercel.app → cosmetics-api.fly.dev → Supabase prod
 ```
 
 El backend Fly.io de producción está configurado para evitar cold start con `auto_stop_machines = 'off'` y `min_machines_running = 1`; esto requiere deploy de backend para reflejarse en Fly.
+
+Configuración requerida para Payroll producción:
+
+```text
+# Vercel Production de apps/payroll
+NEXT_PUBLIC_API_URL=https://cosmetics-api.fly.dev
+
+# Fly.io, app cosmetics-api
+CORS_ORIGINS=https://keysarcosmetics-envelope.vercel.app,https://keysarcosmetics-payroll.vercel.app
+```
+
+- Los origins CORS no llevan `/` final, espacios ni comillas. El backend lee `CORS_ORIGINS` en plural; `CORS_ORIGIN` en singular no participa.
+- Fly no revela el valor anterior de un Secret al editarlo. Antes de reemplazarlo, recuperar la lista desde la línea `CORS habilitado para:` de los logs de arranque o conservar explícitamente todos los dominios existentes.
+- La cuenta que entra a Payroll debe existir en Supabase producción, estar activa y tener rol `SUPER_ADMIN`. Los usuarios de desarrollo no se replican automáticamente a producción.
+- Estado documentado al 30 de julio de 2026: Payroll está publicado en `https://keysarcosmetics-payroll.vercel.app`; todavía debe verificarse su variable `NEXT_PUBLIC_API_URL`, y la migración Payroll/backend productivos deben desplegarse y validarse explícitamente antes de probar el flujo real. No asumir que una validación exitosa en dev confirma producción.
 
 ### Desarrollo
 
 ```
 develop → Vercel Preview → cosmetics-api-dev.fly.dev → Supabase dev
 ```
+
+Configuración validada para desarrollo local de Payroll:
+
+```text
+# apps/payroll/.env.local (ignorado por Git)
+NEXT_PUBLIC_API_URL=https://cosmetics-api-dev.fly.dev
+
+# Fly.io, app cosmetics-api-dev
+CORS_ORIGINS=http://localhost:3001,https://keysarcosmetics-envelope-git-develop-minnicas-projects.vercel.app,http://localhost:3002
+```
+
+La migración en Supabase dev, el backend `cosmetics-api-dev`, el login `SUPER_ADMIN` y el flujo de formularios de Payroll fueron probados correctamente. Si cambia el dominio Preview de Payroll, agregar también su origin exacto a `CORS_ORIGINS`.
 
 **Notas importantes:**
 
@@ -697,16 +747,47 @@ develop → Vercel Preview → cosmetics-api-dev.fly.dev → Supabase dev
 - Migraciones de BD se aplican manualmente y con cuidado.
 - No subir `.env` ni `.env.local` al repositorio.
 - `apps/envelope/.env.local` es solo local y no debe commitearse.
-- Para CORS dev: `cosmetics-api-dev` usa `CORS_ORIGINS` con dominio Vercel Preview de `develop`.
-- Para probar frontend local contra backend dev: ajustar `CORS_ORIGINS` temporalmente a `http://localhost:3001` o configurar backend para aceptar múltiples origins.
+- `apps/payroll/.env.local` también es solo local y no debe commitearse; las variables de Vercel se configuran por proyecto y ambiente.
+- Para probar frontend local contra backend dev, conservar simultáneamente los origins de Envelope y Payroll en `CORS_ORIGINS`; no reemplazar uno por otro.
+- Un `Network Error` en login normalmente significa que el frontend apunta a `localhost:4000`, el backend no responde o CORS rechazó el origin antes de llegar a `/api/auth/login`. Verificar primero Request URL, `/health` y el preflight `OPTIONS`.
 
 ---
 
 ## Mapa rápido del repositorio
 
+### apps/payroll
+
+```text
+apps/payroll/
+├── src/app/
+│   ├── (auth)/login/                       → login JWT real
+│   └── (dashboard)/
+│       ├── page.tsx                        → corridas y resumen calculado
+│       ├── bonos|multas|viaticos/          → catálogos dinámicos
+│       ├── movimientos/                    → movimientos, asignaciones y evidencias
+│       ├── gastos/                         → gastos fijos/variables
+│       ├── esquemas/                       → niveles de comisión y asignaciones
+│       ├── prestamos-adelantos/            → préstamos, cuotas y saldos
+│       ├── reportes/desglose-sucursal/     → costo de nómina por sucursal
+│       └── recibos/                        → PDF y seguimiento de entrega
+├── src/components/payroll/
+│   ├── payroll-data-context.tsx            → estado real conectado a /api/payroll/*
+│   ├── payroll-shell.tsx                   → shell/sidebar y tema
+│   └── report-export-buttons.tsx           → exportaciones reales PDF/Excel
+├── src/lib/
+│   ├── api.ts                              → cliente HTTP; usa NEXT_PUBLIC_API_URL
+│   ├── session.tsx                         → sesión y guard SUPER_ADMIN
+│   ├── report-export.ts                    → exportación dinámica
+│   └── types.ts                            → tipos del frontend Payroll
+├── PENDIENTES.md                           → despliegue y Storage pospuesto
+└── GUIA_PRIMERA_NOMINA.md                  → recorrido operativo inicial
+```
+
+Payroll no contiene `mock-data.ts` ni contextos mock. No reintroducir fixtures como fuente de la UI; para pruebas usar la BD de desarrollo.
+
 ### apps/envelope
 
-```
+```text
 apps/envelope/
 ├── src/app/
 │   ├── (auth)/login/              → login interno
@@ -751,6 +832,7 @@ backend/api/
 ├── prisma/
 │   ├── schema.prisma              → modelos Prisma (fuente de verdad de BD)
 │   ├── migrations/                → migraciones versionadas (no modificar manualmente)
+│   │   └── 20260730000000_add_payroll_models/ → migración aditiva de Payroll
 │   ├── seed.ts                    → seed general/demo, usar con cuidado
 │   └── seed-catalogs.ts           → seed seguro para Bank/Position
 └── src/
@@ -769,6 +851,10 @@ backend/api/
     │   ├── payroll.routes.ts
     │   ├── pos.routes.ts
     │   └── scheduler.routes.ts
+    ├── services/
+    │   ├── payroll-calculation.ts → motor puro de cálculo
+    │   ├── payroll.service.ts     → corridas, reservas y snapshots
+    │   └── payroll-storage.ts     → comprobantes en bucket privado
     ├── types/
     │   ├── express.d.ts           → extensión de tipos de Express
     │   └── jwt.ts
@@ -800,21 +886,29 @@ packages/ui/
 
 ## Puntos de entrada frecuentes
 
-| Tarea                      | Archivo                                     |
-| -------------------------- | ------------------------------------------- |
-| UI compartida (exports)    | `packages/ui/src/index.ts`                  |
-| Componentes shadcn         | `packages/ui/src/components/ui/`            |
-| Wrappers custom UI         | `packages/ui/src/components/custom/`        |
-| Layout envelope            | `apps/envelope/src/components/layout/`      |
-| Rutas envelope frontend    | `apps/envelope/src/app/(dashboard)/`        |
-| Hooks envelope             | `apps/envelope/src/hooks/`                  |
-| API client envelope        | `apps/envelope/src/lib/api.ts`              |
-| Sesión/permisos envelope   | `apps/envelope/src/lib/session.tsx`         |
-| Endpoints envelope backend | `backend/api/src/routes/envelope.routes.ts` |
-| Prisma schema              | `backend/api/prisma/schema.prisma`          |
-| Migraciones                | `backend/api/prisma/migrations/`            |
-| Seed seguro catálogos      | `backend/api/prisma/seed-catalogs.ts`       |
-| Tipos compartidos          | `packages/types/src/index.ts`               |
+| Tarea                      | Archivo                                                        |
+| -------------------------- | -------------------------------------------------------------- |
+| UI compartida (exports)    | `packages/ui/src/index.ts`                                     |
+| Componentes shadcn         | `packages/ui/src/components/ui/`                               |
+| Wrappers custom UI         | `packages/ui/src/components/custom/`                           |
+| Layout envelope            | `apps/envelope/src/components/layout/`                         |
+| Rutas envelope frontend    | `apps/envelope/src/app/(dashboard)/`                           |
+| Hooks envelope             | `apps/envelope/src/hooks/`                                     |
+| API client envelope        | `apps/envelope/src/lib/api.ts`                                 |
+| Sesión/permisos envelope   | `apps/envelope/src/lib/session.tsx`                            |
+| Endpoints envelope backend | `backend/api/src/routes/envelope.routes.ts`                    |
+| Rutas payroll frontend     | `apps/payroll/src/app/(dashboard)/`                            |
+| Estado/API payroll         | `apps/payroll/src/components/payroll/payroll-data-context.tsx` |
+| Sesión payroll             | `apps/payroll/src/lib/session.tsx`                             |
+| Endpoints payroll backend  | `backend/api/src/routes/payroll.routes.ts`                     |
+| Motor payroll              | `backend/api/src/services/payroll-calculation.ts`              |
+| Ciclo/snapshots payroll    | `backend/api/src/services/payroll.service.ts`                  |
+| Guía de despliegue payroll | `apps/payroll/PENDIENTES.md`                                   |
+| Guía operativa payroll     | `apps/payroll/GUIA_PRIMERA_NOMINA.md`                          |
+| Prisma schema              | `backend/api/prisma/schema.prisma`                             |
+| Migraciones                | `backend/api/prisma/migrations/`                               |
+| Seed seguro catálogos      | `backend/api/prisma/seed-catalogs.ts`                          |
+| Tipos compartidos          | `packages/types/src/index.ts`                                  |
 
 ---
 
@@ -825,6 +919,7 @@ packages/ui/
 ```bash
 pnpm install
 pnpm --filter @cosmetics/envelope dev
+pnpm --filter @cosmetics/payroll dev
 pnpm --filter @cosmetics/api dev
 ```
 
@@ -833,6 +928,9 @@ pnpm --filter @cosmetics/api dev
 ```bash
 pnpm --filter @cosmetics/envelope type-check
 pnpm --filter @cosmetics/envelope build
+pnpm --filter @cosmetics/payroll type-check
+pnpm --filter @cosmetics/payroll build
+pnpm --filter @cosmetics/api test
 pnpm --filter @cosmetics/api type-check
 pnpm --filter @cosmetics/api build
 ```
@@ -881,9 +979,10 @@ npx ts-node --project tsconfig.json prisma/seed-catalogs.ts
 7. Para cambios de BD: no ejecutar `migrate reset` ni `db push` en ambientes compartidos.
 8. Para cambios de UI: priorizar `@cosmetics/ui` y shadcn/ui. No crear componentes duplicados en `apps/*/src/components/ui`.
 9. Para cambios en envelope: validar `type-check` y `build` antes de reportar tarea completa.
-10. Para backend: validar `type-check`/`build` si existen.
-11. No cambiar backend, Prisma ni variables de entorno salvo que la tarea lo pida explícitamente.
-12. Si hay duda sobre borrar datos o archivos → detenerse y pedir confirmación.
+10. Para cambios en Payroll: limitar la UI a `apps/payroll`, conservar las reglas históricas del backend y validar `pnpm --filter @cosmetics/payroll type-check` + `build`.
+11. Para backend Payroll: validar `test`, `type-check` y `build` de `@cosmetics/api`.
+12. No cambiar backend, Prisma ni variables de entorno salvo que la tarea lo pida explícitamente.
+13. Si hay duda sobre borrar datos o archivos → detenerse y pedir confirmación.
 
 ---
 
@@ -892,3 +991,5 @@ npx ts-node --project tsconfig.json prisma/seed-catalogs.ts
 - Automatizar deploy backend con GitHub Actions si se decide.
 - Crear seeds separados seguros para dev/datos base si se requiere.
 - Limpieza futura de campos legacy `banco`/`puesto` en `Empleado` cuando todos los registros en prod tengan `bankId`/`positionId` asignados (Fase 4).
+- Payroll producción: confirmar respaldo/PITR, aplicar `20260730000000_add_payroll_models`, desplegar `cosmetics-api`, configurar/verificar `NEXT_PUBLIC_API_URL` y `CORS_ORIGINS`, y ejecutar una corrida paralela antes del primer pago oficial.
+- Payroll Storage: crear más adelante el bucket privado y configurar `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` y opcionalmente `PAYROLL_STORAGE_BUCKET` solo después de que exista.

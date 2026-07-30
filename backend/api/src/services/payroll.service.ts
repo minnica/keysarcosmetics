@@ -212,47 +212,45 @@ export async function recalculatePayrollRun(runId: string, userId: string) {
     expenseTotal,
   });
 
-  await prisma.$transaction(async (tx) => {
-    await tx.payrollRunLine.deleteMany({ where: { payrollRunId: run.id } });
-    await tx.payrollRun.update({
-      where: { id: run.id },
-      data: {
-        salesWithVat: result.salesWithVat,
-        salesWithoutVat: result.salesWithoutVat,
-        expenseTotal: result.expenseTotal,
-        payrollTotal: result.payrollTotal,
-        generalBalance: result.generalBalance,
-        warnings: result.warnings as unknown as Prisma.InputJsonValue,
-        lines: {
-          create: result.lines.map((line) => ({
-            employeeId: line.employeeId,
-            employeeName: line.employeeName,
-            positionName: line.positionName,
-            bankName: line.bankName,
-            accountNumber: line.accountNumber,
-            phoneNumber: line.phoneNumber,
-            schemeName: line.schemeName,
-            schemeVersion: line.schemeVersion,
-            individualRate: line.individualRate,
-            monthlySalary: line.monthlySalary,
-            salaryPayment: line.salaryPayment,
-            salesWithVat: line.salesWithVat,
-            salesWithoutVat: line.salesWithoutVat,
-            commission: line.commission,
-            bonus: line.bonus,
-            fine: line.fine,
-            adjustmentPositive: line.adjustmentPositive,
-            adjustmentNegative: line.adjustmentNegative,
-            perDiem: line.perDiem,
-            supplies: line.supplies,
-            loanPayment: line.loanPayment,
-            totalPayment: line.totalPayment,
-            warnings: line.warnings as unknown as Prisma.InputJsonValue,
-            branchLines: { create: line.branchLines },
-          })),
-        },
+  await prisma.payrollRun.update({
+    where: { id: run.id },
+    data: {
+      salesWithVat: result.salesWithVat,
+      salesWithoutVat: result.salesWithoutVat,
+      expenseTotal: result.expenseTotal,
+      payrollTotal: result.payrollTotal,
+      generalBalance: result.generalBalance,
+      warnings: result.warnings as unknown as Prisma.InputJsonValue,
+      lines: {
+        deleteMany: {},
+        create: result.lines.map((line) => ({
+          employeeId: line.employeeId,
+          employeeName: line.employeeName,
+          positionName: line.positionName,
+          bankName: line.bankName,
+          accountNumber: line.accountNumber,
+          phoneNumber: line.phoneNumber,
+          schemeName: line.schemeName,
+          schemeVersion: line.schemeVersion,
+          individualRate: line.individualRate,
+          monthlySalary: line.monthlySalary,
+          salaryPayment: line.salaryPayment,
+          salesWithVat: line.salesWithVat,
+          salesWithoutVat: line.salesWithoutVat,
+          commission: line.commission,
+          bonus: line.bonus,
+          fine: line.fine,
+          adjustmentPositive: line.adjustmentPositive,
+          adjustmentNegative: line.adjustmentNegative,
+          perDiem: line.perDiem,
+          supplies: line.supplies,
+          loanPayment: line.loanPayment,
+          totalPayment: line.totalPayment,
+          warnings: line.warnings as unknown as Prisma.InputJsonValue,
+          branchLines: { create: line.branchLines },
+        })),
       },
-    });
+    },
   });
   await audit(userId, "PayrollRun", run.id, "RECALCULATED", { mode: run.mode });
   return getPayrollRun(run.id);
