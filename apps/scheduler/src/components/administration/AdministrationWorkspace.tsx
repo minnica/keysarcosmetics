@@ -14,6 +14,7 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
+  ChevronUp,
   Clock3,
   Copy,
   Download,
@@ -22,6 +23,7 @@ import {
   Filter,
   Globe2,
   ImagePlus,
+  Info,
   ListFilter,
   Mail,
   Menu,
@@ -32,6 +34,7 @@ import {
   Search,
   SlidersHorizontal,
   Sparkles,
+  Star,
   Trash2,
   Upload,
   UserRound,
@@ -64,11 +67,16 @@ import {
   PopoverContent,
   PopoverTrigger,
   Textarea,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
   toast,
 } from "@cosmetics/ui";
 
 import {
   createEmptyLocal,
+  createClassSchedule,
   createSchedule,
   initialCommissions,
   initialConsents,
@@ -85,6 +93,7 @@ import {
   scheduleDays,
   surveyCategories,
   type CommissionRecord,
+  type ClassScheduleDay,
   type ConsentRecord,
   type EntityStatus,
   type GiftCardRecord,
@@ -240,6 +249,11 @@ const sectionTitles: Record<
 
 const cloneSchedule = (schedule: ScheduleDay[]) =>
   schedule.map((day) => ({ ...day }));
+const cloneClassSchedule = (schedule: ClassScheduleDay[]) =>
+  schedule.map((day) => ({
+    ...day,
+    slots: day.slots.map((slot) => ({ ...slot })),
+  }));
 const cloneLocal = (local: LocalRecord): LocalRecord => ({
   ...local,
   schedule: cloneSchedule(local.schedule),
@@ -311,16 +325,21 @@ function SelectField({
   value,
   onChange,
   options,
+  required = false,
 }: {
   id: string;
   label: string;
   value: string;
   onChange: (value: string) => void;
   options: { value: string; label: string }[];
+  required?: boolean;
 }) {
   return (
     <div className="space-y-2">
-      <Label htmlFor={id}>{label}</Label>
+      <Label htmlFor={id}>
+        {label}
+        {required ? <span className="ml-1 text-rose-500">*</span> : null}
+      </Label>
       <select
         id={id}
         value={value}
@@ -385,13 +404,461 @@ function CheckRow({
   );
 }
 
+function FeaturedCheck({
+  checked,
+  onChange,
+  label = "Servicio destacado",
+}: {
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  label?: string;
+}) {
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <label className="service-featured-check">
+            <input
+              type="checkbox"
+              checked={checked}
+              onChange={(event) => onChange(event.target.checked)}
+              className="sr-only"
+            />
+            <Star
+              className={`h-6 w-6 ${checked ? "fill-[#7460a4] text-[#7460a4]" : "text-slate-500"}`}
+            />
+            <span>{label}</span>
+          </label>
+        </TooltipTrigger>
+        <TooltipContent
+          side="top"
+          align="start"
+          className="featured-tooltip"
+        >
+          <strong>Marca como {label.toLocaleLowerCase()}</strong>
+          <span>
+            Esto permitirá que Julia priorice la oferta de este servicio por
+            sobre otros de tu lista creada en AgendaPro.
+          </span>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
+function PackageBasicFields({
+  draft,
+  catalogServices,
+  availableCategories,
+  categoryPopoverOpen,
+  newCategoryName,
+  onCategoryPopoverChange,
+  onNewCategoryNameChange,
+  onCreateCategory,
+  onUpdate,
+}: {
+  draft: ServiceRecord;
+  catalogServices: ServiceRecord[];
+  availableCategories: string[];
+  categoryPopoverOpen: boolean;
+  newCategoryName: string;
+  onCategoryPopoverChange: (open: boolean) => void;
+  onNewCategoryNameChange: (value: string) => void;
+  onCreateCategory: () => void;
+  onUpdate: (patch: Partial<ServiceRecord>) => void;
+}) {
+  const [servicePickerOpen, setServicePickerOpen] = useState(false);
+  const [selectedServiceId, setSelectedServiceId] = useState("");
+  const [selectedServicePrice, setSelectedServicePrice] = useState("");
+  const packageItems = draft.packageItems ?? [];
+  const packageCandidates = catalogServices.filter(
+    (service) =>
+      service.type === "service" && (service.sessions ?? 1) <= 1,
+  );
+  const updateItems = (items: { serviceId: string; price: number }[]) =>
+    onUpdate({
+      packageItems: items,
+      price: items.reduce((total, item) => total + item.price, 0),
+    });
+  const availablePackageServices = packageCandidates.filter(
+    (service) =>
+      !packageItems.some((item) => item.serviceId === service.id),
+  );
+  const selectService = (service: ServiceRecord) => {
+    setSelectedServiceId(service.id);
+    setSelectedServicePrice("");
+  };
+  const addSelectedService = () => {
+    const price = Number(selectedServicePrice);
+    if (!selectedServiceId || !selectedServicePrice.trim() || price < 0) {
+      toast.error("Selecciona un servicio e ingresa su precio.");
+      return;
+    }
+    updateItems([
+      ...packageItems,
+      { serviceId: selectedServiceId, price },
+    ]);
+    setSelectedServiceId("");
+    setSelectedServicePrice("");
+    setServicePickerOpen(false);
+  };
+  const getService = (serviceId: string) =>
+    packageCandidates.find((service) => service.id === serviceId);
+  return (
+    <div className="package-dialog-content space-y-4">
+      <div className="package-basic-card">
+        <Field
+          id="package-name"
+          label="Nombre del paquete del servicio"
+          required
+          value={draft.name}
+          onChange={(value) => onUpdate({ name: value })}
+          placeholder="Paquete de servicios completo"
+        />
+        <div className="mt-4">
+          <SelectField
+            id="package-category"
+            label="Categoría"
+            required
+            value={draft.category}
+            onChange={(value) => onUpdate({ category: value })}
+            options={availableCategories.map((category) => ({
+              value: category,
+              label: category,
+            }))}
+          />
+          <Popover
+            open={categoryPopoverOpen}
+            onOpenChange={onCategoryPopoverChange}
+          >
+            <PopoverTrigger asChild>
+              <button type="button" className="service-new-category-link">
+                <Plus className="mr-1 h-3.5 w-3.5" />
+                Nueva categoría
+              </button>
+            </PopoverTrigger>
+            <PopoverContent
+              align="start"
+              sideOffset={6}
+              className="admin-popover service-category-popover p-2"
+            >
+              <Label htmlFor="new-package-category">Nueva categoría *</Label>
+              <div className="mt-2 flex items-center gap-2">
+                <Input
+                  id="new-package-category"
+                  value={newCategoryName}
+                  autoFocus
+                  placeholder="Nombre de la categoría"
+                  className="admin-input"
+                  onChange={(event) =>
+                    onNewCategoryNameChange(event.target.value)
+                  }
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") onCreateCategory();
+                  }}
+                />
+                <Button
+                  type="button"
+                  className="admin-primary"
+                  onClick={onCreateCategory}
+                >
+                  Agregar
+                </Button>
+              </div>
+            </PopoverContent>
+          </Popover>
+        </div>
+      </div>
+      <div className="package-services-card">
+        <h3 className="admin-section-title">
+          Selecciona los servicios que tendrá el paquete
+        </h3>
+        <p className="admin-help mt-1">
+          Podrás crear paquetes con los servicios creados en la empresa. No
+          puedes crearlos con Clases o Servicios con sesiones.
+        </p>
+        <InfoBanner icon={<Info className="h-5 w-5" />}>
+          Ingresa el precio de cada servicios del paquete y la suma de estos
+          será el precio final. Así, puedes asignar un precio distinto al
+          precio original. Las comisiones por la realización de los servicios
+          serán calculadas de acuerdo a estos precios.
+        </InfoBanner>
+        <div className="package-items-list">
+          {packageItems.map((item) => {
+            const service = getService(item.serviceId);
+            if (!service) return null;
+            return (
+              <div key={item.serviceId} className="package-item-row">
+                <span>{service.name}</span>
+                <div className="package-item-price">
+                  <span>$</span>
+                  <Input
+                    aria-label={`Precio de ${service.name}`}
+                    type="number"
+                    value={String(item.price)}
+                    className="admin-input"
+                    onChange={(event) =>
+                      updateItems(
+                        packageItems.map((current) =>
+                          current.serviceId === item.serviceId
+                            ? {
+                                ...current,
+                                price: Number(event.target.value) || 0,
+                              }
+                            : current,
+                        ),
+                      )
+                    }
+                  />
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="text-rose-500"
+                  aria-label={`Quitar ${service.name} del paquete`}
+                  onClick={() =>
+                    updateItems(
+                      packageItems.filter(
+                        (current) => current.serviceId !== item.serviceId,
+                      ),
+                    )
+                  }
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            );
+          })}
+          {packageItems.length > 0 ? (
+            <div className="package-total-row">
+              <span>Precio final</span>
+              <strong>{currency(draft.price)}</strong>
+            </div>
+          ) : null}
+        </div>
+        <Popover
+          open={servicePickerOpen}
+          onOpenChange={setServicePickerOpen}
+        >
+          <PopoverTrigger asChild>
+            <button type="button" className="package-add-service">
+              <Plus className="mr-2 h-4 w-4" />
+              Agregar servicio
+            </button>
+          </PopoverTrigger>
+          <PopoverContent align="start" className="admin-popover w-80 p-2">
+            <Label htmlFor="package-service-select">Servicios</Label>
+            <select
+              id="package-service-select"
+              className="package-service-select"
+              value={selectedServiceId}
+              onChange={(event) => {
+                const service = packageCandidates.find(
+                  (item) => item.id === event.target.value,
+                );
+                if (service) selectService(service);
+              }}
+            >
+              <option value="">Selecciona un servicio</option>
+              {availablePackageServices.map((service) => (
+                <option key={service.id} value={service.id}>
+                  {service.name}
+                </option>
+              ))}
+            </select>
+            <Label htmlFor="package-service-price">Precio</Label>
+            <div className="package-picker-price">
+              <span>$</span>
+              <Input
+                id="package-service-price"
+                type="number"
+                value={selectedServicePrice}
+                placeholder="Precio del servicio"
+                className="admin-input"
+                disabled={!selectedServiceId}
+                onChange={(event) => setSelectedServicePrice(event.target.value)}
+              />
+            </div>
+            <Button
+              type="button"
+              className="admin-primary w-full"
+              onClick={addSelectedService}
+              disabled={!selectedServiceId}
+            >
+              Agregar
+            </Button>
+          </PopoverContent>
+        </Popover>
+      </div>
+    </div>
+  );
+}
+
+function PackageWebsiteFields({
+  draft,
+  onUpdate,
+}: {
+  draft: ServiceRecord;
+  onUpdate: (patch: Partial<ServiceRecord>) => void;
+}) {
+  return (
+    <div className="package-website space-y-5">
+      <div className="package-website-card">
+        <div className="package-website-setting">
+          <Toggle
+            checked={draft.packageShowPrice ?? true}
+            onChange={(checked) => onUpdate({ packageShowPrice: checked })}
+          />
+          <span>
+            Mostrar el precio del servicio en mi sitio personalizado (no aplica
+            para el Marketplace).
+          </span>
+        </div>
+        <div className="package-website-setting">
+          <Toggle
+            checked={draft.packageSimultaneous ?? false}
+            onChange={(checked) => onUpdate({ packageSimultaneous: checked })}
+          />
+          <span>Los servicios del paquete se realizarán de forma simultánea</span>
+        </div>
+        <div className="package-website-description">
+          <label htmlFor="package-description" className="admin-label">
+            Descripción del servicio
+          </label>
+          <Textarea
+            id="package-description"
+            rows={5}
+            value={draft.description}
+            placeholder="Acá puedes describir que incluye el servicio, notas importantes, requerimientos, entre otros."
+            onChange={(event) => onUpdate({ description: event.target.value })}
+            className="admin-textarea"
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AddOnBasicFields({
+  draft,
+  availableCategories,
+  categoryPopoverOpen,
+  newCategoryName,
+  onCategoryPopoverChange,
+  onNewCategoryNameChange,
+  onCreateCategory,
+  onUpdate,
+}: {
+  draft: ServiceRecord;
+  availableCategories: string[];
+  categoryPopoverOpen: boolean;
+  newCategoryName: string;
+  onCategoryPopoverChange: (open: boolean) => void;
+  onNewCategoryNameChange: (value: string) => void;
+  onCreateCategory: () => void;
+  onUpdate: (patch: Partial<ServiceRecord>) => void;
+}) {
+  return (
+    <div className="add-on-dialog-content space-y-4">
+      <InfoBanner icon={<Star className="h-5 w-5" />}>
+        Agrega pequeños servicios que complementen el servicio base. Estos
+        adicionales los podrás agregar a una cita desde la sección de agenda
+        o agregarlos en el momento del pago pero no aparecerán en el sitio web.
+      </InfoBanner>
+      <div className="add-on-basic-card">
+        <Field
+          id="add-on-name"
+          label="Nombre"
+          required
+          value={draft.name}
+          onChange={(value) => onUpdate({ name: value })}
+          placeholder="Nombre del servicio adicional"
+        />
+        <div className="mt-4">
+          <div className="space-y-2">
+            <Label htmlFor="add-on-price">
+              Precio <span className="ml-1 text-rose-500">*</span>
+            </Label>
+            <div className="service-price-field">
+              <span>$</span>
+              <Input
+                id="add-on-price"
+                type="number"
+                value={String(draft.price)}
+                onChange={(event) =>
+                  onUpdate({ price: Number(event.target.value) || 0 })
+                }
+                className="admin-input"
+              />
+            </div>
+          </div>
+        </div>
+        <div className="mt-4">
+          <SelectField
+            id="add-on-category"
+            label="Categoría"
+            required
+            value={draft.category}
+            onChange={(value) => onUpdate({ category: value })}
+            options={availableCategories.map((category) => ({
+              value: category,
+              label: category,
+            }))}
+          />
+          <Popover
+            open={categoryPopoverOpen}
+            onOpenChange={onCategoryPopoverChange}
+          >
+            <PopoverTrigger asChild>
+              <button type="button" className="service-new-category-link">
+                <Plus className="mr-1 h-3.5 w-3.5" />
+                Nueva categoría
+              </button>
+            </PopoverTrigger>
+            <PopoverContent
+              align="start"
+              sideOffset={6}
+              className="admin-popover service-category-popover p-2"
+            >
+              <Label htmlFor="new-add-on-category">Nueva categoría *</Label>
+              <div className="mt-2 flex items-center gap-2">
+                <Input
+                  id="new-add-on-category"
+                  value={newCategoryName}
+                  autoFocus
+                  placeholder="Nombre de la categoría"
+                  className="admin-input"
+                  onChange={(event) =>
+                    onNewCategoryNameChange(event.target.value)
+                  }
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") onCreateCategory();
+                  }}
+                />
+                <Button
+                  type="button"
+                  className="admin-primary"
+                  onClick={onCreateCategory}
+                >
+                  Agregar
+                </Button>
+              </div>
+            </PopoverContent>
+          </Popover>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Tabs({
   items,
   active,
   onChange,
   className = "",
 }: {
-  items: { id: string; label: string }[];
+  items: { id: string; label: ReactNode }[];
   active: string;
   onChange: (value: string) => void;
   className?: string;
@@ -707,30 +1174,173 @@ function ScheduleRows({
   );
 }
 
+function ClassScheduleRows({
+  schedule,
+  professionals,
+  onChange,
+}: {
+  schedule: ClassScheduleDay[];
+  professionals: ProfessionalRecord[];
+  onChange: (schedule: ClassScheduleDay[]) => void;
+}) {
+  const updateDay = (dayName: string, slots: ClassScheduleDay["slots"]) =>
+    onChange(
+      schedule.map((day) => (day.day === dayName ? { ...day, slots } : day)),
+    );
+  const addClass = (dayName: string) => {
+    const day = schedule.find((item) => item.day === dayName);
+    if (!day) return;
+    updateDay(dayName, [
+      ...day.slots,
+      {
+        id: makeId("class-slot"),
+        professionalId: "",
+        start: "09:00",
+        end: "10:00",
+      },
+    ]);
+  };
+  const activeProfessionals = professionals.filter(
+    (professional) => professional.status === "active",
+  );
+  return (
+    <div className="class-schedule-table">
+      <div className="class-schedule-header" aria-hidden="true">
+        <span>Día</span>
+        <span>Clases</span>
+        <span>Apertura</span>
+        <span>Cierre</span>
+        <span>Opciones</span>
+      </div>
+      {schedule.map((day) => (
+        <div key={day.day} className="class-schedule-day">
+          <div className="class-schedule-day-row">
+            <span className="class-schedule-day-name">
+              {day.slots.length > 0 ? (
+                <ChevronDown className="h-4 w-4" />
+              ) : (
+                <span className="h-4 w-4" />
+              )}
+              {day.day}
+            </span>
+            <span className="class-schedule-count">{day.slots.length}</span>
+            <span />
+            <span />
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="class-schedule-add"
+              aria-label={`Agregar clase el ${day.day}`}
+              onClick={() => addClass(day.day)}
+            >
+              <Plus className="h-5 w-5" />
+            </Button>
+          </div>
+          {day.slots.map((slot) => (
+            <div key={slot.id} className="class-schedule-slot-row">
+              <select
+                className="class-schedule-professional"
+                value={slot.professionalId}
+                aria-label={`Profesional de la clase del ${day.day}`}
+                onChange={(event) =>
+                  updateDay(
+                    day.day,
+                    day.slots.map((current) =>
+                      current.id === slot.id
+                        ? { ...current, professionalId: event.target.value }
+                        : current,
+                    ),
+                  )
+                }
+              >
+                <option value="">Profesional</option>
+                {activeProfessionals.map((professional) => (
+                  <option key={professional.id} value={professional.id}>
+                    {professional.name}
+                  </option>
+                ))}
+              </select>
+              <ScheduleTime
+                label={`Apertura de la clase del ${day.day}`}
+                value={slot.start}
+                onChange={(start) =>
+                  updateDay(
+                    day.day,
+                    day.slots.map((current) =>
+                      current.id === slot.id ? { ...current, start } : current,
+                    ),
+                  )
+                }
+              />
+              <ScheduleTime
+                label={`Cierre de la clase del ${day.day}`}
+                value={slot.end}
+                onChange={(end) =>
+                  updateDay(
+                    day.day,
+                    day.slots.map((current) =>
+                      current.id === slot.id ? { ...current, end } : current,
+                    ),
+                  )
+                }
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="class-schedule-remove"
+                aria-label={`Eliminar clase del ${day.day}`}
+                onClick={() =>
+                  updateDay(
+                    day.day,
+                    day.slots.filter((current) => current.id !== slot.id),
+                  )
+                }
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function ModalShell({
   open,
   onOpenChange,
   title,
+  description,
   children,
   onSave,
+  saveDisabled = false,
   saveLabel = "Guardar cambios",
+  cancelLabel = "Cancelar",
   wide = false,
+  className = "",
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   title: string;
+  description?: string;
   children: ReactNode;
   onSave?: (() => void) | undefined;
+  saveDisabled?: boolean;
   saveLabel?: string;
+  cancelLabel?: string;
   wide?: boolean;
+  className?: string;
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className={`admin-dialog ${wide ? "admin-dialog-wide sm:max-w-4xl" : "sm:max-w-2xl"}`}
+        className={`admin-dialog ${wide ? "admin-dialog-wide sm:max-w-4xl" : "sm:max-w-2xl"} ${className}`.trim()}
       >
         <DialogHeader className="border-b border-[#eee7e2] pb-4">
           <DialogTitle className="text-xl text-[#263649]">{title}</DialogTitle>
+          {description ? <p className="admin-dialog-subtitle">{description}</p> : null}
         </DialogHeader>
         <div className="admin-dialog-body">{children}</div>
         {onSave ? (
@@ -740,9 +1350,14 @@ function ModalShell({
               variant="outline"
               onClick={() => onOpenChange(false)}
             >
-              Cancelar
+              {cancelLabel}
             </Button>
-            <Button type="button" className="admin-primary" onClick={onSave}>
+            <Button
+              type="button"
+              className="admin-primary"
+              disabled={saveDisabled}
+              onClick={onSave}
+            >
               {saveLabel}
             </Button>
           </DialogFooter>
@@ -1027,7 +1642,7 @@ function FilePicker({
   onFileChange?: (file: File) => void;
   accept?: string;
   maxSizeMb?: number;
-  variant?: "default" | "avatar";
+  variant?: "default" | "avatar" | "service";
 }) {
   const inputId = `file-${label.toLocaleLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
@@ -1069,6 +1684,38 @@ function FilePicker({
               Subir imagen
             </label>
           </Button>
+        </div>
+      </div>
+    );
+  }
+  if (variant === "service") {
+    return (
+      <div className="service-images-field">
+        <p className="admin-label">{label}</p>
+        <p className="admin-help">{recommendation}</p>
+        <div className="service-images-grid">
+          {[0, 1, 2].map((index) => {
+            const slotId = `${inputId}-${index}`;
+            return (
+              <div key={slotId} className="service-image-slot">
+                <ImagePlus className="h-8 w-8" />
+                <span>{value && index === 0 ? value : "Arrastra o selecciona la imagen"}</span>
+                <input
+                  id={slotId}
+                  type="file"
+                  accept={accept}
+                  className="sr-only"
+                  onChange={handleFileChange}
+                />
+                <Button asChild type="button" variant="outline" className="professional-avatar-upload">
+                  <label htmlFor={slotId}>
+                    <Upload className="mr-2 h-4 w-4" />
+                    Subir imagen
+                  </label>
+                </Button>
+              </div>
+            );
+          })}
         </div>
       </div>
     );
@@ -1912,6 +2559,31 @@ function ProfessionalDialog({
               placeholder="Incluye una breve biografía del profesional"
             />
           </div>
+          <div className="service-payment-card">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <h3 className="admin-section-title">Pago en línea</h3>
+                <p className="admin-help">
+                  Permite que tus clientes paguen en línea y disminuye las inasistencias.
+                </p>
+              </div>
+              <Toggle checked onChange={() => undefined} />
+            </div>
+            <label className="service-payment-option">
+              <input type="radio" name="service-payment" defaultChecked />
+              <span>
+                <strong>Se debe pagar en línea</strong>
+                <small>El cliente debe realizar el pago completo al reservar.</small>
+              </span>
+            </label>
+            <label className="service-payment-option service-payment-option-muted">
+              <input type="radio" name="service-payment" />
+              <span>
+                <strong>No se puede pagar en línea</strong>
+                <small>El cliente podrá agendar, pero pagará en el local.</small>
+              </span>
+            </label>
+          </div>
           <FilePicker
             label="Foto del profesional"
             recommendation="Te recomendamos tenga un tamaño mínimo de 100x100px y un peso máximo de 3MB."
@@ -2441,23 +3113,32 @@ function ServiceDialog({
   open,
   service,
   serviceType,
+  initialSessions,
   professionals,
+  catalogServices,
   categories,
+  onCreateCategory,
   onOpenChange,
   onSave,
 }: {
   open: boolean;
   service: ServiceRecord | null;
   serviceType: ServiceRecord["type"];
+  initialSessions?: number | undefined;
   professionals: ProfessionalRecord[];
+  catalogServices: ServiceRecord[];
   categories: string[];
+  onCreateCategory: (category: string) => void;
   onOpenChange: (open: boolean) => void;
   onSave: (service: ServiceRecord) => void;
 }) {
   const base = service ?? {
     id: makeId("service"),
     name: "",
-    category: categories[0] ?? "General",
+    category:
+      serviceType === "add-on"
+        ? categories.find((category) => category === "Adicionales") ?? categories[0] ?? "General"
+        : categories[0] ?? "General",
     type: serviceType,
     price: 0,
     duration: 60,
@@ -2465,20 +3146,52 @@ function ServiceDialog({
     featured: false,
     professionalIds: [],
     description: "",
-    sessions: 1,
+    alternativeNames: [],
+    commissionValue: 0,
+    commissionUnit: "%",
+    sessions: initialSessions ?? 1,
     capacity: 8,
+    ...(serviceType === "package" ? { packageItems: [] } : {}),
+    ...(serviceType === "package"
+      ? { packageShowPrice: true, packageSimultaneous: false }
+      : {}),
+    ...(serviceType === "class"
+      ? { classSchedule: createClassSchedule() }
+      : {}),
   };
-  const [tab, setTab] = useState<"basic" | "website" | "advanced">("basic");
+  const [tab, setTab] = useState<
+    "basic" | "schedule" | "website" | "advanced"
+  >("basic");
   const [draft, setDraft] = useState<ServiceRecord>(base);
+  const [classSchedule, setClassSchedule] = useState<ClassScheduleDay[]>(
+    createClassSchedule(),
+  );
+  const [resourceOpen, setResourceOpen] = useState(false);
+  const [specialHoursOpen, setSpecialHoursOpen] = useState(false);
+  const [specialHourMode, setSpecialHourMode] = useState<
+    "none" | "range" | "specific"
+  >("none");
+  const [availableCategories, setAvailableCategories] = useState(categories);
+  const [categoryPopoverOpen, setCategoryPopoverOpen] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [alternativeNameInput, setAlternativeNameInput] = useState("");
   useEffect(() => {
     if (open) {
       setDraft(
         service
-          ? { ...service, professionalIds: [...service.professionalIds] }
+          ? {
+              ...service,
+              professionalIds: [...service.professionalIds],
+              commissionValue: service.commissionValue ?? 0,
+              commissionUnit: service.commissionUnit ?? "%",
+            }
           : {
               id: makeId("service"),
               name: "",
-              category: categories[0] ?? "General",
+              category:
+                serviceType === "add-on"
+                  ? categories.find((category) => category === "Adicionales") ?? categories[0] ?? "General"
+                  : categories[0] ?? "General",
               type: serviceType,
               price: 0,
               duration: 60,
@@ -2486,21 +3199,95 @@ function ServiceDialog({
               featured: false,
               professionalIds: [],
               description: "",
-              sessions: 1,
+              alternativeNames: [],
+              commissionValue: 0,
+              commissionUnit: "%",
+              sessions: initialSessions ?? 1,
               capacity: 8,
+              ...(serviceType === "package" ? { packageItems: [] } : {}),
+              ...(serviceType === "package"
+                ? { packageShowPrice: true, packageSimultaneous: false }
+                : {}),
+              ...(serviceType === "class"
+                ? { classSchedule: createClassSchedule() }
+                : {}),
             },
       );
+      setClassSchedule(
+        service?.classSchedule
+          ? cloneClassSchedule(service.classSchedule)
+          : createClassSchedule(),
+      );
       setTab("basic");
+      setResourceOpen(false);
+      setSpecialHoursOpen(false);
+      setSpecialHourMode("none");
+      setCategoryPopoverOpen(false);
+      setNewCategoryName("");
+      setAlternativeNameInput("");
     }
-  }, [categories, open, service, serviceType]);
+  }, [initialSessions, open, service, serviceType]);
+  useEffect(() => {
+    setAvailableCategories(categories);
+  }, [categories]);
   const update = (patch: Partial<ServiceRecord>) =>
     setDraft((current) => ({ ...current, ...patch }));
+  const createCategory = () => {
+    const category = newCategoryName.trim();
+    if (!category) {
+      toast.error("Escribe el nombre de la categoría.");
+      return;
+    }
+    setAvailableCategories((current) =>
+      current.includes(category) ? current : [...current, category],
+    );
+    onCreateCategory(category);
+    update({ category });
+    setNewCategoryName("");
+    setCategoryPopoverOpen(false);
+    toast.success("Categoría agregada.");
+  };
+  const addAlternativeName = () => {
+    const alternativeName = alternativeNameInput.trim();
+    if (!alternativeName) return;
+    const alternatives = draft.alternativeNames ?? [];
+    if (!alternatives.includes(alternativeName)) {
+      update({ alternativeNames: [...alternatives, alternativeName] });
+    }
+    setAlternativeNameInput("");
+  };
+  const serviceMode =
+    draft.type === "service" && (draft.sessions ?? 1) > 1
+      ? "service-sessions"
+      : draft.type;
+  const selectMode = (mode: string) => {
+    if (mode === "service-sessions") {
+      update({ type: "service", sessions: Math.max(draft.sessions ?? 1, 5) });
+      return;
+    }
+    if (mode === "package" || mode === "service") {
+      update({
+        type: mode,
+        sessions: mode === "package" ? draft.sessions ?? 5 : 1,
+      });
+      return;
+    }
+    update({ type: mode as ServiceRecord["type"] });
+  };
+  const isSessionService =
+    draft.type === "service" && (draft.sessions ?? 1) > 1;
   const save = () => {
     if (!draft.name.trim() || draft.price < 0 || draft.duration < 1) {
       toast.error("Completa nombre, precio y duración.");
       return;
     }
-    onSave({ ...draft, name: draft.name.trim() });
+    onSave({
+      ...draft,
+      name: draft.name.trim(),
+      ...(draft.type === "class"
+        ? { classSchedule: cloneClassSchedule(classSchedule) }
+        : {}),
+    });
     onOpenChange(false);
   };
   return (
@@ -2510,86 +3297,231 @@ function ServiceDialog({
       title={
         service
           ? `Editar ${service.name}`
-          : `Nuevo ${serviceType === "add-on" ? "adicional" : serviceType === "class" ? "clase" : serviceType === "package" ? "paquete" : "servicio"}`
+          : isSessionService
+            ? "Nuevo Servicio con sesiones"
+          : serviceType === "class"
+            ? "Nueva Clase"
+            : serviceType === "package"
+              ? "Nuevo Paquete"
+              : serviceType === "add-on"
+                ? "Nuevo Adicional"
+                : "Nuevo Servicio"
       }
       onSave={save}
-      wide
+      saveLabel="Guardar"
+      cancelLabel="Cerrar"
+      className="service-dialog-modal"
     >
+      {draft.type !== "add-on" ? (
       <Tabs
         items={[
           { id: "basic", label: "Datos básicos" },
-          { id: "website", label: "Sitio web" },
-          { id: "advanced", label: "Opciones avanzadas" },
+          ...(draft.type === "class"
+            ? [{ id: "schedule", label: "Horario de la clase" }]
+            : []),
+          {
+            id: "website",
+            label: (
+              <span className="inline-flex items-center gap-2">
+                <Globe2 className="h-4 w-4" />
+                Sitio Web
+              </span>
+            ),
+          },
+          ...(draft.type === "package"
+            ? []
+            : [{ id: "advanced", label: "Opciones avanzadas" }]),
         ]}
         active={tab}
-        onChange={(value) => setTab(value as "basic" | "website" | "advanced")}
+        onChange={(value) =>
+          setTab(value as "basic" | "schedule" | "website" | "advanced")
+        }
       />
+      ) : null}
+      <div className="service-dialog-intro">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[#f0ebf6] text-[#7460a4]">
+          <Sparkles className="h-5 w-5" />
+        </div>
+        <div>
+          <p className="font-semibold text-[#263649]">
+            Configura tu {draft.type === "class" ? "clase" : draft.type === "package" ? "paquete" : draft.type === "add-on" ? "adicional" : "servicio"}
+          </p>
+          <p className="admin-help">
+            Agrega la información que verá tu equipo y, si lo deseas, tus clientes al reservar en línea.
+          </p>
+        </div>
+      </div>
+      <div className="service-type-picker">
+        <div>
+          <p className="admin-section-title">Tipo de elemento</p>
+          <p className="admin-help">Elige cómo se agenda dentro de tu catálogo.</p>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+          {(
+            [
+              ["service", "Servicio", "Una cita individual."],
+              ["service-sessions", "Servicio con sesiones", "Requiere varias sesiones."],
+              ["class", "Clase", "Admite varias personas."],
+              ["package", "Paquete", "Agrupa experiencias."],
+              ["add-on", "Adicional", "Complementa un servicio."],
+            ] as [string, string, string][]
+          ).map(([value, label, description]) => (
+            <button
+              key={value}
+              type="button"
+              className={`service-type-option ${serviceMode === value ? "service-type-option-active" : ""}`}
+              onClick={() => selectMode(value)}
+            >
+              <span>{label}</span>
+              <small>{description}</small>
+            </button>
+          ))}
+        </div>
+      </div>
       {tab === "basic" ? (
-        <div className="space-y-5">
+        <div className={`service-dialog-basic space-y-5 ${isSessionService ? "service-session-form" : ""} ${draft.type === "class" ? "service-class-form" : ""}`}>
+          {draft.type !== "add-on" ? (
+            <FeaturedCheck
+              checked={draft.featured}
+              onChange={(checked) => update({ featured: checked })}
+              label={draft.type === "package" ? "Paquete destacado" : "Servicio destacado"}
+            />
+          ) : null}
+          {draft.type === "package" ? (
+            <PackageBasicFields
+              draft={draft}
+              catalogServices={catalogServices}
+              availableCategories={availableCategories}
+              categoryPopoverOpen={categoryPopoverOpen}
+              newCategoryName={newCategoryName}
+              onCategoryPopoverChange={setCategoryPopoverOpen}
+              onNewCategoryNameChange={setNewCategoryName}
+              onCreateCategory={createCategory}
+              onUpdate={update}
+            />
+          ) : draft.type === "add-on" ? (
+            <AddOnBasicFields
+              draft={draft}
+              availableCategories={availableCategories}
+              categoryPopoverOpen={categoryPopoverOpen}
+              newCategoryName={newCategoryName}
+              onCategoryPopoverChange={setCategoryPopoverOpen}
+              onNewCategoryNameChange={setNewCategoryName}
+              onCreateCategory={createCategory}
+              onUpdate={update}
+            />
+          ) : (
+            <>
           <div className="admin-form-grid">
             <div className="sm:col-span-2">
               <Field
                 id="service-name"
-                label="Nombre"
+                label="Nombre del servicio"
                 required
                 value={draft.name}
                 onChange={(value) => update({ name: value })}
-                placeholder="Ej. Facial hidratante"
+                placeholder="El nombre aparecerá en el Sitio Web"
               />
             </div>
-            <Field
-              id="service-price"
-              label="Precio"
-              value={String(draft.price)}
-              onChange={(value) => update({ price: Number(value) || 0 })}
-              type="number"
-            />
+            <div className="space-y-2">
+              <Label htmlFor="service-price">
+                Precio <span className="ml-1 text-rose-500">*</span>
+              </Label>
+              <div className="service-price-field">
+                <span>$</span>
+                <Input
+                  id="service-price"
+                  type="number"
+                  value={String(draft.price)}
+                  onChange={(event) => update({ price: Number(event.target.value) || 0 })}
+                  className="admin-input"
+                />
+              </div>
+            </div>
             <Field
               id="service-duration"
-              label="Duración en minutos"
+              label={
+                isSessionService || draft.type === "class"
+                  ? "Duración (min)"
+                  : "Duración en minutos"
+              }
+              required
               value={String(draft.duration)}
               onChange={(value) => update({ duration: Number(value) || 0 })}
               type="number"
-            />
-            <SelectField
-              id="service-category"
-              label="Categoría"
-              value={draft.category}
-              onChange={(value) => update({ category: value })}
-              options={categories.map((category) => ({
-                value: category,
-                label: category,
-              }))}
             />
             {draft.type === "class" ? (
               <Field
                 id="service-capacity"
                 label="Capacidad"
+                required
                 value={String(draft.capacity ?? 8)}
                 onChange={(value) => update({ capacity: Number(value) || 1 })}
                 type="number"
               />
             ) : null}
-            {draft.type === "service" && draft.sessions !== undefined ? (
+            {isSessionService ? (
               <Field
                 id="service-sessions"
-                label="Sesiones requeridas"
+                label="Cantidad de sesiones"
+                required
                 value={String(draft.sessions)}
                 onChange={(value) => update({ sessions: Number(value) || 1 })}
                 type="number"
               />
             ) : null}
+            <SelectField
+              id="service-category"
+              label="Categoría"
+              required
+              value={draft.category}
+              onChange={(value) => update({ category: value })}
+              options={availableCategories.map((category) => ({
+                value: category,
+                label: category,
+              }))}
+            />
+            <Popover
+              open={categoryPopoverOpen}
+              onOpenChange={setCategoryPopoverOpen}
+            >
+              <PopoverTrigger asChild>
+                <button type="button" className="service-new-category-link">
+                  <Plus className="mr-1 h-3.5 w-3.5" />
+                  Nueva categoría
+                </button>
+              </PopoverTrigger>
+              <PopoverContent
+                align="start"
+                sideOffset={6}
+                className="admin-popover service-category-popover p-2"
+              >
+                <Label htmlFor="new-service-category">Nueva categoría *</Label>
+                <div className="mt-2 flex items-center gap-2">
+                  <Input
+                    id="new-service-category"
+                    value={newCategoryName}
+                    autoFocus
+                    placeholder="Nombre de la categoría"
+                    className="admin-input"
+                    onChange={(event) => setNewCategoryName(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") createCategory();
+                    }}
+                  />
+                  <Button type="button" className="admin-primary" onClick={createCategory}>
+                    Agregar
+                  </Button>
+                </div>
+              </PopoverContent>
+            </Popover>
           </div>
-          <CheckRow
-            checked={draft.featured}
-            onChange={(checked) => update({ featured: checked })}
-          >
-            Servicio destacado
-          </CheckRow>
-          <div>
+          <div className="service-professionals-section">
             <div className="mb-2 flex items-center justify-between">
               <div>
-                <h3 className="admin-section-title">Profesionales</h3>
+                <h3 className="admin-section-title">
+                  Selecciona qué profesionales realizarán el servicio
+                </h3>
                 <p className="admin-help">
                   {draft.professionalIds.length} seleccionados
                 </p>
@@ -2610,7 +3542,7 @@ function ServiceDialog({
                 Seleccionar todo
               </Button>
             </div>
-            <div className="grid gap-2 md:grid-cols-2">
+            <div className="service-professionals-panel">
               {professionals
                 .filter((professional) => professional.status === "active")
                 .map((professional) => (
@@ -2632,10 +3564,32 @@ function ServiceDialog({
                 ))}
             </div>
           </div>
+            </>
+          )}
         </div>
+      ) : tab === "schedule" && draft.type === "class" ? (
+        <div className="class-schedule-panel space-y-5">
+          <div>
+            <h3 className="admin-schedule-title">Horario de la clase</h3>
+            <p className="admin-help">
+              Define los días y horarios en los que tus clientes podrán reservar esta clase.
+            </p>
+          </div>
+          <ClassScheduleRows
+            schedule={classSchedule}
+            professionals={professionals}
+            onChange={setClassSchedule}
+          />
+        </div>
+      ) : tab === "website" && draft.type === "package" ? (
+        <PackageWebsiteFields draft={draft} onUpdate={update} />
       ) : tab === "website" ? (
-        <div className="space-y-5">
-          <div className="admin-setting-row">
+        <div className="service-dialog-website space-y-5">
+          <div className="service-website-heading">
+            <p>¡No pierdas citas y deja que tus clientes agenden desde tu Sitio Web!</p>
+          </div>
+          <div className="service-website-card">
+            <div className="admin-setting-row">
             <div>
               <p className="font-medium">Permitir agendar en línea</p>
               <p className="admin-help">
@@ -2648,8 +3602,8 @@ function ServiceDialog({
                 update({ status: checked ? "active" : "inactive" })
               }
             />
-          </div>
-          <div className="admin-setting-row">
+            </div>
+            <div className="admin-setting-row">
             <div>
               <p className="font-medium">Mostrar duración</p>
               <p className="admin-help">
@@ -2657,35 +3611,131 @@ function ServiceDialog({
               </p>
             </div>
             <Toggle checked onChange={() => undefined} />
+            </div>
           </div>
           <div>
             <label htmlFor="service-description" className="admin-label">
-              Descripción
+              Descripción del servicio
             </label>
+            <p className="admin-help">
+              Esta descripción aparecerá en tu Sitio Web.
+            </p>
             <Textarea
               id="service-description"
               rows={5}
               value={draft.description}
+              placeholder="Acá puedes describir que incluye el servicio, notas importantes, requerimientos, entre otros."
               onChange={(event) => update({ description: event.target.value })}
               className="admin-textarea"
             />
           </div>
-          <Field
-            id="service-alternatives"
-            label="Nombres alternativos"
-            value=""
-            onChange={() => undefined}
-            placeholder="Opcional"
-          />
+          <div className="service-alternatives-field">
+            <label htmlFor="service-alternatives" className="admin-label">
+              Nombres alternativos
+            </label>
+            <p className="admin-help">
+              Agrega otras opciones de nombres para que se puedan brindar como opción.
+            </p>
+            <div className="service-alternatives-editor">
+              {(draft.alternativeNames ?? []).map((alternativeName) => (
+                <span key={alternativeName} className="service-alternative-chip">
+                  {alternativeName}
+                  <button
+                    type="button"
+                    aria-label={`Eliminar nombre alternativo ${alternativeName}`}
+                    onClick={() =>
+                      update({
+                        alternativeNames: (draft.alternativeNames ?? []).filter(
+                          (current) => current !== alternativeName,
+                        ),
+                      })
+                    }
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </span>
+              ))}
+              <Input
+                id="service-alternatives"
+                value={alternativeNameInput}
+                placeholder="Agrega un nombre alternativo"
+                onChange={(event) => setAlternativeNameInput(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    addAlternativeName();
+                  }
+                }}
+                className="service-alternatives-input"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="service-alternatives-add"
+                aria-label="Agregar nombre alternativo"
+                onClick={addAlternativeName}
+              >
+                <Check className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+          <div className="service-payment-card">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <h3 className="admin-section-title">Pago en línea</h3>
+                <p className="admin-help">
+                  ¡Permite que tus clientes paguen en línea y disminuye las inasistencias!
+                </p>
+              </div>
+            </div>
+            <div className="service-payment-toggle-row">
+              <Toggle checked onChange={() => undefined} />
+              <span>Mostrar el precio del servicio en mi sitio personalizado (no aplica para el Marketplace).</span>
+            </div>
+            <label className="service-payment-option service-payment-option-disabled">
+              <input type="radio" name="service-payment" disabled />
+              <span>
+                <strong>Abono en línea</strong>
+                <small>Tus clientes deberán pagar una parte del servicio al agendar.</small>
+              </span>
+            </label>
+            <label className="service-payment-option">
+              <input type="radio" name="service-payment" defaultChecked />
+              <span>
+                <strong>Se debe pagar en línea</strong>
+                <small>Tus clientes deberán realizar el pago completo de este servicio en línea.</small>
+              </span>
+            </label>
+            <div className="service-payment-discount">
+              <Label htmlFor="service-online-discount">Descuento sólo para pago en línea</Label>
+              <div className="service-discount-field">
+                <span>%</span>
+                <Input id="service-online-discount" className="admin-input" placeholder="Incentiva el pago en línea" />
+              </div>
+            </div>
+            <label className="service-payment-option service-payment-option-muted">
+              <input type="radio" name="service-payment" />
+              <span>
+                <strong>No se puede pagar en línea</strong>
+                <small>Tus clientes no podrán pagar este servicio en línea pero sí agendarlo.</small>
+              </span>
+            </label>
+          </div>
           <FilePicker
             label="Imágenes del servicio"
             recommendation="Hasta 3 imágenes, 200 × 200 px recomendado, máximo 3 MB."
             value={null}
+            variant="service"
             onChange={() => toast.success("Imagen agregada al mock local.")}
           />
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="service-dialog-advanced space-y-4">
+          <div className="service-advanced-heading">
+            <h3>Modalidad del servicio</h3>
+            <p>Define cómo se puede realizar y reservar este servicio.</p>
+          </div>
           <div className="admin-setting-row">
             <div>
               <p className="font-medium">Videoconferencia</p>
@@ -2704,6 +3754,13 @@ function ServiceDialog({
           </div>
           <div className="admin-setting-row">
             <div>
+              <p className="font-medium">Este servicio se realiza a domicilio</p>
+              <p className="admin-help">Permite ofrecerlo fuera del local.</p>
+            </div>
+            <Toggle checked={false} onChange={() => undefined} />
+          </div>
+          <div className="admin-setting-row">
+            <div>
               <p className="font-medium">Precio incluye IVA</p>
               <p className="admin-help">
                 Indica cómo presentar el precio al cliente.
@@ -2718,10 +3775,129 @@ function ServiceDialog({
                 Útil para experiencias compartidas y clases.
               </p>
             </div>
+            <div className="service-client-count-wrap">
+              <Input
+                className="service-client-count admin-input"
+                placeholder="Ingresa la cantidad de clientes"
+                disabled={draft.type !== "class"}
+              />
+            </div>
             <Toggle
               checked={draft.type === "class"}
               onChange={() => undefined}
             />
+          </div>
+          <div className="service-advanced-heading">
+            <h3>Otros</h3>
+            <p>Configura la forma en que se presenta y comisiona este servicio.</p>
+          </div>
+          <div className="service-commission-row">
+            <Label htmlFor="service-commission">Comisión para el profesional</Label>
+            <div className="service-commission-field">
+              <Input
+                id="service-commission"
+                type="number"
+                className="admin-input"
+                placeholder="Ingresa una comisión"
+                value={draft.commissionValue ? String(draft.commissionValue) : ""}
+                onChange={(event) =>
+                  update({ commissionValue: Number(event.target.value) || 0 })
+                }
+              />
+              <select
+                className="service-commission-select"
+                value={draft.commissionUnit ?? "%"}
+                aria-label="Unidad de comisión"
+                onChange={(event) =>
+                  update({ commissionUnit: event.target.value as "$" | "%" })
+                }
+              >
+                <option value="%">%</option>
+                <option value="$">$</option>
+              </select>
+            </div>
+          </div>
+          <div className="service-accordion service-resource-accordion">
+            <button
+              type="button"
+              className="service-accordion-trigger"
+              aria-expanded={resourceOpen}
+              onClick={() => setResourceOpen((current) => !current)}
+            >
+              <span>
+                <strong>Se necesita un Recurso para realizar el servicio</strong>
+                <small>Si el servicio necesita un recurso para ser realizado, puedes seleccionarlo en la lista de abajo.</small>
+              </span>
+              {resourceOpen ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
+            </button>
+            {resourceOpen ? (
+              <div className="service-accordion-content">
+                <div className="service-accordion-info">
+                  <Info className="h-5 w-5 shrink-0" />
+                  <span>
+                    Un recurso es un instrumento o herramienta necesaria para realizar un servicio. Ej: El servicio “Consulta básica” requiere del recurso “Box 1” para ser realizado. <a href="#service-resources-info">Más info aquí.</a>
+                  </span>
+                </div>
+                <div className="service-empty-state">
+                  <Search className="h-12 w-12" />
+                  <strong>No hay recursos creados.</strong>
+                  <span>Para saber más sobre esta funcionalidad, <a href="#service-resources-info">haz clic aquí</a></span>
+                </div>
+              </div>
+            ) : null}
+          </div>
+          <div className="service-accordion service-hours-accordion">
+            <button
+              type="button"
+              className="service-accordion-trigger"
+              aria-expanded={specialHoursOpen}
+              onClick={() => setSpecialHoursOpen((current) => !current)}
+            >
+              <span>
+                <strong>El servicio se realiza en un horario especial</strong>
+                <small>Puedes definir un horario especial para realizar este servicio.</small>
+              </span>
+              {specialHoursOpen ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
+            </button>
+            {specialHoursOpen ? (
+              <div className="service-accordion-content">
+                <div className="service-accordion-info">
+                  <Info className="h-5 w-5 shrink-0" />
+                  <span>
+                    Ej: Sólo se realizan masajes en la mañana y no quieres que agenden otro horario. Estas restricciones son independientes del horario de los profesionales que proveen el servicio. <a href="#service-hours-info">Más info aquí.</a>
+                  </span>
+                </div>
+                <div className="service-hours-options">
+                  <strong>Selecciona el tipo de configuración</strong>
+                  {[
+                    ["none", "Sin restricción de tiempo"],
+                    ["range", "Rango de tiempo (ej. mañana o tarde)"],
+                    ["specific", "Horas específicas (ej. solo a las 14:30 y 18:30 hrs.)"],
+                  ].map(([value, label]) => (
+                    <label key={value} className="service-radio-option">
+                      <input
+                        type="radio"
+                        name="special-hour-mode"
+                        value={value}
+                        checked={specialHourMode === value}
+                        onChange={() => setSpecialHourMode(value as "none" | "range" | "specific")}
+                      />
+                      <span>{label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </div>
+          <div className="service-advanced-collapse">
+            <strong>Se necesita un recurso para realizar el servicio</strong>
+            <span>Si el servicio necesita un recurso, selecciónalo desde Recursos.</span>
+            <ChevronDown className="h-4 w-4" />
+          </div>
+          <div className="service-advanced-collapse">
+            <strong>El servicio se realiza en un horario especial</strong>
+            <span>Puedes definir un horario especial para realizar este servicio.</span>
+            <ChevronDown className="h-4 w-4" />
           </div>
           <InfoBanner icon={<Sparkles className="h-5 w-5" />}>
             Los recursos necesarios se podrán vincular desde Administración &gt;
@@ -2785,13 +3961,35 @@ function BulkPriceDialog({
   onSave: (prices: Record<string, number>) => void;
 }) {
   const [prices, setPrices] = useState<Record<string, string>>({});
+  const [category, setCategory] = useState("all");
+  const [search, setSearch] = useState("");
+  const [bulkTab, setBulkTab] = useState<"edit" | "upload">("edit");
+  const [uploadFileName, setUploadFileName] = useState("");
+  const editableServices = services.filter(
+    (service) =>
+      service.type === "service" &&
+      (category === "all" || service.category === category) &&
+      service.name.toLocaleLowerCase().includes(search.toLocaleLowerCase()),
+  );
+  const categories = [
+    ...new Set(
+      services
+        .filter((service) => service.type === "service")
+        .map((service) => service.category),
+    ),
+  ];
   useEffect(() => {
-    if (open)
+    if (open) {
       setPrices(
         Object.fromEntries(
           services.map((service) => [service.id, String(service.price)]),
         ),
       );
+      setCategory("all");
+      setSearch("");
+      setBulkTab("edit");
+      setUploadFileName("");
+    }
   }, [open, services]);
   const changed = services.some(
     (service) => Number(prices[service.id]) !== service.price,
@@ -2801,22 +3999,20 @@ function BulkPriceDialog({
       open={open}
       onOpenChange={onOpenChange}
       title="Carga masiva de precios"
-      onSave={
-        changed
-          ? () => {
-              onSave(
-                Object.fromEntries(
-                  Object.entries(prices).map(([id, price]) => [
-                    id,
-                    Number(price),
-                  ]),
-                ),
-              );
-              onOpenChange(false);
-            }
-          : undefined
-      }
+      description="Edita los precios de tus servicios o sube una planilla Excel"
+      onSave={() => {
+        if (!changed || bulkTab === "upload") return;
+        onSave(
+          Object.fromEntries(
+            Object.entries(prices).map(([id, price]) => [id, Number(price)]),
+          ),
+        );
+        onOpenChange(false);
+      }}
+      saveDisabled={!changed || bulkTab === "upload"}
       saveLabel="Guardar cambios"
+      cancelLabel="Cancelar"
+      className="bulk-price-dialog"
       wide
     >
       <Tabs
@@ -2824,48 +4020,96 @@ function BulkPriceDialog({
           { id: "edit", label: "Editar precios" },
           { id: "upload", label: "Subir plantilla" },
         ]}
-        active="edit"
-        onChange={(value) => {
-          if (value === "upload")
-            toast.info(
-              "La plantilla .xlsx se puede preparar desde esta vista local.",
-            );
-        }}
+        active={bulkTab}
+        onChange={(value) => setBulkTab(value as "edit" | "upload")}
       />
-      <div className="max-h-[48vh] overflow-auto rounded-2xl border border-[#eee7e2]">
-        <div className="grid grid-cols-[1.4fr_1fr_1fr] gap-3 bg-[#fbf9fd] px-4 py-3 text-xs font-semibold uppercase tracking-wider text-slate-400">
+      {bulkTab === "edit" ? (
+      <>
+      <div className="bulk-price-filters">
+        <select
+          className="bulk-price-category"
+          value={category}
+          onChange={(event) => setCategory(event.target.value)}
+        >
+          <option value="all">Todas las categorías</option>
+          {categories.map((item) => (
+            <option key={item} value={item}>
+              {item}
+            </option>
+          ))}
+        </select>
+        <Input
+          className="admin-input"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder="🔍  Buscar servicio..."
+        />
+      </div>
+      <div className="bulk-price-table">
+        <div className="bulk-price-table-header">
           <span>Servicio</span>
           <span>Categoría</span>
+          <span>Precio actual</span>
           <span>Nuevo precio</span>
         </div>
-        {services
-          .filter((service) => service.type === "service")
-          .map((service) => (
+        {editableServices.map((service) => (
             <div
               key={service.id}
-              className="grid grid-cols-[1.4fr_1fr_1fr] items-center gap-3 border-t border-[#eee7e2] px-4 py-3 text-sm"
+              className="bulk-price-table-row"
             >
               <span className="font-medium">{service.name}</span>
               <span className="text-slate-500">{service.category}</span>
-              <Input
-                className="admin-input h-10"
-                type="number"
-                value={prices[service.id] ?? ""}
-                onChange={(event) =>
-                  setPrices((current) => ({
-                    ...current,
-                    [service.id]: event.target.value,
-                  }))
-                }
-              />
+              <span className="bulk-price-current">{currency(service.price)}</span>
+              <div className="bulk-price-input">
+                <Input
+                  className="admin-input"
+                  type="number"
+                  value={prices[service.id] ?? ""}
+                  onChange={(event) =>
+                    setPrices((current) => ({
+                      ...current,
+                      [service.id]: event.target.value,
+                    }))
+                  }
+                />
+                <span>$</span>
+              </div>
             </div>
-          ))}
+        ))}
       </div>
       <div className="mt-4 flex items-center gap-2 text-sm text-slate-500">
         <Upload className="h-4 w-4" />
         También puedes subir una plantilla .xlsx desde la pestaña
         correspondiente.
       </div>
+      </>
+      ) : (
+        <div className="bulk-upload-panel">
+          <label htmlFor="bulk-price-upload" className="bulk-upload-dropzone">
+            <FileText className="h-8 w-8 text-[#bca5d1]" />
+            <span>
+              Arrastra tu archivo .xlsx aquí o <strong>haz click para seleccionar</strong>
+            </span>
+            <small>Usa la misma plantilla que descargas desde la página de servicios</small>
+            <input
+              id="bulk-price-upload"
+              type="file"
+              accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              className="sr-only"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) {
+                  setUploadFileName(file.name);
+                  toast.success("Plantilla seleccionada en mock.");
+                }
+              }}
+            />
+          </label>
+          {uploadFileName ? (
+            <p className="bulk-upload-file">Archivo seleccionado: {uploadFileName}</p>
+          ) : null}
+        </div>
+      )}
     </ModalShell>
   );
 }
@@ -2881,18 +4125,14 @@ function ServicesSection({
   ) => void;
   professionals: ProfessionalRecord[];
 }) {
-  const newServiceOptions: { value: ServiceRecord["type"]; label: string }[] = [
-    { value: "service", label: "Servicio" },
-    { value: "class", label: "Clase" },
-    { value: "package", label: "Paquete" },
-    { value: "add-on", label: "Adicional" },
-  ];
   const [tab, setTab] = useState<ServiceRecord["type"]>("service");
   const [search, setSearch] = useState("");
   const [categories, setCategories] = useState([
     "Faciales",
-    "Bienestar",
-    "Mirada",
+    "Masajes",
+    "MEMBRESIAS",
+    "Seguimientos",
+    "Otros",
     "Clases",
     "Experiencias",
     "Adicionales",
@@ -2900,6 +4140,7 @@ function ServicesSection({
   const [editing, setEditing] = useState<ServiceRecord | null>(null);
   const [serviceDialog, setServiceDialog] = useState(false);
   const [newType, setNewType] = useState<ServiceRecord["type"]>("service");
+  const [newServiceSessions, setNewServiceSessions] = useState<number | undefined>(undefined);
   const [categoryDialog, setCategoryDialog] = useState(false);
   const [editingCategory, setEditingCategory] = useState<string | null>(null);
   const [bulkOpen, setBulkOpen] = useState(false);
@@ -2911,6 +4152,18 @@ function ServicesSection({
     package: "Paquetes",
     "add-on": "Adicionales",
   };
+  const newMenuOptions: {
+    value: ServiceRecord["type"];
+    label: string;
+    description: string;
+    sessions?: number;
+  }[] = [
+    { value: "service", label: "Servicio", description: "Agrega los servicios que realiza la empresa." },
+    { value: "service", label: "Servicio con sesiones", description: "Crea servicios con una cantidad de sesiones determinada.", sessions: 5 },
+    { value: "class", label: "Clase", description: "Tipo de servicio al que puedes agregar múltiples personas." },
+    { value: "package", label: "Paquete", description: "Crea un nuevo paquete (grupo de servicios). Pueden ser reservados en paralelo o secuencial." },
+    { value: "add-on", label: "Adicional", description: "Crea adicionales que luego se añadirán a los servicios." },
+  ];
   const visible = services.filter(
     (service) =>
       service.type === tab &&
@@ -2918,12 +4171,24 @@ function ServicesSection({
         .toLocaleLowerCase()
         .includes(search.toLocaleLowerCase().trim()),
   );
-  const grouped = categories
+  const tabCategories: Record<ServiceRecord["type"], string[]> = {
+    service: ["Faciales", "Masajes", "MEMBRESIAS", "Seguimientos", "Otros"],
+    class: ["Clases"],
+    package: ["Membresias", "Experiencias"],
+    "add-on": ["Adicionales"],
+  };
+  const visibleCategories = [
+    ...new Set([
+      ...tabCategories[tab],
+      ...visible.map((service) => service.category),
+    ]),
+  ];
+  const grouped = visibleCategories
     .map((category) => ({
       category,
       items: visible.filter((service) => service.category === category),
     }))
-    .filter((group) => group.items.length > 0 || tab !== "service");
+    .filter((group) => group.items.length > 0 || tab === "service");
   const save = (service: ServiceRecord) => {
     setServices((current) =>
       current.some((item) => item.id === service.id)
@@ -2959,10 +4224,6 @@ function ServicesSection({
         description="Construye tu catálogo de experiencias, clases, paquetes y servicios adicionales."
         action={
           <div className="flex flex-wrap gap-2">
-            <Button variant="outline" onClick={() => setBulkOpen(true)}>
-              <ListFilter className="mr-2 h-4 w-4" />
-              Precios
-            </Button>
             <Popover>
               <PopoverTrigger asChild>
                 <Button className="admin-primary">
@@ -2970,29 +4231,21 @@ function ServicesSection({
                   Nuevo
                 </Button>
               </PopoverTrigger>
-              <PopoverContent align="end" className="admin-popover w-60 p-2">
-                {(
-                  [
-                    ["service", "Servicio"],
-                    ["class", "Clase"],
-                    ["package", "Paquete"],
-                    ["add-on", "Adicional"],
-                  ] as unknown as {
-                    value: ServiceRecord["type"];
-                    label: string;
-                  }[]
-                ).map((item) => (
+              <PopoverContent align="end" className="admin-popover new-service-menu p-2">
+                {newMenuOptions.map((item) => (
                   <button
-                    key={item.value}
+                    key={item.label}
                     type="button"
-                    className="flex w-full rounded-xl px-3 py-2.5 text-left text-sm hover:bg-[#f0ebf6]"
+                    className="new-service-menu-item"
                     onClick={() => {
                       setNewType(item.value);
+                      setNewServiceSessions(item.sessions);
                       setEditing(null);
                       setServiceDialog(true);
                     }}
                   >
-                    {item.label}
+                    <span className="new-service-menu-title">{item.label}</span>
+                    <span className="new-service-menu-description">{item.description}</span>
                   </button>
                 ))}
               </PopoverContent>
@@ -3006,6 +4259,51 @@ function ServicesSection({
         onChange={(value) => setTab(value as ServiceRecord["type"])}
       />
       {tab === "service" ? (
+        <div className="service-catalog-actions">
+          <Button
+            variant="link"
+            className="service-catalog-action"
+            onClick={() => setBulkOpen(true)}
+          >
+            <Upload className="mr-2 h-4 w-4" />
+            Carga masiva de precios
+          </Button>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="link" className="service-catalog-action">
+                <Download className="mr-2 h-4 w-4" />
+                Descargar
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent
+              align="end"
+              className="admin-popover service-download-menu p-0"
+            >
+              <Button
+                variant="ghost"
+                className="service-download-option"
+                onClick={() =>
+                  toast.success("Lista completa de servicios descargada en mock.")
+                }
+              >
+                <Download className="mr-3 h-5 w-5" />
+                Descargar lista completa de servicios
+              </Button>
+              <Button
+                variant="ghost"
+                className="service-download-option"
+                onClick={() =>
+                  toast.success("Plantilla de precios descargada en mock.")
+                }
+              >
+                <Download className="mr-3 h-5 w-5" />
+                Descargar plantilla para actualización masiva de precios
+              </Button>
+            </PopoverContent>
+          </Popover>
+        </div>
+      ) : null}
+      {tab === "service" ? (
         <InfoBanner icon={<Sparkles className="h-5 w-5" />}>
           <strong>Configura tu primer servicio.</strong> Agrega precio,
           duración, descripción e imágenes y organiza tu catálogo por
@@ -3018,18 +4316,6 @@ function ServicesSection({
         placeholder={`Buscar ${tabLabel[tab].toLocaleLowerCase()}`}
         extra={
           <>
-            <Button
-              variant="link"
-              className="h-10 text-[#7460a4]"
-              onClick={() =>
-                toast.info(
-                  "La descarga del catálogo se preparará con los datos actuales.",
-                )
-              }
-            >
-              <Download className="mr-2 h-4 w-4" />
-              Descargar
-            </Button>
             <Button
               variant="outline"
               onClick={() => {
@@ -3054,6 +4340,7 @@ function ServicesSection({
                 className="admin-primary"
                 onClick={() => {
                   setNewType(tab);
+                  setNewServiceSessions(undefined);
                   setEditing(null);
                   setServiceDialog(true);
                 }}
@@ -3208,8 +4495,15 @@ function ServicesSection({
         open={serviceDialog}
         service={editing}
         serviceType={newType}
+        initialSessions={newServiceSessions}
         professionals={professionals}
+        catalogServices={services}
         categories={categories}
+        onCreateCategory={(category) =>
+          setCategories((current) =>
+            current.includes(category) ? current : [...current, category],
+          )
+        }
         onOpenChange={setServiceDialog}
         onSave={save}
       />

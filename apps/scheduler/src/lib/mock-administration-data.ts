@@ -9,6 +9,18 @@ export interface ScheduleDay {
   breakEnd: string | undefined;
 }
 
+export interface ClassScheduleSlot {
+  id: string;
+  professionalId: string;
+  start: string;
+  end: string;
+}
+
+export interface ClassScheduleDay {
+  day: string;
+  slots: ClassScheduleSlot[];
+}
+
 export interface SpecialDay {
   id: string;
   date: string;
@@ -69,8 +81,15 @@ export interface ServiceRecord {
   featured: boolean;
   professionalIds: string[];
   description: string;
+  alternativeNames?: string[];
+  commissionValue?: number;
+  commissionUnit?: "$" | "%";
   sessions?: number;
   capacity?: number;
+  classSchedule?: ClassScheduleDay[];
+  packageItems?: { serviceId: string; price: number }[];
+  packageShowPrice?: boolean;
+  packageSimultaneous?: boolean;
 }
 
 export interface CommissionRecord {
@@ -170,6 +189,9 @@ export const createSchedule = (
     breakStart: undefined,
     breakEnd: undefined,
   }));
+
+export const createClassSchedule = (): ClassScheduleDay[] =>
+  scheduleDays.map((day) => ({ day, slots: [] }));
 
 export const createEmptyLocal = (): LocalRecord => ({
   id: `local-${Date.now()}`,
@@ -365,6 +387,8 @@ const createRealService = (
   status: "active",
   featured: false,
   professionalIds,
+  commissionValue: 0,
+  commissionUnit: "%",
   description: `Servicio de la categoría ${category}.`,
   ...(type === "package" ? { sessions: 5 } : {}),
 });
@@ -432,6 +456,32 @@ const realMembershipServices = [
 
 const realFollowUpServices = ["FACIAL DE CORTESIA", "RECUPERACION"];
 
+const realFacialPrices = [
+  999, 799, 1499, 1499, 1499, 4300, 499, 1499, 799, 799, 3800, 799,
+  799, 799, 799, 0, 3800, 4900, 2800, 2500, 3500, 2500,
+];
+const realFacialDurations = [50, 60, 60, 60, 50, 60, 30, 60, 60, 50, 60, 50, 50, 50, 50, 60, 60, 60, 50, 60, 60, 60];
+const realMassagePrices = [1499, 799, 1499, 0, 1499, 1999, 799, 3800, 1499, 10000, 2500, 2500, 2500, 3800, 3800, 3800, 799];
+const realMembershipPrices = [25000, 30000, 32000, 20000, 28000, 14000, 30000, 15000, 25000, 200000, 20000, 35000, 12000];
+
+const initialExtraServices: ServiceRecord[] = [
+  {
+    ...createRealService("class-yoga", "Yoga facial en grupo", "Clases", "class", 380, 45, ["professional-patricia"]),
+    capacity: 8,
+    description: "Clase guiada para activar y relajar los músculos del rostro.",
+  },
+  {
+    ...createRealService("package-reset", "Ritual Reset", "Experiencias", "package", 1450, 120, ["professional-patricia", "professional-mariana"]),
+    sessions: 2,
+    featured: true,
+    description: "Facial y masaje en una experiencia completa.",
+  },
+  {
+    ...createRealService("addon-mask", "Mascarilla premium", "Adicionales", "add-on", 180, 15),
+    description: "Complemento nutritivo para potenciar tu tratamiento.",
+  },
+];
+
 export const initialServices: ServiceRecord[] = [
   ...realFacialServices.map((name, index) =>
     createRealService(
@@ -439,8 +489,8 @@ export const initialServices: ServiceRecord[] = [
       name,
       "Faciales",
       "service",
-      index === 0 ? 950 : 0,
-      60,
+      realFacialPrices[index] ?? 0,
+      realFacialDurations[index] ?? 60,
       index === 0
         ? ["professional-patricia", "professional-mariana"]
         : [],
@@ -452,8 +502,8 @@ export const initialServices: ServiceRecord[] = [
       name,
       "Masajes",
       "service",
-      index === 0 ? 800 : 0,
-      60,
+      realMassagePrices[index] ?? 0,
+      index === 0 ? 60 : index === 1 ? 50 : 60,
       index === 0
         ? [
             "professional-patricia",
@@ -465,25 +515,23 @@ export const initialServices: ServiceRecord[] = [
   ),
   ...realMembershipServices.map((name, index) =>
     createRealService(
-      index === 0 ? "package-reset" : `package-membership-${index}`,
+      `service-membership-${index}`,
       name,
-      "Membresias",
-      "package",
-      index === 0 ? 1450 : 0,
+      "MEMBRESIAS",
+      "service",
+      realMembershipPrices[index] ?? 0,
       60,
-      index === 0
-        ? ["professional-patricia", "professional-mariana"]
-        : [],
+      [],
     ),
   ),
   ...realFollowUpServices.map((name, index) =>
     createRealService(
-      index === 0 ? "class-yoga" : "follow-up-recovery",
+      index === 0 ? "follow-up-courtesy" : "follow-up-recovery",
       name,
       "Seguimientos",
     ),
   ),
-  legacyServices[5]!,
+  ...initialExtraServices,
 ];
 
 export const initialGroups: ProfessionalGroup[] = [
