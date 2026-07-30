@@ -71,7 +71,7 @@ export default function DesgloseSucursalPage() {
           {branchBreakdown.map((branch) => (
             <div key={branch.branch} className="grid gap-2 md:grid-cols-[12rem_1fr_7rem] md:items-center">
               <p className="text-[0.98rem] font-semibold text-[color:var(--text-strong)]">{branch.branch}</p>
-              <div className="h-4 overflow-hidden rounded-full bg-[#080706]">
+              <div className="h-4 overflow-hidden rounded-full bg-[var(--accent-hover)]">
                 <div className="h-full rounded-full bg-gradient-to-r from-[color:var(--accent)] via-[color:var(--color-nude)] to-[color:var(--payroll-bronze)]" style={{ width: `${branch.payrollWeight * 100}%` }} />
               </div>
               <p className="number-display text-right font-black text-[color:var(--text-strong)]">{formatCurrency(branch.totalCost)}</p>

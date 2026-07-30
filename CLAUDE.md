@@ -102,8 +102,10 @@ el diseño y el autocuidado.
 
 ## Estado actual de `payroll`
 
-- Tipografía actual: `Bodoni Moda` para titulares y `Inter` para cuerpo/UI.
-- Las cards principales usan una superficie inspirada en el login de `envelope`: fondo oscuro translúcido, borde fino, blur y shadow suave.
+- `payroll` comparte el sistema visual canónico de `envelope`: `Emofera Regular` para títulos de página y marca, y `Gilroy` (400/500/600/700) para cuerpo/UI.
+- La paleta, tokens semánticos, sidebar, logo, favicon, login editorial, radios, sombras, inputs y estados light/dark de `payroll` deben mantenerse alineados con `apps/envelope`.
+- Las cards principales usan `--bg-card`, borde nude fino, `--card-shadow` y radio `rounded-brand`/10px; no reintroducir el glass oscuro de 32px ni colores de superficie hardcodeados.
+- `payroll` soporta tema claro y oscuro con la misma preferencia `keysar-theme` usada por `envelope`; cualquier componente nuevo debe funcionar correctamente en ambos modos.
 - La dirección visual de `payroll` debe mantenerse más limpia y minimalista que antes: evitar textos secundarios redundantes, descripciones largas y copy explicativo dentro de cards cuando el dato principal ya comunica el estado.
 - En métricas y bloques resumen, priorizar `label + value`; si hace falta contexto, usarlo solo de forma puntual.
 
@@ -279,19 +281,23 @@ Archivos principales:
 
 - `apps/payroll/src/lib/mock-data.ts` — fixtures mock de empleados, corridas, movimientos, esquemas, préstamos, desglose por sucursal y recibos.
 - `apps/payroll/src/lib/format.ts` — helpers de moneda, porcentaje, fecha y sumatorias.
-- `apps/payroll/src/components/payroll/payroll-shell.tsx` — shell/sidebar responsive de Payroll.
+- `apps/payroll/src/components/payroll/payroll-shell.tsx` — shell/sidebar responsive alineado con `envelope`, con logo real, navegación colapsable y switch light/dark.
 - `apps/payroll/src/components/payroll/metric-card.tsx` — tarjetas KPI.
 - `apps/payroll/src/components/payroll/section-card.tsx` — contenedor estándar de secciones.
 - `apps/payroll/src/components/payroll/status-badge.tsx` — badges de estados mock.
-- `apps/payroll/src/app/globals.css` — diseño visual premium/glass adaptado a paleta Keysar, independiente de `envelope`.
-- `apps/payroll/src/app/layout.tsx` — carga tipográfica con `Bodoni Moda` para headlines y `Inter` para body.
+- `apps/payroll/src/app/globals.css` — tokens y sistema tipográfico compartidos con `envelope`, más aliases de compatibilidad para los componentes mock existentes.
+- `apps/payroll/src/app/layout.tsx` — metadatos, favicon, tipografía y script anti-flash del tema alineados con `envelope`.
+- `apps/payroll/public/` — copia local del logo, fondo editorial del login y fuentes Emofera/Gilroy canónicas de `envelope` para que la app sea autónoma en runtime.
 
 Reglas visuales de `payroll`:
 
-- Títulos y headlines usan `Bodoni Moda` vía `font-brand` o `.page-title`.
-- El cuerpo y texto de soporte usan `Inter` vía `font-sans`.
-- Los botones primarios deben mantener contraste alto en hover; no usar hovers que reduzcan legibilidad sobre el fondo oscuro.
-- El texto secundario debe seguir siendo legible en fondo oscuro, evitando grises demasiado apagados.
+- Todos los H1 usan `.page-title` con `Emofera Regular`; no aplicar `font-bold` ni `font-semibold` a `font-brand`.
+- El cuerpo y texto de soporte usan `Gilroy` vía `font-sans`; `Inter` queda solo como fallback.
+- Reutilizar los tokens `--bg-primary`, `--bg-card`, `--text-primary`, `--text-muted`, `--accent`, `--accent-hover` y `--border-color`; evitar hexadecimales de superficie dentro de pages/components.
+- Cards y paneles deben conservar el lenguaje compacto de `envelope`: fondo sólido legible en light/dark, borde nude, shadow sutil y radios de 10px/12px.
+- Los botones primarios deben mantener contraste alto y los botones destructivos deben incluir texto además del color; todos los elementos interactivos deben mostrar cursor, hover y foco visibles.
+- El login de `payroll` replica la composición editorial de `envelope` pero conserva el acceso mock sin autenticación real.
+- Todo componente nuevo debe validarse a 375px, 768px, 1024px y 1440px, sin scroll horizontal, y respetar `prefers-reduced-motion`.
 
 Pantallas mock implementadas:
 

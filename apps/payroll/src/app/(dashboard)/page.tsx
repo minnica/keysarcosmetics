@@ -117,15 +117,13 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      <section className="payroll-glass relative overflow-hidden rounded-[2rem] p-6 md:p-8">
-        <div className="absolute right-[-7rem] top-[-9rem] h-72 w-72 rounded-full bg-[#d7b488]/18 blur-3xl" />
-        <div className="absolute bottom-[-8rem] left-[35%] h-56 w-56 rounded-full bg-[#9c846a]/14 blur-3xl" />
+      <section className="payroll-glass relative overflow-hidden rounded-brand p-5 md:p-6">
         <div className="relative grid gap-6 lg:grid-cols-[1fr_24rem] lg:items-end">
           <div>
             <p className="label-caps">CORRIDA DE NOMINA</p>
             <h1 className="page-title mt-4 max-w-4xl">Nomina clara antes de aprobar el pago.</h1>
           </div>
-          <div className="payroll-login-card rounded-[2rem] p-5 text-[color:var(--text-primary)]">
+          <div className="payroll-login-card rounded-brand p-5 text-[color:var(--text-primary)]">
               <p className="label-caps">Periodo activo</p>
               <p className="mt-3 text-[1.35rem] font-black text-[color:var(--text-strong)]">{formatDate(currentRun.from)} - {formatDate(currentRun.to)}</p>
               <div className="mt-4 flex items-center justify-between gap-3">
@@ -157,7 +155,7 @@ export default function DashboardPage() {
         <div className="grid gap-4 lg:grid-cols-[1fr_16rem]">
           <DateRangePicker value={range} onChange={setRange} fromLabel="Desde" toLabel="Hasta" />
           <Select value={mode} onValueChange={(value) => setMode(value as typeof mode)}>
-          <SelectTrigger className="h-10 rounded-md border border-[color:var(--border-color)] bg-[#080706] text-[color:var(--text-primary)]">
+          <SelectTrigger className="h-10 rounded-md border border-[color:var(--border-color)] bg-[var(--input-bg)] text-[color:var(--text-primary)]">
             <SelectValue />
           </SelectTrigger>
             <SelectContent>
@@ -173,15 +171,15 @@ export default function DashboardPage() {
         title="DETALLE DE PAGO POR EMPLEADO"
       >
         <div className="mb-4 grid gap-3 md:grid-cols-3">
-          <div className="rounded-lg border border-[#2c241c] bg-[#080706] p-3">
+          <div className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-card)] p-3">
             <p className="label-caps">Ventas sin IVA</p>
             <p className="number-display mt-2 text-[1.05rem] font-black text-[color:var(--text-strong)]">{formatCurrency(payrollTotals.salesWithoutVat)}</p>
           </div>
-          <div className="rounded-lg border border-[#2c241c] bg-[#080706] p-3">
+          <div className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-card)] p-3">
             <p className="label-caps">Deducciones</p>
             <p className="number-display mt-2 text-[1.05rem] font-black text-[color:var(--text-strong)]">{formatCurrency(deductions)}</p>
           </div>
-          <div className="rounded-lg border border-[#2c241c] bg-[#080706] p-3">
+          <div className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-card)] p-3">
             <p className="label-caps">Pago prestamo</p>
             <p className="number-display mt-2 text-[1.05rem] font-black text-[color:var(--text-strong)]">{formatCurrency(payrollTotals.loanPayments)}</p>
           </div>

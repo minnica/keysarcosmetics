@@ -1,312 +1,258 @@
-@import url('https://fonts.googleapis.com/css2?family=Bodoni+Moda:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap');
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-@layer base {
-  :root {
-    --color-gold: #d7b488;
-    --color-nude: #e2c295;
-    --color-charcoal: #0b0908;
-    --color-ivory: #f1e7d8;
-    --color-blue-light: #b5a894;
-    --color-blue-soft: #8f7f6b;
-    --color-green-olive: #a98d68;
-    --color-green-sage: #bea174;
-    --payroll-ivory: #f1e7d8;
-    --payroll-porcelain: #0e0d0c;
-    --payroll-champagne: #e2c295;
-    --payroll-bronze: #a98d68;
-    --payroll-ink: #f6efe4;
-    --payroll-muted: #b09b84;
-    --payroll-sage: #bea174;
-    --payroll-rose: #d7b488;
-    --payroll-clay: #7a5a42;
-    --payroll-blue: #b5a894;
-    --bg-primary: #050403;
-    --bg-card: #080706;
-    --bg-sidebar: #12100f;
-    --text-primary: var(--payroll-ivory);
-    --text-muted: var(--payroll-muted);
-    --text-soft: #cdbba4;
-    --text-strong: #fff4e6;
-    --border-color: #2c241c;
-    --accent: #d7b488;
-    --accent-hover: #efcf9b;
-    --accent-pressed: #cfa56f;
-    --button-text: #120e0a;
-    --button-hover-text: #0f0c08;
-    --sidebar-active-text: #050403;
-    --sidebar-active-bg: #c9a471;
-    --table-header-bg: #12100f;
-    --table-header-text: #f5eadb;
-    --table-row-alt: rgba(255, 255, 255, 0.025);
-    --input-bg: #100c09;
-    --input-disabled-bg: #0e0d0c;
-    --card-shadow: 0 30px 100px rgba(0, 0, 0, 0.56), 0 1px 0 rgba(255, 255, 255, 0.03) inset;
-    --payroll-card-border: #120f0b;
-    --payroll-card-bg: rgba(0, 0, 0, 0.2);
-    --payroll-card-shadow: 0 0 0 1px rgba(215, 180, 136, 0.16), 0 30px 90px rgba(215, 180, 136, 0.18), 0 54px 150px rgba(0, 0, 0, 0.72);
-    --payroll-card-blur: 40px;
-  }
+@font-face {
+  font-family: 'Emofera Regular';
+  src: url('/fonts/Emofera-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
 
-  html {
-    min-height: 100%;
-    font-size: 15.5px;
-    color-scheme: dark;
-    background:
-      radial-gradient(circle at 12% 8%, rgba(215, 180, 136, 0.16), transparent 28rem),
-      radial-gradient(circle at 84% 0%, rgba(92, 64, 47, 0.18), transparent 26rem),
-      radial-gradient(circle at 20% 92%, rgba(93, 64, 47, 0.12), transparent 24rem),
-      linear-gradient(135deg, #17130f 0%, #0b0a09 56%, #050404 100%);
-    color: var(--text-primary);
-  }
+@font-face {
+  font-family: 'Gilroy';
+  src: url('/fonts/Gilroy-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
 
-  body {
-    min-height: 100vh;
-    overflow-x: hidden;
-    background:
-      linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
-      linear-gradient(180deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
-    background-size: 44px 44px;
-    color: var(--text-primary);
-    font-family: "Inter", system-ui, sans-serif;
-    font-size: 0.95rem;
-    line-height: 1.55;
-    -webkit-font-smoothing: antialiased;
-    text-rendering: optimizeLegibility;
-  }
+@font-face {
+  font-family: 'Gilroy';
+  src: url('/fonts/Gilroy-Medium.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
 
-  ::selection {
-    background: rgba(215, 180, 136, 0.42);
-    color: #07070a;
-  }
+@font-face {
+  font-family: 'Gilroy';
+  src: url('/fonts/Gilroy-SemiBold.woff2') format('woff2');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Gilroy';
+  src: url('/fonts/Gilroy-Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+.font-emofera {
+  font-family: 'Emofera Regular', serif;
 }
 
 @layer components {
   .page-title {
-    font-family: "Bodoni Moda", Georgia, serif;
-    font-size: clamp(2rem, 3.8vw, 4rem);
+    font-family: 'Emofera Regular', Georgia, serif;
+    font-size: 1.875rem;
     font-weight: 400;
-    letter-spacing: -0.055em;
-    line-height: 0.94;
-    color: var(--text-strong);
+    letter-spacing: 0.015em;
+    line-height: 1.2;
+    color: var(--text-primary);
   }
 
   .section-heading {
-    font-family: "Bodoni Moda", Georgia, serif;
-    font-size: 0.84rem;
-    font-weight: 700;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    color: var(--text-strong);
+    font-family: 'Gilroy', 'Inter', sans-serif;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    color: var(--text-primary);
   }
 
   .label-caps {
-    font-family: "Inter", system-ui, sans-serif;
-    font-size: 0.68rem;
-    font-weight: 700;
-    letter-spacing: 0.14em;
+    font-family: 'Gilroy', 'Inter', sans-serif;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.12em;
     text-transform: uppercase;
-    color: var(--accent);
+    color: var(--color-gold);
   }
 
   .number-display {
+    font-family: 'Gilroy', 'Inter', sans-serif;
+    font-weight: 700;
     font-variant-numeric: tabular-nums;
-    letter-spacing: -0.035em;
+    letter-spacing: -0.01em;
   }
 
-  .payroll-body {
-    color: var(--text-primary);
-  }
-
-  .payroll-muted {
-    color: var(--text-muted);
-  }
-
+  .payroll-body,
   .payroll-body-copy {
-    font-size: 0.92rem;
-    line-height: 1.6;
     color: var(--text-primary);
+  }
+
+  .payroll-muted,
+  .payroll-note {
+    color: var(--text-muted);
   }
 
   .payroll-note {
     font-size: 0.84rem;
     line-height: 1.5;
-    color: var(--text-muted);
-    font-style: italic;
   }
 
-  .payroll-surface {
-    border: 1px solid var(--payroll-card-border);
-    background: var(--payroll-card-bg);
-    box-shadow: var(--payroll-card-shadow);
-    backdrop-filter: blur(var(--payroll-card-blur));
-  }
-
-  .payroll-glass {
-    border: 1px solid var(--payroll-card-border);
-    background: var(--payroll-card-bg);
-    box-shadow: var(--payroll-card-shadow);
-    backdrop-filter: blur(var(--payroll-card-blur));
-  }
-
-  .payroll-panel {
-    border: 1px solid var(--payroll-card-border);
-    background: var(--payroll-card-bg);
-    box-shadow: var(--payroll-card-shadow);
-    backdrop-filter: blur(var(--payroll-card-blur));
-  }
-
+  .payroll-surface,
+  .payroll-glass,
+  .payroll-panel,
   .payroll-login-card {
-    border: 1px solid var(--payroll-card-border);
-    background: var(--payroll-card-bg);
-    box-shadow: var(--payroll-card-shadow);
-    backdrop-filter: blur(var(--payroll-card-blur));
-    color: #f7f0e7;
-  }
-
-  .payroll-login-card .label-caps {
-    color: #d7b488;
-    font-family: "Inter", system-ui, sans-serif;
-    font-size: 0.66rem;
-  }
-
-  .payroll-login-card .section-heading,
-  .payroll-login-card .page-title {
-    color: #f7f0e7;
-    font-family: "Bodoni Moda", Georgia, serif;
-  }
-
-  .payroll-login-card .payroll-muted {
-    color: rgba(255, 255, 255, 0.58);
-    font-family: "Inter", system-ui, sans-serif;
-    font-size: 0.88rem;
-  }
-
-  .payroll-login-card .number-display {
-    color: #f7f0e7;
+    border: 1px solid var(--border-color);
+    background: var(--bg-card);
+    box-shadow: var(--card-shadow);
+    color: var(--text-primary);
   }
 
   .payroll-button-primary {
     background-color: var(--accent);
-    color: var(--button-text);
-    transition: background-color 180ms ease, color 180ms ease, border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+    color: var(--sidebar-active-text);
+    transition: background-color 200ms ease, color 200ms ease, box-shadow 200ms ease;
   }
 
   .payroll-button-primary:hover {
-    background-color: var(--accent-hover);
-    color: var(--button-hover-text);
-    box-shadow: 0 12px 30px rgba(215, 180, 136, 0.18);
-  }
-
-  .payroll-button-primary:active {
-    background-color: var(--accent-pressed);
+    background-color: var(--color-nude);
+    color: var(--text-primary);
   }
 
   .payroll-button-secondary {
     border: 1px solid var(--border-color);
-    background-color: rgba(8, 7, 6, 0.88);
+    background-color: var(--bg-card);
     color: var(--text-primary);
-    transition: background-color 180ms ease, color 180ms ease, border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+    transition: background-color 200ms ease, border-color 200ms ease, color 200ms ease;
   }
 
-  .payroll-button-secondary:hover {
-    border-color: rgba(239, 207, 155, 0.55);
-    background-color: rgba(215, 180, 136, 0.15);
-    color: var(--text-strong);
-    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.26);
-  }
-
-  .payroll-button-secondary:active {
-    background-color: rgba(215, 180, 136, 0.22);
+  .payroll-button-secondary:hover,
+  .payroll-button-ghost:hover {
+    background-color: var(--accent-hover);
+    color: var(--text-primary);
   }
 
   .payroll-button-ghost {
     color: var(--text-muted);
-    transition: background-color 180ms ease, color 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+    transition: background-color 200ms ease, color 200ms ease;
+  }
+}
+
+@layer base {
+  :root {
+    --color-gold: #c3a583;
+    --color-nude: #ecd1c8;
+    --color-charcoal: #606060;
+    --color-ivory: #f3f0e9;
+    --color-blue-light: #6fc9db;
+    --color-blue-soft: #bae2e8;
+    --color-green-olive: #648672;
+    --color-green-sage: #8bb09b;
+    --payroll-bronze: #a88662;
+    --bg-primary: #f3f0e9;
+    --bg-card: #ffffff;
+    --bg-sidebar: #ffffff;
+    --text-primary: #4f4a44;
+    --text-secondary: #a88662;
+    --text-muted: #766d64;
+    --text-strong: #4f4a44;
+    --accent: #c3a583;
+    --accent-hover: #ecd1c8;
+    --border-color: #ecd1c8;
+    --sidebar-active-bg: #c3a583;
+    --sidebar-active-text: #ffffff;
+    --card-shadow: 0 1px 4px rgba(195, 165, 131, 0.14), 0 1px 2px rgba(195, 165, 131, 0.08);
+    --table-header-bg: #c3a583;
+    --table-header-text: #ffffff;
+    --table-row-alt: #f9f5f1;
+    --table-header-label: #7b634a;
+    --table-body-text: #4f4a44;
+    --table-row-hover: rgba(195, 165, 131, 0.12);
+    --table-row-selected: rgba(195, 165, 131, 0.18);
+    --input-bg: #ffffff;
+    --input-disabled-bg: #faf8f5;
+    --sidebar-width: 16rem;
+    --sidebar-width-icon: 3rem;
   }
 
-  .payroll-button-ghost:hover {
-    background-color: rgba(239, 207, 155, 0.12);
-    color: var(--text-strong);
+  .dark {
+    --bg-primary: #1a1a1a;
+    --bg-card: #252525;
+    --bg-sidebar: #252525;
+    --text-primary: #f3f0e9;
+    --text-secondary: #c3a583;
+    --text-muted: #a7a7a7;
+    --text-strong: #f3f0e9;
+    --accent: #c3a583;
+    --accent-hover: rgba(195, 165, 131, 0.22);
+    --border-color: #606060;
+    --sidebar-active-bg: #c3a583;
+    --sidebar-active-text: #1a1a1a;
+    --card-shadow: 0 1px 4px rgba(0, 0, 0, 0.35), 0 1px 2px rgba(0, 0, 0, 0.25);
+    --table-header-bg: #c3a583;
+    --table-header-text: #1a1a1a;
+    --table-row-alt: #2e2e2e;
+    --table-header-label: #d8c0a3;
+    --table-body-text: #e9e1d6;
+    --table-row-hover: rgba(243, 240, 233, 0.04);
+    --table-row-selected: rgba(243, 240, 233, 0.08);
+    --input-bg: #303030;
+    --input-disabled-bg: #2a2a2a;
   }
+
+  html {
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    overflow-x: hidden;
+  }
+
+  body {
+    min-height: 100vh;
+    font-family: 'Gilroy', 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    transition: background-color 0.2s ease, color 0.2s ease;
+  }
+
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--color-nude); border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--color-gold); }
+  ::selection { background-color: var(--color-nude); color: var(--color-charcoal); }
 
   input,
-  textarea {
+  textarea,
+  button[role='combobox'] {
     border-color: var(--border-color);
     background-color: var(--input-bg);
     color: var(--text-primary);
-    caret-color: var(--accent);
   }
 
   input::placeholder,
-  textarea::placeholder {
-    color: rgba(176, 155, 132, 0.72);
-  }
-
-  input:focus-visible,
-  textarea:focus-visible,
-  button[role="combobox"]:focus-visible {
-    border-color: rgba(239, 207, 155, 0.7);
-    box-shadow: 0 0 0 1px rgba(239, 207, 155, 0.38);
-  }
+  textarea::placeholder { color: var(--text-muted); }
 
   input:disabled,
   textarea:disabled,
   input[readonly],
-  textarea[readonly] {
+  textarea[readonly],
+  button[role='combobox']:disabled {
     background-color: var(--input-disabled-bg);
-    color: rgba(246, 239, 228, 0.72);
+    color: var(--text-muted);
     opacity: 1;
-  }
-
-  button[role="combobox"] {
-    border-color: var(--border-color);
-    background-color: var(--input-bg);
-    color: var(--text-primary);
-    transition: background-color 180ms ease, border-color 180ms ease, color 180ms ease, box-shadow 180ms ease;
-  }
-
-  button[role="combobox"]:hover,
-  button[role="combobox"][data-state="open"] {
-    border-color: rgba(239, 207, 155, 0.55);
-    background-color: rgba(215, 180, 136, 0.12);
-    color: var(--text-strong);
-  }
-
-  button[role="combobox"]:disabled {
-    background-color: var(--input-disabled-bg);
-    color: rgba(176, 155, 132, 0.68);
-    opacity: 1;
-  }
-
-  [role="listbox"],
-  [data-radix-popper-content-wrapper] [cmdk-list],
-  [data-radix-popper-content-wrapper] [cmdk-root] {
-    background-color: #0c0a09;
-    color: var(--text-primary);
-  }
-
-  [role="option"] {
-    color: var(--text-primary);
-  }
-
-  [role="option"][data-highlighted],
-  [role="option"]:focus {
-    background-color: rgba(215, 180, 136, 0.16) !important;
-    color: var(--text-strong) !important;
-  }
-
-  [data-radix-popper-content-wrapper] {
-    color: var(--text-primary);
   }
 
   [data-radix-popper-content-wrapper] > div {
     border-color: var(--border-color);
-    background-color: #0c0a09;
+    background-color: var(--bg-card);
     color: var(--text-primary);
-    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.42);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
   }
 }

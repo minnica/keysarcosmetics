@@ -195,7 +195,7 @@ export default function PrestamosAdelantosPage() {
           </Button>
           <Button
             variant="outline"
-            className="h-8 cursor-pointer rounded-full border-[#4a2727] bg-[#1a0f0f] px-3 text-[#f1b7b7] hover:border-[#7b3a3a] hover:bg-[#271111] hover:text-[#ffdada]"
+            className="h-8 cursor-pointer rounded-full border-red-300 bg-red-50 px-3 text-red-700 hover:bg-red-100 dark:border-red-800 dark:bg-red-950/40 dark:text-red-200"
             onClick={() => setDeleteTarget(row.original)}
           >
             Borrar

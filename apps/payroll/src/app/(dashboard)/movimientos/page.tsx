@@ -399,7 +399,7 @@ export default function MovimientosPage() {
               </>
             )}
             {(movementForm.kind === 'PER_DIEM' || movementForm.kind === 'SUPPLIES') ? (
-              <div className="sm:col-span-2 rounded-lg border border-dashed border-[#2c241c] bg-[#080706] p-3 text-[0.84rem] text-[color:var(--text-muted)]">
+              <div className="sm:col-span-2 rounded-lg border border-dashed border-[var(--border-color)] bg-[var(--input-disabled-bg)] p-3 text-[0.84rem] text-[color:var(--text-muted)]">
                 Requiere evidencia en la version conectada.
               </div>
             ) : null}

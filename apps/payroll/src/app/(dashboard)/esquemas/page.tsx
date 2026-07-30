@@ -295,7 +295,7 @@ export default function EsquemasPage() {
           {row.original.ranges.map((range, index) => (
             <div
               key={`${row.original.id}-${index}`}
-              className="grid grid-cols-3 gap-2 rounded-lg border border-[#2c241c] bg-[#080706] px-3 py-2"
+              className="grid grid-cols-3 gap-2 rounded-lg border border-[var(--border-color)] bg-[var(--bg-card)] px-3 py-2"
             >
               <span className="tabular-nums text-[color:var(--text-strong)]">{formatRangeNumber(range.from)}</span>
               <span className="tabular-nums text-[color:var(--text-strong)]">{formatRangeNumber(range.to)}</span>
@@ -332,7 +332,7 @@ export default function EsquemasPage() {
           </Button>
           <Button
             variant="outline"
-            className="h-8 cursor-pointer rounded-full border-[#4a2727] bg-[#1a0f0f] px-3 text-[#f1b7b7] hover:border-[#7b3a3a] hover:bg-[#271111] hover:text-[#ffdada]"
+            className="h-8 cursor-pointer rounded-full border-red-300 bg-red-50 px-3 text-red-700 hover:bg-red-100 dark:border-red-800 dark:bg-red-950/40 dark:text-red-200"
             onClick={() => setDeleteSchemeTarget(row.original)}
           >
             Borrar
@@ -386,7 +386,7 @@ export default function EsquemasPage() {
           </Button>
           <Button
             variant="outline"
-            className="h-8 cursor-pointer rounded-full border-[#4a2727] bg-[#1a0f0f] px-3 text-[#f1b7b7] hover:border-[#7b3a3a] hover:bg-[#271111] hover:text-[#ffdada]"
+            className="h-8 cursor-pointer rounded-full border-red-300 bg-red-50 px-3 text-red-700 hover:bg-red-100 dark:border-red-800 dark:bg-red-950/40 dark:text-red-200"
             onClick={() => setDeleteAssignmentTarget(row.original)}
           >
             Borrar
@@ -478,7 +478,7 @@ export default function EsquemasPage() {
               </div>
               <div className="space-y-3">
                 {schemeForm.ranges.map((range, index) => (
-                  <div key={`range-form-${index}`} className="grid gap-3 rounded-xl border border-[#2c241c] bg-[#080706] p-4 md:grid-cols-[1fr_1fr_1fr_auto]">
+                  <div key={`range-form-${index}`} className="grid gap-3 rounded-xl border border-[var(--border-color)] bg-[var(--bg-card)] p-4 md:grid-cols-[1fr_1fr_1fr_auto]">
                     <div className="space-y-2">
                       <Label>De</Label>
                       <Input
@@ -517,7 +517,7 @@ export default function EsquemasPage() {
                       <Button
                         type="button"
                         variant="outline"
-                        className="h-10 rounded-full border-[#4a2727] bg-[#1a0f0f] px-4 text-[#f1b7b7] hover:border-[#7b3a3a] hover:bg-[#271111] hover:text-[#ffdada]"
+                        className="h-10 rounded-full border-red-300 bg-red-50 px-4 text-red-700 hover:bg-red-100 dark:border-red-800 dark:bg-red-950/40 dark:text-red-200"
                         onClick={() => removeRange(index)}
                         disabled={schemeForm.ranges.length === 1}
                       >
@@ -591,7 +591,7 @@ export default function EsquemasPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="md:col-span-2 rounded-xl border border-[#2c241c] bg-[#080706] p-4">
+            <div className="md:col-span-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-card)] p-4">
               {selectedAssignmentScheme ? (
                 <div className="space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -612,7 +612,7 @@ export default function EsquemasPage() {
                     {selectedAssignmentScheme.ranges.map((range, index) => (
                       <div
                         key={`${selectedAssignmentScheme.id}-${index}`}
-                        className="grid grid-cols-3 gap-2 rounded-lg border border-[#2c241c] bg-[#0c0a09] px-3 py-2"
+                        className="grid grid-cols-3 gap-2 rounded-lg border border-[var(--border-color)] bg-[var(--input-disabled-bg)] px-3 py-2"
                       >
                         <span className="tabular-nums text-[color:var(--text-strong)]">{formatRangeNumber(range.from)}</span>
                         <span className="tabular-nums text-[color:var(--text-strong)]">{formatRangeNumber(range.to)}</span>

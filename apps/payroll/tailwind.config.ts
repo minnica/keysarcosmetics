@@ -2,10 +2,7 @@ import type { Config } from 'tailwindcss'
 
 const config: Config = {
   darkMode: 'class',
-  content: [
-    './src/**/*.{ts,tsx}',
-    '../../packages/ui/src/**/*.{ts,tsx}',
-  ],
+  content: ['./src/**/*.{ts,tsx}', '../../packages/ui/src/**/*.{ts,tsx}'],
   theme: {
     extend: {
       colors: {
@@ -26,34 +23,13 @@ const config: Config = {
         'brand-border': 'var(--border-color)',
         background: 'var(--bg-primary)',
         foreground: 'var(--text-primary)',
-        card: {
-          DEFAULT: 'var(--bg-card)',
-          foreground: 'var(--text-primary)',
-        },
-        popover: {
-          DEFAULT: '#0c0a09',
-          foreground: 'var(--text-primary)',
-        },
-        primary: {
-          DEFAULT: 'var(--accent)',
-          foreground: 'var(--sidebar-active-text)',
-        },
-        secondary: {
-          DEFAULT: '#211a14',
-          foreground: 'var(--text-strong)',
-        },
-        muted: {
-          DEFAULT: '#1a1511',
-          foreground: 'var(--text-muted)',
-        },
-        accent: {
-          DEFAULT: '#271f18',
-          foreground: 'var(--text-strong)',
-        },
-        destructive: {
-          DEFAULT: '#7A2E46',
-          foreground: '#F0D0C8',
-        },
+        card: { DEFAULT: 'var(--bg-card)', foreground: 'var(--text-primary)' },
+        popover: { DEFAULT: 'var(--bg-card)', foreground: 'var(--text-primary)' },
+        primary: { DEFAULT: 'var(--accent)', foreground: 'var(--sidebar-active-text)' },
+        secondary: { DEFAULT: 'var(--accent-hover)', foreground: 'var(--text-primary)' },
+        muted: { DEFAULT: 'var(--accent-hover)', foreground: 'var(--text-muted)' },
+        accent: { DEFAULT: 'var(--accent-hover)', foreground: 'var(--text-primary)' },
+        destructive: { DEFAULT: '#ef4444', foreground: '#ffffff' },
         border: 'var(--border-color)',
         input: 'var(--border-color)',
         ring: 'var(--accent)',
@@ -69,16 +45,14 @@ const config: Config = {
         },
       },
       fontFamily: {
-        sans: ['Inter', 'system-ui', 'sans-serif'],
-        brand: ['Bodoni Moda', 'Georgia', 'serif'],
+        sans: ['Gilroy', 'Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        brand: ['Emofera Regular', 'Georgia', 'serif'],
       },
       boxShadow: {
         brand: 'var(--card-shadow)',
-        'brand-md': '0 4px 16px rgba(140, 111, 90, 0.20)',
+        'brand-md': '0 4px 16px rgba(195, 165, 131, 0.20)',
       },
-      borderRadius: {
-        brand: '10px',
-      },
+      borderRadius: { brand: '10px' },
     },
   },
   plugins: [],
