@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { Pencil, PlusCircle, Trash2 } from 'lucide-react'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -17,6 +18,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   Input,
@@ -29,16 +31,17 @@ import {
   toast,
 } from '@cosmetics/ui'
 import { MetricCard } from '@/components/payroll/metric-card'
+import { ReportExportButtons } from '@/components/payroll/report-export-buttons'
 import { SectionCard } from '@/components/payroll/section-card'
 import { StatusBadge } from '@/components/payroll/status-badge'
 import { employees, loans as initialLoans, type LoanAdvance, type LoanStatus } from '@/lib/mock-data'
-import { formatCurrency, formatDate, sumBy } from '@/lib/format'
+import { formatCurrency, formatDate, formatStatus, normalizeUppercase, sumBy } from '@/lib/format'
 
 type LoanFormState = {
   employeeId: string
   employeeName: string
   requestedAt: string
-  nature: 'Prestamo' | 'Adelanto de nomina'
+  nature: 'PRESTAMO' | 'ADELANTO DE NOMINA'
   requestedAmount: string
   payments: string
   paymentAmount: string
@@ -53,7 +56,7 @@ const EMPTY_FORM: LoanFormState = {
   employeeId: '',
   employeeName: '',
   requestedAt: '',
-  nature: 'Prestamo',
+  nature: 'PRESTAMO',
   requestedAmount: '0',
   payments: '1',
   paymentAmount: '0',
@@ -85,10 +88,10 @@ export default function PrestamosAdelantosPage() {
   const calculatedBalance = Number.isFinite(requestedAmountValue) && Number.isFinite(paidAmountValue) ? Math.max(requestedAmountValue - paidAmountValue, 0) : 0
 
   function toFormState(loan: LoanAdvance): LoanFormState {
-    const nextPeriodParts = loan.nextPeriod.includes(' a ') ? loan.nextPeriod.split(' a ') : ['', '']
+    const nextPeriodParts = loan.nextPeriod.match(/\s+a\s+/i) ? loan.nextPeriod.split(/\s+a\s+/i) : ['', '']
 
     return {
-      employeeId: activeEmployeeOptions.find((employee) => employee.name === loan.employeeName)?.id ?? '',
+      employeeId: activeEmployeeOptions.find((employee) => normalizeUppercase(employee.name) === normalizeUppercase(loan.employeeName))?.id ?? '',
       employeeName: loan.employeeName,
       requestedAt: loan.requestedAt,
       nature: loan.nature,
@@ -135,7 +138,7 @@ export default function PrestamosAdelantosPage() {
     const nextLoan: LoanAdvance = {
       id: editingLoanId ?? `loan-${globalThis.crypto?.randomUUID?.() ?? Date.now().toString(36)}`,
       requestedAt: form.requestedAt || (editingLoanId ? loans.find((loan) => loan.id === editingLoanId)?.requestedAt ?? new Date().toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10)),
-      employeeName: form.employeeName.trim(),
+      employeeName: normalizeUppercase(form.employeeName),
       nature: form.nature,
       requestedAmount,
       payments,
@@ -143,7 +146,7 @@ export default function PrestamosAdelantosPage() {
       paidAmount,
       balance,
       status: form.status,
-      nextPeriod: [form.nextPeriodFrom.trim(), form.nextPeriodTo.trim()].filter(Boolean).join(' a '),
+      nextPeriod: [form.nextPeriodFrom.trim(), form.nextPeriodTo.trim()].filter(Boolean).join(' A '),
     }
 
     setLoans((current) => {
@@ -173,15 +176,15 @@ export default function PrestamosAdelantosPage() {
     {
       accessorKey: 'employeeName',
       header: 'Empleado',
-      cell: ({ row }) => <span className="font-semibold text-[color:var(--text-strong)]">{row.original.employeeName}</span>,
+      cell: ({ row }) => <span className="font-medium">{row.original.employeeName}</span>,
     },
     { accessorKey: 'nature', header: 'Concepto' },
     { accessorKey: 'requestedAmount', header: 'Monto solicitado', cell: ({ row }) => <div className="text-right">{formatCurrency(row.original.requestedAmount)}</div> },
     { accessorKey: 'payments', header: 'Pagos', cell: ({ row }) => <div className="text-right">{row.original.payments}</div> },
     { accessorKey: 'paymentAmount', header: 'Monto a descontar', cell: ({ row }) => <div className="text-right">{formatCurrency(row.original.paymentAmount)}</div> },
     { accessorKey: 'paidAmount', header: 'Pagado', cell: ({ row }) => <div className="text-right">{formatCurrency(row.original.paidAmount)}</div> },
-    { accessorKey: 'balance', header: 'Pendiente', cell: ({ row }) => <div className="number-display text-right font-black">{formatCurrency(row.original.balance)}</div> },
-    { accessorKey: 'status', header: 'Status', cell: ({ row }) => <StatusBadge status={row.original.status} /> },
+    { accessorKey: 'balance', header: 'Pendiente', cell: ({ row }) => <div className="number-display text-right">{formatCurrency(row.original.balance)}</div> },
+    { accessorKey: 'status', header: 'ESTATUS', cell: ({ row }) => <StatusBadge status={row.original.status} /> },
     {
       id: 'actions',
       header: 'Acciones',
@@ -190,34 +193,55 @@ export default function PrestamosAdelantosPage() {
       enableGlobalFilter: false,
       cell: ({ row }) => (
         <div className="flex items-center justify-end gap-2">
-          <Button variant="outline" className="payroll-button-secondary h-8 cursor-pointer rounded-full px-3" onClick={() => openEditDialog(row.original)}>
-            Editar
+          <Button size="icon" variant="ghost" aria-label={`Editar solicitud de ${row.original.employeeName}`} onClick={() => openEditDialog(row.original)}>
+            <Pencil className="h-4 w-4" />
           </Button>
           <Button
-            variant="outline"
-            className="h-8 cursor-pointer rounded-full border-red-300 bg-red-50 px-3 text-red-700 hover:bg-red-100 dark:border-red-800 dark:bg-red-950/40 dark:text-red-200"
+            size="icon"
+            variant="ghost"
+            aria-label={`Borrar solicitud de ${row.original.employeeName}`}
             onClick={() => setDeleteTarget(row.original)}
           >
-            Borrar
+            <Trash2 className="h-4 w-4 text-red-500" />
           </Button>
         </div>
       ),
     },
   ]
 
+  const exportConfig = {
+    title: 'Préstamos y adelantos',
+    subtitle: 'Amortización mock de nómina',
+    filename: 'prestamos-adelantos',
+    sheetName: 'Préstamos',
+    orientation: 'landscape' as const,
+    rows: loans,
+    columns: [
+      { header: 'SOLICITUD', accessor: (row: LoanAdvance) => formatDate(row.requestedAt), width: 12 },
+      { header: 'EMPLEADO', accessor: (row: LoanAdvance) => row.employeeName, width: 32 },
+      { header: 'CONCEPTO', accessor: (row: LoanAdvance) => row.nature, width: 22 },
+      { header: 'MONTO SOLICITADO', accessor: (row: LoanAdvance) => row.requestedAmount, format: 'currency' as const },
+      { header: 'PAGOS', accessor: (row: LoanAdvance) => row.payments, format: 'number' as const },
+      { header: 'MONTO A DESCONTAR', accessor: (row: LoanAdvance) => row.paymentAmount, format: 'currency' as const },
+      { header: 'PAGADO', accessor: (row: LoanAdvance) => row.paidAmount, format: 'currency' as const },
+      { header: 'PENDIENTE', accessor: (row: LoanAdvance) => row.balance, format: 'currency' as const },
+      { header: 'ESTATUS', accessor: (row: LoanAdvance) => formatStatus(row.status), width: 12 },
+      { header: 'PRÓXIMO PERIODO', accessor: (row: LoanAdvance) => row.nextPeriod, width: 24 },
+    ],
+  }
+
   return (
     <div className="space-y-6">
-      <section className="payroll-glass rounded-xl p-6 md:p-8">
-        <p className="label-caps">PRESTAMOS Y ADELANTOS</p>
-        <div className="mt-4 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <h1 className="page-title">Amortizacion sin perder historico.</h1>
-          </div>
-          <Button className="payroll-button-primary cursor-pointer rounded-full" onClick={openCreateDialog}>
-            Nueva solicitud
-          </Button>
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h1 className="page-title">Préstamos y adelantos</h1>
+          <p className="mt-1 text-sm text-[color:var(--text-muted)]">Amortización sin perder histórico.</p>
         </div>
-      </section>
+        <div className="flex flex-wrap gap-2">
+          <ReportExportButtons config={exportConfig} disabled={loans.length === 0} />
+          <Button onClick={openCreateDialog}><PlusCircle className="mr-1.5 h-4 w-4" />Nueva solicitud</Button>
+        </div>
+      </header>
 
       <div className="grid gap-4 md:grid-cols-3">
         <MetricCard label="Prestado" value={formatCurrency(sumBy(loans, (loan) => loan.requestedAmount))} tone="gold" />
@@ -230,7 +254,7 @@ export default function PrestamosAdelantosPage() {
       </SectionCard>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-2xl rounded-xl">
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>{editingLoanId ? 'Editar solicitud demo' : 'Nueva solicitud demo'}</DialogTitle>
             <DialogDescription>Formulario mock para capturar préstamos y adelantos sin persistencia.</DialogDescription>
@@ -274,8 +298,8 @@ export default function PrestamosAdelantosPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Prestamo">Prestamo</SelectItem>
-                  <SelectItem value="Adelanto de nomina">Adelanto de nomina</SelectItem>
+                  <SelectItem value="PRESTAMO">PRESTAMO</SelectItem>
+                  <SelectItem value="ADELANTO DE NOMINA">ADELANTO DE NOMINA</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -330,11 +354,12 @@ export default function PrestamosAdelantosPage() {
               </div>
             </div>
           </div>
-          <div className="mt-2 flex justify-end">
-            <Button className="payroll-button-primary cursor-pointer rounded-full px-5" onClick={saveLoan}>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancelar</Button>
+            <Button onClick={saveLoan}>
               {editingLoanId ? 'Guardar cambios mock' : 'Crear solicitud mock'}
             </Button>
-          </div>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
@@ -348,7 +373,7 @@ export default function PrestamosAdelantosPage() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDeleteLoan}>Borrar</AlertDialogAction>
+            <AlertDialogAction className="bg-red-600 hover:bg-red-700" onClick={confirmDeleteLoan}>Borrar</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

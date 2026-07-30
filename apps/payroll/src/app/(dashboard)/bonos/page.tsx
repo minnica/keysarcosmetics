@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { Pencil, PlusCircle, Trash2 } from 'lucide-react'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -16,6 +17,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   Input,
@@ -26,7 +28,7 @@ import {
 import { MetricCard } from '@/components/payroll/metric-card'
 import { SectionCard } from '@/components/payroll/section-card'
 import { useBonusCatalog } from '@/components/payroll/bonus-catalog-context'
-import { formatCurrency } from '@/lib/format'
+import { formatCurrency, uppercaseInput } from '@/lib/format'
 import { type PayrollBonus } from '@/lib/mock-data'
 
 type BonusFormState = {
@@ -101,13 +103,13 @@ export default function BonosPage() {
     {
       accessorKey: 'name',
       header: 'BONO',
-      cell: ({ row }) => <p className="font-semibold text-[color:var(--text-strong)]">{row.original.name}</p>,
+      cell: ({ row }) => <p className="font-medium">{row.original.name}</p>,
     },
     {
       accessorKey: 'amount',
       header: 'Monto',
       meta: { align: 'right' },
-      cell: ({ row }) => <div className="number-display w-full tabular-nums text-right font-black">{formatCurrency(row.original.amount)}</div>,
+      cell: ({ row }) => <div className="number-display w-full text-right">{formatCurrency(row.original.amount)}</div>,
     },
     {
       id: 'actions',
@@ -117,15 +119,16 @@ export default function BonosPage() {
       enableGlobalFilter: false,
       cell: ({ row }) => (
         <div className="flex items-center justify-end gap-2">
-          <Button variant="outline" className="payroll-button-secondary h-8 cursor-pointer rounded-full px-3" onClick={() => openEditDialog(row.original)}>
-            Editar
+          <Button size="icon" variant="ghost" aria-label={`Editar ${row.original.name}`} onClick={() => openEditDialog(row.original)}>
+            <Pencil className="h-4 w-4" />
           </Button>
           <Button
-            variant="outline"
-            className="h-8 cursor-pointer rounded-full border-red-300 bg-red-50 px-3 text-red-700 hover:bg-red-100 dark:border-red-800 dark:bg-red-950/40 dark:text-red-200"
+            size="icon"
+            variant="ghost"
+            aria-label={`Borrar ${row.original.name}`}
             onClick={() => setDeleteTarget(row.original)}
           >
-            Borrar
+            <Trash2 className="h-4 w-4 text-red-500" />
           </Button>
         </div>
       ),
@@ -134,17 +137,15 @@ export default function BonosPage() {
 
   return (
     <div className="space-y-6">
-      <section className="payroll-glass rounded-xl p-6 md:p-8">
-        <p className="label-caps">BONOS PREDEFINIDOS</p>
-        <div className="mt-4 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <h1 className="page-title">Catálogo mock de bonos.</h1>
-          </div>
-          <Button className="payroll-button-primary cursor-pointer rounded-full px-5" onClick={openCreateDialog}>
-            Nuevo bono
-          </Button>
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h1 className="page-title">Bonos predefinidos</h1>
+          <p className="mt-1 text-sm text-[color:var(--text-muted)]">Catálogo mock de bonos.</p>
         </div>
-      </section>
+        <Button onClick={openCreateDialog}>
+          <PlusCircle className="mr-1.5 h-4 w-4" /> Nuevo bono
+        </Button>
+      </header>
 
       <div className="grid gap-4 md:grid-cols-2">
         <MetricCard label="Bonos registrados" value={`${bonuses.length}`} tone="sage" />
@@ -156,7 +157,7 @@ export default function BonosPage() {
       </SectionCard>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-2xl rounded-xl">
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>{editingBonusId ? 'Editar bono demo' : 'Nuevo bono demo'}</DialogTitle>
             <DialogDescription>Catálogo mock para usarlo después desde movimientos.</DialogDescription>
@@ -164,7 +165,7 @@ export default function BonosPage() {
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2 md:col-span-2">
               <Label>Nombre del bono</Label>
-              <Input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} placeholder="HIT" />
+              <Input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: uppercaseInput(event.target.value) }))} placeholder="HIT" />
             </div>
             <div className="space-y-2">
               <Label>Monto</Label>
@@ -172,14 +173,15 @@ export default function BonosPage() {
             </div>
             <div className="space-y-2 md:col-span-2">
               <Label>Notas</Label>
-              <Textarea value={form.notes} onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))} placeholder="Detalle o regla del bono" rows={3} />
+              <Textarea value={form.notes} onChange={(event) => setForm((current) => ({ ...current, notes: uppercaseInput(event.target.value) }))} placeholder="Detalle o regla del bono" rows={3} />
             </div>
           </div>
-          <div className="mt-2 flex justify-end">
-            <Button className="payroll-button-primary cursor-pointer rounded-full px-5" onClick={saveBonus}>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancelar</Button>
+            <Button onClick={saveBonus}>
               {editingBonusId ? 'Guardar cambios mock' : 'Crear bono mock'}
             </Button>
-          </div>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
@@ -193,7 +195,7 @@ export default function BonosPage() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDeleteBonus}>Borrar</AlertDialogAction>
+            <AlertDialogAction className="bg-red-600 hover:bg-red-700" onClick={confirmDeleteBonus}>Borrar</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

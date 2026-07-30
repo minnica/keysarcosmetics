@@ -1,5 +1,6 @@
 'use client'
 
+import { Eye, Send } from 'lucide-react'
 import { Button, ColumnDef, DataTable, toast } from '@cosmetics/ui'
 import { MetricCard } from '@/components/payroll/metric-card'
 import { SectionCard } from '@/components/payroll/section-card'
@@ -65,7 +66,7 @@ function formatReceiptValue(line: PayrollRunLine, row: (typeof RECEIPT_ROWS)[num
   const value = line[row.key]
 
   if (row.type === 'percent') return formatPercent(Number(value))
-  if (row.type === 'text') return String(value).toLowerCase()
+  if (row.type === 'text') return String(value).toLocaleUpperCase('es-MX')
   if (row.type === 'moneyOrDash') return formatReceiptAmount(Number(value), true)
 
   return formatReceiptAmount(Number(value))
@@ -225,15 +226,15 @@ export default function RecibosPage() {
     {
       accessorKey: 'employeeName',
       header: 'Empleado',
-      cell: ({ row }) => <span className="font-semibold text-[color:var(--text-strong)]">{row.original.employeeName}</span>,
+      cell: ({ row }) => <span className="font-medium">{row.original.employeeName}</span>,
     },
     { accessorKey: 'period', header: 'Periodo' },
     {
       accessorKey: 'totalPayment',
       header: 'Total pago',
-      cell: ({ row }) => <div className="number-display text-right font-black">{formatCurrency(row.original.totalPayment)}</div>,
+      cell: ({ row }) => <div className="number-display text-right">{formatCurrency(row.original.totalPayment)}</div>,
     },
-    { accessorKey: 'sentTo', header: 'Envio', cell: ({ row }) => <span className="font-mono text-[0.9rem]">{row.original.sentTo}</span> },
+    { accessorKey: 'sentTo', header: 'Envio', cell: ({ row }) => <span className="text-sm">{row.original.sentTo}</span> },
     {
       accessorKey: 'confirmedAt',
       header: 'Confirmado',
@@ -243,15 +244,17 @@ export default function RecibosPage() {
     {
       id: 'actions',
       header: 'Acciones',
+      meta: { align: 'right' },
       enableSorting: false,
       enableGlobalFilter: false,
       cell: ({ row }) => (
         <Button
-          variant="outline"
-          className="payroll-button-secondary h-8 cursor-pointer rounded-full"
+          size="icon"
+          variant="ghost"
+          aria-label={`Ver recibo de ${row.original.employeeName}`}
           onClick={() => void downloadReceiptImage(row.original)}
         >
-          Ver recibo
+          <Eye className="h-4 w-4" />
         </Button>
       ),
     },
@@ -259,17 +262,15 @@ export default function RecibosPage() {
 
   return (
     <div className="space-y-6">
-      <section className="payroll-glass rounded-xl p-6 md:p-8">
-        <p className="label-caps">RECIBOS</p>
-        <div className="mt-4 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <h1 className="page-title">Confirmacion lista para WhatsApp.</h1>
-          </div>
-          <Button className="payroll-button-primary cursor-pointer rounded-full" onClick={() => toast.info('Envio masivo mock preparado.')}>
-            Enviar seleccion
-          </Button>
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h1 className="page-title">Recibos</h1>
+          <p className="mt-1 text-sm text-[color:var(--text-muted)]">Confirmación lista para WhatsApp.</p>
         </div>
-      </section>
+        <Button onClick={() => toast.info('Envio masivo mock preparado.')}>
+          <Send className="mr-1.5 h-4 w-4" /> Enviar selección
+        </Button>
+      </header>
 
       <div className="grid gap-4 md:grid-cols-3">
         <MetricCard label="Generados" value={`${receipts.length}`} tone="gold" />

@@ -71,6 +71,28 @@ export interface PayrollBonus {
   notes: string
 }
 
+export interface PayrollCatalogItem {
+  id: string
+  name: string
+  amount: number
+  notes: string
+}
+
+export type ExpenseKind = 'FIXED' | 'VARIABLE'
+export type ExpenseFrequency = 'ONE_TIME' | 'BIWEEKLY' | 'MONTHLY'
+
+export interface PayrollExpense {
+  id: string
+  date: string
+  kind: ExpenseKind
+  concept: string
+  category: string
+  branch: string
+  amount: number
+  frequency: ExpenseFrequency
+  notes: string
+}
+
 export interface CommissionRange {
   from: number
   to: number
@@ -94,7 +116,7 @@ export interface LoanAdvance {
   id: string
   requestedAt: string
   employeeName: string
-  nature: 'Prestamo' | 'Adelanto de nomina'
+  nature: 'PRESTAMO' | 'ADELANTO DE NOMINA'
   requestedAmount: number
   payments: number
   paymentAmount: number
@@ -200,6 +222,23 @@ export const bonusTemplates: PayrollBonus[] = [
   { id: 'bonus-04', name: 'BONO GRUPO', amount: 500, notes: 'Bono grupal por meta de equipo' },
 ]
 
+export const fineTemplates: PayrollCatalogItem[] = [
+  { id: 'fine-01', name: 'RETARDO', amount: 150, notes: 'Descuento por llegada fuera del horario autorizado' },
+  { id: 'fine-02', name: 'FALTA INJUSTIFICADA', amount: 500, notes: 'Descuento sujeto a revisión administrativa' },
+  { id: 'fine-03', name: 'INCUMPLIMIENTO OPERATIVO', amount: 300, notes: 'Incumplimiento documentado de proceso interno' },
+]
+
+export const perDiemTemplates: PayrollCatalogItem[] = [
+  { id: 'per-diem-01', name: 'TRASLADO LOCAL', amount: 350, notes: 'Apoyo de transporte dentro de la ciudad' },
+  { id: 'per-diem-02', name: 'ALIMENTOS', amount: 500, notes: 'Apoyo de alimentos por jornada extendida' },
+  { id: 'per-diem-03', name: 'VIÁTICO FORÁNEO', amount: 1200, notes: 'Traslado y alimentos fuera de la zona habitual' },
+]
+
+export const initialExpenses: PayrollExpense[] = [
+  { id: 'expense-01', date: '2025-06-01', kind: 'FIXED', concept: 'Renta de oficinas', category: 'Renta', branch: 'CORPORATIVO', amount: 18500, frequency: 'MONTHLY', notes: 'Proporción mock del periodo activo' },
+  { id: 'expense-02', date: '2025-06-06', kind: 'VARIABLE', concept: 'Mensajería operativa', category: 'Logística', branch: 'MITIKAH', amount: 1450, frequency: 'ONE_TIME', notes: 'Envíos y recolecciones del periodo' },
+]
+
 export const schemes: CommissionScheme[] = [
   { id: 'scheme-01', name: '1', ranges: [{ from: 1, to: 599999.99, rate: 0.34 }, { from: 600000, to: 999999.99, rate: 0.35 }] },
   { id: 'scheme-02', name: '2', ranges: [{ from: 1, to: 59999.99, rate: 0.25 }, { from: 60000, to: 119999.99, rate: 0.27 }, { from: 120000, to: 999999.99, rate: 0.28 }] },
@@ -220,9 +259,9 @@ export const schemeAssignments: SchemeAssignment[] = [
 ]
 
 export const loans: LoanAdvance[] = [
-  { id: 'loan-01', requestedAt: '2025-05-12', employeeName: 'Andrea Stephani Rada Castillo', nature: 'Prestamo', requestedAmount: 5000, payments: 5, paymentAmount: 1000, paidAmount: 2000, balance: 3000, status: 'PENDING', nextPeriod: '2025-06-16 a 2025-06-30' },
-  { id: 'loan-02', requestedAt: '2025-05-28', employeeName: 'Orlando Jose Saavedra Diaz', nature: 'Adelanto de nomina', requestedAmount: 1500, payments: 3, paymentAmount: 500, paidAmount: 1500, balance: 0, status: 'PAID', nextPeriod: 'Liquidado' },
-  { id: 'loan-03', requestedAt: '2025-04-03', employeeName: 'Empleado inactivo historico', nature: 'Prestamo', requestedAmount: 3000, payments: 3, paymentAmount: 1000, paidAmount: 1000, balance: 2000, status: 'LOST', nextPeriod: 'Ajuste manual' },
+  { id: 'loan-01', requestedAt: '2025-05-12', employeeName: 'Andrea Stephani Rada Castillo', nature: 'PRESTAMO', requestedAmount: 5000, payments: 5, paymentAmount: 1000, paidAmount: 2000, balance: 3000, status: 'PENDING', nextPeriod: '2025-06-16 A 2025-06-30' },
+  { id: 'loan-02', requestedAt: '2025-05-28', employeeName: 'Orlando Jose Saavedra Diaz', nature: 'ADELANTO DE NOMINA', requestedAmount: 1500, payments: 3, paymentAmount: 500, paidAmount: 1500, balance: 0, status: 'PAID', nextPeriod: 'LIQUIDADO' },
+  { id: 'loan-03', requestedAt: '2025-04-03', employeeName: 'Empleado inactivo historico', nature: 'PRESTAMO', requestedAmount: 3000, payments: 3, paymentAmount: 1000, paidAmount: 1000, balance: 2000, status: 'LOST', nextPeriod: 'AJUSTE MANUAL' },
 ]
 
 export const branchBreakdown: BranchBreakdown[] = [

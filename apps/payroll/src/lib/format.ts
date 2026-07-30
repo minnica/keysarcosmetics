@@ -19,6 +19,31 @@ export function formatDate(value: string): string {
   return `${day}/${month}/${year}`
 }
 
+export function uppercaseInput(value: string): string {
+  return value.toLocaleUpperCase('es-MX')
+}
+
+export function normalizeUppercase(value: string): string {
+  return uppercaseInput(value).trim()
+}
+
+const STATUS_LABELS: Record<string, string> = {
+  DRAFT: 'BORRADOR',
+  CALCULATED: 'CALCULADO',
+  APPROVED: 'APROBADO',
+  PAID: 'PAGADO',
+  PENDING: 'PENDIENTE',
+  REJECTED: 'RECHAZADO',
+  LOST: 'PERDIDO',
+  GENERATED: 'GENERADO',
+  SENT: 'ENVIADO',
+  CONFIRMED: 'CONFIRMADO',
+}
+
+export function formatStatus(value: string): string {
+  return STATUS_LABELS[value] ?? value
+}
+
 export function sumBy<T>(rows: T[], selector: (row: T) => number): number {
   return rows.reduce((total, row) => total + selector(row), 0)
 }

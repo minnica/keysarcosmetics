@@ -80,59 +80,6 @@
     letter-spacing: -0.01em;
   }
 
-  .payroll-body,
-  .payroll-body-copy {
-    color: var(--text-primary);
-  }
-
-  .payroll-muted,
-  .payroll-note {
-    color: var(--text-muted);
-  }
-
-  .payroll-note {
-    font-size: 0.84rem;
-    line-height: 1.5;
-  }
-
-  .payroll-surface,
-  .payroll-glass,
-  .payroll-panel,
-  .payroll-login-card {
-    border: 1px solid var(--border-color);
-    background: var(--bg-card);
-    box-shadow: var(--card-shadow);
-    color: var(--text-primary);
-  }
-
-  .payroll-button-primary {
-    background-color: var(--accent);
-    color: var(--sidebar-active-text);
-    transition: background-color 200ms ease, color 200ms ease, box-shadow 200ms ease;
-  }
-
-  .payroll-button-primary:hover {
-    background-color: var(--color-nude);
-    color: var(--text-primary);
-  }
-
-  .payroll-button-secondary {
-    border: 1px solid var(--border-color);
-    background-color: var(--bg-card);
-    color: var(--text-primary);
-    transition: background-color 200ms ease, border-color 200ms ease, color 200ms ease;
-  }
-
-  .payroll-button-secondary:hover,
-  .payroll-button-ghost:hover {
-    background-color: var(--accent-hover);
-    color: var(--text-primary);
-  }
-
-  .payroll-button-ghost {
-    color: var(--text-muted);
-    transition: background-color 200ms ease, color 200ms ease;
-  }
 }
 
 @layer base {
@@ -145,7 +92,6 @@
     --color-blue-soft: #bae2e8;
     --color-green-olive: #648672;
     --color-green-sage: #8bb09b;
-    --payroll-bronze: #a88662;
     --bg-primary: #f3f0e9;
     --bg-card: #ffffff;
     --bg-sidebar: #ffffff;
@@ -178,7 +124,7 @@
     --bg-sidebar: #252525;
     --text-primary: #f3f0e9;
     --text-secondary: #c3a583;
-    --text-muted: #a7a7a7;
+    --text-muted: #888888;
     --text-strong: #f3f0e9;
     --accent: #c3a583;
     --accent-hover: rgba(195, 165, 131, 0.22);
@@ -220,32 +166,12 @@
   ::-webkit-scrollbar-thumb:hover { background: var(--color-gold); }
   ::selection { background-color: var(--color-nude); color: var(--color-charcoal); }
 
-  input,
-  textarea,
-  button[role='combobox'] {
-    border-color: var(--border-color);
-    background-color: var(--input-bg);
-    color: var(--text-primary);
+  button[role='combobox'],
+  [role='option'],
+  tbody {
+    text-transform: uppercase;
   }
 
-  input::placeholder,
-  textarea::placeholder { color: var(--text-muted); }
-
-  input:disabled,
-  textarea:disabled,
-  input[readonly],
-  textarea[readonly],
-  button[role='combobox']:disabled {
-    background-color: var(--input-disabled-bg);
-    color: var(--text-muted);
-    opacity: 1;
-  }
-
-  [data-radix-popper-content-wrapper] > div {
-    border-color: var(--border-color);
-    background-color: var(--bg-card);
-    color: var(--text-primary);
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {

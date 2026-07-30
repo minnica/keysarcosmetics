@@ -1,3 +1,5 @@
+import { Card, CardContent } from '@cosmetics/ui'
+
 interface MetricCardProps {
   label: string
   value: string
@@ -6,9 +8,11 @@ interface MetricCardProps {
 
 export function MetricCard({ label, value, tone = 'gold' }: MetricCardProps) {
   return (
-    <div data-tone={tone} className="payroll-login-card overflow-hidden rounded-brand p-5">
-      <p className="label-caps">{label}</p>
-      <p className="number-display mt-3 text-[1.7rem] text-[color:var(--text-primary)]">{value}</p>
-    </div>
+    <Card data-tone={tone}>
+      <CardContent className="p-5">
+        <p className="text-sm font-bold uppercase tracking-widest text-[color:var(--text-muted)]">{label}</p>
+        <p className="number-display mt-2 text-2xl text-[color:var(--text-primary)]">{value}</p>
+      </CardContent>
+    </Card>
   )
 }

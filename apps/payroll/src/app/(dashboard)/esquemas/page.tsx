@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { Pencil, Plus, PlusCircle, Trash2, UserPlus } from 'lucide-react'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -16,6 +17,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   Input,
@@ -29,7 +31,7 @@ import {
 } from '@cosmetics/ui'
 import { MetricCard } from '@/components/payroll/metric-card'
 import { SectionCard } from '@/components/payroll/section-card'
-import { formatDate, formatPercent } from '@/lib/format'
+import { formatDate, formatPercent, normalizeUppercase, uppercaseInput } from '@/lib/format'
 import {
   employees,
   schemeAssignments as initialAssignments,
@@ -195,7 +197,7 @@ export default function EsquemasPage() {
 
     const nextScheme: CommissionScheme = {
       id: editingSchemeId ?? `scheme-${globalThis.crypto?.randomUUID?.() ?? Date.now().toString(36)}`,
-      name: schemeForm.name.trim(),
+      name: normalizeUppercase(schemeForm.name),
       ranges,
     }
 
@@ -278,7 +280,7 @@ export default function EsquemasPage() {
     {
       accessorKey: 'name',
       header: 'Esquema',
-      cell: ({ row }) => <p className="font-semibold text-[color:var(--text-strong)]">{row.original.name}</p>,
+      cell: ({ row }) => <p className="font-medium">{row.original.name}</p>,
     },
     {
       id: 'ranges',
@@ -324,18 +326,20 @@ export default function EsquemasPage() {
       cell: ({ row }) => (
         <div className="flex items-center justify-end gap-2">
           <Button
-            variant="outline"
-            className="payroll-button-secondary h-8 cursor-pointer rounded-full px-3"
+            size="icon"
+            variant="ghost"
+            aria-label={`Editar esquema ${row.original.name}`}
             onClick={() => openEditSchemeDialog(row.original)}
           >
-            Editar
+            <Pencil className="h-4 w-4" />
           </Button>
           <Button
-            variant="outline"
-            className="h-8 cursor-pointer rounded-full border-red-300 bg-red-50 px-3 text-red-700 hover:bg-red-100 dark:border-red-800 dark:bg-red-950/40 dark:text-red-200"
+            size="icon"
+            variant="ghost"
+            aria-label={`Borrar esquema ${row.original.name}`}
             onClick={() => setDeleteSchemeTarget(row.original)}
           >
-            Borrar
+            <Trash2 className="h-4 w-4 text-red-500" />
           </Button>
         </div>
       ),
@@ -351,8 +355,8 @@ export default function EsquemasPage() {
 
         return (
           <div>
-            <p className="font-semibold text-[color:var(--text-strong)]">{employee?.name ?? 'Empleado no encontrado'}</p>
-            <p className="text-[0.92rem] text-[color:var(--text-muted)]">
+            <p className="font-medium">{employee?.name ?? 'Empleado no encontrado'}</p>
+            <p className="text-sm text-[color:var(--text-muted)]">
               {employee?.position ?? 'N/D'} · {employee?.branch ?? 'N/D'}
             </p>
           </div>
@@ -362,7 +366,7 @@ export default function EsquemasPage() {
     {
       accessorKey: 'schemeId',
       header: 'Esquema asignado',
-      cell: ({ row }) => <p className="font-semibold uppercase tracking-[0.08em] text-[color:var(--text-strong)]">{getSchemeName(row.original.schemeId)}</p>,
+      cell: ({ row }) => <p className="font-medium">{getSchemeName(row.original.schemeId)}</p>,
     },
     {
       accessorKey: 'assignedAt',
@@ -378,18 +382,20 @@ export default function EsquemasPage() {
       cell: ({ row }) => (
         <div className="flex items-center justify-end gap-2">
           <Button
-            variant="outline"
-            className="payroll-button-secondary h-8 cursor-pointer rounded-full px-3"
+            size="icon"
+            variant="ghost"
+            aria-label="Editar asignación"
             onClick={() => openEditAssignmentDialog(row.original)}
           >
-            Editar
+            <Pencil className="h-4 w-4" />
           </Button>
           <Button
-            variant="outline"
-            className="h-8 cursor-pointer rounded-full border-red-300 bg-red-50 px-3 text-red-700 hover:bg-red-100 dark:border-red-800 dark:bg-red-950/40 dark:text-red-200"
+            size="icon"
+            variant="ghost"
+            aria-label="Borrar asignación"
             onClick={() => setDeleteAssignmentTarget(row.original)}
           >
-            Borrar
+            <Trash2 className="h-4 w-4 text-red-500" />
           </Button>
         </div>
       ),
@@ -398,25 +404,20 @@ export default function EsquemasPage() {
 
   return (
     <div className="space-y-6">
-      <section className="payroll-glass rounded-xl p-6 md:p-8">
-        <p className="label-caps">ESQUEMAS DE COMISION</p>
-        <div className="mt-4 flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-          <div className="max-w-2xl">
-            <h1 className="page-title">Catálogo de esquemas y asignación por empleado.</h1>
-            <p className="mt-3 max-w-xl text-[0.94rem] text-[color:var(--text-muted)]">
-              Primero defines el esquema por rangos. Después lo asignas a cualquier empleado, incluso si comparte puesto con otros.
-            </p>
-          </div>
-          <div className="flex flex-col gap-3 sm:flex-row">
-            <Button className="payroll-button-primary cursor-pointer rounded-full px-5" onClick={openCreateSchemeDialog}>
-              Nuevo esquema
-            </Button>
-            <Button variant="outline" className="payroll-button-secondary cursor-pointer rounded-full px-5" onClick={openCreateAssignmentDialog}>
-              Asignar esquema
-            </Button>
-          </div>
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div className="max-w-2xl">
+          <h1 className="page-title">Esquemas de comisión</h1>
+          <p className="mt-1 text-sm text-[color:var(--text-muted)]">Catálogo de esquemas y asignación por empleado.</p>
         </div>
-      </section>
+        <div className="flex flex-col gap-3 sm:flex-row">
+          <Button onClick={openCreateSchemeDialog}>
+            <PlusCircle className="mr-1.5 h-4 w-4" /> Nuevo esquema
+          </Button>
+          <Button variant="outline" onClick={openCreateAssignmentDialog}>
+            <UserPlus className="mr-1.5 h-4 w-4" /> Asignar esquema
+          </Button>
+        </div>
+      </header>
 
       <div className="grid gap-4 md:grid-cols-3">
         <MetricCard label="Esquemas registrados" value={`${schemes.length}`} tone="gold" />
@@ -428,8 +429,8 @@ export default function EsquemasPage() {
         eyebrow="Catalogo"
         title="REGISTRO DE ESQUEMAS"
         action={(
-          <Button className="payroll-button-primary cursor-pointer rounded-full px-5" onClick={openCreateSchemeDialog}>
-            Nuevo esquema
+          <Button onClick={openCreateSchemeDialog}>
+            <PlusCircle className="mr-1.5 h-4 w-4" /> Nuevo esquema
           </Button>
         )}
       >
@@ -440,8 +441,8 @@ export default function EsquemasPage() {
         eyebrow="Asignaciones"
         title="ESQUEMAS ASIGNADOS A EMPLEADOS"
         action={(
-          <Button variant="outline" className="payroll-button-secondary cursor-pointer rounded-full px-5" onClick={openCreateAssignmentDialog}>
-            Asignar esquema
+          <Button variant="outline" onClick={openCreateAssignmentDialog}>
+            <UserPlus className="mr-1.5 h-4 w-4" /> Asignar esquema
           </Button>
         )}
       >
@@ -455,7 +456,7 @@ export default function EsquemasPage() {
       </SectionCard>
 
       <Dialog open={schemeDialogOpen} onOpenChange={setSchemeDialogOpen}>
-        <DialogContent className="max-w-4xl rounded-xl">
+        <DialogContent className="max-w-4xl">
           <DialogHeader>
             <DialogTitle>{editingSchemeId ? 'Editar esquema demo' : 'Nuevo esquema demo'}</DialogTitle>
             <DialogDescription>Alta mock de esquema con filas independientes de De, Hasta y Tasa.</DialogDescription>
@@ -465,20 +466,20 @@ export default function EsquemasPage() {
               <Label>Nombre del esquema</Label>
               <Input
                 value={schemeForm.name}
-                onChange={(event) => setSchemeForm((current) => ({ ...current, name: event.target.value }))}
+                  onChange={(event) => setSchemeForm((current) => ({ ...current, name: uppercaseInput(event.target.value) }))}
                 placeholder="1"
               />
             </div>
             <div className="space-y-3 md:col-span-2">
               <div className="flex items-center justify-between gap-3">
                 <Label>Rangos de comision</Label>
-                <Button type="button" variant="outline" className="payroll-button-secondary h-8 rounded-full px-3" onClick={addRange}>
-                  Agregar rango
+                <Button type="button" variant="outline" size="sm" onClick={addRange}>
+                  <Plus className="mr-1.5 h-4 w-4" /> Agregar rango
                 </Button>
               </div>
               <div className="space-y-3">
                 {schemeForm.ranges.map((range, index) => (
-                  <div key={`range-form-${index}`} className="grid gap-3 rounded-xl border border-[var(--border-color)] bg-[var(--bg-card)] p-4 md:grid-cols-[1fr_1fr_1fr_auto]">
+                  <div key={`range-form-${index}`} className="grid gap-3 rounded-lg border border-[var(--border-color)] bg-[var(--input-disabled-bg)] p-4 md:grid-cols-[1fr_1fr_1fr_auto]">
                     <div className="space-y-2">
                       <Label>De</Label>
                       <Input
@@ -516,12 +517,13 @@ export default function EsquemasPage() {
                     <div className="flex items-end">
                       <Button
                         type="button"
-                        variant="outline"
-                        className="h-10 rounded-full border-red-300 bg-red-50 px-4 text-red-700 hover:bg-red-100 dark:border-red-800 dark:bg-red-950/40 dark:text-red-200"
+                        size="icon"
+                        variant="ghost"
+                        aria-label={`Quitar rango ${index + 1}`}
                         onClick={() => removeRange(index)}
                         disabled={schemeForm.ranges.length === 1}
                       >
-                        Quitar
+                        <Trash2 className="h-4 w-4 text-red-500" />
                       </Button>
                     </div>
                   </div>
@@ -529,16 +531,17 @@ export default function EsquemasPage() {
               </div>
             </div>
           </div>
-          <div className="mt-2 flex justify-end">
-            <Button className="payroll-button-primary cursor-pointer rounded-full px-5" onClick={saveScheme}>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSchemeDialogOpen(false)}>Cancelar</Button>
+            <Button onClick={saveScheme}>
               {editingSchemeId ? 'Guardar cambios mock' : 'Crear esquema mock'}
             </Button>
-          </div>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
       <Dialog open={assignmentDialogOpen} onOpenChange={setAssignmentDialogOpen}>
-        <DialogContent className="max-w-2xl rounded-xl">
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>{editingAssignmentId ? 'Editar asignación demo' : 'Nueva asignación demo'}</DialogTitle>
             <DialogDescription>Relaciona un empleado con cualquier esquema disponible. No depende del puesto.</DialogDescription>
@@ -578,7 +581,7 @@ export default function EsquemasPage() {
                     return (
                       <SelectItem key={scheme.id} value={scheme.id}>
                         <div className="flex w-full items-center justify-between gap-3 py-0.5">
-                          <span className="font-semibold text-[color:var(--text-strong)]">{scheme.name}</span>
+                          <span className="font-medium">{scheme.name}</span>
                           <span className="whitespace-nowrap text-[0.72rem] uppercase tracking-[0.12em] text-[color:var(--text-muted)]">
                             {summary.rangeCount} rango{summary.rangeCount === 1 ? '' : 's'} ·{' '}
                             {summary.minRate !== null ? formatPercent(summary.minRate) : '—'} a{' '}
@@ -591,13 +594,13 @@ export default function EsquemasPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="md:col-span-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-card)] p-4">
+            <div className="rounded-lg border border-[var(--border-color)] bg-[var(--input-disabled-bg)] p-4 md:col-span-2">
               {selectedAssignmentScheme ? (
                 <div className="space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
                     <p className="label-caps">Detalle del esquema</p>
-                    <p className="mt-1 text-[1.05rem] font-semibold text-[color:var(--text-strong)]">{selectedAssignmentScheme.name}</p>
+                    <p className="mt-1 font-medium">{selectedAssignmentScheme.name}</p>
                   </div>
                   <p className="text-[0.84rem] uppercase tracking-[0.12em] text-[color:var(--text-muted)]">
                     {selectedAssignmentScheme.ranges.length} rango{selectedAssignmentScheme.ranges.length === 1 ? '' : 's'}
@@ -626,11 +629,12 @@ export default function EsquemasPage() {
               )}
             </div>
           </div>
-          <div className="mt-2 flex justify-end">
-            <Button className="payroll-button-primary cursor-pointer rounded-full px-5" onClick={saveAssignment}>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAssignmentDialogOpen(false)}>Cancelar</Button>
+            <Button onClick={saveAssignment}>
               {editingAssignmentId ? 'Guardar cambios mock' : 'Crear asignación mock'}
             </Button>
-          </div>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
@@ -645,7 +649,7 @@ export default function EsquemasPage() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDeleteScheme}>Borrar</AlertDialogAction>
+            <AlertDialogAction className="bg-red-600 hover:bg-red-700" onClick={confirmDeleteScheme}>Borrar</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -660,7 +664,7 @@ export default function EsquemasPage() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDeleteAssignment}>Borrar</AlertDialogAction>
+            <AlertDialogAction className="bg-red-600 hover:bg-red-700" onClick={confirmDeleteAssignment}>Borrar</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

@@ -7,15 +7,15 @@ interface SectionCardProps {
 
 export function SectionCard({ eyebrow, title, action, children }: SectionCardProps) {
   return (
-    <div className="payroll-login-card overflow-hidden rounded-brand">
-      <div className="flex flex-col gap-4 p-5 md:flex-row md:items-start md:justify-between">
+    <section className="space-y-4">
+      <header className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div>
-          {eyebrow ? <p className="label-caps mb-2">{eyebrow}</p> : null}
-          <h3 className="section-heading">{title}</h3>
+          <h2 className="section-heading uppercase">{title}</h2>
+          {eyebrow ? <p className="mt-1 text-sm text-[color:var(--text-muted)]">{eyebrow}</p> : null}
         </div>
         {action}
-      </div>
-      <div className="px-5 pb-5">{children}</div>
-    </div>
+      </header>
+      {children}
+    </section>
   )
 }
