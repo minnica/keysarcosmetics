@@ -10,7 +10,7 @@ Lee primero `AGENTS.md` antes de modificar el repositorio. Ese archivo contiene 
 | `apps/envelope` | Next.js | 3001 | Ventas por sucursal |
 | `apps/payroll` | Next.js | 3002 | Nómina |
 | `apps/crm` | Next.js | 3003 | Mensajería y clientes |
-| `apps/scheduler` | Next.js | 3004 | Agenda y Administración visual/mock |
+| `apps/scheduler` | Next.js | 3004 | Agenda y Administración local/mock |
 | `apps/pos` | Electron + React + Vite | 3005 | Punto de venta; actualmente en construcción |
 
 El backend compartido vive en `backend/api` y usa Express, Prisma y PostgreSQL. No se cuenta como uno de los seis proyectos frontend.
@@ -19,7 +19,10 @@ El backend compartido vive en `backend/api` y usa Express, Prisma y PostgreSQL. 
 
 - Scheduler y `Administración` funcionan en local/mock.
 - Administración incluye Locales, Profesionales, Grupos personalizados, Servicios, Clases, Paquetes, Adicionales, Comisiones, Recursos, Encuestas, Consentimientos, WhatsApp y Gift cards.
-- El objetivo actual es cerrar el acabado visual, responsive y los flujos frontend antes de conectar backend.
+- El catálogo de Servicios ya incluye los modales principales de servicios, servicios con sesiones, clases, paquetes y adicionales, además de categorías, profesionales, estados y confirmaciones en mock.
+- En Servicios también están representados los flujos de sitio web, pago en línea, nombres alternativos, imágenes, servicio destacado, comisiones por porcentaje o moneda, recursos, horarios especiales y carga masiva de precios.
+- La carga de precios, descarga de plantillas y subida de `.xlsx` son todavía flujos visuales/mock; no hay importación real ni persistencia.
+- La siguiente prioridad visual es cerrar y validar `Opciones avanzadas` de los modales de Servicios y después revisar el resto de módulos administrativos antes de conectar backend.
 - No tocar backend, Prisma ni variables de entorno hasta recibir petición explícita.
 - `Encuestas` no incluye resultados y `Consentimientos` no incluye firma; ambos quedan como catálogos/configuración.
 
@@ -45,6 +48,13 @@ También se puede usar:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\dev-scheduler.ps1
+```
+
+Validación del scheduler:
+
+```powershell
+pnpm --filter @cosmetics/scheduler type-check
+pnpm --filter @cosmetics/scheduler build
 ```
 
 Consulta `docs/SCHEDULER_CONTEXT.md` para el detalle de fases y alcance del scheduler.

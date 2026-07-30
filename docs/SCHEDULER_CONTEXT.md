@@ -12,6 +12,22 @@ Este documento concentra el alcance funcional acordado a partir de las capturas 
 - No se modifica backend, Prisma ni variables de entorno en esta etapa.
 - La interfaz debe ser responsive desde el inicio: navegación compacta en móvil, tarjetas apiladas, formularios de pantalla completa y tablas que se conviertan en bloques legibles.
 
+## Servicios: estado del trabajo actual
+
+El catálogo de Servicios se mantiene en estado local/mock y ya cubre los flujos visuales principales solicitados:
+
+- Pestañas de Servicios, Clases, Paquetes y Adicionales.
+- Servicios normales y servicios con sesiones, con categorías y selección de profesionales.
+- Clases con capacidad, servicio destacado y configuración de horario por día.
+- Paquetes con selección de servicios, precio individual por servicio y cálculo del total.
+- Adicionales con precio, duración, categoría y profesionales.
+- Categorías creadas desde los modales y visualización por grupos.
+- Sitio web con agenda en línea, duración visible, descripción, nombres alternativos, imágenes y pago en línea.
+- Opciones avanzadas con videoconferencia, domicilio, IVA, clientes simultáneos, comisión por porcentaje o moneda, recursos y horario especial desplegable.
+- Carga masiva de precios con edición manual, menú de descargas y pestaña visual para subir plantilla `.xlsx`.
+
+La carga y descarga masiva aún no procesa archivos reales ni persiste información. La prioridad inmediata es terminar la revisión visual y de interacción de `Opciones avanzadas`; la conexión con API y Prisma queda para la fase de persistencia.
+
 ## Alcance administrativo
 
 | Módulo | Alcance funcional | Estado de definición |
@@ -41,7 +57,7 @@ Este documento concentra el alcance funcional acordado a partir de las capturas 
 - Pantalla `/administracion` con los módulos definidos.
 - Definir rutas, layouts y componentes compartidos sin inventar todavía datos persistentes.
 
-Estado: completada en modo local/mock. La prioridad actual es terminar el acabado visual y validar todos los flujos antes de conectar backend.
+Estado: completada en modo local/mock. Los flujos base de Servicios están implementados; la prioridad actual es terminar `Opciones avanzadas`, validar todos los modales y cerrar el acabado visual antes de conectar backend.
 
 ### Fase 2 — Catálogos base
 
@@ -49,7 +65,7 @@ Estado: completada en modo local/mock. La prioridad actual es terminar el acabad
 - Prioridad: listado, búsqueda/filtros, crear, editar, activar/desactivar y confirmaciones.
 - Modelar la relación correcta: los locales viven en Locales; los profesionales son personas reales y no sustitutos de sucursales.
 
-Estado: implementada en local/mock junto con los módulos administrativos posteriores.
+Estado: implementada en local/mock junto con los módulos administrativos posteriores. Los flujos de Servicios se detallan en la sección anterior.
 
 ### Fase 3 — Reglas operativas
 
