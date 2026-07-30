@@ -1,7 +1,7 @@
-'use client'
+"use client";
 
-import { useState } from 'react'
-import { PlusCircle, Save } from 'lucide-react'
+import { useMemo, useState } from "react";
+import { Check, FileText, Pencil, PlusCircle, Upload, X } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -11,13 +11,14 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
   Button,
   ColumnDef,
   DataTable,
+  DatePicker,
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   Input,
@@ -29,204 +30,796 @@ import {
   SelectValue,
   Textarea,
   toast,
-} from '@cosmetics/ui'
-import { MetricCard } from '@/components/payroll/metric-card'
-import { ReportExportButtons } from '@/components/payroll/report-export-buttons'
-import { SectionCard } from '@/components/payroll/section-card'
-import { StatusBadge } from '@/components/payroll/status-badge'
-import { usePayrollMockData } from '@/components/payroll/bonus-catalog-context'
-import { formatCurrency, formatDate, formatStatus, normalizeUppercase, sumBy, uppercaseInput } from '@/lib/format'
-import { employees, movements as initialMovements, type MovementKind, type PayrollCatalogItem, type PayrollMovement } from '@/lib/mock-data'
+} from "@cosmetics/ui";
+import { MetricCard } from "@/components/payroll/metric-card";
+import { ReportExportButtons } from "@/components/payroll/report-export-buttons";
+import { SectionCard } from "@/components/payroll/section-card";
+import { StatusBadge } from "@/components/payroll/status-badge";
+import { usePayrollData } from "@/components/payroll/payroll-data-context";
+import { apiErrorMessage } from "@/lib/api";
+import {
+  formatCurrency,
+  formatDate,
+  formatStatus,
+  sumBy,
+  uppercaseInput,
+} from "@/lib/format";
+import type {
+  MovementKind,
+  MovementStatus,
+  PayrollMovement,
+} from "@/lib/types";
 
-const MOVEMENT_KIND_OPTIONS: Array<{ value: MovementKind; label: string }> = [
-  { value: 'ADJUSTMENT_POSITIVE', label: 'Ajuste +' },
-  { value: 'ADJUSTMENT_NEGATIVE', label: 'Ajuste -' },
-  { value: 'FINE', label: 'Multa' },
-  { value: 'BONUS', label: 'Bono' },
-  { value: 'PER_DIEM', label: 'Viáticos' },
-  { value: 'SUPPLIES', label: 'Insumos' },
-]
-
-type MovementFormState = {
-  employeeId: string
-  employeeName: string
-  branch: string
-  kind: MovementKind | ''
-  catalogId: string
-  concept: string
-  amount: string
-  notes: string
-}
-
-const EMPTY_MOVEMENT_FORM: MovementFormState = {
-  employeeId: '', employeeName: '', branch: '', kind: '', catalogId: '', concept: '', amount: '0', notes: '',
-}
-
-const activeEmployeeOptions = employees.filter((employee) => employee.active)
-const branchOptions = Array.from(new Set(activeEmployeeOptions.map((employee) => employee.branch))).sort()
+const KIND_OPTIONS: Array<{ value: MovementKind; label: string }> = [
+  { value: "ADJUSTMENT_POSITIVE", label: "Ajuste +" },
+  { value: "ADJUSTMENT_NEGATIVE", label: "Ajuste -" },
+  { value: "FINE", label: "Multa" },
+  { value: "BONUS", label: "Bono" },
+  { value: "PER_DIEM", label: "Viáticos" },
+  { value: "SUPPLIES", label: "Insumos" },
+];
+type AllocationForm = {
+  employeeId: string;
+  branchId: string;
+  amount: string;
+  commissionable: boolean;
+};
+type FormState = {
+  date: string;
+  kind: MovementKind | "";
+  catalogItemId: string;
+  concept: string;
+  totalAmount: string;
+  notes: string;
+  allocations: AllocationForm[];
+};
+const today = () => new Date().toISOString().slice(0, 10);
+const EMPTY_FORM: FormState = {
+  date: today(),
+  kind: "",
+  catalogItemId: "",
+  concept: "",
+  totalAmount: "0",
+  notes: "",
+  allocations: [
+    {
+      employeeId: "",
+      branchId: "CORPORATIVO",
+      amount: "0",
+      commissionable: true,
+    },
+  ],
+};
 
 export default function MovimientosPage() {
-  const { bonuses, fines, perDiems } = usePayrollMockData()
-  const [movementRows, setMovementRows] = useState(initialMovements)
-  const [movementDialogOpen, setMovementDialogOpen] = useState(false)
-  const [shareCount, setShareCount] = useState('1')
-  const [movementForm, setMovementForm] = useState<MovementFormState>(EMPTY_MOVEMENT_FORM)
+  const data = usePayrollData();
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [form, setForm] = useState<FormState>(EMPTY_FORM);
+  const [file, setFile] = useState<File | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [statusTarget, setStatusTarget] = useState<{
+    movement: PayrollMovement;
+    status: MovementStatus;
+  } | null>(null);
+  const employees = data.employees.filter((employee) => employee.active);
+  const catalog =
+    form.kind === "BONUS"
+      ? data.bonuses
+      : form.kind === "FINE"
+        ? data.fines
+        : form.kind === "PER_DIEM"
+          ? data.perDiems
+          : [];
+  const needsEvidence = form.kind === "PER_DIEM" || form.kind === "SUPPLIES";
 
-  const catalogConfig = movementForm.kind === 'BONUS'
-    ? { label: 'Bono predefinido', items: bonuses }
-    : movementForm.kind === 'FINE'
-      ? { label: 'Multa predefinida', items: fines }
-      : movementForm.kind === 'PER_DIEM'
-        ? { label: 'Viático predefinido', items: perDiems }
-        : null
+  const approvedTotal = sumBy(
+    data.movements.filter((item) => item.status === "APPROVED"),
+    (item) => item.amount,
+  );
+  const pendingTotal = sumBy(
+    data.movements.filter((item) => item.status === "PENDING"),
+    (item) => Math.abs(item.amount),
+  );
 
-  const approvedTotal = sumBy(movementRows.filter((movement) => movement.status === 'APPROVED'), (movement) => movement.amount)
-  const pendingTotal = sumBy(movementRows.filter((movement) => movement.status === 'PENDING'), (movement) => Math.abs(movement.amount))
-
-  function setMovementKind(kind: MovementKind) {
-    setMovementForm((current) => ({ ...current, kind, catalogId: '', concept: '', amount: '0', notes: '' }))
-    setShareCount('1')
+  function setKind(kind: MovementKind) {
+    setForm((current) => ({
+      ...current,
+      kind,
+      catalogItemId: "",
+      concept: "",
+      totalAmount: "0",
+      notes: "",
+      allocations: current.allocations.map((item) => ({
+        ...item,
+        amount: "0",
+        commissionable: true,
+      })),
+    }));
+    setFile(null);
   }
 
-  function selectCatalogItem(item?: PayrollCatalogItem) {
-    if (!item) return
-    setMovementForm((current) => ({ ...current, catalogId: item.id, concept: normalizeUppercase(item.name), amount: String(item.amount), notes: normalizeUppercase(item.notes) }))
+  function editMovement(movement: PayrollMovement) {
+    setEditingId(movement.id);
+    setForm({
+      date: movement.date,
+      kind: movement.kind,
+      catalogItemId: movement.catalogItemId ?? "",
+      concept: movement.concept,
+      totalAmount: String(movement.totalAmount),
+      notes: movement.notes,
+      allocations: movement.allocations.map((allocation) => ({
+        employeeId: allocation.employeeId,
+        branchId: allocation.branchId ?? "CORPORATIVO",
+        amount: String(allocation.amount),
+        commissionable: allocation.commissionable,
+      })),
+    });
+    setFile(null);
+    setDialogOpen(true);
   }
 
-  function openMovementDialog() {
-    setMovementForm(EMPTY_MOVEMENT_FORM)
-    setShareCount('1')
-    setMovementDialogOpen(true)
+  function selectCatalog(id: string) {
+    const item = catalog.find((candidate) => candidate.id === id);
+    if (!item) return;
+    setForm((current) => {
+      const total = item.amount;
+      const base = Math.floor((total / current.allocations.length) * 100) / 100;
+      return {
+        ...current,
+        catalogItemId: id,
+        concept: item.name,
+        totalAmount: String(total),
+        notes: item.notes,
+        allocations: current.allocations.map((allocation, index) => ({
+          ...allocation,
+          amount: String(
+            index === current.allocations.length - 1
+              ? total - base * (current.allocations.length - 1)
+              : base,
+          ),
+        })),
+      };
+    });
   }
 
-  function saveMovement() {
-    const amount = Number(movementForm.amount)
-    if (!movementForm.employeeId || !movementForm.branch || !movementForm.kind || !movementForm.concept.trim()) {
-      toast.error('Completa empleado, sucursal, tipo y concepto.')
-      return
-    }
-    if (!Number.isFinite(amount) || amount <= 0) {
-      toast.error('Ingresa un monto mayor a cero.')
-      return
-    }
-    if (catalogConfig && !movementForm.catalogId) {
-      toast.error(`Selecciona ${catalogConfig.label.toLowerCase()}.`)
-      return
-    }
-
-    const signedAmount = movementForm.kind === 'FINE' || movementForm.kind === 'ADJUSTMENT_NEGATIVE' ? -Math.abs(amount) : Math.abs(amount)
-    const nextMovement: PayrollMovement = {
-      id: `movement-${globalThis.crypto?.randomUUID?.() ?? Date.now().toString(36)}`,
-      date: new Date().toISOString().slice(0, 10),
-      employeeName: normalizeUppercase(movementForm.employeeName),
-      branch: normalizeUppercase(movementForm.branch),
-      kind: movementForm.kind,
-      concept: normalizeUppercase(movementForm.concept),
-      amount: signedAmount,
-      status: 'PENDING',
-      notes: normalizeUppercase(movementForm.notes),
-      sharedWith: Number(shareCount),
-      attachmentRequired: movementForm.kind === 'PER_DIEM' || movementForm.kind === 'SUPPLIES',
-      commissionable: movementForm.kind === 'BONUS',
-    }
-    setMovementRows((current) => [nextMovement, ...current])
-    setMovementDialogOpen(false)
-    setMovementForm(EMPTY_MOVEMENT_FORM)
-    setShareCount('1')
-    toast.success('Movimiento mock guardado.')
+  function setParticipantCount(count: number) {
+    setForm((current) => {
+      const total = Number(current.totalAmount) || 0;
+      const base = Math.floor((total / count) * 100) / 100;
+      const allocations = Array.from({ length: count }, (_, index) => ({
+        employeeId: current.allocations[index]?.employeeId ?? "",
+        branchId: current.allocations[index]?.branchId ?? "CORPORATIVO",
+        amount: String(index === count - 1 ? total - base * (count - 1) : base),
+        commissionable: current.allocations[index]?.commissionable ?? true,
+      }));
+      return { ...current, allocations };
+    });
   }
 
-  const columns: ColumnDef<PayrollMovement>[] = [
-    { accessorKey: 'date', header: 'FECHA', cell: ({ row }) => formatDate(row.original.date) },
-    {
-      accessorKey: 'employeeName', header: 'EMPLEADO', cell: ({ row }) => (
-        <div><p className="font-medium">{row.original.employeeName}</p><p className="text-sm text-[color:var(--text-muted)]">{row.original.branch}</p></div>
-      ),
-    },
-    { accessorKey: 'kind', header: 'TIPO', cell: ({ row }) => <span className="font-medium">{MOVEMENT_KIND_OPTIONS.find((option) => option.value === row.original.kind)?.label ?? row.original.kind}</span> },
-    { accessorKey: 'concept', header: 'CONCEPTO' },
-    { accessorKey: 'amount', header: 'MONTO', meta: { align: 'right' }, cell: ({ row }) => <div className="number-display text-right">{formatCurrency(row.original.amount)}</div> },
-    { accessorKey: 'sharedWith', header: 'COMPARTIDO', cell: ({ row }) => `${row.original.sharedWith} persona${row.original.sharedWith > 1 ? 's' : ''}` },
-    { accessorKey: 'status', header: 'ESTATUS', cell: ({ row }) => <StatusBadge status={row.original.status} /> },
-  ]
+  async function save() {
+    const total = Number(form.totalAmount);
+    if (
+      !form.date ||
+      !form.kind ||
+      !form.concept.trim() ||
+      !Number.isFinite(total) ||
+      total <= 0
+    ) {
+      toast.error("Completa fecha, tipo, concepto y monto.");
+      return;
+    }
+    if (
+      form.allocations.some(
+        (item) => !item.employeeId || Number(item.amount) <= 0,
+      )
+    ) {
+      toast.error("Completa empleado y monto de cada participante.");
+      return;
+    }
+    if (
+      new Set(form.allocations.map((item) => item.employeeId)).size !==
+      form.allocations.length
+    ) {
+      toast.error("No repitas participantes.");
+      return;
+    }
+    const allocated = form.allocations.reduce(
+      (sum, item) => sum + Number(item.amount),
+      0,
+    );
+    if (Math.round(allocated * 100) !== Math.round(total * 100)) {
+      toast.error("La distribución debe coincidir con el monto total.");
+      return;
+    }
+    setSaving(true);
+    let persistedMovement: PayrollMovement | null = null;
+    try {
+      persistedMovement = await data.saveMovement(
+        {
+          date: form.date,
+          kind: form.kind,
+          catalogItemId: form.catalogItemId || null,
+          concept: form.concept,
+          totalAmount: total,
+          notes: form.notes,
+          allocations: form.allocations.map((item) => ({
+            employeeId: item.employeeId,
+            branchId: item.branchId === "CORPORATIVO" ? null : item.branchId,
+            amount: Number(item.amount),
+            commissionable: item.commissionable,
+          })),
+        },
+        editingId ?? undefined,
+      );
+      if (file) await data.uploadAttachment(persistedMovement.id, file);
+      setDialogOpen(false);
+      setEditingId(null);
+      setForm({ ...EMPTY_FORM, date: today() });
+      setFile(null);
+      toast.success(
+        editingId
+          ? "Movimiento actualizado."
+          : "Movimiento guardado y pendiente de aprobación.",
+      );
+    } catch (cause) {
+      if (persistedMovement) {
+        setDialogOpen(false);
+        setEditingId(null);
+        setForm({ ...EMPTY_FORM, date: today() });
+        setFile(null);
+        toast.error(
+          `El movimiento quedó guardado, pero falló el comprobante: ${apiErrorMessage(cause)}`,
+        );
+      } else {
+        toast.error(apiErrorMessage(cause));
+      }
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function changeStatus() {
+    if (!statusTarget) return;
+    try {
+      await data.setMovementStatus(
+        statusTarget.movement.id,
+        statusTarget.status,
+      );
+      toast.success(
+        statusTarget.status === "APPROVED"
+          ? "Movimiento aprobado."
+          : "Movimiento rechazado.",
+      );
+      setStatusTarget(null);
+    } catch (cause) {
+      toast.error(apiErrorMessage(cause));
+    }
+  }
+
+  const columns = useMemo<ColumnDef<PayrollMovement>[]>(
+    () => [
+      {
+        accessorKey: "date",
+        header: "FECHA",
+        cell: ({ row }) => formatDate(row.original.date),
+      },
+      {
+        accessorKey: "employeeName",
+        header: "EMPLEADOS",
+        cell: ({ row }) => (
+          <div>
+            <p className="font-medium">{row.original.employeeName}</p>
+            <p className="text-sm text-[var(--text-muted)]">
+              {row.original.branch}
+            </p>
+          </div>
+        ),
+      },
+      {
+        accessorKey: "kind",
+        header: "TIPO",
+        cell: ({ row }) =>
+          KIND_OPTIONS.find((item) => item.value === row.original.kind)?.label,
+      },
+      { accessorKey: "concept", header: "CONCEPTO" },
+      {
+        accessorKey: "amount",
+        header: "MONTO",
+        meta: { align: "right" },
+        cell: ({ row }) => (
+          <div className="number-display text-right">
+            {formatCurrency(row.original.amount)}
+          </div>
+        ),
+      },
+      {
+        accessorKey: "sharedWith",
+        header: "REPARTO",
+        cell: ({ row }) =>
+          `${row.original.sharedWith} PERSONA${row.original.sharedWith === 1 ? "" : "S"}`,
+      },
+      {
+        accessorKey: "status",
+        header: "ESTATUS",
+        cell: ({ row }) => <StatusBadge status={row.original.status} />,
+      },
+      {
+        id: "actions",
+        header: "ACCIONES",
+        enableSorting: false,
+        enableGlobalFilter: false,
+        cell: ({ row }) => (
+          <div className="flex justify-end gap-1">
+            {row.original.attachments[0] && (
+              <Button
+                size="icon"
+                variant="ghost"
+                aria-label="Abrir comprobante"
+                onClick={() =>
+                  void data.openAttachment(row.original.attachments[0]!.id)
+                }
+              >
+                <FileText className="h-4 w-4" />
+              </Button>
+            )}
+            {row.original.status === "PENDING" &&
+              !row.original.payrollRunId &&
+              data.storageConfigured && (
+                <label
+                  className="inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-md hover:bg-[var(--accent-hover)]"
+                  aria-label="Subir comprobante"
+                >
+                  <Upload className="h-4 w-4" />
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,application/pdf"
+                    className="sr-only"
+                    onChange={(event) => {
+                      const selected = event.target.files?.[0];
+                      if (!selected) return;
+                      void data
+                        .uploadAttachment(row.original.id, selected)
+                        .then(() => toast.success("Comprobante guardado."))
+                        .catch((cause) => toast.error(apiErrorMessage(cause)));
+                      event.target.value = "";
+                    }}
+                  />
+                </label>
+              )}
+            {row.original.status === "PENDING" && (
+              <>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  aria-label="Editar"
+                  onClick={() => editMovement(row.original)}
+                >
+                  <Pencil className="h-4 w-4" />
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  aria-label="Aprobar"
+                  onClick={() =>
+                    setStatusTarget({
+                      movement: row.original,
+                      status: "APPROVED",
+                    })
+                  }
+                >
+                  <Check className="h-4 w-4 text-green-600" />
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  aria-label="Rechazar"
+                  onClick={() =>
+                    setStatusTarget({
+                      movement: row.original,
+                      status: "REJECTED",
+                    })
+                  }
+                >
+                  <X className="h-4 w-4 text-red-500" />
+                </Button>
+              </>
+            )}
+          </div>
+        ),
+      },
+    ],
+    [data],
+  );
 
   const exportConfig = {
-    title: 'Movimientos de nómina',
-    subtitle: 'Datos mock capturados en la sesión actual',
-    filename: 'movimientos-nomina',
-    sheetName: 'Movimientos',
-    orientation: 'landscape' as const,
-    rows: movementRows,
+    title: "Movimientos de nómina",
+    subtitle: "Movimientos persistidos y auditados",
+    filename: "movimientos-nomina",
+    sheetName: "Movimientos",
+    orientation: "landscape" as const,
+    rows: data.movements,
     columns: [
-      { header: 'FECHA', accessor: (row: PayrollMovement) => formatDate(row.date), width: 12 },
-      { header: 'EMPLEADO', accessor: (row: PayrollMovement) => row.employeeName, width: 32 },
-      { header: 'SUCURSAL', accessor: (row: PayrollMovement) => row.branch, width: 22 },
-      { header: 'TIPO', accessor: (row: PayrollMovement) => MOVEMENT_KIND_OPTIONS.find((option) => option.value === row.kind)?.label ?? row.kind, width: 18 },
-      { header: 'CONCEPTO', accessor: (row: PayrollMovement) => row.concept, width: 24 },
-      { header: 'MONTO', accessor: (row: PayrollMovement) => row.amount, format: 'currency' as const, width: 14 },
-      { header: 'ESTATUS', accessor: (row: PayrollMovement) => formatStatus(row.status), width: 12 },
+      {
+        header: "FECHA",
+        accessor: (row: PayrollMovement) => formatDate(row.date),
+      },
+      {
+        header: "EMPLEADOS",
+        accessor: (row: PayrollMovement) => row.employeeName,
+        width: 35,
+      },
+      {
+        header: "SUCURSAL",
+        accessor: (row: PayrollMovement) => row.branch,
+        width: 24,
+      },
+      {
+        header: "TIPO",
+        accessor: (row: PayrollMovement) =>
+          KIND_OPTIONS.find((item) => item.value === row.kind)?.label ??
+          row.kind,
+      },
+      { header: "CONCEPTO", accessor: (row: PayrollMovement) => row.concept },
+      {
+        header: "MONTO",
+        accessor: (row: PayrollMovement) => row.amount,
+        format: "currency" as const,
+      },
+      {
+        header: "ESTATUS",
+        accessor: (row: PayrollMovement) => formatStatus(row.status),
+      },
     ],
-  }
+  };
 
   return (
     <div className="space-y-6">
       <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="page-title">Movimientos de nómina</h1>
-          <p className="mt-1 text-sm text-[color:var(--text-muted)]">Bonos, ajustes y evidencias.</p>
+          <p className="mt-1 text-sm text-[var(--text-muted)]">
+            Bonos, ajustes, descuentos y evidencias auditables.
+          </p>
         </div>
-        <div className="flex flex-wrap gap-2"><ReportExportButtons config={exportConfig} disabled={movementRows.length === 0} /><Button onClick={openMovementDialog}><PlusCircle className="mr-1.5 h-4 w-4" />Nuevo movimiento</Button></div>
+        <div className="flex flex-wrap gap-2">
+          <ReportExportButtons
+            config={exportConfig}
+            disabled={!data.movements.length}
+          />
+          <Button
+            onClick={() => {
+              setEditingId(null);
+              setForm({ ...EMPTY_FORM, date: today() });
+              setFile(null);
+              setDialogOpen(true);
+            }}
+          >
+            <PlusCircle className="mr-1.5 h-4 w-4" />
+            Nuevo movimiento
+          </Button>
+        </div>
       </header>
-
       <div className="grid gap-4 md:grid-cols-3">
-        <MetricCard label="Aprobado" value={formatCurrency(approvedTotal)} tone="sage" />
-        <MetricCard label="Pendiente" value={formatCurrency(pendingTotal)} tone="gold" />
-        <MetricCard label="Catálogos disponibles" value={`${bonuses.length + fines.length + perDiems.length}`} tone="blue" />
+        <MetricCard
+          label="Aprobado neto"
+          value={formatCurrency(approvedTotal)}
+          tone="sage"
+        />
+        <MetricCard
+          label="Pendiente"
+          value={formatCurrency(pendingTotal)}
+          tone="gold"
+        />
+        <MetricCard
+          label="Catálogos activos"
+          value={`${data.bonuses.length + data.fines.length + data.perDiems.length}`}
+          tone="blue"
+        />
       </div>
-
-      <SectionCard eyebrow="Listado" title="MOVIMIENTOS CAPTURADOS">
-        <DataTable columns={columns} data={movementRows} searchPlaceholder="Buscar movimiento" emptyMessage="Sin movimientos" pageSize={10} />
+      <SectionCard title="MOVIMIENTOS CAPTURADOS">
+        <DataTable
+          columns={columns}
+          data={data.movements}
+          searchPlaceholder="Buscar movimiento"
+          emptyMessage="Sin movimientos; registra el primero para incluirlo en una corrida."
+          pageSize={10}
+        />
       </SectionCard>
-
-      <Dialog open={movementDialogOpen} onOpenChange={setMovementDialogOpen}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader><DialogTitle>Nuevo movimiento</DialogTitle><DialogDescription>Los bonos, multas y viáticos se seleccionan desde sus catálogos mock.</DialogDescription></DialogHeader>
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {editingId ? "Editar movimiento" : "Nuevo movimiento"}
+            </DialogTitle>
+            <DialogDescription>
+              {editingId
+                ? "Solo los movimientos pendientes y aún no asignados pueden editarse."
+                : "El movimiento se crea pendiente y debe aprobarse antes de entrar a una corrida."}
+            </DialogDescription>
+          </DialogHeader>
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
-              <Label>Empleado</Label>
-              <Select value={movementForm.employeeId} onValueChange={(value) => { const employee = activeEmployeeOptions.find((item) => item.id === value); setMovementForm((current) => ({ ...current, employeeId: value, employeeName: employee?.name ?? '', branch: employee?.branch ?? '' })) }}>
-                <SelectTrigger><SelectValue placeholder="Selecciona un empleado" /></SelectTrigger>
-                <SelectContent>{activeEmployeeOptions.map((employee) => <SelectItem key={employee.id} value={employee.id}>{employee.name} · {employee.position}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Sucursal</Label>
-              <Select value={movementForm.branch} disabled><SelectTrigger><SelectValue placeholder="Selecciona una sucursal" /></SelectTrigger><SelectContent>{branchOptions.map((branch) => <SelectItem key={branch} value={branch}>{branch}</SelectItem>)}</SelectContent></Select>
+              <Label>Fecha</Label>
+              <DatePicker
+                value={form.date}
+                onChange={(value) =>
+                  setForm((current) => ({ ...current, date: value }))
+                }
+              />
             </div>
             <div className="space-y-2">
               <Label>Tipo</Label>
-              <Select value={movementForm.kind} onValueChange={(value) => setMovementKind(value as MovementKind)}><SelectTrigger><SelectValue placeholder="Selecciona un tipo" /></SelectTrigger><SelectContent>{MOVEMENT_KIND_OPTIONS.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent></Select>
+              <Select
+                value={form.kind}
+                onValueChange={(value) => setKind(value as MovementKind)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecciona un tipo" />
+                </SelectTrigger>
+                <SelectContent>
+                  {KIND_OPTIONS.map((item) => (
+                    <SelectItem key={item.value} value={item.value}>
+                      {item.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-            {catalogConfig ? (
-              <div className="space-y-2">
-                <Label>{catalogConfig.label}</Label>
-                <Select value={movementForm.catalogId} onValueChange={(value) => selectCatalogItem(catalogConfig.items.find((item) => item.id === value))}><SelectTrigger><SelectValue placeholder={`Selecciona ${catalogConfig.label.toLowerCase()}`} /></SelectTrigger><SelectContent>{catalogConfig.items.map((item) => <SelectItem key={item.id} value={item.id}>{item.name} · {formatCurrency(item.amount)}</SelectItem>)}</SelectContent></Select>
+            {catalog.length > 0 && (
+              <div className="space-y-2 sm:col-span-2">
+                <Label>Concepto predefinido</Label>
+                <Select
+                  value={form.catalogItemId}
+                  onValueChange={selectCatalog}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecciona del catálogo" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {catalog.map((item) => (
+                      <SelectItem key={item.id} value={item.id}>
+                        {item.name} · {formatCurrency(item.amount)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
-            ) : (
-              <div className="space-y-2"><Label>Monto</Label><Input type="number" min="0" step="0.01" value={movementForm.amount} onChange={(event) => setMovementForm((current) => ({ ...current, amount: event.target.value }))} /></div>
             )}
-            <div className="space-y-2"><Label>Concepto</Label><Input readOnly={Boolean(catalogConfig)} value={movementForm.concept} onChange={(event) => setMovementForm((current) => ({ ...current, concept: uppercaseInput(event.target.value) }))} placeholder="Motivo o concepto" /></div>
-            {catalogConfig ? <div className="space-y-2"><Label>Monto</Label><Input value={movementForm.amount === '0' ? '' : formatCurrency(Number(movementForm.amount))} readOnly /></div> : null}
-            <div className="space-y-2 sm:col-span-2"><Label>Personas a dividir</Label><Select value={shareCount} onValueChange={setShareCount}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{['1', '2', '3', '4', '5'].map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></div>
-            {(movementForm.kind === 'PER_DIEM' || movementForm.kind === 'SUPPLIES') ? <div className="sm:col-span-2 rounded-lg border border-dashed border-[var(--border-color)] bg-[var(--input-disabled-bg)] p-3 text-sm text-[color:var(--text-muted)]">Este movimiento requiere evidencia en la versión conectada.</div> : null}
-            <div className="space-y-2 sm:col-span-2"><Label>Notas</Label><Textarea value={movementForm.notes} onChange={(event) => setMovementForm((current) => ({ ...current, notes: uppercaseInput(event.target.value) }))} placeholder="Motivo, autorización o detalle" /></div>
+            <div className="space-y-2">
+              <Label>Concepto</Label>
+              <Input
+                readOnly={catalog.length > 0}
+                value={form.concept}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    concept: uppercaseInput(event.target.value),
+                  }))
+                }
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Monto total</Label>
+              <Input
+                type="number"
+                min="0.01"
+                step="0.01"
+                value={form.totalAmount}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    totalAmount: event.target.value,
+                  }))
+                }
+              />
+            </div>
+            <div className="space-y-2 sm:col-span-2">
+              <Label>Participantes</Label>
+              <Select
+                value={String(form.allocations.length)}
+                onValueChange={(value) => setParticipantCount(Number(value))}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {[1, 2, 3, 4, 5].map((count) => (
+                    <SelectItem key={count} value={String(count)}>
+                      {count}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-3 sm:col-span-2">
+              {form.allocations.map((allocation, index) => (
+                <div
+                  key={index}
+                  className="grid gap-3 rounded-lg border border-[var(--border-color)] p-3 md:grid-cols-[1fr_1fr_8rem_auto] md:items-end"
+                >
+                  <div className="space-y-2">
+                    <Label>Empleado {index + 1}</Label>
+                    <Select
+                      value={allocation.employeeId}
+                      onValueChange={(value) =>
+                        setForm((current) => ({
+                          ...current,
+                          allocations: current.allocations.map(
+                            (item, itemIndex) =>
+                              itemIndex === index
+                                ? { ...item, employeeId: value }
+                                : item,
+                          ),
+                        }))
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Empleado" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {employees.map((employee) => (
+                          <SelectItem key={employee.id} value={employee.id}>
+                            {employee.name} · {employee.position}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Sucursal</Label>
+                    <Select
+                      value={allocation.branchId}
+                      onValueChange={(value) =>
+                        setForm((current) => ({
+                          ...current,
+                          allocations: current.allocations.map(
+                            (item, itemIndex) =>
+                              itemIndex === index
+                                ? { ...item, branchId: value }
+                                : item,
+                          ),
+                        }))
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="CORPORATIVO">CORPORATIVO</SelectItem>
+                        {data.branches
+                          .filter((branch) => branch.activa)
+                          .map((branch) => (
+                            <SelectItem key={branch.id} value={branch.id}>
+                              {branch.nombre}
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Parte</Label>
+                    <Input
+                      type="number"
+                      min="0.01"
+                      step="0.01"
+                      value={allocation.amount}
+                      onChange={(event) =>
+                        setForm((current) => ({
+                          ...current,
+                          allocations: current.allocations.map(
+                            (item, itemIndex) =>
+                              itemIndex === index
+                                ? { ...item, amount: event.target.value }
+                                : item,
+                          ),
+                        }))
+                      }
+                    />
+                  </div>
+                  <label className="flex items-center gap-2 pb-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={allocation.commissionable}
+                      onChange={(event) =>
+                        setForm((current) => ({
+                          ...current,
+                          allocations: current.allocations.map(
+                            (item, itemIndex) =>
+                              itemIndex === index
+                                ? {
+                                    ...item,
+                                    commissionable: event.target.checked,
+                                  }
+                                : item,
+                          ),
+                        }))
+                      }
+                      className="h-4 w-4 accent-[var(--accent)]"
+                    />
+                    Pagable
+                  </label>
+                </div>
+              ))}
+            </div>
+            <div className="space-y-2 sm:col-span-2">
+              <Label>Notas</Label>
+              <Textarea
+                value={form.notes}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    notes: uppercaseInput(event.target.value),
+                  }))
+                }
+              />
+            </div>
+            {needsEvidence && (
+              <div className="space-y-2 sm:col-span-2">
+                <Label>
+                  Comprobante{" "}
+                  {data.storageConfigured
+                    ? "(JPG, PNG o PDF; máximo 10 MB)"
+                    : "(Storage pendiente de configurar)"}
+                </Label>
+                <Input
+                  type="file"
+                  accept="image/jpeg,image/png,application/pdf"
+                  disabled={!data.storageConfigured}
+                  onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+                  className="normal-case"
+                />
+              </div>
+            )}
           </div>
-          <AlertDialog>
-            <AlertDialogTrigger asChild><Button className="mt-2"><Save className="mr-1.5 h-4 w-4" />Guardar movimiento mock</Button></AlertDialogTrigger>
-            <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Confirmar movimiento</AlertDialogTitle><AlertDialogDescription>El movimiento quedará pendiente de aprobación en esta sesión mock.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={saveMovement}>Confirmar</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
-          </AlertDialog>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDialogOpen(false)}>
+              Cancelar
+            </Button>
+            <Button disabled={saving} onClick={() => void save()}>
+              {saving
+                ? "Guardando…"
+                : editingId
+                  ? "Actualizar movimiento"
+                  : "Guardar movimiento"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
+      <AlertDialog
+        open={Boolean(statusTarget)}
+        onOpenChange={(open) => !open && setStatusTarget(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {statusTarget?.status === "APPROVED"
+                ? "Aprobar movimiento"
+                : "Rechazar movimiento"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              El movimiento {statusTarget?.movement.concept} quedará{" "}
+              {statusTarget?.status === "APPROVED"
+                ? "disponible para la corrida de su periodo"
+                : "fuera de los cálculos"}
+              .
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className={
+                statusTarget?.status === "REJECTED"
+                  ? "bg-red-600 hover:bg-red-700"
+                  : undefined
+              }
+              onClick={() => void changeStatus()}
+            >
+              Confirmar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
-  )
+  );
 }

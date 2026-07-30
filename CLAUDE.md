@@ -251,7 +251,80 @@ Datos:
 
 ---
 
-## Contexto futuro: módulo Payroll desde `nomina.xlsx`
+## Payroll: implementación actual
+
+`apps/payroll` es una app operativa conectada a `backend/api` y PostgreSQL; ya no usa fixtures ni contextos mock. La referencia funcional original fue `nomina.xlsx`, pero las fórmulas viven en backend y cada corrida conserva snapshots históricos.
+
+### Límites y seguridad
+
+- La UI y todos los endpoints `/api/payroll/*` requieren sesión JWT y rol `SUPER_ADMIN`.
+- Payroll reutiliza en modo lectura `Empleado`, `Bank`, `Position`, `Sucursal`, `Venta` y `VentaDetalle`. No duplica ni modifica esos datos de Envelope.
+- `Empleado` no tiene sucursal base: las ventas determinan el desglose y los importes sin ventas se asignan a `CORPORATIVO`.
+- Los cambios de Payroll deben limitarse a `apps/payroll`, rutas/servicios/modelos Payroll en `backend/api` y documentación relacionada. No modificar `apps/envelope` para extender nómina.
+- La migración `20260730000000_add_payroll_models` es aditiva. Debe revisarse y ejecutarse manualmente con `prisma migrate deploy`; nunca usar `db push`, `migrate reset` ni seeds demo contra producción.
+- Los adjuntos usan un bucket privado de Supabase Storage. Configurar `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` y opcionalmente `PAYROLL_STORAGE_BUCKET`; no exponer la service-role key al frontend.
+
+### Fuentes reales reutilizadas
+
+| Dato                                         | Fuente                                                                                        |
+| -------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| Empleado, activo/inactivo, sueldo y teléfono | `Empleado`                                                                                    |
+| Banco y cuenta                               | `Empleado.bankId`/`Bank`, con compatibilidad para `Empleado.banco`, y `Empleado.numeroCuenta` |
+| Puesto                                       | `Empleado.positionId`/`Position`, con compatibilidad para `Empleado.puesto`                   |
+| Ventas por fecha, vendedor y sucursal        | `Venta` + suma de `VentaDetalle.cantidad`                                                     |
+| Sucursales                                   | `Sucursal`                                                                                    |
+
+Los catálogos de métodos de pago no participan en el cálculo de comisión. Los empleados inactivos se conservan en históricos y entran en una corrida si tienen actividad dentro del periodo.
+
+### Backend y modelos
+
+- Router: `backend/api/src/routes/payroll.routes.ts`.
+- Motor puro: `backend/api/src/services/payroll-calculation.ts`.
+- Ciclo de corridas y snapshots: `backend/api/src/services/payroll.service.ts`.
+- Storage privado: `backend/api/src/services/payroll-storage.ts`.
+- Modelos: `PayrollCatalogItem`, `CommissionScheme`, `CommissionSchemeVersion`, `CommissionSchemeTier`, `EmployeeCommissionAssignment`, `PayrollRun`, `PayrollRunLine`, `PayrollRunBranchLine`, `PayrollMovement`, `PayrollMovementAllocation`, `PayrollAttachment`, `PayrollExpense`, `LoanAdvance`, `LoanAdvanceInstallment`, `PayrollReceipt` y `PayrollAuditEvent`.
+- El schema canónico y el duplicado en `backend/api/src/prisma/schema.prisma` deben mantenerse sincronizados. Payroll usa el cliente estándar `@prisma/client`, regenerado durante el build del backend; no importar clientes generados desde rutas relativas porque `dist` no incluye esos artefactos.
+
+La API cubre bootstrap de fuentes compartidas; CRUD de catálogos, esquemas/versiones/asignaciones, movimientos, gastos y préstamos; adjuntos; corridas y transiciones; desglose por sucursal; recibos y seguimiento de WhatsApp.
+
+### Reglas de cálculo y ciclo de vida
+
+- Solo se aceptan quincenas completas: días 1–15 o 16–último día del mes. El sueldo quincenal es `Empleado.sueldo / 2`; sueldo nulo equivale a cero y genera advertencia.
+- Cada corrida elige `WITH_VAT` o `WITHOUT_VAT`. Con IVA se usa venta bruta; sin IVA se usa `venta / 1.16`. La misma base selecciona el rango y calcula `base × tasa`.
+- Rangos de comisión son continuos, inician en cero y el último no tiene límite superior. Versiones y asignaciones tienen vigencia; cambios existentes solo aplican desde la siguiente quincena.
+- Sueldo, comisión y préstamos se distribuyen proporcionalmente entre las sucursales donde el empleado tuvo ventas; los centavos residuales quedan en la última asignación. Sin ventas se asignan a `CORPORATIVO`. Los movimientos conservan su sucursal explícita.
+- Una corrida transita `DRAFT → APPROVED → PAID`; puede cancelarse antes de pagar. Aprobar congela líneas y reserva movimientos, gastos y cuotas. Pagar liquida cuotas reservadas y genera recibos. Una corrida pagada no se recalcula ni cancela.
+- Bloquea aprobación: ventas sin esquema/rango, pago total negativo o viáticos/insumos sin evidencia. Sueldo faltante es advertencia. Banco o cuenta faltante bloquean pago. Teléfono faltante bloquea solo la preparación de WhatsApp.
+- Préstamos y adelantos generan cuotas quincenales automáticas; el último pago absorbe el ajuste de centavos. Los estados históricos no se eliminan.
+- Recibos se generan desde el snapshot pagado, se descargan en PDF y WhatsApp se abre mediante `wa.me`; el archivo se adjunta manualmente. Estados: `GENERATED`, `SENT`, `CONFIRMED`.
+
+### Frontend operativo
+
+Rutas: `/`, `/bonos`, `/multas`, `/viaticos`, `/movimientos`, `/gastos`, `/esquemas`, `/prestamos-adelantos`, `/reportes/desglose-sucursal`, `/recibos` y `/login`.
+
+- `apps/payroll/src/lib/session.tsx` gestiona sesión real y el guard `SUPER_ADMIN`.
+- `apps/payroll/src/components/payroll/payroll-data-context.tsx` conecta toda la UI a `/api/payroll/*`.
+- Exportaciones PDF/Excel se generan desde datasets reales con imports dinámicos.
+- Los catálogos arrancan vacíos: no crear seed de bonos, multas, viáticos, esquemas ni préstamos salvo instrucción explícita.
+- Mantener snapshots y datos históricos; las ediciones solo afectan registros en borrador/pendientes que todavía no pertenecen a una corrida aprobada.
+
+### Validación
+
+```bash
+pnpm --filter @cosmetics/payroll type-check
+pnpm --filter @cosmetics/payroll build
+pnpm --filter @cosmetics/api test
+pnpm --filter @cosmetics/api type-check
+pnpm --filter @cosmetics/api build
+```
+
+El motor tiene pruebas de base con/sin IVA, selección de tasa, distribución exacta por sucursal, advertencias/bloqueos y amortización quincenal. Probar flujos integrados únicamente en una BD de desarrollo con la migración aplicada; no usar producción como ambiente de QA.
+
+---
+
+## Referencia histórica: diseño de Payroll desde `nomina.xlsx`
+
+> Esta sección conserva el análisis de origen del Excel. Si contradice “Payroll: implementación actual”, prevalece la implementación actual.
 
 Archivo de referencia analizado: `nomina.xlsx`.
 Cada hoja del Excel describe procesos actuales de nómina que hoy se resuelven con archivos de Excel. No debe copiarse literalmente el formato visual ni las fórmulas rotas/externas (`#REF!`, referencias tipo `[1]!Tabla...`); debe modelarse el proceso en el sistema.
@@ -276,9 +349,9 @@ Modelo recomendado:
 - Cálculos de nómina: hacerlos en backend y guardar snapshots por corrida; no depender solo de cálculos en cliente.
 - UI: reutilizar `@cosmetics/ui`, `DataTable`, `DatePicker`/`DateRangePicker`, `AlertDialog`, `toast` y reglas visuales existentes.
 
-### Estado actual de `apps/payroll` demo frontend
+### Estado anterior de `apps/payroll` como demo frontend
 
-Implementado solo frontend con datos mock locales. No toca backend, Prisma ni base de datos.
+Antes de la implementación real existió un frontend con datos mock locales. Esos mocks ya fueron eliminados.
 
 Archivos principales:
 
@@ -483,10 +556,10 @@ Recomendación completa actual: 10 pages de operación y reportes.
 | --------------------- | ----------------------------- | ------------------------------------------ |
 | Summary               | `/` o `/corridas`             | `PANTALLA SUMARY`                          |
 | Bonos                 | `/bonos`                      | catálogo de bonos del flujo de movimientos |
-| Multas                | `/multas`                     | catálogo mock de multas                     |
-| Viáticos              | `/viaticos`                   | catálogo mock de viáticos                   |
+| Multas                | `/multas`                     | catálogo mock de multas                    |
+| Viáticos              | `/viaticos`                   | catálogo mock de viáticos                  |
 | Movimientos de nómina | `/movimientos`                | `pantalla de bonos`                        |
-| Gastos                | `/gastos`                     | captura mock de gastos fijos/variables      |
+| Gastos                | `/gastos`                     | captura mock de gastos fijos/variables     |
 | Esquemas de comisión  | `/esquemas`                   | `pantalla de esquemas`                     |
 | Préstamos y adelantos | `/prestamos-adelantos`        | `panatalla prestamos-adelantos`            |
 | Payroll breakdown     | `/reportes/desglose-sucursal` | `payroll breakdown`                        |
