@@ -320,6 +320,8 @@ La page `apps/payroll/src/app/(dashboard)/esquemas/page.tsx` guía la captura y 
 - El nombre es obligatorio, único y de máximo 80 caracteres. La vigencia debe comenzar el día 1 o 16 del mes.
 - Los errores se muestran junto al campo, con `role="alert"`/`aria-invalid`, ejemplos y mensajes de recuperación. No volver a sustituirlos por un único toast genérico.
 - Editar un esquema programa una nueva versión; no muta versiones usadas por corridas históricas.
+- La primera asignación de esquema a un empleado propone la quincena actual. Solo cuando el empleado ya tiene una asignación abierta se propone la siguiente quincena; no volver a usar la siguiente quincena como valor inicial indiscriminado porque deja la corrida actual sin esquema.
+- El backend rechaza asignaciones cuya fecha sea anterior a la primera versión vigente del esquema. Una corrida en borrador conserva su snapshot hasta presionar **Recalcular** después de corregir una asignación.
 - Las reglas equivalentes siguen validadas en backend. No relajarlas: la UI debe automatizarlas y explicarlas.
 
 ### Documentación operativa de Payroll
