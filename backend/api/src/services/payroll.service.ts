@@ -76,12 +76,10 @@ export async function recalculatePayrollRun(runId: string, userId: string) {
     include: {
       bank: { select: { nombre: true } },
       position: { select: { nombre: true } },
+      sucursal: { select: { id: true, nombre: true } },
       ventas: {
         where: { fecha: range },
-        include: {
-          sucursal: { select: { id: true, nombre: true } },
-          detalles: { select: { cantidad: true } },
-        },
+        include: { detalles: { select: { cantidad: true } } },
       },
       payrollMovementAllocations: {
         where: {
@@ -92,7 +90,6 @@ export async function recalculatePayrollRun(runId: string, userId: string) {
           },
         },
         include: {
-          branch: { select: { id: true, nombre: true } },
           movement: { select: { kind: true } },
         },
       },
@@ -151,6 +148,8 @@ export async function recalculatePayrollRun(runId: string, userId: string) {
         {
           employeeId: employee.id,
           employeeName: employee.nombreCompleto,
+          branchId: employee.sucursal?.id ?? null,
+          branchName: employee.sucursal?.nombre ?? "SIN SUCURSAL ASIGNADA",
           positionName: employee.position?.nombre ?? employee.puesto ?? null,
           bankName: employee.bank?.nombre ?? employee.banco ?? null,
           accountNumber: employee.numeroCuenta || null,
@@ -169,8 +168,6 @@ export async function recalculatePayrollRun(runId: string, userId: string) {
                 }
               : null,
           sales: employee.ventas.map((sale) => ({
-            branchId: sale.sucursal.id,
-            branchName: sale.sucursal.nombre,
             amount: sale.detalles.reduce(
               (sum, detail) => sum.plus(detail.cantidad),
               new Prisma.Decimal(0),
@@ -178,8 +175,6 @@ export async function recalculatePayrollRun(runId: string, userId: string) {
           })),
           movements: employee.payrollMovementAllocations.map((allocation) => ({
             kind: allocation.movement.kind,
-            branchId: allocation.branch?.id ?? null,
-            branchName: allocation.branch?.nombre ?? "CORPORATIVO",
             amount: allocation.amount,
             commissionable: allocation.commissionable,
           })),

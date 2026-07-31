@@ -7,6 +7,8 @@ import {
 const employee = {
   employeeId: "employee-1",
   employeeName: "EMPLEADA PRUEBA",
+  branchId: "a",
+  branchName: "SUCURSAL A",
   positionName: "VENDEDORA",
   bankName: "BANCO",
   accountNumber: "1234",
@@ -21,21 +23,17 @@ const employee = {
     ],
   },
   sales: [
-    { branchId: "a", branchName: "SUCURSAL A", amount: "11600" },
-    { branchId: "b", branchName: "SUCURSAL B", amount: "5800" },
+    { amount: "11600" },
+    { amount: "5800" },
   ],
   movements: [
     {
       kind: "BONUS" as const,
-      branchId: "a",
-      branchName: "SUCURSAL A",
       amount: "500",
       commissionable: true,
     },
     {
       kind: "FINE" as const,
-      branchId: null,
-      branchName: "CORPORATIVO",
       amount: "100",
       commissionable: true,
     },
@@ -62,7 +60,7 @@ describe("calculatePayroll", () => {
     expect(result.generalBalance.toString()).toBe("9900");
   });
 
-  it("distribuye sueldo, comisión y préstamo proporcionalmente sin perder centavos", () => {
+  it("agrupa sueldo, comisión, préstamo y ventas en la sucursal del empleado", () => {
     const result = calculatePayroll({
       mode: "WITH_VAT",
       vatRate: "0.16",
@@ -77,7 +75,30 @@ describe("calculatePayroll", () => {
 
     expect(line.individualRate?.toString()).toBe("0.1");
     expect(line.commission.toString()).toBe("1740");
+    expect(line.branchLines).toHaveLength(1);
+    expect(line.branchLines[0]?.branchName).toBe("SUCURSAL A");
+    expect(line.branchLines[0]?.salesWithVat.toString()).toBe("17400");
     expect(allocated).toBe(Number(line.totalPayment));
+  });
+
+  it("agrupa empleados sin sucursal en un estado explícito", () => {
+    const result = calculatePayroll({
+      mode: "WITH_VAT",
+      vatRate: "0.16",
+      expenseTotal: 0,
+      employees: [
+        {
+          ...employee,
+          branchId: null,
+          branchName: "SIN SUCURSAL ASIGNADA",
+        },
+      ],
+    });
+
+    expect(result.lines[0]?.branchLines[0]?.branchId).toBeNull();
+    expect(result.lines[0]?.branchLines[0]?.branchName).toBe(
+      "SIN SUCURSAL ASIGNADA",
+    );
   });
 
   it("bloquea aprobación sin esquema y pago sin datos bancarios", () => {

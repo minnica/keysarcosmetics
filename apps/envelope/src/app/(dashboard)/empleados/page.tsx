@@ -30,16 +30,19 @@ import {
   AlertDialogAction,
   AlertDialogCancel,
   DataTable,
+  baseToast,
   toast,
 } from '@cosmetics/ui'
 import type { ColumnDef } from '@cosmetics/ui'
-import { useEmpleados, useBanks, usePositions } from '@/hooks'
+import { useEmpleados, useBanks, usePositions, useSucursales } from '@/hooks'
 import { RefreshingDataIndicator } from '@/components/RefreshingDataIndicator'
 import { TableLoadingSkeleton } from '@/components/layout/DataLoadingSkeleton'
 import { useI18n } from '@/lib/i18n'
 import { useSession } from '@/lib/session'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import type { Empleado } from '@/lib/mock-data'
+
+const UNASSIGNED_BRANCH = '__UNASSIGNED__'
 
 function createEmpleadoSchema(messages: {
   required: string
@@ -54,6 +57,7 @@ function createEmpleadoSchema(messages: {
     bankId:         z.string().min(1, messages.bankRequired),
     numeroCuenta:   z.string().trim().optional(),
     positionId:     z.string().min(1, messages.positionRequired),
+    sucursalId:     z.string(),
     metaIndividual: z.coerce.number().min(0, messages.goalMin),
     sueldo:         z.string().trim().optional(),
     fechaNacimiento: z.string().trim().optional(),
@@ -69,6 +73,7 @@ export default function EmpleadosPage() {
   const { empleados, loading, loaded, error, add, update, remove, toggleStatus } = useEmpleados()
   const { banks, loading: banksLoading } = useBanks()
   const { positions, loading: positionsLoading } = usePositions()
+  const { sucursales, loading: branchesLoading } = useSucursales()
   const { t, dataTableLabels } = useI18n()
   const empleadoSchema = useMemo(
     () => createEmpleadoSchema({
@@ -84,6 +89,7 @@ export default function EmpleadosPage() {
   const [editing, setEditing] = useState<Empleado | null>(null)
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [positionFilter, setPositionFilter] = useState('all')
+  const [branchFilter, setBranchFilter] = useState('all')
   const [salaryMin, setSalaryMin] = useState('')
   const [salaryMax, setSalaryMax] = useState('')
   const canViewSalary = user?.rol === 'SUPER_ADMIN' || canAccess('empleados/sueldo')
@@ -106,6 +112,7 @@ export default function EmpleadosPage() {
       bankId: '',
       numeroCuenta: '',
       positionId: '',
+      sucursalId: UNASSIGNED_BRANCH,
       metaIndividual: 0,
       sueldo: '',
       fechaNacimiento: '',
@@ -152,6 +159,13 @@ export default function EmpleadosPage() {
 
         if (positionFilter !== 'all' && empPositionId !== positionFilter) return false
 
+        if (
+          branchFilter !== 'all' &&
+          (branchFilter === UNASSIGNED_BRANCH
+            ? Boolean(emp.sucursalId)
+            : emp.sucursalId !== branchFilter)
+        ) return false
+
         if (canViewSalary && (salaryMin !== '' || salaryMax !== '')) {
           const salary = emp.sueldo ?? null
           if (salary == null) return false
@@ -161,14 +175,18 @@ export default function EmpleadosPage() {
 
         return true
       }),
-    [canViewSalary, empleados, positionFilter, positionIdByName, salaryMax, salaryMin, statusFilter],
+    [branchFilter, canViewSalary, empleados, positionFilter, positionIdByName, salaryMax, salaryMin, statusFilter],
   )
   const hasActiveFilters =
-    statusFilter !== 'all' || positionFilter !== 'all' || (canViewSalary && (salaryMin !== '' || salaryMax !== ''))
+    statusFilter !== 'all' ||
+    positionFilter !== 'all' ||
+    branchFilter !== 'all' ||
+    (canViewSalary && (salaryMin !== '' || salaryMax !== ''))
 
   function clearFilters() {
     setStatusFilter('all')
     setPositionFilter('all')
+    setBranchFilter('all')
     setSalaryMin('')
     setSalaryMax('')
   }
@@ -190,6 +208,7 @@ export default function EmpleadosPage() {
       bankId: '',
       numeroCuenta: '',
       positionId: '',
+      sucursalId: UNASSIGNED_BRANCH,
       metaIndividual: 0,
       sueldo: '',
       fechaNacimiento: '',
@@ -222,6 +241,7 @@ export default function EmpleadosPage() {
       bankId:          resolvedBankId,
       numeroCuenta:    emp.numeroCuenta,
       positionId:      resolvedPositionId,
+      sucursalId:      emp.sucursalId ?? UNASSIGNED_BRANCH,
       metaIndividual:  emp.metaIndividual,
       sueldo:          canViewSalary && emp.sueldo != null ? String(emp.sueldo) : '',
       fechaNacimiento: emp.fechaNacimiento ?? '',
@@ -246,6 +266,7 @@ export default function EmpleadosPage() {
       metaIndividual:  data.metaIndividual,
       bankId:          data.bankId,
       positionId:      data.positionId,
+      sucursalId:      data.sucursalId === UNASSIGNED_BRANCH ? null : data.sucursalId,
       ...(canViewSalary ? { sueldo: data.sueldo?.trim() ? Number(data.sueldo) : null } : {}),
       fechaNacimiento: data.fechaNacimiento?.trim() ? data.fechaNacimiento.trim() : null,
       numeroTelefono:  data.numeroTelefono?.trim() ? data.numeroTelefono.trim() : null,
@@ -266,12 +287,21 @@ export default function EmpleadosPage() {
       toast.success(t.employees.employeeCreated)
     }
 
+    if (data.sucursalId === UNASSIGNED_BRANCH) {
+      baseToast.add({
+        type: 'warning',
+        title: t.employees.branchAssignmentReminderTitle,
+        description: t.employees.branchAssignmentReminderDescription,
+      })
+    }
+
     setModalOpen(false)
   }
 
   // Texto a mostrar: prefiere nombre del catálogo, cae en legacy
   const displayBanco    = (emp: Empleado) => emp.bank?.nombre    ?? emp.banco
   const displayPuesto   = (emp: Empleado) => emp.position?.nombre ?? emp.puesto
+  const displaySucursal = (emp: Empleado) => emp.sucursal?.nombre ?? t.employees.unassignedBranch
   const displayDate = (value?: string | null) => (value ? formatDate(value, 'dd/MM/yyyy') : t.common.noRecord)
   const displayPhone = (value?: string | null) => (value?.trim() ? value : t.common.noRecord)
   const displaySalary = (value?: number | null) => (value != null ? formatCurrency(value) : t.common.noRecord)
@@ -323,6 +353,16 @@ export default function EmpleadosPage() {
       header: () => <span className="uppercase">{t.common.position}</span>,
       cell: ({ row }) => (
         <span className="text-sm">{displayPuesto(row.original)}</span>
+      ),
+    },
+    {
+      id: 'sucursal',
+      accessorFn: (row) => row.sucursal?.nombre ?? t.employees.unassignedBranch,
+      header: () => <span className="uppercase">{t.common.branch}</span>,
+      cell: ({ row }) => (
+        <span className={row.original.sucursalId ? 'text-sm' : 'text-sm text-muted-foreground'}>
+          {displaySucursal(row.original)}
+        </span>
       ),
     },
     ...(canViewSalary ? [salaryColumn] : []),
@@ -479,7 +519,7 @@ export default function EmpleadosPage() {
                 {t.employees.clearFilters}
               </Button>
             </div>
-            <div className={`grid grid-cols-1 gap-4 ${canViewSalary ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
+            <div className={`grid grid-cols-1 gap-4 ${canViewSalary ? 'md:grid-cols-2 xl:grid-cols-4' : 'md:grid-cols-3'}`}>
               <div className="space-y-1.5">
                 <Label htmlFor="filter-status">{t.employees.filterStatus}</Label>
                 <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as StatusFilter)}>
@@ -490,6 +530,26 @@ export default function EmpleadosPage() {
                     <SelectItem value="all">{t.employees.allStatuses}</SelectItem>
                     <SelectItem value="active">{t.common.active}</SelectItem>
                     <SelectItem value="inactive">{t.common.inactive}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="filter-branch">{t.employees.filterBranch}</Label>
+                <Select value={branchFilter} onValueChange={setBranchFilter}>
+                  <SelectTrigger id="filter-branch">
+                    <SelectValue placeholder={t.employees.filterBranch} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">{t.employees.allBranches}</SelectItem>
+                    <SelectItem value={UNASSIGNED_BRANCH}>
+                      {t.employees.unassignedBranch}
+                    </SelectItem>
+                    {sucursales.map((sucursal) => (
+                      <SelectItem key={sucursal.id} value={sucursal.id}>
+                        {sucursal.nombre}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -657,6 +717,40 @@ export default function EmpleadosPage() {
                 )}
               />
               {errors.positionId && <p className="text-xs text-red-500">{errors.positionId.message}</p>}
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="sucursalId">{t.common.branch}</Label>
+              <Controller
+                control={control}
+                name="sucursalId"
+                render={({ field }) => (
+                  <Select value={field.value} onValueChange={field.onChange} disabled={branchesLoading}>
+                    <SelectTrigger id="sucursalId">
+                      <SelectValue placeholder={branchesLoading ? t.common.loading : t.employees.selectBranch} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={UNASSIGNED_BRANCH}>
+                        {t.employees.unassignedBranch}
+                      </SelectItem>
+                      {editing?.sucursal &&
+                      !sucursales.some((sucursal) => sucursal.id === editing.sucursal?.id) ? (
+                        <SelectItem value={editing.sucursal.id}>
+                          {editing.sucursal.nombre}
+                        </SelectItem>
+                      ) : null}
+                      {sucursales.map((sucursal) => (
+                        <SelectItem key={sucursal.id} value={sucursal.id}>
+                          {sucursal.nombre}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+              <p className="text-xs text-muted-foreground">
+                {t.employees.branchAssignmentReminderDescription}
+              </p>
             </div>
 
             <div className="space-y-1.5">

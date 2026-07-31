@@ -1,6 +1,7 @@
 "use client";
 
-import { ColumnDef, DataTable } from "@cosmetics/ui";
+import { useEffect, useRef } from "react";
+import { baseToast, ColumnDef, DataTable } from "@cosmetics/ui";
 import {
   Cell,
   Pie,
@@ -64,6 +65,29 @@ export default function DesgloseSucursalPage() {
   const branches = data.branchBreakdown.branches;
   const employeeLines = data.branchBreakdown.employeeLines;
   const run = data.selectedRun;
+  const notifiedRunId = useRef<string | null>(null);
+  const unassignedEmployeeCount = new Set(
+    employeeLines
+      .filter((line) => line.branchName === "SIN SUCURSAL ASIGNADA")
+      .map((line) => line.employeeId),
+  ).size;
+
+  useEffect(() => {
+    if (
+      !run ||
+      unassignedEmployeeCount === 0 ||
+      notifiedRunId.current === run.id
+    ) {
+      return;
+    }
+    notifiedRunId.current = run.id;
+    baseToast.add({
+      type: "warning",
+      title: "Empleados sin sucursal asignada",
+      description: `${unassignedEmployeeCount} ${unassignedEmployeeCount === 1 ? "empleado puede" : "empleados pueden"} actualizarse desde el formulario de empleados en Envelope.`,
+    });
+  }, [run, unassignedEmployeeCount]);
+
   const totalCost = sumBy(branches, (branch) => branch.payrollCost);
   const totalSales = sumBy(branches, (branch) => branch.salesWithVat);
   const totalEmployees = new Set(employeeLines.map((line) => line.employeeId))
@@ -296,7 +320,7 @@ export default function DesgloseSucursalPage() {
         <div>
           <h1 className="page-title">Reporte por sucursal</h1>
           <p className="mt-1 text-sm text-[var(--text-muted)]">
-            Distribución exacta de ventas y costo para la corrida seleccionada.
+            Ventas y costo agrupados por la sucursal asignada a cada empleado.
           </p>
         </div>
         <ReportExportButtons
@@ -311,13 +335,13 @@ export default function DesgloseSucursalPage() {
           tone="gold"
         />
         <MetricCard
-          label="Ventas asignadas"
+          label="Ventas agrupadas"
           value={formatCurrency(totalSales)}
           tone="sage"
         />
         <MetricCard label="Empleados" value={`${totalEmployees}`} tone="blue" />
       </div>
-      <SectionCard eyebrow="Detalle" title="EMPLEADO Y PUNTO DE VENTA">
+      <SectionCard eyebrow="Detalle" title="EMPLEADO Y SUCURSAL ASIGNADA">
         <DataTable
           columns={employeeColumns}
           data={employeeLines}
@@ -326,7 +350,7 @@ export default function DesgloseSucursalPage() {
           pageSize={10}
         />
       </SectionCard>
-      <SectionCard eyebrow="Resumen" title="COSTO POR PUNTO DE VENTA">
+      <SectionCard eyebrow="Resumen" title="COSTO POR SUCURSAL ASIGNADA">
         <DataTable
           columns={branchColumns}
           data={branches}
@@ -350,22 +374,28 @@ export default function DesgloseSucursalPage() {
                 {costDistribution.map((item) => (
                   <li
                     key={item.name}
-                    className="min-w-0 border-l-2 py-0.5 pl-3"
-                    style={{ borderLeftColor: item.color }}
+                    className="flex min-w-0 gap-2 py-0.5"
                   >
-                    <p
-                      className="truncate text-xs font-medium text-[var(--text-muted)]"
-                      title={item.name}
-                    >
-                      {item.name}
-                    </p>
-                    <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                      <span className="number-display text-sm">
-                        {formatCurrency(item.value)}
-                      </span>
-                      <span className="text-xs tabular-nums text-[var(--text-muted)]">
-                        {formatPercent(totalCost ? item.value / totalCost : 0)}
-                      </span>
+                    <span
+                      className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full"
+                      style={{ backgroundColor: item.color }}
+                      aria-hidden="true"
+                    />
+                    <div className="min-w-0">
+                      <p
+                        className="truncate text-xs font-medium text-[var(--text-muted)]"
+                        title={item.name}
+                      >
+                        {item.name}
+                      </p>
+                      <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                        <span className="number-display text-sm">
+                          {formatCurrency(item.value)}
+                        </span>
+                        <span className="text-xs tabular-nums text-[var(--text-muted)]">
+                          {formatPercent(totalCost ? item.value / totalCost : 0)}
+                        </span>
+                      </div>
                     </div>
                   </li>
                 ))}

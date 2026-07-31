@@ -455,7 +455,7 @@ router.get("/empleados", access.empleados, async (req, res) => {
     const data = await prisma.empleado.findMany({
       where: ownEmployeeId ? { id: ownEmployeeId } : undefined,
       orderBy: [{ activo: "desc" }, { nombreCompleto: "asc" }],
-      include: { bank: true, position: true },
+      include: { bank: true, position: true, sucursal: true },
     });
     const salaryVisible = await canViewSalary(req);
     const response = data.map((empleado) =>
@@ -489,6 +489,7 @@ router.post("/empleados", access.empleados, async (req, res) => {
       metaIndividual,
       bankId,
       positionId,
+      sucursalId,
       sueldo,
       fechaNacimiento,
       numeroTelefono,
@@ -502,6 +503,7 @@ router.post("/empleados", access.empleados, async (req, res) => {
       metaIndividual: number;
       bankId?: string;
       positionId?: string;
+      sucursalId?: string | null;
       sueldo?: number | null;
       fechaNacimiento?: string | null;
       numeroTelefono?: string | null;
@@ -551,6 +553,22 @@ router.post("/empleados", access.empleados, async (req, res) => {
       finalPositionId = position.id;
     }
 
+    let finalSucursalId: string | null = null;
+    if (sucursalId) {
+      const sucursal = await prisma.sucursal.findFirst({
+        where: { id: sucursalId, activa: true },
+      });
+      if (!sucursal) {
+        res.status(400).json({
+          success: false,
+          data: null,
+          message: "Sucursal no encontrada o inactiva",
+        });
+        return;
+      }
+      finalSucursalId = sucursal.id;
+    }
+
     const nombreCompleto = [nombres, apellidoPaterno, apellidoMaterno]
       .filter(Boolean)
       .join(" ");
@@ -572,8 +590,9 @@ router.post("/empleados", access.empleados, async (req, res) => {
         ...(numeroTelefono !== undefined && { numeroTelefono }),
         ...(finalBankId !== undefined && { bankId: finalBankId }),
         ...(finalPositionId !== undefined && { positionId: finalPositionId }),
+        sucursalId: finalSucursalId,
       },
-      include: { bank: true, position: true },
+      include: { bank: true, position: true, sucursal: true },
     });
     const salaryVisible = await canViewSalary(req);
     res.status(201).json({
@@ -605,6 +624,7 @@ router.put("/empleados/:id", access.empleados, async (req, res) => {
       activo,
       bankId,
       positionId,
+      sucursalId,
       sueldo,
       fechaNacimiento,
       numeroTelefono,
@@ -619,6 +639,7 @@ router.put("/empleados/:id", access.empleados, async (req, res) => {
       activo: boolean;
       bankId: string;
       positionId: string;
+      sucursalId: string | null;
       sueldo: number | null;
       fechaNacimiento: string | null;
       numeroTelefono: string | null;
@@ -679,6 +700,29 @@ router.put("/empleados/:id", access.empleados, async (req, res) => {
       positionUpdate = { puesto };
     }
 
+    let sucursalUpdate: { sucursalId?: string | null } = {};
+    if (sucursalId !== undefined) {
+      if (sucursalId === null) {
+        sucursalUpdate = { sucursalId: null };
+      } else {
+        const sucursal = await prisma.sucursal.findUnique({
+          where: { id: sucursalId },
+        });
+        if (
+          !sucursal ||
+          (!sucursal.activa && sucursal.id !== existing.sucursalId)
+        ) {
+          res.status(400).json({
+            success: false,
+            data: null,
+            message: "Sucursal no encontrada o inactiva",
+          });
+          return;
+        }
+        sucursalUpdate = { sucursalId: sucursal.id };
+      }
+    }
+
     const n = nombres ?? existing.nombres;
     const ap = apellidoPaterno ?? existing.apellidoPaterno;
     const am = apellidoMaterno ?? existing.apellidoMaterno;
@@ -694,6 +738,7 @@ router.put("/empleados/:id", access.empleados, async (req, res) => {
         ...bankUpdate,
         ...(numeroCuenta !== undefined && { numeroCuenta }),
         ...positionUpdate,
+        ...sucursalUpdate,
         ...(metaIndividual !== undefined && { metaIndividual }),
         ...(normalizedFechaNacimiento !== undefined && {
           fechaNacimiento: normalizedFechaNacimiento,
@@ -702,7 +747,7 @@ router.put("/empleados/:id", access.empleados, async (req, res) => {
         ...(numeroTelefono !== undefined && { numeroTelefono }),
         ...(activo !== undefined && { activo }),
       },
-      include: { bank: true, position: true },
+      include: { bank: true, position: true, sucursal: true },
     });
     const salaryVisible = await canViewSalary(req);
     res.json({

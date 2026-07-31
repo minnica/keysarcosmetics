@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Toaster } from "@cosmetics/ui";
+import { BaseToaster, Toaster } from "@cosmetics/ui";
 import { SessionProvider } from "@/lib/session";
 import "./globals.css";
 
@@ -35,6 +35,7 @@ export default function RootLayout({
       </head>
       <body className="bg-[var(--bg-primary)] font-sans text-[var(--text-primary)] antialiased">
         <SessionProvider>{children}</SessionProvider>
+        <BaseToaster />
         <Toaster
           position="bottom-center"
           richColors

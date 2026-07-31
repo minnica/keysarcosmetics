@@ -33,8 +33,6 @@ export interface CalculationScheme {
 }
 
 export interface CalculationSale {
-  branchId: string | null;
-  branchName: string;
   amount: Prisma.Decimal.Value;
 }
 
@@ -46,8 +44,6 @@ export interface CalculationMovement {
     | "FINE"
     | "PER_DIEM"
     | "SUPPLIES";
-  branchId: string | null;
-  branchName: string;
   amount: Prisma.Decimal.Value;
   commissionable: boolean;
 }
@@ -55,6 +51,8 @@ export interface CalculationMovement {
 export interface CalculationEmployee {
   employeeId: string;
   employeeName: string;
+  branchId: string | null;
+  branchName: string;
   positionName: string | null;
   bankName: string | null;
   accountNumber: string | null;
@@ -186,30 +184,6 @@ function addToBranch(
   return created;
 }
 
-function allocateMoney(
-  total: Prisma.Decimal,
-  weightedBranches: Array<{ key: string; weight: Prisma.Decimal }>,
-): Map<string, Prisma.Decimal> {
-  const result = new Map<string, Prisma.Decimal>();
-  if (total.isZero() || weightedBranches.length === 0) return result;
-  const weightTotal = weightedBranches.reduce(
-    (sum, item) => sum.plus(item.weight),
-    ZERO,
-  );
-  if (weightTotal.isZero()) return result;
-
-  let allocated = ZERO;
-  weightedBranches.forEach((item, index) => {
-    const amount =
-      index === weightedBranches.length - 1
-        ? total.minus(allocated)
-        : money(total.times(item.weight).dividedBy(weightTotal));
-    result.set(item.key, amount);
-    allocated = allocated.plus(amount);
-  });
-  return result;
-}
-
 function warning(
   code: PayrollWarningCode,
   message: string,
@@ -235,11 +209,17 @@ export function calculatePayroll(input: CalculationInput): CalculationResult {
   const lines = input.employees.map((employee): CalculatedPayrollLine => {
     const warnings: PayrollWarning[] = [];
     const branches = new Map<string, CalculatedBranchLine>();
+    const employeeBranch = addToBranch(
+      branches,
+      employee.branchId,
+      employee.branchName,
+    );
 
     for (const sale of employee.sales) {
-      const branch = addToBranch(branches, sale.branchId, sale.branchName);
-      branch.salesWithVat = branch.salesWithVat.plus(decimal(sale.amount));
-      branch.salesWithoutVat = branch.salesWithoutVat.plus(
+      employeeBranch.salesWithVat = employeeBranch.salesWithVat.plus(
+        decimal(sale.amount),
+      );
+      employeeBranch.salesWithoutVat = employeeBranch.salesWithoutVat.plus(
         decimal(sale.amount).dividedBy(divisor),
       );
     }
@@ -322,26 +302,25 @@ export function calculatePayroll(input: CalculationInput): CalculationResult {
         movementTotals[movement.kind] =
           movementTotals[movement.kind].plus(amount);
       }
-      const branch = addToBranch(
-        branches,
-        movement.branchId,
-        movement.branchName,
-      );
       if (
         movement.commissionable ||
         movement.kind === "FINE" ||
         movement.kind === "ADJUSTMENT_NEGATIVE"
       ) {
-        if (movement.kind === "BONUS") branch.bonus = branch.bonus.plus(amount);
-        if (movement.kind === "FINE") branch.fine = branch.fine.plus(amount);
+        if (movement.kind === "BONUS")
+          employeeBranch.bonus = employeeBranch.bonus.plus(amount);
+        if (movement.kind === "FINE")
+          employeeBranch.fine = employeeBranch.fine.plus(amount);
         if (movement.kind === "ADJUSTMENT_POSITIVE")
-          branch.adjustmentPositive = branch.adjustmentPositive.plus(amount);
+          employeeBranch.adjustmentPositive =
+            employeeBranch.adjustmentPositive.plus(amount);
         if (movement.kind === "ADJUSTMENT_NEGATIVE")
-          branch.adjustmentNegative = branch.adjustmentNegative.plus(amount);
+          employeeBranch.adjustmentNegative =
+            employeeBranch.adjustmentNegative.plus(amount);
         if (movement.kind === "PER_DIEM")
-          branch.perDiem = branch.perDiem.plus(amount);
+          employeeBranch.perDiem = employeeBranch.perDiem.plus(amount);
         if (movement.kind === "SUPPLIES")
-          branch.supplies = branch.supplies.plus(amount);
+          employeeBranch.supplies = employeeBranch.supplies.plus(amount);
       }
     }
 
@@ -367,30 +346,10 @@ export function calculatePayroll(input: CalculationInput): CalculationResult {
       );
     }
 
-    const salesBranches = [...branches.entries()]
-      .filter(([, branch]) => branch.salesWithVat.greaterThan(0))
-      .map(([key, branch]) => ({ key, weight: branch.salesWithVat }));
-    const corporate =
-      salesBranches.length === 0
-        ? addToBranch(branches, null, "CORPORATIVO")
-        : null;
-    const weights =
-      salesBranches.length > 0
-        ? salesBranches
-        : [{ key: "label:CORPORATIVO", weight: new D(1) }];
-
-    for (const [key, amount] of allocateMoney(commission, weights)) {
-      const branch = branches.get(key) ?? corporate;
-      if (branch) branch.commission = branch.commission.plus(amount);
-    }
-    for (const [key, amount] of allocateMoney(salaryPayment, weights)) {
-      const branch = branches.get(key) ?? corporate;
-      if (branch) branch.salaryPayment = branch.salaryPayment.plus(amount);
-    }
-    for (const [key, amount] of allocateMoney(loanPayment, weights)) {
-      const branch = branches.get(key) ?? corporate;
-      if (branch) branch.loanPayment = branch.loanPayment.plus(amount);
-    }
+    employeeBranch.commission = employeeBranch.commission.plus(commission);
+    employeeBranch.salaryPayment =
+      employeeBranch.salaryPayment.plus(salaryPayment);
+    employeeBranch.loanPayment = employeeBranch.loanPayment.plus(loanPayment);
 
     const branchLines = [...branches.values()].map((branch) => ({
       ...branch,

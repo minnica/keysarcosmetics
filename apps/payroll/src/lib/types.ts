@@ -25,6 +25,8 @@ export interface PayrollEmployee {
   account: string;
   salary: number | null;
   phone: string | null;
+  branchId: string | null;
+  branchName: string;
 }
 
 export interface PayrollBranch {

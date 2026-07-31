@@ -1,6 +1,6 @@
 # Payroll — pendientes de habilitación y decisiones acordadas
 
-Última actualización: 30 de julio de 2026.
+Última actualización: 31 de julio de 2026.
 
 Este documento registra lo que falta para habilitar Payroll por ambiente y consolida las preguntas y respuestas acordadas durante la planeación. No contiene contraseñas, tokens, URLs privadas ni valores de producción.
 
@@ -16,16 +16,17 @@ La implementación de aplicación, API, modelos y migración está terminada. Lo
 - Reporte por sucursal, exportaciones, recibos PDF y seguimiento de WhatsApp.
 - Backend `/api/payroll/*`, pruebas del motor y migración Prisma aditiva.
 
-La migración está preparada, pero no se ha aplicado a ninguna base productiva desde esta implementación.
+Las migraciones están preparadas, pero no se han aplicado a ninguna base productiva desde esta implementación.
 
 ## Pendientes obligatorios
 
 ### 1. Aplicar la migración primero en desarrollo
 
-Archivo:
+Archivos, en orden:
 
 ```text
 backend/api/prisma/migrations/20260730000000_add_payroll_models/migration.sql
+backend/api/prisma/migrations/20260731000000_add_employee_branch/migration.sql
 ```
 
 Antes de ejecutar:
@@ -39,6 +40,7 @@ Antes de ejecutar:
 Qué solventa:
 
 - Crea las tablas, enums, índices, relaciones y restricciones de Payroll.
+- Agrega la relación nullable `Empleado.sucursalId` sin modificar los empleados existentes.
 - Permite que `/api/payroll/*` persista catálogos, movimientos, corridas, préstamos y recibos.
 - Sin este paso, el frontend puede cargar, pero las llamadas de Payroll fallarán porque las tablas todavía no existen.
 
@@ -50,7 +52,7 @@ Aplicación Fly.io:
 cosmetics-api-dev
 ```
 
-Debe desplegarse después de la migración para publicar las rutas y el cliente Prisma nuevos.
+Debe desplegarse después de las migraciones para publicar las rutas y el cliente Prisma nuevos.
 
 Qué solventa:
 
@@ -95,6 +97,7 @@ Antes del primer pago real debe revisarse en Envelope la información de los emp
 - Banco.
 - Número de cuenta.
 - Teléfono para WhatsApp.
+- Sucursal laboral.
 - Puesto y estatus activo/inactivo.
 
 Efectos de datos faltantes:
@@ -106,6 +109,7 @@ Efectos de datos faltantes:
 | Banco                    | Bloquea marcar la corrida como pagada.             |
 | Cuenta bancaria          | Bloquea marcar la corrida como pagada.             |
 | Teléfono                 | Solo bloquea preparar el envío por WhatsApp.       |
+| Sucursal laboral         | Se agrupa como `SIN SUCURSAL ASIGNADA`.            |
 
 La revisión agregada realizada el 30 de julio de 2026 encontró 54 empleados activos: 31 sin sueldo, 51 sin teléfono, 2 sin banco y 9 con cuenta vacía. Son cifras de referencia y pueden cambiar; deben verificarse nuevamente antes del primer ciclo productivo. De los empleados activos con ventas recientes, 28 no tenían sueldo capturado.
 
@@ -221,7 +225,7 @@ No en esta primera implementación. Se acordó un guard global de `SUPER_ADMIN` 
 No. Los consume en lectura; la administración de empleados, bancos, puestos, sucursales y ventas permanece en Envelope.
 
 **¿Cuál es la sucursal base del empleado?**  
-No se asume ninguna, porque `Empleado` no tiene `sucursalId`. Las sucursales se derivan de las ventas del periodo.
+`Empleado.sucursalId`, administrado desde el formulario de empleados de Envelope. Es nullable para conservar registros existentes; cuando falta, Payroll agrupa el snapshot como `SIN SUCURSAL ASIGNADA`.
 
 **¿Qué ocurre con empleados inactivos?**  
 Se conservan en históricos y pueden entrar en una corrida si tuvieron actividad dentro del periodo. No aparecen para nuevas asignaciones operativas.
@@ -262,17 +266,17 @@ Para un empleado o esquema ya vigente, desde la siguiente quincena. Las versione
 
 ### Distribución por sucursal
 
-**¿Cómo se reparte sueldo, comisión y préstamo cuando hay ventas en varias sucursales?**  
-Proporcionalmente al importe vendido en cada sucursal.
+**¿Cómo se agrupan sueldo, comisión, préstamo y ventas cuando un empleado vende en varias sucursales?**
+Todos esos importes se agrupan en la sucursal laboral asignada al empleado. La sucursal propia de cada venta se conserva en Envelope, pero no sustituye la relación laboral.
 
 **¿Cómo se manejan los centavos residuales?**  
-Se asignan a la última sucursal para que la suma coincida exactamente con el total.
+Cada empleado genera una sola línea por su sucursal laboral, por lo que no existe reparto proporcional entre sucursales.
 
-**¿Qué pasa si no hubo ventas?**  
-Los importes no ligados a una sucursal se asignan a `CORPORATIVO`.
+**¿Qué pasa si no tiene sucursal asignada?**
+Los importes y ventas del empleado se agrupan en `SIN SUCURSAL ASIGNADA`.
 
-**¿Los movimientos usan esa distribución automática?**  
-No. Cada reparto de movimiento captura explícitamente empleado, monto, sucursal y si es pagable.
+**¿Los movimientos usan esa vinculación automática?**
+Sí. Cada reparto captura empleado, monto y si es pagable; la sucursal se deriva de `Empleado.sucursalId` y no se selecciona por separado.
 
 ### Catálogos y movimientos
 
@@ -350,7 +354,7 @@ No. Solo impide preparar WhatsApp para ese empleado.
 - [ ] Desplegar `cosmetics-api-dev`.
 - [ ] Verificar `NEXT_PUBLIC_API_URL` del Preview de Payroll.
 - [ ] Capturar catálogos, esquemas y asignaciones iniciales.
-- [ ] Corregir datos faltantes de empleados necesarios para el primer pago.
+- [ ] Corregir datos faltantes de empleados, incluida su sucursal laboral, antes del primer pago.
 - [ ] Ejecutar pruebas de aceptación completas en desarrollo.
 - [ ] Aprobar resultados contra el proceso actual.
 - [ ] Aplicar migración y desplegar backend/frontend en producción.

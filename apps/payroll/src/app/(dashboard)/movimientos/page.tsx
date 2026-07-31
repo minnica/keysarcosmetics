@@ -60,7 +60,6 @@ const KIND_OPTIONS: Array<{ value: MovementKind; label: string }> = [
 ];
 type AllocationForm = {
   employeeId: string;
-  branchId: string;
   amount: string;
   commissionable: boolean;
 };
@@ -84,7 +83,6 @@ const EMPTY_FORM: FormState = {
   allocations: [
     {
       employeeId: "",
-      branchId: "CORPORATIVO",
       amount: "0",
       commissionable: true,
     },
@@ -150,7 +148,6 @@ export default function MovimientosPage() {
       notes: movement.notes,
       allocations: movement.allocations.map((allocation) => ({
         employeeId: allocation.employeeId,
-        branchId: allocation.branchId ?? "CORPORATIVO",
         amount: String(allocation.amount),
         commissionable: allocation.commissionable,
       })),
@@ -189,7 +186,6 @@ export default function MovimientosPage() {
       const base = Math.floor((total / count) * 100) / 100;
       const allocations = Array.from({ length: count }, (_, index) => ({
         employeeId: current.allocations[index]?.employeeId ?? "",
-        branchId: current.allocations[index]?.branchId ?? "CORPORATIVO",
         amount: String(index === count - 1 ? total - base * (count - 1) : base),
         commissionable: current.allocations[index]?.commissionable ?? true,
       }));
@@ -245,7 +241,6 @@ export default function MovimientosPage() {
           notes: form.notes,
           allocations: form.allocations.map((item) => ({
             employeeId: item.employeeId,
-            branchId: item.branchId === "CORPORATIVO" ? null : item.branchId,
             amount: Number(item.amount),
             commissionable: item.commissionable,
           })),
@@ -636,10 +631,12 @@ export default function MovimientosPage() {
               {form.allocations.map((allocation, index) => (
                 <div
                   key={index}
-                  className="grid gap-3 rounded-lg border border-[var(--border-color)] p-3 md:grid-cols-[1fr_1fr_8rem_auto] md:items-end"
+                  className="grid gap-3 rounded-lg border border-[var(--border-color)] p-3 md:grid-cols-[minmax(0,1fr)_9rem_auto] md:items-end"
                 >
                   <div className="space-y-2">
-                    <Label>Empleado {index + 1}</Label>
+                    <Label htmlFor={`allocation-employee-${index}`}>
+                      Empleado {index + 1}
+                    </Label>
                     <Select
                       value={allocation.employeeId}
                       onValueChange={(value) =>
@@ -654,52 +651,22 @@ export default function MovimientosPage() {
                         }))
                       }
                     >
-                      <SelectTrigger>
+                      <SelectTrigger id={`allocation-employee-${index}`}>
                         <SelectValue placeholder="Empleado" />
                       </SelectTrigger>
                       <SelectContent>
                         {employees.map((employee) => (
                           <SelectItem key={employee.id} value={employee.id}>
-                            {employee.name} · {employee.position}
+                            {employee.name}
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label>Sucursal</Label>
-                    <Select
-                      value={allocation.branchId}
-                      onValueChange={(value) =>
-                        setForm((current) => ({
-                          ...current,
-                          allocations: current.allocations.map(
-                            (item, itemIndex) =>
-                              itemIndex === index
-                                ? { ...item, branchId: value }
-                                : item,
-                          ),
-                        }))
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="CORPORATIVO">CORPORATIVO</SelectItem>
-                        {data.branches
-                          .filter((branch) => branch.activa)
-                          .map((branch) => (
-                            <SelectItem key={branch.id} value={branch.id}>
-                              {branch.nombre}
-                            </SelectItem>
-                          ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Parte</Label>
+                    <Label htmlFor={`allocation-amount-${index}`}>Parte</Label>
                     <Input
+                      id={`allocation-amount-${index}`}
                       type="number"
                       min="0.01"
                       step="0.01"
@@ -717,7 +684,7 @@ export default function MovimientosPage() {
                       }
                     />
                   </div>
-                  <label className="flex items-center gap-2 pb-2 text-sm">
+                  <label className="flex min-h-9 items-center gap-2 text-sm">
                     <input
                       type="checkbox"
                       checked={allocation.commissionable}
