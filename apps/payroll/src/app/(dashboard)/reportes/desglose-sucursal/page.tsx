@@ -1,12 +1,63 @@
 "use client";
 
-import { ColumnDef, DataTable, ProgressKeysar } from "@cosmetics/ui";
+import { ColumnDef, DataTable } from "@cosmetics/ui";
+import {
+  Cell,
+  Pie,
+  PieChart,
+  type PieLabelRenderProps,
+  ResponsiveContainer,
+  Tooltip,
+} from "recharts";
 import { MetricCard } from "@/components/payroll/metric-card";
 import { ReportExportButtons } from "@/components/payroll/report-export-buttons";
 import { SectionCard } from "@/components/payroll/section-card";
 import { usePayrollData } from "@/components/payroll/payroll-data-context";
 import { formatCurrency, formatDate, formatPercent, sumBy } from "@/lib/format";
 import type { BranchBreakdownLine, EmployeeBranchBreakdown } from "@/lib/types";
+
+const COST_COLORS = [
+  "#648672",
+  "#c3a583",
+  "#6fc9db",
+  "#b97878",
+  "#8b7aa8",
+  "#d39a62",
+  "#8bb09b",
+  "#a88662",
+];
+
+const RADIAN = Math.PI / 180;
+
+function renderPercentageLabel({
+  cx,
+  cy,
+  midAngle,
+  innerRadius,
+  outerRadius,
+  percent = 0,
+}: PieLabelRenderProps) {
+  const radius =
+    Number(innerRadius) + (Number(outerRadius) - Number(innerRadius)) * 0.58;
+  const x = Number(cx) + radius * Math.cos(-Number(midAngle) * RADIAN);
+  const y = Number(cy) + radius * Math.sin(-Number(midAngle) * RADIAN);
+
+  return (
+    <text
+      x={x}
+      y={y}
+      fill="#ffffff"
+      stroke="rgba(0, 0, 0, 0.38)"
+      strokeWidth={2.5}
+      paintOrder="stroke"
+      textAnchor="middle"
+      dominantBaseline="central"
+      className="select-none font-sans text-xs font-bold sm:text-sm"
+    >
+      {formatPercent(percent)}
+    </text>
+  );
+}
 
 export default function DesgloseSucursalPage() {
   const data = usePayrollData();
@@ -17,6 +68,14 @@ export default function DesgloseSucursalPage() {
   const totalSales = sumBy(branches, (branch) => branch.salesWithVat);
   const totalEmployees = new Set(employeeLines.map((line) => line.employeeId))
     .size;
+  const costDistribution = branches
+    .filter((branch) => branch.payrollCost > 0)
+    .sort((left, right) => right.payrollCost - left.payrollCost)
+    .map((branch, index) => ({
+      name: branch.branchName,
+      value: branch.payrollCost,
+      color: COST_COLORS[index % COST_COLORS.length],
+    }));
 
   const branchColumns: ColumnDef<BranchBreakdownLine>[] = [
     {
@@ -277,22 +336,84 @@ export default function DesgloseSucursalPage() {
         />
       </SectionCard>
       <SectionCard eyebrow="Distribución" title="PESO DEL COSTO">
-        <div className="space-y-4">
-          {branches.map((branch) => (
-            <div
-              key={branch.branchName}
-              className="grid gap-2 md:grid-cols-[12rem_1fr_8rem] md:items-center"
-            >
-              <p className="font-medium">{branch.branchName}</p>
-              <ProgressKeysar
-                value={totalCost ? (branch.payrollCost / totalCost) * 100 : 0}
-              />
-              <p className="number-display text-right">
-                {formatCurrency(branch.payrollCost)}
+        {costDistribution.length ? (
+          <figure
+            className="space-y-6"
+            aria-label="Distribución porcentual del costo de nómina por sucursal"
+          >
+            <figcaption className="border-b border-[var(--border-color)] pb-5">
+              <p className="sr-only">
+                Cada segmento representa la participación de una sucursal en el
+                costo total de nómina.
               </p>
+              <ul className="grid grid-cols-2 gap-x-4 gap-y-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+                {costDistribution.map((item) => (
+                  <li
+                    key={item.name}
+                    className="min-w-0 border-l-2 py-0.5 pl-3"
+                    style={{ borderLeftColor: item.color }}
+                  >
+                    <p
+                      className="truncate text-xs font-medium text-[var(--text-muted)]"
+                      title={item.name}
+                    >
+                      {item.name}
+                    </p>
+                    <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                      <span className="number-display text-sm">
+                        {formatCurrency(item.value)}
+                      </span>
+                      <span className="text-xs tabular-nums text-[var(--text-muted)]">
+                        {formatPercent(totalCost ? item.value / totalCost : 0)}
+                      </span>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </figcaption>
+            <div className="mx-auto h-[22rem] w-full max-w-3xl sm:h-[30rem] lg:h-[34rem]">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={costDistribution}
+                    dataKey="value"
+                    nameKey="name"
+                    cx="50%"
+                    cy="50%"
+                    outerRadius="88%"
+                    paddingAngle={2}
+                    stroke="var(--bg-card)"
+                    strokeWidth={2}
+                    labelLine={false}
+                    label={renderPercentageLabel}
+                  >
+                    {costDistribution.map((item) => (
+                      <Cell key={item.name} fill={item.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    formatter={(value, name) => [
+                      formatCurrency(Number(value)),
+                      String(name),
+                    ]}
+                    contentStyle={{
+                      background: "var(--bg-card)",
+                      border: "1px solid var(--border-color)",
+                      borderRadius: "0.5rem",
+                      color: "var(--text-primary)",
+                      boxShadow: "var(--card-shadow)",
+                    }}
+                    itemStyle={{ color: "var(--text-primary)" }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
             </div>
-          ))}
-        </div>
+          </figure>
+        ) : (
+          <p className="py-10 text-center text-sm text-[var(--text-muted)]">
+            Sin costos asignados para mostrar la distribución.
+          </p>
+        )}
       </SectionCard>
     </div>
   );

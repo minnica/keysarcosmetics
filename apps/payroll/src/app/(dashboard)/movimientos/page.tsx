@@ -206,7 +206,7 @@ export default function MovimientosPage() {
       !Number.isFinite(total) ||
       total <= 0
     ) {
-      toast.error("Completa fecha, tipo, concepto y monto.");
+      toast.warning("Completa fecha, tipo, concepto y monto.");
       return;
     }
     if (
@@ -214,14 +214,14 @@ export default function MovimientosPage() {
         (item) => !item.employeeId || Number(item.amount) <= 0,
       )
     ) {
-      toast.error("Completa empleado y monto de cada participante.");
+      toast.warning("Completa empleado y monto de cada participante.");
       return;
     }
     if (
       new Set(form.allocations.map((item) => item.employeeId)).size !==
       form.allocations.length
     ) {
-      toast.error("No repitas participantes.");
+      toast.warning("No repitas participantes.");
       return;
     }
     const allocated = form.allocations.reduce(
@@ -229,7 +229,7 @@ export default function MovimientosPage() {
       0,
     );
     if (Math.round(allocated * 100) !== Math.round(total * 100)) {
-      toast.error("La distribución debe coincidir con el monto total.");
+      toast.warning("La distribución debe coincidir con el monto total.");
       return;
     }
     setSaving(true);
@@ -268,7 +268,7 @@ export default function MovimientosPage() {
         setEditingId(null);
         setForm({ ...EMPTY_FORM, date: today() });
         setFile(null);
-        toast.error(
+        toast.warning(
           `El movimiento quedó guardado, pero falló el comprobante: ${apiErrorMessage(cause)}`,
         );
       } else {

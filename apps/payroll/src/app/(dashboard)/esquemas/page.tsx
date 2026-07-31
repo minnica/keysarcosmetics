@@ -235,7 +235,7 @@ export default function EsquemasPage() {
       errors.effectiveFrom ||
       errors.ranges.some(hasRangeError)
     ) {
-      toast.error("Revisa los campos marcados antes de guardar el esquema.");
+      toast.warning("Revisa los campos marcados antes de guardar el esquema.");
       return;
     }
     const tiers = schemeForm.ranges.map((range, index) => ({
@@ -266,7 +266,7 @@ export default function EsquemasPage() {
       !assignmentForm.schemeId ||
       !assignmentForm.effectiveFrom
     ) {
-      toast.error("Completa empleado, esquema y vigencia.");
+      toast.warning("Completa empleado, esquema y vigencia.");
       return;
     }
     setSaving(true);

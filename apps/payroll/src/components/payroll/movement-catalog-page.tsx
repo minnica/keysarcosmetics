@@ -81,7 +81,7 @@ export function MovementCatalogPage({
   async function saveItem() {
     const amount = Number(form.amount);
     if (!form.name.trim() || !Number.isFinite(amount) || amount <= 0) {
-      toast.error(`Completa nombre y monto de ${singular.toLowerCase()}.`);
+      toast.warning(`Completa nombre y monto de ${singular.toLowerCase()}.`);
       return;
     }
     setSaving(true);

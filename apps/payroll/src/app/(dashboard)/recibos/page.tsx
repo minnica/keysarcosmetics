@@ -123,7 +123,7 @@ export default function RecibosPage() {
   async function send(receipt: PayrollReceipt) {
     const url = whatsappUrl(receipt);
     if (!url) {
-      toast.error("El empleado no tiene teléfono registrado.");
+      toast.warning("El empleado no tiene teléfono registrado.");
       return;
     }
     window.open(url, "_blank", "noopener,noreferrer");

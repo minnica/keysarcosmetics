@@ -35,7 +35,16 @@ export default function RootLayout({
       </head>
       <body className="bg-[var(--bg-primary)] font-sans text-[var(--text-primary)] antialiased">
         <SessionProvider>{children}</SessionProvider>
-        <Toaster position="bottom-center" />
+        <Toaster
+          position="bottom-center"
+          richColors
+          toastOptions={{
+            classNames: {
+              toast: "font-sans",
+              description: "opacity-80",
+            },
+          }}
+        />
       </body>
     </html>
   );

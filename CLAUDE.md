@@ -160,7 +160,7 @@ Componentes shadcn canónicos en `packages/ui/src/components/ui`:
 - Table, Dialog, Select, Progress, Popover
 - Calendar, DateRangePicker, Sheet, Tooltip, Separator, Sidebar
 - **AlertDialog** — diálogo de confirmación destructiva (botones de borrar)
-- **Sonner** — toasts con colores de marca (`#648672` green-olive, `#8bb09b` green-sage)
+- **Sonner** — toasts con variantes semánticas: verde para éxito, amarillo/ámbar para advertencias recuperables y rojo para errores reales. En `payroll`, las validaciones de formulario y bloqueos previos al guardado usan `toast.warning`; los fallos de API, persistencia o exportación usan `toast.error`.
 - **DataTable** — tabla canónica shadcn sobre `@tanstack/react-table`. Props: `columns: ColumnDef<T>[]`, `data: T[]`, `emptyMessage?: string`, `searchPlaceholder?: string`, `pageSize?: number` (default 20), `labels?: { records?: string; all?: string; results?: (count: number) => string }`. Incluye sorting por clic en header, globalFilter (search input), selector de filas por página (opciones: 10, 20, 50, 100, Todos) y pagination con controles prev/next (ocultos en modo Todos). Re-exporta también `ColumnDef` desde `@cosmetics/ui` — las apps no deben importar `@tanstack/react-table` directamente.
 
 `toast` helper re-exportado desde `@cosmetics/ui` (no importar `sonner` directamente en las apps).
