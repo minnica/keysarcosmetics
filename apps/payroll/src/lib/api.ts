@@ -8,6 +8,14 @@ export function apiErrorMessage(
   error: unknown,
   fallback = "No se pudo completar la operación.",
 ): string {
+  if (
+    typeof error === "object" &&
+    error &&
+    "code" in error &&
+    (error.code === "ECONNABORTED" || error.code === "ETIMEDOUT")
+  ) {
+    return "La operación tardó demasiado. Intenta nuevamente y espera a que termine.";
+  }
   if (typeof error === "object" && error && "response" in error) {
     const response = (error as { response?: { data?: { message?: string } } })
       .response;

@@ -322,6 +322,7 @@ La page `apps/payroll/src/app/(dashboard)/esquemas/page.tsx` guía la captura y 
 - Editar un esquema programa una nueva versión; no muta versiones usadas por corridas históricas.
 - La primera asignación de esquema a un empleado propone la quincena actual. Solo cuando el empleado ya tiene una asignación abierta se propone la siguiente quincena; no volver a usar la siguiente quincena como valor inicial indiscriminado porque deja la corrida actual sin esquema.
 - El backend rechaza asignaciones cuya fecha sea anterior a la primera versión vigente del esquema. Una corrida en borrador conserva su snapshot hasta presionar **Recalcular** después de corregir una asignación.
+- Crear, actualizar o recalcular una corrida usa en el cliente Payroll un timeout específico de 120 segundos porque el cálculo productivo puede superar los 15 segundos del cliente HTTP compartido. El botón **Recalcular** debe conservar estado de carga con spinner, texto `Recalculando...`, bloqueo de clics duplicados, `aria-busy` y un mensaje persistente `role="status"` que advierta que puede tardar hasta dos minutos; al terminar muestra éxito o error mediante toast. No invocar `runAction("recalculate")` directamente sin manejar la promesa.
 - Las reglas equivalentes siguen validadas en backend. No relajarlas: la UI debe automatizarlas y explicarlas.
 
 ### Documentación operativa de Payroll
