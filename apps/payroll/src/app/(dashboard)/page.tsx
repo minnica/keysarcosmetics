@@ -380,16 +380,6 @@ export default function DashboardPage() {
       ),
     },
     {
-      accessorKey: "salaryBase",
-      header: "SUELDO BASE",
-      meta: { align: "right" },
-      cell: ({ row }) => (
-        <div className="text-right">
-          {formatCurrency(row.original.salaryBase)}
-        </div>
-      ),
-    },
-    {
       accessorKey: "bonus",
       header: "BONO",
       meta: { align: "right" },
@@ -491,16 +481,6 @@ export default function DashboardPage() {
       cell: ({ row }) => (
         <div className="text-right tabular-nums">
           {formatCurrency(row.original.secondFortnightTotal)}
-        </div>
-      ),
-    },
-    {
-      accessorKey: "salaryPayment",
-      header: "SUELDO BASE",
-      meta: { align: "right" },
-      cell: ({ row }) => (
-        <div className="text-right tabular-nums">
-          {formatCurrency(row.original.salaryPayment)}
         </div>
       ),
     },

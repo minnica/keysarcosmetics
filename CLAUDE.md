@@ -304,6 +304,7 @@ La API cubre bootstrap de fuentes compartidas; CRUD de catálogos, esquemas/vers
 - Bloquea aprobación: ventas sin esquema/rango, pago total negativo o viáticos/insumos sin evidencia. Sueldo faltante es advertencia. Banco o cuenta faltante bloquean pago. Teléfono faltante bloquea solo la preparación de WhatsApp.
 - En la vista quincenal de Resumen, el bloque de atención combina las advertencias guardadas en cada línea con una comprobación visual del snapshot de sucursal. Si alguna `PayrollRunBranchLine` tiene `branchId = null`, incluye el pendiente `SUCURSAL` incluso en corridas históricas, sin modificar ni recalcular su snapshot. Para evitar paredes de texto, el bloque muestra por defecto únicamente el número de empleados, el total de pendientes y conteos por tipo (`ESQUEMA`, `SUELDO`, `TELÉFONO`, `SUCURSAL`, etc.); `Ver detalle por empleado` despliega una `DataTable` paginada con la cantidad y etiquetas breves de los datos faltantes de cada persona.
 - Préstamos y adelantos generan cuotas quincenales automáticas; el último pago absorbe el ajuste de centavos. Los estados históricos no se eliminan.
+- En Préstamos y adelantos, el usuario puede seleccionar cualquier día dentro de la primera quincena de cobro. El frontend normaliza la selección al inicio canónico del periodo: días 1–15 al día 1 y días 16–fin al día 16, que es el contrato enviado al motor de amortización.
 - Recibos se generan desde el snapshot pagado, se descargan en PDF y WhatsApp se abre mediante `wa.me`; el archivo se adjunta manualmente. Estados: `GENERATED`, `SENT`, `CONFIRMED`.
 
 ### Frontend operativo
@@ -326,6 +327,7 @@ La page `apps/payroll/src/app/(dashboard)/esquemas/page.tsx` guía la captura y 
 - Al agregar niveles, `Ventas desde` se calcula automáticamente como el límite anterior más `$0.01`. El usuario solo captura los cortes intermedios y el porcentaje de cada nivel.
 - Se permiten de 1 a 12 niveles. Los límites deben ser montos válidos y ascendentes; la automatización mantiene continuidad sin huecos ni traslapes.
 - El nombre es obligatorio, único y de máximo 80 caracteres. La vigencia debe comenzar el día 1 o 16 del mes.
+- Desactivar un esquema no elimina su nombre, versiones ni asignaciones históricas. Si se captura nuevamente el mismo nombre, la UI detecta el registro inactivo y ofrece reactivarlo con su configuración histórica mediante `PATCH /api/payroll/schemes/:id/reactivate`; no debe tratarlo como un duplicado activo ni crear otra identidad para el mismo esquema.
 - Los errores se muestran junto al campo, con `role="alert"`/`aria-invalid`, ejemplos y mensajes de recuperación. No volver a sustituirlos por un único toast genérico.
 - Editar un esquema programa una nueva versión; no muta versiones usadas por corridas históricas.
 - La primera asignación de esquema a un empleado propone la quincena actual. Solo cuando el empleado ya tiene una asignación abierta se propone la siguiente quincena; no volver a usar la siguiente quincena como valor inicial indiscriminado porque deja la corrida actual sin esquema.

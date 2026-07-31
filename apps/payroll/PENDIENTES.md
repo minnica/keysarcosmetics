@@ -11,7 +11,9 @@ La implementación de aplicación, API, modelos y migración está terminada. Lo
 - Autenticación real y acceso exclusivo para `SUPER_ADMIN`.
 - Lectura de empleados, bancos, puestos, sucursales y ventas existentes.
 - Catálogos, esquemas versionados y asignaciones con vigencia.
+- Reactivación de esquemas desactivados al volver a capturar el mismo nombre, conservando sus versiones y asignaciones históricas.
 - Movimientos, gastos, préstamos y cuotas quincenales.
+- Normalización de cualquier fecha elegida para la primera quincena de cobro al inicio canónico del periodo, día 1 o 16.
 - Corridas `DRAFT → APPROVED → PAID`, cancelación previa al pago y snapshots.
 - Resumen mensual calculado que consolida las dos corridas quincenales sin exigir que estén pagadas.
 - Reporte por sucursal, exportaciones, recibos PDF y seguimiento de WhatsApp.
@@ -317,6 +319,9 @@ Se descuentan del balance general de la corrida cuya quincena contiene la fecha 
 No. Al aprobarse quedan ligados a la corrida y congelados.
 
 ### Préstamos y adelantos
+
+**¿Qué pasa si selecciono un día intermedio o el último día de la primera quincena de cobro?**
+La interfaz identifica la quincena que contiene la fecha y guarda su inicio canónico. Del día 1 al 15 usa el día 1; del día 16 al cierre del mes usa el día 16. Así se genera siempre una secuencia de periodos completos.
 
 **¿Cómo se crean las cuotas?**  
 Automáticamente en quincenas consecutivas a partir de una fecha inicial día 1 o 16.

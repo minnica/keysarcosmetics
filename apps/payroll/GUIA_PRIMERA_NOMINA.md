@@ -93,6 +93,7 @@ Reglas importantes:
 - Después de `$14,999.99`, el siguiente rango comienza en `$15,000.00`.
 - El último rango debe quedar sin valor en **Hasta**.
 - La tasa se captura en decimal: `0.05` significa 5%, no `5`.
+- Si un esquema fue desactivado y se vuelve a escribir el mismo nombre, la pantalla permite reactivarlo con sus niveles y versiones anteriores. No es necesario cambiarle el nombre ni se pierde el historial.
 
 ## 3. Asignar el esquema a los empleados
 
@@ -229,10 +230,12 @@ Capturar:
 - Préstamo o adelanto de nómina.
 - Monto solicitado.
 - Número de pagos.
-- Primera quincena de cobro, iniciando día 1 o 16.
+- Primera quincena de cobro. Puede seleccionarse cualquier día dentro de la quincena; la pantalla lo normaliza automáticamente al día 1 para la primera mitad del mes o al día 16 para la segunda.
 - Notas.
 
 El sistema genera automáticamente las cuotas quincenales. Si el monto no se divide exactamente, la última cuota absorbe la diferencia de centavos.
+
+Por ejemplo, seleccionar el 30 de julio programa la primera cuota en la quincena del 16 al 31 de julio; internamente se guarda el 16 de julio como inicio del periodo.
 
 Para verificar este flujo, crear en desarrollo un importe fácil de identificar y confirmar que la primera cuota aparezca como descuento en la corrida correcta.
 

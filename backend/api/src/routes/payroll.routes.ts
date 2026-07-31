@@ -397,6 +397,23 @@ router.delete(
   }),
 );
 
+router.patch(
+  "/schemes/:id/reactivate",
+  asyncRoute(async (req, res) => {
+    const scheme = await prisma.commissionScheme.update({
+      where: { id: req.params["id"] },
+      data: { active: true },
+      include: {
+        versions: {
+          orderBy: { effectiveFrom: "desc" },
+          include: { tiers: { orderBy: { sortOrder: "asc" } } },
+        },
+      },
+    });
+    ok(res, scheme, "Esquema reactivado.");
+  }),
+);
+
 const assignmentSchema = z.object({
   employeeId: z.string().min(1),
   schemeId: z.string().min(1),

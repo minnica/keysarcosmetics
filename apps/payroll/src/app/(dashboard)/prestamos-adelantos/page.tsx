@@ -64,6 +64,11 @@ function nextFortnightStart() {
       : new Date(now.getFullYear(), now.getMonth() + 1, 1);
   return `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}-${String(next.getDate()).padStart(2, "0")}`;
 }
+function fortnightStartForDate(value: string): string {
+  const [year, month, day] = value.split("-").map(Number);
+  if (!year || !month || !day) return value;
+  return `${year}-${String(month).padStart(2, "0")}-${day <= 15 ? "01" : "16"}`;
+}
 const EMPTY: Form = {
   requestedAt: today(),
   employeeId: "",
@@ -116,6 +121,7 @@ export default function PrestamosPage() {
   async function save() {
     const amount = Number(form.requestedAmount),
       count = Number(form.installmentCount);
+    const firstPeriodStart = fortnightStartForDate(form.firstPeriodStart);
     if (
       !form.requestedAt ||
       !form.employeeId ||
@@ -130,7 +136,12 @@ export default function PrestamosPage() {
     setSaving(true);
     try {
       await data.saveLoan(
-        { ...form, requestedAmount: amount, installmentCount: count },
+        {
+          ...form,
+          firstPeriodStart,
+          requestedAmount: amount,
+          installmentCount: count,
+        },
         editingId ?? undefined,
       );
       setOpen(false);
@@ -473,17 +484,21 @@ export default function PrestamosPage() {
               <Input value={formatCurrency(suggestedInstallment)} disabled />
             </div>
             <div className="space-y-2 md:col-span-2">
-              <Label>Primera quincena</Label>
+              <Label>Primera quincena de cobro</Label>
               <DatePicker
                 value={form.firstPeriodStart}
                 onChange={(value) =>
                   setForm((current) => ({
                     ...current,
-                    firstPeriodStart: value,
+                    firstPeriodStart: fortnightStartForDate(value),
                   }))
                 }
-                placeholder="Día 1 o 16"
+                placeholder="Selecciona cualquier día de la quincena"
               />
+              <p className="text-xs text-[var(--text-muted)]">
+                Puedes elegir cualquier día; se usará el inicio de esa
+                quincena: día 1 o 16.
+              </p>
             </div>
             <div className="space-y-2 md:col-span-2">
               <Label>Notas</Label>

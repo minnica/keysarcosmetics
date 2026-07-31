@@ -353,6 +353,7 @@ interface PayrollDataValue {
     effectiveFrom: string;
     tiers: Array<{ fromAmount: number; toAmount: number | null; rate: number }>;
   }) => Promise<void>;
+  reactivateScheme: (id: string) => Promise<void>;
   removeScheme: (id: string) => Promise<void>;
   saveAssignment: (item: {
     employeeId: string;
@@ -636,6 +637,8 @@ export function PayrollDataProvider({
             ? api.put(`/api/payroll/schemes/${item.id}`, item)
             : api.post("/api/payroll/schemes", item),
         ),
+      reactivateScheme: async (id) =>
+        reload(() => api.patch(`/api/payroll/schemes/${id}/reactivate`)),
       removeScheme: async (id) =>
         reload(() => api.delete(`/api/payroll/schemes/${id}`)),
       saveAssignment: async (item) =>
