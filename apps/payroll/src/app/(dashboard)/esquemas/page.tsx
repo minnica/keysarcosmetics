@@ -165,7 +165,7 @@ export default function EsquemasPage() {
   const [assignmentForm, setAssignmentForm] = useState({
     employeeId: "",
     schemeId: "",
-    effectiveFrom: nextFortnight(),
+    effectiveFrom: currentFortnight(),
   });
   const [deleteScheme, setDeleteScheme] = useState<CommissionScheme | null>(
     null,
@@ -417,6 +417,11 @@ export default function EsquemasPage() {
       scheme.ranges.map((range) => range.rate),
     ),
   );
+  const selectedEmployeeHasOpenAssignment = data.assignments.some(
+    (assignment) =>
+      assignment.employeeId === assignmentForm.employeeId &&
+      !assignment.effectiveTo,
+  );
 
   return (
     <div className="space-y-6">
@@ -434,7 +439,7 @@ export default function EsquemasPage() {
               setAssignmentForm({
                 employeeId: "",
                 schemeId: "",
-                effectiveFrom: nextFortnight(),
+                effectiveFrom: currentFortnight(),
               });
               setAssignmentOpen(true);
             }}
@@ -828,7 +833,8 @@ export default function EsquemasPage() {
           <DialogHeader>
             <DialogTitle>Asignar esquema</DialogTitle>
             <DialogDescription>
-              Un cambio existente inicia desde la siguiente quincena.
+              La primera asignación puede iniciar en la quincena actual; un
+              cambio existente inicia en la siguiente.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -840,6 +846,13 @@ export default function EsquemasPage() {
                   setAssignmentForm((current) => ({
                     ...current,
                     employeeId: value,
+                    effectiveFrom: data.assignments.some(
+                      (assignment) =>
+                        assignment.employeeId === value &&
+                        !assignment.effectiveTo,
+                    )
+                      ? nextFortnight()
+                      : currentFortnight(),
                   }))
                 }
               >
@@ -893,6 +906,11 @@ export default function EsquemasPage() {
                   }))
                 }
               />
+              <p className="text-xs text-[var(--text-muted)]">
+                {selectedEmployeeHasOpenAssignment
+                  ? `Este empleado ya tiene una asignación vigente. El cambio puede iniciar desde ${formatDate(nextFortnight())}.`
+                  : `Para la nómina actual, conserva el inicio en ${formatDate(currentFortnight())} o selecciona una quincena anterior.`}
+              </p>
             </div>
           </div>
           <DialogFooter>

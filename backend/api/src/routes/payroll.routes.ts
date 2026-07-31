@@ -403,6 +403,19 @@ router.post(
     const input = assignmentSchema.parse(req.body);
     const effectiveFrom = parseDate(input.effectiveFrom);
     assertQuincenaStart(effectiveFrom);
+    const applicableScheme = await prisma.commissionScheme.findFirst({
+      where: {
+        id: input.schemeId,
+        active: true,
+        versions: { some: { effectiveFrom: { lte: effectiveFrom } } },
+      },
+      select: { id: true },
+    });
+    if (!applicableScheme) {
+      throw new Error(
+        "El esquema no tiene una versión vigente para la fecha de asignación.",
+      );
+    }
     const existing = await prisma.employeeCommissionAssignment.findFirst({
       where: { employeeId: input.employeeId, effectiveTo: null },
       orderBy: { effectiveFrom: "desc" },
