@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
+  AlertTriangle,
   CheckCircle2,
   CircleDollarSign,
   PlusCircle,
@@ -520,13 +521,16 @@ export default function DashboardPage() {
       {run && (
         <>
           {warningLines.length > 0 && (
-            <Card>
+            <Card className="border-amber-300 bg-amber-50/80 dark:border-amber-700 dark:bg-amber-950/30">
               <CardContent className="p-5">
-                <p className="font-semibold">Datos que requieren atención</p>
-                <div className="mt-3 space-y-2 text-sm text-[var(--text-muted)]">
+                <div className="flex items-center gap-2 text-amber-900 dark:text-amber-100">
+                  <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
+                  <p className="font-semibold">Datos que requieren atención</p>
+                </div>
+                <div className="mt-3 space-y-2 text-sm text-amber-950/75 dark:text-amber-50/75">
                   {warningLines.map((line) => (
                     <div key={line.id}>
-                      <span className="font-medium text-[var(--text-primary)]">
+                      <span className="font-medium text-amber-950 dark:text-amber-50">
                         {line.employeeName}:
                       </span>{" "}
                       {line.warnings.map((item) => item.message).join(" · ")}

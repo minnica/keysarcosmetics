@@ -109,7 +109,7 @@ export default function GastosPage() {
       !form.branchId ||
       amount <= 0
     ) {
-      toast.error(
+      toast.warning(
         "Completa fecha, concepto, categoría, centro de costo y monto.",
       );
       return;

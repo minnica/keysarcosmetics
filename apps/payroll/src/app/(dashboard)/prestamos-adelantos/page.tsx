@@ -124,7 +124,7 @@ export default function PrestamosPage() {
       !Number.isInteger(count) ||
       count < 1
     ) {
-      toast.error("Completa empleado, monto, pagos y primera quincena.");
+      toast.warning("Completa empleado, monto, pagos y primera quincena.");
       return;
     }
     setSaving(true);
