@@ -102,6 +102,8 @@ import {
   type ProfessionalRecord,
   type ResourceRecord,
   type ScheduleDay,
+  type ServiceSpecialHours,
+  type ServiceSpecialHoursMode,
   type ScheduledResourceRecord,
   type ServiceRecord,
   type SpecialDay,
@@ -128,6 +130,13 @@ const timeOptions = Array.from({ length: 48 }, (_, index) => {
     .toString()
     .padStart(2, "0");
   return `${hour}:${index % 2 === 0 ? "00" : "30"}`;
+});
+
+const createServiceSpecialHours = (): ServiceSpecialHours => ({
+  mode: "none",
+  rangeStart: "09:00",
+  rangeEnd: "13:00",
+  specificTimes: ["10:00"],
 });
 
 const sectionGroups: {
@@ -2156,7 +2165,7 @@ function SectionHeader({
         <h1 className="admin-page-title">{title}</h1>
         <p className="mt-2 max-w-3xl text-sm text-slate-500">{description}</p>
       </div>
-      {action ? <div className="shrink-0">{action}</div> : null}
+      {action ? <div className="section-header-action shrink-0">{action}</div> : null}
     </div>
   );
 }
@@ -3116,6 +3125,7 @@ function ServiceDialog({
   initialSessions,
   professionals,
   catalogServices,
+  resources,
   categories,
   onCreateCategory,
   onOpenChange,
@@ -3127,6 +3137,7 @@ function ServiceDialog({
   initialSessions?: number | undefined;
   professionals: ProfessionalRecord[];
   catalogServices: ServiceRecord[];
+  resources: ResourceRecord[];
   categories: string[];
   onCreateCategory: (category: string) => void;
   onOpenChange: (open: boolean) => void;
@@ -3149,6 +3160,13 @@ function ServiceDialog({
     alternativeNames: [],
     commissionValue: 0,
     commissionUnit: "%",
+    videoConference: false,
+    homeService: false,
+    priceIncludesTax: true,
+    allowMultipleClients: serviceType === "class",
+    maxClients: serviceType === "class" ? 8 : 2,
+    resourceIds: [],
+    specialHours: createServiceSpecialHours(),
     sessions: initialSessions ?? 1,
     capacity: 8,
     ...(serviceType === "package" ? { packageItems: [] } : {}),
@@ -3168,9 +3186,6 @@ function ServiceDialog({
   );
   const [resourceOpen, setResourceOpen] = useState(false);
   const [specialHoursOpen, setSpecialHoursOpen] = useState(false);
-  const [specialHourMode, setSpecialHourMode] = useState<
-    "none" | "range" | "specific"
-  >("none");
   const [availableCategories, setAvailableCategories] = useState(categories);
   const [categoryPopoverOpen, setCategoryPopoverOpen] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState("");
@@ -3184,6 +3199,19 @@ function ServiceDialog({
               professionalIds: [...service.professionalIds],
               commissionValue: service.commissionValue ?? 0,
               commissionUnit: service.commissionUnit ?? "%",
+              videoConference: service.videoConference ?? false,
+              homeService: service.homeService ?? false,
+              priceIncludesTax: service.priceIncludesTax ?? true,
+              allowMultipleClients:
+                service.allowMultipleClients ?? service.type === "class",
+              maxClients: service.maxClients ?? service.capacity ?? 2,
+              resourceIds: [...(service.resourceIds ?? [])],
+              specialHours: service.specialHours
+                ? {
+                    ...service.specialHours,
+                    specificTimes: [...service.specialHours.specificTimes],
+                  }
+                : createServiceSpecialHours(),
             }
           : {
               id: makeId("service"),
@@ -3202,6 +3230,13 @@ function ServiceDialog({
               alternativeNames: [],
               commissionValue: 0,
               commissionUnit: "%",
+              videoConference: false,
+              homeService: false,
+              priceIncludesTax: true,
+              allowMultipleClients: serviceType === "class",
+              maxClients: serviceType === "class" ? 8 : 2,
+              resourceIds: [],
+              specialHours: createServiceSpecialHours(),
               sessions: initialSessions ?? 1,
               capacity: 8,
               ...(serviceType === "package" ? { packageItems: [] } : {}),
@@ -3221,7 +3256,6 @@ function ServiceDialog({
       setTab("basic");
       setResourceOpen(false);
       setSpecialHoursOpen(false);
-      setSpecialHourMode("none");
       setCategoryPopoverOpen(false);
       setNewCategoryName("");
       setAlternativeNameInput("");
@@ -3232,6 +3266,9 @@ function ServiceDialog({
   }, [categories]);
   const update = (patch: Partial<ServiceRecord>) =>
     setDraft((current) => ({ ...current, ...patch }));
+  const specialHours = draft.specialHours ?? createServiceSpecialHours();
+  const updateSpecialHours = (patch: Partial<ServiceSpecialHours>) =>
+    update({ specialHours: { ...specialHours, ...patch } });
   const createCategory = () => {
     const category = newCategoryName.trim();
     if (!category) {
@@ -3312,32 +3349,32 @@ function ServiceDialog({
       cancelLabel="Cerrar"
       className="service-dialog-modal"
     >
-      {draft.type !== "add-on" ? (
       <Tabs
         items={[
           { id: "basic", label: "Datos básicos" },
           ...(draft.type === "class"
             ? [{ id: "schedule", label: "Horario de la clase" }]
             : []),
-          {
-            id: "website",
-            label: (
-              <span className="inline-flex items-center gap-2">
-                <Globe2 className="h-4 w-4" />
-                Sitio Web
-              </span>
-            ),
-          },
-          ...(draft.type === "package"
-            ? []
-            : [{ id: "advanced", label: "Opciones avanzadas" }]),
+          ...(draft.type !== "add-on"
+            ? [
+                {
+                  id: "website",
+                  label: (
+                    <span className="inline-flex items-center gap-2">
+                      <Globe2 className="h-4 w-4" />
+                      Sitio Web
+                    </span>
+                  ),
+                },
+              ]
+            : []),
+          { id: "advanced", label: "Opciones avanzadas" },
         ]}
         active={tab}
         onChange={(value) =>
           setTab(value as "basic" | "schedule" | "website" | "advanced")
         }
       />
-      ) : null}
       <div className="service-dialog-intro">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[#f0ebf6] text-[#7460a4]">
           <Sparkles className="h-5 w-5" />
@@ -3744,12 +3781,9 @@ function ServiceDialog({
               </p>
             </div>
             <Toggle
-              checked={false}
-              onChange={() =>
-                toast.info(
-                  "La modalidad se guardará en la siguiente versión del catálogo.",
-                )
-              }
+              checked={draft.videoConference ?? false}
+              label="Videoconferencia"
+              onChange={(checked) => update({ videoConference: checked })}
             />
           </div>
           <div className="admin-setting-row">
@@ -3757,7 +3791,11 @@ function ServiceDialog({
               <p className="font-medium">Este servicio se realiza a domicilio</p>
               <p className="admin-help">Permite ofrecerlo fuera del local.</p>
             </div>
-            <Toggle checked={false} onChange={() => undefined} />
+            <Toggle
+              checked={draft.homeService ?? false}
+              label="Servicio a domicilio"
+              onChange={(checked) => update({ homeService: checked })}
+            />
           </div>
           <div className="admin-setting-row">
             <div>
@@ -3766,9 +3804,13 @@ function ServiceDialog({
                 Indica cómo presentar el precio al cliente.
               </p>
             </div>
-            <Toggle checked onChange={() => undefined} />
+            <Toggle
+              checked={draft.priceIncludesTax ?? true}
+              label="Precio incluye IVA"
+              onChange={(checked) => update({ priceIncludesTax: checked })}
+            />
           </div>
-          <div className="admin-setting-row">
+          <div className="admin-setting-row service-multiple-client-row">
             <div>
               <p className="font-medium">Permitir dos o más clientes</p>
               <p className="admin-help">
@@ -3778,13 +3820,32 @@ function ServiceDialog({
             <div className="service-client-count-wrap">
               <Input
                 className="service-client-count admin-input"
+                type="number"
+                min={2}
+                aria-label="Cantidad máxima de clientes"
                 placeholder="Ingresa la cantidad de clientes"
-                disabled={draft.type !== "class"}
+                value={String(draft.maxClients ?? 2)}
+                disabled={!draft.allowMultipleClients}
+                onChange={(event) => {
+                  const maxClients = Math.max(2, Number(event.target.value) || 2);
+                  update({
+                    maxClients,
+                    ...(draft.type === "class" ? { capacity: maxClients } : {}),
+                  });
+                }}
               />
             </div>
             <Toggle
-              checked={draft.type === "class"}
-              onChange={() => undefined}
+              checked={draft.allowMultipleClients ?? false}
+              label="Permitir dos o más clientes"
+              onChange={(checked) =>
+                checked
+                  ? update({
+                      allowMultipleClients: true,
+                      maxClients: Math.max(2, draft.maxClients ?? 2),
+                    })
+                  : update({ allowMultipleClients: false })
+              }
             />
           </div>
           <div className="service-advanced-heading">
@@ -3835,14 +3896,37 @@ function ServiceDialog({
                 <div className="service-accordion-info">
                   <Info className="h-5 w-5 shrink-0" />
                   <span>
-                    Un recurso es un instrumento o herramienta necesaria para realizar un servicio. Ej: El servicio “Consulta básica” requiere del recurso “Box 1” para ser realizado. <a href="#service-resources-info">Más info aquí.</a>
+                    Selecciona los instrumentos o herramientas necesarios para realizar este servicio.
                   </span>
                 </div>
-                <div className="service-empty-state">
-                  <Search className="h-12 w-12" />
-                  <strong>No hay recursos creados.</strong>
-                  <span>Para saber más sobre esta funcionalidad, <a href="#service-resources-info">haz clic aquí</a></span>
-                </div>
+                {resources.length > 0 ? (
+                  <div className="service-resource-list">
+                    {resources.map((resource) => (
+                      <CheckRow
+                        key={resource.id}
+                        checked={(draft.resourceIds ?? []).includes(resource.id)}
+                        onChange={(checked) =>
+                          update({
+                            resourceIds: checked
+                              ? [...(draft.resourceIds ?? []), resource.id]
+                              : (draft.resourceIds ?? []).filter((id) => id !== resource.id),
+                          })
+                        }
+                      >
+                        <span className="service-resource-option">
+                          <strong>{resource.name}</strong>
+                          <small>{resource.category}</small>
+                        </span>
+                      </CheckRow>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="service-empty-state">
+                    <Search className="h-12 w-12" />
+                    <strong>No hay recursos creados.</strong>
+                    <span>Créalo desde Administración &gt; Recursos para vincularlo aquí.</span>
+                  </div>
+                )}
               </div>
             ) : null}
           </div>
@@ -3879,30 +3963,81 @@ function ServiceDialog({
                         type="radio"
                         name="special-hour-mode"
                         value={value}
-                        checked={specialHourMode === value}
-                        onChange={() => setSpecialHourMode(value as "none" | "range" | "specific")}
+                        checked={specialHours.mode === value}
+                        onChange={() =>
+                          updateSpecialHours({
+                            mode: value as ServiceSpecialHoursMode,
+                          })
+                        }
                       />
                       <span>{label}</span>
                     </label>
                   ))}
                 </div>
+                {specialHours.mode === "range" ? (
+                  <div className="service-hours-range-grid">
+                    <div className="space-y-2">
+                      <Label htmlFor="special-hours-start">Desde</Label>
+                      <select
+                        id="special-hours-start"
+                        className="admin-select"
+                        value={specialHours.rangeStart}
+                        onChange={(event) =>
+                          updateSpecialHours({ rangeStart: event.target.value })
+                        }
+                      >
+                        {timeOptions.map((time) => (
+                          <option key={time} value={time}>{time}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="special-hours-end">Hasta</Label>
+                      <select
+                        id="special-hours-end"
+                        className="admin-select"
+                        value={specialHours.rangeEnd}
+                        onChange={(event) =>
+                          updateSpecialHours({ rangeEnd: event.target.value })
+                        }
+                      >
+                        {timeOptions.map((time) => (
+                          <option key={time} value={time}>{time}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                ) : null}
+                {specialHours.mode === "specific" ? (
+                  <div className="service-hours-specific">
+                    <p className="admin-help">
+                      Selecciona las horas exactas en las que se puede reservar.
+                    </p>
+                    <div className="service-hours-time-grid">
+                      {timeOptions.map((time) => (
+                        <label key={time} className="service-time-option">
+                          <input
+                            type="checkbox"
+                            checked={specialHours.specificTimes.includes(time)}
+                            onChange={(event) =>
+                              updateSpecialHours({
+                                specificTimes: event.target.checked
+                                  ? [...specialHours.specificTimes, time]
+                                  : specialHours.specificTimes.filter(
+                                      (current) => current !== time,
+                                    ),
+                              })
+                            }
+                          />
+                          <span>{time}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
               </div>
             ) : null}
           </div>
-          <div className="service-advanced-collapse">
-            <strong>Se necesita un recurso para realizar el servicio</strong>
-            <span>Si el servicio necesita un recurso, selecciónalo desde Recursos.</span>
-            <ChevronDown className="h-4 w-4" />
-          </div>
-          <div className="service-advanced-collapse">
-            <strong>El servicio se realiza en un horario especial</strong>
-            <span>Puedes definir un horario especial para realizar este servicio.</span>
-            <ChevronDown className="h-4 w-4" />
-          </div>
-          <InfoBanner icon={<Sparkles className="h-5 w-5" />}>
-            Los recursos necesarios se podrán vincular desde Administración &gt;
-            Recursos.
-          </InfoBanner>
         </div>
       )}
     </ModalShell>
@@ -4118,12 +4253,14 @@ function ServicesSection({
   services,
   setServices,
   professionals,
+  resources,
 }: {
   services: ServiceRecord[];
   setServices: (
     value: ServiceRecord[] | ((current: ServiceRecord[]) => ServiceRecord[]),
   ) => void;
   professionals: ProfessionalRecord[];
+  resources: ResourceRecord[];
 }) {
   const [tab, setTab] = useState<ServiceRecord["type"]>("service");
   const [search, setSearch] = useState("");
@@ -4498,6 +4635,7 @@ function ServicesSection({
         initialSessions={newServiceSessions}
         professionals={professionals}
         catalogServices={services}
+        resources={resources}
         categories={categories}
         onCreateCategory={(category) =>
           setCategories((current) =>
@@ -4605,6 +4743,9 @@ function CommissionDialog({
 }) {
   const [value, setValue] = useState("0");
   const [unit, setUnit] = useState<"$" | "%">("%");
+  const commissionableServices = services.filter(
+    (service) => service.type !== "add-on",
+  );
   useEffect(() => {
     if (open) {
       setValue(String(record?.value ?? 10));
@@ -4618,8 +4759,11 @@ function CommissionDialog({
       title={
         record?.professionalId
           ? `Comisiones de ${record.name}`
-          : "Comisión por defecto"
+          : record?.id === "default"
+            ? "Comisión por defecto"
+            : `Comisión de ${record?.name ?? "servicio"}`
       }
+      className="commission-dialog"
       onSave={() => {
         onSave({
           ...(record ?? { id: makeId("commission"), name: "Por defecto" }),
@@ -4630,11 +4774,12 @@ function CommissionDialog({
       }}
       wide
     >
-      <div className="space-y-5">
-        {record?.professionalId ? (
+      <div className="commission-dialog-content">
+        {record && (record.professionalId || record.id !== "default") ? (
           <InfoBanner icon={<WalletCards className="h-5 w-5" />}>
-            Puedes definir una comisión específica para cada servicio de este
-            profesional.
+            {record?.professionalId
+              ? "Puedes definir una comisión específica para cada servicio de este profesional."
+              : "Puedes definir una comisión específica para este servicio."}
           </InfoBanner>
         ) : (
           <p className="text-sm text-slate-500">
@@ -4642,7 +4787,7 @@ function CommissionDialog({
             servicios.
           </p>
         )}
-        <div className="admin-form-grid sm:grid-cols-[1fr_120px]">
+        <div className="commission-settings-grid">
           <Field
             id="commission-value"
             label="Comisión"
@@ -4662,21 +4807,20 @@ function CommissionDialog({
           />
         </div>
         {record?.professionalId ? (
-          <div className="grid gap-2 md:grid-cols-2">
-            {services
-              .filter((service) => service.type === "service")
-              .map((service) => (
-                <div
-                  key={service.id}
-                  className="flex items-center justify-between rounded-2xl border border-[#eee7e2] p-3 text-sm"
-                >
-                  <span>{service.name}</span>
-                  <span className="text-slate-400">
-                    {value}
-                    {unit}
-                  </span>
-                </div>
-              ))}
+          <div className="commission-service-grid" role="list">
+            {commissionableServices.map((service) => (
+              <div
+                key={service.id}
+                className="commission-service-card"
+                role="listitem"
+              >
+                <span className="commission-service-name">{service.name}</span>
+                <span className="commission-service-value">
+                  {value}
+                  {unit}
+                </span>
+              </div>
+            ))}
           </div>
         ) : null}
       </div>
@@ -4691,85 +4835,182 @@ function CommissionsSection({
   professionals: ProfessionalRecord[];
   services: ServiceRecord[];
 }) {
-  const [tab, setTab] = useState<"services" | "products">("services");
+  const [tab, setTab] = useState<"services" | "plans" | "products">(
+    "services",
+  );
   const [records, setRecords] =
     useState<CommissionRecord[]>(initialCommissions);
+  const [serviceRecords, setServiceRecords] = useState<CommissionRecord[]>(
+    () =>
+      services
+        .filter((service) => service.type !== "add-on")
+        .map((service) => ({
+          id: service.id,
+          name: service.name,
+          value: service.commissionValue ?? 0,
+          unit: service.commissionUnit ?? "%",
+        })),
+  );
   const [editing, setEditing] = useState<CommissionRecord | null>(null);
   const [search, setSearch] = useState("");
+  const [commissionView, setCommissionView] = useState<
+    "professional" | "service"
+  >("professional");
   const products = services.filter((service) => service.type === "add-on");
+  const openDefaultCommission = () =>
+    setEditing({
+      id: "default",
+      name: "Por defecto",
+      value: 10,
+      unit: "%",
+    });
   return (
-    <div className="space-y-6">
+    <div className="commissions-section space-y-6">
       <SectionHeader
         title="Comisiones"
         description="Define reglas claras para repartir las comisiones de servicios y productos."
-        action={
-          <Button
-            className="admin-primary"
-            onClick={() =>
-              setEditing({
-                id: "default",
-                name: "Por defecto",
-                value: 10,
-                unit: "%",
-              })
-            }
-          >
-            <Pencil className="mr-2 h-4 w-4" />
-            Editar por defecto
-          </Button>
-        }
       />
       <Tabs
+        className="commissions-tabs"
         items={[
           { id: "services", label: "Servicios" },
+          { id: "plans", label: "Planes" },
           { id: "products", label: "Productos" },
         ]}
         active={tab}
-        onChange={(value) => setTab(value as "services" | "products")}
+        onChange={(value) =>
+          setTab(value as "services" | "plans" | "products")
+        }
       />
       {tab === "services" ? (
         <>
-          <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="commissions-toolbar">
             <div>
-              <h2 className="admin-section-title">
-                Comisiones por profesional
+              <h2 className="admin-section-title commissions-subtitle">
+                {commissionView === "professional"
+                  ? "Comisiones por profesional"
+                  : "Comisiones por servicio"}
               </h2>
-              <p className="admin-help">
-                Personaliza el porcentaje o monto por cada miembro del equipo.
+              <p className="admin-help commissions-help">
+                {commissionView === "professional"
+                  ? "Personaliza el porcentaje o monto por cada miembro del equipo."
+                  : "Personaliza el porcentaje o monto para cada servicio."}
               </p>
             </div>
-            <SelectField
-              id="commission-view"
-              label="Ver comisiones por"
-              value="professional"
-              onChange={() => undefined}
-              options={[
-                { value: "professional", label: "Profesional" },
-                { value: "service", label: "Servicio" },
-              ]}
-            />
+            <div className="commissions-view-field">
+              <SelectField
+                id="commission-view"
+                label="Ver comisiones por"
+                value={commissionView}
+                onChange={(value) =>
+                  setCommissionView(value as "professional" | "service")
+                }
+                options={[
+                  {
+                    value: "professional",
+                    label: "Ver las comisiones por profesional",
+                  },
+                  {
+                    value: "service",
+                    label: "Ver las comisiones por servicio",
+                  },
+                ]}
+              />
+            </div>
           </div>
-          <div className="grid gap-3 lg:grid-cols-2">
+          {commissionView === "professional" ? (
+            <>
+          <div className="commissions-professional-list">
             {records.map((record) => (
-              <Card key={record.id} className="admin-card">
-                <CardContent className="flex items-center justify-between gap-4 p-5">
-                  <div>
-                    <h3 className="font-semibold text-[#263649]">
+              <Card
+                key={record.id}
+                className="admin-card commission-professional-card"
+              >
+                <CardContent className="commission-professional-card-content">
+                  <div className="commission-professional-copy">
+                    <h3 className="commission-professional-name">
                       {record.name}
                     </h3>
-                    <p className="mt-1 text-sm text-slate-500">
+                    <p className="commission-professional-meta">
                       {record.serviceCount ?? 0} servicios configurados ·{" "}
                       {record.value}
                       {record.unit}
                     </p>
                   </div>
-                  <Button variant="outline" onClick={() => setEditing(record)}>
-                    <Pencil className="mr-2 h-4 w-4" />
-                    Editar
-                  </Button>
+                  <div className="commission-professional-actions">
+                    <Button
+                      variant="outline"
+                      className="commission-edit-button"
+                      onClick={() => setEditing(record)}
+                    >
+                      <Pencil className="mr-2 h-4 w-4" />
+                      Editar
+                    </Button>
+                    <Button
+                      type="button"
+                      className="commission-default-record-button"
+                      onClick={openDefaultCommission}
+                    >
+                      <Pencil className="mr-2 h-4 w-4" />
+                      Editar por defecto
+                    </Button>
+                  </div>
                 </CardContent>
               </Card>
             ))}
+          </div>
+            </>
+          ) : (
+            <div className="commissions-service-list">
+              {serviceRecords.map((record) => (
+                <Card
+                  key={record.id}
+                  className="admin-card commission-service-record-card"
+                >
+                  <CardContent className="commission-service-record-content">
+                    <div className="commission-professional-copy">
+                      <h3 className="commission-professional-name">
+                        {record.name}
+                      </h3>
+                      <p className="commission-professional-meta">
+                        Comisión por defecto: {record.value}
+                        {record.unit}
+                      </p>
+                    </div>
+                    <div className="commission-professional-actions">
+                      <Button
+                        variant="outline"
+                        className="commission-edit-button"
+                        onClick={() => setEditing(record)}
+                      >
+                        <Pencil className="mr-2 h-4 w-4" />
+                        Editar
+                      </Button>
+                      <Button
+                        type="button"
+                        className="commission-default-record-button"
+                        onClick={openDefaultCommission}
+                      >
+                        <Pencil className="mr-2 h-4 w-4" />
+                        Editar por defecto
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </>
+      ) : tab === "plans" ? (
+        <>
+          <Toolbar
+            search={search}
+            onSearchChange={setSearch}
+            placeholder="Búsqueda rápida"
+          />
+          <div className="commissions-plans-empty">
+            <Search className="commissions-plans-empty-icon" />
+            <p>No hay comisiones de membresías para mostrar.</p>
           </div>
         </>
       ) : (
@@ -4797,20 +5038,31 @@ function CommissionsSection({
                         Comisión por defecto · 10%
                       </p>
                     </div>
-                    <Button
-                      variant="outline"
-                      onClick={() =>
-                        setEditing({
-                          id: product.id,
-                          name: product.name,
-                          value: 10,
-                          unit: "%",
-                        })
-                      }
-                    >
-                      <Pencil className="mr-2 h-4 w-4" />
-                      Editar
-                    </Button>
+                    <div className="commission-professional-actions">
+                      <Button
+                        variant="outline"
+                        className="commission-edit-button"
+                        onClick={() =>
+                          setEditing({
+                            id: product.id,
+                            name: product.name,
+                            value: 10,
+                            unit: "%",
+                          })
+                        }
+                      >
+                        <Pencil className="mr-2 h-4 w-4" />
+                        Editar
+                      </Button>
+                      <Button
+                        type="button"
+                        className="commission-default-record-button"
+                        onClick={openDefaultCommission}
+                      >
+                        <Pencil className="mr-2 h-4 w-4" />
+                        Editar por defecto
+                      </Button>
+                    </div>
                   </CardContent>
                 </Card>
               ))}
@@ -4825,11 +5077,23 @@ function CommissionsSection({
           if (!open) setEditing(null);
         }}
         onSave={(record) => {
-          setRecords((current) =>
-            current.some((item) => item.id === record.id)
-              ? current.map((item) => (item.id === record.id ? record : item))
-              : [...current, record],
-          );
+          if (record.professionalId || record.id === "default") {
+            setRecords((current) =>
+              current.some((item) => item.id === record.id)
+                ? current.map((item) =>
+                    item.id === record.id ? record : item,
+                  )
+                : [...current, record],
+            );
+          } else {
+            setServiceRecords((current) =>
+              current.some((item) => item.id === record.id)
+                ? current.map((item) =>
+                    item.id === record.id ? record : item,
+                  )
+                : [...current, record],
+            );
+          }
           toast.success("Comisión guardada.");
         }}
       />
@@ -7057,6 +7321,7 @@ export function AdministrationWorkspace() {
             services={services}
             setServices={setServices}
             professionals={professionals}
+            resources={initialResources}
           />
         );
       case "commissions":

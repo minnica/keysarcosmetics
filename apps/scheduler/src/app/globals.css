@@ -624,6 +624,173 @@
     box-shadow: 0 14px 34px rgba(79, 61, 43, 0.06);
   }
 
+  .commissions-section {
+    color: #263649;
+  }
+
+  .commissions-tabs {
+    margin-top: 0.35rem;
+  }
+
+  .commissions-toolbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 24rem;
+    gap: 1.5rem;
+    align-items: end;
+    margin-top: 1.15rem;
+  }
+
+  .commissions-subtitle {
+    font-size: 0.98rem;
+    letter-spacing: 0.01em;
+  }
+
+  .commissions-help {
+    margin-top: 0.25rem;
+    font-size: 0.8rem;
+  }
+
+  .commissions-view-field .admin-select {
+    min-height: 2.8rem;
+    border-radius: 0.85rem;
+    background: #fff;
+    padding-inline: 0.9rem;
+  }
+
+  .commissions-professional-list {
+    display: grid;
+    gap: 0.75rem;
+    margin-top: 1.15rem;
+  }
+
+  .commissions-service-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem;
+    margin-top: 1.15rem;
+  }
+
+  .commissions-plans-empty {
+    display: flex;
+    min-height: 22rem;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    margin-top: 1.15rem;
+    border: 1px solid #eee7e2;
+    border-radius: 0.35rem;
+    background: #fff;
+    color: #344256;
+    font-size: 1rem;
+    font-weight: 600;
+    box-shadow: 0 5px 16px rgba(79, 61, 43, 0.05);
+  }
+
+  .commissions-plans-empty-icon {
+    height: 4.5rem;
+    width: 4.5rem;
+    color: #7460a4;
+    stroke-width: 1.25;
+  }
+
+  .commission-professional-card {
+    border-radius: 0.95rem;
+    background: #fff;
+    box-shadow: 0 5px 16px rgba(79, 61, 43, 0.07);
+    transition: border-color 160ms ease, box-shadow 160ms ease,
+      transform 160ms ease;
+  }
+
+  .commission-professional-card:hover {
+    border-color: #d9cbe8;
+    box-shadow: 0 9px 22px rgba(79, 61, 43, 0.1);
+    transform: translateY(-1px);
+  }
+
+  .commission-professional-card-content {
+    display: flex;
+    min-height: 5.15rem;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1.15rem 1.25rem;
+  }
+
+  .commission-service-record-card {
+    border-radius: 0.85rem;
+    background: #fff;
+    box-shadow: 0 5px 16px rgba(79, 61, 43, 0.07);
+  }
+
+  .commission-service-record-content {
+    display: flex;
+    min-height: 5.05rem;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1.05rem 1.15rem;
+  }
+
+  .commission-professional-copy {
+    min-width: 0;
+  }
+
+  .commission-professional-name {
+    color: #263649;
+    font-size: 0.98rem;
+    font-weight: 600;
+  }
+
+  .commission-professional-meta {
+    margin-top: 0.3rem;
+    color: #8b96a3;
+    font-size: 0.8rem;
+  }
+
+  .commission-edit-button {
+    min-width: 6.55rem;
+    min-height: 2.45rem;
+    flex: 0 0 auto;
+    border-color: #e6e1ec;
+    border-radius: 0.65rem;
+    background: #fff;
+    color: #536276;
+    font-size: 0.8rem;
+  }
+
+  .commission-edit-button:hover {
+    border-color: #cfc0df;
+    background: #fbf9fd;
+    color: #67528f;
+  }
+
+  .commission-professional-actions {
+    display: flex;
+    flex: 0 0 auto;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 0.55rem;
+  }
+
+  .commission-default-record-button {
+    min-width: 9.6rem;
+    min-height: 2.45rem;
+    border: 1px solid #648672;
+    border-radius: 0.65rem;
+    background: #648672;
+    padding-inline: 0.85rem;
+    color: #fff;
+    font-size: 0.78rem;
+    font-weight: 600;
+    white-space: nowrap;
+    box-shadow: 0 6px 14px rgba(100, 134, 114, 0.18);
+  }
+
+  .commission-default-record-button:hover {
+    border-color: #577660;
+    background: #577660;
+  }
+
   .admin-nav-label {
     padding-inline: 0.75rem;
     font-size: 0.68rem;
@@ -1886,8 +2053,7 @@
     font-weight: 700;
   }
 
-  .service-advanced-heading p,
-  .service-advanced-collapse span {
+  .service-advanced-heading p {
     color: #8b96a3;
     font-size: 0.78rem;
   }
@@ -1901,22 +2067,6 @@
     padding: 1rem;
   }
 
-  .service-advanced-collapse {
-    display: grid;
-    grid-template-columns: 1fr auto;
-    gap: 0.2rem 1rem;
-    align-items: center;
-    border: 1px solid #e1e1e1;
-    border-radius: 0.75rem;
-    background: white;
-    padding: 1rem;
-    color: #344256;
-  }
-
-  .service-advanced-collapse span {
-    grid-column: 1;
-  }
-
   .service-dialog-advanced {
     display: grid;
     gap: 0.8rem;
@@ -1924,57 +2074,6 @@
 
   .service-dialog-advanced > * {
     margin-top: 0 !important;
-  }
-
-  .service-dialog-advanced > :nth-child(1) {
-    order: 1;
-  }
-
-  .service-dialog-advanced > :nth-child(2) {
-    order: 2;
-  }
-
-  .service-dialog-advanced > :nth-child(3) {
-    order: 3;
-  }
-
-  .service-dialog-advanced > :nth-child(5) {
-    order: 4;
-  }
-
-  .service-dialog-advanced > :nth-child(6) {
-    order: 5;
-  }
-
-  .service-dialog-advanced > :nth-child(4) {
-    order: 6;
-  }
-
-  .service-dialog-advanced > :nth-child(7) {
-    order: 7;
-  }
-
-  .service-dialog-advanced > :nth-child(8) {
-    order: 8;
-  }
-
-  .service-dialog-advanced > :nth-child(9) {
-    order: 9;
-  }
-
-  .service-dialog-advanced > :nth-child(10) {
-    order: 10;
-  }
-
-  .service-advanced-video,
-  .service-advanced-home,
-  .service-advanced-multiple,
-  .service-advanced-tax,
-  .service-commission-row {
-    border: 1px solid #e1e1e1;
-    border-radius: 0.75rem;
-    background: #fff;
-    padding: 1rem;
   }
 
   .service-client-count-wrap {
@@ -1985,11 +2084,6 @@
   .service-client-count:disabled {
     background: #f6f7f8;
     color: #aeb5bd;
-  }
-
-  .service-dialog-advanced > .service-advanced-collapse,
-  .service-dialog-advanced > :last-child {
-    display: none;
   }
 
   .service-accordion {
@@ -2073,6 +2167,58 @@
     gap: 0.75rem;
     padding: 0.25rem 1.25rem 0.5rem;
     color: #344256;
+  }
+
+  .service-resource-list {
+    display: grid;
+    gap: 0.2rem;
+    border: 1px solid #eee7e2;
+    border-radius: 0.75rem;
+    padding: 0.4rem;
+  }
+
+  .service-resource-option {
+    display: grid;
+    gap: 0.15rem;
+  }
+
+  .service-resource-option small {
+    color: #8b96a3;
+    font-size: 0.75rem;
+  }
+
+  .service-hours-range-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem;
+  }
+
+  .service-hours-specific {
+    display: grid;
+    gap: 0.65rem;
+  }
+
+  .service-hours-time-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.35rem;
+    max-height: 11rem;
+    overflow-y: auto;
+    border: 1px solid #eee7e2;
+    border-radius: 0.75rem;
+    padding: 0.65rem;
+  }
+
+  .service-time-option {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    color: #56616d;
+    font-size: 0.78rem;
+  }
+
+  .service-time-option input {
+    accent-color: #7460a4;
   }
 
   .service-radio-option {
@@ -2338,6 +2484,79 @@
     max-width: 56rem !important;
   }
 
+  .commission-dialog {
+    width: min(calc(100vw - 2rem), 58rem) !important;
+    max-width: 58rem !important;
+  }
+
+  .commission-dialog-content {
+    display: grid;
+    gap: 1.25rem;
+  }
+
+  .commission-dialog-content > .text-sm {
+    margin: 0;
+    color: #7c8794;
+  }
+
+  .commission-settings-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 10.5rem;
+    gap: 1rem;
+    align-items: end;
+  }
+
+  .commission-settings-grid .admin-input,
+  .commission-settings-grid .admin-select {
+    min-height: 2.8rem;
+    border-radius: 0.8rem;
+  }
+
+  .commission-settings-grid .admin-select {
+    padding-inline: 0.85rem;
+  }
+
+  .commission-service-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.65rem;
+  }
+
+  .commission-service-card {
+    display: flex;
+    min-width: 0;
+    min-height: 2.85rem;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.8rem;
+    border: 1px solid #eee7e2;
+    border-radius: 1rem;
+    background: rgba(255, 255, 255, 0.72);
+    padding: 0.7rem 0.8rem;
+    color: #536276;
+    font-size: 0.84rem;
+    transition: border-color 160ms ease, background-color 160ms ease;
+  }
+
+  .commission-service-card:hover {
+    border-color: #d9cbe8;
+    background: #fff;
+  }
+
+  .commission-service-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .commission-service-value {
+    flex: 0 0 auto;
+    color: #a0aac0;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+
   .admin-dialog-body {
     min-height: 0;
     max-height: calc(min(90vh, 900px) - 190px);
@@ -2357,6 +2576,68 @@
     .admin-dialog-body {
       max-height: calc(100dvh - 170px);
     }
+
+    .commission-settings-grid,
+    .commission-service-grid {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .commissions-toolbar {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 1rem;
+    }
+
+    .commissions-service-list {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .commissions-view-field {
+      width: 100%;
+    }
+
+    .commission-professional-card-content {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+
+    .commission-service-record-content {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+
+    .commission-edit-button {
+      width: 100%;
+    }
+
+    .commission-professional-actions {
+      width: 100%;
+    }
+
+    .commission-professional-actions > button {
+      flex: 1 1 10rem;
+    }
+  }
+}
+
+@media (max-width: 639px) {
+  .service-hours-range-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .service-hours-time-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .service-multiple-client-row {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .service-multiple-client-row .service-client-count-wrap {
+    flex: 1 1 100%;
+    order: 3;
+    max-width: none;
+    margin-top: 0;
   }
 }
 

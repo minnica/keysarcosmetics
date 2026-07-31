@@ -21,6 +21,15 @@ export interface ClassScheduleDay {
   slots: ClassScheduleSlot[];
 }
 
+export type ServiceSpecialHoursMode = "none" | "range" | "specific";
+
+export interface ServiceSpecialHours {
+  mode: ServiceSpecialHoursMode;
+  rangeStart: string;
+  rangeEnd: string;
+  specificTimes: string[];
+}
+
 export interface SpecialDay {
   id: string;
   date: string;
@@ -84,6 +93,13 @@ export interface ServiceRecord {
   alternativeNames?: string[];
   commissionValue?: number;
   commissionUnit?: "$" | "%";
+  videoConference?: boolean;
+  homeService?: boolean;
+  priceIncludesTax?: boolean;
+  allowMultipleClients?: boolean;
+  maxClients?: number;
+  resourceIds?: string[];
+  specialHours?: ServiceSpecialHours;
   sessions?: number;
   capacity?: number;
   classSchedule?: ClassScheduleDay[];
@@ -456,6 +472,113 @@ const realMembershipServices = [
 
 const realFollowUpServices = ["FACIAL DE CORTESIA", "RECUPERACION"];
 
+const realProductNames = [
+  "BEAUTY BAG",
+  "BODY BUTTER - NAP",
+  "BRIGHTENING ACEITE",
+  "CAVIAR AGE DEFENSE",
+  "CAVIAR EYE CREAM",
+  "CAVIAR FACE LIFTING",
+  "CAVIAR FACE MASK",
+  "CAVIAR NECOLA",
+  "CAVIAR SKIN CARE SET",
+  "COLLAGEN MASK SET",
+  "COMPLEMENTO DE CUIDADO",
+  "DAY CREAM OPATRA",
+  "DERMISONIC 2",
+  "DETOXING PINK CLAY",
+  "EYE CARE SET OPATRA",
+  "EYE CREAM OPATRA",
+  "Facial Instagram Premium",
+  "Facial Reflexologia",
+  "FACIAL VIP OPATRA",
+  "FLAWLESS FINISH SET",
+  "Foam Cleanser",
+  "GLOW & GO OPATRA",
+  "HIMALAYAN SALT SCRUB",
+  "MEMBRESIA 5 SESIONES",
+  "MEMBRESIA REFLEXOLOGIA",
+  "MILK CLEANSER",
+  "MILK CLEANSER OPATRA",
+  "MULTIFRUIT VITAMIN",
+  "NEWLINE PEEL",
+  "NEWLINE SYRINGE",
+  "OPATRA DERMI EYE",
+  "OPATRA DERMILIGHT",
+  "OPATRA DERMINE",
+  "OPATRA REVITALISING",
+  "OPATRA SE REVERSE",
+  "OPATRA SYNERGY LIFT",
+  "PEELING OPATRA LIFT",
+  "PEEL OPATRA",
+  "PHYTO SERUM EYE",
+  "PLUMPING FACE SERUM",
+  "PURE GOLDEN GLOW",
+  "RENEWING NIGHT CREAM",
+  "REVITALISING MASK",
+  "SKIN ESSENTIALS SET",
+  "SOAP DOUBLE PACK",
+  "STRING LIFT SCULPT",
+  "SYNERGY MARBLE MASK",
+  "SYRINGE VIOPURE",
+  "THERMAL SET",
+  "TONER OPATRA LONDON",
+  "VELA AROMATICA",
+  "1 DRENAJE LINFATICO",
+  "1 FACIAL BASIC",
+  "1 FACIAL CLASSIC",
+  "1 FACIAL PEEL OFF",
+  "1 MASAJE CORPORAL",
+  "3D RF ULTRASOUND FACE",
+  "CELESTIAL RENEWAL",
+  "HAND & BODY CREAM",
+  "JELESSI EYE",
+  "JELESSI NECK",
+  "MARVELOUS 24K",
+  "MEMBRESIA CORPORAL",
+  "NECK AND CHEST SYSTEM",
+  "PERFECTIO PLUS",
+  "PERFECTIO SILVER",
+  "PERFECTIO X",
+  "PROMO INSTAGRAM",
+  "RADIANT BODY EX",
+  "REVITALIZING BODY",
+  "TARJETA MEMBRESIA",
+  "DARK CIRCLE",
+  "HYDRATING MULTI",
+  "LIFT + TIGHTEN NECK",
+  "MORNING GLOW DROPS",
+  "MOUSSE CLEANSER",
+  "MULBERRY HYDRATING",
+  "NIGHT REPAIR AVINICHI",
+  "PEEL AVINICHI",
+  "PEEL STEMTOX",
+  "PHYTO SERUM",
+  "PHYTO THERMAL",
+  "SYRINGE AVINICHI",
+  "THERMAL MASK AVINICHI",
+  "ACTIV FIRM LIFT CREAM",
+  "CLEANSER GENTLE",
+  "EYE SERUM RENEWAL",
+  "FOAMING CLEANSER",
+  "LIQUID LIFT OVERNIGHT",
+  "PEEL PROBIO",
+  "TONER FRESH",
+  "3D ULTRASOUND",
+  "EMPIRE TECH DERMA",
+  "GENESIS PRIME - EYE",
+  "AECOR NECK",
+  "RADIANCE PULSE",
+  "MEMBRESIA DIVINE",
+  "CORPORAL DIA DEL PADRE",
+  "Facial Express Instagram",
+  "FACIAL VIP HOT SALE",
+  "FACIAL DOBLE HOT SALE",
+  "FACIAL HOT SALE",
+  "MASAJE DOBLE HOT SALE",
+  "MASAJE HOT SALE",
+];
+
 const realFacialPrices = [
   999, 799, 1499, 1499, 1499, 4300, 499, 1499, 799, 799, 3800, 799,
   799, 799, 799, 0, 3800, 4900, 2800, 2500, 3500, 2500,
@@ -530,6 +653,9 @@ export const initialServices: ServiceRecord[] = [
       name,
       "Seguimientos",
     ),
+  ),
+  ...realProductNames.map((name, index) =>
+    createRealService(`product-${index}`, name, "Productos", "add-on"),
   ),
   ...initialExtraServices,
 ];
