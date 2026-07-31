@@ -40,6 +40,8 @@ function toEmpleado(raw: Record<string, unknown>): Empleado {
     bank: (raw['bank'] as Empleado['bank']) ?? null,
     positionId: (raw['positionId'] as string | null) ?? null,
     position: (raw['position'] as Empleado['position']) ?? null,
+    sucursalId: (raw['sucursalId'] as string | null) ?? null,
+    sucursal: (raw['sucursal'] as Empleado['sucursal']) ?? null,
     activo: (raw['activo'] as boolean) ?? true,
   }
 }

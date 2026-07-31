@@ -153,6 +153,23 @@ export {
 export { Toaster } from './components/ui/sonner'
 export { toast } from 'sonner'
 
+// Toast canónico shadcn basado en Base UI
+export {
+  Toaster as BaseToaster,
+  Toast,
+  ToastAction,
+  ToastClose,
+  ToastContent,
+  ToastDescription,
+  ToastPortal,
+  ToastProvider,
+  ToastTitle,
+  ToastViewport,
+  createToastManager,
+  toast as baseToast,
+  useToastManager,
+} from './components/ui/toast'
+
 // DataTable canónico shadcn/ui — usa @tanstack/react-table
 export { DataTable } from './components/ui/data-table'
 export type { ColumnDef } from '@tanstack/react-table'

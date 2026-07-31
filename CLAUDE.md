@@ -161,6 +161,7 @@ Componentes shadcn canónicos en `packages/ui/src/components/ui`:
 - Calendar, DateRangePicker, Sheet, Tooltip, Separator, Sidebar
 - **AlertDialog** — diálogo de confirmación destructiva (botones de borrar)
 - **Sonner** — toasts con variantes semánticas: verde para éxito, amarillo/ámbar para advertencias recuperables y rojo para errores reales. En `payroll`, las validaciones de formulario y bloqueos previos al guardado usan `toast.warning`; los fallos de API, persistencia o exportación usan `toast.error`.
+- **Toast (Base UI)** — componente shadcn canónico en `components/ui/toast.tsx`, re-exportado como `BaseToaster`/`baseToast` para convivir con Sonner. Envelope y Payroll montan ambos providers; los avisos de empleados sin sucursal usan `baseToast.add({ type: "warning", ... })`.
 - **DataTable** — tabla canónica shadcn sobre `@tanstack/react-table`. Props: `columns: ColumnDef<T>[]`, `data: T[]`, `emptyMessage?: string`, `searchPlaceholder?: string`, `pageSize?: number` (default 20), `labels?: { records?: string; all?: string; results?: (count: number) => string }`. Incluye sorting por clic en header, globalFilter (search input), selector de filas por página (opciones: 10, 20, 50, 100, Todos) y pagination con controles prev/next (ocultos en modo Todos). Re-exporta también `ColumnDef` desde `@cosmetics/ui` — las apps no deben importar `@tanstack/react-table` directamente.
 
 `toast` helper re-exportado desde `@cosmetics/ui` (no importar `sonner` directamente en las apps).
@@ -258,10 +259,10 @@ Datos:
 ### Límites y seguridad
 
 - La UI y todos los endpoints `/api/payroll/*` requieren sesión JWT y rol `SUPER_ADMIN`.
-- Payroll reutiliza en modo lectura `Empleado`, `Bank`, `Position`, `Sucursal`, `Venta` y `VentaDetalle`. No duplica ni modifica esos datos de Envelope.
-- `Empleado` no tiene sucursal base: las ventas determinan el desglose y los importes sin ventas se asignan a `CORPORATIVO`.
-- Los cambios de Payroll deben limitarse a `apps/payroll`, rutas/servicios/modelos Payroll en `backend/api` y documentación relacionada. No modificar `apps/envelope` para extender nómina.
-- La migración `20260730000000_add_payroll_models` es aditiva. Debe revisarse y ejecutarse manualmente con `prisma migrate deploy`; nunca usar `db push`, `migrate reset` ni seeds demo contra producción.
+- Payroll reutiliza `Empleado`, `Bank`, `Position`, `Sucursal`, `Venta` y `VentaDetalle`. La administración permanece en Envelope; Payroll los consume en lectura.
+- `Empleado.sucursalId` es nullable y representa la sucursal laboral canónica. Envelope permite asignarla desde el formulario de empleados y muestra `Sin sucursal asignada` cuando es `null`.
+- Los cambios propios de nómina deben limitarse a `apps/payroll`, rutas/servicios/modelos Payroll en `backend/api` y documentación relacionada. La relación laboral `Empleado.sucursalId` se administra exclusivamente desde `apps/envelope`.
+- Las migraciones `20260730000000_add_payroll_models` y `20260731000000_add_employee_branch` son aditivas. Deben revisarse y ejecutarse manualmente con `prisma migrate deploy`; nunca usar `db push`, `migrate reset` ni seeds demo contra producción.
 - Los adjuntos están preparados para un bucket privado de Supabase Storage, pero su habilitación está pospuesta. Cuando se cree el bucket, configurar `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` y opcionalmente `PAYROLL_STORAGE_BUCKET`; nunca exponer la service-role key al frontend.
 
 ### Fuentes reales reutilizadas
@@ -271,6 +272,7 @@ Datos:
 | Empleado, activo/inactivo, sueldo y teléfono | `Empleado`                                                                                    |
 | Banco y cuenta                               | `Empleado.bankId`/`Bank`, con compatibilidad para `Empleado.banco`, y `Empleado.numeroCuenta` |
 | Puesto                                       | `Empleado.positionId`/`Position`, con compatibilidad para `Empleado.puesto`                   |
+| Sucursal laboral                             | `Empleado.sucursalId`/`Sucursal`; `null` = `SIN SUCURSAL ASIGNADA`                             |
 | Ventas por fecha, vendedor y sucursal        | `Venta` + suma de `VentaDetalle.cantidad`                                                     |
 | Sucursales                                   | `Sucursal`                                                                                    |
 
@@ -292,7 +294,8 @@ La API cubre bootstrap de fuentes compartidas; CRUD de catálogos, esquemas/vers
 - Solo se aceptan quincenas completas: días 1–15 o 16–último día del mes. El sueldo quincenal es `Empleado.sueldo / 2`; sueldo nulo equivale a cero y genera advertencia.
 - Cada corrida elige `WITH_VAT` o `WITHOUT_VAT`. Con IVA se usa venta bruta; sin IVA se usa `venta / 1.16`. La misma base selecciona el rango y calcula `base × tasa`.
 - Rangos de comisión son continuos, inician en cero y el último no tiene límite superior. Versiones y asignaciones tienen vigencia; cambios existentes solo aplican desde la siguiente quincena.
-- Sueldo, comisión y préstamos se distribuyen proporcionalmente entre las sucursales donde el empleado tuvo ventas; los centavos residuales quedan en la última asignación. Sin ventas se asignan a `CORPORATIVO`. Los movimientos conservan su sucursal explícita.
+- Ventas, sueldo, comisión, movimientos y préstamos de cada empleado se agrupan en `Empleado.sucursalId`. Si la relación es `null`, el snapshot usa `SIN SUCURSAL ASIGNADA`. La sucursal de una venta sigue siendo dato operativo de Envelope, pero no define el centro laboral del empleado en Payroll.
+- Los movimientos derivan automáticamente su sucursal del participante; el cliente y el backend no aceptan una segunda selección manual. En el formulario, el selector de participante muestra solo el nombre y no repite puesto ni sucursal. Los gastos conservan centro de costo propio porque no están vinculados a un empleado.
 - Una corrida transita `DRAFT → APPROVED → PAID`; puede cancelarse antes de pagar. Aprobar congela líneas y reserva movimientos, gastos y cuotas. Pagar liquida cuotas reservadas y genera recibos. Una corrida pagada no se recalcula ni cancela.
 - Bloquea aprobación: ventas sin esquema/rango, pago total negativo o viáticos/insumos sin evidencia. Sueldo faltante es advertencia. Banco o cuenta faltante bloquean pago. Teléfono faltante bloquea solo la preparación de WhatsApp.
 - Préstamos y adelantos generan cuotas quincenales automáticas; el último pago absorbe el ajuste de centavos. Los estados históricos no se eliminan.
@@ -412,7 +415,7 @@ Pantallas que se prototiparon originalmente con mocks y después se conectaron a
 - `/gastos` — Formulario y tabla mock para gastos fijos/variables; los registros compartidos por contexto se descuentan del balance general de `/`.
 - `/esquemas` — Esquemas de comisión: catálogo por rangos `de/hasta/tasa` y asignación por empleado.
 - `/prestamos-adelantos` — Amortización: préstamos, adelantos, pagos, saldo y estatus.
-- `/reportes/desglose-sucursal` — Payroll breakdown: reporte mock de costo por punto de venta con desglose por empleado/sucursal, resumen por sucursal, barras de distribución y exportación PDF/Excel.
+- `/reportes/desglose-sucursal` — reporte real de ventas y costo agrupados por `Empleado.sucursalId`, con desglose por empleado, resumen, gráfica y exportación PDF/Excel.
 - `/recibos` — Recibos por empleado: estatus generado/enviado/confirmado y acción mock de visualización/envío.
 - `/login` — En la demo original era un login visual mock; hoy usa autenticación JWT real y guard `SUPER_ADMIN`.
 
@@ -439,14 +442,15 @@ Limitaciones históricas de la demo eliminada (no describen la implementación a
 | Teléfono                           | Existe        | `Empleado.numeroTelefono`          |
 | Fecha nacimiento                   | Existe        | `Empleado.fechaNacimiento`         |
 | Meta individual                    | Existe        | `Empleado.metaIndividual`          |
+| Sucursal laboral                   | Existe        | `Empleado.sucursalId` / `Sucursal` |
 | Sucursales                         | Existe        | `Sucursal`                         |
 | Ventas por fecha/sucursal/vendedor | Existe        | `Venta` + `VentaDetalle`           |
 | Métodos de pago                    | Existe        | `MetodoPago`                       |
 
 Nota importante:
 
-- En Prisma, `Empleado` no tiene `sucursalId`; la sucursal se obtiene desde ventas o desde la cuenta `Usuario.sucursalId` cuando aplique.
-- `packages/types/src/index.ts` actualmente expone `Empleado.sucursalId`, pero el schema real no lo tiene. No asumir "sucursal base del empleado" hasta agregarla formalmente o definir una regla de derivación.
+- `Empleado.sucursalId` y `Usuario.sucursalId` son relaciones distintas. La primera agrupa nómina por la sucursal laboral del empleado; la segunda limita el alcance de una cuenta y no debe usarse como sustituto.
+- La migración aditiva `20260731000000_add_employee_branch` agrega la FK nullable, índice y `ON DELETE SET NULL`. Los empleados existentes permanecen sin asignación hasta que se actualicen en Envelope.
 
 ### Datos que faltaban antes de la implementación
 
@@ -649,7 +653,7 @@ Estado final del checklist histórico:
 - [x] Diseñar modelos Prisma y crear la migración aditiva de Payroll.
 - [x] Implementar `/api/payroll/*` con guard `SUPER_ADMIN`.
 - [x] Integrar lectura real de ventas, empleados, sucursales, bancos y puestos sin duplicarlos.
-- [x] Resolver la ausencia de `Empleado.sucursalId` mediante ventas y fallback `CORPORATIVO`.
+- [x] Agregar `Empleado.sucursalId` nullable y agrupar Payroll por la sucursal laboral o `SIN SUCURSAL ASIGNADA`.
 - [x] Implementar cálculo backend de sueldo, comisiones, movimientos, préstamos y totales.
 - [x] Implementar snapshots inmutables por corrida y auditoría.
 - [x] Implementar servicio/endpoints de comprobantes; solo queda pendiente crear/configurar el bucket por ambiente.
@@ -681,6 +685,7 @@ Reglas para futuras sesiones:
 - `PositionScreenPermission` también puede almacenar claves de acción virtual como `empleados/sueldo`, que controla la visibilidad del sueldo en `envelope`, y `reportes/ver-datos-keysar-home`, que permite incluir al empleado `KEYSAR HOME` en la tabla de ventas guardadas y en los reportes `ventas-por-vendedor` y `ventas-por-vendedor-dia` (incluidos sus totales y exportaciones). La omisión en ventas se aplica solo al dataset visible de la tabla y no altera los datos usados por `Generar sobre`.
 - El acceso admin expone `PUT /api/envelope/access/positions/:id/permissions`, `PUT /api/envelope/access/users/:employeeId/credentials` y `DELETE /api/envelope/access/users/:id` para eliminar cuentas de acceso cuando se requiera volver a crearlas.
 - `Empleado` tiene `bankId`/`positionId` nullable (FK a catálogos dinámicos).
+- `Empleado` tiene `sucursalId` nullable (FK a `Sucursal`, `ON DELETE SET NULL`); `null` se presenta como `Sin sucursal asignada`.
 - `Empleado` también tiene campos legacy `banco`/`puesto` (String) — conservar por compatibilidad hasta backfill completo en prod.
 - `Empleado` ahora incluye `sueldo Decimal?`, `fechaNacimiento DateTime?` y `numeroTelefono String?` para el crecimiento del módulo RH.
 - `Venta` tiene `sesionId String?` — vincula registros del mismo voucher multi-vendedor; null = venta individual.
@@ -694,6 +699,7 @@ Reglas para futuras sesiones:
 - No ejecutar `migrate reset` ni `db push` en ambientes compartidos/productivos.
 - Usar migraciones Prisma controladas (`prisma migrate deploy`).
 - La migración Payroll `20260730000000_add_payroll_models` es aditiva: crea tablas, enums, índices, relaciones y restricciones de nómina; no elimina ni transforma ventas, empleados ni otros registros productivos de Envelope.
+- La migración `20260731000000_add_employee_branch` también es aditiva: agrega `Empleado.sucursalId` nullable, su índice y FK sin actualizar filas existentes.
 - Aplicar Payroll por ambiente en este orden: confirmar conexión y respaldo/PITR, ejecutar `prisma migrate status`, aplicar `prisma migrate deploy`, desplegar el backend correspondiente y después desplegar/verificar el frontend.
 - `seed.ts` contiene datos demo — usar con cuidado, puede sobreescribir datos.
 - `seed-catalogs.ts` es el seed seguro para catálogos `Bank`/`Position`.
@@ -723,7 +729,7 @@ CORS_ORIGINS=https://keysarcosmetics-envelope.vercel.app,https://keysarcosmetics
 - Los origins CORS no llevan `/` final, espacios ni comillas. El backend lee `CORS_ORIGINS` en plural; `CORS_ORIGIN` en singular no participa.
 - Fly no revela el valor anterior de un Secret al editarlo. Antes de reemplazarlo, recuperar la lista desde la línea `CORS habilitado para:` de los logs de arranque o conservar explícitamente todos los dominios existentes.
 - La cuenta que entra a Payroll debe existir en Supabase producción, estar activa y tener rol `SUPER_ADMIN`. Los usuarios de desarrollo no se replican automáticamente a producción.
-- Estado documentado al 30 de julio de 2026: Payroll está publicado en `https://keysarcosmetics-payroll.vercel.app`; todavía debe verificarse su variable `NEXT_PUBLIC_API_URL`, y la migración Payroll/backend productivos deben desplegarse y validarse explícitamente antes de probar el flujo real. No asumir que una validación exitosa en dev confirma producción.
+- Estado documentado al 31 de julio de 2026: Payroll está publicado en `https://keysarcosmetics-payroll.vercel.app`; todavía debe verificarse su variable `NEXT_PUBLIC_API_URL`, y las migraciones/backend productivos deben desplegarse y validarse explícitamente antes de probar el flujo real. No asumir que una validación exitosa en dev confirma producción.
 
 ### Desarrollo
 
@@ -835,7 +841,8 @@ backend/api/
 ├── prisma/
 │   ├── schema.prisma              → modelos Prisma (fuente de verdad de BD)
 │   ├── migrations/                → migraciones versionadas (no modificar manualmente)
-│   │   └── 20260730000000_add_payroll_models/ → migración aditiva de Payroll
+│   │   ├── 20260730000000_add_payroll_models/ → migración aditiva de Payroll
+│   │   └── 20260731000000_add_employee_branch/ → FK nullable de empleado a sucursal
 │   ├── seed.ts                    → seed general/demo, usar con cuidado
 │   └── seed-catalogs.ts           → seed seguro para Bank/Position
 └── src/
@@ -994,5 +1001,5 @@ npx ts-node --project tsconfig.json prisma/seed-catalogs.ts
 - Automatizar deploy backend con GitHub Actions si se decide.
 - Crear seeds separados seguros para dev/datos base si se requiere.
 - Limpieza futura de campos legacy `banco`/`puesto` en `Empleado` cuando todos los registros en prod tengan `bankId`/`positionId` asignados (Fase 4).
-- Payroll producción: confirmar respaldo/PITR, aplicar `20260730000000_add_payroll_models`, desplegar `cosmetics-api`, configurar/verificar `NEXT_PUBLIC_API_URL` y `CORS_ORIGINS`, y ejecutar una corrida paralela antes del primer pago oficial.
+- Payroll producción: confirmar respaldo/PITR, aplicar `20260730000000_add_payroll_models` y `20260731000000_add_employee_branch`, desplegar `cosmetics-api`, configurar/verificar `NEXT_PUBLIC_API_URL` y `CORS_ORIGINS`, y ejecutar una corrida paralela antes del primer pago oficial.
 - Payroll Storage: crear más adelante el bucket privado y configurar `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` y opcionalmente `PAYROLL_STORAGE_BUCKET` solo después de que exista.

@@ -10,7 +10,7 @@ Para probar el flujo correctamente se necesita:
 
 - Una cuenta con rol `SUPER_ADMIN`.
 - Al menos un empleado con ventas dentro de la quincena que se revisará.
-- Sueldo, banco y cuenta bancaria capturados para ese empleado.
+- Sueldo, banco, cuenta bancaria y sucursal laboral capturados para ese empleado.
 - Un esquema de comisión y una asignación vigente.
 
 El teléfono solo es necesario para preparar el mensaje de WhatsApp; no afecta el cálculo ni la aprobación.
@@ -43,6 +43,7 @@ Para cada empleado que participará en la nómina, confirmar:
 - Nombre completo correcto.
 - Estatus activo, si continúa trabajando.
 - Puesto.
+- Sucursal laboral.
 - Sueldo mensual.
 - Banco.
 - Número de cuenta.
@@ -59,7 +60,7 @@ Confirmar que las ventas del periodo tengan:
 - Sucursal correcta.
 - Importe correcto.
 
-La suma de los detalles de venta es la base del cálculo de comisión. La sucursal de cada venta también determina cómo se distribuye el costo del empleado.
+La suma de los detalles de venta es la base del cálculo de comisión. Payroll agrupa las ventas y el costo en la sucursal laboral asignada al empleado; la sucursal propia de la venta se conserva como dato operativo de Envelope.
 
 ## 2. Crear el primer esquema de comisión
 
@@ -163,7 +164,7 @@ Capturar:
 3. Concepto o elemento del catálogo.
 4. Monto total.
 5. Número de participantes, entre 1 y 5.
-6. Empleado, sucursal y parte correspondiente de cada participante.
+6. Empleado y parte correspondiente de cada participante. La sucursal se toma automáticamente del empleado.
 7. Indicar si la parte es pagable.
 8. Notas.
 
@@ -183,8 +184,8 @@ Para probar un bono de `$1,000.00` compartido:
 
 | Participante |   Parte | Sucursal                 | Pagable |
 | ------------ | ------: | ------------------------ | ------- |
-| Empleado A   | $600.00 | Sucursal correspondiente | Sí      |
-| Empleado B   | $400.00 | Sucursal correspondiente | Sí      |
+| Empleado A   | $600.00 | Asignada en Envelope     | Sí      |
+| Empleado B   | $400.00 | Asignada en Envelope     | Sí      |
 
 Total distribuido: `$1,000.00`.
 
@@ -374,7 +375,7 @@ Revisar:
 - Peso porcentual del costo.
 - Exportación PDF y Excel.
 
-Los importes sin ventas se muestran en `CORPORATIVO`.
+Los empleados sin relación laboral se muestran en `SIN SUCURSAL ASIGNADA`. Así pueden localizarse y corregirse desde Envelope sin mezclarlos con una sucursal real.
 
 ### Recibos
 
@@ -415,7 +416,7 @@ No es necesario registrar gastos, préstamos, viáticos o insumos para completar
 
 - [ ] Tengo acceso como `SUPER_ADMIN`.
 - [ ] Elegí una quincena con ventas verificables.
-- [ ] Los empleados tienen sueldo, banco y cuenta.
+- [ ] Los empleados tienen sueldo, banco, cuenta y sucursal laboral.
 - [ ] Creé al menos un esquema de comisión.
 - [ ] Asigné el esquema a los empleados con ventas.
 - [ ] La vigencia inicia día 1 o 16 y cubre el periodo.

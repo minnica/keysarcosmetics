@@ -84,8 +84,9 @@ export interface Empleado {
   bank?: Bank | null;
   positionId?: string | null;
   position?: Position | null;
+  sucursalId: string | null;
+  sucursal?: Sucursal | null;
   metaIndividual: number;
-  sucursalId: string;
   activo: boolean;
 }
 

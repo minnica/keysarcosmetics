@@ -51,6 +51,7 @@ model Sucursal {
   nombre        String
   activa        Boolean        @default(true)
   usuarios      Usuario[]
+  empleados     Empleado[]
   ventas        Venta[]
   registrosCita RegistroCita[]
   creadoEn      DateTime       @default(now())
@@ -153,6 +154,8 @@ model Empleado {
   bank                Bank?          @relation(fields: [bankId], references: [id])
   positionId          String?
   position            Position?      @relation(fields: [positionId], references: [id])
+  sucursalId          String?
+  sucursal            Sucursal?      @relation(fields: [sucursalId], references: [id], onDelete: SetNull)
   usuario             Usuario?
   metaIndividual      Decimal        @db.Decimal(10, 2)
   activo              Boolean        @default(true)
@@ -165,6 +168,8 @@ model Empleado {
   payrollMovementAllocations PayrollMovementAllocation[]
   payrollLoans               LoanAdvance[]
   payrollRunLines            PayrollRunLine[]
+
+  @@index([sucursalId])
 }
 
 enum TipoCompraCita {
