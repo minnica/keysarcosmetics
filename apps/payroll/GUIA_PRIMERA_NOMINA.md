@@ -246,15 +246,17 @@ Ir a:
 Payroll → Corridas de nómina
 ```
 
-Si no existe ninguna corrida, configurar:
+Configurar:
 
-- Periodo completo: día 1–15 o día 16–último día del mes.
+- **Quincena:** seleccionar un mes y después `1.ª quincena · días 1–15` o `2.ª quincena · días 16–fin`. El listado está agrupado por mes y permite consultar o crear periodos de los últimos 12 meses; la vista mensual ofrece ese mismo rango.
 - Día de pago igual o posterior al final de la quincena.
 - Modo de cálculo:
   - **Con IVA:** usa la venta bruta como base.
   - **Sin IVA:** usa `venta bruta / 1.16` como base.
 
 Después presionar **Crear corrida**.
+
+Si el periodo ya tiene una corrida, el sistema la abre y muestra su estado. Un borrador puede guardarse y recalcularse; una corrida aprobada o pagada solo puede consultarse y no se duplica. Para un periodo vacío, el día de pago se propone siete días después del cierre y puede ajustarse antes de crear la corrida.
 
 El sistema cargará automáticamente:
 
@@ -314,6 +316,24 @@ Total pago =
 
 El resultado debe coincidir con la línea del empleado.
 
+### Consultar la nómina mensual calculada
+
+En la parte superior de **Corridas de nómina**, cambiar de **Quincenal** a **Mensual** y seleccionar el mes.
+
+La vista muestra:
+
+- El mensaje `Mi nómina mensual calculada es de` cuando ambas fuentes son corridas reales, o `Mi nómina mensual aproximada es de` cuando incluye una estimación.
+- Cuántas corridas y estimaciones están incluidas.
+- El monto, modo de cálculo y estatus de cada quincena.
+- Ventas con IVA, gastos y balance general acumulados.
+- El detalle mensual por empleado y las exportaciones PDF/Excel.
+
+No es necesario aprobar o pagar las corridas para consultar este cálculo. Se incluyen corridas en `DRAFT`, `APPROVED` y `PAID`; las canceladas se excluyen. Si una quincena pasada ya terminó pero nunca tuvo corrida, el sistema la calcula temporalmente con los datos históricos y la configuración disponible, la marca como `ESTIMADA` y presenta el total mensual como aproximado. Esta consulta no crea una corrida, no reserva movimientos/gastos/cuotas y no congela snapshots.
+
+La estimación sirve para comparar meses anteriores a la implementación. Ventas, esquemas y conceptos con fecha se consultan para la quincena correspondiente; los datos del empleado que no tenían snapshot —como sueldo, banco, teléfono o sucursal— reflejan la configuración disponible al momento de consultar. Para obtener un resultado validable y conservarlo, volver a **Quincenal**, elegir ese periodo y crear su corrida histórica. Si la quincena faltante todavía está en curso, el mes se muestra incompleto en vez de estimarla. Si existe un borrador, el sistema recuerda que el importe puede cambiar al recalcularlo.
+
+El resumen suma los resultados de cada quincena. No vuelve a calcular la comisión con las ventas combinadas del mes, porque cada quincena puede tener un rango, porcentaje o esquema distinto.
+
 ## 10. Resolver advertencias y bloqueos
 
 | Mensaje o problema               | Acción recomendada                                                               |
@@ -326,6 +346,7 @@ El resultado debe coincidir con la línea del empleado.
 | Banco faltante                   | Completar banco en Envelope antes de pagar.                                      |
 | Cuenta faltante                  | Completar cuenta en Envelope antes de pagar.                                     |
 | Teléfono faltante                | Completar teléfono si se requiere WhatsApp; no bloquea el pago.                  |
+| Sucursal laboral faltante        | Abrir `Ver detalle por empleado` en Resumen y asignarla en Envelope; mientras tanto se agrupa como `SIN SUCURSAL ASIGNADA`. |
 
 ## 11. Aprobar la corrida
 
@@ -428,6 +449,7 @@ No es necesario registrar gastos, préstamos, viáticos o insumos para completar
 - [ ] Revisé sueldo, bonos, deducciones y préstamos.
 - [ ] El total de pago de ningún empleado es negativo.
 - [ ] Revisé advertencias y el reporte por sucursal.
+- [ ] Consulté el consolidado mensual y confirmé cuáles quincenas son corridas reales y cuáles son estimadas.
 - [ ] Los movimientos correctos están aprobados.
 
 ### Antes de pagar

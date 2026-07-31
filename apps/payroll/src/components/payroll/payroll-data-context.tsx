@@ -15,6 +15,7 @@ import type {
   CommissionScheme,
   EmployeeBranchBreakdown,
   LoanAdvance,
+  MonthlyPayrollSummary,
   MovementKind,
   MovementStatus,
   PayrollBranch,
@@ -259,6 +260,58 @@ function mapRun(raw: any): PayrollRun {
   };
 }
 
+function mapMonthlyRunReference(raw: any) {
+  if (!raw) return null;
+  return {
+    id: raw.id,
+    periodStart: d(raw.periodStart),
+    periodEnd: d(raw.periodEnd),
+    mode: raw.mode,
+    status: raw.status,
+    payrollTotal: n(raw.payrollTotal),
+  };
+}
+
+function mapMonthlySummary(raw: any): MonthlyPayrollSummary {
+  return {
+    month: raw.month,
+    periodStart: d(raw.periodStart),
+    periodEnd: d(raw.periodEnd),
+    complete: Boolean(raw.complete),
+    includesDraft: Boolean(raw.includesDraft),
+    isApproximate: Boolean(raw.isApproximate),
+    estimatedCount: n(raw.estimatedCount),
+    runCount: n(raw.runCount),
+    firstFortnight: mapMonthlyRunReference(raw.firstFortnight),
+    secondFortnight: mapMonthlyRunReference(raw.secondFortnight),
+    salesWithVat: n(raw.salesWithVat),
+    salesWithoutVat: n(raw.salesWithoutVat),
+    expenseTotal: n(raw.expenseTotal),
+    payrollTotal: n(raw.payrollTotal),
+    generalBalance: n(raw.generalBalance),
+    lines: (raw.lines ?? []).map((line: any) => ({
+      employeeId: line.employeeId,
+      employeeName: line.employeeName,
+      positionName: line.positionName ?? null,
+      branchNames: Array.isArray(line.branchNames) ? line.branchNames : [],
+      firstFortnightTotal: n(line.firstFortnightTotal),
+      secondFortnightTotal: n(line.secondFortnightTotal),
+      salaryPayment: n(line.salaryPayment),
+      salesWithVat: n(line.salesWithVat),
+      salesWithoutVat: n(line.salesWithoutVat),
+      commission: n(line.commission),
+      bonus: n(line.bonus),
+      fine: n(line.fine),
+      adjustmentPositive: n(line.adjustmentPositive),
+      adjustmentNegative: n(line.adjustmentNegative),
+      perDiem: n(line.perDiem),
+      supplies: n(line.supplies),
+      loanPayment: n(line.loanPayment),
+      totalPayment: n(line.totalPayment),
+    })),
+  };
+}
+
 interface PayrollDataValue {
   loading: boolean;
   refreshing: boolean;
@@ -277,6 +330,9 @@ interface PayrollDataValue {
   loans: LoanAdvance[];
   runs: PayrollRunSummary[];
   selectedRun: PayrollRun | null;
+  monthlySummary: MonthlyPayrollSummary | null;
+  monthlySummaryLoading: boolean;
+  monthlySummaryError: string | null;
   receipts: PayrollReceipt[];
   branchBreakdown: {
     branches: BranchBreakdownLine[];
@@ -284,6 +340,8 @@ interface PayrollDataValue {
   };
   refreshAll: () => Promise<void>;
   selectRun: (id: string) => Promise<void>;
+  clearRunSelection: () => void;
+  loadMonthlySummary: (month: string) => Promise<void>;
   saveCatalog: (
     kind: CatalogKind,
     item: { id?: string; name: string; amount: number; notes: string },
@@ -348,6 +406,12 @@ export function PayrollDataProvider({
   const [loans, setLoans] = useState<LoanAdvance[]>([]);
   const [runs, setRuns] = useState<PayrollRunSummary[]>([]);
   const [selectedRun, setSelectedRun] = useState<PayrollRun | null>(null);
+  const [monthlySummary, setMonthlySummary] =
+    useState<MonthlyPayrollSummary | null>(null);
+  const [monthlySummaryLoading, setMonthlySummaryLoading] = useState(false);
+  const [monthlySummaryError, setMonthlySummaryError] = useState<string | null>(
+    null,
+  );
   const [receipts, setReceipts] = useState<PayrollReceipt[]>([]);
   const [branchBreakdown, setBranchBreakdown] = useState<{
     branches: BranchBreakdownLine[];
@@ -485,6 +549,31 @@ export function PayrollDataProvider({
     [loadRun],
   );
 
+  const clearRunSelection = useCallback(() => {
+    setSelectedRun(null);
+    setReceipts([]);
+    setBranchBreakdown({ branches: [], employeeLines: [] });
+  }, []);
+
+  const loadMonthlySummary = useCallback(async (month: string) => {
+    setMonthlySummaryLoading(true);
+    setMonthlySummaryError(null);
+    try {
+      const response = await api.get<ApiResponse<any>>(
+        "/api/payroll/reports/monthly-summary",
+        { params: { month } },
+      );
+      setMonthlySummary(mapMonthlySummary(response.data.data));
+    } catch (cause) {
+      setMonthlySummary(null);
+      setMonthlySummaryError(
+        apiErrorMessage(cause, "No se pudo consolidar la nómina mensual."),
+      );
+    } finally {
+      setMonthlySummaryLoading(false);
+    }
+  }, []);
+
   const reload = useCallback(
     async (operation: () => Promise<unknown>) => {
       await operation();
@@ -514,10 +603,15 @@ export function PayrollDataProvider({
       loans,
       runs,
       selectedRun,
+      monthlySummary,
+      monthlySummaryLoading,
+      monthlySummaryError,
       receipts,
       branchBreakdown,
       refreshAll,
       selectRun,
+      clearRunSelection,
+      loadMonthlySummary,
       saveCatalog: async (kind, item) =>
         reload(() =>
           item.id
@@ -636,13 +730,18 @@ export function PayrollDataProvider({
       branchBreakdown,
       branches,
       catalogs,
+      clearRunSelection,
       employees,
       error,
       expenses,
       loadRun,
+      loadMonthlySummary,
       loans,
       loading,
       movements,
+      monthlySummary,
+      monthlySummaryError,
+      monthlySummaryLoading,
       receipts,
       refreshAll,
       refreshing,
