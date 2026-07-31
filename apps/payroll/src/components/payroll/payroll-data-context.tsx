@@ -36,6 +36,8 @@ interface ApiResponse<T> {
   message: string;
 }
 
+const PAYROLL_CALCULATION_TIMEOUT_MS = 120_000;
+
 const n = (value: unknown) => Number(value ?? 0);
 const d = (value: unknown) =>
   typeof value === "string" ? value.slice(0, 10) : "";
@@ -596,6 +598,7 @@ export function PayrollDataProvider({
         const response = await api.post<ApiResponse<any>>(
           "/api/payroll/runs",
           input,
+          { timeout: PAYROLL_CALCULATION_TIMEOUT_MS },
         );
         await refreshAll();
         await loadRun(response.data.data.id);
@@ -603,13 +606,21 @@ export function PayrollDataProvider({
       updateRun: async (input) => {
         if (!selectedRun) throw new Error("Selecciona una corrida.");
         await reload(() =>
-          api.put(`/api/payroll/runs/${selectedRun.id}`, input),
+          api.put(`/api/payroll/runs/${selectedRun.id}`, input, {
+            timeout: PAYROLL_CALCULATION_TIMEOUT_MS,
+          }),
         );
       },
       runAction: async (action) => {
         if (!selectedRun) throw new Error("Selecciona una corrida.");
         await reload(() =>
-          api.post(`/api/payroll/runs/${selectedRun.id}/${action}`),
+          api.post(
+            `/api/payroll/runs/${selectedRun.id}/${action}`,
+            undefined,
+            action === "recalculate"
+              ? { timeout: PAYROLL_CALCULATION_TIMEOUT_MS }
+              : undefined,
+          ),
         );
       },
       setReceiptStatus: async (id, status) =>

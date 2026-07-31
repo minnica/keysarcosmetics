@@ -62,6 +62,7 @@ export default function DashboardPage() {
   const [payDate, setPayDate] = useState(defaults.payDate);
   const [mode, setMode] = useState<PayrollCalculationMode>("WITH_VAT");
   const [working, setWorking] = useState(false);
+  const [recalculating, setRecalculating] = useState(false);
   const [confirmAction, setConfirmAction] = useState<
     "approve" | "pay" | "cancel" | null
   >(null);
@@ -99,6 +100,22 @@ export default function DashboardPage() {
       toast.error(apiErrorMessage(cause));
     } finally {
       setWorking(false);
+    }
+  }
+
+  async function recalculateRun() {
+    setWorking(true);
+    setRecalculating(true);
+    try {
+      await data.runAction("recalculate");
+      toast.success("Corrida recalculada con los datos vigentes.");
+    } catch (cause) {
+      toast.error(
+        apiErrorMessage(cause, "No se pudo recalcular la corrida."),
+      );
+    } finally {
+      setWorking(false);
+      setRecalculating(false);
     }
   }
 
@@ -556,44 +573,69 @@ export default function DashboardPage() {
               pageSize={10}
             />
           </SectionCard>
-          <div className="flex flex-wrap justify-end gap-2">
-            {run.status === "DRAFT" && (
-              <>
-                <Button
-                  variant="outline"
-                  onClick={() => void data.runAction("recalculate")}
-                >
-                  <RefreshCw className="mr-1.5 h-4 w-4" />
-                  Recalcular
-                </Button>
-                <Button onClick={() => setConfirmAction("approve")}>
-                  <CheckCircle2 className="mr-1.5 h-4 w-4" />
-                  Aprobar corrida
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => setConfirmAction("cancel")}
-                >
-                  <XCircle className="mr-1.5 h-4 w-4" />
-                  Cancelar corrida
-                </Button>
-              </>
+          <div className="space-y-2">
+            {recalculating && (
+              <p
+                className="text-right text-sm text-[var(--text-muted)]"
+                role="status"
+                aria-live="polite"
+              >
+                Recalculando la corrida con los datos vigentes. Puede tardar
+                hasta dos minutos.
+              </p>
             )}
-            {run.status === "APPROVED" && (
-              <>
-                <Button onClick={() => setConfirmAction("pay")}>
-                  <CircleDollarSign className="mr-1.5 h-4 w-4" />
-                  Marcar pagada
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => setConfirmAction("cancel")}
-                >
-                  <XCircle className="mr-1.5 h-4 w-4" />
-                  Cancelar corrida
-                </Button>
-              </>
-            )}
+            <div className="flex flex-wrap justify-end gap-2">
+              {run.status === "DRAFT" && (
+                <>
+                  <Button
+                    variant="outline"
+                    disabled={working}
+                    aria-busy={recalculating}
+                    onClick={() => void recalculateRun()}
+                  >
+                    <RefreshCw
+                      aria-hidden="true"
+                      className={`mr-1.5 h-4 w-4 ${recalculating ? "animate-spin" : ""}`}
+                    />
+                    {recalculating ? "Recalculando..." : "Recalcular"}
+                  </Button>
+                  <Button
+                    disabled={working}
+                    onClick={() => setConfirmAction("approve")}
+                  >
+                    <CheckCircle2 className="mr-1.5 h-4 w-4" />
+                    Aprobar corrida
+                  </Button>
+                  <Button
+                    variant="outline"
+                    disabled={working}
+                    onClick={() => setConfirmAction("cancel")}
+                  >
+                    <XCircle className="mr-1.5 h-4 w-4" />
+                    Cancelar corrida
+                  </Button>
+                </>
+              )}
+              {run.status === "APPROVED" && (
+                <>
+                  <Button
+                    disabled={working}
+                    onClick={() => setConfirmAction("pay")}
+                  >
+                    <CircleDollarSign className="mr-1.5 h-4 w-4" />
+                    Marcar pagada
+                  </Button>
+                  <Button
+                    variant="outline"
+                    disabled={working}
+                    onClick={() => setConfirmAction("cancel")}
+                  >
+                    <XCircle className="mr-1.5 h-4 w-4" />
+                    Cancelar corrida
+                  </Button>
+                </>
+              )}
+            </div>
           </div>
         </>
       )}
