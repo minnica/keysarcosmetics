@@ -226,6 +226,55 @@ export interface PayrollRunSummary extends Omit<
   lineCount: number;
 }
 
+export interface MonthlyPayrollRunReference {
+  id: string;
+  periodStart: string;
+  periodEnd: string;
+  mode: PayrollCalculationMode;
+  status: PayrollRunStatus | "ESTIMATED";
+  payrollTotal: number;
+}
+
+export interface MonthlyPayrollLine {
+  employeeId: string;
+  employeeName: string;
+  positionName: string | null;
+  branchNames: string[];
+  firstFortnightTotal: number;
+  secondFortnightTotal: number;
+  salaryPayment: number;
+  salesWithVat: number;
+  salesWithoutVat: number;
+  commission: number;
+  bonus: number;
+  fine: number;
+  adjustmentPositive: number;
+  adjustmentNegative: number;
+  perDiem: number;
+  supplies: number;
+  loanPayment: number;
+  totalPayment: number;
+}
+
+export interface MonthlyPayrollSummary {
+  month: string;
+  periodStart: string;
+  periodEnd: string;
+  complete: boolean;
+  includesDraft: boolean;
+  isApproximate: boolean;
+  estimatedCount: number;
+  runCount: number;
+  firstFortnight: MonthlyPayrollRunReference | null;
+  secondFortnight: MonthlyPayrollRunReference | null;
+  salesWithVat: number;
+  salesWithoutVat: number;
+  expenseTotal: number;
+  payrollTotal: number;
+  generalBalance: number;
+  lines: MonthlyPayrollLine[];
+}
+
 export interface PayrollReceipt {
   id: string;
   employeeName: string;

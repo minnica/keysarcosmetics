@@ -6,13 +6,30 @@ import {
   type CalculationEmployee,
   type PayrollWarning,
 } from "./payroll-calculation";
+import {
+  buildMonthlyPayrollSummary,
+  payrollMonthDates,
+} from "./payroll-monthly-summary";
 
 const VAT_RATE = new Prisma.Decimal("0.16");
+const PAYROLL_TIME_ZONE = "America/Mexico_City";
 
 function endExclusive(date: Date): Date {
   const next = new Date(date);
   next.setUTCDate(next.getUTCDate() + 1);
   return next;
+}
+
+function currentPayrollDate() {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: PAYROLL_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const value = (type: Intl.DateTimeFormatPartTypes) =>
+    Number(parts.find((part) => part.type === type)?.value);
+  return new Date(Date.UTC(value("year"), value("month") - 1, value("day")));
 }
 
 function jsonWarnings(value: Prisma.JsonValue | null): PayrollWarning[] {
@@ -64,14 +81,15 @@ export async function listPayrollRuns() {
   });
 }
 
-export async function recalculatePayrollRun(runId: string, userId: string) {
-  const run = await prisma.payrollRun.findUnique({ where: { id: runId } });
-  if (!run) throw new Error("Corrida no encontrada.");
-  if (run.status !== "DRAFT")
-    throw new Error("Solo las corridas en borrador pueden recalcularse.");
-  assertStandardPayrollPeriod(run.periodStart, run.periodEnd);
-
-  const range = { gte: run.periodStart, lt: endExclusive(run.periodEnd) };
+async function calculatePayrollPeriod(input: {
+  periodStart: Date;
+  periodEnd: Date;
+  mode: "WITH_VAT" | "WITHOUT_VAT";
+  vatRate: Prisma.Decimal;
+  runId?: string;
+}) {
+  assertStandardPayrollPeriod(input.periodStart, input.periodEnd);
+  const range = { gte: input.periodStart, lt: endExclusive(input.periodEnd) };
   const employees = await prisma.empleado.findMany({
     include: {
       bank: { select: { nombre: true } },
@@ -86,31 +104,40 @@ export async function recalculatePayrollRun(runId: string, userId: string) {
           movement: {
             date: range,
             status: "APPROVED",
-            OR: [{ payrollRunId: null }, { payrollRunId: run.id }],
+            ...(input.runId
+              ? {
+                  OR: [{ payrollRunId: null }, { payrollRunId: input.runId }],
+                }
+              : { payrollRunId: null }),
           },
         },
-        include: {
-          movement: { select: { kind: true } },
-        },
+        include: { movement: { select: { kind: true } } },
       },
       payrollLoans: {
         where: { status: "PENDING" },
         include: {
           installments: {
             where: {
-              periodStart: run.periodStart,
-              periodEnd: run.periodEnd,
-              OR: [{ status: "SCHEDULED" }, { payrollRunId: run.id }],
+              periodStart: input.periodStart,
+              periodEnd: input.periodEnd,
+              ...(input.runId
+                ? {
+                    OR: [
+                      { status: "SCHEDULED" },
+                      { payrollRunId: input.runId },
+                    ],
+                  }
+                : { status: "SCHEDULED" }),
             },
           },
         },
       },
       payrollAssignments: {
         where: {
-          effectiveFrom: { lte: run.periodStart },
+          effectiveFrom: { lte: input.periodStart },
           OR: [
             { effectiveTo: null },
-            { effectiveTo: { gte: run.periodStart } },
+            { effectiveTo: { gte: input.periodStart } },
           ],
         },
         orderBy: { effectiveFrom: "desc" },
@@ -119,7 +146,7 @@ export async function recalculatePayrollRun(runId: string, userId: string) {
           scheme: {
             include: {
               versions: {
-                where: { effectiveFrom: { lte: run.periodStart } },
+                where: { effectiveFrom: { lte: input.periodStart } },
                 orderBy: { effectiveFrom: "desc" },
                 take: 1,
                 include: { tiers: { orderBy: { sortOrder: "asc" } } },
@@ -193,18 +220,105 @@ export async function recalculatePayrollRun(runId: string, userId: string) {
     where: {
       date: range,
       deletedAt: null,
-      OR: [{ payrollRunId: null }, { payrollRunId: run.id }],
+      ...(input.runId
+        ? {
+            OR: [{ payrollRunId: null }, { payrollRunId: input.runId }],
+          }
+        : { payrollRunId: null }),
     },
   });
   const expenseTotal = expenses.reduce(
     (sum, expense) => sum.plus(expense.amount),
     new Prisma.Decimal(0),
   );
-  const result = calculatePayroll({
-    mode: run.mode,
-    vatRate: run.vatRate,
+  return calculatePayroll({
+    mode: input.mode,
+    vatRate: input.vatRate,
     employees: calculationEmployees,
     expenseTotal,
+  });
+}
+
+export async function getMonthlyPayrollSummary(month: string) {
+  const dates = payrollMonthDates(month);
+  const runs = await prisma.payrollRun.findMany({
+    where: {
+      status: { not: "CANCELED" },
+      OR: [
+        {
+          periodStart: dates.periodStart,
+          periodEnd: dates.firstPeriodEnd,
+        },
+        {
+          periodStart: dates.secondPeriodStart,
+          periodEnd: dates.periodEnd,
+        },
+      ],
+    },
+    orderBy: { periodStart: "asc" },
+    include: {
+      lines: {
+        orderBy: { employeeName: "asc" },
+        include: {
+          branchLines: {
+            orderBy: { branchName: "asc" },
+            select: { branchName: true },
+          },
+        },
+      },
+    },
+  });
+  const mode = runs[0]?.mode ?? "WITH_VAT";
+  const today = currentPayrollDate();
+  const periods = [
+    { periodStart: dates.periodStart, periodEnd: dates.firstPeriodEnd },
+    { periodStart: dates.secondPeriodStart, periodEnd: dates.periodEnd },
+  ];
+  const estimates = [];
+  for (const period of periods) {
+    const hasRun = runs.some(
+      (run) =>
+        run.periodStart.getTime() === period.periodStart.getTime() &&
+        run.periodEnd.getTime() === period.periodEnd.getTime(),
+    );
+    if (hasRun || period.periodEnd >= today) continue;
+    const result = await calculatePayrollPeriod({
+      ...period,
+      mode,
+      vatRate: VAT_RATE,
+    });
+    estimates.push({
+      id: `estimated-${period.periodStart.toISOString().slice(0, 10)}`,
+      ...period,
+      mode,
+      status: "ESTIMATED" as const,
+      salesWithVat: result.salesWithVat,
+      salesWithoutVat: result.salesWithoutVat,
+      expenseTotal: result.expenseTotal,
+      payrollTotal: result.payrollTotal,
+      generalBalance: result.generalBalance,
+      lines: result.lines.map((line) => ({
+        ...line,
+        branchLines: line.branchLines.map((branch) => ({
+          branchName: branch.branchName,
+        })),
+      })),
+    });
+  }
+  return buildMonthlyPayrollSummary(month, [...runs, ...estimates]);
+}
+
+export async function recalculatePayrollRun(runId: string, userId: string) {
+  const run = await prisma.payrollRun.findUnique({ where: { id: runId } });
+  if (!run) throw new Error("Corrida no encontrada.");
+  if (run.status !== "DRAFT")
+    throw new Error("Solo las corridas en borrador pueden recalcularse.");
+  const result = await calculatePayrollPeriod({
+    periodStart: run.periodStart,
+    periodEnd: run.periodEnd,
+    mode: run.mode,
+    vatRate: run.vatRate,
+    runId: run.id,
   });
 
   await prisma.payrollRun.update({

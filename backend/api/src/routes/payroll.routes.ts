@@ -15,6 +15,7 @@ import {
   cancelPayrollRun,
   createPayrollRun,
   getPayrollRun,
+  getMonthlyPayrollSummary,
   listPayrollRuns,
   payPayrollRun,
   recalculatePayrollRun,
@@ -57,7 +58,10 @@ function ok(res: Response, data: unknown, message = "OK", status = 200): void {
 
 function parseDate(value: string): Date {
   const date = new Date(`${value}T00:00:00.000Z`);
-  if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== value) {
+  if (
+    Number.isNaN(date.getTime()) ||
+    date.toISOString().slice(0, 10) !== value
+  ) {
     throw new Error("La fecha no es válida.");
   }
   return date;
@@ -83,13 +87,11 @@ function requireSuperAdmin(
   next: NextFunction,
 ): void {
   if (req.user?.rol !== "SUPER_ADMIN") {
-    res
-      .status(403)
-      .json({
-        success: false,
-        data: null,
-        message: "Payroll está disponible únicamente para SUPER_ADMIN.",
-      });
+    res.status(403).json({
+      success: false,
+      data: null,
+      message: "Payroll está disponible únicamente para SUPER_ADMIN.",
+    });
     return;
   }
   next();
@@ -101,6 +103,7 @@ function currentUserId(req: Request): string {
 }
 
 const dateString = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+const monthString = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
 const positiveMoney = z.coerce.number().positive().max(999_999_999_999);
 const nullableId = z.string().min(1).nullable().optional();
 
@@ -391,6 +394,23 @@ router.delete(
       data: { active: false },
     });
     ok(res, scheme, "Esquema desactivado.");
+  }),
+);
+
+router.patch(
+  "/schemes/:id/reactivate",
+  asyncRoute(async (req, res) => {
+    const scheme = await prisma.commissionScheme.update({
+      where: { id: req.params["id"] },
+      data: { active: true },
+      include: {
+        versions: {
+          orderBy: { effectiveFrom: "desc" },
+          include: { tiers: { orderBy: { sortOrder: "asc" } } },
+        },
+      },
+    });
+    ok(res, scheme, "Esquema reactivado.");
   }),
 );
 
@@ -1013,13 +1033,11 @@ router.get(
   asyncRoute(async (req, res) => {
     const run = await getPayrollRun(req.params["id"]!);
     if (!run) {
-      res
-        .status(404)
-        .json({
-          success: false,
-          data: null,
-          message: "Corrida no encontrada.",
-        });
+      res.status(404).json({
+        success: false,
+        data: null,
+        message: "Corrida no encontrada.",
+      });
       return;
     }
     ok(res, run);
@@ -1109,6 +1127,14 @@ router.post(
 // ─── Reporte por sucursal y recibos ─────────────────────────────────────────
 
 router.get(
+  "/reports/monthly-summary",
+  asyncRoute(async (req, res) => {
+    const month = monthString.parse(req.query["month"]);
+    ok(res, await getMonthlyPayrollSummary(month));
+  }),
+);
+
+router.get(
   "/reports/branch-breakdown",
   asyncRoute(async (req, res) => {
     const runId = z.string().min(1).parse(req.query["runId"]);
@@ -1176,17 +1202,17 @@ router.get(
     const runId =
       typeof req.query["runId"] === "string" ? req.query["runId"] : undefined;
     const receipts = await prisma.payrollReceipt.findMany({
-    where: runId ? { payrollRunLine: { payrollRunId: runId } } : undefined,
-    orderBy: { createdAt: "desc" },
-    include: {
-      payrollRunLine: {
-        include: {
-          payrollRun: true,
-          branchLines: { orderBy: { branchName: "asc" } },
+      where: runId ? { payrollRunLine: { payrollRunId: runId } } : undefined,
+      orderBy: { createdAt: "desc" },
+      include: {
+        payrollRunLine: {
+          include: {
+            payrollRun: true,
+            branchLines: { orderBy: { branchName: "asc" } },
+          },
         },
       },
-    },
-  });
+    });
     ok(res, receipts);
   }),
 );
@@ -1227,52 +1253,44 @@ router.patch(
 router.use(
   (error: unknown, _req: Request, res: Response, _next: NextFunction) => {
     if (error instanceof z.ZodError) {
-      res
-        .status(400)
-        .json({
-          success: false,
-          data: error.flatten().fieldErrors,
-          message: "Revisa los datos capturados.",
-        });
+      res.status(400).json({
+        success: false,
+        data: error.flatten().fieldErrors,
+        message: "Revisa los datos capturados.",
+      });
       return;
     }
     if (error instanceof multer.MulterError) {
-      res
-        .status(400)
-        .json({
-          success: false,
-          data: null,
-          message:
-            error.code === "LIMIT_FILE_SIZE"
-              ? "El archivo no puede superar 10 MB."
-              : error.message,
-        });
+      res.status(400).json({
+        success: false,
+        data: null,
+        message:
+          error.code === "LIMIT_FILE_SIZE"
+            ? "El archivo no puede superar 10 MB."
+            : error.message,
+      });
       return;
     }
     if (
       error instanceof Prisma.PrismaClientKnownRequestError &&
       error.code === "P2002"
     ) {
-      res
-        .status(409)
-        .json({
-          success: false,
-          data: null,
-          message: "Ya existe un registro con esos datos.",
-        });
+      res.status(409).json({
+        success: false,
+        data: null,
+        message: "Ya existe un registro con esos datos.",
+      });
       return;
     }
     console.error("[payroll]", error);
-    res
-      .status(400)
-      .json({
-        success: false,
-        data: null,
-        message:
-          error instanceof Error
-            ? error.message
-            : "No se pudo completar la operación.",
-      });
+    res.status(400).json({
+      success: false,
+      data: null,
+      message:
+        error instanceof Error
+          ? error.message
+          : "No se pudo completar la operación.",
+    });
   },
 );
 

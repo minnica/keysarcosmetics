@@ -3,8 +3,12 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
+  CalendarDays,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   CircleDollarSign,
+  ListChecks,
   PlusCircle,
   RefreshCw,
   XCircle,
@@ -18,16 +22,18 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
+  Badge,
   Button,
   Card,
   CardContent,
   ColumnDef,
   DataTable,
   DatePicker,
-  DateRangePicker,
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
   toast,
@@ -37,8 +43,68 @@ import { SectionCard } from "@/components/payroll/section-card";
 import { StatusBadge } from "@/components/payroll/status-badge";
 import { usePayrollData } from "@/components/payroll/payroll-data-context";
 import { apiErrorMessage } from "@/lib/api";
-import { formatCurrency, formatDate, formatPercent, sumBy } from "@/lib/format";
-import type { PayrollCalculationMode, PayrollRunLine } from "@/lib/types";
+import {
+  formatCurrency,
+  formatDate,
+  formatPercent,
+  formatStatus,
+  sumBy,
+} from "@/lib/format";
+import type {
+  MonthlyPayrollLine,
+  MonthlyPayrollRunReference,
+  PayrollCalculationMode,
+  PayrollRunLine,
+} from "@/lib/types";
+
+type SummaryView = "FORTNIGHT" | "MONTHLY";
+
+type PayrollPeriodOption = {
+  value: string;
+  from: string;
+  to: string;
+  month: string;
+  label: string;
+  shortLabel: string;
+};
+
+type AttentionIssue = {
+  code: string;
+  label: string;
+};
+
+type AttentionLine = {
+  id: string;
+  employeeName: string;
+  pendingCount: number;
+  issues: AttentionIssue[];
+};
+
+const ATTENTION_LABELS: Record<string, string> = {
+  MISSING_SCHEME: "ESQUEMA",
+  MISSING_TIER: "RANGO DE COMISIÓN",
+  MISSING_SALARY: "SUELDO",
+  MISSING_BANK: "BANCO",
+  MISSING_ACCOUNT: "CUENTA BANCARIA",
+  MISSING_PHONE: "TELÉFONO",
+  NEGATIVE_PAYMENT: "PAGO NEGATIVO",
+  MISSING_BRANCH: "SUCURSAL",
+};
+
+function currentMonth() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function formatMonth(value: string) {
+  const [year, month] = value.split("-").map(Number);
+  const label = new Intl.DateTimeFormat("es-MX", {
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(Date.UTC(year ?? 0, (month ?? 1) - 1, 1)));
+  return label.charAt(0).toLocaleUpperCase("es-MX") + label.slice(1);
+}
 
 function currentFortnight() {
   const now = new Date();
@@ -56,9 +122,58 @@ function currentFortnight() {
   };
 }
 
+function payrollPeriodOptions(monthCount = 12): PayrollPeriodOption[] {
+  const now = new Date();
+  const options: PayrollPeriodOption[] = [];
+
+  for (let offset = 0; offset < monthCount; offset += 1) {
+    const date = new Date(now.getFullYear(), now.getMonth() - offset, 1);
+    const year = date.getFullYear();
+    const monthNumber = date.getMonth() + 1;
+    const month = `${year}-${String(monthNumber).padStart(2, "0")}`;
+    const monthName = new Intl.DateTimeFormat("es-MX", {
+      month: "long",
+    }).format(date);
+    const lastDay = new Date(year, monthNumber, 0).getDate();
+    const isoDate = (day: number) => `${month}-${String(day).padStart(2, "0")}`;
+
+    options.push(
+      {
+        value: isoDate(16),
+        from: isoDate(16),
+        to: isoDate(lastDay),
+        month,
+        label: `${monthName} ${year} · 2.ª quincena · 16–${lastDay}`,
+        shortLabel: `2.ª quincena · días 16–${lastDay}`,
+      },
+      {
+        value: isoDate(1),
+        from: isoDate(1),
+        to: isoDate(15),
+        month,
+        label: `${monthName} ${year} · 1.ª quincena · 1–15`,
+        shortLabel: "1.ª quincena · días 1–15",
+      },
+    );
+  }
+
+  return options;
+}
+
+function suggestedPayDate(periodEnd: string) {
+  const date = new Date(`${periodEnd}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + 7);
+  return date.toISOString().slice(0, 10);
+}
+
 export default function DashboardPage() {
   const data = usePayrollData();
   const defaults = useMemo(currentFortnight, []);
+  const periodOptions = useMemo(payrollPeriodOptions, []);
+  const initialMonth = useMemo(currentMonth, []);
+  const [summaryView, setSummaryView] = useState<SummaryView>("FORTNIGHT");
+  const [selectedMonth, setSelectedMonth] = useState(initialMonth);
+  const [attentionExpanded, setAttentionExpanded] = useState(false);
   const [range, setRange] = useState({ from: defaults.from, to: defaults.to });
   const [payDate, setPayDate] = useState(defaults.payDate);
   const [mode, setMode] = useState<PayrollCalculationMode>("WITH_VAT");
@@ -68,12 +183,75 @@ export default function DashboardPage() {
     "approve" | "pay" | "cancel" | null
   >(null);
   const run = data.selectedRun;
+  const selectedPeriodRun = data.runs.find(
+    (item) =>
+      item.status !== "CANCELED" &&
+      item.from === range.from &&
+      item.to === range.to,
+  );
+  const editingSelectedDraft =
+    selectedPeriodRun?.status === "DRAFT" && selectedPeriodRun.id === run?.id;
+  const selectedExistingFinalRun = Boolean(
+    selectedPeriodRun && selectedPeriodRun.status !== "DRAFT",
+  );
+  const selectedPeriodOption = periodOptions.find(
+    (item) => item.value === range.from,
+  );
+  const periodOptionGroups = periodOptions.reduce<
+    Array<{ month: string; options: PayrollPeriodOption[] }>
+  >((groups, option) => {
+    const current = groups.at(-1);
+    if (current?.month === option.month) {
+      current.options.push(option);
+    } else {
+      groups.push({ month: option.month, options: [option] });
+    }
+    return groups;
+  }, []);
+
+  const monthOptions = useMemo(
+    () =>
+      [
+        ...new Set([initialMonth, ...periodOptions.map((item) => item.month)]),
+      ].sort((left, right) => right.localeCompare(left)),
+    [initialMonth, periodOptions],
+  );
+
+  useEffect(() => {
+    if (summaryView !== "MONTHLY") return;
+    void data.loadMonthlySummary(selectedMonth);
+  }, [data.loadMonthlySummary, data.runs, selectedMonth, summaryView]);
 
   useEffect(() => {
     if (!run) return;
+    setRange({ from: run.from, to: run.to });
     setMode(run.mode);
     setPayDate(run.payDate);
-  }, [run?.id, run?.mode, run?.payDate]);
+  }, [run?.from, run?.id, run?.mode, run?.payDate, run?.to]);
+
+  useEffect(() => {
+    setAttentionExpanded(false);
+  }, [run?.id]);
+
+  function selectPayrollPeriod(value: string) {
+    const option = periodOptions.find((item) => item.value === value);
+    if (!option) return;
+
+    setRange({ from: option.from, to: option.to });
+    const existingRun = data.runs.find(
+      (item) =>
+        item.status !== "CANCELED" &&
+        item.from === option.from &&
+        item.to === option.to,
+    );
+    if (existingRun) {
+      void data.selectRun(existingRun.id);
+      return;
+    }
+
+    data.clearRunSelection();
+    setPayDate(suggestedPayDate(option.to));
+  }
 
   async function createRun() {
     setWorking(true);
@@ -111,9 +289,7 @@ export default function DashboardPage() {
       await data.runAction("recalculate");
       toast.success("Corrida recalculada con los datos vigentes.");
     } catch (cause) {
-      toast.error(
-        apiErrorMessage(cause, "No se pudo recalcular la corrida."),
-      );
+      toast.error(apiErrorMessage(cause, "No se pudo recalcular la corrida."));
     } finally {
       setWorking(false);
       setRecalculating(false);
@@ -204,16 +380,6 @@ export default function DashboardPage() {
       ),
     },
     {
-      accessorKey: "salaryBase",
-      header: "SUELDO BASE",
-      meta: { align: "right" },
-      cell: ({ row }) => (
-        <div className="text-right">
-          {formatCurrency(row.original.salaryBase)}
-        </div>
-      ),
-    },
-    {
       accessorKey: "bonus",
       header: "BONO",
       meta: { align: "right" },
@@ -279,6 +445,100 @@ export default function DashboardPage() {
     },
   ];
 
+  const monthlyColumns: ColumnDef<MonthlyPayrollLine>[] = [
+    {
+      id: "employee",
+      accessorFn: (row) =>
+        [row.employeeName, row.positionName, ...row.branchNames]
+          .filter(Boolean)
+          .join(" "),
+      header: "EMPLEADO",
+      cell: ({ row }) => (
+        <div>
+          <p className="font-medium">{row.original.employeeName}</p>
+          <p className="text-sm text-[color:var(--text-muted)]">
+            {[row.original.positionName, row.original.branchNames.join(", ")]
+              .filter(Boolean)
+              .join(" / ")}
+          </p>
+        </div>
+      ),
+    },
+    {
+      accessorKey: "firstFortnightTotal",
+      header: "1–15",
+      meta: { align: "right" },
+      cell: ({ row }) => (
+        <div className="text-right tabular-nums">
+          {formatCurrency(row.original.firstFortnightTotal)}
+        </div>
+      ),
+    },
+    {
+      accessorKey: "secondFortnightTotal",
+      header: "16–FIN",
+      meta: { align: "right" },
+      cell: ({ row }) => (
+        <div className="text-right tabular-nums">
+          {formatCurrency(row.original.secondFortnightTotal)}
+        </div>
+      ),
+    },
+    {
+      accessorKey: "salesWithVat",
+      header: "VENTAS CON IVA",
+      meta: { align: "right" },
+      cell: ({ row }) => (
+        <div className="text-right tabular-nums">
+          {formatCurrency(row.original.salesWithVat)}
+        </div>
+      ),
+    },
+    {
+      accessorKey: "commission",
+      header: "COMISIÓN",
+      meta: { align: "right" },
+      cell: ({ row }) => (
+        <div className="text-right tabular-nums">
+          {formatCurrency(row.original.commission)}
+        </div>
+      ),
+    },
+    {
+      id: "extras",
+      accessorFn: (row) =>
+        row.bonus + row.adjustmentPositive + row.perDiem + row.supplies,
+      header: "EXTRAS",
+      meta: { align: "right" },
+      cell: ({ getValue }) => (
+        <div className="text-right tabular-nums">
+          {formatCurrency(Number(getValue()))}
+        </div>
+      ),
+    },
+    {
+      id: "deductions",
+      accessorFn: (row) => row.fine + row.adjustmentNegative + row.loanPayment,
+      header: "DEDUCCIONES",
+      meta: { align: "right" },
+      cell: ({ getValue }) => (
+        <div className="text-right tabular-nums">
+          {formatCurrency(Number(getValue()))}
+        </div>
+      ),
+    },
+    {
+      accessorKey: "totalPayment",
+      header: "TOTAL MENSUAL",
+      meta: { align: "right" },
+      cell: ({ row }) => (
+        <div className="number-display text-right text-base">
+          {formatCurrency(row.original.totalPayment)}
+        </div>
+      ),
+    },
+  ];
+
   if (data.loading)
     return (
       <Card>
@@ -312,7 +572,81 @@ export default function DashboardPage() {
       line.fine -
       line.payrollAdjustmentNegative,
   );
-  const warningLines = lines.filter((line) => line.warnings.length > 0);
+  const attentionLines = lines
+    .map((line) => {
+      const issues: AttentionIssue[] = line.warnings.map((item) => ({
+        code: item.code,
+        label: ATTENTION_LABELS[item.code] ?? item.code.replaceAll("_", " "),
+      }));
+      const missingBranch = line.branchLines.some(
+        (branch) => branch.branchId === null,
+      );
+      if (missingBranch) {
+        issues.push({ code: "MISSING_BRANCH", label: "SUCURSAL" });
+      }
+      return {
+        id: line.id,
+        employeeName: line.employeeName,
+        pendingCount: issues.length,
+        issues,
+      };
+    })
+    .filter((line) => line.pendingCount > 0);
+  const attentionIssueCounts = [
+    ...new Set(
+      attentionLines.flatMap((line) => line.issues.map((issue) => issue.code)),
+    ),
+  ]
+    .map((code) => {
+      const issues = attentionLines.flatMap((line) => line.issues);
+      return {
+        code,
+        label: issues.find((issue) => issue.code === code)?.label ?? code,
+        count: issues.filter((issue) => issue.code === code).length,
+      };
+    })
+    .sort((left, right) => right.count - left.count);
+  const totalAttentionIssues = sumBy(
+    attentionLines,
+    (line) => line.pendingCount,
+  );
+  const attentionColumns: ColumnDef<AttentionLine>[] = [
+    {
+      accessorKey: "employeeName",
+      header: "EMPLEADO",
+      cell: ({ row }) => (
+        <span className="font-medium">{row.original.employeeName}</span>
+      ),
+    },
+    {
+      accessorKey: "pendingCount",
+      header: "PENDIENTES",
+      meta: { align: "center" },
+      cell: ({ row }) => (
+        <div className="text-center">
+          <Badge variant="secondary">{row.original.pendingCount}</Badge>
+        </div>
+      ),
+    },
+    {
+      id: "issues",
+      accessorFn: (row) => row.issues.map((issue) => issue.label).join(" "),
+      header: "DATOS POR COMPLETAR",
+      cell: ({ row }) => (
+        <div className="flex flex-wrap gap-1.5">
+          {row.original.issues.map((issue) => (
+            <Badge
+              key={issue.code}
+              variant="outline"
+              className="border-amber-300 bg-amber-50 text-amber-950 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-50"
+            >
+              {issue.label}
+            </Badge>
+          ))}
+        </div>
+      ),
+    },
+  ];
   const exportConfig = {
     title: "Resumen de nómina",
     subtitle: run
@@ -377,270 +711,683 @@ export default function DashboardPage() {
       },
     ],
   };
+  const monthlySummary = data.monthlySummary;
+  const monthlyLines = monthlySummary?.lines ?? [];
+  const monthlyDeductions = sumBy(
+    monthlyLines,
+    (line) => line.fine + line.adjustmentNegative + line.loanPayment,
+  );
+  const monthlyExtras = sumBy(
+    monthlyLines,
+    (line) =>
+      line.bonus + line.adjustmentPositive + line.perDiem + line.supplies,
+  );
+  const monthlyExportConfig = {
+    title: monthlySummary?.isApproximate
+      ? "Resumen mensual de nómina aproximada"
+      : "Resumen mensual de nómina calculada",
+    subtitle: `${formatMonth(selectedMonth)} · ${monthlySummary?.runCount ?? 0} ${(monthlySummary?.runCount ?? 0) === 1 ? "corrida" : "corridas"} y ${monthlySummary?.estimatedCount ?? 0} ${(monthlySummary?.estimatedCount ?? 0) === 1 ? "estimación" : "estimaciones"}`,
+    filename: `resumen-nomina-mensual-${selectedMonth}`,
+    sheetName: "Nómina mensual",
+    orientation: "landscape" as const,
+    rows: monthlyLines,
+    columns: [
+      {
+        header: "EMPLEADO",
+        accessor: (row: MonthlyPayrollLine) => row.employeeName,
+        width: 30,
+      },
+      {
+        header: "SUCURSAL",
+        accessor: (row: MonthlyPayrollLine) => row.branchNames.join(", "),
+        width: 24,
+      },
+      {
+        header: "PRIMERA QUINCENA",
+        accessor: (row: MonthlyPayrollLine) => row.firstFortnightTotal,
+        format: "currency" as const,
+      },
+      {
+        header: "SEGUNDA QUINCENA",
+        accessor: (row: MonthlyPayrollLine) => row.secondFortnightTotal,
+        format: "currency" as const,
+      },
+      {
+        header: "SUELDO BASE",
+        accessor: (row: MonthlyPayrollLine) => row.salaryPayment,
+        format: "currency" as const,
+      },
+      {
+        header: "VENTAS CON IVA",
+        accessor: (row: MonthlyPayrollLine) => row.salesWithVat,
+        format: "currency" as const,
+      },
+      {
+        header: "COMISIÓN",
+        accessor: (row: MonthlyPayrollLine) => row.commission,
+        format: "currency" as const,
+      },
+      {
+        header: "EXTRAS",
+        accessor: (row: MonthlyPayrollLine) =>
+          row.bonus + row.adjustmentPositive + row.perDiem + row.supplies,
+        format: "currency" as const,
+      },
+      {
+        header: "DEDUCCIONES",
+        accessor: (row: MonthlyPayrollLine) =>
+          row.fine + row.adjustmentNegative + row.loanPayment,
+        format: "currency" as const,
+      },
+      {
+        header: "TOTAL MENSUAL",
+        accessor: (row: MonthlyPayrollLine) => row.totalPayment,
+        format: "currency" as const,
+      },
+    ],
+  };
+
+  function monthlyRunRow(
+    label: string,
+    item: MonthlyPayrollRunReference | null,
+  ) {
+    return (
+      <div className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="text-sm font-medium">{label}</p>
+          {item ? (
+            item.status === "ESTIMATED" ? (
+              <Badge
+                variant="outline"
+                className="border-amber-300 bg-amber-50 text-amber-950 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-50"
+              >
+                ESTIMADA
+              </Badge>
+            ) : (
+              <StatusBadge status={item.status} />
+            )
+          ) : (
+            <Badge variant="outline">FALTANTE</Badge>
+          )}
+        </div>
+        <div className="flex items-center justify-between gap-4 sm:justify-end">
+          <p className="text-sm text-[color:var(--text-muted)]">
+            {item
+              ? `${formatDate(item.periodStart)} – ${formatDate(item.periodEnd)} · ${item.mode === "WITH_VAT" ? "Con IVA" : "Sin IVA"}`
+              : "Sin corrida calculada"}
+          </p>
+          <p className="number-display min-w-28 text-right">
+            {formatCurrency(item?.payrollTotal ?? 0)}
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8">
-      <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <header className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
         <div>
           <h1 className="page-title">Corridas de nómina</h1>
           <p className="mt-1 text-sm text-[color:var(--text-muted)]">
-            Cálculo quincenal auditable desde ventas y movimientos reales.
+            Consulta corridas quincenales y su consolidado mensual calculado.
           </p>
         </div>
-        {data.runs.length > 0 && (
-          <Select
-            value={run?.id ?? ""}
-            onValueChange={(value) => void data.selectRun(value)}
+        <div className="flex w-full flex-col gap-2 sm:flex-row xl:w-auto">
+          <div
+            className="flex rounded-md border border-[color:var(--border-color)] p-1"
+            role="group"
+            aria-label="Vista del resumen"
           >
-            <SelectTrigger className="w-full sm:w-72">
-              <SelectValue placeholder="Selecciona una corrida" />
-            </SelectTrigger>
-            <SelectContent>
-              {data.runs.map((item) => (
-                <SelectItem key={item.id} value={item.id}>
-                  {formatDate(item.from)} – {formatDate(item.to)} ·{" "}
-                  {item.status}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
-      </header>
-
-      {run ? (
-        <Card>
-          <CardContent className="p-5 md:p-6">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="text-sm font-medium text-[color:var(--text-muted)]">
-                  Periodo seleccionado
-                </p>
-                <div className="mt-1.5 flex flex-wrap items-center gap-3">
-                  <p className="number-display text-xl">
-                    {formatDate(run.from)} - {formatDate(run.to)}
-                  </p>
-                  <StatusBadge status={run.status} />
-                </div>
-              </div>
-              <ReportExportButtons
-                config={exportConfig}
-                disabled={!lines.length}
-              />
-            </div>
-            <div className="mt-5 grid gap-x-8 gap-y-5 border-t border-[color:var(--border-color)] pt-5 sm:grid-cols-2 xl:grid-cols-4">
-              {[
-                ["Ventas con IVA", run.salesWithVat],
-                ["Nómina total", run.payrollTotal],
-                ["Gastos", run.expenseTotal],
-                ["Balance general", run.generalBalance],
-              ].map(([label, value]) => (
-                <div key={String(label)}>
-                  <p className="text-xs font-semibold uppercase tracking-widest text-[color:var(--text-muted)]">
-                    {label}
-                  </p>
-                  <p className="number-display mt-1.5 text-xl">
-                    {formatCurrency(Number(value))}
-                  </p>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      ) : (
-        <Card>
-          <CardContent className="p-8 text-center">
-            <p className="font-medium">Aún no hay corridas</p>
-            <p className="mt-1 text-sm text-[var(--text-muted)]">
-              Configura la primera quincena para comenzar.
-            </p>
-          </CardContent>
-        </Card>
-      )}
-
-      <SectionCard
-        title={
-          run?.status === "DRAFT" ? "CONFIGURAR BORRADOR" : "NUEVA CORRIDA"
-        }
-      >
-        <Card>
-          <CardContent className="grid gap-4 p-5 lg:grid-cols-[minmax(0,1fr)_13rem_13rem_auto] lg:items-end">
-            {run?.status === "DRAFT" ? (
-              <div>
-                <p className="mb-2 text-sm font-medium">Periodo bloqueado</p>
-                <div className="rounded-md border border-[var(--border-color)] px-3 py-2 text-sm">
-                  {formatDate(run.from)} – {formatDate(run.to)}
-                </div>
-              </div>
-            ) : (
-              <DateRangePicker
-                value={range}
-                onChange={setRange}
-                fromLabel="Desde"
-                toLabel="Hasta"
-              />
-            )}
-            <div className="space-y-2">
-              <p className="text-sm font-medium">Día de pago</p>
-              <DatePicker value={payDate} onChange={setPayDate} />
-            </div>
-            <Select
-              value={mode}
-              onValueChange={(value) =>
-                setMode(value as PayrollCalculationMode)
-              }
+            <Button
+              type="button"
+              size="sm"
+              variant={summaryView === "FORTNIGHT" ? "default" : "ghost"}
+              className="flex-1 sm:flex-none"
+              aria-pressed={summaryView === "FORTNIGHT"}
+              onClick={() => setSummaryView("FORTNIGHT")}
             >
-              <SelectTrigger>
-                <SelectValue />
+              <ListChecks className="mr-1.5 h-4 w-4" aria-hidden="true" />
+              Quincenal
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={summaryView === "MONTHLY" ? "default" : "ghost"}
+              className="flex-1 sm:flex-none"
+              aria-pressed={summaryView === "MONTHLY"}
+              onClick={() => setSummaryView("MONTHLY")}
+            >
+              <CalendarDays className="mr-1.5 h-4 w-4" aria-hidden="true" />
+              Mensual
+            </Button>
+          </div>
+          {summaryView === "MONTHLY" && (
+            <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+              <SelectTrigger className="w-full sm:w-56">
+                <SelectValue aria-label="Mes consolidado" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="WITH_VAT">Calcular con IVA</SelectItem>
-                <SelectItem value="WITHOUT_VAT">Calcular sin IVA</SelectItem>
+                {monthOptions.map((month) => (
+                  <SelectItem key={month} value={month}>
+                    {formatMonth(month)}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
-            <Button
-              disabled={working}
-              onClick={() =>
-                void (run?.status === "DRAFT" ? updateRun() : createRun())
-              }
-            >
-              {run?.status === "DRAFT" ? (
-                <RefreshCw className="mr-1.5 h-4 w-4" />
-              ) : (
-                <PlusCircle className="mr-1.5 h-4 w-4" />
-              )}
-              {working
-                ? "Procesando…"
-                : run?.status === "DRAFT"
-                  ? "Guardar y recalcular"
-                  : "Crear corrida"}
-            </Button>
-          </CardContent>
-        </Card>
-      </SectionCard>
+          )}
+        </div>
+      </header>
 
-      {run && (
+      {summaryView === "MONTHLY" ? (
         <>
-          {warningLines.length > 0 && (
-            <Card className="border-amber-300 bg-amber-50/80 dark:border-amber-700 dark:bg-amber-950/30">
-              <CardContent className="p-5">
-                <div className="flex items-center gap-2 text-amber-900 dark:text-amber-100">
-                  <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
-                  <p className="font-semibold">Datos que requieren atención</p>
+          {data.monthlySummaryLoading ? (
+            <Card>
+              <CardContent
+                className="p-8 text-sm text-[var(--text-muted)]"
+                role="status"
+              >
+                Consolidando las corridas de {formatMonth(selectedMonth)}…
+              </CardContent>
+            </Card>
+          ) : data.monthlySummaryError ? (
+            <Card>
+              <CardContent className="space-y-4 p-8">
+                <p className="text-sm text-red-600">
+                  {data.monthlySummaryError}
+                </p>
+                <Button
+                  variant="outline"
+                  onClick={() => void data.loadMonthlySummary(selectedMonth)}
+                >
+                  Reintentar
+                </Button>
+              </CardContent>
+            </Card>
+          ) : monthlySummary ? (
+            <>
+              <Card>
+                <CardContent className="p-5 md:p-6">
+                  <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-sm font-medium text-[color:var(--text-muted)]">
+                          Mi nómina mensual{" "}
+                          {monthlySummary.isApproximate
+                            ? "aproximada"
+                            : "calculada"}{" "}
+                          es de
+                        </p>
+                        <Badge
+                          variant={
+                            monthlySummary.complete &&
+                            !monthlySummary.isApproximate
+                              ? "default"
+                              : "outline"
+                          }
+                        >
+                          {monthlySummary.isApproximate
+                            ? "CÁLCULO APROXIMADO"
+                            : `${monthlySummary.runCount} DE 2 QUINCENAS`}
+                        </Badge>
+                      </div>
+                      <p className="number-display mt-2 text-3xl md:text-4xl">
+                        {formatCurrency(monthlySummary.payrollTotal)}
+                      </p>
+                      <p className="mt-1 text-sm text-[color:var(--text-muted)]">
+                        {formatMonth(selectedMonth)}
+                      </p>
+                    </div>
+                    <ReportExportButtons
+                      config={monthlyExportConfig}
+                      disabled={!monthlyLines.length}
+                    />
+                  </div>
+
+                  <div className="mt-6 grid gap-x-8 gap-y-5 border-t border-[color:var(--border-color)] pt-5 sm:grid-cols-3">
+                    {[
+                      ["Ventas con IVA", monthlySummary.salesWithVat],
+                      ["Gastos", monthlySummary.expenseTotal],
+                      ["Balance general", monthlySummary.generalBalance],
+                    ].map(([label, value]) => (
+                      <div key={String(label)}>
+                        <p className="text-xs font-semibold uppercase tracking-widest text-[color:var(--text-muted)]">
+                          {label}
+                        </p>
+                        <p className="number-display mt-1.5 text-xl">
+                          {formatCurrency(Number(value))}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="mt-5 divide-y divide-[color:var(--border-color)] border-t border-[color:var(--border-color)]">
+                    {monthlyRunRow(
+                      "Primera quincena",
+                      monthlySummary.firstFortnight,
+                    )}
+                    {monthlyRunRow(
+                      "Segunda quincena",
+                      monthlySummary.secondFortnight,
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {(!monthlySummary.complete ||
+                monthlySummary.includesDraft ||
+                monthlySummary.isApproximate) && (
+                <Card className="border-amber-300 bg-amber-50/80 dark:border-amber-700 dark:bg-amber-950/30">
+                  <CardContent className="flex gap-3 p-4 text-sm text-amber-950 dark:text-amber-50">
+                    <AlertTriangle
+                      className="mt-0.5 h-4 w-4 shrink-0"
+                      aria-hidden="true"
+                    />
+                    <p>
+                      {!monthlySummary.complete
+                        ? `Este cálculo incluye ${monthlySummary.runCount + monthlySummary.estimatedCount} de 2 quincenas. La quincena vigente se incorporará cuando termine o al crear su corrida.`
+                        : ""}
+                      {!monthlySummary.complete &&
+                      (monthlySummary.includesDraft ||
+                        monthlySummary.isApproximate)
+                        ? " "
+                        : ""}
+                      {monthlySummary.isApproximate
+                        ? `Incluye ${monthlySummary.estimatedCount} ${monthlySummary.estimatedCount === 1 ? "quincena estimada" : "quincenas estimadas"} con los datos históricos y la configuración disponible. No sustituye una corrida; crea la corrida histórica para validar y congelar el resultado.`
+                        : ""}
+                      {monthlySummary.isApproximate &&
+                      monthlySummary.includesDraft
+                        ? " "
+                        : ""}
+                      {monthlySummary.includesDraft
+                        ? "Incluye una corrida en borrador; el monto puede cambiar al recalcularla."
+                        : ""}
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
+
+              <SectionCard
+                title="DETALLE MENSUAL POR EMPLEADO"
+                action={
+                  <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
+                    <p>
+                      <span className="text-[var(--text-muted)]">Extras </span>
+                      <span className="number-display">
+                        {formatCurrency(monthlyExtras)}
+                      </span>
+                    </p>
+                    <p>
+                      <span className="text-[var(--text-muted)]">
+                        Deducciones{" "}
+                      </span>
+                      <span className="number-display">
+                        {formatCurrency(monthlyDeductions)}
+                      </span>
+                    </p>
+                  </div>
+                }
+              >
+                <DataTable
+                  columns={monthlyColumns}
+                  data={monthlyLines}
+                  searchPlaceholder="Buscar empleado, puesto o sucursal"
+                  emptyMessage="Sin empleados en las corridas calculadas del mes"
+                  pageSize={10}
+                />
+              </SectionCard>
+            </>
+          ) : null}
+        </>
+      ) : (
+        <>
+          {run ? (
+            <Card>
+              <CardContent className="p-5 md:p-6">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-[color:var(--text-muted)]">
+                      Periodo seleccionado
+                    </p>
+                    <div className="mt-1.5 flex flex-wrap items-center gap-3">
+                      <p className="number-display text-xl">
+                        {formatDate(run.from)} - {formatDate(run.to)}
+                      </p>
+                      <StatusBadge status={run.status} />
+                    </div>
+                  </div>
+                  <ReportExportButtons
+                    config={exportConfig}
+                    disabled={!lines.length}
+                  />
                 </div>
-                <div className="mt-3 space-y-2 text-sm text-amber-950/75 dark:text-amber-50/75">
-                  {warningLines.map((line) => (
-                    <div key={line.id}>
-                      <span className="font-medium text-amber-950 dark:text-amber-50">
-                        {line.employeeName}:
-                      </span>{" "}
-                      {line.warnings.map((item) => item.message).join(" · ")}
+                <div className="mt-5 grid gap-x-8 gap-y-5 border-t border-[color:var(--border-color)] pt-5 sm:grid-cols-2 xl:grid-cols-4">
+                  {[
+                    ["Ventas con IVA", run.salesWithVat],
+                    ["Nómina total", run.payrollTotal],
+                    ["Gastos", run.expenseTotal],
+                    ["Balance general", run.generalBalance],
+                  ].map(([label, value]) => (
+                    <div key={String(label)}>
+                      <p className="text-xs font-semibold uppercase tracking-widest text-[color:var(--text-muted)]">
+                        {label}
+                      </p>
+                      <p className="number-display mt-1.5 text-xl">
+                        {formatCurrency(Number(value))}
+                      </p>
                     </div>
                   ))}
                 </div>
               </CardContent>
             </Card>
+          ) : (
+            <Card>
+              <CardContent className="p-8 text-center">
+                <p className="font-medium">
+                  {data.runs.length > 0
+                    ? "Periodo sin corrida"
+                    : "Aún no hay corridas"}
+                </p>
+                <p className="mt-1 text-sm text-[var(--text-muted)]">
+                  {data.runs.length > 0
+                    ? "Configura esta quincena para calcularla."
+                    : "Configura la primera quincena para comenzar."}
+                </p>
+              </CardContent>
+            </Card>
           )}
+
           <SectionCard
-            title="DETALLE POR EMPLEADO"
-            action={
-              <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
-                <p>
-                  <span className="text-[var(--text-muted)]">
-                    Ventas sin IVA{" "}
-                  </span>
-                  <span className="number-display">
-                    {formatCurrency(run.salesWithoutVat)}
-                  </span>
-                </p>
-                <p>
-                  <span className="text-[var(--text-muted)]">Deducciones </span>
-                  <span className="number-display">
-                    {formatCurrency(deductions)}
-                  </span>
-                </p>
-                <p>
-                  <span className="text-[var(--text-muted)]">
-                    Ajustes netos{" "}
-                  </span>
-                  <span className="number-display">
-                    {formatCurrency(adjustments)}
-                  </span>
-                </p>
-              </div>
+            title={
+              editingSelectedDraft
+                ? "CONFIGURAR BORRADOR"
+                : selectedExistingFinalRun
+                  ? "PERIODO YA CALCULADO"
+                  : "NUEVA CORRIDA"
             }
           >
-            <DataTable
-              columns={columns}
-              data={lines}
-              searchPlaceholder="Buscar empleado, sucursal o esquema"
-              emptyMessage="Sin empleados en esta corrida"
-              pageSize={10}
-            />
+            <Card>
+              <CardContent className="grid gap-4 p-5 lg:grid-cols-[minmax(0,1fr)_13rem_13rem_auto] lg:items-end">
+                <div className="space-y-2">
+                  <div>
+                    <p className="text-sm font-medium">Quincena</p>
+                    <p className="text-xs text-[color:var(--text-muted)]">
+                      Consulta o crea una corrida de los últimos 12 meses.
+                    </p>
+                  </div>
+                  <Select
+                    value={range.from}
+                    onValueChange={selectPayrollPeriod}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecciona una quincena">
+                        {selectedPeriodOption
+                          ? `${selectedPeriodOption.label}${selectedPeriodRun ? ` · ${formatStatus(selectedPeriodRun.status)}` : ""}`
+                          : undefined}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent style={{ maxHeight: "20rem" }}>
+                      {periodOptionGroups.map((group) => (
+                        <SelectGroup key={group.month}>
+                          <SelectLabel className="text-xs uppercase tracking-wider text-[color:var(--text-muted)]">
+                            {formatMonth(group.month)}
+                          </SelectLabel>
+                          {group.options.map((option) => {
+                            const existingRun = data.runs.find(
+                              (item) =>
+                                item.status !== "CANCELED" &&
+                                item.from === option.from &&
+                                item.to === option.to,
+                            );
+                            return (
+                              <SelectItem
+                                key={option.value}
+                                value={option.value}
+                              >
+                                {option.shortLabel}
+                                {existingRun
+                                  ? ` · ${formatStatus(existingRun.status)}`
+                                  : ""}
+                              </SelectItem>
+                            );
+                          })}
+                        </SelectGroup>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">Día de pago</p>
+                  <DatePicker
+                    value={payDate}
+                    onChange={setPayDate}
+                    disabled={selectedExistingFinalRun}
+                  />
+                </div>
+                <Select
+                  value={mode}
+                  disabled={selectedExistingFinalRun}
+                  onValueChange={(value) =>
+                    setMode(value as PayrollCalculationMode)
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="WITH_VAT">Calcular con IVA</SelectItem>
+                    <SelectItem value="WITHOUT_VAT">
+                      Calcular sin IVA
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button
+                  disabled={
+                    working || data.refreshing || selectedExistingFinalRun
+                  }
+                  onClick={() =>
+                    void (editingSelectedDraft ? updateRun() : createRun())
+                  }
+                >
+                  {editingSelectedDraft ? (
+                    <RefreshCw className="mr-1.5 h-4 w-4" />
+                  ) : (
+                    <PlusCircle className="mr-1.5 h-4 w-4" />
+                  )}
+                  {working
+                    ? "Procesando…"
+                    : selectedExistingFinalRun
+                      ? "Periodo ya calculado"
+                      : editingSelectedDraft
+                        ? "Guardar y recalcular"
+                        : "Crear corrida"}
+                </Button>
+              </CardContent>
+            </Card>
           </SectionCard>
-          <div className="space-y-2">
-            {recalculating && (
-              <p
-                className="text-right text-sm text-[var(--text-muted)]"
-                role="status"
-                aria-live="polite"
+
+          {run && (
+            <>
+              {attentionLines.length > 0 && (
+                <div className="space-y-4">
+                  <Card className="border-amber-300 bg-amber-50/80 dark:border-amber-700 dark:bg-amber-950/30">
+                    <CardContent className="p-5">
+                      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                        <div className="flex gap-3">
+                          <AlertTriangle
+                            className="mt-0.5 h-4 w-4 shrink-0 text-amber-800 dark:text-amber-200"
+                            aria-hidden="true"
+                          />
+                          <div>
+                            <p className="font-semibold text-amber-950 dark:text-amber-50">
+                              Revisa la configuración de {attentionLines.length}{" "}
+                              {attentionLines.length === 1
+                                ? "empleado"
+                                : "empleados"}
+                            </p>
+                            <p className="mt-1 text-sm text-amber-950/75 dark:text-amber-50/75">
+                              {totalAttentionIssues} datos pendientes. Los datos
+                              de empleado se corrigen en Envelope; esquema y
+                              rango, en Esquemas.
+                            </p>
+                          </div>
+                        </div>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="shrink-0 border-amber-300 bg-transparent text-amber-950 hover:bg-amber-100 dark:border-amber-700 dark:text-amber-50 dark:hover:bg-amber-900/40"
+                          aria-expanded={attentionExpanded}
+                          aria-controls="payroll-attention-detail"
+                          onClick={() => setAttentionExpanded((open) => !open)}
+                        >
+                          {attentionExpanded ? (
+                            <ChevronUp
+                              className="mr-1.5 h-4 w-4"
+                              aria-hidden="true"
+                            />
+                          ) : (
+                            <ChevronDown
+                              className="mr-1.5 h-4 w-4"
+                              aria-hidden="true"
+                            />
+                          )}
+                          {attentionExpanded
+                            ? "Ocultar detalle"
+                            : "Ver detalle por empleado"}
+                        </Button>
+                      </div>
+                      <div className="mt-4 flex flex-wrap gap-2 border-t border-amber-200 pt-4 dark:border-amber-800">
+                        {attentionIssueCounts.map((issue) => (
+                          <Badge
+                            key={issue.code}
+                            variant="outline"
+                            className="border-amber-300 bg-amber-50 text-amber-950 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-50"
+                          >
+                            {issue.label} · {issue.count}
+                          </Badge>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                  {attentionExpanded && (
+                    <div id="payroll-attention-detail">
+                      <DataTable
+                        columns={attentionColumns}
+                        data={attentionLines}
+                        searchPlaceholder="Buscar empleado o dato pendiente"
+                        emptyMessage="Sin datos pendientes"
+                        pageSize={10}
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+              <SectionCard
+                title="DETALLE POR EMPLEADO"
+                action={
+                  <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
+                    <p>
+                      <span className="text-[var(--text-muted)]">
+                        Ventas sin IVA{" "}
+                      </span>
+                      <span className="number-display">
+                        {formatCurrency(run.salesWithoutVat)}
+                      </span>
+                    </p>
+                    <p>
+                      <span className="text-[var(--text-muted)]">
+                        Deducciones{" "}
+                      </span>
+                      <span className="number-display">
+                        {formatCurrency(deductions)}
+                      </span>
+                    </p>
+                    <p>
+                      <span className="text-[var(--text-muted)]">
+                        Ajustes netos{" "}
+                      </span>
+                      <span className="number-display">
+                        {formatCurrency(adjustments)}
+                      </span>
+                    </p>
+                  </div>
+                }
               >
-                Recalculando la corrida con los datos vigentes. Puede tardar
-                hasta dos minutos.
-              </p>
-            )}
-            <div className="flex flex-wrap justify-end gap-2">
-              {run.status === "DRAFT" && (
-                <>
-                  <Button
-                    variant="outline"
-                    disabled={working}
-                    aria-busy={recalculating}
-                    onClick={() => void recalculateRun()}
+                <DataTable
+                  columns={columns}
+                  data={lines}
+                  searchPlaceholder="Buscar empleado, sucursal o esquema"
+                  emptyMessage="Sin empleados en esta corrida"
+                  pageSize={10}
+                />
+              </SectionCard>
+              <div className="space-y-2">
+                {recalculating && (
+                  <p
+                    className="text-right text-sm text-[var(--text-muted)]"
+                    role="status"
+                    aria-live="polite"
                   >
-                    <RefreshCw
-                      aria-hidden="true"
-                      className={`mr-1.5 h-4 w-4 ${recalculating ? "animate-spin" : ""}`}
-                    />
-                    {recalculating ? "Recalculando..." : "Recalcular"}
-                  </Button>
-                  <Button
-                    disabled={working}
-                    onClick={() => setConfirmAction("approve")}
-                  >
-                    <CheckCircle2 className="mr-1.5 h-4 w-4" />
-                    Aprobar corrida
-                  </Button>
-                  <Button
-                    variant="outline"
-                    disabled={working}
-                    onClick={() => setConfirmAction("cancel")}
-                  >
-                    <XCircle className="mr-1.5 h-4 w-4" />
-                    Cancelar corrida
-                  </Button>
-                </>
-              )}
-              {run.status === "APPROVED" && (
-                <>
-                  <Button
-                    disabled={working}
-                    onClick={() => setConfirmAction("pay")}
-                  >
-                    <CircleDollarSign className="mr-1.5 h-4 w-4" />
-                    Marcar pagada
-                  </Button>
-                  <Button
-                    variant="outline"
-                    disabled={working}
-                    onClick={() => setConfirmAction("cancel")}
-                  >
-                    <XCircle className="mr-1.5 h-4 w-4" />
-                    Cancelar corrida
-                  </Button>
-                </>
-              )}
-            </div>
-          </div>
+                    Recalculando la corrida con los datos vigentes. Puede tardar
+                    hasta dos minutos.
+                  </p>
+                )}
+                <div className="flex flex-wrap justify-end gap-2">
+                  {run.status === "DRAFT" && (
+                    <>
+                      <Button
+                        variant="outline"
+                        disabled={working}
+                        aria-busy={recalculating}
+                        onClick={() => void recalculateRun()}
+                      >
+                        <RefreshCw
+                          aria-hidden="true"
+                          className={`mr-1.5 h-4 w-4 ${recalculating ? "animate-spin" : ""}`}
+                        />
+                        {recalculating ? "Recalculando..." : "Recalcular"}
+                      </Button>
+                      <Button
+                        disabled={working}
+                        onClick={() => setConfirmAction("approve")}
+                      >
+                        <CheckCircle2 className="mr-1.5 h-4 w-4" />
+                        Aprobar corrida
+                      </Button>
+                      <Button
+                        variant="outline"
+                        disabled={working}
+                        onClick={() => setConfirmAction("cancel")}
+                      >
+                        <XCircle className="mr-1.5 h-4 w-4" />
+                        Cancelar corrida
+                      </Button>
+                    </>
+                  )}
+                  {run.status === "APPROVED" && (
+                    <>
+                      <Button
+                        disabled={working}
+                        onClick={() => setConfirmAction("pay")}
+                      >
+                        <CircleDollarSign className="mr-1.5 h-4 w-4" />
+                        Marcar pagada
+                      </Button>
+                      <Button
+                        variant="outline"
+                        disabled={working}
+                        onClick={() => setConfirmAction("cancel")}
+                      >
+                        <XCircle className="mr-1.5 h-4 w-4" />
+                        Cancelar corrida
+                      </Button>
+                    </>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
         </>
       )}
 

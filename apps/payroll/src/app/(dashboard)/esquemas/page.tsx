@@ -104,6 +104,10 @@ function validateName(name: string, duplicated: boolean): string | undefined {
   return undefined;
 }
 
+function normalizedSchemeName(name: string): string {
+  return name.trim().toLocaleUpperCase("es-MX");
+}
+
 function validateEffectiveFrom(value: string): string | undefined {
   if (!value) return "Selecciona la fecha de inicio.";
   const day = Number(value.split("-")[2]);
@@ -158,6 +162,8 @@ export default function EsquemasPage() {
   const [schemeOpen, setSchemeOpen] = useState(false);
   const [assignmentOpen, setAssignmentOpen] = useState(false);
   const [editing, setEditing] = useState<CommissionScheme | null>(null);
+  const [reactivating, setReactivating] =
+    useState<CommissionScheme | null>(null);
   const [schemeForm, setSchemeForm] = useState<SchemeForm>(EMPTY_SCHEME);
   const [schemeErrors, setSchemeErrors] = useState<SchemeFormErrors>({
     ranges: [],
@@ -176,6 +182,7 @@ export default function EsquemasPage() {
 
   function openCreate() {
     setEditing(null);
+    setReactivating(null);
     setSchemeForm({
       ...EMPTY_SCHEME,
       effectiveFrom: currentFortnight(),
@@ -186,6 +193,7 @@ export default function EsquemasPage() {
   }
   function openEdit(scheme: CommissionScheme) {
     setEditing(scheme);
+    setReactivating(null);
     setSchemeForm({
       name: scheme.name,
       effectiveFrom: nextFortnight(),
@@ -216,14 +224,43 @@ export default function EsquemasPage() {
     }));
   }
   async function saveScheme() {
-    const normalizedName = schemeForm.name.trim().toLocaleUpperCase("es-MX");
+    const normalizedName = normalizedSchemeName(schemeForm.name);
     const duplicatedName = data.schemes.some(
       (scheme) =>
+        scheme.active &&
         scheme.id !== editing?.id &&
-        scheme.name.trim().toLocaleUpperCase("es-MX") === normalizedName,
+        normalizedSchemeName(scheme.name) === normalizedName,
     );
+    const nameError = validateName(schemeForm.name, duplicatedName);
+    const inactiveScheme = editing
+      ? undefined
+      : (reactivating ??
+        data.schemes.find(
+          (scheme) =>
+            !scheme.active &&
+            normalizedSchemeName(scheme.name) === normalizedName,
+        ));
+    if (inactiveScheme) {
+      setSchemeErrors({ name: nameError, ranges: [] });
+      if (nameError) {
+        toast.warning("Revisa el nombre antes de reactivar el esquema.");
+        return;
+      }
+      setSaving(true);
+      try {
+        await data.reactivateScheme(inactiveScheme.id);
+        setSchemeOpen(false);
+        setReactivating(null);
+        toast.success("Esquema reactivado con su configuración histórica.");
+      } catch (cause) {
+        toast.error(apiErrorMessage(cause));
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
     const errors: SchemeFormErrors = {
-      name: validateName(schemeForm.name, duplicatedName),
+      name: nameError,
       effectiveFrom: validateEffectiveFrom(schemeForm.effectiveFrom),
       ranges: schemeForm.ranges.map((_, index) =>
         validateRange(schemeForm.ranges, index),
@@ -493,12 +530,18 @@ export default function EsquemasPage() {
         <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
-              {editing ? "Programar nueva versión" : "Nuevo esquema"}
+              {editing
+                ? "Programar nueva versión"
+                : reactivating
+                  ? "Reactivar esquema"
+                  : "Nuevo esquema"}
             </DialogTitle>
             <DialogDescription>
               {editing
                 ? "La versión actual seguirá intacta en corridas históricas."
-                : "Define la comisión que corresponde según las ventas de la quincena."}
+                : reactivating
+                  ? "Se restaurará el esquema sin alterar sus versiones históricas."
+                  : "Define la comisión que corresponde según las ventas de la quincena."}
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 md:grid-cols-2">
@@ -508,25 +551,55 @@ export default function EsquemasPage() {
                 id="scheme-name"
                 value={schemeForm.name}
                 onChange={(event) => {
+                  const name = uppercaseInput(event.target.value);
                   setSchemeForm((current) => ({
                     ...current,
-                    name: uppercaseInput(event.target.value),
+                    name,
                   }));
+                  if (
+                    reactivating &&
+                    normalizedSchemeName(name) !==
+                      normalizedSchemeName(reactivating.name)
+                  ) {
+                    setReactivating(null);
+                  }
                   setSchemeErrors((current) => ({
                     ...current,
                     name: undefined,
                   }));
                 }}
                 onBlur={() => {
-                  const normalizedName = schemeForm.name
-                    .trim()
-                    .toLocaleUpperCase("es-MX");
+                  const normalizedName = normalizedSchemeName(schemeForm.name);
                   const duplicated = data.schemes.some(
                     (scheme) =>
+                      scheme.active &&
                       scheme.id !== editing?.id &&
-                      scheme.name.trim().toLocaleUpperCase("es-MX") ===
-                        normalizedName,
+                      normalizedSchemeName(scheme.name) === normalizedName,
                   );
+                  const inactiveMatch = editing
+                    ? undefined
+                    : data.schemes.find(
+                        (scheme) =>
+                          !scheme.active &&
+                          normalizedSchemeName(scheme.name) === normalizedName,
+                      );
+                  if (inactiveMatch) {
+                    setReactivating(inactiveMatch);
+                    setSchemeForm({
+                      name: inactiveMatch.name,
+                      effectiveFrom:
+                        inactiveMatch.versions[0]?.effectiveFrom ??
+                        currentFortnight(),
+                      ranges: inactiveMatch.ranges.length
+                        ? inactiveMatch.ranges.map((range) => ({
+                            to: range.to == null ? "" : String(range.to),
+                            commissionPercent: String(
+                              Number((range.rate * 100).toFixed(4)),
+                            ),
+                          }))
+                        : [{ ...EMPTY_RANGE }],
+                    });
+                  }
                   setSchemeErrors((current) => ({
                     ...current,
                     name: validateName(schemeForm.name, duplicated),
@@ -547,6 +620,14 @@ export default function EsquemasPage() {
                 >
                   {schemeErrors.name}
                 </p>
+              ) : reactivating ? (
+                <p
+                  className="text-sm text-amber-700 dark:text-amber-300"
+                  role="status"
+                >
+                  Este esquema está desactivado. Al guardar se reactivará con
+                  sus niveles y versiones históricas.
+                </p>
               ) : (
                 <p className="text-xs text-[var(--text-muted)]">
                   Usa un nombre reconocible para poder asignarlo después.
@@ -557,6 +638,7 @@ export default function EsquemasPage() {
               <Label>Vigente desde</Label>
               <DatePicker
                 value={schemeForm.effectiveFrom}
+                disabled={Boolean(reactivating)}
                 onChange={(value) => {
                   setSchemeForm((current) => ({
                     ...current,
@@ -616,7 +698,10 @@ export default function EsquemasPage() {
                           type="button"
                           size="icon"
                           variant="ghost"
-                          disabled={schemeForm.ranges.length === 1}
+                          disabled={
+                            Boolean(reactivating) ||
+                            schemeForm.ranges.length === 1
+                          }
                           onClick={() => {
                             setSchemeForm((current) => {
                               const ranges = current.ranges.filter(
@@ -686,6 +771,7 @@ export default function EsquemasPage() {
                               min="0"
                               step="0.01"
                               value={range.to}
+                              disabled={Boolean(reactivating)}
                               onChange={(event) =>
                                 updateRange(index, "to", event.target.value)
                               }
@@ -737,6 +823,7 @@ export default function EsquemasPage() {
                               max="100"
                               step="0.01"
                               value={range.commissionPercent}
+                              disabled={Boolean(reactivating)}
                               onChange={(event) =>
                                 updateRange(
                                   index,
@@ -796,7 +883,9 @@ export default function EsquemasPage() {
                 type="button"
                 size="sm"
                 variant="outline"
-                disabled={schemeForm.ranges.length >= 12}
+                disabled={
+                  Boolean(reactivating) || schemeForm.ranges.length >= 12
+                }
                 onClick={() => {
                   setSchemeForm((current) => ({
                     ...current,
@@ -820,9 +909,11 @@ export default function EsquemasPage() {
             <Button disabled={saving} onClick={() => void saveScheme()}>
               {saving
                 ? "Guardando…"
-                : editing
-                  ? "Programar versión"
-                  : "Crear esquema"}
+                : reactivating
+                  ? "Reactivar esquema"
+                  : editing
+                    ? "Programar versión"
+                    : "Crear esquema"}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -11,8 +11,11 @@ La implementación de aplicación, API, modelos y migración está terminada. Lo
 - Autenticación real y acceso exclusivo para `SUPER_ADMIN`.
 - Lectura de empleados, bancos, puestos, sucursales y ventas existentes.
 - Catálogos, esquemas versionados y asignaciones con vigencia.
+- Reactivación de esquemas desactivados al volver a capturar el mismo nombre, conservando sus versiones y asignaciones históricas.
 - Movimientos, gastos, préstamos y cuotas quincenales.
+- Normalización de cualquier fecha elegida para la primera quincena de cobro al inicio canónico del periodo, día 1 o 16.
 - Corridas `DRAFT → APPROVED → PAID`, cancelación previa al pago y snapshots.
+- Resumen mensual calculado que consolida las dos corridas quincenales sin exigir que estén pagadas.
 - Reporte por sucursal, exportaciones, recibos PDF y seguimiento de WhatsApp.
 - Backend `/api/payroll/*`, pruebas del motor y migración Prisma aditiva.
 
@@ -109,7 +112,7 @@ Efectos de datos faltantes:
 | Banco                    | Bloquea marcar la corrida como pagada.             |
 | Cuenta bancaria          | Bloquea marcar la corrida como pagada.             |
 | Teléfono                 | Solo bloquea preparar el envío por WhatsApp.       |
-| Sucursal laboral         | Se agrupa como `SIN SUCURSAL ASIGNADA`.            |
+| Sucursal laboral         | Se agrupa como `SIN SUCURSAL ASIGNADA` y Resumen muestra una advertencia. |
 
 La revisión agregada realizada el 30 de julio de 2026 encontró 54 empleados activos: 31 sin sueldo, 51 sin teléfono, 2 sin banco y 9 con cuenta vacía. Son cifras de referencia y pueden cambiar; deben verificarse nuevamente antes del primer ciclo productivo. De los empleados activos con ventas recientes, 28 no tenían sueldo capturado.
 
@@ -235,6 +238,18 @@ Se conservan en históricos y pueden entrar en una corrida si tuvieron actividad
 **¿Qué periodos son válidos?**  
 Solo quincenas completas: del 1 al 15 o del 16 al último día del mismo mes.
 
+**¿Puedo calcular una quincena anterior?**
+Sí. En **Resumen → Quincenal**, el selector **Quincena** ofrece los últimos 12 meses, agrupados por mes para distinguir con rapidez la primera y segunda quincena. Si el periodo ya tiene una corrida, la abre y muestra su estado; si está vacío, permite crear un borrador histórico. Una corrida existente no cambia de periodo y no se duplica. La vista mensual usa el mismo límite de 12 meses.
+
+**¿El consolidado mensual crea una corrida adicional?**
+No. Es un reporte derivado que suma los snapshots de las corridas no canceladas del 1–15 y 16–fin de mes. Cuando una quincena pasada no tiene corrida, calcula una estimación temporal sin guardar snapshots, reservar conceptos ni generar auditoría. Las corridas siguen siendo exclusivamente quincenales.
+
+**¿La nómina mensual solo aparece cuando ambas corridas están pagadas?**
+No. La vista mensual usa cualquier corrida `DRAFT`, `APPROVED` o `PAID` disponible; las corridas `CANCELED` no participan. Si una quincena ya terminó y no tuvo corrida, muestra la **nómina mensual aproximada** e identifica el periodo como `ESTIMADA`. La cifra usa los datos históricos y la configuración disponible, pero no sustituye una corrida: para validar y congelar el resultado debe crearse la corrida histórica. Una quincena vigente sin corrida todavía se muestra como faltante. Si incluye un borrador, también avisa que el monto puede cambiar al recalcular.
+
+**¿Se recalcula la comisión usando todas las ventas del mes?**
+No. La comisión conserva su cálculo quincenal y el resumen mensual suma los importes congelados o calculados de cada quincena. Así se respetan rangos, esquemas y vigencias distintos dentro del mismo mes.
+
 **¿Cómo se calcula el sueldo quincenal?**  
 `sueldo mensual / 2` en ambas quincenas.
 
@@ -304,6 +319,9 @@ Se descuentan del balance general de la corrida cuya quincena contiene la fecha 
 No. Al aprobarse quedan ligados a la corrida y congelados.
 
 ### Préstamos y adelantos
+
+**¿Qué pasa si selecciono un día intermedio o el último día de la primera quincena de cobro?**
+La interfaz identifica la quincena que contiene la fecha y guarda su inicio canónico. Del día 1 al 15 usa el día 1; del día 16 al cierre del mes usa el día 16. Así se genera siempre una secuencia de periodos completos.
 
 **¿Cómo se crean las cuotas?**  
 Automáticamente en quincenas consecutivas a partir de una fecha inicial día 1 o 16.
