@@ -346,7 +346,7 @@ export default function DesgloseSucursalPage() {
                 Cada segmento representa la participación de una sucursal en el
                 costo total de nómina.
               </p>
-              <ul className="grid grid-cols-2 gap-x-4 gap-y-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+              <ul className="grid grid-cols-[repeat(auto-fit,minmax(10rem,1fr))] gap-x-4 gap-y-4">
                 {costDistribution.map((item) => (
                   <li
                     key={item.name}
