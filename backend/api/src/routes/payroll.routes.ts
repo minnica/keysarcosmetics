@@ -16,6 +16,7 @@ import {
   createPayrollRun,
   getPayrollRun,
   getMonthlyPayrollSummary,
+  getPayrollOverview,
   listPayrollRuns,
   payPayrollRun,
   recalculatePayrollRun,
@@ -1101,6 +1102,29 @@ router.post(
 );
 
 // ─── Reporte por sucursal y recibos ─────────────────────────────────────────
+
+const payrollOverviewQuery = z.object({
+  payrollType: z.enum(["FIXED_SALARY", "SPECIALIST", "COMMISSION"]),
+  view: z.enum(["FORTNIGHT", "MONTHLY"]),
+  periodStart: dateString,
+  periodEnd: dateString,
+  mode: z.enum(["WITH_VAT", "WITHOUT_VAT"]).default("WITH_VAT"),
+});
+
+router.get(
+  "/reports/payroll-overview",
+  asyncRoute(async (req, res) => {
+    const query = payrollOverviewQuery.parse(req.query);
+    ok(
+      res,
+      await getPayrollOverview({
+        ...query,
+        periodStart: parseDate(query.periodStart),
+        periodEnd: parseDate(query.periodEnd),
+      }),
+    );
+  }),
+);
 
 router.get(
   "/reports/monthly-summary",

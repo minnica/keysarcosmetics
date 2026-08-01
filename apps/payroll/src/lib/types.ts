@@ -1,5 +1,36 @@
 export type PayrollRunStatus = "DRAFT" | "APPROVED" | "PAID" | "CANCELED";
 export type PayrollCalculationMode = "WITH_VAT" | "WITHOUT_VAT";
+export type PayrollOverviewType =
+  | "FIXED_SALARY"
+  | "SPECIALIST"
+  | "COMMISSION";
+export type PayrollOverviewView = "FORTNIGHT" | "MONTHLY";
+
+export interface PayrollOverviewLine {
+  employeeId: string;
+  fullName: string;
+  position: string;
+  bank: string | null;
+  account: string | null;
+  payroll: number;
+}
+
+export interface PayrollOverviewPositionTotal {
+  position: string;
+  total: number;
+}
+
+export interface PayrollOverviewReport {
+  payrollType: PayrollOverviewType;
+  view: PayrollOverviewView;
+  periodStart: string;
+  periodEnd: string;
+  mode: PayrollCalculationMode | null;
+  usesCurrentSalary: boolean;
+  rows: PayrollOverviewLine[];
+  total: number;
+  byPosition: PayrollOverviewPositionTotal[];
+}
 export type MovementStatus = "PENDING" | "APPROVED" | "REJECTED";
 export type MovementKind =
   | "BONUS"
