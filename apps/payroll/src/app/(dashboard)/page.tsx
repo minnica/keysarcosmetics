@@ -595,7 +595,7 @@ export default function DashboardPage() {
       const employee = data.employees.find(
         (candidate) => candidate.id === line.employeeId,
       );
-      const missingBranch = employee?.branchId === null;
+      const missingBranch = employee?.branchId === null && !employee.allBranches;
       if (missingBranch) {
         issues.push({ code: "MISSING_BRANCH", label: "SUCURSAL" });
       }

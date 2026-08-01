@@ -61,14 +61,29 @@ const sections = [
         label: "Comisiones",
         icon: CircleDollarSign,
       },
-      { href: "/", label: "Resumen", icon: LayoutDashboard },
+    ],
+  },
+  {
+    label: "Operación",
+    items: [
+      {
+        href: "/",
+        label: "Resumen",
+        icon: LayoutDashboard,
+        status: "under-review" as const,
+      },
       { href: "/movimientos", label: "Movimientos", icon: ArrowLeftRight },
+      { href: "/gastos", label: "Gastos", icon: ReceiptText },
+      { href: "/prestamos-adelantos", label: "Préstamos", icon: HandCoins },
+    ],
+  },
+  {
+    label: "Configuración",
+    items: [
+      { href: "/esquemas", label: "Esquemas", icon: TrendingUp },
       { href: "/bonos", label: "Bonos", icon: BadgeDollarSign },
       { href: "/multas", label: "Multas", icon: Gavel },
       { href: "/viaticos", label: "Viáticos", icon: Plane },
-      { href: "/gastos", label: "Gastos", icon: ReceiptText },
-      { href: "/esquemas", label: "Esquemas", icon: TrendingUp },
-      { href: "/prestamos-adelantos", label: "Préstamos", icon: HandCoins },
     ],
   },
   {
@@ -189,13 +204,18 @@ function PayrollSidebar() {
                     item.href === "/"
                       ? pathname === "/"
                       : pathname.startsWith(item.href);
+                  const isUnderReview = item.status === "under-review";
                   const Icon = item.icon;
                   return (
                     <SidebarMenuItem key={item.href}>
                       <SidebarMenuButton
                         asChild
                         isActive={isActive}
-                        tooltip={item.label}
+                        tooltip={
+                          isUnderReview
+                            ? `${item.label} (en revisión)`
+                            : item.label
+                        }
                         onClick={() => setOpenMobile(false)}
                         className={
                           isActive
@@ -205,7 +225,20 @@ function PayrollSidebar() {
                       >
                         <Link href={item.href}>
                           <Icon />
-                          <span>{item.label}</span>
+                          <span
+                            className={
+                              isUnderReview
+                                ? "text-[var(--text-muted)] line-through decoration-current"
+                                : undefined
+                            }
+                          >
+                            {item.label}
+                          </span>
+                          {isUnderReview ? (
+                            <span className="sr-only">
+                              En revisión; probablemente se eliminará.
+                            </span>
+                          ) : null}
                         </Link>
                       </SidebarMenuButton>
                     </SidebarMenuItem>

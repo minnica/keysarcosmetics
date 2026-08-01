@@ -338,6 +338,7 @@ const translations = {
       selectBank: 'Selecciona un banco',
       selectPosition: 'Selecciona un puesto',
       selectBranch: 'Selecciona una sucursal',
+      allBranchAssignment: 'TODAS',
       unassignedBranch: 'Sin sucursal asignada',
       branchAssignmentReminderTitle: 'Empleado sin sucursal',
       branchAssignmentReminderDescription:
@@ -775,6 +776,7 @@ const translations = {
       selectBank: 'Select a bank',
       selectPosition: 'Select a position',
       selectBranch: 'Select a branch',
+      allBranchAssignment: 'ALL',
       unassignedBranch: 'No branch assigned',
       branchAssignmentReminderTitle: 'Employee without a branch',
       branchAssignmentReminderDescription:

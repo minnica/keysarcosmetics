@@ -43,7 +43,7 @@ Para cada empleado que participará en la nómina, confirmar:
 - Nombre completo correcto.
 - Estatus activo, si continúa trabajando.
 - Puesto.
-- Sucursal laboral, como dato informativo; si falta aparecerá un recordatorio en Resumen, pero no cambia el cálculo.
+- Sucursal laboral, como dato informativo. Puede elegirse una sucursal concreta o `TODAS`; si se deja `Sin sucursal asignada` aparecerá un recordatorio en Resumen, pero no cambia el cálculo.
 - Sueldo mensual.
 - Banco.
 - Número de cuenta.

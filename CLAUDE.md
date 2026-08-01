@@ -215,7 +215,7 @@ Módulos implementados:
 - **citas** — captura citas en `/citas` con fecha, hora, clienta, categoría y servicio de atención, estatus (`ATENDIDA`/`NO_LLEGO`/`CANCELADA`), sucursal, vendedor, facialista, resultado de compra y bonos de salida tarde/comida. Las categorías y subcategorías/servicios se administran en `/servicios`; los valores activos se cargan en cascada en el formulario de citas. El catálogo usa borrado lógico: al desactivar una categoría también se desactivan sus servicios y la pantalla oculta ambos; si después se crea una categoría o servicio con el mismo nombre, el backend reactiva el registro histórico correspondiente en vez de chocar con el índice único, sin reactivar automáticamente los demás servicios de la categoría. La compra se normaliza en `RegistroCita.tipoCompra` (`PAGO_NETO`, `COMPRA_CON_APARTADO`, `PAGO_DE_APARTADO`) + `montoCompra`; en `COMPRA_CON_APARTADO`, `montoCompra` es la compra tentativa y `montoApartado` es el pago recibido, obligatorio y no mayor a la compra. La UI apila ambos conceptos y calcula el pendiente; `total` representa el pago recibido (apartado o pago neto) y no se duplica en BD. `PAGO_DE_APARTADO` se conserva para compatibilidad histórica; los registros nuevos lo capturan como parte de `COMPRA_CON_APARTADO`. Cuando no existe compra, el tipo queda `null` y ambos montos en cero. Una cita atendida sin compra es distinta de una clienta que no llegó o canceló; en estos dos últimos estatus el formulario limpia/oculta compra y bonos, y backend/BD rechazan esos datos si se envían. Cada registro guarda `creadoPorId` hacia `Usuario`, además de `creadoEn`/`actualizadoEn`. La hora es obligatoria para registros nuevos y nullable en BD solo por compatibilidad histórica. El listado conserva filtro por la quincena actual y permite editar mediante `PUT /api/envelope/citas/:id` reutilizando el formulario; la edición conserva el creador original y actualiza `actualizadoEn`. También permite eliminación física mediante `DELETE /api/envelope/citas/:id`, siempre detrás de un `AlertDialog` de confirmación explícita.
   Los usuarios cuyo puesto contiene `FACIALISTA` tienen acceso de solo alta en esta pantalla: pueden guardar citas nuevas, pero la UI no muestra acciones para editar/eliminar y el backend rechaza `PUT`/`DELETE`. Si su puesto tiene `selfDataOnly`, el listado, el reporte y las exportaciones de citas solo incluyen registros con su propio `facialistaId`, el selector queda limitado a su empleado y el backend impide crear una cita para otra facialista.
   El selector de vendedor incluye todos los empleados salvo los puestos `ADMINISTRADOR`, `ADMINISTRADOR GENERAL`, `MANTENIMIENTO`, `RECURSOS HUMANOS` y `EXTERNO`.
-- **empleados** — CRUD, usa `bankId`/`positionId` dinámicos desde backend; incluye toggle activo/inactivo con `PATCH /empleados/:id/status`; GET retorna todos los empleados (activos primero), la tabla muestra badge de estatus y botón `PowerOff`/`Power` con AlertDialog de confirmación. Además de `banco`/`puesto` legacy, ya expone `sueldo`, `fechaNacimiento` y `numeroTelefono` en formulario, tabla, backend, Prisma y seed; `fechaNacimiento` se captura completo para que después se derive el cumpleaños y la base de RH para nómina. La page de empleados también tiene filtros de tabla por estatus, puesto y sueldo antes de pasar los datos a `DataTable`.
+- **empleados** — CRUD, usa `bankId`/`positionId` dinámicos desde backend; incluye toggle activo/inactivo con `PATCH /empleados/:id/status`; GET retorna todos los empleados (activos primero), la tabla muestra badge de estatus y botón `PowerOff`/`Power` con AlertDialog de confirmación. Además de `banco`/`puesto` legacy, ya expone `sueldo`, `fechaNacimiento` y `numeroTelefono` en formulario, tabla, backend, Prisma y seed; `fechaNacimiento` se captura completo para que después se derive el cumpleaños y la base de RH para nómina. La asignación laboral distingue una sucursal concreta, `TODAS` (`todasSucursales = true`) y `Sin sucursal asignada`; `TODAS` no es una fila del catálogo `Sucursal`. La page de empleados también tiene filtros de tabla por estatus, puesto y sueldo antes de pasar los datos a `DataTable`.
   El filtro de sueldo usa límites numéricos opcionales `Desde`/`Hasta`, no rangos preestablecidos; si ambos están vacíos no restringe resultados y, al establecer cualquiera, excluye los registros sin sueldo.
   El campo `sueldo` también puede ocultarse por permiso virtual `empleados/sueldo`: por defecto solo lo ve `SUPER_ADMIN`, y desde `accesos` se puede otorgar o denegar para otros puestos. Cuando no hay permiso, no se muestra en la tabla ni en el formulario de alta/edición, y el backend lo redacciona en las respuestas del módulo `empleados`.
 - **sucursales** — CRUD de sucursales
@@ -262,9 +262,9 @@ Datos:
 
 - La UI y todos los endpoints `/api/payroll/*` requieren sesión JWT y rol `SUPER_ADMIN`.
 - Payroll reutiliza `Empleado`, `Bank`, `Position`, `Sucursal`, `Venta` y `VentaDetalle`. La administración permanece en Envelope; Payroll los consume en lectura.
-- `Empleado.sucursalId` es nullable y conserva la sucursal laboral canónica. Envelope permite asignarla desde el formulario de empleados y muestra `Sin sucursal asignada` cuando es `null`. Por decisión operativa vigente, este dato es informativo para Payroll y no interviene en el cálculo ni en el reporte por sucursal.
+- `Empleado.sucursalId` es nullable y conserva una sucursal laboral concreta; `Empleado.todasSucursales` distingue la selección explícita `TODAS` de `Sin sucursal asignada`. Cuando `todasSucursales = true`, `sucursalId` debe ser `null`. Por decisión operativa vigente, este dato es informativo para Payroll y no interviene en el cálculo ni en el reporte por sucursal.
 - Los cambios propios de nómina deben limitarse a `apps/payroll`, rutas/servicios/modelos Payroll en `backend/api` y documentación relacionada. La relación laboral `Empleado.sucursalId` se administra exclusivamente desde `apps/envelope`.
-- Las migraciones `20260730000000_add_payroll_models` y `20260731000000_add_employee_branch` son aditivas. Deben revisarse y ejecutarse manualmente con `prisma migrate deploy`; nunca usar `db push`, `migrate reset` ni seeds demo contra producción.
+- Las migraciones `20260730000000_add_payroll_models`, `20260731000000_add_employee_branch` y `20260801000000_add_employee_all_branches` son aditivas. Deben revisarse y ejecutarse manualmente con `prisma migrate deploy`; nunca usar `db push`, `migrate reset` ni seeds demo contra producción.
 - Los adjuntos están preparados para un bucket privado de Supabase Storage, pero su habilitación está pospuesta. Cuando se cree el bucket, configurar `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` y opcionalmente `PAYROLL_STORAGE_BUCKET`; nunca exponer la service-role key al frontend.
 
 ### Fuentes reales reutilizadas
@@ -303,7 +303,7 @@ La API cubre bootstrap de fuentes compartidas; CRUD de catálogos, esquemas/vers
 - Una corrida transita `DRAFT → APPROVED → PAID`; puede cancelarse antes de pagar. Aprobar congela líneas y reserva movimientos, gastos y cuotas. Pagar liquida cuotas reservadas y genera recibos. Una corrida pagada no se recalcula ni cancela.
 - El consolidado mensual es un reporte derivado, no una corrida nueva ni una entidad persistida. Incluye corridas `DRAFT`, `APPROVED` y `PAID`, excluye `CANCELED`, agrupa las líneas por `employeeId` y suma por separado primera quincena, segunda quincena, sueldo, ventas, comisión, extras, deducciones y total. Para una quincena terminada sin corrida, reutiliza el motor de cálculo sin `runId` y devuelve una referencia sintética `ESTIMATED`; no reserva ni persiste datos. El cierre del periodo se compara contra la fecha de negocio de `America/Mexico_City`. Si existe una corrida real en el mes, la estimación usa su modo; si no existe ninguna usa `WITH_VAT`. La estimación recupera ventas y sus sucursales, esquemas/asignaciones, movimientos, gastos y cuotas aplicables al periodo, pero sueldo, banco, cuenta y teléfono proceden del registro de empleado disponible al consultar, porque no existe snapshot histórico. Por eso siempre se presenta como aproximada hasta crear la corrida histórica. Una quincena actual o futura sin corrida sigue incompleta.
 - Bloquea aprobación: ventas sin esquema/rango, pago total negativo o viáticos/insumos sin evidencia. Sueldo faltante es advertencia. Banco o cuenta faltante bloquean pago. Teléfono faltante bloquea solo la preparación de WhatsApp.
-- En la vista quincenal de Resumen, el bloque de atención combina las advertencias guardadas en cada línea con una comprobación informativa de `Empleado.sucursalId` usando el catálogo actual. Una sucursal laboral faltante incluye el pendiente `SUCURSAL`, pero no modifica la corrida ni el desglose por punto de venta. Para evitar paredes de texto, el bloque muestra por defecto únicamente el número de empleados, el total de pendientes y conteos por tipo (`ESQUEMA`, `SUELDO`, `TELÉFONO`, `SUCURSAL`, etc.); `Ver detalle por empleado` despliega una `DataTable` paginada con la cantidad y etiquetas breves de los datos faltantes de cada persona.
+- En la vista quincenal de Resumen, el bloque de atención combina las advertencias guardadas en cada línea con una comprobación informativa de la asignación laboral actual. Solo `sucursalId = null` con `todasSucursales = false` incluye el pendiente `SUCURSAL`; una selección explícita `TODAS` se considera configurada. Esta asignación no modifica la corrida ni el desglose por punto de venta. Para evitar paredes de texto, el bloque muestra por defecto únicamente el número de empleados, el total de pendientes y conteos por tipo (`ESQUEMA`, `SUELDO`, `TELÉFONO`, `SUCURSAL`, etc.); `Ver detalle por empleado` despliega una `DataTable` paginada con la cantidad y etiquetas breves de los datos faltantes de cada persona.
 - Préstamos y adelantos generan cuotas quincenales automáticas; el último pago absorbe el ajuste de centavos. Los estados históricos no se eliminan.
 - En Préstamos y adelantos, el usuario puede seleccionar cualquier día dentro de la primera quincena de cobro. El frontend normaliza la selección al inicio canónico del periodo: días 1–15 al día 1 y días 16–fin al día 16, que es el contrato enviado al motor de amortización.
 - Recibos se generan desde el snapshot pagado, se descargan en PDF y WhatsApp se abre mediante `wa.me`; el archivo se adjunta manualmente. Estados: `GENERATED`, `SENT`, `CONFIRMED`.
@@ -450,15 +450,15 @@ Limitaciones históricas de la demo eliminada (no describen la implementación a
 | Teléfono                           | Existe        | `Empleado.numeroTelefono`          |
 | Fecha nacimiento                   | Existe        | `Empleado.fechaNacimiento`         |
 | Meta individual                    | Existe        | `Empleado.metaIndividual`          |
-| Sucursal laboral                   | Existe        | `Empleado.sucursalId` / `Sucursal` |
+| Sucursal laboral                   | Existe        | `Empleado.sucursalId` / `Sucursal` + `Empleado.todasSucursales` |
 | Sucursales                         | Existe        | `Sucursal`                         |
 | Ventas por fecha/sucursal/vendedor | Existe        | `Venta` + `VentaDetalle`           |
 | Métodos de pago                    | Existe        | `MetodoPago`                       |
 
 Nota importante:
 
-- `Empleado.sucursalId` y `Usuario.sucursalId` son relaciones distintas. La primera conserva la sucursal laboral como dato informativo y la segunda limita el alcance de una cuenta; ninguna sustituye la sucursal propia de `Venta` en el reporte de Payroll.
-- La migración aditiva `20260731000000_add_employee_branch` agrega la FK nullable, índice y `ON DELETE SET NULL`. Los empleados existentes permanecen sin asignación hasta que se actualicen en Envelope.
+- `Empleado.sucursalId` y `Usuario.sucursalId` son relaciones distintas. La primera, junto con `Empleado.todasSucursales`, conserva la asignación laboral como dato informativo y la segunda limita el alcance de una cuenta; ninguna sustituye la sucursal propia de `Venta` en el reporte de Payroll.
+- Las migraciones aditivas `20260731000000_add_employee_branch` y `20260801000000_add_employee_all_branches` agregan la FK nullable y el indicador explícito `TODAS`. Los empleados existentes permanecen como `Sin sucursal asignada` hasta que se actualicen en Envelope.
 
 ### Datos que faltaban antes de la implementación
 
@@ -662,6 +662,7 @@ Estado final del checklist histórico:
 - [x] Implementar `/api/payroll/*` con guard `SUPER_ADMIN`.
 - [x] Integrar lectura real de ventas, empleados, sucursales, bancos y puestos sin duplicarlos.
 - [x] Agregar `Empleado.sucursalId` nullable como dato laboral informativo, sin usarlo para el desglose por punto de venta de Payroll.
+- [x] Distinguir la asignación explícita `TODAS` de `Sin sucursal asignada` mediante `Empleado.todasSucursales`.
 - [x] Implementar cálculo backend de sueldo, comisiones, movimientos, préstamos y totales.
 - [x] Implementar snapshots inmutables por corrida y auditoría.
 - [x] Implementar servicio/endpoints de comprobantes; solo queda pendiente crear/configurar el bucket por ambiente.
@@ -693,7 +694,7 @@ Reglas para futuras sesiones:
 - `PositionScreenPermission` también puede almacenar claves de acción virtual como `empleados/sueldo`, que controla la visibilidad del sueldo en `envelope`, y `reportes/ver-datos-keysar-home`, que permite incluir al empleado `KEYSAR HOME` en la tabla de ventas guardadas y en los reportes `ventas-por-vendedor` y `ventas-por-vendedor-dia` (incluidos sus totales y exportaciones). La omisión en ventas se aplica solo al dataset visible de la tabla y no altera los datos usados por `Generar sobre`.
 - El acceso admin expone `PUT /api/envelope/access/positions/:id/permissions`, `PUT /api/envelope/access/users/:employeeId/credentials` y `DELETE /api/envelope/access/users/:id` para eliminar cuentas de acceso cuando se requiera volver a crearlas.
 - `Empleado` tiene `bankId`/`positionId` nullable (FK a catálogos dinámicos).
-- `Empleado` tiene `sucursalId` nullable (FK a `Sucursal`, `ON DELETE SET NULL`); `null` se presenta como `Sin sucursal asignada`.
+- `Empleado` tiene `sucursalId` nullable (FK a `Sucursal`, `ON DELETE SET NULL`) y `todasSucursales Boolean @default(false)`. `null + false` se presenta como `Sin sucursal asignada`; `null + true` se presenta como `TODAS`; una sucursal concreta siempre conserva `todasSucursales = false`.
 - `Empleado` también tiene campos legacy `banco`/`puesto` (String) — conservar por compatibilidad hasta backfill completo en prod.
 - `Empleado` ahora incluye `sueldo Decimal?`, `fechaNacimiento DateTime?` y `numeroTelefono String?` para el crecimiento del módulo RH.
 - `Venta` tiene `sesionId String?` — vincula registros del mismo voucher multi-vendedor; null = venta individual.
@@ -707,7 +708,7 @@ Reglas para futuras sesiones:
 - No ejecutar `migrate reset` ni `db push` en ambientes compartidos/productivos.
 - Usar migraciones Prisma controladas (`prisma migrate deploy`).
 - La migración Payroll `20260730000000_add_payroll_models` es aditiva: crea tablas, enums, índices, relaciones y restricciones de nómina; no elimina ni transforma ventas, empleados ni otros registros productivos de Envelope.
-- La migración `20260731000000_add_employee_branch` también es aditiva: agrega `Empleado.sucursalId` nullable, su índice y FK sin actualizar filas existentes.
+- La migración `20260731000000_add_employee_branch` también es aditiva: agrega `Empleado.sucursalId` nullable, su índice y FK sin actualizar filas existentes. La migración `20260801000000_add_employee_all_branches` agrega el indicador `todasSucursales` con default `false` y una restricción que impide combinar `TODAS` con una sucursal concreta.
 - Aplicar Payroll por ambiente en este orden: confirmar conexión y respaldo/PITR, ejecutar `prisma migrate status`, aplicar `prisma migrate deploy`, desplegar el backend correspondiente y después desplegar/verificar el frontend.
 - `seed.ts` contiene datos demo — usar con cuidado, puede sobreescribir datos.
 - `seed-catalogs.ts` es el seed seguro para catálogos `Bank`/`Position`.
@@ -850,7 +851,8 @@ backend/api/
 │   ├── schema.prisma              → modelos Prisma (fuente de verdad de BD)
 │   ├── migrations/                → migraciones versionadas (no modificar manualmente)
 │   │   ├── 20260730000000_add_payroll_models/ → migración aditiva de Payroll
-│   │   └── 20260731000000_add_employee_branch/ → FK nullable de empleado a sucursal
+│   │   ├── 20260731000000_add_employee_branch/ → FK nullable de empleado a sucursal
+│   │   └── 20260801000000_add_employee_all_branches/ → asignación laboral explícita a todas las sucursales
 │   ├── seed.ts                    → seed general/demo, usar con cuidado
 │   └── seed-catalogs.ts           → seed seguro para Bank/Position
 └── src/
@@ -1009,5 +1011,5 @@ npx ts-node --project tsconfig.json prisma/seed-catalogs.ts
 - Automatizar deploy backend con GitHub Actions si se decide.
 - Crear seeds separados seguros para dev/datos base si se requiere.
 - Limpieza futura de campos legacy `banco`/`puesto` en `Empleado` cuando todos los registros en prod tengan `bankId`/`positionId` asignados (Fase 4).
-- Payroll producción: confirmar respaldo/PITR, aplicar `20260730000000_add_payroll_models` y `20260731000000_add_employee_branch`, desplegar `cosmetics-api`, configurar/verificar `NEXT_PUBLIC_API_URL` y `CORS_ORIGINS`, y ejecutar una corrida paralela antes del primer pago oficial.
+- Payroll producción: confirmar respaldo/PITR, aplicar `20260730000000_add_payroll_models`, `20260731000000_add_employee_branch` y `20260801000000_add_employee_all_branches`, desplegar `cosmetics-api`, configurar/verificar `NEXT_PUBLIC_API_URL` y `CORS_ORIGINS`, y ejecutar una corrida paralela antes del primer pago oficial.
 - Payroll Storage: crear más adelante el bucket privado y configurar `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` y opcionalmente `PAYROLL_STORAGE_BUCKET` solo después de que exista.

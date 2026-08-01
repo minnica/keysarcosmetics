@@ -43,6 +43,7 @@ import { formatCurrency, formatDate } from '@/lib/utils'
 import type { Empleado } from '@/lib/mock-data'
 
 const UNASSIGNED_BRANCH = '__UNASSIGNED__'
+const ALL_BRANCHES = '__ALL_BRANCHES__'
 
 function createEmpleadoSchema(messages: {
   required: string
@@ -162,7 +163,7 @@ export default function EmpleadosPage() {
         if (
           branchFilter !== 'all' &&
           (branchFilter === UNASSIGNED_BRANCH
-            ? Boolean(emp.sucursalId)
+            ? Boolean(emp.sucursalId) || Boolean(emp.todasSucursales)
             : emp.sucursalId !== branchFilter)
         ) return false
 
@@ -241,7 +242,9 @@ export default function EmpleadosPage() {
       bankId:          resolvedBankId,
       numeroCuenta:    emp.numeroCuenta,
       positionId:      resolvedPositionId,
-      sucursalId:      emp.sucursalId ?? UNASSIGNED_BRANCH,
+      sucursalId:      emp.todasSucursales
+        ? ALL_BRANCHES
+        : emp.sucursalId ?? UNASSIGNED_BRANCH,
       metaIndividual:  emp.metaIndividual,
       sueldo:          canViewSalary && emp.sueldo != null ? String(emp.sueldo) : '',
       fechaNacimiento: emp.fechaNacimiento ?? '',
@@ -266,7 +269,11 @@ export default function EmpleadosPage() {
       metaIndividual:  data.metaIndividual,
       bankId:          data.bankId,
       positionId:      data.positionId,
-      sucursalId:      data.sucursalId === UNASSIGNED_BRANCH ? null : data.sucursalId,
+      sucursalId:
+        data.sucursalId === UNASSIGNED_BRANCH || data.sucursalId === ALL_BRANCHES
+          ? null
+          : data.sucursalId,
+      todasSucursales: data.sucursalId === ALL_BRANCHES,
       ...(canViewSalary ? { sueldo: data.sueldo?.trim() ? Number(data.sueldo) : null } : {}),
       fechaNacimiento: data.fechaNacimiento?.trim() ? data.fechaNacimiento.trim() : null,
       numeroTelefono:  data.numeroTelefono?.trim() ? data.numeroTelefono.trim() : null,
@@ -301,7 +308,10 @@ export default function EmpleadosPage() {
   // Texto a mostrar: prefiere nombre del catálogo, cae en legacy
   const displayBanco    = (emp: Empleado) => emp.bank?.nombre    ?? emp.banco
   const displayPuesto   = (emp: Empleado) => emp.position?.nombre ?? emp.puesto
-  const displaySucursal = (emp: Empleado) => emp.sucursal?.nombre ?? t.employees.unassignedBranch
+  const displaySucursal = (emp: Empleado) =>
+    emp.todasSucursales
+      ? t.employees.allBranchAssignment
+      : emp.sucursal?.nombre ?? t.employees.unassignedBranch
   const displayDate = (value?: string | null) => (value ? formatDate(value, 'dd/MM/yyyy') : t.common.noRecord)
   const displayPhone = (value?: string | null) => (value?.trim() ? value : t.common.noRecord)
   const displaySalary = (value?: number | null) => (value != null ? formatCurrency(value) : t.common.noRecord)
@@ -357,10 +367,10 @@ export default function EmpleadosPage() {
     },
     {
       id: 'sucursal',
-      accessorFn: (row) => row.sucursal?.nombre ?? t.employees.unassignedBranch,
+      accessorFn: (row) => displaySucursal(row),
       header: () => <span className="uppercase">{t.common.branch}</span>,
       cell: ({ row }) => (
-        <span className={row.original.sucursalId ? 'text-sm' : 'text-sm text-muted-foreground'}>
+        <span className={row.original.sucursalId || row.original.todasSucursales ? 'text-sm' : 'text-sm text-muted-foreground'}>
           {displaySucursal(row.original)}
         </span>
       ),
@@ -733,6 +743,9 @@ export default function EmpleadosPage() {
                       <SelectItem value={UNASSIGNED_BRANCH}>
                         {t.employees.unassignedBranch}
                       </SelectItem>
+                      <SelectItem value={ALL_BRANCHES}>
+                        {t.employees.allBranchAssignment}
+                      </SelectItem>
                       {editing?.sucursal &&
                       !sucursales.some((sucursal) => sucursal.id === editing.sucursal?.id) ? (
                         <SelectItem value={editing.sucursal.id}>
@@ -748,9 +761,6 @@ export default function EmpleadosPage() {
                   </Select>
                 )}
               />
-              <p className="text-xs text-muted-foreground">
-                {t.employees.branchAssignmentReminderDescription}
-              </p>
             </div>
 
             <div className="space-y-1.5">

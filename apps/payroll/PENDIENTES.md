@@ -1,6 +1,6 @@
 # Payroll — pendientes de habilitación y decisiones acordadas
 
-Última actualización: 31 de julio de 2026.
+Última actualización: 1 de agosto de 2026.
 
 Este documento registra lo que falta para habilitar Payroll por ambiente y consolida las preguntas y respuestas acordadas durante la planeación. No contiene contraseñas, tokens, URLs privadas ni valores de producción.
 
@@ -30,6 +30,7 @@ Archivos, en orden:
 ```text
 backend/api/prisma/migrations/20260730000000_add_payroll_models/migration.sql
 backend/api/prisma/migrations/20260731000000_add_employee_branch/migration.sql
+backend/api/prisma/migrations/20260801000000_add_employee_all_branches/migration.sql
 ```
 
 Antes de ejecutar:
@@ -44,6 +45,7 @@ Qué solventa:
 
 - Crea las tablas, enums, índices, relaciones y restricciones de Payroll.
 - Agrega la relación nullable `Empleado.sucursalId` sin modificar los empleados existentes.
+- Agrega `Empleado.todasSucursales` para distinguir `TODAS` de `Sin sucursal asignada`; los registros existentes conservan `false`.
 - Permite que `/api/payroll/*` persista catálogos, movimientos, corridas, préstamos y recibos.
 - Sin este paso, el frontend puede cargar, pero las llamadas de Payroll fallarán porque las tablas todavía no existen.
 
@@ -229,7 +231,7 @@ No. Los consume en lectura; la administración de empleados, bancos, puestos, su
 
 **¿Cuál es la sucursal laboral del empleado?**
 
-`Empleado.sucursalId`, administrado desde el formulario de empleados de Envelope. Es nullable para conservar registros existentes y se mantiene como dato informativo. No define la sucursal de las ventas ni interviene en el desglose de Payroll.
+`Empleado.sucursalId` y `Empleado.todasSucursales`, administrados desde el formulario de empleados de Envelope. Permiten distinguir una sucursal concreta, la selección explícita `TODAS` y `Sin sucursal asignada`. Se mantienen como datos informativos: no definen la sucursal de las ventas ni intervienen en el desglose de Payroll.
 
 **¿Qué ocurre con empleados inactivos?**  
 Se conservan en históricos y pueden entrar en una corrida si tuvieron actividad dentro del periodo. No aparecen para nuevas asignaciones operativas.
@@ -293,6 +295,8 @@ Al presionar **Recalcular** si la corrida sigue en `DRAFT`. Las corridas `APPROV
 
 **¿Qué pasa si el empleado no tiene sucursal laboral asignada?**
 Resumen muestra un pendiente informativo para corregir el catálogo en Envelope, pero la corrida y el reporte siguen usando las sucursales reales de sus ventas. Si no tuvo ventas, sueldo, comisión y préstamo se asignan a `CORPORATIVO`.
+
+Si el empleado tiene seleccionada la opción `TODAS`, se considera que su asignación laboral está configurada y no aparece ese pendiente. Esta opción tampoco cambia la distribución del cálculo por las sucursales reales de las ventas.
 
 **¿Cómo se asigna la sucursal de los movimientos?**
 Cada reparto captura empleado, sucursal o `CORPORATIVO`, monto y si es pagable. Esa selección propia del movimiento alimenta el desglose y no se deriva de `Empleado.sucursalId`.
