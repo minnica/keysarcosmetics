@@ -52,6 +52,7 @@ export interface Empleado {
   position?: { id: string; nombre: string; activo: boolean } | null;
   sucursalId?: string | null;
   sucursal?: { id: string; nombre: string; activa: boolean } | null;
+  todasSucursales?: boolean;
   metaIndividual: number;
   activo: boolean;
 }

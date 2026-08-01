@@ -490,6 +490,7 @@ router.post("/empleados", access.empleados, async (req, res) => {
       bankId,
       positionId,
       sucursalId,
+      todasSucursales,
       sueldo,
       fechaNacimiento,
       numeroTelefono,
@@ -504,6 +505,7 @@ router.post("/empleados", access.empleados, async (req, res) => {
       bankId?: string;
       positionId?: string;
       sucursalId?: string | null;
+      todasSucursales?: boolean;
       sueldo?: number | null;
       fechaNacimiento?: string | null;
       numeroTelefono?: string | null;
@@ -553,8 +555,9 @@ router.post("/empleados", access.empleados, async (req, res) => {
       finalPositionId = position.id;
     }
 
+    const finalTodasSucursales = todasSucursales === true;
     let finalSucursalId: string | null = null;
-    if (sucursalId) {
+    if (!finalTodasSucursales && sucursalId) {
       const sucursal = await prisma.sucursal.findFirst({
         where: { id: sucursalId, activa: true },
       });
@@ -591,6 +594,7 @@ router.post("/empleados", access.empleados, async (req, res) => {
         ...(finalBankId !== undefined && { bankId: finalBankId }),
         ...(finalPositionId !== undefined && { positionId: finalPositionId }),
         sucursalId: finalSucursalId,
+        todasSucursales: finalTodasSucursales,
       },
       include: { bank: true, position: true, sucursal: true },
     });
@@ -625,6 +629,7 @@ router.put("/empleados/:id", access.empleados, async (req, res) => {
       bankId,
       positionId,
       sucursalId,
+      todasSucursales,
       sueldo,
       fechaNacimiento,
       numeroTelefono,
@@ -640,6 +645,7 @@ router.put("/empleados/:id", access.empleados, async (req, res) => {
       bankId: string;
       positionId: string;
       sucursalId: string | null;
+      todasSucursales: boolean;
       sueldo: number | null;
       fechaNacimiento: string | null;
       numeroTelefono: string | null;
@@ -700,10 +706,12 @@ router.put("/empleados/:id", access.empleados, async (req, res) => {
       positionUpdate = { puesto };
     }
 
-    let sucursalUpdate: { sucursalId?: string | null } = {};
-    if (sucursalId !== undefined) {
+    let sucursalUpdate: { sucursalId?: string | null; todasSucursales?: boolean } = {};
+    if (todasSucursales === true) {
+      sucursalUpdate = { sucursalId: null, todasSucursales: true };
+    } else if (sucursalId !== undefined) {
       if (sucursalId === null) {
-        sucursalUpdate = { sucursalId: null };
+        sucursalUpdate = { sucursalId: null, todasSucursales: false };
       } else {
         const sucursal = await prisma.sucursal.findUnique({
           where: { id: sucursalId },
@@ -719,8 +727,10 @@ router.put("/empleados/:id", access.empleados, async (req, res) => {
           });
           return;
         }
-        sucursalUpdate = { sucursalId: sucursal.id };
+        sucursalUpdate = { sucursalId: sucursal.id, todasSucursales: false };
       }
+    } else if (todasSucursales === false) {
+      sucursalUpdate = { todasSucursales: false };
     }
 
     const n = nombres ?? existing.nombres;

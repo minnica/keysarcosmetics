@@ -137,7 +137,10 @@ router.get(
         salary: employee.sueldo,
         phone: employee.numeroTelefono,
         branchId: employee.sucursal?.id ?? null,
-        branchName: employee.sucursal?.nombre ?? "SIN SUCURSAL ASIGNADA",
+        branchName: employee.todasSucursales
+          ? "TODAS"
+          : employee.sucursal?.nombre ?? "SIN SUCURSAL ASIGNADA",
+        allBranches: employee.todasSucursales,
       })),
       branches,
       storageConfigured: isPayrollStorageConfigured(),

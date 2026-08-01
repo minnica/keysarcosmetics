@@ -58,6 +58,7 @@ export interface PayrollEmployee {
   phone: string | null;
   branchId: string | null;
   branchName: string;
+  allBranches: boolean;
 }
 
 export interface PayrollBranch {
