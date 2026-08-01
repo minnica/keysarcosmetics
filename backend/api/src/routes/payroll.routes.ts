@@ -506,6 +506,7 @@ router.delete(
 
 const allocationSchema = z.object({
   employeeId: z.string().min(1),
+  branchId: nullableId,
   amount: positiveMoney,
   commissionable: z.boolean().default(true),
 });
@@ -543,22 +544,6 @@ function validateAllocations(input: z.infer<typeof movementSchema>): void {
     );
 }
 
-async function employeeBranchIds(
-  allocations: z.infer<typeof movementSchema>["allocations"],
-): Promise<Map<string, string | null>> {
-  const employeeIds = allocations.map((allocation) => allocation.employeeId);
-  const employees = await prisma.empleado.findMany({
-    where: { id: { in: employeeIds } },
-    select: { id: true, sucursalId: true },
-  });
-  if (employees.length !== employeeIds.length) {
-    throw new Error("Uno o más participantes no existen.");
-  }
-  return new Map(
-    employees.map((employee) => [employee.id, employee.sucursalId]),
-  );
-}
-
 router.get(
   "/movements",
   asyncRoute(async (req, res) => {
@@ -576,14 +561,7 @@ router.get(
       include: {
         allocations: {
           include: {
-            employee: {
-              select: {
-                id: true,
-                nombreCompleto: true,
-                sucursalId: true,
-                sucursal: { select: { id: true, nombre: true } },
-              },
-            },
+            employee: { select: { id: true, nombreCompleto: true } },
             branch: { select: { id: true, nombre: true } },
           },
         },
@@ -599,7 +577,6 @@ router.post(
   asyncRoute(async (req, res) => {
     const input = movementSchema.parse(req.body);
     validateAllocations(input);
-    const branchesByEmployee = await employeeBranchIds(input.allocations);
     const movement = await prisma.payrollMovement.create({
       data: {
         date: parseDate(input.date),
@@ -612,7 +589,7 @@ router.post(
         allocations: {
           create: input.allocations.map((allocation) => ({
             ...allocation,
-            branchId: branchesByEmployee.get(allocation.employeeId) ?? null,
+            branchId: allocation.branchId ?? null,
           })),
         },
       },
@@ -627,7 +604,6 @@ router.put(
   asyncRoute(async (req, res) => {
     const input = movementSchema.parse(req.body);
     validateAllocations(input);
-    const branchesByEmployee = await employeeBranchIds(input.allocations);
     const current = await prisma.payrollMovement.findUniqueOrThrow({
       where: { id: req.params["id"] },
     });
@@ -648,7 +624,7 @@ router.put(
           deleteMany: {},
           create: input.allocations.map((allocation) => ({
             ...allocation,
-            branchId: branchesByEmployee.get(allocation.employeeId) ?? null,
+            branchId: allocation.branchId ?? null,
           })),
         },
       },

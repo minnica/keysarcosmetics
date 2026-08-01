@@ -163,7 +163,7 @@ Componentes shadcn canónicos en `packages/ui/src/components/ui`:
 - Calendar, DateRangePicker, Sheet, Tooltip, Separator, Sidebar
 - **AlertDialog** — diálogo de confirmación destructiva (botones de borrar)
 - **Sonner** — toasts con variantes semánticas: verde para éxito, amarillo/ámbar para advertencias recuperables y rojo para errores reales. En `payroll`, las validaciones de formulario y bloqueos previos al guardado usan `toast.warning`; los fallos de API, persistencia o exportación usan `toast.error`.
-- **Toast (Base UI)** — componente shadcn canónico en `components/ui/toast.tsx`, re-exportado como `BaseToaster`/`baseToast` para convivir con Sonner. Envelope y Payroll montan ambos providers; los avisos de empleados sin sucursal usan `baseToast.add({ type: "warning", ... })`.
+- **Toast (Base UI)** — componente shadcn canónico en `components/ui/toast.tsx`, re-exportado como `BaseToaster`/`baseToast` para convivir con Sonner. Envelope y Payroll montan ambos providers; Envelope lo usa para avisos de empleados sin sucursal.
 - **DataTable** — tabla canónica shadcn sobre `@tanstack/react-table`. Props: `columns: ColumnDef<T>[]`, `data: T[]`, `emptyMessage?: string`, `searchPlaceholder?: string`, `pageSize?: number` (default 20), `labels?: { records?: string; all?: string; results?: (count: number) => string }`. Incluye sorting por clic en header, globalFilter (search input), selector de filas por página (opciones: 10, 20, 50, 100, Todos) y pagination con controles prev/next (ocultos en modo Todos). Re-exporta también `ColumnDef` desde `@cosmetics/ui` — las apps no deben importar `@tanstack/react-table` directamente.
 
 `toast` helper re-exportado desde `@cosmetics/ui` (no importar `sonner` directamente en las apps).
@@ -262,7 +262,7 @@ Datos:
 
 - La UI y todos los endpoints `/api/payroll/*` requieren sesión JWT y rol `SUPER_ADMIN`.
 - Payroll reutiliza `Empleado`, `Bank`, `Position`, `Sucursal`, `Venta` y `VentaDetalle`. La administración permanece en Envelope; Payroll los consume en lectura.
-- `Empleado.sucursalId` es nullable y representa la sucursal laboral canónica. Envelope permite asignarla desde el formulario de empleados y muestra `Sin sucursal asignada` cuando es `null`.
+- `Empleado.sucursalId` es nullable y conserva la sucursal laboral canónica. Envelope permite asignarla desde el formulario de empleados y muestra `Sin sucursal asignada` cuando es `null`. Por decisión operativa vigente, este dato es informativo para Payroll y no interviene en el cálculo ni en el reporte por sucursal.
 - Los cambios propios de nómina deben limitarse a `apps/payroll`, rutas/servicios/modelos Payroll en `backend/api` y documentación relacionada. La relación laboral `Empleado.sucursalId` se administra exclusivamente desde `apps/envelope`.
 - Las migraciones `20260730000000_add_payroll_models` y `20260731000000_add_employee_branch` son aditivas. Deben revisarse y ejecutarse manualmente con `prisma migrate deploy`; nunca usar `db push`, `migrate reset` ni seeds demo contra producción.
 - Los adjuntos están preparados para un bucket privado de Supabase Storage, pero su habilitación está pospuesta. Cuando se cree el bucket, configurar `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` y opcionalmente `PAYROLL_STORAGE_BUCKET`; nunca exponer la service-role key al frontend.
@@ -274,7 +274,7 @@ Datos:
 | Empleado, activo/inactivo, sueldo y teléfono | `Empleado`                                                                                    |
 | Banco y cuenta                               | `Empleado.bankId`/`Bank`, con compatibilidad para `Empleado.banco`, y `Empleado.numeroCuenta` |
 | Puesto                                       | `Empleado.positionId`/`Position`, con compatibilidad para `Empleado.puesto`                   |
-| Sucursal laboral                             | `Empleado.sucursalId`/`Sucursal`; `null` = `SIN SUCURSAL ASIGNADA`                             |
+| Sucursal laboral informativa                 | `Empleado.sucursalId`/`Sucursal`; no interviene en el desglose de Payroll                      |
 | Ventas por fecha, vendedor y sucursal        | `Venta` + suma de `VentaDetalle.cantidad`                                                     |
 | Sucursales                                   | `Sucursal`                                                                                    |
 
@@ -297,12 +297,13 @@ La API cubre bootstrap de fuentes compartidas; CRUD de catálogos, esquemas/vers
 - Resumen ofrece las quincenas estándar de los últimos 12 meses. Seleccionar un periodo existente abre su corrida; seleccionar uno vacío limpia la corrida activa y permite crear el borrador histórico. El periodo de una corrida existente no se muta.
 - Cada corrida elige `WITH_VAT` o `WITHOUT_VAT`. Con IVA se usa venta bruta; sin IVA se usa `venta / 1.16`. La misma base selecciona el rango y calcula `base × tasa`.
 - Rangos de comisión son continuos, inician en cero y el último no tiene límite superior. Versiones y asignaciones tienen vigencia; cambios existentes solo aplican desde la siguiente quincena.
-- Ventas, sueldo, comisión, movimientos y préstamos de cada empleado se agrupan en `Empleado.sucursalId`. Si la relación es `null`, el snapshot usa `SIN SUCURSAL ASIGNADA`. La sucursal de una venta sigue siendo dato operativo de Envelope, pero no define el centro laboral del empleado en Payroll.
-- Los movimientos derivan automáticamente su sucursal del participante; el cliente y el backend no aceptan una segunda selección manual. En el formulario, el selector de participante muestra solo el nombre y no repite puesto ni sucursal. Los gastos conservan centro de costo propio porque no están vinculados a un empleado.
+- El desglose usa la sucursal real de cada `Venta`. Sueldo, comisión y préstamo se distribuyen proporcionalmente entre las sucursales donde el empleado tuvo ventas en la quincena, conservando los centavos exactos; si no tuvo ventas, esos importes se asignan a `CORPORATIVO`. `Empleado.sucursalId` no participa en esta consulta ni en sus snapshots.
+- Esta distribución se materializa al crear o recalcular una corrida. Las corridas `APPROVED`/`PAID` conservan sus `PayrollRunBranchLine` históricos y no se reescriben; un borrador anterior debe recalcularse para adoptar la regla vigente.
+- Cada asignación de movimiento captura su propia sucursal o `CORPORATIVO`; ese centro se conserva en `PayrollMovementAllocation` y alimenta el desglose. Los gastos mantienen un centro de costo independiente porque no están vinculados a un empleado.
 - Una corrida transita `DRAFT → APPROVED → PAID`; puede cancelarse antes de pagar. Aprobar congela líneas y reserva movimientos, gastos y cuotas. Pagar liquida cuotas reservadas y genera recibos. Una corrida pagada no se recalcula ni cancela.
-- El consolidado mensual es un reporte derivado, no una corrida nueva ni una entidad persistida. Incluye corridas `DRAFT`, `APPROVED` y `PAID`, excluye `CANCELED`, agrupa las líneas por `employeeId` y suma por separado primera quincena, segunda quincena, sueldo, ventas, comisión, extras, deducciones y total. Para una quincena terminada sin corrida, reutiliza el motor de cálculo sin `runId` y devuelve una referencia sintética `ESTIMATED`; no reserva ni persiste datos. El cierre del periodo se compara contra la fecha de negocio de `America/Mexico_City`. Si existe una corrida real en el mes, la estimación usa su modo; si no existe ninguna usa `WITH_VAT`. La estimación recupera ventas, esquemas/asignaciones, movimientos, gastos y cuotas aplicables al periodo, pero sueldo, banco, cuenta, teléfono y sucursal proceden del registro de empleado disponible al consultar, porque no existe snapshot histórico. Por eso siempre se presenta como aproximada hasta crear la corrida histórica. Una quincena actual o futura sin corrida sigue incompleta.
+- El consolidado mensual es un reporte derivado, no una corrida nueva ni una entidad persistida. Incluye corridas `DRAFT`, `APPROVED` y `PAID`, excluye `CANCELED`, agrupa las líneas por `employeeId` y suma por separado primera quincena, segunda quincena, sueldo, ventas, comisión, extras, deducciones y total. Para una quincena terminada sin corrida, reutiliza el motor de cálculo sin `runId` y devuelve una referencia sintética `ESTIMATED`; no reserva ni persiste datos. El cierre del periodo se compara contra la fecha de negocio de `America/Mexico_City`. Si existe una corrida real en el mes, la estimación usa su modo; si no existe ninguna usa `WITH_VAT`. La estimación recupera ventas y sus sucursales, esquemas/asignaciones, movimientos, gastos y cuotas aplicables al periodo, pero sueldo, banco, cuenta y teléfono proceden del registro de empleado disponible al consultar, porque no existe snapshot histórico. Por eso siempre se presenta como aproximada hasta crear la corrida histórica. Una quincena actual o futura sin corrida sigue incompleta.
 - Bloquea aprobación: ventas sin esquema/rango, pago total negativo o viáticos/insumos sin evidencia. Sueldo faltante es advertencia. Banco o cuenta faltante bloquean pago. Teléfono faltante bloquea solo la preparación de WhatsApp.
-- En la vista quincenal de Resumen, el bloque de atención combina las advertencias guardadas en cada línea con una comprobación visual del snapshot de sucursal. Si alguna `PayrollRunBranchLine` tiene `branchId = null`, incluye el pendiente `SUCURSAL` incluso en corridas históricas, sin modificar ni recalcular su snapshot. Para evitar paredes de texto, el bloque muestra por defecto únicamente el número de empleados, el total de pendientes y conteos por tipo (`ESQUEMA`, `SUELDO`, `TELÉFONO`, `SUCURSAL`, etc.); `Ver detalle por empleado` despliega una `DataTable` paginada con la cantidad y etiquetas breves de los datos faltantes de cada persona.
+- En la vista quincenal de Resumen, el bloque de atención combina las advertencias guardadas en cada línea con una comprobación informativa de `Empleado.sucursalId` usando el catálogo actual. Una sucursal laboral faltante incluye el pendiente `SUCURSAL`, pero no modifica la corrida ni el desglose por punto de venta. Para evitar paredes de texto, el bloque muestra por defecto únicamente el número de empleados, el total de pendientes y conteos por tipo (`ESQUEMA`, `SUELDO`, `TELÉFONO`, `SUCURSAL`, etc.); `Ver detalle por empleado` despliega una `DataTable` paginada con la cantidad y etiquetas breves de los datos faltantes de cada persona.
 - Préstamos y adelantos generan cuotas quincenales automáticas; el último pago absorbe el ajuste de centavos. Los estados históricos no se eliminan.
 - En Préstamos y adelantos, el usuario puede seleccionar cualquier día dentro de la primera quincena de cobro. El frontend normaliza la selección al inicio canónico del periodo: días 1–15 al día 1 y días 16–fin al día 16, que es el contrato enviado al motor de amortización.
 - Recibos se generan desde el snapshot pagado, se descargan en PDF y WhatsApp se abre mediante `wa.me`; el archivo se adjunta manualmente. Estados: `GENERATED`, `SENT`, `CONFIRMED`.
@@ -422,7 +423,7 @@ Pantallas que se prototiparon originalmente con mocks y después se conectaron a
 - `/gastos` — Formulario y tabla mock para gastos fijos/variables; los registros compartidos por contexto se descuentan del balance general de `/`.
 - `/esquemas` — Esquemas de comisión: catálogo por rangos `de/hasta/tasa` y asignación por empleado.
 - `/prestamos-adelantos` — Amortización: préstamos, adelantos, pagos, saldo y estatus.
-- `/reportes/desglose-sucursal` — reporte real de ventas y costo agrupados por `Empleado.sucursalId`, con desglose por empleado, resumen, gráfica y exportación PDF/Excel.
+- `/reportes/desglose-sucursal` — reporte real de ventas y costo por punto de venta: conserva `Venta.sucursalId`, distribuye proporcionalmente sueldo/comisión/préstamo y usa la sucursal propia de los movimientos; incluye desglose por empleado, resumen, gráfica y exportación PDF/Excel.
 - `/recibos` — Recibos por empleado: estatus generado/enviado/confirmado y acción mock de visualización/envío.
 - `/login` — En la demo original era un login visual mock; hoy usa autenticación JWT real y guard `SUPER_ADMIN`.
 
@@ -456,7 +457,7 @@ Limitaciones históricas de la demo eliminada (no describen la implementación a
 
 Nota importante:
 
-- `Empleado.sucursalId` y `Usuario.sucursalId` son relaciones distintas. La primera agrupa nómina por la sucursal laboral del empleado; la segunda limita el alcance de una cuenta y no debe usarse como sustituto.
+- `Empleado.sucursalId` y `Usuario.sucursalId` son relaciones distintas. La primera conserva la sucursal laboral como dato informativo y la segunda limita el alcance de una cuenta; ninguna sustituye la sucursal propia de `Venta` en el reporte de Payroll.
 - La migración aditiva `20260731000000_add_employee_branch` agrega la FK nullable, índice y `ON DELETE SET NULL`. Los empleados existentes permanecen sin asignación hasta que se actualicen en Envelope.
 
 ### Datos que faltaban antes de la implementación
@@ -660,7 +661,7 @@ Estado final del checklist histórico:
 - [x] Diseñar modelos Prisma y crear la migración aditiva de Payroll.
 - [x] Implementar `/api/payroll/*` con guard `SUPER_ADMIN`.
 - [x] Integrar lectura real de ventas, empleados, sucursales, bancos y puestos sin duplicarlos.
-- [x] Agregar `Empleado.sucursalId` nullable y agrupar Payroll por la sucursal laboral o `SIN SUCURSAL ASIGNADA`.
+- [x] Agregar `Empleado.sucursalId` nullable como dato laboral informativo, sin usarlo para el desglose por punto de venta de Payroll.
 - [x] Implementar cálculo backend de sueldo, comisiones, movimientos, préstamos y totales.
 - [x] Implementar snapshots inmutables por corrida y auditoría.
 - [x] Implementar servicio/endpoints de comprobantes; solo queda pendiente crear/configurar el bucket por ambiente.
