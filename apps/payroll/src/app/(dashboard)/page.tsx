@@ -166,6 +166,19 @@ function suggestedPayDate(periodEnd: string) {
   return date.toISOString().slice(0, 10);
 }
 
+function commissionPaymentTotal(line: PayrollRunLine) {
+  return (
+    line.commission +
+    line.bonus +
+    line.payrollAdjustmentPositive +
+    line.perDiem +
+    line.supplies -
+    line.fine -
+    line.payrollAdjustmentNegative -
+    line.loanPayment
+  );
+}
+
 export default function DashboardPage() {
   const data = usePayrollData();
   const defaults = useMemo(currentFortnight, []);
@@ -434,12 +447,13 @@ export default function DashboardPage() {
       ),
     },
     {
-      accessorKey: "totalPayment",
+      id: "totalPayment",
+      accessorFn: commissionPaymentTotal,
       header: "TOTAL PAGO",
       meta: { align: "right" },
-      cell: ({ row }) => (
+      cell: ({ getValue }) => (
         <div className="number-display text-right text-base">
-          {formatCurrency(row.original.totalPayment)}
+          {formatCurrency(Number(getValue()))}
         </div>
       ),
     },
