@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
-import { baseToast, ColumnDef, DataTable } from "@cosmetics/ui";
+import { ColumnDef, DataTable } from "@cosmetics/ui";
 import {
   Cell,
   Pie,
@@ -65,29 +64,6 @@ export default function DesgloseSucursalPage() {
   const branches = data.branchBreakdown.branches;
   const employeeLines = data.branchBreakdown.employeeLines;
   const run = data.selectedRun;
-  const notifiedRunId = useRef<string | null>(null);
-  const unassignedEmployeeCount = new Set(
-    employeeLines
-      .filter((line) => line.branchName === "SIN SUCURSAL ASIGNADA")
-      .map((line) => line.employeeId),
-  ).size;
-
-  useEffect(() => {
-    if (
-      !run ||
-      unassignedEmployeeCount === 0 ||
-      notifiedRunId.current === run.id
-    ) {
-      return;
-    }
-    notifiedRunId.current = run.id;
-    baseToast.add({
-      type: "warning",
-      title: "Empleados sin sucursal asignada",
-      description: `${unassignedEmployeeCount} ${unassignedEmployeeCount === 1 ? "empleado puede" : "empleados pueden"} actualizarse desde el formulario de empleados en Envelope.`,
-    });
-  }, [run, unassignedEmployeeCount]);
-
   const totalCost = sumBy(branches, (branch) => branch.payrollCost);
   const totalSales = sumBy(branches, (branch) => branch.salesWithVat);
   const totalEmployees = new Set(employeeLines.map((line) => line.employeeId))
@@ -320,7 +296,7 @@ export default function DesgloseSucursalPage() {
         <div>
           <h1 className="page-title">Reporte por sucursal</h1>
           <p className="mt-1 text-sm text-[var(--text-muted)]">
-            Ventas y costo agrupados por la sucursal asignada a cada empleado.
+            Distribución exacta de ventas y costo para la corrida seleccionada.
           </p>
         </div>
         <ReportExportButtons
@@ -335,13 +311,13 @@ export default function DesgloseSucursalPage() {
           tone="gold"
         />
         <MetricCard
-          label="Ventas agrupadas"
+          label="Ventas asignadas"
           value={formatCurrency(totalSales)}
           tone="sage"
         />
         <MetricCard label="Empleados" value={`${totalEmployees}`} tone="blue" />
       </div>
-      <SectionCard eyebrow="Detalle" title="EMPLEADO Y SUCURSAL ASIGNADA">
+      <SectionCard eyebrow="Detalle" title="EMPLEADO Y PUNTO DE VENTA">
         <DataTable
           columns={employeeColumns}
           data={employeeLines}
@@ -350,7 +326,7 @@ export default function DesgloseSucursalPage() {
           pageSize={10}
         />
       </SectionCard>
-      <SectionCard eyebrow="Resumen" title="COSTO POR SUCURSAL ASIGNADA">
+      <SectionCard eyebrow="Resumen" title="COSTO POR PUNTO DE VENTA">
         <DataTable
           columns={branchColumns}
           data={branches}

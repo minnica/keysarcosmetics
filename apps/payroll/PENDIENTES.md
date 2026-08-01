@@ -16,7 +16,7 @@ La implementación de aplicación, API, modelos y migración está terminada. Lo
 - Normalización de cualquier fecha elegida para la primera quincena de cobro al inicio canónico del periodo, día 1 o 16.
 - Corridas `DRAFT → APPROVED → PAID`, cancelación previa al pago y snapshots.
 - Resumen mensual calculado que consolida las dos corridas quincenales sin exigir que estén pagadas.
-- Reporte por sucursal, exportaciones, recibos PDF y seguimiento de WhatsApp.
+- Reporte por sucursal basado en la sucursal real de cada venta, exportaciones, recibos PDF y seguimiento de WhatsApp.
 - Backend `/api/payroll/*`, pruebas del motor y migración Prisma aditiva.
 
 Las migraciones están preparadas, pero no se han aplicado a ninguna base productiva desde esta implementación.
@@ -100,7 +100,7 @@ Antes del primer pago real debe revisarse en Envelope la información de los emp
 - Banco.
 - Número de cuenta.
 - Teléfono para WhatsApp.
-- Sucursal laboral.
+- Sucursal laboral, como dato informativo y de seguimiento; no interviene en el cálculo del desglose.
 - Puesto y estatus activo/inactivo.
 
 Efectos de datos faltantes:
@@ -112,7 +112,7 @@ Efectos de datos faltantes:
 | Banco                    | Bloquea marcar la corrida como pagada.             |
 | Cuenta bancaria          | Bloquea marcar la corrida como pagada.             |
 | Teléfono                 | Solo bloquea preparar el envío por WhatsApp.       |
-| Sucursal laboral         | Se agrupa como `SIN SUCURSAL ASIGNADA` y Resumen muestra una advertencia. |
+| Sucursal laboral         | Resumen muestra una advertencia informativa; no cambia el cálculo ni el reporte por sucursal. |
 
 La revisión agregada realizada el 30 de julio de 2026 encontró 54 empleados activos: 31 sin sueldo, 51 sin teléfono, 2 sin banco y 9 con cuenta vacía. Son cifras de referencia y pueden cambiar; deben verificarse nuevamente antes del primer ciclo productivo. De los empleados activos con ventas recientes, 28 no tenían sueldo capturado.
 
@@ -227,8 +227,9 @@ No en esta primera implementación. Se acordó un guard global de `SUPER_ADMIN` 
 **¿Payroll puede cambiar esos registros?**  
 No. Los consume en lectura; la administración de empleados, bancos, puestos, sucursales y ventas permanece en Envelope.
 
-**¿Cuál es la sucursal base del empleado?**  
-`Empleado.sucursalId`, administrado desde el formulario de empleados de Envelope. Es nullable para conservar registros existentes; cuando falta, Payroll agrupa el snapshot como `SIN SUCURSAL ASIGNADA`.
+**¿Cuál es la sucursal laboral del empleado?**
+
+`Empleado.sucursalId`, administrado desde el formulario de empleados de Envelope. Es nullable para conservar registros existentes y se mantiene como dato informativo. No define la sucursal de las ventas ni interviene en el desglose de Payroll.
 
 **¿Qué ocurre con empleados inactivos?**  
 Se conservan en históricos y pueden entrar en una corrida si tuvieron actividad dentro del periodo. No aparecen para nuevas asignaciones operativas.
@@ -282,16 +283,19 @@ Para un empleado o esquema ya vigente, desde la siguiente quincena. Las versione
 ### Distribución por sucursal
 
 **¿Cómo se agrupan sueldo, comisión, préstamo y ventas cuando un empleado vende en varias sucursales?**
-Todos esos importes se agrupan en la sucursal laboral asignada al empleado. La sucursal propia de cada venta se conserva en Envelope, pero no sustituye la relación laboral.
+Las ventas permanecen en la sucursal donde fueron registradas. Sueldo, comisión y préstamo se reparten proporcionalmente según las ventas del empleado en cada sucursal durante la quincena.
 
 **¿Cómo se manejan los centavos residuales?**  
-Cada empleado genera una sola línea por su sucursal laboral, por lo que no existe reparto proporcional entre sucursales.
+El motor redondea cada asignación a centavos y coloca la diferencia residual en la última sucursal para que la suma coincida exactamente con el total del empleado.
 
-**¿Qué pasa si no tiene sucursal asignada?**
-Los importes y ventas del empleado se agrupan en `SIN SUCURSAL ASIGNADA`.
+**¿Cuándo se refleja esta distribución en una corrida existente?**
+Al presionar **Recalcular** si la corrida sigue en `DRAFT`. Las corridas `APPROVED` o `PAID` conservan su snapshot histórico y no se modifican automáticamente.
 
-**¿Los movimientos usan esa vinculación automática?**
-Sí. Cada reparto captura empleado, monto y si es pagable; la sucursal se deriva de `Empleado.sucursalId` y no se selecciona por separado.
+**¿Qué pasa si el empleado no tiene sucursal laboral asignada?**
+Resumen muestra un pendiente informativo para corregir el catálogo en Envelope, pero la corrida y el reporte siguen usando las sucursales reales de sus ventas. Si no tuvo ventas, sueldo, comisión y préstamo se asignan a `CORPORATIVO`.
+
+**¿Cómo se asigna la sucursal de los movimientos?**
+Cada reparto captura empleado, sucursal o `CORPORATIVO`, monto y si es pagable. Esa selección propia del movimiento alimenta el desglose y no se deriva de `Empleado.sucursalId`.
 
 ### Catálogos y movimientos
 
@@ -372,7 +376,7 @@ No. Solo impide preparar WhatsApp para ese empleado.
 - [ ] Desplegar `cosmetics-api-dev`.
 - [ ] Verificar `NEXT_PUBLIC_API_URL` del Preview de Payroll.
 - [ ] Capturar catálogos, esquemas y asignaciones iniciales.
-- [ ] Corregir datos faltantes de empleados, incluida su sucursal laboral, antes del primer pago.
+- [ ] Revisar datos faltantes de empleados; la sucursal laboral pendiente es informativa y no bloquea el cálculo ni el pago.
 - [ ] Ejecutar pruebas de aceptación completas en desarrollo.
 - [ ] Aprobar resultados contra el proceso actual.
 - [ ] Aplicar migración y desplegar backend/frontend en producción.

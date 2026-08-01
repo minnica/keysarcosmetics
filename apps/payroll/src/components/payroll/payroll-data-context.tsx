@@ -94,12 +94,11 @@ function mapMovement(raw: any): PayrollMovement {
     employeeId: allocation.employeeId,
     employeeName:
       allocation.employee?.nombreCompleto ?? allocation.employeeName ?? "",
-    branchId: allocation.employee?.sucursalId ?? allocation.branchId ?? null,
+    branchId: allocation.branchId ?? null,
     branchName:
-      allocation.employee?.sucursal?.nombre ??
       allocation.branch?.nombre ??
       allocation.branchName ??
-      "SIN SUCURSAL ASIGNADA",
+      "CORPORATIVO",
     amount: n(allocation.amount),
     commissionable: allocation.commissionable,
   }));

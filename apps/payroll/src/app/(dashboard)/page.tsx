@@ -578,9 +578,10 @@ export default function DashboardPage() {
         code: item.code,
         label: ATTENTION_LABELS[item.code] ?? item.code.replaceAll("_", " "),
       }));
-      const missingBranch = line.branchLines.some(
-        (branch) => branch.branchId === null,
+      const employee = data.employees.find(
+        (candidate) => candidate.id === line.employeeId,
       );
+      const missingBranch = employee?.branchId === null;
       if (missingBranch) {
         issues.push({ code: "MISSING_BRANCH", label: "SUCURSAL" });
       }

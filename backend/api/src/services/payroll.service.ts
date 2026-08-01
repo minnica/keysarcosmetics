@@ -94,10 +94,12 @@ async function calculatePayrollPeriod(input: {
     include: {
       bank: { select: { nombre: true } },
       position: { select: { nombre: true } },
-      sucursal: { select: { id: true, nombre: true } },
       ventas: {
         where: { fecha: range },
-        include: { detalles: { select: { cantidad: true } } },
+        include: {
+          sucursal: { select: { id: true, nombre: true } },
+          detalles: { select: { cantidad: true } },
+        },
       },
       payrollMovementAllocations: {
         where: {
@@ -111,7 +113,10 @@ async function calculatePayrollPeriod(input: {
               : { payrollRunId: null }),
           },
         },
-        include: { movement: { select: { kind: true } } },
+        include: {
+          branch: { select: { id: true, nombre: true } },
+          movement: { select: { kind: true } },
+        },
       },
       payrollLoans: {
         where: { status: "PENDING" },
@@ -175,8 +180,6 @@ async function calculatePayrollPeriod(input: {
         {
           employeeId: employee.id,
           employeeName: employee.nombreCompleto,
-          branchId: employee.sucursal?.id ?? null,
-          branchName: employee.sucursal?.nombre ?? "SIN SUCURSAL ASIGNADA",
           positionName: employee.position?.nombre ?? employee.puesto ?? null,
           bankName: employee.bank?.nombre ?? employee.banco ?? null,
           accountNumber: employee.numeroCuenta || null,
@@ -195,6 +198,8 @@ async function calculatePayrollPeriod(input: {
                 }
               : null,
           sales: employee.ventas.map((sale) => ({
+            branchId: sale.sucursal.id,
+            branchName: sale.sucursal.nombre,
             amount: sale.detalles.reduce(
               (sum, detail) => sum.plus(detail.cantidad),
               new Prisma.Decimal(0),
@@ -202,6 +207,8 @@ async function calculatePayrollPeriod(input: {
           })),
           movements: employee.payrollMovementAllocations.map((allocation) => ({
             kind: allocation.movement.kind,
+            branchId: allocation.branch?.id ?? null,
+            branchName: allocation.branch?.nombre ?? "CORPORATIVO",
             amount: allocation.amount,
             commissionable: allocation.commissionable,
           })),

@@ -10,7 +10,7 @@ Para probar el flujo correctamente se necesita:
 
 - Una cuenta con rol `SUPER_ADMIN`.
 - Al menos un empleado con ventas dentro de la quincena que se revisará.
-- Sueldo, banco, cuenta bancaria y sucursal laboral capturados para ese empleado.
+- Sueldo, banco y cuenta bancaria capturados para ese empleado.
 - Un esquema de comisión y una asignación vigente.
 
 El teléfono solo es necesario para preparar el mensaje de WhatsApp; no afecta el cálculo ni la aprobación.
@@ -43,7 +43,7 @@ Para cada empleado que participará en la nómina, confirmar:
 - Nombre completo correcto.
 - Estatus activo, si continúa trabajando.
 - Puesto.
-- Sucursal laboral.
+- Sucursal laboral, como dato informativo; si falta aparecerá un recordatorio en Resumen, pero no cambia el cálculo.
 - Sueldo mensual.
 - Banco.
 - Número de cuenta.
@@ -60,7 +60,7 @@ Confirmar que las ventas del periodo tengan:
 - Sucursal correcta.
 - Importe correcto.
 
-La suma de los detalles de venta es la base del cálculo de comisión. Payroll agrupa las ventas y el costo en la sucursal laboral asignada al empleado; la sucursal propia de la venta se conserva como dato operativo de Envelope.
+La suma de los detalles de venta es la base del cálculo de comisión. El reporte de Payroll conserva la sucursal propia de cada venta y distribuye sueldo, comisión y préstamo proporcionalmente entre las sucursales donde vendió el empleado. `Empleado.sucursalId` no interviene en ese cálculo.
 
 ## 2. Crear el primer esquema de comisión
 
@@ -165,9 +165,10 @@ Capturar:
 3. Concepto o elemento del catálogo.
 4. Monto total.
 5. Número de participantes, entre 1 y 5.
-6. Empleado y parte correspondiente de cada participante. La sucursal se toma automáticamente del empleado.
-7. Indicar si la parte es pagable.
-8. Notas.
+6. Empleado y parte correspondiente de cada participante.
+7. Sucursal a la que corresponde esa parte, o `CORPORATIVO`.
+8. Indicar si la parte es pagable.
+9. Notas.
 
 La suma de las partes debe coincidir exactamente con el monto total. Un empleado no puede aparecer dos veces dentro del mismo movimiento.
 
@@ -183,10 +184,10 @@ Después de guardar, el movimiento queda `PENDING`. Debe aprobarse desde la tabl
 
 Para probar un bono de `$1,000.00` compartido:
 
-| Participante |   Parte | Sucursal                 | Pagable |
-| ------------ | ------: | ------------------------ | ------- |
-| Empleado A   | $600.00 | Asignada en Envelope     | Sí      |
-| Empleado B   | $400.00 | Asignada en Envelope     | Sí      |
+| Participante |   Parte | Sucursal seleccionada | Pagable |
+| ------------ | ------: | --------------------- | ------- |
+| Empleado A   | $600.00 | SUCURSAL A            | Sí      |
+| Empleado B   | $400.00 | SUCURSAL B            | Sí      |
 
 Total distribuido: `$1,000.00`.
 
@@ -297,6 +298,8 @@ También revisar:
 
 Mientras la corrida esté en `DRAFT` se puede corregir la información fuente y presionar **Recalcular**.
 
+Una corrida en borrador creada antes de esta regla debe recalcularse para que el reporte use las sucursales reales de las ventas. Las corridas aprobadas o pagadas conservan su distribución histórica.
+
 ### Comparación recomendada
 
 Para un empleado elegido como muestra, calcular manualmente:
@@ -333,7 +336,7 @@ La vista muestra:
 
 No es necesario aprobar o pagar las corridas para consultar este cálculo. Se incluyen corridas en `DRAFT`, `APPROVED` y `PAID`; las canceladas se excluyen. Si una quincena pasada ya terminó pero nunca tuvo corrida, el sistema la calcula temporalmente con los datos históricos y la configuración disponible, la marca como `ESTIMADA` y presenta el total mensual como aproximado. Esta consulta no crea una corrida, no reserva movimientos/gastos/cuotas y no congela snapshots.
 
-La estimación sirve para comparar meses anteriores a la implementación. Ventas, esquemas y conceptos con fecha se consultan para la quincena correspondiente; los datos del empleado que no tenían snapshot —como sueldo, banco, teléfono o sucursal— reflejan la configuración disponible al momento de consultar. Para obtener un resultado validable y conservarlo, volver a **Quincenal**, elegir ese periodo y crear su corrida histórica. Si la quincena faltante todavía está en curso, el mes se muestra incompleto en vez de estimarla. Si existe un borrador, el sistema recuerda que el importe puede cambiar al recalcularlo.
+La estimación sirve para comparar meses anteriores a la implementación. Ventas, sus sucursales, esquemas y conceptos con fecha se consultan para la quincena correspondiente; los datos del empleado que no tenían snapshot —como sueldo, banco o teléfono— reflejan la configuración disponible al momento de consultar. Para obtener un resultado validable y conservarlo, volver a **Quincenal**, elegir ese periodo y crear su corrida histórica. Si la quincena faltante todavía está en curso, el mes se muestra incompleto en vez de estimarla. Si existe un borrador, el sistema recuerda que el importe puede cambiar al recalcularlo.
 
 El resumen suma los resultados de cada quincena. No vuelve a calcular la comisión con las ventas combinadas del mes, porque cada quincena puede tener un rango, porcentaje o esquema distinto.
 
@@ -349,7 +352,7 @@ El resumen suma los resultados de cada quincena. No vuelve a calcular la comisi�
 | Banco faltante                   | Completar banco en Envelope antes de pagar.                                      |
 | Cuenta faltante                  | Completar cuenta en Envelope antes de pagar.                                     |
 | Teléfono faltante                | Completar teléfono si se requiere WhatsApp; no bloquea el pago.                  |
-| Sucursal laboral faltante        | Abrir `Ver detalle por empleado` en Resumen y asignarla en Envelope; mientras tanto se agrupa como `SIN SUCURSAL ASIGNADA`. |
+| Sucursal laboral faltante        | Abrir `Ver detalle por empleado` en Resumen y asignarla en Envelope. Es un recordatorio informativo; no altera el cálculo ni el reporte. |
 
 ## 11. Aprobar la corrida
 
@@ -399,7 +402,7 @@ Revisar:
 - Peso porcentual del costo.
 - Exportación PDF y Excel.
 
-Los empleados sin relación laboral se muestran en `SIN SUCURSAL ASIGNADA`. Así pueden localizarse y corregirse desde Envelope sin mezclarlos con una sucursal real.
+Las ventas aparecen en el punto de venta donde fueron registradas. Sueldo, comisión y préstamo se reparten proporcionalmente entre esos puntos; los conceptos de un empleado sin ventas se muestran en `CORPORATIVO`. La sucursal laboral del empleado no altera este reporte.
 
 ### Recibos
 
@@ -440,7 +443,7 @@ No es necesario registrar gastos, préstamos, viáticos o insumos para completar
 
 - [ ] Tengo acceso como `SUPER_ADMIN`.
 - [ ] Elegí una quincena con ventas verificables.
-- [ ] Los empleados tienen sueldo, banco, cuenta y sucursal laboral.
+- [ ] Los empleados tienen sueldo, banco y cuenta; también revisé la sucursal laboral informativa.
 - [ ] Creé al menos un esquema de comisión.
 - [ ] Asigné el esquema a los empleados con ventas.
 - [ ] La vigencia inicia día 1 o 16 y cubre el periodo.
