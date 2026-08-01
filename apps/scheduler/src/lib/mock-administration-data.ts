@@ -5,8 +5,15 @@ export interface ScheduleDay {
   enabled: boolean;
   open: string;
   close: string;
+  breaks?: ScheduleBreak[];
+  /** Campos legacy para horarios creados antes de soportar múltiples descansos. */
   breakStart: string | undefined;
   breakEnd: string | undefined;
+}
+
+export interface ScheduleBreak {
+  start: string;
+  end: string;
 }
 
 export interface ClassScheduleSlot {

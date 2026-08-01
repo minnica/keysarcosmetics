@@ -101,6 +101,7 @@ import {
   type ProfessionalGroup,
   type ProfessionalRecord,
   type ResourceRecord,
+  type ScheduleBreak,
   type ScheduleDay,
   type ServiceSpecialHours,
   type ServiceSpecialHoursMode,
@@ -257,7 +258,12 @@ const sectionTitles: Record<
 };
 
 const cloneSchedule = (schedule: ScheduleDay[]) =>
-  schedule.map((day) => ({ ...day }));
+  schedule.map((day) => ({
+    ...day,
+    ...(day.breaks
+      ? { breaks: day.breaks.map((breakItem) => ({ ...breakItem })) }
+      : {}),
+  }));
 const cloneClassSchedule = (schedule: ClassScheduleDay[]) =>
   schedule.map((day) => ({
     ...day,
@@ -284,6 +290,11 @@ const cloneScheduledResource = (
   schedule: cloneSchedule(resource.schedule),
   specialDays: resource.specialDays.map((day) => ({ ...day })),
 });
+const createResourceSchedule = (): ScheduleDay[] =>
+  createSchedule().map((day, index) => ({
+    ...day,
+    enabled: index === 0,
+  }));
 const currency = (value: number) =>
   new Intl.NumberFormat("es-MX", {
     style: "currency",
@@ -370,10 +381,14 @@ function Toggle({
   checked,
   onChange,
   label,
+  activeClassName = "bg-[#7460a4]",
+  className = "",
 }: {
   checked: boolean;
   onChange: (checked: boolean) => void;
   label?: string;
+  activeClassName?: string;
+  className?: string;
 }) {
   return (
     <button
@@ -381,7 +396,7 @@ function Toggle({
       role="switch"
       aria-checked={checked}
       aria-label={label}
-      className={`relative h-6 w-11 shrink-0 rounded-full transition ${checked ? "bg-[#7460a4]" : "bg-slate-200"}`}
+      className={`relative h-6 w-11 shrink-0 rounded-full transition ${checked ? activeClassName : "bg-slate-200"} ${className}`.trim()}
       onClick={() => onChange(!checked)}
     >
       <span
@@ -1018,6 +1033,11 @@ function ScheduleRows({
     onChange(
       schedule.map((item) => (item.day === day ? { ...item, ...patch } : item)),
     );
+  const getBreaks = (item: ScheduleDay): ScheduleBreak[] =>
+    item.breaks ??
+    (item.breakStart
+      ? [{ start: item.breakStart, end: item.breakEnd ?? "14:00" }]
+      : []);
   const copyFirst = () => {
     const first = schedule.find((item) => item.enabled) ?? schedule[0];
     if (!first) return;
@@ -1027,8 +1047,7 @@ function ScheduleRows({
         enabled: first.enabled,
         open: first.open,
         close: first.close,
-        breakStart: first.breakStart,
-        breakEnd: first.breakEnd,
+        breaks: getBreaks(first).map((breakItem) => ({ ...breakItem })),
       })),
     );
     toast.success("Horario copiado en todos los días.");
@@ -1065,23 +1084,25 @@ function ScheduleRows({
                 disabled={!item.enabled}
                 onChange={(close) => update(item.day, { close })}
               />
-              {item.enabled ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="schedule-break-button"
-                  onClick={() =>
-                    update(item.day, {
-                      breakStart: item.breakStart ?? "10:00",
-                      breakEnd: item.breakEnd ?? "22:00",
-                    })
-                  }
-                >
-                  <Plus className="mr-2 h-4 w-4" />
-                  Descanso
-                </Button>
-              ) : null}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="schedule-break-button"
+                disabled={!item.enabled}
+                aria-label={`${item.enabled ? "Agregar descanso" : "Activar"} el ${item.day}`}
+                onClick={() =>
+                  update(item.day, {
+                    breaks: [
+                      ...getBreaks(item),
+                      { start: "13:00", end: "14:00" },
+                    ],
+                  })
+                }
+              >
+                <Plus className="h-4 w-4" />
+                <span className="schedule-break-button-label">Descanso</span>
+              </Button>
               {index === 0 ? (
                 <Button
                   type="button"
@@ -1097,38 +1118,56 @@ function ScheduleRows({
                 <span />
               )}
             </div>
-            {item.enabled && item.breakStart ? (
-              <div className="schedule-break-row">
-                <span>Descanso</span>
-                <span />
-                <ScheduleTime
-                  label={`Inicio del descanso de ${item.day}`}
-                  value={item.breakStart}
-                  onChange={(breakStart) => update(item.day, { breakStart })}
-                />
-                <ScheduleTime
-                  label={`Fin del descanso de ${item.day}`}
-                  value={item.breakEnd ?? "22:00"}
-                  onChange={(breakEnd) => update(item.day, { breakEnd })}
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  className="schedule-break-remove"
-                  aria-label={`Quitar descanso de ${item.day}`}
-                  onClick={() =>
-                    update(item.day, {
-                      breakStart: undefined,
-                      breakEnd: undefined,
-                    })
-                  }
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-                <span />
-              </div>
-            ) : null}
+            {item.enabled
+              ? getBreaks(item).map((breakItem, breakIndex) => (
+                  <div
+                    key={`${item.day}-break-${breakIndex}`}
+                    className="schedule-break-row"
+                  >
+                    <span>Descanso {breakIndex + 1}</span>
+                    <span />
+                    <ScheduleTime
+                      label={`Inicio del descanso ${breakIndex + 1} de ${item.day}`}
+                      value={breakItem.start}
+                      onChange={(start) =>
+                        update(item.day, {
+                          breaks: getBreaks(item).map((current, index) =>
+                            index === breakIndex ? { ...current, start } : current,
+                          ),
+                        })
+                      }
+                    />
+                    <ScheduleTime
+                      label={`Fin del descanso ${breakIndex + 1} de ${item.day}`}
+                      value={breakItem.end}
+                      onChange={(end) =>
+                        update(item.day, {
+                          breaks: getBreaks(item).map((current, index) =>
+                            index === breakIndex ? { ...current, end } : current,
+                          ),
+                        })
+                      }
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className="schedule-break-remove"
+                      aria-label={`Quitar descanso ${breakIndex + 1} de ${item.day}`}
+                      onClick={() =>
+                        update(item.day, {
+                          breaks: getBreaks(item).filter(
+                            (_, index) => index !== breakIndex,
+                          ),
+                        })
+                      }
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                    <span />
+                  </div>
+                ))
+              : null}
           </div>
         ))}
       </div>
@@ -2271,7 +2310,7 @@ function ProfessionalDialog({
           status: "active",
           schedule: createSchedule(),
           specialDays: [],
-        },
+      },
   );
   useEffect(() => {
     if (open) {
@@ -5124,12 +5163,13 @@ function ScheduledResourceDialog({
     acceptsOnline: true,
     serviceIds: [],
     status: "active" as const,
-    schedule: createSchedule(),
+    schedule: createResourceSchedule(),
     specialDays: [],
   };
   const [draft, setDraft] = useState<ScheduledResourceRecord>(fresh);
+  const [validationOpen, setValidationOpen] = useState(false);
   useEffect(() => {
-    if (open)
+    if (open) {
       setDraft(
         resource
           ? cloneScheduledResource(resource)
@@ -5141,15 +5181,18 @@ function ScheduledResourceDialog({
               acceptsOnline: true,
               serviceIds: [],
               status: "active",
-              schedule: createSchedule(),
+              schedule: createResourceSchedule(),
               specialDays: [],
             },
       );
+      setValidationOpen(false);
+    }
   }, [locals, open, resource]);
   const update = (patch: Partial<ScheduledResourceRecord>) =>
     setDraft((current) => ({ ...current, ...patch }));
   return (
-    <ModalShell
+    <>
+      <ModalShell
       open={open}
       onOpenChange={onOpenChange}
       title={resource ? `Editar ${resource.name}` : "Nuevo recurso con horario"}
@@ -5158,13 +5201,20 @@ function ScheduledResourceDialog({
           toast.error("Completa el nombre y el local.");
           return;
         }
+        if (draft.serviceIds.length === 0) {
+          setValidationOpen(true);
+          return;
+        }
         onSave(draft);
         onOpenChange(false);
       }}
       wide
+      className="scheduled-resource-dialog"
     >
-      <div className="space-y-5">
-        <div className="admin-form-grid">
+      <div className="scheduled-resource-form">
+        <section className="scheduled-resource-dialog-card">
+          <h3 className="admin-section-title">Datos del recurso</h3>
+          <div className="mt-4 admin-form-grid">
           <Field
             id="scheduled-name"
             label="Nombre del recurso"
@@ -5185,7 +5235,7 @@ function ScheduledResourceDialog({
           />
           <SelectField
             id="scheduled-interval"
-            label="Bloque de agenda"
+            label="Bloque itinerario"
             value={String(draft.interval)}
             onChange={(value) => update({ interval: Number(value) })}
             options={[15, 20, 30, 45, 60].map((value) => ({
@@ -5193,55 +5243,136 @@ function ScheduledResourceDialog({
               label: `${value} minutos`,
             }))}
           />
-        </div>
-        <div className="admin-setting-row">
-          <div>
-            <p className="font-medium">Acepta reservas en línea</p>
-            <p className="admin-help">
-              El recurso podrá asignarse desde el sitio de reservas.
-            </p>
+          <div className="scheduled-resource-online">
+            <Toggle
+              checked={draft.acceptsOnline}
+              label="Acepta reservas en línea"
+              onChange={(checked) => update({ acceptsOnline: checked })}
+            />
+            <div>
+              <p className="font-medium">Este recurso acepta reservas en línea</p>
+              <p className="admin-help">
+                El recurso podrá asignarse desde el sitio de reservas.
+              </p>
+            </div>
           </div>
-          <Toggle
-            checked={draft.acceptsOnline}
-            onChange={(checked) => update({ acceptsOnline: checked })}
-          />
-        </div>
-        <div>
-          <h3 className="admin-section-title">Servicios vinculados</h3>
-          <div className="mt-3 grid gap-2 md:grid-cols-2">
-            {services
-              .filter(
-                (service) =>
-                  service.type === "service" || service.type === "class",
-              )
-              .map((service) => (
-                <CheckRow
-                  key={service.id}
-                  checked={draft.serviceIds.includes(service.id)}
-                  onChange={(checked) =>
-                    update({
-                      serviceIds: checked
-                        ? [...draft.serviceIds, service.id]
-                        : draft.serviceIds.filter((id) => id !== service.id),
-                    })
-                  }
-                >
-                  {service.name}
-                </CheckRow>
-              ))}
           </div>
-        </div>
-        <div>
-          <h3 className="admin-section-title">Horario semanal</h3>
-          <div className="mt-3">
+          <div className="scheduled-resource-service">
+            <label htmlFor="scheduled-service" className="admin-label">
+              Asigna un servicio
+            </label>
+            <select
+              id="scheduled-service"
+              className="admin-select"
+              value=""
+              onChange={(event) => {
+                const serviceId = event.target.value;
+                if (!serviceId || draft.serviceIds.includes(serviceId)) return;
+                update({ serviceIds: [...draft.serviceIds, serviceId] });
+              }}
+            >
+              <option value="">Selecciona una opción</option>
+              {services
+                .filter(
+                  (service) =>
+                    (service.type === "service" || service.type === "class") &&
+                    !draft.serviceIds.includes(service.id),
+                )
+                .map((service) => (
+                  <option key={service.id} value={service.id}>
+                    {service.name}
+                  </option>
+                ))}
+            </select>
+            {draft.serviceIds.length > 0 ? (
+              <div
+                className="scheduled-resource-service-tags"
+                aria-label="Servicios asignados"
+              >
+                {draft.serviceIds.map((serviceId) => {
+                  const service = services.find((item) => item.id === serviceId);
+                  if (!service) return null;
+                  return (
+                    <span key={service.id} className="scheduled-resource-service-tag">
+                      {service.name}
+                      <button
+                        type="button"
+                        aria-label={`Quitar ${service.name}`}
+                        onClick={() =>
+                          update({
+                            serviceIds: draft.serviceIds.filter(
+                              (id) => id !== service.id,
+                            ),
+                          })
+                        }
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </span>
+                  );
+                })}
+              </div>
+            ) : null}
+          </div>
+        </section>
+        <section className="scheduled-resource-dialog-card scheduled-resource-schedule-card">
+          <div className="scheduled-resource-schedule-heading">
+            <div>
+              <h3 className="admin-section-title">Horario del recurso</h3>
+              <p className="admin-help">
+                Define cuándo puede reservarse este recurso en cada día de la semana.
+              </p>
+            </div>
+          </div>
+          <div className="mt-4">
             <ScheduleRows
               schedule={draft.schedule}
+              withBreak
               onChange={(schedule) => update({ schedule })}
             />
           </div>
-        </div>
+        </section>
       </div>
-    </ModalShell>
+      </ModalShell>
+      <ResourceValidationDialog
+        open={validationOpen}
+        onOpenChange={setValidationOpen}
+      />
+    </>
+  );
+}
+
+function ResourceValidationDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        hideCloseButton
+        className="resource-validation-dialog"
+      >
+        <div className="resource-validation-content">
+          <div className="resource-validation-icon" aria-hidden="true">
+            <X className="h-14 w-14" />
+          </div>
+          <DialogTitle className="resource-validation-title">Error</DialogTitle>
+          <p className="resource-validation-message">
+            Debes seleccionar al menos un servicio
+          </p>
+          <Button
+            type="button"
+            className="resource-validation-button"
+            onClick={() => onOpenChange(false)}
+          >
+            Aceptar
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -5275,6 +5406,10 @@ function ResourceDialog({
           localQuantities: {},
         },
   );
+  const [serviceCategory, setServiceCategory] = useState("all");
+  const [serviceSearch, setServiceSearch] = useState("");
+  const [categoryPopoverOpen, setCategoryPopoverOpen] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState("");
   useEffect(() => {
     if (open)
       setDraft(
@@ -5293,8 +5428,45 @@ function ResourceDialog({
             },
       );
   }, [open, resource]);
+  useEffect(() => {
+    if (open) {
+      setServiceCategory("all");
+      setServiceSearch("");
+      setCategoryPopoverOpen(false);
+      setNewCategoryName("");
+    }
+  }, [open]);
   const update = (patch: Partial<ResourceRecord>) =>
     setDraft((current) => ({ ...current, ...patch }));
+  const eligibleServices = services.filter((service) => service.type !== "add-on");
+  const serviceCategories = [
+    "all",
+    ...Array.from(new Set(eligibleServices.map((service) => service.category))),
+  ];
+  const visibleServices = eligibleServices.filter(
+    (service) =>
+      (serviceCategory === "all" || service.category === serviceCategory) &&
+      service.name.toLocaleLowerCase().includes(serviceSearch.toLocaleLowerCase().trim()),
+  );
+  const resourceCategories = Array.from(
+    new Set(["Tecnología", "Bienestar", "Consumibles", "Equipo", draft.category]),
+  );
+  const updateVisibleServices = (selected: boolean) =>
+    update({
+      serviceIds: selected
+        ? Array.from(new Set([...draft.serviceIds, ...visibleServices.map((service) => service.id)]))
+        : draft.serviceIds.filter(
+            (id) => !visibleServices.some((service) => service.id === id),
+          ),
+    });
+  const isLocalAvailable = (localId: string) =>
+    Object.prototype.hasOwnProperty.call(draft.localQuantities, localId);
+  const updateLocalAvailability = (localId: string, available: boolean) => {
+    const localQuantities = { ...draft.localQuantities };
+    if (available) localQuantities[localId] = localQuantities[localId] ?? 1;
+    else delete localQuantities[localId];
+    update({ localQuantities });
+  };
   return (
     <ModalShell
       open={open}
@@ -5309,74 +5481,200 @@ function ResourceDialog({
         onOpenChange(false);
       }}
       wide
+      className="resource-dialog"
     >
-      <div className="space-y-5">
-        <div className="admin-form-grid">
-          <Field
-            id="resource-name"
-            label="Nombre del recurso"
-            required
-            value={draft.name}
-            onChange={(value) => update({ name: value })}
-          />
-          <Field
-            id="resource-category"
-            label="Categoría"
-            value={draft.category}
-            onChange={(value) => update({ category: value })}
-          />
-        </div>
-        <div>
-          <h3 className="admin-section-title">
-            Servicios que utilizan este recurso
-          </h3>
-          <div className="mt-3 grid gap-2 md:grid-cols-2">
-            {services
-              .filter((service) => service.type !== "add-on")
-              .map((service) => (
-                <CheckRow
-                  key={service.id}
-                  checked={draft.serviceIds.includes(service.id)}
-                  onChange={(checked) =>
-                    update({
-                      serviceIds: checked
-                        ? [...draft.serviceIds, service.id]
-                        : draft.serviceIds.filter((id) => id !== service.id),
-                    })
-                  }
-                >
-                  {service.name}
-                </CheckRow>
-              ))}
-          </div>
-        </div>
-        <div>
-          <h3 className="admin-section-title">Disponibilidad por local</h3>
-          <div className="mt-3 grid gap-3 md:grid-cols-2">
-            {locals.map((local) => (
-              <div
-                key={local.id}
-                className="flex items-center justify-between rounded-2xl border border-[#eee7e2] p-3"
+      <div className="resource-dialog-form">
+        <section className="resource-dialog-card resource-basic-card">
+          <div className="resource-basic-fields">
+            <Field
+              id="resource-name"
+              label="Nombre"
+              required
+              value={draft.name}
+              onChange={(value) => update({ name: value })}
+              placeholder="Nombre"
+            />
+            <div className="resource-category-field">
+              <SelectField
+                id="resource-category"
+                label="Categoría"
+                value={draft.category}
+                onChange={(value) => update({ category: value })}
+                options={resourceCategories.map((category) => ({
+                  value: category,
+                  label: category,
+                }))}
+              />
+              <Popover
+                open={categoryPopoverOpen}
+                onOpenChange={setCategoryPopoverOpen}
               >
-                <span className="text-sm">{local.name}</span>
-                <Input
-                  className="admin-input h-10 w-24"
-                  type="number"
-                  min="0"
-                  value={draft.localQuantities[local.id] ?? 0}
-                  onChange={(event) =>
-                    update({
-                      localQuantities: {
-                        ...draft.localQuantities,
-                        [local.id]: Number(event.target.value) || 0,
-                      },
-                    })
-                  }
-                />
-              </div>
-            ))}
+                <PopoverTrigger asChild>
+                  <button type="button" className="resource-new-category-link">
+                    Nueva categoría
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent
+                  align="end"
+                  className="admin-popover resource-category-popover p-3"
+                >
+                  <Label htmlFor="resource-new-category">Nueva categoría</Label>
+                  <div className="mt-2 flex gap-2">
+                    <Input
+                      id="resource-new-category"
+                      value={newCategoryName}
+                      placeholder="Ej. Equipamiento"
+                      className="admin-input"
+                      onChange={(event) => setNewCategoryName(event.target.value)}
+                    />
+                    <Button
+                      type="button"
+                      className="admin-primary"
+                      onClick={() => {
+                        const category = newCategoryName.trim();
+                        if (!category) return;
+                        update({ category });
+                        setNewCategoryName("");
+                        setCategoryPopoverOpen(false);
+                      }}
+                    >
+                      Agregar
+                    </Button>
+                  </div>
+                </PopoverContent>
+              </Popover>
+            </div>
           </div>
-        </div>
+        </section>
+        <section className="resource-dialog-card resource-services-card">
+          <div className="resource-dialog-card-heading">
+            <h3 className="admin-section-title">Servicios</h3>
+            <span className="resource-selected-count">
+              {draft.serviceIds.length} Seleccionado(s)
+            </span>
+          </div>
+          <div className="resource-services-picker">
+            <div className="resource-service-categories">
+              {serviceCategories.map((category) => {
+                const categoryServices =
+                  category === "all"
+                    ? eligibleServices
+                    : eligibleServices.filter((service) => service.category === category);
+                const selectedCount = categoryServices.filter((service) =>
+                  draft.serviceIds.includes(service.id),
+                ).length;
+                return (
+                  <button
+                    type="button"
+                    key={category}
+                    className={`resource-service-category ${serviceCategory === category ? "resource-service-category-active" : ""}`}
+                    onClick={() => setServiceCategory(category)}
+                  >
+                    <span>{category === "all" ? "Todos" : category}</span>
+                    <span>({selectedCount})</span>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="resource-service-results">
+              <div className="resource-service-toolbar">
+                <div className="resource-service-search">
+                  <Search className="h-4 w-4" />
+                  <Input
+                    id="resource-service-search"
+                    aria-label="Buscar servicios"
+                    value={serviceSearch}
+                    placeholder="Buscar servicio"
+                    onChange={(event) => setServiceSearch(event.target.value)}
+                  />
+                </div>
+                <div className="resource-service-actions">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    aria-label="Seleccionar servicios visibles"
+                    onClick={() => updateVisibleServices(true)}
+                  >
+                    <Check className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    aria-label="Quitar servicios visibles"
+                    onClick={() => updateVisibleServices(false)}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+              <div className="resource-service-list">
+                {visibleServices.length > 0 ? (
+                  visibleServices.map((service) => (
+                    <label key={service.id} className="resource-service-option">
+                      <input
+                        type="checkbox"
+                        checked={draft.serviceIds.includes(service.id)}
+                        onChange={(event) =>
+                          update({
+                            serviceIds: event.target.checked
+                              ? [...draft.serviceIds, service.id]
+                              : draft.serviceIds.filter((id) => id !== service.id),
+                          })
+                        }
+                      />
+                      <span>{service.name}</span>
+                    </label>
+                  ))
+                ) : (
+                  <p className="resource-service-empty">No hay servicios que coincidan.</p>
+                )}
+              </div>
+            </div>
+          </div>
+        </section>
+        <section className="resource-dialog-card resource-locals-card">
+          <h3 className="admin-section-title">Recurso disponible en:</h3>
+          <div className="resource-local-table">
+            <div className="resource-local-header">
+              <span>Local</span>
+              <span>Cantidad</span>
+            </div>
+            {locals.map((local) => {
+              const available = isLocalAvailable(local.id);
+              return (
+                <div key={local.id} className="resource-local-row">
+                  <label className="resource-local-name">
+                    <input
+                      type="checkbox"
+                      checked={available}
+                      onChange={(event) =>
+                        updateLocalAvailability(local.id, event.target.checked)
+                      }
+                    />
+                    <span>{local.name}</span>
+                  </label>
+                  <Input
+                    className="admin-input resource-local-quantity"
+                    type="number"
+                    min="0"
+                    disabled={!available}
+                    value={draft.localQuantities[local.id] ?? 0}
+                    onChange={(event) =>
+                      update({
+                        localQuantities: {
+                          ...draft.localQuantities,
+                          [local.id]: Number(event.target.value) || 0,
+                        },
+                      })
+                    }
+                  />
+                </div>
+              );
+            })}
+          </div>
+        </section>
       </div>
     </ModalShell>
   );
@@ -5397,17 +5695,23 @@ function ResourcesSection({
     useState<ResourceRecord[]>(initialResources);
   const [scheduledEditing, setScheduledEditing] =
     useState<ScheduledResourceRecord | null>(null);
+  const [specialScheduled, setSpecialScheduled] =
+    useState<ScheduledResourceRecord | null>(null);
   const [resourceEditing, setResourceEditing] = useState<ResourceRecord | null>(
     null,
   );
   const [scheduledOpen, setScheduledOpen] = useState(false);
   const [resourceOpen, setResourceOpen] = useState(false);
   const [search, setSearch] = useState("");
+  const [localFilter, setLocalFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [confirming, setConfirming] = useState<
     ScheduledResourceRecord | ResourceRecord | null
   >(null);
   const filteredScheduled = scheduled.filter((item) =>
-    item.name.toLocaleLowerCase().includes(search.toLocaleLowerCase().trim()),
+    item.name.toLocaleLowerCase().includes(search.toLocaleLowerCase().trim()) &&
+    (localFilter === "all" || item.localId === localFilter) &&
+    (statusFilter === "all" || item.status === statusFilter),
   );
   const filteredResources = resources.filter((item) =>
     item.name.toLocaleLowerCase().includes(search.toLocaleLowerCase().trim()),
@@ -5445,11 +5749,49 @@ function ResourcesSection({
         active={tab}
         onChange={(value) => setTab(value as "scheduled" | "resources")}
       />
-      <Toolbar
-        search={search}
-        onSearchChange={setSearch}
-        placeholder="Buscar recurso"
-      />
+      <div className="resources-filter-bar">
+        <div className="resources-filter-search">
+          <Search className="h-4 w-4" />
+          <Input
+            aria-label="Búsqueda rápida de recursos"
+            placeholder="Búsqueda rápida"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+          />
+        </div>
+        {tab === "scheduled" ? (
+          <>
+            <select
+              aria-label="Filtrar por local"
+              className="resources-filter-select"
+              value={localFilter}
+              onChange={(event) => setLocalFilter(event.target.value)}
+            >
+              <option value="all">Ver todos los resultados</option>
+              {locals.map((local) => (
+                <option key={local.id} value={local.id}>
+                  {local.name}
+                </option>
+              ))}
+            </select>
+            <select
+              aria-label="Filtrar por estado"
+              className="resources-filter-select"
+              value={statusFilter === "all" ? "" : statusFilter}
+              onChange={(event) =>
+                setStatusFilter(
+                  (event.target.value || "all") as StatusFilter,
+                )
+              }
+            >
+              <option value="">Ver por</option>
+              <option value="active">Activo</option>
+              <option value="inactive">Inactivo</option>
+              <option value="all">Todos</option>
+            </select>
+          </>
+        ) : null}
+      </div>
       {tab === "scheduled" ? (
         filteredScheduled.length === 0 ? (
           <EmptyState
@@ -5458,12 +5800,15 @@ function ResourcesSection({
             description="Crea cabinas o espacios para asignarlos a la agenda."
           />
         ) : (
-          <div className="grid gap-3 lg:grid-cols-2">
+          <div className="grid gap-3">
             {filteredScheduled.map((resource) => (
-              <Card className="admin-card" key={resource.id}>
+              <Card
+                className={`admin-card scheduled-resource-card ${resource.status === "inactive" ? "scheduled-resource-card-inactive" : ""}`.trim()}
+                key={resource.id}
+              >
                 <CardContent className="flex items-start justify-between gap-4 p-5">
                   <div className="flex gap-3">
-                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#f0ebf6] text-[#7460a4]">
+                    <div className="scheduled-resource-icon">
                       <Clock3 className="h-5 w-5" />
                     </div>
                     <div>
@@ -5471,7 +5816,9 @@ function ResourcesSection({
                         <h3 className="font-semibold text-[#263649]">
                           {resource.name}
                         </h3>
-                        <StatusBadge status={resource.status} />
+                        <span className="scheduled-resource-status">
+                          {resource.status === "active" ? "Activo" : "Inactivo"}
+                        </span>
                       </div>
                       <p className="mt-1 text-sm text-slate-500">
                         {
@@ -5480,20 +5827,28 @@ function ResourcesSection({
                         }{" "}
                         · bloques de {resource.interval} min
                       </p>
-                      <Button
-                        variant="link"
-                        className="h-auto p-0 text-[#7460a4]"
-                        onClick={() =>
-                          toast.info(
-                            `${resource.name}: horario semanal listo para editar.`,
-                          )
-                        }
-                      >
-                        Horario
-                      </Button>
+                      <div className="mt-1 flex flex-wrap items-center gap-3">
+                        <Button
+                          variant="link"
+                          className="h-auto p-0 text-[#7460a4]"
+                          onClick={() => setSpecialScheduled(resource)}
+                        >
+                          Abrir día
+                        </Button>
+                        <Button
+                          variant="link"
+                          className="h-auto p-0 text-[#7460a4]"
+                          onClick={() => {
+                            setScheduledEditing(resource);
+                            setScheduledOpen(true);
+                          }}
+                        >
+                          Horario
+                        </Button>
+                      </div>
                     </div>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex shrink-0 gap-2">
                     <Button
                       variant="outline"
                       size="sm"
@@ -5504,14 +5859,34 @@ function ResourcesSection({
                     >
                       <Pencil className="mr-2 h-4 w-4" />
                       Editar
-                    </Button>
+                      </Button>
+                    <Toggle
+                      checked={resource.status === "active"}
+                      label={`${resource.status === "active" ? "Desactivar" : "Activar"} ${resource.name}`}
+                      activeClassName="bg-[#0abf91]"
+                      onChange={(checked) => {
+                        setScheduled((current) =>
+                          current.map((item) =>
+                            item.id === resource.id
+                              ? {
+                                  ...item,
+                                  status: checked ? "active" : "inactive",
+                                }
+                              : item,
+                          ),
+                        );
+                        toast.success(
+                          checked ? "Recurso activado." : "Recurso desactivado.",
+                        );
+                      }}
+                    />
                     <Button
                       variant="outline"
                       size="icon"
                       onClick={() => setConfirming(resource)}
                       aria-label={`Cambiar estado de ${resource.name}`}
                     >
-                      <SlidersHorizontal className="h-4 w-4" />
+                      <MoreHorizontal className="h-4 w-4" />
                     </Button>
                   </div>
                 </CardContent>
@@ -5585,6 +5960,29 @@ function ResourcesSection({
               : [...current, resource],
           );
           toast.success("Recurso con horario guardado.");
+        }}
+      />
+      <SpecialDayDialog
+        open={Boolean(specialScheduled)}
+        title={
+          specialScheduled
+            ? `Abrir día para ${specialScheduled.name}`
+            : "Jornada especial"
+        }
+        days={specialScheduled?.specialDays ?? []}
+        onOpenChange={(open) => {
+          if (!open) setSpecialScheduled(null);
+        }}
+        onSave={(days) => {
+          if (!specialScheduled) return;
+          setScheduled((current) =>
+            current.map((resource) =>
+              resource.id === specialScheduled.id
+                ? { ...resource, specialDays: days }
+                : resource,
+            ),
+          );
+          toast.success("Jornada especial guardada.");
         }}
       />
       <ResourceDialog
