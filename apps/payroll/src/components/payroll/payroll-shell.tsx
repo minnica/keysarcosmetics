@@ -7,6 +7,7 @@ import {
   ArrowLeftRight,
   BadgeDollarSign,
   BarChart2,
+  CircleDollarSign,
   FileText,
   Gavel,
   HandCoins,
@@ -17,6 +18,8 @@ import {
   ReceiptText,
   Sun,
   TrendingUp,
+  UserRoundCheck,
+  WalletCards,
   X,
 } from "lucide-react";
 import {
@@ -43,6 +46,21 @@ const sections = [
   {
     label: "Nómina",
     items: [
+      {
+        href: "/nomina-salario-fijo",
+        label: "Salario fijo",
+        icon: WalletCards,
+      },
+      {
+        href: "/nomina-especialistas",
+        label: "Especialistas",
+        icon: UserRoundCheck,
+      },
+      {
+        href: "/nomina-comisiones",
+        label: "Comisiones",
+        icon: CircleDollarSign,
+      },
       { href: "/", label: "Resumen", icon: LayoutDashboard },
       { href: "/movimientos", label: "Movimientos", icon: ArrowLeftRight },
       { href: "/bonos", label: "Bonos", icon: BadgeDollarSign },

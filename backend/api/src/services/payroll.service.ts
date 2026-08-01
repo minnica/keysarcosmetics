@@ -3,6 +3,7 @@ import { prisma } from "../prisma/client";
 import {
   assertStandardPayrollPeriod,
   calculatePayroll,
+  money,
   type CalculationEmployee,
   type PayrollWarning,
 } from "./payroll-calculation";
@@ -87,10 +88,13 @@ async function calculatePayrollPeriod(input: {
   mode: "WITH_VAT" | "WITHOUT_VAT";
   vatRate: Prisma.Decimal;
   runId?: string;
+  includeAllPeriodSources?: boolean;
+  activeOnly?: boolean;
 }) {
   assertStandardPayrollPeriod(input.periodStart, input.periodEnd);
   const range = { gte: input.periodStart, lt: endExclusive(input.periodEnd) };
   const employees = await prisma.empleado.findMany({
+    where: input.activeOnly ? { activo: true } : undefined,
     include: {
       bank: { select: { nombre: true } },
       position: { select: { nombre: true } },
@@ -106,7 +110,9 @@ async function calculatePayrollPeriod(input: {
           movement: {
             date: range,
             status: "APPROVED",
-            ...(input.runId
+            ...(input.includeAllPeriodSources
+              ? {}
+              : input.runId
               ? {
                   OR: [{ payrollRunId: null }, { payrollRunId: input.runId }],
                 }
@@ -119,13 +125,17 @@ async function calculatePayrollPeriod(input: {
         },
       },
       payrollLoans: {
-        where: { status: "PENDING" },
+        where: input.includeAllPeriodSources
+          ? undefined
+          : { status: "PENDING" },
         include: {
           installments: {
             where: {
               periodStart: input.periodStart,
               periodEnd: input.periodEnd,
-              ...(input.runId
+              ...(input.includeAllPeriodSources
+                ? { status: { not: "CANCELED" as const } }
+                : input.runId
                 ? {
                     OR: [
                       { status: "SCHEDULED" },
@@ -313,6 +323,218 @@ export async function getMonthlyPayrollSummary(month: string) {
     });
   }
   return buildMonthlyPayrollSummary(month, [...runs, ...estimates]);
+}
+
+export type PayrollOverviewType =
+  | "FIXED_SALARY"
+  | "SPECIALIST"
+  | "COMMISSION";
+export type PayrollOverviewView = "FORTNIGHT" | "MONTHLY";
+
+type PayrollOverviewRow = {
+  employeeId: string;
+  fullName: string;
+  position: string;
+  bank: string | null;
+  account: string | null;
+  payroll: Prisma.Decimal;
+};
+
+export function isSpecialistPosition(position: string | null): boolean {
+  const normalized = (position ?? "").trim().toLocaleUpperCase("es-MX");
+  return (
+    normalized.includes("FACIALISTA") || normalized.includes("ESPECIALISTA")
+  );
+}
+
+function assertMonthlyPayrollPeriod(periodStart: Date, periodEnd: Date): void {
+  const lastDay = new Date(
+    Date.UTC(periodStart.getUTCFullYear(), periodStart.getUTCMonth() + 1, 0),
+  ).getUTCDate();
+  const valid =
+    periodStart.getUTCDate() === 1 &&
+    periodEnd.getUTCDate() === lastDay &&
+    periodStart.getUTCFullYear() === periodEnd.getUTCFullYear() &&
+    periodStart.getUTCMonth() === periodEnd.getUTCMonth();
+  if (!valid)
+    throw new Error(
+      "El periodo mensual debe abarcar del día 1 al último día del mismo mes.",
+    );
+}
+
+function overviewPeriods(
+  view: PayrollOverviewView,
+  periodStart: Date,
+  periodEnd: Date,
+) {
+  if (view === "FORTNIGHT") {
+    assertStandardPayrollPeriod(periodStart, periodEnd);
+    return [{ periodStart, periodEnd }];
+  }
+  assertMonthlyPayrollPeriod(periodStart, periodEnd);
+  const year = periodStart.getUTCFullYear();
+  const month = periodStart.getUTCMonth();
+  return [
+    {
+      periodStart: new Date(Date.UTC(year, month, 1)),
+      periodEnd: new Date(Date.UTC(year, month, 15)),
+    },
+    {
+      periodStart: new Date(Date.UTC(year, month, 16)),
+      periodEnd: new Date(Date.UTC(year, month + 1, 0)),
+    },
+  ];
+}
+
+function buildOverviewTotals(rows: PayrollOverviewRow[]) {
+  const total = money(
+    rows.reduce((sum, row) => sum.plus(row.payroll), new Prisma.Decimal(0)),
+  );
+  const positionMap = new Map<string, Prisma.Decimal>();
+  for (const row of rows) {
+    positionMap.set(
+      row.position,
+      (positionMap.get(row.position) ?? new Prisma.Decimal(0)).plus(
+        row.payroll,
+      ),
+    );
+  }
+  return {
+    total,
+    byPosition: [...positionMap.entries()]
+      .map(([position, positionTotal]) => ({
+        position,
+        total: money(positionTotal),
+      }))
+      .sort((left, right) => left.position.localeCompare(right.position)),
+  };
+}
+
+export function commissionOverviewPayment(line: {
+  commission: Prisma.Decimal;
+  bonus: Prisma.Decimal;
+  adjustmentPositive: Prisma.Decimal;
+  perDiem: Prisma.Decimal;
+  supplies: Prisma.Decimal;
+  fine: Prisma.Decimal;
+  adjustmentNegative: Prisma.Decimal;
+  loanPayment: Prisma.Decimal;
+}) {
+  return money(
+    line.commission
+      .plus(line.bonus)
+      .plus(line.adjustmentPositive)
+      .plus(line.perDiem)
+      .plus(line.supplies)
+      .minus(line.fine)
+      .minus(line.adjustmentNegative)
+      .minus(line.loanPayment),
+  );
+}
+
+export function salaryOverviewPayment(
+  monthlySalary: Prisma.Decimal.Value | null,
+  view: PayrollOverviewView,
+) {
+  const salary = monthlySalary == null
+    ? new Prisma.Decimal(0)
+    : new Prisma.Decimal(monthlySalary);
+  return view === "MONTHLY"
+    ? money(salary)
+    : money(salary.dividedBy(2));
+}
+
+export async function getPayrollOverview(input: {
+  payrollType: PayrollOverviewType;
+  view: PayrollOverviewView;
+  periodStart: Date;
+  periodEnd: Date;
+  mode: "WITH_VAT" | "WITHOUT_VAT";
+}) {
+  const periods = overviewPeriods(input.view, input.periodStart, input.periodEnd);
+  let rows: PayrollOverviewRow[];
+
+  if (input.payrollType === "COMMISSION") {
+    const calculations = await Promise.all(
+      periods.map((period) =>
+        calculatePayrollPeriod({
+          ...period,
+          mode: input.mode,
+          vatRate: VAT_RATE,
+          includeAllPeriodSources: true,
+          activeOnly: true,
+        }),
+      ),
+    );
+    const commissionEmployeeIds = new Set(
+      calculations.flatMap((calculation) =>
+        calculation.lines
+          .filter((line) => line.schemeName != null)
+          .map((line) => line.employeeId),
+      ),
+    );
+    const rowMap = new Map<string, PayrollOverviewRow>();
+    for (const calculation of calculations) {
+      for (const line of calculation.lines) {
+        if (!commissionEmployeeIds.has(line.employeeId)) continue;
+        const current = rowMap.get(line.employeeId) ?? {
+          employeeId: line.employeeId,
+          fullName: line.employeeName,
+          position: line.positionName ?? "SIN PUESTO",
+          bank: line.bankName,
+          account: line.accountNumber,
+          payroll: new Prisma.Decimal(0),
+        };
+        current.payroll = current.payroll.plus(commissionOverviewPayment(line));
+        rowMap.set(line.employeeId, current);
+      }
+    }
+    rows = [...rowMap.values()].map((row) => ({
+      ...row,
+      payroll: money(row.payroll),
+    }));
+  } else {
+    const employees = await prisma.empleado.findMany({
+      where: { activo: true },
+      orderBy: { nombreCompleto: "asc" },
+      include: {
+        bank: { select: { nombre: true } },
+        position: { select: { nombre: true } },
+      },
+    });
+    rows = employees.flatMap((employee) => {
+      const position = employee.position?.nombre ?? employee.puesto ?? "SIN PUESTO";
+      const specialist = isSpecialistPosition(position);
+      if (input.payrollType === "SPECIALIST" ? !specialist : specialist)
+        return [];
+      if (input.payrollType === "FIXED_SALARY" && !employee.sueldo?.greaterThan(0))
+        return [];
+      return [
+        {
+          employeeId: employee.id,
+          fullName: employee.nombreCompleto,
+          position,
+          bank: (employee.bank?.nombre ?? employee.banco) || null,
+          account: employee.numeroCuenta || null,
+          payroll: salaryOverviewPayment(employee.sueldo, input.view),
+        },
+      ];
+    });
+  }
+
+  rows.sort((left, right) => left.fullName.localeCompare(right.fullName));
+  const totals = buildOverviewTotals(rows);
+  return {
+    payrollType: input.payrollType,
+    view: input.view,
+    periodStart: input.periodStart,
+    periodEnd: input.periodEnd,
+    mode: input.payrollType === "COMMISSION" ? input.mode : null,
+    usesCurrentSalary: input.payrollType !== "COMMISSION",
+    rows,
+    total: totals.total,
+    byPosition: totals.byPosition,
+  };
 }
 
 export async function recalculatePayrollRun(runId: string, userId: string) {
