@@ -2671,7 +2671,7 @@ function GroupDialog({
         },
   );
   useEffect(() => {
-    if (open)
+    if (open) {
       setDraft(
         group
           ? { ...group, professionalIds: [...group.professionalIds] }
@@ -2682,6 +2682,7 @@ function GroupDialog({
               professionalIds: [],
             },
       );
+    }
   }, [group, locals, open]);
   const localPros = professionals.filter(
     (professional) => professional.localId === draft.localId,
@@ -6040,11 +6041,13 @@ function ResourcesSection({
 function SurveyQuestionDialog({
   open,
   question,
+  initialCategory,
   onOpenChange,
   onSave,
 }: {
   open: boolean;
   question: SurveyQuestion | null;
+  initialCategory?: string;
   onOpenChange: (open: boolean) => void;
   onSave: (question: SurveyQuestion) => void;
 }) {
@@ -6053,26 +6056,27 @@ function SurveyQuestionDialog({
       ? { ...question }
       : {
           id: makeId("question"),
-          category: surveyCategories[0] ?? "Precio",
+          category: initialCategory ?? surveyCategories[0] ?? "Precio",
           type: "rating",
           text: "",
           description: "",
         },
   );
   useEffect(() => {
-    if (open)
+    if (open) {
       setDraft(
         question
           ? { ...question }
           : {
               id: makeId("question"),
-              category: surveyCategories[0] ?? "Precio",
+              category: initialCategory ?? surveyCategories[0] ?? "Precio",
               type: "rating",
               text: "",
               description: "",
             },
       );
-  }, [open, question]);
+    }
+  }, [initialCategory, open, question]);
   return (
     <ModalShell
       open={open}
@@ -6086,6 +6090,7 @@ function SurveyQuestionDialog({
         onSave(draft);
         onOpenChange(false);
       }}
+      className="survey-question-dialog"
     >
       <div className="space-y-4">
         <SelectField
@@ -6165,7 +6170,7 @@ function SurveyDialog({
   questions: SurveyQuestion[];
   onOpenChange: (open: boolean) => void;
   onSave: (survey: SurveyRecord) => void;
-  onNewQuestion: () => void;
+  onNewQuestion: (category: string) => void;
 }) {
   const [draft, setDraft] = useState<SurveyRecord>(
     survey
@@ -6182,8 +6187,32 @@ function SurveyDialog({
           updatedAt: "Ahora",
         },
   );
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(
+    () => new Set(surveyCategories),
+  );
+  const [serviceSearch, setServiceSearch] = useState("");
+  const surveyServices = services.filter((service) => service.type === "service");
+  const selectedServices = surveyServices.filter((service) =>
+    draft.serviceIds.includes(service.id),
+  );
+  const selectedQuestions = questions.filter((question) =>
+    draft.questionIds.includes(question.id),
+  );
+  const visibleSurveyServices = surveyServices.filter((service) =>
+    `${service.name} ${service.category}`
+      .toLocaleLowerCase()
+      .includes(serviceSearch.toLocaleLowerCase().trim()),
+  );
+  const toggleService = (serviceId: string) => {
+    setDraft((current) => ({
+      ...current,
+      serviceIds: current.serviceIds.includes(serviceId)
+        ? current.serviceIds.filter((id) => id !== serviceId)
+        : [...current.serviceIds, serviceId],
+    }));
+  };
   useEffect(() => {
-    if (open)
+    if (open) {
       setDraft(
         survey
           ? {
@@ -6199,6 +6228,9 @@ function SurveyDialog({
               updatedAt: "Ahora",
             },
       );
+      setExpandedCategories(new Set(surveyCategories));
+      setServiceSearch("");
+    }
   }, [open, survey]);
   return (
     <ModalShell
@@ -6214,9 +6246,11 @@ function SurveyDialog({
         onOpenChange(false);
       }}
       wide
+      className="survey-dialog"
     >
-      <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
-        <div className="space-y-5">
+      <div className="survey-dialog-layout">
+        <div className="survey-editor-form">
+          <section className="survey-editor-section">
           <Field
             id="survey-name"
             label="Nombre de la encuesta"
@@ -6225,127 +6259,277 @@ function SurveyDialog({
             onChange={(name) => setDraft((current) => ({ ...current, name }))}
             placeholder="Ej. Experiencia después de tu visita"
           />
-          <div>
+          <div className="survey-editor-block">
             <h3 className="admin-section-title">Seleccione los servicios</h3>
-            <div className="mt-2 grid gap-1">
-              {services
-                .filter((service) => service.type === "service")
-                .map((service) => (
-                  <CheckRow
-                    key={service.id}
-                    checked={draft.serviceIds.includes(service.id)}
-                    onChange={(checked) =>
-                      setDraft((current) => ({
-                        ...current,
-                        serviceIds: checked
-                          ? [...current.serviceIds, service.id]
-                          : current.serviceIds.filter(
-                              (id) => id !== service.id,
-                            ),
-                      }))
-                    }
+            <div className="survey-services-layout">
+              <div className="survey-service-select-panel">
+                <div className="survey-service-panel-heading">
+                  <div>
+                    <p className="survey-service-panel-title">Servicios incluidos</p>
+                    <p className="survey-service-panel-help">
+                      Agrega los servicios que quieres evaluar.
+                    </p>
+                  </div>
+                  <span className="survey-service-count">
+                    {selectedServices.length} seleccionados
+                  </span>
+                </div>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <button
+                      type="button"
+                      className="survey-service-select-trigger"
+                      aria-label="Abrir selector de servicios"
+                    >
+                      <span className="survey-service-select-placeholder">
+                        {selectedServices.length > 0
+                          ? "Agregar o quitar servicios"
+                          : "Selecciona uno o más servicios"}
+                      </span>
+                      <ChevronDown className="h-4 w-4 shrink-0 text-slate-400" />
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent
+                    align="start"
+                    sideOffset={8}
+                    className="admin-popover survey-service-popover p-2"
                   >
-                    {service.name}
-                  </CheckRow>
-                ))}
+                    <Label htmlFor="survey-service-search">Buscar servicio</Label>
+                    <Input
+                      id="survey-service-search"
+                      value={serviceSearch}
+                      onChange={(event) => setServiceSearch(event.target.value)}
+                      placeholder="Ej. facial, masaje..."
+                      className="admin-input mt-2"
+                    />
+                    <div className="survey-service-popover-list">
+                      {visibleSurveyServices.length > 0 ? (
+                        visibleSurveyServices.map((service) => {
+                          const checked = draft.serviceIds.includes(service.id);
+                          return (
+                            <label
+                              key={service.id}
+                              className="survey-service-popover-option"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={() => toggleService(service.id)}
+                              />
+                              <span className="survey-service-popover-copy">
+                                <span>{service.name}</span>
+                                <small>{service.category}</small>
+                              </span>
+                              {checked ? <Check className="h-4 w-4 text-[#0abf91]" /> : null}
+                            </label>
+                          );
+                        })
+                      ) : (
+                        <p className="survey-service-empty">No hay servicios que coincidan.</p>
+                      )}
+                    </div>
+                  </PopoverContent>
+                </Popover>
+                <div className="survey-selected-service-chips">
+                  {selectedServices.length > 0 ? (
+                    selectedServices.map((service) => (
+                      <span key={service.id} className="survey-selected-service-chip">
+                        <span>{service.name}</span>
+                        <button
+                          type="button"
+                          onClick={() => toggleService(service.id)}
+                          aria-label={`Quitar ${service.name}`}
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </span>
+                    ))
+                  ) : (
+                    <p className="survey-selected-service-empty">
+                      Los servicios seleccionados aparecerán aquí.
+                    </p>
+                  )}
+                </div>
+              </div>
+              <div className="survey-service-visual-panel">
+                <div className="survey-service-panel-heading">
+                  <div>
+                    <p className="survey-service-panel-title">Catálogo de servicios</p>
+                    <p className="survey-service-panel-help">
+                      Haz clic en una tarjeta para incluirla en la encuesta.
+                    </p>
+                  </div>
+                  <span className="survey-service-count">
+                    {surveyServices.length} disponibles
+                  </span>
+                </div>
+                <div className="survey-service-visual-list">
+                  {surveyServices.map((service) => {
+                    const checked = draft.serviceIds.includes(service.id);
+                    return (
+                      <button
+                        key={service.id}
+                        type="button"
+                        className={`survey-service-visual-card${checked ? " is-selected" : ""}`}
+                        aria-pressed={checked}
+                        onClick={() => toggleService(service.id)}
+                      >
+                        <span className="survey-service-visual-check">
+                          {checked ? <Check className="h-3.5 w-3.5" /> : null}
+                        </span>
+                        <span className="survey-service-visual-copy">
+                          <span className="survey-service-visual-name">{service.name}</span>
+                          <span className="survey-service-visual-meta">
+                            {service.category} · {service.duration} min · {currency(service.price)}
+                          </span>
+                        </span>
+                        <span className="survey-service-visual-action">
+                          {checked ? "Incluido" : "Agregar"}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
           </div>
-          <div>
-            <div className="mb-2 flex items-center justify-between">
-              <h3 className="admin-section-title">Seleccione las preguntas</h3>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={onNewQuestion}
-              >
-                <Plus className="mr-2 h-4 w-4" />
-                Nueva pregunta
-              </Button>
-            </div>
-            <div className="space-y-2">
-              {surveyCategories.map((category) => {
-                const categoryQuestions = questions.filter(
-                  (question) => question.category === category,
-                );
-                return (
-                  <details
-                    key={category}
-                    open={categoryQuestions.some((question) =>
-                      draft.questionIds.includes(question.id),
-                    )}
-                    className="rounded-2xl border border-[#eee7e2] px-3"
+          </section>
+          <section className="survey-editor-section">
+            <h3 className="admin-section-title">Seleccione las preguntas</h3>
+            <div className="survey-question-categories">
+            {surveyCategories.map((category) => {
+              const categoryQuestions = questions.filter(
+                (question) => question.category === category,
+              );
+              const selectedCount = categoryQuestions.filter((question) =>
+                draft.questionIds.includes(question.id),
+              ).length;
+              return (
+                <details
+                  key={category}
+                  open={expandedCategories.has(category)}
+                  className="survey-question-category"
+                >
+                  <summary
+                    className="survey-question-category-heading"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      setExpandedCategories((current) => {
+                        const next = new Set(current);
+                        if (next.has(category)) next.delete(category);
+                        else next.add(category);
+                        return next;
+                      });
+                    }}
                   >
-                    <summary className="cursor-pointer list-none py-3 text-sm font-medium text-[#263649]">
-                      <ChevronRight className="mr-2 inline h-4 w-4" />
-                      {category}{" "}
-                      <span className="ml-1 text-xs text-slate-400">
-                        ({categoryQuestions.length})
-                      </span>
-                    </summary>
-                    <div className="pb-2">
-                      {categoryQuestions.length === 0 ? (
-                        <p className="px-3 py-2 text-xs text-slate-400">
-                          Sin preguntas todavía.
-                        </p>
-                      ) : (
-                        categoryQuestions.map((question) => (
-                          <CheckRow
-                            key={question.id}
+                    <span>{category}</span>
+                    <span className="survey-question-category-meta">
+                      {selectedCount > 0
+                        ? `${selectedCount} seleccionada(s)`
+                        : "Sin seleccionar"}
+                      <ChevronDown className="h-4 w-4" />
+                    </span>
+                  </summary>
+                  <div className="survey-question-category-body">
+                    {categoryQuestions.length > 0 ? (
+                      categoryQuestions.map((question) => (
+                        <label
+                          key={question.id}
+                          className={`survey-question-option${draft.questionIds.includes(question.id) ? " is-selected" : ""}`}
+                        >
+                          <input
+                            type="checkbox"
                             checked={draft.questionIds.includes(question.id)}
-                            onChange={(checked) =>
+                            onChange={(event) =>
                               setDraft((current) => ({
                                 ...current,
-                                questionIds: checked
+                                questionIds: event.target.checked
                                   ? [...current.questionIds, question.id]
                                   : current.questionIds.filter(
                                       (id) => id !== question.id,
                                     ),
                               }))
                             }
-                          >
-                            {question.text}
-                          </CheckRow>
-                        ))
-                      )}
+                          />
+                          <span>{question.text}</span>
+                        </label>
+                      ))
+                    ) : (
+                      <p className="survey-question-empty">Sin preguntas todavía.</p>
+                    )}
+                    <div className="survey-question-category-action">
+                      <p>¿No encuentras la pregunta que necesitas?</p>
+                      <Button
+                        type="button"
+                        className="survey-new-question-button"
+                        onClick={() => onNewQuestion(category)}
+                      >
+                        <Plus className="mr-2 h-4 w-4" />
+                        Nueva pregunta
+                      </Button>
                     </div>
-                  </details>
-                );
-              })}
+                  </div>
+                </details>
+              );
+            })}
             </div>
-          </div>
+          </section>
         </div>
-        <div className="rounded-3xl border border-[#e8dfd5] bg-[#fffdfb] p-5">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#7460a4]">
-            Vista previa
-          </p>
-          <h3 className="mt-4 text-xl font-semibold text-[#263649]">
-            Keysar Cosmetics
-          </h3>
-          <p className="mt-1 text-sm text-slate-500">
-            {services.find((service) => service.id === draft.serviceIds[0])
-              ?.name ?? "Tu servicio"}
-          </p>
-          <div className="mt-5 space-y-4">
-            {questions
-              .filter((question) => draft.questionIds.includes(question.id))
-              .map((question, index) => (
-                <div key={question.id} className="rounded-2xl bg-[#f8f4fb] p-3">
-                  <p className="text-sm font-medium text-[#263649]">
-                    {index + 1}. {question.text}
-                  </p>
-                  <p className="mt-2 text-lg tracking-[0.2em] text-[#c3a583]">
-                    {question.type === "rating" ? "☆ ☆ ☆ ☆ ☆" : "··········"}
-                  </p>
-                </div>
-              ))}
-            {draft.questionIds.length === 0 ? (
-              <p className="rounded-2xl border border-dashed p-4 text-sm text-slate-400">
-                Selecciona preguntas para ver el preview.
-              </p>
-            ) : null}
+        <section className="survey-live-preview" aria-label="Vista previa de la encuesta">
+          <div className="survey-preview-heading">
+            <div>
+              <span className="survey-preview-eyebrow">Vista previa</span>
+              <h3>Así verá tu cliente la encuesta</h3>
+            </div>
+            <span className="survey-preview-count">
+              {selectedQuestions.length} preguntas
+            </span>
           </div>
-        </div>
+          <div className="survey-preview-paper">
+            <div className="survey-preview-brand">Keysar Cosmetics</div>
+            <h4>{draft.name.trim() || "Nombre de la encuesta"}</h4>
+            <div className="survey-preview-services">
+              <span>Servicio evaluado</span>
+              <strong>
+                {selectedServices.length > 0
+                  ? selectedServices.map((service) => service.name).join(" · ")
+                  : "Selecciona un servicio"}
+              </strong>
+            </div>
+            {selectedQuestions.length > 0 ? (
+              <div className="survey-preview-questions">
+                {selectedQuestions.map((question, index) => (
+                  <article className="survey-preview-question" key={question.id}>
+                    <span className="survey-preview-question-number">{index + 1}</span>
+                    <div className="survey-preview-question-content">
+                      <p>{question.text}</p>
+                      {question.type === "rating" ? (
+                        <div className="survey-preview-stars" aria-label="Pregunta de cinco estrellas">
+                          {Array.from({ length: 5 }, (_, starIndex) => (
+                            <Star key={starIndex} className="h-5 w-5" />
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="survey-preview-comment-lines">
+                          <span />
+                          <span />
+                        </div>
+                      )}
+                      {question.description ? (
+                        <small>{question.description}</small>
+                      ) : null}
+                    </div>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <div className="survey-preview-empty">
+                <Star className="h-6 w-6" />
+                <p>Marca una pregunta para verla aquí.</p>
+              </div>
+            )}
+          </div>
+        </section>
       </div>
     </ModalShell>
   );
@@ -6361,6 +6545,9 @@ function SurveysSection({ services }: { services: ServiceRecord[] }) {
   const [questionOpen, setQuestionOpen] = useState(false);
   const [questionEditing, setQuestionEditing] = useState<SurveyQuestion | null>(
     null,
+  );
+  const [newQuestionCategory, setNewQuestionCategory] = useState(
+    surveyCategories[0] ?? "Precio",
   );
   const [confirming, setConfirming] = useState<SurveyRecord | null>(null);
   const [search, setSearch] = useState("");
@@ -6452,8 +6639,9 @@ function SurveysSection({ services }: { services: ServiceRecord[] }) {
         services={services}
         questions={questions}
         onOpenChange={setDialogOpen}
-        onNewQuestion={() => {
+        onNewQuestion={(category) => {
           setQuestionEditing(null);
+          setNewQuestionCategory(category);
           setQuestionOpen(true);
         }}
         onSave={(survey) => {
@@ -6472,6 +6660,7 @@ function SurveysSection({ services }: { services: ServiceRecord[] }) {
       <SurveyQuestionDialog
         open={questionOpen}
         question={questionEditing}
+        initialCategory={newQuestionCategory}
         onOpenChange={setQuestionOpen}
         onSave={(question) => {
           setQuestions((current) =>
@@ -6481,7 +6670,7 @@ function SurveysSection({ services }: { services: ServiceRecord[] }) {
                 )
               : [...current, question],
           );
-          toast.success("Pregunta guardada.");
+          toast.success(`Pregunta guardada en ${question.category}.`);
         }}
       />
       <ConfirmDialog
