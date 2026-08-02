@@ -3549,9 +3549,16 @@
   .whatsapp-message-list {
     display: grid;
     gap: 0.8rem;
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: hidden;
   }
 
   .whatsapp-message-row {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
     border: 1px solid #e4e7e9;
     border-radius: 0.8rem;
     background: #fff;
@@ -3588,6 +3595,7 @@
   .whatsapp-row-main {
     min-width: 0;
     flex: 1;
+    overflow: hidden;
   }
 
   .whatsapp-row-main h3 {
@@ -3598,13 +3606,16 @@
   }
 
   .whatsapp-row-main > p {
+    display: -webkit-box;
     overflow: hidden;
     margin: 0.28rem 0 0.15rem;
     color: #8b96a3;
     font-size: 0.78rem;
     line-height: 1.45;
     text-overflow: ellipsis;
-    white-space: nowrap;
+    white-space: normal;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
   }
 
   .whatsapp-view-message {
@@ -3618,8 +3629,10 @@
     display: flex;
     flex: 0 0 auto;
     align-items: center;
+    justify-content: flex-end;
     gap: 0.5rem;
     margin-left: auto;
+    max-width: 100%;
   }
 
   .whatsapp-row-updated {
