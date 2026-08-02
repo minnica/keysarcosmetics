@@ -39,7 +39,7 @@ La carga y descarga masiva aún no procesa archivos reales ni persiste informaci
 | Recursos | Recursos generales y recursos con horario, asignación a servicios y locales | Definido por capturas |
 | Encuestas | Encuestas, preguntas de apreciación/comentario, asociación a servicios y preview vivo con estrellas | Parcial; falta flujo de resultados |
 | Consentimientos | Nombre, carga visual de archivo PDF/DOC/DOCX, tabla con búsqueda, edición y eliminación | Catálogo local/mock; falta firma, flujo operativo y persistencia |
-| WhatsApp | Plantillas, mensajes personalizados, variables y vista previa | Definido por capturas |
+| WhatsApp | Catálogo con 13 mensajes operativos precargados, plantillas prediseñadas, variables agrupadas y preview estilo WhatsApp | Implementado local/mock; falta conexión del canal, envío real y persistencia |
 | Gift Cards | Gift card de servicio o monto, vencimiento, diseño, borrador/activar | Definido por capturas |
 | Planes | No se implementa en este proyecto | Fuera de alcance |
 
@@ -77,7 +77,7 @@ Estado: implementada en local/mock.
 
 ### Fase 4 — Comunicación y documentos
 
-- Implementar plantillas y mensajes personalizados de WhatsApp.
+- Conectar WhatsApp real, envío de mensajes y persistencia de plantillas.
 - Implementar Consentimientos como catálogo de documentos.
 - Definir antes de construir el flujo de resultados de Encuestas y el uso de Consentimientos dentro de una cita.
 

@@ -24,6 +24,7 @@ El backend compartido vive en `backend/api` y usa Express, Prisma y PostgreSQL. 
 - La carga de precios, descarga de plantillas y subida de `.xlsx` son todavía flujos visuales/mock; no hay importación real ni persistencia.
 - `Encuestas` permite seleccionar servicios y preguntas por categoría, crear preguntas de estrellas o comentario y ver un preview vivo con numeración y cinco estrellas; todavía no incluye resultados ni persistencia.
 - `Consentimientos` permite crear y editar documentos con nombre y archivo PDF/DOC/DOCX mediante una zona de carga visual con límite de 5 MB; el listado usa `DataTable` con búsqueda, edición y eliminación confirmada. Sigue siendo local/mock y no incluye firma ni persistencia.
+- `WhatsApp` lista 13 mensajes operativos precargados y permite crear/editar plantillas locales, insertar variables agrupadas por reserva, local y compañía, elegir plantillas prediseñadas y revisar un preview estilo WhatsApp. El envío real, conexión del canal y persistencia siguen fuera de alcance.
 - La siguiente prioridad visual es cerrar y validar `Opciones avanzadas` de los modales de Servicios y después revisar el resto de módulos administrativos antes de conectar backend.
 - No tocar backend, Prisma ni variables de entorno hasta recibir petición explícita.
 

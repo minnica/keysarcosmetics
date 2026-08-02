@@ -7023,7 +7023,82 @@ const messageTokens = [
   "{{ubicacion_local}}",
   "{{telefono_local}}",
   "{{link_pago}}",
+  "{{nombre_empresa}}",
+  "{{instagram}}",
+  "{{facebook}}",
+  "{{sitio_web}}",
 ];
+const messageTokenGroups = [
+  {
+    label: "Datos de la reserva",
+    tokens: [
+      "{{nombre_cliente}}",
+      "{{apellido_cliente}}",
+      "{{profesional}}",
+      "{{nombre_servicio}}",
+      "{{precio_reserva}}",
+      "{{fecha_hora_reserva}}",
+      "{{link_pago}}",
+    ],
+  },
+  {
+    label: "Datos del local",
+    tokens: [
+      "{{nombre_local}}",
+      "{{ubicacion_local}}",
+      "{{telefono_local}}",
+    ],
+  },
+  {
+    label: "Datos de la compañía",
+    tokens: [
+      "{{nombre_empresa}}",
+      "{{instagram}}",
+      "{{facebook}}",
+      "{{sitio_web}}",
+    ],
+  },
+];
+const messagePreviewValues: Record<string, string> = {
+  "{{nombre_cliente}}": "Juan",
+  "{{apellido_cliente}}": "Pérez",
+  "{{profesional}}": "María",
+  "{{nombre_servicio}}": "Facial Signature",
+  "{{precio_reserva}}": "$950",
+  "{{fecha_hora_reserva}}": "11/03/2026 a las 9:00",
+  "{{nombre_local}}": "Keysar Polanco",
+  "{{ubicacion_local}}": "Av. Presidente Masaryk 123",
+  "{{telefono_local}}": "+52 55 1234 5678",
+  "{{link_pago}}": "keysarcosmetics.com/pagar",
+  "{{nombre_empresa}}": "Keysar Cosmetics",
+  "{{instagram}}": "@keysarcosmetics",
+  "{{facebook}}": "Keysar Cosmetics",
+  "{{sitio_web}}": "keysarcosmetics.com",
+};
+const messageTokenLabels: Record<string, string> = {
+  "{{nombre_cliente}}": "Nombre cliente",
+  "{{apellido_cliente}}": "Apellido cliente",
+  "{{profesional}}": "Profesional",
+  "{{nombre_servicio}}": "Nombre servicio",
+  "{{precio_reserva}}": "Precio reserva",
+  "{{fecha_hora_reserva}}": "Fecha y hora reserva",
+  "{{link_pago}}": "Link de pago",
+  "{{nombre_local}}": "Nombre local",
+  "{{ubicacion_local}}": "Ubicación local",
+  "{{telefono_local}}": "Teléfono local",
+  "{{nombre_empresa}}": "Compañía",
+  "{{instagram}}": "Instagram",
+  "{{facebook}}": "Facebook",
+  "{{sitio_web}}": "Tu página web",
+};
+
+const formatMessagePreview = (message: string) =>
+  messageTokens.reduce(
+    (formatted, token) =>
+      formatted.split(token).join(messagePreviewValues[token] ?? token),
+    message,
+  );
+
 const messageTemplates = [
   {
     name: "Confirmación de reserva",
@@ -7036,8 +7111,28 @@ const messageTemplates = [
       "Hola {{nombre_cliente}}, te esperamos mañana en {{nombre_local}}. Si necesitas ayuda, responde este mensaje.",
   },
   {
+    name: "Descuento por cumpleaños",
+    message: `¡Feliz cumpleaños, {{nombre_cliente}} {{apellido_cliente}}!
+
+En este día especial,
+queremos desearte un día lleno de alegría, amor y momentos inolvidables.
+Esperamos que este nuevo año te traiga todo lo que deseas y más.
+
+¡Como muestra de nuestro aprecio, te ofrecemos un descuento especial en tu próximo servicio en {{nombre_local}}!`,
+  },
+  {
     name: "Bienvenida",
     message: "Hola {{nombre_cliente}}, bienvenida a Keysar Cosmetics.",
+  },
+  {
+    name: "Mensaje para redes sociales",
+    message:
+      "Hola {{nombre_cliente}}, conoce más de {{nombre_empresa}} en {{instagram}}.",
+  },
+  {
+    name: "Recordatorio de pago",
+    message:
+      "Hola {{nombre_cliente}}, puedes completar tu reserva aquí: {{link_pago}}.",
   },
 ];
 
@@ -7082,6 +7177,7 @@ function WhatsAppDialog({
       open={open}
       onOpenChange={onOpenChange}
       title={message ? `Editar ${message.name}` : "Nuevo mensaje personalizado"}
+      description="Crea mensajes reutilizables y agrega datos de la reserva con un clic."
       onSave={() => {
         if (!draft.name.trim() || !draft.message.trim()) {
           toast.error("Completa el nombre y el mensaje.");
@@ -7091,9 +7187,10 @@ function WhatsAppDialog({
         onOpenChange(false);
       }}
       wide
+      className="whatsapp-message-dialog"
     >
-      <div className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
-        <div className="space-y-5">
+      <div className="whatsapp-dialog-form">
+        <section className="whatsapp-form-section">
           <Field
             id="whatsapp-name"
             label="Nombre del mensaje"
@@ -7102,10 +7199,39 @@ function WhatsAppDialog({
             onChange={(name) => setDraft((current) => ({ ...current, name }))}
             placeholder="Ej. Recordatorio de cita"
           />
-          <div>
-            <label htmlFor="whatsapp-message" className="admin-label">
-              Personaliza el mensaje
-            </label>
+        </section>
+        <section className="whatsapp-form-section">
+          <div className="mb-4">
+            <p className="admin-label mb-1">Personaliza el mensaje <span className="text-rose-500">*</span></p>
+            <p className="text-xs text-slate-500">
+              Escribe el texto y usa las tarjetas para insertar datos de la cita automáticamente.
+            </p>
+          </div>
+          <div className="whatsapp-token-groups">
+            {messageTokenGroups.map((group) => (
+              <div className="whatsapp-token-group" key={group.label}>
+                <p>{group.label}</p>
+                <div className="whatsapp-token-list">
+                  {group.tokens.map((token) => (
+                    <button
+                      type="button"
+                      key={token}
+                      className="whatsapp-token-button"
+                      onClick={() =>
+                        setDraft((current) => ({
+                          ...current,
+                          message: `${current.message}${current.message ? " " : ""}${token}`,
+                        }))
+                      }
+                    >
+                      {messageTokenLabels[token] ?? token}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="whatsapp-composer-grid">
             <Textarea
               id="whatsapp-message"
               rows={10}
@@ -7116,58 +7242,42 @@ function WhatsAppDialog({
                   message: event.target.value,
                 }))
               }
-              className="admin-textarea"
+              className="admin-textarea whatsapp-message-textarea"
               placeholder="Escribe el mensaje que recibirá tu cliente."
             />
-          </div>
-          <div>
-            <p className="admin-label">Insertar datos</p>
-            <div className="flex flex-wrap gap-2">
-              {messageTokens.map((token) => (
-                <button
-                  type="button"
-                  key={token}
-                  className="rounded-full border border-[#e5dcef] bg-[#fbf9fd] px-3 py-1.5 text-xs text-[#7460a4] hover:bg-[#f0ebf6]"
-                  onClick={() =>
-                    setDraft((current) => ({
-                      ...current,
-                      message: `${current.message}${current.message ? " " : ""}${token}`,
-                    }))
-                  }
-                >
-                  {token.replace(/[{}]/g, "")}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-        <div className="rounded-[28px] bg-[#e8ded7] p-4">
-          <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-            Vista previa
-          </p>
-          <div className="mx-auto max-w-sm rounded-[28px] bg-[#f5f1eb] p-3 shadow-inner">
-            <div className="rounded-t-2xl bg-[#6b8e7b] px-4 py-3 text-sm font-semibold text-white">
-              Keysar Cosmetics
-            </div>
-            <div className="min-h-56 rounded-b-2xl bg-[#efe7dc] p-3">
-              <div className="max-w-[90%] rounded-2xl rounded-tl-sm bg-white p-3 text-sm leading-6 text-slate-700 shadow-sm">
-                {draft.message || "Tu mensaje aparecerá aquí."}
+            <div className="whatsapp-preview-panel">
+              <p className="whatsapp-preview-title">Previsualización del mensaje</p>
+              <div className="whatsapp-phone-preview">
+                <div className="whatsapp-phone-notch" />
+                <div className="whatsapp-phone-header">
+                  <MessageCircle className="h-4 w-4" />
+                  <span>Keysar Cosmetics</span>
+                  <span className="ml-auto text-[10px] opacity-75">en línea</span>
+                </div>
+                <div className="whatsapp-phone-body">
+                  <div className="whatsapp-message-bubble">
+                    {draft.message
+                      ? formatMessagePreview(draft.message)
+                      : "Tu mensaje aparecerá aquí."}
+                    <span className="whatsapp-message-time">9:00 ✓✓</span>
+                  </div>
+                </div>
               </div>
+              <Button
+                variant="link"
+                className="mt-3 h-auto px-0 text-[#7460a4]"
+                onClick={() =>
+                  toast.info(
+                    "El envío de prueba quedará listo al conectar WhatsApp.",
+                  )
+                }
+              >
+                <Mail className="mr-2 h-4 w-4" />
+                Enviar mensaje de prueba
+              </Button>
             </div>
           </div>
-          <Button
-            variant="link"
-            className="mt-3 text-[#7460a4]"
-            onClick={() =>
-              toast.info(
-                "El envío de prueba quedará listo al conectar WhatsApp.",
-              )
-            }
-          >
-            <Mail className="mr-2 h-4 w-4" />
-            Enviar mensaje de prueba
-          </Button>
-        </div>
+        </section>
       </div>
     </ModalShell>
   );
@@ -7190,26 +7300,44 @@ function TemplateDialog({
       open={open}
       onOpenChange={onOpenChange}
       title="Plantillas prediseñadas"
+      description="Elige una plantilla como punto de partida, edítala y adáptala a tu negocio."
+      wide
+      className="whatsapp-template-dialog"
     >
-      <div className="grid gap-5 lg:grid-cols-[0.8fr_1.2fr]">
-        <div className="space-y-2">
+      <div className="whatsapp-template-layout">
+        <div className="whatsapp-template-selector">
+          <p className="whatsapp-template-intro">
+            Selecciona un mensaje prediseñado para usarlo como base. Podrás editar el texto y agregar variables en el siguiente paso.
+          </p>
+          <div className="whatsapp-template-list">
           {messageTemplates.map((item, index) => (
             <button
               type="button"
               key={item.name}
-              className={`w-full rounded-2xl border p-3 text-left text-sm ${selected === index ? "border-[#b7a1ce] bg-[#f4eff8]" : "border-[#eee7e2]"}`}
+              className={`whatsapp-template-option ${selected === index ? "is-selected" : ""}`}
               onClick={() => setSelected(index)}
             >
-              {item.name}
+              <span>{item.name}</span>
+              <small>{item.message}</small>
             </button>
           ))}
+          </div>
         </div>
-        <div className="rounded-[28px] bg-[#e8ded7] p-5">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-            Vista previa
-          </p>
-          <div className="mt-4 rounded-2xl bg-white p-4 text-sm leading-6 text-slate-700">
-            {template.message}
+        <div className="whatsapp-template-preview">
+          <p className="whatsapp-preview-title">Previsualización del mensaje</p>
+          <div className="whatsapp-phone-preview whatsapp-phone-preview-large">
+            <div className="whatsapp-phone-notch" />
+            <div className="whatsapp-phone-header">
+              <MessageCircle className="h-4 w-4" />
+              <span>Keysar Cosmetics</span>
+              <span className="ml-auto text-[10px] opacity-75">en línea</span>
+            </div>
+            <div className="whatsapp-phone-body">
+              <div className="whatsapp-message-bubble">
+                {formatMessagePreview(template.message)}
+                <span className="whatsapp-message-time">9:00 ✓✓</span>
+              </div>
+            </div>
           </div>
           <Button
             className="admin-primary mt-4"
@@ -7236,6 +7364,7 @@ function WhatsAppSection() {
   const [confirming, setConfirming] = useState<WhatsAppMessageRecord | null>(
     null,
   );
+  const activeMessages = messages.filter((message) => message.status === "active").length;
   return (
     <div className="space-y-6">
       <SectionHeader
@@ -7264,32 +7393,52 @@ function WhatsAppSection() {
         Ahora podrás enviar mensajes personalizados por WhatsApp. Configúralos
         aquí y envíalos desde la Agenda cuando el canal esté conectado.
       </InfoBanner>
-      <div className="grid gap-3 lg:grid-cols-2">
+      <div className="whatsapp-overview-card">
+        <div>
+          <p className="whatsapp-overview-eyebrow">Catálogo de mensajes</p>
+          <h2>Mensajes listos para cada momento de la reserva</h2>
+          <p>
+            Mantén una comunicación consistente y personalizada con tus clientes.
+          </p>
+        </div>
+        <div className="whatsapp-overview-stats">
+          <div>
+            <strong>{activeMessages}</strong>
+            <span>Activos</span>
+          </div>
+          <div>
+            <strong>{messages.length}</strong>
+            <span>Mensajes</span>
+          </div>
+        </div>
+      </div>
+      <div className="whatsapp-message-list">
         {messages.map((message) => (
-          <Card className="admin-card" key={message.id}>
-            <CardContent className="flex items-start justify-between gap-4 p-5">
-              <div>
+          <Card className="whatsapp-message-row" key={message.id}>
+            <CardContent className="whatsapp-message-row-content">
+              <div className="whatsapp-row-icon">
+                <MessageCircle className="h-5 w-5" />
+              </div>
+              <div className="whatsapp-row-main">
                 <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="font-semibold text-[#263649]">
-                    {message.name}
-                  </h3>
+                  <h3>{message.name}</h3>
                   <StatusBadge status={message.status} />
                 </div>
-                <p className="mt-2 line-clamp-2 text-sm text-slate-500">
-                  {message.message}
-                </p>
+                <p>{message.message}</p>
                 <Button
                   variant="link"
-                  className="h-auto p-0 text-[#7460a4]"
+                  className="whatsapp-view-message"
                   onClick={() => {
                     setEditing(message);
                     setOpen(true);
                   }}
                 >
+                  <Eye className="mr-1.5 h-4 w-4" />
                   Ver mensaje
                 </Button>
               </div>
-              <div className="flex gap-2">
+              <div className="whatsapp-row-actions">
+                <span className="whatsapp-row-updated">Actualizado {message.updatedAt}</span>
                 <Button
                   variant="outline"
                   size="sm"

@@ -871,20 +871,211 @@ export const initialConsents: ConsentRecord[] = [
 
 export const initialWhatsAppMessages: WhatsAppMessageRecord[] = [
   {
-    id: "whatsapp-confirmation",
-    name: "Confirmación de reserva",
-    message:
-      "Hola {{nombre_cliente}}, confirmamos tu cita de {{nombre_servicio}} el {{fecha_hora_reserva}} en {{nombre_local}}.",
+    id: "whatsapp-dia-servicio-opatra",
+    name: "DIA DEL SERVICIO OPATRA",
+    message: `Hola {{nombre_cliente}}
+
+En Opatra México estamos listos para recibirte en nuestras cabinas y pases el día de hoy un momento increíble en {{profesional}}
+
+Disfrútalo!!`,
     status: "active",
-    updatedAt: "Hace 4 días",
+    updatedAt: "Precargado",
   },
   {
-    id: "whatsapp-welcome",
-    name: "Bienvenida Keysar",
-    message:
-      "Hola {{nombre_cliente}}, bienvenida a Keysar Cosmetics. Estamos felices de recibirte.",
+    id: "whatsapp-mensaje-bienvenida",
+    name: "MENSAJE DE BIENVENIDA",
+    message: `Hola {{nombre_cliente}} {{apellido_cliente}}
+
+Estamos encantados de que nos hayas elegido.
+Tu confianza significa mucho para nosotros, y estamos aquí para brindarte una experiencia excepcional y única.
+
+Nos enorgullece ofrecer servicios de alta calidad y atención personalizada.
+
+Gracias por formar parte de nuestro exclusivo círculo de clientes satisfechos.
+
+Customer Service Keysar Cosmetics`,
     status: "active",
-    updatedAt: "Hace 2 semanas",
+    updatedAt: "Precargado",
+  },
+  {
+    id: "whatsapp-confirmacion-opatra",
+    name: "CONFIRMACION OPATRA",
+    message: `✨ OPATRA LONDON MÉXICO ✨
+
+¡Hola {{nombre_cliente}} {{apellido_cliente}}!
+
+Tenemos reservada para ti tu próxima cita para este
+
+* {{fecha_hora_reserva}}
+* {{nombre_servicio}}
+* {{profesional}}
+
+¿Puedo confirmar tu asistencia? 😊`,
+    status: "active",
+    updatedAt: "Precargado",
+  },
+  {
+    id: "whatsapp-postventa",
+    name: "POSTVENTA",
+    message: `Estimado/a {{nombre_cliente}} {{apellido_cliente}}!
+
+En nombre del equipo de OPATRA MÉXICO, queremos expresar nuestro agradecimiento por confiar en nosotros. Tu apoyo y preferencia son fundamentales para nuestro éxito y nos enorgullece poder servirte.
+
+Esperamos haber cumplido con tus expectativas. Nuestro compromiso es brindarte la mejor atención y calidad.
+
+Si alguna vez necesitas ayuda, información adicional o deseas compartir tus comentarios, no dudes en contactarnos.
+
+ATT.
+Equipo de atención a clientes`,
+    status: "active",
+    updatedAt: "Precargado",
+  },
+  {
+    id: "whatsapp-agradecimiento",
+    name: "AGRADECIMIENTO",
+    message: `¡Hola {{nombre_cliente}} {{apellido_cliente}}!
+
+Esperamos que hayas disfrutado tu experiencia con nosotros. Si te gustó nuestro servicio, ¿podrías tomarte un momento para dejar un comentario en nuestras redes sociales?
+
+¡Tu opinión es valiosa para nosotros y ayuda a otros clientes a conocer más sobre nosotros!
+
+¡Gracias por tu preferencia, esperamos poder consentirte nuevamente!
+
+Customer Service Keysar Cosmetics & Opatra London`,
+    status: "active",
+    updatedAt: "Precargado",
+  },
+  {
+    id: "whatsapp-confirmacion-mitikah",
+    name: "CONFIRMACION MITIKAH",
+    message: `¡Hola {{nombre_cliente}} {{apellido_cliente}}!
+Mi nombre es ,
+Tenemos reservada para ti tu próxima cita para este
+* {{fecha_hora_reserva}}
+* {{nombre_servicio}}
+* {{profesional}}
+
+Customer Service Keysar Cosmetics
+
+¿Puedo confirmar tu asistencia? 😊`,
+    status: "active",
+    updatedAt: "Precargado",
+  },
+  {
+    id: "whatsapp-opatra-citas-pendientes",
+    name: "OPATRA RESERVACION A CITAS PENDIENTES",
+    message: `*OPATRA MÉXICO*
+
+¡Hola {{nombre_cliente}}!
+
+El motivo de mi mensaje es para poder reservar la cita que tenemos pendiente en nuestra sucursal de Plaza Galerías Insurgentes y poder continuar con el seguimiento al cuidado de tu piel.
+
+Por favor indícame una fecha y hora que sean de tu preferencia para revisar la disponibilidad en agenda.
+
+Quedo atenta de ti deseando tengas un bello día!
+saludos cordiales 😊
+
+Customer Service`,
+    status: "active",
+    updatedAt: "Precargado",
+  },
+  {
+    id: "whatsapp-recordatorio-mitikah",
+    name: "RECORDATORIO MITIKAH",
+    message: `Buenos días {{nombre_cliente}}
+
+Te recordamos tu Cita del día de hoy {{fecha_hora_reserva}}
+En nuestra sucursal MITIKAH
+
+https://g.co/kgs/cGf6cqx
+
+Te esperamos ✨
+
+Customer Service Keysar Cosmetics.`,
+    status: "active",
+    updatedAt: "Precargado",
+  },
+  {
+    id: "whatsapp-mitikah-citas-pendientes",
+    name: "MITIKAH RESERVA DE CITAS PENDIENTES",
+    message: `¡Hola {{nombre_cliente}}!
+
+El motivo de mi mensaje es para poder reservar la cita que tenemos pendiente en nuestra sucursal de Mitikah y poder continuar con el seguimiento al cuidado de tu piel.
+
+Por favor indícame una fecha y hora que sean de tu preferencia para revisar la disponibilidad en agenda.
+
+Quedamos pendiente de ti deseándote un excelente día.
+
+Customer Service Keysar Cosmetics`,
+    status: "active",
+    updatedAt: "Precargado",
+  },
+  {
+    id: "whatsapp-dia-servicio-mitikah",
+    name: "DIA DEL SERVICIO MITIKAH",
+    message: `Hola {{nombre_cliente}}
+
+En Keysar Cosmetics estamos listos para recibirte en nuestras cabinas y pases el día de hoy un momento increíble.
+
+Disfrútalo!!!
+
+{{fecha_hora_reserva}}`,
+    status: "active",
+    updatedAt: "Precargado",
+  },
+  {
+    id: "whatsapp-recordatorio-opatra",
+    name: "RECORDATORIO OPATRA",
+    message: `✨ OPATRA LONDON MÉXICO ✨
+
+Buenos días {{nombre_cliente}}
+
+Te recordamos tu Cita del día de hoy {{fecha_hora_reserva}}
+En nuestra sucursal Galerías Insurgentes
+
+https://g.co/kgs/Ydi1Qcb
+
+Te esperamos ✨
+
+Ubicación dentro de la plaza: segundo piso frente a Game Planet.
+
+Te esperamos ✨`,
+    status: "active",
+    updatedAt: "Precargado",
+  },
+  {
+    id: "whatsapp-reagenda-opatra",
+    name: "REAGENDA OPATRA",
+    message: `OPATRA MÉXICO
+
+¡Hola {{nombre_cliente}} {{apellido_cliente}}!
+
+Notamos que has cancelado tu reserva programada para el {{fecha_hora_reserva}}. Entendemos que a veces surgen imprevistos, nos encantaría poder atenderte en otro momento y estamos aquí para ayudarte a encontrar un horario que se ajuste a tu agenda.
+
+Por favor indícame una nueva fecha y hora para verificar espacios disponibles y reservar tu cita.
+
+Saludos
+
+Customer service Keysar Cosmetics`,
+    status: "active",
+    updatedAt: "Precargado",
+  },
+  {
+    id: "whatsapp-no-asistio",
+    name: "NO ASISTIO",
+    message: `¡Hola {{nombre_cliente}}.
+
+Esperamos te encuentres bien ya que no acudiste a tu cita.
+
+Entendemos que a veces surgen imprevistos.
+
+Nos encantaría poder atenderte en otro momento y estamos aquí para ayudarte a encontrar un horario que se ajuste a tu agenda.
+
+Por favor indícame una nueva fecha y hora que sea de tu preferencia para revisar disponibilidad y poder reagendar esta cita.
+
+Customer Service Keysar Cosmetics`,
+    status: "active",
+    updatedAt: "Precargado",
   },
 ];
 
