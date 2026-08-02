@@ -7361,6 +7361,7 @@ function WhatsAppSection() {
   const [editing, setEditing] = useState<WhatsAppMessageRecord | null>(null);
   const [open, setOpen] = useState(false);
   const [templatesOpen, setTemplatesOpen] = useState(false);
+  const [optionsOpenFor, setOptionsOpenFor] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<WhatsAppMessageRecord | null>(
     null,
   );
@@ -7439,24 +7440,47 @@ function WhatsAppSection() {
               </div>
               <div className="whatsapp-row-actions">
                 <span className="whatsapp-row-updated">Actualizado {message.updatedAt}</span>
+                <Popover
+                  open={optionsOpenFor === message.id}
+                  onOpenChange={(value) =>
+                    setOptionsOpenFor(value ? message.id : null)
+                  }
+                >
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" size="sm">
+                      <Plus className="mr-2 h-4 w-4" />
+                      Opciones
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent
+                    align="end"
+                    sideOffset={6}
+                    className="admin-popover whatsapp-options-menu"
+                  >
+                    <button
+                      type="button"
+                      className="whatsapp-options-item whatsapp-options-item-danger"
+                      onClick={() => {
+                        setOptionsOpenFor(null);
+                        setConfirming(message);
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      Eliminar
+                    </button>
+                  </PopoverContent>
+                </Popover>
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => {
+                    setOptionsOpenFor(null);
                     setEditing(message);
                     setOpen(true);
                   }}
                 >
                   <Pencil className="mr-2 h-4 w-4" />
                   Editar
-                </Button>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={() => setConfirming(message)}
-                  aria-label={`Eliminar ${message.name}`}
-                >
-                  <Trash2 className="h-4 w-4" />
                 </Button>
               </div>
             </CardContent>
