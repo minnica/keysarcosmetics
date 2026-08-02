@@ -37,8 +37,8 @@ La carga y descarga masiva aún no procesa archivos reales ni persiste informaci
 | Servicios | Servicios, clases, paquetes, adicionales, categorías, precios masivos | Definido por capturas |
 | Comisiones | Por profesional, servicio/producto y valor por defecto; porcentaje o monto | Definido por capturas |
 | Recursos | Recursos generales y recursos con horario, asignación a servicios y locales | Definido por capturas |
-| Encuestas | Encuestas, preguntas de apreciación/comentario y asociación a servicios | Parcial; falta flujo de resultados |
-| Consentimientos | Nombre y documento PDF | Parcial; falta flujo operativo |
+| Encuestas | Encuestas, preguntas de apreciación/comentario, asociación a servicios y preview vivo con estrellas | Parcial; falta flujo de resultados |
+| Consentimientos | Nombre, carga visual de archivo PDF/DOC/DOCX, tabla con búsqueda, edición y eliminación | Catálogo local/mock; falta firma, flujo operativo y persistencia |
 | WhatsApp | Plantillas, mensajes personalizados, variables y vista previa | Definido por capturas |
 | Gift Cards | Gift card de servicio o monto, vencimiento, diseño, borrador/activar | Definido por capturas |
 | Planes | No se implementa en este proyecto | Fuera de alcance |
@@ -81,7 +81,7 @@ Estado: implementada en local/mock.
 - Implementar Consentimientos como catálogo de documentos.
 - Definir antes de construir el flujo de resultados de Encuestas y el uso de Consentimientos dentro de una cita.
 
-Estado: catálogo y configuración implementados en local/mock; resultados y firma siguen fuera de alcance.
+Estado: catálogo y configuración implementados en local/mock. Consentimientos ya incluye nombre, archivo, validación de 5 MB, tabla CRUD y confirmación de eliminación; firma, uso dentro de una cita y persistencia siguen fuera de alcance.
 
 ### Fase 5 — Persistencia y conexión con agenda
 

@@ -5,6 +5,7 @@ import {
   useMemo,
   useState,
   type ChangeEvent,
+  type DragEvent,
   type ReactNode,
 } from "react";
 import Link from "next/link";
@@ -56,6 +57,7 @@ import {
   Button,
   Card,
   CardContent,
+  DataTable,
   Dialog,
   DialogContent,
   DialogFooter,
@@ -72,6 +74,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
   toast,
+  type ColumnDef,
 } from "@cosmetics/ui";
 
 import {
@@ -6694,6 +6697,77 @@ function SurveysSection({ services }: { services: ServiceRecord[] }) {
   );
 }
 
+function ConsentFileDropzone({
+  value,
+  onChange,
+}: {
+  value: string | null;
+  onChange: (value: string | null) => void;
+}) {
+  const inputId = "consent-file";
+  const handleFile = (file: File | undefined) => {
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("El archivo no puede superar 5 MB.");
+      return;
+    }
+    onChange(file.name);
+  };
+  const handleChange = (event: ChangeEvent<HTMLInputElement>) =>
+    handleFile(event.target.files?.[0]);
+  const handleDrop = (event: DragEvent<HTMLLabelElement>) => {
+    event.preventDefault();
+    handleFile(event.dataTransfer.files?.[0]);
+  };
+  return (
+    <div className="consent-file-field">
+      <div className="consent-file-label-row">
+        <div>
+          <p className="admin-label">Archivo del consentimiento</p>
+          <p className="admin-help">PDF, DOC o DOCX · máximo 5 MB</p>
+        </div>
+        {value ? <Badge className="consent-file-ready">Archivo listo</Badge> : null}
+      </div>
+      <input
+        id={inputId}
+        type="file"
+        accept="application/pdf,.doc,.docx"
+        className="sr-only"
+        onChange={handleChange}
+      />
+      <label
+        htmlFor={inputId}
+        className={`consent-file-dropzone${value ? " has-file" : ""}`}
+        onDragOver={(event) => event.preventDefault()}
+        onDrop={handleDrop}
+      >
+        <span className="consent-file-dropzone-icon">
+          <Upload className="h-5 w-5" />
+        </span>
+        <span className="consent-file-dropzone-copy">
+          <strong>{value ?? "Arrastra tu documento aquí"}</strong>
+          <small>{value ? "Haz clic para reemplazarlo" : "o haz clic para seleccionar un archivo"}</small>
+        </span>
+        <span className="consent-file-dropzone-action">Seleccionar</span>
+      </label>
+      <div className="consent-file-note">
+        <Info className="h-4 w-4" />
+        <span>El documento quedará disponible para asociarlo a una cita.</span>
+      </div>
+      {value ? (
+        <button
+          type="button"
+          className="consent-file-remove"
+          onClick={() => onChange(null)}
+        >
+          <X className="h-3.5 w-3.5" />
+          Quitar archivo
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 function ConsentDialog({
   open,
   consent,
@@ -6737,9 +6811,15 @@ function ConsentDialog({
       open={open}
       onOpenChange={onOpenChange}
       title={consent ? `Editar ${consent.name}` : "Nuevo consentimiento"}
+      wide
+      className="consent-dialog"
       onSave={() => {
-        if (!draft.name.trim() || !draft.description.trim()) {
-          toast.error("Completa el nombre y la descripción.");
+        if (!draft.name.trim()) {
+          toast.error("Escribe un nombre para el consentimiento.");
+          return;
+        }
+        if (!draft.fileName) {
+          toast.error("Adjunta el archivo del consentimiento.");
           return;
         }
         onSave({ ...draft, name: draft.name.trim(), updatedAt: "Ahora" });
@@ -6755,29 +6835,8 @@ function ConsentDialog({
           onChange={(name) => setDraft((current) => ({ ...current, name }))}
           placeholder="Ej. Consentimiento facial"
         />
-        <div>
-          <label htmlFor="consent-description" className="admin-label">
-            Descripción
-          </label>
-          <Textarea
-            id="consent-description"
-            rows={5}
-            value={draft.description}
-            onChange={(event) =>
-              setDraft((current) => ({
-                ...current,
-                description: event.target.value,
-              }))
-            }
-            className="admin-textarea"
-          />
-        </div>
-        <FilePicker
-          label="Documento del consentimiento"
-          recommendation="PDF o documento, máximo 5 MB."
-          maxSizeMb={5}
+        <ConsentFileDropzone
           value={draft.fileName}
-          accept="application/pdf,.doc,.docx"
           onChange={(fileName) =>
             setDraft((current) => ({ ...current, fileName }))
           }
@@ -6792,6 +6851,72 @@ function ConsentsSection() {
   const [editing, setEditing] = useState<ConsentRecord | null>(null);
   const [open, setOpen] = useState(false);
   const [confirming, setConfirming] = useState<ConsentRecord | null>(null);
+  const consentColumns = useMemo<ColumnDef<ConsentRecord>[]>(
+    () => [
+      {
+        accessorKey: "name",
+        header: "Consentimiento",
+        cell: ({ row }) => (
+          <div className="consent-table-name">
+            <span className="consent-table-icon">
+              <FileText className="h-4 w-4" />
+            </span>
+            <div>
+              <p>{row.original.name}</p>
+              <span>{row.original.status === "active" ? "Publicado" : "Borrador"}</span>
+            </div>
+          </div>
+        ),
+      },
+      {
+        accessorFn: (row) => row.fileName ?? "Sin archivo adjunto",
+        id: "fileName",
+        header: "Archivo",
+        cell: ({ row }) => (
+          <div className="consent-table-file">
+            <FileText className="h-4 w-4" />
+            <span>{row.original.fileName ?? "Sin archivo adjunto"}</span>
+          </div>
+        ),
+      },
+      {
+        accessorKey: "updatedAt",
+        header: "Última actualización",
+      },
+      {
+        id: "actions",
+        header: "Acciones",
+        enableSorting: false,
+        enableGlobalFilter: false,
+        cell: ({ row }) => (
+          <div className="consent-table-actions">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setEditing(row.original);
+                setOpen(true);
+              }}
+            >
+              <Pencil className="mr-2 h-4 w-4" />
+              Editar
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => setConfirming(row.original)}
+              aria-label={`Eliminar ${row.original.name}`}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
+        ),
+      },
+    ],
+    [],
+  );
+  const attachedCount = consents.filter((consent) => consent.fileName).length;
+  const activeCount = consents.filter((consent) => consent.status === "active").length;
   return (
     <div className="space-y-6">
       <SectionHeader
@@ -6810,68 +6935,49 @@ function ConsentsSection() {
           </Button>
         }
       />
-      <InfoBanner icon={<FileText className="h-5 w-5" />}>
-        Esta primera versión administra documentos y contenido. El flujo de
-        firma y resultados se podrá conectar cuando definamos el proceso
-        operativo.
-      </InfoBanner>
-      {consents.length === 0 ? (
-        <EmptyState
-          icon={<FileText className="h-6 w-6" />}
-          title="Sin consentimientos"
-          description="Crea tu primer documento para tenerlo listo antes de una cita."
-        />
-      ) : (
-        <div className="grid gap-3 lg:grid-cols-2">
-          {consents.map((consent) => (
-            <Card className="admin-card" key={consent.id}>
-              <CardContent className="flex items-start justify-between gap-4 p-5">
-                <div className="flex gap-3">
-                  <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#f0ebf6] text-[#7460a4]">
-                    <FileText className="h-5 w-5" />
-                  </div>
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="font-semibold text-[#263649]">
-                        {consent.name}
-                      </h3>
-                      <StatusBadge status={consent.status} />
-                    </div>
-                    <p className="mt-1 text-sm text-slate-500">
-                      {consent.description}
-                    </p>
-                    <p className="mt-2 text-xs text-slate-400">
-                      {consent.fileName ?? "Sin archivo adjunto"} ·{" "}
-                      {consent.updatedAt}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      setEditing(consent);
-                      setOpen(true);
-                    }}
-                  >
-                    <Pencil className="mr-2 h-4 w-4" />
-                    Editar
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => setConfirming(consent)}
-                    aria-label={`Eliminar ${consent.name}`}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+      <div className="consents-overview">
+        <div className="consents-overview-copy">
+          <span className="consents-overview-icon">
+            <FileText className="h-5 w-5" />
+          </span>
+          <div>
+            <span className="consents-overview-eyebrow">Biblioteca de documentos</span>
+            <h2>Consentimientos listos para tu agenda</h2>
+            <p>Sube y organiza los documentos que tus clientes deben conocer antes de una cita.</p>
+          </div>
         </div>
-      )}
+        <div className="consents-overview-stats">
+          <div>
+            <strong>{consents.length}</strong>
+            <span>Documentos</span>
+          </div>
+          <div>
+            <strong>{attachedCount}</strong>
+            <span>Con archivo</span>
+          </div>
+          <div>
+            <strong>{activeCount}</strong>
+            <span>Activos</span>
+          </div>
+        </div>
+      </div>
+      <Card className="admin-card consents-table-card">
+        <CardContent className="p-4 sm:p-5">
+          <div className="consents-table-heading">
+            <div>
+              <h2>Documentos guardados</h2>
+              <p>Administra el nombre, archivo y disponibilidad de cada consentimiento.</p>
+            </div>
+            <span>{consents.length} registros</span>
+          </div>
+          <DataTable
+            columns={consentColumns}
+            data={consents}
+            emptyMessage="Todavía no hay consentimientos."
+            searchPlaceholder="Buscar consentimiento o archivo"
+          />
+        </CardContent>
+      </Card>
       <ConsentDialog
         open={open}
         consent={editing}
