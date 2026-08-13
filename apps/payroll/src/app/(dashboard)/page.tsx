@@ -721,7 +721,7 @@ export default function DashboardPage() {
       },
       {
         header: "TOTAL PAGO",
-        accessor: (row: PayrollRunLine) => row.totalPayment,
+        accessor: commissionPaymentTotal,
         format: "currency" as const,
       },
     ],

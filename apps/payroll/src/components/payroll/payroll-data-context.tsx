@@ -23,6 +23,8 @@ import type {
   PayrollCatalogItem,
   PayrollEmployee,
   PayrollExpense,
+  PayrollExpenseCategory,
+  PayrollExpenseRecurrence,
   PayrollMovement,
   PayrollReceipt,
   PayrollRun,
@@ -96,9 +98,7 @@ function mapMovement(raw: any): PayrollMovement {
       allocation.employee?.nombreCompleto ?? allocation.employeeName ?? "",
     branchId: allocation.branchId ?? null,
     branchName:
-      allocation.branch?.nombre ??
-      allocation.branchName ??
-      "CORPORATIVO",
+      allocation.branch?.nombre ?? allocation.branchName ?? "CORPORATIVO",
     amount: n(allocation.amount),
     commissionable: allocation.commissionable,
   }));
@@ -142,6 +142,32 @@ function mapExpense(raw: any): PayrollExpense {
     frequency: raw.frequency,
     notes: raw.notes ?? "",
     payrollRunId: raw.payrollRunId ?? null,
+    recurrenceId: raw.recurrenceId ?? null,
+    recurrenceVersionId: raw.recurrenceVersionId ?? null,
+    generated: Boolean(raw.generated),
+  };
+}
+
+function mapExpenseCategory(raw: any): PayrollExpenseCategory {
+  return { id: raw.id, name: raw.name };
+}
+
+function mapExpenseRecurrence(raw: any): PayrollExpenseRecurrence {
+  const version = raw.version;
+  return {
+    id: raw.id,
+    active: Boolean(raw.active),
+    startsAt: d(raw.startsAt),
+    nextDate: d(raw.nextDate),
+    kind: version.kind,
+    concept: version.concept,
+    category: version.category,
+    branchId: version.branchId ?? null,
+    branch: version.branch?.nombre ?? version.costCenter,
+    amount: n(version.amount),
+    frequency: version.frequency,
+    notes: version.notes ?? "",
+    effectiveFrom: d(version.effectiveFrom),
   };
 }
 
@@ -326,6 +352,8 @@ interface PayrollDataValue {
   assignments: SchemeAssignment[];
   movements: PayrollMovement[];
   expenses: PayrollExpense[];
+  expenseCategories: PayrollExpenseCategory[];
+  recurringExpenses: PayrollExpenseRecurrence[];
   loans: LoanAdvance[];
   runs: PayrollRunSummary[];
   selectedRun: PayrollRun | null;
@@ -366,6 +394,14 @@ interface PayrollDataValue {
   openAttachment: (id: string) => Promise<void>;
   saveExpense: (input: unknown, id?: string) => Promise<void>;
   removeExpense: (id: string) => Promise<void>;
+  createExpenseCategory: (name: string) => Promise<PayrollExpenseCategory>;
+  updateExpenseCategory: (
+    id: string,
+    name: string,
+  ) => Promise<PayrollExpenseCategory>;
+  removeExpenseCategory: (id: string) => Promise<void>;
+  saveRecurringExpense: (input: unknown, id?: string) => Promise<void>;
+  endRecurringExpense: (id: string, effectiveFrom: string) => Promise<void>;
   saveLoan: (input: unknown, id?: string) => Promise<void>;
   removeLoan: (id: string) => Promise<void>;
   markLoanLost: (id: string) => Promise<void>;
@@ -403,6 +439,12 @@ export function PayrollDataProvider({
   const [assignments, setAssignments] = useState<SchemeAssignment[]>([]);
   const [movements, setMovements] = useState<PayrollMovement[]>([]);
   const [expenses, setExpenses] = useState<PayrollExpense[]>([]);
+  const [expenseCategories, setExpenseCategories] = useState<
+    PayrollExpenseCategory[]
+  >([]);
+  const [recurringExpenses, setRecurringExpenses] = useState<
+    PayrollExpenseRecurrence[]
+  >([]);
   const [loans, setLoans] = useState<LoanAdvance[]>([]);
   const [runs, setRuns] = useState<PayrollRunSummary[]>([]);
   const [selectedRun, setSelectedRun] = useState<PayrollRun | null>(null);
@@ -478,6 +520,8 @@ export function PayrollDataProvider({
         schemeResponse,
         movementResponse,
         expenseResponse,
+        expenseCategoryResponse,
+        recurringExpenseResponse,
         loanResponse,
         runResponse,
       ] = await Promise.all([
@@ -486,6 +530,8 @@ export function PayrollDataProvider({
         api.get<ApiResponse<any>>("/api/payroll/schemes"),
         api.get<ApiResponse<any[]>>("/api/payroll/movements"),
         api.get<ApiResponse<any[]>>("/api/payroll/expenses"),
+        api.get<ApiResponse<any[]>>("/api/payroll/expense-categories"),
+        api.get<ApiResponse<any[]>>("/api/payroll/expense-recurrences"),
         api.get<ApiResponse<any[]>>("/api/payroll/loans"),
         api.get<ApiResponse<any[]>>("/api/payroll/runs"),
       ]);
@@ -502,6 +548,12 @@ export function PayrollDataProvider({
       setAssignments(schemeResponse.data.data.assignments.map(mapAssignment));
       setMovements(movementResponse.data.data.map(mapMovement));
       setExpenses(expenseResponse.data.data.map(mapExpense));
+      setExpenseCategories(
+        expenseCategoryResponse.data.data.map(mapExpenseCategory),
+      );
+      setRecurringExpenses(
+        recurringExpenseResponse.data.data.map(mapExpenseRecurrence),
+      );
       setLoans(loanResponse.data.data.map(mapLoan));
       const summaries = runResponse.data.data.map(
         (raw: any): PayrollRunSummary => ({
@@ -600,6 +652,8 @@ export function PayrollDataProvider({
       assignments,
       movements,
       expenses,
+      expenseCategories,
+      recurringExpenses,
       loans,
       runs,
       selectedRun,
@@ -681,6 +735,36 @@ export function PayrollDataProvider({
         ),
       removeExpense: async (id) =>
         reload(() => api.delete(`/api/payroll/expenses/${id}`)),
+      createExpenseCategory: async (name) => {
+        const response = await api.post<ApiResponse<any>>(
+          "/api/payroll/expense-categories",
+          { name },
+        );
+        await refreshAll();
+        return mapExpenseCategory(response.data.data);
+      },
+      updateExpenseCategory: async (id, name) => {
+        const response = await api.put<ApiResponse<any>>(
+          `/api/payroll/expense-categories/${id}`,
+          { name },
+        );
+        await refreshAll();
+        return mapExpenseCategory(response.data.data);
+      },
+      removeExpenseCategory: async (id) =>
+        reload(() => api.delete(`/api/payroll/expense-categories/${id}`)),
+      saveRecurringExpense: async (input, id) =>
+        reload(() =>
+          id
+            ? api.post(`/api/payroll/expense-recurrences/${id}/versions`, input)
+            : api.post("/api/payroll/expense-recurrences", input),
+        ),
+      endRecurringExpense: async (id, effectiveFrom) =>
+        reload(() =>
+          api.post(`/api/payroll/expense-recurrences/${id}/end`, {
+            effectiveFrom,
+          }),
+        ),
       saveLoan: async (input, id) =>
         reload(() =>
           id
@@ -736,6 +820,8 @@ export function PayrollDataProvider({
       employees,
       error,
       expenses,
+      expenseCategories,
+      recurringExpenses,
       loadRun,
       loadMonthlySummary,
       loans,

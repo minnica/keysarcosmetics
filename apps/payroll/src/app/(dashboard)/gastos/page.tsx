@@ -1,7 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { Pencil, PlusCircle, Trash2 } from "lucide-react";
+import {
+  CircleStop,
+  FolderPlus,
+  History,
+  Pencil,
+  PlusCircle,
+  Repeat2,
+  Trash2,
+} from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -11,6 +19,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
+  Badge,
   Button,
   ColumnDef,
   DataTable,
@@ -28,6 +37,10 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
   Textarea,
   toast,
 } from "@cosmetics/ui";
@@ -45,6 +58,8 @@ import type {
   ExpenseFrequency,
   ExpenseKind,
   PayrollExpense,
+  PayrollExpenseCategory,
+  PayrollExpenseRecurrence,
 } from "@/lib/types";
 
 type Form = {
@@ -57,16 +72,89 @@ type Form = {
   frequency: ExpenseFrequency;
   notes: string;
 };
-const EMPTY: Form = {
-  date: new Date().toISOString().slice(0, 10),
-  kind: "VARIABLE",
-  concept: "",
-  category: "",
-  branchId: "CORPORATIVO",
-  amount: "0",
-  frequency: "ONE_TIME",
-  notes: "",
+type ExpenseTableRow = {
+  id: string;
+  source: "RECURRENCE" | "APPLICATION";
+  date: string;
+  kind: ExpenseKind;
+  concept: string;
+  category: string;
+  branch: string;
+  amount: number;
+  frequency: ExpenseFrequency;
+  payrollRunId: string | null;
+  generated: boolean;
+  recurrence?: PayrollExpenseRecurrence;
+  expense?: PayrollExpense;
 };
+type ExpenseView = "APPLICATIONS" | "RECURRENCES";
+type ExpenseMetric = {
+  label: string;
+  value: string;
+  tone: "gold" | "rose" | "blue";
+};
+type ExpenseViewPanelProps = {
+  value: ExpenseView;
+  metrics: ExpenseMetric[];
+  title: string;
+  eyebrow: string;
+  columns: ColumnDef<ExpenseTableRow>[];
+  rows: ExpenseTableRow[];
+  searchPlaceholder: string;
+  emptyMessage: string;
+};
+
+function ExpenseViewPanel({
+  value,
+  metrics,
+  title,
+  eyebrow,
+  columns,
+  rows,
+  searchPlaceholder,
+  emptyMessage,
+}: ExpenseViewPanelProps) {
+  return (
+    <TabsContent value={value}>
+      <div className="grid gap-4 md:grid-cols-3">
+        {metrics.map((metric) => (
+          <MetricCard
+            key={metric.label}
+            label={metric.label}
+            value={metric.value}
+            tone={metric.tone}
+          />
+        ))}
+      </div>
+      <div className="mt-6">
+        <SectionCard title={title} eyebrow={eyebrow}>
+          <DataTable
+            columns={columns}
+            data={rows}
+            searchPlaceholder={searchPlaceholder}
+            emptyMessage={emptyMessage}
+            pageSize={10}
+          />
+        </SectionCard>
+      </div>
+    </TabsContent>
+  );
+}
+function localDateValue(date = new Date()) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+function emptyForm(): Form {
+  return {
+    date: localDateValue(),
+    kind: "VARIABLE",
+    concept: "",
+    category: "",
+    branchId: "CORPORATIVO",
+    amount: "0",
+    frequency: "ONE_TIME",
+    notes: "",
+  };
+}
 const FREQUENCY: Record<ExpenseFrequency, string> = {
   ONE_TIME: "Una vez",
   BIWEEKLY: "Quincenal",
@@ -75,21 +163,53 @@ const FREQUENCY: Record<ExpenseFrequency, string> = {
 
 export default function GastosPage() {
   const data = usePayrollData();
+  const [expenseView, setExpenseView] = useState<ExpenseView>("RECURRENCES");
   const [open, setOpen] = useState(false);
+  const [categoryOpen, setCategoryOpen] = useState(false);
+  const [categoryEditingId, setCategoryEditingId] = useState<string | null>(
+    null,
+  );
+  const [categoryName, setCategoryName] = useState("");
+  const [categorySaving, setCategorySaving] = useState(false);
+  const [categoryDeleteTarget, setCategoryDeleteTarget] =
+    useState<PayrollExpenseCategory | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingRecurrenceId, setEditingRecurrenceId] = useState<string | null>(
+    null,
+  );
   const [deleteTarget, setDeleteTarget] = useState<PayrollExpense | null>(null);
-  const [form, setForm] = useState<Form>(EMPTY);
+  const [endTarget, setEndTarget] = useState<PayrollExpenseRecurrence | null>(
+    null,
+  );
+  const [form, setForm] = useState<Form>(emptyForm);
   const [saving, setSaving] = useState(false);
 
   function create() {
     setEditingId(null);
-    setForm(EMPTY);
+    setEditingRecurrenceId(null);
+    setForm(emptyForm());
     setOpen(true);
   }
   function edit(expense: PayrollExpense) {
     setEditingId(expense.id);
+    setEditingRecurrenceId(null);
     setForm({
       date: expense.date,
+      kind: expense.kind,
+      concept: expense.concept,
+      category: expense.category,
+      branchId: expense.branchId ?? "CORPORATIVO",
+      amount: String(expense.amount),
+      frequency: expense.frequency,
+      notes: expense.notes,
+    });
+    setOpen(true);
+  }
+  function editRecurrence(expense: PayrollExpenseRecurrence) {
+    setEditingId(null);
+    setEditingRecurrenceId(expense.id);
+    setForm({
+      date: expense.nextDate,
       kind: expense.kind,
       concept: expense.concept,
       category: expense.category,
@@ -117,26 +237,83 @@ export default function GastosPage() {
     const branch = data.branches.find((item) => item.id === form.branchId);
     setSaving(true);
     try {
-      await data.saveExpense(
-        {
-          date: form.date,
-          kind: form.kind,
-          concept: form.concept,
-          category: form.category,
-          branchId: branch?.id ?? null,
-          costCenter: branch?.nombre ?? "CORPORATIVO",
-          amount,
-          frequency: form.frequency,
-          notes: form.notes,
-        },
-        editingId ?? undefined,
+      const input = {
+        date: form.date,
+        kind: form.kind,
+        concept: form.concept,
+        category: form.category,
+        branchId: branch?.id ?? null,
+        costCenter: branch?.nombre ?? "CORPORATIVO",
+        amount,
+        frequency: form.frequency,
+        notes: form.notes,
+      };
+      const isRecurring = Boolean(
+        editingRecurrenceId || (!editingId && form.frequency !== "ONE_TIME"),
       );
+      if (isRecurring)
+        await data.saveRecurringExpense(
+          input,
+          editingRecurrenceId ?? undefined,
+        );
+      else await data.saveExpense(input, editingId ?? undefined);
       setOpen(false);
-      toast.success(editingId ? "Gasto actualizado." : "Gasto guardado.");
+      setExpenseView(isRecurring ? "RECURRENCES" : "APPLICATIONS");
+      toast.success(
+        editingRecurrenceId
+          ? "Nueva vigencia del gasto recurrente guardada."
+          : form.frequency !== "ONE_TIME"
+            ? "Gasto recurrente guardado."
+            : editingId
+              ? "Gasto actualizado."
+              : "Gasto guardado.",
+      );
     } catch (cause) {
       toast.error(apiErrorMessage(cause));
     } finally {
       setSaving(false);
+    }
+  }
+  async function saveCategory() {
+    const name = categoryName.trim();
+    if (!name) {
+      toast.warning("Escribe el nombre de la categoría.");
+      return;
+    }
+    const editing = Boolean(categoryEditingId);
+    setCategorySaving(true);
+    try {
+      const category = categoryEditingId
+        ? await data.updateExpenseCategory(categoryEditingId, name)
+        : await data.createExpenseCategory(name);
+      setCategoryOpen(false);
+      setCategoryEditingId(null);
+      setCategoryName("");
+      if (open) setForm((current) => ({ ...current, category: category.name }));
+      toast.success(
+        editing
+          ? "Categoría de gasto actualizada."
+          : "Categoría de gasto guardada.",
+      );
+    } catch (cause) {
+      toast.error(apiErrorMessage(cause));
+    } finally {
+      setCategorySaving(false);
+    }
+  }
+  function editCategory(category: PayrollExpenseCategory) {
+    setCategoryEditingId(category.id);
+    setCategoryName(category.name);
+    setCategoryOpen(true);
+  }
+  async function removeCategory() {
+    if (!categoryDeleteTarget) return;
+    try {
+      await data.removeExpenseCategory(categoryDeleteTarget.id);
+      setCategoryDeleteTarget(null);
+      toast.success("Categoría eliminada sin alterar gastos históricos.");
+    } catch (cause) {
+      toast.error(apiErrorMessage(cause));
     }
   }
   async function remove() {
@@ -149,44 +326,187 @@ export default function GastosPage() {
       toast.error(apiErrorMessage(cause));
     }
   }
+  async function endRecurrence() {
+    if (!endTarget) return;
+    const effectiveFrom = localDateValue();
+    try {
+      await data.endRecurringExpense(endTarget.id, effectiveFrom);
+      setEndTarget(null);
+      toast.success("Gasto recurrente finalizado.");
+    } catch (cause) {
+      toast.error(apiErrorMessage(cause));
+    }
+  }
 
-  const columns: ColumnDef<PayrollExpense>[] = [
+  const recurrenceRows: ExpenseTableRow[] = data.recurringExpenses.map(
+    (recurrence) => ({
+      id: `recurrence-${recurrence.id}`,
+      source: "RECURRENCE" as const,
+      date: recurrence.nextDate,
+      kind: recurrence.kind,
+      concept: recurrence.concept,
+      category: recurrence.category,
+      branch: recurrence.branch,
+      amount: recurrence.amount,
+      frequency: recurrence.frequency,
+      payrollRunId: null,
+      generated: true,
+      recurrence,
+    }),
+  );
+  const applicationRows: ExpenseTableRow[] = data.expenses.map((expense) => ({
+    id: `expense-${expense.id}`,
+    source: "APPLICATION" as const,
+    date: expense.date,
+    kind: expense.kind,
+    concept: expense.concept,
+    category: expense.category,
+    branch: expense.branch,
+    amount: expense.amount,
+    frequency: expense.frequency,
+    payrollRunId: expense.payrollRunId,
+    generated: expense.generated,
+    expense,
+  }));
+  function createExpenseColumns(
+    view: ExpenseView,
+  ): ColumnDef<ExpenseTableRow>[] {
+    const recurrenceView = view === "RECURRENCES";
+    return [
+      {
+        accessorKey: "date",
+        header: recurrenceView ? "PRÓXIMA APLICACIÓN" : "FECHA DE APLICACIÓN",
+        cell: ({ row }) => formatDate(row.original.date),
+      },
+      {
+        accessorKey: "kind",
+        header: "TIPO",
+        cell: ({ row }) =>
+          row.original.kind === "FIXED" ? "FIJO" : "VARIABLE",
+      },
+      {
+        accessorKey: "concept",
+        header: "CONCEPTO",
+        cell: ({ row }) => (
+          <div>
+            <p className="font-medium">{row.original.concept}</p>
+            <p className="text-sm text-[var(--text-muted)]">
+              {row.original.category}
+            </p>
+          </div>
+        ),
+      },
+      { accessorKey: "branch", header: "CENTRO DE COSTO" },
+      {
+        accessorKey: "frequency",
+        header: "FRECUENCIA",
+        cell: ({ row }) => FREQUENCY[row.original.frequency],
+      },
+      {
+        id: "source",
+        accessorFn: (row) =>
+          row.source === "RECURRENCE"
+            ? "ACTIVA"
+            : row.payrollRunId
+              ? "CONGELADO"
+              : row.generated
+                ? "AUTOMÁTICO"
+                : "MANUAL",
+        header: recurrenceView ? "ESTADO" : "ORIGEN",
+        cell: ({ row }) => (
+          <Badge
+            variant={
+              row.original.source === "RECURRENCE" ? "secondary" : "outline"
+            }
+          >
+            {row.original.source === "RECURRENCE" && (
+              <Repeat2 className="mr-1 h-3 w-3" aria-hidden="true" />
+            )}
+            {row.original.source === "RECURRENCE"
+              ? "ACTIVA"
+              : row.original.payrollRunId
+                ? "CONGELADO"
+                : row.original.generated
+                  ? "AUTOMÁTICO"
+                  : "MANUAL"}
+          </Badge>
+        ),
+      },
+      {
+        accessorKey: "amount",
+        header: "MONTO",
+        meta: { align: "right" },
+        cell: ({ row }) => (
+          <div className="number-display text-right">
+            {formatCurrency(row.original.amount)}
+          </div>
+        ),
+      },
+      {
+        id: "actions",
+        header: "ACCIONES",
+        enableSorting: false,
+        enableGlobalFilter: false,
+        cell: ({ row }) => (
+          <div className="flex justify-end gap-1">
+            {row.original.recurrence ? (
+              <>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => editRecurrence(row.original.recurrence!)}
+                  aria-label="Crear nueva vigencia del gasto recurrente"
+                >
+                  <Pencil className="h-4 w-4" />
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => setEndTarget(row.original.recurrence!)}
+                  aria-label="Finalizar gasto recurrente"
+                >
+                  <CircleStop className="h-4 w-4 text-amber-600" />
+                </Button>
+              </>
+            ) : row.original.expense ? (
+              <>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  disabled={
+                    Boolean(row.original.payrollRunId) || row.original.generated
+                  }
+                  onClick={() => edit(row.original.expense!)}
+                  aria-label="Editar gasto"
+                >
+                  <Pencil className="h-4 w-4" />
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  disabled={
+                    Boolean(row.original.payrollRunId) || row.original.generated
+                  }
+                  onClick={() => setDeleteTarget(row.original.expense!)}
+                  aria-label="Borrar gasto"
+                >
+                  <Trash2 className="h-4 w-4 text-red-500" />
+                </Button>
+              </>
+            ) : null}
+          </div>
+        ),
+      },
+    ];
+  }
+  const recurrenceColumns = createExpenseColumns("RECURRENCES");
+  const applicationColumns = createExpenseColumns("APPLICATIONS");
+  const categoryColumns: ColumnDef<PayrollExpenseCategory>[] = [
     {
-      accessorKey: "date",
-      header: "FECHA",
-      cell: ({ row }) => formatDate(row.original.date),
-    },
-    {
-      accessorKey: "kind",
-      header: "TIPO",
-      cell: ({ row }) => (row.original.kind === "FIXED" ? "FIJO" : "VARIABLE"),
-    },
-    {
-      accessorKey: "concept",
-      header: "CONCEPTO",
+      accessorKey: "name",
+      header: "CATEGORÍA",
       cell: ({ row }) => (
-        <div>
-          <p className="font-medium">{row.original.concept}</p>
-          <p className="text-sm text-[var(--text-muted)]">
-            {row.original.category}
-          </p>
-        </div>
-      ),
-    },
-    { accessorKey: "branch", header: "CENTRO DE COSTO" },
-    {
-      accessorKey: "frequency",
-      header: "FRECUENCIA",
-      cell: ({ row }) => FREQUENCY[row.original.frequency],
-    },
-    {
-      accessorKey: "amount",
-      header: "MONTO",
-      meta: { align: "right" },
-      cell: ({ row }) => (
-        <div className="number-display text-right">
-          {formatCurrency(row.original.amount)}
-        </div>
+        <span className="font-medium">{row.original.name}</span>
       ),
     },
     {
@@ -199,18 +519,16 @@ export default function GastosPage() {
           <Button
             size="icon"
             variant="ghost"
-            disabled={Boolean(row.original.payrollRunId)}
-            onClick={() => edit(row.original)}
-            aria-label="Editar gasto"
+            onClick={() => editCategory(row.original)}
+            aria-label={`Editar categoría ${row.original.name}`}
           >
             <Pencil className="h-4 w-4" />
           </Button>
           <Button
             size="icon"
             variant="ghost"
-            disabled={Boolean(row.original.payrollRunId)}
-            onClick={() => setDeleteTarget(row.original)}
-            aria-label="Borrar gasto"
+            onClick={() => setCategoryDeleteTarget(row.original)}
+            aria-label={`Eliminar categoría ${row.original.name}`}
           >
             <Trash2 className="h-4 w-4 text-red-500" />
           </Button>
@@ -226,6 +544,48 @@ export default function GastosPage() {
     data.expenses.filter((item) => item.kind === "VARIABLE"),
     (item) => item.amount,
   );
+  const monthlyRecurring = sumBy(
+    data.recurringExpenses.filter((item) => item.frequency === "MONTHLY"),
+    (item) => item.amount,
+  );
+  const biweeklyRecurring = sumBy(
+    data.recurringExpenses.filter((item) => item.frequency === "BIWEEKLY"),
+    (item) => item.amount,
+  );
+  const recurrenceMetrics: ExpenseMetric[] = [
+    {
+      label: "Series activas",
+      value: String(recurrenceRows.length),
+      tone: "blue",
+    },
+    {
+      label: "Costo mensual programado",
+      value: formatCurrency(monthlyRecurring),
+      tone: "gold",
+    },
+    {
+      label: "Costo por quincena programado",
+      value: formatCurrency(biweeklyRecurring),
+      tone: "rose",
+    },
+  ];
+  const applicationMetrics: ExpenseMetric[] = [
+    {
+      label: "Fijos aplicados",
+      value: formatCurrency(fixed),
+      tone: "gold",
+    },
+    {
+      label: "Variables aplicados",
+      value: formatCurrency(variable),
+      tone: "rose",
+    },
+    {
+      label: "Total aplicado",
+      value: formatCurrency(fixed + variable),
+      tone: "blue",
+    },
+  ];
 
   return (
     <div className="space-y-6">
@@ -233,37 +593,80 @@ export default function GastosPage() {
         <div>
           <h1 className="page-title">Control de gastos</h1>
           <p className="mt-1 text-sm text-[var(--text-muted)]">
-            Ocurrencias que afectan el balance de su quincena.
+            Administra reglas automáticas y consulta su historial cuando lo
+            necesites.
           </p>
         </div>
-        <Button onClick={create}>
-          <PlusCircle className="mr-1.5 h-4 w-4" />
-          Agregar gasto
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            onClick={() => {
+              setCategoryEditingId(null);
+              setCategoryName("");
+              setCategoryOpen(true);
+            }}
+          >
+            <FolderPlus className="mr-1.5 h-4 w-4" />
+            Agregar categoría
+          </Button>
+          <Button onClick={create}>
+            <PlusCircle className="mr-1.5 h-4 w-4" />
+            Agregar gasto
+          </Button>
+        </div>
       </header>
-      <div className="grid gap-4 md:grid-cols-3">
-        <MetricCard
-          label="Gastos fijos"
-          value={formatCurrency(fixed)}
-          tone="gold"
+      <Tabs
+        value={expenseView}
+        onValueChange={(value) => {
+          if (value === "APPLICATIONS" || value === "RECURRENCES")
+            setExpenseView(value);
+        }}
+      >
+        <TabsList aria-label="Vista de gastos">
+          <TabsTrigger value="RECURRENCES" className="sm:min-w-44">
+            <Repeat2 className="h-3.5 w-3.5" aria-hidden="true" />
+            Recurrentes activos
+            <span className="text-xs opacity-70">
+              {recurrenceRows.length}
+              <span className="sr-only"> registros</span>
+            </span>
+          </TabsTrigger>
+          <TabsTrigger value="APPLICATIONS" className="sm:min-w-32">
+            <History className="h-3.5 w-3.5" aria-hidden="true" />
+            Historial
+            <span className="text-xs opacity-70">
+              {applicationRows.length}
+              <span className="sr-only"> registros</span>
+            </span>
+          </TabsTrigger>
+        </TabsList>
+        <ExpenseViewPanel
+          value="RECURRENCES"
+          metrics={recurrenceMetrics}
+          title="GASTOS RECURRENTES"
+          eyebrow="Reglas activas; todavía no representan un segundo cargo."
+          columns={recurrenceColumns}
+          rows={recurrenceRows}
+          searchPlaceholder="Buscar recurrencia, categoría o sucursal"
+          emptyMessage="No hay gastos recurrentes activos. Agrega uno seleccionando frecuencia mensual o quincenal."
         />
-        <MetricCard
-          label="Gastos variables"
-          value={formatCurrency(variable)}
-          tone="rose"
+        <ExpenseViewPanel
+          value="APPLICATIONS"
+          metrics={applicationMetrics}
+          title="HISTORIAL DE APLICACIONES"
+          eyebrow="Cargos de los últimos 12 meses que ya afectaron el balance."
+          columns={applicationColumns}
+          rows={applicationRows}
+          searchPlaceholder="Buscar en el historial"
+          emptyMessage="Todavía no hay gastos aplicados."
         />
-        <MetricCard
-          label="Total registrado"
-          value={formatCurrency(fixed + variable)}
-          tone="blue"
-        />
-      </div>
-      <SectionCard title="GASTOS REGISTRADOS">
+      </Tabs>
+      <SectionCard title="CATEGORÍAS DE GASTO">
         <DataTable
-          columns={columns}
-          data={data.expenses}
-          searchPlaceholder="Buscar concepto, categoría o sucursal"
-          emptyMessage="Sin gastos registrados."
+          columns={categoryColumns}
+          data={data.expenseCategories}
+          searchPlaceholder="Buscar categoría"
+          emptyMessage="Sin categorías registradas."
           pageSize={10}
         />
       </SectionCard>
@@ -271,15 +674,25 @@ export default function GastosPage() {
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>
-              {editingId ? "Editar gasto" : "Agregar gasto"}
+              {editingRecurrenceId
+                ? "Nueva vigencia del gasto recurrente"
+                : editingId
+                  ? "Editar gasto"
+                  : "Agregar gasto"}
             </DialogTitle>
             <DialogDescription>
-              Cada gasto afecta únicamente la quincena que contiene su fecha.
+              {editingRecurrenceId
+                ? "La versión actual conservará su histórico y el cambio comenzará en la fecha indicada."
+                : "Los gastos recurrentes se aplican automáticamente; los de una sola vez afectan únicamente la quincena que contiene su fecha."}
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2 sm:col-span-2">
-              <Label>Fecha</Label>
+              <Label>
+                {editingRecurrenceId
+                  ? "Aplicar nueva versión desde"
+                  : "Fecha de inicio o aplicación"}
+              </Label>
               <DatePicker
                 value={form.date}
                 onChange={(value) =>
@@ -295,7 +708,11 @@ export default function GastosPage() {
                   setForm((current) => ({
                     ...current,
                     kind: value as ExpenseKind,
-                    frequency: value === "FIXED" ? "MONTHLY" : "ONE_TIME",
+                    frequency: editingRecurrenceId
+                      ? current.frequency
+                      : value === "FIXED"
+                        ? "MONTHLY"
+                        : "ONE_TIME",
                   }))
                 }
               >
@@ -309,7 +726,7 @@ export default function GastosPage() {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>Frecuencia informativa</Label>
+              <Label>Frecuencia</Label>
               <Select
                 value={form.frequency}
                 onValueChange={(value) =>
@@ -323,11 +740,15 @@ export default function GastosPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {Object.entries(FREQUENCY).map(([value, label]) => (
-                    <SelectItem key={value} value={value}>
-                      {label}
-                    </SelectItem>
-                  ))}
+                  {Object.entries(FREQUENCY)
+                    .filter(
+                      ([value]) => !editingRecurrenceId || value !== "ONE_TIME",
+                    )
+                    .map(([value, label]) => (
+                      <SelectItem key={value} value={value}>
+                        {label}
+                      </SelectItem>
+                    ))}
                 </SelectContent>
               </Select>
             </div>
@@ -345,15 +766,31 @@ export default function GastosPage() {
             </div>
             <div className="space-y-2">
               <Label>Categoría</Label>
-              <Input
+              <Select
                 value={form.category}
-                onChange={(event) =>
+                onValueChange={(value) =>
                   setForm((current) => ({
                     ...current,
-                    category: uppercaseInput(event.target.value),
+                    category: value,
                   }))
                 }
-              />
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecciona una categoría" />
+                </SelectTrigger>
+                <SelectContent>
+                  {data.expenseCategories.map((category) => (
+                    <SelectItem key={category.id} value={category.name}>
+                      {category.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {!data.expenseCategories.length && (
+                <p className="text-xs text-[var(--text-muted)]">
+                  Agrega una categoría antes de guardar el gasto.
+                </p>
+              )}
             </div>
             <div className="space-y-2">
               <Label>Centro de costo</Label>
@@ -417,6 +854,84 @@ export default function GastosPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <Dialog
+        open={categoryOpen}
+        onOpenChange={(value) => {
+          setCategoryOpen(value);
+          if (!value) {
+            setCategoryEditingId(null);
+            setCategoryName("");
+          }
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {categoryEditingId
+                ? "Editar categoría de gasto"
+                : "Agregar categoría de gasto"}
+            </DialogTitle>
+            <DialogDescription>
+              {categoryEditingId
+                ? "El nuevo nombre se usará en capturas futuras; los gastos aprobados conservarán su histórico."
+                : "La categoría estará disponible en gastos únicos y recurrentes."}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="expense-category-name">Nombre</Label>
+            <Input
+              id="expense-category-name"
+              autoFocus
+              maxLength={120}
+              value={categoryName}
+              onChange={(event) =>
+                setCategoryName(uppercaseInput(event.target.value))
+              }
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  void saveCategory();
+                }
+              }}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCategoryOpen(false)}>
+              Cancelar
+            </Button>
+            <Button
+              disabled={categorySaving}
+              onClick={() => void saveCategory()}
+            >
+              {categorySaving ? "Guardando…" : "Guardar categoría"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <AlertDialog
+        open={Boolean(categoryDeleteTarget)}
+        onOpenChange={(value) => !value && setCategoryDeleteTarget(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Eliminar categoría</AlertDialogTitle>
+            <AlertDialogDescription>
+              {categoryDeleteTarget?.name} dejará de aparecer en el selector.
+              Los gastos históricos conservarán su categoría. Si tiene una
+              recurrencia activa, primero deberás cambiarla o finalizarla.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700"
+              onClick={() => void removeCategory()}
+            >
+              Eliminar categoría
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <AlertDialog
         open={Boolean(deleteTarget)}
         onOpenChange={(value) => !value && setDeleteTarget(null)}
@@ -436,6 +951,26 @@ export default function GastosPage() {
               onClick={() => void remove()}
             >
               Borrar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog
+        open={Boolean(endTarget)}
+        onOpenChange={(value) => !value && setEndTarget(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Finalizar gasto recurrente</AlertDialogTitle>
+            <AlertDialogDescription>
+              {endTarget?.concept} dejará de generar aplicaciones desde hoy. Las
+              ocurrencias históricas y las corridas aprobadas se conservarán.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void endRecurrence()}>
+              Finalizar recurrencia
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

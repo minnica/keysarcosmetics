@@ -1,9 +1,6 @@
 export type PayrollRunStatus = "DRAFT" | "APPROVED" | "PAID" | "CANCELED";
 export type PayrollCalculationMode = "WITH_VAT" | "WITHOUT_VAT";
-export type PayrollOverviewType =
-  | "FIXED_SALARY"
-  | "SPECIALIST"
-  | "COMMISSION";
+export type PayrollOverviewType = "FIXED_SALARY" | "SPECIALIST" | "COMMISSION";
 export type PayrollOverviewView = "FORTNIGHT" | "MONTHLY";
 
 export interface PayrollOverviewLine {
@@ -151,6 +148,30 @@ export interface PayrollExpense {
   frequency: ExpenseFrequency;
   notes: string;
   payrollRunId: string | null;
+  recurrenceId: string | null;
+  recurrenceVersionId: string | null;
+  generated: boolean;
+}
+
+export interface PayrollExpenseCategory {
+  id: string;
+  name: string;
+}
+
+export interface PayrollExpenseRecurrence {
+  id: string;
+  active: boolean;
+  startsAt: string;
+  nextDate: string;
+  kind: ExpenseKind;
+  concept: string;
+  category: string;
+  branchId: string | null;
+  branch: string;
+  amount: number;
+  frequency: Exclude<ExpenseFrequency, "ONE_TIME">;
+  notes: string;
+  effectiveFrom: string;
 }
 
 export interface LoanInstallment {

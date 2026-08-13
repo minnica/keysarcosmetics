@@ -15,52 +15,56 @@ enum Rol {
 }
 
 model Usuario {
-  id                           String                         @id @default(cuid())
-  nombre                       String
-  email                        String                         @unique
-  passwordHash                 String
-  rol                          Rol
-  activo                       Boolean                        @default(true)
-  sucursalId                   String?
-  sucursal                     Sucursal?                      @relation(fields: [sucursalId], references: [id])
-  empleadoId                   String?                        @unique
-  empleado                     Empleado?                      @relation(fields: [empleadoId], references: [id])
-  registrosCitaCreados         RegistroCita[]
-  passwordChangedAt            DateTime?
-  passwordSetupTokenHash       String?
-  passwordSetupTokenExpiresAt  DateTime?
-  creadoEn                     DateTime                       @default(now())
-  actualizadoEn                DateTime                       @updatedAt
-  payrollRunsCreated           PayrollRun[]                   @relation("PayrollRunCreatedBy")
-  payrollRunsApproved          PayrollRun[]                   @relation("PayrollRunApprovedBy")
-  payrollRunsPaid              PayrollRun[]                   @relation("PayrollRunPaidBy")
-  payrollCatalogItemsCreated   PayrollCatalogItem[]           @relation("PayrollCatalogItemCreatedBy")
-  payrollSchemeVersionsCreated CommissionSchemeVersion[]      @relation("CommissionSchemeVersionCreatedBy")
-  payrollAssignmentsCreated    EmployeeCommissionAssignment[] @relation("EmployeeCommissionAssignmentCreatedBy")
-  payrollMovementsCreated      PayrollMovement[]              @relation("PayrollMovementCreatedBy")
-  payrollMovementsReviewed     PayrollMovement[]              @relation("PayrollMovementReviewedBy")
-  payrollExpensesCreated       PayrollExpense[]               @relation("PayrollExpenseCreatedBy")
-  payrollLoansCreated          LoanAdvance[]                  @relation("LoanAdvanceCreatedBy")
-  payrollReceiptsSent          PayrollReceipt[]               @relation("PayrollReceiptSentBy")
-  payrollReceiptsConfirmed     PayrollReceipt[]               @relation("PayrollReceiptConfirmedBy")
-  payrollAuditEvents           PayrollAuditEvent[]
+  id                                      String                            @id @default(cuid())
+  nombre                                  String
+  email                                   String                            @unique
+  passwordHash                            String
+  rol                                     Rol
+  activo                                  Boolean                           @default(true)
+  sucursalId                              String?
+  sucursal                                Sucursal?                         @relation(fields: [sucursalId], references: [id])
+  empleadoId                              String?                           @unique
+  empleado                                Empleado?                         @relation(fields: [empleadoId], references: [id])
+  registrosCitaCreados                    RegistroCita[]
+  passwordChangedAt                       DateTime?
+  passwordSetupTokenHash                  String?
+  passwordSetupTokenExpiresAt             DateTime?
+  creadoEn                                DateTime                          @default(now())
+  actualizadoEn                           DateTime                          @updatedAt
+  payrollRunsCreated                      PayrollRun[]                      @relation("PayrollRunCreatedBy")
+  payrollRunsApproved                     PayrollRun[]                      @relation("PayrollRunApprovedBy")
+  payrollRunsPaid                         PayrollRun[]                      @relation("PayrollRunPaidBy")
+  payrollCatalogItemsCreated              PayrollCatalogItem[]              @relation("PayrollCatalogItemCreatedBy")
+  payrollSchemeVersionsCreated            CommissionSchemeVersion[]         @relation("CommissionSchemeVersionCreatedBy")
+  payrollAssignmentsCreated               EmployeeCommissionAssignment[]    @relation("EmployeeCommissionAssignmentCreatedBy")
+  payrollMovementsCreated                 PayrollMovement[]                 @relation("PayrollMovementCreatedBy")
+  payrollMovementsReviewed                PayrollMovement[]                 @relation("PayrollMovementReviewedBy")
+  payrollExpensesCreated                  PayrollExpense[]                  @relation("PayrollExpenseCreatedBy")
+  payrollExpenseRecurrencesCreated        PayrollExpenseRecurrence[]        @relation("PayrollExpenseRecurrenceCreatedBy")
+  payrollExpenseRecurrenceVersionsCreated PayrollExpenseRecurrenceVersion[] @relation("PayrollExpenseRecurrenceVersionCreatedBy")
+  payrollExpenseCategoriesCreated         PayrollExpenseCategory[]          @relation("PayrollExpenseCategoryCreatedBy")
+  payrollLoansCreated                     LoanAdvance[]                     @relation("LoanAdvanceCreatedBy")
+  payrollReceiptsSent                     PayrollReceipt[]                  @relation("PayrollReceiptSentBy")
+  payrollReceiptsConfirmed                PayrollReceipt[]                  @relation("PayrollReceiptConfirmedBy")
+  payrollAuditEvents                      PayrollAuditEvent[]
 }
 
 model Sucursal {
-  id                         String                      @id @default(cuid())
-  nombre                     String
-  metaMensual                Decimal                     @default(0) @db.Decimal(14, 2)
-  activa                     Boolean                     @default(true)
-  desactivadaEn              DateTime?
-  usuarios                   Usuario[]
-  empleados                  Empleado[]
-  ventas                     Venta[]
-  registrosCita              RegistroCita[]
-  creadoEn                   DateTime                    @default(now())
-  actualizadoEn              DateTime                    @updatedAt
-  payrollMovementAllocations PayrollMovementAllocation[]
-  payrollExpenses            PayrollExpense[]
-  payrollRunBranchLines      PayrollRunBranchLine[]
+  id                               String                            @id @default(cuid())
+  nombre                           String
+  metaMensual                      Decimal                           @default(0) @db.Decimal(14, 2)
+  activa                           Boolean                           @default(true)
+  desactivadaEn                    DateTime?
+  usuarios                         Usuario[]
+  empleados                        Empleado[]
+  ventas                           Venta[]
+  registrosCita                    RegistroCita[]
+  creadoEn                         DateTime                          @default(now())
+  actualizadoEn                    DateTime                          @updatedAt
+  payrollMovementAllocations       PayrollMovementAllocation[]
+  payrollExpenses                  PayrollExpense[]
+  payrollExpenseRecurrenceVersions PayrollExpenseRecurrenceVersion[]
+  payrollRunBranchLines            PayrollRunBranchLine[]
 
   @@index([activa])
 }
@@ -552,28 +556,95 @@ model PayrollAttachment {
 }
 
 model PayrollExpense {
-  id           String                  @id @default(cuid())
-  date         DateTime                @db.Date
-  kind         PayrollExpenseKind
-  concept      String
-  category     String
-  branchId     String?
-  branch       Sucursal?               @relation(fields: [branchId], references: [id], onDelete: Restrict)
-  costCenter   String
-  amount       Decimal                 @db.Decimal(14, 2)
-  frequency    PayrollExpenseFrequency
-  notes        String?
-  payrollRunId String?
-  payrollRun   PayrollRun?             @relation(fields: [payrollRunId], references: [id], onDelete: Restrict)
-  createdById  String
-  createdBy    Usuario                 @relation("PayrollExpenseCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
-  deletedAt    DateTime?
-  createdAt    DateTime                @default(now())
-  updatedAt    DateTime                @updatedAt
+  id                  String                           @id @default(cuid())
+  date                DateTime                         @db.Date
+  kind                PayrollExpenseKind
+  concept             String
+  category            String
+  categoryId          String?
+  categoryRecord      PayrollExpenseCategory?          @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  branchId            String?
+  branch              Sucursal?                        @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  costCenter          String
+  amount              Decimal                          @db.Decimal(14, 2)
+  frequency           PayrollExpenseFrequency
+  notes               String?
+  payrollRunId        String?
+  payrollRun          PayrollRun?                      @relation(fields: [payrollRunId], references: [id], onDelete: Restrict)
+  recurrenceId        String?
+  recurrence          PayrollExpenseRecurrence?        @relation(fields: [recurrenceId], references: [id], onDelete: Restrict)
+  recurrenceVersionId String?
+  recurrenceVersion   PayrollExpenseRecurrenceVersion? @relation(fields: [recurrenceVersionId], references: [id], onDelete: Restrict)
+  generated           Boolean                          @default(false)
+  createdById         String
+  createdBy           Usuario                          @relation("PayrollExpenseCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  deletedAt           DateTime?
+  createdAt           DateTime                         @default(now())
+  updatedAt           DateTime                         @updatedAt
 
+  @@unique([recurrenceVersionId, date])
   @@index([date, deletedAt])
   @@index([payrollRunId])
   @@index([branchId])
+  @@index([categoryId])
+  @@index([recurrenceId, date])
+}
+
+model PayrollExpenseCategory {
+  id                 String                            @id @default(cuid())
+  name               String                            @unique
+  active             Boolean                           @default(true)
+  createdById        String
+  createdBy          Usuario                           @relation("PayrollExpenseCategoryCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  expenses           PayrollExpense[]
+  recurrenceVersions PayrollExpenseRecurrenceVersion[]
+  createdAt          DateTime                          @default(now())
+  updatedAt          DateTime                          @updatedAt
+
+  @@index([active, name])
+}
+
+model PayrollExpenseRecurrence {
+  id          String                            @id @default(cuid())
+  active      Boolean                           @default(true)
+  endedAt     DateTime?                         @db.Date
+  createdById String
+  createdBy   Usuario                           @relation("PayrollExpenseRecurrenceCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  versions    PayrollExpenseRecurrenceVersion[]
+  expenses    PayrollExpense[]
+  createdAt   DateTime                          @default(now())
+  updatedAt   DateTime                          @updatedAt
+
+  @@index([active])
+}
+
+model PayrollExpenseRecurrenceVersion {
+  id             String                   @id @default(cuid())
+  recurrenceId   String
+  recurrence     PayrollExpenseRecurrence @relation(fields: [recurrenceId], references: [id], onDelete: Restrict)
+  anchorDate     DateTime                 @db.Date
+  effectiveFrom  DateTime                 @db.Date
+  effectiveTo    DateTime?                @db.Date
+  kind           PayrollExpenseKind
+  concept        String
+  category       String
+  categoryId     String?
+  categoryRecord PayrollExpenseCategory?  @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  branchId       String?
+  branch         Sucursal?                @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  costCenter     String
+  amount         Decimal                  @db.Decimal(14, 2)
+  frequency      PayrollExpenseFrequency
+  notes          String?
+  createdById    String
+  createdBy      Usuario                  @relation("PayrollExpenseRecurrenceVersionCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  expenses       PayrollExpense[]
+  createdAt      DateTime                 @default(now())
+
+  @@unique([recurrenceId, effectiveFrom])
+  @@index([effectiveFrom, effectiveTo])
+  @@index([branchId])
+  @@index([categoryId])
 }
 
 model LoanAdvance {

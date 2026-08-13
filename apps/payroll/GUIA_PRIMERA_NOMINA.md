@@ -199,6 +199,8 @@ Ir a:
 Payroll → Gastos → Agregar gasto
 ```
 
+Antes de capturar el primer gasto, usar **Agregar categoría** en el encabezado. Las categorías guardadas aparecen en el selector del formulario y se reutilizan tanto para gastos únicos como recurrentes. La tabla **Categorías de gasto** permite renombrarlas o eliminarlas; eliminar oculta la categoría sin alterar gastos históricos y se bloquea mientras exista una recurrencia activa que todavía la use. Las categorías ya presentes en datos anteriores se incorporan automáticamente al catálogo al aplicar la migración.
+
 Capturar:
 
 - Fecha.
@@ -210,7 +212,9 @@ Capturar:
 - Monto.
 - Notas.
 
-Cada gasto es una ocurrencia individual. Seleccionar frecuencia mensual o quincenal no crea automáticamente gastos futuros.
+La frecuencia `Una vez` crea una sola ocurrencia. `Mensual` y `Quincenal` crean una serie recurrente y el sistema genera automáticamente la ocurrencia correspondiente al consultar gastos o calcular una corrida. La fecha inicial funciona como ancla del calendario.
+
+Para cambiar un monto recurrente, editar la serie desde **Gastos recurrentes activos**. La edición propone la siguiente aplicación y crea una nueva vigencia; no modifica las ocurrencias anteriores ni las corridas aprobadas. Por ejemplo, una renta de agosto y otra cantidad desde septiembre quedan conservadas como versiones distintas. Los gastos capturados antes de habilitar recurrencias no se convierten automáticamente, aunque su frecuencia histórica diga mensual o quincenal.
 
 Un gasto afecta únicamente la corrida cuya quincena contiene su fecha. Se descuenta del balance general, no del pago individual de un empleado.
 
@@ -342,16 +346,16 @@ El resumen suma los resultados de cada quincena. No vuelve a calcular la comisi�
 
 ## 10. Resolver advertencias y bloqueos
 
-| Mensaje o problema               | Acción recomendada                                                               |
-| -------------------------------- | -------------------------------------------------------------------------------- |
-| Sueldo no capturado              | Completar sueldo en Envelope o aceptar conscientemente que se calculará en `$0`. |
-| Empleado con ventas sin esquema  | Crear/asignar esquema con vigencia desde el inicio de la quincena y recalcular.  |
-| Ventas fuera de todos los rangos | Corregir rangos para que sean continuos y cubran cualquier importe.              |
-| Pago total negativo              | Revisar multas, ajustes y préstamos; no se permite aprobar.                      |
-| Viático/insumo sin evidencia     | Dejar pendiente o configurar Storage y adjuntar comprobante.                     |
-| Banco faltante                   | Completar banco en Envelope antes de pagar.                                      |
-| Cuenta faltante                  | Completar cuenta en Envelope antes de pagar.                                     |
-| Teléfono faltante                | Completar teléfono si se requiere WhatsApp; no bloquea el pago.                  |
+| Mensaje o problema               | Acción recomendada                                                                                                                       |
+| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Sueldo no capturado              | Completar sueldo en Envelope o aceptar conscientemente que se calculará en `$0`.                                                         |
+| Empleado con ventas sin esquema  | Crear/asignar esquema con vigencia desde el inicio de la quincena y recalcular.                                                          |
+| Ventas fuera de todos los rangos | Corregir rangos para que sean continuos y cubran cualquier importe.                                                                      |
+| Pago total negativo              | Revisar multas, ajustes y préstamos; no se permite aprobar.                                                                              |
+| Viático/insumo sin evidencia     | Dejar pendiente o configurar Storage y adjuntar comprobante.                                                                             |
+| Banco faltante                   | Completar banco en Envelope antes de pagar.                                                                                              |
+| Cuenta faltante                  | Completar cuenta en Envelope antes de pagar.                                                                                             |
+| Teléfono faltante                | Completar teléfono si se requiere WhatsApp; no bloquea el pago.                                                                          |
 | Sucursal laboral faltante        | Abrir `Ver detalle por empleado` en Resumen y asignarla en Envelope. Es un recordatorio informativo; no altera el cálculo ni el reporte. |
 
 ## 11. Aprobar la corrida
