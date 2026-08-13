@@ -194,6 +194,58 @@ export function DashboardLoadingSkeleton() {
   )
 }
 
+export function RankingLoadingSkeleton({ label = 'Cargando ranking' }: { label?: string }) {
+  return (
+    <div className="space-y-6" role="status" aria-live="polite" aria-label={label}>
+      <span className="sr-only">{label}</span>
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.125fr)_minmax(0,1fr)_minmax(0,0.875fr)] lg:items-stretch">
+        {[0, 1, 2].map((index) => (
+          <Panel
+            key={index}
+            className={
+              index === 0
+                ? 'lg:min-h-72'
+                : index === 1
+                  ? 'lg:mt-8 lg:min-h-64'
+                  : 'lg:mt-16 lg:min-h-56'
+            }
+          >
+            <div className="space-y-5 p-5">
+              <div className="flex items-center justify-between">
+                <ContentSkeleton className="h-10 w-10 rounded-lg" />
+                <ContentSkeleton className="h-5 w-20 rounded-full" />
+              </div>
+              <div className="space-y-3">
+                <ContentSkeleton className="h-5 w-3/4" />
+                <ContentSkeleton className="h-8 w-2/3" />
+              </div>
+              <ContentSkeleton className="h-2 w-full rounded-full" />
+              <div className="flex gap-4">
+                <ContentSkeleton className="h-3 w-24" />
+                <ContentSkeleton className="h-3 w-20" />
+              </div>
+            </div>
+          </Panel>
+        ))}
+      </div>
+      <Panel>
+        <div className="divide-y divide-[var(--border-color)]">
+          {[0, 1, 2, 3, 4].map((index) => (
+            <div key={index} className="flex items-center gap-4 p-4">
+              <ContentSkeleton className="h-9 w-9 shrink-0 rounded-lg" />
+              <div className="min-w-0 flex-1 space-y-2">
+                <ContentSkeleton className="h-4 w-2/5" />
+                <ContentSkeleton className="h-2 w-full rounded-full" />
+              </div>
+              <ContentSkeleton className="h-5 w-28 shrink-0" />
+            </div>
+          ))}
+        </div>
+      </Panel>
+    </div>
+  )
+}
+
 export function AccessLoadingSkeleton() {
   return (
     <div className="grid gap-6 xl:grid-cols-[1.2fr_0.95fr]" role="status" aria-live="polite" aria-label="Cargando accesos">

@@ -19,6 +19,8 @@ export const SCREEN_KEYS = [
   "reportes/metodo-pago-por-dia",
   "reportes/ventas-por-vendedor",
   "reportes/ventas-por-vendedor-dia",
+  "reportes/ranking-vendedores",
+  "reportes/ranking-sucursales",
   "reportes/total-general",
   "reportes/citas",
   "accesos",

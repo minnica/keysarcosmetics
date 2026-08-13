@@ -37,6 +37,8 @@ const access = {
   metodoPagoPorDia: requireScreenAccess("reportes/metodo-pago-por-dia"),
   ventasPorVendedor: requireScreenAccess("reportes/ventas-por-vendedor"),
   ventasPorVendedorDia: requireScreenAccess("reportes/ventas-por-vendedor-dia"),
+  rankingVendedores: requireScreenAccess("reportes/ranking-vendedores"),
+  rankingSucursales: requireScreenAccess("reportes/ranking-sucursales"),
   totalGeneral: requireScreenAccess("reportes/total-general"),
   reporteCitas: requireScreenAccess("reportes/citas"),
 };
@@ -226,6 +228,30 @@ function resolveAppointmentDateRange(
   const end = endOfDay(parsedEnd);
   if (start > end || daysBetween(start, end) > MAX_VENTAS_RANGE_DAYS)
     return null;
+  return { start: startOfDay(start), end };
+}
+
+function resolveSalesReportDateRange(
+  fechaInicio?: string,
+  fechaFin?: string,
+): { start: Date; end: Date } | null {
+  if (!fechaInicio && !fechaFin) {
+    const today = new Date();
+    return {
+      start: new Date(today.getFullYear(), today.getMonth(), 1),
+      end: endOfDay(today),
+    };
+  }
+  if (!fechaInicio || !fechaFin) return null;
+
+  const start = parseQueryDate(fechaInicio);
+  const parsedEnd = parseQueryDate(fechaFin);
+  if (!start || !parsedEnd) return null;
+  const end = endOfDay(parsedEnd);
+  if (start > end || daysBetween(start, end) > MAX_VENTAS_RANGE_DAYS) {
+    return null;
+  }
+
   return { start: startOfDay(start), end };
 }
 
@@ -2453,6 +2479,125 @@ router.get(
           data: null,
           message: "Error al generar reporte",
         });
+    }
+  },
+);
+
+router.get(
+  "/reportes/ranking-vendedores",
+  access.rankingVendedores,
+  async (req, res) => {
+    try {
+      const { fechaInicio, fechaFin } = req.query as {
+        fechaInicio?: string;
+        fechaFin?: string;
+      };
+      const range = resolveSalesReportDateRange(fechaInicio, fechaFin);
+      if (!range) {
+        res.status(400).json({
+          success: false,
+          data: null,
+          message: "Rango de fechas inválido o mayor a 366 días",
+        });
+        return;
+      }
+
+      const includeKeysarHome = await canViewKeysarHomeData(req);
+      const ownEmployeeId = await selfDataEmployeeId(req);
+      const keysarHomeCondition = includeKeysarHome
+        ? Prisma.sql`TRUE`
+        : Prisma.sql`e."nombreCompleto" <> ${"KEYSAR HOME"}`;
+      const data = await prisma.$queryRaw<
+        Array<{
+          id: string;
+          nombre: string;
+          totalVendido: number;
+          operaciones: number;
+          relacionados: number;
+        }>
+      >`
+        SELECT
+          v."vendedorId" AS "id",
+          e."nombreCompleto" AS "nombre",
+          SUM(vd."cantidad")::float AS "totalVendido",
+          COUNT(DISTINCT COALESCE(v."sesionId", v."id"))::int AS "operaciones",
+          COUNT(DISTINCT v."sucursalId")::int AS "relacionados"
+        FROM "VentaDetalle" vd
+        JOIN "Venta" v ON v."id" = vd."ventaId"
+        JOIN "Empleado" e ON e."id" = v."vendedorId"
+        WHERE v."fecha" >= ${range.start}
+          AND v."fecha" <= ${range.end}
+          AND ${keysarHomeCondition}
+          AND ${selfDataCondition(ownEmployeeId)}
+        GROUP BY v."vendedorId", e."nombreCompleto"
+        ORDER BY "totalVendido" DESC, e."nombreCompleto" ASC
+      `;
+
+      res.json({ success: true, data, message: "OK" });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({
+        success: false,
+        data: null,
+        message: "Error al generar ranking de vendedores",
+      });
+    }
+  },
+);
+
+router.get(
+  "/reportes/ranking-sucursales",
+  access.rankingSucursales,
+  async (req, res) => {
+    try {
+      const { fechaInicio, fechaFin } = req.query as {
+        fechaInicio?: string;
+        fechaFin?: string;
+      };
+      const range = resolveSalesReportDateRange(fechaInicio, fechaFin);
+      if (!range) {
+        res.status(400).json({
+          success: false,
+          data: null,
+          message: "Rango de fechas inválido o mayor a 366 días",
+        });
+        return;
+      }
+
+      const ownEmployeeId = await selfDataEmployeeId(req);
+      const data = await prisma.$queryRaw<
+        Array<{
+          id: string;
+          nombre: string;
+          totalVendido: number;
+          operaciones: number;
+          relacionados: number;
+        }>
+      >`
+        SELECT
+          v."sucursalId" AS "id",
+          s."nombre" AS "nombre",
+          SUM(vd."cantidad")::float AS "totalVendido",
+          COUNT(DISTINCT COALESCE(v."sesionId", v."id"))::int AS "operaciones",
+          COUNT(DISTINCT v."vendedorId")::int AS "relacionados"
+        FROM "VentaDetalle" vd
+        JOIN "Venta" v ON v."id" = vd."ventaId"
+        JOIN "Sucursal" s ON s."id" = v."sucursalId"
+        WHERE v."fecha" >= ${range.start}
+          AND v."fecha" <= ${range.end}
+          AND ${selfDataCondition(ownEmployeeId)}
+        GROUP BY v."sucursalId", s."nombre"
+        ORDER BY "totalVendido" DESC, s."nombre" ASC
+      `;
+
+      res.json({ success: true, data, message: "OK" });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({
+        success: false,
+        data: null,
+        message: "Error al generar ranking de sucursales",
+      });
     }
   },
 );

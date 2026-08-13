@@ -17,6 +17,8 @@ export type SidebarLabelKey =
   | 'paymentMethodByDay'
   | 'salesBySeller'
   | 'salesBySellerDay'
+  | 'sellerRanking'
+  | 'branchRanking'
   | 'totalGeneral'
   | 'appointmentReport'
   | 'accessControl'
@@ -42,6 +44,8 @@ export const SCREEN_CONFIG: ScreenConfig[] = [
   { key: 'reportes/metodo-pago-por-dia', path: '/reportes/metodo-pago-por-dia', section: 'reports', labelKey: 'paymentMethodByDay' },
   { key: 'reportes/ventas-por-vendedor', path: '/reportes/ventas-por-vendedor', section: 'reports', labelKey: 'salesBySeller' },
   { key: 'reportes/ventas-por-vendedor-dia', path: '/reportes/ventas-por-vendedor-dia', section: 'reports', labelKey: 'salesBySellerDay' },
+  { key: 'reportes/ranking-vendedores', path: '/reportes/ranking-vendedores', section: 'reports', labelKey: 'sellerRanking' },
+  { key: 'reportes/ranking-sucursales', path: '/reportes/ranking-sucursales', section: 'reports', labelKey: 'branchRanking' },
   { key: 'reportes/total-general', path: '/reportes/total-general', section: 'reports', labelKey: 'totalGeneral' },
   { key: 'reportes/citas', path: '/reportes/citas', section: 'reports', labelKey: 'appointmentReport' },
   { key: 'accesos', path: '/accesos', section: 'admin', labelKey: 'accessControl' },

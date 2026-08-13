@@ -8,7 +8,7 @@ import {
   LayoutDashboard, BarChart2, CalendarDays, UserCheck,
   CalendarRange, TrendingUp, Sun, Moon, X, LogOut,
   Landmark, Briefcase,
-  CalendarCheck2, ClipboardList,
+  Award, CalendarCheck2, ClipboardList,
 } from 'lucide-react'
 import {
   Sidebar,
@@ -52,6 +52,8 @@ const ICONS: Record<string, React.ElementType> = {
   'reportes/metodo-pago-por-dia': CalendarDays,
   'reportes/ventas-por-vendedor': UserCheck,
   'reportes/ventas-por-vendedor-dia': CalendarRange,
+  'reportes/ranking-vendedores': Award,
+  'reportes/ranking-sucursales': Building2,
   'reportes/total-general': TrendingUp,
   'reportes/citas': ClipboardList,
   accesos: LayoutDashboard,
