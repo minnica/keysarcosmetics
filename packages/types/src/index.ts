@@ -22,6 +22,7 @@ export const SCREEN_KEYS = [
   "reportes/ranking-vendedores",
   "reportes/ranking-sucursales",
   "reportes/total-general",
+  "reportes/metas-sucursal",
   "reportes/citas",
   "accesos",
 ] as const;

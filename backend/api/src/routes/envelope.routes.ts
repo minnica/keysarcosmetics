@@ -9,6 +9,11 @@ import {
   resolveAccessForRequest,
 } from "../lib/access";
 import { prisma } from "../prisma/client";
+import {
+  buildBranchGoalsReport,
+  mexicoCityDateISO,
+  type BranchGoalSaleRow,
+} from "../services/branch-goals-report";
 
 const router: ExpressRouter = Router();
 const DEFAULT_VENTAS_LOOKBACK_DAYS = 31;
@@ -55,6 +60,7 @@ const access = {
   rankingVendedores: requireScreenAccess("reportes/ranking-vendedores"),
   rankingSucursales: requireScreenAccess("reportes/ranking-sucursales"),
   totalGeneral: requireScreenAccess("reportes/total-general"),
+  metasSucursal: requireScreenAccess("reportes/metas-sucursal"),
   reporteCitas: requireScreenAccess("reportes/citas"),
 };
 
@@ -2771,6 +2777,64 @@ router.get("/reportes/total-general", access.totalGeneral, async (req, res) => {
       });
   }
 });
+
+router.get(
+  "/reportes/metas-sucursal",
+  access.metasSucursal,
+  async (req, res) => {
+    try {
+      const referenceDate = mexicoCityDateISO();
+      const monthStart = `${referenceDate.slice(0, 7)}-01`;
+      const ownEmployeeId = await selfDataEmployeeId(req);
+      const [catalogBranches, salesRows] = await Promise.all([
+        prisma.sucursal.findMany({
+          where: { activa: true },
+          orderBy: { nombre: "asc" },
+          select: { id: true, nombre: true, metaMensual: true },
+        }),
+        prisma.$queryRaw<BranchGoalSaleRow[]>`
+          SELECT
+            TO_CHAR(v."fecha", 'YYYY-MM-DD') AS "fecha",
+            v."sucursalId",
+            s."nombre" AS "sucursalNombre",
+            s."metaMensual"::float AS "metaMensual",
+            SUM(vd."cantidad")::float AS "total"
+          FROM "VentaDetalle" vd
+          JOIN "Venta" v ON v."id" = vd."ventaId"
+          JOIN "Sucursal" s ON s."id" = v."sucursalId"
+          WHERE v."fecha" >= ${new Date(`${monthStart}T00:00:00.000Z`)}
+            AND v."fecha" <= ${new Date(`${referenceDate}T23:59:59.999Z`)}
+            AND ${selfDataCondition(ownEmployeeId)}
+          GROUP BY
+            TO_CHAR(v."fecha", 'YYYY-MM-DD'),
+            v."sucursalId",
+            s."nombre",
+            s."metaMensual"
+          ORDER BY "fecha" ASC, s."nombre" ASC
+        `,
+      ]);
+
+      const data = buildBranchGoalsReport(
+        referenceDate,
+        catalogBranches.map((branch) => ({
+          id: branch.id,
+          nombre: branch.nombre,
+          metaMensual: Number(branch.metaMensual),
+        })),
+        salesRows,
+      );
+
+      res.json({ success: true, data, message: "OK" });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({
+        success: false,
+        data: null,
+        message: "Error al generar reporte de metas por sucursal",
+      });
+    }
+  },
+);
 
 router.get("/reportes/dashboard", access.dashboard, async (req, res) => {
   try {

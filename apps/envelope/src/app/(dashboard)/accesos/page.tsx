@@ -98,10 +98,11 @@ const SCREEN_ACTIONS: Partial<
 
 const SECTION_LABELS: Record<
   AccessSection,
-  'forms' | 'reports' | 'accessControl'
+  'forms' | 'reports' | 'rankings' | 'accessControl'
 > = {
   forms: 'forms',
   reports: 'reports',
+  rankings: 'rankings',
   admin: 'accessControl',
 }
 

@@ -1,6 +1,6 @@
 import type { ScreenKey } from '@cosmetics/types'
 
-export type AccessSection = 'forms' | 'reports' | 'admin'
+export type AccessSection = 'forms' | 'reports' | 'rankings' | 'admin'
 export type SidebarLabelKey =
   | 'forms'
   | 'reports'
@@ -20,6 +20,7 @@ export type SidebarLabelKey =
   | 'sellerRanking'
   | 'branchRanking'
   | 'totalGeneral'
+  | 'branchGoals'
   | 'appointmentReport'
   | 'accessControl'
 
@@ -44,14 +45,20 @@ export const SCREEN_CONFIG: ScreenConfig[] = [
   { key: 'reportes/metodo-pago-por-dia', path: '/reportes/metodo-pago-por-dia', section: 'reports', labelKey: 'paymentMethodByDay' },
   { key: 'reportes/ventas-por-vendedor', path: '/reportes/ventas-por-vendedor', section: 'reports', labelKey: 'salesBySeller' },
   { key: 'reportes/ventas-por-vendedor-dia', path: '/reportes/ventas-por-vendedor-dia', section: 'reports', labelKey: 'salesBySellerDay' },
-  { key: 'reportes/ranking-vendedores', path: '/reportes/ranking-vendedores', section: 'reports', labelKey: 'sellerRanking' },
-  { key: 'reportes/ranking-sucursales', path: '/reportes/ranking-sucursales', section: 'reports', labelKey: 'branchRanking' },
+  { key: 'reportes/ranking-vendedores', path: '/reportes/ranking-vendedores', section: 'rankings', labelKey: 'sellerRanking' },
+  { key: 'reportes/ranking-sucursales', path: '/reportes/ranking-sucursales', section: 'rankings', labelKey: 'branchRanking' },
   { key: 'reportes/total-general', path: '/reportes/total-general', section: 'reports', labelKey: 'totalGeneral' },
+  { key: 'reportes/metas-sucursal', path: '/reportes/metas-sucursal', section: 'reports', labelKey: 'branchGoals' },
   { key: 'reportes/citas', path: '/reportes/citas', section: 'reports', labelKey: 'appointmentReport' },
   { key: 'accesos', path: '/accesos', section: 'admin', labelKey: 'accessControl' },
 ]
 
-export const SECTION_ORDER: AccessSection[] = ['forms', 'reports', 'admin']
+export const SECTION_ORDER: AccessSection[] = [
+  'forms',
+  'reports',
+  'rankings',
+  'admin',
+]
 
 export function getScreenConfigByPath(pathname: string): ScreenConfig | null {
   const normalized = pathname === '' ? '/' : pathname

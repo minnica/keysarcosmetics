@@ -9,7 +9,8 @@ import {
   CalendarRange, TrendingUp, Sun, Moon, X, LogOut,
   Landmark, Briefcase,
   Award, CalendarCheck2, ClipboardList,
-  ChevronDown,
+  Target,
+  ChevronDown, Languages,
 } from 'lucide-react'
 import {
   Sidebar,
@@ -29,15 +30,14 @@ import {
   Skeleton,
   useSidebar,
 } from '@cosmetics/ui'
-import { useI18n, type Locale } from '@/lib/i18n'
-import { SCREEN_CONFIG, type AccessSection } from '@/lib/access'
+import { useI18n } from '@/lib/i18n'
+import {
+  getScreenConfigByPath,
+  SCREEN_CONFIG,
+  SECTION_ORDER,
+  type AccessSection,
+} from '@/lib/access'
 import { useSession } from '@/lib/session'
-
-type PreferenceOption<T extends string> = {
-  value: T
-  label: string
-  icon?: React.ElementType
-}
 
 const ICONS: Record<string, React.ElementType> = {
   dashboard: LayoutDashboard,
@@ -56,16 +56,21 @@ const ICONS: Record<string, React.ElementType> = {
   'reportes/ranking-vendedores': Award,
   'reportes/ranking-sucursales': Building2,
   'reportes/total-general': TrendingUp,
+  'reportes/metas-sucursal': Target,
   'reportes/citas': ClipboardList,
   accesos: LayoutDashboard,
 }
 
 type NavItem = (typeof SCREEN_CONFIG)[number]
-type CollapsibleSection = Extract<AccessSection, 'forms' | 'reports'>
+type CollapsibleSection = Exclude<AccessSection, 'admin'>
 
-const SECTION_LABELS: Record<AccessSection, 'forms' | 'reports' | 'admin'> = {
+const SECTION_LABELS: Record<
+  AccessSection,
+  'forms' | 'reports' | 'rankings' | 'admin'
+> = {
   forms: 'forms',
   reports: 'reports',
+  rankings: 'rankings',
   admin: 'admin',
 }
 
@@ -78,47 +83,62 @@ const SECTION_LABEL_STYLE: React.CSSProperties = {
   fontWeight: 600,
 }
 
-function PreferenceSegmentedControl<T extends string>({
+function getActiveCollapsibleSection(
+  pathname: string,
+): CollapsibleSection | null {
+  const section = getScreenConfigByPath(pathname)?.section
+  return section && section !== 'admin' ? section : null
+}
+
+function PreferenceToggle({
   label,
-  value,
-  options,
-  onChange,
+  valueLabel,
+  checked,
+  icon: Icon,
+  onCheckedChange,
 }: {
   label: string
-  value: T
-  options: PreferenceOption<T>[]
-  onChange: (value: T) => void
+  valueLabel: string
+  checked: boolean
+  icon: React.ElementType
+  onCheckedChange: (checked: boolean) => void
 }) {
   return (
-    <div className="space-y-1 px-2 py-0.5">
-      <div className="text-[9px] uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={`${label}: ${valueLabel}`}
+      className="flex w-full cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 text-left transition-colors duration-200 hover:bg-[var(--accent-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none"
+      onClick={() => onCheckedChange(!checked)}
+    >
+      <Icon
+        className="h-4 w-4 shrink-0 text-[var(--text-muted)]"
+        aria-hidden="true"
+      />
+      <span className="min-w-0 flex-1 text-xs font-medium text-[var(--text-primary)]">
         {label}
-      </div>
-      <div className="flex rounded-md border p-0.5" style={{ borderColor: 'var(--border-color)' }} role="radiogroup">
-        {options.map((option) => {
-          const Icon = option.icon
-          const selected = value === option.value
-          return (
-            <button
-              key={option.value}
-              type="button"
-              role="radio"
-              aria-checked={selected}
-              className={[
-                'flex h-6 flex-1 cursor-pointer items-center justify-center gap-1 rounded-[6px] text-[10px] font-semibold uppercase tracking-wider transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1',
-                selected
-                  ? 'bg-[var(--accent)] text-white shadow-sm'
-                  : 'text-[var(--text-muted)] hover:bg-[var(--accent-hover)] hover:text-[var(--text-primary)]',
-              ].join(' ')}
-              onClick={() => onChange(option.value)}
-            >
-              {Icon ? <Icon className="h-2.5 w-2.5" /> : null}
-              <span>{option.label}</span>
-            </button>
-          )
-        })}
-      </div>
-    </div>
+      </span>
+      <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">
+        {valueLabel}
+      </span>
+      <span
+        aria-hidden="true"
+        className={`relative h-5 w-9 shrink-0 rounded-full border transition-colors duration-200 motion-reduce:transition-none ${
+          checked
+            ? 'border-[var(--accent)] bg-[var(--accent)]'
+            : 'border-[var(--border-color)] bg-[var(--input-disabled-bg)]'
+        }`}
+      >
+        <span
+          className={`absolute left-0 top-0.5 h-3.5 w-3.5 rounded-full border transition-[transform,background-color,border-color,box-shadow] duration-200 motion-reduce:transition-none ${
+            checked
+              ? 'translate-x-[17px] border-white/80 bg-white shadow-sm'
+              : 'translate-x-0.5 border-[var(--color-gold)] bg-[var(--bg-card)] shadow-[0_1px_3px_rgba(79,74,68,0.32)]'
+          }`}
+        />
+      </span>
+    </button>
   )
 }
 
@@ -139,14 +159,12 @@ function ThemeToggle() {
   }
 
   return (
-    <PreferenceSegmentedControl
+    <PreferenceToggle
       label={t.sidebar.theme}
-      value={dark ? 'dark' : 'light'}
-      onChange={setTheme}
-      options={[
-        { value: 'light', label: t.sidebar.light, icon: Sun },
-        { value: 'dark', label: t.sidebar.dark, icon: Moon },
-      ]}
+      valueLabel={dark ? t.sidebar.dark : t.sidebar.light}
+      checked={dark}
+      icon={dark ? Moon : Sun}
+      onCheckedChange={(checked) => setTheme(checked ? 'dark' : 'light')}
     />
   )
 }
@@ -155,14 +173,12 @@ function LanguageToggle() {
   const { locale, setLocale, t } = useI18n()
 
   return (
-    <PreferenceSegmentedControl<Locale>
+    <PreferenceToggle
       label={t.sidebar.language}
-      value={locale}
-      onChange={setLocale}
-      options={[
-        { value: 'es', label: t.sidebar.spanish },
-        { value: 'en', label: t.sidebar.english },
-      ]}
+      valueLabel={locale === 'es' ? t.sidebar.spanish : t.sidebar.english}
+      checked={locale === 'en'}
+      icon={Languages}
+      onCheckedChange={(checked) => setLocale(checked ? 'en' : 'es')}
     />
   )
 }
@@ -174,7 +190,13 @@ export function AppSidebar() {
   const { isMobile, setOpenMobile, state: sidebarState } = useSidebar()
   const { t } = useI18n()
   const { canAccess, isAccessManager, logout, status } = useSession()
-  const [expandedSection, setExpandedSection] = useState<CollapsibleSection | null>(null)
+  const activeCollapsibleSection = getActiveCollapsibleSection(pathname)
+  const [expandedSection, setExpandedSection] =
+    useState<CollapsibleSection | null>(activeCollapsibleSection)
+
+  useEffect(() => {
+    setExpandedSection(activeCollapsibleSection)
+  }, [activeCollapsibleSection])
 
   function handleNavClick() {
     setOpenMobile(false)
@@ -243,7 +265,7 @@ export function AppSidebar() {
       <SidebarContent className="py-2">
         {status === 'loading' ? (
           <SidebarLoadingNavigation />
-        ) : (['forms', 'reports', 'admin'] as const).map((section) => {
+        ) : SECTION_ORDER.map((section) => {
           const items = SCREEN_CONFIG.filter((item) => {
             if (item.section !== section) return false
             if (item.key === 'accesos') return isAccessManager
@@ -312,7 +334,10 @@ export function AppSidebar() {
                               : undefined
                           }
                         >
-                          <Link href={item.path}>
+                          <Link
+                            href={item.path}
+                            aria-current={isActive ? 'page' : undefined}
+                          >
                             <Icon />
                             <span>{label}</span>
                           </Link>
@@ -333,9 +358,7 @@ export function AppSidebar() {
           <SidebarLoadingFooter />
         ) : (
           <>
-            <div
-              className="space-y-0.5 pb-1.5 group-data-[collapsible=icon]:hidden"
-            >
+            <div className="space-y-0.5 pb-1.5 group-data-[collapsible=icon]:hidden">
               <ThemeToggle />
               <LanguageToggle />
             </div>
@@ -352,12 +375,6 @@ export function AppSidebar() {
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>
-            <p
-              className="text-center text-[10px] uppercase tracking-wider pb-1 group-data-[collapsible=icon]:hidden"
-              style={{ color: 'var(--text-muted)' }}
-            >
-              Envelope v1.0
-            </p>
           </>
         )}
       </SidebarFooter>
