@@ -65,6 +65,7 @@ import {
   DialogTitle,
   Input,
   Label,
+  MultiCombobox,
   Popover,
   PopoverContent,
   PopoverTrigger,
@@ -7538,54 +7539,46 @@ function WhatsAppSection() {
 function GiftCardDialog({
   open,
   giftCard,
+  initialType = "service",
   services,
   onOpenChange,
   onSave,
 }: {
   open: boolean;
   giftCard: GiftCardRecord | null;
+  initialType?: GiftCardRecord["type"];
   services: ServiceRecord[];
   onOpenChange: (open: boolean) => void;
   onSave: (giftCard: GiftCardRecord) => void;
 }) {
+  const createDraft = (type: GiftCardRecord["type"]): GiftCardRecord => ({
+    id: makeId("gift"),
+    name: "",
+    type,
+    serviceIds: [],
+    amount: 0,
+    salePrice: 0,
+    expiration: 90,
+    description: "",
+    design: "arena",
+    status: "draft",
+  });
   const [step, setStep] = useState(1);
   const [draft, setDraft] = useState<GiftCardRecord>(
     giftCard
       ? { ...giftCard, serviceIds: [...giftCard.serviceIds] }
-      : {
-          id: makeId("gift"),
-          name: "",
-          type: "service",
-          serviceIds: [],
-          amount: 0,
-          salePrice: 0,
-          expiration: 90,
-          description: "",
-          design: "arena",
-          status: "draft",
-        },
+      : createDraft(initialType),
   );
   useEffect(() => {
     if (open) {
       setDraft(
         giftCard
           ? { ...giftCard, serviceIds: [...giftCard.serviceIds] }
-          : {
-              id: makeId("gift"),
-              name: "",
-              type: "service",
-              serviceIds: [],
-              amount: 0,
-              salePrice: 0,
-              expiration: 90,
-              description: "",
-              design: "arena",
-              status: "draft",
-            },
+          : createDraft(initialType),
       );
       setStep(1);
     }
-  }, [giftCard, open]);
+  }, [giftCard, initialType, open]);
   const update = (patch: Partial<GiftCardRecord>) =>
     setDraft((current) => ({ ...current, ...patch }));
   const save = (status: GiftCardRecord["status"]) => {
@@ -7608,12 +7601,13 @@ function GiftCardDialog({
       onOpenChange={onOpenChange}
       title={
         giftCard
-          ? `Editar ${giftCard.name}`
+          ? "Editar"
           : `Nueva gift card de ${draft.type === "service" ? "servicio" : "monto"}`
       }
       onSave={step === 2 ? () => save("active") : undefined}
       saveLabel="Activar"
       wide
+      className="gift-card-dialog"
     >
       <div className="mb-5 flex items-center gap-3 text-xs font-semibold uppercase tracking-wider text-slate-400">
         <span className={step === 1 ? "text-[#7460a4]" : ""}>
@@ -7639,9 +7633,14 @@ function GiftCardDialog({
               id="gift-type"
               label="Tipo"
               value={draft.type}
-              onChange={(type) =>
-                update({ type: type as GiftCardRecord["type"], serviceIds: [] })
-              }
+              onChange={(type) => {
+                const nextType = type as GiftCardRecord["type"];
+                update({
+                  type: nextType,
+                  serviceIds: [],
+                  amount: nextType === "amount" ? draft.salePrice : 0,
+                });
+              }}
               options={[
                 { value: "service", label: "Gift card de servicio" },
                 { value: "amount", label: "Gift card de monto" },
@@ -7672,30 +7671,33 @@ function GiftCardDialog({
           {draft.type === "service" ? (
             <div>
               <h3 className="admin-section-title">Servicios incluidos</h3>
-              <div className="mt-3 grid gap-2 md:grid-cols-2">
-                {services
-                  .filter((service) => service.type === "service")
-                  .map((service) => (
-                    <CheckRow
-                      key={service.id}
-                      checked={draft.serviceIds.includes(service.id)}
-                      onChange={(checked) =>
-                        update({
-                          serviceIds: checked
-                            ? [...draft.serviceIds, service.id]
-                            : draft.serviceIds.filter(
-                                (id) => id !== service.id,
-                              ),
-                          amount: checked ? service.price : draft.amount,
-                        })
-                      }
-                    >
-                      {service.name}{" "}
-                      <span className="ml-2 text-xs text-slate-400">
-                        {currency(service.price)}
-                      </span>
-                    </CheckRow>
-                  ))}
+              <div className="mt-3">
+                <MultiCombobox
+                  id="gift-services"
+                  value={draft.serviceIds}
+                  onValueChange={(serviceIds) => {
+                    const addedServiceId = serviceIds.find(
+                      (serviceId) => !draft.serviceIds.includes(serviceId),
+                    );
+                    const addedService = services.find(
+                      (service) => service.id === addedServiceId,
+                    );
+                    update({
+                      serviceIds,
+                      ...(addedService ? { amount: addedService.price } : {}),
+                    });
+                  }}
+                  placeholder="Selecciona uno o más servicios"
+                  searchPlaceholder="Buscar servicio"
+                  emptyMessage="No hay servicios que coincidan"
+                  className="gift-services-trigger"
+                  options={services
+                    .filter((service) => service.type === "service")
+                    .map((service) => ({
+                      value: service.id,
+                      label: `${service.name} · ${currency(service.price)}`,
+                    }))}
+                />
               </div>
             </div>
           ) : null}
@@ -7771,6 +7773,7 @@ function GiftCardsSection({ services }: { services: ServiceRecord[] }) {
   const [type, setType] = useState<GiftCardRecord["type"] | "all">("all");
   const [search, setSearch] = useState("");
   const [editing, setEditing] = useState<GiftCardRecord | null>(null);
+  const [newType, setNewType] = useState<GiftCardRecord["type"]>("service");
   const [open, setOpen] = useState(false);
   const [confirming, setConfirming] = useState<GiftCardRecord | null>(null);
   const visible = cards.filter(
@@ -7809,6 +7812,7 @@ function GiftCardsSection({ services }: { services: ServiceRecord[] }) {
                   className="flex w-full rounded-xl px-3 py-2.5 text-left text-sm hover:bg-[#f0ebf6]"
                   onClick={() => {
                     setEditing(null);
+                    setNewType("service");
                     setOpen(true);
                   }}
                 >
@@ -7818,18 +7822,8 @@ function GiftCardsSection({ services }: { services: ServiceRecord[] }) {
                   type="button"
                   className="flex w-full rounded-xl px-3 py-2.5 text-left text-sm hover:bg-[#f0ebf6]"
                   onClick={() => {
-                    setEditing({
-                      id: makeId("gift"),
-                      name: "",
-                      type: "amount",
-                      serviceIds: [],
-                      amount: 0,
-                      salePrice: 0,
-                      expiration: 90,
-                      description: "",
-                      design: "arena",
-                      status: "draft",
-                    });
+                    setEditing(null);
+                    setNewType("amount");
                     setOpen(true);
                   }}
                 >
@@ -7976,6 +7970,7 @@ function GiftCardsSection({ services }: { services: ServiceRecord[] }) {
       <GiftCardDialog
         open={open}
         giftCard={editing}
+        initialType={newType}
         services={services}
         onOpenChange={setOpen}
         onSave={(card) => {

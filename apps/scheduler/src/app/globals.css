@@ -2484,6 +2484,26 @@
     max-width: 56rem !important;
   }
 
+  .admin-dialog.gift-card-dialog {
+    width: min(calc(100vw - 2rem), 58.5rem) !important;
+    max-width: 58.5rem !important;
+    border-radius: 1rem;
+    padding: 1.5rem;
+  }
+
+  .gift-card-dialog .admin-dialog-body {
+    padding-block: 0.45rem;
+  }
+
+  .gift-services-trigger {
+    min-height: 2.65rem;
+    border-color: #e6ddd7;
+    border-radius: 0.9rem;
+    background: rgba(255, 255, 255, 0.94);
+    color: #263649;
+    font-size: 0.875rem;
+  }
+
   .resource-dialog {
     width: min(calc(100vw - 2rem), 62rem) !important;
     max-width: 62rem !important;
@@ -4483,6 +4503,13 @@
       width: 100%;
       max-width: none;
       max-height: 100dvh;
+      border-radius: 0;
+      padding: 1rem;
+    }
+
+    .admin-dialog.gift-card-dialog {
+      width: 100% !important;
+      max-width: none !important;
       border-radius: 0;
       padding: 1rem;
     }

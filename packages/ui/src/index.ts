@@ -24,6 +24,9 @@ export { ProgressKeysar } from './components/custom/progress-keysar'
 export { Combobox } from './components/custom/combobox'
 export type { ComboboxOption } from './components/custom/combobox'
 
+export { MultiCombobox } from './components/custom/multi-combobox'
+export type { MultiComboboxOption } from './components/custom/multi-combobox'
+
 // Fase 2C - Select shadcn/ui canonico
 export {
   Select,

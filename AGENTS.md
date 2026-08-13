@@ -76,6 +76,7 @@ Wrappers custom en `packages/ui/src/components/custom`:
 
 - `ProgressKeysar` — wrapper custom sobre `Progress` oficial
 - `Combobox` — select con búsqueda integrada; usa `Popover` + `Input`. Props: `options`, `value`, `onValueChange`, `placeholder`, `searchPlaceholder`, `emptyMessage`, `disabled`, `id`. Exporta también `ComboboxOption` (interface `{ value: string; label: string }`).
+- `MultiCombobox` — select compacto con búsqueda y selección múltiple; usa `Popover` + `Input`. Props: `options`, `value`, `onValueChange`, `placeholder`, `searchPlaceholder`, `emptyMessage`, `disabled`, `id`.
 
 **Reglas de UI:**
 - Apps consumen UI exclusivamente desde `@cosmetics/ui`.
