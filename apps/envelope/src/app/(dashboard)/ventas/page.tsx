@@ -49,6 +49,7 @@ import { useI18n } from "@/lib/i18n";
 import { useSession } from "@/lib/session";
 import { formatCurrency, formatDate, generateId, todayISO } from "@/lib/utils";
 import type { RegistroVenta, VentaItem } from "@/lib/mock-data";
+import { actionButtonStyles } from "@/lib/action-button-styles";
 
 function createSaleSchema(messages: {
   selectBranch: string;
@@ -250,15 +251,7 @@ export default function VentasPage() {
     [filteredRegistros],
   );
 
-  const visibleSucursales = useMemo(() => {
-    const merged = new Map(sucursales.map((sucursal) => [sucursal.id, sucursal]));
-
-    if (user?.sucursal && !merged.has(user.sucursal.id)) {
-      merged.set(user.sucursal.id, user.sucursal);
-    }
-
-    return [...merged.values()];
-  }, [sucursales, user?.sucursal]);
+  const visibleSucursales = sucursales;
 
   useEffect(() => {
     if (saleContext || saleForm.getValues("sucursalId")) return;
@@ -525,10 +518,11 @@ export default function VentasPage() {
               <AlertDialogTrigger asChild>
                 <Button
                   size="icon"
-                  variant="ghost"
+                  variant="outline"
+                  className={actionButtonStyles.danger}
                   aria-label={t.sales.deleteRecord}
                 >
-                  <Trash2 className="h-4 w-4 text-red-500" />
+                  <Trash2 className="h-4 w-4" />
                 </Button>
               </AlertDialogTrigger>
               <AlertDialogContent>
@@ -543,7 +537,7 @@ export default function VentasPage() {
                 <AlertDialogFooter>
                   <AlertDialogCancel>{t.common.cancel}</AlertDialogCancel>
                   <AlertDialogAction
-                    className="bg-red-600 hover:bg-red-700"
+                    className={actionButtonStyles.dangerSolid}
                     onClick={() => deleteRegistro(record.id)}
                   >
                     {t.common.delete}
@@ -811,14 +805,15 @@ export default function VentasPage() {
                       <Button
                         type="button"
                         size="icon"
-                        variant="ghost"
+                        variant="outline"
+                        className={actionButtonStyles.danger}
                         disabled={employeeAllocations.length === 1}
                         onClick={() =>
                           handleRemoveEmployee(allocation.empleadoId)
                         }
                         aria-label={`${t.sales.removeEmployee} ${vendedorNombre(allocation.empleadoId)}`}
                       >
-                        <Trash2 className="h-4 w-4 text-red-500" />
+                        <Trash2 className="h-4 w-4" />
                       </Button>
                     </div>
                   ))}
@@ -935,11 +930,12 @@ export default function VentasPage() {
                         <Button
                           type="button"
                           size="icon"
-                          variant="ghost"
+                          variant="outline"
+                          className={actionButtonStyles.danger}
                           onClick={() => handleRemovePayment(payment.id)}
                           aria-label={`${t.sales.deletePaymentWith} ${metodoPagoNombre(payment.metodoPagoId)}`}
                         >
-                          <Trash2 className="h-4 w-4 text-red-500" />
+                          <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
                     ))}

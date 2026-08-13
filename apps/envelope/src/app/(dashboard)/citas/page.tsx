@@ -69,6 +69,7 @@ import { currentFortnightRange } from "@/lib/date-periods";
 import { useI18n } from "@/lib/i18n";
 import { useSession } from "@/lib/session";
 import { formatCurrency, formatDate, todayISO } from "@/lib/utils";
+import { actionButtonStyles } from "@/lib/action-button-styles";
 
 const purchaseTypes = ["PAGO_NETO", "COMPRA_CON_APARTADO"] as const;
 const appointmentStatuses = ["ATENDIDA", "NO_LLEGO", "CANCELADA"] as const;
@@ -373,12 +374,7 @@ export default function AppointmentsPage() {
   const lateBonus = watch("bonoSalidaTarde");
   const mealBonus = watch("bonoComida");
 
-  const visibleBranches = useMemo(() => {
-    const merged = new Map(sucursales.map((branch) => [branch.id, branch]));
-    if (user?.sucursal && !merged.has(user.sucursal.id))
-      merged.set(user.sucursal.id, user.sucursal);
-    return [...merged.values()];
-  }, [sucursales, user?.sucursal]);
+  const visibleBranches = sucursales;
 
   const sellers = useMemo(() => {
     return employees.filter((employee) => {
@@ -561,23 +557,23 @@ export default function AppointmentsPage() {
           <div className="flex items-center justify-end gap-1">
             <Button
               type="button"
-              variant="ghost"
+              variant="outline"
               size="icon"
               aria-label={`${text.edit}: ${row.original.nombreCliente}`}
               title={text.edit}
               onClick={() => openEdit(row.original)}
-              className="h-9 w-9 cursor-pointer"
+              className={`${actionButtonStyles.neutral} h-9 w-9`}
             >
               <Pencil className="h-4 w-4" />
             </Button>
             <Button
               type="button"
-              variant="ghost"
+              variant="outline"
               size="icon"
               aria-label={`${text.delete}: ${row.original.nombreCliente}`}
               title={text.delete}
               onClick={() => setRecordToDelete(row.original)}
-              className="h-9 w-9 cursor-pointer text-red-600 hover:bg-red-50 hover:text-red-700 dark:hover:bg-red-950/30"
+              className={`${actionButtonStyles.danger} h-9 w-9`}
             >
               <Trash2 className="h-4 w-4" />
             </Button>
@@ -1918,21 +1914,21 @@ export default function AppointmentsPage() {
                       <>
                         <Button
                           type="button"
-                          variant="ghost"
+                          variant="outline"
                           size="icon"
                           aria-label={`${text.edit}: ${record.nombreCliente}`}
                           onClick={() => openEdit(record)}
-                          className="h-9 w-9 shrink-0 cursor-pointer"
+                          className={`${actionButtonStyles.neutral} h-9 w-9 shrink-0`}
                         >
                           <Pencil className="h-4 w-4" />
                         </Button>
                         <Button
                           type="button"
-                          variant="ghost"
+                          variant="outline"
                           size="icon"
                           aria-label={`${text.delete}: ${record.nombreCliente}`}
                           onClick={() => setRecordToDelete(record)}
-                          className="h-9 w-9 shrink-0 cursor-pointer text-red-600 hover:bg-red-50 hover:text-red-700 dark:hover:bg-red-950/30"
+                          className={`${actionButtonStyles.danger} h-9 w-9 shrink-0`}
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
@@ -1983,7 +1979,7 @@ export default function AppointmentsPage() {
                 void handleDelete();
               }}
               disabled={deleting}
-              className="bg-red-600 text-white hover:bg-red-700"
+              className={actionButtonStyles.dangerSolid}
             >
               {deleting ? text.deleting : text.deleteConfirm}
             </AlertDialogAction>

@@ -1,6 +1,6 @@
 'use client'
 // Reporte: Total general de ventas por día con columna por sucursal
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import {
   Badge,
   Card,
@@ -31,7 +31,7 @@ function firstDayOfMonth(): string {
 }
 
 export default function TotalGeneralPage() {
-  const { sucursales, loading: loadingSucursales, error: sucursalesError } = useSucursales()
+  const { sucursales: catalogoSucursales, loading: loadingSucursales, error: sucursalesError } = useSucursales()
   const { locale, t } = useI18n()
   const [range, setRange] = useState<DateRange>({ from: firstDayOfMonth(), to: todayISO() })
   const [exporting, setExporting] = useState<'pdf' | 'excel' | null>(null)
@@ -67,6 +67,16 @@ export default function TotalGeneralPage() {
   const loading = loadingSucursales || loadingReport
   const error = sucursalesError ?? reportError
   const dias = rows.map((row) => row.fecha)
+  const sucursales = useMemo(() => {
+    const branchById = new Map(catalogoSucursales.map(({ id, nombre }) => [id, nombre]))
+    rows.forEach((row) => {
+      row.porSucursal.forEach(({ sucursalId, sucursalNombre }) => {
+        if (!branchById.has(sucursalId)) branchById.set(sucursalId, sucursalNombre)
+      })
+    })
+    return Array.from(branchById, ([id, nombre]) => ({ id, nombre }))
+      .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
+  }, [catalogoSucursales, rows])
 
   function totalDiaSucursal(fecha: string, sucursalId: string): number {
     return rows.find((row) => row.fecha === fecha)?.porSucursal.find((s) => s.sucursalId === sucursalId)?.total ?? 0

@@ -11,36 +11,78 @@ interface UseSucursalesReturn {
   loaded: boolean
   error: string | null
   refetch: () => Promise<void>
-  add: (nombre: string) => Promise<void>
-  update: (s: Sucursal) => Promise<void>
+  add: (s: Pick<Sucursal, 'nombre' | 'metaMensual'>) => Promise<void>
+  update: (s: Pick<Sucursal, 'id' | 'nombre' | 'metaMensual'>) => Promise<void>
   remove: (id: string) => Promise<void>
+  toggleStatus: (id: string, activa: boolean) => Promise<void>
+}
+
+function toSucursal(raw: Record<string, unknown>): Sucursal {
+  return {
+    id: raw['id'] as string,
+    nombre: raw['nombre'] as string,
+    metaMensual: Number(raw['metaMensual'] ?? 0),
+    activa: (raw['activa'] as boolean) ?? true,
+    desactivadaEn: (raw['desactivadaEn'] as string | null) ?? null,
+  }
 }
 
 const sucursalesStore = createCatalogStore<Sucursal>(
   async () => {
-    const { data } = await api.get<{ success: boolean; data: Sucursal[] }>('/api/envelope/sucursales')
-    return data.data
+    const { data } = await api.get<{ success: boolean; data: Record<string, unknown>[] }>('/api/envelope/sucursales')
+    return data.data.map(toSucursal)
   },
   'Error al cargar sucursales',
 )
 
-export function useSucursales(): UseSucursalesReturn {
-  const { items: sucursales, loading, loaded, error, refetch } = sucursalesStore.useStore()
+const allSucursalesStore = createCatalogStore<Sucursal>(
+  async () => {
+    const { data } = await api.get<{ success: boolean; data: Record<string, unknown>[] }>('/api/envelope/sucursales', {
+      params: { includeInactive: true },
+    })
+    return data.data.map(toSucursal)
+  },
+  'Error al cargar sucursales',
+)
 
-  const add = useCallback(async (nombre: string) => {
-    await api.post('/api/envelope/sucursales', { nombre })
-    await refetch()
-  }, [refetch])
+async function refreshBranchStores(): Promise<void> {
+  await Promise.all([sucursalesStore.refetch(), allSucursalesStore.refetch()])
+}
 
-  const update = useCallback(async (s: Sucursal) => {
-    await api.put(`/api/envelope/sucursales/${s.id}`, { nombre: s.nombre })
-    await refetch()
-  }, [refetch])
+function useBranchStore(includeInactive: boolean): UseSucursalesReturn {
+  const store = includeInactive ? allSucursalesStore : sucursalesStore
+  const { items: sucursales, loading, loaded, error, refetch } = store.useStore()
+
+  const add = useCallback(async (s: Pick<Sucursal, 'nombre' | 'metaMensual'>) => {
+    await api.post('/api/envelope/sucursales', s)
+    await refreshBranchStores()
+  }, [])
+
+  const update = useCallback(async (s: Pick<Sucursal, 'id' | 'nombre' | 'metaMensual'>) => {
+    await api.put(`/api/envelope/sucursales/${s.id}`, {
+      nombre: s.nombre,
+      metaMensual: s.metaMensual,
+    })
+    await refreshBranchStores()
+  }, [])
 
   const remove = useCallback(async (id: string) => {
     await api.delete(`/api/envelope/sucursales/${id}`)
-    await refetch()
-  }, [refetch])
+    await refreshBranchStores()
+  }, [])
 
-  return { sucursales, loading, loaded, error, refetch, add, update, remove }
+  const toggleStatus = useCallback(async (id: string, activa: boolean) => {
+    await api.patch(`/api/envelope/sucursales/${id}/status`, { activa })
+    await refreshBranchStores()
+  }, [])
+
+  return { sucursales, loading, loaded, error, refetch, add, update, remove, toggleStatus }
+}
+
+export function useSucursales(): UseSucursalesReturn {
+  return useBranchStore(false)
+}
+
+export function useAllSucursales(): UseSucursalesReturn {
+  return useBranchStore(true)
 }

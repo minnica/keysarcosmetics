@@ -24,6 +24,9 @@ export type Puesto = (typeof PUESTOS)[number];
 export interface Sucursal {
   id: string;
   nombre: string;
+  metaMensual: number;
+  activa: boolean;
+  desactivadaEn: string | null;
 }
 
 export interface MetodoPago {
@@ -83,9 +86,9 @@ export interface RegistroVenta {
 // ─── Catálogos base ──────────────────────────────────────────────────────────
 
 export const INITIAL_SUCURSALES: Sucursal[] = [
-  { id: "s1", nombre: "Sucursal Centro" },
-  { id: "s2", nombre: "Sucursal Norte" },
-  { id: "s3", nombre: "Sucursal Sur" },
+  { id: "s1", nombre: "Sucursal Centro", metaMensual: 0, activa: true, desactivadaEn: null },
+  { id: "s2", nombre: "Sucursal Norte", metaMensual: 0, activa: true, desactivadaEn: null },
+  { id: "s3", nombre: "Sucursal Sur", metaMensual: 0, activa: true, desactivadaEn: null },
 ];
 
 export const INITIAL_METODOS_PAGO: MetodoPago[] = [

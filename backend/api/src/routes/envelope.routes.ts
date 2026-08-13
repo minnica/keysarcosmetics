@@ -9,11 +9,31 @@ import {
   resolveAccessForRequest,
 } from "../lib/access";
 import { prisma } from "../prisma/client";
+import {
+  buildBranchGoalsReport,
+  mexicoCityDateISO,
+  type BranchGoalSaleRow,
+} from "../services/branch-goals-report";
 
 const router: ExpressRouter = Router();
 const DEFAULT_VENTAS_LOOKBACK_DAYS = 31;
 const MAX_VENTAS_RANGE_DAYS = 366;
 const MAX_VENTAS_LIMIT = 5000;
+const MAX_BRANCH_MONTHLY_GOAL = 999_999_999_999.99;
+
+const branchFieldsSchema = z.object({
+  nombre: z.string().trim().min(1).max(60),
+  metaMensual: z.coerce
+    .number()
+    .finite()
+    .min(0)
+    .max(MAX_BRANCH_MONTHLY_GOAL),
+});
+const branchUpdateSchema = branchFieldsSchema.partial().refine(
+  (value) => Object.keys(value).length > 0,
+  { message: "Debes enviar al menos un campo" },
+);
+const branchStatusSchema = z.object({ activa: z.boolean() });
 
 // Todas las rutas de este módulo requieren autenticación
 router.use(authMiddleware);
@@ -37,7 +57,10 @@ const access = {
   metodoPagoPorDia: requireScreenAccess("reportes/metodo-pago-por-dia"),
   ventasPorVendedor: requireScreenAccess("reportes/ventas-por-vendedor"),
   ventasPorVendedorDia: requireScreenAccess("reportes/ventas-por-vendedor-dia"),
+  rankingVendedores: requireScreenAccess("reportes/ranking-vendedores"),
+  rankingSucursales: requireScreenAccess("reportes/ranking-sucursales"),
   totalGeneral: requireScreenAccess("reportes/total-general"),
+  metasSucursal: requireScreenAccess("reportes/metas-sucursal"),
   reporteCitas: requireScreenAccess("reportes/citas"),
 };
 
@@ -229,6 +252,30 @@ function resolveAppointmentDateRange(
   return { start: startOfDay(start), end };
 }
 
+function resolveSalesReportDateRange(
+  fechaInicio?: string,
+  fechaFin?: string,
+): { start: Date; end: Date } | null {
+  if (!fechaInicio && !fechaFin) {
+    const today = new Date();
+    return {
+      start: new Date(today.getFullYear(), today.getMonth(), 1),
+      end: endOfDay(today),
+    };
+  }
+  if (!fechaInicio || !fechaFin) return null;
+
+  const start = parseQueryDate(fechaInicio);
+  const parsedEnd = parseQueryDate(fechaFin);
+  if (!start || !parsedEnd) return null;
+  const end = endOfDay(parsedEnd);
+  if (start > end || daysBetween(start, end) > MAX_VENTAS_RANGE_DAYS) {
+    return null;
+  }
+
+  return { start: startOfDay(start), end };
+}
+
 const appointmentInclude = Prisma.validator<Prisma.RegistroCitaInclude>()({
   sucursal: { select: { nombre: true } },
   vendedor: { select: { nombreCompleto: true } },
@@ -358,11 +405,12 @@ function redactSalary<T extends { sueldo?: unknown }>(
 
 // ─── SUCURSALES ───────────────────────────────────────────────────────────────
 
-router.get("/sucursales", async (_req, res) => {
+router.get("/sucursales", async (req, res) => {
   try {
+    const includeInactive = req.query["includeInactive"] === "true";
     const data = await prisma.sucursal.findMany({
-      where: { activa: true },
-      orderBy: { nombre: "asc" },
+      ...(includeInactive ? {} : { where: { activa: true } }),
+      orderBy: [{ activa: "desc" }, { nombre: "asc" }],
     });
     res.json({ success: true, data, message: "OK" });
   } catch (err) {
@@ -379,19 +427,19 @@ router.get("/sucursales", async (_req, res) => {
 
 router.post("/sucursales", access.sucursales, async (req, res) => {
   try {
-    const { nombre } = req.body as { nombre: string };
-    if (!nombre?.trim()) {
+    const parsed = branchFieldsSchema.safeParse(req.body);
+    if (!parsed.success) {
       res
         .status(400)
         .json({
           success: false,
-          data: null,
-          message: "El nombre es requerido",
+          data: parsed.error.flatten().fieldErrors,
+          message: "Datos de sucursal inválidos",
         });
       return;
     }
     const data = await prisma.sucursal.create({
-      data: { nombre: nombre.trim() },
+      data: parsed.data,
     });
     res.status(201).json({ success: true, data, message: "Sucursal creada" });
   } catch (err) {
@@ -404,16 +452,18 @@ router.post("/sucursales", access.sucursales, async (req, res) => {
 
 router.put("/sucursales/:id", access.sucursales, async (req, res) => {
   try {
-    const { nombre, activa } = req.body as {
-      nombre?: string;
-      activa?: boolean;
-    };
+    const parsed = branchUpdateSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({
+        success: false,
+        data: parsed.error.flatten().fieldErrors,
+        message: "Datos de sucursal inválidos",
+      });
+      return;
+    }
     const data = await prisma.sucursal.update({
       where: { id: req.params["id"] },
-      data: {
-        ...(nombre !== undefined && { nombre }),
-        ...(activa !== undefined && { activa }),
-      },
+      data: parsed.data,
     });
     res.json({ success: true, data, message: "Sucursal actualizada" });
   } catch (err) {
@@ -428,11 +478,81 @@ router.put("/sucursales/:id", access.sucursales, async (req, res) => {
   }
 });
 
+router.patch(
+  "/sucursales/:id/status",
+  access.sucursales,
+  async (req, res) => {
+    try {
+      const parsed = branchStatusSchema.safeParse(req.body);
+      if (!parsed.success) {
+        res.status(400).json({
+          success: false,
+          data: parsed.error.flatten().fieldErrors,
+          message: "Estatus de sucursal inválido",
+        });
+        return;
+      }
+
+      const existing = await prisma.sucursal.findUnique({
+        where: { id: req.params["id"] },
+        select: { activa: true, desactivadaEn: true },
+      });
+      if (!existing) {
+        res.status(404).json({
+          success: false,
+          data: null,
+          message: "Sucursal no encontrada",
+        });
+        return;
+      }
+
+      const data = await prisma.sucursal.update({
+        where: { id: req.params["id"] },
+        data: {
+          activa: parsed.data.activa,
+          desactivadaEn: parsed.data.activa
+            ? null
+            : existing.desactivadaEn ?? new Date(),
+        },
+      });
+      res.json({
+        success: true,
+        data,
+        message: parsed.data.activa
+          ? "Sucursal activada"
+          : "Sucursal desactivada",
+      });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({
+        success: false,
+        data: null,
+        message: "Error al actualizar el estatus de la sucursal",
+      });
+    }
+  },
+);
+
 router.delete("/sucursales/:id", access.sucursales, async (req, res) => {
   try {
+    const existing = await prisma.sucursal.findUnique({
+      where: { id: req.params["id"] },
+      select: { desactivadaEn: true },
+    });
+    if (!existing) {
+      res.status(404).json({
+        success: false,
+        data: null,
+        message: "Sucursal no encontrada",
+      });
+      return;
+    }
     await prisma.sucursal.update({
       where: { id: req.params["id"] },
-      data: { activa: false },
+      data: {
+        activa: false,
+        desactivadaEn: existing.desactivadaEn ?? new Date(),
+      },
     });
     res.json({ success: true, data: null, message: "Sucursal desactivada" });
   } catch (err) {
@@ -1944,6 +2064,18 @@ router.post("/ventas", access.ventas, async (req, res) => {
         });
       return;
     }
+    const activeBranch = await prisma.sucursal.findFirst({
+      where: { id: sucursalId, activa: true },
+      select: { id: true },
+    });
+    if (!activeBranch) {
+      res.status(400).json({
+        success: false,
+        data: null,
+        message: "La sucursal seleccionada está inactiva o no existe",
+      });
+      return;
+    }
     const data = await prisma.venta.create({
       data: {
         fecha: new Date(fecha),
@@ -2002,6 +2134,18 @@ router.post("/ventas/lote", access.ventas, async (req, res) => {
       res
         .status(400)
         .json({ success: false, data: null, message: "Datos incompletos" });
+      return;
+    }
+    const branchIds = [...new Set(ventas.map((venta) => venta.sucursalId))];
+    const activeBranchCount = await prisma.sucursal.count({
+      where: { id: { in: branchIds }, activa: true },
+    });
+    if (activeBranchCount !== branchIds.length) {
+      res.status(400).json({
+        success: false,
+        data: null,
+        message: "Una de las sucursales está inactiva o no existe",
+      });
       return;
     }
     const ownEmployeeId = await selfDataEmployeeId(req);
@@ -2457,6 +2601,125 @@ router.get(
   },
 );
 
+router.get(
+  "/reportes/ranking-vendedores",
+  access.rankingVendedores,
+  async (req, res) => {
+    try {
+      const { fechaInicio, fechaFin } = req.query as {
+        fechaInicio?: string;
+        fechaFin?: string;
+      };
+      const range = resolveSalesReportDateRange(fechaInicio, fechaFin);
+      if (!range) {
+        res.status(400).json({
+          success: false,
+          data: null,
+          message: "Rango de fechas inválido o mayor a 366 días",
+        });
+        return;
+      }
+
+      const includeKeysarHome = await canViewKeysarHomeData(req);
+      const ownEmployeeId = await selfDataEmployeeId(req);
+      const keysarHomeCondition = includeKeysarHome
+        ? Prisma.sql`TRUE`
+        : Prisma.sql`e."nombreCompleto" <> ${"KEYSAR HOME"}`;
+      const data = await prisma.$queryRaw<
+        Array<{
+          id: string;
+          nombre: string;
+          totalVendido: number;
+          operaciones: number;
+          relacionados: number;
+        }>
+      >`
+        SELECT
+          v."vendedorId" AS "id",
+          e."nombreCompleto" AS "nombre",
+          SUM(vd."cantidad")::float AS "totalVendido",
+          COUNT(DISTINCT COALESCE(v."sesionId", v."id"))::int AS "operaciones",
+          COUNT(DISTINCT v."sucursalId")::int AS "relacionados"
+        FROM "VentaDetalle" vd
+        JOIN "Venta" v ON v."id" = vd."ventaId"
+        JOIN "Empleado" e ON e."id" = v."vendedorId"
+        WHERE v."fecha" >= ${range.start}
+          AND v."fecha" <= ${range.end}
+          AND ${keysarHomeCondition}
+          AND ${selfDataCondition(ownEmployeeId)}
+        GROUP BY v."vendedorId", e."nombreCompleto"
+        ORDER BY "totalVendido" DESC, e."nombreCompleto" ASC
+      `;
+
+      res.json({ success: true, data, message: "OK" });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({
+        success: false,
+        data: null,
+        message: "Error al generar ranking de vendedores",
+      });
+    }
+  },
+);
+
+router.get(
+  "/reportes/ranking-sucursales",
+  access.rankingSucursales,
+  async (req, res) => {
+    try {
+      const { fechaInicio, fechaFin } = req.query as {
+        fechaInicio?: string;
+        fechaFin?: string;
+      };
+      const range = resolveSalesReportDateRange(fechaInicio, fechaFin);
+      if (!range) {
+        res.status(400).json({
+          success: false,
+          data: null,
+          message: "Rango de fechas inválido o mayor a 366 días",
+        });
+        return;
+      }
+
+      const ownEmployeeId = await selfDataEmployeeId(req);
+      const data = await prisma.$queryRaw<
+        Array<{
+          id: string;
+          nombre: string;
+          totalVendido: number;
+          operaciones: number;
+          relacionados: number;
+        }>
+      >`
+        SELECT
+          v."sucursalId" AS "id",
+          s."nombre" AS "nombre",
+          SUM(vd."cantidad")::float AS "totalVendido",
+          COUNT(DISTINCT COALESCE(v."sesionId", v."id"))::int AS "operaciones",
+          COUNT(DISTINCT v."vendedorId")::int AS "relacionados"
+        FROM "VentaDetalle" vd
+        JOIN "Venta" v ON v."id" = vd."ventaId"
+        JOIN "Sucursal" s ON s."id" = v."sucursalId"
+        WHERE v."fecha" >= ${range.start}
+          AND v."fecha" <= ${range.end}
+          AND ${selfDataCondition(ownEmployeeId)}
+        GROUP BY v."sucursalId", s."nombre"
+        ORDER BY "totalVendido" DESC, s."nombre" ASC
+      `;
+
+      res.json({ success: true, data, message: "OK" });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({
+        success: false,
+        data: null,
+        message: "Error al generar ranking de sucursales",
+      });
+    }
+  },
+);
+
 router.get("/reportes/total-general", access.totalGeneral, async (req, res) => {
   try {
     const { fechaInicio, fechaFin } = req.query as {
@@ -2514,6 +2777,64 @@ router.get("/reportes/total-general", access.totalGeneral, async (req, res) => {
       });
   }
 });
+
+router.get(
+  "/reportes/metas-sucursal",
+  access.metasSucursal,
+  async (req, res) => {
+    try {
+      const referenceDate = mexicoCityDateISO();
+      const monthStart = `${referenceDate.slice(0, 7)}-01`;
+      const ownEmployeeId = await selfDataEmployeeId(req);
+      const [catalogBranches, salesRows] = await Promise.all([
+        prisma.sucursal.findMany({
+          where: { activa: true },
+          orderBy: { nombre: "asc" },
+          select: { id: true, nombre: true, metaMensual: true },
+        }),
+        prisma.$queryRaw<BranchGoalSaleRow[]>`
+          SELECT
+            TO_CHAR(v."fecha", 'YYYY-MM-DD') AS "fecha",
+            v."sucursalId",
+            s."nombre" AS "sucursalNombre",
+            s."metaMensual"::float AS "metaMensual",
+            SUM(vd."cantidad")::float AS "total"
+          FROM "VentaDetalle" vd
+          JOIN "Venta" v ON v."id" = vd."ventaId"
+          JOIN "Sucursal" s ON s."id" = v."sucursalId"
+          WHERE v."fecha" >= ${new Date(`${monthStart}T00:00:00.000Z`)}
+            AND v."fecha" <= ${new Date(`${referenceDate}T23:59:59.999Z`)}
+            AND ${selfDataCondition(ownEmployeeId)}
+          GROUP BY
+            TO_CHAR(v."fecha", 'YYYY-MM-DD'),
+            v."sucursalId",
+            s."nombre",
+            s."metaMensual"
+          ORDER BY "fecha" ASC, s."nombre" ASC
+        `,
+      ]);
+
+      const data = buildBranchGoalsReport(
+        referenceDate,
+        catalogBranches.map((branch) => ({
+          id: branch.id,
+          nombre: branch.nombre,
+          metaMensual: Number(branch.metaMensual),
+        })),
+        salesRows,
+      );
+
+      res.json({ success: true, data, message: "OK" });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({
+        success: false,
+        data: null,
+        message: "Error al generar reporte de metas por sucursal",
+      });
+    }
+  },
+);
 
 router.get("/reportes/dashboard", access.dashboard, async (req, res) => {
   try {
@@ -2585,6 +2906,8 @@ router.get("/reportes/dashboard", access.dashboard, async (req, res) => {
           AND v."fecha" <= p."endDate"
           AND ${ownDataCondition}
         LEFT JOIN "VentaDetalle" vd ON vd."ventaId" = v."id"
+        WHERE s."creadoEn" <= p."endDate"
+          AND (s."desactivadaEn" IS NULL OR s."desactivadaEn" >= p."startDate")
         GROUP BY p."period", s."id", s."nombre"
         ORDER BY p."period" ASC, s."nombre" ASC
       `,

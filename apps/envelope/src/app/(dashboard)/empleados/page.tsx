@@ -41,6 +41,7 @@ import { useI18n } from '@/lib/i18n'
 import { useSession } from '@/lib/session'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import type { Empleado } from '@/lib/mock-data'
+import { actionButtonStyles } from '@/lib/action-button-styles'
 
 const UNASSIGNED_BRANCH = '__UNASSIGNED__'
 const ALL_BRANCHES = '__ALL_BRANCHES__'
@@ -412,7 +413,7 @@ export default function EmpleadosPage() {
             <Button
               size="sm"
               variant="outline"
-              className="uppercase"
+              className={`${actionButtonStyles.neutral} uppercase`}
               onClick={() => openEdit(emp)}
             >
               <Pencil className="h-4 w-4" /> {t.common.edit}
@@ -422,7 +423,7 @@ export default function EmpleadosPage() {
                 <Button
                   size="sm"
                   variant="outline"
-                  className={`w-[110px] uppercase ${emp.activo ? 'border-amber-400 text-amber-700 hover:bg-amber-50' : 'border-[#8bb09b] text-[#648672] hover:bg-[#648672]/10'}`}
+                  className={`w-[110px] uppercase ${emp.activo ? actionButtonStyles.warning : actionButtonStyles.success}`}
                 >
                   <Power className="h-4 w-4 shrink-0" />
                   <span className="inline-block w-[68px] text-center">
@@ -445,7 +446,7 @@ export default function EmpleadosPage() {
                 <AlertDialogFooter>
                   <AlertDialogCancel>{t.common.cancel}</AlertDialogCancel>
                   <AlertDialogAction
-                    className={emp.activo ? 'bg-amber-500 hover:bg-amber-600 text-white' : 'bg-[#648672] hover:bg-[#4f6a5a] text-white'}
+                    className={emp.activo ? actionButtonStyles.warningSolid : actionButtonStyles.successSolid}
                     onClick={() => {
                       void toggleStatus(emp.id, !emp.activo).then(() => {
                         toast.success(emp.activo ? t.employees.employeeDeactivated : t.employees.employeeActivated)
@@ -459,7 +460,7 @@ export default function EmpleadosPage() {
             </AlertDialog>
             <AlertDialog>
               <AlertDialogTrigger asChild>
-                <Button size="sm" variant="outline" className="border-red-300 text-red-600 hover:bg-red-50 hover:text-red-600 uppercase">
+                <Button size="sm" variant="outline" className={`${actionButtonStyles.danger} uppercase`}>
                   <Trash2 className="h-4 w-4" /> {t.common.delete}
                 </Button>
               </AlertDialogTrigger>
@@ -473,7 +474,7 @@ export default function EmpleadosPage() {
                 <AlertDialogFooter>
                   <AlertDialogCancel>{t.common.cancel}</AlertDialogCancel>
                   <AlertDialogAction
-                    className="bg-red-600 hover:bg-red-700"
+                    className={actionButtonStyles.dangerSolid}
                     onClick={() => {
                       void remove(emp.id)
                         .then(() => toast.success(t.employees.employeeDeleted))
@@ -523,7 +524,7 @@ export default function EmpleadosPage() {
                 size="sm"
                 onClick={clearFilters}
                 disabled={!hasActiveFilters}
-                className="uppercase bg-[#648672] text-white hover:bg-[#4f6a5a] disabled:bg-muted disabled:text-muted-foreground"
+                className={`${actionButtonStyles.successSolid} uppercase disabled:bg-muted disabled:text-muted-foreground`}
               >
                 <RotateCcw className="h-4 w-4" />
                 {t.employees.clearFilters}

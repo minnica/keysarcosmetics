@@ -19,7 +19,10 @@ export const SCREEN_KEYS = [
   "reportes/metodo-pago-por-dia",
   "reportes/ventas-por-vendedor",
   "reportes/ventas-por-vendedor-dia",
+  "reportes/ranking-vendedores",
+  "reportes/ranking-sucursales",
   "reportes/total-general",
+  "reportes/metas-sucursal",
   "reportes/citas",
   "accesos",
 ] as const;
@@ -50,7 +53,9 @@ export type MetodoPago = "EFECTIVO" | "TARJETA" | "TRANSFERENCIA" | "OTRO";
 export interface Sucursal {
   id: string;
   nombre: string;
+  metaMensual: number;
   activa: boolean;
+  desactivadaEn: Date | null;
 }
 
 export interface Bank {

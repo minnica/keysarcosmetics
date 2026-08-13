@@ -52,6 +52,7 @@ import type { AccessPermission, AccessUser } from '@/hooks/useAccessAdmin'
 import { SCREEN_CONFIG, SECTION_ORDER, type AccessSection } from '@/lib/access'
 import { useI18n } from '@/lib/i18n'
 import { AccessLoadingSkeleton } from '@/components/layout/DataLoadingSkeleton'
+import { actionButtonStyles } from '@/lib/action-button-styles'
 
 const credentialsSchema = z.object({
   email: z.string().email(),
@@ -97,10 +98,11 @@ const SCREEN_ACTIONS: Partial<
 
 const SECTION_LABELS: Record<
   AccessSection,
-  'forms' | 'reports' | 'accessControl'
+  'forms' | 'reports' | 'rankings' | 'accessControl'
 > = {
   forms: 'forms',
   reports: 'reports',
+  rankings: 'rankings',
   admin: 'accessControl',
 }
 
@@ -567,7 +569,7 @@ export default function AccessControlPage() {
             <Button
               size="sm"
               variant="outline"
-              className="w-full justify-center whitespace-nowrap sm:w-auto"
+              className={`${actionButtonStyles.neutral} w-full justify-center whitespace-nowrap sm:w-auto`}
               onClick={() => openEmployeeEditor(user)}
               disabled={!user.empleadoId}
             >
@@ -578,7 +580,7 @@ export default function AccessControlPage() {
               <Button
                 size="sm"
                 variant="outline"
-                className="w-full justify-center whitespace-nowrap border-red-300 text-red-600 hover:bg-red-50 hover:text-red-700 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-950/40 dark:hover:text-red-200 sm:w-auto"
+                className={`${actionButtonStyles.danger} w-full justify-center whitespace-nowrap sm:w-auto`}
                 onClick={() => {
                   setUserToDelete(user)
                 }}
@@ -1206,7 +1208,7 @@ export default function AccessControlPage() {
               {t.common.cancel}
             </AlertDialogCancel>
             <AlertDialogAction
-              className="bg-[#648672] hover:bg-[#4f6a5a] dark:bg-[#8bb09b] dark:text-[#1a1a1a] dark:hover:bg-[#a8c7b2]"
+              className={actionButtonStyles.successSolid}
               onClick={() => {
                 void confirmSaveCredentials()
               }}
@@ -1243,7 +1245,7 @@ export default function AccessControlPage() {
           <AlertDialogFooter>
             <AlertDialogCancel>{t.common.cancel}</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-red-600 hover:bg-red-700"
+              className={actionButtonStyles.dangerSolid}
               onClick={() => {
                 void confirmDeleteUser()
               }}

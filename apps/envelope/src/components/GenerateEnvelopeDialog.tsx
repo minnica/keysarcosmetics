@@ -292,6 +292,7 @@ export function GenerateEnvelopeDialog({
   const [selectedBranchId, setSelectedBranchId] = useState<string>(sucursales[0]?.id ?? "");
   const [generating, setGenerating] = useState(false);
   const signatureRef = useRef<SignaturePadHandle | null>(null);
+  const pendingSuccessToastRef = useRef(false);
 
   const canGenerateEnvelope = canAccess("ventas/generar-sobre");
   const {
@@ -411,6 +412,20 @@ export function GenerateEnvelopeDialog({
     signatureRef.current?.clear();
     setSelectedDate(todayISO());
     setSelectedBranchId(sucursales[0]?.id ?? "");
+  }
+
+  function handleOpenChange(nextOpen: boolean) {
+    setOpen(nextOpen);
+    if (!nextOpen) {
+      resetDialogState();
+    }
+  }
+
+  function handleCloseComplete() {
+    if (!pendingSuccessToastRef.current) return;
+
+    pendingSuccessToastRef.current = false;
+    toast.success(t.sales.generateEnvelopeReady);
   }
 
   function buildEnvelopeCanvas(signatureCanvas: HTMLCanvasElement, signerName: string) {
@@ -624,7 +639,8 @@ export function GenerateEnvelopeDialog({
       link.download = downloadName;
       link.click();
       window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
-      toast.success(t.sales.generateEnvelopeReady);
+      pendingSuccessToastRef.current = true;
+      handleOpenChange(false);
     } catch {
       toast.error(t.sales.generateEnvelopeError);
     } finally {
@@ -639,19 +655,17 @@ export function GenerateEnvelopeDialog({
   return (
     <Dialog
       open={open}
-      onOpenChange={(nextOpen) => {
-        setOpen(nextOpen);
-        if (!nextOpen) {
-          resetDialogState();
-        }
-      }}
+      onOpenChange={handleOpenChange}
     >
       <Button type="button" variant="outline" onClick={() => setOpen(true)}>
         <PenLine className="mr-1.5 h-4 w-4" />
         {t.sales.generateEnvelope}
       </Button>
 
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+      <DialogContent
+        className="max-h-[90vh] overflow-y-auto sm:max-w-2xl"
+        onCloseAutoFocus={handleCloseComplete}
+      >
         <DialogHeader>
           <DialogTitle className="uppercase">{t.sales.generateEnvelopeDialogTitle}</DialogTitle>
           <DialogDescription>{t.sales.generateEnvelopeDialogDescription}</DialogDescription>

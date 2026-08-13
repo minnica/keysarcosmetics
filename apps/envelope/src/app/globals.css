@@ -87,6 +87,36 @@
     font-variant-numeric: tabular-nums;
     letter-spacing: -0.01em;
   }
+
+  /* Scroll horizontal de matrices financieras: discreto y dentro de la marca. */
+  .branch-goals-scroll > div {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-nude) transparent;
+  }
+
+  .branch-goals-scroll > div::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .branch-goals-scroll > div::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .branch-goals-scroll > div::-webkit-scrollbar-thumb {
+    background: var(--color-nude);
+    border-radius: 9999px;
+  }
+
+  .branch-goals-scroll > div::-webkit-scrollbar-thumb:hover {
+    background: var(--color-gold);
+  }
+
+  .branch-goals-scroll--monthly > div {
+    max-height: clamp(24rem, calc(100dvh - 15rem), 52rem);
+    overscroll-behavior: contain;
+    scroll-padding-top: 2.5rem;
+  }
 }
 
 /* ── Variables de marca Keysar Cosmetics ──────────────────────────────────── */

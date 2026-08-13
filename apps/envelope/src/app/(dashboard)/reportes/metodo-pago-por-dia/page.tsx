@@ -1,7 +1,6 @@
 'use client'
 // Reporte: Ventas por método de pago desglosadas por día, columna por sucursal
-import { useState } from 'react'
-import { useEffect } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   Card,
   CardContent,
@@ -31,7 +30,7 @@ import { TableLoadingSkeleton } from '@/components/layout/DataLoadingSkeleton'
 import { exportReportToExcel, exportReportToPdf, type ExportColumn } from '@/lib/report-export'
 
 export default function MetodoPagoPorDiaPage() {
-  const { sucursales, loading: loadingSucursales, error: sucursalesError } = useSucursales()
+  const { sucursales: catalogoSucursales, loading: loadingSucursales, error: sucursalesError } = useSucursales()
   const { metodosPago, loading: loadingMetodos, error: metodosError } = useMetodosPago()
   const { locale, t } = useI18n()
 
@@ -85,6 +84,14 @@ export default function MetodoPagoPorDiaPage() {
   const loading = loadingSucursales || loadingMetodos || loadingReport
   const error = sucursalesError ?? metodosError ?? reportError
   const dias = [...new Set(rows.map(r => r.fecha))].sort()
+  const sucursales = useMemo(() => {
+    const branchById = new Map(catalogoSucursales.map(({ id, nombre }) => [id, nombre]))
+    rows.forEach(({ sucursalId, sucursalNombre }) => {
+      if (!branchById.has(sucursalId)) branchById.set(sucursalId, sucursalNombre)
+    })
+    return Array.from(branchById, ([id, nombre]) => ({ id, nombre }))
+      .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
+  }, [catalogoSucursales, rows])
 
   function totalDiaSucursal(fecha: string, sucursalId: string): number {
     return rows.find(r => r.fecha === fecha && r.sucursalId === sucursalId)?.total ?? 0

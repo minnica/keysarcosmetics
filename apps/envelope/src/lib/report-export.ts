@@ -4,12 +4,13 @@ import type { CellObject } from 'xlsx'
 import type { UserOptions } from 'jspdf-autotable'
 
 export type ExportCellValue = string | number | null | undefined
+export type ExportCellFormat = 'text' | 'number' | 'currency' | 'percent'
 
 export type ExportColumn<T> = {
   header: string
   accessor: (row: T) => ExportCellValue
   width?: number
-  format?: 'text' | 'number' | 'currency' | 'percent'
+  format?: ExportCellFormat | ((row: T) => ExportCellFormat)
 }
 
 export type ReportExportConfig<T> = {
@@ -21,6 +22,7 @@ export type ReportExportConfig<T> = {
   columns: ExportColumn<T>[]
   rows: T[]
   footerRow?: T
+  footerRows?: T[]
 }
 
 function sanitizeFilename(filename: string): string {
@@ -33,12 +35,27 @@ function sanitizeFilename(filename: string): string {
     .toLowerCase()
 }
 
-function formatForDisplay<T>(column: ExportColumn<T>, value: ExportCellValue): string {
+function resolveFormat<T>(
+  column: ExportColumn<T>,
+  row: T,
+): ExportCellFormat | undefined {
+  return typeof column.format === 'function'
+    ? column.format(row)
+    : column.format
+}
+
+function formatForDisplay<T>(
+  column: ExportColumn<T>,
+  value: ExportCellValue,
+  row: T,
+): string {
   if (value === null || value === undefined || value === '') {
     return '—'
   }
 
-  if (column.format === 'currency' && typeof value === 'number') {
+  const format = resolveFormat(column, row)
+
+  if (format === 'currency' && typeof value === 'number') {
     return new Intl.NumberFormat('es-MX', {
       style: 'currency',
       currency: 'MXN',
@@ -46,11 +63,11 @@ function formatForDisplay<T>(column: ExportColumn<T>, value: ExportCellValue): s
     }).format(value)
   }
 
-  if (column.format === 'percent' && typeof value === 'number') {
+  if (format === 'percent' && typeof value === 'number') {
     return `${value.toFixed(0)}%`
   }
 
-  if (column.format === 'number' && typeof value === 'number') {
+  if (format === 'number' && typeof value === 'number') {
     return new Intl.NumberFormat('es-MX', {
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,
@@ -63,12 +80,15 @@ function formatForDisplay<T>(column: ExportColumn<T>, value: ExportCellValue): s
 function toExcelCell<T>(
   column: ExportColumn<T>,
   value: ExportCellValue,
+  row: T,
 ): CellObject {
   if (value === null || value === undefined || value === '') {
     return { t: 's', v: '—' }
   }
 
-  if (column.format === 'currency' && typeof value === 'number') {
+  const format = resolveFormat(column, row)
+
+  if (format === 'currency' && typeof value === 'number') {
     return {
       t: 'n',
       v: value,
@@ -76,7 +96,7 @@ function toExcelCell<T>(
     }
   }
 
-  if (column.format === 'percent' && typeof value === 'number') {
+  if (format === 'percent' && typeof value === 'number') {
     return {
       t: 'n',
       v: value / 100,
@@ -84,7 +104,7 @@ function toExcelCell<T>(
     }
   }
 
-  if (column.format === 'number' && typeof value === 'number') {
+  if (format === 'number' && typeof value === 'number') {
     return {
       t: 'n',
       v: value,
@@ -105,15 +125,17 @@ export async function exportReportToExcel<T>(config: ReportExportConfig<T>): Pro
   )
   const headerRow = config.columns.map((column) => column.header)
   const bodyRows = config.rows.map((row) =>
-    config.columns.map((column) => toExcelCell(column, column.accessor(row))),
+    config.columns.map((column) =>
+      toExcelCell(column, column.accessor(row), row),
+    ),
   )
-  const footerRows = config.footerRow
-    ? [
-        config.columns.map((column) =>
-          toExcelCell(column, column.accessor(config.footerRow as T)),
-        ),
-      ]
-    : []
+  const reportFooterRows =
+    config.footerRows ?? (config.footerRow ? [config.footerRow] : [])
+  const footerRows = reportFooterRows.map((row) =>
+    config.columns.map((column) =>
+      toExcelCell(column, column.accessor(row), row),
+    ),
+  )
 
   const sheet = XLSX.utils.aoa_to_sheet([
     ...titleRows,
@@ -131,7 +153,7 @@ export async function exportReportToExcel<T>(config: ReportExportConfig<T>): Pro
   }))
   sheet['!cols'] = widths
   const headerRowIndex = titleRows.length + 1
-  const lastRowIndex = headerRowIndex + bodyRows.length + footerRows.length
+  const lastRowIndex = headerRowIndex + bodyRows.length
   const lastColumnIndex = Math.max(config.columns.length - 1, 0)
   sheet['!autofilter'] = {
     ref: XLSX.utils.encode_range({
@@ -174,7 +196,7 @@ export async function exportReportToPdf<T>(config: ReportExportConfig<T>): Promi
     head: [config.columns.map((column) => column.header)],
     body: config.rows.map((row) =>
       config.columns.map((column) =>
-        formatForDisplay(column, column.accessor(row)),
+        formatForDisplay(column, column.accessor(row), row),
       ),
     ),
     theme: 'striped',
@@ -200,14 +222,17 @@ export async function exportReportToPdf<T>(config: ReportExportConfig<T>): Promi
     },
     margin: { top: 72, left: 32, right: 32, bottom: 32 },
     tableWidth: 'auto',
+    showFoot: 'lastPage',
   }
 
-  if (config.footerRow) {
-    tableOptions.foot = [
+  const reportFooterRows =
+    config.footerRows ?? (config.footerRow ? [config.footerRow] : [])
+  if (reportFooterRows.length > 0) {
+    tableOptions.foot = reportFooterRows.map((row) =>
       config.columns.map((column) =>
-        formatForDisplay(column, column.accessor(config.footerRow as T)),
+        formatForDisplay(column, column.accessor(row), row),
       ),
-    ]
+    )
   }
 
   autoTable(doc, tableOptions)
