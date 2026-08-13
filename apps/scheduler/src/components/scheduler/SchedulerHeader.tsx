@@ -5,6 +5,7 @@ import { Button, Popover, PopoverContent, PopoverTrigger } from '@cosmetics/ui'
 import {
   ArrowLeft,
   ArrowRight,
+  BarChart3,
   ChevronsLeftRight,
   CircleHelp,
   Copy,
@@ -66,7 +67,7 @@ export function SchedulerHeader({
               >
                 Agenda
               </Link>
-              {['Clientes', 'Servicios', 'Reportes'].map((item) => (
+              {['Clientes', 'Servicios'].map((item) => (
                 <button
                   key={item}
                   className="rounded-full px-5 py-2.5 text-[0.92rem] font-medium text-white/60 transition hover:bg-white/6 hover:text-white"
@@ -75,6 +76,12 @@ export function SchedulerHeader({
                   {item}
                 </button>
               ))}
+              <Link
+                className="rounded-full px-5 py-2.5 text-[0.92rem] font-medium text-white/60 transition hover:bg-white/6 hover:text-white"
+                href="/reportes"
+              >
+                Reportes
+              </Link>
               <Link
                 className="rounded-full border border-[#c3a583]/45 bg-[#c3a583]/20 px-5 py-2.5 text-[0.92rem] font-medium text-white transition hover:bg-[#c3a583]/30"
                 href="/administracion"
@@ -85,6 +92,13 @@ export function SchedulerHeader({
           </div>
 
           <div className="flex items-center gap-3">
+            <Link
+              aria-label="Abrir Reportes"
+              className="scheduler-header-button lg:hidden"
+              href="/reportes"
+            >
+              <BarChart3 className="h-5 w-5" />
+            </Link>
             <Link
               aria-label="Abrir Administración"
               className="scheduler-header-button lg:hidden"

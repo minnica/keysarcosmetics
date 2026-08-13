@@ -8104,12 +8104,12 @@ function AdministrationHeader({
             >
               Servicios
             </button>
-            <button
-              type="button"
+            <Link
+              href="/reportes"
               className="rounded-full px-4 py-2.5 text-sm font-medium text-white/60 hover:bg-white/10 hover:text-white"
             >
               Reportes
-            </button>
+            </Link>
             <Link
               className="rounded-full border border-[#c3a583]/45 bg-[#c3a583]/20 px-4 py-2.5 text-sm font-medium text-white"
               href={`/administracion?section=${active}`}

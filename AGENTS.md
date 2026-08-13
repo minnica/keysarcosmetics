@@ -69,6 +69,7 @@ Componentes shadcn canónicos en `packages/ui/src/components/ui`:
 - **AlertDialog** — diálogo de confirmación destructiva (botones de borrar)
 - **Sonner** — toasts con colores de marca (`#648672` green-olive, `#8bb09b` green-sage)
 - **DataTable** — tabla canónica shadcn sobre `@tanstack/react-table`. Props: `columns: ColumnDef<T>[]`, `data: T[]`, `emptyMessage?: string`, `searchPlaceholder?: string`, `pageSize?: number` (default 20). Incluye sorting por clic en header, globalFilter (search input), selector de filas por página (opciones: 10, 20, 50, 100, Todos) y pagination con controles prev/next (ocultos en modo Todos). Re-exporta también `ColumnDef` desde `@cosmetics/ui` — las apps no deben importar `@tanstack/react-table` directamente.
+- **DateRangePicker** — selector compartido de rango ISO `YYYY-MM-DD`; muestra dos meses en escritorio y uno en móvil, con calendario localizado al español.
 
 `toast` helper re-exportado desde `@cosmetics/ui` (no importar `sonner` directamente en las apps).
 
@@ -224,15 +225,18 @@ apps/scheduler/
 │   ├── (auth)/login/              → acceso temporal/mock al scheduler
 │   ├── (dashboard)/page.tsx       → agenda principal (día / semana)
 │   ├── (dashboard)/administracion/ → workspace administrativo completo
+│   ├── (dashboard)/reportes/       → resumen ejecutivo + reporte general de reservas (mock)
 │   ├── globals.css                → tokens visuales del scheduler
 │   └── layout.tsx                 → metadata + Toaster global
 ├── src/components/
 │   ├── SchedulerWorkspace.tsx     → shell principal con estado local, filtros y modales
-│   └── scheduler/                 → header, sidebar, grid agenda, tarjetas y diálogos del scheduler
+│   ├── scheduler/                 → header, sidebar, grid agenda, tarjetas y diálogos del scheduler
+│   └── reports/                   → dashboard y navegación del resumen de reportes
 ├── src/components/administration/ → navegación y CRUDs mock de Administración
 └── src/lib/
     ├── mock-scheduler-data.ts     → datos mock de sucursales, profesionales, citas, bloqueos y leyenda
-    └── mock-administration-data.ts → catálogos mock de locales, profesionales, servicios y módulos administrativos
+    ├── mock-administration-data.ts → catálogos mock de locales, profesionales, servicios y módulos administrativos
+    └── mock-report-data.ts        → periodos, KPIs y series mock del resumen de reportes
 ```
 
 ### backend/api
@@ -405,6 +409,7 @@ npx ts-node --project tsconfig.json prisma/seed-catalogs.ts
 - Crear seeds separados seguros para dev/datos base si se requiere.
 - Limpieza futura de campos legacy `banco`/`puesto` en `Empleado` cuando todos los registros en prod tengan `bankId`/`positionId` asignados (Fase 4).
 - `apps/scheduler` conserva la agenda principal en modo local/mock. La ruta `/administracion` ahora contiene el workspace completo de Administración, también local/mock y sin conexión a backend.
+- La ruta `/reportes` contiene la primera fase local/mock de Reportes: resumen ejecutivo con selector de periodo, KPIs comparativos, detalle por estado, origen de reservas, ocupación, ventas y ticket promedio. También incluye seguimiento mock de cumpleaños, recordatorios por email, pagos en línea y métricas de campañas. `/reportes/reservas` implementa la vista General del reporte de reservas con rango de fechas, filtros por estado, criterio de fecha, KPIs, ranking de servicios, distribución semanal y demanda por hora. El ítem lateral `Reservas` funciona como dropdown con `Historial` y `Métricas`; `/reportes/reservas/historial` implementa Historial con los filtros compartidos, DataTable, búsqueda, sorting, paginación, estados de reserva/pago y descarga visual mock. `/reportes/reservas/metricas` implementa Métricas con proporciones generales, desglose por servicio, evolución diaria y estados vacíos para confirmadas, asistencias, cancelaciones y no asistencias. Los demás desgloses laterales permanecen pendientes. El reporte de ventas todavía no está implementado.
 - Administración incluye Locales, Profesionales, Grupos personalizados, Servicios, Clases, Paquetes, Adicionales, Comisiones, Recursos, Encuestas, Consentimientos, WhatsApp y Gift cards. Sus CRUDs, filtros, estados, modales y confirmaciones se mantienen en estado local durante esta fase.
 - Servicios ya cuenta en mock con los modales de servicios, sesiones, clases, paquetes y adicionales; categorías, profesionales, servicio destacado, nombres alternativos, sitio web, pago en línea, imágenes y carga/descarga masiva de precios. La siguiente prioridad visual es cerrar `Opciones avanzadas` antes de conectar la API.
 - La carga de precios y subida de plantillas `.xlsx` son flujos visuales/mock: todavía no procesan archivos reales ni persisten información.

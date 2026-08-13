@@ -2603,6 +2603,467 @@
     color: white;
   }
 
+  .number-display {
+    font-family: "Gilroy", "Inter", sans-serif;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .report-nav-link {
+    @apply rounded-full px-4 py-2.5 text-sm font-medium text-white/60 transition hover:bg-white/10 hover:text-white;
+  }
+
+  .report-nav-active {
+    @apply inline-flex items-center gap-2 rounded-full px-4 py-2.5 text-sm font-medium text-white transition;
+    border: 1px solid rgba(195, 165, 131, 0.45);
+    background: rgba(195, 165, 131, 0.2);
+  }
+
+  .report-nav-active:hover {
+    background: rgba(195, 165, 131, 0.3);
+  }
+
+  .report-hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(17rem, 22rem);
+    gap: 2rem;
+    align-items: end;
+    border: 1px solid rgba(233, 225, 218, 0.92);
+    border-radius: 2rem;
+    background:
+      radial-gradient(circle at 88% 10%, rgba(195, 165, 131, 0.18), transparent 30%),
+      rgba(255, 255, 255, 0.88);
+    padding: clamp(1.25rem, 3vw, 2.25rem);
+    box-shadow: 0 16px 42px rgba(38, 54, 73, 0.055);
+  }
+
+  .report-period-control {
+    border: 1px solid #e9e1da;
+    border-radius: 1.4rem;
+    background: rgba(250, 248, 245, 0.86);
+    padding: 1rem;
+  }
+
+  .report-metric {
+    min-height: 12.5rem;
+    border: 1px solid #e9e1da;
+    border-radius: 1.6rem;
+    background: rgba(255, 255, 255, 0.94);
+    padding: 1.25rem;
+    box-shadow: 0 12px 34px rgba(38, 54, 73, 0.05);
+    animation: report-card-in 360ms ease-out both;
+  }
+
+  .report-metric-featured {
+    border-color: transparent;
+    background:
+      radial-gradient(circle at 86% 10%, rgba(195, 165, 131, 0.25), transparent 34%),
+      linear-gradient(145deg, #1b2937, #26384a);
+    color: white;
+    box-shadow: 0 22px 44px rgba(23, 34, 48, 0.2);
+  }
+
+  .report-metric-icon {
+    @apply flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl;
+    background: #f6f2ed;
+    color: #ad8b67;
+  }
+
+  .report-card {
+    min-width: 0;
+    border: 1px solid #e9e1da;
+    border-radius: 1.75rem;
+    background: rgba(255, 255, 255, 0.94);
+    padding: clamp(1.25rem, 2vw, 1.6rem);
+    box-shadow: 0 14px 36px rgba(38, 54, 73, 0.055);
+    animation: report-card-in 420ms ease-out both;
+  }
+
+  .report-insight-card {
+    min-width: 0;
+    overflow: hidden;
+    border-radius: 1.75rem;
+    background:
+      radial-gradient(circle at 92% 12%, rgba(195, 165, 131, 0.32), transparent 34%),
+      linear-gradient(145deg, #202e3c, #17222f);
+    padding: clamp(1.25rem, 2vw, 1.6rem);
+    box-shadow: 0 20px 44px rgba(23, 34, 48, 0.18);
+    animation: report-card-in 460ms ease-out both;
+  }
+
+  .report-donut {
+    display: flex;
+    height: 10.5rem;
+    width: 10.5rem;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.5);
+  }
+
+  .report-donut-center {
+    display: flex;
+    height: 7rem;
+    width: 7rem;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    background: white;
+    box-shadow: 0 10px 24px rgba(38, 54, 73, 0.09);
+  }
+
+  .report-action-icon {
+    display: flex;
+    height: 3rem;
+    width: 3rem;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    border-radius: 1rem;
+  }
+
+  .reservation-filter-card {
+    border: 1px solid #e9e1da;
+    border-radius: 1.75rem;
+    background:
+      radial-gradient(circle at 92% 5%, rgba(195, 165, 131, 0.13), transparent 28%),
+      rgba(255, 255, 255, 0.9);
+    padding: clamp(1.15rem, 2.2vw, 1.6rem);
+    box-shadow: 0 14px 36px rgba(38, 54, 73, 0.05);
+  }
+
+  .reservation-report-nav {
+    min-width: 0;
+    width: 100%;
+    align-self: start;
+    border: 1px solid #e9e1da;
+    border-radius: 1.5rem;
+    background: rgba(255, 255, 255, 0.74);
+    padding: 1rem;
+    overflow: hidden;
+    box-shadow: 0 12px 30px rgba(38, 54, 73, 0.045);
+  }
+
+  .reservation-report-nav-item {
+    display: flex;
+    min-width: max-content;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    border-radius: 1rem;
+    padding: 0.75rem 0.85rem;
+    color: #788493;
+    font-size: 0.82rem;
+    font-weight: 500;
+    text-align: left;
+    transition: background-color 160ms ease, color 160ms ease;
+  }
+
+  .reservation-report-nav-item:hover {
+    background: rgba(246, 242, 237, 0.9);
+    color: #263649;
+  }
+
+  .reservation-report-nav-item-active {
+    background: #263649;
+    color: white;
+    box-shadow: 0 10px 22px rgba(38, 54, 73, 0.14);
+  }
+
+  .reservation-report-nav-item-active:hover {
+    background: #263649;
+    color: white;
+  }
+
+  .reservation-report-nav-group {
+    display: flex;
+    min-width: 12rem;
+    flex: 0 0 auto;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+
+  .reservation-report-subnav {
+    display: grid;
+    gap: 0.25rem;
+    border-left: 1px solid #e4dbd3;
+    margin-left: 1rem;
+    padding-left: 0.65rem;
+  }
+
+  .reservation-report-subnav-item {
+    border-radius: 0.8rem;
+    padding: 0.55rem 0.7rem;
+    color: #8a95a2;
+    font-size: 0.78rem;
+    font-weight: 500;
+    text-align: left;
+    transition: background-color 160ms ease, color 160ms ease;
+  }
+
+  .reservation-report-subnav-item:hover {
+    background: #f7f3ef;
+    color: #263649;
+  }
+
+  .reservation-report-subnav-item-active {
+    background: rgba(100, 134, 114, 0.11);
+    color: #526f5e;
+    font-weight: 600;
+  }
+
+  .reservation-metrics-intro {
+    background:
+      radial-gradient(circle at 92% 12%, rgba(100, 134, 114, 0.13), transparent 32%),
+      rgba(255, 255, 255, 0.94);
+  }
+
+  .reservation-metric-service-card {
+    min-height: 34rem;
+  }
+
+  .reservation-metric-daily-card {
+    min-height: 21.5rem;
+  }
+
+  .reservation-metric-accent-icon {
+    display: flex;
+    height: 2.75rem;
+    width: 2.75rem;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    border-radius: 1rem;
+  }
+
+  .reservation-metric-empty {
+    display: flex;
+    min-height: 15rem;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    border: 1px dashed #dfd6ce;
+    border-radius: 1.35rem;
+    background:
+      radial-gradient(circle at 50% 0%, rgba(195, 165, 131, 0.1), transparent 48%),
+      #faf8f5;
+    margin-top: 1.25rem;
+    padding: 1.5rem;
+    text-align: center;
+  }
+
+  .reservation-metric-empty-icon {
+    display: flex;
+    height: 3rem;
+    width: 3rem;
+    align-items: center;
+    justify-content: center;
+    border-radius: 1rem;
+    background: white;
+    color: #ad8b67;
+    box-shadow: 0 10px 24px rgba(38, 54, 73, 0.08);
+    margin-bottom: 0.9rem;
+  }
+
+  .reservation-metrics-divider {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    color: #9a7a5e;
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+  }
+
+  .reservation-metrics-divider::before,
+  .reservation-metrics-divider::after {
+    height: 1px;
+    flex: 1;
+    background: #ded5cd;
+    content: "";
+  }
+
+  .reservation-status-chip {
+    display: inline-flex;
+    min-height: 2.35rem;
+    align-items: center;
+    gap: 0.5rem;
+    border: 1px solid #e7dfd8;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.74);
+    padding: 0.45rem 0.8rem;
+    color: #84909d;
+    font-size: 0.76rem;
+    font-weight: 500;
+    transition: border-color 160ms ease, background-color 160ms ease, color 160ms ease;
+  }
+
+  .reservation-status-chip:hover {
+    border-color: #cdbcae;
+    color: #263649;
+  }
+
+  .reservation-status-chip-active {
+    border-color: rgba(100, 134, 114, 0.32);
+    background: rgba(100, 134, 114, 0.1);
+    color: #526f5e;
+  }
+
+  .reservation-history-card {
+    min-width: 0;
+  }
+
+  .reservation-history-table {
+    --text-muted: #84909d;
+    --border-color: #e9e1da;
+    min-width: 0;
+  }
+
+  .reservation-history-table > div > div:first-child {
+    flex-wrap: wrap;
+  }
+
+  .reservation-history-table input {
+    min-height: 2.65rem;
+    border-color: #e6ddd5;
+    border-radius: 0.9rem;
+    background: #faf8f5;
+    color: #263649;
+  }
+
+  .reservation-history-table table {
+    min-width: 72rem;
+  }
+
+  .reservation-history-table th {
+    height: 3.2rem;
+    background: #f7f3ef;
+    color: #536276;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.025em;
+    white-space: nowrap;
+  }
+
+  .reservation-history-table td {
+    color: #6f7c8a;
+    font-size: 0.78rem;
+    line-height: 1.35;
+  }
+
+  .reservation-history-table tbody tr {
+    transition: background-color 140ms ease;
+  }
+
+  .reservation-history-table tbody tr:hover {
+    background: rgba(248, 245, 241, 0.78);
+  }
+
+  .reservation-history-badge,
+  .reservation-payment-badge {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    padding: 0.3rem 0.55rem;
+    font-size: 0.68rem;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  .reservation-history-badge-reserved {
+    background: #f7f1ea;
+    color: #9b7958;
+  }
+
+  .reservation-history-badge-confirmed,
+  .reservation-history-badge-attended {
+    background: #edf4f0;
+    color: #526f5e;
+  }
+
+  .reservation-history-badge-no-show,
+  .reservation-history-badge-canceled {
+    background: #f8eeee;
+    color: #a86262;
+  }
+
+  .reservation-history-badge-pending {
+    background: #fbf5e8;
+    color: #9a783d;
+  }
+
+  .reservation-payment-badge-paid {
+    background: #edf4f0;
+    color: #526f5e;
+  }
+
+  .reservation-payment-badge-pending {
+    background: #fbf5e8;
+    color: #9a783d;
+  }
+
+  .reservation-payment-badge-unpaid {
+    background: #f2f0ee;
+    color: #7e8791;
+  }
+
+  @media (min-width: 1024px) {
+    .reservation-report-nav {
+      position: sticky;
+      top: 6.5rem;
+    }
+
+    .reservation-report-nav-group {
+      min-width: 0;
+      width: 100%;
+    }
+  }
+
+  @media (max-width: 767px) {
+    .report-hero {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 1.25rem;
+      border-radius: 1.5rem;
+    }
+
+    .report-period-control {
+      border-radius: 1.1rem;
+    }
+
+    .report-metric {
+      min-height: 11.5rem;
+    }
+
+    .reservation-filter-card,
+    .reservation-report-nav {
+      border-radius: 1.3rem;
+    }
+
+    .reservation-history-table > div > div:first-child {
+      align-items: stretch;
+      flex-direction: column;
+    }
+
+    .reservation-history-table > div > div:first-child > div {
+      width: 100%;
+    }
+
+    .reservation-metric-service-card,
+    .reservation-metric-daily-card {
+      min-height: 0;
+    }
+
+    .reservation-metric-empty {
+      min-height: 12rem;
+    }
+
+    .reservation-metric-daily-card svg {
+      height: 12.5rem;
+    }
+  }
+
   .resource-validation-button:hover {
     background: #079f7a;
   }
@@ -4591,5 +5052,25 @@
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@keyframes report-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .report-card,
+  .report-insight-card,
+  .report-metric {
+    animation: none;
   }
 }
