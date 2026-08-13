@@ -66,7 +66,7 @@ export default function AppointmentReportPage() {
   const [branchId, setBranchId] = useState('all')
   const [exporting, setExporting] = useState<'pdf' | 'excel' | null>(null)
   const { employees, loading: catalogsLoading, error: catalogsError } = useAppointmentCatalogs()
-  const { sucursales, loading: branchesLoading, error: branchesError } = useSucursales()
+  const { sucursales: catalogoSucursales, loading: branchesLoading, error: branchesError } = useSucursales()
 
   const facialists = useMemo(() => {
     const matched = employees.filter((employee) => (employee.position?.nombre ?? employee.puesto).trim().toUpperCase().includes('FACIALISTA'))
@@ -86,6 +86,14 @@ export default function AppointmentReportPage() {
     ...(branchId !== 'all' ? { sucursalId: branchId } : {}),
   }), [branchId, facialistId, range.from, range.to, user?.empleadoId, user?.selfDataOnly])
   const { rows, loading, error } = useAppointmentReport(filters)
+  const sucursales = useMemo(() => {
+    const branchById = new Map(catalogoSucursales.map(({ id, nombre }) => [id, nombre]))
+    rows.forEach(({ sucursalId, sucursalNombre }) => {
+      if (!branchById.has(sucursalId)) branchById.set(sucursalId, sucursalNombre)
+    })
+    return Array.from(branchById, ([id, nombre]) => ({ id, nombre }))
+      .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
+  }, [catalogoSucursales, rows])
 
   const totals = useMemo(() => rows.reduce((acc, row) => ({
     totalCitas: acc.totalCitas + row.totalCitas,

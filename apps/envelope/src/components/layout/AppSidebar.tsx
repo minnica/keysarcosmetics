@@ -9,6 +9,7 @@ import {
   CalendarRange, TrendingUp, Sun, Moon, X, LogOut,
   Landmark, Briefcase,
   Award, CalendarCheck2, ClipboardList,
+  ChevronDown,
 } from 'lucide-react'
 import {
   Sidebar,
@@ -60,11 +61,21 @@ const ICONS: Record<string, React.ElementType> = {
 }
 
 type NavItem = (typeof SCREEN_CONFIG)[number]
+type CollapsibleSection = Extract<AccessSection, 'forms' | 'reports'>
 
 const SECTION_LABELS: Record<AccessSection, 'forms' | 'reports' | 'admin'> = {
   forms: 'forms',
   reports: 'reports',
   admin: 'admin',
+}
+
+const SECTION_LABEL_CLASS_NAME =
+  'text-[10px] font-sans font-semibold uppercase tracking-[0.14em]'
+
+const SECTION_LABEL_STYLE: React.CSSProperties = {
+  color: 'var(--text-secondary)',
+  fontFamily: "'Gilroy', 'Inter', sans-serif",
+  fontWeight: 600,
 }
 
 function PreferenceSegmentedControl<T extends string>({
@@ -160,9 +171,10 @@ function LanguageToggle() {
 export function AppSidebar() {
   const pathname = usePathname()
   const router = useRouter()
-  const { isMobile, setOpenMobile } = useSidebar()
+  const { isMobile, setOpenMobile, state: sidebarState } = useSidebar()
   const { t } = useI18n()
   const { canAccess, isAccessManager, logout, status } = useSession()
+  const [expandedSection, setExpandedSection] = useState<CollapsibleSection | null>(null)
 
   function handleNavClick() {
     setOpenMobile(false)
@@ -240,15 +252,48 @@ export function AppSidebar() {
 
           if (items.length === 0) return null
 
+          const isCollapsible = section !== 'admin'
+          const isExpanded = isCollapsible && expandedSection === section
+          const showItems = !isCollapsible || (!isMobile && sidebarState === 'collapsed') || isExpanded
+          const sectionLabel = t.sidebar[SECTION_LABELS[section] as keyof typeof t.sidebar]
+
           return (
             <SidebarGroup key={section}>
-              <SidebarGroupLabel
-                className="text-[10px] font-semibold uppercase tracking-[0.14em]"
-                style={{ color: 'rgba(195, 165, 131, 0.75)' }}
+              {isCollapsible ? (
+                <SidebarGroupLabel asChild>
+                  <button
+                    type="button"
+                    aria-expanded={isExpanded}
+                    aria-controls={`sidebar-section-${section}`}
+                    onClick={() => setExpandedSection(isExpanded ? null : section)}
+                    className={`${SECTION_LABEL_CLASS_NAME} group/disclosure w-full cursor-pointer justify-between transition-colors duration-200 hover:bg-[var(--accent-hover)] focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none`}
+                    style={SECTION_LABEL_STYLE}
+                  >
+                    <span className="truncate">{sectionLabel}</span>
+                    <span className="flex items-center gap-1.5" aria-hidden="true">
+                      <span className="min-w-4 text-center text-[10px] tabular-nums text-[var(--text-muted)]">
+                        {items.length}
+                      </span>
+                      <ChevronDown
+                        className={`h-3.5 w-3.5 transition-transform duration-200 motion-reduce:transition-none ${
+                          isExpanded ? 'rotate-180' : ''
+                        }`}
+                      />
+                    </span>
+                  </button>
+                </SidebarGroupLabel>
+              ) : (
+                <SidebarGroupLabel
+                  className={SECTION_LABEL_CLASS_NAME}
+                  style={SECTION_LABEL_STYLE}
+                >
+                  {sectionLabel}
+                </SidebarGroupLabel>
+              )}
+              <SidebarGroupContent
+                id={isCollapsible ? `sidebar-section-${section}` : undefined}
+                hidden={!showItems}
               >
-                {t.sidebar[SECTION_LABELS[section] as keyof typeof t.sidebar]}
-              </SidebarGroupLabel>
-              <SidebarGroupContent>
                 <SidebarMenu>
                   {items.map((item: NavItem) => {
                     const isActive = pathname === item.path

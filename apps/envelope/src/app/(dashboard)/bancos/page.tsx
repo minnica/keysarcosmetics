@@ -32,6 +32,7 @@ import { RefreshingDataIndicator } from '@/components/RefreshingDataIndicator'
 import { TableLoadingSkeleton } from '@/components/layout/DataLoadingSkeleton'
 import { useI18n } from '@/lib/i18n'
 import type { Bank } from '@cosmetics/types'
+import { actionButtonStyles } from '@/lib/action-button-styles'
 
 const schema = z.object({
   nombre: z.string().min(1, 'Requerido').max(60),
@@ -95,13 +96,13 @@ export default function BancosPage() {
         const b = row.original
         return (
           <div className="flex justify-end gap-1">
-            <Button size="icon" variant="ghost" onClick={() => openEdit(b)}>
+            <Button size="icon" variant="outline" className={actionButtonStyles.neutral} onClick={() => openEdit(b)}>
               <Pencil className="h-4 w-4" />
             </Button>
             <AlertDialog>
               <AlertDialogTrigger asChild>
-                <Button size="icon" variant="ghost">
-                  <Trash2 className="h-4 w-4 text-red-500" />
+                <Button size="icon" variant="outline" className={actionButtonStyles.danger}>
+                  <Trash2 className="h-4 w-4" />
                 </Button>
               </AlertDialogTrigger>
               <AlertDialogContent>
@@ -114,7 +115,7 @@ export default function BancosPage() {
                 <AlertDialogFooter>
                   <AlertDialogCancel>{t.common.cancel}</AlertDialogCancel>
                   <AlertDialogAction
-                    className="bg-red-600 hover:bg-red-700"
+                    className={actionButtonStyles.dangerSolid}
                     onClick={() => remove(b.id)}
                   >
                     {t.common.delete}

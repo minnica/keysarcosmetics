@@ -219,7 +219,7 @@ Módulos implementados:
 - **empleados** — CRUD, usa `bankId`/`positionId` dinámicos desde backend; incluye toggle activo/inactivo con `PATCH /empleados/:id/status`; GET retorna todos los empleados (activos primero), la tabla muestra badge de estatus y botón `PowerOff`/`Power` con AlertDialog de confirmación. Además de `banco`/`puesto` legacy, ya expone `sueldo`, `fechaNacimiento` y `numeroTelefono` en formulario, tabla, backend, Prisma y seed; `fechaNacimiento` se captura completo para que después se derive el cumpleaños y la base de RH para nómina. La asignación laboral distingue una sucursal concreta, `TODAS` (`todasSucursales = true`) y `Sin sucursal asignada`; `TODAS` no es una fila del catálogo `Sucursal`. La page de empleados también tiene filtros de tabla por estatus, puesto y sueldo antes de pasar los datos a `DataTable`.
   El filtro de sueldo usa límites numéricos opcionales `Desde`/`Hasta`, no rangos preestablecidos; si ambos están vacíos no restringe resultados y, al establecer cualquiera, excluye los registros sin sueldo.
   El campo `sueldo` también puede ocultarse por permiso virtual `empleados/sueldo`: por defecto solo lo ve `SUPER_ADMIN`, y desde `accesos` se puede otorgar o denegar para otros puestos. Cuando no hay permiso, no se muestra en la tabla ni en el formulario de alta/edición, y el backend lo redacciona en las respuestas del módulo `empleados`.
-- **sucursales** — CRUD de sucursales
+- **sucursales** — catálogo con alta/edición de nombre y `metaMensual`, más activación/desactivación confirmada. La administración obtiene activas e inactivas con `GET /api/envelope/sucursales?includeInactive=true`; los formularios operativos consumen el endpoint sin ese parámetro y reciben solo activas. Desactivar persiste `activa = false` y `desactivadaEn`, no elimina ventas, citas, empleados, usuarios ni snapshots. Las altas de ventas/citas validan nuevamente el estatus en backend para bloquear clientes con catálogo obsoleto. Los reportes agregados conservan las relaciones históricas y sus nombres embebidos; cuando construyen columnas dinámicas mezclan el catálogo activo con las sucursales presentes en el dataset histórico. El dashboard deja de proyectar ceros para una sucursal en periodos posteriores a `desactivadaEn`; si el periodo cruza el momento de desactivación todavía la incluye.
 - **metodos-pago** — CRUD de métodos de pago
 - **bancos** — CRUD propio con catálogo `Bank`
 - **puestos** — CRUD propio con catálogo `Position`
@@ -237,11 +237,13 @@ UI:
 - Las pantallas `citas` y `reportes/citas` tienen permisos independientes y aparecen en `Pantallas permitidas`; el catálogo mínimo de empleados para ambas se obtiene de `GET /api/envelope/citas/catalogos` sin conceder acceso al CRUD de empleados.
 - Estados de carga en `envelope`: en primera carga de una pantalla o dataset, usar skeletons estructurales desde `apps/envelope/src/components/layout/DataLoadingSkeleton.tsx` o `PageLoadingSkeleton`; evitar textos planos tipo `Cargando...` como estado principal. Cuando ya hay datos y solo se refrescan, usar `RefreshingDataIndicator` sin desmontar la tabla/formato visible.
 - Todos los botones de borrar usan `AlertDialog` de confirmación.
+- Las acciones con color semántico de `envelope` reutilizan `apps/envelope/src/lib/action-button-styles.ts`: `neutral` para editar, `warning` para desactivar, `success` para activar y `danger` para eliminar, con variantes sólidas para confirmaciones. Cada estilo define explícitamente fondo, borde, texto, hover y foco tanto en tema claro como oscuro; no volver a fijar combinaciones de color válidas para un solo tema directamente en las pages.
 - Todos los formularios disparan `toast.success()` al crear o editar, **excepto** el modal "Agregar/Editar venta" en ventas: dispara `toast.info()` azul pastel (8 s) recordando al usuario que debe dar clic en «Guardar registro» para persistir.
 - En `ventas`, el botón final de guardado debe pasar por un `AlertDialog` de confirmación antes de persistir la venta.
 - `<Toaster position="bottom-center" />` montado en `src/app/layout.tsx`.
 - Favicon configurado via metadata `icons: { icon: '/logo.svg' }` en root layout.
 - Header del sidebar muestra logo (32px) + texto "Keysar Cosmetics" cuando expandido; solo logo (28px) cuando colapsado.
+- En el sidebar expandido, `Formularios` y `Reportes` funcionan como grupos desplegables accesibles: solo uno queda abierto a la vez y la sección de la ruta activa se abre automáticamente. En el modo de solo iconos, todas las opciones permanecen disponibles con sus tooltips.
 - Switch dark/light mode y switch visual de idioma `ES/EN` en `SidebarFooter`, encima del botón "Cerrar sesión", ocultos en modo colapsado. Ambos usan el mismo diseño segmentado. Envelope usa `I18nProvider` + `useI18n()` en `src/lib/i18n.tsx`, persiste en `localStorage` con key `keysar-envelope-language` y solo traduce textos estáticos de UI. No traducir ni transformar datos provenientes de BD/API (nombres de sucursales, empleados, bancos, puestos, métodos de pago, mensajes explícitos de backend, etc.).
 - Botón "Cerrar sesión" en `SidebarFooter` — limpia `auth_token`, resetea la sesión en memoria y redirige a `/login`. Usa `SidebarMenuButton` con tooltip para funcionar también en modo colapsado.
 - El login de `envelope` ya usa sesión híbrida: credenciales temporales hoy, con soporte de base para invitación futura por enlace. El redirect post-login usa `window.location.assign(...)` para evitar quedarse atrapado en la pantalla de login.
@@ -699,6 +701,7 @@ Reglas para futuras sesiones:
 - `Empleado` tiene `sucursalId` nullable (FK a `Sucursal`, `ON DELETE SET NULL`) y `todasSucursales Boolean @default(false)`. `null + false` se presenta como `Sin sucursal asignada`; `null + true` se presenta como `TODAS`; una sucursal concreta siempre conserva `todasSucursales = false`.
 - `Empleado` también tiene campos legacy `banco`/`puesto` (String) — conservar por compatibilidad hasta backfill completo en prod.
 - `Empleado` ahora incluye `sueldo Decimal?`, `fechaNacimiento DateTime?` y `numeroTelefono String?` para el crecimiento del módulo RH.
+- `Sucursal` incluye `metaMensual Decimal @default(0) @db.Decimal(14, 2)` y `desactivadaEn DateTime?`. `activa` controla catálogos/formularios futuros; `desactivadaEn` define desde cuándo deja de proyectarse en los periodos del dashboard sin alterar las relaciones históricas.
 - `Venta` tiene `sesionId String?` — vincula registros del mismo voucher multi-vendedor; null = venta individual.
 - `RegistroCita` relaciona sucursal, vendedor, facialista, usuario creador y `SubcategoriaAtencion`; indexa fecha, `estatus+fecha`, `sucursalId+fecha`, `facialistaId+fecha`, `vendedorId+fecha`, `creadoPorId` y servicio. Para compras con apartado guarda el importe tentativo en `montoCompra` y el pago recibido en `montoApartado`. `CategoriaAtencion` y `SubcategoriaAtencion` forman el catálogo administrable para el flujo de citas. La migración `20260721000000_replace_cita_attention_with_service_catalog` reemplaza el enum temporal de tipo de atención; presupone que `RegistroCita` aún está vacío y no toca ventas ni sobres. La migración `20260721000001_add_monto_apartado_to_registro_cita` agrega el importe de apartado sin alterar registros históricos. Aplicarlas con `prisma migrate deploy` antes de habilitar el flujo en un ambiente.
 - `Venta` y `VentaDetalle` tienen índices de rendimiento para filtros/reportes: `Venta.fecha`, `Venta.sucursalId+fecha`, `Venta.vendedorId+fecha`, `Venta.sesionId`, `VentaDetalle.ventaId` y `VentaDetalle.metodoPagoId`.
@@ -711,6 +714,7 @@ Reglas para futuras sesiones:
 - Usar migraciones Prisma controladas (`prisma migrate deploy`).
 - La migración Payroll `20260730000000_add_payroll_models` es aditiva: crea tablas, enums, índices, relaciones y restricciones de nómina; no elimina ni transforma ventas, empleados ni otros registros productivos de Envelope.
 - La migración `20260731000000_add_employee_branch` también es aditiva: agrega `Empleado.sucursalId` nullable, su índice y FK sin actualizar filas existentes. La migración `20260801000000_add_employee_all_branches` agrega el indicador `todasSucursales` con default `false` y una restricción que impide combinar `TODAS` con una sucursal concreta.
+- La migración `20260813000000_add_branch_monthly_goal_and_deactivation_date` es aditiva: agrega `Sucursal.metaMensual` con default cero, `Sucursal.desactivadaEn` nullable y un índice por `activa`; no elimina ni reescribe históricos.
 - Aplicar Payroll por ambiente en este orden: confirmar conexión y respaldo/PITR, ejecutar `prisma migrate status`, aplicar `prisma migrate deploy`, desplegar el backend correspondiente y después desplegar/verificar el frontend.
 - `seed.ts` contiene datos demo — usar con cuidado, puede sobreescribir datos.
 - `seed-catalogs.ts` es el seed seguro para catálogos `Bank`/`Position`.
@@ -854,7 +858,8 @@ backend/api/
 │   ├── migrations/                → migraciones versionadas (no modificar manualmente)
 │   │   ├── 20260730000000_add_payroll_models/ → migración aditiva de Payroll
 │   │   ├── 20260731000000_add_employee_branch/ → FK nullable de empleado a sucursal
-│   │   └── 20260801000000_add_employee_all_branches/ → asignación laboral explícita a todas las sucursales
+│   │   ├── 20260801000000_add_employee_all_branches/ → asignación laboral explícita a todas las sucursales
+│   │   └── 20260813000000_add_branch_monthly_goal_and_deactivation_date/ → meta mensual y fecha de desactivación de sucursales
 │   ├── seed.ts                    → seed general/demo, usar con cuidado
 │   └── seed-catalogs.ts           → seed seguro para Bank/Position
 └── src/
@@ -1014,4 +1019,5 @@ npx ts-node --project tsconfig.json prisma/seed-catalogs.ts
 - Crear seeds separados seguros para dev/datos base si se requiere.
 - Limpieza futura de campos legacy `banco`/`puesto` en `Empleado` cuando todos los registros en prod tengan `bankId`/`positionId` asignados (Fase 4).
 - Payroll producción: confirmar respaldo/PITR, aplicar `20260730000000_add_payroll_models`, `20260731000000_add_employee_branch` y `20260801000000_add_employee_all_branches`, desplegar `cosmetics-api`, configurar/verificar `NEXT_PUBLIC_API_URL` y `CORS_ORIGINS`, y ejecutar una corrida paralela antes del primer pago oficial.
+- Sucursales: aplicar `20260813000000_add_branch_monthly_goal_and_deactivation_date` en cada ambiente con `prisma migrate deploy` antes de desplegar el backend/frontend que capturan `metaMensual` y `desactivadaEn`.
 - Payroll Storage: crear más adelante el bucket privado y configurar `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` y opcionalmente `PAYROLL_STORAGE_BUCKET` solo después de que exista.

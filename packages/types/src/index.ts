@@ -52,7 +52,9 @@ export type MetodoPago = "EFECTIVO" | "TARJETA" | "TRANSFERENCIA" | "OTRO";
 export interface Sucursal {
   id: string;
   nombre: string;
+  metaMensual: number;
   activa: boolean;
+  desactivadaEn: Date | null;
 }
 
 export interface Bank {
