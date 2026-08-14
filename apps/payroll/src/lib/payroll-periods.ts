@@ -26,14 +26,14 @@ export function payrollPeriodOptions(monthCount = 12): PayrollPeriodOption[] {
         month,
         from: isoDate(year, monthNumber, 16),
         to: isoDate(year, monthNumber, lastDay),
-        shortLabel: `2.ª quincena · días 16–${lastDay}`,
+        shortLabel: `2ª quincena · días 16–${lastDay}`,
       },
       {
         value: isoDate(year, monthNumber, 1),
         month,
         from: isoDate(year, monthNumber, 1),
         to: isoDate(year, monthNumber, 15),
-        shortLabel: "1.ª quincena · días 1–15",
+        shortLabel: "1ª quincena · días 1–15",
       },
     );
   }

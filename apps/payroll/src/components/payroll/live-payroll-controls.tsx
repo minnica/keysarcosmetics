@@ -7,13 +7,11 @@ import {
   CardContent,
   Select,
   SelectContent,
-  SelectGroup,
   SelectItem,
-  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@cosmetics/ui";
-import { formatPayrollMonth } from "@/lib/payroll-periods";
+import { FortnightSelect } from "./fortnight-select";
 import type { PayrollPeriodOption } from "@/lib/payroll-periods";
 import type { PayrollCalculationMode } from "@/lib/types";
 
@@ -38,7 +36,6 @@ export function LivePayrollControls({
   generatedAt,
   onRefresh,
 }: LivePayrollControlsProps) {
-  const months = [...new Set(options.map((option) => option.month))];
   const updateLabel = generatedAt
     ? new Intl.DateTimeFormat("es-MX", {
         dateStyle: "medium",
@@ -50,25 +47,12 @@ export function LivePayrollControls({
     <Card>
       <CardContent className="flex flex-col gap-4 p-5 lg:flex-row lg:items-end lg:justify-between">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-          <Select value={periodValue} onValueChange={onPeriodChange}>
-            <SelectTrigger className="w-full sm:w-72" aria-label="Quincena">
-              <SelectValue placeholder="Selecciona una quincena" />
-            </SelectTrigger>
-            <SelectContent style={{ maxHeight: "20rem" }}>
-              {months.map((month) => (
-                <SelectGroup key={month}>
-                  <SelectLabel>{formatPayrollMonth(month)}</SelectLabel>
-                  {options
-                    .filter((option) => option.month === month)
-                    .map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.shortLabel}
-                      </SelectItem>
-                    ))}
-                </SelectGroup>
-              ))}
-            </SelectContent>
-          </Select>
+          <FortnightSelect
+            options={options}
+            value={periodValue}
+            onValueChange={onPeriodChange}
+            className="w-full sm:w-64"
+          />
           <Select
             value={mode}
             onValueChange={(value) =>

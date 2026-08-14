@@ -31,9 +31,7 @@ import {
   DatePicker,
   Select,
   SelectContent,
-  SelectGroup,
   SelectItem,
-  SelectLabel,
   SelectTrigger,
   SelectValue,
   toast,
@@ -41,6 +39,7 @@ import {
 import { ReportExportButtons } from "@/components/payroll/report-export-buttons";
 import { SectionCard } from "@/components/payroll/section-card";
 import { StatusBadge } from "@/components/payroll/status-badge";
+import { FortnightSelect } from "@/components/payroll/fortnight-select";
 import { usePayrollData } from "@/components/payroll/payroll-data-context";
 import { apiErrorMessage } from "@/lib/api";
 import {
@@ -143,16 +142,16 @@ function payrollPeriodOptions(monthCount = 12): PayrollPeriodOption[] {
         from: isoDate(16),
         to: isoDate(lastDay),
         month,
-        label: `${monthName} ${year} · 2.ª quincena · 16–${lastDay}`,
-        shortLabel: `2.ª quincena · días 16–${lastDay}`,
+        label: `${monthName} ${year} · 2ª quincena · 16–${lastDay}`,
+        shortLabel: `2ª quincena · días 16–${lastDay}`,
       },
       {
         value: isoDate(1),
         from: isoDate(1),
         to: isoDate(15),
         month,
-        label: `${monthName} ${year} · 1.ª quincena · 1–15`,
-        shortLabel: "1.ª quincena · días 1–15",
+        label: `${monthName} ${year} · 1ª quincena · 1–15`,
+        shortLabel: "1ª quincena · días 1–15",
       },
     );
   }
@@ -207,21 +206,6 @@ export default function DashboardPage() {
   const selectedExistingFinalRun = Boolean(
     selectedPeriodRun && selectedPeriodRun.status !== "DRAFT",
   );
-  const selectedPeriodOption = periodOptions.find(
-    (item) => item.value === range.from,
-  );
-  const periodOptionGroups = periodOptions.reduce<
-    Array<{ month: string; options: PayrollPeriodOption[] }>
-  >((groups, option) => {
-    const current = groups.at(-1);
-    if (current?.month === option.month) {
-      current.options.push(option);
-    } else {
-      groups.push({ month: option.month, options: [option] });
-    }
-    return groups;
-  }, []);
-
   const monthOptions = useMemo(
     () =>
       [
@@ -1130,46 +1114,23 @@ export default function DashboardPage() {
                       Consulta o crea una corrida de los últimos 12 meses.
                     </p>
                   </div>
-                  <Select
+                  <FortnightSelect
+                    options={periodOptions}
                     value={range.from}
                     onValueChange={selectPayrollPeriod}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecciona una quincena">
-                        {selectedPeriodOption
-                          ? `${selectedPeriodOption.label}${selectedPeriodRun ? ` · ${formatStatus(selectedPeriodRun.status)}` : ""}`
-                          : undefined}
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent style={{ maxHeight: "20rem" }}>
-                      {periodOptionGroups.map((group) => (
-                        <SelectGroup key={group.month}>
-                          <SelectLabel className="text-xs uppercase tracking-wider text-[color:var(--text-muted)]">
-                            {formatMonth(group.month)}
-                          </SelectLabel>
-                          {group.options.map((option) => {
-                            const existingRun = data.runs.find(
-                              (item) =>
-                                item.status !== "CANCELED" &&
-                                item.from === option.from &&
-                                item.to === option.to,
-                            );
-                            return (
-                              <SelectItem
-                                key={option.value}
-                                value={option.value}
-                              >
-                                {option.shortLabel}
-                                {existingRun
-                                  ? ` · ${formatStatus(existingRun.status)}`
-                                  : ""}
-                              </SelectItem>
-                            );
-                          })}
-                        </SelectGroup>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    className="w-full lg:w-auto lg:min-w-[15rem]"
+                    getStatusLabel={(option) => {
+                      const existingRun = data.runs.find(
+                        (item) =>
+                          item.status !== "CANCELED" &&
+                          item.from === option.from &&
+                          item.to === option.to,
+                      );
+                      return existingRun
+                        ? formatStatus(existingRun.status)
+                        : undefined;
+                    }}
+                  />
                 </div>
                 <div className="space-y-2">
                   <p className="text-sm font-medium">Día de pago</p>
