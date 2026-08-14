@@ -49,6 +49,12 @@ const COST_COLORS = [
 
 const RADIAN = Math.PI / 180;
 
+interface DistributionDatum {
+  name: string;
+  value: number;
+  color: string;
+}
+
 function renderPercentageLabel({
   cx,
   cy,
@@ -57,6 +63,8 @@ function renderPercentageLabel({
   outerRadius,
   percent = 0,
 }: PieLabelRenderProps) {
+  if (percent < 0.05) return null;
+
   const radius =
     Number(innerRadius) + (Number(outerRadius) - Number(innerRadius)) * 0.58;
   const x = Number(cx) + radius * Math.cos(-Number(midAngle) * RADIAN);
@@ -76,6 +84,128 @@ function renderPercentageLabel({
     >
       {formatPercent(percent)}
     </text>
+  );
+}
+
+interface DistributionPieProps {
+  title: string;
+  description: string;
+  period: string;
+  data: DistributionDatum[];
+  total: number;
+  emptyMessage: string;
+}
+
+function DistributionPie({
+  title,
+  description,
+  period,
+  data,
+  total,
+  emptyMessage,
+}: DistributionPieProps) {
+  return (
+    <Card className="h-full">
+      <CardContent className="h-full p-5 sm:p-6">
+        <figure aria-label={`${title}. ${description}`}>
+          <figcaption className="border-b border-[var(--border-color)] pb-5">
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4">
+              <div>
+                <h3 className="text-sm font-semibold text-[var(--text-primary)]">
+                  {title}
+                </h3>
+                <p className="mt-1 text-xs text-[var(--text-muted)]">
+                  {period}
+                </p>
+              </div>
+              <p className="number-display text-lg text-[var(--text-primary)]">
+                {formatCurrency(total)}
+              </p>
+            </div>
+            <p className="sr-only">{description}</p>
+          </figcaption>
+
+          {data.length ? (
+            <>
+              <ul className="mt-5 grid grid-cols-[repeat(auto-fit,minmax(9rem,1fr))] gap-x-4 gap-y-4">
+                {data.map((item) => (
+                  <li key={item.name} className="flex min-w-0 gap-2 py-0.5">
+                    <span
+                      className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full"
+                      style={{ backgroundColor: item.color }}
+                      aria-hidden="true"
+                    />
+                    <div className="min-w-0">
+                      <p
+                        className="truncate text-xs font-medium text-[var(--text-muted)]"
+                        title={item.name}
+                      >
+                        {item.name}
+                      </p>
+                      <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                        <span className="number-display text-sm">
+                          {formatCurrency(item.value)}
+                        </span>
+                        <span className="text-xs tabular-nums text-[var(--text-muted)]">
+                          {formatPercent(total ? item.value / total : 0)}
+                        </span>
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+              <div
+                className="mx-auto mt-6 h-[20rem] w-full max-w-xl sm:h-[24rem]"
+                role="img"
+                aria-label={description}
+              >
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={data}
+                      dataKey="value"
+                      nameKey="name"
+                      cx="50%"
+                      cy="50%"
+                      outerRadius="86%"
+                      paddingAngle={2}
+                      stroke="var(--bg-card)"
+                      strokeWidth={2}
+                      labelLine={false}
+                      label={renderPercentageLabel}
+                    >
+                      {data.map((item) => (
+                        <Cell key={item.name} fill={item.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      formatter={(value, name) => [
+                        formatCurrency(Number(value)),
+                        String(name),
+                      ]}
+                      contentStyle={{
+                        background: "var(--bg-card)",
+                        border: "1px solid var(--border-color)",
+                        borderRadius: "0.5rem",
+                        color: "var(--text-primary)",
+                        boxShadow: "var(--card-shadow)",
+                      }}
+                      itemStyle={{ color: "var(--text-primary)" }}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            </>
+          ) : (
+            <div className="flex min-h-[20rem] items-center justify-center px-4 py-10 text-center">
+              <p className="max-w-xs text-sm text-[var(--text-muted)]">
+                {emptyMessage}
+              </p>
+            </div>
+          )}
+        </figure>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -111,6 +241,17 @@ export default function DesgloseSucursalPage() {
       left.branchName.localeCompare(right.branchName, "es"),
     );
   const totalCost = sumBy(branches, (branch) => branch.payrollCost);
+  const bonusByBranch = employeeLines.reduce((totals, line) => {
+    totals.set(
+      line.branchName,
+      (totals.get(line.branchName) ?? 0) + line.bonus,
+    );
+    return totals;
+  }, new Map<string, number>());
+  const totalBonus = Array.from(bonusByBranch.values()).reduce(
+    (total, bonus) => total + bonus,
+    0,
+  );
   const totalSales = sumBy(branches, (branch) => branch.salesWithVat);
   const totalEmployees = new Set(employeeLines.map((line) => line.employeeId))
     .size;
@@ -120,6 +261,12 @@ export default function DesgloseSucursalPage() {
       ...employeeLines.map((line) => line.branchName),
     ]),
   ).sort((left, right) => left.localeCompare(right, "es"));
+  const branchColors = new Map(
+    branchNames.map((branchName, index) => [
+      branchName,
+      COST_COLORS[index % COST_COLORS.length]!,
+    ]),
+  );
   const employeeRows = Array.from(
     employeeLines.reduce((rowsByEmployee, line) => {
       const current =
@@ -178,7 +325,19 @@ export default function DesgloseSucursalPage() {
     .map((branch, index) => ({
       name: branch.branchName,
       value: branch.payrollCost,
-      color: COST_COLORS[index % COST_COLORS.length],
+      color:
+        branchColors.get(branch.branchName) ??
+        COST_COLORS[index % COST_COLORS.length]!,
+    }));
+  const bonusDistribution = Array.from(bonusByBranch)
+    .filter(([, bonus]) => bonus > 0)
+    .sort(([, leftBonus], [, rightBonus]) => rightBonus - leftBonus)
+    .map(([branchName, bonus], index) => ({
+      name: branchName,
+      value: bonus,
+      color:
+        branchColors.get(branchName) ??
+        COST_COLORS[index % COST_COLORS.length]!,
     }));
 
   const branchColumns: ColumnDef<BranchBreakdownLine>[] = [
@@ -481,89 +640,24 @@ export default function DesgloseSucursalPage() {
             />
           </SectionCard>
           <SectionCard eyebrow="Distribución" title="PESO DEL COSTO">
-            {costDistribution.length ? (
-              <figure
-                className="space-y-6"
-                aria-label="Distribución porcentual del costo de nómina por sucursal"
-              >
-                <figcaption className="border-b border-[var(--border-color)] pb-5">
-                  <p className="sr-only">
-                    Cada segmento representa la participación de una sucursal en
-                    el costo total de nómina.
-                  </p>
-                  <ul className="grid grid-cols-[repeat(auto-fit,minmax(10rem,1fr))] gap-x-4 gap-y-4">
-                    {costDistribution.map((item) => (
-                      <li key={item.name} className="flex min-w-0 gap-2 py-0.5">
-                        <span
-                          className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full"
-                          style={{ backgroundColor: item.color }}
-                          aria-hidden="true"
-                        />
-                        <div className="min-w-0">
-                          <p
-                            className="truncate text-xs font-medium text-[var(--text-muted)]"
-                            title={item.name}
-                          >
-                            {item.name}
-                          </p>
-                          <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                            <span className="number-display text-sm">
-                              {formatCurrency(item.value)}
-                            </span>
-                            <span className="text-xs tabular-nums text-[var(--text-muted)]">
-                              {formatPercent(
-                                totalCost ? item.value / totalCost : 0,
-                              )}
-                            </span>
-                          </div>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                </figcaption>
-                <div className="mx-auto h-[22rem] w-full max-w-3xl sm:h-[30rem] lg:h-[34rem]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={costDistribution}
-                        dataKey="value"
-                        nameKey="name"
-                        cx="50%"
-                        cy="50%"
-                        outerRadius="88%"
-                        paddingAngle={2}
-                        stroke="var(--bg-card)"
-                        strokeWidth={2}
-                        labelLine={false}
-                        label={renderPercentageLabel}
-                      >
-                        {costDistribution.map((item) => (
-                          <Cell key={item.name} fill={item.color} />
-                        ))}
-                      </Pie>
-                      <Tooltip
-                        formatter={(value, name) => [
-                          formatCurrency(Number(value)),
-                          String(name),
-                        ]}
-                        contentStyle={{
-                          background: "var(--bg-card)",
-                          border: "1px solid var(--border-color)",
-                          borderRadius: "0.5rem",
-                          color: "var(--text-primary)",
-                          boxShadow: "var(--card-shadow)",
-                        }}
-                        itemStyle={{ color: "var(--text-primary)" }}
-                      />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </div>
-              </figure>
-            ) : (
-              <p className="py-10 text-center text-sm text-[var(--text-muted)]">
-                Sin costos asignados para mostrar la distribución.
-              </p>
-            )}
+            <div className="grid items-stretch gap-4 lg:grid-cols-2">
+              <DistributionPie
+                title="Costo de nómina por punto de venta"
+                description="Distribución porcentual del costo total de nómina por punto de venta."
+                period={`${formatDate(live.selectedPeriod.from)} – ${formatDate(live.selectedPeriod.to)}`}
+                data={costDistribution}
+                total={totalCost}
+                emptyMessage="Sin costos asignados para mostrar la distribución del periodo."
+              />
+              <DistributionPie
+                title="Costo de bonos por punto de venta"
+                description="Distribución porcentual del costo de bonos por punto de venta."
+                period={`${formatDate(live.selectedPeriod.from)} – ${formatDate(live.selectedPeriod.to)}`}
+                data={bonusDistribution}
+                total={totalBonus}
+                emptyMessage="Sin bonos asignados a puntos de venta durante el periodo seleccionado."
+              />
+            </div>
           </SectionCard>
         </>
       )}
