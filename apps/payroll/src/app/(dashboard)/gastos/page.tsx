@@ -23,6 +23,7 @@ import {
   Button,
   ColumnDef,
   DataTable,
+  type DateRange,
   DatePicker,
   Dialog,
   DialogContent,
@@ -44,10 +45,18 @@ import {
   Textarea,
   toast,
 } from "@cosmetics/ui";
+import { DateFilterCard } from "@/components/payroll/date-filter-card";
 import { usePayrollData } from "@/components/payroll/payroll-data-context";
 import { MetricCard } from "@/components/payroll/metric-card";
+import { ReportExportButtons } from "@/components/payroll/report-export-buttons";
 import { SectionCard } from "@/components/payroll/section-card";
 import { apiErrorMessage } from "@/lib/api";
+import {
+  dateRangeFilename,
+  describeDateRange,
+  EMPTY_DATE_RANGE,
+  isDateInRange,
+} from "@/lib/date-range";
 import {
   formatCurrency,
   formatDate,
@@ -163,7 +172,7 @@ const FREQUENCY: Record<ExpenseFrequency, string> = {
 
 export default function GastosPage() {
   const data = usePayrollData();
-  const [expenseView, setExpenseView] = useState<ExpenseView>("RECURRENCES");
+  const [expenseView, setExpenseView] = useState<ExpenseView>("APPLICATIONS");
   const [open, setOpen] = useState(false);
   const [categoryOpen, setCategoryOpen] = useState(false);
   const [categoryEditingId, setCategoryEditingId] = useState<string | null>(
@@ -183,6 +192,7 @@ export default function GastosPage() {
   );
   const [form, setForm] = useState<Form>(emptyForm);
   const [saving, setSaving] = useState(false);
+  const [dateRange, setDateRange] = useState<DateRange>(EMPTY_DATE_RANGE);
 
   function create() {
     setEditingId(null);
@@ -368,6 +378,16 @@ export default function GastosPage() {
     generated: expense.generated,
     expense,
   }));
+  const filteredRecurrenceRows = recurrenceRows.filter((row) =>
+    isDateInRange(row.date, dateRange),
+  );
+  const filteredApplicationRows = applicationRows.filter((row) =>
+    isDateInRange(row.date, dateRange),
+  );
+  const visibleRows =
+    expenseView === "RECURRENCES"
+      ? filteredRecurrenceRows
+      : filteredApplicationRows;
   function createExpenseColumns(
     view: ExpenseView,
   ): ColumnDef<ExpenseTableRow>[] {
@@ -537,25 +557,25 @@ export default function GastosPage() {
     },
   ];
   const fixed = sumBy(
-    data.expenses.filter((item) => item.kind === "FIXED"),
+    filteredApplicationRows.filter((item) => item.kind === "FIXED"),
     (item) => item.amount,
   );
   const variable = sumBy(
-    data.expenses.filter((item) => item.kind === "VARIABLE"),
+    filteredApplicationRows.filter((item) => item.kind === "VARIABLE"),
     (item) => item.amount,
   );
   const monthlyRecurring = sumBy(
-    data.recurringExpenses.filter((item) => item.frequency === "MONTHLY"),
+    filteredRecurrenceRows.filter((item) => item.frequency === "MONTHLY"),
     (item) => item.amount,
   );
   const biweeklyRecurring = sumBy(
-    data.recurringExpenses.filter((item) => item.frequency === "BIWEEKLY"),
+    filteredRecurrenceRows.filter((item) => item.frequency === "BIWEEKLY"),
     (item) => item.amount,
   );
   const recurrenceMetrics: ExpenseMetric[] = [
     {
       label: "Series activas",
-      value: String(recurrenceRows.length),
+      value: String(filteredRecurrenceRows.length),
       tone: "blue",
     },
     {
@@ -586,6 +606,60 @@ export default function GastosPage() {
       tone: "blue",
     },
   ];
+  const exportConfig = {
+    title:
+      expenseView === "RECURRENCES"
+        ? "Gastos recurrentes"
+        : "Historial de gastos",
+    subtitle: describeDateRange(dateRange),
+    filename: `gastos-${
+      expenseView === "RECURRENCES" ? "recurrentes" : "historial"
+    }-${dateRangeFilename(dateRange)}`,
+    sheetName: expenseView === "RECURRENCES" ? "Recurrentes" : "Historial",
+    orientation: "landscape" as const,
+    rows: visibleRows,
+    columns: [
+      {
+        header:
+          expenseView === "RECURRENCES"
+            ? "PRÓXIMA APLICACIÓN"
+            : "FECHA DE APLICACIÓN",
+        accessor: (row: ExpenseTableRow) => formatDate(row.date),
+      },
+      {
+        header: "TIPO",
+        accessor: (row: ExpenseTableRow) =>
+          row.kind === "FIXED" ? "FIJO" : "VARIABLE",
+      },
+      { header: "CONCEPTO", accessor: (row: ExpenseTableRow) => row.concept },
+      { header: "CATEGORÍA", accessor: (row: ExpenseTableRow) => row.category },
+      {
+        header: "CENTRO DE COSTO",
+        accessor: (row: ExpenseTableRow) => row.branch,
+        width: 24,
+      },
+      {
+        header: "FRECUENCIA",
+        accessor: (row: ExpenseTableRow) => FREQUENCY[row.frequency],
+      },
+      {
+        header: expenseView === "RECURRENCES" ? "ESTADO" : "ORIGEN",
+        accessor: (row: ExpenseTableRow) =>
+          row.source === "RECURRENCE"
+            ? "ACTIVA"
+            : row.payrollRunId
+              ? "CONGELADO"
+              : row.generated
+                ? "AUTOMÁTICO"
+                : "MANUAL",
+      },
+      {
+        header: "MONTO",
+        accessor: (row: ExpenseTableRow) => row.amount,
+        format: "currency" as const,
+      },
+    ],
+  };
 
   return (
     <div className="space-y-6">
@@ -598,6 +672,10 @@ export default function GastosPage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <ReportExportButtons
+            config={exportConfig}
+            disabled={!visibleRows.length}
+          />
           <Button
             variant="outline"
             onClick={() => {
@@ -615,6 +693,11 @@ export default function GastosPage() {
           </Button>
         </div>
       </header>
+      <DateFilterCard
+        value={dateRange}
+        onChange={setDateRange}
+        resultCount={visibleRows.length}
+      />
       <Tabs
         value={expenseView}
         onValueChange={(value) => {
@@ -623,42 +706,50 @@ export default function GastosPage() {
         }}
       >
         <TabsList aria-label="Vista de gastos">
-          <TabsTrigger value="RECURRENCES" className="sm:min-w-44">
-            <Repeat2 className="h-3.5 w-3.5" aria-hidden="true" />
-            Recurrentes activos
-            <span className="text-xs opacity-70">
-              {recurrenceRows.length}
-              <span className="sr-only"> registros</span>
-            </span>
-          </TabsTrigger>
           <TabsTrigger value="APPLICATIONS" className="sm:min-w-32">
             <History className="h-3.5 w-3.5" aria-hidden="true" />
             Historial
             <span className="text-xs opacity-70">
-              {applicationRows.length}
+              {filteredApplicationRows.length}
+              <span className="sr-only"> registros</span>
+            </span>
+          </TabsTrigger>
+          <TabsTrigger value="RECURRENCES" className="sm:min-w-44">
+            <Repeat2 className="h-3.5 w-3.5" aria-hidden="true" />
+            Recurrentes activos
+            <span className="text-xs opacity-70">
+              {filteredRecurrenceRows.length}
               <span className="sr-only"> registros</span>
             </span>
           </TabsTrigger>
         </TabsList>
-        <ExpenseViewPanel
-          value="RECURRENCES"
-          metrics={recurrenceMetrics}
-          title="GASTOS RECURRENTES"
-          eyebrow="Reglas activas; todavía no representan un segundo cargo."
-          columns={recurrenceColumns}
-          rows={recurrenceRows}
-          searchPlaceholder="Buscar recurrencia, categoría o sucursal"
-          emptyMessage="No hay gastos recurrentes activos. Agrega uno seleccionando frecuencia mensual o quincenal."
-        />
         <ExpenseViewPanel
           value="APPLICATIONS"
           metrics={applicationMetrics}
           title="HISTORIAL DE APLICACIONES"
           eyebrow="Cargos de los últimos 12 meses que ya afectaron el balance."
           columns={applicationColumns}
-          rows={applicationRows}
+          rows={filteredApplicationRows}
           searchPlaceholder="Buscar en el historial"
-          emptyMessage="Todavía no hay gastos aplicados."
+          emptyMessage={
+            applicationRows.length
+              ? "No hay gastos aplicados dentro del periodo seleccionado."
+              : "Todavía no hay gastos aplicados."
+          }
+        />
+        <ExpenseViewPanel
+          value="RECURRENCES"
+          metrics={recurrenceMetrics}
+          title="GASTOS RECURRENTES"
+          eyebrow="Reglas activas; todavía no representan un segundo cargo."
+          columns={recurrenceColumns}
+          rows={filteredRecurrenceRows}
+          searchPlaceholder="Buscar recurrencia, categoría o sucursal"
+          emptyMessage={
+            recurrenceRows.length
+              ? "No hay gastos recurrentes dentro del periodo seleccionado."
+              : "No hay gastos recurrentes activos. Agrega uno seleccionando frecuencia mensual o quincenal."
+          }
         />
       </Tabs>
       <SectionCard title="CATEGORÍAS DE GASTO">

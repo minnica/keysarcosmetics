@@ -14,6 +14,7 @@ import {
   Button,
   ColumnDef,
   DataTable,
+  type DateRange,
   DatePicker,
   Dialog,
   DialogContent,
@@ -31,12 +32,19 @@ import {
   Textarea,
   toast,
 } from "@cosmetics/ui";
+import { DateFilterCard } from "@/components/payroll/date-filter-card";
 import { MetricCard } from "@/components/payroll/metric-card";
 import { ReportExportButtons } from "@/components/payroll/report-export-buttons";
 import { SectionCard } from "@/components/payroll/section-card";
 import { StatusBadge } from "@/components/payroll/status-badge";
 import { usePayrollData } from "@/components/payroll/payroll-data-context";
 import { apiErrorMessage } from "@/lib/api";
+import {
+  dateRangeFilename,
+  describeDateRange,
+  EMPTY_DATE_RANGE,
+  isDateInRange,
+} from "@/lib/date-range";
 import {
   formatCurrency,
   formatDate,
@@ -89,7 +97,11 @@ export default function PrestamosPage() {
     action: "cancel" | "lost";
   } | null>(null);
   const [saving, setSaving] = useState(false);
+  const [dateRange, setDateRange] = useState<DateRange>(EMPTY_DATE_RANGE);
   const activeEmployees = data.employees.filter((employee) => employee.active);
+  const filteredLoans = data.loans.filter((loan) =>
+    isDateInRange(loan.requestedAt, dateRange),
+  );
   const suggestedInstallment =
     Number(form.installmentCount) > 0
       ? Number(form.requestedAmount) / Number(form.installmentCount)
@@ -290,11 +302,11 @@ export default function PrestamosPage() {
   ];
   const exportConfig = {
     title: "Préstamos y adelantos",
-    subtitle: "Calendario real de amortización",
-    filename: "prestamos-adelantos",
+    subtitle: describeDateRange(dateRange),
+    filename: `prestamos-adelantos-${dateRangeFilename(dateRange)}`,
     sheetName: "Préstamos",
     orientation: "landscape" as const,
-    rows: data.loans,
+    rows: filteredLoans,
     columns: [
       {
         header: "SOLICITUD",
@@ -348,10 +360,10 @@ export default function PrestamosPage() {
             Cuotas quincenales ligadas a corridas pagadas.
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <ReportExportButtons
             config={exportConfig}
-            disabled={!data.loans.length}
+            disabled={!filteredLoans.length}
           />
           <Button onClick={create}>
             <PlusCircle className="mr-1.5 h-4 w-4" />
@@ -359,31 +371,42 @@ export default function PrestamosPage() {
           </Button>
         </div>
       </header>
+      <DateFilterCard
+        value={dateRange}
+        onChange={setDateRange}
+        resultCount={filteredLoans.length}
+      />
       <div className="grid gap-4 md:grid-cols-3">
         <MetricCard
           label="Prestado"
           value={formatCurrency(
-            sumBy(data.loans, (loan) => loan.requestedAmount),
+            sumBy(filteredLoans, (loan) => loan.requestedAmount),
           )}
           tone="gold"
         />
         <MetricCard
           label="Cobrado"
-          value={formatCurrency(sumBy(data.loans, (loan) => loan.paidAmount))}
+          value={formatCurrency(
+            sumBy(filteredLoans, (loan) => loan.paidAmount),
+          )}
           tone="sage"
         />
         <MetricCard
           label="Pendiente"
-          value={formatCurrency(sumBy(data.loans, (loan) => loan.balance))}
+          value={formatCurrency(sumBy(filteredLoans, (loan) => loan.balance))}
           tone="rose"
         />
       </div>
       <SectionCard title="AMORTIZACIÓN">
         <DataTable
           columns={columns}
-          data={data.loans}
+          data={filteredLoans}
           searchPlaceholder="Buscar empleado o concepto"
-          emptyMessage="Sin préstamos ni adelantos."
+          emptyMessage={
+            data.loans.length
+              ? "No hay préstamos ni adelantos dentro del periodo seleccionado."
+              : "Sin préstamos ni adelantos."
+          }
           pageSize={10}
         />
       </SectionCard>
@@ -496,8 +519,8 @@ export default function PrestamosPage() {
                 placeholder="Selecciona cualquier día de la quincena"
               />
               <p className="text-xs text-[var(--text-muted)]">
-                Puedes elegir cualquier día; se usará el inicio de esa
-                quincena: día 1 o 16.
+                Puedes elegir cualquier día; se usará el inicio de esa quincena:
+                día 1 o 16.
               </p>
             </div>
             <div className="space-y-2 md:col-span-2">

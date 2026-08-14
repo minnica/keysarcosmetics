@@ -14,7 +14,26 @@ import { ReportExportButtons } from "@/components/payroll/report-export-buttons"
 import { SectionCard } from "@/components/payroll/section-card";
 import { usePayrollData } from "@/components/payroll/payroll-data-context";
 import { formatCurrency, formatDate, formatPercent, sumBy } from "@/lib/format";
-import type { BranchBreakdownLine, EmployeeBranchBreakdown } from "@/lib/types";
+import type { BranchBreakdownLine } from "@/lib/types";
+
+interface EmployeeBreakdownRow {
+  employeeId: string;
+  employeeName: string;
+  salesByBranch: Record<string, number>;
+  salesWithVat: number;
+  salesWithoutVat: number;
+  commission: number;
+  bonus: number;
+  fine: number;
+  salaryPayment: number;
+  adjustmentPositive: number;
+  adjustmentNegative: number;
+  perDiem: number;
+  supplies: number;
+  loanPayment: number;
+  deductions: number;
+  totalCost: number;
+}
 
 const COST_COLORS = [
   "#648672",
@@ -68,6 +87,62 @@ export default function DesgloseSucursalPage() {
   const totalSales = sumBy(branches, (branch) => branch.salesWithVat);
   const totalEmployees = new Set(employeeLines.map((line) => line.employeeId))
     .size;
+  const branchNames = Array.from(
+    new Set([
+      ...branches.map((branch) => branch.branchName),
+      ...employeeLines.map((line) => line.branchName),
+    ]),
+  ).sort((left, right) => left.localeCompare(right, "es"));
+  const employeeRows = Array.from(
+    employeeLines.reduce((rowsByEmployee, line) => {
+      const current = rowsByEmployee.get(line.employeeId) ?? {
+        employeeId: line.employeeId,
+        employeeName: line.employeeName,
+        salesByBranch: {},
+        salesWithVat: 0,
+        salesWithoutVat: 0,
+        commission: 0,
+        bonus: 0,
+        fine: 0,
+        salaryPayment: 0,
+        adjustmentPositive: 0,
+        adjustmentNegative: 0,
+        perDiem: 0,
+        supplies: 0,
+        loanPayment: 0,
+        deductions: 0,
+        totalCost: 0,
+      } satisfies EmployeeBreakdownRow;
+
+      current.salesByBranch[line.branchName] =
+        (current.salesByBranch[line.branchName] ?? 0) + line.salesWithVat;
+      current.salesWithoutVat += line.salesWithoutVat;
+      current.commission += line.commission;
+      current.bonus += line.bonus;
+      current.fine += line.fine;
+      current.salaryPayment += line.salaryPayment;
+      current.adjustmentPositive += line.adjustmentPositive;
+      current.adjustmentNegative += line.adjustmentNegative;
+      current.perDiem += line.perDiem;
+      current.supplies += line.supplies;
+      current.loanPayment += line.loanPayment;
+      current.deductions +=
+        line.fine + line.adjustmentNegative + line.loanPayment;
+      current.totalCost += line.totalCost;
+      rowsByEmployee.set(line.employeeId, current);
+      return rowsByEmployee;
+    }, new Map<string, EmployeeBreakdownRow>()),
+  )
+    .map(([, row]) => ({
+      ...row,
+      salesWithVat: Object.values(row.salesByBranch).reduce(
+        (total, sales) => total + sales,
+        0,
+      ),
+    }))
+    .sort((left, right) =>
+      left.employeeName.localeCompare(right.employeeName, "es"),
+    );
   const costDistribution = branches
     .filter((branch) => branch.payrollCost > 0)
     .sort((left, right) => right.payrollCost - left.payrollCost)
@@ -137,7 +212,7 @@ export default function DesgloseSucursalPage() {
     },
   ];
 
-  const employeeColumns: ColumnDef<EmployeeBranchBreakdown>[] = [
+  const employeeColumns: ColumnDef<EmployeeBreakdownRow>[] = [
     {
       accessorKey: "employeeName",
       header: "EMPLEADO",
@@ -145,10 +220,22 @@ export default function DesgloseSucursalPage() {
         <p className="font-medium">{row.original.employeeName}</p>
       ),
     },
-    { accessorKey: "branchName", header: "SUCURSAL" },
+    ...branchNames.map(
+      (branchName, index): ColumnDef<EmployeeBreakdownRow> => ({
+        id: `branch-${index}`,
+        accessorFn: (row) => row.salesByBranch[branchName] ?? 0,
+        header: branchName,
+        meta: { align: "right" },
+        cell: ({ getValue }) => (
+          <div className="text-right tabular-nums">
+            {formatCurrency(Number(getValue()))}
+          </div>
+        ),
+      }),
+    ),
     {
       accessorKey: "salesWithVat",
-      header: "VENTAS",
+      header: "TOTAL VENTAS",
       meta: { align: "right" },
       cell: ({ row }) => (
         <div className="text-right tabular-nums">
@@ -192,11 +279,7 @@ export default function DesgloseSucursalPage() {
       meta: { align: "right" },
       cell: ({ row }) => (
         <div className="text-right tabular-nums">
-          {formatCurrency(
-            row.original.fine +
-              row.original.adjustmentNegative +
-              row.original.loanPayment,
-          )}
+          {formatCurrency(row.original.deductions)}
         </div>
       ),
     },
@@ -220,71 +303,72 @@ export default function DesgloseSucursalPage() {
     filename: `desglose-nomina-sucursal-${run?.from ?? "sin-corrida"}`,
     sheetName: "Desglose",
     orientation: "landscape" as const,
-    rows: employeeLines,
+    rows: employeeRows,
     columns: [
       {
         header: "EMPLEADO",
-        accessor: (row: EmployeeBranchBreakdown) => row.employeeName,
+        accessor: (row: EmployeeBreakdownRow) => row.employeeName,
         width: 30,
       },
-      {
-        header: "SUCURSAL",
-        accessor: (row: EmployeeBranchBreakdown) => row.branchName,
-        width: 24,
-      },
+      ...branchNames.map((branchName) => ({
+        header: branchName,
+        accessor: (row: EmployeeBreakdownRow) =>
+          row.salesByBranch[branchName] ?? 0,
+        format: "currency" as const,
+      })),
       {
         header: "VENTAS CON IVA",
-        accessor: (row: EmployeeBranchBreakdown) => row.salesWithVat,
+        accessor: (row: EmployeeBreakdownRow) => row.salesWithVat,
         format: "currency" as const,
       },
       {
         header: "VENTAS SIN IVA",
-        accessor: (row: EmployeeBranchBreakdown) => row.salesWithoutVat,
+        accessor: (row: EmployeeBreakdownRow) => row.salesWithoutVat,
         format: "currency" as const,
       },
       {
         header: "COMISIÓN",
-        accessor: (row: EmployeeBranchBreakdown) => row.commission,
+        accessor: (row: EmployeeBreakdownRow) => row.commission,
         format: "currency" as const,
       },
       {
         header: "SUELDO",
-        accessor: (row: EmployeeBranchBreakdown) => row.salaryPayment,
+        accessor: (row: EmployeeBreakdownRow) => row.salaryPayment,
         format: "currency" as const,
       },
       {
         header: "BONOS",
-        accessor: (row: EmployeeBranchBreakdown) => row.bonus,
+        accessor: (row: EmployeeBreakdownRow) => row.bonus,
         format: "currency" as const,
       },
       {
         header: "MULTAS",
-        accessor: (row: EmployeeBranchBreakdown) => row.fine,
+        accessor: (row: EmployeeBreakdownRow) => row.fine,
         format: "currency" as const,
       },
       {
         header: "AJUSTES +",
-        accessor: (row: EmployeeBranchBreakdown) => row.adjustmentPositive,
+        accessor: (row: EmployeeBreakdownRow) => row.adjustmentPositive,
         format: "currency" as const,
       },
       {
         header: "AJUSTES -",
-        accessor: (row: EmployeeBranchBreakdown) => row.adjustmentNegative,
+        accessor: (row: EmployeeBreakdownRow) => row.adjustmentNegative,
         format: "currency" as const,
       },
       {
         header: "VIÁTICOS",
-        accessor: (row: EmployeeBranchBreakdown) => row.perDiem,
+        accessor: (row: EmployeeBreakdownRow) => row.perDiem,
         format: "currency" as const,
       },
       {
         header: "PRÉSTAMOS",
-        accessor: (row: EmployeeBranchBreakdown) => row.loanPayment,
+        accessor: (row: EmployeeBreakdownRow) => row.loanPayment,
         format: "currency" as const,
       },
       {
         header: "TOTAL COSTO",
-        accessor: (row: EmployeeBranchBreakdown) => row.totalCost,
+        accessor: (row: EmployeeBreakdownRow) => row.totalCost,
         format: "currency" as const,
       },
     ],
@@ -317,11 +401,14 @@ export default function DesgloseSucursalPage() {
         />
         <MetricCard label="Empleados" value={`${totalEmployees}`} tone="blue" />
       </div>
-      <SectionCard eyebrow="Detalle" title="EMPLEADO Y PUNTO DE VENTA">
+      <SectionCard
+        eyebrow="Ventas con IVA asignadas en cada sucursal"
+        title="EMPLEADO Y PUNTO DE VENTA"
+      >
         <DataTable
           columns={employeeColumns}
-          data={employeeLines}
-          searchPlaceholder="Buscar empleado o sucursal"
+          data={employeeRows}
+          searchPlaceholder="Buscar empleado"
           emptyMessage="Sin desglose para la corrida seleccionada."
           pageSize={10}
         />
