@@ -14,6 +14,7 @@ import {
   approvePayrollRun,
   cancelPayrollRun,
   createPayrollRun,
+  getLivePayrollPreview,
   getPayrollRun,
   getMonthlyPayrollSummary,
   getPayrollOverview,
@@ -1545,6 +1546,27 @@ const payrollOverviewQuery = z.object({
 });
 
 router.get(
+  "/reports/live-preview",
+  asyncRoute(async (req, res) => {
+    const query = z
+      .object({
+        periodStart: dateString,
+        periodEnd: dateString,
+        mode: z.enum(["WITH_VAT", "WITHOUT_VAT"]).default("WITH_VAT"),
+      })
+      .parse(req.query);
+    ok(
+      res,
+      await getLivePayrollPreview({
+        periodStart: parseDate(query.periodStart),
+        periodEnd: parseDate(query.periodEnd),
+        mode: query.mode,
+      }),
+    );
+  }),
+);
+
+router.get(
   "/reports/payroll-overview",
   asyncRoute(async (req, res) => {
     const query = payrollOverviewQuery.parse(req.query);
@@ -1632,10 +1654,32 @@ router.get(
 router.get(
   "/receipts",
   asyncRoute(async (req, res) => {
-    const runId =
-      typeof req.query["runId"] === "string" ? req.query["runId"] : undefined;
+    const query = z
+      .object({
+        runId: z.string().min(1).optional(),
+        periodStart: dateString.optional(),
+        periodEnd: dateString.optional(),
+      })
+      .refine(
+        (value) =>
+          (!value.periodStart && !value.periodEnd) ||
+          Boolean(value.periodStart && value.periodEnd),
+        { message: "Envía el inicio y fin del periodo." },
+      )
+      .parse(req.query);
     const receipts = await prisma.payrollReceipt.findMany({
-      where: runId ? { payrollRunLine: { payrollRunId: runId } } : undefined,
+      where: query.runId
+        ? { payrollRunLine: { payrollRunId: query.runId } }
+        : query.periodStart && query.periodEnd
+          ? {
+              payrollRunLine: {
+                payrollRun: {
+                  periodStart: parseDate(query.periodStart),
+                  periodEnd: parseDate(query.periodEnd),
+                },
+              },
+            }
+          : undefined,
       orderBy: { createdAt: "desc" },
       include: {
         payrollRunLine: {

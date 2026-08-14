@@ -279,6 +279,20 @@ export interface PayrollRunSummary extends Omit<
   lineCount: number;
 }
 
+export interface PayrollLivePreview {
+  generatedAt: string;
+  periodStart: string;
+  periodEnd: string;
+  mode: PayrollCalculationMode;
+  salesWithVat: number;
+  salesWithoutVat: number;
+  expenseTotal: number;
+  payrollTotal: number;
+  generalBalance: number;
+  warnings: PayrollWarning[];
+  lines: PayrollRunLine[];
+}
+
 export interface MonthlyPayrollRunReference {
   id: string;
   periodStart: string;

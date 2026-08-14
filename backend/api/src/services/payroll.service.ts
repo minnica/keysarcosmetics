@@ -244,11 +244,13 @@ async function calculatePayrollPeriod(input: {
     where: {
       date: range,
       deletedAt: null,
-      ...(input.runId
-        ? {
-            OR: [{ payrollRunId: null }, { payrollRunId: input.runId }],
-          }
-        : { payrollRunId: null }),
+      ...(input.includeAllPeriodSources
+        ? {}
+        : input.runId
+          ? {
+              OR: [{ payrollRunId: null }, { payrollRunId: input.runId }],
+            }
+          : { payrollRunId: null }),
     },
   });
   const materializedRecurringKeys = new Set(
@@ -276,6 +278,26 @@ async function calculatePayrollPeriod(input: {
     employees: calculationEmployees,
     expenseTotal,
   });
+}
+
+export async function getLivePayrollPreview(input: {
+  periodStart: Date;
+  periodEnd: Date;
+  mode: "WITH_VAT" | "WITHOUT_VAT";
+}) {
+  const result = await calculatePayrollPeriod({
+    ...input,
+    vatRate: VAT_RATE,
+    includeAllPeriodSources: true,
+  });
+
+  return {
+    generatedAt: new Date(),
+    periodStart: input.periodStart,
+    periodEnd: input.periodEnd,
+    mode: input.mode,
+    ...result,
+  };
 }
 
 export async function getMonthlyPayrollSummary(month: string) {

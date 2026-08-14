@@ -13,6 +13,7 @@ import {
   AlertDialogTitle,
   Button,
   ColumnDef,
+  Combobox,
   DataTable,
   DatePicker,
   Dialog,
@@ -930,8 +931,15 @@ export default function EsquemasPage() {
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label>Empleado activo</Label>
-              <Select
+              <Label htmlFor="assignment-employee">Empleado activo</Label>
+              <Combobox
+                id="assignment-employee"
+                options={data.employees
+                  .filter((item) => item.active)
+                  .map((item) => ({
+                    value: item.id,
+                    label: `${item.name} · ${item.position}`,
+                  }))}
                 value={assignmentForm.employeeId}
                 onValueChange={(value) =>
                   setAssignmentForm((current) => ({
@@ -946,20 +954,10 @@ export default function EsquemasPage() {
                       : currentFortnight(),
                   }))
                 }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecciona empleado" />
-                </SelectTrigger>
-                <SelectContent>
-                  {data.employees
-                    .filter((item) => item.active)
-                    .map((item) => (
-                      <SelectItem key={item.id} value={item.id}>
-                        {item.name} · {item.position}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
+                placeholder="Selecciona empleado"
+                searchPlaceholder="Buscar por nombre o puesto..."
+                emptyMessage="No se encontraron empleados activos."
+              />
             </div>
             <div className="space-y-2">
               <Label>Esquema</Label>

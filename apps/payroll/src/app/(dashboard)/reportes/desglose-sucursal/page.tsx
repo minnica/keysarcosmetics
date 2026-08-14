@@ -1,6 +1,6 @@
 "use client";
 
-import { ColumnDef, DataTable } from "@cosmetics/ui";
+import { Card, CardContent, ColumnDef, DataTable } from "@cosmetics/ui";
 import {
   Cell,
   Pie,
@@ -10,9 +10,10 @@ import {
   Tooltip,
 } from "recharts";
 import { MetricCard } from "@/components/payroll/metric-card";
+import { LivePayrollControls } from "@/components/payroll/live-payroll-controls";
 import { ReportExportButtons } from "@/components/payroll/report-export-buttons";
 import { SectionCard } from "@/components/payroll/section-card";
-import { usePayrollData } from "@/components/payroll/payroll-data-context";
+import { useLivePayrollPreview } from "@/hooks/use-live-payroll-preview";
 import { formatCurrency, formatDate, formatPercent, sumBy } from "@/lib/format";
 import type { BranchBreakdownLine } from "@/lib/types";
 
@@ -79,10 +80,36 @@ function renderPercentageLabel({
 }
 
 export default function DesgloseSucursalPage() {
-  const data = usePayrollData();
-  const branches = data.branchBreakdown.branches;
-  const employeeLines = data.branchBreakdown.employeeLines;
-  const run = data.selectedRun;
+  const live = useLivePayrollPreview();
+  const preview = live.preview;
+  const employeeLines = (preview?.lines ?? []).flatMap((line) =>
+    line.branchLines.map((branch) => ({
+      employeeId: line.employeeId,
+      employeeName: line.employeeName,
+      ...branch,
+    })),
+  );
+  const branches = Array.from(
+    employeeLines.reduce((branchMap, line) => {
+      const current = branchMap.get(line.branchName) ?? {
+        branchName: line.branchName,
+        salesWithVat: 0,
+        salesWithoutVat: 0,
+        payrollCost: 0,
+        employeeCount: 0,
+      };
+      current.salesWithVat += line.salesWithVat;
+      current.salesWithoutVat += line.salesWithoutVat;
+      current.payrollCost += line.totalCost;
+      current.employeeCount += 1;
+      branchMap.set(line.branchName, current);
+      return branchMap;
+    }, new Map<string, BranchBreakdownLine>()),
+  )
+    .map(([, branch]) => branch)
+    .sort((left, right) =>
+      left.branchName.localeCompare(right.branchName, "es"),
+    );
   const totalCost = sumBy(branches, (branch) => branch.payrollCost);
   const totalSales = sumBy(branches, (branch) => branch.salesWithVat);
   const totalEmployees = new Set(employeeLines.map((line) => line.employeeId))
@@ -95,24 +122,26 @@ export default function DesgloseSucursalPage() {
   ).sort((left, right) => left.localeCompare(right, "es"));
   const employeeRows = Array.from(
     employeeLines.reduce((rowsByEmployee, line) => {
-      const current = rowsByEmployee.get(line.employeeId) ?? {
-        employeeId: line.employeeId,
-        employeeName: line.employeeName,
-        salesByBranch: {},
-        salesWithVat: 0,
-        salesWithoutVat: 0,
-        commission: 0,
-        bonus: 0,
-        fine: 0,
-        salaryPayment: 0,
-        adjustmentPositive: 0,
-        adjustmentNegative: 0,
-        perDiem: 0,
-        supplies: 0,
-        loanPayment: 0,
-        deductions: 0,
-        totalCost: 0,
-      } satisfies EmployeeBreakdownRow;
+      const current =
+        rowsByEmployee.get(line.employeeId) ??
+        ({
+          employeeId: line.employeeId,
+          employeeName: line.employeeName,
+          salesByBranch: {},
+          salesWithVat: 0,
+          salesWithoutVat: 0,
+          commission: 0,
+          bonus: 0,
+          fine: 0,
+          salaryPayment: 0,
+          adjustmentPositive: 0,
+          adjustmentNegative: 0,
+          perDiem: 0,
+          supplies: 0,
+          loanPayment: 0,
+          deductions: 0,
+          totalCost: 0,
+        } satisfies EmployeeBreakdownRow);
 
       current.salesByBranch[line.branchName] =
         (current.salesByBranch[line.branchName] ?? 0) + line.salesWithVat;
@@ -297,10 +326,8 @@ export default function DesgloseSucursalPage() {
 
   const exportConfig = {
     title: "Desglose de nómina por sucursal",
-    subtitle: run
-      ? `${formatDate(run.from)} - ${formatDate(run.to)} · ${run.mode === "WITH_VAT" ? "Con IVA" : "Sin IVA"}`
-      : "Sin corrida seleccionada",
-    filename: `desglose-nomina-sucursal-${run?.from ?? "sin-corrida"}`,
+    subtitle: `${formatDate(live.selectedPeriod.from)} - ${formatDate(live.selectedPeriod.to)} · ${live.mode === "WITH_VAT" ? "Con IVA" : "Sin IVA"} · Vista actual`,
+    filename: `desglose-nomina-sucursal-${live.selectedPeriod.from}`,
     sheetName: "Desglose",
     orientation: "landscape" as const,
     rows: employeeRows,
@@ -380,7 +407,7 @@ export default function DesgloseSucursalPage() {
         <div>
           <h1 className="page-title">Reporte por sucursal</h1>
           <p className="mt-1 text-sm text-[var(--text-muted)]">
-            Distribución exacta de ventas y costo para la corrida seleccionada.
+            Cálculo vigente de ventas y costo, sin crear ni aprobar una corrida.
           </p>
         </div>
         <ReportExportButtons
@@ -388,126 +415,158 @@ export default function DesgloseSucursalPage() {
           disabled={!employeeLines.length}
         />
       </header>
-      <div className="grid gap-4 md:grid-cols-3">
-        <MetricCard
-          label="Costo total"
-          value={formatCurrency(totalCost)}
-          tone="gold"
-        />
-        <MetricCard
-          label="Ventas asignadas"
-          value={formatCurrency(totalSales)}
-          tone="sage"
-        />
-        <MetricCard label="Empleados" value={`${totalEmployees}`} tone="blue" />
-      </div>
-      <SectionCard
-        eyebrow="Ventas con IVA asignadas en cada sucursal"
-        title="EMPLEADO Y PUNTO DE VENTA"
-      >
-        <DataTable
-          columns={employeeColumns}
-          data={employeeRows}
-          searchPlaceholder="Buscar empleado"
-          emptyMessage="Sin desglose para la corrida seleccionada."
-          pageSize={10}
-        />
-      </SectionCard>
-      <SectionCard eyebrow="Resumen" title="COSTO POR PUNTO DE VENTA">
-        <DataTable
-          columns={branchColumns}
-          data={branches}
-          searchPlaceholder="Buscar sucursal"
-          emptyMessage="Sin costos asignados."
-          pageSize={10}
-        />
-      </SectionCard>
-      <SectionCard eyebrow="Distribución" title="PESO DEL COSTO">
-        {costDistribution.length ? (
-          <figure
-            className="space-y-6"
-            aria-label="Distribución porcentual del costo de nómina por sucursal"
+      <LivePayrollControls
+        options={live.options}
+        periodValue={live.periodValue}
+        onPeriodChange={live.setPeriodValue}
+        mode={live.mode}
+        onModeChange={live.setMode}
+        refreshing={live.refreshing}
+        generatedAt={preview?.generatedAt}
+        onRefresh={() => void live.refresh()}
+      />
+      {live.loading ? (
+        <Card>
+          <CardContent
+            className="p-8 text-sm text-[var(--text-muted)]"
+            role="status"
           >
-            <figcaption className="border-b border-[var(--border-color)] pb-5">
-              <p className="sr-only">
-                Cada segmento representa la participación de una sucursal en el
-                costo total de nómina.
-              </p>
-              <ul className="grid grid-cols-[repeat(auto-fit,minmax(10rem,1fr))] gap-x-4 gap-y-4">
-                {costDistribution.map((item) => (
-                  <li
-                    key={item.name}
-                    className="flex min-w-0 gap-2 py-0.5"
-                  >
-                    <span
-                      className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full"
-                      style={{ backgroundColor: item.color }}
-                      aria-hidden="true"
-                    />
-                    <div className="min-w-0">
-                      <p
-                        className="truncate text-xs font-medium text-[var(--text-muted)]"
-                        title={item.name}
-                      >
-                        {item.name}
-                      </p>
-                      <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                        <span className="number-display text-sm">
-                          {formatCurrency(item.value)}
-                        </span>
-                        <span className="text-xs tabular-nums text-[var(--text-muted)]">
-                          {formatPercent(totalCost ? item.value / totalCost : 0)}
-                        </span>
-                      </div>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </figcaption>
-            <div className="mx-auto h-[22rem] w-full max-w-3xl sm:h-[30rem] lg:h-[34rem]">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={costDistribution}
-                    dataKey="value"
-                    nameKey="name"
-                    cx="50%"
-                    cy="50%"
-                    outerRadius="88%"
-                    paddingAngle={2}
-                    stroke="var(--bg-card)"
-                    strokeWidth={2}
-                    labelLine={false}
-                    label={renderPercentageLabel}
-                  >
+            Calculando el desglose vigente…
+          </CardContent>
+        </Card>
+      ) : live.error ? (
+        <Card>
+          <CardContent className="p-8 text-sm text-red-600" role="alert">
+            {live.error}
+          </CardContent>
+        </Card>
+      ) : (
+        <>
+          <div className="grid gap-4 md:grid-cols-3">
+            <MetricCard
+              label="Costo total"
+              value={formatCurrency(totalCost)}
+              tone="gold"
+            />
+            <MetricCard
+              label="Ventas asignadas"
+              value={formatCurrency(totalSales)}
+              tone="sage"
+            />
+            <MetricCard
+              label="Empleados"
+              value={`${totalEmployees}`}
+              tone="blue"
+            />
+          </div>
+          <SectionCard
+            eyebrow="Ventas con IVA asignadas en cada sucursal"
+            title="EMPLEADO Y PUNTO DE VENTA"
+          >
+            <DataTable
+              columns={employeeColumns}
+              data={employeeRows}
+              searchPlaceholder="Buscar empleado"
+              emptyMessage="Sin datos vigentes para esta quincena."
+              pageSize={10}
+            />
+          </SectionCard>
+          <SectionCard eyebrow="Resumen" title="COSTO POR PUNTO DE VENTA">
+            <DataTable
+              columns={branchColumns}
+              data={branches}
+              searchPlaceholder="Buscar sucursal"
+              emptyMessage="Sin costos asignados."
+              pageSize={10}
+            />
+          </SectionCard>
+          <SectionCard eyebrow="Distribución" title="PESO DEL COSTO">
+            {costDistribution.length ? (
+              <figure
+                className="space-y-6"
+                aria-label="Distribución porcentual del costo de nómina por sucursal"
+              >
+                <figcaption className="border-b border-[var(--border-color)] pb-5">
+                  <p className="sr-only">
+                    Cada segmento representa la participación de una sucursal en
+                    el costo total de nómina.
+                  </p>
+                  <ul className="grid grid-cols-[repeat(auto-fit,minmax(10rem,1fr))] gap-x-4 gap-y-4">
                     {costDistribution.map((item) => (
-                      <Cell key={item.name} fill={item.color} />
+                      <li key={item.name} className="flex min-w-0 gap-2 py-0.5">
+                        <span
+                          className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full"
+                          style={{ backgroundColor: item.color }}
+                          aria-hidden="true"
+                        />
+                        <div className="min-w-0">
+                          <p
+                            className="truncate text-xs font-medium text-[var(--text-muted)]"
+                            title={item.name}
+                          >
+                            {item.name}
+                          </p>
+                          <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                            <span className="number-display text-sm">
+                              {formatCurrency(item.value)}
+                            </span>
+                            <span className="text-xs tabular-nums text-[var(--text-muted)]">
+                              {formatPercent(
+                                totalCost ? item.value / totalCost : 0,
+                              )}
+                            </span>
+                          </div>
+                        </div>
+                      </li>
                     ))}
-                  </Pie>
-                  <Tooltip
-                    formatter={(value, name) => [
-                      formatCurrency(Number(value)),
-                      String(name),
-                    ]}
-                    contentStyle={{
-                      background: "var(--bg-card)",
-                      border: "1px solid var(--border-color)",
-                      borderRadius: "0.5rem",
-                      color: "var(--text-primary)",
-                      boxShadow: "var(--card-shadow)",
-                    }}
-                    itemStyle={{ color: "var(--text-primary)" }}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-          </figure>
-        ) : (
-          <p className="py-10 text-center text-sm text-[var(--text-muted)]">
-            Sin costos asignados para mostrar la distribución.
-          </p>
-        )}
-      </SectionCard>
+                  </ul>
+                </figcaption>
+                <div className="mx-auto h-[22rem] w-full max-w-3xl sm:h-[30rem] lg:h-[34rem]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={costDistribution}
+                        dataKey="value"
+                        nameKey="name"
+                        cx="50%"
+                        cy="50%"
+                        outerRadius="88%"
+                        paddingAngle={2}
+                        stroke="var(--bg-card)"
+                        strokeWidth={2}
+                        labelLine={false}
+                        label={renderPercentageLabel}
+                      >
+                        {costDistribution.map((item) => (
+                          <Cell key={item.name} fill={item.color} />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        formatter={(value, name) => [
+                          formatCurrency(Number(value)),
+                          String(name),
+                        ]}
+                        contentStyle={{
+                          background: "var(--bg-card)",
+                          border: "1px solid var(--border-color)",
+                          borderRadius: "0.5rem",
+                          color: "var(--text-primary)",
+                          boxShadow: "var(--card-shadow)",
+                        }}
+                        itemStyle={{ color: "var(--text-primary)" }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+              </figure>
+            ) : (
+              <p className="py-10 text-center text-sm text-[var(--text-muted)]">
+                Sin costos asignados para mostrar la distribución.
+              </p>
+            )}
+          </SectionCard>
+        </>
+      )}
     </div>
   );
 }
