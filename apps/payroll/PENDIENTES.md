@@ -1,6 +1,6 @@
 # Payroll — pendientes de habilitación y decisiones acordadas
 
-Última actualización: 1 de agosto de 2026.
+Última actualización: 13 de agosto de 2026.
 
 Este documento registra lo que falta para habilitar Payroll por ambiente y consolida las preguntas y respuestas acordadas durante la planeación. No contiene contraseñas, tokens, URLs privadas ni valores de producción.
 
@@ -13,6 +13,7 @@ La implementación de aplicación, API, modelos y migración está terminada. Lo
 - Catálogos, esquemas versionados y asignaciones con vigencia.
 - Reactivación de esquemas desactivados al volver a capturar el mismo nombre, conservando sus versiones y asignaciones históricas.
 - Movimientos, gastos, préstamos y cuotas quincenales.
+- Gastos recurrentes mensuales/quincenales con versiones por vigencia y ocurrencias automáticas por periodo.
 - Normalización de cualquier fecha elegida para la primera quincena de cobro al inicio canónico del periodo, día 1 o 16.
 - Corridas `DRAFT → APPROVED → PAID`, cancelación previa al pago y snapshots.
 - Resumen mensual calculado que consolida las dos corridas quincenales sin exigir que estén pagadas.
@@ -31,6 +32,9 @@ Archivos, en orden:
 backend/api/prisma/migrations/20260730000000_add_payroll_models/migration.sql
 backend/api/prisma/migrations/20260731000000_add_employee_branch/migration.sql
 backend/api/prisma/migrations/20260801000000_add_employee_all_branches/migration.sql
+backend/api/prisma/migrations/20260813010000_add_recurring_payroll_expenses/migration.sql
+backend/api/prisma/migrations/20260813020000_add_payroll_expense_categories/migration.sql
+backend/api/prisma/migrations/20260813030000_link_payroll_expense_categories/migration.sql
 ```
 
 Antes de ejecutar:
@@ -46,6 +50,9 @@ Qué solventa:
 - Crea las tablas, enums, índices, relaciones y restricciones de Payroll.
 - Agrega la relación nullable `Empleado.sucursalId` sin modificar los empleados existentes.
 - Agrega `Empleado.todasSucursales` para distinguir `TODAS` de `Sin sucursal asignada`; los registros existentes conservan `false`.
+- Agrega series y versiones de gastos recurrentes sin convertir los gastos históricos existentes.
+- Crea el catálogo de categorías de gasto y recupera automáticamente las categorías históricas ya capturadas.
+- Vincula ocurrencias y versiones al catálogo manteniendo el nombre histórico dentro de cada gasto.
 - Permite que `/api/payroll/*` persista catálogos, movimientos, corridas, préstamos y recibos.
 - Sin este paso, el frontend puede cargar, pero las llamadas de Payroll fallarán porque las tablas todavía no existen.
 
@@ -107,13 +114,13 @@ Antes del primer pago real debe revisarse en Envelope la información de los emp
 
 Efectos de datos faltantes:
 
-| Dato faltante            | Comportamiento                                     |
-| ------------------------ | -------------------------------------------------- |
-| Sueldo                   | Se calcula como `$0` y se muestra una advertencia. |
-| Esquema/rango con ventas | Bloquea la aprobación.                             |
-| Banco                    | Bloquea marcar la corrida como pagada.             |
-| Cuenta bancaria          | Bloquea marcar la corrida como pagada.             |
-| Teléfono                 | Solo bloquea preparar el envío por WhatsApp.       |
+| Dato faltante            | Comportamiento                                                                                |
+| ------------------------ | --------------------------------------------------------------------------------------------- |
+| Sueldo                   | Se calcula como `$0` y se muestra una advertencia.                                            |
+| Esquema/rango con ventas | Bloquea la aprobación.                                                                        |
+| Banco                    | Bloquea marcar la corrida como pagada.                                                        |
+| Cuenta bancaria          | Bloquea marcar la corrida como pagada.                                                        |
+| Teléfono                 | Solo bloquea preparar el envío por WhatsApp.                                                  |
 | Sucursal laboral         | Resumen muestra una advertencia informativa; no cambia el cálculo ni el reporte por sucursal. |
 
 La revisión agregada realizada el 30 de julio de 2026 encontró 54 empleados activos: 31 sin sueldo, 51 sin teléfono, 2 sin banco y 9 con cuenta vacía. Son cifras de referencia y pueden cambiar; deben verificarse nuevamente antes del primer ciclo productivo. De los empleados activos con ventas recientes, 28 no tenían sueldo capturado.

@@ -30,13 +30,21 @@ import {
   SelectValue,
   Textarea,
   toast,
+  type DateRange,
 } from "@cosmetics/ui";
+import { DateFilterCard } from "@/components/payroll/date-filter-card";
 import { MetricCard } from "@/components/payroll/metric-card";
 import { ReportExportButtons } from "@/components/payroll/report-export-buttons";
 import { SectionCard } from "@/components/payroll/section-card";
 import { StatusBadge } from "@/components/payroll/status-badge";
 import { usePayrollData } from "@/components/payroll/payroll-data-context";
 import { apiErrorMessage } from "@/lib/api";
+import {
+  dateRangeFilename,
+  describeDateRange,
+  EMPTY_DATE_RANGE,
+  isDateInRange,
+} from "@/lib/date-range";
 import {
   formatCurrency,
   formatDate,
@@ -98,6 +106,7 @@ export default function MovimientosPage() {
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [file, setFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
+  const [dateRange, setDateRange] = useState<DateRange>(EMPTY_DATE_RANGE);
   const [statusTarget, setStatusTarget] = useState<{
     movement: PayrollMovement;
     status: MovementStatus;
@@ -113,12 +122,19 @@ export default function MovimientosPage() {
           : [];
   const needsEvidence = form.kind === "PER_DIEM" || form.kind === "SUPPLIES";
 
+  const filteredMovements = useMemo(
+    () =>
+      data.movements.filter((movement) =>
+        isDateInRange(movement.date, dateRange),
+      ),
+    [data.movements, dateRange],
+  );
   const approvedTotal = sumBy(
-    data.movements.filter((item) => item.status === "APPROVED"),
+    filteredMovements.filter((item) => item.status === "APPROVED"),
     (item) => item.amount,
   );
   const pendingTotal = sumBy(
-    data.movements.filter((item) => item.status === "PENDING"),
+    filteredMovements.filter((item) => item.status === "PENDING"),
     (item) => Math.abs(item.amount),
   );
 
@@ -434,11 +450,11 @@ export default function MovimientosPage() {
 
   const exportConfig = {
     title: "Movimientos de nómina",
-    subtitle: "Movimientos persistidos y auditados",
-    filename: "movimientos-nomina",
+    subtitle: describeDateRange(dateRange),
+    filename: `movimientos-nomina-${dateRangeFilename(dateRange)}`,
     sheetName: "Movimientos",
     orientation: "landscape" as const,
-    rows: data.movements,
+    rows: filteredMovements,
     columns: [
       {
         header: "FECHA",
@@ -485,7 +501,7 @@ export default function MovimientosPage() {
         <div className="flex flex-wrap gap-2">
           <ReportExportButtons
             config={exportConfig}
-            disabled={!data.movements.length}
+            disabled={!filteredMovements.length}
           />
           <Button
             onClick={() => {
@@ -500,6 +516,11 @@ export default function MovimientosPage() {
           </Button>
         </div>
       </header>
+      <DateFilterCard
+        value={dateRange}
+        onChange={setDateRange}
+        resultCount={filteredMovements.length}
+      />
       <div className="grid gap-4 md:grid-cols-3">
         <MetricCard
           label="Aprobado neto"
@@ -520,9 +541,13 @@ export default function MovimientosPage() {
       <SectionCard title="MOVIMIENTOS CAPTURADOS">
         <DataTable
           columns={columns}
-          data={data.movements}
+          data={filteredMovements}
           searchPlaceholder="Buscar movimiento"
-          emptyMessage="Sin movimientos; registra el primero para incluirlo en una corrida."
+          emptyMessage={
+            data.movements.length
+              ? "No hay movimientos dentro del periodo seleccionado."
+              : "Sin movimientos; registra el primero para incluirlo en una corrida."
+          }
           pageSize={10}
         />
       </SectionCard>

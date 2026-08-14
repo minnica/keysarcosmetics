@@ -10,9 +10,7 @@ import {
   CardTitle,
   Select,
   SelectContent,
-  SelectGroup,
   SelectItem,
-  SelectLabel,
   SelectTrigger,
   SelectValue,
   Table,
@@ -34,6 +32,7 @@ import type {
 } from "@/lib/types";
 import { ReportExportButtons } from "./report-export-buttons";
 import { SectionCard } from "./section-card";
+import { FortnightSelect } from "./fortnight-select";
 
 type ApiResponse<T> = { success: boolean; data: T; message: string };
 
@@ -75,14 +74,14 @@ function periodOptions(monthCount = 12): PeriodOption[] {
         month,
         from: isoDate(year, monthNumber, 16),
         to: isoDate(year, monthNumber, lastDay),
-        shortLabel: `2.ª quincena · días 16–${lastDay}`,
+        shortLabel: `2ª quincena · días 16–${lastDay}`,
       },
       {
         value: isoDate(year, monthNumber, 1),
         month,
         from: isoDate(year, monthNumber, 1),
         to: isoDate(year, monthNumber, 15),
-        shortLabel: "1.ª quincena · días 1–15",
+        shortLabel: "1ª quincena · días 1–15",
       },
     );
   }
@@ -128,14 +127,6 @@ export function PayrollOverviewPage({
   const monthOptions = useMemo(
     () => [...new Set(options.map((option) => option.month))],
     [options],
-  );
-  const optionGroups = useMemo(
-    () =>
-      monthOptions.map((month) => ({
-        month,
-        options: options.filter((option) => option.month === month),
-      })),
-    [monthOptions, options],
   );
   const [view, setView] = useState<PayrollOverviewView>("FORTNIGHT");
   const [fortnight, setFortnight] = useState(() =>
@@ -277,23 +268,12 @@ export function PayrollOverviewPage({
             </div>
 
             {view === "FORTNIGHT" ? (
-              <Select value={fortnight} onValueChange={setFortnight}>
-                <SelectTrigger className="w-full sm:w-72" aria-label="Quincena">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent style={{ maxHeight: "20rem" }}>
-                  {optionGroups.map((group) => (
-                    <SelectGroup key={group.month}>
-                      <SelectLabel>{formatMonth(group.month)}</SelectLabel>
-                      {group.options.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {option.shortLabel}
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
-                  ))}
-                </SelectContent>
-              </Select>
+              <FortnightSelect
+                options={options}
+                value={fortnight}
+                onValueChange={setFortnight}
+                className="w-full sm:w-64"
+              />
             ) : (
               <Select value={month} onValueChange={setMonth}>
                 <SelectTrigger className="w-full sm:w-56" aria-label="Mes">

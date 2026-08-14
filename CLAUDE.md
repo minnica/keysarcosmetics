@@ -104,10 +104,12 @@ el diseño y el autocuidado.
 
 - `payroll` comparte el sistema visual canónico de `envelope`: `Emofera Regular` para títulos de página y marca, y `Gilroy` (400/500/600/700) para cuerpo/UI.
 - La paleta, tokens semánticos, sidebar, logo, favicon, login editorial, radios, sombras, inputs y estados light/dark de `payroll` deben mantenerse alineados con `apps/envelope`.
-- Los elementos de interfaz de `payroll` deben reutilizar los mismos primitivos y variantes que `envelope`: `Button`, `Badge`, `Card`, `DataTable`, `Dialog`, `AlertDialog`, `Select`, `DatePicker`/`DateRangePicker`, `ProgressKeysar`, sidebar shadcn e iconos de `lucide-react`. No crear SVGs manuales ni clases locales que reemplacen estilos de botones, cards o badges. Las acciones CRUD siguen el patrón de `envelope`: editar/borrar como botones `ghost` con iconos `Pencil`/`Trash2`, acciones de alta con icono Lucide y confirmaciones destructivas con `AlertDialogAction` rojo. Las tablas `DataTable` no deben anidarse dentro de otra card decorativa.
+- Los elementos de interfaz de `payroll` deben reutilizar los mismos primitivos y variantes que `envelope`: `Button`, `Badge`, `Card`, `DataTable`, `Tabs`, `Dialog`, `AlertDialog`, `Select`, `DatePicker`/`DateRangePicker`, `ProgressKeysar`, sidebar shadcn e iconos de `lucide-react`. No crear SVGs manuales ni clases locales que reemplacen estilos de botones, cards o badges. Las acciones CRUD siguen el patrón de `envelope`: editar/borrar como botones `ghost` con iconos `Pencil`/`Trash2`, acciones de alta con icono Lucide y confirmaciones destructivas con `AlertDialogAction` rojo. Las tablas `DataTable` no deben anidarse dentro de otra card decorativa.
 - Las cards principales de `payroll` usan el componente `Card` de `@cosmetics/ui`, con sus subcomponentes `CardContent`/`CardHeader` cuando correspondan; no recrear la superficie con `<div>`, no anidar una `DataTable` dentro de otra card decorativa y no reintroducir glass oscuro ni colores de superficie hardcodeados.
 - `payroll` soporta tema claro y oscuro con la misma preferencia `keysar-theme` usada por `envelope`; cualquier componente nuevo debe funcionar correctamente en ambos modos.
 - La dirección visual de `payroll` debe mantenerse más limpia y minimalista que antes: evitar textos secundarios redundantes, descripciones largas y copy explicativo dentro de cards cuando el dato principal ya comunica el estado.
+- La page `/esquemas` cierra con una gráfica de barras horizontal que distribuye a los empleados activos por esquema de comisión vigente en la fecha actual. Debe contar una asignación solo cuando `effectiveFrom <= hoy <= effectiveTo` (o `effectiveTo` es nulo), excluir asignaciones futuras e históricas y conservar los esquemas activos con cero personas cuando exista al menos una asignación vigente para facilitar la comparación.
+- La sección `PESO DEL COSTO` de `/reportes/desglose-sucursal` presenta dos gráficas pie responsivas: costo total de nómina y costo de bonos por punto de venta para el periodo seleccionado. Ambas se calculan desde las `branchLines` del preview vigente, comparten un color estable por sucursal y muestran estados vacíos independientes.
 - En métricas y bloques resumen, priorizar `label + value`; si hace falta contexto, usarlo solo de forma puntual. La page resumen agrupa periodo, estado, exportaciones y KPIs en una única card, mantiene la configuración de corrida en un solo bloque compacto y muestra las métricas secundarias junto al encabezado de la tabla; no volver a fragmentar estas áreas en múltiples mini-cards.
 - La page resumen permite alternar entre vista quincenal y mensual. La configuración quincenal usa un único `Select` con los periodos estándar de los últimos 12 meses, agrupados por mes y con opciones breves de primera/segunda quincena; no duplicar ese control con otro selector de corridas en el encabezado. Al elegir un periodo con corrida no cancelada carga esa corrida; si está vacío permite crearla con día de pago sugerido siete días después del cierre. El selector mensual ofrece el mismo rango de 12 meses. Nunca crear una segunda corrida para el mismo periodo ni permitir fechas libres que rompan las quincenas 1–15/16–fin.
 - La vista mensual obtiene su consolidado desde `GET /api/payroll/reports/monthly-summary?month=AAAA-MM`. Suma los snapshots de las corridas no canceladas del 1–15 y 16–fin de mes aunque estén en `DRAFT` o `APPROVED`. Si una quincena ya terminó y nunca tuvo corrida, el backend la calcula en memoria con los datos históricos y la configuración disponible, la devuelve con estado sintético `ESTIMATED` y no crea registros, snapshots, reservas ni auditoría. La UI debe cambiar el encabezado a **nómina mensual aproximada**, identificar cada quincena estimada y recomendar crear la corrida histórica para validar y congelar el resultado. Una quincena vigente sin corrida permanece faltante. No describir ningún importe como pagado. Las comisiones mensuales se calculan por quincena y luego se suman; nunca se recalculan sobre las ventas combinadas del mes.
@@ -165,6 +167,7 @@ Componentes shadcn canónicos en `packages/ui/src/components/ui`:
 - **AlertDialog** — diálogo de confirmación destructiva (botones de borrar)
 - **Sonner** — toasts con variantes semánticas: verde para éxito, amarillo/ámbar para advertencias recuperables y rojo para errores reales. En `payroll`, las validaciones de formulario y bloqueos previos al guardado usan `toast.warning`; los fallos de API, persistencia o exportación usan `toast.error`.
 - **Toast (Base UI)** — componente shadcn canónico en `components/ui/toast.tsx`, re-exportado como `BaseToaster`/`baseToast` para convivir con Sonner. Envelope y Payroll montan ambos providers; Envelope lo usa para avisos de empleados sin sucursal.
+- **Tabs (Base UI)** — navegación accesible entre vistas relacionadas mediante `Tabs`, `TabsList`, `TabsTrigger` y `TabsContent`; conserva navegación por teclado, foco visible y estados light/dark. Las apps deben consumirla desde `@cosmetics/ui`, no recrear tablists manuales.
 - **DataTable** — tabla canónica shadcn sobre `@tanstack/react-table`. Props: `columns: ColumnDef<T>[]`, `data: T[]`, `emptyMessage?: string`, `searchPlaceholder?: string`, `pageSize?: number` (default 20), `labels?: { records?: string; all?: string; results?: (count: number) => string }`. Incluye sorting por clic en header, globalFilter (search input), selector de filas por página (opciones: 10, 20, 50, 100, Todos) y pagination con controles prev/next (ocultos en modo Todos). Re-exporta también `ColumnDef` desde `@cosmetics/ui` — las apps no deben importar `@tanstack/react-table` directamente.
 
 `toast` helper re-exportado desde `@cosmetics/ui` (no importar `sonner` directamente en las apps).
@@ -183,6 +186,7 @@ Wrappers custom en `packages/ui/src/components/custom`:
 - `toast` siempre desde `@cosmetics/ui`, nunca `import { toast } from 'sonner'` directo.
 - Botones de borrar siempre con `AlertDialog` de confirmación antes de ejecutar `remove`.
 - **Tablas de datos siempre con `DataTable` + `ColumnDef` desde `@cosmetics/ui`.** No usar `<Table>` + `<TableBody>` manual para listados CRUD — solo para tablas de reporte/estáticas.
+- Para alternar vistas relacionadas dentro de una misma tarea, usar `Tabs` de `@cosmetics/ui`; no implementar botones con `role="tab"` manualmente.
 - Para fechas de un solo día usa `DatePicker` de `@cosmetics/ui`; para rangos usa `DateRangePicker` con dos selectores separados. No usar `input type="date"` directo en las apps.
 - **Reportes exportables**: cuando una pantalla de reporte necesite PDF/Excel, reutilizar `apps/envelope/src/lib/report-export.ts` y `apps/envelope/src/components/reportes/ReportExportButtons.tsx`. Exportar siempre desde el dataset ya agregado, nunca desde captura visual de la tabla. Las dependencias pesadas (`jspdf`, `jspdf-autotable`, `xlsx`) deben cargarse con imports dinámicos al hacer clic en exportar; no importarlas a nivel superior en pages/components para no inflar el First Load JS.
 - Los filtros de rango de fechas en reportes y ventas usan dos selectores de calendario separados con `DateRangePicker`, no un calendario de rango único.
@@ -210,6 +214,7 @@ Módulos implementados:
 
 - **ventas** — captura una venta total por `sucursal`+`fecha`+empleado inicial+monto; después permite agregar empleados con reparto equitativo automático y montos editables, y conciliar métodos de pago uno por uno contra el total. El guardado solo se habilita cuando tanto la distribución por empleado como la suma de pagos coinciden con el monto. Además incluye `Generar sobre`, que arma y descarga un PNG de sobre blanco con el detalle real del día y sucursal seleccionados, firma del usuario y permisos de acción virtual, sin vista previa inline. La firma del sobre usa `signature_pad` para trazo suave y fondo transparente. Cada empleado se persiste como un `RegistroVenta`, compartiendo un `sesionId` cuando participa más de uno; `POST /api/envelope/ventas/lote` guarda todo el voucher en una transacción atómica.
   La tabla de ventas guardadas filtra por rango de fechas con dos selectores de calendario separados y arranca por defecto en el día en curso, para mostrar solo las ventas del día presente al abrir la pantalla.
+  Cada fila de la tabla de ventas guardadas ofrece edición con el botón neutral `Pencil`. La edición reutiliza el flujo de captura de la parte superior, precarga sucursal, fecha, empleados, montos y métodos de pago, conserva la distribución y los detalles de pago mientras no se modifiquen, muestra un estado explícito de edición y permite cancelarla. Si el registro pertenece a una venta compartida, se cargan y actualizan juntas todas las filas visibles con el mismo `sesionId`; bajo `selfDataOnly` o cuando parte del voucher no es visible, solo se modifica la porción autorizada y se conserva el vínculo existente. `PUT /api/envelope/ventas/lote` persiste la edición dentro de una transacción, conserva los IDs de `Venta` existentes siempre que sea posible, agrega o elimina filas si cambia el número de empleados y vuelve a validar el alcance propio. Una venta histórica ligada a una sucursal ahora inactiva puede conservar esa misma sucursal durante la edición, pero no puede cambiarse hacia otra sucursal inactiva.
   El catálogo de sucursales se lee desde `GET /api/envelope/sucursales`, que está disponible para cualquier sesión autenticada; las mutaciones (`POST`/`PUT`/`DELETE`) siguen protegidas por permiso de pantalla `sucursales`. Si solo hay una sucursal activa disponible, la UI la preselecciona automáticamente. `GET /api/envelope/metodos-pago` también está disponible para quien tenga la pantalla `metodos-pago` o el reporte `reportes/metodo-pago-por-dia`, para que ese reporte pueda cargar su selector sin conceder permisos de administración; sus mutaciones siguen requiriendo `metodos-pago`.
   En `Generar sobre`, el nombre de cada vendedor debe resolverse desde el payload de ventas embebido (`vendedorNombre`) y no depender del catálogo de empleados, para que el resultado sea igual con `SUPER_ADMIN` y `CAPTURISTA`.
   El nombre arriba de la firma debe salir de `GET /api/auth/me` justo al generar el PNG, usando el nombre actual del empleado ligado a la cuenta cuando exista, para no quedarse con el valor histórico guardado en `Usuario.nombre`.
@@ -269,7 +274,7 @@ Datos:
 - Payroll reutiliza `Empleado`, `Bank`, `Position`, `Sucursal`, `Venta` y `VentaDetalle`. La administración permanece en Envelope; Payroll los consume en lectura.
 - `Empleado.sucursalId` es nullable y conserva una sucursal laboral concreta; `Empleado.todasSucursales` distingue la selección explícita `TODAS` de `Sin sucursal asignada`. Cuando `todasSucursales = true`, `sucursalId` debe ser `null`. Por decisión operativa vigente, este dato es informativo para Payroll y no interviene en el cálculo ni en el reporte por sucursal.
 - Los cambios propios de nómina deben limitarse a `apps/payroll`, rutas/servicios/modelos Payroll en `backend/api` y documentación relacionada. La relación laboral `Empleado.sucursalId` se administra exclusivamente desde `apps/envelope`.
-- Las migraciones `20260730000000_add_payroll_models`, `20260731000000_add_employee_branch` y `20260801000000_add_employee_all_branches` son aditivas. Deben revisarse y ejecutarse manualmente con `prisma migrate deploy`; nunca usar `db push`, `migrate reset` ni seeds demo contra producción.
+- Las migraciones `20260730000000_add_payroll_models`, `20260731000000_add_employee_branch`, `20260801000000_add_employee_all_branches`, `20260813010000_add_recurring_payroll_expenses`, `20260813020000_add_payroll_expense_categories` y `20260813030000_link_payroll_expense_categories` son aditivas. Deben revisarse y ejecutarse manualmente con `prisma migrate deploy`; nunca usar `db push`, `migrate reset` ni seeds demo contra producción.
 - Los adjuntos están preparados para un bucket privado de Supabase Storage, pero su habilitación está pospuesta. Cuando se cree el bucket, configurar `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` y opcionalmente `PAYROLL_STORAGE_BUCKET`; nunca exponer la service-role key al frontend.
 
 ### Fuentes reales reutilizadas
@@ -279,7 +284,7 @@ Datos:
 | Empleado, activo/inactivo, sueldo y teléfono | `Empleado`                                                                                    |
 | Banco y cuenta                               | `Empleado.bankId`/`Bank`, con compatibilidad para `Empleado.banco`, y `Empleado.numeroCuenta` |
 | Puesto                                       | `Empleado.positionId`/`Position`, con compatibilidad para `Empleado.puesto`                   |
-| Sucursal laboral informativa                 | `Empleado.sucursalId`/`Sucursal`; no interviene en el desglose de Payroll                      |
+| Sucursal laboral informativa                 | `Empleado.sucursalId`/`Sucursal`; no interviene en el desglose de Payroll                     |
 | Ventas por fecha, vendedor y sucursal        | `Venta` + suma de `VentaDetalle.cantidad`                                                     |
 | Sucursales                                   | `Sucursal`                                                                                    |
 
@@ -291,7 +296,7 @@ Los catálogos de métodos de pago no participan en el cálculo de comisión. Lo
 - Motor puro: `backend/api/src/services/payroll-calculation.ts`.
 - Ciclo de corridas y snapshots: `backend/api/src/services/payroll.service.ts`.
 - Storage privado: `backend/api/src/services/payroll-storage.ts`.
-- Modelos: `PayrollCatalogItem`, `CommissionScheme`, `CommissionSchemeVersion`, `CommissionSchemeTier`, `EmployeeCommissionAssignment`, `PayrollRun`, `PayrollRunLine`, `PayrollRunBranchLine`, `PayrollMovement`, `PayrollMovementAllocation`, `PayrollAttachment`, `PayrollExpense`, `LoanAdvance`, `LoanAdvanceInstallment`, `PayrollReceipt` y `PayrollAuditEvent`.
+- Modelos: `PayrollCatalogItem`, `CommissionScheme`, `CommissionSchemeVersion`, `CommissionSchemeTier`, `EmployeeCommissionAssignment`, `PayrollRun`, `PayrollRunLine`, `PayrollRunBranchLine`, `PayrollMovement`, `PayrollMovementAllocation`, `PayrollAttachment`, `PayrollExpense`, `PayrollExpenseCategory`, `PayrollExpenseRecurrence`, `PayrollExpenseRecurrenceVersion`, `LoanAdvance`, `LoanAdvanceInstallment`, `PayrollReceipt` y `PayrollAuditEvent`.
 - El schema canónico y el duplicado en `backend/api/src/prisma/schema.prisma` deben mantenerse sincronizados. Payroll usa el cliente estándar `@prisma/client`, regenerado durante el build del backend; no importar clientes generados desde rutas relativas porque `dist` no incluye esos artefactos.
 
 La API cubre bootstrap de fuentes compartidas; CRUD de catálogos, esquemas/versiones/asignaciones, movimientos, gastos y préstamos; adjuntos; corridas y transiciones; desglose por sucursal; recibos y seguimiento de WhatsApp.
@@ -307,11 +312,16 @@ La API cubre bootstrap de fuentes compartidas; CRUD de catálogos, esquemas/vers
 - Cada asignación de movimiento captura su propia sucursal o `CORPORATIVO`; ese centro se conserva en `PayrollMovementAllocation` y alimenta el desglose. Los gastos mantienen un centro de costo independiente porque no están vinculados a un empleado.
 - Una corrida transita `DRAFT → APPROVED → PAID`; puede cancelarse antes de pagar. Aprobar congela líneas y reserva movimientos, gastos y cuotas. Pagar liquida cuotas reservadas y genera recibos. Una corrida pagada no se recalcula ni cancela.
 - El consolidado mensual es un reporte derivado, no una corrida nueva ni una entidad persistida. Incluye corridas `DRAFT`, `APPROVED` y `PAID`, excluye `CANCELED`, agrupa las líneas por `employeeId` y suma por separado primera quincena, segunda quincena, sueldo, ventas, comisión, extras, deducciones y total. Para una quincena terminada sin corrida, reutiliza el motor de cálculo sin `runId` y devuelve una referencia sintética `ESTIMATED`; no reserva ni persiste datos. El cierre del periodo se compara contra la fecha de negocio de `America/Mexico_City`. Si existe una corrida real en el mes, la estimación usa su modo; si no existe ninguna usa `WITH_VAT`. La estimación recupera ventas y sus sucursales, esquemas/asignaciones, movimientos, gastos y cuotas aplicables al periodo, pero sueldo, banco, cuenta y teléfono proceden del registro de empleado disponible al consultar, porque no existe snapshot histórico. Por eso siempre se presenta como aproximada hasta crear la corrida histórica. Una quincena actual o futura sin corrida sigue incompleta.
+- En el detalle quincenal de comisiones, `TOTAL PAGO` no agrega `salaryBase`: se compone de comisión, bonos, ajustes positivos, viáticos e insumos menos multas, ajustes negativos y préstamos. La tabla y las exportaciones PDF/Excel deben reutilizar `commissionPaymentTotal`; no duplicar la fórmula ni volver a sumar el sueldo mostrado en su columna informativa.
 - Bloquea aprobación: ventas sin esquema/rango, pago total negativo o viáticos/insumos sin evidencia. Sueldo faltante es advertencia. Banco o cuenta faltante bloquean pago. Teléfono faltante bloquea solo la preparación de WhatsApp.
 - En la vista quincenal de Resumen, el bloque de atención combina las advertencias guardadas en cada línea con una comprobación informativa de la asignación laboral actual. Solo `sucursalId = null` con `todasSucursales = false` incluye el pendiente `SUCURSAL`; una selección explícita `TODAS` se considera configurada. Esta asignación no modifica la corrida ni el desglose por punto de venta. Para evitar paredes de texto, el bloque muestra por defecto únicamente el número de empleados, el total de pendientes y conteos por tipo (`ESQUEMA`, `SUELDO`, `TELÉFONO`, `SUCURSAL`, etc.); `Ver detalle por empleado` despliega una `DataTable` paginada con la cantidad y etiquetas breves de los datos faltantes de cada persona.
 - Préstamos y adelantos generan cuotas quincenales automáticas; el último pago absorbe el ajuste de centavos. Los estados históricos no se eliminan.
+- Los gastos con frecuencia `MONTHLY` o `BIWEEKLY` se administran como series recurrentes versionadas. `PayrollExpenseRecurrenceVersion` conserva concepto, categoría, monto, centro de costo, frecuencia, ancla del calendario y vigencia; editar una serie cierra la versión anterior y crea otra desde la siguiente aplicación elegida. El motor materializa una `PayrollExpense` concreta por fecha al consultar gastos o calcular una corrida. Esa ocurrencia conserva `branchId` y puede ligarse a una sola corrida al aprobarla. Las corridas aprobadas no se reescriben; los gastos legacy sin `recurrenceId` continúan como ocurrencias individuales aunque históricamente tengan una frecuencia distinta de `ONE_TIME`. Las estimaciones mensuales calculan recurrencias faltantes en memoria y no crean registros.
+- Las categorías de gasto se administran desde la misma page `/gastos` mediante `PayrollExpenseCategory`: se pueden crear, renombrar y desactivar con confirmación. El formulario solo acepta categorías activas del catálogo. `PayrollExpense.category` conserva el nombre como snapshot histórico y `categoryId` enlaza el catálogo para las capturas futuras; renombrar actualiza ocurrencias todavía no congeladas, pero no reescribe gastos incluidos en corridas aprobadas. No se puede desactivar una categoría usada por una recurrencia activa. La migración inicial recupera los nombres ya usados en gastos y recurrencias para no perder opciones existentes.
+- La page `/gastos` contiene exactamente dos tablas visibles: **Gastos**, cuya vista principal es **Historial** y deja **Recurrentes activos** como consulta secundaria para no presentar una serie y su ocurrencia como cargos duplicados, y **Categorías de gasto**, con acciones de edición y eliminación lógica. En el selector de vista, **Historial** ocupa la posición izquierda y queda activo al abrir la pantalla. Las métricas cambian con la vista: aplicaciones reales de los últimos 12 meses frente a programación activa.
 - En Préstamos y adelantos, el usuario puede seleccionar cualquier día dentro de la primera quincena de cobro. El frontend normaliza la selección al inicio canónico del periodo: días 1–15 al día 1 y días 16–fin al día 16, que es el contrato enviado al motor de amortización.
 - Recibos se generan desde el snapshot pagado, se descargan en PDF y WhatsApp se abre mediante `wa.me`; el archivo se adjunta manualmente. Estados: `GENERATED`, `SENT`, `CONFIRMED`.
+- `GET /api/payroll/reports/live-preview?periodStart=AAAA-MM-DD&periodEnd=AAAA-MM-DD&mode=WITH_VAT|WITHOUT_VAT` calcula en memoria una quincena con las fuentes vigentes, incluidos conceptos ya ligados a una corrida de ese periodo. No crea ni recalcula corridas, no materializa recurrencias, no reserva movimientos/gastos/cuotas y no altera préstamos, recibos ni auditoría. Se usa para consultas operativas que deben mostrar el estado actual independientemente del ciclo `DRAFT → APPROVED → PAID`.
 
 ### Frontend operativo
 
@@ -319,7 +329,11 @@ Rutas: `/`, `/bonos`, `/multas`, `/viaticos`, `/movimientos`, `/gastos`, `/esque
 
 - `apps/payroll/src/lib/session.tsx` gestiona sesión real y el guard `SUPER_ADMIN`.
 - `apps/payroll/src/components/payroll/payroll-data-context.tsx` conecta toda la UI a `/api/payroll/*`.
+- El sidebar de Payroll replica el patrón canónico de Envelope: `Nómina`, `Operación`, `Configuración` y `Reportes` son categorías desplegables accesibles, solo una permanece abierta y la categoría de la ruta activa se abre automáticamente al cargar y navegar. En modo icon-only se mantienen visibles todas las opciones con tooltip y cada enlace activo expone `aria-current="page"`. El footer oculta las preferencias al colapsarse, usa una fila `role="switch"` para alternar tema claro/oscuro con la preferencia compartida `keysar-theme`, conserva `Cerrar sesión` como acción con tooltip y no muestra textos decorativos debajo del botón. Payroll no agrega selector de idioma mientras no tenga un proveedor de i18n propio.
 - Exportaciones PDF/Excel se generan desde datasets reales con imports dinámicos.
+- `/recibos` y `/reportes/desglose-sucursal` ya no dependen de la corrida seleccionada en Resumen. Ambas abren en la quincena vigente, permiten elegir cualquier quincena estándar de los últimos 12 meses y el modo con/sin IVA, consultan el cálculo en memoria al abrir, al cambiar filtros, al recuperar foco y cada 60 segundos, y ofrecen actualización manual. Desglose y sus exportaciones siempre usan esa vista actual. Recibos separa **Vista actual** —previsualizaciones provisionales descargables que no acreditan pago— de **Emitidos**, que conserva el snapshot, estatus y acciones de WhatsApp de los recibos creados al pagar; `GET /api/payroll/receipts` acepta también `periodStart` + `periodEnd` para cargar esos históricos sin depender de `selectedRun`.
+- Las pages `/movimientos`, `/gastos` y `/prestamos-adelantos` comparten un filtro accesible de periodo con dos calendarios separados (`DateRangePicker`). El rango se inicia abierto para conservar todos los registros disponibles y, al elegir fechas, filtra tabla, contadores y métricas; **Limpiar fechas** restaura la vista completa. PDF y Excel reciben exactamente el mismo dataset filtrado y agregan el periodo al subtítulo y nombre del archivo. En `/gastos`, la exportación y el contador siguen la pestaña activa (`Recurrentes activos` o `Historial`) sin incluir el catálogo de categorías.
+- `apps/payroll/src/lib/report-export.ts` debe cargar `jsPDF` y `autoTable` mediante sus exports nombrados al hacer clic. Con las versiones actuales, el `default` de `jspdf` no es el constructor y provoca un error de runtime aunque TypeScript y el build terminen correctamente; no volver a usar `import("jspdf").default`.
 - Los catálogos arrancan vacíos: no crear seed de bonos, multas, viáticos, esquemas ni préstamos salvo instrucción explícita.
 - Mantener snapshots y datos históricos; las ediciones solo afectan registros en borrador/pendientes que todavía no pertenecen a una corrida aprobada.
 
@@ -444,21 +458,21 @@ Limitaciones históricas de la demo eliminada (no describen la implementación a
 
 ### Datos existentes que Payroll debe reutilizar
 
-| Dato                               | Estado actual | Fuente                             |
-| ---------------------------------- | ------------- | ---------------------------------- |
-| Empleados activos/inactivos        | Existe        | `Empleado.activo`                  |
-| Nombre completo                    | Existe        | `Empleado.nombreCompleto`          |
-| Banco                              | Existe        | `Empleado.bankId` / `Bank`         |
-| Cuenta bancaria                    | Existe        | `Empleado.numeroCuenta`            |
-| Puesto                             | Existe        | `Empleado.positionId` / `Position` |
-| Sueldo base                        | Existe        | `Empleado.sueldo`                  |
-| Teléfono                           | Existe        | `Empleado.numeroTelefono`          |
-| Fecha nacimiento                   | Existe        | `Empleado.fechaNacimiento`         |
-| Meta individual                    | Existe        | `Empleado.metaIndividual`          |
+| Dato                               | Estado actual | Fuente                                                          |
+| ---------------------------------- | ------------- | --------------------------------------------------------------- |
+| Empleados activos/inactivos        | Existe        | `Empleado.activo`                                               |
+| Nombre completo                    | Existe        | `Empleado.nombreCompleto`                                       |
+| Banco                              | Existe        | `Empleado.bankId` / `Bank`                                      |
+| Cuenta bancaria                    | Existe        | `Empleado.numeroCuenta`                                         |
+| Puesto                             | Existe        | `Empleado.positionId` / `Position`                              |
+| Sueldo base                        | Existe        | `Empleado.sueldo`                                               |
+| Teléfono                           | Existe        | `Empleado.numeroTelefono`                                       |
+| Fecha nacimiento                   | Existe        | `Empleado.fechaNacimiento`                                      |
+| Meta individual                    | Existe        | `Empleado.metaIndividual`                                       |
 | Sucursal laboral                   | Existe        | `Empleado.sucursalId` / `Sucursal` + `Empleado.todasSucursales` |
-| Sucursales                         | Existe        | `Sucursal`                         |
-| Ventas por fecha/sucursal/vendedor | Existe        | `Venta` + `VentaDetalle`           |
-| Métodos de pago                    | Existe        | `MetodoPago`                       |
+| Sucursales                         | Existe        | `Sucursal`                                                      |
+| Ventas por fecha/sucursal/vendedor | Existe        | `Venta` + `VentaDetalle`                                        |
+| Métodos de pago                    | Existe        | `MetodoPago`                                                    |
 
 Nota importante:
 
@@ -600,7 +614,7 @@ Recomendación completa actual: 10 pages de operación y reportes.
 | Multas                | `/multas`                     | catálogo mock de multas                    |
 | Viáticos              | `/viaticos`                   | catálogo mock de viáticos                  |
 | Movimientos de nómina | `/movimientos`                | `pantalla de bonos`                        |
-| Gastos                | `/gastos`                     | captura mock de gastos fijos/variables     |
+| Gastos                | `/gastos`                     | series, aplicaciones y categorías de gasto |
 | Esquemas de comisión  | `/esquemas`                   | `pantalla de esquemas`                     |
 | Préstamos y adelantos | `/prestamos-adelantos`        | `panatalla prestamos-adelantos`            |
 | Payroll breakdown     | `/reportes/desglose-sucursal` | `payroll breakdown`                        |
@@ -692,7 +706,7 @@ Reglas para futuras sesiones:
 **Modelos relevantes:**
 
 - `Usuario`, `Sucursal`, `Empleado`, `Venta`, `VentaDetalle`, `RegistroCita`, `MetodoPago`, `Bank`, `Position`.
-- Payroll agrega `PayrollCatalogItem`, `CommissionScheme`, `CommissionSchemeVersion`, `CommissionSchemeTier`, `EmployeeCommissionAssignment`, `PayrollRun`, `PayrollRunLine`, `PayrollRunBranchLine`, `PayrollMovement`, `PayrollMovementAllocation`, `PayrollAttachment`, `PayrollExpense`, `LoanAdvance`, `LoanAdvanceInstallment`, `PayrollReceipt` y `PayrollAuditEvent`.
+- Payroll agrega `PayrollCatalogItem`, `CommissionScheme`, `CommissionSchemeVersion`, `CommissionSchemeTier`, `EmployeeCommissionAssignment`, `PayrollRun`, `PayrollRunLine`, `PayrollRunBranchLine`, `PayrollMovement`, `PayrollMovementAllocation`, `PayrollAttachment`, `PayrollExpense`, `PayrollExpenseCategory`, `PayrollExpenseRecurrence`, `PayrollExpenseRecurrenceVersion`, `LoanAdvance`, `LoanAdvanceInstallment`, `PayrollReceipt` y `PayrollAuditEvent`.
 - `Usuario` puede vincularse opcionalmente a `Empleado` mediante `empleadoId` y guarda metadatos para el futuro flujo de invitación/alta de contraseña.
 - `Position` incluye `canManageAccess` y la relación `PositionScreenPermission`.
 - `PositionScreenPermission` guarda permisos por pantalla para cada puesto y también puede almacenar claves de acción virtual como `ventas/generar-sobre`.
@@ -716,6 +730,9 @@ Reglas para futuras sesiones:
 - La migración Payroll `20260730000000_add_payroll_models` es aditiva: crea tablas, enums, índices, relaciones y restricciones de nómina; no elimina ni transforma ventas, empleados ni otros registros productivos de Envelope.
 - La migración `20260731000000_add_employee_branch` también es aditiva: agrega `Empleado.sucursalId` nullable, su índice y FK sin actualizar filas existentes. La migración `20260801000000_add_employee_all_branches` agrega el indicador `todasSucursales` con default `false` y una restricción que impide combinar `TODAS` con una sucursal concreta.
 - La migración `20260813000000_add_branch_monthly_goal_and_deactivation_date` es aditiva: agrega `Sucursal.metaMensual` con default cero, `Sucursal.desactivadaEn` nullable y un índice por `activa`; no elimina ni reescribe históricos.
+- La migración `20260813010000_add_recurring_payroll_expenses` es aditiva: agrega series/versiones de gastos recurrentes y referencias opcionales desde `PayrollExpense`; no convierte ni modifica los gastos históricos existentes.
+- La migración `20260813020000_add_payroll_expense_categories` es aditiva: crea el catálogo de categorías y hace backfill con los nombres distintos ya guardados en ocurrencias y versiones; no reescribe el texto de los gastos históricos.
+- La migración `20260813030000_link_payroll_expense_categories` agrega referencias opcionales `categoryId` y hace backfill por nombre normalizado. El texto histórico permanece en cada ocurrencia; las relaciones permiten que las recurrencias futuras adopten un nombre editado sin modificar corridas aprobadas.
 - Aplicar Payroll por ambiente en este orden: confirmar conexión y respaldo/PITR, ejecutar `prisma migrate status`, aplicar `prisma migrate deploy`, desplegar el backend correspondiente y después desplegar/verificar el frontend.
 - `seed.ts` contiene datos demo — usar con cuidado, puede sobreescribir datos.
 - `seed-catalogs.ts` es el seed seguro para catálogos `Bank`/`Position`.
@@ -790,7 +807,7 @@ apps/payroll/
 │       ├── page.tsx                        → corridas quincenales y consolidado mensual calculado
 │       ├── bonos|multas|viaticos/          → catálogos dinámicos
 │       ├── movimientos/                    → movimientos, asignaciones y evidencias
-│       ├── gastos/                         → gastos fijos/variables
+│       ├── gastos/                         → recurrencias, historial aplicado y categorías
 │       ├── esquemas/                       → niveles de comisión y asignaciones
 │       ├── prestamos-adelantos/            → préstamos, cuotas y saldos
 │       ├── reportes/desglose-sucursal/     → costo de nómina por sucursal
@@ -860,7 +877,10 @@ backend/api/
 │   │   ├── 20260730000000_add_payroll_models/ → migración aditiva de Payroll
 │   │   ├── 20260731000000_add_employee_branch/ → FK nullable de empleado a sucursal
 │   │   ├── 20260801000000_add_employee_all_branches/ → asignación laboral explícita a todas las sucursales
-│   │   └── 20260813000000_add_branch_monthly_goal_and_deactivation_date/ → meta mensual y fecha de desactivación de sucursales
+│   │   ├── 20260813000000_add_branch_monthly_goal_and_deactivation_date/ → meta mensual y fecha de desactivación de sucursales
+│   │   ├── 20260813010000_add_recurring_payroll_expenses/ → series versionadas y ocurrencias automáticas de gastos
+│   │   ├── 20260813020000_add_payroll_expense_categories/ → catálogo y backfill de categorías de gasto
+│   │   └── 20260813030000_link_payroll_expense_categories/ → referencias de catálogo con snapshots históricos
 │   ├── seed.ts                    → seed general/demo, usar con cuidado
 │   └── seed-catalogs.ts           → seed seguro para Bank/Position
 └── src/
@@ -894,7 +914,7 @@ backend/api/
 ```
 packages/ui/
 ├── src/components/
-│   ├── ui/                        → componentes shadcn oficiales/canónicos
+│   ├── ui/                        → componentes shadcn/Base UI canónicos, incluido tabs.tsx
 │   └── custom/
 │       └── progress-keysar.tsx    → wrapper custom sobre Progress
 ├── src/hooks/
@@ -1021,4 +1041,7 @@ npx ts-node --project tsconfig.json prisma/seed-catalogs.ts
 - Limpieza futura de campos legacy `banco`/`puesto` en `Empleado` cuando todos los registros en prod tengan `bankId`/`positionId` asignados (Fase 4).
 - Payroll producción: confirmar respaldo/PITR, aplicar `20260730000000_add_payroll_models`, `20260731000000_add_employee_branch` y `20260801000000_add_employee_all_branches`, desplegar `cosmetics-api`, configurar/verificar `NEXT_PUBLIC_API_URL` y `CORS_ORIGINS`, y ejecutar una corrida paralela antes del primer pago oficial.
 - Sucursales: aplicar `20260813000000_add_branch_monthly_goal_and_deactivation_date` en cada ambiente con `prisma migrate deploy` antes de desplegar el backend/frontend que capturan `metaMensual` y `desactivadaEn`.
+- Payroll: aplicar `20260813010000_add_recurring_payroll_expenses` en cada ambiente antes de desplegar la API/UI de recurrencias. No convierte automáticamente gastos legacy con frecuencia mensual/quincenal para evitar duplicar capturas históricas.
+- Payroll: aplicar después `20260813020000_add_payroll_expense_categories`; debe desplegarse junto con la API/UI que sustituyen el texto libre de categoría por catálogo.
+- Payroll: aplicar finalmente `20260813030000_link_payroll_expense_categories` para habilitar edición segura de nombres y referencias futuras sin alterar snapshots aprobados.
 - Payroll Storage: crear más adelante el bucket privado y configurar `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` y opcionalmente `PAYROLL_STORAGE_BUCKET` solo después de que exista.

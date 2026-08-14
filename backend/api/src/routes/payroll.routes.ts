@@ -14,6 +14,7 @@ import {
   approvePayrollRun,
   cancelPayrollRun,
   createPayrollRun,
+  getLivePayrollPreview,
   getPayrollRun,
   getMonthlyPayrollSummary,
   getPayrollOverview,
@@ -35,6 +36,12 @@ import {
   removePayrollAttachment,
   uploadPayrollAttachment,
 } from "../services/payroll-storage";
+import {
+  materializeRecurringExpenses,
+  nextRecurringExpenseOccurrence,
+  previousUtcDate,
+  recurrenceCycleKey,
+} from "../services/payroll-recurring-expense";
 
 const router: ExpressRouter = Router();
 const upload = multer({
@@ -78,6 +85,18 @@ function isoDate(value: Date): string {
   return value.toISOString().slice(0, 10);
 }
 
+function currentPayrollDate(): Date {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Mexico_City",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const value = (type: Intl.DateTimeFormatPartTypes) =>
+    Number(parts.find((part) => part.type === type)?.value);
+  return new Date(Date.UTC(value("year"), value("month") - 1, value("day")));
+}
+
 function normalizeText(value: string): string {
   return value.trim().toLocaleUpperCase("es-MX");
 }
@@ -101,6 +120,24 @@ function requireSuperAdmin(
 function currentUserId(req: Request): string {
   if (!req.user?.id) throw new Error("No autenticado.");
   return req.user.id;
+}
+
+function audit(
+  userId: string,
+  entityType: string,
+  entityId: string,
+  action: string,
+  metadata?: Prisma.InputJsonValue,
+) {
+  return prisma.payrollAuditEvent.create({
+    data: {
+      userId,
+      entityType,
+      entityId,
+      action,
+      ...(metadata ? { metadata } : {}),
+    },
+  });
 }
 
 const dateString = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -139,7 +176,7 @@ router.get(
         branchId: employee.sucursal?.id ?? null,
         branchName: employee.todasSucursales
           ? "TODAS"
-          : employee.sucursal?.nombre ?? "SIN SUCURSAL ASIGNADA",
+          : (employee.sucursal?.nombre ?? "SIN SUCURSAL ASIGNADA"),
         allBranches: employee.todasSucursales,
       })),
       branches,
@@ -746,6 +783,379 @@ const expenseSchema = z.object({
   frequency: z.enum(["ONE_TIME", "BIWEEKLY", "MONTHLY"]),
   notes: z.string().trim().max(1500).optional().default(""),
 });
+const recurringExpenseSchema = expenseSchema.extend({
+  frequency: z.enum(["BIWEEKLY", "MONTHLY"]),
+});
+const expenseCategorySchema = z.object({
+  name: z.string().trim().min(1).max(120),
+});
+
+async function requireExpenseCategory(value: string) {
+  const category = normalizeText(value);
+  const existing = await prisma.payrollExpenseCategory.findFirst({
+    where: { name: category, active: true },
+    select: { id: true, name: true },
+  });
+  if (!existing)
+    throw new Error(
+      "Selecciona una categoría de gasto activa antes de guardar.",
+    );
+  return existing;
+}
+
+router.get(
+  "/expense-categories",
+  asyncRoute(async (_req, res) => {
+    const categories = await prisma.payrollExpenseCategory.findMany({
+      where: { active: true },
+      orderBy: { name: "asc" },
+    });
+    ok(res, categories);
+  }),
+);
+
+router.post(
+  "/expense-categories",
+  asyncRoute(async (req, res) => {
+    const { name: rawName } = expenseCategorySchema.parse(req.body);
+    const name = normalizeText(rawName);
+    const existing = await prisma.payrollExpenseCategory.findUnique({
+      where: { name },
+    });
+    if (existing?.active)
+      throw new Error("Ya existe una categoría de gasto con ese nombre.");
+    const category = existing
+      ? await prisma.payrollExpenseCategory.update({
+          where: { id: existing.id },
+          data: { active: true },
+        })
+      : await prisma.payrollExpenseCategory.create({
+          data: { name, createdById: currentUserId(req) },
+        });
+    await audit(
+      currentUserId(req),
+      "PayrollExpenseCategory",
+      category.id,
+      existing ? "REACTIVATED" : "CREATED",
+    );
+    ok(res, category, "Categoría de gasto guardada.", existing ? 200 : 201);
+  }),
+);
+
+router.put(
+  "/expense-categories/:id",
+  asyncRoute(async (req, res) => {
+    const { name: rawName } = expenseCategorySchema.parse(req.body);
+    const name = normalizeText(rawName);
+    const current = await prisma.payrollExpenseCategory.findUniqueOrThrow({
+      where: { id: req.params["id"] },
+    });
+    if (!current.active)
+      throw new Error("La categoría de gasto ya no está activa.");
+    const duplicate = await prisma.payrollExpenseCategory.findFirst({
+      where: { name, id: { not: current.id } },
+      select: { id: true },
+    });
+    if (duplicate)
+      throw new Error("Ya existe una categoría de gasto con ese nombre.");
+    const category = await prisma.$transaction(async (tx) => {
+      const updated = await tx.payrollExpenseCategory.update({
+        where: { id: current.id },
+        data: { name },
+      });
+      await tx.payrollExpense.updateMany({
+        where: {
+          categoryId: current.id,
+          payrollRunId: null,
+          deletedAt: null,
+        },
+        data: { category: name },
+      });
+      return updated;
+    });
+    await audit(
+      currentUserId(req),
+      "PayrollExpenseCategory",
+      category.id,
+      "UPDATED",
+      { previousName: current.name, name },
+    );
+    ok(res, category, "Categoría de gasto actualizada.");
+  }),
+);
+
+router.delete(
+  "/expense-categories/:id",
+  asyncRoute(async (req, res) => {
+    const current = await prisma.payrollExpenseCategory.findUniqueOrThrow({
+      where: { id: req.params["id"] },
+    });
+    const activeRecurrence =
+      await prisma.payrollExpenseRecurrenceVersion.findFirst({
+        where: {
+          categoryId: current.id,
+          effectiveTo: null,
+          recurrence: { active: true },
+        },
+        select: { id: true },
+      });
+    if (activeRecurrence)
+      throw new Error(
+        "Finaliza o cambia las recurrencias activas de esta categoría antes de eliminarla.",
+      );
+    const category = await prisma.payrollExpenseCategory.update({
+      where: { id: current.id },
+      data: { active: false },
+    });
+    await audit(
+      currentUserId(req),
+      "PayrollExpenseCategory",
+      category.id,
+      "DEACTIVATED",
+    );
+    ok(res, category, "Categoría de gasto eliminada sin alterar históricos.");
+  }),
+);
+
+router.get(
+  "/expense-recurrences",
+  asyncRoute(async (_req, res) => {
+    const recurrences = await prisma.payrollExpenseRecurrence.findMany({
+      where: { active: true },
+      orderBy: { createdAt: "desc" },
+      include: {
+        versions: {
+          where: { effectiveTo: null },
+          orderBy: { effectiveFrom: "desc" },
+          take: 1,
+          include: {
+            branch: { select: { id: true, nombre: true } },
+            categoryRecord: { select: { id: true, name: true } },
+          },
+        },
+      },
+    });
+    ok(
+      res,
+      recurrences.flatMap((recurrence) => {
+        const version = recurrence.versions[0];
+        if (!version || version.frequency === "ONE_TIME") return [];
+        const today = currentPayrollDate();
+        return [
+          {
+            id: recurrence.id,
+            active: recurrence.active,
+            startsAt: version.effectiveFrom,
+            nextDate: nextRecurringExpenseOccurrence(
+              {
+                frequency: version.frequency,
+                anchorDate: version.anchorDate,
+                effectiveFrom: version.effectiveFrom,
+                effectiveTo: version.effectiveTo,
+              },
+              today,
+            ),
+            version: {
+              ...version,
+              category: version.categoryRecord?.name ?? version.category,
+              branch: version.branch,
+            },
+          },
+        ];
+      }),
+    );
+  }),
+);
+
+router.post(
+  "/expense-recurrences",
+  asyncRoute(async (req, res) => {
+    const input = recurringExpenseSchema.parse(req.body);
+    const userId = currentUserId(req);
+    const effectiveFrom = parseDate(input.date);
+    const category = await requireExpenseCategory(input.category);
+    const recurrence = await prisma.payrollExpenseRecurrence.create({
+      data: {
+        createdById: userId,
+        versions: {
+          create: {
+            anchorDate: effectiveFrom,
+            effectiveFrom,
+            kind: input.kind,
+            concept: normalizeText(input.concept),
+            category: category.name,
+            categoryId: category.id,
+            branchId: input.branchId ?? null,
+            costCenter: normalizeText(input.costCenter),
+            amount: input.amount,
+            frequency: input.frequency,
+            notes: normalizeText(input.notes),
+            createdById: userId,
+          },
+        },
+      },
+    });
+    if (effectiveFrom <= currentPayrollDate())
+      await materializeRecurringExpenses(effectiveFrom, effectiveFrom);
+    await audit(userId, "PayrollExpenseRecurrence", recurrence.id, "CREATED");
+    ok(res, recurrence, "Gasto recurrente guardado.", 201);
+  }),
+);
+
+router.post(
+  "/expense-recurrences/:id/versions",
+  asyncRoute(async (req, res) => {
+    const input = recurringExpenseSchema.parse(req.body);
+    const userId = currentUserId(req);
+    const effectiveFrom = parseDate(input.date);
+    const category = await requireExpenseCategory(input.category);
+    const recurrence = await prisma.payrollExpenseRecurrence.findUniqueOrThrow({
+      where: { id: req.params["id"] },
+      include: {
+        versions: {
+          where: { effectiveTo: null },
+          orderBy: { effectiveFrom: "desc" },
+          take: 1,
+        },
+      },
+    });
+    const current = recurrence.versions[0];
+    if (!recurrence.active || !current)
+      throw new Error("El gasto recurrente ya no está activo.");
+    if (effectiveFrom <= current.effectiveFrom)
+      throw new Error("La nueva vigencia debe ser posterior a la vigente.");
+    if (
+      recurrenceCycleKey(input.frequency, effectiveFrom) <=
+      recurrenceCycleKey(input.frequency, current.effectiveFrom)
+    )
+      throw new Error(
+        input.frequency === "MONTHLY"
+          ? "La nueva versión debe iniciar en un mes posterior."
+          : "La nueva versión debe iniciar en una quincena posterior.",
+      );
+    const frozenOccurrence = await prisma.payrollExpense.findFirst({
+      where: {
+        recurrenceId: recurrence.id,
+        date: { gte: effectiveFrom },
+        payrollRunId: { not: null },
+      },
+    });
+    if (frozenOccurrence)
+      throw new Error(
+        "La vigencia seleccionada ya tiene una ocurrencia incluida en una corrida aprobada.",
+      );
+
+    const version = await prisma.$transaction(async (tx) => {
+      await tx.payrollExpenseRecurrenceVersion.update({
+        where: { id: current.id },
+        data: { effectiveTo: previousUtcDate(effectiveFrom) },
+      });
+      await tx.payrollExpense.updateMany({
+        where: {
+          recurrenceId: recurrence.id,
+          generated: true,
+          payrollRunId: null,
+          date: { gte: effectiveFrom },
+          deletedAt: null,
+        },
+        data: { deletedAt: new Date() },
+      });
+      return tx.payrollExpenseRecurrenceVersion.create({
+        data: {
+          recurrenceId: recurrence.id,
+          anchorDate:
+            current.frequency === input.frequency
+              ? current.anchorDate
+              : effectiveFrom,
+          effectiveFrom,
+          kind: input.kind,
+          concept: normalizeText(input.concept),
+          category: category.name,
+          categoryId: category.id,
+          branchId: input.branchId ?? null,
+          costCenter: normalizeText(input.costCenter),
+          amount: input.amount,
+          frequency: input.frequency,
+          notes: normalizeText(input.notes),
+          createdById: userId,
+        },
+      });
+    });
+    if (effectiveFrom <= currentPayrollDate())
+      await materializeRecurringExpenses(effectiveFrom, effectiveFrom);
+    await audit(
+      userId,
+      "PayrollExpenseRecurrence",
+      recurrence.id,
+      "VERSIONED",
+      {
+        versionId: version.id,
+        effectiveFrom: isoDate(effectiveFrom),
+      },
+    );
+    ok(res, version, "Nueva vigencia del gasto recurrente guardada.");
+  }),
+);
+
+router.post(
+  "/expense-recurrences/:id/end",
+  asyncRoute(async (req, res) => {
+    const { effectiveFrom: effectiveFromValue } = z
+      .object({ effectiveFrom: dateString })
+      .parse(req.body);
+    const effectiveFrom = parseDate(effectiveFromValue);
+    const userId = currentUserId(req);
+    const recurrence = await prisma.payrollExpenseRecurrence.findUniqueOrThrow({
+      where: { id: req.params["id"] },
+      include: {
+        versions: {
+          where: { effectiveTo: null },
+          orderBy: { effectiveFrom: "desc" },
+          take: 1,
+        },
+      },
+    });
+    const current = recurrence.versions[0];
+    if (!recurrence.active || !current)
+      throw new Error("El gasto recurrente ya está finalizado.");
+    const frozenOccurrence = await prisma.payrollExpense.findFirst({
+      where: {
+        recurrenceId: recurrence.id,
+        date: { gte: effectiveFrom },
+        payrollRunId: { not: null },
+      },
+    });
+    if (frozenOccurrence)
+      throw new Error(
+        "No puede finalizarse desde una fecha que ya pertenece a una corrida aprobada.",
+      );
+    const effectiveTo = previousUtcDate(effectiveFrom);
+    await prisma.$transaction([
+      prisma.payrollExpenseRecurrence.update({
+        where: { id: recurrence.id },
+        data: { active: false, endedAt: effectiveTo },
+      }),
+      prisma.payrollExpenseRecurrenceVersion.update({
+        where: { id: current.id },
+        data: { effectiveTo },
+      }),
+      prisma.payrollExpense.updateMany({
+        where: {
+          recurrenceId: recurrence.id,
+          generated: true,
+          payrollRunId: null,
+          date: { gte: effectiveFrom },
+          deletedAt: null,
+        },
+        data: { deletedAt: new Date() },
+      }),
+    ]);
+    await audit(userId, "PayrollExpenseRecurrence", recurrence.id, "ENDED", {
+      effectiveFrom: effectiveFromValue,
+    });
+    ok(res, recurrence, "Gasto recurrente finalizado.");
+  }),
+);
 
 router.get(
   "/expenses",
@@ -753,11 +1163,16 @@ router.get(
     const from =
       typeof req.query["from"] === "string"
         ? parseDate(req.query["from"])
-        : new Date(Date.now() - 365 * 86_400_000);
+        : (() => {
+            const date = currentPayrollDate();
+            date.setUTCDate(date.getUTCDate() - 365);
+            return date;
+          })();
     const to =
       typeof req.query["to"] === "string"
         ? endExclusive(parseDate(req.query["to"]))
-        : endExclusive(new Date());
+        : endExclusive(currentPayrollDate());
+    await materializeRecurringExpenses(from, previousUtcDate(to));
     const expenses = await prisma.payrollExpense.findMany({
       where: { date: { gte: from, lt: to }, deletedAt: null },
       include: { branch: { select: { id: true, nombre: true } } },
@@ -771,12 +1186,18 @@ router.post(
   "/expenses",
   asyncRoute(async (req, res) => {
     const input = expenseSchema.parse(req.body);
+    if (input.frequency !== "ONE_TIME")
+      throw new Error(
+        "Los gastos quincenales o mensuales deben guardarse como recurrencias.",
+      );
+    const category = await requireExpenseCategory(input.category);
     const expense = await prisma.payrollExpense.create({
       data: {
         ...input,
         date: parseDate(input.date),
         concept: normalizeText(input.concept),
-        category: normalizeText(input.category),
+        category: category.name,
+        categoryId: category.id,
         costCenter: normalizeText(input.costCenter),
         notes: normalizeText(input.notes),
         branchId: input.branchId ?? null,
@@ -791,9 +1212,14 @@ router.put(
   "/expenses/:id",
   asyncRoute(async (req, res) => {
     const input = expenseSchema.parse(req.body);
+    const category = await requireExpenseCategory(input.category);
     const current = await prisma.payrollExpense.findUniqueOrThrow({
       where: { id: req.params["id"] },
     });
+    if (current.recurrenceId)
+      throw new Error(
+        "Edita la serie recurrente para crear una nueva vigencia.",
+      );
     if (current.payrollRunId)
       throw new Error(
         "Un gasto incluido en una corrida aprobada no puede editarse.",
@@ -804,7 +1230,8 @@ router.put(
         ...input,
         date: parseDate(input.date),
         concept: normalizeText(input.concept),
-        category: normalizeText(input.category),
+        category: category.name,
+        categoryId: category.id,
         costCenter: normalizeText(input.costCenter),
         notes: normalizeText(input.notes),
         branchId: input.branchId ?? null,
@@ -820,6 +1247,10 @@ router.delete(
     const current = await prisma.payrollExpense.findUniqueOrThrow({
       where: { id: req.params["id"] },
     });
+    if (current.recurrenceId)
+      throw new Error(
+        "Finaliza la serie recurrente en lugar de borrar una ocurrencia.",
+      );
     if (current.payrollRunId)
       throw new Error(
         "Un gasto incluido en una corrida aprobada no puede borrarse.",
@@ -1115,6 +1546,27 @@ const payrollOverviewQuery = z.object({
 });
 
 router.get(
+  "/reports/live-preview",
+  asyncRoute(async (req, res) => {
+    const query = z
+      .object({
+        periodStart: dateString,
+        periodEnd: dateString,
+        mode: z.enum(["WITH_VAT", "WITHOUT_VAT"]).default("WITH_VAT"),
+      })
+      .parse(req.query);
+    ok(
+      res,
+      await getLivePayrollPreview({
+        periodStart: parseDate(query.periodStart),
+        periodEnd: parseDate(query.periodEnd),
+        mode: query.mode,
+      }),
+    );
+  }),
+);
+
+router.get(
   "/reports/payroll-overview",
   asyncRoute(async (req, res) => {
     const query = payrollOverviewQuery.parse(req.query);
@@ -1202,10 +1654,32 @@ router.get(
 router.get(
   "/receipts",
   asyncRoute(async (req, res) => {
-    const runId =
-      typeof req.query["runId"] === "string" ? req.query["runId"] : undefined;
+    const query = z
+      .object({
+        runId: z.string().min(1).optional(),
+        periodStart: dateString.optional(),
+        periodEnd: dateString.optional(),
+      })
+      .refine(
+        (value) =>
+          (!value.periodStart && !value.periodEnd) ||
+          Boolean(value.periodStart && value.periodEnd),
+        { message: "Envía el inicio y fin del periodo." },
+      )
+      .parse(req.query);
     const receipts = await prisma.payrollReceipt.findMany({
-      where: runId ? { payrollRunLine: { payrollRunId: runId } } : undefined,
+      where: query.runId
+        ? { payrollRunLine: { payrollRunId: query.runId } }
+        : query.periodStart && query.periodEnd
+          ? {
+              payrollRunLine: {
+                payrollRun: {
+                  periodStart: parseDate(query.periodStart),
+                  periodEnd: parseDate(query.periodEnd),
+                },
+              },
+            }
+          : undefined,
       orderBy: { createdAt: "desc" },
       include: {
         payrollRunLine: {

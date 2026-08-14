@@ -11,6 +11,10 @@ import {
   buildMonthlyPayrollSummary,
   payrollMonthDates,
 } from "./payroll-monthly-summary";
+import {
+  materializeRecurringExpenses,
+  plannedRecurringExpensesForRange,
+} from "./payroll-recurring-expense";
 
 const VAT_RATE = new Prisma.Decimal("0.16");
 const PAYROLL_TIME_ZONE = "America/Mexico_City";
@@ -233,20 +237,40 @@ async function calculatePayrollPeriod(input: {
     },
   );
 
+  const plannedRecurringExpenses = input.runId
+    ? await materializeRecurringExpenses(input.periodStart, input.periodEnd)
+    : await plannedRecurringExpensesForRange(input.periodStart, input.periodEnd);
   const expenses = await prisma.payrollExpense.findMany({
     where: {
       date: range,
       deletedAt: null,
-      ...(input.runId
-        ? {
-            OR: [{ payrollRunId: null }, { payrollRunId: input.runId }],
-          }
-        : { payrollRunId: null }),
+      ...(input.includeAllPeriodSources
+        ? {}
+        : input.runId
+          ? {
+              OR: [{ payrollRunId: null }, { payrollRunId: input.runId }],
+            }
+          : { payrollRunId: null }),
     },
   });
+  const materializedRecurringKeys = new Set(
+    expenses.flatMap((expense) =>
+      expense.recurrenceVersionId
+        ? [`${expense.recurrenceVersionId}:${expense.date.toISOString().slice(0, 10)}`]
+        : [],
+    ),
+  );
+  const virtualRecurringTotal = input.runId
+    ? new Prisma.Decimal(0)
+    : plannedRecurringExpenses.reduce((sum, expense) => {
+        const key = `${expense.recurrenceVersionId}:${expense.date.toISOString().slice(0, 10)}`;
+        return materializedRecurringKeys.has(key)
+          ? sum
+          : sum.plus(expense.amount);
+      }, new Prisma.Decimal(0));
   const expenseTotal = expenses.reduce(
     (sum, expense) => sum.plus(expense.amount),
-    new Prisma.Decimal(0),
+    virtualRecurringTotal,
   );
   return calculatePayroll({
     mode: input.mode,
@@ -254,6 +278,26 @@ async function calculatePayrollPeriod(input: {
     employees: calculationEmployees,
     expenseTotal,
   });
+}
+
+export async function getLivePayrollPreview(input: {
+  periodStart: Date;
+  periodEnd: Date;
+  mode: "WITH_VAT" | "WITHOUT_VAT";
+}) {
+  const result = await calculatePayrollPeriod({
+    ...input,
+    vatRate: VAT_RATE,
+    includeAllPeriodSources: true,
+  });
+
+  return {
+    generatedAt: new Date(),
+    periodStart: input.periodStart,
+    periodEnd: input.periodEnd,
+    mode: input.mode,
+    ...result,
+  };
 }
 
 export async function getMonthlyPayrollSummary(month: string) {

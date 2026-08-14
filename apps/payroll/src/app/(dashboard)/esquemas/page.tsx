@@ -12,7 +12,10 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   Button,
+  Card,
+  CardContent,
   ColumnDef,
+  Combobox,
   DataTable,
   DatePicker,
   Dialog,
@@ -64,6 +67,12 @@ function currentFortnight() {
   );
   return `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, "0")}-${String(start.getDate()).padStart(2, "0")}`;
 }
+
+function todayIsoDate() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+}
+
 function nextFortnight() {
   const now = new Date();
   const next =
@@ -162,8 +171,9 @@ export default function EsquemasPage() {
   const [schemeOpen, setSchemeOpen] = useState(false);
   const [assignmentOpen, setAssignmentOpen] = useState(false);
   const [editing, setEditing] = useState<CommissionScheme | null>(null);
-  const [reactivating, setReactivating] =
-    useState<CommissionScheme | null>(null);
+  const [reactivating, setReactivating] = useState<CommissionScheme | null>(
+    null,
+  );
   const [schemeForm, setSchemeForm] = useState<SchemeForm>(EMPTY_SCHEME);
   const [schemeErrors, setSchemeErrors] = useState<SchemeFormErrors>({
     ranges: [],
@@ -459,6 +469,44 @@ export default function EsquemasPage() {
       assignment.employeeId === assignmentForm.employeeId &&
       !assignment.effectiveTo,
   );
+  const today = todayIsoDate();
+  const activeSchemes = data.schemes.filter((scheme) => scheme.active);
+  const activeSchemeIds = new Set(activeSchemes.map((scheme) => scheme.id));
+  const currentAssignments = data.assignments.filter(
+    (assignment) =>
+      assignment.employeeActive &&
+      activeSchemeIds.has(assignment.schemeId) &&
+      assignment.effectiveFrom <= today &&
+      (!assignment.effectiveTo || assignment.effectiveTo >= today),
+  );
+  const assignmentsByScheme = currentAssignments.reduce<Map<string, number>>(
+    (counts, assignment) => {
+      counts.set(
+        assignment.schemeId,
+        (counts.get(assignment.schemeId) ?? 0) + 1,
+      );
+      return counts;
+    },
+    new Map(),
+  );
+  const schemeDistribution = activeSchemes
+    .map((scheme) => ({
+      id: scheme.id,
+      name: scheme.name,
+      people: assignmentsByScheme.get(scheme.id) ?? 0,
+    }))
+    .sort(
+      (left, right) =>
+        right.people - left.people || left.name.localeCompare(right.name, "es"),
+    );
+  const assignedPeople = schemeDistribution.reduce(
+    (total, scheme) => total + scheme.people,
+    0,
+  );
+  const largestScheme = Math.max(
+    0,
+    ...schemeDistribution.map((scheme) => scheme.people),
+  );
 
   return (
     <div className="space-y-6">
@@ -498,7 +546,7 @@ export default function EsquemasPage() {
         />
         <MetricCard
           label="Asignaciones vigentes"
-          value={`${data.assignments.filter((item) => !item.effectiveTo).length}`}
+          value={`${currentAssignments.length}`}
           tone="sage"
         />
         <MetricCard
@@ -524,6 +572,76 @@ export default function EsquemasPage() {
           emptyMessage="Sin asignaciones."
           pageSize={10}
         />
+      </SectionCard>
+      <SectionCard title="DISTRIBUCIÓN DE ESQUEMAS VIGENTES">
+        <Card>
+          <CardContent className="p-5 sm:p-6">
+            {assignedPeople > 0 ? (
+              <figure aria-labelledby="scheme-distribution-caption">
+                <figcaption
+                  id="scheme-distribution-caption"
+                  className="flex flex-col gap-1 border-b border-[var(--border-color)] pb-5 sm:flex-row sm:items-baseline sm:justify-between"
+                >
+                  <span className="text-sm font-medium text-[var(--text-primary)]">
+                    Personas activas por esquema
+                  </span>
+                  <span className="text-sm tabular-nums text-[var(--text-muted)]">
+                    {assignedPeople}{" "}
+                    {assignedPeople === 1 ? "persona" : "personas"} con
+                    asignación vigente
+                  </span>
+                </figcaption>
+                <ul className="mt-5 space-y-5">
+                  {schemeDistribution.map((scheme) => {
+                    const share = scheme.people / assignedPeople;
+                    const relativeWidth = largestScheme
+                      ? (scheme.people / largestScheme) * 100
+                      : 0;
+
+                    return (
+                      <li key={scheme.id}>
+                        <div className="mb-2 flex min-w-0 items-baseline justify-between gap-4">
+                          <span
+                            className="truncate text-sm font-medium text-[var(--text-primary)]"
+                            title={scheme.name}
+                          >
+                            {scheme.name}
+                          </span>
+                          <span className="shrink-0 text-sm tabular-nums text-[var(--text-muted)]">
+                            <strong className="number-display text-[var(--text-primary)]">
+                              {scheme.people}
+                            </strong>{" "}
+                            · {formatPercent(share)}
+                          </span>
+                        </div>
+                        <div
+                          className="h-2.5 overflow-hidden rounded-full bg-[var(--accent-hover)]"
+                          role="img"
+                          aria-label={`${scheme.name}: ${scheme.people} ${scheme.people === 1 ? "persona" : "personas"}, ${formatPercent(share)} del total`}
+                        >
+                          <div
+                            className="h-full rounded-full bg-[var(--color-green-olive)] transition-[width] duration-200 ease-out"
+                            style={{ width: `${relativeWidth}%` }}
+                          />
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </figure>
+            ) : (
+              <div className="py-8 text-center">
+                <p className="text-sm font-medium text-[var(--text-primary)]">
+                  Aún no hay personas con un esquema vigente.
+                </p>
+                <p className="mt-1 text-sm text-[var(--text-muted)]">
+                  Las asignaciones activas aparecerán aquí para comparar su
+                  distribución.
+                </p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </SectionCard>
 
       <Dialog open={schemeOpen} onOpenChange={setSchemeOpen}>
@@ -930,8 +1048,15 @@ export default function EsquemasPage() {
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label>Empleado activo</Label>
-              <Select
+              <Label htmlFor="assignment-employee">Empleado activo</Label>
+              <Combobox
+                id="assignment-employee"
+                options={data.employees
+                  .filter((item) => item.active)
+                  .map((item) => ({
+                    value: item.id,
+                    label: `${item.name} · ${item.position}`,
+                  }))}
                 value={assignmentForm.employeeId}
                 onValueChange={(value) =>
                   setAssignmentForm((current) => ({
@@ -946,20 +1071,10 @@ export default function EsquemasPage() {
                       : currentFortnight(),
                   }))
                 }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecciona empleado" />
-                </SelectTrigger>
-                <SelectContent>
-                  {data.employees
-                    .filter((item) => item.active)
-                    .map((item) => (
-                      <SelectItem key={item.id} value={item.id}>
-                        {item.name} · {item.position}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
+                placeholder="Selecciona empleado"
+                searchPlaceholder="Buscar por nombre o puesto..."
+                emptyMessage="No se encontraron empleados activos."
+              />
             </div>
             <div className="space-y-2">
               <Label>Esquema</Label>

@@ -165,7 +165,7 @@ export async function exportReportToExcel<T>(
 export async function exportReportToPdf<T>(
   config: ReportExportConfig<T>,
 ): Promise<void> {
-  const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+  const [{ jsPDF }, { autoTable }] = await Promise.all([
     import("jspdf"),
     import("jspdf-autotable"),
   ]);
@@ -228,8 +228,7 @@ export async function exportReportToPdf<T>(
     const summary = config.summarySection;
     const finalY =
       (doc as typeof doc & { lastAutoTable?: { finalY: number } }).lastAutoTable
-        ?.finalY ??
-      (typeof options.startY === "number" ? options.startY : 44);
+        ?.finalY ?? (typeof options.startY === "number" ? options.startY : 44);
     const summaryStartY = finalY + 24;
     if (summaryStartY > doc.internal.pageSize.getHeight() - 100) doc.addPage();
     const y =
@@ -246,14 +245,22 @@ export async function exportReportToPdf<T>(
         ...summary.rows.map((row) => [
           uppercase(row.label),
           formatForDisplay(
-            { header: summary.valueHeader, accessor: () => row.value, format: "currency" },
+            {
+              header: summary.valueHeader,
+              accessor: () => row.value,
+              format: "currency",
+            },
             row.value,
           ),
         ]),
         [
           uppercase(summary.totalLabel),
           formatForDisplay(
-            { header: summary.valueHeader, accessor: () => summary.total, format: "currency" },
+            {
+              header: summary.valueHeader,
+              accessor: () => summary.total,
+              format: "currency",
+            },
             summary.total,
           ),
         ],
