@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { ArrowRight, CheckCircle2, CreditCard, Plus, RotateCcw, Save, Trash2, Users } from "lucide-react";
+import { ArrowRight, CheckCircle2, CreditCard, Pencil, Plus, RotateCcw, Save, Trash2, Users, X } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -84,6 +84,14 @@ type PaymentAllocation = {
   metodoPagoId: string;
   amountCents: number;
 };
+type EditingSale = {
+  originalIds: string[];
+  originalItems: VentaItem[][];
+  originalBranch: { id: string; name: string };
+  originalSessionId: string | null;
+  originalTotalCents: number;
+  preserveSessionWhenSingle: boolean;
+};
 
 const toCents = (value: number) => Math.round(value * 100);
 const fromCents = (value: number) => value / 100;
@@ -160,7 +168,7 @@ export default function VentasPage() {
   const { sucursales } = useSucursales();
   const { empleados } = useEmpleados();
   const { metodosPago } = useMetodosPago();
-  const { registros, addBatch, remove: deleteRegistro } = useVentas({
+  const { registros, addBatch, updateBatch, remove: deleteRegistro } = useVentas({
     fechaInicio: saleRange.from,
     fechaFin: saleRange.to,
   });
@@ -205,7 +213,10 @@ export default function VentasPage() {
     PaymentAllocation[]
   >([]);
   const [saving, setSaving] = useState(false);
+  const [editingSale, setEditingSale] = useState<EditingSale | null>(null);
+  const [financialDetailsDirty, setFinancialDetailsDirty] = useState(false);
   const selectedPaymentMethod = paymentForm.watch("metodoPagoId");
+  const selectedInitialEmployee = saleForm.watch("vendedorId");
   const allocatedEmployeeCents = employeeAllocations.reduce(
     (sum, employee) => sum + employee.amountCents,
     0,
@@ -270,6 +281,23 @@ export default function VentasPage() {
     () => empleados.filter((employee) => employee.activo),
     [empleados],
   );
+  const initialEmployeeOptions = useMemo(() => {
+    const allocatedAfterInitial = new Set(
+      editingSale
+        ? employeeAllocations.slice(1).map((allocation) => allocation.empleadoId)
+        : [],
+    );
+    return empleados
+      .filter(
+        (employee) =>
+          (employee.activo || employee.id === selectedInitialEmployee) &&
+          !allocatedAfterInitial.has(employee.id),
+      )
+      .map((employee) => ({
+        value: employee.id,
+        label: employee.nombreCompleto,
+      }));
+  }, [editingSale, empleados, employeeAllocations, selectedInitialEmployee]);
   const availableEmployees = activeEmployees
     .filter(
       (employee) =>
@@ -283,7 +311,11 @@ export default function VentasPage() {
     }));
 
   const sucursalNombre = (id: string, embedded?: string) =>
-    embedded ?? visibleSucursales.find((sucursal) => sucursal.id === id)?.nombre ?? id;
+    embedded ??
+    visibleSucursales.find((sucursal) => sucursal.id === id)?.nombre ??
+    (editingSale?.originalBranch.id === id
+      ? editingSale.originalBranch.name
+      : id);
   const vendedorNombre = (id: string, embedded?: string) =>
     embedded ??
     empleados.find((employee) => employee.id === id)?.nombreCompleto ??
@@ -298,6 +330,29 @@ export default function VentasPage() {
       monto: fromCents(normalizedAmount),
       totalCents: normalizedAmount,
     });
+
+    if (editingSale && employeeAllocations.length > 0) {
+      if (normalizedAmount !== editingSale.originalTotalCents) {
+        setFinancialDetailsDirty(true);
+      }
+      setEmployeeAllocations((current) =>
+        current.map((allocation, index) =>
+          index === 0
+            ? {
+                empleadoId: data.vendedorId,
+                amountCents:
+                  current.length === 1
+                    ? normalizedAmount
+                    : allocation.amountCents,
+              }
+            : allocation,
+        ),
+      );
+      setEmployeeToAdd("");
+      paymentForm.reset({ metodoPagoId: "", cantidad: 0 });
+      return;
+    }
+
     setEmployeeAllocations(splitEvenly(normalizedAmount, [data.vendedorId]));
     setPaymentAllocations([]);
     setEmployeeToAdd("");
@@ -311,6 +366,7 @@ export default function VentasPage() {
       employeeToAdd,
     ];
     setEmployeeAllocations(splitEvenly(saleContext.totalCents, employeeIds));
+    setFinancialDetailsDirty(true);
     setEmployeeToAdd("");
   }
 
@@ -320,6 +376,7 @@ export default function VentasPage() {
       .filter((allocation) => allocation.empleadoId !== employeeId)
       .map((allocation) => allocation.empleadoId);
     setEmployeeAllocations(splitEvenly(saleContext.totalCents, employeeIds));
+    setFinancialDetailsDirty(true);
   }
 
   function handleEmployeeAmountChange(employeeId: string, value: string) {
@@ -331,6 +388,7 @@ export default function VentasPage() {
           : allocation,
       ),
     );
+    setFinancialDetailsDirty(true);
   }
 
   function handlePaymentMethodChange(methodId: string) {
@@ -354,6 +412,7 @@ export default function VentasPage() {
       ...current,
       { id: generateId(), metodoPagoId: data.metodoPagoId, amountCents },
     ]);
+    setFinancialDetailsDirty(true);
     paymentForm.reset({ metodoPagoId: "", cantidad: 0 });
   }
 
@@ -361,6 +420,7 @@ export default function VentasPage() {
     setPaymentAllocations((current) =>
       current.filter((payment) => payment.id !== paymentId),
     );
+    setFinancialDetailsDirty(true);
     paymentForm.reset({ metodoPagoId: "", cantidad: 0 });
   }
 
@@ -370,6 +430,8 @@ export default function VentasPage() {
     setEmployeeToAdd("");
     setPaymentAllocations([]);
     setSaving(false);
+    setEditingSale(null);
+    setFinancialDetailsDirty(false);
     saleForm.reset({
       sucursalId: "",
       fecha: todayISO(),
@@ -381,10 +443,109 @@ export default function VentasPage() {
 
   function editSaleContext() {
     setSaleContext(null);
+    if (editingSale) {
+      paymentForm.reset({ metodoPagoId: "", cantidad: 0 });
+      return;
+    }
     setEmployeeAllocations([]);
     setEmployeeToAdd("");
     setPaymentAllocations([]);
     paymentForm.reset({ metodoPagoId: "", cantidad: 0 });
+  }
+
+  function handleEditRecord(record: RegistroVenta) {
+    const relatedRecords = record.sesionId
+      ? filteredRegistros.filter(
+          (candidate) => candidate.sesionId === record.sesionId,
+        )
+      : [record];
+    const recordsToEdit = [
+      record,
+      ...relatedRecords.filter((candidate) => candidate.id !== record.id),
+    ];
+    const total = recordsToEdit.reduce(
+      (saleSum, sale) =>
+        saleSum +
+        sale.items.reduce(
+          (itemSum, item) => itemSum + toCents(item.cantidad),
+          0,
+        ),
+      0,
+    );
+    const paymentsByMethod = new Map<string, number>();
+    for (const sale of recordsToEdit) {
+      for (const item of sale.items) {
+        paymentsByMethod.set(
+          item.metodoPagoId,
+          (paymentsByMethod.get(item.metodoPagoId) ?? 0) +
+            toCents(item.cantidad),
+        );
+      }
+    }
+    const allSessionRecords = record.sesionId
+      ? registros.filter((candidate) => candidate.sesionId === record.sesionId)
+      : [record];
+    const preserveSessionWhenSingle = Boolean(
+      record.sesionId &&
+        (user?.selfDataOnly ||
+          allSessionRecords.length !== recordsToEdit.length),
+    );
+
+    saleForm.reset({
+      sucursalId: record.sucursalId,
+      fecha: record.fecha,
+      vendedorId: record.vendedorId,
+      monto: fromCents(total),
+    });
+    setSaleContext({
+      sucursalId: record.sucursalId,
+      fecha: record.fecha,
+      vendedorId: record.vendedorId,
+      monto: fromCents(total),
+      totalCents: total,
+    });
+    setEmployeeAllocations(
+      recordsToEdit.map((sale) => ({
+        empleadoId: sale.vendedorId,
+        amountCents: sale.items.reduce(
+          (sum, item) => sum + toCents(item.cantidad),
+          0,
+        ),
+      })),
+    );
+    setPaymentAllocations(
+      [...paymentsByMethod.entries()].map(([metodoPagoId, amountCents]) => ({
+        id: generateId(),
+        metodoPagoId,
+        amountCents,
+      })),
+    );
+    setEmployeeToAdd("");
+    paymentForm.reset({ metodoPagoId: "", cantidad: 0 });
+    setEditingSale({
+      originalIds: recordsToEdit.map((sale) => sale.id),
+      originalItems: recordsToEdit.map((sale) => sale.items),
+      originalBranch: {
+        id: record.sucursalId,
+        name: sucursalNombre(record.sucursalId, record.sucursalNombre),
+      },
+      originalSessionId: record.sesionId ?? null,
+      originalTotalCents: total,
+      preserveSessionWhenSingle,
+    });
+    setFinancialDetailsDirty(false);
+    setSaving(false);
+
+    window.requestAnimationFrame(() => {
+      const capture = document.getElementById("sale-capture");
+      capture?.scrollIntoView({
+        behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+          ? "auto"
+          : "smooth",
+        block: "start",
+      });
+      capture?.focus({ preventScroll: true });
+    });
   }
 
   async function handleSaveSale() {
@@ -393,23 +554,38 @@ export default function VentasPage() {
       employeeAllocations,
       paymentAllocations,
     );
-    const sesionId = employeeAllocations.length > 1 ? generateId() : null;
-    const sales: RegistroVenta[] = employeeAllocations.map((allocation) => ({
+    const sesionId =
+      employeeAllocations.length > 1
+        ? (editingSale?.originalSessionId ?? generateId())
+        : editingSale?.preserveSessionWhenSingle
+          ? editingSale.originalSessionId
+          : null;
+    const sales: RegistroVenta[] = employeeAllocations.map((allocation, index) => ({
       id: generateId(),
       sucursalId: saleContext.sucursalId,
       vendedorId: allocation.empleadoId,
       fecha: saleContext.fecha,
-      items: itemsByEmployee.get(allocation.empleadoId) ?? [],
+      items:
+        editingSale && !financialDetailsDirty
+          ? (editingSale.originalItems[index] ?? [])
+          : (itemsByEmployee.get(allocation.empleadoId) ?? []),
       ...(sesionId ? { sesionId } : {}),
     }));
 
     setSaving(true);
     try {
-      await addBatch(sales);
-      toast.success(t.sales.registeredSuccess);
+      if (editingSale) {
+        await updateBatch(editingSale.originalIds, sales);
+        toast.success(t.sales.updatedSuccess);
+      } else {
+        await addBatch(sales);
+        toast.success(t.sales.registeredSuccess);
+      }
       resetCapture();
     } catch {
-      toast.error(t.sales.registeredError);
+      toast.error(
+        editingSale ? t.sales.updatedError : t.sales.registeredError,
+      );
       setSaving(false);
     }
   }
@@ -513,7 +689,47 @@ export default function VentasPage() {
           0,
         );
         return (
-          <div className="flex justify-end">
+          <div className="flex justify-end gap-2">
+            {saleContext ? (
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button
+                    size="icon"
+                    variant="outline"
+                    className={actionButtonStyles.neutral}
+                    aria-label={t.sales.editRecord}
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>
+                      {t.sales.replaceCaptureTitle}
+                    </AlertDialogTitle>
+                    <AlertDialogDescription>
+                      {t.sales.replaceCaptureDescription}
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>{t.common.cancel}</AlertDialogCancel>
+                    <AlertDialogAction onClick={() => handleEditRecord(record)}>
+                      {t.sales.startEditing}
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            ) : (
+              <Button
+                size="icon"
+                variant="outline"
+                className={actionButtonStyles.neutral}
+                onClick={() => handleEditRecord(record)}
+                aria-label={t.sales.editRecord}
+              >
+                <Pencil className="h-4 w-4" />
+              </Button>
+            )}
             <AlertDialog>
               <AlertDialogTrigger asChild>
                 <Button
@@ -568,17 +784,26 @@ export default function VentasPage() {
       </header>
 
       <Card
+        id="sale-capture"
+        tabIndex={-1}
         aria-current={!saleContext ? "step" : undefined}
-        className="transition-[border-color,box-shadow] duration-200"
+        className="scroll-mt-4 transition-[border-color,box-shadow] duration-200 focus:outline-none"
         style={stepCardStyle(!saleContext ? "active" : "complete")}
       >
         <CardHeader className="pb-4">
           <div className="flex items-start justify-between gap-4">
             <div>
               <p className="label-caps">{t.sales.step} 1</p>
-              <CardTitle className="mt-1 text-lg">{t.sales.saleData}</CardTitle>
+              <CardTitle className="mt-1 text-lg">
+                {editingSale ? t.sales.editSaleData : t.sales.saleData}
+              </CardTitle>
             </div>
-            <StepStatusBadge status={!saleContext ? "active" : "complete"} />
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              {editingSale && (
+                <Badge variant="outline">{t.sales.editingRecord}</Badge>
+              )}
+              <StepStatusBadge status={!saleContext ? "active" : "complete"} />
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -608,6 +833,15 @@ export default function VentasPage() {
                         <SelectValue placeholder={t.sales.select} />
                       </SelectTrigger>
                       <SelectContent>
+                        {editingSale &&
+                          !visibleSucursales.some(
+                            (sucursal) =>
+                              sucursal.id === editingSale.originalBranch.id,
+                          ) && (
+                            <SelectItem value={editingSale.originalBranch.id}>
+                              {editingSale.originalBranch.name}
+                            </SelectItem>
+                          )}
                         {visibleSucursales.map((sucursal) => (
                           <SelectItem key={sucursal.id} value={sucursal.id}>
                             {sucursal.nombre}
@@ -648,10 +882,7 @@ export default function VentasPage() {
                   render={({ field }) => (
                     <Combobox
                       id="vendedor"
-                      options={activeEmployees.map((employee) => ({
-                        value: employee.id,
-                        label: employee.nombreCompleto,
-                      }))}
+                      options={initialEmployeeOptions}
                       value={field.value}
                       onValueChange={field.onChange}
                       placeholder={t.sales.select}
@@ -681,7 +912,8 @@ export default function VentasPage() {
             {!saleContext ? (
               <div className="flex justify-end">
                 <Button type="submit">
-                  {t.sales.continue} <ArrowRight className="ml-1.5 h-4 w-4" />
+                  {editingSale ? t.sales.applyData : t.sales.continue}{" "}
+                  <ArrowRight className="ml-1.5 h-4 w-4" />
                 </Button>
               </div>
             ) : (
@@ -713,7 +945,9 @@ export default function VentasPage() {
                         {t.sales.changeSaleDataTitle}
                       </AlertDialogTitle>
                       <AlertDialogDescription>
-                        {t.sales.changeSaleDataDescription}
+                        {editingSale
+                          ? t.sales.changeEditedSaleDataDescription
+                          : t.sales.changeSaleDataDescription}
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
@@ -1016,7 +1250,7 @@ export default function VentasPage() {
                 <div>
                   <p className="label-caps">{t.sales.step} 3</p>
                   <h2 className="mt-1 text-base font-semibold">
-                    {t.sales.saveSale}
+                    {editingSale ? t.sales.updateSale : t.sales.saveSale}
                   </h2>
                   <p className="mt-1 text-sm">
                     {canSave
@@ -1032,37 +1266,62 @@ export default function VentasPage() {
                 </div>
                 <StepStatusBadge status={canSave ? "active" : "pending"} />
               </div>
-              <AlertDialog>
-                <AlertDialogTrigger asChild>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                {editingSale && (
                   <Button
                     type="button"
-                    disabled={!canSave}
-                    className="sm:min-w-44"
+                    disabled={saving}
+                    variant="outline"
+                    className={actionButtonStyles.neutral}
+                    onClick={resetCapture}
                   >
-                    <Save className="mr-1.5 h-4 w-4" />{" "}
-                    {saving ? t.common.saving : t.sales.savingSale}
+                    <X className="mr-1.5 h-4 w-4" /> {t.sales.cancelEdit}
                   </Button>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>
-                      {t.sales.saveSaleTitle}
-                    </AlertDialogTitle>
-                    <AlertDialogDescription>
-                      {t.sales.saveSaleDescription}
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>{t.common.cancel}</AlertDialogCancel>
-                    <AlertDialogAction
-                      onClick={handleSaveSale}
-                      disabled={saving}
+                )}
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button
+                      type="button"
+                      disabled={!canSave}
+                      className="sm:min-w-44"
                     >
-                      {saving ? t.common.saving : t.sales.saveSaleConfirm}
-                    </AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
+                      <Save className="mr-1.5 h-4 w-4" />{" "}
+                      {saving
+                        ? t.common.saving
+                        : editingSale
+                          ? t.sales.updateSale
+                          : t.sales.savingSale}
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>
+                        {editingSale
+                          ? t.sales.updateSaleTitle
+                          : t.sales.saveSaleTitle}
+                      </AlertDialogTitle>
+                      <AlertDialogDescription>
+                        {editingSale
+                          ? t.sales.updateSaleDescription
+                          : t.sales.saveSaleDescription}
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>{t.common.cancel}</AlertDialogCancel>
+                      <AlertDialogAction
+                        onClick={handleSaveSale}
+                        disabled={saving}
+                      >
+                        {saving
+                          ? t.common.saving
+                          : editingSale
+                            ? t.sales.updateSaleConfirm
+                            : t.sales.saveSaleConfirm}
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              </div>
             </CardContent>
           </Card>
         </section>

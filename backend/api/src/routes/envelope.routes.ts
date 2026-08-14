@@ -2197,6 +2197,177 @@ router.post("/ventas/lote", access.ventas, async (req, res) => {
   }
 });
 
+// Actualiza de forma atómica todas las filas visibles de un voucher. Conserva
+// los IDs existentes mientras sea posible y permite agregar o quitar vendedores.
+router.put("/ventas/lote", access.ventas, async (req, res) => {
+  try {
+    type VentaInput = {
+      sucursalId: string;
+      vendedorId: string;
+      fecha: string;
+      notas?: string;
+      sesionId?: string;
+      detalles: { cantidad: number; metodoPagoId: string }[];
+    };
+    const { originalIds, ventas } = req.body as {
+      originalIds?: string[];
+      ventas?: VentaInput[];
+    };
+
+    const hasDuplicateIds =
+      originalIds && new Set(originalIds).size !== originalIds.length;
+    const invalidSale =
+      !originalIds?.length ||
+      hasDuplicateIds ||
+      !ventas?.length ||
+      ventas.some(
+        (venta) =>
+          !venta.sucursalId ||
+          !venta.vendedorId ||
+          !venta.fecha ||
+          Number.isNaN(new Date(venta.fecha).getTime()) ||
+          !venta.detalles?.length ||
+          venta.detalles.some(
+            (detalle) =>
+              !Number.isFinite(detalle.cantidad) ||
+              detalle.cantidad <= 0 ||
+              !detalle.metodoPagoId,
+          ),
+      );
+    if (invalidSale) {
+      res
+        .status(400)
+        .json({ success: false, data: null, message: "Datos incompletos" });
+      return;
+    }
+
+    const existingSales = await prisma.venta.findMany({
+      where: { id: { in: originalIds } },
+      select: { id: true, vendedorId: true, sucursalId: true },
+    });
+    if (existingSales.length !== originalIds.length) {
+      res.status(404).json({
+        success: false,
+        data: null,
+        message: "Uno de los registros que intentas editar ya no existe",
+      });
+      return;
+    }
+
+    const ownEmployeeId = await selfDataEmployeeId(req);
+    if (
+      ownEmployeeId &&
+      (existingSales.some((venta) => venta.vendedorId !== ownEmployeeId) ||
+        ventas.some((venta) => venta.vendedorId !== ownEmployeeId))
+    ) {
+      res.status(403).json({
+        success: false,
+        data: null,
+        message: "Solo puedes modificar ventas propias",
+      });
+      return;
+    }
+
+    const branchIds = [...new Set(ventas.map((venta) => venta.sucursalId))];
+    const activeBranches = await prisma.sucursal.findMany({
+      where: { id: { in: branchIds }, activa: true },
+      select: { id: true },
+    });
+    const activeBranchIds = new Set(activeBranches.map((branch) => branch.id));
+    const existingSalesById = new Map(
+      existingSales.map((sale) => [sale.id, sale]),
+    );
+    const usesUnavailableBranch = ventas.some((venta, index) => {
+      if (activeBranchIds.has(venta.sucursalId)) return false;
+      const originalId = originalIds[index];
+      if (originalId) {
+        return (
+          existingSalesById.get(originalId)?.sucursalId !== venta.sucursalId
+        );
+      }
+      return !existingSales.every(
+        (existingSale) => existingSale.sucursalId === venta.sucursalId,
+      );
+    });
+    if (usesUnavailableBranch) {
+      res.status(400).json({
+        success: false,
+        data: null,
+        message: "Una de las sucursales está inactiva o no existe",
+      });
+      return;
+    }
+
+    const data = await prisma.$transaction(async (tx) => {
+      const updated = [];
+      const reusableCount = Math.min(originalIds.length, ventas.length);
+
+      for (let index = 0; index < reusableCount; index += 1) {
+        const id = originalIds[index];
+        const venta = ventas[index];
+        if (!id || !venta) continue;
+        updated.push(
+          await tx.venta.update({
+            where: { id },
+            data: {
+              fecha: new Date(venta.fecha),
+              notas: venta.notas ?? null,
+              sesionId: venta.sesionId ?? null,
+              sucursalId: venta.sucursalId,
+              vendedorId: venta.vendedorId,
+              detalles: {
+                deleteMany: {},
+                create: venta.detalles.map((detalle) => ({
+                  cantidad: detalle.cantidad,
+                  metodoPagoId: detalle.metodoPagoId,
+                })),
+              },
+            },
+            include: { detalles: { include: { metodoPago: true } } },
+          }),
+        );
+      }
+
+      for (const venta of ventas.slice(reusableCount)) {
+        updated.push(
+          await tx.venta.create({
+            data: {
+              fecha: new Date(venta.fecha),
+              ...(venta.notas ? { notas: venta.notas } : {}),
+              ...(venta.sesionId ? { sesionId: venta.sesionId } : {}),
+              sucursalId: venta.sucursalId,
+              vendedorId: venta.vendedorId,
+              detalles: {
+                create: venta.detalles.map((detalle) => ({
+                  cantidad: detalle.cantidad,
+                  metodoPagoId: detalle.metodoPagoId,
+                })),
+              },
+            },
+            include: { detalles: { include: { metodoPago: true } } },
+          }),
+        );
+      }
+
+      const surplusIds = originalIds.slice(ventas.length);
+      if (surplusIds.length > 0) {
+        await tx.venta.deleteMany({ where: { id: { in: surplusIds } } });
+      }
+
+      return updated;
+    });
+
+    res.json({ success: true, data, message: "Venta actualizada" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({
+      success: false,
+      data: null,
+      message: "Error al actualizar venta",
+    });
+  }
+});
+
 router.put("/ventas/:id", access.ventas, async (req, res) => {
   try {
     const { notas, detalles } = req.body as {
