@@ -188,6 +188,8 @@ export default function EsquemasPage() {
   );
   const [deleteAssignment, setDeleteAssignment] =
     useState<SchemeAssignment | null>(null);
+  const [editingAssignment, setEditingAssignment] =
+    useState<SchemeAssignment | null>(null);
   const [saving, setSaving] = useState(false);
 
   function openCreate() {
@@ -214,6 +216,15 @@ export default function EsquemasPage() {
     });
     setSchemeErrors({ ranges: [] });
     setSchemeOpen(true);
+  }
+  function openEditAssignment(assignment: SchemeAssignment) {
+    setEditingAssignment(assignment);
+    setAssignmentForm({
+      employeeId: assignment.employeeId,
+      schemeId: assignment.schemeId,
+      effectiveFrom: nextFortnight(),
+    });
+    setAssignmentOpen(true);
   }
   function updateRange(index: number, field: keyof RangeForm, value: string) {
     setSchemeForm((current) => ({
@@ -320,7 +331,12 @@ export default function EsquemasPage() {
     try {
       await data.saveAssignment(assignmentForm);
       setAssignmentOpen(false);
-      toast.success("Asignación guardada con vigencia histórica.");
+      setEditingAssignment(null);
+      toast.success(
+        editingAssignment
+          ? "Esquema reasignado; la vigencia anterior queda en el historial."
+          : "Asignación guardada con vigencia histórica.",
+      );
     } catch (cause) {
       toast.error(apiErrorMessage(cause));
     } finally {
@@ -445,7 +461,15 @@ export default function EsquemasPage() {
       enableGlobalFilter: false,
       cell: ({ row }) =>
         !row.original.effectiveTo && (
-          <div className="flex justify-end">
+          <div className="flex justify-end gap-1">
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={() => openEditAssignment(row.original)}
+              aria-label="Reasignar esquema"
+            >
+              <Pencil className="h-4 w-4" />
+            </Button>
             <Button
               size="icon"
               variant="ghost"
@@ -521,6 +545,7 @@ export default function EsquemasPage() {
           <Button
             variant="outline"
             onClick={() => {
+              setEditingAssignment(null);
               setAssignmentForm({
                 employeeId: "",
                 schemeId: "",
@@ -1037,13 +1062,24 @@ export default function EsquemasPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={assignmentOpen} onOpenChange={setAssignmentOpen}>
+      <Dialog
+        open={assignmentOpen}
+        onOpenChange={(value) => {
+          setAssignmentOpen(value);
+          if (!value) setEditingAssignment(null);
+        }}
+      >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Asignar esquema</DialogTitle>
+            <DialogTitle>
+              {editingAssignment
+                ? "Reasignar esquema"
+                : "Asignar esquema"}
+            </DialogTitle>
             <DialogDescription>
-              La primera asignación puede iniciar en la quincena actual; un
-              cambio existente inicia en la siguiente.
+              {editingAssignment
+                ? "La asignación vigente se cerrará y la nueva iniciará en la siguiente quincena, sin alterar su historial."
+                : "La primera asignación puede iniciar en la quincena actual; un cambio existente inicia en la siguiente."}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -1051,6 +1087,7 @@ export default function EsquemasPage() {
               <Label htmlFor="assignment-employee">Empleado activo</Label>
               <Combobox
                 id="assignment-employee"
+                disabled={Boolean(editingAssignment)}
                 options={data.employees
                   .filter((item) => item.active)
                   .map((item) => ({
@@ -1092,7 +1129,10 @@ export default function EsquemasPage() {
                 </SelectTrigger>
                 <SelectContent>
                   {data.schemes
-                    .filter((item) => item.active)
+                    .filter(
+                      (item) =>
+                        item.active || item.id === assignmentForm.schemeId,
+                    )
                     .map((item) => (
                       <SelectItem key={item.id} value={item.id}>
                         {item.name}
@@ -1113,18 +1153,26 @@ export default function EsquemasPage() {
                 }
               />
               <p className="text-xs text-[var(--text-muted)]">
-                {selectedEmployeeHasOpenAssignment
-                  ? `Este empleado ya tiene una asignación vigente. El cambio puede iniciar desde ${formatDate(nextFortnight())}.`
-                  : `Para la nómina actual, conserva el inicio en ${formatDate(currentFortnight())} o selecciona una quincena anterior.`}
+                {editingAssignment
+                  ? `La vigencia anterior se conserva; el nuevo esquema puede iniciar desde ${formatDate(nextFortnight())}.`
+                  : selectedEmployeeHasOpenAssignment
+                    ? `Este empleado ya tiene una asignación vigente. El cambio puede iniciar desde ${formatDate(nextFortnight())}.`
+                    : `Para la nómina actual, conserva el inicio en ${formatDate(currentFortnight())} o selecciona una quincena anterior.`}
               </p>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setAssignmentOpen(false)}>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setAssignmentOpen(false);
+                setEditingAssignment(null);
+              }}
+            >
               Cancelar
             </Button>
             <Button disabled={saving} onClick={() => void saveAssignment()}>
-              Guardar asignación
+              {editingAssignment ? "Reasignar" : "Guardar asignación"}
             </Button>
           </DialogFooter>
         </DialogContent>
