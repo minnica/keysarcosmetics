@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   CalendarDays,
@@ -50,10 +50,12 @@ import {
   sumBy,
 } from "@/lib/format";
 import type {
+  CommissionScheme,
   MonthlyPayrollLine,
   MonthlyPayrollRunReference,
   PayrollCalculationMode,
   PayrollRunLine,
+  SchemeAssignment,
 } from "@/lib/types";
 
 type SummaryView = "FORTNIGHT" | "MONTHLY";
@@ -178,6 +180,28 @@ function commissionPaymentTotal(line: PayrollRunLine) {
   );
 }
 
+function hasApplicableSchemeAssignment(
+  employeeId: string,
+  periodStart: string,
+  assignments: SchemeAssignment[],
+  schemes: CommissionScheme[],
+) {
+  return assignments.some((assignment) => {
+    if (
+      assignment.employeeId !== employeeId ||
+      assignment.effectiveFrom > periodStart ||
+      (assignment.effectiveTo != null && assignment.effectiveTo < periodStart)
+    ) {
+      return false;
+    }
+
+    const scheme = schemes.find((item) => item.id === assignment.schemeId);
+    return Boolean(
+      scheme?.versions.some((version) => version.effectiveFrom <= periodStart),
+    );
+  });
+}
+
 export default function DashboardPage() {
   const data = usePayrollData();
   const defaults = useMemo(currentFortnight, []);
@@ -191,6 +215,7 @@ export default function DashboardPage() {
   const [mode, setMode] = useState<PayrollCalculationMode>("WITH_VAT");
   const [working, setWorking] = useState(false);
   const [recalculating, setRecalculating] = useState(false);
+  const autoRecalculationKey = useRef<string | null>(null);
   const [confirmAction, setConfirmAction] = useState<
     "approve" | "pay" | "cancel" | null
   >(null);
@@ -213,6 +238,27 @@ export default function DashboardPage() {
       ].sort((left, right) => right.localeCompare(left)),
     [initialMonth, periodOptions],
   );
+  const staleSchemeConfigurationKey = useMemo(() => {
+    if (!run || run.status !== "DRAFT") return null;
+
+    const employeeIds = run.lines
+      .filter(
+        (line) =>
+          line.warnings.some((warning) => warning.code === "MISSING_SCHEME") &&
+          hasApplicableSchemeAssignment(
+            line.employeeId,
+            run.from,
+            data.assignments,
+            data.schemes,
+          ),
+      )
+      .map((line) => line.employeeId)
+      .sort();
+
+    return employeeIds.length > 0
+      ? `${run.id}:${employeeIds.join(",")}`
+      : null;
+  }, [data.assignments, data.schemes, run]);
 
   useEffect(() => {
     if (summaryView !== "MONTHLY") return;
@@ -229,6 +275,39 @@ export default function DashboardPage() {
   useEffect(() => {
     setAttentionExpanded(false);
   }, [run?.id]);
+
+  useEffect(() => {
+    if (
+      !staleSchemeConfigurationKey ||
+      data.refreshing ||
+      autoRecalculationKey.current === staleSchemeConfigurationKey
+    ) {
+      return;
+    }
+
+    autoRecalculationKey.current = staleSchemeConfigurationKey;
+    setWorking(true);
+    setRecalculating(true);
+    void data
+      .runAction("recalculate")
+      .then(() => {
+        toast.success(
+          "Corrida actualizada con las asignaciones de esquema vigentes.",
+        );
+      })
+      .catch((cause) => {
+        toast.error(
+          apiErrorMessage(
+            cause,
+            "No se pudo actualizar la corrida con el esquema asignado.",
+          ),
+        );
+      })
+      .finally(() => {
+        setWorking(false);
+        setRecalculating(false);
+      });
+  }, [data, data.refreshing, staleSchemeConfigurationKey]);
 
   function selectPayrollPeriod(value: string) {
     const option = periodOptions.find((item) => item.value === value);
