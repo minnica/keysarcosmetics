@@ -32,7 +32,12 @@ import {
 import {
   reservationReportSections,
   reservationHistory,
+  reservationMobileMessagingTotals,
+  reservationProvidersByLocationReports,
   reservationReportTotals,
+  reservationServiceReportTotals,
+  reservationServiceReports,
+  reservationServicesByLocationReports,
   reservationStatusOptions,
   reservationsByHour,
   reservationsByWeekday,
@@ -44,6 +49,10 @@ import {
   type ServiceRankingItem,
 } from "@/lib/mock-reservation-report-data";
 import { ReservationMetrics } from "./ReservationMetrics";
+import { ReservationLocations } from "./ReservationLocations";
+import { ReservationServices } from "./ReservationServices";
+import { ReservationMobileMessaging } from "./ReservationMobileMessaging";
+import { ReservationProvidersByLocation } from "./ReservationProvidersByLocation";
 import { ReportsHeader } from "./ReportsHeader";
 
 const currencyFormatter = new Intl.NumberFormat("es-MX", {
@@ -155,11 +164,25 @@ function HourlyChart({ data }: { data: ReservationChartPoint[] }) {
   );
 }
 
-type ReservationReportView = "general" | "history" | "metrics";
+type ReservationReportView =
+  | "general"
+  | "history"
+  | "metrics"
+  | "locations"
+  | "services"
+  | "mobile-messaging"
+  | "services-by-location"
+  | "providers-by-location";
 
 function ReportBreakdownNav({ view }: { view: ReservationReportView }) {
   const [reservationsOpen, setReservationsOpen] = useState(
     view === "history" || view === "metrics",
+  );
+  const [servicesByLocationOpen, setServicesByLocationOpen] = useState(
+    view === "services-by-location",
+  );
+  const [providersByLocationOpen, setProvidersByLocationOpen] = useState(
+    view === "providers-by-location",
   );
 
   return (
@@ -229,13 +252,121 @@ function ReportBreakdownNav({ view }: { view: ReservationReportView }) {
           ) : null}
         </div>
 
-        {reservationReportSections.slice(2).map((section) => (
+        <Link
+          className={
+            view === "locations"
+              ? "reservation-report-nav-item reservation-report-nav-item-active"
+              : "reservation-report-nav-item"
+          }
+          href="/reportes/reservas/locales"
+        >
+          <span>Locales</span>
+          {view === "locations" ? (
+            <span className="h-2 w-2 rounded-full bg-[#648672]" />
+          ) : (
+            <ChevronRight className="h-4 w-4 text-slate-300" />
+          )}
+        </Link>
+
+        <Link
+          className={
+            view === "services"
+              ? "reservation-report-nav-item reservation-report-nav-item-active"
+              : "reservation-report-nav-item"
+          }
+          href="/reportes/reservas/servicios"
+        >
+          <span>Servicios</span>
+          {view === "services" ? (
+            <span className="h-2 w-2 rounded-full bg-[#648672]" />
+          ) : (
+            <ChevronRight className="h-4 w-4 text-slate-300" />
+          )}
+        </Link>
+
+        <Link
+          className={
+            view === "mobile-messaging"
+              ? "reservation-report-nav-item reservation-report-nav-item-active"
+              : "reservation-report-nav-item"
+          }
+          href="/reportes/reservas/mensajeria-movil"
+        >
+          <span>Mensajería móvil</span>
+          {view === "mobile-messaging" ? (
+            <span className="h-2 w-2 rounded-full bg-[#648672]" />
+          ) : (
+            <ChevronRight className="h-4 w-4 text-slate-300" />
+          )}
+        </Link>
+
+        <div className="reservation-report-nav-group">
+          <button
+            aria-expanded={servicesByLocationOpen}
+            className={
+              view === "services-by-location"
+                ? "reservation-report-nav-item reservation-report-nav-item-active"
+                : "reservation-report-nav-item"
+            }
+            onClick={() => setServicesByLocationOpen((current) => !current)}
+            type="button"
+          >
+            <span>Servicios por local</span>
+            <ChevronDown
+              className={`h-4 w-4 transition-transform ${servicesByLocationOpen ? "rotate-180" : ""}`}
+            />
+          </button>
+          {servicesByLocationOpen ? (
+            <div className="reservation-report-subnav">
+              <Link
+                className={
+                  view === "services-by-location"
+                    ? "reservation-report-subnav-item reservation-report-subnav-item-active"
+                    : "reservation-report-subnav-item"
+                }
+                href="/reportes/reservas/servicios-por-local/opatra-mexico"
+              >
+                OPATRA MEXICO
+              </Link>
+            </div>
+          ) : null}
+        </div>
+
+        <div className="reservation-report-nav-group">
+          <button
+            aria-expanded={providersByLocationOpen}
+            className={
+              view === "providers-by-location"
+                ? "reservation-report-nav-item reservation-report-nav-item-active"
+                : "reservation-report-nav-item"
+            }
+            onClick={() => setProvidersByLocationOpen((current) => !current)}
+            type="button"
+          >
+            <span>Prestadores por local</span>
+            <ChevronDown
+              className={`h-4 w-4 transition-transform ${providersByLocationOpen ? "rotate-180" : ""}`}
+            />
+          </button>
+          {providersByLocationOpen ? (
+            <div className="reservation-report-subnav">
+              <Link
+                className="reservation-report-subnav-item reservation-report-subnav-item-active"
+                href="/reportes/reservas/prestadores-por-local/opatra-mexico"
+              >
+                OPATRA MEXICO
+              </Link>
+            </div>
+          ) : null}
+        </div>
+
+        {reservationReportSections.slice(7).map((section) => (
           <button
             key={section}
             className="reservation-report-nav-item"
             onClick={() =>
               toast.info(`${section} estará disponible en la siguiente fase`, {
-                description: "Historial es la vista activa en esta etapa.",
+                description: "Este desglose todavía se encuentra en construcción.",
               })
             }
             type="button"
@@ -245,6 +376,57 @@ function ReportBreakdownNav({ view }: { view: ReservationReportView }) {
           </button>
         ))}
       </nav>
+      {view === "services" || view === "services-by-location" || view === "providers-by-location" ? (
+        <div className="reservation-report-nav-summary">
+          <p className="label-caps">
+            {view === "services-by-location" || view === "providers-by-location" ? "OPATRA MEXICO" : "Catálogo actual"}
+          </p>
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <div>
+              <span className="number-display block text-lg text-[#263649]">
+                {view === "providers-by-location" ? 41 : reservationServiceReportTotals.bookings}
+              </span>
+              <span className="text-[0.65rem] text-slate-400">reservas</span>
+            </div>
+            <div>
+              <span className="number-display block text-lg text-[#263649]">
+                {view === "providers-by-location" ? reservationProvidersByLocationReports[0]!.providers.length : reservationServiceReports.length}
+              </span>
+              <span className="text-[0.65rem] text-slate-400">
+                {view === "providers-by-location" ? "prestadores" : "servicios"}
+              </span>
+            </div>
+          </div>
+          <div className="mt-3 border-t border-[#e8dfd8] pt-3">
+            <span className="number-display block text-sm text-[#526f5e]">
+              {view === "providers-by-location" ? "$52,699" : "$48,959"}
+            </span>
+            <span className="text-[0.65rem] text-slate-400">recaudación reportada</span>
+          </div>
+        </div>
+      ) : view === "mobile-messaging" ? (
+        <div className="reservation-report-nav-summary">
+          <p className="label-caps">Canal WhatsApp</p>
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <div>
+              <span className="number-display block text-lg text-[#263649]">
+                {reservationMobileMessagingTotals.messagesSent}
+              </span>
+              <span className="text-[0.65rem] text-slate-400">enviados</span>
+            </div>
+            <div>
+              <span className="number-display block text-lg text-[#263649]">
+                {reservationMobileMessagingTotals.confirmedByWhatsApp}
+              </span>
+              <span className="text-[0.65rem] text-slate-400">confirmado</span>
+            </div>
+          </div>
+          <div className="mt-3 border-t border-[#e8dfd8] pt-3">
+            <span className="number-display block text-sm text-[#526f5e]">1 / 100</span>
+            <span className="text-[0.65rem] text-slate-400">conversaciones utilizadas</span>
+          </div>
+        </div>
+      ) : null}
     </aside>
   );
 }
@@ -469,7 +651,7 @@ export function ReservationReportWorkspace({
         <section className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <p className="label-caps">
-              Reportes / Reservas / {view === "history" ? "Historial" : view === "metrics" ? "Métricas" : "General"}
+              Reportes / Reservas / {view === "history" ? "Historial" : view === "metrics" ? "Métricas" : view === "locations" ? "Locales" : view === "services" ? "Servicios" : view === "mobile-messaging" ? "Mensajería móvil" : view === "services-by-location" ? "Servicios por local" : view === "providers-by-location" ? "Prestadores por local" : "General"}
             </p>
             <h1 className="page-title mt-2 text-[clamp(2rem,4vw,3.25rem)] text-[#263649]">
               Reporte de reservas
@@ -555,7 +737,7 @@ export function ReservationReportWorkspace({
           </div>
         </section>
 
-        <div className="mt-6 grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[16rem_minmax(0,1fr)]">
+        <div className="mt-6 grid grid-cols-[minmax(0,1fr)] gap-5 lg:grid-cols-[14rem_minmax(0,1fr)]">
           <ReportBreakdownNav view={view} />
 
           <div className="min-w-0 space-y-5">
@@ -565,6 +747,24 @@ export function ReservationReportWorkspace({
               <ReservationMetrics
                 activeStatuses={appliedStatuses}
                 totalBookings={selectedCount}
+              />
+            ) : view === "locations" ? (
+              <ReservationLocations selectedBookings={selectedCount} />
+            ) : view === "services" ? (
+              <ReservationServices selectedBookings={selectedCount} />
+            ) : view === "mobile-messaging" ? (
+              <ReservationMobileMessaging selectedBookings={selectedCount} />
+            ) : view === "services-by-location" ? (
+              <ReservationServices
+                locationName={reservationServicesByLocationReports[0]!.name}
+                reportTotals={reservationServiceReportTotals}
+                selectedBookings={selectedCount}
+                servicesData={reservationServicesByLocationReports[0]!.services}
+              />
+            ) : view === "providers-by-location" ? (
+              <ReservationProvidersByLocation
+                report={reservationProvidersByLocationReports[0]!}
+                selectedBookings={selectedCount}
               />
             ) : (
               <>

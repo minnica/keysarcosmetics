@@ -8,7 +8,6 @@ import {
   type DragEvent,
   type ReactNode,
 } from "react";
-import Link from "next/link";
 import {
   AlertCircle,
   CalendarDays,
@@ -116,6 +115,11 @@ import {
   type SurveyRecord,
   type WhatsAppMessageRecord,
 } from "@/lib/mock-administration-data";
+import {
+  AdministrationNavMenu,
+  ReportsNavMenu,
+  SchedulerPrimaryNav,
+} from "@/components/SchedulerPrimaryNav";
 
 type AdminSection =
   | "locals"
@@ -8053,9 +8057,11 @@ function AdministrationNav({
 function AdministrationHeader({
   active,
   onOpenMenu,
+  onSelectSection,
 }: {
   active: AdminSection;
   onOpenMenu: () => void;
+  onSelectSection: (section: AdminSection) => void;
 }) {
   return (
     <header className="sticky top-0 z-40 border-b border-white/10 bg-[linear-gradient(90deg,#172230_0%,#1d2937_100%)] text-white shadow-[0_18px_44px_rgba(8,14,24,0.2)]">
@@ -8085,48 +8091,29 @@ function AdministrationHeader({
               </p>
             </div>
           </div>
-          <nav className="hidden items-center gap-1 xl:flex">
-            <Link
-              className="rounded-full px-4 py-2.5 text-sm font-medium text-white/60 hover:bg-white/10 hover:text-white"
-              href="/"
-            >
-              Agenda
-            </Link>
-            <button
-              type="button"
-              className="rounded-full px-4 py-2.5 text-sm font-medium text-white/60 hover:bg-white/10 hover:text-white"
-            >
-              Clientes
-            </button>
-            <button
-              type="button"
-              className="rounded-full px-4 py-2.5 text-sm font-medium text-white/60 hover:bg-white/10 hover:text-white"
-            >
-              Servicios
-            </button>
-            <Link
-              href="/reportes"
-              className="rounded-full px-4 py-2.5 text-sm font-medium text-white/60 hover:bg-white/10 hover:text-white"
-            >
-              Reportes
-            </Link>
-            <Link
-              className="rounded-full border border-[#c3a583]/45 bg-[#c3a583]/20 px-4 py-2.5 text-sm font-medium text-white"
-              href={`/administracion?section=${active}`}
-            >
-              Administración
-            </Link>
-          </nav>
+          <SchedulerPrimaryNav
+            activeAdmin={active}
+            activeArea="administration"
+            onAdministrationSelect={onSelectSection}
+          />
         </div>
         <div className="flex items-center gap-2 sm:gap-3">
+          <div className="flex items-center gap-2 xl:hidden">
+            <ReportsNavMenu compact />
+            <AdministrationNavMenu
+              active={active}
+              compact
+              onSelect={onSelectSection}
+            />
+          </div>
           <button
             type="button"
-            className="scheduler-header-button hidden sm:flex"
+            className="scheduler-header-button hidden xl:flex"
             aria-label="Buscar"
           >
             <Search className="h-5 w-5" />
           </button>
-          <div className="hidden rounded-full border border-emerald-300/20 bg-emerald-400/10 px-4 py-2.5 text-sm font-medium text-emerald-50 sm:block">
+          <div className="hidden rounded-full border border-emerald-300/20 bg-emerald-400/10 px-4 py-2.5 text-sm font-medium text-emerald-50 xl:block">
             Reservas online
           </div>
           <div className="flex h-11 w-11 items-center justify-center rounded-full bg-white text-sm font-semibold text-slate-700">
@@ -8209,6 +8196,7 @@ export function AdministrationWorkspace() {
       <AdministrationHeader
         active={active}
         onOpenMenu={() => setMobileOpen(true)}
+        onSelectSection={selectSection}
       />
       <div className="flex">
         <aside className="hidden w-64 shrink-0 border-r border-[#e9e1da] bg-[#f8f5f1] p-5 lg:block">

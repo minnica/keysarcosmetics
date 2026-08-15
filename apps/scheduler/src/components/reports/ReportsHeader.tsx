@@ -1,93 +1,15 @@
 "use client";
 
 import Link from "next/link";
+import { Search, Settings } from "lucide-react";
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@cosmetics/ui";
-import { ChevronDown, Search, Settings } from "lucide-react";
+  AdministrationNavMenu,
+  ReportsNavMenu,
+  SchedulerPrimaryNav,
+  type SchedulerReportPage,
+} from "@/components/SchedulerPrimaryNav";
 
-export type ReportsPage = "summary" | "reservations" | "sales";
-
-function ReportMenuLink({
-  active,
-  children,
-  href,
-}: {
-  active: boolean;
-  children: string;
-  href: string;
-}) {
-  return (
-    <Link
-      className={
-        active
-          ? "flex items-center justify-between rounded-2xl bg-white/10 px-4 py-3 text-sm font-semibold"
-          : "flex items-center justify-between rounded-2xl px-4 py-3 text-sm text-white/65 transition hover:bg-white/5 hover:text-white"
-      }
-      href={href}
-    >
-      {children}
-      {active ? <span className="h-2 w-2 rounded-full bg-[#c3a583]" /> : null}
-    </Link>
-  );
-}
-
-function ReportsMenu({ active }: { active: ReportsPage }) {
-  return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <button
-          className="report-nav-active"
-          type="button"
-          aria-label="Abrir menú de reportes"
-        >
-          Reportes
-          <ChevronDown className="h-4 w-4" />
-        </button>
-      </PopoverTrigger>
-      <PopoverContent
-        align="start"
-        sideOffset={10}
-        className="w-64 overflow-hidden rounded-[20px] border-white/10 bg-[#1c2835] p-2 text-white shadow-[0_24px_70px_rgba(7,12,20,0.36)]"
-      >
-        <ReportMenuLink active={active === "summary"} href="/reportes">
-          Resumen
-        </ReportMenuLink>
-        <ReportMenuLink
-          active={active === "reservations"}
-          href="/reportes/reservas"
-        >
-          Reporte de reservas
-        </ReportMenuLink>
-        <button
-          className="flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left text-sm text-white/45"
-          disabled
-          type="button"
-        >
-          Reporte de ventas
-          <span className="text-[0.58rem] uppercase tracking-[0.16em] text-white/30">
-            Pronto
-          </span>
-        </button>
-        <div className="my-1 border-t border-white/10 xl:hidden" />
-        <Link
-          className="flex items-center rounded-2xl px-4 py-3 text-sm text-white/70 xl:hidden"
-          href="/"
-        >
-          Ir a Agenda
-        </Link>
-        <Link
-          className="flex items-center rounded-2xl px-4 py-3 text-sm text-white/70 xl:hidden"
-          href="/administracion"
-        >
-          Ir a Administración
-        </Link>
-      </PopoverContent>
-    </Popover>
-  );
-}
+export type ReportsPage = SchedulerReportPage;
 
 export function ReportsHeader({ active }: { active: ReportsPage }) {
   return (
@@ -113,40 +35,29 @@ export function ReportsHeader({ active }: { active: ReportsPage }) {
             </span>
           </Link>
 
-          <nav className="hidden items-center gap-1 xl:flex">
-            <Link className="report-nav-link" href="/">
-              Agenda
-            </Link>
-            <button className="report-nav-link" type="button">
-              Clientes
-            </button>
-            <button className="report-nav-link" type="button">
-              Servicios
-            </button>
-            <ReportsMenu active={active} />
-            <Link className="report-nav-link" href="/administracion">
-              Administración
-            </Link>
-          </nav>
+          <SchedulerPrimaryNav activeArea="reports" activeReport={active} />
         </div>
 
         <div className="flex items-center gap-2 sm:gap-3">
           <div className="xl:hidden">
-            <ReportsMenu active={active} />
+            <div className="flex items-center gap-2">
+              <ReportsNavMenu active={active} compact />
+              <AdministrationNavMenu compact />
+            </div>
           </div>
           <button
             type="button"
-            className="scheduler-header-button hidden sm:flex"
+            className="scheduler-header-button hidden xl:flex"
             aria-label="Buscar"
           >
             <Search className="h-5 w-5" />
           </button>
-          <div className="hidden rounded-full border border-emerald-300/20 bg-emerald-400/10 px-4 py-2.5 text-sm font-medium text-emerald-50 lg:block">
+          <div className="hidden rounded-full border border-emerald-300/20 bg-emerald-400/10 px-4 py-2.5 text-sm font-medium text-emerald-50 xl:block">
             Reservas online
           </div>
           <button
             type="button"
-            className="scheduler-header-button hidden sm:flex"
+            className="scheduler-header-button hidden xl:flex"
             aria-label="Configuración"
           >
             <Settings className="h-5 w-5" />

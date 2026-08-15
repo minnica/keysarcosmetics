@@ -1,11 +1,9 @@
 'use client'
 
-import Link from 'next/link'
 import { Button, Popover, PopoverContent, PopoverTrigger } from '@cosmetics/ui'
 import {
   ArrowLeft,
   ArrowRight,
-  BarChart3,
   ChevronsLeftRight,
   CircleHelp,
   Copy,
@@ -19,6 +17,11 @@ import {
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { schedulerBranches, schedulerLegendItems, type SchedulerView } from '@/lib/mock-scheduler-data'
+import {
+  AdministrationNavMenu,
+  ReportsNavMenu,
+  SchedulerPrimaryNav,
+} from '@/components/SchedulerPrimaryNav'
 import { getLegendIcon } from './scheduler-utils'
 
 interface SchedulerHeaderProps {
@@ -60,53 +63,15 @@ export function SchedulerHeader({
                 <p className="text-[0.68rem] uppercase tracking-[0.32em] text-white/45">Agenda interna</p>
               </div>
             </div>
-            <nav className="hidden items-center gap-2 xl:flex">
-              <Link
-                className="rounded-full bg-white/12 px-5 py-2.5 text-[0.92rem] font-medium text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] transition"
-                href="/"
-              >
-                Agenda
-              </Link>
-              {['Clientes', 'Servicios'].map((item) => (
-                <button
-                  key={item}
-                  className="rounded-full px-5 py-2.5 text-[0.92rem] font-medium text-white/60 transition hover:bg-white/6 hover:text-white"
-                  type="button"
-                >
-                  {item}
-                </button>
-              ))}
-              <Link
-                className="rounded-full px-5 py-2.5 text-[0.92rem] font-medium text-white/60 transition hover:bg-white/6 hover:text-white"
-                href="/reportes"
-              >
-                Reportes
-              </Link>
-              <Link
-                className="rounded-full border border-[#c3a583]/45 bg-[#c3a583]/20 px-5 py-2.5 text-[0.92rem] font-medium text-white transition hover:bg-[#c3a583]/30"
-                href="/administracion"
-              >
-                Administración
-              </Link>
-            </nav>
+            <SchedulerPrimaryNav activeArea="agenda" />
           </div>
 
           <div className="flex items-center gap-3">
-            <Link
-              aria-label="Abrir Reportes"
-              className="scheduler-header-button lg:hidden"
-              href="/reportes"
-            >
-              <BarChart3 className="h-5 w-5" />
-            </Link>
-            <Link
-              aria-label="Abrir Administración"
-              className="scheduler-header-button lg:hidden"
-              href="/administracion"
-            >
-              <SlidersHorizontal className="h-5 w-5" />
-            </Link>
-            <div className="hidden items-center gap-3 lg:flex">
+            <div className="flex items-center gap-2 xl:hidden">
+              <ReportsNavMenu compact />
+              <AdministrationNavMenu compact />
+            </div>
+            <div className="hidden items-center gap-3 xl:flex">
             <button className="scheduler-header-button" type="button">
               <Search className="h-5 w-5" />
             </button>
