@@ -14,6 +14,7 @@ export interface AccessPosition {
   nombre: string
   activo: boolean
   canManageAccess: boolean
+  selfDataOnly: boolean
   screenPermissions: AccessPermission[]
 }
 
@@ -76,7 +77,7 @@ interface UseAccessAdminReturn {
   refetch: () => Promise<void>
   savePositionPermissions: (
     positionId: string,
-    payload: { canManageAccess: boolean; permissions: AccessPermission[] },
+    payload: { canManageAccess: boolean; selfDataOnly: boolean; permissions: AccessPermission[] },
     options?: { refetch?: boolean },
   ) => Promise<void>
   saveCredentials: (employeeId: string, payload: SaveCredentialsInput) => Promise<void>
@@ -112,7 +113,7 @@ export function useAccessAdmin(): UseAccessAdminReturn {
   }, [refetch])
 
   const savePositionPermissions = useCallback(
-    async (positionId: string, payload: { canManageAccess: boolean; permissions: AccessPermission[] }, options?: { refetch?: boolean }) => {
+    async (positionId: string, payload: { canManageAccess: boolean; selfDataOnly: boolean; permissions: AccessPermission[] }, options?: { refetch?: boolean }) => {
       await api.put(`/api/envelope/access/positions/${positionId}/permissions`, payload)
       if (options?.refetch !== false) {
         await refetch()

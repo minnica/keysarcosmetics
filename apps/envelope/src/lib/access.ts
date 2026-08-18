@@ -1,10 +1,12 @@
 import type { ScreenKey } from '@cosmetics/types'
 
-export type AccessSection = 'forms' | 'reports' | 'admin'
+export type AccessSection = 'forms' | 'reports' | 'rankings' | 'admin'
 export type SidebarLabelKey =
   | 'forms'
   | 'reports'
   | 'sales'
+  | 'appointments'
+  | 'services'
   | 'employees'
   | 'branches'
   | 'paymentMethods'
@@ -15,7 +17,11 @@ export type SidebarLabelKey =
   | 'paymentMethodByDay'
   | 'salesBySeller'
   | 'salesBySellerDay'
+  | 'sellerRanking'
+  | 'branchRanking'
   | 'totalGeneral'
+  | 'branchGoals'
+  | 'appointmentReport'
   | 'accessControl'
 
 export interface ScreenConfig {
@@ -28,6 +34,8 @@ export interface ScreenConfig {
 export const SCREEN_CONFIG: ScreenConfig[] = [
   { key: 'dashboard', path: '/', section: 'reports', labelKey: 'dashboard' },
   { key: 'ventas', path: '/ventas', section: 'forms', labelKey: 'sales' },
+  { key: 'citas', path: '/citas', section: 'forms', labelKey: 'appointments' },
+  { key: 'servicios', path: '/servicios', section: 'forms', labelKey: 'services' },
   { key: 'empleados', path: '/empleados', section: 'forms', labelKey: 'employees' },
   { key: 'sucursales', path: '/sucursales', section: 'forms', labelKey: 'branches' },
   { key: 'metodos-pago', path: '/metodos-pago', section: 'forms', labelKey: 'paymentMethods' },
@@ -37,11 +45,20 @@ export const SCREEN_CONFIG: ScreenConfig[] = [
   { key: 'reportes/metodo-pago-por-dia', path: '/reportes/metodo-pago-por-dia', section: 'reports', labelKey: 'paymentMethodByDay' },
   { key: 'reportes/ventas-por-vendedor', path: '/reportes/ventas-por-vendedor', section: 'reports', labelKey: 'salesBySeller' },
   { key: 'reportes/ventas-por-vendedor-dia', path: '/reportes/ventas-por-vendedor-dia', section: 'reports', labelKey: 'salesBySellerDay' },
+  { key: 'reportes/ranking-vendedores', path: '/reportes/ranking-vendedores', section: 'rankings', labelKey: 'sellerRanking' },
+  { key: 'reportes/ranking-sucursales', path: '/reportes/ranking-sucursales', section: 'rankings', labelKey: 'branchRanking' },
   { key: 'reportes/total-general', path: '/reportes/total-general', section: 'reports', labelKey: 'totalGeneral' },
+  { key: 'reportes/metas-sucursal', path: '/reportes/metas-sucursal', section: 'reports', labelKey: 'branchGoals' },
+  { key: 'reportes/citas', path: '/reportes/citas', section: 'reports', labelKey: 'appointmentReport' },
   { key: 'accesos', path: '/accesos', section: 'admin', labelKey: 'accessControl' },
 ]
 
-export const SECTION_ORDER: AccessSection[] = ['forms', 'reports', 'admin']
+export const SECTION_ORDER: AccessSection[] = [
+  'forms',
+  'reports',
+  'rankings',
+  'admin',
+]
 
 export function getScreenConfigByPath(pathname: string): ScreenConfig | null {
   const normalized = pathname === '' ? '/' : pathname

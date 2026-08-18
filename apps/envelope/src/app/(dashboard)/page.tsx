@@ -1,31 +1,31 @@
 "use client";
 // Dashboard principal — Cards de resumen + gráficas Recharts
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   BarChart,
   Bar,
+  Cell,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
   Legend,
   ResponsiveContainer,
-  Cell,
   LabelList,
 } from "recharts";
 import {
   Card,
   CardHeader,
-  CardTitle,
   CardContent,
-  CardDescription,
+  DatePicker,
+  Input,
+  ProgressKeysar,
 } from "@cosmetics/ui";
-import { Input } from "@cosmetics/ui";
 import { Label } from "@cosmetics/ui";
-import { useSucursales, useEmpleados, useVentas } from "@/hooks";
+import { api } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 import { formatCurrency, formatDate, todayISO, monthName } from "@/lib/utils";
-import { cn } from "@/lib/utils";
+import { DashboardLoadingSkeleton } from "@/components/layout/DataLoadingSkeleton";
 
 // Paleta de sucursales con colores complementarios de la marca
 const SUCURSAL_COLORS = ["#6fc9db", "#8bb09b", "#c3a583", "#648672"];
@@ -37,93 +37,134 @@ const PERIODO_STYLES = [
   { accent: "#6fc9db" }, // año — blue-light
 ];
 
+interface DashboardBranchTotal {
+  sucursalId: string;
+  sucursalNombre: string;
+  total: number;
+}
+
+interface DashboardMonthTotal {
+  year: number;
+  month: number;
+  totals: DashboardBranchTotal[];
+}
+
+interface DashboardSellerTotal {
+  empleadoId: string;
+  nombre: string;
+  vendido: number;
+  meta: number;
+}
+
+interface DashboardData {
+  dia: DashboardBranchTotal[];
+  mes: DashboardBranchTotal[];
+  anio: DashboardBranchTotal[];
+  monthsData: DashboardMonthTotal[];
+  ventasPorVendedor: DashboardSellerTotal[];
+}
+
+function abbreviateBranchName(name: string): string {
+  const words = name.trim().split(/\s+/);
+  return words.length > 1
+    ? `${words[0]} ${words.slice(1).map((word) => `${word.charAt(0)}.`).join(" ")}`
+    : name;
+}
+
 export default function DashboardPage() {
-  const { sucursales, loading: lS } = useSucursales();
-  const { empleados, loading: lE } = useEmpleados();
-  const { registros, loading: lV } = useVentas();
   const { locale, t } = useI18n();
-  const loading = lS || lE || lV;
-
   const [selectedDate, setSelectedDate] = useState(todayISO());
+  const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [sellerSearch, setSellerSearch] = useState("");
 
-  const selectedDateObj = new Date(selectedDate + "T00:00:00");
-  const selYear = selectedDateObj.getFullYear();
-  const selMonth = selectedDateObj.getMonth() + 1;
-  const selMonthPrefix = `${selYear}-${String(selMonth).padStart(2, "0")}`;
-  const selYearPrefix = String(selYear);
+  useEffect(() => {
+    let cancelled = false;
 
-  function sumForSucursal(
-    sucursalId: string,
-    dateFilter: (fecha: string) => boolean,
-  ): number {
-    return registros
-      .filter((r) => r.sucursalId === sucursalId && dateFilter(r.fecha))
-      .flatMap((r) => r.items)
-      .reduce((s, i) => s + i.cantidad, 0);
-  }
+    async function loadDashboard() {
+      setLoading(true);
+      setError(null);
+      try {
+        const { data } = await api.get<{ success: boolean; data: DashboardData }>(
+          "/api/envelope/reportes/dashboard",
+          { params: { fecha: selectedDate } },
+        );
+        if (!cancelled) {
+          setDashboardData(data.data);
+        }
+      } catch {
+        if (!cancelled) {
+          setError(t.common.loadingData);
+          setDashboardData(null);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    }
 
-  function totalForPeriod(dateFilter: (fecha: string) => boolean): number {
-    return registros
-      .filter((r) => dateFilter(r.fecha))
-      .flatMap((r) => r.items)
-      .reduce((s, i) => s + i.cantidad, 0);
-  }
+    void loadDashboard();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedDate, t.common.loadingData]);
+
+  const sucursales = dashboardData?.anio.map((row) => ({
+    id: row.sucursalId,
+    nombre: row.sucursalNombre,
+  })) ?? [];
 
   const periodos = [
-    { label: t.dashboard.dailySales, filter: (f: string) => f === selectedDate },
-    {
-      label: t.dashboard.monthlySales,
-      filter: (f: string) => f.startsWith(selMonthPrefix),
-    },
-    {
-      label: t.dashboard.yearlySales,
-      filter: (f: string) => f.startsWith(selYearPrefix),
-    },
+    { label: t.dashboard.dailySales, rows: dashboardData?.dia ?? [] },
+    { label: t.dashboard.monthlySales, rows: dashboardData?.mes ?? [] },
+    { label: t.dashboard.yearlySales, rows: dashboardData?.anio ?? [] },
   ];
 
-  const monthsData = Array.from({ length: 6 }, (_, i) => {
-    const d = new Date(selYear, selMonth - 1 - (5 - i), 1);
-    const prefix = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-    const label = monthName(d.getFullYear(), d.getMonth() + 1, locale)
+  const monthsData = (dashboardData?.monthsData ?? []).map((period) => {
+    const label = monthName(period.year, period.month, locale)
       .slice(0, 3)
       .toUpperCase();
     const entry: Record<string, string | number> = { mes: label };
-    sucursales.forEach((s) => {
-      entry[s.nombre] = registros
-        .filter((r) => r.sucursalId === s.id && r.fecha.startsWith(prefix))
-        .flatMap((r) => r.items)
-        .reduce((acc, item) => acc + item.cantidad, 0);
+    period.totals.forEach((row) => {
+      entry[row.sucursalNombre] = row.total;
     });
     return entry;
   });
 
-  const vendedoresData = empleados
-    .filter((emp) => emp.activo && emp.metaIndividual != null && emp.metaIndividual > 0)
-    .map((emp) => {
-      const totalVendido = registros
-        .filter(
-          (r) => r.vendedorId === emp.id && r.fecha.startsWith(selMonthPrefix),
-        )
-        .flatMap((r) => r.items)
-        .reduce((s, i) => s + i.cantidad, 0);
-      return {
-        nombre: `${emp.nombres} ${emp.apellidoPaterno.charAt(0)}. ${emp.apellidoMaterno.charAt(0)}.`,
-        vendido: totalVendido,
-        meta: emp.metaIndividual,
-      };
-    })
+  const vendedoresData = (dashboardData?.ventasPorVendedor ?? [])
+    .filter((emp) => emp.meta > 0)
     .sort((a, b) => b.vendido - a.vendido);
+  const sellersSummary = vendedoresData.reduce(
+    (summary, seller) => ({
+      vendido: summary.vendido + seller.vendido,
+      meta: summary.meta + seller.meta,
+    }),
+    { vendido: 0, meta: 0 },
+  );
+  const sellersProgress = sellersSummary.meta > 0
+    ? (sellersSummary.vendido / sellersSummary.meta) * 100
+    : 0;
+  const mobileSellers = vendedoresData.filter((seller) =>
+    seller.nombre.toLowerCase().includes(sellerSearch.trim().toLowerCase()),
+  );
+  const monthlyBranches = [...(dashboardData?.mes ?? [])]
+    .sort((a, b) => b.total - a.total);
+  const monthlyTotal = monthlyBranches.reduce((sum, branch) => sum + branch.total, 0);
 
   const formatK = (v: number) =>
     v >= 1000 ? `$${(v / 1000).toFixed(0)}k` : `$${v}`;
 
   if (loading) {
+    return <DashboardLoadingSkeleton />;
+  }
+
+  if (error) {
     return (
-      <div
-        className="flex items-center justify-center h-64 text-sm"
-        style={{ color: "var(--text-muted)" }}
-      >
-        {t.common.loadingData}
+      <div className="flex h-64 items-center justify-center text-sm text-red-500">
+        {error}
       </div>
     );
   }
@@ -141,20 +182,21 @@ export default function DashboardPage() {
         </div>
         <div className="space-y-1">
           <Label htmlFor="fecha-dashboard">{t.dashboard.referenceDate}</Label>
-          <Input
+          <DatePicker
             id="fecha-dashboard"
-            type="date"
             value={selectedDate}
-            onChange={(e) => setSelectedDate(e.target.value)}
+            onChange={setSelectedDate}
             className="w-44"
+            placeholder={t.dashboard.referenceDate}
           />
         </div>
       </div>
 
       {/* ── Cards de resumen por período ── 1 card por período, 3 cols desktop / 1 col mobile */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        {periodos.map(({ label, filter }, periodIdx) => {
+        {periodos.map(({ label, rows }, periodIdx) => {
           const { accent } = (PERIODO_STYLES[periodIdx] ?? PERIODO_STYLES[0])!;
+          const totalPeriod = rows.reduce((sum, row) => sum + row.total, 0);
           return (
             <Card
               key={label}
@@ -177,7 +219,7 @@ export default function DashboardPage() {
               </CardHeader>
               <CardContent className="px-5 pb-5 space-y-2">
                 {sucursales.map((s) => {
-                  const total = sumForSucursal(s.id, filter);
+                  const total = rows.find((row) => row.sucursalId === s.id)?.total ?? 0;
                   return (
                     <div
                       key={s.id}
@@ -212,7 +254,7 @@ export default function DashboardPage() {
                     className="text-2xl font-bold tabular-nums leading-none"
                     style={{ color: accent }}
                   >
-                    {formatCurrency(totalForPeriod(filter))}
+                    {formatCurrency(totalPeriod)}
                   </span>
                 </div>
               </CardContent>
@@ -224,7 +266,56 @@ export default function DashboardPage() {
       {/* ── Gráfica 1: Total mensual por sucursal ── */}
       <section>
         <h2 className="label-caps mb-3">{t.dashboard.monthlyTotalByBranch}</h2>
-        <Card>
+        <div className="md:hidden">
+          <Card className="border-[color:var(--border-color)] bg-[var(--bg-card)] shadow-sm">
+            <CardHeader className="p-4 pb-2">
+              <div className="text-[11px] uppercase tracking-[0.12em] text-[color:var(--text-muted)]">
+                {formatDate(selectedDate, "MMMM yyyy", locale)}
+              </div>
+              <div className="mt-1 number-display text-xl">{formatCurrency(monthlyTotal)}</div>
+            </CardHeader>
+            <CardContent className="px-2 pb-4 pt-2">
+              {monthlyBranches.length === 0 ? (
+                <p className="py-4 text-center text-sm text-[color:var(--text-muted)]">Sin ventas en el mes seleccionado.</p>
+              ) : (
+                <ResponsiveContainer width="100%" height={310}>
+                  <BarChart data={monthlyBranches} margin={{ top: 18, right: 8, left: -16, bottom: 54 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" vertical={false} />
+                    <XAxis
+                      dataKey="sucursalNombre"
+                      interval={0}
+                      angle={-38}
+                      textAnchor="end"
+                      height={60}
+                      tickFormatter={abbreviateBranchName}
+                      tick={{ fontSize: 10, fill: "var(--text-muted)" }}
+                    />
+                    <YAxis tickFormatter={formatK} tick={{ fontSize: 10, fill: "var(--text-muted)" }} />
+                    <Tooltip
+                      formatter={(value: number) => formatCurrency(value)}
+                      labelFormatter={(label) => label}
+                      contentStyle={{
+                        backgroundColor: "var(--bg-card)",
+                        border: "1px solid var(--border-color)",
+                        borderRadius: "10px",
+                        color: "var(--text-primary)",
+                        fontSize: "12px",
+                      }}
+                    />
+                    <Bar dataKey="total" name={t.common.total} radius={[4, 4, 0, 0]}>
+                      {monthlyBranches.map((branch, index) => (
+                        <Cell key={branch.sucursalId} fill={SUCURSAL_COLORS[index % SUCURSAL_COLORS.length]} />
+                      ))}
+                      <LabelList dataKey="total" position="top" style={{ fontSize: 9, fill: "var(--text-muted)" }} formatter={formatK} />
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        <Card className="hidden md:block">
           <CardContent className="pt-6">
             <ResponsiveContainer width="100%" height={280}>
               <BarChart
@@ -273,9 +364,9 @@ export default function DashboardPage() {
       {/* ── Gráfica 2: Vendedor vs Meta ── */}
       <section>
         <h2 className="label-caps mb-3">{t.dashboard.sellersMonthlyProgress}</h2>
-        <Card>
-          <CardContent className="pt-6">
-            {vendedoresData.length === 0 ? (
+        {vendedoresData.length === 0 ? (
+          <Card>
+            <CardContent className="pt-6">
               <div
                 className="flex flex-col items-center justify-center py-12 gap-2"
                 style={{ color: "var(--text-muted)" }}
@@ -285,7 +376,84 @@ export default function DashboardPage() {
                   {t.dashboard.assignGoalHint}
                 </p>
               </div>
-            ) : (
+            </CardContent>
+          </Card>
+        ) : (
+          <>
+            <div className="space-y-3 md:hidden">
+              <Card className="border-[color:var(--border-color)] bg-[var(--bg-card)] shadow-sm">
+                <CardContent className="p-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <div className="text-[11px] uppercase tracking-[0.12em] text-[color:var(--text-muted)]">AVANCE GLOBAL</div>
+                      <div className="mt-1 number-display text-2xl">{sellersProgress.toFixed(0)}%</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-[11px] uppercase tracking-[0.12em] text-[color:var(--text-muted)]">{t.dashboard.sold}</div>
+                      <div className="mt-1 text-sm font-semibold tabular-nums">{formatCurrency(sellersSummary.vendido)}</div>
+                    </div>
+                  </div>
+                  <ProgressKeysar value={sellersProgress} className="mt-3" />
+                  <div className="mt-2 flex justify-between text-xs text-[color:var(--text-muted)]">
+                    <span>{vendedoresData.length} VENDEDORES CON META</span>
+                    <span>{t.dashboard.goal}: {formatCurrency(sellersSummary.meta)}</span>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="buscar-vendedor-dashboard" className="text-xs uppercase tracking-[0.12em]">BUSCAR EMPLEADO</Label>
+                <Input
+                  id="buscar-vendedor-dashboard"
+                  value={sellerSearch}
+                  onChange={(event) => setSellerSearch(event.target.value)}
+                  placeholder="Escribe el nombre del vendedor"
+                  className="h-11 border-[color:var(--border-color)] bg-[var(--bg-card)]"
+                />
+              </div>
+
+              <div className="space-y-3">
+                {mobileSellers.map((seller) => {
+                  const progress = seller.meta > 0 ? (seller.vendido / seller.meta) * 100 : 0;
+                  const remaining = Math.max(0, seller.meta - seller.vendido);
+                  const progressColor = progress < 50 ? "text-red-600" : progress < 80 ? "text-yellow-600" : "text-green-600";
+
+                  return (
+                    <Card key={seller.empleadoId} className="border-[color:var(--border-color)] bg-[var(--bg-card)] shadow-sm">
+                      <CardHeader className="flex-row items-start justify-between gap-3 p-4 pb-3">
+                        <div className="min-w-0">
+                          <h3 className="truncate text-base font-semibold">{seller.nombre}</h3>
+                          <div className="mt-1 text-[11px] uppercase tracking-[0.12em] text-[color:var(--text-muted)]">{t.dashboard.sold}</div>
+                          <div className="mt-1 number-display text-lg">{formatCurrency(seller.vendido)}</div>
+                        </div>
+                        <span className={`shrink-0 text-lg font-semibold tabular-nums ${progressColor}`}>{progress.toFixed(0)}%</span>
+                      </CardHeader>
+                      <CardContent className="space-y-3 px-4 pb-4">
+                        <ProgressKeysar value={progress} />
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="rounded-xl bg-[color:var(--bg-primary)] px-3 py-2">
+                            <div className="text-[10px] uppercase tracking-[0.12em] text-[color:var(--text-muted)]">{t.dashboard.goal}</div>
+                            <div className="mt-1 text-sm font-medium tabular-nums">{formatCurrency(seller.meta)}</div>
+                          </div>
+                          <div className="rounded-xl bg-[color:var(--bg-primary)] px-3 py-2">
+                            <div className="text-[10px] uppercase tracking-[0.12em] text-[color:var(--text-muted)]">POR LLEGAR</div>
+                            <div className="mt-1 text-sm font-medium tabular-nums">{formatCurrency(remaining)}</div>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+                {mobileSellers.length === 0 && (
+                  <p className="py-6 text-center text-sm text-[color:var(--text-muted)]">
+                    No hay empleados que coincidan con la búsqueda.
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <Card className="hidden md:block">
+              <CardContent className="pt-6">
               <ResponsiveContainer
                 width="100%"
                 height={Math.max(200, vendedoresData.length * 52)}
@@ -384,9 +552,10 @@ export default function DashboardPage() {
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
-            )}
-          </CardContent>
-        </Card>
+              </CardContent>
+            </Card>
+          </>
+        )}
       </section>
     </div>
   );

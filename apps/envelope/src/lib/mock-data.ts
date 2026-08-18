@@ -24,11 +24,15 @@ export type Puesto = (typeof PUESTOS)[number];
 export interface Sucursal {
   id: string;
   nombre: string;
+  metaMensual: number;
+  activa: boolean;
+  desactivadaEn: string | null;
 }
 
 export interface MetodoPago {
   id: string;
   nombre: string;
+  tipo?: string;
 }
 
 export interface Empleado {
@@ -49,6 +53,9 @@ export interface Empleado {
   bank?: { id: string; nombre: string; activo: boolean } | null;
   positionId?: string | null;
   position?: { id: string; nombre: string; activo: boolean } | null;
+  sucursalId?: string | null;
+  sucursal?: { id: string; nombre: string; activa: boolean } | null;
+  todasSucursales?: boolean;
   metaIndividual: number;
   activo: boolean;
 }
@@ -68,6 +75,8 @@ export interface RegistroVenta {
   // Nombre embebido desde el include del backend — evita lookup en lista de sucursales activas
   sucursalNombre?: string;
   vendedorId: string;
+  // Nombre embebido desde el include del backend — evita depender del catálogo de empleados
+  vendedorNombre?: string;
   fecha: string; // YYYY-MM-DD
   items: VentaItem[];
   // Comparte sesionId con otros registros del mismo voucher multi-vendedor; null = venta individual
@@ -77,9 +86,9 @@ export interface RegistroVenta {
 // ─── Catálogos base ──────────────────────────────────────────────────────────
 
 export const INITIAL_SUCURSALES: Sucursal[] = [
-  { id: "s1", nombre: "Sucursal Centro" },
-  { id: "s2", nombre: "Sucursal Norte" },
-  { id: "s3", nombre: "Sucursal Sur" },
+  { id: "s1", nombre: "Sucursal Centro", metaMensual: 0, activa: true, desactivadaEn: null },
+  { id: "s2", nombre: "Sucursal Norte", metaMensual: 0, activa: true, desactivadaEn: null },
+  { id: "s3", nombre: "Sucursal Sur", metaMensual: 0, activa: true, desactivadaEn: null },
 ];
 
 export const INITIAL_METODOS_PAGO: MetodoPago[] = [

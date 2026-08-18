@@ -87,6 +87,36 @@
     font-variant-numeric: tabular-nums;
     letter-spacing: -0.01em;
   }
+
+  /* Scroll horizontal de matrices financieras: discreto y dentro de la marca. */
+  .branch-goals-scroll > div {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-nude) transparent;
+  }
+
+  .branch-goals-scroll > div::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .branch-goals-scroll > div::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .branch-goals-scroll > div::-webkit-scrollbar-thumb {
+    background: var(--color-nude);
+    border-radius: 9999px;
+  }
+
+  .branch-goals-scroll > div::-webkit-scrollbar-thumb:hover {
+    background: var(--color-gold);
+  }
+
+  .branch-goals-scroll--monthly > div {
+    max-height: clamp(24rem, calc(100dvh - 15rem), 52rem);
+    overscroll-behavior: contain;
+    scroll-padding-top: 2.5rem;
+  }
 }
 
 /* ── Variables de marca Keysar Cosmetics ──────────────────────────────────── */
@@ -108,9 +138,9 @@
     --bg-primary: #f3f0e9;
     --bg-card: #ffffff;
     --bg-sidebar: #ffffff;
-    --text-primary: #606060;
-    --text-secondary: #c3a583;
-    --text-muted: #9a9a9a;
+    --text-primary: #4f4a44;
+    --text-secondary: #a88662;
+    --text-muted: #766d64;
     --accent: #c3a583;
     --accent-hover: #ecd1c8;
     --border-color: #ecd1c8;
@@ -120,6 +150,10 @@
     --table-header-bg: #c3a583;
     --table-header-text: #ffffff;
     --table-row-alt: #f9f5f1;
+    --table-header-label: #7b634a;
+    --table-body-text: #4f4a44;
+    --table-row-hover: rgba(195, 165, 131, 0.12);
+    --table-row-selected: rgba(195, 165, 131, 0.18);
     --input-bg: #ffffff;
     --input-disabled-bg: #faf8f5;
     /* Dimensiones sidebar — usadas por el componente Sidebar oficial shadcn */
@@ -144,6 +178,10 @@
     --table-header-bg: #c3a583;
     --table-header-text: #1a1a1a;
     --table-row-alt: #2e2e2e;
+    --table-header-label: #d8c0a3;
+    --table-body-text: #e9e1d6;
+    --table-row-hover: rgba(243, 240, 233, 0.04);
+    --table-row-selected: rgba(243, 240, 233, 0.08);
     --input-bg: #303030;
     --input-disabled-bg: #2a2a2a;
   }
@@ -185,5 +223,23 @@
   ::selection {
     background-color: var(--color-nude);
     color: var(--color-charcoal);
+  }
+
+  /* Autofill controlado para inputs oscuros en auth/login */
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus,
+  input:-webkit-autofill:active {
+    -webkit-box-shadow: 0 0 0 1000px rgba(255, 255, 255, 0.04) inset !important;
+    box-shadow: 0 0 0 1000px rgba(255, 255, 255, 0.04) inset !important;
+    -webkit-text-fill-color: #f6efe6 !important;
+    caret-color: #f6efe6 !important;
+    transition: background-color 9999s ease-out 0s;
+  }
+
+  input:autofill {
+    box-shadow: 0 0 0 1000px rgba(255, 255, 255, 0.04) inset !important;
+    color: #f6efe6 !important;
+    caret-color: #f6efe6 !important;
   }
 }

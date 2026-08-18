@@ -14,8 +14,14 @@ export { Card, CardHeader, CardFooter, CardTitle, CardDescription, CardContent }
 export { Badge, badgeVariants } from './components/ui/badge'
 export type { BadgeProps } from './components/ui/badge'
 
+// Tabs accesibles basados en Base UI
+export { Tabs, TabsList, TabsTrigger, TabsContent } from './components/ui/tabs'
+
 // Fase 2D - Progress shadcn/ui canonico
 export { Progress } from './components/ui/progress'
+
+// Skeleton shadcn/ui canonico
+export { Skeleton } from './components/ui/skeleton'
 
 // Fase 2D - Wrapper con colores de marca Keysar
 export { ProgressKeysar } from './components/custom/progress-keysar'
@@ -77,6 +83,9 @@ export type { CalendarProps } from './components/ui/calendar'
 // Fase 2E - DateRangePicker shadcn/ui (Calendar + Popover)
 export { DateRangePicker } from './components/ui/date-range-picker'
 export type { DateRange } from './components/ui/date-range-picker'
+
+// Fase 2E - DatePicker shadcn/ui (Calendar + Popover)
+export { DatePicker } from './components/ui/date-picker'
 
 // Fase 3 - Sheet shadcn/ui canonico
 export {
@@ -149,6 +158,23 @@ export {
 // Sonner (Toaster) shadcn/ui canonico + toast helper
 export { Toaster } from './components/ui/sonner'
 export { toast } from 'sonner'
+
+// Toast canonico shadcn basado en Base UI
+export {
+  Toaster as BaseToaster,
+  Toast,
+  ToastAction,
+  ToastClose,
+  ToastContent,
+  ToastDescription,
+  ToastPortal,
+  ToastProvider,
+  ToastTitle,
+  ToastViewport,
+  createToastManager,
+  toast as baseToast,
+  useToastManager,
+} from './components/ui/toast'
 
 // DataTable canonico shadcn/ui - usa @tanstack/react-table
 export { DataTable } from './components/ui/data-table'

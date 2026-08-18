@@ -1,12 +1,14 @@
 'use client'
 // Hook para gestión de bancos — CRUD contra el backend real
-import { useState, useEffect, useCallback } from 'react'
+import { useCallback } from 'react'
 import { api } from '@/lib/api'
 import type { Bank } from '@cosmetics/types'
+import { createCatalogStore } from './catalog-cache'
 
 interface UseBanksReturn {
   banks: Bank[]
   loading: boolean
+  loaded: boolean
   error: string | null
   refetch: () => Promise<void>
   add: (nombre: string) => Promise<void>
@@ -14,25 +16,16 @@ interface UseBanksReturn {
   remove: (id: string) => Promise<void>
 }
 
+const banksStore = createCatalogStore<Bank>(
+  async () => {
+    const { data } = await api.get<{ success: boolean; data: Bank[] }>('/api/envelope/banks')
+    return data.data
+  },
+  'Error al cargar bancos',
+)
+
 export function useBanks(): UseBanksReturn {
-  const [banks, setBanks] = useState<Bank[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
-  const refetch = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const { data } = await api.get<{ success: boolean; data: Bank[] }>('/api/envelope/banks')
-      setBanks(data.data)
-    } catch {
-      setError('Error al cargar bancos')
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => { void refetch() }, [refetch])
+  const { items: banks, loading, loaded, error, refetch } = banksStore.useStore()
 
   const add = useCallback(async (nombre: string) => {
     await api.post('/api/envelope/banks', { nombre })
@@ -49,5 +42,5 @@ export function useBanks(): UseBanksReturn {
     await refetch()
   }, [refetch])
 
-  return { banks, loading, error, refetch, add, update, remove }
+  return { banks, loading, loaded, error, refetch, add, update, remove }
 }

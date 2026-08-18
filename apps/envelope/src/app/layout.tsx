@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { Toaster } from '@cosmetics/ui'
+import { BaseToaster, Toaster } from '@cosmetics/ui'
 import { I18nProvider } from '@/lib/i18n'
 import { SessionProvider } from '@/lib/session'
 import './globals.css'
@@ -36,6 +36,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <I18nProvider>
           <SessionProvider>
             {children}
+            <BaseToaster />
             <Toaster position="bottom-center" />
           </SessionProvider>
         </I18nProvider>

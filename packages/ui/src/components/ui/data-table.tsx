@@ -31,6 +31,12 @@ interface DataTableLabels {
   results?: (count: number) => string
 }
 
+type ColumnAlignment = 'left' | 'center' | 'right'
+
+type ColumnMeta = {
+  align?: ColumnAlignment
+}
+
 interface DataTableProps<TData, TValue> {
   columns: ColumnDef<TData, TValue>[]
   data: TData[]
@@ -84,7 +90,7 @@ export function DataTable<TData, TValue>({
   return (
     <div className="space-y-3">
       {/* Búsqueda global y selector de filas */}
-      <div className="flex items-center gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <div className="relative flex-1">
           <Search
             className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 pointer-events-none"
@@ -94,15 +100,15 @@ export function DataTable<TData, TValue>({
             placeholder={searchPlaceholder.toUpperCase()}
             value={globalFilter}
             onChange={(e) => setGlobalFilter(e.target.value)}
-            className="pl-9"
+            className="pl-9 text-[0.9rem]"
           />
         </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <span className="text-xs whitespace-nowrap" style={{ color: 'var(--text-muted)' }}>
+        <div className="flex items-center justify-between gap-2 sm:shrink-0 sm:justify-start">
+          <span className="text-[0.82rem] whitespace-nowrap" style={{ color: 'var(--text-muted)' }}>
             {recordsLabel}
           </span>
           <Select value={pageSizeOption} onValueChange={handlePageSizeChange}>
-            <SelectTrigger className="h-9 w-24">
+            <SelectTrigger className="h-9 w-24 text-[0.88rem]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -117,18 +123,25 @@ export function DataTable<TData, TValue>({
       </div>
 
       {/* Tabla */}
-      <div className="overflow-x-auto rounded-md border" style={{ borderColor: 'var(--border-color)' }}>
+      <div
+        className="overflow-x-auto rounded-xl border border-[color:var(--border-color)] bg-[color:var(--bg-card)]"
+      >
         <Table>
-          <TableHeader>
+          <TableHeader className="[&_tr]:border-[color:var(--border-color)]">
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id}>
                 {headerGroup.headers.map((header) => {
                   const canSort = header.column.getCanSort()
+                  const align = (header.column.columnDef.meta as ColumnMeta | undefined)?.align
+                  const headAlignClass = align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'
                   return (
-                    <TableHead key={header.id} className="uppercase">
+                    <TableHead
+                      key={header.id}
+                      className={`${headAlignClass} uppercase text-[0.72rem] tracking-[0.14em] text-[color:var(--table-header-label)]`}
+                    >
                       {header.isPlaceholder ? null : canSort ? (
                         <button
-                          className="flex items-center gap-1 hover:opacity-70 transition-opacity select-none"
+                          className={`flex w-full items-center gap-1 select-none transition-opacity hover:opacity-70 ${align === 'right' ? 'justify-end' : align === 'center' ? 'justify-center' : 'justify-start'}`}
                           onClick={() => header.column.toggleSorting()}
                         >
                           {flexRender(header.column.columnDef.header, header.getContext())}
@@ -152,9 +165,16 @@ export function DataTable<TData, TValue>({
           <TableBody>
             {table.getRowModel().rows.length ? (
               table.getRowModel().rows.map((row) => (
-                <TableRow key={row.id} data-state={row.getIsSelected() && 'selected'}>
+                <TableRow
+                  key={row.id}
+                  data-state={row.getIsSelected() && 'selected'}
+                  className="border-[color:var(--border-color)] hover:bg-[color:var(--table-row-hover)] data-[state=selected]:bg-[color:var(--table-row-selected)]"
+                >
                   {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>
+                    <TableCell
+                      key={cell.id}
+                      className={`border-[color:var(--border-color)] text-[0.88rem] text-[color:var(--table-body-text)] ${(cell.column.columnDef.meta as ColumnMeta | undefined)?.align === 'right' ? 'text-right' : (cell.column.columnDef.meta as ColumnMeta | undefined)?.align === 'center' ? 'text-center' : 'text-left'}`}
+                    >
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </TableCell>
                   ))}
@@ -164,7 +184,7 @@ export function DataTable<TData, TValue>({
               <TableRow>
                 <TableCell
                   colSpan={columns.length}
-                  className="h-24 text-center"
+                  className="h-24 text-center text-[0.9rem]"
                   style={{ color: 'var(--text-muted)' }}
                 >
                   {emptyMessage.toUpperCase()}
@@ -177,7 +197,7 @@ export function DataTable<TData, TValue>({
 
       {/* Paginación */}
       <div className="flex items-center justify-between">
-        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+        <p className="text-[0.82rem]" style={{ color: 'var(--text-muted)' }}>
           {resultsLabel(totalFiltered).toUpperCase()}
         </p>
         {showPagination && (
@@ -191,7 +211,7 @@ export function DataTable<TData, TValue>({
             >
               <ChevronLeft className="h-4 w-4" />
             </Button>
-            <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+            <span className="text-[0.82rem]" style={{ color: 'var(--text-muted)' }}>
               {pageCount > 0 ? `${pageIndex + 1} / ${pageCount}` : '—'}
             </span>
             <Button

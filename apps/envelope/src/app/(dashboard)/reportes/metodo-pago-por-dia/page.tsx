@@ -1,7 +1,11 @@
 'use client'
 // Reporte: Ventas por método de pago desglosadas por día, columna por sucursal
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
   Label,
   Table,
   TableHeader,
@@ -17,14 +21,17 @@ import {
   SelectItem,
 } from "@cosmetics/ui"
 
-import { useReportes } from '@/hooks'
+import { api } from '@/lib/api'
+import { useMetodosPago, useSucursales } from '@/hooks'
 import { useI18n } from '@/lib/i18n'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { ReportExportButtons } from '@/components/reportes/ReportExportButtons'
+import { TableLoadingSkeleton } from '@/components/layout/DataLoadingSkeleton'
 import { exportReportToExcel, exportReportToPdf, type ExportColumn } from '@/lib/report-export'
 
 export default function MetodoPagoPorDiaPage() {
-  const { registros, sucursales, metodosPago, loading, error } = useReportes()
+  const { sucursales: catalogoSucursales, loading: loadingSucursales, error: sucursalesError } = useSucursales()
+  const { metodosPago, loading: loadingMetodos, error: metodosError } = useMetodosPago()
   const { locale, t } = useI18n()
 
   const now = new Date()
@@ -32,6 +39,10 @@ export default function MetodoPagoPorDiaPage() {
   const [year, setYear] = useState(now.getFullYear())
   const [month, setMonth] = useState(now.getMonth() + 1)
   const [exporting, setExporting] = useState<'pdf' | 'excel' | null>(null)
+  type ReportRow = { fecha: string; sucursalId: string; sucursalNombre: string; total: number }
+  const [rows, setRows] = useState<ReportRow[]>([])
+  const [loadingReport, setLoadingReport] = useState(true)
+  const [reportError, setReportError] = useState<string | null>(null)
 
   const years = Array.from({ length: now.getFullYear() - 2022 }, (_, i) => 2023 + i)
   const months = t.reports.months
@@ -39,17 +50,51 @@ export default function MetodoPagoPorDiaPage() {
   // Usa el primer método disponible si no se ha seleccionado
   const efectivoId = metodoPagoId || (metodosPago[0]?.id ?? '')
 
-  const prefix = `${year}-${String(month).padStart(2, '0')}`
-  const filtered = registros.filter(r => r.fecha.startsWith(prefix))
+  useEffect(() => {
+    if (!efectivoId) {
+      setRows([])
+      setLoadingReport(false)
+      return
+    }
 
-  const dias = [...new Set(filtered.map(r => r.fecha))].sort()
+    let cancelled = false
+
+    async function loadReport() {
+      setLoadingReport(true)
+      setReportError(null)
+      try {
+        const { data } = await api.get<{ success: boolean; data: ReportRow[] }>('/api/envelope/reportes/metodo-pago-por-dia', {
+          params: { metodoPagoId: efectivoId, mes: month, anio: year },
+        })
+        if (!cancelled) setRows(data.data)
+      } catch {
+        if (!cancelled) setReportError('Error al cargar reporte')
+      } finally {
+        if (!cancelled) setLoadingReport(false)
+      }
+    }
+
+    void loadReport()
+
+    return () => {
+      cancelled = true
+    }
+  }, [efectivoId, month, year])
+
+  const loading = loadingSucursales || loadingMetodos || loadingReport
+  const error = sucursalesError ?? metodosError ?? reportError
+  const dias = [...new Set(rows.map(r => r.fecha))].sort()
+  const sucursales = useMemo(() => {
+    const branchById = new Map(catalogoSucursales.map(({ id, nombre }) => [id, nombre]))
+    rows.forEach(({ sucursalId, sucursalNombre }) => {
+      if (!branchById.has(sucursalId)) branchById.set(sucursalId, sucursalNombre)
+    })
+    return Array.from(branchById, ([id, nombre]) => ({ id, nombre }))
+      .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
+  }, [catalogoSucursales, rows])
 
   function totalDiaSucursal(fecha: string, sucursalId: string): number {
-    return filtered
-      .filter(r => r.fecha === fecha && r.sucursalId === sucursalId)
-      .flatMap(r => r.items)
-      .filter(i => i.metodoPagoId === efectivoId)
-      .reduce((s, i) => s + i.cantidad, 0)
+    return rows.find(r => r.fecha === fecha && r.sucursalId === sucursalId)?.total ?? 0
   }
 
   function totalDia(fecha: string): number {
@@ -61,6 +106,7 @@ export default function MetodoPagoPorDiaPage() {
   }
 
   const grandTotal = dias.reduce((s, d) => s + totalDia(d), 0)
+  const selectedMethodName = metodosPago.find((m) => m.id === efectivoId)?.nombre ?? efectivoId
   type ExportRow = {
     fecha: string
     bySucursal: Record<string, number>
@@ -103,9 +149,8 @@ export default function MetodoPagoPorDiaPage() {
     },
   ]
 
-  function handleExport(kind: 'pdf' | 'excel') {
+  async function handleExport(kind: 'pdf' | 'excel') {
     setExporting(kind)
-    const selectedMethodName = metodosPago.find((m) => m.id === efectivoId)?.nombre ?? efectivoId
     const config = {
       title: t.reports.paymentMethodByDayTitle,
       subtitle: `${selectedMethodName} - ${t.common.monthlyPeriod} ${month}/${year}`,
@@ -119,9 +164,9 @@ export default function MetodoPagoPorDiaPage() {
 
     try {
       if (kind === 'pdf') {
-        exportReportToPdf(config)
+        await exportReportToPdf(config)
       } else {
-        exportReportToExcel(config)
+        await exportReportToExcel(config)
       }
     } finally {
       setExporting(null)
@@ -187,13 +232,56 @@ export default function MetodoPagoPorDiaPage() {
         </div>
       </div>
 
-      {loading && <p className="text-sm" style={{ color: 'var(--text-muted)' }}>{t.common.loadingData}</p>}
       {error && <p className="text-sm text-red-500">{error}</p>}
 
-      {!loading && dias.length === 0 ? (
+      {loading ? (
+        <TableLoadingSkeleton columns={Math.max(3, sucursales.length + 2)} rows={6} label={t.common.loadingData} />
+      ) : dias.length === 0 ? (
         <p className="text-sm" style={{ color: 'var(--text-muted)' }}>{t.reports.noSalesPaymentMethodPeriod}</p>
       ) : (
-        <div className="overflow-x-auto">
+        <>
+        <div className="space-y-3 md:hidden">
+          <Card className="border-[color:var(--border-color)] bg-[var(--bg-card)] shadow-sm">
+            <CardHeader className="p-4 pb-2">
+              <div className="text-[11px] uppercase tracking-[0.12em] text-[color:var(--text-muted)]">MÉTODO SELECCIONADO</div>
+              <CardTitle className="mt-1 text-base">{selectedMethodName}</CardTitle>
+            </CardHeader>
+            <CardContent className="p-4 pt-1">
+              <div className="text-[11px] uppercase tracking-[0.12em] text-[color:var(--text-muted)]">TOTAL DEL PERÍODO</div>
+              <div className="mt-1 number-display text-xl">{formatCurrency(grandTotal)}</div>
+            </CardContent>
+          </Card>
+
+          <div className="space-y-3">
+            {dias.map((dia) => {
+              const branchSales = sucursales
+                .map((sucursal) => ({ ...sucursal, total: totalDiaSucursal(dia, sucursal.id) }))
+                .filter((sucursal) => sucursal.total > 0)
+
+              return (
+                <Card key={dia} className="border-[color:var(--border-color)] bg-[var(--bg-card)] shadow-sm">
+                  <CardHeader className="flex-row items-start justify-between gap-4 p-4 pb-3">
+                    <div>
+                      <CardTitle className="text-base capitalize">{formatDate(dia, 'EEEE dd', locale)}</CardTitle>
+                      <div className="mt-1 text-[11px] uppercase tracking-[0.12em] text-[color:var(--text-muted)]">VENTAS DEL DÍA</div>
+                    </div>
+                    <div className="number-display shrink-0 text-base">{formatCurrency(totalDia(dia))}</div>
+                  </CardHeader>
+                  <CardContent className="space-y-2 px-4 pb-4">
+                    {branchSales.map((sucursal) => (
+                      <div key={sucursal.id} className="flex items-center justify-between gap-4 rounded-xl bg-[color:var(--bg-primary)] px-3 py-2.5">
+                        <span className="min-w-0 truncate text-sm font-medium">{sucursal.nombre}</span>
+                        <span className="shrink-0 text-sm font-semibold tabular-nums">{formatCurrency(sucursal.total)}</span>
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+              )
+            })}
+          </div>
+        </div>
+
+        <div className="hidden overflow-x-auto md:block">
         <Table>
           <TableHeader>
             <TableRow>
@@ -226,6 +314,7 @@ export default function MetodoPagoPorDiaPage() {
           </TableFooter>
         </Table>
         </div>
+        </>
       )}
     </div>
   )

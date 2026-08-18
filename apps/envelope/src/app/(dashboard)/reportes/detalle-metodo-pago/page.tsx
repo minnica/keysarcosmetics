@@ -1,11 +1,13 @@
 'use client'
 // Reporte: Detalle de ventas por método de pago, agrupado por sucursal
 import { useState } from 'react'
-import { DateRangePicker, type DateRange, Table, TableHeader, TableBody, TableFooter, TableRow, TableHead, TableCell } from "@cosmetics/ui"
-import { useReportes } from '@/hooks'
+import { useEffect } from 'react'
+import { Card, CardContent, CardHeader, CardTitle, DateRangePicker, type DateRange, Table, TableHeader, TableBody, TableFooter, TableRow, TableHead, TableCell } from "@cosmetics/ui"
+import { api } from '@/lib/api'
 import { useI18n } from '@/lib/i18n'
 import { formatCurrency, todayISO } from '@/lib/utils'
 import { ReportExportButtons } from '@/components/reportes/ReportExportButtons'
+import { TableLoadingSkeleton } from '@/components/layout/DataLoadingSkeleton'
 import { exportReportToExcel, exportReportToPdf, type ExportColumn } from '@/lib/report-export'
 
 function firstDayOfMonth(): string {
@@ -13,25 +15,41 @@ function firstDayOfMonth(): string {
 }
 
 export default function DetalleMetodoPagoPage() {
-  const { registros, sucursales, metodosPago, loading, error } = useReportes()
   const { t } = useI18n()
   const [range, setRange] = useState<DateRange>({ from: firstDayOfMonth(), to: todayISO() })
   const [exporting, setExporting] = useState<'pdf' | 'excel' | null>(null)
+  type Row = { sucursalId: string; sucursalNombre: string; metodoPagoId: string; metodoPagoNombre: string; total: number }
+  const [rows, setRows] = useState<Row[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
-  const filtered = registros.filter(r => r.fecha >= range.from && r.fecha <= range.to)
+  useEffect(() => {
+    let cancelled = false
 
-  type Row = { sucursalId: string; metodoPagoId: string; total: number }
-  const rows: Row[] = []
-  for (const reg of filtered) {
-    for (const item of reg.items) {
-      const existing = rows.find(r => r.sucursalId === reg.sucursalId && r.metodoPagoId === item.metodoPagoId)
-      if (existing) existing.total += item.cantidad
-      else rows.push({ sucursalId: reg.sucursalId, metodoPagoId: item.metodoPagoId, total: item.cantidad })
+    async function loadReport() {
+      setLoading(true)
+      setError(null)
+      try {
+        const { data } = await api.get<{ success: boolean; data: Row[] }>('/api/envelope/reportes/detalle-metodo-pago', {
+          params: { fechaInicio: range.from, fechaFin: range.to },
+        })
+        if (!cancelled) setRows(data.data)
+      } catch {
+        if (!cancelled) setError('Error al cargar reporte')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
     }
-  }
 
-  const sucursalNombre = (id: string) => sucursales.find(s => s.id === id)?.nombre ?? id
-  const metodoPagoNombre = (id: string) => metodosPago.find(m => m.id === id)?.nombre ?? id
+    void loadReport()
+
+    return () => {
+      cancelled = true
+    }
+  }, [range.from, range.to])
+
+  const sucursalNombre = (id: string) => rows.find(s => s.sucursalId === id)?.sucursalNombre ?? id
+  const metodoPagoNombre = (id: string) => rows.find(m => m.metodoPagoId === id)?.metodoPagoNombre ?? id
   const grandTotal = rows.reduce((s, r) => s + r.total, 0)
   const sucursalesConDatos = [...new Set(rows.map(r => r.sucursalId))]
   type ExportRow = {
@@ -67,7 +85,7 @@ export default function DetalleMetodoPagoPage() {
     { header: t.common.total, accessor: (row) => row.total, format: 'currency', width: 14 },
   ]
 
-  function handleExport(kind: 'pdf' | 'excel') {
+  async function handleExport(kind: 'pdf' | 'excel') {
     setExporting(kind)
     const config = {
       title: t.reports.paymentMethodDetailTitle,
@@ -86,9 +104,9 @@ export default function DetalleMetodoPagoPage() {
 
     try {
       if (kind === 'pdf') {
-        exportReportToPdf(config)
+        await exportReportToPdf(config)
       } else {
-        exportReportToExcel(config)
+        await exportReportToExcel(config)
       }
     } finally {
       setExporting(null)
@@ -114,16 +132,57 @@ export default function DetalleMetodoPagoPage() {
 
       <div className="flex items-center gap-3 flex-wrap">
         <span className="text-sm font-medium" style={{ color: 'var(--text-muted)' }}>{t.common.period}</span>
-        <DateRangePicker value={range} onChange={setRange} />
+        <DateRangePicker value={range} onChange={setRange} fromLabel={t.common.from} toLabel={t.common.to} />
       </div>
 
-      {loading && <p className="text-sm" style={{ color: 'var(--text-muted)' }}>{t.common.loadingData}</p>}
       {error && <p className="text-sm text-red-500">{error}</p>}
 
-      {!loading && sucursalesConDatos.length === 0 ? (
+      {loading ? (
+        <TableLoadingSkeleton columns={3} rows={6} label={t.common.loadingData} />
+      ) : sucursalesConDatos.length === 0 ? (
         <p className="text-sm" style={{ color: 'var(--text-muted)' }}>{t.common.noDataSelectedPeriod}</p>
       ) : (
-        <div className="overflow-x-auto">
+        <>
+        <div className="space-y-3 md:hidden">
+          <Card className="border-[color:var(--border-color)] bg-[var(--bg-card)] shadow-sm">
+            <CardHeader className="p-4 pb-2">
+              <div className="text-[11px] uppercase tracking-[0.12em] text-[color:var(--text-muted)]">TOTAL GENERAL</div>
+              <CardTitle className="mt-1 number-display text-xl">{formatCurrency(grandTotal)}</CardTitle>
+            </CardHeader>
+            <CardContent className="p-4 pt-1 text-xs uppercase tracking-[0.12em] text-[color:var(--text-muted)]">
+              {sucursalesConDatos.length} {sucursalesConDatos.length === 1 ? 'SUCURSAL' : 'SUCURSALES'} CON VENTAS
+            </CardContent>
+          </Card>
+
+          <div className="space-y-3">
+            {sucursalesConDatos.map((sId) => {
+              const sucursalRows = rows.filter((row) => row.sucursalId === sId)
+              const subtotal = sucursalRows.reduce((sum, row) => sum + row.total, 0)
+
+              return (
+                <Card key={sId} className="border-[color:var(--border-color)] bg-[var(--bg-card)] shadow-sm">
+                  <CardHeader className="flex-row items-start justify-between gap-4 p-4 pb-3">
+                    <div>
+                      <CardTitle className="text-base">{sucursalNombre(sId)}</CardTitle>
+                      <div className="mt-1 text-[11px] uppercase tracking-[0.12em] text-[color:var(--text-muted)]">TOTAL DE SUCURSAL</div>
+                    </div>
+                    <div className="number-display shrink-0 text-base">{formatCurrency(subtotal)}</div>
+                  </CardHeader>
+                  <CardContent className="space-y-2 px-4 pb-4">
+                    {sucursalRows.map((row) => (
+                      <div key={row.metodoPagoId} className="flex items-center justify-between gap-4 rounded-xl bg-[color:var(--bg-primary)] px-3 py-2.5">
+                        <span className="min-w-0 truncate text-sm font-medium">{metodoPagoNombre(row.metodoPagoId)}</span>
+                        <span className="shrink-0 text-sm font-semibold tabular-nums">{formatCurrency(row.total)}</span>
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+              )
+            })}
+          </div>
+        </div>
+
+        <div className="hidden overflow-x-auto md:block">
         <Table>
           <TableHeader>
             <TableRow>
@@ -164,6 +223,7 @@ export default function DetalleMetodoPagoPage() {
           </TableFooter>
         </Table>
         </div>
+        </>
       )}
     </div>
   )

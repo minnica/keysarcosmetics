@@ -1,16 +1,18 @@
 'use client'
 // Hook para gestión de empleados — CRUD contra el backend real
-import { useState, useEffect, useCallback } from 'react'
+import { useCallback } from 'react'
 import { api } from '@/lib/api'
 import type { Empleado } from '@/lib/mock-data'
+import { createCatalogStore } from './catalog-cache'
 
 interface UseEmpleadosReturn {
   empleados: Empleado[]
   loading: boolean
+  loaded: boolean
   error: string | null
   refetch: () => Promise<void>
   add: (e: Omit<Empleado, 'id'>) => Promise<void>
-  update: (e: Empleado) => Promise<void>
+  update: (e: Partial<Empleado> & Pick<Empleado, 'id'>) => Promise<void>
   remove: (id: string) => Promise<void>
   toggleStatus: (id: string, activo: boolean) => Promise<void>
 }
@@ -38,36 +40,30 @@ function toEmpleado(raw: Record<string, unknown>): Empleado {
     bank: (raw['bank'] as Empleado['bank']) ?? null,
     positionId: (raw['positionId'] as string | null) ?? null,
     position: (raw['position'] as Empleado['position']) ?? null,
+    sucursalId: (raw['sucursalId'] as string | null) ?? null,
+    sucursal: (raw['sucursal'] as Empleado['sucursal']) ?? null,
+    todasSucursales: (raw['todasSucursales'] as boolean) ?? false,
     activo: (raw['activo'] as boolean) ?? true,
   }
 }
 
+const empleadosStore = createCatalogStore<Empleado>(
+  async () => {
+    const { data } = await api.get<{ success: boolean; data: Record<string, unknown>[] }>('/api/envelope/empleados')
+    return data.data.map(toEmpleado)
+  },
+  'Error al cargar empleados',
+)
+
 export function useEmpleados(): UseEmpleadosReturn {
-  const [empleados, setEmpleados] = useState<Empleado[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
-  const refetch = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const { data } = await api.get<{ success: boolean; data: Record<string, unknown>[] }>('/api/envelope/empleados')
-      setEmpleados(data.data.map(toEmpleado))
-    } catch {
-      setError('Error al cargar empleados')
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => { void refetch() }, [refetch])
+  const { items: empleados, loading, loaded, error, refetch } = empleadosStore.useStore()
 
   const add = useCallback(async (e: Omit<Empleado, 'id'>) => {
     await api.post('/api/envelope/empleados', e)
     await refetch()
   }, [refetch])
 
-  const update = useCallback(async (e: Empleado) => {
+  const update = useCallback(async (e: Partial<Empleado> & Pick<Empleado, 'id'>) => {
     await api.put(`/api/envelope/empleados/${e.id}`, e)
     await refetch()
   }, [refetch])
@@ -82,5 +78,5 @@ export function useEmpleados(): UseEmpleadosReturn {
     await refetch()
   }, [refetch])
 
-  return { empleados, loading, error, refetch, add, update, remove, toggleStatus }
+  return { empleados, loading, loaded, error, refetch, add, update, remove, toggleStatus }
 }

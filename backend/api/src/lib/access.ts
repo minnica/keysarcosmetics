@@ -5,7 +5,12 @@ import { prisma } from '../prisma/client'
 export const ACCESS_SCREEN_ORDER = [
   'dashboard',
   'ventas',
+  'ventas/generar-sobre',
+  'citas',
+  'servicios',
   'empleados',
+  'empleados/sueldo',
+  'reportes/ver-datos-keysar-home',
   'sucursales',
   'metodos-pago',
   'bancos',
@@ -14,7 +19,11 @@ export const ACCESS_SCREEN_ORDER = [
   'reportes/metodo-pago-por-dia',
   'reportes/ventas-por-vendedor',
   'reportes/ventas-por-vendedor-dia',
+  'reportes/ranking-vendedores',
+  'reportes/ranking-sucursales',
   'reportes/total-general',
+  'reportes/metas-sucursal',
+  'reportes/citas',
   'accesos',
 ] as const
 
@@ -28,6 +37,7 @@ export interface ResolvedAccess {
   positionId: string | null
   positionName: string | null
   canManageAccess: boolean
+  selfDataOnly: boolean
   screenPermissions: ScreenKey[]
 }
 
@@ -42,6 +52,7 @@ export interface AccessUserRecord {
   positionId: string | null
   positionName: string | null
   canManageAccess: boolean
+  selfDataOnly: boolean
   screenPermissions: ScreenKey[]
   creadoEn: Date
 }
@@ -63,6 +74,7 @@ async function fetchAccess(userId: string): Promise<ResolvedAccess | null> {
               id: true,
               nombre: true,
               canManageAccess: true,
+              selfDataOnly: true,
               screenPermissions: {
                 select: { screenKey: true, allowed: true },
               },
@@ -83,6 +95,7 @@ async function fetchAccess(userId: string): Promise<ResolvedAccess | null> {
         id: string
         nombre: string
         canManageAccess: boolean
+        selfDataOnly: boolean
         screenPermissions: Array<{ screenKey: ScreenKey; allowed: boolean }>
       } | null
     } | null
@@ -110,6 +123,7 @@ async function fetchAccess(userId: string): Promise<ResolvedAccess | null> {
     positionId: position?.id ?? null,
     positionName: position?.nombre ?? null,
     canManageAccess,
+    selfDataOnly: Boolean(!canManageAccess && position?.selfDataOnly),
     screenPermissions: [...new Set(screenPermissions)],
   }
 }
@@ -164,6 +178,28 @@ export function requireScreenAccess(screenKey: ScreenKey) {
   }
 }
 
+export function requireAnyScreenAccess(screenKeys: readonly ScreenKey[]) {
+  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    const access = await resolveAccessForRequest(req)
+
+    if (!access) {
+      res.status(401).json({ success: false, message: 'No autenticado', data: null })
+      return
+    }
+
+    if (!access.canManageAccess && !screenKeys.some((screenKey) => access.screenPermissions.includes(screenKey))) {
+      res.status(403).json({
+        success: false,
+        message: 'No tienes permisos para ver esta pantalla',
+        data: null,
+      })
+      return
+    }
+
+    next()
+  }
+}
+
 export function toSessionUser(access: ResolvedAccess, usuario: {
   id: string
   nombre: string
@@ -185,6 +221,7 @@ export function toSessionUser(access: ResolvedAccess, usuario: {
     positionId: access.positionId,
     positionName: access.positionName,
     canManageAccess: access.canManageAccess,
+    selfDataOnly: access.selfDataOnly,
     screenPermissions: access.screenPermissions,
   }
 }

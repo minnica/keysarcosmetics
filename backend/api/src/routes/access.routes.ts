@@ -14,6 +14,7 @@ router.use(requireAccessManager)
 
 const permissionSchema = z.object({
   canManageAccess: z.boolean(),
+  selfDataOnly: z.boolean().default(false),
   permissions: z.array(
     z.object({
       screenKey: z.custom<ScreenKey>(
@@ -89,7 +90,7 @@ router.put('/positions/:id/manage-access', async (req, res) => {
 
     const position = await db.position.update({
       where: { id: req.params['id'] },
-      data: { canManageAccess: parsed.data.canManageAccess },
+      data: { canManageAccess: parsed.data.canManageAccess, selfDataOnly: false },
       include: { screenPermissions: true },
     })
 
@@ -109,11 +110,23 @@ router.put('/positions/:id/permissions', async (req, res) => {
     }
 
     const positionId = req.params['id']
+    const position = await db.position.findUnique({ where: { id: positionId }, select: { nombre: true } })
+    if (!position) {
+      res.status(404).json({ success: false, data: null, message: 'Puesto no encontrado' })
+      return
+    }
+    if (parsed.data.selfDataOnly && parsed.data.canManageAccess) {
+      res.status(400).json({ success: false, data: null, message: 'Un puesto con administración global no puede limitarse a datos propios' })
+      return
+    }
 
     await db.$transaction(async (tx: any) => {
       await tx.position.update({
         where: { id: positionId },
-        data: { canManageAccess: parsed.data.canManageAccess },
+        data: {
+          canManageAccess: parsed.data.canManageAccess,
+          selfDataOnly: !parsed.data.canManageAccess ? parsed.data.selfDataOnly : false,
+        },
       })
 
       await tx.positionScreenPermission.deleteMany({
@@ -231,15 +244,19 @@ router.delete('/users/:id', async (req, res) => {
       return
     }
 
-    await db.usuario.update({
+    if (user.rol === 'SUPER_ADMIN') {
+      res.status(403).json({ success: false, data: null, message: 'La cuenta principal no se puede eliminar' })
+      return
+    }
+
+    await db.usuario.delete({
       where: { id: req.params['id'] },
-      data: { activo: false },
     })
 
-    res.json({ success: true, data: null, message: 'Cuenta desactivada' })
+    res.json({ success: true, data: null, message: 'Cuenta eliminada' })
   } catch (err) {
     console.error(err)
-    res.status(500).json({ success: false, data: null, message: 'Error al desactivar la cuenta' })
+    res.status(500).json({ success: false, data: null, message: 'Error al eliminar la cuenta' })
   }
 })
 

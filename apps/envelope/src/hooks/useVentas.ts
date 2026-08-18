@@ -12,7 +12,14 @@ interface UseVentasReturn {
   refetch: () => Promise<void>;
   add: (r: RegistroVenta) => Promise<void>;
   addBatch: (records: RegistroVenta[]) => Promise<void>;
+  updateBatch: (originalIds: string[], records: RegistroVenta[]) => Promise<void>;
   remove: (id: string) => Promise<void>;
+}
+
+interface UseVentasOptions {
+  fechaInicio?: string;
+  fechaFin?: string;
+  enabled?: boolean;
 }
 
 // Respuesta cruda de la API para una Venta
@@ -24,6 +31,7 @@ interface VentaRaw {
   sucursalId: string;
   sucursal?: { nombre: string };
   vendedorId: string;
+  vendedor?: { nombreCompleto: string };
   detalles: { id: string; cantidad: string; metodoPagoId: string; metodoPago?: { nombre: string } }[];
 }
 
@@ -34,6 +42,7 @@ function toRegistroVenta(v: VentaRaw): RegistroVenta {
     sucursalId: v.sucursalId,
     ...(v.sucursal ? { sucursalNombre: v.sucursal.nombre } : {}),
     vendedorId: v.vendedorId,
+    ...(v.vendedor ? { vendedorNombre: v.vendedor.nombreCompleto } : {}),
     // El backend devuelve DateTime ISO; tomamos solo la parte de fecha
     fecha: v.fecha.slice(0, 10),
     sesionId: v.sesionId ?? null,
@@ -50,17 +59,31 @@ function toRegistroVenta(v: VentaRaw): RegistroVenta {
   };
 }
 
-export function useVentas(): UseVentasReturn {
+export function useVentas(options: UseVentasOptions = {}): UseVentasReturn {
+  const { fechaInicio, fechaFin, enabled = true } = options;
   const [registros, setRegistros] = useState<RegistroVenta[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(enabled);
   const [error, setError] = useState<string | null>(null);
 
   const refetch = useCallback(async () => {
+    if (!enabled) {
+      setRegistros([]);
+      setLoading(false);
+      setError(null);
+      return;
+    }
+
     setLoading(true);
     setError(null);
     try {
       const { data } = await api.get<{ success: boolean; data: VentaRaw[] }>(
         "/api/envelope/ventas",
+        {
+          params: {
+            ...(fechaInicio ? { fechaInicio } : {}),
+            ...(fechaFin ? { fechaFin } : {}),
+          },
+        },
       );
       setRegistros(data.data.map(toRegistroVenta));
     } catch {
@@ -68,7 +91,7 @@ export function useVentas(): UseVentasReturn {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [enabled, fechaFin, fechaInicio]);
 
   useEffect(() => {
     void refetch();
@@ -117,6 +140,26 @@ export function useVentas(): UseVentasReturn {
     [refetch],
   );
 
+  const updateBatch = useCallback(
+    async (originalIds: string[], records: RegistroVenta[]) => {
+      await api.put("/api/envelope/ventas/lote", {
+        originalIds,
+        ventas: records.map((record) => ({
+          sucursalId: record.sucursalId,
+          vendedorId: record.vendedorId,
+          fecha: record.fecha,
+          ...(record.sesionId ? { sesionId: record.sesionId } : {}),
+          detalles: record.items.map((item) => ({
+            cantidad: item.cantidad,
+            metodoPagoId: item.metodoPagoId,
+          })),
+        })),
+      });
+      await refetch();
+    },
+    [refetch],
+  );
+
   const remove = useCallback(
     async (id: string) => {
       await api.delete(`/api/envelope/ventas/${id}`);
@@ -125,5 +168,5 @@ export function useVentas(): UseVentasReturn {
     [refetch],
   );
 
-  return { registros, loading, error, refetch, add, addBatch, remove };
+  return { registros, loading, error, refetch, add, addBatch, updateBatch, remove };
 }

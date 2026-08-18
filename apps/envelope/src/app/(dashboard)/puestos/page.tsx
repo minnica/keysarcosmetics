@@ -28,8 +28,11 @@ import {
 } from '@cosmetics/ui'
 import type { ColumnDef } from '@cosmetics/ui'
 import { usePositions } from '@/hooks'
+import { RefreshingDataIndicator } from '@/components/RefreshingDataIndicator'
+import { TableLoadingSkeleton } from '@/components/layout/DataLoadingSkeleton'
 import { useI18n } from '@/lib/i18n'
 import type { Position } from '@cosmetics/types'
+import { actionButtonStyles } from '@/lib/action-button-styles'
 
 const schema = z.object({
   nombre: z.string().min(1, 'Requerido').max(60),
@@ -37,11 +40,13 @@ const schema = z.object({
 type FormData = z.infer<typeof schema>
 
 export default function PuestosPage() {
-  const { positions, loading, error, add, update, remove } = usePositions()
+  const { positions, loading, loaded, error, add, update, remove } = usePositions()
   const { t, dataTableLabels } = useI18n()
   const showEditAction = false
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<Position | null>(null)
+  const isInitialLoading = loading && !loaded
+  const isRefreshing = loading && loaded
 
   const {
     register,
@@ -93,14 +98,14 @@ export default function PuestosPage() {
         return (
           <div className="flex justify-end gap-1">
             {showEditAction ? (
-              <Button size="icon" variant="ghost" onClick={() => openEdit(p)}>
+              <Button size="icon" variant="outline" className={actionButtonStyles.neutral} onClick={() => openEdit(p)}>
                 <Pencil className="h-4 w-4" />
               </Button>
             ) : null}
             <AlertDialog>
               <AlertDialogTrigger asChild>
-                <Button size="icon" variant="ghost">
-                  <Trash2 className="h-4 w-4 text-red-500" />
+                <Button size="icon" variant="outline" className={actionButtonStyles.danger}>
+                  <Trash2 className="h-4 w-4" />
                 </Button>
               </AlertDialogTrigger>
               <AlertDialogContent>
@@ -113,7 +118,7 @@ export default function PuestosPage() {
                 <AlertDialogFooter>
                   <AlertDialogCancel>{t.common.cancel}</AlertDialogCancel>
                   <AlertDialogAction
-                    className="bg-red-600 hover:bg-red-700"
+                    className={actionButtonStyles.dangerSolid}
                     onClick={() => remove(p.id)}
                   >
                     {t.common.delete}
@@ -142,9 +147,10 @@ export default function PuestosPage() {
       </div>
 
       {error && <p className="text-sm text-red-500">{error}</p>}
+      {isRefreshing ? <RefreshingDataIndicator label={t.common.refreshingData} /> : null}
 
-      {loading ? (
-        <p className="text-sm" style={{ color: 'var(--text-muted)' }}>{t.catalogs.loadingPositions}</p>
+      {isInitialLoading ? (
+        <TableLoadingSkeleton columns={2} label={t.catalogs.loadingPositions} />
       ) : (
         <DataTable
           columns={columns}

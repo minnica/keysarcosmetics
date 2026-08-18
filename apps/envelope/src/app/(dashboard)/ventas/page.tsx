@@ -1,20 +1,11 @@
 "use client";
 
 // Pantalla de captura de ventas — distribución por empleado y conciliación de pagos
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import {
-  ArrowRight,
-  CheckCircle2,
-  CreditCard,
-  Plus,
-  RotateCcw,
-  Save,
-  Trash2,
-  Users,
-} from "lucide-react";
+import { ArrowRight, CheckCircle2, CreditCard, Pencil, Plus, RotateCcw, Save, Trash2, Users, X } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -32,6 +23,8 @@ import {
   CardHeader,
   CardTitle,
   Combobox,
+  DatePicker,
+  DateRangePicker,
   DataTable,
   Input,
   Label,
@@ -42,6 +35,7 @@ import {
   SelectTrigger,
   SelectValue,
   toast,
+  type DateRange,
 } from "@cosmetics/ui";
 import type { ColumnDef } from "@cosmetics/ui";
 import {
@@ -50,9 +44,12 @@ import {
   useSucursales,
   useVentas,
 } from "@/hooks";
+import { GenerateEnvelopeDialog } from "@/components/GenerateEnvelopeDialog";
 import { useI18n } from "@/lib/i18n";
+import { useSession } from "@/lib/session";
 import { formatCurrency, formatDate, generateId, todayISO } from "@/lib/utils";
 import type { RegistroVenta, VentaItem } from "@/lib/mock-data";
+import { actionButtonStyles } from "@/lib/action-button-styles";
 
 function createSaleSchema(messages: {
   selectBranch: string;
@@ -86,6 +83,14 @@ type PaymentAllocation = {
   id: string;
   metodoPagoId: string;
   amountCents: number;
+};
+type EditingSale = {
+  originalIds: string[];
+  originalItems: VentaItem[][];
+  originalBranch: { id: string; name: string };
+  originalSessionId: string | null;
+  originalTotalCents: number;
+  preserveSessionWhenSingle: boolean;
 };
 
 const toCents = (value: number) => Math.round(value * 100);
@@ -151,10 +156,22 @@ function allocatePaymentsToEmployees(
 }
 
 export default function VentasPage() {
+  const { user } = useSession();
+  const canViewKeysarHomeData = Boolean(
+    user?.canManageAccess ||
+      user?.screenPermissions.includes("reportes/ver-datos-keysar-home"),
+  );
+  const [saleRange, setSaleRange] = useState<DateRange>({
+    from: todayISO(),
+    to: todayISO(),
+  });
   const { sucursales } = useSucursales();
   const { empleados } = useEmpleados();
   const { metodosPago } = useMetodosPago();
-  const { registros, addBatch, remove: deleteRegistro } = useVentas();
+  const { registros, addBatch, updateBatch, remove: deleteRegistro } = useVentas({
+    fechaInicio: saleRange.from,
+    fechaFin: saleRange.to,
+  });
   const { locale, t, dataTableLabels } = useI18n();
   const saleSchema = useMemo(
     () => createSaleSchema({
@@ -196,8 +213,10 @@ export default function VentasPage() {
     PaymentAllocation[]
   >([]);
   const [saving, setSaving] = useState(false);
-
+  const [editingSale, setEditingSale] = useState<EditingSale | null>(null);
+  const [financialDetailsDirty, setFinancialDetailsDirty] = useState(false);
   const selectedPaymentMethod = paymentForm.watch("metodoPagoId");
+  const selectedInitialEmployee = saleForm.watch("vendedorId");
   const allocatedEmployeeCents = employeeAllocations.reduce(
     (sum, employee) => sum + employee.amountCents,
     0,
@@ -221,11 +240,64 @@ export default function VentasPage() {
   const canSave = employeeDistributionMatches && paymentsMatch && !saving;
   const paymentProgress =
     totalCents > 0 ? Math.min(100, (paidCents / totalCents) * 100) : 0;
+  const filteredRegistros = useMemo(
+    () =>
+      [...registros].filter(
+        (record) =>
+          record.fecha >= saleRange.from &&
+          record.fecha <= saleRange.to &&
+          (canViewKeysarHomeData ||
+            (record.vendedorNombre ??
+              empleados.find((employee) => employee.id === record.vendedorId)
+                ?.nombreCompleto ??
+              "")
+              .trim()
+              .toLocaleUpperCase("es-MX") !==
+              "KEYSAR HOME"),
+      ),
+    [canViewKeysarHomeData, empleados, registros, saleRange],
+  );
+  const visibleRegistros = useMemo(
+    () => [...filteredRegistros].reverse(),
+    [filteredRegistros],
+  );
+
+  const visibleSucursales = sucursales;
+
+  useEffect(() => {
+    if (saleContext || saleForm.getValues("sucursalId")) return;
+    if (visibleSucursales.length !== 1) return;
+    const [singleSucursal] = visibleSucursales;
+    if (!singleSucursal) return;
+
+    saleForm.setValue("sucursalId", singleSucursal.id, {
+      shouldDirty: false,
+      shouldTouch: false,
+      shouldValidate: true,
+    });
+  }, [saleContext, saleForm, visibleSucursales]);
 
   const activeEmployees = useMemo(
     () => empleados.filter((employee) => employee.activo),
     [empleados],
   );
+  const initialEmployeeOptions = useMemo(() => {
+    const allocatedAfterInitial = new Set(
+      editingSale
+        ? employeeAllocations.slice(1).map((allocation) => allocation.empleadoId)
+        : [],
+    );
+    return empleados
+      .filter(
+        (employee) =>
+          (employee.activo || employee.id === selectedInitialEmployee) &&
+          !allocatedAfterInitial.has(employee.id),
+      )
+      .map((employee) => ({
+        value: employee.id,
+        label: employee.nombreCompleto,
+      }));
+  }, [editingSale, empleados, employeeAllocations, selectedInitialEmployee]);
   const availableEmployees = activeEmployees
     .filter(
       (employee) =>
@@ -239,9 +311,15 @@ export default function VentasPage() {
     }));
 
   const sucursalNombre = (id: string, embedded?: string) =>
-    embedded ?? sucursales.find((sucursal) => sucursal.id === id)?.nombre ?? id;
-  const vendedorNombre = (id: string) =>
-    empleados.find((employee) => employee.id === id)?.nombreCompleto ?? id;
+    embedded ??
+    visibleSucursales.find((sucursal) => sucursal.id === id)?.nombre ??
+    (editingSale?.originalBranch.id === id
+      ? editingSale.originalBranch.name
+      : id);
+  const vendedorNombre = (id: string, embedded?: string) =>
+    embedded ??
+    empleados.find((employee) => employee.id === id)?.nombreCompleto ??
+    id;
   const metodoPagoNombre = (id: string, embedded?: string) =>
     embedded ?? metodosPago.find((method) => method.id === id)?.nombre ?? id;
 
@@ -252,6 +330,29 @@ export default function VentasPage() {
       monto: fromCents(normalizedAmount),
       totalCents: normalizedAmount,
     });
+
+    if (editingSale && employeeAllocations.length > 0) {
+      if (normalizedAmount !== editingSale.originalTotalCents) {
+        setFinancialDetailsDirty(true);
+      }
+      setEmployeeAllocations((current) =>
+        current.map((allocation, index) =>
+          index === 0
+            ? {
+                empleadoId: data.vendedorId,
+                amountCents:
+                  current.length === 1
+                    ? normalizedAmount
+                    : allocation.amountCents,
+              }
+            : allocation,
+        ),
+      );
+      setEmployeeToAdd("");
+      paymentForm.reset({ metodoPagoId: "", cantidad: 0 });
+      return;
+    }
+
     setEmployeeAllocations(splitEvenly(normalizedAmount, [data.vendedorId]));
     setPaymentAllocations([]);
     setEmployeeToAdd("");
@@ -265,6 +366,7 @@ export default function VentasPage() {
       employeeToAdd,
     ];
     setEmployeeAllocations(splitEvenly(saleContext.totalCents, employeeIds));
+    setFinancialDetailsDirty(true);
     setEmployeeToAdd("");
   }
 
@@ -274,6 +376,7 @@ export default function VentasPage() {
       .filter((allocation) => allocation.empleadoId !== employeeId)
       .map((allocation) => allocation.empleadoId);
     setEmployeeAllocations(splitEvenly(saleContext.totalCents, employeeIds));
+    setFinancialDetailsDirty(true);
   }
 
   function handleEmployeeAmountChange(employeeId: string, value: string) {
@@ -285,6 +388,7 @@ export default function VentasPage() {
           : allocation,
       ),
     );
+    setFinancialDetailsDirty(true);
   }
 
   function handlePaymentMethodChange(methodId: string) {
@@ -308,6 +412,7 @@ export default function VentasPage() {
       ...current,
       { id: generateId(), metodoPagoId: data.metodoPagoId, amountCents },
     ]);
+    setFinancialDetailsDirty(true);
     paymentForm.reset({ metodoPagoId: "", cantidad: 0 });
   }
 
@@ -315,6 +420,7 @@ export default function VentasPage() {
     setPaymentAllocations((current) =>
       current.filter((payment) => payment.id !== paymentId),
     );
+    setFinancialDetailsDirty(true);
     paymentForm.reset({ metodoPagoId: "", cantidad: 0 });
   }
 
@@ -324,6 +430,8 @@ export default function VentasPage() {
     setEmployeeToAdd("");
     setPaymentAllocations([]);
     setSaving(false);
+    setEditingSale(null);
+    setFinancialDetailsDirty(false);
     saleForm.reset({
       sucursalId: "",
       fecha: todayISO(),
@@ -335,10 +443,109 @@ export default function VentasPage() {
 
   function editSaleContext() {
     setSaleContext(null);
+    if (editingSale) {
+      paymentForm.reset({ metodoPagoId: "", cantidad: 0 });
+      return;
+    }
     setEmployeeAllocations([]);
     setEmployeeToAdd("");
     setPaymentAllocations([]);
     paymentForm.reset({ metodoPagoId: "", cantidad: 0 });
+  }
+
+  function handleEditRecord(record: RegistroVenta) {
+    const relatedRecords = record.sesionId
+      ? filteredRegistros.filter(
+          (candidate) => candidate.sesionId === record.sesionId,
+        )
+      : [record];
+    const recordsToEdit = [
+      record,
+      ...relatedRecords.filter((candidate) => candidate.id !== record.id),
+    ];
+    const total = recordsToEdit.reduce(
+      (saleSum, sale) =>
+        saleSum +
+        sale.items.reduce(
+          (itemSum, item) => itemSum + toCents(item.cantidad),
+          0,
+        ),
+      0,
+    );
+    const paymentsByMethod = new Map<string, number>();
+    for (const sale of recordsToEdit) {
+      for (const item of sale.items) {
+        paymentsByMethod.set(
+          item.metodoPagoId,
+          (paymentsByMethod.get(item.metodoPagoId) ?? 0) +
+            toCents(item.cantidad),
+        );
+      }
+    }
+    const allSessionRecords = record.sesionId
+      ? registros.filter((candidate) => candidate.sesionId === record.sesionId)
+      : [record];
+    const preserveSessionWhenSingle = Boolean(
+      record.sesionId &&
+        (user?.selfDataOnly ||
+          allSessionRecords.length !== recordsToEdit.length),
+    );
+
+    saleForm.reset({
+      sucursalId: record.sucursalId,
+      fecha: record.fecha,
+      vendedorId: record.vendedorId,
+      monto: fromCents(total),
+    });
+    setSaleContext({
+      sucursalId: record.sucursalId,
+      fecha: record.fecha,
+      vendedorId: record.vendedorId,
+      monto: fromCents(total),
+      totalCents: total,
+    });
+    setEmployeeAllocations(
+      recordsToEdit.map((sale) => ({
+        empleadoId: sale.vendedorId,
+        amountCents: sale.items.reduce(
+          (sum, item) => sum + toCents(item.cantidad),
+          0,
+        ),
+      })),
+    );
+    setPaymentAllocations(
+      [...paymentsByMethod.entries()].map(([metodoPagoId, amountCents]) => ({
+        id: generateId(),
+        metodoPagoId,
+        amountCents,
+      })),
+    );
+    setEmployeeToAdd("");
+    paymentForm.reset({ metodoPagoId: "", cantidad: 0 });
+    setEditingSale({
+      originalIds: recordsToEdit.map((sale) => sale.id),
+      originalItems: recordsToEdit.map((sale) => sale.items),
+      originalBranch: {
+        id: record.sucursalId,
+        name: sucursalNombre(record.sucursalId, record.sucursalNombre),
+      },
+      originalSessionId: record.sesionId ?? null,
+      originalTotalCents: total,
+      preserveSessionWhenSingle,
+    });
+    setFinancialDetailsDirty(false);
+    setSaving(false);
+
+    window.requestAnimationFrame(() => {
+      const capture = document.getElementById("sale-capture");
+      capture?.scrollIntoView({
+        behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+          ? "auto"
+          : "smooth",
+        block: "start",
+      });
+      capture?.focus({ preventScroll: true });
+    });
   }
 
   async function handleSaveSale() {
@@ -347,23 +554,38 @@ export default function VentasPage() {
       employeeAllocations,
       paymentAllocations,
     );
-    const sesionId = employeeAllocations.length > 1 ? generateId() : null;
-    const sales: RegistroVenta[] = employeeAllocations.map((allocation) => ({
+    const sesionId =
+      employeeAllocations.length > 1
+        ? (editingSale?.originalSessionId ?? generateId())
+        : editingSale?.preserveSessionWhenSingle
+          ? editingSale.originalSessionId
+          : null;
+    const sales: RegistroVenta[] = employeeAllocations.map((allocation, index) => ({
       id: generateId(),
       sucursalId: saleContext.sucursalId,
       vendedorId: allocation.empleadoId,
       fecha: saleContext.fecha,
-      items: itemsByEmployee.get(allocation.empleadoId) ?? [],
+      items:
+        editingSale && !financialDetailsDirty
+          ? (editingSale.originalItems[index] ?? [])
+          : (itemsByEmployee.get(allocation.empleadoId) ?? []),
       ...(sesionId ? { sesionId } : {}),
     }));
 
     setSaving(true);
     try {
-      await addBatch(sales);
-      toast.success(t.sales.registeredSuccess);
+      if (editingSale) {
+        await updateBatch(editingSale.originalIds, sales);
+        toast.success(t.sales.updatedSuccess);
+      } else {
+        await addBatch(sales);
+        toast.success(t.sales.registeredSuccess);
+      }
       resetCapture();
     } catch {
-      toast.error(t.sales.registeredError);
+      toast.error(
+        editingSale ? t.sales.updatedError : t.sales.registeredError,
+      );
       setSaving(false);
     }
   }
@@ -383,9 +605,13 @@ export default function VentasPage() {
     },
     {
       id: "vendedor",
-      accessorFn: (row) => vendedorNombre(row.vendedorId),
+      accessorFn: (row) => vendedorNombre(row.vendedorId, row.vendedorNombre),
       header: t.common.employee,
-      cell: ({ row }) => vendedorNombre(row.original.vendedorId),
+      cell: ({ row }) =>
+        vendedorNombre(
+          row.original.vendedorId,
+          row.original.vendedorNombre,
+        ),
     },
     {
       id: "total",
@@ -410,7 +636,7 @@ export default function VentasPage() {
         const { sesionId } = row.original;
         if (!sesionId)
           return <span style={{ color: "var(--text-muted)" }}>—</span>;
-        const voucherTotal = registros
+        const voucherTotal = filteredRegistros
           .filter((record) => record.sesionId === sesionId)
           .reduce(
             (sum, record) =>
@@ -463,15 +689,56 @@ export default function VentasPage() {
           0,
         );
         return (
-          <div className="flex justify-end">
+          <div className="flex justify-end gap-2">
+            {saleContext ? (
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button
+                    size="icon"
+                    variant="outline"
+                    className={actionButtonStyles.neutral}
+                    aria-label={t.sales.editRecord}
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>
+                      {t.sales.replaceCaptureTitle}
+                    </AlertDialogTitle>
+                    <AlertDialogDescription>
+                      {t.sales.replaceCaptureDescription}
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>{t.common.cancel}</AlertDialogCancel>
+                    <AlertDialogAction onClick={() => handleEditRecord(record)}>
+                      {t.sales.startEditing}
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            ) : (
+              <Button
+                size="icon"
+                variant="outline"
+                className={actionButtonStyles.neutral}
+                onClick={() => handleEditRecord(record)}
+                aria-label={t.sales.editRecord}
+              >
+                <Pencil className="h-4 w-4" />
+              </Button>
+            )}
             <AlertDialog>
               <AlertDialogTrigger asChild>
                 <Button
                   size="icon"
-                  variant="ghost"
+                  variant="outline"
+                  className={actionButtonStyles.danger}
                   aria-label={t.sales.deleteRecord}
                 >
-                  <Trash2 className="h-4 w-4 text-red-500" />
+                  <Trash2 className="h-4 w-4" />
                 </Button>
               </AlertDialogTrigger>
               <AlertDialogContent>
@@ -479,14 +746,14 @@ export default function VentasPage() {
                   <AlertDialogTitle>{t.sales.deleteRecordTitle}</AlertDialogTitle>
                   <AlertDialogDescription>
                     {t.sales.deleteRecordDescription}{" "}
-                    {vendedorNombre(record.vendedorId)} {t.sales.byAmount}{" "}
+                    {vendedorNombre(record.vendedorId, record.vendedorNombre)} {t.sales.byAmount}{" "}
                     {formatCurrency(total)}. {t.common.deleteCannotUndo}
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
                   <AlertDialogCancel>{t.common.cancel}</AlertDialogCancel>
                   <AlertDialogAction
-                    className="bg-red-600 hover:bg-red-700"
+                    className={actionButtonStyles.dangerSolid}
                     onClick={() => deleteRegistro(record.id)}
                   >
                     {t.common.delete}
@@ -502,25 +769,41 @@ export default function VentasPage() {
 
   return (
     <div className="space-y-8">
-      <header>
-        <h1 className="page-title">{t.sales.title}</h1>
-        <p className="mt-1 text-sm" style={{ color: "var(--text-muted)" }}>
-          {t.sales.description}
-        </p>
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h1 className="page-title">{t.sales.title}</h1>
+          <p className="mt-1 text-sm" style={{ color: "var(--text-muted)" }}>
+            {t.sales.description}
+          </p>
+        </div>
+        <GenerateEnvelopeDialog
+          sucursales={visibleSucursales}
+          empleados={empleados}
+          metodosPago={metodosPago}
+        />
       </header>
 
       <Card
+        id="sale-capture"
+        tabIndex={-1}
         aria-current={!saleContext ? "step" : undefined}
-        className="transition-[border-color,box-shadow] duration-200"
+        className="scroll-mt-4 transition-[border-color,box-shadow] duration-200 focus:outline-none"
         style={stepCardStyle(!saleContext ? "active" : "complete")}
       >
         <CardHeader className="pb-4">
           <div className="flex items-start justify-between gap-4">
             <div>
               <p className="label-caps">{t.sales.step} 1</p>
-              <CardTitle className="mt-1 text-lg">{t.sales.saleData}</CardTitle>
+              <CardTitle className="mt-1 text-lg">
+                {editingSale ? t.sales.editSaleData : t.sales.saleData}
+              </CardTitle>
             </div>
-            <StepStatusBadge status={!saleContext ? "active" : "complete"} />
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              {editingSale && (
+                <Badge variant="outline">{t.sales.editingRecord}</Badge>
+              )}
+              <StepStatusBadge status={!saleContext ? "active" : "complete"} />
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -550,7 +833,16 @@ export default function VentasPage() {
                         <SelectValue placeholder={t.sales.select} />
                       </SelectTrigger>
                       <SelectContent>
-                        {sucursales.map((sucursal) => (
+                        {editingSale &&
+                          !visibleSucursales.some(
+                            (sucursal) =>
+                              sucursal.id === editingSale.originalBranch.id,
+                          ) && (
+                            <SelectItem value={editingSale.originalBranch.id}>
+                              {editingSale.originalBranch.name}
+                            </SelectItem>
+                          )}
+                        {visibleSucursales.map((sucursal) => (
                           <SelectItem key={sucursal.id} value={sucursal.id}>
                             {sucursal.nombre}
                           </SelectItem>
@@ -565,7 +857,19 @@ export default function VentasPage() {
                 htmlFor="fecha"
                 error={saleForm.formState.errors.fecha?.message}
               >
-                <Input id="fecha" type="date" {...saleForm.register("fecha")} />
+                <Controller
+                  control={saleForm.control}
+                  name="fecha"
+                  render={({ field }) => (
+                    <DatePicker
+                      id="fecha"
+                      value={field.value}
+                      onChange={field.onChange}
+                      placeholder={t.common.date}
+                      disabled={!!saleContext}
+                    />
+                  )}
+                />
               </FormField>
               <FormField
                 label={t.sales.initialEmployee}
@@ -578,10 +882,7 @@ export default function VentasPage() {
                   render={({ field }) => (
                     <Combobox
                       id="vendedor"
-                      options={activeEmployees.map((employee) => ({
-                        value: employee.id,
-                        label: employee.nombreCompleto,
-                      }))}
+                      options={initialEmployeeOptions}
                       value={field.value}
                       onValueChange={field.onChange}
                       placeholder={t.sales.select}
@@ -611,7 +912,8 @@ export default function VentasPage() {
             {!saleContext ? (
               <div className="flex justify-end">
                 <Button type="submit">
-                  {t.sales.continue} <ArrowRight className="ml-1.5 h-4 w-4" />
+                  {editingSale ? t.sales.applyData : t.sales.continue}{" "}
+                  <ArrowRight className="ml-1.5 h-4 w-4" />
                 </Button>
               </div>
             ) : (
@@ -643,7 +945,9 @@ export default function VentasPage() {
                         {t.sales.changeSaleDataTitle}
                       </AlertDialogTitle>
                       <AlertDialogDescription>
-                        {t.sales.changeSaleDataDescription}
+                        {editingSale
+                          ? t.sales.changeEditedSaleDataDescription
+                          : t.sales.changeSaleDataDescription}
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
@@ -735,14 +1039,15 @@ export default function VentasPage() {
                       <Button
                         type="button"
                         size="icon"
-                        variant="ghost"
+                        variant="outline"
+                        className={actionButtonStyles.danger}
                         disabled={employeeAllocations.length === 1}
                         onClick={() =>
                           handleRemoveEmployee(allocation.empleadoId)
                         }
                         aria-label={`${t.sales.removeEmployee} ${vendedorNombre(allocation.empleadoId)}`}
                       >
-                        <Trash2 className="h-4 w-4 text-red-500" />
+                        <Trash2 className="h-4 w-4" />
                       </Button>
                     </div>
                   ))}
@@ -859,11 +1164,12 @@ export default function VentasPage() {
                         <Button
                           type="button"
                           size="icon"
-                          variant="ghost"
+                          variant="outline"
+                          className={actionButtonStyles.danger}
                           onClick={() => handleRemovePayment(payment.id)}
                           aria-label={`${t.sales.deletePaymentWith} ${metodoPagoNombre(payment.metodoPagoId)}`}
                         >
-                          <Trash2 className="h-4 w-4 text-red-500" />
+                          <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
                     ))}
@@ -944,7 +1250,7 @@ export default function VentasPage() {
                 <div>
                   <p className="label-caps">{t.sales.step} 3</p>
                   <h2 className="mt-1 text-base font-semibold">
-                    {t.sales.saveSale}
+                    {editingSale ? t.sales.updateSale : t.sales.saveSale}
                   </h2>
                   <p className="mt-1 text-sm">
                     {canSave
@@ -960,37 +1266,62 @@ export default function VentasPage() {
                 </div>
                 <StepStatusBadge status={canSave ? "active" : "pending"} />
               </div>
-              <AlertDialog>
-                <AlertDialogTrigger asChild>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                {editingSale && (
                   <Button
                     type="button"
-                    disabled={!canSave}
-                    className="sm:min-w-44"
+                    disabled={saving}
+                    variant="outline"
+                    className={actionButtonStyles.neutral}
+                    onClick={resetCapture}
                   >
-                    <Save className="mr-1.5 h-4 w-4" />{" "}
-                    {saving ? t.common.saving : t.sales.savingSale}
+                    <X className="mr-1.5 h-4 w-4" /> {t.sales.cancelEdit}
                   </Button>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>
-                      {t.sales.saveSaleTitle}
-                    </AlertDialogTitle>
-                    <AlertDialogDescription>
-                      {t.sales.saveSaleDescription}
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>{t.common.cancel}</AlertDialogCancel>
-                    <AlertDialogAction
-                      onClick={handleSaveSale}
-                      disabled={saving}
+                )}
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button
+                      type="button"
+                      disabled={!canSave}
+                      className="sm:min-w-44"
                     >
-                      {saving ? t.common.saving : t.sales.saveSaleConfirm}
-                    </AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
+                      <Save className="mr-1.5 h-4 w-4" />{" "}
+                      {saving
+                        ? t.common.saving
+                        : editingSale
+                          ? t.sales.updateSale
+                          : t.sales.savingSale}
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>
+                        {editingSale
+                          ? t.sales.updateSaleTitle
+                          : t.sales.saveSaleTitle}
+                      </AlertDialogTitle>
+                      <AlertDialogDescription>
+                        {editingSale
+                          ? t.sales.updateSaleDescription
+                          : t.sales.saveSaleDescription}
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>{t.common.cancel}</AlertDialogCancel>
+                      <AlertDialogAction
+                        onClick={handleSaveSale}
+                        disabled={saving}
+                      >
+                        {saving
+                          ? t.common.saving
+                          : editingSale
+                            ? t.sales.updateSaleConfirm
+                            : t.sales.saveSaleConfirm}
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              </div>
             </CardContent>
           </Card>
         </section>
@@ -1000,10 +1331,20 @@ export default function VentasPage() {
         <h2 id="saved-sales-title" className="section-heading">
           {t.sales.savedRecords}
         </h2>
+        <DateRangePicker
+          value={saleRange}
+          onChange={setSaleRange}
+          fromLabel={t.common.from}
+          toLabel={t.common.to}
+        />
         <DataTable
           columns={registroColumns}
-          data={[...registros].reverse()}
-          emptyMessage={t.sales.noSavedRecords}
+          data={visibleRegistros}
+          emptyMessage={
+            filteredRegistros.length === 0
+              ? t.common.noSalesSelectedPeriod
+              : t.dataTable.empty
+          }
           searchPlaceholder={t.sales.searchSavedRecords}
           labels={dataTableLabels}
         />

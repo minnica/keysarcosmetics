@@ -4,7 +4,7 @@ import { useMemo, useState, type ChangeEvent } from 'react'
 import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { UserPlus, Pencil, Trash2, Power } from 'lucide-react'
+import { UserPlus, Pencil, Trash2, Power, RotateCcw } from 'lucide-react'
 import {
   Button,
   Dialog,
@@ -30,13 +30,21 @@ import {
   AlertDialogAction,
   AlertDialogCancel,
   DataTable,
+  baseToast,
   toast,
 } from '@cosmetics/ui'
 import type { ColumnDef } from '@cosmetics/ui'
-import { useEmpleados, useBanks, usePositions } from '@/hooks'
+import { useEmpleados, useBanks, usePositions, useSucursales } from '@/hooks'
+import { RefreshingDataIndicator } from '@/components/RefreshingDataIndicator'
+import { TableLoadingSkeleton } from '@/components/layout/DataLoadingSkeleton'
 import { useI18n } from '@/lib/i18n'
+import { useSession } from '@/lib/session'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import type { Empleado } from '@/lib/mock-data'
+import { actionButtonStyles } from '@/lib/action-button-styles'
+
+const UNASSIGNED_BRANCH = '__UNASSIGNED__'
+const ALL_BRANCHES = '__ALL_BRANCHES__'
 
 function createEmpleadoSchema(messages: {
   required: string
@@ -51,6 +59,7 @@ function createEmpleadoSchema(messages: {
     bankId:         z.string().min(1, messages.bankRequired),
     numeroCuenta:   z.string().trim().optional(),
     positionId:     z.string().min(1, messages.positionRequired),
+    sucursalId:     z.string(),
     metaIndividual: z.coerce.number().min(0, messages.goalMin),
     sueldo:         z.string().trim().optional(),
     fechaNacimiento: z.string().trim().optional(),
@@ -59,11 +68,14 @@ function createEmpleadoSchema(messages: {
 }
 
 type EmpleadoForm = z.infer<ReturnType<typeof createEmpleadoSchema>>
+type StatusFilter = 'all' | 'active' | 'inactive'
 
 export default function EmpleadosPage() {
-  const { empleados, loading, error, add, update, remove, toggleStatus } = useEmpleados()
+  const { user, canAccess } = useSession()
+  const { empleados, loading, loaded, error, add, update, remove, toggleStatus } = useEmpleados()
   const { banks, loading: banksLoading } = useBanks()
   const { positions, loading: positionsLoading } = usePositions()
+  const { sucursales, loading: branchesLoading } = useSucursales()
   const { t, dataTableLabels } = useI18n()
   const empleadoSchema = useMemo(
     () => createEmpleadoSchema({
@@ -77,6 +89,14 @@ export default function EmpleadosPage() {
 
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<Empleado | null>(null)
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
+  const [positionFilter, setPositionFilter] = useState('all')
+  const [branchFilter, setBranchFilter] = useState('all')
+  const [salaryMin, setSalaryMin] = useState('')
+  const [salaryMax, setSalaryMax] = useState('')
+  const canViewSalary = user?.rol === 'SUPER_ADMIN' || canAccess('empleados/sueldo')
+  const isInitialLoading = loading && !loaded
+  const isRefreshing = loading && loaded
 
   const {
     register,
@@ -94,6 +114,7 @@ export default function EmpleadosPage() {
       bankId: '',
       numeroCuenta: '',
       positionId: '',
+      sucursalId: UNASSIGNED_BRANCH,
       metaIndividual: 0,
       sueldo: '',
       fechaNacimiento: '',
@@ -119,6 +140,66 @@ export default function EmpleadosPage() {
   const apellidoP = watch('apellidoPaterno')
   const apellidoM = watch('apellidoMaterno')
   const nombreCompleto = [nombres, apellidoP, apellidoM].filter(Boolean).join(' ')
+  const positionIdByName = useMemo(
+    () => new Map(positions.map((position) => [position.nombre.trim().toUpperCase(), position.id])),
+    [positions],
+  )
+  const salaryRangeError =
+    salaryMin !== '' && salaryMax !== '' && Number(salaryMin) > Number(salaryMax)
+
+  const filteredEmpleados = useMemo(
+    () =>
+      empleados.filter((emp) => {
+        if (statusFilter === 'active' && !emp.activo) return false
+        if (statusFilter === 'inactive' && emp.activo) return false
+
+        const empPositionId =
+          emp.positionId ??
+          emp.position?.id ??
+          positionIdByName.get(emp.puesto.trim().toUpperCase()) ??
+          null
+
+        if (positionFilter !== 'all' && empPositionId !== positionFilter) return false
+
+        if (
+          branchFilter !== 'all' &&
+          (branchFilter === UNASSIGNED_BRANCH
+            ? Boolean(emp.sucursalId) || Boolean(emp.todasSucursales)
+            : emp.sucursalId !== branchFilter)
+        ) return false
+
+        if (canViewSalary && (salaryMin !== '' || salaryMax !== '')) {
+          const salary = emp.sueldo ?? null
+          if (salary == null) return false
+          if (salaryMin !== '' && salary < Number(salaryMin)) return false
+          if (salaryMax !== '' && salary > Number(salaryMax)) return false
+        }
+
+        return true
+      }),
+    [branchFilter, canViewSalary, empleados, positionFilter, positionIdByName, salaryMax, salaryMin, statusFilter],
+  )
+  const hasActiveFilters =
+    statusFilter !== 'all' ||
+    positionFilter !== 'all' ||
+    branchFilter !== 'all' ||
+    (canViewSalary && (salaryMin !== '' || salaryMax !== ''))
+
+  function clearFilters() {
+    setStatusFilter('all')
+    setPositionFilter('all')
+    setBranchFilter('all')
+    setSalaryMin('')
+    setSalaryMax('')
+  }
+
+  function updateSalaryBound(value: string, setValue: (nextValue: string) => void) {
+    const amount = Number(value)
+
+    if (value === '' || (Number.isFinite(amount) && amount >= 0)) {
+      setValue(value)
+    }
+  }
 
   function openNew() {
     setEditing(null)
@@ -129,6 +210,7 @@ export default function EmpleadosPage() {
       bankId: '',
       numeroCuenta: '',
       positionId: '',
+      sucursalId: UNASSIGNED_BRANCH,
       metaIndividual: 0,
       sueldo: '',
       fechaNacimiento: '',
@@ -161,8 +243,11 @@ export default function EmpleadosPage() {
       bankId:          resolvedBankId,
       numeroCuenta:    emp.numeroCuenta,
       positionId:      resolvedPositionId,
+      sucursalId:      emp.todasSucursales
+        ? ALL_BRANCHES
+        : emp.sucursalId ?? UNASSIGNED_BRANCH,
       metaIndividual:  emp.metaIndividual,
-      sueldo:          emp.sueldo != null ? String(emp.sueldo) : '',
+      sueldo:          canViewSalary && emp.sueldo != null ? String(emp.sueldo) : '',
       fechaNacimiento: emp.fechaNacimiento ?? '',
       numeroTelefono:  emp.numeroTelefono ?? '',
     })
@@ -185,18 +270,37 @@ export default function EmpleadosPage() {
       metaIndividual:  data.metaIndividual,
       bankId:          data.bankId,
       positionId:      data.positionId,
-      sueldo:          data.sueldo?.trim() ? Number(data.sueldo) : null,
+      sucursalId:
+        data.sucursalId === UNASSIGNED_BRANCH || data.sucursalId === ALL_BRANCHES
+          ? null
+          : data.sucursalId,
+      todasSucursales: data.sucursalId === ALL_BRANCHES,
+      ...(canViewSalary ? { sueldo: data.sueldo?.trim() ? Number(data.sueldo) : null } : {}),
       fechaNacimiento: data.fechaNacimiento?.trim() ? data.fechaNacimiento.trim() : null,
       numeroTelefono:  data.numeroTelefono?.trim() ? data.numeroTelefono.trim() : null,
     }
 
     if (editing) {
-      await update({ ...editing, ...payload })
+      const nextEmployee = {
+        ...editing,
+        ...payload,
+        ...(canViewSalary ? {} : { sueldo: undefined }),
+      } as Partial<Empleado> & Pick<Empleado, 'id'>
+
+      await update(nextEmployee)
       toast.success(t.employees.employeeUpdated)
     } else {
       // banco/puesto requeridos por tipo legacy — backend los sobreescribe desde bankId/positionId
       await add({ ...payload, banco: '', puesto: '', activo: true })
       toast.success(t.employees.employeeCreated)
+    }
+
+    if (data.sucursalId === UNASSIGNED_BRANCH) {
+      baseToast.add({
+        type: 'warning',
+        title: t.employees.branchAssignmentReminderTitle,
+        description: t.employees.branchAssignmentReminderDescription,
+      })
     }
 
     setModalOpen(false)
@@ -205,9 +309,21 @@ export default function EmpleadosPage() {
   // Texto a mostrar: prefiere nombre del catálogo, cae en legacy
   const displayBanco    = (emp: Empleado) => emp.bank?.nombre    ?? emp.banco
   const displayPuesto   = (emp: Empleado) => emp.position?.nombre ?? emp.puesto
+  const displaySucursal = (emp: Empleado) =>
+    emp.todasSucursales
+      ? t.employees.allBranchAssignment
+      : emp.sucursal?.nombre ?? t.employees.unassignedBranch
   const displayDate = (value?: string | null) => (value ? formatDate(value, 'dd/MM/yyyy') : t.common.noRecord)
   const displayPhone = (value?: string | null) => (value?.trim() ? value : t.common.noRecord)
   const displaySalary = (value?: number | null) => (value != null ? formatCurrency(value) : t.common.noRecord)
+  const salaryColumn: ColumnDef<Empleado> = {
+    id: 'sueldo',
+    accessorFn: (row) => row.sueldo ?? 0,
+    header: () => <span className="uppercase">{t.employees.salary}</span>,
+    cell: ({ row }) => (
+      <div className="text-right">{displaySalary(row.original.sueldo)}</div>
+    ),
+  }
 
   const columns: ColumnDef<Empleado>[] = [
     {
@@ -251,13 +367,16 @@ export default function EmpleadosPage() {
       ),
     },
     {
-      id: 'sueldo',
-      accessorFn: (row) => row.sueldo ?? 0,
-      header: () => <span className="uppercase">{t.employees.salary}</span>,
+      id: 'sucursal',
+      accessorFn: (row) => displaySucursal(row),
+      header: () => <span className="uppercase">{t.common.branch}</span>,
       cell: ({ row }) => (
-        <div className="text-right">{displaySalary(row.original.sueldo)}</div>
+        <span className={row.original.sucursalId || row.original.todasSucursales ? 'text-sm' : 'text-sm text-muted-foreground'}>
+          {displaySucursal(row.original)}
+        </span>
       ),
     },
+    ...(canViewSalary ? [salaryColumn] : []),
     {
       accessorKey: 'metaIndividual',
       header: () => <span className="uppercase">{t.employees.individualGoal}</span>,
@@ -294,7 +413,7 @@ export default function EmpleadosPage() {
             <Button
               size="sm"
               variant="outline"
-              className="uppercase"
+              className={`${actionButtonStyles.neutral} uppercase`}
               onClick={() => openEdit(emp)}
             >
               <Pencil className="h-4 w-4" /> {t.common.edit}
@@ -304,7 +423,7 @@ export default function EmpleadosPage() {
                 <Button
                   size="sm"
                   variant="outline"
-                  className={`w-[110px] uppercase ${emp.activo ? 'border-amber-400 text-amber-700 hover:bg-amber-50' : 'border-[#8bb09b] text-[#648672] hover:bg-[#648672]/10'}`}
+                  className={`w-[110px] uppercase ${emp.activo ? actionButtonStyles.warning : actionButtonStyles.success}`}
                 >
                   <Power className="h-4 w-4 shrink-0" />
                   <span className="inline-block w-[68px] text-center">
@@ -327,7 +446,7 @@ export default function EmpleadosPage() {
                 <AlertDialogFooter>
                   <AlertDialogCancel>{t.common.cancel}</AlertDialogCancel>
                   <AlertDialogAction
-                    className={emp.activo ? 'bg-amber-500 hover:bg-amber-600 text-white' : 'bg-[#648672] hover:bg-[#4f6a5a] text-white'}
+                    className={emp.activo ? actionButtonStyles.warningSolid : actionButtonStyles.successSolid}
                     onClick={() => {
                       void toggleStatus(emp.id, !emp.activo).then(() => {
                         toast.success(emp.activo ? t.employees.employeeDeactivated : t.employees.employeeActivated)
@@ -341,7 +460,7 @@ export default function EmpleadosPage() {
             </AlertDialog>
             <AlertDialog>
               <AlertDialogTrigger asChild>
-                <Button size="sm" variant="outline" className="border-red-300 text-red-600 hover:bg-red-50 hover:text-red-600 uppercase">
+                <Button size="sm" variant="outline" className={`${actionButtonStyles.danger} uppercase`}>
                   <Trash2 className="h-4 w-4" /> {t.common.delete}
                 </Button>
               </AlertDialogTrigger>
@@ -355,7 +474,7 @@ export default function EmpleadosPage() {
                 <AlertDialogFooter>
                   <AlertDialogCancel>{t.common.cancel}</AlertDialogCancel>
                   <AlertDialogAction
-                    className="bg-red-600 hover:bg-red-700"
+                    className={actionButtonStyles.dangerSolid}
                     onClick={() => {
                       void remove(emp.id)
                         .then(() => toast.success(t.employees.employeeDeleted))
@@ -391,17 +510,127 @@ export default function EmpleadosPage() {
       </div>
 
       {error && <p className="text-sm text-red-500">{error}</p>}
+      {isRefreshing ? <RefreshingDataIndicator label={t.common.refreshingData} /> : null}
 
-      {loading ? (
-        <p className="text-sm" style={{ color: 'var(--text-muted)' }}>{t.employees.loadingEmployees}</p>
+      {isInitialLoading ? (
+        <TableLoadingSkeleton columns={6} rows={6} showFilters label={t.employees.loadingEmployees} />
       ) : (
-        <DataTable
-          columns={columns}
-          data={empleados}
-          emptyMessage={t.employees.noEmployees}
-          searchPlaceholder={t.employees.searchEmployee}
-          labels={dataTableLabels}
-        />
+        <div className="space-y-4">
+          <div className="rounded-lg border p-4" style={{ borderColor: 'var(--border-color)' }}>
+            <div className="flex items-center justify-between gap-3 pb-3">
+              <p className="section-heading">{t.employees.filtersTitle}</p>
+              <Button
+                type="button"
+                size="sm"
+                onClick={clearFilters}
+                disabled={!hasActiveFilters}
+                className={`${actionButtonStyles.successSolid} uppercase disabled:bg-muted disabled:text-muted-foreground`}
+              >
+                <RotateCcw className="h-4 w-4" />
+                {t.employees.clearFilters}
+              </Button>
+            </div>
+            <div className={`grid grid-cols-1 gap-4 ${canViewSalary ? 'md:grid-cols-2 xl:grid-cols-4' : 'md:grid-cols-3'}`}>
+              <div className="space-y-1.5">
+                <Label htmlFor="filter-status">{t.employees.filterStatus}</Label>
+                <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as StatusFilter)}>
+                  <SelectTrigger id="filter-status">
+                    <SelectValue placeholder={t.employees.filterStatus} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">{t.employees.allStatuses}</SelectItem>
+                    <SelectItem value="active">{t.common.active}</SelectItem>
+                    <SelectItem value="inactive">{t.common.inactive}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="filter-branch">{t.employees.filterBranch}</Label>
+                <Select value={branchFilter} onValueChange={setBranchFilter}>
+                  <SelectTrigger id="filter-branch">
+                    <SelectValue placeholder={t.employees.filterBranch} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">{t.employees.allBranches}</SelectItem>
+                    <SelectItem value={UNASSIGNED_BRANCH}>
+                      {t.employees.unassignedBranch}
+                    </SelectItem>
+                    {sucursales.map((sucursal) => (
+                      <SelectItem key={sucursal.id} value={sucursal.id}>
+                        {sucursal.nombre}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="filter-position">{t.employees.filterPosition}</Label>
+                <Select value={positionFilter} onValueChange={setPositionFilter}>
+                  <SelectTrigger id="filter-position">
+                    <SelectValue placeholder={t.employees.filterPosition} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">{t.employees.allPositions}</SelectItem>
+                    {positions.map((position) => (
+                      <SelectItem key={position.id} value={position.id}>
+                        {position.nombre}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {canViewSalary ? (
+                <div className="space-y-1.5">
+                  <Label>{t.employees.filterSalary}</Label>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    <Input
+                      id="filter-salary-min"
+                      type="number"
+                      min="0"
+                      step="any"
+                      inputMode="decimal"
+                      value={salaryMin}
+                      onChange={(event) => updateSalaryBound(event.target.value, setSalaryMin)}
+                      placeholder={t.employees.salaryFrom}
+                      aria-label={t.employees.salaryFrom}
+                      aria-describedby={salaryRangeError ? 'filter-salary-error' : undefined}
+                      aria-invalid={salaryRangeError}
+                    />
+                    <Input
+                      id="filter-salary-max"
+                      type="number"
+                      min="0"
+                      step="any"
+                      inputMode="decimal"
+                      value={salaryMax}
+                      onChange={(event) => updateSalaryBound(event.target.value, setSalaryMax)}
+                      placeholder={t.employees.salaryTo}
+                      aria-label={t.employees.salaryTo}
+                      aria-describedby={salaryRangeError ? 'filter-salary-error' : undefined}
+                      aria-invalid={salaryRangeError}
+                    />
+                  </div>
+                  {salaryRangeError ? (
+                    <p id="filter-salary-error" role="alert" className="text-xs text-red-500">
+                      {t.employees.salaryRangeError}
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          </div>
+
+          <DataTable
+            columns={columns}
+            data={filteredEmpleados}
+            emptyMessage={t.dataTable.empty}
+            searchPlaceholder={t.employees.searchEmployee}
+            labels={dataTableLabels}
+          />
+        </div>
       )}
 
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
@@ -457,12 +686,14 @@ export default function EmpleadosPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-              <div className="space-y-1.5">
-                <Label htmlFor="sueldo">{t.employees.salary}</Label>
-                <Input id="sueldo" type="number" step="any" min="0" {...register('sueldo')} />
-                {errors.sueldo && <p className="text-xs text-red-500">{errors.sueldo.message}</p>}
-              </div>
+            <div className={`grid grid-cols-1 gap-4 ${canViewSalary ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
+              {canViewSalary ? (
+                <div className="space-y-1.5">
+                  <Label htmlFor="sueldo">{t.employees.salary}</Label>
+                  <Input id="sueldo" type="number" step="any" min="0" {...register('sueldo')} />
+                  {errors.sueldo && <p className="text-xs text-red-500">{errors.sueldo.message}</p>}
+                </div>
+              ) : null}
 
               <div className="space-y-1.5">
                 <Label htmlFor="fechaNacimiento">{t.employees.birthDate}</Label>
@@ -497,6 +728,40 @@ export default function EmpleadosPage() {
                 )}
               />
               {errors.positionId && <p className="text-xs text-red-500">{errors.positionId.message}</p>}
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="sucursalId">{t.common.branch}</Label>
+              <Controller
+                control={control}
+                name="sucursalId"
+                render={({ field }) => (
+                  <Select value={field.value} onValueChange={field.onChange} disabled={branchesLoading}>
+                    <SelectTrigger id="sucursalId">
+                      <SelectValue placeholder={branchesLoading ? t.common.loading : t.employees.selectBranch} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={UNASSIGNED_BRANCH}>
+                        {t.employees.unassignedBranch}
+                      </SelectItem>
+                      <SelectItem value={ALL_BRANCHES}>
+                        {t.employees.allBranchAssignment}
+                      </SelectItem>
+                      {editing?.sucursal &&
+                      !sucursales.some((sucursal) => sucursal.id === editing.sucursal?.id) ? (
+                        <SelectItem value={editing.sucursal.id}>
+                          {editing.sucursal.nombre}
+                        </SelectItem>
+                      ) : null}
+                      {sucursales.map((sucursal) => (
+                        <SelectItem key={sucursal.id} value={sucursal.id}>
+                          {sucursal.nombre}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
             </div>
 
             <div className="space-y-1.5">
