@@ -18,6 +18,9 @@ release/
 .env.local
 .env.*.local
 .env.dev
+
+# Config local de pnpm
+.npmrc
 # Turbo
 .turbo/
 

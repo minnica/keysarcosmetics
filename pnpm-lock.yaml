@@ -379,6 +379,12 @@ importers:
       '@cosmetics/ui':
         specifier: workspace:*
         version: link:../../packages/ui
+      date-fns:
+        specifier: ^3.6.0
+        version: 3.6.0
+      lucide-react:
+        specifier: ^0.400.0
+        version: 0.400.0(react@18.3.1)
       next:
         specifier: 14.2.4
         version: 14.2.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -396,10 +402,10 @@ importers:
         version: 3.25.76
     devDependencies:
       '@types/node':
-        specifier: ^20.14.9
+        specifier: ^20.19.41
         version: 20.19.41
       '@types/react':
-        specifier: ^18.3.3
+        specifier: ^18.3.29
         version: 18.3.29
       '@types/react-dom':
         specifier: ^18.3.0
@@ -420,7 +426,7 @@ importers:
         specifier: ^3.4.4
         version: 3.4.19(tsx@4.22.3)
       typescript:
-        specifier: ^5.4.5
+        specifier: ^5.9.3
         version: 5.9.3
 
   backend/api:
