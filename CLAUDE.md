@@ -1071,13 +1071,6 @@ Para trabajar únicamente en Scheduler y evitar abrir POS:
 pnpm.cmd --filter @cosmetics/scheduler dev
 ```
 
-Si `pnpm` local no reconstruye bien `node_modules` del workspace en Windows, usar los scripts directos:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\repair-scheduler-workspace.ps1
-powershell -ExecutionPolicy Bypass -File .\scripts\dev-scheduler.ps1
-```
-
 ### Type-check y build
 
 ```bash
@@ -1090,12 +1083,6 @@ pnpm --filter @cosmetics/payroll build
 pnpm --filter @cosmetics/api test
 pnpm --filter @cosmetics/api type-check
 pnpm --filter @cosmetics/api build
-```
-
-Validación directa del scheduler sin depender de `pnpm run`:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\check-scheduler.ps1
 ```
 
 ### Deploy backend (ejecutar desde raíz del repo)
