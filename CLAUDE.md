@@ -264,6 +264,35 @@ Datos:
 
 ---
 
+## Estado actual de apps/scheduler
+
+`apps/scheduler` es la app de agenda y administración de reservas. Fase local/mock, sin backend real, sin Prisma y sin persistencia. No se modifican backend, Prisma ni variables de entorno en esta etapa. La documentación funcional ampliada está en `docs/SCHEDULER_CONTEXT.md`.
+
+### Agenda
+
+- La agenda principal (`/`) modela una agenda operativa estilo AgendaPro con vistas `day` y `week`, filtro por sucursal, selección de profesionales, filtro de estatus, búsqueda rápida por hora, calendario mensual y acciones directas sobre slots vacíos.
+- La entrada principal es `SchedulerWorkspace`, que compone `SchedulerHeader`, `SchedulerSidebar` y `SchedulerAgendaGrid`, y abre tres diálogos especializados: `SchedulerBookingDialog`, `SchedulerBlockDialog` y `SchedulerDetailDialog`.
+- Los datos salen de `src/lib/mock-scheduler-data.ts` y se manipulan con helpers en `src/components/scheduler/scheduler-utils.tsx`.
+- El login temporal solo redirige a la agenda principal; no hay flujo auth real para esta app todavía.
+
+### Administración
+
+La ruta `/administracion` contiene el workspace administrativo completo, local/mock y sin conexión a backend. Incluye Locales, Profesionales, Grupos personalizados, Servicios, Clases, Paquetes, Adicionales, Comisiones, Recursos, Encuestas, Consentimientos, WhatsApp y Gift cards.
+
+El catálogo de Servicios incluye listados por categoría, búsqueda, estados y edición; servicios individuales y con sesiones; clases con capacidad y horario por día; paquetes con selección de servicios y precio personalizado; adicionales; categorías; servicio destacado; nombres alternativos; sitio web con pago en línea; opciones avanzadas (modalidad, comisión por porcentaje o moneda, recursos y horario especial); y carga/descarga masiva de precios `.xlsx` en modo mock (no procesa archivos reales ni persiste).
+
+### Reportes
+
+La ruta `/reportes` contiene la primera fase local/mock de reportes: resumen ejecutivo con selector de periodo, KPIs comparativos y desgloses; `/reportes/reservas` implementa la vista General del reporte de reservas con rango de fechas, filtros, KPIs, ranking de servicios, distribución semanal y demanda por hora, más subvistas de Historial, Métricas, Locales, Servicios, Mensajería móvil y desgloses por local. El reporte de ventas todavía no está implementado.
+
+### Navegación y UI
+
+- `SchedulerPrimaryNav` es la navbar compartida con dropdowns de Reportes y Administración, reutilizada en Agenda, Reportes y Administración.
+- Todo usa componentes de `@cosmetics/ui` y `toast` compartido; las pantallas montan `<Toaster />` en `src/app/layout.tsx`.
+- La interfaz es responsive desde el inicio: navegación compacta en móvil, tarjetas apiladas, formularios de pantalla completa y tablas que se convierten en bloques legibles.
+
+---
+
 ## Payroll: implementación actual
 
 `apps/payroll` es una app operativa conectada a `backend/api` y PostgreSQL; ya no usa fixtures ni contextos mock. La referencia funcional original fue `nomina.xlsx`, pero las fórmulas viven en backend y cada corrida conserva snapshots históricos.
@@ -954,6 +983,13 @@ packages/ui/
 | Ciclo/snapshots payroll    | `backend/api/src/services/payroll.service.ts`                  |
 | Guía de despliegue payroll | `apps/payroll/PENDIENTES.md`                                   |
 | Guía operativa payroll     | `apps/payroll/GUIA_PRIMERA_NOMINA.md`                          |
+| Agenda scheduler           | `apps/scheduler/src/app/(dashboard)/page.tsx`                  |
+| Admin scheduler            | `apps/scheduler/src/app/(dashboard)/administracion/page.tsx`   |
+| Reportes scheduler         | `apps/scheduler/src/app/(dashboard)/reportes/`                 |
+| Workspace scheduler        | `apps/scheduler/src/components/SchedulerWorkspace.tsx`         |
+| Admin workspace scheduler  | `apps/scheduler/src/components/administration/AdministrationWorkspace.tsx` |
+| Mock data scheduler        | `apps/scheduler/src/lib/mock-scheduler-data.ts`                |
+| Contexto scheduler         | `docs/SCHEDULER_CONTEXT.md`                                    |
 | Prisma schema              | `backend/api/prisma/schema.prisma`                             |
 | Migraciones                | `backend/api/prisma/migrations/`                               |
 | Seed seguro catálogos      | `backend/api/prisma/seed-catalogs.ts`                          |
