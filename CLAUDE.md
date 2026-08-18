@@ -1,6 +1,8 @@
 # Cosmetics Platform — CLAUDE.md
 
 > Fuente principal de contexto del proyecto. Leer antes de hacer cambios.
+>
+> `AGENTS.md` es el contexto técnico del repositorio para agentes de opencode/Codex; este archivo es el contexto equivalente para Claude Code. Ambos son complementarios, no duplicados.
 
 ---
 
