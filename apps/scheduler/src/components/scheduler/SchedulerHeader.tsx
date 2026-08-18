@@ -17,6 +17,11 @@ import {
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { schedulerBranches, schedulerLegendItems, type SchedulerView } from '@/lib/mock-scheduler-data'
+import {
+  AdministrationNavMenu,
+  ReportsNavMenu,
+  SchedulerPrimaryNav,
+} from '@/components/SchedulerPrimaryNav'
 import { getLegendIcon } from './scheduler-utils'
 
 interface SchedulerHeaderProps {
@@ -58,24 +63,15 @@ export function SchedulerHeader({
                 <p className="text-[0.68rem] uppercase tracking-[0.32em] text-white/45">Agenda interna</p>
               </div>
             </div>
-            <nav className="hidden items-center gap-2 xl:flex">
-              {['Agenda', 'Clientes', 'Servicios', 'Reportes'].map((item, index) => (
-                <button
-                  key={item}
-                  className={
-                    index === 0
-                      ? 'rounded-full bg-white/12 px-5 py-2.5 text-[0.92rem] font-medium text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] transition'
-                      : 'rounded-full px-5 py-2.5 text-[0.92rem] font-medium text-white/60 transition hover:bg-white/6 hover:text-white'
-                  }
-                  type="button"
-                >
-                  {item}
-                </button>
-              ))}
-            </nav>
+            <SchedulerPrimaryNav activeArea="agenda" />
           </div>
 
-          <div className="hidden items-center gap-3 lg:flex">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 xl:hidden">
+              <ReportsNavMenu compact />
+              <AdministrationNavMenu compact />
+            </div>
+            <div className="hidden items-center gap-3 xl:flex">
             <button className="scheduler-header-button" type="button">
               <Search className="h-5 w-5" />
             </button>
@@ -87,6 +83,7 @@ export function SchedulerHeader({
             </button>
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white text-sm font-semibold text-slate-700 shadow-[0_10px_24px_rgba(0,0,0,0.2)]">
               ER
+            </div>
             </div>
           </div>
         </div>

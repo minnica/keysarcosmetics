@@ -2,12 +2,14 @@
 
 import * as React from 'react'
 import { format, parseISO } from 'date-fns'
+import { es } from 'date-fns/locale'
 import type { DateRange as DayPickerDateRange } from 'react-day-picker'
 import { Calendar as CalendarIcon } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { Button } from './button'
 import { Calendar } from './calendar'
 import { Popover, PopoverContent, PopoverTrigger } from './popover'
+import { useIsMobile } from '../../hooks/use-mobile'
 
 /** Rango de fechas en formato ISO YYYY-MM-DD — compatible con filtros de reportes */
 export interface DateRange {
@@ -31,6 +33,7 @@ function dateToISO(date: Date | undefined): string {
 
 export function DateRangePicker({ value, onChange, className }: DateRangePickerProps) {
   const [open, setOpen] = React.useState(false)
+  const isMobile = useIsMobile()
 
   const selected: DayPickerDateRange = {
     from: isoToDate(value.from),
@@ -69,12 +72,16 @@ export function DateRangePicker({ value, onChange, className }: DateRangePickerP
           {label}
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-auto p-0" align="start">
+      <PopoverContent
+        className="w-auto max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl border-[#e6ddd5] bg-white p-0 shadow-[0_18px_44px_rgba(38,54,73,0.14)]"
+        align="start"
+      >
         <Calendar
           mode="range"
           selected={selected}
           onSelect={handleSelect}
-          numberOfMonths={2}
+          numberOfMonths={isMobile ? 1 : 2}
+          locale={es}
           initialFocus
         />
       </PopoverContent>

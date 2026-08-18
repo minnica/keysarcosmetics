@@ -56,6 +56,9 @@ Todas las apps son internas (detrás de login), excepto `landing` que es públic
 - `SUPER_ADMIN` → acceso total a todas las apps
 - `GERENTE` → acceso a su sucursal: ventas, empleados, reportes locales
 - `CAPTURISTA` → solo registro de ventas
+- `Position.canManageAccess` marca el puesto que administra permisos y credenciales de `envelope`.
+- El acceso efectivo a pantallas de `envelope` ya no depende solo del rol: también se resuelve por puesto/permisos por pantalla.
+- La pantalla `accesos` guarda permisos por clic inmediato en cada pantalla con autosave sin recarga, administra credenciales en un dialog dedicado y desactiva cuentas desde la tabla de estatus, excepto la cuenta principal `SUPER_ADMIN`, que queda protegida.
 
 ---
 
@@ -68,7 +71,8 @@ Componentes shadcn canónicos en `packages/ui/src/components/ui`:
 - Calendar, DateRangePicker, Sheet, Tooltip, Separator, Sidebar
 - **AlertDialog** — diálogo de confirmación destructiva (botones de borrar)
 - **Sonner** — toasts con colores de marca (`#648672` green-olive, `#8bb09b` green-sage)
-- **DataTable** — tabla canónica shadcn sobre `@tanstack/react-table`. Props: `columns: ColumnDef<T>[]`, `data: T[]`, `emptyMessage?: string`, `searchPlaceholder?: string`, `pageSize?: number` (default 20). Incluye sorting por clic en header, globalFilter (search input), selector de filas por página (opciones: 10, 20, 50, 100, Todos) y pagination con controles prev/next (ocultos en modo Todos). Re-exporta también `ColumnDef` desde `@cosmetics/ui` — las apps no deben importar `@tanstack/react-table` directamente.
+- **DataTable** — tabla canónica shadcn sobre `@tanstack/react-table`. Props: `columns: ColumnDef<T>[]`, `data: T[]`, `emptyMessage?: string`, `searchPlaceholder?: string`, `pageSize?: number` (default 20), `labels?: { records?: string; all?: string; results?: (count: number) => string }`. Incluye sorting por clic en header, globalFilter (search input), selector de filas por página (opciones: 10, 20, 50, 100, Todos) y pagination con controles prev/next (ocultos en modo Todos). Re-exporta también `ColumnDef` desde `@cosmetics/ui` — las apps no deben importar `@tanstack/react-table` directamente.
+- **DateRangePicker** — selector compartido de rango ISO `YYYY-MM-DD`; muestra dos meses en escritorio y uno en móvil, con calendario localizado al español.
 
 `toast` helper re-exportado desde `@cosmetics/ui` (no importar `sonner` directamente en las apps).
 
@@ -76,6 +80,7 @@ Wrappers custom en `packages/ui/src/components/custom`:
 
 - `ProgressKeysar` — wrapper custom sobre `Progress` oficial
 - `Combobox` — select con búsqueda integrada; usa `Popover` + `Input`. Props: `options`, `value`, `onValueChange`, `placeholder`, `searchPlaceholder`, `emptyMessage`, `disabled`, `id`. Exporta también `ComboboxOption` (interface `{ value: string; label: string }`).
+- `MultiCombobox` — select compacto con búsqueda y selección múltiple; usa `Popover` + `Input`. Props: `options`, `value`, `onValueChange`, `placeholder`, `searchPlaceholder`, `emptyMessage`, `disabled`, `id`.
 
 **Reglas de UI:**
 - Apps consumen UI exclusivamente desde `@cosmetics/ui`.
@@ -85,6 +90,8 @@ Wrappers custom en `packages/ui/src/components/custom`:
 - `toast` siempre desde `@cosmetics/ui`, nunca `import { toast } from 'sonner'` directo.
 - Botones de borrar siempre con `AlertDialog` de confirmación antes de ejecutar `remove`.
 - **Tablas de datos siempre con `DataTable` + `ColumnDef` desde `@cosmetics/ui`.** No usar `<Table>` + `<TableBody>` manual para listados CRUD — solo para tablas de reporte/estáticas.
+- **Reportes exportables**: cuando una pantalla de reporte necesite PDF/Excel, reutilizar `apps/envelope/src/lib/report-export.ts` y `apps/envelope/src/components/reportes/ReportExportButtons.tsx`. Exportar siempre desde el dataset ya agregado, nunca desde captura visual de la tabla.
+- En cualquier tabla, los encabezados y textos estáticos visibles van en MAYÚSCULAS; no transformar valores de datos dinámicos como nombres, fechas o importes.
 - Para columnas computadas (valor derivado de múltiples campos), usar `accessorFn` + `id` para que sorting y globalFilter funcionen. Columnas sin accessor (como acciones) no son sortables ni filtrables — marcar explícitamente con `enableSorting: false, enableGlobalFilter: false`.
 
 **Sistema tipográfico (envelope):**
@@ -105,23 +112,26 @@ Wrappers custom en `packages/ui/src/components/custom`:
 
 Módulos implementados:
 - **ventas** — captura una venta total por `sucursal`+`fecha`+empleado inicial+monto; después permite agregar empleados con reparto equitativo automático y montos editables, y conciliar métodos de pago uno por uno contra el total. El guardado solo se habilita cuando tanto la distribución por empleado como la suma de pagos coinciden con el monto. Cada empleado se persiste como un `RegistroVenta`, compartiendo un `sesionId` cuando participa más de uno; `POST /api/envelope/ventas/lote` guarda todo el voucher en una transacción atómica.
-- **empleados** — CRUD, usa `bankId`/`positionId` dinámicos desde backend; incluye toggle activo/inactivo con `PATCH /empleados/:id/status`; GET retorna todos los empleados (activos primero), la tabla muestra badge de estatus y botón `PowerOff`/`Power` con AlertDialog de confirmación
+- **empleados** — CRUD, usa `bankId`/`positionId` dinámicos desde backend; incluye toggle activo/inactivo con `PATCH /empleados/:id/status`; GET retorna todos los empleados (activos primero), la tabla muestra badge de estatus y botón `PowerOff`/`Power` con AlertDialog de confirmación. Además de `banco`/`puesto` legacy, ya expone `sueldo`, `fechaNacimiento` y `numeroTelefono` en formulario, tabla, backend, Prisma y seed; `fechaNacimiento` se captura completo para que después se derive el cumpleaños y la base de RH para nómina
 - **sucursales** — CRUD de sucursales
 - **metodos-pago** — CRUD de métodos de pago
 - **bancos** — CRUD propio con catálogo `Bank`
 - **puestos** — CRUD propio con catálogo `Position`
-- **reportes** — múltiples subvistas: total-general, detalle-metodo-pago, metodo-pago-por-dia, ventas-por-vendedor, ventas-por-vendedor-dia
+- **reportes** — múltiples subvistas: total-general, detalle-metodo-pago, metodo-pago-por-dia, ventas-por-vendedor, ventas-por-vendedor-dia; exportan PDF y Excel desde los datos agregados en cliente usando `report-export.ts` + `ReportExportButtons`; la vista `ventas-por-vendedor-dia` ahora muestra `Días sin venta` y `Monto día aproximado` al final de la tabla, antes del total
 
 UI:
 - Sidebar responsive usando shadcn `Sidebar` + `Sheet` (Sheet para mobile).
 - Layout: `AppSidebar` + `LayoutShell` en `src/components/layout/`.
+- Sidebar filtrado por permisos efectivos; incluye pantalla de `Control de accesos` para puestos con acceso administrador.
 - Todos los botones de borrar usan `AlertDialog` de confirmación.
 - Todos los formularios disparan `toast.success()` al crear o editar, **excepto** el modal "Agregar/Editar venta" en ventas: dispara `toast.info()` azul pastel (8 s) recordando al usuario que debe dar clic en «Guardar registro» para persistir.
+- En `ventas`, el botón final de guardado debe pasar por un `AlertDialog` de confirmación antes de persistir la venta.
 - `<Toaster position="bottom-center" />` montado en `src/app/layout.tsx`.
 - Favicon configurado via metadata `icons: { icon: '/logo.svg' }` en root layout.
 - Header del sidebar muestra logo (32px) + texto "Keysar Cosmetics" cuando expandido; solo logo (28px) cuando colapsado.
-- Switch dark/light mode en el header del sidebar (bajo la fila del logo), oculto en modo colapsado.
-- Botón "Cerrar sesión" en `SidebarFooter` — elimina `auth_token` de localStorage y redirige a `/login`. Usa `SidebarMenuButton` con tooltip para funcionar también en modo colapsado.
+- Switch dark/light mode y switch visual de idioma `ES/EN` en `SidebarFooter`, encima del botón "Cerrar sesión", ocultos en modo colapsado. Ambos usan el mismo diseño segmentado. Envelope usa `I18nProvider` + `useI18n()` en `src/lib/i18n.tsx`, persiste en `localStorage` con key `keysar-envelope-language` y solo traduce textos estáticos de UI. No traducir ni transformar datos provenientes de BD/API (nombres de sucursales, empleados, bancos, puestos, métodos de pago, mensajes explícitos de backend, etc.).
+- Botón "Cerrar sesión" en `SidebarFooter` — limpia `auth_token`, resetea la sesión en memoria y redirige a `/login`. Usa `SidebarMenuButton` con tooltip para funcionar también en modo colapsado.
+- El login de `envelope` ya usa sesión híbrida: credenciales temporales hoy, con soporte de base para invitación futura por enlace. El redirect post-login usa `window.location.assign(...)` para evitar quedarse atrapado en la pantalla de login.
 
 Datos:
 - `useBanks` y `usePositions` cargan catálogos dinámicos desde backend.
@@ -137,10 +147,15 @@ Datos:
 
 **Modelos relevantes:**
 - `Usuario`, `Sucursal`, `Empleado`, `Venta`, `VentaDetalle`, `MetodoPago`, `Bank`, `Position`.
+- `Usuario` puede vincularse opcionalmente a `Empleado` mediante `empleadoId` y guarda metadatos para el futuro flujo de invitación/alta de contraseña.
+- `Position` incluye `canManageAccess` y la relación `PositionScreenPermission`.
+- `PositionScreenPermission` guarda permisos por pantalla para cada puesto.
+- El acceso admin expone `PUT /api/envelope/access/positions/:id/permissions`, `PUT /api/envelope/access/users/:employeeId/credentials` y `DELETE /api/envelope/access/users/:id` para desactivar cuentas.
 - `Empleado` tiene `bankId`/`positionId` nullable (FK a catálogos dinámicos).
 - `Empleado` también tiene campos legacy `banco`/`puesto` (String) — conservar por compatibilidad hasta backfill completo en prod.
+- `Empleado` ahora incluye `sueldo Decimal?`, `fechaNacimiento DateTime?` y `numeroTelefono String?` para el crecimiento del módulo RH.
 - `Venta` tiene `sesionId String?` — vincula registros del mismo voucher multi-vendedor; null = venta individual.
-- Soft delete: `activo = false` (Usuario, Empleado, Bank, Position, MetodoPago) o `activa = false` (Sucursal). **No hacer borrados físicos salvo instrucción explícita.**
+- Soft delete: `activo = false` (Usuario, Empleado, Bank, Position, MetodoPago) o `activa = false` (Sucursal). **No hacer borrados físicos salvo instrucción explícita**; la ruta admin de `accesos` desactiva cuentas de login en vez de eliminarlas, excepto la cuenta principal `SUPER_ADMIN`, que no se puede desactivar desde la UI.
 
 **Reglas de BD:**
 - No ejecutar `migrate reset` ni `db push` en ambientes compartidos/productivos.
@@ -190,6 +205,7 @@ apps/envelope/
 │   │   ├── metodos-pago/          → CRUD métodos de pago
 │   │   ├── bancos/                → CRUD catálogo Bank
 │   │   ├── puestos/               → CRUD catálogo Position
+│   │   ├── accesos/               → administración de permisos por puesto, credenciales independientes y borrado de cuentas
 │   │   └── reportes/              → subvistas de reportes del módulo envelope
 │   └── layout.tsx                 → layout raíz de la app
 ├── src/components/
@@ -222,13 +238,20 @@ apps/scheduler/
 ├── src/app/
 │   ├── (auth)/login/              → acceso temporal/mock al scheduler
 │   ├── (dashboard)/page.tsx       → agenda principal (día / semana)
+│   ├── (dashboard)/administracion/ → workspace administrativo completo
+│   ├── (dashboard)/reportes/       → resumen ejecutivo + reporte general de reservas (mock)
 │   ├── globals.css                → tokens visuales del scheduler
 │   └── layout.tsx                 → metadata + Toaster global
 ├── src/components/
+│   ├── SchedulerPrimaryNav.tsx  → navbar compartido con dropdowns de Reportes y Administración
 │   ├── SchedulerWorkspace.tsx     → shell principal con estado local, filtros y modales
-│   └── scheduler/                 → header, sidebar, grid agenda, tarjetas y diálogos del scheduler
+│   ├── scheduler/                 → header, sidebar, grid agenda, tarjetas y diálogos del scheduler
+│   └── reports/                   → dashboard y navegación del resumen de reportes
+├── src/components/administration/ → navegación y CRUDs mock de Administración
 └── src/lib/
-    └── mock-scheduler-data.ts     → datos mock de sucursales, profesionales, citas, bloqueos y leyenda
+    ├── mock-scheduler-data.ts     → datos mock de sucursales, profesionales, citas, bloqueos y leyenda
+    ├── mock-administration-data.ts → catálogos mock de locales, profesionales, servicios y módulos administrativos
+    └── mock-report-data.ts        → periodos, KPIs y series mock del resumen de reportes
 ```
 
 ### backend/api
@@ -250,6 +273,7 @@ backend/api/
     │   └── client.ts              → PrismaClient compartido
     ├── routes/
     │   ├── auth.routes.ts
+    │   ├── access.routes.ts      → bootstrap y guardado de permisos/credenciales de acceso de envelope
     │   ├── envelope.routes.ts     → endpoints del módulo envelope
     │   ├── crm.routes.ts
     │   ├── payroll.routes.ts
@@ -295,6 +319,7 @@ packages/ui/
 | Rutas envelope frontend | `apps/envelope/src/app/(dashboard)/` |
 | Hooks envelope | `apps/envelope/src/hooks/` |
 | API client envelope | `apps/envelope/src/lib/api.ts` |
+| Sesión/permisos envelope | `apps/envelope/src/lib/session.tsx` |
 | Endpoints envelope backend | `backend/api/src/routes/envelope.routes.ts` |
 | Prisma schema | `backend/api/prisma/schema.prisma` |
 | Migraciones | `backend/api/prisma/migrations/` |
@@ -309,9 +334,16 @@ packages/ui/
 
 ```bash
 pnpm install
+pnpm dev                         # inicia los seis proyectos frontend; también abre POS (Electron)
 pnpm --filter @cosmetics/envelope dev
 pnpm --filter @cosmetics/scheduler dev
 pnpm --filter @cosmetics/api dev
+```
+
+Para trabajar únicamente en Scheduler y evitar abrir POS:
+
+```powershell
+pnpm.cmd --filter @cosmetics/scheduler dev
 ```
 
 Si `pnpm` local no reconstruye bien `node_modules` del workspace en Windows, usar los scripts directos:
@@ -393,6 +425,16 @@ npx ts-node --project tsconfig.json prisma/seed-catalogs.ts
 - Automatizar deploy backend con GitHub Actions si se decide.
 - Crear seeds separados seguros para dev/datos base si se requiere.
 - Limpieza futura de campos legacy `banco`/`puesto` en `Empleado` cuando todos los registros en prod tengan `bankId`/`positionId` asignados (Fase 4).
-- `apps/scheduler` sigue en **Fase 1 local/mock**, pero ya incluye timeline editable estilo AgendaPro, filtros por sucursal/profesional/estatus/hora, bloqueos manuales, actualización local de pagos/estatus y modales de detalle/edición; aún no tiene backend, Prisma ni persistencia real.
-- Los bloques manuales de `apps/scheduler` (`Hora bloqueada`) ya se pueden abrir desde la tarjeta rayada para editar horario/profesional o quitar el bloqueo en la agenda local/mock.
-- Próxima fase sugerida para `scheduler`: modelar `Cliente`, `Servicio`, `Cita`, `BloqueHorario` y endpoints en `/api/scheduler` antes de conectar persistencia real.
+- `apps/scheduler` conserva la agenda principal en modo local/mock. La ruta `/administracion` ahora contiene el workspace completo de Administración, también local/mock y sin conexión a backend.
+- La ruta `/reportes` contiene la primera fase local/mock de Reportes: resumen ejecutivo con selector de periodo, KPIs comparativos, detalle por estado, origen de reservas, ocupación, ventas y ticket promedio. También incluye seguimiento mock de cumpleaños, recordatorios por email, pagos en línea y métricas de campañas. `/reportes/reservas` implementa la vista General del reporte de reservas con rango de fechas, filtros por estado, criterio de fecha, KPIs, ranking de servicios, distribución semanal y demanda por hora. El ítem lateral `Reservas` funciona como dropdown con `Historial` y `Métricas`; `/reportes/reservas/historial` implementa Historial con los filtros compartidos, DataTable, búsqueda, sorting, paginación, estados de reserva/pago y descarga visual mock. `/reportes/reservas/metricas` implementa Métricas con proporciones generales, desglose por servicio, evolución diaria y estados vacíos para confirmadas, asistencias, cancelaciones y no asistencias. `/reportes/reservas/locales` implementa el consolidado por sucursal con reservas, recaudación, ocupación, tendencia y comparativa semanal responsive. `/reportes/reservas/servicios` implementa el catálogo de rendimiento con 53 servicios precargados del reporte operativo (40 reservas y $48,959), buscador, participación, recaudación, ticket promedio, dona de distribución y ranking de uso. Los demás desgloses laterales permanecen pendientes. El reporte de ventas todavía no está implementado.
+- `/reportes/reservas/mensajeria-movil` implementa el seguimiento mock de WhatsApp con reservas sin confirmar, proporción de envíos, confirmaciones, cuota de conversaciones, descarga visual y tabla de actividad reciente. Comparte los filtros del reporte de reservas y todavía no conecta el proveedor real de mensajería.
+- `/reportes/reservas/servicios-por-local/opatra-mexico` implementa el dropdown `Servicios por local` y el desglose de los 53 servicios de OPATRA MEXICO en el orden del reporte operativo, reutilizando sus totales, buscador, tabla compacta y rankings.
+- `/reportes/reservas/prestadores-por-local/opatra-mexico` implementa el dropdown `Prestadores por local` y el consolidado mock de OPATRA MEXICO por prestador, con reservas, ingresos estimados, ocupación, tendencia semanal y demanda por hora.
+- El navbar del scheduler reutiliza `SchedulerPrimaryNav` en Agenda, Reportes y Administración. `Reportes` expone Resumen y Reservas; `Administración` expone las nueve secciones activas y conserva `?section=` al navegar.
+- Administración incluye Locales, Profesionales, Grupos personalizados, Servicios, Clases, Paquetes, Adicionales, Comisiones, Recursos, Encuestas, Consentimientos, WhatsApp y Gift cards. Sus CRUDs, filtros, estados, modales y confirmaciones se mantienen en estado local durante esta fase.
+- Servicios ya cuenta en mock con los modales de servicios, sesiones, clases, paquetes y adicionales; categorías, profesionales, servicio destacado, nombres alternativos, sitio web, pago en línea, imágenes y carga/descarga masiva de precios. La siguiente prioridad visual es cerrar `Opciones avanzadas` antes de conectar la API.
+- La carga de precios y subida de plantillas `.xlsx` son flujos visuales/mock: todavía no procesan archivos reales ni persisten información.
+- `Local` y `Profesional` son entidades separadas; `Planes` en Comisiones muestra por ahora un estado vacío mock, sin persistencia. `Consentimientos` permite crear y editar documentos con nombre y archivo, cargados de forma visual/mock, y los lista en un `DataTable` con búsqueda y eliminación confirmada; todavía no incluye firma, resultados ni persistencia real.
+- `Encuestas` funciona en estado local/mock: permite seleccionar servicios y preguntas por categoría, crear preguntas de tipo estrellas o comentario, y visualizar un preview vivo con servicios, numeración y cinco estrellas. Todavía no incluye resultados ni persistencia real.
+- `WhatsApp` funciona en estado local/mock: lista 13 mensajes precargados de operación (OPATRA, Mitikah, bienvenida, confirmación, postventa, agradecimiento, recordatorios, reagenda y no asistencia), permite crear/editar plantillas personalizadas, insertar variables agrupadas por reserva, local y compañía, probar plantillas prediseñadas y ver un preview estilo WhatsApp. El envío real, conexión del canal y persistencia quedan fuera de alcance.
+- Siguiente etapa de integración: modelar `Cliente`, `Servicio`, `Cita`, `BloqueHorario`, horarios, recursos y relaciones en `/api/scheduler` antes de conectar persistencia real.
