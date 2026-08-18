@@ -1,8 +1,6 @@
 # Cosmetics Platform — CLAUDE.md
 
 > Fuente principal de contexto del proyecto. Leer antes de hacer cambios.
->
-> `AGENTS.md` es el contexto técnico del repositorio para agentes de opencode/Codex; este archivo es el contexto equivalente para Claude Code. Ambos son complementarios, no duplicados.
 
 ---
 
@@ -178,6 +176,7 @@ Wrappers custom en `packages/ui/src/components/custom`:
 
 - `ProgressKeysar` — wrapper custom sobre `Progress` oficial
 - `Combobox` — select con búsqueda integrada; usa `Popover` + `Input`. Props: `options`, `value`, `onValueChange`, `placeholder`, `searchPlaceholder`, `emptyMessage`, `disabled`, `id`. Exporta también `ComboboxOption` (interface `{ value: string; label: string }`).
+- `MultiCombobox` — select compacto con búsqueda y selección múltiple; usa `Popover` + `Input`. Props: `options`, `value`, `onValueChange`, `placeholder`, `searchPlaceholder`, `emptyMessage`, `disabled`, `id`.
 
 **Reglas de UI:**
 
@@ -899,6 +898,32 @@ apps/envelope/
     └── utils.ts
 ```
 
+### apps/scheduler
+
+```
+apps/scheduler/
+├── public/
+│   ├── logo.svg                   → logo compartido Keysar
+│   └── fonts/                     → Emofera + Gilroy para identidad visual
+├── src/app/
+│   ├── (auth)/login/              → acceso temporal/mock al scheduler
+│   ├── (dashboard)/page.tsx       → agenda principal (día / semana)
+│   ├── (dashboard)/administracion/ → workspace administrativo completo
+│   ├── (dashboard)/reportes/       → resumen ejecutivo + reporte general de reservas (mock)
+│   ├── globals.css                → tokens visuales del scheduler
+│   └── layout.tsx                 → metadata + Toaster global
+├── src/components/
+│   ├── SchedulerPrimaryNav.tsx    → navbar compartido con dropdowns de Reportes y Administración
+│   ├── SchedulerWorkspace.tsx     → shell principal con estado local, filtros y modales
+│   ├── scheduler/                 → header, sidebar, grid agenda, tarjetas y diálogos del scheduler
+│   └── reports/                   → dashboard y navegación del resumen de reportes
+├── src/components/administration/ → navegación y CRUDs mock de Administración
+└── src/lib/
+    ├── mock-scheduler-data.ts     → datos mock de sucursales, profesionales, citas, bloqueos y leyenda
+    ├── mock-administration-data.ts → catálogos mock de locales, profesionales, servicios y módulos administrativos
+    └── mock-report-data.ts        → periodos, KPIs y series mock del resumen de reportes
+```
+
 ### backend/api
 
 ```
@@ -1005,9 +1030,24 @@ packages/ui/
 
 ```bash
 pnpm install
+pnpm dev                         # inicia los proyectos frontend; también abre POS (Electron)
 pnpm --filter @cosmetics/envelope dev
+pnpm --filter @cosmetics/scheduler dev
 pnpm --filter @cosmetics/payroll dev
 pnpm --filter @cosmetics/api dev
+```
+
+Para trabajar únicamente en Scheduler y evitar abrir POS:
+
+```powershell
+pnpm.cmd --filter @cosmetics/scheduler dev
+```
+
+Si `pnpm` local no reconstruye bien `node_modules` del workspace en Windows, usar los scripts directos:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\repair-scheduler-workspace.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\dev-scheduler.ps1
 ```
 
 ### Type-check y build
@@ -1015,11 +1055,19 @@ pnpm --filter @cosmetics/api dev
 ```bash
 pnpm --filter @cosmetics/envelope type-check
 pnpm --filter @cosmetics/envelope build
+pnpm --filter @cosmetics/scheduler type-check
+pnpm --filter @cosmetics/scheduler build
 pnpm --filter @cosmetics/payroll type-check
 pnpm --filter @cosmetics/payroll build
 pnpm --filter @cosmetics/api test
 pnpm --filter @cosmetics/api type-check
 pnpm --filter @cosmetics/api build
+```
+
+Validación directa del scheduler sin depender de `pnpm run`:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\check-scheduler.ps1
 ```
 
 ### Deploy backend (ejecutar desde raíz del repo)
@@ -1084,3 +1132,11 @@ npx ts-node --project tsconfig.json prisma/seed-catalogs.ts
 - Payroll: aplicar después `20260813020000_add_payroll_expense_categories`; debe desplegarse junto con la API/UI que sustituyen el texto libre de categoría por catálogo.
 - Payroll: aplicar finalmente `20260813030000_link_payroll_expense_categories` para habilitar edición segura de nombres y referencias futuras sin alterar snapshots aprobados.
 - Payroll Storage: crear más adelante el bucket privado y configurar `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` y opcionalmente `PAYROLL_STORAGE_BUCKET` solo después de que exista.
+- `/reportes/reservas/mensajeria-movil` implementa el seguimiento mock de WhatsApp con reservas sin confirmar, proporción de envíos, confirmaciones, cuota de conversaciones, descarga visual y tabla de actividad reciente. Comparte los filtros del reporte de reservas y todavía no conecta el proveedor real de mensajería.
+- `/reportes/reservas/servicios-por-local/opatra-mexico` implementa el dropdown `Servicios por local` y el desglose de los 53 servicios de OPATRA MEXICO en el orden del reporte operativo, reutilizando sus totales, buscador, tabla compacta y rankings.
+- `/reportes/reservas/prestadores-por-local/opatra-mexico` implementa el dropdown `Prestadores por local` y el consolidado mock de OPATRA MEXICO por prestador, con reservas, ingresos estimados, ocupación, tendencia semanal y demanda por hora.
+- La carga de precios y subida de plantillas `.xlsx` son flujos visuales/mock: todavía no procesan archivos reales ni persisten información.
+- `Local` y `Profesional` son entidades separadas; `Planes` en Comisiones muestra por ahora un estado vacío mock, sin persistencia. `Consentimientos` permite crear y editar documentos con nombre y archivo, cargados de forma visual/mock, y los lista en un `DataTable` con búsqueda y eliminación confirmada; todavía no incluye firma, resultados ni persistencia real.
+- `Encuestas` funciona en estado local/mock: permite seleccionar servicios y preguntas por categoría, crear preguntas de tipo estrellas o comentario, y visualizar un preview vivo con servicios, numeración y cinco estrellas. Todavía no incluye resultados ni persistencia real.
+- `WhatsApp` funciona en estado local/mock: lista 13 mensajes precargados de operación (OPATRA, Mitikah, bienvenida, confirmación, postventa, agradecimiento, recordatorios, reagenda y no asistencia), permite crear/editar plantillas personalizadas, insertar variables agrupadas por reserva, local y compañía, probar plantillas prediseñadas y ver un preview estilo WhatsApp. El envío real, conexión del canal y persistencia quedan fuera de alcance.
+- Siguiente etapa de integración del scheduler: modelar `Cliente`, `Servicio`, `Cita`, `BloqueHorario`, horarios, recursos y relaciones en `/api/scheduler` antes de conectar persistencia real.

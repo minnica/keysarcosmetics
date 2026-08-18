@@ -1,6 +1,6 @@
 # Contexto y fases de Keysar Scheduler
 
-Este documento concentra el alcance funcional acordado a partir de las capturas de referencia de AgendaPro. Es complemento de `AGENTS.md`; las reglas técnicas de ese archivo tienen prioridad.
+Este documento concentra el alcance funcional acordado a partir de las capturas de referencia de AgendaPro. Es complemento de `CLAUDE.md`; las reglas técnicas de ese archivo tienen prioridad.
 
 ## Estado actual
 
