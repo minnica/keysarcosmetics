@@ -176,6 +176,7 @@ Wrappers custom en `packages/ui/src/components/custom`:
 
 - `ProgressKeysar` — wrapper custom sobre `Progress` oficial
 - `Combobox` — select con búsqueda integrada; usa `Popover` + `Input`. Props: `options`, `value`, `onValueChange`, `placeholder`, `searchPlaceholder`, `emptyMessage`, `disabled`, `id`. Exporta también `ComboboxOption` (interface `{ value: string; label: string }`).
+- `MultiCombobox` — select compacto con búsqueda y selección múltiple; usa `Popover` + `Input`. Props: `options`, `value`, `onValueChange`, `placeholder`, `searchPlaceholder`, `emptyMessage`, `disabled`, `id`.
 
 **Reglas de UI:**
 
@@ -261,6 +262,64 @@ Datos:
 - Rendimiento `envelope`: `useVentas` acepta `fechaInicio`/`fechaFin` y las pantallas no deben volver a cargar el histórico completo de ventas para reportes o dashboard. La pantalla `ventas` carga por defecto solo el rango visible; `Generar sobre` consulta únicamente el día seleccionado al abrir el dialog. El backend aplica un rango por defecto seguro cuando faltan fechas, rechaza rangos mayores a 366 días y soporta `limit`/`page` opcionales en `GET /api/envelope/ventas`.
 - Los reportes de `envelope` consumen endpoints agregados en `/api/envelope/reportes/*`; no usar `useReportes()` para bajar ventas crudas y agregarlas en cliente. `useReportes` queda como helper legacy/no recomendado. Si se crea un reporte nuevo, preferir agregación en backend/SQL y enviar al frontend solo el dataset ya agregado.
 - El dashboard consume `/api/envelope/reportes/dashboard`; ese endpoint agrega en SQL y concentra los totales de sucursal de los periodos principales en una sola consulta, más una consulta separada para vendedores. No reintroducir cálculos del dashboard sobre ventas crudas en React.
+
+---
+
+## Estado actual de apps/scheduler
+
+`apps/scheduler` es la app de agenda y administración de reservas. Fase local/mock, sin backend real, sin Prisma y sin persistencia. No se modifican backend, Prisma ni variables de entorno en esta etapa. La agenda, la administración y los reportes viven local/mock; toda la información técnica de esta app está concentrada en esta sección.
+
+### Agenda
+
+- La agenda principal (`/`) modela una agenda operativa estilo AgendaPro con vistas `day` y `week`, filtro por sucursal, selección de profesionales, filtro de estatus, búsqueda rápida por hora, calendario mensual y acciones directas sobre slots vacíos.
+- La entrada principal es `SchedulerWorkspace`, que compone `SchedulerHeader`, `SchedulerSidebar` y `SchedulerAgendaGrid`, y abre tres diálogos especializados: `SchedulerBookingDialog`, `SchedulerBlockDialog` y `SchedulerDetailDialog`.
+- Los datos salen de `src/lib/mock-scheduler-data.ts` y se manipulan con helpers en `src/components/scheduler/scheduler-utils.tsx`.
+- El login temporal solo redirige a la agenda principal; no hay flujo auth real para esta app todavía.
+
+### Administración
+
+La ruta `/administracion` contiene el workspace administrativo completo, local/mock y sin conexión a backend. Incluye Locales, Profesionales, Grupos personalizados, Servicios, Clases, Paquetes, Adicionales, Comisiones, Recursos, Encuestas, Consentimientos, WhatsApp y Gift cards. Los listados, formularios, filtros, estados, modales, confirmaciones y feedback están implementados en `AdministrationWorkspace.tsx` y comparten catálogos desde `mock-administration-data.ts`.
+
+El catálogo de Servicios incluye listados por categoría, búsqueda, estados y edición; servicios individuales y con sesiones; clases con capacidad y horario por día; paquetes con selección de servicios y precio personalizado; adicionales; categorías; servicio destacado; nombres alternativos; sitio web con pago en línea; opciones avanzadas (modalidad, comisión por porcentaje o moneda, recursos y horario especial); y carga/descarga masiva de precios `.xlsx` en modo mock (no procesa archivos reales ni persiste). La carga/descarga masiva y la subida de plantillas son flujos visuales/mock: todavía no procesan archivos reales ni persisten información. La prioridad inmediata de Servicios es terminar la revisión visual e interacción de `Opciones avanzadas`; la conexión con API y Prisma queda para la fase de persistencia.
+
+**Alcance administrativo por módulo:**
+
+| Módulo | Alcance funcional | Estado de definición |
+|---|---|---|
+| Locales | Datos básicos, sitio web, horario semanal, jornada especial, activar/desactivar | Definido por capturas |
+| Profesionales | Datos básicos, servicios, horario, descansos, perfil, grupos personalizados | Definido por capturas |
+| Servicios | Servicios, clases, paquetes, adicionales, categorías, precios masivos | Definido por capturas |
+| Comisiones | Por profesional, servicio/producto y valor por defecto; porcentaje o monto | Definido por capturas |
+| Recursos | Recursos generales y recursos con horario, asignación a servicios y locales | Definido por capturas |
+| Encuestas | Encuestas, preguntas de apreciación/comentario, asociación a servicios y preview vivo con estrellas | Parcial; falta flujo de resultados |
+| Consentimientos | Nombre, carga visual de archivo PDF/DOC/DOCX, tabla con búsqueda, edición y eliminación | Catálogo local/mock; falta firma, flujo operativo y persistencia |
+| WhatsApp | Catálogo con 13 mensajes operativos precargados, plantillas prediseñadas, variables agrupadas y preview estilo WhatsApp | Implementado local/mock; falta conexión del canal, envío real y persistencia |
+| Gift Cards | Gift card de servicio o monto, vencimiento, diseño, borrador/activar | Definido por capturas |
+| Planes | No se implementa en este proyecto | Fuera de alcance |
+
+`Local` y `Profesional` son entidades separadas: los locales viven en Locales; los profesionales son personas reales y no sustitutos de sucursales.
+
+### Reportes
+
+La ruta `/reportes` contiene la primera fase local/mock de reportes: resumen ejecutivo con selector de periodo, KPIs comparativos y desgloses; `/reportes/reservas` implementa la vista General del reporte de reservas con rango de fechas, filtros, KPIs, ranking de servicios, distribución semanal y demanda por hora, más subvistas de Historial, Métricas, Locales, Servicios, Mensajería móvil y desgloses por local. El reporte de ventas todavía no está implementado. Los desgloses de Servicios por local y Prestadores por local cubren los 53 servicios de OPATRA MEXICO en el orden del reporte operativo.
+
+### Navegación y UI
+
+- `SchedulerPrimaryNav` es la navbar compartida con dropdowns de Reportes y Administración, reutilizada en Agenda, Reportes y Administración. `Administración` expone las nueve secciones activas y conserva `?section=` al navegar.
+- Todo usa componentes de `@cosmetics/ui` y `toast` compartido; las pantallas montan `<Toaster />` en `src/app/layout.tsx`.
+- La interfaz es responsive desde el inicio: navegación compacta en móvil, tarjetas apiladas, formularios de pantalla completa y tablas que se convierten en bloques legibles.
+
+### Fases de construcción
+
+- **Fase 0 — Contexto y base visual**: consolidar mapa de navegación y decisiones funcionales; mantener identidad Keysar, componentes de `@cosmetics/ui` y patrones de feedback; validar accesibilidad, estados vacíos, loading, errores y responsive.
+- **Fase 1 — Shell administrativo**: navegación visible desde la agenda; pantalla `/administracion` con los módulos definidos; definir rutas, layouts y componentes compartidos sin inventar datos persistentes. Completada en modo local/mock; la prioridad actual es terminar `Opciones avanzadas`, validar todos los modales y cerrar el acabado visual antes de conectar backend.
+- **Fase 2 — Catálogos base**: implementar Locales, Profesionales y Servicios con listado, búsqueda/filtros, crear, editar, activar/desactivar y confirmaciones. Implementada en local/mock.
+- **Fase 3 — Reglas operativas**: implementar Comisiones, Recursos y Gift Cards; integrar horarios, descansos, recursos, categorías y restricciones de reserva; cubrir flujos alternativos de gift card de servicio y de monto. Implementada en local/mock.
+- **Fase 4 — Comunicación y documentos**: conectar WhatsApp real, envío de mensajes y persistencia de plantillas; implementar Consentimientos como catálogo de documentos; definir antes de construir el flujo de resultados de Encuestas y el uso de Consentimientos dentro de una cita. Catálogo y configuración implementados en local/mock; Consentimientos ya incluye nombre, archivo, validación de 5 MB, tabla CRUD y confirmación de eliminación; firma, uso dentro de una cita y persistencia siguen fuera de alcance.
+- **Fase 5 — Persistencia y conexión con agenda**: modelar y validar `Cliente`, `Servicio`, `Cita`, `BloqueHorario` y las entidades administrativas necesarias; crear endpoints `/api/scheduler` y conectar el frontend sin romper el mock actual; aplicar permisos por rol y reglas de sucursal. Pendiente: no iniciar hasta cerrar el acabado visual y recibir autorización explícita para modificar backend/Prisma.
+- **Fase 6 — Calidad y operación**: pruebas de flujos completos, responsive y accesibilidad; estados de error/reintento y protección contra cambios destructivos; preparar despliegue cuando el comportamiento local esté validado.
+
+**Criterios para cada módulo**: antes de marcar un módulo como terminado deben existir listado, estado vacío, búsqueda o filtro cuando aplique, alta, edición, validaciones, confirmación para eliminar/desactivar, feedback de éxito/error, comportamiento móvil y documentación de las decisiones no visibles en las capturas.
 
 ---
 
@@ -868,6 +927,32 @@ apps/envelope/
     └── utils.ts
 ```
 
+### apps/scheduler
+
+```
+apps/scheduler/
+├── public/
+│   ├── logo.svg                   → logo compartido Keysar
+│   └── fonts/                     → Emofera + Gilroy para identidad visual
+├── src/app/
+│   ├── (auth)/login/              → acceso temporal/mock al scheduler
+│   ├── (dashboard)/page.tsx       → agenda principal (día / semana)
+│   ├── (dashboard)/administracion/ → workspace administrativo completo
+│   ├── (dashboard)/reportes/       → resumen ejecutivo + reporte general de reservas (mock)
+│   ├── globals.css                → tokens visuales del scheduler
+│   └── layout.tsx                 → metadata + Toaster global
+├── src/components/
+│   ├── SchedulerPrimaryNav.tsx    → navbar compartido con dropdowns de Reportes y Administración
+│   ├── SchedulerWorkspace.tsx     → shell principal con estado local, filtros y modales
+│   ├── scheduler/                 → header, sidebar, grid agenda, tarjetas y diálogos del scheduler
+│   └── reports/                   → dashboard y navegación del resumen de reportes
+├── src/components/administration/ → navegación y CRUDs mock de Administración
+└── src/lib/
+    ├── mock-scheduler-data.ts     → datos mock de sucursales, profesionales, citas, bloqueos y leyenda
+    ├── mock-administration-data.ts → catálogos mock de locales, profesionales, servicios y módulos administrativos
+    └── mock-report-data.ts        → periodos, KPIs y series mock del resumen de reportes
+```
+
 ### backend/api
 
 ```
@@ -954,6 +1039,12 @@ packages/ui/
 | Ciclo/snapshots payroll    | `backend/api/src/services/payroll.service.ts`                  |
 | Guía de despliegue payroll | `apps/payroll/PENDIENTES.md`                                   |
 | Guía operativa payroll     | `apps/payroll/GUIA_PRIMERA_NOMINA.md`                          |
+| Agenda scheduler           | `apps/scheduler/src/app/(dashboard)/page.tsx`                  |
+| Admin scheduler            | `apps/scheduler/src/app/(dashboard)/administracion/page.tsx`   |
+| Reportes scheduler         | `apps/scheduler/src/app/(dashboard)/reportes/`                 |
+| Workspace scheduler        | `apps/scheduler/src/components/SchedulerWorkspace.tsx`         |
+| Admin workspace scheduler  | `apps/scheduler/src/components/administration/AdministrationWorkspace.tsx` |
+| Mock data scheduler        | `apps/scheduler/src/lib/mock-scheduler-data.ts`                |
 | Prisma schema              | `backend/api/prisma/schema.prisma`                             |
 | Migraciones                | `backend/api/prisma/migrations/`                               |
 | Seed seguro catálogos      | `backend/api/prisma/seed-catalogs.ts`                          |
@@ -967,9 +1058,17 @@ packages/ui/
 
 ```bash
 pnpm install
+pnpm dev                         # inicia los proyectos frontend; también abre POS (Electron)
 pnpm --filter @cosmetics/envelope dev
+pnpm --filter @cosmetics/scheduler dev
 pnpm --filter @cosmetics/payroll dev
 pnpm --filter @cosmetics/api dev
+```
+
+Para trabajar únicamente en Scheduler y evitar abrir POS:
+
+```powershell
+pnpm.cmd --filter @cosmetics/scheduler dev
 ```
 
 ### Type-check y build
@@ -977,6 +1076,8 @@ pnpm --filter @cosmetics/api dev
 ```bash
 pnpm --filter @cosmetics/envelope type-check
 pnpm --filter @cosmetics/envelope build
+pnpm --filter @cosmetics/scheduler type-check
+pnpm --filter @cosmetics/scheduler build
 pnpm --filter @cosmetics/payroll type-check
 pnpm --filter @cosmetics/payroll build
 pnpm --filter @cosmetics/api test
@@ -1046,3 +1147,11 @@ npx ts-node --project tsconfig.json prisma/seed-catalogs.ts
 - Payroll: aplicar después `20260813020000_add_payroll_expense_categories`; debe desplegarse junto con la API/UI que sustituyen el texto libre de categoría por catálogo.
 - Payroll: aplicar finalmente `20260813030000_link_payroll_expense_categories` para habilitar edición segura de nombres y referencias futuras sin alterar snapshots aprobados.
 - Payroll Storage: crear más adelante el bucket privado y configurar `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` y opcionalmente `PAYROLL_STORAGE_BUCKET` solo después de que exista.
+- `/reportes/reservas/mensajeria-movil` implementa el seguimiento mock de WhatsApp con reservas sin confirmar, proporción de envíos, confirmaciones, cuota de conversaciones, descarga visual y tabla de actividad reciente. Comparte los filtros del reporte de reservas y todavía no conecta el proveedor real de mensajería.
+- `/reportes/reservas/servicios-por-local/opatra-mexico` implementa el dropdown `Servicios por local` y el desglose de los 53 servicios de OPATRA MEXICO en el orden del reporte operativo, reutilizando sus totales, buscador, tabla compacta y rankings.
+- `/reportes/reservas/prestadores-por-local/opatra-mexico` implementa el dropdown `Prestadores por local` y el consolidado mock de OPATRA MEXICO por prestador, con reservas, ingresos estimados, ocupación, tendencia semanal y demanda por hora.
+- La carga de precios y subida de plantillas `.xlsx` son flujos visuales/mock: todavía no procesan archivos reales ni persisten información.
+- `Local` y `Profesional` son entidades separadas; `Planes` en Comisiones muestra por ahora un estado vacío mock, sin persistencia. `Consentimientos` permite crear y editar documentos con nombre y archivo, cargados de forma visual/mock, y los lista en un `DataTable` con búsqueda y eliminación confirmada; todavía no incluye firma, resultados ni persistencia real.
+- `Encuestas` funciona en estado local/mock: permite seleccionar servicios y preguntas por categoría, crear preguntas de tipo estrellas o comentario, y visualizar un preview vivo con servicios, numeración y cinco estrellas. Todavía no incluye resultados ni persistencia real.
+- `WhatsApp` funciona en estado local/mock: lista 13 mensajes precargados de operación (OPATRA, Mitikah, bienvenida, confirmación, postventa, agradecimiento, recordatorios, reagenda y no asistencia), permite crear/editar plantillas personalizadas, insertar variables agrupadas por reserva, local y compañía, probar plantillas prediseñadas y ver un preview estilo WhatsApp. El envío real, conexión del canal y persistencia quedan fuera de alcance.
+- Siguiente etapa de integración del scheduler: modelar `Cliente`, `Servicio`, `Cita`, `BloqueHorario`, horarios, recursos y relaciones en `/api/scheduler` antes de conectar persistencia real.
