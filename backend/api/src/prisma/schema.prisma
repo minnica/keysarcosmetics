@@ -121,18 +121,32 @@ model Bank {
 }
 
 model Position {
-  id                String                     @id @default(cuid())
-  nombre            String                     @unique
-  activo            Boolean                    @default(true)
-  canManageAccess   Boolean                    @default(false)
-  selfDataOnly      Boolean                    @default(false)
-  empleados         Empleado[]
-  screenPermissions PositionScreenPermission[]
-  creadoEn          DateTime                   @default(now())
-  actualizadoEn     DateTime                   @updatedAt
+  id                       String                            @id @default(cuid())
+  nombre                   String                            @unique
+  activo                   Boolean                           @default(true)
+  canManageAccess          Boolean                           @default(false)
+  canManagePayrollAccess   Boolean                           @default(false)
+  selfDataOnly             Boolean                           @default(false)
+  empleados                Empleado[]
+  screenPermissions        PositionScreenPermission[]
+  payrollScreenPermissions PositionPayrollScreenPermission[]
+  creadoEn                 DateTime                          @default(now())
+  actualizadoEn            DateTime                          @updatedAt
 }
 
 model PositionScreenPermission {
+  id            String   @id @default(cuid())
+  positionId    String
+  position      Position @relation(fields: [positionId], references: [id], onDelete: Cascade)
+  screenKey     String
+  allowed       Boolean  @default(true)
+  creadoEn      DateTime @default(now())
+  actualizadoEn DateTime @updatedAt
+
+  @@unique([positionId, screenKey])
+}
+
+model PositionPayrollScreenPermission {
   id            String   @id @default(cuid())
   positionId    String
   position      Position @relation(fields: [positionId], references: [id], onDelete: Cascade)

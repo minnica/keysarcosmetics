@@ -29,6 +29,25 @@ export const SCREEN_KEYS = [
 
 export type ScreenKey = (typeof SCREEN_KEYS)[number];
 
+export const PAYROLL_SCREEN_KEYS = [
+  "payroll/resumen",
+  "payroll/nomina-salario-fijo",
+  "payroll/nomina-especialistas",
+  "payroll/nomina-comisiones",
+  "payroll/movimientos",
+  "payroll/gastos",
+  "payroll/prestamos-adelantos",
+  "payroll/esquemas",
+  "payroll/bonos",
+  "payroll/multas",
+  "payroll/viaticos",
+  "payroll/reportes/desglose-sucursal",
+  "payroll/recibos",
+  "payroll/accesos",
+] as const;
+
+export type PayrollScreenKey = (typeof PAYROLL_SCREEN_KEYS)[number];
+
 export interface Usuario {
   id: string;
   nombre: string;
@@ -46,6 +65,8 @@ export interface UsuarioSession extends Usuario {
   canManageAccess: boolean;
   selfDataOnly: boolean;
   screenPermissions: ScreenKey[];
+  canManagePayrollAccess: boolean;
+  payrollScreenPermissions: PayrollScreenKey[];
 }
 
 export type MetodoPago = "EFECTIVO" | "TARJETA" | "TRANSFERENCIA" | "OTRO";

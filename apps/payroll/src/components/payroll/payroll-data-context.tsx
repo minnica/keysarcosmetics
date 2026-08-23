@@ -9,6 +9,8 @@ import {
   useState,
 } from "react";
 import { api, apiErrorMessage } from "@/lib/api";
+import type { PayrollScreenKey } from "@cosmetics/types";
+import { useSession } from "@/lib/session";
 import type {
   BranchBreakdownLine,
   CatalogKind,
@@ -428,6 +430,7 @@ export function PayrollDataProvider({
 }: {
   children: React.ReactNode;
 }) {
+  const { canAccess } = useSession();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -461,59 +464,27 @@ export function PayrollDataProvider({
   }>({ branches: [], employeeLines: [] });
 
   const loadRun = useCallback(async (id: string) => {
-    const [runResponse, receiptResponse, breakdownResponse] = await Promise.all(
-      [
-        api.get<ApiResponse<any>>(`/api/payroll/runs/${id}`),
-        api.get<ApiResponse<any[]>>("/api/payroll/receipts", {
-          params: { runId: id },
-        }),
-        api.get<ApiResponse<any>>("/api/payroll/reports/branch-breakdown", {
-          params: { runId: id },
-        }),
-      ],
+    const runResponse = await api.get<ApiResponse<any>>(
+      `/api/payroll/runs/${id}`,
     );
     const run = mapRun(runResponse.data.data);
     setSelectedRun(run);
-    setReceipts(
-      receiptResponse.data.data.map((raw: any) => {
-        const line = mapRunLine(raw.payrollRunLine);
-        const receiptRun = mapRun(raw.payrollRunLine.payrollRun);
-        return {
-          id: raw.id,
-          employeeName: line.employeeName,
-          period: `${receiptRun.from} A ${receiptRun.to}`,
-          totalPayment: line.totalPayment,
-          status: raw.status,
-          phone: line.phoneNumber,
-          sentAt: raw.sentAt ?? null,
-          confirmedAt: raw.confirmedAt ?? null,
-          runLine: line,
-          run: receiptRun,
-        };
-      }),
-    );
-    setBranchBreakdown({
-      branches: breakdownResponse.data.data.branches.map((raw: any) => ({
-        branchName: raw.branchName,
-        salesWithVat: n(raw.salesWithVat),
-        salesWithoutVat: n(raw.salesWithoutVat),
-        payrollCost: n(raw.payrollCost),
-        employeeCount: raw.employeeCount,
-      })),
-      employeeLines: breakdownResponse.data.data.employeeLines.map(
-        (raw: any) => ({
-          ...mapRunLine({ ...raw, branchLines: [raw] }).branchLines[0]!,
-          employeeId: raw.employeeId,
-          employeeName: raw.employeeName,
-        }),
-      ),
-    });
   }, []);
 
   const refreshAll = useCallback(async () => {
     setRefreshing(true);
     setError(null);
     try {
+      const catalogScreens: PayrollScreenKey[] = [
+        "payroll/movimientos",
+        "payroll/bonos",
+        "payroll/multas",
+        "payroll/viaticos",
+      ];
+      const canReadCatalogs = catalogScreens.some(canAccess);
+      const canReadSchemes =
+        canAccess("payroll/esquemas") || canAccess("payroll/resumen");
+      const canReadRuns = canAccess("payroll/resumen");
       const [
         bootstrap,
         catalogResponse,
@@ -526,14 +497,30 @@ export function PayrollDataProvider({
         runResponse,
       ] = await Promise.all([
         api.get<ApiResponse<any>>("/api/payroll/bootstrap"),
-        api.get<ApiResponse<any[]>>("/api/payroll/catalog-items"),
-        api.get<ApiResponse<any>>("/api/payroll/schemes"),
-        api.get<ApiResponse<any[]>>("/api/payroll/movements"),
-        api.get<ApiResponse<any[]>>("/api/payroll/expenses"),
-        api.get<ApiResponse<any[]>>("/api/payroll/expense-categories"),
-        api.get<ApiResponse<any[]>>("/api/payroll/expense-recurrences"),
-        api.get<ApiResponse<any[]>>("/api/payroll/loans"),
-        api.get<ApiResponse<any[]>>("/api/payroll/runs"),
+        canReadCatalogs
+          ? api.get<ApiResponse<any[]>>("/api/payroll/catalog-items")
+          : Promise.resolve(null),
+        canReadSchemes
+          ? api.get<ApiResponse<any>>("/api/payroll/schemes")
+          : Promise.resolve(null),
+        canAccess("payroll/movimientos")
+          ? api.get<ApiResponse<any[]>>("/api/payroll/movements")
+          : Promise.resolve(null),
+        canAccess("payroll/gastos")
+          ? api.get<ApiResponse<any[]>>("/api/payroll/expenses")
+          : Promise.resolve(null),
+        canAccess("payroll/gastos")
+          ? api.get<ApiResponse<any[]>>("/api/payroll/expense-categories")
+          : Promise.resolve(null),
+        canAccess("payroll/gastos")
+          ? api.get<ApiResponse<any[]>>("/api/payroll/expense-recurrences")
+          : Promise.resolve(null),
+        canAccess("payroll/prestamos-adelantos")
+          ? api.get<ApiResponse<any[]>>("/api/payroll/loans")
+          : Promise.resolve(null),
+        canReadRuns
+          ? api.get<ApiResponse<any[]>>("/api/payroll/runs")
+          : Promise.resolve(null),
       ]);
       setEmployees(
         bootstrap.data.data.employees.map((raw: any) => ({
@@ -543,19 +530,28 @@ export function PayrollDataProvider({
       );
       setBranches(bootstrap.data.data.branches);
       setStorageConfigured(Boolean(bootstrap.data.data.storageConfigured));
-      setCatalogs(catalogResponse.data.data.map(mapCatalog));
-      setSchemes(schemeResponse.data.data.schemes.map(mapScheme));
-      setAssignments(schemeResponse.data.data.assignments.map(mapAssignment));
-      setMovements(movementResponse.data.data.map(mapMovement));
-      setExpenses(expenseResponse.data.data.map(mapExpense));
-      setExpenseCategories(
-        expenseCategoryResponse.data.data.map(mapExpenseCategory),
-      );
-      setRecurringExpenses(
-        recurringExpenseResponse.data.data.map(mapExpenseRecurrence),
-      );
-      setLoans(loanResponse.data.data.map(mapLoan));
-      const summaries = runResponse.data.data.map(
+      if (catalogResponse)
+        setCatalogs(catalogResponse.data.data.map(mapCatalog));
+      if (schemeResponse) {
+        setSchemes(schemeResponse.data.data.schemes.map(mapScheme));
+        setAssignments(
+          schemeResponse.data.data.assignments.map(mapAssignment),
+        );
+      }
+      if (movementResponse)
+        setMovements(movementResponse.data.data.map(mapMovement));
+      if (expenseResponse)
+        setExpenses(expenseResponse.data.data.map(mapExpense));
+      if (expenseCategoryResponse)
+        setExpenseCategories(
+          expenseCategoryResponse.data.data.map(mapExpenseCategory),
+        );
+      if (recurringExpenseResponse)
+        setRecurringExpenses(
+          recurringExpenseResponse.data.data.map(mapExpenseRecurrence),
+        );
+      if (loanResponse) setLoans(loanResponse.data.data.map(mapLoan));
+      const summaries = (runResponse?.data.data ?? []).map(
         (raw: any): PayrollRunSummary => ({
           ...mapRun(raw),
           lineCount: raw._count?.lines ?? 0,
@@ -583,7 +579,7 @@ export function PayrollDataProvider({
       setLoading(false);
       setRefreshing(false);
     }
-  }, [loadRun, selectedRun?.id]);
+  }, [canAccess, loadRun, selectedRun?.id]);
 
   useEffect(() => {
     void refreshAll();

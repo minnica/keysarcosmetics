@@ -8,7 +8,12 @@ import {
 import multer from "multer";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
+import type { PayrollScreenKey } from "@cosmetics/types";
 import { authMiddleware } from "../middlewares/auth.middleware";
+import {
+  PAYROLL_ACCESS_SCREEN_ORDER,
+  requireAnyPayrollScreenAccess,
+} from "../lib/access";
 import { prisma } from "../prisma/client";
 import {
   approvePayrollRun,
@@ -101,22 +106,6 @@ function normalizeText(value: string): string {
   return value.trim().toLocaleUpperCase("es-MX");
 }
 
-function requireSuperAdmin(
-  req: Request,
-  res: Response,
-  next: NextFunction,
-): void {
-  if (req.user?.rol !== "SUPER_ADMIN") {
-    res.status(403).json({
-      success: false,
-      data: null,
-      message: "Payroll está disponible únicamente para SUPER_ADMIN.",
-    });
-    return;
-  }
-  next();
-}
-
 function currentUserId(req: Request): string {
   if (!req.user?.id) throw new Error("No autenticado.");
   return req.user.id;
@@ -145,7 +134,96 @@ const monthString = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
 const positiveMoney = z.coerce.number().positive().max(999_999_999_999);
 const nullableId = z.string().min(1).nullable().optional();
 
-router.use(authMiddleware, requireSuperAdmin);
+const PAYROLL_OPERATION_SCREEN_KEYS = PAYROLL_ACCESS_SCREEN_ORDER.filter(
+  (screenKey) => screenKey !== "payroll/accesos",
+);
+
+const CATALOG_SCREEN_BY_KIND = {
+  BONUS: "payroll/bonos",
+  FINE: "payroll/multas",
+  PER_DIEM: "payroll/viaticos",
+} as const satisfies Record<string, PayrollScreenKey>;
+
+function payrollScreensForRequest(req: Request): readonly PayrollScreenKey[] {
+  const path = req.path;
+
+  if (path === "/bootstrap") return PAYROLL_OPERATION_SCREEN_KEYS;
+
+  if (path.startsWith("/catalog-items")) {
+    const rawKind =
+      typeof req.query["kind"] === "string"
+        ? req.query["kind"]
+        : typeof req.body?.kind === "string"
+          ? req.body.kind
+          : null;
+    const catalogScreen = rawKind
+      ? CATALOG_SCREEN_BY_KIND[rawKind as keyof typeof CATALOG_SCREEN_BY_KIND]
+      : null;
+    return catalogScreen
+      ? [catalogScreen, "payroll/movimientos"]
+      : [
+          "payroll/bonos",
+          "payroll/multas",
+          "payroll/viaticos",
+          "payroll/movimientos",
+        ];
+  }
+
+  if (path.startsWith("/schemes") || path.startsWith("/assignments")) {
+    return req.method === "GET"
+      ? ["payroll/esquemas", "payroll/resumen"]
+      : ["payroll/esquemas"];
+  }
+
+  if (path.startsWith("/movements") || path.startsWith("/attachments")) {
+    return ["payroll/movimientos"];
+  }
+
+  if (
+    path.startsWith("/expenses") ||
+    path.startsWith("/expense-categories") ||
+    path.startsWith("/expense-recurrences")
+  ) {
+    return ["payroll/gastos"];
+  }
+
+  if (path.startsWith("/loans")) return ["payroll/prestamos-adelantos"];
+  if (path.startsWith("/runs")) return ["payroll/resumen"];
+  if (path === "/reports/monthly-summary") return ["payroll/resumen"];
+
+  if (path === "/reports/payroll-overview") {
+    const screenByType = {
+      FIXED_SALARY: "payroll/nomina-salario-fijo",
+      SPECIALIST: "payroll/nomina-especialistas",
+      COMMISSION: "payroll/nomina-comisiones",
+    } as const satisfies Record<string, PayrollScreenKey>;
+    const payrollType =
+      typeof req.query["payrollType"] === "string"
+        ? req.query["payrollType"]
+        : "";
+    const screen = screenByType[payrollType as keyof typeof screenByType];
+    return screen ? [screen] : Object.values(screenByType);
+  }
+
+  if (path === "/reports/live-preview") {
+    return ["payroll/reportes/desglose-sucursal", "payroll/recibos"];
+  }
+  if (path === "/reports/branch-breakdown") {
+    return ["payroll/reportes/desglose-sucursal"];
+  }
+  if (path.startsWith("/receipts")) return ["payroll/recibos"];
+
+  return PAYROLL_OPERATION_SCREEN_KEYS;
+}
+
+router.use(authMiddleware);
+router.use((req, res, next) => {
+  void requireAnyPayrollScreenAccess(payrollScreensForRequest(req))(
+    req,
+    res,
+    next,
+  );
+});
 
 router.get(
   "/bootstrap",

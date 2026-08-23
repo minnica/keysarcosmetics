@@ -18,10 +18,20 @@ export default function LoginPage() {
     try {
       const response = await api.post<{
         success: boolean;
-        data: { token: string; usuario: { rol: string } };
+        data: {
+          token: string;
+          usuario: {
+            canManagePayrollAccess: boolean;
+            payrollScreenPermissions: string[];
+          };
+        };
       }>("/api/auth/login", { email, password });
-      if (response.data.data.usuario.rol !== "SUPER_ADMIN") {
-        setError("Payroll está disponible únicamente para SUPER_ADMIN.");
+      const { usuario } = response.data.data;
+      if (
+        !usuario.canManagePayrollAccess &&
+        usuario.payrollScreenPermissions.length === 0
+      ) {
+        setError("Tu puesto no tiene acceso a Payroll.");
         return;
       }
       localStorage.setItem("auth_token", response.data.data.token);

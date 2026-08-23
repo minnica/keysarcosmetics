@@ -7,6 +7,7 @@ import authRoutes from './routes/auth.routes'
 import accessRoutes from './routes/access.routes'
 import envelopeRoutes from './routes/envelope.routes'
 import payrollRoutes from './routes/payroll.routes'
+import payrollAccessRoutes from './routes/payroll-access.routes'
 import crmRoutes from './routes/crm.routes'
 import schedulerRoutes from './routes/scheduler.routes'
 import posRoutes from './routes/pos.routes'
@@ -39,6 +40,7 @@ app.use(express.urlencoded({ extended: true }))
 app.use('/api/auth', authRoutes)
 app.use('/api/envelope', envelopeRoutes)
 app.use('/api/envelope/access', accessRoutes)
+app.use('/api/payroll/access', payrollAccessRoutes)
 app.use('/api/payroll', payrollRoutes)
 app.use('/api/crm', crmRoutes)
 app.use('/api/scheduler', schedulerRoutes)
