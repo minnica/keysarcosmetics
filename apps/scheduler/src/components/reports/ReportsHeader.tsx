@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { Search, Settings } from "lucide-react";
+import { Search } from "lucide-react";
 import {
   AdministrationNavMenu,
   ReportsNavMenu,
   SchedulerPrimaryNav,
   type SchedulerReportPage,
 } from "@/components/SchedulerPrimaryNav";
+import { SettingsMenu } from "@/components/SettingsMenu";
 
 export type ReportsPage = SchedulerReportPage;
 
@@ -44,6 +45,7 @@ export function ReportsHeader({ active }: { active: ReportsPage }) {
             <div className="flex items-center gap-2">
               <ReportsNavMenu active={active} compact />
               <AdministrationNavMenu compact />
+              <SettingsMenu />
             </div>
           </div>
           <button
@@ -56,13 +58,7 @@ export function ReportsHeader({ active }: { active: ReportsPage }) {
           <div className="hidden rounded-full border border-emerald-300/20 bg-emerald-400/10 px-4 py-2.5 text-sm font-medium text-emerald-50 xl:block">
             Reservas online
           </div>
-          <button
-            type="button"
-            className="scheduler-header-button hidden xl:flex"
-            aria-label="Configuración"
-          >
-            <Settings className="h-5 w-5" />
-          </button>
+          <div className="hidden xl:block"><SettingsMenu /></div>
           <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white text-sm font-semibold text-slate-700">
             ER
           </div>

@@ -145,6 +145,7 @@ import {
   type AdministrationSectionId,
 } from "@/components/SchedulerPrimaryNav";
 import { canAccessSchedulerScreen } from "@/lib/scheduler-access";
+import { SettingsMenu } from "@/components/SettingsMenu";
 
 type AdminSection = AdministrationSectionId;
 type StatusFilter = "all" | "active" | "inactive";
@@ -8423,6 +8424,7 @@ function AdministrationHeader({
               compact
               onSelect={onSelectSection}
             />
+            <SettingsMenu />
           </div>
           <button
             type="button"
@@ -8434,6 +8436,7 @@ function AdministrationHeader({
           <div className="hidden rounded-full border border-emerald-300/20 bg-emerald-400/10 px-4 py-2.5 text-sm font-medium text-emerald-50 xl:block">
             Reservas online
           </div>
+          <div className="hidden xl:block"><SettingsMenu /></div>
           <div className="flex h-11 w-11 items-center justify-center rounded-full bg-white text-sm font-semibold text-slate-700">
             ER
           </div>

@@ -26,7 +26,7 @@ import {
   type SchedulerScreenId,
 } from "@/lib/scheduler-access";
 
-export type SchedulerNavArea = "agenda" | "reports" | "administration";
+export type SchedulerNavArea = "agenda" | "reports" | "administration" | "settings";
 export type SchedulerReportPage = "summary" | "reservations" | "sales";
 export type AdministrationSectionId =
   | "locals"

@@ -12,7 +12,6 @@ import {
   Plus,
   RefreshCcw,
   Search,
-  SlidersHorizontal,
 } from 'lucide-react'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -23,6 +22,7 @@ import {
   SchedulerPrimaryNav,
 } from '@/components/SchedulerPrimaryNav'
 import { getLegendIcon } from './scheduler-utils'
+import { SettingsMenu } from '@/components/SettingsMenu'
 
 interface SchedulerHeaderProps {
   currentView: SchedulerView
@@ -70,6 +70,7 @@ export function SchedulerHeader({
             <div className="flex items-center gap-2 xl:hidden">
               <ReportsNavMenu compact />
               <AdministrationNavMenu compact />
+              <SettingsMenu />
             </div>
             <div className="hidden items-center gap-3 xl:flex">
             <button className="scheduler-header-button" type="button">
@@ -78,9 +79,7 @@ export function SchedulerHeader({
             <div className="rounded-full border border-emerald-300/20 bg-emerald-400/10 px-5 py-2.5 text-sm font-medium text-emerald-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
               Reservas Online
             </div>
-            <button className="scheduler-header-button" type="button">
-              <SlidersHorizontal className="h-5 w-5" />
-            </button>
+            <SettingsMenu />
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white text-sm font-semibold text-slate-700 shadow-[0_10px_24px_rgba(0,0,0,0.2)]">
               ER
             </div>
