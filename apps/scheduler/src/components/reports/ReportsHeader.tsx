@@ -36,6 +36,7 @@ export function ReportsHeader({ active }: { active: ReportsPage }) {
           </Link>
 
           <SchedulerPrimaryNav activeArea="reports" activeReport={active} />
+
         </div>
 
         <div className="flex items-center gap-2 sm:gap-3">

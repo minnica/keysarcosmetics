@@ -19,6 +19,7 @@ interface MultiComboboxProps {
   placeholder?: string
   searchPlaceholder?: string
   emptyMessage?: string
+  selectedCountLabel?: string
   disabled?: boolean
   id?: string
   className?: string
@@ -31,6 +32,7 @@ export function MultiCombobox({
   placeholder = "Seleccionar...",
   searchPlaceholder = "Buscar...",
   emptyMessage = "Sin resultados",
+  selectedCountLabel = "servicios seleccionados",
   disabled,
   id,
   className,
@@ -63,7 +65,7 @@ export function MultiCombobox({
       ? placeholder
       : selectedOptions.length === 1
         ? selectedOptions[0]?.label ?? placeholder
-        : `${selectedOptions.length} servicios seleccionados`
+        : `${selectedOptions.length} ${selectedCountLabel}`
 
   return (
     <Popover open={open} onOpenChange={handleOpenChange}>

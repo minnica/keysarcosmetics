@@ -3,28 +3,68 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { addDays, eachDayOfInterval, endOfWeek, format, isSameDay, startOfMonth, startOfWeek } from 'date-fns'
 import { es } from 'date-fns/locale'
-import { toast } from '@cosmetics/ui'
+import { AlertTriangle, ReceiptText, Trash2 } from 'lucide-react'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  Input,
+  toast,
+} from '@cosmetics/ui'
 import {
   schedulerBranches,
+  schedulerAttendingSpecialists,
+  schedulerCommerces,
   schedulerDayBookings,
   schedulerDayBlocks,
   schedulerProfessionals,
   schedulerReferenceDate,
   schedulerReferenceDateKey,
   schedulerServices,
+  getBookingStatusColors,
+  type BookingStatusColors,
   type AvailabilityBlock,
   type Booking,
+  type BookingPurchaseType,
+  type BookingServiceRecord,
   type BookingStatus,
   type SchedulerView,
   type ServiceOption,
 } from '@/lib/mock-scheduler-data'
+import {
+  authorizeSchedulerFinancialProfile,
+  canManageSchedulerPaymentHistory,
+  canAccessSchedulerBranch,
+  canAccessSchedulerCommerce,
+  canAccessSchedulerProfessional,
+  currentSchedulerAccess,
+  getSchedulerClientAccessKey,
+  type SchedulerFinancialAuditEvent,
+  type SchedulerFinancialProfile,
+} from '@/lib/scheduler-access'
+import {
+  initialSchedulerClients,
+  normalizeClientPhone,
+  normalizeClientText,
+  type SchedulerClient,
+  type SchedulerClientHistoryEntry,
+} from '@/lib/mock-client-data'
 import {
   addMinutesToTime,
   createBlockDraft,
   createBlockDraftFromBlock,
   createDraft,
   createDraftFromBooking,
+  formatMoney,
+  getClientPurchaseAccount,
+  getClientVisitHistory,
   getMinutesFromTime,
+  bookingRequiresMultipleSpecialists,
   schedulerBaseMinutes,
   schedulerClosingMinutes,
   timesOverlap,
@@ -38,14 +78,66 @@ import { SchedulerDetailDialog } from './scheduler/SchedulerDetailDialog'
 import { SchedulerSidebar } from './scheduler/SchedulerSidebar'
 import { SchedulerHeader } from './scheduler/SchedulerHeader'
 import { SchedulerAgendaGrid } from './scheduler/SchedulerAgendaGrid'
+import { SchedulerFinancialAccessDialog } from './scheduler/SchedulerFinancialAccessDialog'
+import { SchedulerClientHistoryDialog } from './scheduler/SchedulerClientHistoryDialog'
 
 const initialAvailabilityBlocksById = new Map(schedulerDayBlocks.map((block) => [block.id, block]))
+
+function buildServiceRecords(
+  bookingId: string,
+  amount: number,
+  specialistIds: string[],
+): BookingServiceRecord[] {
+  const sharePercentage = Number((100 / specialistIds.length).toFixed(2))
+  const dividedAmount = Number((amount / specialistIds.length).toFixed(2))
+  const recordTimestamp = Date.now()
+
+  return specialistIds.map((specialistId, index) => {
+    const specialist = schedulerAttendingSpecialists.find(
+      (option) => option.id === specialistId,
+    )
+
+    return {
+      id: `service-record-${bookingId}-${recordTimestamp}-${index + 1}`,
+      specialistId,
+      specialistName: specialist?.name ?? 'Especialista sin identificar',
+      sharePercentage:
+        index === specialistIds.length - 1
+          ? Number((100 - sharePercentage * index).toFixed(2))
+          : sharePercentage,
+      allocatedAmount:
+        index === specialistIds.length - 1
+          ? Number((amount - dividedAmount * index).toFixed(2))
+          : dividedAmount,
+    }
+  })
+}
 
 export function SchedulerWorkspace() {
   const [selectedDate, setSelectedDate] = useState(schedulerReferenceDate)
   const [monthCursor, setMonthCursor] = useState(startOfMonth(schedulerReferenceDate))
   const [currentView, setCurrentView] = useState<SchedulerView>('day')
-  const [selectedBranch, setSelectedBranch] = useState(schedulerBranches[0]?.id ?? 'opatra')
+  const allowedCommerces = useMemo(
+    () => schedulerCommerces.filter((commerce) => canAccessSchedulerCommerce(commerce.id)),
+    [],
+  )
+  const [selectedCommerce, setSelectedCommerce] = useState(
+    allowedCommerces[0]?.id ?? '',
+  )
+  const [statusColors, setStatusColors] = useState<BookingStatusColors>(() =>
+    getBookingStatusColors(allowedCommerces[0]?.id ?? ''),
+  )
+  const allowedBranches = useMemo(
+    () =>
+      schedulerBranches.filter(
+        (branch) =>
+          branch.commerceId === selectedCommerce && canAccessSchedulerBranch(branch.id),
+      ),
+    [selectedCommerce],
+  )
+  const [selectedBranch, setSelectedBranch] = useState(
+    () => allowedBranches[0]?.id ?? '',
+  )
   const [statusFilter, setStatusFilter] = useState<BookingStatus | 'active'>('active')
   const [professionalQuery, setProfessionalQuery] = useState('')
   const [quickTimeFilter, setQuickTimeFilter] = useState('all')
@@ -55,22 +147,51 @@ export function SchedulerWorkspace() {
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [emptySlotAction, setEmptySlotAction] = useState<EmptySlotAction | null>(null)
   const [bookings, setBookings] = useState<Booking[]>(schedulerDayBookings)
+  const [clients, setClients] = useState<SchedulerClient[]>(initialSchedulerClients)
+  const [duplicateClient, setDuplicateClient] = useState<SchedulerClient | null>(null)
   const [availabilityBlocks, setAvailabilityBlocks] = useState<AvailabilityBlock[]>(schedulerDayBlocks)
   const [draft, setDraft] = useState<BookingDraft>(() => createDraft(schedulerReferenceDate, schedulerProfessionals))
   const [blockDraft, setBlockDraft] = useState<BlockDraft | null>(null)
   const [isBlockDialogOpen, setIsBlockDialogOpen] = useState(false)
-  const [detailView, setDetailView] = useState<'payment' | 'record'>('record')
+  const [detailView, setDetailView] = useState<'payment' | 'attendance' | 'record'>('record')
   const [activeBooking, setActiveBooking] = useState<Booking | null>(null)
+  const [clientHistoryBooking, setClientHistoryBooking] = useState<Booking | null>(null)
+  const [financialAccessRequest, setFinancialAccessRequest] = useState<Booking | null>(null)
+  const [financialAccessNextView, setFinancialAccessNextView] = useState<'record' | 'history' | null>(null)
+  const [financialAccessByClient, setFinancialAccessByClient] = useState<
+    Record<string, SchedulerFinancialProfile>
+  >({})
+  const [financialAuditEvents, setFinancialAuditEvents] = useState<
+    SchedulerFinancialAuditEvent[]
+  >([])
+  const [paymentHistoryDeleteRequest, setPaymentHistoryDeleteRequest] = useState<{
+    clientBooking: Booking
+    paymentBookingId: string
+  } | null>(null)
+  const [paymentHistoryDeleteStep, setPaymentHistoryDeleteStep] = useState<'review' | 'confirm'>('review')
+  const [paymentHistoryDeleteKeyword, setPaymentHistoryDeleteKeyword] = useState('')
   const [agendaMotionKey, setAgendaMotionKey] = useState(0)
   const sidebarBookingTimerRef = useRef<number | null>(null)
   const selectedDateKey = format(selectedDate, 'yyyy-MM-dd')
 
+  useEffect(() => {
+    function refreshStatusColors() {
+      setStatusColors(getBookingStatusColors(selectedCommerce))
+    }
+
+    refreshStatusColors()
+    window.addEventListener('scheduler-status-colors-change', refreshStatusColors)
+    return () => window.removeEventListener('scheduler-status-colors-change', refreshStatusColors)
+  }, [selectedCommerce])
+
   const branchProfessionals = useMemo(() => {
     return schedulerProfessionals.filter(
       (professional) =>
-        professional.branchId === selectedBranch || professional.id.startsWith('pending-'),
+        professional.commerceIds.includes(selectedCommerce) &&
+        professional.branchIds.includes(selectedBranch) &&
+        canAccessSchedulerProfessional(professional.id),
     )
-  }, [selectedBranch])
+  }, [selectedBranch, selectedCommerce])
 
   const sidebarProfessionals = useMemo(() => {
     const normalizedQuery = professionalQuery.trim().toLowerCase()
@@ -95,30 +216,54 @@ export function SchedulerWorkspace() {
       const matchesProfessional = visibleProfessionals.some(
         (professional) => professional.id === booking.professionalId,
       )
+      const bookingProfessional = schedulerProfessionals.find(
+        (professional) => professional.id === booking.professionalId,
+      )
+      const matchesBranch = booking.branchId
+        ? booking.branchId === selectedBranch
+        : bookingProfessional?.branchIds[0] === selectedBranch
       const matchesDate = bookingDateKey === selectedDateKey
       const matchesStatus =
-        statusFilter === 'active' ? booking.status !== 'no-show' : booking.status === statusFilter
+        statusFilter === 'active'
+          ? booking.status !== 'canceled'
+          : booking.status === statusFilter
       const matchesTime = quickTimeFilter === 'all' ? true : booking.start === quickTimeFilter
 
-      return matchesProfessional && matchesDate && matchesStatus && matchesTime
+      return matchesProfessional && matchesBranch && matchesDate && matchesStatus && matchesTime
     })
-  }, [bookings, quickTimeFilter, selectedDateKey, statusFilter, visibleProfessionals])
+  }, [bookings, quickTimeFilter, selectedBranch, selectedDateKey, statusFilter, visibleProfessionals])
 
   const visibleBlocks = useMemo(() => {
     return availabilityBlocks.filter((block) => {
       const blockDateKey = block.date ?? schedulerReferenceDateKey
+      const blockProfessional = schedulerProfessionals.find(
+        (professional) => professional.id === block.professionalId,
+      )
+      const matchesBranch = block.branchId
+        ? block.branchId === selectedBranch
+        : blockProfessional?.branchIds[0] === selectedBranch
       return (
         blockDateKey === selectedDateKey &&
+        matchesBranch &&
         visibleProfessionals.some((professional) => professional.id === block.professionalId)
       )
     })
-  }, [availabilityBlocks, selectedDateKey, visibleProfessionals])
+  }, [availabilityBlocks, selectedBranch, selectedDateKey, visibleProfessionals])
 
   const weekDays = useMemo(() => {
     const start = startOfWeek(selectedDate, { locale: es, weekStartsOn: 1 })
     const end = endOfWeek(selectedDate, { locale: es, weekStartsOn: 1 })
     return eachDayOfInterval({ start, end })
   }, [selectedDate])
+
+  useEffect(() => {
+    const branchIsStillAvailable = allowedBranches.some(
+      (branch) => branch.id === selectedBranch,
+    )
+    if (!branchIsStillAvailable) {
+      setSelectedBranch(allowedBranches[0]?.id ?? '')
+    }
+  }, [allowedBranches, selectedBranch])
 
   useEffect(() => {
     if (branchProfessionals.length === 0) {
@@ -191,6 +336,31 @@ export function SchedulerWorkspace() {
     setIsDialogOpen(true)
   }
 
+  function handleBookingBranchChange(branchId: string) {
+    if (!allowedBranches.some((branch) => branch.id === branchId)) return
+
+    const nextBranchProfessionals = schedulerProfessionals.filter(
+      (professional) =>
+        professional.commerceIds.includes(selectedCommerce) &&
+        professional.branchIds.includes(branchId) &&
+        canAccessSchedulerProfessional(professional.id),
+    )
+
+    setSelectedBranch(branchId)
+    setDraft((current) => {
+      const professionalIsAvailable = nextBranchProfessionals.some(
+        (professional) => professional.id === current.professionalId,
+      )
+
+      return {
+        ...current,
+        professionalId: professionalIsAvailable
+          ? current.professionalId
+          : nextBranchProfessionals[0]?.id ?? '',
+      }
+    })
+  }
+
   function handleSidebarDateQuickCreate(date: Date) {
     setCurrentView('day')
     setEmptySlotAction(null)
@@ -219,12 +389,21 @@ export function SchedulerWorkspace() {
   }
 
   function handleEditBooking(booking: Booking) {
+    if (booking.serviceRecords?.length) {
+      toast.error('Este registro ya está finalizado')
+      return
+    }
     setDraft(createDraftFromBooking(booking, selectedDate))
     setEmptySlotAction(null)
     setIsDialogOpen(true)
   }
 
   function handleDeleteBooking(bookingId: string) {
+    const booking = bookings.find((current) => current.id === bookingId)
+    if (booking?.serviceRecords?.length) {
+      toast.error('Este registro ya está finalizado')
+      return
+    }
     setBookings((current) => current.filter((booking) => booking.id !== bookingId))
     toast.success('Reserva eliminada', {
       description: 'La cita se retiro de la agenda actual.',
@@ -232,34 +411,448 @@ export function SchedulerWorkspace() {
   }
 
   function handleUpdateBookingStatus(bookingId: string, status: BookingStatus) {
-    setBookings((current) =>
-      current.map((booking) => (booking.id === bookingId ? { ...booking, status } : booking)),
-    )
-    toast.success('Estado actualizado', {
-      description: `La reserva cambio correctamente de estatus.`,
-    })
-  }
-
-  function handleToggleBookingPaid(bookingId: string) {
-    let nextPaymentLabel = 'No pagado'
+    const booking = bookings.find((current) => current.id === bookingId)
+    if (booking?.serviceRecords?.length) {
+      toast.error('Este registro ya está finalizado')
+      return
+    }
 
     setBookings((current) =>
       current.map((booking) => {
         if (booking.id !== bookingId) return booking
-        nextPaymentLabel = booking.paymentLabel === 'No pagado' ? 'Reserva pagada' : 'No pagado'
-        return { ...booking, paymentLabel: nextPaymentLabel }
+        if (status === 'arrived') return { ...booking, status }
+
+        const nextBooking = { ...booking, status }
+        delete nextBooking.purchaseAmount
+        delete nextBooking.purchaseType
+        delete nextBooking.tentativePurchaseAmount
+        delete nextBooking.serviceRecords
+        delete nextBooking.purchased
+        return nextBooking
       }),
     )
-
-    toast.success('Pago actualizado', {
+    toast.success('Estado actualizado', {
       description:
-        nextPaymentLabel === 'No pagado'
-          ? 'La reserva quedo marcada como no pagada.'
-          : 'La reserva quedo marcada como pagada.',
+        status === 'arrived'
+          ? 'Ahora indica en la card si el cliente realizó una compra.'
+          : 'La reserva cambió correctamente de estatus.',
     })
   }
 
-  function handleOpenBookingDetail(booking: Booking, view: 'payment' | 'record') {
+  function handlePurchaseDecision(booking: Booking, purchased: boolean) {
+    if (booking.serviceRecords?.length) {
+      toast.error('Este registro ya está finalizado')
+      return
+    }
+
+    let nextBooking: Booking
+
+    if (purchased) {
+      nextBooking = {
+        ...booking,
+        purchased: true,
+        paymentLabel: booking.purchaseAmount ? booking.paymentLabel : 'Pago pendiente',
+      }
+    } else {
+      nextBooking = { ...booking, purchased: false, paymentLabel: 'Sin compra' }
+      delete nextBooking.purchaseAmount
+      delete nextBooking.purchaseType
+      delete nextBooking.tentativePurchaseAmount
+      delete nextBooking.serviceRecords
+    }
+
+    setBookings((current) =>
+      current.map((currentBooking) => currentBooking.id === booking.id ? nextBooking : currentBooking),
+    )
+
+    if (purchased) {
+      handleOpenBookingDetail(nextBooking, 'payment')
+      return
+    }
+
+    handleOpenBookingDetail(nextBooking, 'attendance')
+  }
+
+  function handleAuthorizeFinancialHistory(booking: Booking, personalCode: string): string | null {
+    const authorization = authorizeSchedulerFinancialProfile(personalCode, booking.clientId)
+    if (!authorization.profile) return authorization.error ?? 'No fue posible autorizar la consulta.'
+
+    const clientKey = getSchedulerClientAccessKey(booking.clientId, booking.phone)
+    const consultation: SchedulerFinancialAuditEvent = {
+      id: `financial-consultation-${Date.now()}`,
+      userId: authorization.profile.id,
+      userName: authorization.profile.name,
+      userRole: authorization.profile.role,
+      clientKey,
+      clientName: booking.customerName,
+      bookingId: booking.id,
+      action: 'view',
+      description:
+        financialAccessNextView === 'history'
+          ? 'Consultó el historial de citas y visitas del cliente.'
+          : financialAccessNextView === 'record'
+            ? 'Consultó la ficha del cliente.'
+            : 'Consultó el historial financiero del cliente.',
+      occurredAt: new Date().toISOString(),
+    }
+
+    setFinancialAccessByClient((current) => ({
+      ...current,
+      [clientKey]: authorization.profile as SchedulerFinancialProfile,
+    }))
+    setFinancialAuditEvents((current) => [consultation, ...current])
+    if (financialAccessNextView === 'record') {
+      if (booking.date) {
+        const bookingDate = new Date(`${booking.date}T12:00:00`)
+        if (!isSameDay(selectedDate, bookingDate)) setSelectedDate(bookingDate)
+      }
+      setActiveBooking(booking)
+      setDetailView('record')
+    } else if (financialAccessNextView === 'history') {
+      setClientHistoryBooking(booking)
+    }
+    setFinancialAccessNextView(null)
+    toast.success('Historial autorizado', {
+      description: `Consulta registrada a nombre de ${authorization.profile.name}.`,
+    })
+    return null
+  }
+
+  function handleRevokeFinancialHistory(booking: Booking) {
+    const clientKey = getSchedulerClientAccessKey(booking.clientId, booking.phone)
+    setFinancialAccessByClient((current) => {
+      const next = { ...current }
+      delete next[clientKey]
+      return next
+    })
+  }
+
+  function getAuthorizedFinancialProfile(booking: Booking): SchedulerFinancialProfile | undefined {
+    return financialAccessByClient[getSchedulerClientAccessKey(booking.clientId, booking.phone)]
+  }
+
+  function handleOpenClientHistory(booking: Booking) {
+    const profile = getAuthorizedFinancialProfile(booking)
+    if (!profile) {
+      setFinancialAccessNextView('history')
+      setFinancialAccessRequest(booking)
+      return
+    }
+
+    const consultation: SchedulerFinancialAuditEvent = {
+      id: `visit-history-consultation-${Date.now()}`,
+      userId: profile.id,
+      userName: profile.name,
+      userRole: profile.role,
+      clientKey: getSchedulerClientAccessKey(booking.clientId, booking.phone),
+      clientName: booking.customerName,
+      bookingId: booking.id,
+      action: 'view',
+      description: 'Consultó el historial de citas y visitas del cliente.',
+      occurredAt: new Date().toISOString(),
+    }
+
+    setFinancialAuditEvents((current) => [consultation, ...current])
+    setClientHistoryBooking(booking)
+  }
+
+  function handleUpdatePaymentHistory(
+    clientBooking: Booking,
+    paymentBookingId: string,
+    amount: number,
+    tentativeAmount?: number,
+  ) {
+    const profile = getAuthorizedFinancialProfile(clientBooking)
+    if (!profile || !canManageSchedulerPaymentHistory(profile)) {
+      toast.error('Solo master o admin pueden modificar pagos')
+      return
+    }
+    if (!Number.isFinite(amount) || amount <= 0) {
+      toast.error('Ingresa un monto de pago válido')
+      return
+    }
+
+    const paymentBooking = bookings.find((booking) => booking.id === paymentBookingId)
+    if (!paymentBooking?.purchaseType) return
+    if (
+      paymentBooking.purchaseType === 'layaway' &&
+      (!tentativeAmount || tentativeAmount < amount)
+    ) {
+      toast.error('La compra tentativa debe ser igual o mayor al apartado')
+      return
+    }
+
+    const paymentLabel = paymentBooking.purchaseType === 'layaway'
+      ? `Apartado · ${formatMoney(amount)} de ${formatMoney(tentativeAmount ?? 0)}`
+      : `${paymentBooking.purchaseType === 'settlement' ? 'Liquidación' : 'Contado'} · ${formatMoney(amount)}`
+    const specialistIds = paymentBooking.serviceRecords?.map((record) => record.specialistId) ?? []
+
+    setBookings((current) =>
+      current.map((booking) => {
+        if (booking.id !== paymentBookingId) return booking
+        const updatedBooking = {
+          ...booking,
+          purchaseAmount: amount,
+          paymentLabel,
+          ...(specialistIds.length
+            ? { serviceRecords: buildServiceRecords(paymentBookingId, amount, specialistIds) }
+            : {}),
+        }
+        if (booking.purchaseType === 'layaway' && tentativeAmount) {
+          updatedBooking.tentativePurchaseAmount = tentativeAmount
+        }
+        return updatedBooking
+      }),
+    )
+    const clientKey = getSchedulerClientAccessKey(clientBooking.clientId, clientBooking.phone)
+    const tentativeChange = paymentBooking.purchaseType === 'layaway'
+      ? ` Compra tentativa: ${formatMoney(paymentBooking.tentativePurchaseAmount ?? 0)} → ${formatMoney(tentativeAmount ?? 0)}.`
+      : ''
+    setFinancialAuditEvents((current) => [
+      {
+        id: `financial-audit-update-${Date.now()}`,
+        userId: profile.id,
+        userName: profile.name,
+        userRole: profile.role,
+        clientKey,
+        clientName: clientBooking.customerName,
+        bookingId: paymentBookingId,
+        action: 'update',
+        description: `Modificó el pago: ${formatMoney(paymentBooking.purchaseAmount ?? 0)} → ${formatMoney(amount)}.${tentativeChange}`,
+        occurredAt: new Date().toISOString(),
+      },
+      ...current,
+    ])
+    toast.success('Pago modificado', {
+      description: `Actualizado por ${profile?.name}.`,
+    })
+  }
+
+  function handleRequestDeletePaymentHistory(
+    clientBooking: Booking,
+    paymentBookingId: string,
+  ) {
+    const profile = getAuthorizedFinancialProfile(clientBooking)
+    if (!canManageSchedulerPaymentHistory(profile)) {
+      toast.error('Solo master o admin pueden eliminar pagos')
+      return
+    }
+    setPaymentHistoryDeleteRequest({ clientBooking, paymentBookingId })
+    setPaymentHistoryDeleteStep('review')
+    setPaymentHistoryDeleteKeyword('')
+  }
+
+  function handleConfirmDeletePaymentHistory() {
+    if (!paymentHistoryDeleteRequest) return
+    const profile = getAuthorizedFinancialProfile(paymentHistoryDeleteRequest.clientBooking)
+    if (!profile || !canManageSchedulerPaymentHistory(profile)) {
+      toast.error('La autorización ya no está disponible')
+      return
+    }
+    const paymentBooking = bookings.find(
+      (booking) => booking.id === paymentHistoryDeleteRequest.paymentBookingId,
+    )
+    if (!paymentBooking?.purchaseType) {
+      setPaymentHistoryDeleteRequest(null)
+      return
+    }
+
+    setBookings((current) =>
+      current.map((booking) => {
+        if (booking.id !== paymentHistoryDeleteRequest.paymentBookingId) return booking
+        const updatedBooking: Booking = {
+          ...booking,
+          purchased: false,
+          paymentLabel: 'Pago eliminado por administración',
+        }
+        if (booking.serviceRecords?.length) {
+          updatedBooking.serviceRecords = booking.serviceRecords.map((record) => ({
+            ...record,
+            allocatedAmount: 0,
+          }))
+        }
+        delete updatedBooking.purchaseType
+        delete updatedBooking.purchaseAmount
+        delete updatedBooking.tentativePurchaseAmount
+        return updatedBooking
+      }),
+    )
+    const clientBooking = paymentHistoryDeleteRequest.clientBooking
+    const clientKey = getSchedulerClientAccessKey(clientBooking.clientId, clientBooking.phone)
+    setFinancialAuditEvents((current) => [
+      {
+        id: `financial-audit-delete-${Date.now()}`,
+        userId: profile.id,
+        userName: profile.name,
+        userRole: profile.role,
+        clientKey,
+        clientName: clientBooking.customerName,
+        bookingId: paymentBooking.id,
+        action: 'delete',
+        description: `Eliminó “${paymentBooking.paymentLabel}” por ${formatMoney(paymentBooking.purchaseAmount ?? 0)}. La cita se conservó.`,
+        occurredAt: new Date().toISOString(),
+      },
+      ...current,
+    ])
+    toast.success('Pago eliminado del historial', {
+      description: `Acción realizada por ${profile?.name}.`,
+    })
+    setPaymentHistoryDeleteRequest(null)
+  }
+
+  function handleSaveAttendance(
+    bookingId: string,
+    attendingSpecialistIds: string[] = [],
+  ) {
+    const attendanceBooking = bookings.find((booking) => booking.id === bookingId)
+    if (!attendanceBooking) return
+
+    const requiredSpecialistCount = bookingRequiresMultipleSpecialists(attendanceBooking) ? 2 : 1
+    const uniqueSpecialistIds = [...new Set(attendingSpecialistIds)]
+    if (uniqueSpecialistIds.length < requiredSpecialistCount) {
+      toast.error(
+        requiredSpecialistCount === 2
+          ? 'Selecciona al menos dos especialistas'
+          : 'Selecciona al menos un especialista',
+      )
+      return
+    }
+
+    const serviceRecords = buildServiceRecords(bookingId, 0, uniqueSpecialistIds)
+    const completedBooking: Booking = {
+      ...attendanceBooking,
+      purchased: false,
+      paymentLabel: 'Sin compra',
+      serviceRecords,
+    }
+
+    setBookings((current) =>
+      current.map((booking) => booking.id === bookingId ? completedBooking : booking),
+    )
+    setActiveBooking((current) => current?.id === bookingId ? completedBooking : current)
+    toast.success('Atención registrada', {
+      description: `Sin compra · ${serviceRecords.length} ${serviceRecords.length === 1 ? 'especialista' : 'especialistas'}.`,
+    })
+  }
+
+  function handleSaveBookingPayment(
+    bookingId: string,
+    purchaseType: BookingPurchaseType,
+    purchaseAmount: number,
+    tentativePurchaseAmount?: number,
+    attendingSpecialistIds: string[] = [],
+  ) {
+    const paymentBooking = bookings.find((booking) => booking.id === bookingId)
+    if (!paymentBooking) return
+    if (paymentBooking.serviceRecords?.length) {
+      toast.error('Este registro ya está finalizado')
+      return
+    }
+
+    if (purchaseType === 'settlement') {
+      const authorizedProfile = getAuthorizedFinancialProfile(paymentBooking)
+      if (!authorizedProfile) {
+        toast.error('Autoriza el historial financiero antes de liquidar')
+        return
+      }
+      const clientAccount = getClientPurchaseAccount(bookings, paymentBooking, bookingId)
+      if (clientAccount.previousVisits < 1) {
+        toast.error('La liquidación requiere al menos una visita previa')
+        return
+      }
+      if (clientAccount.outstandingBalance <= 0) {
+        toast.error('La clienta no tiene saldo pendiente en su historial')
+        return
+      }
+      if (purchaseAmount > clientAccount.outstandingBalance) {
+        toast.error('El monto supera el saldo pendiente del historial')
+        return
+      }
+    }
+
+    const requiredSpecialistCount = bookingRequiresMultipleSpecialists(paymentBooking) ? 2 : 1
+    const uniqueSpecialistIds = [...new Set(attendingSpecialistIds)]
+    if (uniqueSpecialistIds.length < requiredSpecialistCount) {
+      toast.error(
+        requiredSpecialistCount === 2
+          ? 'Selecciona al menos dos especialistas'
+          : 'Selecciona al menos un especialista',
+      )
+      return
+    }
+
+    const serviceRecords = buildServiceRecords(bookingId, purchaseAmount, uniqueSpecialistIds)
+    const paymentLabel = purchaseType === 'layaway'
+      ? `Apartado · ${formatMoney(purchaseAmount)} de ${formatMoney(tentativePurchaseAmount ?? 0)}`
+      : `${purchaseType === 'settlement' ? 'Liquidación' : 'Contado'} · ${formatMoney(purchaseAmount)}`
+
+    setBookings((current) =>
+      current.map((booking) => {
+        if (booking.id !== bookingId) return booking
+
+        const nextBooking = {
+          ...booking,
+          purchased: purchaseType === 'settlement' ? booking.purchased ?? false : true,
+          purchaseType,
+          purchaseAmount,
+          paymentLabel,
+          serviceRecords,
+        }
+        if (purchaseType === 'layaway' && tentativePurchaseAmount) {
+          nextBooking.tentativePurchaseAmount = tentativePurchaseAmount
+        } else {
+          delete nextBooking.tentativePurchaseAmount
+        }
+        return nextBooking
+      }),
+    )
+    setActiveBooking((current) =>
+      current?.id === bookingId
+        ? {
+            ...current,
+            purchased: purchaseType === 'settlement' ? current.purchased ?? false : true,
+            purchaseType,
+            purchaseAmount,
+            paymentLabel,
+            serviceRecords,
+            ...(purchaseType === 'layaway' && tentativePurchaseAmount
+              ? { tentativePurchaseAmount }
+              : {}),
+          }
+        : current,
+    )
+    const authorizedProfile = getAuthorizedFinancialProfile(paymentBooking)
+    const clientKey = getSchedulerClientAccessKey(paymentBooking.clientId, paymentBooking.phone)
+    setFinancialAuditEvents((current) => [
+      {
+        id: `financial-audit-create-${Date.now()}`,
+        userId: authorizedProfile?.id ?? currentSchedulerAccess.id,
+        userName: authorizedProfile?.name ?? currentSchedulerAccess.name,
+        userRole: authorizedProfile?.role ?? 'admin',
+        clientKey,
+        clientName: paymentBooking.customerName,
+        bookingId,
+        action: 'create',
+        description: `Registró ${paymentLabel} por ${formatMoney(purchaseAmount)}.`,
+        occurredAt: new Date().toISOString(),
+      },
+      ...current,
+    ])
+    toast.success('Pago registrado', {
+      description: `${purchaseType === 'layaway' ? 'Apartado' : purchaseType === 'settlement' ? 'Liquidación' : 'Pago de contado'} por ${formatMoney(purchaseAmount)} · ${serviceRecords.length} ${serviceRecords.length === 1 ? 'registro de servicio' : 'registros de servicio'}.`,
+    })
+  }
+
+  function handleOpenBookingDetail(
+    booking: Booking,
+    view: 'payment' | 'attendance' | 'record',
+  ) {
+    if (view === 'record' && !getAuthorizedFinancialProfile(booking)) {
+      setFinancialAccessNextView('record')
+      setFinancialAccessRequest(booking)
+      return
+    }
+
     if (booking.date) {
       const bookingDate = new Date(`${booking.date}T12:00:00`)
       if (!isSameDay(selectedDate, bookingDate)) {
@@ -334,6 +927,7 @@ export function SchedulerWorkspace() {
     const shouldKeepInitialUnavailableStyle = initialBlock?.variant === 'unavailable'
     const nextBlock: AvailabilityBlock = {
       id: blockDraft.blockId ?? `block-mock-${Date.now()}`,
+      branchId: selectedBranch,
       date: blockDateKey,
       professionalId: blockDraft.professionalId,
       start,
@@ -364,9 +958,29 @@ export function SchedulerWorkspace() {
     })
   }
 
-  function handleSaveBooking() {
+  function handleSaveBooking(mergeClientId?: string) {
     if (!draft.customerName.trim()) {
       toast.error('Falta el nombre del cliente')
+      return
+    }
+
+    const normalizedPhone = normalizeClientPhone(draft.phone)
+    if (normalizedPhone.length < 10) {
+      toast.error('Ingresa un número telefónico válido', {
+        description: 'El teléfono es obligatorio y debe incluir al menos 10 dígitos.',
+      })
+      return
+    }
+
+    const phoneOwner = clients.find(
+      (client) => client.normalizedPhone === normalizedPhone,
+    )
+    if (
+      phoneOwner &&
+      phoneOwner.id !== draft.clientId &&
+      phoneOwner.id !== mergeClientId
+    ) {
+      setDuplicateClient(phoneOwner)
       return
     }
 
@@ -388,10 +1002,11 @@ export function SchedulerWorkspace() {
       return
     }
 
-    const conflictingBooking = bookings.find((booking) => {
+    const conflictingBooking = draft.status === 'canceled' ? undefined : bookings.find((booking) => {
       const currentBookingDateKey = booking.date ?? schedulerReferenceDateKey
       return (
         booking.id !== draft.bookingId &&
+        booking.status !== 'canceled' &&
         currentBookingDateKey === bookingDateKey &&
         booking.professionalId === draft.professionalId &&
         timesOverlap(booking.start, booking.end, start, end)
@@ -405,7 +1020,7 @@ export function SchedulerWorkspace() {
       return
     }
 
-    const conflictingBlock = availabilityBlocks.find((block) => {
+    const conflictingBlock = draft.status === 'canceled' ? undefined : availabilityBlocks.find((block) => {
       const blockDateKey = block.date ?? schedulerReferenceDateKey
       return (
         blockDateKey === bookingDateKey &&
@@ -421,8 +1036,94 @@ export function SchedulerWorkspace() {
       return
     }
 
+    const nextBookingId = draft.bookingId ?? `booking-${Date.now()}`
+    const resolvedClientId = mergeClientId ?? draft.clientId ?? phoneOwner?.id
+    const historyEntry: SchedulerClientHistoryEntry = {
+      id: `history-${nextBookingId}`,
+      branchId: selectedBranch,
+      date: bookingDateKey,
+      displayName: draft.customerName.trim(),
+      bookingId: nextBookingId,
+    }
+    let bookingClientId = resolvedClientId
+
+    if (resolvedClientId) {
+      setClients((current) =>
+        current.map((client) => {
+          if (client.id !== resolvedClientId) return client
+
+          const incomingName = draft.customerName.trim()
+          const alreadyKnownName = [client.fullName, ...client.aliases].some(
+            (name) => normalizeClientText(name) === normalizeClientText(incomingName),
+          )
+          const incomingEmail = draft.customerEmail.trim()
+          const alreadyKnownEmail = [client.email, ...client.alternateEmails].some(
+            (email) => email.toLocaleLowerCase() === incomingEmail.toLocaleLowerCase(),
+          )
+          const historyIndex = client.history.findIndex(
+            (entry) => entry.bookingId === nextBookingId,
+          )
+          const history = [...client.history]
+          if (historyIndex >= 0) history[historyIndex] = historyEntry
+          else history.push(historyEntry)
+
+          return {
+            ...client,
+            aliases:
+              incomingName && !alreadyKnownName
+                ? [...client.aliases, incomingName]
+                : client.aliases,
+            email: client.email || incomingEmail,
+            alternateEmails:
+              incomingEmail && client.email && !alreadyKnownEmail
+                ? [...client.alternateEmails, incomingEmail]
+                : client.alternateEmails,
+            history,
+          }
+        }),
+      )
+    } else {
+      bookingClientId = `client-${Date.now()}`
+      const newClient: SchedulerClient = {
+        id: bookingClientId,
+        fullName: draft.customerName.trim(),
+        aliases: [],
+        phone: draft.phone.trim(),
+        normalizedPhone,
+        email: draft.customerEmail.trim(),
+        alternateEmails: [],
+        history: [historyEntry],
+      }
+      setClients((current) => [...current, newClient])
+    }
+
+    const existingBooking = draft.bookingId
+      ? bookings.find((booking) => booking.id === draft.bookingId)
+      : undefined
+    const preservedPurchase = draft.status === 'arrived' && existingBooking
+      ? {
+          ...(existingBooking.purchased !== undefined
+            ? { purchased: existingBooking.purchased }
+            : {}),
+          ...(existingBooking.purchaseType
+            ? { purchaseType: existingBooking.purchaseType }
+            : {}),
+          ...(existingBooking.purchaseAmount
+            ? { purchaseAmount: existingBooking.purchaseAmount }
+            : {}),
+          ...(existingBooking.tentativePurchaseAmount
+            ? { tentativePurchaseAmount: existingBooking.tentativePurchaseAmount }
+            : {}),
+          ...(existingBooking.serviceRecords?.length
+            ? { serviceRecords: existingBooking.serviceRecords }
+            : {}),
+        }
+      : {}
+
     const nextBooking: Booking = {
-      id: draft.bookingId ?? `booking-${Date.now()}`,
+      id: nextBookingId,
+      ...(bookingClientId ? { clientId: bookingClientId } : {}),
+      branchId: selectedBranch,
       date: bookingDateKey,
       customerName: draft.customerName.trim(),
       serviceName: selectedService?.name ?? 'Servicio',
@@ -431,7 +1132,11 @@ export function SchedulerWorkspace() {
       end,
       status: draft.status,
       phone: draft.phone.trim(),
+      ...(draft.customerEmail.trim()
+        ? { customerEmail: draft.customerEmail.trim() }
+        : {}),
       paymentLabel: draft.paymentLabel,
+      ...preservedPurchase,
     }
 
     const noteValue = draft.internalNote || draft.notes
@@ -444,12 +1149,17 @@ export function SchedulerWorkspace() {
       return current.map((booking) => (booking.id === draft.bookingId ? nextBooking : booking))
     })
     setIsDialogOpen(false)
+    setDuplicateClient(null)
     toast.success(draft.bookingId ? 'Reserva actualizada' : 'Reserva creada', {
       description: draft.bookingId
         ? 'La cita se actualizo dentro de la agenda actual.'
         : 'La cita ya aparece en la agenda para validar flujo e interaccion.',
     })
   }
+
+  const paymentHistoryDeleteBooking = paymentHistoryDeleteRequest
+    ? bookings.find((booking) => booking.id === paymentHistoryDeleteRequest.paymentBookingId)
+    : undefined
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(195,165,131,0.14),transparent_16%),linear-gradient(180deg,#f3f0e9_0%,#f7f3ed_100%)]">
@@ -458,15 +1168,24 @@ export function SchedulerWorkspace() {
         onViewChange={setCurrentView}
         selectedDate={selectedDate}
         weekDays={weekDays}
-        selectedBranch={selectedBranch}
+        selectedCommerceName={
+          allowedCommerces.find((commerce) => commerce.id === selectedCommerce)?.name ?? 'Sin comercio'
+        }
+        selectedBranchName={
+          allowedBranches.find((branch) => branch.id === selectedBranch)?.name ?? 'Sin sucursal'
+        }
         onDateStep={handleDateStep}
         onGoToday={() => setSelectedDate(schedulerReferenceDate)}
         onRefresh={handleRefresh}
         onOpenNewBooking={() => openNewBooking()}
       />
 
-      <main className="grid min-h-[calc(100vh-84px)] grid-cols-1 items-start xl:grid-cols-[300px_minmax(0,1fr)]">
+        <main className="grid min-h-[calc(100vh-84px)] grid-cols-1 items-start xl:grid-cols-[300px_minmax(0,1fr)]">
         <SchedulerSidebar
+          commerces={allowedCommerces}
+          selectedCommerce={selectedCommerce}
+          onCommerceChange={setSelectedCommerce}
+          branches={allowedBranches}
           selectedBranch={selectedBranch}
           onBranchChange={setSelectedBranch}
           visibleProfessionalCount={visibleProfessionals.length}
@@ -490,8 +1209,10 @@ export function SchedulerWorkspace() {
           <div key={agendaMotionKey} className="scheduler-content-entrance">
             <SchedulerAgendaGrid
               currentView={currentView}
+              allBookings={bookings}
               visibleProfessionals={visibleProfessionals}
               visibleBookings={visibleBookings}
+              statusColors={statusColors}
               visibleBlocks={visibleBlocks}
               selectedDate={selectedDate}
               weekDays={weekDays}
@@ -504,18 +1225,34 @@ export function SchedulerWorkspace() {
               onDeleteBooking={handleDeleteBooking}
               onEditBooking={handleEditBooking}
               onOpenBookingDetail={handleOpenBookingDetail}
-              onToggleBookingPaid={handleToggleBookingPaid}
+              onOpenClientHistory={handleOpenClientHistory}
+              onPurchaseDecision={handlePurchaseDecision}
               onUpdateBookingStatus={handleUpdateBookingStatus}
+              financialAccessByClient={financialAccessByClient}
+              financialAuditEvents={financialAuditEvents}
+              onRequestFinancialAccess={(booking) => {
+                setFinancialAccessNextView(null)
+                setFinancialAccessRequest(booking)
+              }}
+              onRevokeFinancialAccess={handleRevokeFinancialHistory}
+              onUpdatePaymentHistory={handleUpdatePaymentHistory}
+              onDeletePaymentHistory={handleRequestDeletePaymentHistory}
             />
           </div>
         </section>
-      </main>
+        </main>
 
       <SchedulerBookingDialog
         open={isDialogOpen}
         onOpenChange={setIsDialogOpen}
-        professionals={schedulerProfessionals}
+        branches={allowedBranches}
+        selectedBranch={selectedBranch}
+        onBranchChange={handleBookingBranchChange}
+        bookings={bookings}
+        availabilityBlocks={availabilityBlocks}
+        clients={clients}
         draft={draft}
+        statusColors={statusColors}
         onDraftChange={setDraft}
         onSave={handleSaveBooking}
       />
@@ -534,14 +1271,184 @@ export function SchedulerWorkspace() {
       />
 
       <SchedulerDetailDialog
+        attendingSpecialists={
+          schedulerAttendingSpecialists.filter((specialist) =>
+            specialist.branchIds.includes(activeBooking?.branchId ?? selectedBranch) ||
+            Boolean(
+              activeBooking?.serviceRecords?.some(
+                (record) => record.specialistId === specialist.id,
+              ),
+            ),
+          )
+        }
         booking={activeBooking}
+        clientAccount={
+          activeBooking
+            ? getClientPurchaseAccount(bookings, activeBooking, activeBooking.id)
+            : { previousVisits: 0, settledPurchases: 0, settledAmount: 0, outstandingBalance: 0 }
+        }
+        financialHistoryAuthorized={Boolean(
+          activeBooking && getAuthorizedFinancialProfile(activeBooking),
+        )}
         open={Boolean(activeBooking)}
         onOpenChange={(open) => {
           if (!open) setActiveBooking(null)
         }}
         selectedDate={selectedDate}
+        requiresMultipleSpecialists={
+          activeBooking ? bookingRequiresMultipleSpecialists(activeBooking) : false
+        }
         view={detailView}
+        onSaveAttendance={handleSaveAttendance}
+        onSavePayment={handleSaveBookingPayment}
       />
+
+      <SchedulerFinancialAccessDialog
+        booking={financialAccessRequest}
+        open={Boolean(financialAccessRequest)}
+        purpose={financialAccessNextView ?? 'financial'}
+        onAuthorize={handleAuthorizeFinancialHistory}
+        onOpenChange={(open) => {
+          if (!open) {
+            setFinancialAccessRequest(null)
+            setFinancialAccessNextView(null)
+          }
+        }}
+      />
+
+      <SchedulerClientHistoryDialog
+        booking={clientHistoryBooking}
+        history={
+          clientHistoryBooking
+            ? getClientVisitHistory(bookings, clientHistoryBooking)
+            : []
+        }
+        open={Boolean(clientHistoryBooking)}
+        onOpenChange={(open) => {
+          if (!open) setClientHistoryBooking(null)
+        }}
+      />
+
+      <AlertDialog
+        open={Boolean(paymentHistoryDeleteRequest)}
+        onOpenChange={(open) => {
+          if (!open) setPaymentHistoryDeleteRequest(null)
+          if (!open) {
+            setPaymentHistoryDeleteStep('review')
+            setPaymentHistoryDeleteKeyword('')
+          }
+        }}
+      >
+        <AlertDialogContent className="scheduler-modal-shell max-w-[460px] gap-0 overflow-hidden rounded-2xl border-0 bg-white p-0 shadow-[0_8px_24px_rgba(15,23,42,0.18)]">
+          <div className="px-5 pb-4 pt-5 sm:px-6">
+            <AlertDialogHeader className="text-left">
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-rose-100 text-rose-700">
+                  <Trash2 className="h-5 w-5" />
+                </div>
+                <div className="min-w-0">
+                  <AlertDialogTitle className="text-[1.25rem] leading-7 tracking-[-0.02em] text-[var(--scheduler-ink-strong)]">
+                    Eliminar movimiento de pago
+                  </AlertDialogTitle>
+                  <AlertDialogDescription className="mt-1 text-[0.88rem] leading-5 text-slate-600">
+                    Esta acción recalculará inmediatamente el saldo de {paymentHistoryDeleteRequest?.clientBooking.customerName ?? 'la clienta'}.
+                  </AlertDialogDescription>
+                </div>
+              </div>
+            </AlertDialogHeader>
+
+            {paymentHistoryDeleteStep === 'review' ? (
+            <div className="mt-4 flex items-start gap-3 rounded-xl bg-slate-100 px-4 py-3">
+              <ReceiptText className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" />
+              <div className="min-w-0">
+                <p className="truncate text-[0.86rem] font-semibold text-[var(--scheduler-ink-strong)]">
+                  {paymentHistoryDeleteBooking?.paymentLabel ?? 'Movimiento seleccionado'}
+                </p>
+                <p className="mt-0.5 text-[0.78rem] text-slate-500">
+                  {formatMoney(paymentHistoryDeleteBooking?.purchaseAmount ?? 0)} · La cita y la atención se conservarán
+                </p>
+              </div>
+            </div>
+            ) : (
+              <div className="mt-4 space-y-3 rounded-xl bg-rose-50 px-4 py-4">
+                <p className="text-sm leading-5 text-rose-900">
+                  Esta es la última validación. Escribe <strong>ELIMINAR</strong> para confirmar que deseas borrar este movimiento.
+                </p>
+                <Input
+                  aria-label="Escribe ELIMINAR para confirmar"
+                  autoFocus
+                  className="bg-white uppercase tracking-[0.16em]"
+                  onChange={(event) => setPaymentHistoryDeleteKeyword(event.target.value.toUpperCase())}
+                  placeholder="ELIMINAR"
+                  value={paymentHistoryDeleteKeyword}
+                />
+              </div>
+            )}
+
+            <div className="mt-3 flex items-start gap-2 rounded-xl bg-amber-50 px-3.5 py-3 text-amber-900">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+              <p className="text-[0.78rem] leading-5">
+                La eliminación quedará registrada en la bitácora con el usuario, monto, fecha y hora.
+              </p>
+            </div>
+          </div>
+
+          <AlertDialogFooter className="flex-row justify-end gap-2 border-t border-slate-200 bg-slate-50 px-5 py-4 sm:space-x-0 sm:px-6">
+            <AlertDialogCancel className="scheduler-modal-secondary mt-0">
+              Conservar pago
+            </AlertDialogCancel>
+            {paymentHistoryDeleteStep === 'review' ? (
+              <AlertDialogAction
+                className="bg-rose-600 text-white hover:bg-rose-700 focus-visible:ring-rose-500"
+                onClick={() => setPaymentHistoryDeleteStep('confirm')}
+              >
+                Continuar
+              </AlertDialogAction>
+            ) : (
+              <AlertDialogAction
+                className="bg-rose-600 text-white hover:bg-rose-700 focus-visible:ring-rose-500 disabled:pointer-events-none disabled:opacity-50"
+                disabled={paymentHistoryDeleteKeyword !== 'ELIMINAR'}
+                onClick={handleConfirmDeletePaymentHistory}
+              >
+                Eliminar definitivamente
+              </AlertDialogAction>
+            )}
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={Boolean(duplicateClient)}
+        onOpenChange={(open) => {
+          if (!open) setDuplicateClient(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Este teléfono ya tiene historial</AlertDialogTitle>
+            <AlertDialogDescription>
+              El número {duplicateClient?.phone} pertenece a {duplicateClient?.fullName} y tiene{' '}
+              {duplicateClient?.history.length ?? 0}{' '}
+              {(duplicateClient?.history.length ?? 0) === 1 ? 'visita registrada' : 'visitas registradas'}.
+              ¿Deseas unificar esta captura con ese cliente? El nombre y correo existentes se conservarán;
+              cualquier variante nueva se guardará como dato alternativo en su historial.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setDuplicateClient(null)}>
+              Revisar datos
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (!duplicateClient) return
+                handleSaveBooking(duplicateClient.id)
+              }}
+            >
+              Unificar y guardar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

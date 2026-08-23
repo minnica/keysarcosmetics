@@ -46,6 +46,7 @@ export interface SpecialDay {
 
 export interface LocalRecord {
   id: string;
+  commerceId: string;
   name: string;
   address: string;
   additionalInfo: string;
@@ -65,6 +66,9 @@ export interface LocalRecord {
 
 export interface ProfessionalRecord {
   id: string;
+  commerceIds: string[];
+  localIds: string[];
+  /** Sucursal principal legacy para flujos mock que aún requieren una sola. */
   localId: string;
   name: string;
   role: string;
@@ -218,6 +222,7 @@ export const createClassSchedule = (): ClassScheduleDay[] =>
 
 export const createEmptyLocal = (): LocalRecord => ({
   id: `local-${Date.now()}`,
+  commerceId: "opatra-mexico",
   name: "",
   address: "",
   additionalInfo: "",
@@ -239,6 +244,7 @@ export const initialLocals: LocalRecord[] = [
   {
     ...createEmptyLocal(),
     id: "local-keysar",
+    commerceId: "keysar-cosmetics",
     name: "Keysar Cosmetics",
     address: "Av. Paseo de la Reforma, Ciudad de México",
     additionalInfo: "Local principal",
@@ -250,6 +256,7 @@ export const initialLocals: LocalRecord[] = [
   {
     ...createEmptyLocal(),
     id: "local-polanco",
+    commerceId: "keysar-cosmetics",
     name: "Keysar Polanco",
     address: "Av. Presidente Masaryk 212, Ciudad de México",
     additionalInfo: "Segundo piso",
@@ -258,11 +265,46 @@ export const initialLocals: LocalRecord[] = [
     description: "Una experiencia privada de cuidado y belleza en Polanco.",
     status: "inactive",
   },
+  {
+    ...createEmptyLocal(),
+    id: "local-opatra-insurgentes",
+    commerceId: "opatra-mexico",
+    name: "Galerías Insurgentes",
+    address: "Parroquia 194, Ciudad de México",
+    additionalInfo: "Sucursal OPATRA",
+    phone: "+52 55 0000 0010",
+    email: "insurgentes@opatra.example",
+    description: "Sucursal de atención OPATRA en Galerías Insurgentes.",
+  },
+  {
+    ...createEmptyLocal(),
+    id: "local-opatra-mitikah",
+    commerceId: "opatra-mexico",
+    name: "Mitikah",
+    address: "Av. Río Churubusco 601, Ciudad de México",
+    additionalInfo: "Sucursal OPATRA",
+    phone: "+52 55 0000 0011",
+    email: "mitikah@opatra.example",
+    description: "Sucursal de atención OPATRA en Mitikah.",
+  },
+  {
+    ...createEmptyLocal(),
+    id: "local-opatra-masaryk",
+    commerceId: "opatra-mexico",
+    name: "Masaryk",
+    address: "Av. Presidente Masaryk, Ciudad de México",
+    additionalInfo: "Sucursal OPATRA",
+    phone: "+52 55 0000 0012",
+    email: "masaryk@opatra.example",
+    description: "Sucursal de atención OPATRA en Masaryk.",
+  },
 ];
 
 export const initialProfessionals: ProfessionalRecord[] = [
   {
     id: "professional-patricia",
+    commerceIds: ["keysar-cosmetics", "opatra-mexico"],
+    localIds: ["local-keysar", "local-opatra-mitikah"],
     localId: "local-keysar",
     name: "Patricia Delgado",
     role: "Especialista en faciales",
@@ -279,6 +321,8 @@ export const initialProfessionals: ProfessionalRecord[] = [
   },
   {
     id: "professional-mariana",
+    commerceIds: ["keysar-cosmetics"],
+    localIds: ["local-keysar"],
     localId: "local-keysar",
     name: "Mariana Ortega",
     role: "Cosmetóloga",
@@ -295,6 +339,8 @@ export const initialProfessionals: ProfessionalRecord[] = [
   },
   {
     id: "professional-sofia",
+    commerceIds: ["keysar-cosmetics"],
+    localIds: ["local-polanco"],
     localId: "local-polanco",
     name: "Sofía Ramírez",
     role: "Terapeuta corporal",

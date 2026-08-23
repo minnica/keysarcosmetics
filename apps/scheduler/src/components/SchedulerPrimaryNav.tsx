@@ -14,12 +14,17 @@ import {
   FileText,
   Globe2,
   MessageCircle,
+  Palette,
   SlidersHorizontal,
   Sparkles,
   UserRound,
   UsersRound,
   WalletCards,
 } from "lucide-react";
+import {
+  canAccessSchedulerScreen,
+  type SchedulerScreenId,
+} from "@/lib/scheduler-access";
 
 export type SchedulerNavArea = "agenda" | "reports" | "administration";
 export type SchedulerReportPage = "summary" | "reservations" | "sales";
@@ -32,7 +37,8 @@ export type AdministrationSectionId =
   | "surveys"
   | "consents"
   | "whatsapp"
-  | "gift-cards";
+  | "gift-cards"
+  | "status-colors";
 
 const administrationGroups: Array<{
   label: string;
@@ -45,7 +51,7 @@ const administrationGroups: Array<{
   {
     label: "Información básica",
     items: [
-      { id: "locals", label: "Locales", icon: <Globe2 className="h-4 w-4" /> },
+      { id: "locals", label: "Sucursales", icon: <Globe2 className="h-4 w-4" /> },
       { id: "professionals", label: "Profesionales", icon: <UsersRound className="h-4 w-4" /> },
       { id: "services", label: "Servicios", icon: <Sparkles className="h-4 w-4" /> },
     ],
@@ -59,9 +65,16 @@ const administrationGroups: Array<{
       { id: "consents", label: "Consentimientos", icon: <Check className="h-4 w-4" /> },
       { id: "whatsapp", label: "WhatsApp", icon: <MessageCircle className="h-4 w-4" /> },
       { id: "gift-cards", label: "Gift cards", icon: <WalletCards className="h-4 w-4" /> },
+      { id: "status-colors", label: "Colores de status", icon: <Palette className="h-4 w-4" /> },
     ],
   },
 ];
+
+function getAdministrationScreenId(
+  section: AdministrationSectionId,
+): SchedulerScreenId {
+  return `administration.${section}`;
+}
 
 function triggerClass(active: boolean, compact: boolean) {
   if (compact) return "scheduler-header-button";
@@ -75,6 +88,12 @@ export function ReportsNavMenu({
   active?: SchedulerReportPage | undefined;
   compact?: boolean;
 }) {
+  const canViewSummary = canAccessSchedulerScreen("reports.summary");
+  const canViewReservations = canAccessSchedulerScreen("reports.reservations");
+  const canViewSales = canAccessSchedulerScreen("reports.sales");
+
+  if (!canViewSummary && !canViewReservations && !canViewSales) return null;
+
   return (
     <Popover>
       <PopoverTrigger asChild>
@@ -92,24 +111,30 @@ export function ReportsNavMenu({
         sideOffset={10}
         className="w-64 overflow-hidden rounded-[20px] border-white/10 bg-[#1c2835] p-2 text-white shadow-[0_24px_70px_rgba(7,12,20,0.36)]"
       >
-        <Link
-          className={active === "summary" ? "scheduler-nav-menu-item-active" : "scheduler-nav-menu-item"}
-          href="/reportes"
-        >
-          <span>Resumen</span>
-          {active === "summary" ? <span className="h-2 w-2 rounded-full bg-[#c3a583]" /> : null}
-        </Link>
-        <Link
-          className={active === "reservations" ? "scheduler-nav-menu-item-active" : "scheduler-nav-menu-item"}
-          href="/reportes/reservas"
-        >
-          <span>Reporte de reservas</span>
-          {active === "reservations" ? <span className="h-2 w-2 rounded-full bg-[#c3a583]" /> : null}
-        </Link>
-        <button className="scheduler-nav-menu-item-disabled" disabled type="button">
-          <span>Reporte de ventas</span>
-          <span className="text-[0.58rem] uppercase tracking-[0.16em] text-white/30">Pronto</span>
-        </button>
+        {canViewSummary ? (
+          <Link
+            className={active === "summary" ? "scheduler-nav-menu-item-active" : "scheduler-nav-menu-item"}
+            href="/reportes"
+          >
+            <span>Resumen</span>
+            {active === "summary" ? <span className="h-2 w-2 rounded-full bg-[#c3a583]" /> : null}
+          </Link>
+        ) : null}
+        {canViewReservations ? (
+          <Link
+            className={active === "reservations" ? "scheduler-nav-menu-item-active" : "scheduler-nav-menu-item"}
+            href="/reportes/reservas"
+          >
+            <span>Reporte de reservas</span>
+            {active === "reservations" ? <span className="h-2 w-2 rounded-full bg-[#c3a583]" /> : null}
+          </Link>
+        ) : null}
+        {canViewSales ? (
+          <button className="scheduler-nav-menu-item-disabled" disabled type="button">
+            <span>Reporte de ventas</span>
+            <span className="text-[0.58rem] uppercase tracking-[0.16em] text-white/30">Pronto</span>
+          </button>
+        ) : null}
       </PopoverContent>
     </Popover>
   );
@@ -124,6 +149,17 @@ export function AdministrationNavMenu({
   compact?: boolean;
   onSelect?: ((section: AdministrationSectionId) => void) | undefined;
 }) {
+  const visibleGroups = administrationGroups
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) =>
+        canAccessSchedulerScreen(getAdministrationScreenId(item.id)),
+      ),
+    }))
+    .filter((group) => group.items.length > 0);
+
+  if (visibleGroups.length === 0) return null;
+
   return (
     <Popover>
       <PopoverTrigger asChild>
@@ -141,7 +177,7 @@ export function AdministrationNavMenu({
         sideOffset={10}
         className="w-[19rem] overflow-hidden rounded-[22px] border-white/10 bg-[#1c2835] p-2 text-white shadow-[0_24px_70px_rgba(7,12,20,0.36)]"
       >
-        {administrationGroups.map((group, groupIndex) => (
+        {visibleGroups.map((group, groupIndex) => (
           <div key={group.label} className={groupIndex > 0 ? "mt-2 border-t border-white/10 pt-2" : ""}>
             <p className="px-3 pb-1.5 pt-1 text-[0.62rem] font-semibold uppercase tracking-[0.16em] text-white/35">
               {group.label}
@@ -180,11 +216,17 @@ export function SchedulerPrimaryNav({
 }) {
   return (
     <nav className="hidden items-center gap-1 xl:flex">
-      <Link className={activeArea === "agenda" ? "report-nav-active" : "report-nav-link"} href="/">
-        Agenda
-      </Link>
-      <button className="report-nav-link" type="button">Clientes</button>
-      <button className="report-nav-link" type="button">Servicios</button>
+      {canAccessSchedulerScreen("agenda") ? (
+        <Link className={activeArea === "agenda" ? "report-nav-active" : "report-nav-link"} href="/">
+          Agenda
+        </Link>
+      ) : null}
+      {canAccessSchedulerScreen("clients") ? (
+        <button className="report-nav-link" type="button">Clientes</button>
+      ) : null}
+      {canAccessSchedulerScreen("services") ? (
+        <button className="report-nav-link" type="button">Servicios</button>
+      ) : null}
       <ReportsNavMenu active={activeArea === "reports" ? activeReport : undefined} />
       <AdministrationNavMenu
         active={activeArea === "administration" ? activeAdmin : undefined}

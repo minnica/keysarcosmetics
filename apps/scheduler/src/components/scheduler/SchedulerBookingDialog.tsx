@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   Button,
   Calendar,
@@ -10,6 +10,7 @@ import {
   DialogTitle,
   Input,
   Popover,
+  PopoverAnchor,
   PopoverContent,
   PopoverTrigger,
   Select,
@@ -20,27 +21,40 @@ import {
   Textarea,
   cn,
 } from '@cosmetics/ui'
-import { CalendarDays, ChevronDown, ChevronUp, Clock3, Copy, Mail, Sparkles, UserRoundPlus, X } from 'lucide-react'
+import { CalendarDays, ChevronDown, ChevronUp, Clock3, Copy, Sparkles, UserRoundPlus, X } from 'lucide-react'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import {
   bookingStatuses,
   schedulerServices,
+  type AvailabilityBlock,
+  type Booking,
   type BookingStatus,
-  type Professional,
+  type BookingStatusColors,
+  type BranchOption,
 } from '@/lib/mock-scheduler-data'
 import {
+  findSchedulerClients,
+  normalizeClientPhone,
+  type SchedulerClient,
+} from '@/lib/mock-client-data'
+import {
   formatMoney,
-  minuteOptions,
-  startHourOptions,
+  getAvailableBookingStartTimes,
   type BookingDraft,
 } from './scheduler-utils'
 
 interface SchedulerBookingDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  professionals: Professional[]
+  branches: BranchOption[]
+  selectedBranch: string
+  onBranchChange: (branchId: string) => void
+  bookings: Booking[]
+  availabilityBlocks: AvailabilityBlock[]
+  clients: SchedulerClient[]
   draft: BookingDraft
+  statusColors: BookingStatusColors
   onDraftChange: (draft: BookingDraft) => void
   onSave: () => void
 }
@@ -48,8 +62,14 @@ interface SchedulerBookingDialogProps {
 export function SchedulerBookingDialog({
   open,
   onOpenChange,
-  professionals,
+  branches,
+  selectedBranch,
+  onBranchChange,
+  bookings,
+  availabilityBlocks,
+  clients,
   draft,
+  statusColors,
   onDraftChange,
   onSave,
 }: SchedulerBookingDialogProps) {
@@ -59,7 +79,52 @@ export function SchedulerBookingDialog({
   const [isAdditionalInfoOpen, setIsAdditionalInfoOpen] = useState(false)
   const [newClientFirstName, setNewClientFirstName] = useState('')
   const [newClientLastName, setNewClientLastName] = useState('')
-  const [newClientEmail, setNewClientEmail] = useState('')
+  const [clientSearchQuery, setClientSearchQuery] = useState('')
+  const [clientSuggestionsOpen, setClientSuggestionsOpen] = useState(false)
+  const selectedDateKey = format(draft.date, 'yyyy-MM-dd')
+  const availableStartTimes = useMemo(
+    () =>
+      getAvailableBookingStartTimes({
+        bookings,
+        availabilityBlocks,
+        dateKey: selectedDateKey,
+        professionalId: draft.professionalId,
+        durationMinutes: selectedService?.durationMinutes ?? 60,
+        ...(draft.bookingId ? { editingBookingId: draft.bookingId } : {}),
+      }),
+    [
+      availabilityBlocks,
+      bookings,
+      draft.bookingId,
+      draft.professionalId,
+      selectedDateKey,
+      selectedService?.durationMinutes,
+    ],
+  )
+  const availableHourOptions = useMemo(
+    () => [...new Set(availableStartTimes.map((time) => time.split(':')[0] ?? ''))],
+    [availableStartTimes],
+  )
+  const availableMinuteOptions = useMemo(
+    () =>
+      availableStartTimes
+        .filter((time) => time.startsWith(`${draft.hour}:`))
+        .map((time) => time.split(':')[1] ?? '00'),
+    [availableStartTimes, draft.hour],
+  )
+  const selectedStartTime = `${draft.hour}:${draft.minute}`
+  const hasAvailableTimes = availableStartTimes.length > 0
+  const selectedTimeIsAvailable = availableStartTimes.includes(selectedStartTime)
+  const canSaveAtSelectedTime = draft.status === 'canceled' || selectedTimeIsAvailable
+  const clientSuggestions = useMemo(
+    () => findSchedulerClients(clients, clientSearchQuery),
+    [clientSearchQuery, clients],
+  )
+  const exactPhoneMatch = useMemo(() => {
+    const normalizedPhone = normalizeClientPhone(draft.phone)
+    if (!normalizedPhone) return undefined
+    return clients.find((client) => client.normalizedPhone === normalizedPhone)
+  }, [clients, draft.phone])
 
   useEffect(() => {
     if (!open) {
@@ -67,9 +132,33 @@ export function SchedulerBookingDialog({
       setIsAdditionalInfoOpen(false)
       setNewClientFirstName('')
       setNewClientLastName('')
-      setNewClientEmail('')
+      setClientSearchQuery('')
+      setClientSuggestionsOpen(false)
+    } else {
+      setClientSearchQuery(draft.customerName)
     }
   }, [open])
+
+  useEffect(() => {
+    if (
+      !open ||
+      draft.status === 'canceled' ||
+      !hasAvailableTimes ||
+      selectedTimeIsAvailable
+    ) {
+      return
+    }
+
+    const [hour = '09', minute = '00'] = availableStartTimes[0]?.split(':') ?? []
+    onDraftChange({ ...draft, hour, minute })
+  }, [
+    availableStartTimes,
+    draft,
+    hasAvailableTimes,
+    onDraftChange,
+    open,
+    selectedTimeIsAvailable,
+  ])
 
   function patchDraft(patch: Partial<BookingDraft>) {
     onDraftChange({ ...draft, ...patch })
@@ -79,7 +168,70 @@ export function SchedulerBookingDialog({
     setNewClientFirstName(firstName)
     setNewClientLastName(lastName)
     patchDraft({
+      clientId: null,
       customerName: [firstName.trim(), lastName.trim()].filter(Boolean).join(' '),
+    })
+  }
+
+  function selectClient(client: SchedulerClient) {
+    const [firstName = '', ...lastNameParts] = client.fullName.split(' ')
+    setNewClientFirstName(firstName)
+    setNewClientLastName(lastNameParts.join(' '))
+    setClientSearchQuery(client.fullName)
+    setClientSuggestionsOpen(false)
+    setIsNewClientOpen(false)
+    patchDraft({
+      clientId: client.id,
+      customerName: client.fullName,
+      customerEmail: client.email,
+      phone: client.phone,
+    })
+  }
+
+  function handleClientSearchChange(value: string) {
+    setClientSearchQuery(value)
+    setClientSuggestionsOpen(findSchedulerClients(clients, value).length > 0)
+    if (draft.clientId) {
+      patchDraft({
+        clientId: null,
+        customerName: '',
+        customerEmail: '',
+        phone: '',
+      })
+    }
+  }
+
+  function handlePhoneChange(value: string) {
+    const selectedClient = clients.find((client) => client.id === draft.clientId)
+    const keepsSelectedClient =
+      selectedClient &&
+      selectedClient.normalizedPhone === normalizeClientPhone(value)
+    patchDraft({
+      clientId: keepsSelectedClient ? selectedClient.id : null,
+      phone: value,
+    })
+  }
+
+  function openNewClientForm() {
+    const nextOpen = !isNewClientOpen
+    setIsNewClientOpen(nextOpen)
+    if (!nextOpen) return
+
+    const queryHasLetters = /[a-záéíóúñü]/i.test(clientSearchQuery)
+    const queryPhone = normalizeClientPhone(clientSearchQuery)
+    const [firstName = '', ...lastNameParts] = queryHasLetters
+      ? clientSearchQuery.trim().split(/\s+/)
+      : []
+    const lastName = lastNameParts.join(' ')
+    setNewClientFirstName(firstName)
+    setNewClientLastName(lastName)
+    setClientSuggestionsOpen(false)
+    patchDraft({
+      clientId: null,
+      customerName: queryHasLetters
+        ? [firstName, lastName].filter(Boolean).join(' ')
+        : '',
+      phone: !queryHasLetters && queryPhone ? clientSearchQuery : draft.phone,
     })
   }
 
@@ -112,7 +264,10 @@ export function SchedulerBookingDialog({
                     {Object.entries(bookingStatuses).map(([value, meta]) => (
                       <SelectItem key={value} className="scheduler-modal-select-item" value={value}>
                         <div className="flex items-center gap-3">
-                          <span className={cn('h-3.5 w-3.5 rounded-full', meta.dotClassName)} />
+                          <span
+                            className="h-3.5 w-3.5 rounded-full"
+                            style={{ backgroundColor: statusColors[value as BookingStatus] }}
+                          />
                           <span>{meta.label}</span>
                         </div>
                       </SelectItem>
@@ -167,12 +322,22 @@ export function SchedulerBookingDialog({
                 <div className="grid grid-cols-[1fr_auto_1fr_auto] items-end gap-3">
                   <div className="space-y-2">
                     <label className="scheduler-modal-label">Hora</label>
-                    <Select value={draft.hour} onValueChange={(value) => patchDraft({ hour: value })}>
+                    <Select
+                      disabled={!hasAvailableTimes}
+                      value={availableHourOptions.includes(draft.hour) ? draft.hour : ''}
+                      onValueChange={(value) => {
+                        const firstAvailableMinute =
+                          availableStartTimes
+                            .find((time) => time.startsWith(`${value}:`))
+                            ?.split(':')[1] ?? '00'
+                        patchDraft({ hour: value, minute: firstAvailableMinute })
+                      }}
+                    >
                       <SelectTrigger className="scheduler-modal-select-trigger">
-                        <SelectValue />
+                        <SelectValue placeholder="Sin horarios" />
                       </SelectTrigger>
                       <SelectContent className="scheduler-modal-select-content max-h-[280px]">
-                        {startHourOptions.map((option) => (
+                        {availableHourOptions.map((option) => (
                           <SelectItem key={option} className="scheduler-modal-select-item" value={option}>
                             {option}
                           </SelectItem>
@@ -183,12 +348,16 @@ export function SchedulerBookingDialog({
                   <span className="pb-4 text-2xl text-[var(--color-gold)]">:</span>
                   <div className="space-y-2">
                     <label className="sr-only">Minuto</label>
-                    <Select value={draft.minute} onValueChange={(value) => patchDraft({ minute: value })}>
+                    <Select
+                      disabled={!hasAvailableTimes}
+                      value={availableMinuteOptions.includes(draft.minute) ? draft.minute : ''}
+                      onValueChange={(value) => patchDraft({ minute: value })}
+                    >
                       <SelectTrigger className="scheduler-modal-select-trigger">
-                        <SelectValue />
+                        <SelectValue placeholder="--" />
                       </SelectTrigger>
                       <SelectContent className="scheduler-modal-select-content max-h-[240px]">
-                        {minuteOptions.map((option) => (
+                        {availableMinuteOptions.map((option) => (
                           <SelectItem key={option} className="scheduler-modal-select-item" value={option}>
                             {option}
                           </SelectItem>
@@ -204,22 +373,76 @@ export function SchedulerBookingDialog({
                   </Button>
                 </div>
               </div>
+              {!hasAvailableTimes && draft.status !== 'canceled' ? (
+                <p className="mt-3 text-sm font-medium text-rose-700" role="status">
+                  No hay horarios disponibles para este profesional, fecha y duración de servicio.
+                </p>
+              ) : (
+                <p className="mt-3 text-sm text-slate-500" role="status">
+                  Solo se muestran horarios libres; las reservas canceladas no bloquean disponibilidad.
+                </p>
+              )}
 
               <div className="mt-6 grid gap-5">
                 <div className="grid gap-3 lg:grid-cols-[1fr_auto]">
                   <div className="space-y-2">
                     <label className="scheduler-modal-label">Cliente</label>
-                    <Input
-                      className="scheduler-modal-input"
-                      placeholder="Busca por nombre, apellido, rut, email"
-                      value={draft.customerName}
-                      onChange={(event) => patchDraft({ customerName: event.target.value })}
-                    />
+                    <Popover
+                      open={clientSuggestionsOpen && clientSuggestions.length > 0}
+                      onOpenChange={setClientSuggestionsOpen}
+                    >
+                      <PopoverAnchor asChild>
+                        <Input
+                          autoComplete="off"
+                          className="scheduler-modal-input"
+                          placeholder="Escribe nombre, apellido o teléfono"
+                          value={clientSearchQuery}
+                          onChange={(event) => handleClientSearchChange(event.target.value)}
+                          onFocus={() =>
+                            setClientSuggestionsOpen(clientSuggestions.length > 0)
+                          }
+                        />
+                      </PopoverAnchor>
+                      <PopoverContent
+                        align="start"
+                        className="w-[var(--radix-popover-trigger-width)] rounded-2xl border-[rgba(236,209,200,0.95)] bg-white p-2 shadow-[0_8px_24px_rgba(79,61,43,0.14)]"
+                        onOpenAutoFocus={(event) => event.preventDefault()}
+                      >
+                        <p className="px-3 py-2 text-xs font-semibold text-slate-500">
+                          Clientes encontrados
+                        </p>
+                        <div className="space-y-1">
+                          {clientSuggestions.map((client) => (
+                            <button
+                              key={client.id}
+                              className="flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2.5 text-left transition hover:bg-[rgba(245,237,228,0.7)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--scheduler-accent)]"
+                              onClick={() => selectClient(client)}
+                              type="button"
+                            >
+                              <span className="min-w-0">
+                                <span className="block truncate text-sm font-semibold text-[var(--scheduler-ink-strong)]">
+                                  {client.fullName}
+                                </span>
+                                <span className="block text-xs text-slate-600">{client.phone}</span>
+                              </span>
+                              <span className="shrink-0 text-xs text-slate-500">
+                                {client.history.length} {client.history.length === 1 ? 'visita' : 'visitas'}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      </PopoverContent>
+                    </Popover>
+                    {draft.clientId ? (
+                      <p className="text-sm font-medium text-emerald-700">
+                        Cliente existente vinculado a su historial.
+                      </p>
+                    ) : null}
                   </div>
                   <div className="flex items-end">
                     <Button
                       className="scheduler-modal-cta px-5"
-                      onClick={() => setIsNewClientOpen((current) => !current)}
+                      onClick={openNewClientForm}
                       type="button"
                     >
                       <UserRoundPlus className="mr-2 h-5 w-5" />
@@ -254,43 +477,50 @@ export function SchedulerBookingDialog({
                           onChange={(event) => handleNewClientNameChange(newClientFirstName, event.target.value)}
                         />
                       </div>
-                      <div className="space-y-2 md:col-span-2">
+                      <div className="space-y-2">
+                        <label className="scheduler-modal-label">Telefono</label>
+                        <Input
+                          autoComplete="off"
+                          className="scheduler-modal-input"
+                          inputMode="tel"
+                          placeholder="+52 55 0000 0000"
+                          value={draft.phone}
+                          onChange={(event) => handlePhoneChange(event.target.value)}
+                        />
+                        {exactPhoneMatch && draft.clientId !== exactPhoneMatch.id ? (
+                          <p className="text-sm font-medium text-amber-800" role="status">
+                            Este teléfono ya pertenece a {exactPhoneMatch.fullName}. Selecciona el registro o confirma la unificación al guardar.
+                          </p>
+                        ) : null}
+                      </div>
+                      <div className="space-y-2">
                         <label className="scheduler-modal-label">Email</label>
-                        <div className="scheduler-modal-input flex items-center gap-3 px-4">
-                          <Mail className="h-4 w-4 text-slate-400" />
-                          <input
-                            className="w-full bg-transparent text-base text-[var(--scheduler-ink-strong)] outline-none placeholder:text-[rgba(96,96,96,0.45)]"
-                            placeholder="correo@cliente.com"
-                            value={newClientEmail}
-                            onChange={(event) => setNewClientEmail(event.target.value)}
-                          />
-                        </div>
+                        <Input
+                          autoComplete="email"
+                          className="scheduler-modal-input"
+                          placeholder="correo@cliente.com"
+                          type="email"
+                          value={draft.customerEmail}
+                          onChange={(event) =>
+                            patchDraft({ clientId: null, customerEmail: event.target.value })
+                          }
+                        />
                       </div>
                     </div>
                   </div>
                 ) : null}
 
-                <div className="space-y-2">
-                  <label className="scheduler-modal-label">Telefono</label>
-                  <Input
-                    className="scheduler-modal-input"
-                    placeholder="+52 55 0000 0000"
-                    value={draft.phone}
-                    onChange={(event) => patchDraft({ phone: event.target.value })}
-                  />
-                </div>
-
                 <div className="grid gap-3 lg:grid-cols-[1fr_auto]">
                   <div className="space-y-2">
-                    <label className="scheduler-modal-label">Profesional</label>
-                    <Select value={draft.professionalId} onValueChange={(value) => patchDraft({ professionalId: value })}>
+                    <label className="scheduler-modal-label">Sucursal</label>
+                    <Select value={selectedBranch} onValueChange={onBranchChange}>
                       <SelectTrigger className="scheduler-modal-select-trigger">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent className="scheduler-modal-select-content max-h-[320px]">
-                        {professionals.map((professional) => (
-                          <SelectItem key={professional.id} className="scheduler-modal-select-item" value={professional.id}>
-                            {professional.name}
+                        {branches.map((branch) => (
+                          <SelectItem key={branch.id} className="scheduler-modal-select-item" value={branch.id}>
+                            {branch.name}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -410,7 +640,7 @@ export function SchedulerBookingDialog({
               <Button variant="outline" className="scheduler-modal-secondary" onClick={() => onOpenChange(false)}>
                 Cancelar
               </Button>
-              <Button className="scheduler-modal-cta" onClick={onSave}>
+              <Button className="scheduler-modal-cta" disabled={!canSaveAtSelectedTime} onClick={() => onSave()}>
                 <UserRoundPlus className="mr-2 h-5 w-5" />
                 {isEditing ? 'Guardar cambios' : 'Guardar reserva'}
               </Button>

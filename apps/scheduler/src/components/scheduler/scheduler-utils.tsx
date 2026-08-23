@@ -15,6 +15,7 @@ import {
 import {
   type AvailabilityBlock,
   type Booking,
+  type BookingPurchaseType,
   type BookingStatus,
   schedulerLegendItems,
   schedulerProfessionals,
@@ -52,7 +53,9 @@ export function getSchedulerCardTop(startCellIndex: number): number {
 
 export interface BookingDraft {
   bookingId?: string
+  clientId: string | null
   customerName: string
+  customerEmail: string
   serviceId: string
   professionalId: string
   date: Date
@@ -68,6 +71,19 @@ export interface BookingDraft {
 export interface EmptySlotAction {
   professionalId: string
   startTime: string
+}
+
+export type ClientVisitCategory = 'attended' | 'no-show' | 'scheduled'
+
+export interface ClientVisitHistoryEntry {
+  bookingId: string
+  date: string
+  start: string
+  end: string
+  serviceName: string
+  professionalName: string
+  status: BookingStatus
+  category: ClientVisitCategory
 }
 
 export interface BlockDraft {
@@ -155,6 +171,95 @@ export function timesOverlap(startA: string, endA: string, startB: string, endB:
   return startMinutesA < endMinutesB && endMinutesA > startMinutesB
 }
 
+export function getClientVisitHistory(
+  bookings: Booking[],
+  clientBooking: Booking,
+): ClientVisitHistoryEntry[] {
+  const normalizedPhone = clientBooking.phone.replace(/\D/g, '')
+
+  return bookings
+    .filter((booking) => {
+      if (clientBooking.clientId && booking.clientId) {
+        return booking.clientId === clientBooking.clientId
+      }
+
+      return Boolean(normalizedPhone) && booking.phone.replace(/\D/g, '') === normalizedPhone
+    })
+    .map((booking): ClientVisitHistoryEntry => ({
+      bookingId: booking.id,
+      date: booking.date ?? schedulerReferenceDateKey,
+      start: booking.start,
+      end: booking.end,
+      serviceName: booking.serviceName,
+      professionalName: getProfessionalName(booking.professionalId),
+      status: booking.status,
+      category:
+        booking.status === 'arrived'
+          ? 'attended'
+          : booking.status === 'no-show'
+            ? 'no-show'
+            : 'scheduled',
+    }))
+    .sort((left, right) => {
+      const dateComparison = right.date.localeCompare(left.date)
+      return dateComparison || right.start.localeCompare(left.start)
+    })
+}
+
+export function getAvailableBookingStartTimes({
+  bookings,
+  availabilityBlocks,
+  dateKey,
+  professionalId,
+  durationMinutes,
+  editingBookingId,
+}: {
+  bookings: Booking[]
+  availabilityBlocks: AvailabilityBlock[]
+  dateKey: string
+  professionalId: string
+  durationMinutes: number
+  editingBookingId?: string
+}): string[] {
+  if (!professionalId || durationMinutes <= 0) return []
+
+  const occupiedBookings = bookings.filter((booking) => {
+    const bookingDateKey = booking.date ?? schedulerReferenceDateKey
+    return (
+      booking.id !== editingBookingId &&
+      booking.status !== 'canceled' &&
+      bookingDateKey === dateKey &&
+      booking.professionalId === professionalId
+    )
+  })
+  const occupiedBlocks = availabilityBlocks.filter((block) => {
+    const blockDateKey = block.date ?? schedulerReferenceDateKey
+    return blockDateKey === dateKey && block.professionalId === professionalId
+  })
+
+  const candidates: string[] = []
+  for (
+    let startMinutes = schedulerBaseMinutes;
+    startMinutes + durationMinutes <= schedulerClosingMinutes;
+    startMinutes += 15
+  ) {
+    const hours = Math.floor(startMinutes / 60).toString().padStart(2, '0')
+    const minutes = (startMinutes % 60).toString().padStart(2, '0')
+    const start = `${hours}:${minutes}`
+    const end = addMinutesToTime(start, durationMinutes)
+    const overlapsBooking = occupiedBookings.some((booking) =>
+      timesOverlap(booking.start, booking.end, start, end),
+    )
+    const overlapsBlock = occupiedBlocks.some((block) =>
+      timesOverlap(block.start, block.end, start, end),
+    )
+
+    if (!overlapsBooking && !overlapsBlock) candidates.push(start)
+  }
+
+  return candidates
+}
+
 export function createDraft(
   selectedDate: Date,
   professionals: Professional[],
@@ -164,7 +269,9 @@ export function createDraft(
   const [hour = '11', minute = '00'] = startTime.split(':')
 
   return {
+    clientId: null,
     customerName: '',
+    customerEmail: '',
     serviceId: schedulerServices[0]?.id ?? '',
     professionalId: professionalId ?? professionals[0]?.id ?? '',
     date: selectedDate,
@@ -185,7 +292,9 @@ export function createDraftFromBooking(booking: Booking, selectedDate: Date): Bo
 
   return {
     bookingId: booking.id,
+    clientId: booking.clientId ?? null,
     customerName: booking.customerName,
+    customerEmail: booking.customerEmail ?? '',
     serviceId: matchedService?.id ?? schedulerServices[0]?.id ?? '',
     professionalId: booking.professionalId,
     date: Number.isNaN(bookingDate.getTime()) ? selectedDate : bookingDate,
@@ -247,6 +356,122 @@ export function formatMoney(value: number): string {
   }).format(value)
 }
 
+export interface ClientPurchaseAccount {
+  previousVisits: number
+  settledPurchases: number
+  settledAmount: number
+  outstandingBalance: number
+}
+
+export interface ClientPaymentHistoryEntry {
+  bookingId: string
+  date: string
+  purchaseType: BookingPurchaseType
+  amount: number
+  tentativeAmount?: number
+  label: string
+}
+
+function normalizeAccountPhone(value: string): string {
+  return value.replace(/\D/g, '').slice(-10)
+}
+
+function belongsToClient(candidate: Booking, clientBooking: Booking): boolean {
+  if (candidate.clientId && clientBooking.clientId) {
+    return candidate.clientId === clientBooking.clientId
+  }
+
+  const candidatePhone = normalizeAccountPhone(candidate.phone)
+  const clientPhone = normalizeAccountPhone(clientBooking.phone)
+  return candidatePhone.length === 10 && candidatePhone === clientPhone
+}
+
+export function getClientPurchaseAccount(
+  bookings: Booking[],
+  clientBooking: Booking,
+  excludedBookingId?: string,
+): ClientPurchaseAccount {
+  const currentBookingDateTime = `${clientBooking.date ?? schedulerReferenceDateKey}T${clientBooking.start}`
+  const previousVisits = bookings.filter((booking) => {
+    if (booking.id === clientBooking.id || !belongsToClient(booking, clientBooking)) return false
+
+    const bookingDateTime = `${booking.date ?? schedulerReferenceDateKey}T${booking.start}`
+    return bookingDateTime < currentBookingDateTime
+  }).length
+  const purchaseRecords = bookings.filter(
+    (booking) =>
+      booking.id !== excludedBookingId &&
+      Boolean(booking.purchaseType) &&
+      (booking.purchaseAmount ?? 0) > 0 &&
+      belongsToClient(booking, clientBooking),
+  )
+  const layawayBalances: number[] = []
+  const layawayTotals: number[] = []
+  let settledPurchases = 0
+  let settledAmount = 0
+  let settlementPayments = 0
+
+  purchaseRecords.forEach((booking) => {
+    if (booking.purchaseType === 'cash' && (booking.purchaseAmount ?? 0) > 0) {
+      settledPurchases += 1
+      settledAmount += booking.purchaseAmount ?? 0
+      return
+    }
+
+    if (booking.purchaseType === 'settlement') {
+      settlementPayments += booking.purchaseAmount ?? 0
+      return
+    }
+
+    if (booking.purchaseType === 'layaway') {
+      const tentativeAmount = booking.tentativePurchaseAmount ?? 0
+      const initialPayment = booking.purchaseAmount ?? 0
+      layawayBalances.push(Math.max(0, tentativeAmount - initialPayment))
+      layawayTotals.push(tentativeAmount)
+    }
+  })
+
+  let outstandingBalance = 0
+  layawayBalances.forEach((balance, index) => {
+    const appliedPayment = Math.min(balance, settlementPayments)
+    const remainingBalance = Math.max(0, balance - appliedPayment)
+    settlementPayments -= appliedPayment
+
+    if (remainingBalance === 0) {
+      settledPurchases += 1
+      settledAmount += layawayTotals[index] ?? 0
+    } else {
+      outstandingBalance += remainingBalance
+    }
+  })
+
+  return { previousVisits, settledPurchases, settledAmount, outstandingBalance }
+}
+
+export function getClientPaymentHistory(
+  bookings: Booking[],
+  clientBooking: Booking,
+): ClientPaymentHistoryEntry[] {
+  return bookings
+    .filter(
+      (booking) =>
+        Boolean(booking.purchaseType) &&
+        (booking.purchaseAmount ?? 0) > 0 &&
+        belongsToClient(booking, clientBooking),
+    )
+    .map((booking) => ({
+      bookingId: booking.id,
+      date: booking.date ?? schedulerReferenceDateKey,
+      purchaseType: booking.purchaseType as BookingPurchaseType,
+      amount: booking.purchaseAmount ?? 0,
+      ...(booking.tentativePurchaseAmount
+        ? { tentativeAmount: booking.tentativePurchaseAmount }
+        : {}),
+      label: booking.paymentLabel,
+    }))
+    .sort((left, right) => right.date.localeCompare(left.date))
+}
+
 export function getLegendIcon(icon: (typeof schedulerLegendItems)[number]['icon']): JSX.Element {
   const className = 'h-4 w-4'
 
@@ -277,8 +502,14 @@ export function getLegendIcon(icon: (typeof schedulerLegendItems)[number]['icon'
 export function getProfessionalName(professionalId: string): string {
   return (
     schedulerProfessionals.find((professional) => professional.id === professionalId)?.name ??
-    'Sin profesional asignado'
+    'Sin recurso asignado'
   )
+}
+
+export function bookingRequiresMultipleSpecialists(booking: Booking): boolean {
+  const resourceName = getProfessionalName(booking.professionalId).toLocaleUpperCase('es-MX')
+  const serviceName = booking.serviceName.toLocaleUpperCase('es-MX')
+  return resourceName.includes('DOBLE') || serviceName.includes('DOBLE')
 }
 
 export function getServiceByName(serviceName: string) {

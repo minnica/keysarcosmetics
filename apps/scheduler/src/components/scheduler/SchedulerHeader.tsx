@@ -16,7 +16,7 @@ import {
 } from 'lucide-react'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
-import { schedulerBranches, schedulerLegendItems, type SchedulerView } from '@/lib/mock-scheduler-data'
+import { schedulerLegendItems, type SchedulerView } from '@/lib/mock-scheduler-data'
 import {
   AdministrationNavMenu,
   ReportsNavMenu,
@@ -29,7 +29,8 @@ interface SchedulerHeaderProps {
   onViewChange: (view: SchedulerView) => void
   selectedDate: Date
   weekDays: Date[]
-  selectedBranch: string
+  selectedCommerceName: string
+  selectedBranchName: string
   onDateStep: (direction: 'prev' | 'next') => void
   onGoToday: () => void
   onRefresh: () => void
@@ -41,14 +42,13 @@ export function SchedulerHeader({
   onViewChange,
   selectedDate,
   weekDays,
-  selectedBranch,
+  selectedCommerceName,
+  selectedBranchName,
   onDateStep,
   onGoToday,
   onRefresh,
   onOpenNewBooking,
 }: SchedulerHeaderProps) {
-  const branchName = schedulerBranches.find((branch) => branch.id === selectedBranch)?.name
-
   return (
     <>
       <header className="sticky top-0 z-40 border-b border-white/10 bg-[linear-gradient(90deg,#172230_0%,#1d2937_100%)] text-white shadow-[0_18px_44px_rgba(8,14,24,0.2)]">
@@ -146,7 +146,9 @@ export function SchedulerHeader({
               </h1>
               <div className="mt-1.5 inline-flex items-center gap-2 rounded-full bg-[rgba(244,234,221,0.62)] px-4 py-1.5 text-sm font-medium text-slate-500">
                 <MapPinned className="h-4 w-4" />
-                {branchName}
+                <span>{selectedCommerceName}</span>
+                <span aria-hidden="true" className="text-slate-300">·</span>
+                <span>{selectedBranchName}</span>
               </div>
             </div>
           </div>

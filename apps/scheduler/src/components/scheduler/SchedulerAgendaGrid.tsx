@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, type CSSProperties } from 'react'
-import { Badge, Card, CardContent, Popover, PopoverContent, PopoverTrigger, cn } from '@cosmetics/ui'
+import { Badge, Card, CardContent, Dialog, DialogContent, DialogTrigger, Popover, PopoverContent, PopoverTrigger, cn } from '@cosmetics/ui'
 import { Ban, CalendarDays, Plus } from 'lucide-react'
 import { format, isSameDay } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -12,11 +12,19 @@ import {
   type AvailabilityBlock,
   type Booking,
   type BookingStatus,
+  type BookingStatusColors,
   type Professional,
   type SchedulerView,
 } from '@/lib/mock-scheduler-data'
 import {
+  getSchedulerClientAccessKey,
+  type SchedulerFinancialAuditEvent,
+  type SchedulerFinancialProfile,
+} from '@/lib/scheduler-access'
+import {
   getAppointmentStyle,
+  getClientPurchaseAccount,
+  getClientPaymentHistory,
   getCurrentTimeLineStyle,
   getMinutesFromTime,
   getSchedulerCardTop,
@@ -33,6 +41,8 @@ interface SchedulerAgendaGridProps {
   currentView: SchedulerView
   visibleProfessionals: Professional[]
   visibleBookings: Booking[]
+  statusColors: BookingStatusColors
+  allBookings: Booking[]
   visibleBlocks: AvailabilityBlock[]
   selectedDate: Date
   weekDays: Date[]
@@ -45,8 +55,20 @@ interface SchedulerAgendaGridProps {
   onEditBooking: (booking: Booking) => void
   onDeleteBooking: (bookingId: string) => void
   onUpdateBookingStatus: (bookingId: string, status: BookingStatus) => void
-  onToggleBookingPaid: (bookingId: string) => void
+  onPurchaseDecision: (booking: Booking, purchased: boolean) => void
   onOpenBookingDetail: (booking: Booking, view: 'payment' | 'record') => void
+  onOpenClientHistory: (booking: Booking) => void
+  financialAccessByClient: Record<string, SchedulerFinancialProfile>
+  financialAuditEvents: SchedulerFinancialAuditEvent[]
+  onRequestFinancialAccess: (booking: Booking) => void
+  onRevokeFinancialAccess: (booking: Booking) => void
+  onUpdatePaymentHistory: (
+    clientBooking: Booking,
+    paymentBookingId: string,
+    amount: number,
+    tentativeAmount?: number,
+  ) => void
+  onDeletePaymentHistory: (clientBooking: Booking, paymentBookingId: string) => void
 }
 
 interface DayOverlayBooking {
@@ -69,6 +91,8 @@ export function SchedulerAgendaGrid({
   currentView,
   visibleProfessionals,
   visibleBookings,
+  statusColors,
+  allBookings,
   visibleBlocks,
   selectedDate,
   weekDays,
@@ -81,8 +105,15 @@ export function SchedulerAgendaGrid({
   onEditBooking,
   onDeleteBooking,
   onUpdateBookingStatus,
-  onToggleBookingPaid,
+  onPurchaseDecision,
   onOpenBookingDetail,
+  onOpenClientHistory,
+  financialAccessByClient,
+  financialAuditEvents,
+  onRequestFinancialAccess,
+  onRevokeFinancialAccess,
+  onUpdatePaymentHistory,
+  onDeletePaymentHistory,
 }: SchedulerAgendaGridProps) {
   const professionalCount = Math.max(visibleProfessionals.length, 1)
   const dayColumnWidth =
@@ -149,6 +180,36 @@ export function SchedulerAgendaGrid({
     return overlays.filter((value): value is DayOverlayBlock => value !== null)
   }, [dayColumnWidth, professionalIndexMap, visibleBlocks])
 
+  const occupiedDaySlots = useMemo(() => {
+    const occupied = new Set<string>()
+
+    schedulerTimeSlots.forEach((slot) => {
+      const slotStart = getMinutesFromTime(slot)
+      const slotEnd = slotStart + schedulerSlotMinutes
+
+      visibleProfessionals.forEach((professional) => {
+        const bookingOccupiesSlot = visibleBookings.some(
+          (booking) =>
+            booking.professionalId === professional.id &&
+            getMinutesFromTime(booking.start) < slotEnd &&
+            getMinutesFromTime(booking.end) > slotStart,
+        )
+        const blockOccupiesSlot = visibleBlocks.some(
+          (block) =>
+            block.professionalId === professional.id &&
+            getMinutesFromTime(block.start) < slotEnd &&
+            getMinutesFromTime(block.end) > slotStart,
+        )
+
+        if (bookingOccupiesSlot || blockOccupiesSlot) {
+          occupied.add(`${slot}-${professional.id}`)
+        }
+      })
+    })
+
+    return occupied
+  }, [visibleBlocks, visibleBookings, visibleProfessionals])
+
   const slotActionOverlay = useMemo(() => {
     if (!emptySlotAction) return null
 
@@ -213,16 +274,21 @@ export function SchedulerAgendaGrid({
                   <div className="scheduler-time-cell">{slot}</div>
                   {visibleProfessionals.map((professional) => {
                     const isClosingSlot = getMinutesFromTime(slot) >= schedulerClosingMinutes
+                    const isOccupied = occupiedDaySlots.has(`${slot}-${professional.id}`)
 
                     return (
                       <div
                         key={`${slot}-${professional.id}`}
                         className={cn(
                           'scheduler-body-cell',
-                          isClosingSlot ? 'scheduler-body-cell-closing' : 'scheduler-body-cell-interactive',
+                          isClosingSlot
+                            ? 'scheduler-body-cell-closing'
+                            : isOccupied
+                              ? 'scheduler-body-cell-occupied'
+                              : 'scheduler-body-cell-interactive',
                         )}
                       >
-                        {isClosingSlot ? null : (
+                        {isClosingSlot || isOccupied ? null : (
                           <button
                             aria-label={`Abrir acciones para ${professional.name} a las ${slot}`}
                             className="scheduler-cell-hitbox"
@@ -258,21 +324,24 @@ export function SchedulerAgendaGrid({
               ))}
 
               {dayAppointments.map(({ booking, style }) => {
-                const statusMeta = bookingStatuses[booking.status]
-
                 return (
-                  <Popover key={booking.id}>
-                    <PopoverTrigger asChild>
+                  <Dialog key={booking.id}>
+                    <DialogTrigger asChild>
                       <button
-                        className={cn(
-                          'scheduler-appointment scheduler-appointment-contained scheduler-appointment-booking text-left transition hover:-translate-y-0.5',
-                          statusMeta.cardClassName,
-                        )}
-                        style={style}
+                        className="scheduler-appointment scheduler-appointment-contained scheduler-appointment-booking text-left transition hover:-translate-y-0.5"
+                        style={{
+                          ...style,
+                          backgroundColor: `color-mix(in srgb, ${statusColors[booking.status]} 8%, white)`,
+                          borderColor: `color-mix(in srgb, ${statusColors[booking.status]} 25%, white)`,
+                          color: `color-mix(in srgb, ${statusColors[booking.status]} 70%, #364152)`,
+                        }}
                         type="button"
                       >
                         <div className="mb-1 flex items-center gap-2">
-                          <span className={cn('h-2.5 w-2.5 rounded-full', statusMeta.dotClassName)} />
+                          <span
+                            className="h-2.5 w-2.5 rounded-full"
+                            style={{ backgroundColor: statusColors[booking.status] }}
+                          />
                           <span className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] opacity-70">
                             {booking.start}
                           </span>
@@ -284,22 +353,43 @@ export function SchedulerAgendaGrid({
                           {booking.serviceName}
                         </p>
                       </button>
-                    </PopoverTrigger>
-                    <PopoverContent
-                      align="start"
-                      className="w-[320px] rounded-[20px] border-[rgba(236,209,200,0.9)] bg-white p-3.5 shadow-[0_18px_42px_rgba(79,61,43,0.14)]"
+                    </DialogTrigger>
+                    <DialogContent
+                      className="w-[min(560px,calc(100vw-2rem))] max-h-[90vh] overflow-y-auto rounded-[20px] border p-3.5 shadow-[0_18px_42px_rgba(79,61,43,0.14)]"
+                      style={{
+                        backgroundColor: `color-mix(in srgb, ${statusColors[booking.status]} 8%, white)`,
+                        borderColor: `color-mix(in srgb, ${statusColors[booking.status]} 25%, white)`,
+                      }}
                     >
                       <SchedulerBookingCard
                         booking={booking}
+                        clientAccount={getClientPurchaseAccount(allBookings, booking)}
+                        paymentHistory={financialAccessByClient[getSchedulerClientAccessKey(booking.clientId, booking.phone)]
+                          ? getClientPaymentHistory(allBookings, booking)
+                          : []}
+                        {...(financialAccessByClient[getSchedulerClientAccessKey(booking.clientId, booking.phone)]
+                          ? { financialProfile: financialAccessByClient[getSchedulerClientAccessKey(booking.clientId, booking.phone)] }
+                          : {})}
+                        financialAuditEvents={financialAuditEvents.filter(
+                          (event) => event.clientKey === getSchedulerClientAccessKey(booking.clientId, booking.phone),
+                        )}
                         selectedDate={selectedDate}
+                        statusColors={statusColors}
                         onDelete={onDeleteBooking}
                         onEdit={onEditBooking}
                         onOpenDetail={onOpenBookingDetail}
+                        onOpenClientHistory={onOpenClientHistory}
                         onStatusChange={onUpdateBookingStatus}
-                        onTogglePaid={onToggleBookingPaid}
+                        onPurchaseDecision={onPurchaseDecision}
+                        onRequestFinancialAccess={onRequestFinancialAccess}
+                        onRevokeFinancialAccess={onRevokeFinancialAccess}
+                        onUpdatePaymentHistory={(paymentBookingId, amount, tentativeAmount) =>
+                          onUpdatePaymentHistory(booking, paymentBookingId, amount, tentativeAmount)}
+                        onDeletePaymentHistory={(paymentBookingId) =>
+                          onDeletePaymentHistory(booking, paymentBookingId)}
                       />
-                    </PopoverContent>
-                  </Popover>
+                    </DialogContent>
+                  </Dialog>
                 )
               })}
 

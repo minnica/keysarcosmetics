@@ -1,23 +1,78 @@
 export type SchedulerView = 'day' | 'week'
-export type BookingStatus = 'reserved' | 'confirmed' | 'arrived' | 'no-show' | 'pending' | 'waiting'
+export type BookingStatus = 'reserved' | 'confirmed' | 'arrived' | 'no-show' | 'pending' | 'waiting' | 'canceled'
 export type BookingChannel = 'web' | 'marketplace' | 'charly' | 'walk-in'
+export type BookingPurchaseType = 'cash' | 'layaway' | 'settlement'
+
+export const schedulerStatusColorStorageKey = 'scheduler-status-colors-by-commerce'
+
+export const defaultBookingStatusColors: Record<BookingStatus, string> = {
+  reserved: '#38bdf8',
+  confirmed: '#fbbf24',
+  arrived: '#e879f9',
+  'no-show': '#fb7185',
+  pending: '#f87171',
+  waiting: '#a3e635',
+  canceled: '#94a3b8',
+}
+
+export type BookingStatusColors = Record<BookingStatus, string>
+
+export function getBookingStatusColors(commerceId: string): BookingStatusColors {
+  if (typeof window === 'undefined') return { ...defaultBookingStatusColors }
+
+  try {
+    const saved = JSON.parse(
+      window.localStorage.getItem(schedulerStatusColorStorageKey) ?? '{}',
+    ) as Record<string, Partial<BookingStatusColors>>
+
+    return {
+      ...defaultBookingStatusColors,
+      ...(saved[commerceId] ?? {}),
+    }
+  } catch {
+    return { ...defaultBookingStatusColors }
+  }
+}
+
+export interface CommerceOption {
+  id: string
+  name: string
+}
 
 export interface BranchOption {
   id: string
+  commerceId: string
   name: string
 }
 
 export interface Professional {
   id: string
-  branchId: string
+  commerceIds: string[]
+  branchIds: string[]
   name: string
   shortName: string
   avatar: string
   accent: string
 }
 
+export interface AttendingSpecialist {
+  id: string
+  name: string
+  branchIds: string[]
+}
+
+export interface BookingServiceRecord {
+  id: string
+  specialistId: string
+  specialistName: string
+  sharePercentage: number
+  allocatedAmount: number
+}
+
 export interface Booking {
   id: string
+  clientId?: string
+  branchId?: string
   date?: string
   customerName: string
   serviceName: string
@@ -26,13 +81,20 @@ export interface Booking {
   end: string
   status: BookingStatus
   phone: string
+  customerEmail?: string
   notes?: string
   paymentLabel: string
+  purchased?: boolean
+  purchaseType?: BookingPurchaseType
+  purchaseAmount?: number
+  tentativePurchaseAmount?: number
+  serviceRecords?: BookingServiceRecord[]
   sessionLabel?: string
 }
 
 export interface AvailabilityBlock {
   id: string
+  branchId?: string
   date?: string
   professionalId: string
   start: string
@@ -57,20 +119,28 @@ export interface SchedulerLegendItem {
 export const schedulerReferenceDate = new Date('2026-06-30T11:00:00')
 export const schedulerReferenceDateKey = '2026-06-30'
 
+export const schedulerCommerces: CommerceOption[] = [
+  { id: 'opatra-mexico', name: 'OPATRA MEXICO' },
+  { id: 'keysar-cosmetics', name: 'KEYSAR COSMETICS' },
+]
+
 export const schedulerBranches: BranchOption[] = [
-  { id: 'opatra', name: 'OPATRA MEXICO' },
-  { id: 'mitikah', name: 'MITIKAH' },
-  { id: 'masaryk', name: 'MASARYK' },
+  { id: 'galerias-insurgentes', commerceId: 'opatra-mexico', name: 'GALERÍAS INSURGENTES' },
+  { id: 'mitikah', commerceId: 'opatra-mexico', name: 'MITIKAH' },
+  { id: 'masaryk', commerceId: 'opatra-mexico', name: 'MASARYK' },
+  { id: 'keysar-reforma', commerceId: 'keysar-cosmetics', name: 'REFORMA' },
+  { id: 'keysar-polanco', commerceId: 'keysar-cosmetics', name: 'POLANCO' },
 ]
 
 export const bookingStatusOptions: Array<{ value: BookingStatus | 'active'; label: string }> = [
   { value: 'active', label: 'Reservas activas' },
   { value: 'reserved', label: 'Reservado' },
   { value: 'confirmed', label: 'Confirmado' },
-  { value: 'arrived', label: 'Asiste' },
+  { value: 'arrived', label: 'Asistió' },
   { value: 'no-show', label: 'No asistio' },
   { value: 'pending', label: 'Pendiente' },
   { value: 'waiting', label: 'En espera' },
+  { value: 'canceled', label: 'Cancelado' },
 ]
 
 export const bookingStatuses: Record<
@@ -80,45 +150,52 @@ export const bookingStatuses: Record<
   reserved: {
     label: 'Reservado',
     badgeClassName: 'bg-sky-100 text-sky-700 border-sky-200',
-    cardClassName: 'bg-sky-100/95 border-sky-200 text-slate-700',
+    cardClassName: 'bg-sky-50 border-sky-200 text-slate-700',
     dotClassName: 'bg-sky-400',
   },
   confirmed: {
     label: 'Confirmado',
     badgeClassName: 'bg-amber-100 text-amber-800 border-amber-200',
-    cardClassName: 'bg-amber-100/95 border-amber-200 text-amber-900',
+    cardClassName: 'bg-amber-50 border-amber-200 text-amber-900',
     dotClassName: 'bg-amber-400',
   },
   arrived: {
-    label: 'Asiste',
+    label: 'Asistió',
     badgeClassName: 'bg-fuchsia-100 text-fuchsia-700 border-fuchsia-200',
-    cardClassName: 'bg-fuchsia-100/95 border-fuchsia-200 text-fuchsia-800',
+    cardClassName: 'bg-fuchsia-50 border-fuchsia-200 text-fuchsia-800',
     dotClassName: 'bg-fuchsia-300',
   },
   'no-show': {
     label: 'No asistio',
     badgeClassName: 'bg-rose-100 text-rose-700 border-rose-200',
-    cardClassName: 'bg-rose-100/95 border-rose-200 text-rose-800',
+    cardClassName: 'bg-rose-50 border-rose-200 text-rose-800',
     dotClassName: 'bg-rose-300',
   },
   pending: {
     label: 'Pendiente',
     badgeClassName: 'bg-red-100 text-red-700 border-red-200',
-    cardClassName: 'bg-red-100/95 border-red-200 text-red-800',
+    cardClassName: 'bg-red-50 border-red-200 text-red-800',
     dotClassName: 'bg-red-400',
   },
   waiting: {
     label: 'En espera',
     badgeClassName: 'bg-lime-100 text-lime-800 border-lime-200',
-    cardClassName: 'bg-lime-100/95 border-lime-200 text-lime-900',
+    cardClassName: 'bg-lime-50 border-lime-200 text-lime-900',
     dotClassName: 'bg-lime-400',
+  },
+  canceled: {
+    label: 'Cancelado',
+    badgeClassName: 'bg-slate-100 text-slate-600 border-slate-200',
+    cardClassName: 'bg-slate-50 border-slate-200 text-slate-600',
+    dotClassName: 'bg-slate-400',
   },
 }
 
 export const schedulerProfessionals: Professional[] = [
   {
     id: 'mitikah-1',
-    branchId: 'mitikah',
+    commerceIds: ['opatra-mexico'],
+    branchIds: ['mitikah'],
     name: 'MITIKAH 1',
     shortName: 'M1',
     avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=96&q=80',
@@ -126,7 +203,8 @@ export const schedulerProfessionals: Professional[] = [
   },
   {
     id: 'mitikah-vip-b',
-    branchId: 'mitikah',
+    commerceIds: ['opatra-mexico'],
+    branchIds: ['mitikah'],
     name: 'MITIKAH VIP B-DOBLE',
     shortName: 'MB',
     avatar: 'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?auto=format&fit=crop&w=96&q=80',
@@ -134,7 +212,8 @@ export const schedulerProfessionals: Professional[] = [
   },
   {
     id: 'mitikah-vip-ind',
-    branchId: 'mitikah',
+    commerceIds: ['opatra-mexico'],
+    branchIds: ['mitikah'],
     name: 'MITIKAH VIP INDIVIDUAL',
     shortName: 'MI',
     avatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=96&q=80',
@@ -142,7 +221,8 @@ export const schedulerProfessionals: Professional[] = [
   },
   {
     id: 'mitikah-vip-c',
-    branchId: 'mitikah',
+    commerceIds: ['opatra-mexico'],
+    branchIds: ['mitikah'],
     name: 'MITIKAH VIP C-DOBLE',
     shortName: 'MC',
     avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=96&q=80',
@@ -150,7 +230,8 @@ export const schedulerProfessionals: Professional[] = [
   },
   {
     id: 'opatra-cabina-1',
-    branchId: 'opatra',
+    commerceIds: ['opatra-mexico'],
+    branchIds: ['galerias-insurgentes'],
     name: 'OPATRA CABINA 1',
     shortName: 'OC1',
     avatar: 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?auto=format&fit=crop&w=96&q=80',
@@ -158,7 +239,8 @@ export const schedulerProfessionals: Professional[] = [
   },
   {
     id: 'opatra-cabina-2',
-    branchId: 'opatra',
+    commerceIds: ['opatra-mexico'],
+    branchIds: ['galerias-insurgentes'],
     name: 'OPATRA CABINA 2',
     shortName: 'OC2',
     avatar: 'https://images.unsplash.com/photo-1487412720507-e7ab37603c6f?auto=format&fit=crop&w=96&q=80',
@@ -166,7 +248,8 @@ export const schedulerProfessionals: Professional[] = [
   },
   {
     id: 'masaryk-cabina-doble',
-    branchId: 'masaryk',
+    commerceIds: ['opatra-mexico'],
+    branchIds: ['masaryk'],
     name: 'MASARYK CAB DOBLE',
     shortName: 'MC',
     avatar: '',
@@ -174,7 +257,8 @@ export const schedulerProfessionals: Professional[] = [
   },
   {
     id: 'masaryk-cabina-1',
-    branchId: 'masaryk',
+    commerceIds: ['opatra-mexico'],
+    branchIds: ['masaryk'],
     name: 'MASARYK',
     shortName: 'M',
     avatar: '',
@@ -182,7 +266,8 @@ export const schedulerProfessionals: Professional[] = [
   },
   {
     id: 'pending-1',
-    branchId: 'opatra',
+    commerceIds: ['opatra-mexico'],
+    branchIds: ['galerias-insurgentes'],
     name: 'CITAS PENDIENTES 1',
     shortName: 'CP',
     avatar: '',
@@ -190,11 +275,49 @@ export const schedulerProfessionals: Professional[] = [
   },
   {
     id: 'pending-2',
-    branchId: 'opatra',
+    commerceIds: ['opatra-mexico'],
+    branchIds: ['galerias-insurgentes'],
     name: 'CITAS PENDIENTES 2',
     shortName: 'CP',
     avatar: '',
     accent: '#d0c7d9',
+  },
+  {
+    id: 'patricia-delgado',
+    commerceIds: ['opatra-mexico', 'keysar-cosmetics'],
+    branchIds: ['mitikah', 'keysar-reforma', 'keysar-polanco'],
+    name: 'PATRICIA DELGADO',
+    shortName: 'PD',
+    avatar: 'https://images.unsplash.com/photo-1551836022-d5d88e9218df?auto=format&fit=crop&w=96&q=80',
+    accent: '#8bb09b',
+  },
+]
+
+export const schedulerAttendingSpecialists: AttendingSpecialist[] = [
+  {
+    id: 'attending-patricia',
+    name: 'Patricia Delgado',
+    branchIds: ['galerias-insurgentes', 'mitikah', 'keysar-reforma'],
+  },
+  {
+    id: 'attending-mariana',
+    name: 'Mariana Ortega',
+    branchIds: ['galerias-insurgentes', 'keysar-reforma', 'keysar-polanco'],
+  },
+  {
+    id: 'attending-valeria',
+    name: 'Valeria Hernández',
+    branchIds: ['galerias-insurgentes', 'mitikah'],
+  },
+  {
+    id: 'attending-renata',
+    name: 'Renata Castillo',
+    branchIds: ['mitikah', 'masaryk'],
+  },
+  {
+    id: 'attending-camila',
+    name: 'Camila Torres',
+    branchIds: ['masaryk', 'keysar-polanco'],
   },
 ]
 
@@ -216,15 +339,46 @@ export const schedulerTimeSlots = Array.from({ length: 13 }, (_value, index) => 
 
 export const schedulerDayBookings: Booking[] = [
   {
+    id: 'history-booking-patricia-layaway',
+    clientId: 'client-patricia-delgado',
+    branchId: 'galerias-insurgentes',
+    date: '2026-05-12',
+    customerName: 'Patricia Delgado',
+    serviceName: 'FACIAL PREMIUM',
+    professionalId: 'opatra-cabina-1',
+    start: '11:00',
+    end: '12:00',
+    status: 'arrived',
+    phone: '+52 55 5100 0280',
+    customerEmail: 'patricia@example.com',
+    paymentLabel: 'Apartado · $5,000 de $30,000',
+    purchased: true,
+    purchaseType: 'layaway',
+    purchaseAmount: 5000,
+    tentativePurchaseAmount: 30000,
+    serviceRecords: [
+      {
+        id: 'service-record-patricia-first-visit',
+        specialistId: 'attending-patricia',
+        specialistName: 'Patricia Delgado',
+        sharePercentage: 100,
+        allocatedAmount: 5000,
+      },
+    ],
+  },
+  {
     id: 'booking-1',
+    clientId: 'client-patricia-delgado',
     customerName: 'Patricia Delgado',
     serviceName: 'FACIAL VIP CORTESIA',
     professionalId: 'opatra-cabina-1',
     start: '11:00',
     end: '12:00',
-    status: 'waiting',
+    status: 'arrived',
     phone: '+52 55 5100 0280',
-    paymentLabel: 'No pagado',
+    customerEmail: 'patricia@example.com',
+    notes: 'Ejemplo de segunda visita con un apartado pendiente por liquidar.',
+    paymentLabel: 'Saldo histórico pendiente',
   },
   {
     id: 'booking-2',
@@ -284,6 +438,7 @@ export const schedulerDayBookings: Booking[] = [
   },
   {
     id: 'booking-7',
+    clientId: 'client-maria-camila',
     customerName: 'Maria Camila Celis',
     serviceName: 'KEYSAR LEAD (SR)',
     professionalId: 'mitikah-vip-ind',
@@ -291,10 +446,12 @@ export const schedulerDayBookings: Booking[] = [
     end: '19:00',
     status: 'confirmed',
     phone: '+52 55 3001 9044',
+    customerEmail: 'maria.camila@example.com',
     paymentLabel: 'Reserva pagada',
   },
   {
     id: 'booking-8',
+    clientId: 'client-adriana-acosta',
     customerName: 'Adriana Acosta',
     serviceName: 'KEYSAR LEAD (SR)',
     professionalId: 'masaryk-cabina-doble',
@@ -302,6 +459,7 @@ export const schedulerDayBookings: Booking[] = [
     end: '18:00',
     status: 'no-show',
     phone: '+52 55 7001 4477',
+    customerEmail: 'adriana@example.com',
     paymentLabel: 'No pagado',
   },
   {
@@ -361,6 +519,7 @@ export const schedulerDayBookings: Booking[] = [
   },
   {
     id: 'booking-14',
+    clientId: 'client-yumi-hirasawa',
     customerName: 'Yumi Hirasawa',
     serviceName: 'KEYSAR LEAD (SR)',
     professionalId: 'opatra-cabina-2',
@@ -368,6 +527,7 @@ export const schedulerDayBookings: Booking[] = [
     end: '18:00',
     status: 'confirmed',
     phone: '+52 55 7712 3389',
+    customerEmail: 'yumi@example.com',
     paymentLabel: 'Pago pendiente',
   },
   {

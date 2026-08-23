@@ -6,6 +6,7 @@ import {
   useState,
   type ChangeEvent,
   type DragEvent,
+  type FormEvent,
   type ReactNode,
 } from "react";
 import {
@@ -24,11 +25,13 @@ import {
   Globe2,
   ImagePlus,
   Info,
+  KeyRound,
   ListFilter,
   Mail,
   Menu,
   MessageCircle,
   MoreHorizontal,
+  Palette,
   Pencil,
   Plus,
   Search,
@@ -116,21 +119,24 @@ import {
   type WhatsAppMessageRecord,
 } from "@/lib/mock-administration-data";
 import {
+  bookingStatuses,
+  defaultBookingStatusColors,
+  getBookingStatusColors,
+  schedulerCommerces,
+  schedulerStatusColorStorageKey,
+  type BookingStatus,
+  type BookingStatusColors,
+} from "@/lib/mock-scheduler-data";
+import { schedulerFinancialProfiles } from "@/lib/scheduler-access";
+import {
   AdministrationNavMenu,
   ReportsNavMenu,
   SchedulerPrimaryNav,
+  type AdministrationSectionId,
 } from "@/components/SchedulerPrimaryNav";
+import { canAccessSchedulerScreen } from "@/lib/scheduler-access";
 
-type AdminSection =
-  | "locals"
-  | "professionals"
-  | "services"
-  | "commissions"
-  | "resources"
-  | "surveys"
-  | "consents"
-  | "whatsapp"
-  | "gift-cards";
+type AdminSection = AdministrationSectionId;
 type StatusFilter = "all" | "active" | "inactive";
 type FormTab = "basic" | "website" | "advanced" | "schedule" | "profile";
 
@@ -155,7 +161,7 @@ const sectionGroups: {
   {
     label: "Información básica",
     items: [
-      { id: "locals", label: "Locales", icon: <Globe2 className="h-4 w-4" /> },
+      { id: "locals", label: "Sucursales", icon: <Globe2 className="h-4 w-4" /> },
       {
         id: "professionals",
         label: "Profesionales",
@@ -201,9 +207,31 @@ const sectionGroups: {
         label: "Gift cards",
         icon: <WalletCards className="h-4 w-4" />,
       },
+      {
+        id: "status-colors",
+        label: "Colores de status",
+        icon: <Palette className="h-4 w-4" />,
+      },
     ],
   },
 ];
+
+const visibleSectionGroups = sectionGroups
+  .map((group) => ({
+    ...group,
+    items: group.items.filter((item) =>
+      canAccessSchedulerScreen(`administration.${item.id}`),
+    ),
+  }))
+  .filter((group) => group.items.length > 0);
+
+const allowedAdminSections = visibleSectionGroups.flatMap((group) =>
+  group.items.map((item) => item.id),
+);
+
+function canAccessAdminSection(section: AdminSection): boolean {
+  return allowedAdminSections.includes(section);
+}
 
 const sectionTitles: Record<
   AdminSection,
@@ -211,9 +239,9 @@ const sectionTitles: Record<
 > = {
   locals: {
     eyebrow: "Administración",
-    title: "Locales",
+    title: "Sucursales",
     description:
-      "Configura las sedes, horarios y datos que utilizarán la agenda y tu sitio de reservas.",
+      "Configura las sucursales de cada comercio, sus horarios y los datos que utilizará la agenda.",
   },
   professionals: {
     eyebrow: "Administración",
@@ -263,6 +291,12 @@ const sectionTitles: Record<
     description:
       "Crea un catálogo de regalos que tus clientes puedan compartir y comprar.",
   },
+  "status-colors": {
+    eyebrow: "Administración",
+    title: "Colores de status",
+    description:
+      "Personaliza cómo se identifican las reservas en la agenda de cada negocio.",
+  },
 };
 
 const cloneSchedule = (schedule: ScheduleDay[]) =>
@@ -286,6 +320,8 @@ const cloneProfessional = (
   professional: ProfessionalRecord,
 ): ProfessionalRecord => ({
   ...professional,
+  commerceIds: [...professional.commerceIds],
+  localIds: [...professional.localIds],
   services: [...professional.services],
   schedule: cloneSchedule(professional.schedule),
   specialDays: professional.specialDays.map((day) => ({ ...day })),
@@ -1498,7 +1534,7 @@ function LocalDialog({
       !draft.email.trim() ||
       !draft.description.trim()
     ) {
-      toast.error("Completa los campos obligatorios del local.");
+      toast.error("Completa los campos obligatorios de la sucursal.");
       return;
     }
     if (!draft.email.includes("@")) {
@@ -1512,7 +1548,7 @@ function LocalDialog({
     <ModalShell
       open={open}
       onOpenChange={onOpenChange}
-      title={local ? `Editar ${local.name}` : "Nuevo local"}
+      title={local ? `Editar ${local.name}` : "Nueva sucursal"}
       onSave={save}
       wide
     >
@@ -1527,10 +1563,20 @@ function LocalDialog({
       {tab === "basic" ? (
         <div className="space-y-5">
           <div className="admin-form-grid">
+            <SelectField
+              id="local-commerce"
+              label="Comercio"
+              value={draft.commerceId}
+              onChange={(value) => update({ commerceId: value })}
+              options={schedulerCommerces.map((commerce) => ({
+                value: commerce.id,
+                label: commerce.name,
+              }))}
+            />
             <div className="sm:col-span-2">
               <Field
                 id="local-name"
-                label="Nombre del local"
+                label="Nombre de la sucursal"
                 required
                 value={draft.name}
                 onChange={(value) => update({ name: value })}
@@ -1945,6 +1991,7 @@ function LocalSection({
   ) => void;
 }) {
   const [filter, setFilter] = useState<StatusFilter>("active");
+  const [commerceFilter, setCommerceFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [editing, setEditing] = useState<LocalRecord | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -1956,11 +2003,12 @@ function LocalSection({
       locals.filter(
         (local) =>
           (filter === "all" || local.status === filter) &&
+          (commerceFilter === "all" || local.commerceId === commerceFilter) &&
           `${local.name} ${local.address}`
             .toLocaleLowerCase()
             .includes(search.toLocaleLowerCase().trim()),
       ),
-    [filter, locals, search],
+    [commerceFilter, filter, locals, search],
   );
   const save = (local: LocalRecord) => {
     setLocals((current) =>
@@ -1968,7 +2016,7 @@ function LocalSection({
         ? current.map((item) => (item.id === local.id ? local : item))
         : [...current, local],
     );
-    toast.success(editing ? "Local actualizado." : "Local creado.");
+    toast.success(editing ? "Sucursal actualizada." : "Sucursal creada.");
   };
   const toggle = () => {
     if (!confirming) return;
@@ -1979,13 +2027,13 @@ function LocalSection({
       ),
     );
     setConfirming(null);
-    toast.success(next === "active" ? "Local activado." : "Local desactivado.");
+    toast.success(next === "active" ? "Sucursal activada." : "Sucursal desactivada.");
   };
   return (
     <div className="space-y-6">
       <SectionHeader
-        title="Locales"
-        description="Configura las sedes, horarios y datos que utilizarán la agenda y tu sitio de reservas."
+        title="Sucursales"
+        description="Configura las ubicaciones, horarios y datos operativos de cada comercio."
         action={
           <Button
             className="admin-primary"
@@ -1995,29 +2043,44 @@ function LocalSection({
             }}
           >
             <Plus className="mr-2 h-4 w-4" />
-            Nuevo local
+            Nueva sucursal
           </Button>
         }
       />
       <InfoBanner icon={<CalendarDays className="h-5 w-5" />}>
-        <strong>Configura el horario y la dirección del local.</strong> Esta
+        <strong>Configura el horario y la dirección de la sucursal.</strong> Esta
         información será la base para agendar citas manuales y reservas en
         línea.
       </InfoBanner>
+      <div className="max-w-sm">
+        <SelectField
+          id="branches-commerce-filter"
+          label="Comercio"
+          value={commerceFilter}
+          onChange={setCommerceFilter}
+          options={[
+            { value: "all", label: "Todos los comercios" },
+            ...schedulerCommerces.map((commerce) => ({
+              value: commerce.id,
+              label: commerce.name,
+            })),
+          ]}
+        />
+      </div>
       <Toolbar
         filter={filter}
         onFilterChange={setFilter}
         search={search}
         onSearchChange={setSearch}
-        placeholder="Buscar local"
-        count={`${visible.length} ${visible.length === 1 ? "local" : "locales"}`}
+        placeholder="Buscar sucursal"
+        count={`${visible.length} ${visible.length === 1 ? "sucursal" : "sucursales"}`}
       />
       <div className="space-y-3">
         {visible.length === 0 ? (
           <EmptyState
             icon={<Globe2 className="h-6 w-6" />}
-            title="No hay locales para mostrar"
-            description="Prueba otro filtro o crea el primer local de tu operación."
+            title="No hay sucursales para mostrar"
+            description="Prueba otro filtro o crea la primera sucursal de tu comercio."
             action={
               <Button
                 className="admin-primary"
@@ -2027,7 +2090,7 @@ function LocalSection({
                 }}
               >
                 <Plus className="mr-2 h-4 w-4" />
-                Nuevo local
+                Nueva sucursal
               </Button>
             }
           />
@@ -2048,6 +2111,11 @@ function LocalSection({
                     </div>
                     <p className="mt-1 truncate text-sm text-slate-500">
                       {local.address}
+                    </p>
+                    <p className="mt-1 text-xs font-medium text-[#7460a4]">
+                      {schedulerCommerces.find(
+                        (commerce) => commerce.id === local.commerceId,
+                      )?.name ?? "Comercio sin asignar"}
                     </p>
                     <p className="mt-1 text-xs text-slate-400">
                       {local.phone} · {local.email}
@@ -2136,7 +2204,7 @@ function LocalSection({
                       >
                         <SlidersHorizontal className="mr-2 h-4 w-4" />
                         {local.status === "active"
-                          ? "Desactivar local"
+                          ? "Desactivar sucursal"
                           : "Volver a activar"}
                       </Button>
                     </PopoverContent>
@@ -2306,6 +2374,8 @@ function ProfessionalDialog({
       ? cloneProfessional(professional)
       : {
           id: makeId("professional"),
+          commerceIds: locals[0] ? [locals[0].commerceId] : [],
+          localIds: locals[0] ? [locals[0].id] : [],
           localId: locals[0]?.id ?? "",
           name: "",
           role: "",
@@ -2327,6 +2397,8 @@ function ProfessionalDialog({
           ? cloneProfessional(professional)
           : {
               id: makeId("professional"),
+              commerceIds: locals[0] ? [locals[0].commerceId] : [],
+              localIds: locals[0] ? [locals[0].id] : [],
               localId: locals[0]?.id ?? "",
               name: "",
               role: "",
@@ -2388,9 +2460,9 @@ function ProfessionalDialog({
   const save = () => {
     if (
       !draft.name.trim() ||
-      !draft.localId
+      draft.localIds.length === 0
     ) {
-      toast.error("Completa el nombre y el local del profesional.");
+      toast.error("Completa el nombre y asigna al menos una sucursal.");
       return;
     }
     if (draft.createsUser && !draft.email.includes("@")) {
@@ -2440,16 +2512,40 @@ function ProfessionalDialog({
                 onChange={(value) => update({ role: value })}
                 placeholder="Ej. Cosmetóloga"
               />
-              <SelectField
-                id="professional-local"
-                label="Local"
-                value={draft.localId}
-                onChange={(value) => update({ localId: value })}
-                options={locals.map((local) => ({
-                  value: local.id,
-                  label: local.name,
-                }))}
-              />
+              <div className="space-y-2">
+                <Label htmlFor="professional-locals">Sucursales</Label>
+                <MultiCombobox
+                  id="professional-locals"
+                  value={draft.localIds}
+                  onValueChange={(localIds) => {
+                    const commerceIds = [
+                      ...new Set(
+                        localIds
+                          .map(
+                            (localId) =>
+                              locals.find((local) => local.id === localId)
+                                ?.commerceId,
+                          )
+                          .filter((commerceId): commerceId is string =>
+                            Boolean(commerceId),
+                          ),
+                      ),
+                    ];
+                    update({
+                      localIds,
+                      commerceIds,
+                      localId: localIds[0] ?? "",
+                    });
+                  }}
+                  options={locals.map((local) => ({
+                    value: local.id,
+                    label: `${schedulerCommerces.find((commerce) => commerce.id === local.commerceId)?.name ?? "SIN COMERCIO"} · ${local.name}`,
+                  }))}
+                  placeholder="Selecciona sucursales"
+                  searchPlaceholder="Buscar comercio o sucursal"
+                  emptyMessage="No hay sucursales disponibles"
+                />
+              </div>
             </div>
             <div className="professional-toggle-list">
               <div className="professional-toggle-row">
@@ -2852,7 +2948,7 @@ function ProfessionalsSection({
     <div className="space-y-6">
       <SectionHeader
         title="Profesionales"
-        description="Organiza tu equipo, sus servicios, horarios y disponibilidad por local."
+        description="Asigna cada profesional a uno o varios comercios y sucursales según su disponibilidad."
         action={
           <Button
             className="admin-primary"
@@ -2889,7 +2985,7 @@ function ProfessionalsSection({
           <div className="space-y-5">
             {locals.map((local) => {
               const localPros = filtered.filter(
-                (professional) => professional.localId === local.id,
+                (professional) => professional.localIds.includes(local.id),
               );
               if (localPros.length === 0) return null;
               return (
@@ -8029,7 +8125,7 @@ function AdministrationNav({
 }) {
   return (
     <nav className="space-y-6">
-      {sectionGroups.map((group) => (
+      {visibleSectionGroups.map((group) => (
         <div key={group.label}>
           <p className="admin-nav-label">{group.label}</p>
           <div className="mt-2 space-y-1">
@@ -8125,8 +8221,206 @@ function AdministrationHeader({
   );
 }
 
+function StatusColorsSection() {
+  const [authorized, setAuthorized] = useState(false);
+  const [authorizationCode, setAuthorizationCode] = useState("");
+  const [authorizationError, setAuthorizationError] = useState("");
+  const [commerceId, setCommerceId] = useState(schedulerCommerces[0]?.id ?? "");
+  const [colors, setColors] = useState<BookingStatusColors>(() =>
+    getBookingStatusColors(schedulerCommerces[0]?.id ?? ""),
+  );
+  const [saved, setSaved] = useState(false);
+
+  function authorize(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const profile = schedulerFinancialProfiles.find(
+      (candidate) =>
+        candidate.personalCode === authorizationCode &&
+        (candidate.role === "master" || candidate.role === "admin"),
+    );
+    if (!profile) {
+      setAuthorizationError("El código no es válido.");
+      return;
+    }
+    setAuthorized(true);
+    setAuthorizationError("");
+  }
+
+  useEffect(() => {
+    setColors(getBookingStatusColors(commerceId));
+    setSaved(false);
+  }, [commerceId]);
+
+  function updateColor(status: BookingStatus, color: string) {
+    setColors((current) => ({ ...current, [status]: color }));
+    setSaved(false);
+  }
+
+  function saveColors() {
+    try {
+      const current = JSON.parse(
+        window.localStorage.getItem(schedulerStatusColorStorageKey) ?? "{}",
+      ) as Record<string, Partial<BookingStatusColors>>;
+      window.localStorage.setItem(
+        schedulerStatusColorStorageKey,
+        JSON.stringify({ ...current, [commerceId]: colors }),
+      );
+      window.dispatchEvent(
+        new CustomEvent("scheduler-status-colors-change", { detail: { commerceId } }),
+      );
+      setSaved(true);
+      toast.success("Colores guardados", {
+        description: "La agenda de este negocio ya usa la nueva paleta.",
+      });
+    } catch {
+      toast.error("No fue posible guardar los colores");
+    }
+  }
+
+  function resetColors() {
+    setColors({ ...defaultBookingStatusColors });
+    setSaved(false);
+  }
+
+  if (!authorized) {
+    return (
+      <div className="space-y-6">
+        <SectionHeader
+          title={sectionTitles["status-colors"].title}
+          description={sectionTitles["status-colors"].description}
+        />
+        <Card className="admin-card max-w-xl">
+          <CardContent className="space-y-5 p-5 sm:p-6">
+            <div className="flex items-start gap-3 rounded-2xl bg-slate-100 p-4">
+              <KeyRound className="mt-0.5 h-5 w-5 shrink-0 text-slate-600" />
+              <div>
+                <h2 className="font-semibold text-slate-800">Autorización requerida</h2>
+                <p className="mt-1 text-sm leading-5 text-slate-500">
+                  Esta configuración sólo puede ser modificada por el dueño o administrador autorizado.
+                </p>
+              </div>
+            </div>
+            <form className="space-y-4" onSubmit={authorize}>
+              <label className="grid gap-1.5 text-sm font-medium text-slate-700" htmlFor="status-colors-code">
+                Código único
+                <Input
+                  autoComplete="off"
+                  autoFocus
+                  id="status-colors-code"
+                  inputMode="numeric"
+                  maxLength={8}
+                  onChange={(event) => {
+                    setAuthorizationCode(event.target.value.replace(/\D/g, ""));
+                    setAuthorizationError("");
+                  }}
+                  placeholder="••••"
+                  type="password"
+                  value={authorizationCode}
+                />
+              </label>
+              {authorizationError ? (
+                <p className="text-sm font-medium text-rose-600" role="alert">{authorizationError}</p>
+              ) : null}
+              <div className="flex justify-end border-t border-slate-200 pt-4">
+                <Button disabled={!authorizationCode} type="submit">
+                  Autorizar configuración
+                </Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <SectionHeader
+        title={sectionTitles["status-colors"].title}
+        description={sectionTitles["status-colors"].description}
+      />
+
+      <Card className="admin-card">
+        <CardContent className="space-y-6 p-5 sm:p-6">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div className="max-w-xl">
+              <h2 className="admin-section-title">Paleta por negocio</h2>
+              <p className="mt-1 text-sm leading-6 text-slate-500">
+                Los cambios sólo aplican al negocio seleccionado y se reflejan en las tarjetas,
+                puntos y selectores de status de la agenda.
+              </p>
+            </div>
+            <label className="grid gap-1.5 text-sm font-medium text-slate-700">
+              Negocio
+              <select
+                className="admin-input min-w-[240px]"
+                value={commerceId}
+                onChange={(event) => setCommerceId(event.target.value)}
+              >
+                {schedulerCommerces.map((commerce) => (
+                  <option key={commerce.id} value={commerce.id}>
+                    {commerce.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {(Object.keys(bookingStatuses) as BookingStatus[]).map((status) => {
+              const meta = bookingStatuses[status];
+              const color = colors[status];
+
+              return (
+                <label
+                  key={status}
+                  className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3 transition hover:border-slate-300"
+                >
+                  <input
+                    aria-label={`Color para ${meta.label}`}
+                    className="h-11 w-11 cursor-pointer rounded-xl border-0 bg-transparent p-0"
+                    type="color"
+                    value={color}
+                    onChange={(event) => updateColor(status, event.target.value)}
+                  />
+                  <span className="min-w-0">
+                    <span className="block text-sm font-semibold text-slate-800">{meta.label}</span>
+                    <span className="font-mono text-xs uppercase text-slate-400">{color}</span>
+                  </span>
+                  <span
+                    className="ml-auto h-3 w-3 shrink-0 rounded-full"
+                    style={{ backgroundColor: color }}
+                  />
+                </label>
+              );
+            })}
+          </div>
+
+          <div className="flex flex-col-reverse gap-3 border-t border-slate-200 pt-5 sm:flex-row sm:items-center sm:justify-between">
+            <button
+              className="text-left text-sm font-medium text-slate-500 underline underline-offset-4 hover:text-slate-800"
+              onClick={resetColors}
+              type="button"
+            >
+              Restablecer colores originales
+            </button>
+            <div className="flex items-center gap-3">
+              {saved ? <span className="text-sm font-medium text-emerald-700">Guardado</span> : null}
+              <Button onClick={saveColors} type="button">
+                Guardar colores
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 export function AdministrationWorkspace() {
-  const [active, setActive] = useState<AdminSection>("locals");
+  const [active, setActive] = useState<AdminSection>(
+    allowedAdminSections[0] ?? "locals",
+  );
   const [mobileOpen, setMobileOpen] = useState(false);
   const [locals, setLocals] = useState<LocalRecord[]>(() =>
     initialLocals.map(cloneLocal),
@@ -8143,9 +8437,12 @@ export function AdministrationWorkspace() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const section = params.get("section") as AdminSection | null;
-    if (section && sectionTitles[section]) setActive(section);
+    if (section && sectionTitles[section] && canAccessAdminSection(section)) {
+      setActive(section);
+    }
   }, []);
   const selectSection = (section: AdminSection) => {
+    if (!canAccessAdminSection(section)) return;
     setActive(section);
     setMobileOpen(false);
     window.history.replaceState(null, "", `/administracion?section=${section}`);
@@ -8189,6 +8486,8 @@ export function AdministrationWorkspace() {
         return <WhatsAppSection />;
       case "gift-cards":
         return <GiftCardsSection services={services} />;
+      case "status-colors":
+        return <StatusColorsSection />;
     }
   };
   return (

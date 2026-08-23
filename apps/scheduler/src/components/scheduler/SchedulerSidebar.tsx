@@ -6,14 +6,19 @@ import { addMonths, format, subMonths } from 'date-fns'
 import { es } from 'date-fns/locale'
 import {
   bookingStatusOptions,
-  schedulerBranches,
   schedulerTimeSlots,
+  type BranchOption,
   type BookingStatus,
+  type CommerceOption,
   type Professional,
 } from '@/lib/mock-scheduler-data'
 import { SchedulerAvatar } from './SchedulerAvatar'
 
 interface SchedulerSidebarProps {
+  commerces: CommerceOption[]
+  selectedCommerce: string
+  onCommerceChange: (value: string) => void
+  branches: BranchOption[]
   selectedBranch: string
   onBranchChange: (value: string) => void
   visibleProfessionalCount: number
@@ -34,6 +39,10 @@ interface SchedulerSidebarProps {
 }
 
 export function SchedulerSidebar({
+  commerces,
+  selectedCommerce,
+  onCommerceChange,
+  branches,
   selectedBranch,
   onBranchChange,
   visibleProfessionalCount,
@@ -69,27 +78,45 @@ export function SchedulerSidebar({
 
         <div className="flex flex-1 flex-col gap-5">
           <div className="space-y-5">
-            <div className="scheduler-sidebar-card">
-              <label className="scheduler-label">Sucursal</label>
+            <div className="scheduler-sidebar-card space-y-4">
+              <div>
+                <label className="scheduler-label">Comercio</label>
+                <Select value={selectedCommerce} onValueChange={onCommerceChange}>
+                  <SelectTrigger className="scheduler-select">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="scheduler-select-content max-h-[220px]">
+                    {commerces.map((commerce) => (
+                      <SelectItem key={commerce.id} className="scheduler-select-item" value={commerce.id}>
+                        {commerce.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <label className="scheduler-label">Sucursal</label>
               <Select value={selectedBranch} onValueChange={onBranchChange}>
                 <SelectTrigger className="scheduler-select">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="scheduler-select-content max-h-[220px]">
-                  {schedulerBranches.map((branch) => (
+                  {branches.map((branch) => (
                     <SelectItem key={branch.id} className="scheduler-select-item" value={branch.id}>
                       {branch.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+              </div>
             </div>
 
             <div className="scheduler-sidebar-card">
               <div className="mb-3 flex items-center justify-between">
                 <div>
                   <label className="scheduler-label !mb-0">Profesional</label>
-                  <p className="mt-1 text-[0.78rem] uppercase tracking-[0.18em] text-slate-400">Cabinas y pendientes visibles</p>
+                  <p className="mt-1 text-[0.78rem] uppercase tracking-[0.14em] text-slate-500">Disponibles en esta sucursal</p>
                 </div>
                 <Badge className="rounded-full border-0 bg-[rgba(195,165,131,0.12)] px-3 py-1 text-xs font-semibold text-[var(--scheduler-accent-strong)]">
                   {visibleProfessionalCount} activos
@@ -138,7 +165,7 @@ export function SchedulerSidebar({
                 })}
                 {professionals.length === 0 ? (
                   <div className="rounded-[22px] border border-dashed border-[rgba(236,209,200,0.92)] bg-[rgba(248,244,239,0.7)] px-4 py-5 text-sm text-slate-500">
-                    No hay profesionales para esa sucursal o busqueda.
+                    No tienes profesionales disponibles en esta sucursal. Revisa sus asignaciones o tus permisos.
                   </div>
                 ) : null}
               </div>

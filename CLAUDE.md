@@ -272,13 +272,18 @@ Datos:
 ### Agenda
 
 - La agenda principal (`/`) modela una agenda operativa estilo AgendaPro con vistas `day` y `week`, filtro por sucursal, selección de profesionales, filtro de estatus, búsqueda rápida por hora, calendario mensual y acciones directas sobre slots vacíos.
+- El contexto operativo de la agenda se generalizó a `Comercio → Sucursal → Profesional`. `schedulerCommerces` define los comercios disponibles; cada sucursal pertenece a un comercio y cada profesional puede estar asignado a varios comercios y sucursales mediante `commerceIds`/`branchIds`. Al cambiar de comercio, la UI carga solo las sucursales permitidas de ese comercio y después filtra los profesionales disponibles para la sucursal elegida.
+- Las reservas y bloqueos nuevos guardan `branchId` para evitar que una agenda compartida entre sucursales muestre el mismo registro en ubicaciones distintas. En el modal de reserva se elige la sucursal y, al cambiarla, se conserva el profesional si pertenece a ella o se asigna el primero disponible para mantener la disponibilidad coherente. Los registros mock anteriores sin `branchId` conservan compatibilidad usando la primera sucursal asignada al profesional.
+- El modal de nueva/edición de reserva calcula horarios disponibles en intervalos de 15 minutos según fecha, profesional y duración del servicio. Oculta cualquier inicio que se traslape total o parcialmente con otra reserva del profesional o con un bloqueo; al editar ignora la propia reserva. `BookingStatus` incluye `canceled`: una reserva cancelada libera su franja y no participa en conflictos, mientras `no-show` conserva la ocupación histórica. Si no queda disponibilidad, los selectores se deshabilitan, se muestra un estado explícito y no se permite guardar una reserva activa.
+- El registro mock de clientes vive en `src/lib/mock-client-data.ts` y es transversal a comercios/sucursales. Antes de abrir `Nuevo cliente`, el único input `Cliente` funciona como buscador combinado: acepta letras o números y consulta nombre completo, alias o cualquier segmento del teléfono normalizado; seleccionar una coincidencia completa nombre, teléfono y correo y vincula la reserva mediante `clientId`. El campo `Teléfono` solo aparece dentro del formulario `Nuevo cliente`; en clientes existentes se reutiliza el dato vinculado. El teléfono es obligatorio, se compara sin espacios/signos y debe ser único. Si se intenta guardar otro nombre con un teléfono existente, la UI pide confirmar la unificación: conserva el nombre/correo canónicos, guarda variantes como alias/correos alternativos y agrega la visita al mismo historial con `branchId`, fecha y `bookingId`. Esta lógica es local/mock; la futura API deberá repetir la restricción única y la unificación dentro de una transacción.
 - La entrada principal es `SchedulerWorkspace`, que compone `SchedulerHeader`, `SchedulerSidebar` y `SchedulerAgendaGrid`, y abre tres diálogos especializados: `SchedulerBookingDialog`, `SchedulerBlockDialog` y `SchedulerDetailDialog`.
 - Los datos salen de `src/lib/mock-scheduler-data.ts` y se manipulan con helpers en `src/components/scheduler/scheduler-utils.tsx`.
 - El login temporal solo redirige a la agenda principal; no hay flujo auth real para esta app todavía.
+- `src/lib/scheduler-access.ts` concentra el perfil de acceso mock actual: pantallas permitidas y alcance por comercio, sucursal y profesional. `SchedulerPrimaryNav` oculta pantallas no autorizadas, `SchedulerAccessGuard` impide abrir directamente áreas completas sin permiso y Administración descarta secciones no permitidas. Esta capa sigue siendo demostrativa/local; la autorización real deberá validarse también en backend durante la fase de persistencia.
 
 ### Administración
 
-La ruta `/administracion` contiene el workspace administrativo completo, local/mock y sin conexión a backend. Incluye Locales, Profesionales, Grupos personalizados, Servicios, Clases, Paquetes, Adicionales, Comisiones, Recursos, Encuestas, Consentimientos, WhatsApp y Gift cards. Los listados, formularios, filtros, estados, modales, confirmaciones y feedback están implementados en `AdministrationWorkspace.tsx` y comparten catálogos desde `mock-administration-data.ts`.
+La ruta `/administracion` contiene el workspace administrativo completo, local/mock y sin conexión a backend. Incluye Sucursales, Profesionales, Grupos personalizados, Servicios, Clases, Paquetes, Adicionales, Comisiones, Recursos, Encuestas, Consentimientos, WhatsApp y Gift cards. Los listados, formularios, filtros, estados, modales, confirmaciones y feedback están implementados en `AdministrationWorkspace.tsx` y comparten catálogos desde `mock-administration-data.ts`. Cada `LocalRecord` incluye `commerceId`; la pantalla Sucursales filtra por comercio. `ProfessionalRecord` usa `commerceIds` y `localIds` para asignaciones múltiples, manteniendo `localId` como referencia principal legacy mientras se adaptan los flujos mock que todavía requieren una sola sucursal.
 
 El catálogo de Servicios incluye listados por categoría, búsqueda, estados y edición; servicios individuales y con sesiones; clases con capacidad y horario por día; paquetes con selección de servicios y precio personalizado; adicionales; categorías; servicio destacado; nombres alternativos; sitio web con pago en línea; opciones avanzadas (modalidad, comisión por porcentaje o moneda, recursos y horario especial); y carga/descarga masiva de precios `.xlsx` en modo mock (no procesa archivos reales ni persiste). La carga/descarga masiva y la subida de plantillas son flujos visuales/mock: todavía no procesan archivos reales ni persisten información. La prioridad inmediata de Servicios es terminar la revisión visual e interacción de `Opciones avanzadas`; la conexión con API y Prisma queda para la fase de persistencia.
 
@@ -286,8 +291,8 @@ El catálogo de Servicios incluye listados por categoría, búsqueda, estados y 
 
 | Módulo | Alcance funcional | Estado de definición |
 |---|---|---|
-| Locales | Datos básicos, sitio web, horario semanal, jornada especial, activar/desactivar | Definido por capturas |
-| Profesionales | Datos básicos, servicios, horario, descansos, perfil, grupos personalizados | Definido por capturas |
+| Sucursales | Comercio, datos básicos, sitio web, horario semanal, jornada especial, activar/desactivar | Implementado local/mock con filtro por comercio |
+| Profesionales | Asignación múltiple a comercios/sucursales, datos básicos, servicios, horario, descansos, perfil, grupos personalizados | Implementado local/mock |
 | Servicios | Servicios, clases, paquetes, adicionales, categorías, precios masivos | Definido por capturas |
 | Comisiones | Por profesional, servicio/producto y valor por defecto; porcentaje o monto | Definido por capturas |
 | Recursos | Recursos generales y recursos con horario, asignación a servicios y locales | Definido por capturas |
@@ -942,13 +947,16 @@ apps/scheduler/
 │   ├── globals.css                → tokens visuales del scheduler
 │   └── layout.tsx                 → metadata + Toaster global
 ├── src/components/
+│   ├── SchedulerAccessGuard.tsx  → guard local/mock por permisos de pantalla
 │   ├── SchedulerPrimaryNav.tsx    → navbar compartido con dropdowns de Reportes y Administración
 │   ├── SchedulerWorkspace.tsx     → shell principal con estado local, filtros y modales
 │   ├── scheduler/                 → header, sidebar, grid agenda, tarjetas y diálogos del scheduler
 │   └── reports/                   → dashboard y navegación del resumen de reportes
 ├── src/components/administration/ → navegación y CRUDs mock de Administración
 └── src/lib/
+    ├── mock-client-data.ts        → clientes mock, alias, teléfono único e historial por sucursal
     ├── mock-scheduler-data.ts     → datos mock de sucursales, profesionales, citas, bloqueos y leyenda
+    ├── scheduler-access.ts        → alcance mock por comercio, sucursal, profesional y pantalla
     ├── mock-administration-data.ts → catálogos mock de locales, profesionales, servicios y módulos administrativos
     └── mock-report-data.ts        → periodos, KPIs y series mock del resumen de reportes
 ```
@@ -1084,6 +1092,8 @@ pnpm --filter @cosmetics/api test
 pnpm --filter @cosmetics/api type-check
 pnpm --filter @cosmetics/api build
 ```
+
+El scheduler usa `.next-dev` para `next dev` y `.next` para `next build`. Esta separación evita que una validación de producción sobrescriba los chunks que está sirviendo la instancia local en el puerto 3004.
 
 ### Deploy backend (ejecutar desde raíz del repo)
 
