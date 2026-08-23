@@ -111,6 +111,14 @@ el diseño y el autocuidado.
 - El análisis de fuentes existentes, límites, riesgos y plan por fases vive en `apps/finance/GUIA_REFACTORIZACION.md` y `apps/hr/GUIA_REFACTORIZACION.md`.
 - Mientras no se ejecute esa guía, los manifiestos objetivo no garantizan que el código heredado compile o arranque.
 
+### Estado de `finance` (frontend mock, 2026-08-23)
+
+- `apps/finance` ya tiene entrada Next.js App Router, TypeScript strict, Tailwind/PostCSS y layout responsivo propio del monorepo.
+- El frontend fue migrado desde el prototipo Vite a `src/app/page.tsx` + `src/app/globals.css`; usa mocks en memoria y no usa `localStorage`, service worker, PWA ni login local.
+- La navegación cubre resumen, sucursales, rentas, servicios, pagos, estado financiero, financiamientos, socios, aportaciones, proyecciones, accesos y reportes. La vista de resumen y sucursales son funcionales para demo; las demás muestran estados mock preparados para sus agregados.
+- Mantener sin cambios backend, Prisma, BD y autenticación compartida hasta ejecutar las fases 0, 2, 3 y 4 de `apps/finance/GUIA_REFACTORIZACION.md`.
+- No considerar completados `type-check`, `lint` o `build` mientras el entorno no pueda instalar las dependencias del workspace.
+
 ---
 
 ## Estado actual de `payroll`

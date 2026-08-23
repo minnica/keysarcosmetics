@@ -103,11 +103,15 @@ Los nombres definitivos deben seguir el idioma inglés en código. Las migracion
 
 ### Fase 1 — esqueleto homologado
 
-1. Crear `src/app`, root layout, login y shell siguiendo el patrón canónico de `envelope`/`payroll`.
-2. Añadir `tsconfig.json`, `next.config.mjs`, PostCSS y Tailwind equivalentes al monorepo.
-3. Migrar fuentes, tokens, tema claro/oscuro, sidebar y estados de carga.
-4. Consumir `@cosmetics/ui`; eliminar gradualmente `src/components/UI.jsx` y `styles.css` monolítico.
-5. Retirar del proyecto los lockfiles/workspace anidados, `dist/` y configuración Vite únicamente cuando la migración ya tenga un punto de entrada Next funcional.
+**Estado de esta sesión: completada para frontend mock.** Finance ya usa el esqueleto Next.js/TypeScript descrito abajo. Se omitió deliberadamente la pantalla de login para que la demo entre directamente al shell; la autenticación compartida queda pendiente de la Fase 2.
+
+1. [x] Crear `src/app`, root layout y shell siguiendo el patrón canónico de las apps homologadas. El acceso inicia directamente en el dashboard mock, sin login.
+2. [x] Añadir `tsconfig.json`, `next.config.mjs`, PostCSS y Tailwind equivalentes al monorepo.
+3. [x] Migrar fuentes, tokens, tema claro/oscuro, sidebar, responsive layout y estados vacíos.
+4. [x] Eliminar `src/components/UI.jsx` y `styles.css` monolítico; los componentes visuales viven en la superficie TypeScript de la app.
+5. [x] Retirar `index.html`, Vite, service worker, manifest PWA y workspace anidado. El lockfile heredado se conserva temporalmente como referencia y debe retirarse en la limpieza de workspace.
+
+**Pendiente:** instalar dependencias cuando haya acceso al registry y ejecutar `type-check`, `lint` y `build` desde el workspace raíz.
 
 ### Fase 2 — auth, permisos y datos de solo lectura
 
@@ -146,4 +150,14 @@ Los nombres definitivos deben seguir el idioma inglés en código. Las migracion
 
 ## Alcance de esta sesión
 
-En esta sesión solo se renombró la carpeta, se homologó el `package.json` como contrato de arquitectura futura y se creó esta guía. No se migraron componentes, rutas, datos, backend, Prisma, autenticación ni estilos.
+- [x] Migración del frontend heredado Vite a Next.js App Router + TypeScript strict.
+- [x] Shell visual con navegación de las áreas funcionales, responsive, modo claro/oscuro y componentes Lucide.
+- [x] Dashboard mock con métricas, gráfica, estado por sucursal, actividad reciente y búsqueda/alta mock de sucursales.
+- [x] Eliminación del login local y de toda persistencia operativa en `localStorage`.
+- [x] Eliminación de backend/BD, API routes, Prisma y autenticación paralela del alcance de esta sesión.
+- [ ] Fase 0: decisiones de negocio y validación de datos reales.
+- [ ] Fase 2: sesión JWT, permisos y datos de solo lectura desde API compartida.
+- [ ] Fase 3: modelos Prisma y persistencia propia.
+- [ ] Fase 4: reportes agregados, exportaciones y endurecimiento.
+
+La guía debe permanecer en el repositorio porque todavía quedan las fases de backend, autenticación, persistencia y validación por ejecutar.
