@@ -1,0 +1,1 @@
+ALTER TABLE `staff` ADD `permissions` text DEFAULT '{}' NOT NULL;

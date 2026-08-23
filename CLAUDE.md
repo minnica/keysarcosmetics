@@ -96,7 +96,20 @@ el diseño y el autocuidado.
 | `crm`         | Next.js                 | 3003       | Gestión de mensajes: WhatsApp, Messenger, Instagram     |
 | `scheduler`   | Next.js                 | 3004       | Agenda de citas con notificaciones y recordatorios      |
 | `pos`         | Electron + React + Vite | 3005       | Punto de venta offline con hardware                     |
+| `finance`     | Next.js                 | 3006       | Control financiero, rentas, deuda y socios              |
+| `hr`          | Next.js                 | 3007       | Recursos Humanos, turnos, vacaciones y expedientes      |
 | `backend/api` | Express                 | 4000       | API REST compartida                                     |
+
+---
+
+## Nuevas apps en preparación
+
+- `apps/finance` (`@cosmetics/finance`) y `apps/hr` (`@cosmetics/hr`) fueron incorporadas como prototipos heredados aún sin refactorizar.
+- Sus `package.json` ya fijan la arquitectura objetivo homologada: Next.js 14.2.4, React 18.3, TypeScript strict, `@cosmetics/ui`, `@cosmetics/types`, `@cosmetics/auth` y `@cosmetics/api-client`.
+- Finance será dueño de rentas, servicios financieros, deuda y capital de socios; debe consumir sucursales/ventas de Envelope y costos aprobados de Payroll sin duplicarlos.
+- HR será dueño de expedientes, estatus laboral histórico, turnos, descansos, vacaciones, permisos y políticas; debe reutilizar `Empleado`, `Sucursal`, `Position` y `Usuario`, sin conservar D1/Drizzle ni autenticación paralela.
+- El análisis de fuentes existentes, límites, riesgos y plan por fases vive en `apps/finance/GUIA_REFACTORIZACION.md` y `apps/hr/GUIA_REFACTORIZACION.md`.
+- Mientras no se ejecute esa guía, los manifiestos objetivo no garantizan que el código heredado compile o arranque.
 
 ---
 
@@ -990,6 +1003,8 @@ packages/ui/
 pnpm install
 pnpm --filter @cosmetics/envelope dev
 pnpm --filter @cosmetics/payroll dev
+pnpm --filter @cosmetics/finance dev
+pnpm --filter @cosmetics/hr dev
 pnpm --filter @cosmetics/api dev
 ```
 
@@ -1000,6 +1015,10 @@ pnpm --filter @cosmetics/envelope type-check
 pnpm --filter @cosmetics/envelope build
 pnpm --filter @cosmetics/payroll type-check
 pnpm --filter @cosmetics/payroll build
+pnpm --filter @cosmetics/finance type-check
+pnpm --filter @cosmetics/finance build
+pnpm --filter @cosmetics/hr type-check
+pnpm --filter @cosmetics/hr build
 pnpm --filter @cosmetics/api test
 pnpm --filter @cosmetics/api type-check
 pnpm --filter @cosmetics/api build

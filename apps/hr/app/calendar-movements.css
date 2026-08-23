@@ -1,0 +1,167 @@
+.calendar-movements-summary {
+  max-width: 1500px;
+  margin: 20px auto 70px;
+  padding: 26px 5.5vw;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  background: #fff;
+}
+
+.calendar-movements-head {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.calendar-movements-head h2 {
+  margin: 4px 0 6px;
+  color: #24382e;
+  font: 28px Georgia, serif;
+}
+
+.calendar-movements-head span {
+  color: #748078;
+  font-size: 10px;
+}
+
+.calendar-movements-head > b {
+  display: grid;
+  place-items: center;
+  min-width: 48px;
+  height: 48px;
+  border: 1px solid #c79259;
+  color: #8d4d25;
+  background: #fff7ee;
+  font: 23px Georgia, serif;
+}
+
+.calendar-movements-list {
+  display: grid;
+  gap: 9px;
+  margin-top: 20px;
+}
+
+.calendar-movements-list article {
+  display: grid;
+  grid-template-columns: 42px minmax(180px, 1.2fr) minmax(130px, .8fr) minmax(170px, .8fr) minmax(250px, 1.5fr);
+  gap: 16px;
+  align-items: center;
+  padding: 15px;
+  border: 1px solid #ead8c5;
+  border-left: 3px solid #bd7045;
+  background: #fffaf5;
+}
+
+.calendar-movement-mark {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  color: #fff;
+  background: #a85d36;
+  font: 17px Georgia, serif;
+}
+
+.calendar-movement-person h3 {
+  margin: 0 0 4px;
+  color: #2e392f;
+  font-size: 11px;
+}
+
+.calendar-movement-person p,
+.calendar-movements-list time {
+  margin: 0;
+  color: #81786d;
+  font-size: 8px;
+}
+
+.calendar-movements-list article > strong {
+  width: fit-content;
+  padding: 6px 9px;
+  border-radius: 20px;
+  color: #8f4c29;
+  background: #f5dfcd;
+  font-size: 8px;
+}
+
+.calendar-movement-days {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.calendar-movement-days span {
+  display: grid;
+  gap: 2px;
+  padding: 6px 8px;
+  color: #746a5d;
+  background: #fff;
+  border: 1px solid #eadfce;
+  font-size: 7px;
+}
+
+.calendar-movement-days b {
+  color: #4f402f;
+  font-size: 8px;
+}
+
+.calendar-movements-empty {
+  margin: 20px 0 0;
+  padding: 18px;
+  color: #7e897f;
+  background: #f6f7f4;
+  border: 1px dashed #d6dbd4;
+  font-size: 10px;
+}
+
+html[data-theme="dark"] .calendar-movements-summary,
+html[data-theme="dark"] .calendar-movements-list article {
+  color: #eee7d9;
+  background: #171717;
+  border-color: #59412f;
+}
+
+html[data-theme="dark"] .calendar-movement-person h3,
+html[data-theme="dark"] .calendar-movements-head h2 {
+  color: #fff;
+}
+
+html[data-theme="dark"] .calendar-movement-days span,
+html[data-theme="dark"] .calendar-movements-empty {
+  color: #c7bdac;
+  background: #211d18;
+  border-color: #594b39;
+}
+
+@media (max-width: 950px) {
+  .calendar-movements-list article {
+    grid-template-columns: 42px 1fr 1fr;
+  }
+
+  .calendar-movement-days {
+    grid-column: 2 / 4;
+  }
+}
+
+@media (max-width: 650px) {
+  .calendar-movements-summary {
+    margin-bottom: 40px;
+    padding: 22px 20px;
+  }
+
+  .calendar-movements-head {
+    align-items: start;
+  }
+
+  .calendar-movements-list article {
+    grid-template-columns: 42px 1fr;
+  }
+
+  .calendar-movements-list article > strong,
+  .calendar-movements-list time,
+  .calendar-movement-days {
+    grid-column: 2;
+  }
+}

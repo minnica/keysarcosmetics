@@ -1,0 +1,36 @@
+export const seed = {
+  units: [
+    { id: 'u28', code: 'U-028', name: 'MITIKAH VIP', area: 'ADMINISTRACIÓN', status: 'Activa', createdAt: '2026-08-18' },
+    { id: 'u27', code: 'U-027', name: 'OPATRA', area: 'ADMINISTRACIÓN', status: 'Activa', createdAt: '2026-08-18' },
+    { id: 'u25', code: 'U-025', name: 'PARQUE DELTA', area: 'ADMINISTRACIÓN', status: 'Activa', createdAt: '2026-08-18' },
+    { id: 'u26', code: 'U-026', name: 'MASARYK', area: 'ADMINISTRACIÓN', status: 'Activa', createdAt: '2026-08-18' },
+  ],
+  services: [
+    { id: 's1', name: 'AROMAS', expenseType: 'Fijo', amount: 860 },
+    { id: 's2', name: 'Agua', expenseType: 'Fijo', amount: 0 },
+    { id: 's3', name: 'Energía eléctrica', expenseType: 'Fijo', amount: 0 },
+    { id: 's4', name: 'Estacionamiento', expenseType: 'Fijo', amount: 0 },
+    { id: 's5', name: 'Internet', expenseType: 'Fijo', amount: 0 },
+    { id: 's6', name: 'Limpieza', expenseType: 'Fijo', amount: 0 },
+    { id: 's7', name: 'Seguridad', expenseType: 'Fijo', amount: 0 },
+    { id: 's8', name: 'Telmex', expenseType: 'Fijo', amount: 499 },
+  ],
+  rents: [],
+  payments: [],
+  financials: [],
+  financings: [],
+  partners: [
+    { id: 'p1', name: 'EDUARDO STANBINSKY', shares: { u27: 40 } },
+    { id: 'p2', name: 'ORLANDO SAAVEDRA', shares: { u28: 40, u25: 10 } },
+  ],
+  contributions: [],
+  accessUsers: [],
+  monthlyHistory: [
+    { period: '2025-09', value: 260300 }, { period: '2025-10', value: 264600 },
+    { period: '2025-11', value: 268900 }, { period: '2025-12', value: 273200 },
+    { period: '2026-01', value: 268800 }, { period: '2026-02', value: 273100 },
+    { period: '2026-03', value: 277400 }, { period: '2026-04', value: 281700 },
+    { period: '2026-05', value: 278800 }, { period: '2026-06', value: 283100 },
+    { period: '2026-07', value: 287400 }, { period: '2026-08', value: 291700 },
+  ],
+}

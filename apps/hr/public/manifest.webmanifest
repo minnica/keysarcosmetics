@@ -1,0 +1,10 @@
+{
+  "name": "Roles de Personal Keysar",
+  "short_name": "Roles Keysar",
+  "description": "Gestión de roles, horarios y calendarios de Keysar Cosmetics",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f8f7f2",
+  "theme_color": "#174c3c",
+  "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}

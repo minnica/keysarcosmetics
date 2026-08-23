@@ -1,0 +1,109 @@
+.manual-scheduler{background:#fff;border:1px solid var(--line);padding:25px;margin-bottom:22px}.scheduler-head{display:flex;justify-content:space-between;align-items:end;gap:18px}.scheduler-controls{display:flex;align-items:end;gap:10px}.scheduler-head label{font-size:8px;letter-spacing:.12em;color:#69766e}.scheduler-head input{display:block;border:1px solid #d4dbd4;background:#fff;padding:10px;margin-top:5px;color:#314139}.save-schedule{min-width:190px;border:0;background:var(--green);color:#fff;padding:12px 18px;font-size:9px;font-weight:bold;letter-spacing:.1em}.save-schedule:disabled{background:#c9d0cb;color:#768079;cursor:not-allowed}.pending-count{font-size:9px;color:#896425;background:#f7eddb;border:1px solid #e7d3ad;padding:10px 12px;margin:12px 0 0}.scheduler-note{font-size:10px;color:#7a857d;background:#f5f7f3;border-left:3px solid var(--gold);padding:10px;margin:18px 0}.scheduler-table{display:grid}.scheduler-row{display:grid;grid-template-columns:1.25fr 1fr 1.2fr;gap:10px;align-items:center;padding:9px;border-bottom:1px solid #e7eae6;font-size:10px}.scheduler-row.header{font-size:7px;letter-spacing:.12em;color:#849087;background:#f1f4ef}.scheduler-row select{width:100%;border:1px solid #d6dcd5;background:#fff;padding:9px;color:#33433a}.scheduler-row.pending{background:#fffaf0}.employee-agenda{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:20px}.employee-agenda article{display:grid;grid-template-columns:110px 1fr;gap:16px;align-items:center;background:#fff;border:1px solid var(--line);padding:17px}.employee-agenda time{font:16px Georgia;color:var(--green)}.employee-agenda article div{display:flex;flex-direction:column;gap:5px}.employee-agenda b{font-size:11px}.employee-agenda span{font-size:9px;color:#78837c}@media(max-width:750px){.scheduler-head{align-items:flex-start;gap:12px}.scheduler-controls{align-items:stretch;flex-direction:column}.save-schedule{min-width:0}.scheduler-row{grid-template-columns:1fr 1fr}.scheduler-row.header{display:none}.scheduler-row strong{grid-column:1}.scheduler-row>span{grid-column:2}.employee-agenda{grid-template-columns:1fr}}@media(max-width:480px){.scheduler-row{grid-template-columns:1fr}.scheduler-row strong,.scheduler-row>span{grid-column:1}.scheduler-head{flex-direction:column}.scheduler-controls,.scheduler-head label,.scheduler-head input,.save-schedule{width:100%}}
+
+.repeat-schedule-button {
+  min-height: 38px;
+  padding: 0 15px;
+  border: 1px solid #b9954b;
+  background: #fff;
+  color: #76551f;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: .08em;
+}
+
+.repeat-schedule-panel {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.4fr) minmax(210px, 1fr) auto auto;
+  gap: 14px;
+  align-items: end;
+  margin-top: 16px;
+  padding: 17px;
+  border: 1px solid #d9c28b;
+  background: #fffaf0;
+}
+
+.repeat-schedule-panel > div:first-child {
+  display: grid;
+  gap: 5px;
+}
+
+.repeat-schedule-panel b {
+  color: #4f3c1c;
+  font: 17px Georgia, serif;
+}
+
+.repeat-schedule-panel span {
+  color: #7d725f;
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+.repeat-schedule-panel label {
+  color: #6d624f;
+  font-size: 8px;
+  letter-spacing: .08em;
+}
+
+.repeat-schedule-panel select {
+  display: block;
+  width: 100%;
+  min-height: 38px;
+  margin-top: 6px;
+  padding: 9px;
+  border: 1px solid #d7c79f;
+  background: #fff;
+  color: #3f382d;
+}
+
+.repeat-schedule-source-date {
+  min-width: 120px;
+  display: grid;
+  gap: 2px;
+  padding: 8px 12px;
+  border-left: 2px solid #b9954b;
+}
+
+.repeat-schedule-source-date small {
+  color: #8d7d5c;
+  font-size: 7px;
+  letter-spacing: .12em;
+}
+
+.repeat-schedule-source-date strong {
+  color: #3f321c;
+  font: 16px Georgia, serif;
+}
+
+.repeat-schedule-source-date span {
+  font-size: 7px;
+  letter-spacing: .08em;
+}
+
+.load-repeat-schedule {
+  min-height: 40px;
+  padding: 0 16px;
+  border: 0;
+  background: #111;
+  color: #e3c778;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: .09em;
+}
+
+@media (max-width: 1050px) {
+  .repeat-schedule-panel {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 750px) {
+  .repeat-schedule-panel {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .repeat-schedule-button,
+  .load-repeat-schedule {
+    width: 100%;
+  }
+}

@@ -1,0 +1,238 @@
+.monthly-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  background: #fff;
+}
+
+.monthly-branch-table {
+  min-width: max-content;
+}
+
+.monthly-row {
+  display: grid;
+  border-bottom: 1px solid #e0e4df;
+}
+
+.monthly-row:last-child {
+  border-bottom: 0;
+}
+
+.monthly-row > strong {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  padding: 12px 14px;
+  border-left: 5px solid var(--green);
+  border-right: 1px solid #d8ddd8;
+  background: #f5f7f3;
+  color: var(--green);
+  font: 15px Georgia, serif;
+}
+
+.monthly-header {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: #edf1ec;
+}
+
+.monthly-header > strong {
+  z-index: 4;
+  border-left-color: var(--gold);
+  font: bold 8px Arial, sans-serif;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+}
+
+.monthly-header > span {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 58px;
+  border-right: 1px solid #d8ddd8;
+  color: #6f7a73;
+  font-size: 8px;
+  text-transform: uppercase;
+}
+
+.monthly-header > span b {
+  margin-top: 4px;
+  color: var(--green);
+  font: 17px Georgia, serif;
+}
+
+.monthly-shift-cell {
+  min-height: 112px;
+  padding: 7px;
+  border-right: 1px solid #e3e7e2;
+  background: #fff;
+}
+
+.monthly-shift-cell em {
+  display: block;
+  margin: 3px 0;
+  color: var(--gold);
+  font-size: 7px;
+  font-style: normal;
+  font-weight: bold;
+}
+
+.monthly-shift-cell span {
+  display: block;
+  margin-bottom: 3px;
+  padding: 4px 5px;
+  border-radius: 2px;
+  background: #eef4ef;
+  color: #32463b;
+  font-size: 7px;
+  line-height: 1.25;
+}
+
+.monthly-shift-cell i {
+  color: #b3bbb5;
+  font-style: normal;
+}
+
+.employee-request-head,
+.my-request-history > div:first-child {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 15px;
+}
+
+.request-plus {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--green);
+  color: #fff;
+  font-size: 27px;
+  line-height: 1;
+}
+
+.request-plus.open {
+  background: #8b6650;
+}
+
+.request-creation-window {
+  margin-top: 18px;
+  padding: 20px;
+  border: 1px solid #d8ded7;
+  background: #f8faf7;
+}
+
+.request-creation-window > p {
+  margin: 0;
+  color: #6e7a72;
+  font-size: 10px;
+}
+
+.my-request-history {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid #dce1db;
+}
+
+.my-request-history > div:first-child b {
+  font: 18px Georgia, serif;
+}
+
+.my-request-history > div:first-child span {
+  color: #78837b;
+  font-size: 9px;
+}
+
+.request-scope {
+  display: flex;
+  align-items: end;
+  gap: 8px;
+  margin: 20px 0 12px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  background: #fff;
+}
+
+.request-scope button {
+  border: 1px solid #cfd7cf;
+  background: #fff;
+  color: #536159;
+  padding: 10px 14px;
+  font-size: 9px;
+}
+
+.request-scope button.active {
+  border-color: var(--green);
+  background: var(--green);
+  color: #fff;
+}
+
+.request-scope label {
+  color: #6f7b73;
+  font-size: 8px;
+  letter-spacing: .1em;
+}
+
+.request-scope input {
+  display: block;
+  margin-top: 5px;
+  border: 1px solid #cfd7cf;
+  background: #fff;
+  padding: 8px;
+  color: #34443b;
+}
+
+.request-scope > span {
+  margin-left: auto;
+  padding: 8px 10px;
+  border-radius: 20px;
+  background: #f5ead7;
+  color: #8a642e;
+  font-size: 9px;
+}
+
+@media (max-width: 700px) {
+  .monthly-row {
+    grid-template-columns: 135px repeat(31, 82px) !important;
+  }
+
+  .monthly-row > strong {
+    padding: 10px;
+    font-size: 12px;
+  }
+
+  .monthly-shift-cell {
+    min-height: 96px;
+  }
+
+  .request-scope {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .request-scope > span {
+    margin-left: 0;
+    text-align: center;
+  }
+
+  .request-scope input {
+    width: 100%;
+  }
+
+  .request-creation-window {
+    padding: 14px;
+  }
+}
+
+@media print {
+  .request-plus,
+  .request-scope {
+    display: none !important;
+  }
+}
