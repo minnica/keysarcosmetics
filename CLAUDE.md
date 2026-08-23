@@ -114,7 +114,9 @@ el diseño y el autocuidado.
 ### Estado de `finance` (frontend mock, 2026-08-23)
 
 - `apps/finance` ya tiene entrada Next.js App Router, TypeScript strict, Tailwind/PostCSS y layout responsivo propio del monorepo.
-- El frontend fue migrado desde el prototipo Vite a `src/app/page.tsx` + `src/app/globals.css`; usa mocks en memoria y no usa `localStorage`, service worker, PWA ni login local.
+- El frontend fue migrado desde el prototipo Vite a `src/app/page.tsx` + `src/app/globals.css`; usa mocks en memoria y no persiste datos operativos en `localStorage` (solo la preferencia de tema), ni usa service worker, PWA o login local.
+- Finance reutiliza los primitivos canónicos de `@cosmetics/ui` para sidebar responsivo, botones, cards, badges, tablas, dialogs, inputs, selects, tabs, progreso y tooltips. Su paleta propia azul marino/índigo-violeta con superficies gris-lavanda y sus estados light/dark se definen exclusivamente en `apps/finance/src/app/globals.css` y `apps/finance/tailwind.config.ts`; no trasladar esos tonos a `packages/ui` ni a otras apps.
+- La preferencia visual de Finance se guarda de forma aislada en `keysar-finance-theme`; no comparte ni reemplaza `keysar-theme`, utilizada por Envelope y Payroll.
 - La navegación cubre resumen, sucursales, rentas, servicios, pagos, estado financiero, financiamientos, socios, aportaciones, proyecciones, accesos y reportes. La vista de resumen y sucursales son funcionales para demo; las demás muestran estados mock preparados para sus agregados.
 - Mantener sin cambios backend, Prisma, BD y autenticación compartida hasta ejecutar las fases 0, 2, 3 y 4 de `apps/finance/GUIA_REFACTORIZACION.md`.
 - No considerar completados `type-check`, `lint` o `build` mientras el entorno no pueda instalar las dependencias del workspace.
