@@ -477,7 +477,7 @@ export default function DashboardPage() {
     },
     {
       accessorKey: "loanPayment",
-      header: "PAGO PRÉSTAMO",
+      header: "PRÉSTAMO / ADELANTO",
       meta: { align: "right" },
       cell: ({ row }) => (
         <div className="text-right">
