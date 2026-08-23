@@ -153,6 +153,8 @@ Los nombres definitivos deben seguir el idioma inglés en código. Las migracion
 - [x] Migración del frontend heredado Vite a Next.js App Router + TypeScript strict.
 - [x] Shell visual con navegación de las áreas funcionales, responsive, modo claro/oscuro y componentes Lucide.
 - [x] Dashboard mock con métricas, gráfica, estado por sucursal, actividad reciente y búsqueda/alta mock de sucursales.
+- [x] Restauración del inventario visual de las 12 pantallas heredadas sobre componentes de `@cosmetics/ui`; cada módulo conserva sus secciones, tablas, resúmenes, estados vacíos y dialogs aunque los datos continúen siendo mocks.
+- [x] CRUD mock en memoria para los catálogos y movimientos de todas las vistas editables, con confirmaciones de borrado, aplicación mock de pagos de financiamiento y exportaciones CSV/impresión desde el navegador. No existe persistencia operativa ni conexión a backend.
 - [x] Eliminación del login local y de toda persistencia operativa en `localStorage`.
 - [x] Eliminación de backend/BD, API routes, Prisma y autenticación paralela del alcance de esta sesión.
 - [ ] Fase 0: decisiones de negocio y validación de datos reales.
