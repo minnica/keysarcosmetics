@@ -104,7 +104,7 @@ el diseño y el autocuidado.
 
 ## Nuevas apps en preparación
 
-- `apps/finance` (`@cosmetics/finance`) y `apps/hr` (`@cosmetics/hr`) fueron incorporadas como prototipos heredados aún sin refactorizar.
+- `apps/finance` (`@cosmetics/finance`) sigue siendo un prototipo heredado. `apps/hr` (`@cosmetics/hr`) ya tiene una primera shell frontend homologada con Next 14, Tailwind y mocks locales; su backend/BD siguen deliberadamente pendientes.
 - Sus `package.json` ya fijan la arquitectura objetivo homologada: Next.js 14.2.4, React 18.3, TypeScript strict, `@cosmetics/ui`, `@cosmetics/types`, `@cosmetics/auth` y `@cosmetics/api-client`.
 - Finance será dueño de rentas, servicios financieros, deuda y capital de socios; debe consumir sucursales/ventas de Envelope y costos aprobados de Payroll sin duplicarlos.
 - HR será dueño de expedientes, estatus laboral histórico, turnos, descansos, vacaciones, permisos y políticas; debe reutilizar `Empleado`, `Sucursal`, `Position` y `Usuario`, sin conservar D1/Drizzle ni autenticación paralela.
@@ -1076,6 +1076,15 @@ npx ts-node --project tsconfig.json prisma/seed-catalogs.ts
 ---
 
 ## Pendientes conocidos
+
+### Estado de `apps/hr` (2026-08-23)
+
+- El frontend de HR usa una shell Tailwind responsive que replica el prototipo oscuro original: sidebar y topbar negros, hero editorial, acentos dorados, tablas densas y contenido sobre fondo marfil. Conserva el orden y etiquetas heredadas: Nuevo empleado, Todos los empleados, Personal y horarios, Calendario, Solicitudes, Historial de vacaciones, Sucursales, Puestos, Horarios facialistas, Cumpleaños, Políticas y reglamentos, Usuarios y permisos.
+- Todos los módulos funcionan con mocks persistidos en `localStorage` bajo `keysar-hr-mocks`. Empleados incluye alta, edición, borrado individual/masivo, cambio de estado, búsqueda, importación mock y exportación CSV; solicitudes permite autorizar/rechazar; calendario, sucursales, puestos, horarios facialistas, políticas y perfiles de acceso tienen alta/edición/borrado; cumpleaños se edita desde el expediente. Preferencias permite restaurar los mocks iniciales.
+- Se eliminó el login paralelo del runtime frontend; la aplicación ya no lee sesión ni llama `/api/app`.
+- Se retiró del grafo de compilación de HR el route heredado D1/Drizzle/Cloudflare y el worker/Vinext quedó fuera del `tsconfig`; `db/`, `drizzle/`, ejemplos y backend no fueron modificados.
+- `npm run type-check` y `npm run build` pasan en `apps/hr`. `npm run lint` queda pendiente de una configuración ESLint no interactiva para Next.
+- La persistencia real, API HR, auth compartida y permisos autoritativos permanecen pendientes y requieren una sesión posterior con alcance backend/BD. El CRUD actual es exclusivamente frontend/mock.
 
 - Automatizar deploy backend con GitHub Actions si se decide.
 - Crear seeds separados seguros para dev/datos base si se requiere.

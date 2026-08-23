@@ -156,6 +156,18 @@ No debe copiarse `staff` a `Empleado` fila por fila sin reconciliación. En desa
 - La UI consume `@cosmetics/ui` y funciona a 375, 768, 1024 y 1440 px.
 - El paquete supera `type-check`, `lint` y `build` en el workspace raíz.
 
-## Alcance de esta sesión
+## Estado de ejecución — sesión frontend/mock (2026-08-23)
 
-En esta sesión solo se renombró la carpeta, se homologó el `package.json` como contrato de arquitectura futura y se creó esta guía. No se migraron componentes, datos D1, backend, Prisma, archivos, autenticación ni estilos.
+Esta sesión cubrió únicamente el frontend funcional con mocks, tal como fue solicitado. Las tareas completadas son:
+
+- [x] Mantener `apps/hr` y `@cosmetics/hr` como nombres canónicos.
+- [x] Homologar el arranque frontend a Next 14.2.4 con `next.config.mjs`, Tailwind 3 y PostCSS compatible.
+- [x] Sustituir la shell heredada y el CSS global cargado por una interfaz Tailwind responsive que conserva la dirección visual Keysar.
+- [x] Conservar la paleta original del prototipo y el orden, nombre y opciones del menú administrativo heredado.
+- [x] Eliminar el login paralelo del frontend y retirar las llamadas a sesión/API heredada del runtime.
+- [x] Replicar con Tailwind la composición visual oscura del prototipo: sidebar/topbar, hero editorial, dorado Keysar, paneles y tablas densas.
+- [x] Implementar CRUD frontend persistente en `localStorage` para empleados, calendario, solicitudes, sucursales, puestos, facialistas, políticas y accesos; incluir búsqueda, selección masiva, estados, autorización/rechazo, importación mock y exportación CSV.
+- [x] Excluir del grafo de compilación los artefactos heredados Vinext/Vite/worker y D1/Drizzle sin modificar `db/`, `drizzle/` ni backend.
+- [x] Validar `npm run type-check` y `npm run build` en `apps/hr`.
+
+Queda explícitamente pendiente para fases posteriores: API `/api/hr/*`, autenticación JWT compartida, Prisma/PostgreSQL, permisos autoritativos, sustitución del CRUD mock por persistencia real, importación transaccional, pruebas de backend y configuración ESLint no interactiva. Por esa razón este archivo no se elimina todavía: continúa siendo el contrato de las fases de backend, datos y endurecimiento.
