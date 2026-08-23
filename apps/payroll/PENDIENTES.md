@@ -1,6 +1,6 @@
 # Payroll — pendientes de habilitación y decisiones acordadas
 
-Última actualización: 22 de agosto de 2026.
+Última actualización: 23 de agosto de 2026.
 
 Este documento registra lo que falta para habilitar Payroll por ambiente y consolida las preguntas y respuestas acordadas durante la planeación. No contiene contraseñas, tokens, URLs privadas ni valores de producción.
 
@@ -8,8 +8,8 @@ Este documento registra lo que falta para habilitar Payroll por ambiente y conso
 
 La implementación de aplicación, API, modelos y migración está terminada. Los mocks de `apps/payroll` fueron eliminados. También están implementados:
 
-- Autenticación real y acceso por pantalla/puesto; `SUPER_ADMIN` conserva acceso total.
-- Control de accesos independiente de Envelope desde `/accesos`, con protección equivalente en frontend y backend.
+- Autenticación real y acceso por pantalla/puesto; `SUPER_ADMIN` conserva acceso total de edición.
+- Control de accesos independiente de Envelope desde `/accesos`, con niveles **Puede editar**, **Solo lectura** y **Denegada**, protegidos tanto en frontend como en backend.
 - Lectura de empleados, bancos, puestos, sucursales y ventas existentes.
 - Catálogos, esquemas versionados y asignaciones con vigencia.
 - Reactivación de esquemas desactivados al volver a capturar el mismo nombre, conservando sus versiones y asignaciones históricas.
@@ -37,6 +37,7 @@ backend/api/prisma/migrations/20260813010000_add_recurring_payroll_expenses/migr
 backend/api/prisma/migrations/20260813020000_add_payroll_expense_categories/migration.sql
 backend/api/prisma/migrations/20260813030000_link_payroll_expense_categories/migration.sql
 backend/api/prisma/migrations/20260822000000_add_payroll_access_control/migration.sql
+backend/api/prisma/migrations/20260823000000_add_payroll_read_only_access/migration.sql
 ```
 
 Antes de ejecutar:
@@ -56,6 +57,7 @@ Qué solventa:
 - Crea el catálogo de categorías de gasto y recupera automáticamente las categorías históricas ya capturadas.
 - Vincula ocurrencias y versiones al catálogo manteniendo el nombre histórico dentro de cada gasto.
 - Agrega `Position.canManagePayrollAccess` y permisos de pantallas de Payroll por puesto sin modificar los permisos de Envelope.
+- Agrega `PositionPayrollScreenPermission.canWrite` con default `true`, por lo que conserva la edición de todos los permisos existentes y permite configurar acceso de solo lectura.
 - Permite que `/api/payroll/*` persista catálogos, movimientos, corridas, préstamos y recibos.
 - Sin este paso, el frontend puede cargar, pero las llamadas de Payroll fallarán porque las tablas todavía no existen.
 
@@ -133,7 +135,7 @@ La revisión agregada realizada el 30 de julio de 2026 encontró 54 empleados ac
 Flujo mínimo recomendado:
 
 1. Iniciar sesión como `SUPER_ADMIN`.
-2. Desde `/accesos`, asignar un subconjunto de pantallas a un puesto con una cuenta activa y comprobar sidebar, redirección y respuestas `403` en pantallas denegadas.
+2. Desde `/accesos`, asignar pantallas **Denegadas**, **Solo lectura** y **Puede editar** a un puesto con una cuenta activa. Comprobar sidebar/redirección, que solo lectura permite consultar y exportar pero oculta acciones de alta, edición y eliminación, y que llamadas directas `POST`/`PUT`/`PATCH`/`DELETE` reciben `403`.
 3. Crear un esquema y asignarlo a un empleado con ventas.
 4. Crear y aprobar un bono o ajuste.
 5. Crear un préstamo de prueba y verificar sus quincenas.
@@ -227,10 +229,10 @@ No durante la implementación. Se prepara y versiona; debe probarse primero en d
 ### Autenticación y permisos
 
 **¿Quién puede entrar a Payroll?**  
-Únicamente usuarios con rol `SUPER_ADMIN`, tanto en frontend como en backend.
+`SUPER_ADMIN` o una cuenta activa cuyo puesto tenga al menos una pantalla permitida de Payroll. El acceso efectivo se valida tanto en frontend como en backend.
 
 **¿Payroll tendrá permisos por pantalla como Envelope?**  
-No en esta primera implementación. Se acordó un guard global de `SUPER_ADMIN` por la sensibilidad de la nómina.
+Sí, con una matriz independiente por puesto. Cada pantalla puede quedar con edición, solo lectura o denegada; `GET`/`HEAD` requieren visualización y los métodos mutantes requieren además escritura.
 
 ### Datos compartidos con Envelope
 

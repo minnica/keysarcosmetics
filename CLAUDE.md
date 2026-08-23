@@ -160,7 +160,8 @@ el diseño y el autocuidado.
 - `Position.canManageAccess` marca el puesto que administra permisos y credenciales de `envelope`.
 - El acceso efectivo a pantallas de `envelope` ya no depende solo del rol: también se resuelve por puesto/permisos por pantalla.
 - Payroll mantiene un control independiente por puesto mediante `Position.canManagePayrollAccess` y `PositionPayrollScreenPermission`; no reutiliza ni modifica los permisos de pantallas de Envelope. `SUPER_ADMIN` conserva acceso total a ambas apps.
-- La pantalla `/accesos` de `apps/payroll` permite activar o denegar cada pantalla con autosave y acciones masivas por sección. El permiso **Administrar accesos de Payroll** concede todas las pantallas y permite administrar otros puestos; solo `SUPER_ADMIN` o un puesto con `canManagePayrollAccess` puede abrirla.
+- La pantalla `/accesos` de `apps/payroll` permite asignar por puesto uno de tres niveles a cada pantalla: **Puede editar**, **Solo lectura** o **Denegada**, con autosave y acciones masivas por sección. `PositionPayrollScreenPermission.allowed` controla la visualización y `canWrite` las mutaciones. El permiso **Administrar accesos de Payroll** concede edición total y permite administrar otros puestos; solo `SUPER_ADMIN` o un puesto con `canManagePayrollAccess` puede abrirla.
+- La misma pantalla `/accesos` de `apps/payroll` administra credenciales por empleado: lista empleados y cuentas, crea o actualiza correo/contraseña temporal y permite eliminar exclusivamente la cuenta de login sin borrar al empleado. Las pantallas efectivas siguen heredándose del puesto del empleado; no existe una segunda matriz de permisos por persona. Las cuentas nuevas se crean con rol base `CAPTURISTA`, porque el acceso a Payroll se resuelve mediante `canManagePayrollAccess`/`PositionPayrollScreenPermission`, y la cuenta `SUPER_ADMIN` no puede eliminarse.
 - La pantalla `accesos` guarda permisos por clic inmediato en cada pantalla con autosave sin recarga, administra credenciales en un dialog dedicado, también autoriza permisos virtuales de acción como `ventas/generar-sobre` y elimina cuentas desde la tabla de estatus cuando se necesita re-crear el acceso después, excepto la cuenta principal `SUPER_ADMIN`, que queda protegida. El permiso transversal para incluir registros de `KEYSAR HOME` se configura dentro del bloque superior de alcance de datos; no pertenece al conteo ni a las acciones masivas de la sección Reportes.
 - En `accesos`, cualquier puesto sin administración global puede activar `Solo ver datos propios`. El ajuste se persiste en `Position.selfDataOnly` y se aplica en backend según la relación operativa del módulo: en ventas, dashboard y reportes de ventas usa `vendedorId`; en citas y su reporte usa `facialistaId`. También impide crear o mutar registros asignados a otro empleado. Un puesto sin empleado vinculado no recibe datos bajo esta restricción. Los puestos con `canManageAccess` no pueden combinarse con `selfDataOnly`.
 - Prisma genera el cliente desde `backend/api/prisma/schema.prisma`; el duplicado histórico `backend/api/src/prisma/schema.prisma` debe mantenerse sincronizado mientras exista. Toda modificación de modelo debe actualizar ambos para evitar que el cliente desplegado quede desfasado.
@@ -280,11 +281,11 @@ Datos:
 
 ### Límites y seguridad
 
-- La UI y todos los endpoints `/api/payroll/*` requieren sesión JWT y permisos efectivos de Payroll. `SUPER_ADMIN` tiene acceso total; los demás usuarios entran únicamente cuando su puesto tiene al menos una pantalla en `PositionPayrollScreenPermission`. El sidebar, el guard de rutas y las familias de endpoints aplican el permiso correspondiente; ocultar un enlace no sustituye la validación del backend.
+- La UI y todos los endpoints `/api/payroll/*` requieren sesión JWT y permisos efectivos de Payroll. `SUPER_ADMIN` tiene acceso total; los demás usuarios entran únicamente cuando su puesto tiene al menos una pantalla permitida en `PositionPayrollScreenPermission`. `GET`/`HEAD` requieren `allowed`; `POST`/`PUT`/`PATCH`/`DELETE` requieren además `canWrite`. El sidebar y el guard de rutas aplican la visualización, la UI oculta controles de mutación en modo solo lectura y el backend mantiene la validación autoritativa por familia de endpoints.
 - Payroll reutiliza `Empleado`, `Bank`, `Position`, `Sucursal`, `Venta` y `VentaDetalle`. La administración permanece en Envelope; Payroll los consume en lectura.
 - `Empleado.sucursalId` es nullable y conserva una sucursal laboral concreta; `Empleado.todasSucursales` distingue la selección explícita `TODAS` de `Sin sucursal asignada`. Cuando `todasSucursales = true`, `sucursalId` debe ser `null`. Por decisión operativa vigente, este dato es informativo para Payroll y no interviene en el cálculo ni en el reporte por sucursal.
 - Los cambios propios de nómina deben limitarse a `apps/payroll`, rutas/servicios/modelos Payroll en `backend/api` y documentación relacionada. La relación laboral `Empleado.sucursalId` se administra exclusivamente desde `apps/envelope`.
-- Las migraciones `20260730000000_add_payroll_models`, `20260731000000_add_employee_branch`, `20260801000000_add_employee_all_branches`, `20260813010000_add_recurring_payroll_expenses`, `20260813020000_add_payroll_expense_categories`, `20260813030000_link_payroll_expense_categories` y `20260822000000_add_payroll_access_control` son aditivas. Deben revisarse y ejecutarse manualmente con `prisma migrate deploy`; nunca usar `db push`, `migrate reset` ni seeds demo contra producción.
+- Las migraciones `20260730000000_add_payroll_models`, `20260731000000_add_employee_branch`, `20260801000000_add_employee_all_branches`, `20260813010000_add_recurring_payroll_expenses`, `20260813020000_add_payroll_expense_categories`, `20260813030000_link_payroll_expense_categories`, `20260822000000_add_payroll_access_control` y `20260823000000_add_payroll_read_only_access` son aditivas. Deben revisarse y ejecutarse manualmente con `prisma migrate deploy`; nunca usar `db push`, `migrate reset` ni seeds demo contra producción.
 - Los adjuntos están preparados para un bucket privado de Supabase Storage, pero su habilitación está pospuesta. Cuando se cree el bucket, configurar `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` y opcionalmente `PAYROLL_STORAGE_BUCKET`; nunca exponer la service-role key al frontend.
 
 ### Fuentes reales reutilizadas
@@ -306,7 +307,7 @@ Los catálogos de métodos de pago no participan en el cálculo de comisión. Lo
 - Motor puro: `backend/api/src/services/payroll-calculation.ts`.
 - Ciclo de corridas y snapshots: `backend/api/src/services/payroll.service.ts`.
 - Storage privado: `backend/api/src/services/payroll-storage.ts`.
-- Modelos: `PayrollCatalogItem`, `CommissionScheme`, `CommissionSchemeVersion`, `CommissionSchemeTier`, `EmployeeCommissionAssignment`, `PayrollRun`, `PayrollRunLine`, `PayrollRunBranchLine`, `PayrollMovement`, `PayrollMovementAllocation`, `PayrollAttachment`, `PayrollExpense`, `PayrollExpenseCategory`, `PayrollExpenseRecurrence`, `PayrollExpenseRecurrenceVersion`, `LoanAdvance`, `LoanAdvanceInstallment`, `PayrollReceipt` y `PayrollAuditEvent`.
+- Modelos: `PositionPayrollScreenPermission`, `PayrollCatalogItem`, `CommissionScheme`, `CommissionSchemeVersion`, `CommissionSchemeTier`, `EmployeeCommissionAssignment`, `PayrollRun`, `PayrollRunLine`, `PayrollRunBranchLine`, `PayrollMovement`, `PayrollMovementAllocation`, `PayrollAttachment`, `PayrollExpense`, `PayrollExpenseCategory`, `PayrollExpenseRecurrence`, `PayrollExpenseRecurrenceVersion`, `LoanAdvance`, `LoanAdvanceInstallment`, `PayrollReceipt` y `PayrollAuditEvent`.
 - El schema canónico y el duplicado en `backend/api/src/prisma/schema.prisma` deben mantenerse sincronizados. Payroll usa el cliente estándar `@prisma/client`, regenerado durante el build del backend; no importar clientes generados desde rutas relativas porque `dist` no incluye esos artefactos.
 
 La API cubre bootstrap de fuentes compartidas; CRUD de catálogos, esquemas/versiones/asignaciones, movimientos, gastos y préstamos; adjuntos; corridas y transiciones; desglose por sucursal; recibos y seguimiento de WhatsApp.
@@ -338,10 +339,11 @@ La API cubre bootstrap de fuentes compartidas; CRUD de catálogos, esquemas/vers
 
 Rutas: `/`, `/nomina-salario-fijo`, `/nomina-especialistas`, `/nomina-comisiones`, `/bonos`, `/multas`, `/viaticos`, `/movimientos`, `/gastos`, `/esquemas`, `/prestamos-adelantos`, `/reportes/desglose-sucursal`, `/recibos`, `/accesos` y `/login`. La ruta `/` contiene las vistas quincenal y mensual; no se crea una page separada para el consolidado.
 
-- `apps/payroll/src/lib/session.tsx` gestiona la sesión real, resuelve `canManagePayrollAccess`/`payrollScreenPermissions`, bloquea rutas sin permiso y redirige a la primera pantalla permitida. El login admite cualquier cuenta con al menos una pantalla de Payroll y mantiene el rechazo explícito cuando el puesto no tiene acceso.
+- `apps/payroll/src/lib/session.tsx` gestiona la sesión real, resuelve `canManagePayrollAccess`, `payrollScreenPermissions` y `payrollWritePermissions`, bloquea rutas sin permiso, expone `canWrite(screenKey)` y redirige a la primera pantalla permitida. El login admite cualquier cuenta con al menos una pantalla de Payroll y mantiene el rechazo explícito cuando el puesto no tiene acceso.
 - `apps/payroll/src/components/payroll/payroll-data-context.tsx` conecta toda la UI a `/api/payroll/*`.
 - El sidebar de Payroll replica el patrón canónico de Envelope: `Nómina`, `Operación`, `Configuración`, `Reportes` y, cuando corresponde, `Administración` son categorías desplegables accesibles. Solo muestra las pantallas permitidas al puesto, solo una categoría permanece abierta y la categoría de la ruta activa se abre automáticamente al cargar y navegar. En modo icon-only se mantienen visibles todas las opciones autorizadas con tooltip y cada enlace activo expone `aria-current="page"`. El footer oculta las preferencias al colapsarse, usa una fila `role="switch"` para alternar tema claro/oscuro con la preferencia compartida `keysar-theme`, conserva `Cerrar sesión` como acción con tooltip y no muestra textos decorativos debajo del botón. Payroll no agrega selector de idioma mientras no tenga un proveedor de i18n propio.
 - `apps/payroll/src/lib/access.ts` es el catálogo canónico de rutas/pantallas de Payroll. Los keys usan el prefijo `payroll/`; al agregar una page también debe registrarse allí, en `PAYROLL_SCREEN_KEYS` de `@cosmetics/types` y en la resolución de endpoints de `backend/api/src/routes/payroll.routes.ts`.
+- `/accesos` consume `GET /api/payroll/access/bootstrap`, que entrega puestos, empleados y cuentas con una selección explícita de campos públicos; nunca debe exponer `passwordHash`, tokens de configuración ni otros secretos. `PUT /api/payroll/access/users/:employeeId/credentials` crea o actualiza correo y contraseña, mientras `DELETE /api/payroll/access/users/:id` elimina la cuenta de acceso y protege `SUPER_ADMIN`. Todas estas rutas requieren `requirePayrollAccessManager`.
 - Exportaciones PDF/Excel se generan desde datasets reales con imports dinámicos.
 - `/recibos` y `/reportes/desglose-sucursal` ya no dependen de la corrida seleccionada en Resumen. Ambas abren en la quincena vigente, permiten elegir cualquier quincena estándar de los últimos 12 meses y el modo con/sin IVA, consultan el cálculo en memoria al abrir, al cambiar filtros, al recuperar foco y cada 60 segundos, y ofrecen actualización manual. Desglose y sus exportaciones siempre usan esa vista actual. Recibos separa **Vista actual** —previsualizaciones provisionales descargables que no acreditan pago— de **Emitidos**, que conserva el snapshot, estatus y acciones de WhatsApp de los recibos creados al pagar; `GET /api/payroll/receipts` acepta también `periodStart` + `periodEnd` para cargar esos históricos sin depender de `selectedRun`.
 - Las pages `/movimientos`, `/gastos` y `/prestamos-adelantos` comparten un filtro accesible de periodo con dos calendarios separados (`DateRangePicker`). El rango se inicia abierto para conservar todos los registros disponibles y, al elegir fechas, filtra tabla, contadores y métricas; **Limpiar fechas** restaura la vista completa. PDF y Excel reciben exactamente el mismo dataset filtrado y agregan el periodo al subtítulo y nombre del archivo. En `/gastos`, la exportación y el contador siguen la pestaña activa (`Recurrentes activos` o `Historial`) sin incluir el catálogo de categorías.
@@ -745,6 +747,7 @@ Reglas para futuras sesiones:
 - La migración `20260813010000_add_recurring_payroll_expenses` es aditiva: agrega series/versiones de gastos recurrentes y referencias opcionales desde `PayrollExpense`; no convierte ni modifica los gastos históricos existentes.
 - La migración `20260813020000_add_payroll_expense_categories` es aditiva: crea el catálogo de categorías y hace backfill con los nombres distintos ya guardados en ocurrencias y versiones; no reescribe el texto de los gastos históricos.
 - La migración `20260813030000_link_payroll_expense_categories` agrega referencias opcionales `categoryId` y hace backfill por nombre normalizado. El texto histórico permanece en cada ocurrencia; las relaciones permiten que las recurrencias futuras adopten un nombre editado sin modificar corridas aprobadas.
+- La migración `20260823000000_add_payroll_read_only_access` agrega `PositionPayrollScreenPermission.canWrite` con default `true`. Es aditiva y conserva edición para todos los permisos existentes; debe aplicarse antes de desplegar la API/UI que distinguen edición de solo lectura.
 - Aplicar Payroll por ambiente en este orden: confirmar conexión y respaldo/PITR, ejecutar `prisma migrate status`, aplicar `prisma migrate deploy`, desplegar el backend correspondiente y después desplegar/verificar el frontend.
 - `seed.ts` contiene datos demo — usar con cuidado, puede sobreescribir datos.
 - `seed-catalogs.ts` es el seed seguro para catálogos `Bank`/`Position`.
@@ -817,6 +820,7 @@ apps/payroll/
 │   ├── (auth)/login/                       → login JWT real
 │   └── (dashboard)/
 │       ├── page.tsx                        → corridas quincenales y consolidado mensual calculado
+│       ├── accesos/                        → permisos por puesto y credenciales por empleado
 │       ├── bonos|multas|viaticos/          → catálogos dinámicos
 │       ├── movimientos/                    → movimientos, asignaciones y evidencias
 │       ├── gastos/                         → recurrencias, historial aplicado y categorías
@@ -833,6 +837,8 @@ apps/payroll/
 │   ├── session.tsx                         → sesión y guard SUPER_ADMIN
 │   ├── report-export.ts                    → exportación dinámica
 │   └── types.ts                            → tipos del frontend Payroll
+├── src/hooks/
+│   └── use-payroll-access-admin.ts         → puestos, empleados, cuentas y mutaciones de acceso
 ├── PENDIENTES.md                           → despliegue y Storage pospuesto
 └── GUIA_PRIMERA_NOMINA.md                  → recorrido operativo inicial
 ```
@@ -892,7 +898,9 @@ backend/api/
 │   │   ├── 20260813000000_add_branch_monthly_goal_and_deactivation_date/ → meta mensual y fecha de desactivación de sucursales
 │   │   ├── 20260813010000_add_recurring_payroll_expenses/ → series versionadas y ocurrencias automáticas de gastos
 │   │   ├── 20260813020000_add_payroll_expense_categories/ → catálogo y backfill de categorías de gasto
-│   │   └── 20260813030000_link_payroll_expense_categories/ → referencias de catálogo con snapshots históricos
+│   │   ├── 20260813030000_link_payroll_expense_categories/ → referencias de catálogo con snapshots históricos
+│   │   ├── 20260822000000_add_payroll_access_control/ → acceso independiente de Payroll por puesto y pantalla
+│   │   └── 20260823000000_add_payroll_read_only_access/ → nivel de escritura por permiso de pantalla
 │   ├── seed.ts                    → seed general/demo, usar con cuidado
 │   └── seed-catalogs.ts           → seed seguro para Bank/Position
 └── src/
@@ -908,6 +916,7 @@ backend/api/
     │   ├── access.routes.ts      → bootstrap y guardado de permisos/credenciales de acceso de envelope
     │   ├── envelope.routes.ts     → endpoints del módulo envelope
     │   ├── crm.routes.ts
+    │   ├── payroll-access.routes.ts → permisos y credenciales administrativas de Payroll
     │   ├── payroll.routes.ts
     │   ├── pos.routes.ts
     │   └── scheduler.routes.ts
@@ -1056,4 +1065,5 @@ npx ts-node --project tsconfig.json prisma/seed-catalogs.ts
 - Payroll: aplicar `20260813010000_add_recurring_payroll_expenses` en cada ambiente antes de desplegar la API/UI de recurrencias. No convierte automáticamente gastos legacy con frecuencia mensual/quincenal para evitar duplicar capturas históricas.
 - Payroll: aplicar después `20260813020000_add_payroll_expense_categories`; debe desplegarse junto con la API/UI que sustituyen el texto libre de categoría por catálogo.
 - Payroll: aplicar finalmente `20260813030000_link_payroll_expense_categories` para habilitar edición segura de nombres y referencias futuras sin alterar snapshots aprobados.
+- Payroll: aplicar `20260822000000_add_payroll_access_control` y después `20260823000000_add_payroll_read_only_access` antes de desplegar el control de accesos por pantalla. La segunda conserva edición para permisos existentes mediante `canWrite = true`.
 - Payroll Storage: crear más adelante el bucket privado y configurar `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` y opcionalmente `PAYROLL_STORAGE_BUCKET` solo después de que exista.

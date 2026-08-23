@@ -152,6 +152,7 @@ model PositionPayrollScreenPermission {
   position      Position @relation(fields: [positionId], references: [id], onDelete: Cascade)
   screenKey     String
   allowed       Boolean  @default(true)
+  canWrite      Boolean  @default(true)
   creadoEn      DateTime @default(now())
   actualizadoEn DateTime @updatedAt
 

@@ -12,7 +12,9 @@ import type { PayrollScreenKey } from "@cosmetics/types";
 import { authMiddleware } from "../middlewares/auth.middleware";
 import {
   PAYROLL_ACCESS_SCREEN_ORDER,
+  isPayrollReadMethod,
   requireAnyPayrollScreenAccess,
+  requireAnyPayrollScreenWriteAccess,
 } from "../lib/access";
 import { prisma } from "../prisma/client";
 import {
@@ -144,29 +146,52 @@ const CATALOG_SCREEN_BY_KIND = {
   PER_DIEM: "payroll/viaticos",
 } as const satisfies Record<string, PayrollScreenKey>;
 
-function payrollScreensForRequest(req: Request): readonly PayrollScreenKey[] {
+async function payrollScreensForRequest(
+  req: Request,
+): Promise<readonly PayrollScreenKey[]> {
   const path = req.path;
 
   if (path === "/bootstrap") return PAYROLL_OPERATION_SCREEN_KEYS;
 
   if (path.startsWith("/catalog-items")) {
-    const rawKind =
-      typeof req.query["kind"] === "string"
+    const readRequest = isPayrollReadMethod(req.method);
+    let rawKind = readRequest
+      ? typeof req.query["kind"] === "string"
         ? req.query["kind"]
-        : typeof req.body?.kind === "string"
-          ? req.body.kind
-          : null;
+        : null
+      : typeof req.body?.kind === "string"
+        ? req.body.kind
+        : null;
+
+    if (!readRequest) {
+      const catalogItemId = path.split("/")[2];
+      if (catalogItemId) {
+        const existingItem = await prisma.payrollCatalogItem.findUnique({
+          where: { id: catalogItemId },
+          select: { kind: true },
+        });
+        rawKind = existingItem?.kind ?? null;
+      }
+    }
+
     const catalogScreen = rawKind
       ? CATALOG_SCREEN_BY_KIND[rawKind as keyof typeof CATALOG_SCREEN_BY_KIND]
       : null;
-    return catalogScreen
-      ? [catalogScreen, "payroll/movimientos"]
-      : [
+
+    if (catalogScreen) {
+      return readRequest
+        ? [catalogScreen, "payroll/movimientos"]
+        : [catalogScreen];
+    }
+
+    return readRequest
+      ? [
           "payroll/bonos",
           "payroll/multas",
           "payroll/viaticos",
           "payroll/movimientos",
-        ];
+        ]
+      : [];
   }
 
   if (path.startsWith("/schemes") || path.startsWith("/assignments")) {
@@ -218,11 +243,14 @@ function payrollScreensForRequest(req: Request): readonly PayrollScreenKey[] {
 
 router.use(authMiddleware);
 router.use((req, res, next) => {
-  void requireAnyPayrollScreenAccess(payrollScreensForRequest(req))(
-    req,
-    res,
-    next,
-  );
+  void payrollScreensForRequest(req)
+    .then((screenKeys) => {
+      const guard = isPayrollReadMethod(req.method)
+        ? requireAnyPayrollScreenAccess(screenKeys)
+        : requireAnyPayrollScreenWriteAccess(screenKeys);
+      return guard(req, res, next);
+    })
+    .catch(next);
 });
 
 router.get(
@@ -329,7 +357,6 @@ router.put(
     const item = await prisma.payrollCatalogItem.update({
       where: { id: req.params["id"] },
       data: {
-        kind: input.kind,
         name: normalizeText(input.name),
         defaultAmount: input.defaultAmount,
         notes: normalizeText(input.notes),

@@ -1,12 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import type { PayrollScreenKey } from "@cosmetics/types";
+import type { PayrollScreenKey, Rol } from "@cosmetics/types";
 import { api, apiErrorMessage } from "@/lib/api";
 
 export interface PayrollAccessPermission {
   screenKey: PayrollScreenKey;
   allowed: boolean;
+  canWrite: boolean;
 }
 
 export interface PayrollAccessPosition {
@@ -18,9 +19,41 @@ export interface PayrollAccessPosition {
   _count: { empleados: number };
 }
 
+export interface PayrollAccessEmployee {
+  id: string;
+  nombreCompleto: string;
+  activo: boolean;
+  positionId: string | null;
+  position: {
+    id: string;
+    nombre: string;
+    canManagePayrollAccess: boolean;
+  } | null;
+}
+
+export interface PayrollAccessUser {
+  id: string;
+  nombre: string;
+  email: string;
+  rol: Rol;
+  activo: boolean;
+  empleadoId: string | null;
+  empleado: {
+    id: string;
+    nombreCompleto: string;
+    position: {
+      id: string;
+      nombre: string;
+      canManagePayrollAccess: boolean;
+    } | null;
+  } | null;
+}
+
 interface BootstrapResponse {
   screens: PayrollScreenKey[];
   positions: PayrollAccessPosition[];
+  employees: PayrollAccessEmployee[];
+  users: PayrollAccessUser[];
 }
 
 interface ApiResponse<T> {
@@ -31,6 +64,8 @@ interface ApiResponse<T> {
 
 export function usePayrollAccessAdmin() {
   const [positions, setPositions] = useState<PayrollAccessPosition[]>([]);
+  const [employees, setEmployees] = useState<PayrollAccessEmployee[]>([]);
+  const [users, setUsers] = useState<PayrollAccessUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -42,6 +77,8 @@ export function usePayrollAccessAdmin() {
         "/api/payroll/access/bootstrap",
       );
       setPositions(response.data.data.positions);
+      setEmployees(response.data.data.employees);
+      setUsers(response.data.data.users);
     } catch (cause) {
       setError(
         apiErrorMessage(cause, "No se pudieron cargar los accesos de Payroll."),
@@ -76,5 +113,34 @@ export function usePayrollAccessAdmin() {
     [],
   );
 
-  return { positions, loading, error, refetch, savePermissions };
+  const saveCredentials = useCallback(
+    async (employeeId: string, payload: { email: string; password?: string }) => {
+      await api.put(
+        `/api/payroll/access/users/${employeeId}/credentials`,
+        payload,
+      );
+      await refetch();
+    },
+    [refetch],
+  );
+
+  const deleteUser = useCallback(
+    async (userId: string) => {
+      await api.delete(`/api/payroll/access/users/${userId}`);
+      await refetch();
+    },
+    [refetch],
+  );
+
+  return {
+    positions,
+    employees,
+    users,
+    loading,
+    error,
+    refetch,
+    savePermissions,
+    saveCredentials,
+    deleteUser,
+  };
 }

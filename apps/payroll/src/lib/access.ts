@@ -113,7 +113,7 @@ export const PAYROLL_ACCESS_SCREEN: PayrollScreenConfig = {
   path: "/accesos",
   section: "settings",
   label: "Control de accesos",
-  description: "Permisos de visualización por puesto.",
+  description: "Permisos de lectura y edición por puesto.",
 };
 
 export const PAYROLL_SECTION_ORDER: PayrollAccessSection[] = [

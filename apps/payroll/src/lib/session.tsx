@@ -23,6 +23,7 @@ interface SessionValue {
   user: SessionUser | null;
   status: SessionStatus;
   canAccess: (screenKey: PayrollScreenKey) => boolean;
+  canWrite: (screenKey: PayrollScreenKey) => boolean;
   isAccessManager: boolean;
   firstAccessiblePath: string | null;
   refreshSession: () => Promise<void>;
@@ -67,12 +68,15 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo<SessionValue>(() => {
     const permissions = user?.payrollScreenPermissions ?? [];
     const permissionSet = new Set(permissions);
+    const writePermissionSet = new Set(user?.payrollWritePermissions ?? []);
     const isAccessManager = Boolean(user?.canManagePayrollAccess);
     return {
       user,
       status,
       canAccess: (screenKey) =>
         isAccessManager || permissionSet.has(screenKey),
+      canWrite: (screenKey) =>
+        isAccessManager || writePermissionSet.has(screenKey),
       isAccessManager,
       firstAccessiblePath: user
         ? getFirstPayrollPath(permissions, isAccessManager)

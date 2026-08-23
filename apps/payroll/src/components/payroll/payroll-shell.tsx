@@ -10,6 +10,7 @@ import {
   ChevronDown,
   CircleDollarSign,
   FileText,
+  Eye,
   Gavel,
   HandCoins,
   LayoutDashboard,
@@ -44,6 +45,7 @@ import {
 import type { PayrollScreenKey } from "@cosmetics/types";
 import { PayrollDataProvider } from "./payroll-data-context";
 import { useSession } from "@/lib/session";
+import { getPayrollScreenByPath } from "@/lib/access";
 
 type SectionId =
   | "payroll"
@@ -443,6 +445,16 @@ function PayrollSidebar() {
 }
 
 export function PayrollShell({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  const { canWrite, isAccessManager } = useSession();
+  const activeScreen = getPayrollScreenByPath(pathname);
+  const isReadOnly = Boolean(
+    activeScreen &&
+      activeScreen.key !== "payroll/accesos" &&
+      !isAccessManager &&
+      !canWrite(activeScreen.key),
+  );
+
   return (
     <PayrollDataProvider>
       <SidebarProvider>
@@ -463,7 +475,24 @@ export function PayrollShell({ children }: { children: React.ReactNode }) {
               style={{ maxWidth: "100px" }}
             />
           </header>
-          <div className="min-w-0 p-6">{children}</div>
+          <div className="min-w-0 p-6">
+            {isReadOnly ? (
+              <div
+                role="status"
+                className="mb-6 flex items-start gap-3 rounded-lg border border-[var(--border-color)] bg-[var(--accent-hover)] px-4 py-3 text-sm"
+              >
+                <Eye className="mt-0.5 h-4 w-4 shrink-0" />
+                <div>
+                  <p className="font-semibold">Modo solo lectura</p>
+                  <p className="mt-0.5 text-xs leading-5 text-[var(--text-muted)]">
+                    Puedes consultar y exportar la información, pero no crear,
+                    editar, aprobar ni eliminar registros en esta pantalla.
+                  </p>
+                </div>
+              </div>
+            ) : null}
+            {children}
+          </div>
         </SidebarInset>
       </SidebarProvider>
     </PayrollDataProvider>

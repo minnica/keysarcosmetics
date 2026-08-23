@@ -39,6 +39,7 @@ import { SectionCard } from "@/components/payroll/section-card";
 import { StatusBadge } from "@/components/payroll/status-badge";
 import { usePayrollData } from "@/components/payroll/payroll-data-context";
 import { apiErrorMessage } from "@/lib/api";
+import { useSession } from "@/lib/session";
 import {
   dateRangeFilename,
   describeDateRange,
@@ -89,6 +90,8 @@ const EMPTY: Form = {
 
 export default function PrestamosPage() {
   const data = usePayrollData();
+  const { canWrite } = useSession();
+  const hasWriteAccess = canWrite("payroll/prestamos-adelantos");
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<Form>(EMPTY);
@@ -259,6 +262,7 @@ export default function PrestamosPage() {
       enableSorting: false,
       enableGlobalFilter: false,
       cell: ({ row }) => {
+        if (!hasWriteAccess) return null;
         const editable =
           row.original.status === "PENDING" &&
           row.original.installments.every(
@@ -365,10 +369,12 @@ export default function PrestamosPage() {
             config={exportConfig}
             disabled={!filteredLoans.length}
           />
-          <Button onClick={create}>
-            <PlusCircle className="mr-1.5 h-4 w-4" />
-            Nueva solicitud
-          </Button>
+          {hasWriteAccess ? (
+            <Button onClick={create}>
+              <PlusCircle className="mr-1.5 h-4 w-4" />
+              Nueva solicitud
+            </Button>
+          ) : null}
         </div>
       </header>
       <DateFilterCard

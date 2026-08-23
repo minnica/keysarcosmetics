@@ -67,6 +67,7 @@ export interface UsuarioSession extends Usuario {
   screenPermissions: ScreenKey[];
   canManagePayrollAccess: boolean;
   payrollScreenPermissions: PayrollScreenKey[];
+  payrollWritePermissions: PayrollScreenKey[];
 }
 
 export type MetodoPago = "EFECTIVO" | "TARJETA" | "TRANSFERENCIA" | "OTRO";

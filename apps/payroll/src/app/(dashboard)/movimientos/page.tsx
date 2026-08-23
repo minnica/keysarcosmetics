@@ -39,6 +39,7 @@ import { SectionCard } from "@/components/payroll/section-card";
 import { StatusBadge } from "@/components/payroll/status-badge";
 import { usePayrollData } from "@/components/payroll/payroll-data-context";
 import { apiErrorMessage } from "@/lib/api";
+import { useSession } from "@/lib/session";
 import {
   dateRangeFilename,
   describeDateRange,
@@ -101,6 +102,8 @@ const EMPTY_FORM: FormState = {
 
 export default function MovimientosPage() {
   const data = usePayrollData();
+  const { canWrite } = useSession();
+  const hasWriteAccess = canWrite("payroll/movimientos");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
@@ -381,7 +384,8 @@ export default function MovimientosPage() {
             )}
             {row.original.status === "PENDING" &&
               !row.original.payrollRunId &&
-              data.storageConfigured && (
+              data.storageConfigured &&
+              hasWriteAccess && (
                 <label
                   className="inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-md hover:bg-[var(--accent-hover)]"
                   aria-label="Subir comprobante"
@@ -403,7 +407,7 @@ export default function MovimientosPage() {
                   />
                 </label>
               )}
-            {row.original.status === "PENDING" && (
+            {row.original.status === "PENDING" && hasWriteAccess && (
               <>
                 <Button
                   size="icon"
@@ -445,7 +449,7 @@ export default function MovimientosPage() {
         ),
       },
     ],
-    [data],
+    [data, hasWriteAccess],
   );
 
   const exportConfig = {
@@ -503,17 +507,19 @@ export default function MovimientosPage() {
             config={exportConfig}
             disabled={!filteredMovements.length}
           />
-          <Button
-            onClick={() => {
-              setEditingId(null);
-              setForm({ ...EMPTY_FORM, date: today() });
-              setFile(null);
-              setDialogOpen(true);
-            }}
-          >
-            <PlusCircle className="mr-1.5 h-4 w-4" />
-            Nuevo movimiento
-          </Button>
+          {hasWriteAccess ? (
+            <Button
+              onClick={() => {
+                setEditingId(null);
+                setForm({ ...EMPTY_FORM, date: today() });
+                setFile(null);
+                setDialogOpen(true);
+              }}
+            >
+              <PlusCircle className="mr-1.5 h-4 w-4" />
+              Nuevo movimiento
+            </Button>
+          ) : null}
         </div>
       </header>
       <DateFilterCard
