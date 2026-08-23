@@ -15,7 +15,7 @@ Todas las apps son internas (detrás de login), excepto `landing` que es públic
 ## Identidad de marca
 
 ```text
-Introducción
+Introducciónn
 Keysar Cosmetics nace con el propósito de redefinir la bel-
 leza desde una visión sofisticada, minimalista y consciente.
 Este manual de marca es la guía fundamental que asegura
