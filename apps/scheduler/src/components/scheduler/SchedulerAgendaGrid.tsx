@@ -29,7 +29,6 @@ import {
   getMinutesFromTime,
   getSchedulerCardTop,
   getSingleCellAppointmentStyle,
-  schedulerSlotMinutes,
   type EmptySlotAction,
 } from './scheduler-utils'
 import {
@@ -42,6 +41,7 @@ import { SchedulerAvatar } from './SchedulerAvatar'
 
 interface SchedulerAgendaGridProps {
   currentView: SchedulerView
+  slotMinutes: number
   visibleProfessionals: Professional[]
   visibleBookings: Booking[]
   statusColors: BookingStatusColors
@@ -94,6 +94,7 @@ interface SlotActionOverlay {
 
 export function SchedulerAgendaGrid({
   currentView,
+  slotMinutes,
   visibleProfessionals,
   visibleBookings,
   statusColors,
@@ -123,12 +124,12 @@ export function SchedulerAgendaGrid({
   onDeletePaymentHistory,
 }: SchedulerAgendaGridProps) {
   const dayCalendarRange = useMemo(
-    () => getCommerceCalendarRange(commerceOperatingHours, [selectedDate]),
-    [commerceOperatingHours, selectedDate],
+    () => getCommerceCalendarRange(commerceOperatingHours, [selectedDate], slotMinutes),
+    [commerceOperatingHours, selectedDate, slotMinutes],
   )
   const weekCalendarRange = useMemo(
-    () => getCommerceCalendarRange(commerceOperatingHours, weekDays),
-    [commerceOperatingHours, weekDays],
+    () => getCommerceCalendarRange(commerceOperatingHours, weekDays, slotMinutes),
+    [commerceOperatingHours, slotMinutes, weekDays],
   )
   const dayBaseMinutes = dayCalendarRange?.startMinutes ?? 0
   const dayClosingMinutes = dayCalendarRange?.endMinutes ?? 0
@@ -181,6 +182,7 @@ export function SchedulerAgendaGrid({
               booking.end,
               dayBaseMinutes,
               dayClosingMinutes,
+              slotMinutes,
             ),
             left: `${left}px`,
             width: `${width}px`,
@@ -189,7 +191,7 @@ export function SchedulerAgendaGrid({
       })
 
     return overlays.filter((value): value is DayOverlayBooking => value !== null)
-  }, [dayBaseMinutes, dayClosingMinutes, dayColumnWidth, professionalIndexMap, visibleBookings])
+  }, [dayBaseMinutes, dayClosingMinutes, dayColumnWidth, professionalIndexMap, slotMinutes, visibleBookings])
 
   const dayBlocks = useMemo(() => {
     const overlays: Array<DayOverlayBlock | null> = visibleBlocks.map((block) => {
@@ -210,6 +212,7 @@ export function SchedulerAgendaGrid({
               block.end,
               dayBaseMinutes,
               dayClosingMinutes,
+              slotMinutes,
             ),
             left: `${left}px`,
             width: `${width}px`,
@@ -218,14 +221,14 @@ export function SchedulerAgendaGrid({
       })
 
     return overlays.filter((value): value is DayOverlayBlock => value !== null)
-  }, [dayBaseMinutes, dayClosingMinutes, dayColumnWidth, professionalIndexMap, visibleBlocks])
+  }, [dayBaseMinutes, dayClosingMinutes, dayColumnWidth, professionalIndexMap, slotMinutes, visibleBlocks])
 
   const occupiedDaySlots = useMemo(() => {
     const occupied = new Set<string>()
 
     dayTimeSlots.forEach((slot) => {
       const slotStart = getMinutesFromTime(slot)
-      const slotEnd = slotStart + schedulerSlotMinutes
+      const slotEnd = slotStart + slotMinutes
 
       visibleProfessionals.forEach((professional) => {
         const bookingOccupiesSlot = visibleBookings.some(
@@ -248,7 +251,7 @@ export function SchedulerAgendaGrid({
     })
 
     return occupied
-  }, [dayTimeSlots, visibleBlocks, visibleBookings, visibleProfessionals])
+  }, [dayTimeSlots, slotMinutes, visibleBlocks, visibleBookings, visibleProfessionals])
 
   const slotActionOverlay = useMemo(() => {
     if (!emptySlotAction) return null
@@ -259,7 +262,7 @@ export function SchedulerAgendaGrid({
     const startMinutes = getMinutesFromTime(emptySlotAction.startTime)
     const startCellIndex = Math.max(
       0,
-      Math.floor((startMinutes - dayBaseMinutes) / schedulerSlotMinutes),
+      Math.floor((startMinutes - dayBaseMinutes) / slotMinutes),
     )
     const top = getSchedulerCardTop(startCellIndex)
 
@@ -272,7 +275,7 @@ export function SchedulerAgendaGrid({
         width: `${Math.min(dayColumnWidth - 16, 260)}px`,
       },
     } satisfies SlotActionOverlay
-  }, [dayBaseMinutes, dayColumnWidth, emptySlotAction, professionalIndexMap])
+  }, [dayBaseMinutes, dayColumnWidth, emptySlotAction, professionalIndexMap, slotMinutes])
 
   const now = new Date()
   const currentTimeLabel = `${now.getHours().toString().padStart(2, '0')}:${now
@@ -487,7 +490,7 @@ export function SchedulerAgendaGrid({
               {showCurrentTimeLine ? (
                 <div
                   className="scheduler-current-time-line"
-                  style={getCurrentTimeLineStyle(currentTimeLabel, dayBaseMinutes)}
+                  style={getCurrentTimeLineStyle(currentTimeLabel, dayBaseMinutes, slotMinutes)}
                 >
                   <span className="scheduler-current-time-pill">{currentTimeLabel}</span>
                 </div>
@@ -534,7 +537,7 @@ export function SchedulerAgendaGrid({
                           commerceOperatingHours,
                           day,
                           slot,
-                          addMinutesToTime(slot, schedulerSlotMinutes),
+                          addMinutesToTime(slot, slotMinutes),
                         )
                           ? 'scheduler-body-cell-commerce-closed'
                           : '',
@@ -554,6 +557,7 @@ export function SchedulerAgendaGrid({
                   booking.start,
                   weekBaseMinutes,
                   weekClosingMinutes,
+                  slotMinutes,
                 )
 
                 return (

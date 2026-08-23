@@ -110,29 +110,18 @@ export function getAppointmentStyle(
   end: string,
   baseMinutes = schedulerBaseMinutes,
   closingMinutes = schedulerClosingMinutes,
+  slotMinutes = schedulerSlotMinutes,
 ): { top: string; height: string } {
   const startMinutes = getMinutesFromTime(start)
   const endMinutes = getMinutesFromTime(end)
-  const slotCount = Math.ceil((closingMinutes - baseMinutes) / schedulerSlotMinutes)
-  const startCellIndex = Math.max(
-    0,
-    Math.min(
-      Math.floor((startMinutes - baseMinutes) / schedulerSlotMinutes),
-      slotCount,
-    ),
-  )
-  const endCellIndex = Math.max(
-    startCellIndex + 1,
-    Math.min(
-      Math.ceil((endMinutes - baseMinutes) / schedulerSlotMinutes),
-      slotCount,
-    ),
-  )
-  const rowSpan = endCellIndex - startCellIndex
+  const clampedStart = Math.max(baseMinutes, Math.min(startMinutes, closingMinutes))
+  const clampedEnd = Math.max(clampedStart, Math.min(endMinutes, closingMinutes))
+  const startOffset = (clampedStart - baseMinutes) / slotMinutes
+  const durationInSlots = (clampedEnd - clampedStart) / slotMinutes
 
   return {
-    top: `${getSchedulerCardTop(startCellIndex)}px`,
-    height: `${Math.max(rowSpan * schedulerRowHeight - schedulerCardTopInset - schedulerCardBottomInset, 34)}px`,
+    top: `${schedulerHeaderOffset + startOffset * schedulerRowHeight + schedulerCardTopInset}px`,
+    height: `${Math.max(durationInSlots * schedulerRowHeight - schedulerCardTopInset - schedulerCardBottomInset, 34)}px`,
   }
 }
 
@@ -140,19 +129,14 @@ export function getSingleCellAppointmentStyle(
   start: string,
   baseMinutes = schedulerBaseMinutes,
   closingMinutes = schedulerClosingMinutes,
+  slotMinutes = schedulerSlotMinutes,
 ): { top: string; height: string } {
   const startMinutes = getMinutesFromTime(start)
-  const slotCount = Math.ceil((closingMinutes - baseMinutes) / schedulerSlotMinutes)
-  const startCellIndex = Math.max(
-    0,
-    Math.min(
-      Math.floor((startMinutes - baseMinutes) / schedulerSlotMinutes),
-      slotCount,
-    ),
-  )
+  const clampedStart = Math.max(baseMinutes, Math.min(startMinutes, closingMinutes))
+  const startOffset = (clampedStart - baseMinutes) / slotMinutes
 
   return {
-    top: `${getSchedulerCardTop(startCellIndex)}px`,
+    top: `${schedulerHeaderOffset + startOffset * schedulerRowHeight + schedulerCardTopInset}px`,
     height: `${schedulerCardHeight}px`,
   }
 }
@@ -160,9 +144,10 @@ export function getSingleCellAppointmentStyle(
 export function getCurrentTimeLineStyle(
   value: string,
   baseMinutes = schedulerBaseMinutes,
+  slotMinutes = schedulerSlotMinutes,
 ): { top: string } {
   const currentMinutes = getMinutesFromTime(value)
-  const pixelsPerMinute = schedulerRowHeight / 60
+  const pixelsPerMinute = schedulerRowHeight / slotMinutes
 
   return {
     top: `${schedulerHeaderOffset + (currentMinutes - baseMinutes) * pixelsPerMinute}px`,

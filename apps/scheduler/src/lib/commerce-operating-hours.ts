@@ -161,6 +161,7 @@ function minutesToTime(totalMinutes: number): string {
 export function getCommerceCalendarRange(
   config: CommerceOperatingHours,
   dates: Date[],
+  slotMinutes = 60,
 ): { startMinutes: number; endMinutes: number; slots: string[] } | null {
   const enabledWindows = dates
     .map((date) => getCommerceDailyOperatingWindow(config, date))
@@ -170,8 +171,8 @@ export function getCommerceCalendarRange(
   const startMinutes = Math.min(...enabledWindows.map((window) => window.openMinutes))
   const endMinutes = Math.max(...enabledWindows.map((window) => window.closeMinutes))
   const slots = Array.from(
-    { length: Math.max(0, Math.ceil((endMinutes - startMinutes) / 60)) },
-    (_, index) => minutesToTime(startMinutes + index * 60),
+    { length: Math.max(0, Math.ceil((endMinutes - startMinutes) / slotMinutes)) },
+    (_, index) => minutesToTime(startMinutes + index * slotMinutes),
   )
 
   return { startMinutes, endMinutes, slots }

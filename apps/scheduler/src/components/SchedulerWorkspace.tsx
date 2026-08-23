@@ -98,6 +98,12 @@ import {
   getConfiguredSchedulerProfessionals,
   type AdministrationSchedulerConfig,
 } from '@/lib/administration-scheduler-config'
+import {
+  getSchedulerAgendaSlotMinutes,
+  schedulerAgendaSettingsChangeEvent,
+  schedulerAgendaSettingsStorageKey,
+  type SchedulerAgendaSlotMinutes,
+} from '@/lib/scheduler-agenda-settings'
 
 const initialAvailabilityBlocksById = new Map(schedulerDayBlocks.map((block) => [block.id, block]))
 
@@ -170,6 +176,8 @@ export function SchedulerWorkspace() {
     useState<CommerceOperatingHours>(() =>
       getCommerceOperatingHours(allowedCommerces[0]?.id ?? ''),
     )
+  const [agendaSlotMinutes, setAgendaSlotMinutes] =
+    useState<SchedulerAgendaSlotMinutes>(() => getSchedulerAgendaSlotMinutes())
   const allowedBranches = useMemo(
     () =>
       configuredBranches.filter(
@@ -263,6 +271,26 @@ export function SchedulerWorkspace() {
   }, [selectedCommerce])
 
   useEffect(() => {
+    function refreshAgendaSlotMinutes() {
+      setAgendaSlotMinutes(getSchedulerAgendaSlotMinutes())
+    }
+
+    function handleStorage(event: StorageEvent) {
+      if (!event.key || event.key === schedulerAgendaSettingsStorageKey) {
+        refreshAgendaSlotMinutes()
+      }
+    }
+
+    refreshAgendaSlotMinutes()
+    window.addEventListener(schedulerAgendaSettingsChangeEvent, refreshAgendaSlotMinutes)
+    window.addEventListener('storage', handleStorage)
+    return () => {
+      window.removeEventListener(schedulerAgendaSettingsChangeEvent, refreshAgendaSlotMinutes)
+      window.removeEventListener('storage', handleStorage)
+    }
+  }, [])
+
+  useEffect(() => {
     function refreshOperatingHours() {
       setCommerceOperatingHours(getCommerceOperatingHours(selectedCommerce))
     }
@@ -354,8 +382,8 @@ export function SchedulerWorkspace() {
     return eachDayOfInterval({ start, end })
   }, [selectedDate])
   const calendarTimeSlots = useMemo(
-    () => getCommerceCalendarRange(commerceOperatingHours, [selectedDate])?.slots ?? [],
-    [commerceOperatingHours, selectedDate],
+    () => getCommerceCalendarRange(commerceOperatingHours, [selectedDate], agendaSlotMinutes)?.slots ?? [],
+    [agendaSlotMinutes, commerceOperatingHours, selectedDate],
   )
 
   useEffect(() => {
@@ -1365,6 +1393,7 @@ export function SchedulerWorkspace() {
           <div key={agendaMotionKey} className="scheduler-content-entrance">
             <SchedulerAgendaGrid
               currentView={currentView}
+              slotMinutes={agendaSlotMinutes}
               allBookings={bookings}
               visibleProfessionals={visibleProfessionals}
               visibleBookings={visibleBookings}
