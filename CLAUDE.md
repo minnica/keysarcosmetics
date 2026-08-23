@@ -104,12 +104,24 @@ el diseño y el autocuidado.
 
 ## Nuevas apps en preparación
 
-- `apps/finance` (`@cosmetics/finance`) sigue siendo un prototipo heredado. `apps/hr` (`@cosmetics/hr`) ya tiene una primera shell frontend homologada con Next 14, Tailwind y mocks locales; su backend/BD siguen deliberadamente pendientes.
+- `apps/finance` (`@cosmetics/finance`) y `apps/hr` (`@cosmetics/hr`) fueron incorporadas originalmente como prototipos heredados. Ambas ya tienen su frontend mock homologado con Next 14 y Tailwind; su backend, persistencia y autenticación compartida siguen deliberadamente pendientes según sus planes independientes.
 - Sus `package.json` ya fijan la arquitectura objetivo homologada: Next.js 14.2.4, React 18.3, TypeScript strict, `@cosmetics/ui`, `@cosmetics/types`, `@cosmetics/auth` y `@cosmetics/api-client`.
 - Finance será dueño de rentas, servicios financieros, deuda y capital de socios; debe consumir sucursales/ventas de Envelope y costos aprobados de Payroll sin duplicarlos.
 - HR será dueño de expedientes, estatus laboral histórico, turnos, descansos, vacaciones, permisos y políticas; debe reutilizar `Empleado`, `Sucursal`, `Position` y `Usuario`, sin conservar D1/Drizzle ni autenticación paralela.
 - El análisis de fuentes existentes, límites, riesgos y plan por fases vive en `apps/finance/GUIA_REFACTORIZACION.md` y `apps/hr/GUIA_REFACTORIZACION.md`.
-- HR ya conserva únicamente su frontend Next homologado y la documentación del plan; Finance todavía puede contener código heredado que no compile o arranque con su manifiesto objetivo.
+- Las fases pendientes de cada guía determinan qué integraciones todavía no están listas; no asumir backend, persistencia o autenticación terminados por la sola presencia de sus dependencias objetivo.
+
+### Estado de `finance` (frontend mock, 2026-08-23)
+
+- `apps/finance` ya tiene entrada Next.js App Router, TypeScript strict, Tailwind/PostCSS y layout responsivo propio del monorepo.
+- El inventario fuente de Finance quedó limpio del repositorio Vite/PWA heredado: no conservar `dist`, `.next`, `*.tsbuildinfo`, lockfiles anidados, service workers, manifests ni iconos/logos sin referencia. `public/geist.woff2` sí forma parte del frontend porque `globals.css` lo carga directamente.
+- El frontend fue migrado desde el prototipo Vite a `src/app/page.tsx` + `src/app/globals.css`; usa mocks en memoria y no persiste datos operativos en `localStorage` (solo la preferencia de tema), ni usa service worker, PWA o login local.
+- Finance reutiliza los primitivos canónicos de `@cosmetics/ui` para sidebar responsivo, botones, cards, badges, tablas, dialogs, inputs, selects, tabs, progreso y tooltips. Su paleta propia azul marino/índigo-violeta con superficies gris-lavanda y sus estados light/dark se definen exclusivamente en `apps/finance/src/app/globals.css` y `apps/finance/tailwind.config.ts`; no trasladar esos tonos a `packages/ui` ni a otras apps.
+- La preferencia visual de Finance se guarda de forma aislada en `keysar-finance-theme`; no comparte ni reemplaza `keysar-theme`, utilizada por Envelope y Payroll.
+- La navegación cubre resumen, sucursales, rentas, servicios, pagos, estado financiero, financiamientos, socios, aportaciones, proyecciones, accesos y reportes. Las 12 vistas conservan el inventario y la estructura funcional del prototipo heredado con datos mock: selector y consolidado del resumen; directorio de sucursales; resumen y tabla de rentas; catálogo/asignaciones de servicios; historial de pagos; estado y movimientos financieros; métricas/detalle de financiamientos; distribución y fichas de socios; resumen/detalle de aportaciones; métricas y gráficas de proyección; aviso/perfiles de acceso; y selector/catálogo de reportes. No sustituir estas estructuras por un placeholder genérico durante la integración con backend.
+- Los mocks de Finance son funcionales y viven exclusivamente en estado React durante la sesión. Sucursales, rentas, servicios, pagos, movimientos financieros, financiamientos, socios, aportaciones y accesos permiten alta, edición y eliminación con confirmación destructiva; los financiamientos también aceptan pagos, y dashboard/reportes recalculan o exportan desde el mismo estado. No persistir estos datos en `localStorage`, no crear API routes y no conectar Prisma/backend hasta que se soliciten explícitamente las fases posteriores.
+- Mantener sin cambios backend, Prisma, BD y autenticación compartida hasta ejecutar las fases 0, 2, 3 y 4 de `apps/finance/GUIA_REFACTORIZACION.md`.
+- Validación de cierre de limpieza (2026-08-23): `pnpm --filter @cosmetics/finance type-check`, `lint` y `build` terminaron correctamente. Los outputs generados se retiraron después de validar y deben seguir fuera del inventario fuente.
 
 ---
 

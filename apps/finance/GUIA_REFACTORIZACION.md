@@ -16,7 +16,7 @@ Nombre visible sugerido: **Keysar Finance** o **Control financiero**.
 - Catálogos, cálculos y permisos simulados en cliente.
 - Duplicación de datos que ya existen en la plataforma: sucursales, ventas, usuarios y algunos gastos.
 - Componentes y estilos locales que no consumen `@cosmetics/ui`.
-- Archivos de workspace, lockfile, artefactos `dist/`, service worker y PWA propios de un repositorio independiente.
+- El prototipo original incluía archivos de workspace, lockfile, artefactos `dist/`, service worker y PWA propios de un repositorio independiente; ya fueron retirados de `apps/finance` durante la homologación y limpieza.
 - No hay API, autorización autoritativa, auditoría, transacciones, snapshots contables ni pruebas de reglas financieras.
 
 El prototipo sí es útil como inventario funcional y referencia de flujos, pero no debe conservarse como base arquitectónica de producción.
@@ -103,11 +103,17 @@ Los nombres definitivos deben seguir el idioma inglés en código. Las migracion
 
 ### Fase 1 — esqueleto homologado
 
-1. Crear `src/app`, root layout, login y shell siguiendo el patrón canónico de `envelope`/`payroll`.
-2. Añadir `tsconfig.json`, `next.config.mjs`, PostCSS y Tailwind equivalentes al monorepo.
-3. Migrar fuentes, tokens, tema claro/oscuro, sidebar y estados de carga.
-4. Consumir `@cosmetics/ui`; eliminar gradualmente `src/components/UI.jsx` y `styles.css` monolítico.
-5. Retirar del proyecto los lockfiles/workspace anidados, `dist/` y configuración Vite únicamente cuando la migración ya tenga un punto de entrada Next funcional.
+**Estado de esta sesión: completada para frontend mock.** Finance ya usa el esqueleto Next.js/TypeScript descrito abajo. Se omitió deliberadamente la pantalla de login para que la demo entre directamente al shell; la autenticación compartida queda pendiente de la Fase 2.
+
+1. [x] Crear `src/app`, root layout y shell siguiendo el patrón canónico de las apps homologadas. El acceso inicia directamente en el dashboard mock, sin login.
+2. [x] Añadir `tsconfig.json`, `next.config.mjs`, PostCSS y Tailwind equivalentes al monorepo.
+3. [x] Migrar fuentes, tokens, tema claro/oscuro, sidebar, responsive layout y estados vacíos.
+4. [x] Eliminar `src/components/UI.jsx` y `styles.css` monolítico; los componentes visuales viven en la superficie TypeScript de la app.
+5. [x] Retirar `index.html`, Vite, service worker, manifest PWA, workspace anidado, lockfile heredado, artefactos `dist/` y recursos PWA sin uso.
+
+La carpeta conserva únicamente el frontend Next.js, su configuración, la fuente local realmente utilizada y la documentación de las fases futuras. Los outputs reconstruibles (`.next`, `dist` y `*.tsbuildinfo`) permanecen ignorados por Git y no forman parte del inventario fuente.
+
+**Validación de cierre (2026-08-23):** `type-check`, `lint` y `build` se ejecutaron correctamente desde el workspace raíz después de limpiar el legado.
 
 ### Fase 2 — auth, permisos y datos de solo lectura
 
@@ -146,4 +152,16 @@ Los nombres definitivos deben seguir el idioma inglés en código. Las migracion
 
 ## Alcance de esta sesión
 
-En esta sesión solo se renombró la carpeta, se homologó el `package.json` como contrato de arquitectura futura y se creó esta guía. No se migraron componentes, rutas, datos, backend, Prisma, autenticación ni estilos.
+- [x] Migración del frontend heredado Vite a Next.js App Router + TypeScript strict.
+- [x] Shell visual con navegación de las áreas funcionales, responsive, modo claro/oscuro y componentes Lucide.
+- [x] Dashboard mock con métricas, gráfica, estado por sucursal, actividad reciente y búsqueda/alta mock de sucursales.
+- [x] Restauración del inventario visual de las 12 pantallas heredadas sobre componentes de `@cosmetics/ui`; cada módulo conserva sus secciones, tablas, resúmenes, estados vacíos y dialogs aunque los datos continúen siendo mocks.
+- [x] CRUD mock en memoria para los catálogos y movimientos de todas las vistas editables, con confirmaciones de borrado, aplicación mock de pagos de financiamiento y exportaciones CSV/impresión desde el navegador. No existe persistencia operativa ni conexión a backend.
+- [x] Eliminación del login local y de toda persistencia operativa en `localStorage`.
+- [x] Eliminación de backend/BD, API routes, Prisma y autenticación paralela del alcance de esta sesión.
+- [ ] Fase 0: decisiones de negocio y validación de datos reales.
+- [ ] Fase 2: sesión JWT, permisos y datos de solo lectura desde API compartida.
+- [ ] Fase 3: modelos Prisma y persistencia propia.
+- [ ] Fase 4: reportes agregados, exportaciones y endurecimiento.
+
+La guía debe permanecer en el repositorio porque todavía quedan las fases de backend, autenticación, persistencia y validación por ejecutar.
