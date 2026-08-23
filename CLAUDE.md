@@ -142,6 +142,14 @@ el diseño y el autocuidado.
 | `@cosmetics/auth`       | Lógica JWT y roles compartida                         |
 | `@cosmetics/api-client` | Cliente axios compartido                              |
 
+### Compilación de paquetes compartidos en backend
+
+- `backend/api` es una sola API REST compartida por `envelope`, `payroll`, `crm`, `scheduler`, `pos` y las aplicaciones internas que se agreguen después; cada producto mantiene sus rutas y servicios por módulo dentro de la misma API.
+- El backend nunca debe resolver imports contra `packages/*/src`. Su `tsconfig.json` resuelve `@cosmetics/*` contra `packages/*/dist/index.d.ts`, y Node carga la salida CommonJS de `dist`.
+- Todo paquete compartido que la API consuma debe declarar un script `build`, exponer una salida CommonJS en `dist` y figurar como dependencia workspace de `backend/api/package.json`.
+- Antes de `dev`, `build` y `type-check`, la API construye automáticamente sus dependencias internas mediante el grafo de pnpm (`@cosmetics/api^...`). No mantener listas manuales de paquetes en Docker.
+- Los frontends conservan la condición `import` hacia `src` para que Next.js/Vite puedan trabajar con el código fuente del workspace durante desarrollo.
+
 ---
 
 ## Roles del sistema

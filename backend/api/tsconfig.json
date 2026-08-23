@@ -8,8 +8,7 @@
     "lib": ["ES2022"],
     "exactOptionalPropertyTypes": false,
     "paths": {
-      "@cosmetics/types": ["../../packages/types/src/index.ts"],
-      "@cosmetics/auth": ["../../packages/auth/src/index.ts"]
+      "@cosmetics/*": ["../../packages/*/dist/index.d.ts"]
     }
   },
   "include": ["src"],
