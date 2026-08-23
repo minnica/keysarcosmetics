@@ -24,8 +24,8 @@ import {
   type Professional,
 } from '@/lib/mock-scheduler-data'
 
-export const schedulerOpeningHour = 9
-export const schedulerClosingHour = 21
+export const schedulerOpeningHour = 0
+export const schedulerClosingHour = 24
 
 export const startHourOptions = Array.from({ length: schedulerClosingHour - schedulerOpeningHour }, (_value, index) => {
   const hour = schedulerOpeningHour + index
@@ -105,21 +105,27 @@ export function getMinutesFromTime(value: string): number {
   return hours * 60 + minutes
 }
 
-export function getAppointmentStyle(start: string, end: string): { top: string; height: string } {
+export function getAppointmentStyle(
+  start: string,
+  end: string,
+  baseMinutes = schedulerBaseMinutes,
+  closingMinutes = schedulerClosingMinutes,
+): { top: string; height: string } {
   const startMinutes = getMinutesFromTime(start)
   const endMinutes = getMinutesFromTime(end)
+  const slotCount = Math.ceil((closingMinutes - baseMinutes) / schedulerSlotMinutes)
   const startCellIndex = Math.max(
     0,
     Math.min(
-      Math.floor((startMinutes - schedulerBaseMinutes) / schedulerSlotMinutes),
-      schedulerClosingHour - schedulerOpeningHour,
+      Math.floor((startMinutes - baseMinutes) / schedulerSlotMinutes),
+      slotCount,
     ),
   )
   const endCellIndex = Math.max(
     startCellIndex + 1,
     Math.min(
-      Math.ceil((endMinutes - schedulerBaseMinutes) / schedulerSlotMinutes),
-      schedulerClosingHour - schedulerOpeningHour + 1,
+      Math.ceil((endMinutes - baseMinutes) / schedulerSlotMinutes),
+      slotCount,
     ),
   )
   const rowSpan = endCellIndex - startCellIndex
@@ -130,13 +136,18 @@ export function getAppointmentStyle(start: string, end: string): { top: string; 
   }
 }
 
-export function getSingleCellAppointmentStyle(start: string): { top: string; height: string } {
+export function getSingleCellAppointmentStyle(
+  start: string,
+  baseMinutes = schedulerBaseMinutes,
+  closingMinutes = schedulerClosingMinutes,
+): { top: string; height: string } {
   const startMinutes = getMinutesFromTime(start)
+  const slotCount = Math.ceil((closingMinutes - baseMinutes) / schedulerSlotMinutes)
   const startCellIndex = Math.max(
     0,
     Math.min(
-      Math.floor((startMinutes - schedulerBaseMinutes) / schedulerSlotMinutes),
-      schedulerClosingHour - schedulerOpeningHour,
+      Math.floor((startMinutes - baseMinutes) / schedulerSlotMinutes),
+      slotCount,
     ),
   )
 
@@ -146,12 +157,15 @@ export function getSingleCellAppointmentStyle(start: string): { top: string; hei
   }
 }
 
-export function getCurrentTimeLineStyle(value: string): { top: string } {
+export function getCurrentTimeLineStyle(
+  value: string,
+  baseMinutes = schedulerBaseMinutes,
+): { top: string } {
   const currentMinutes = getMinutesFromTime(value)
   const pixelsPerMinute = schedulerRowHeight / 60
 
   return {
-    top: `${schedulerHeaderOffset + (currentMinutes - schedulerBaseMinutes) * pixelsPerMinute}px`,
+    top: `${schedulerHeaderOffset + (currentMinutes - baseMinutes) * pixelsPerMinute}px`,
   }
 }
 
@@ -213,6 +227,7 @@ export function getAvailableBookingStartTimes({
   professionalId,
   durationMinutes,
   editingBookingId,
+  allowBlockedTimes = false,
 }: {
   bookings: Booking[]
   availabilityBlocks: AvailabilityBlock[]
@@ -220,6 +235,7 @@ export function getAvailableBookingStartTimes({
   professionalId: string
   durationMinutes: number
   editingBookingId?: string
+  allowBlockedTimes?: boolean
 }): string[] {
   if (!professionalId || durationMinutes <= 0) return []
 
@@ -254,7 +270,7 @@ export function getAvailableBookingStartTimes({
       timesOverlap(block.start, block.end, start, end),
     )
 
-    if (!overlapsBooking && !overlapsBlock) candidates.push(start)
+    if (!overlapsBooking && (allowBlockedTimes || !overlapsBlock)) candidates.push(start)
   }
 
   return candidates
@@ -502,7 +518,7 @@ export function getLegendIcon(icon: (typeof schedulerLegendItems)[number]['icon'
 export function getProfessionalName(professionalId: string): string {
   return (
     schedulerProfessionals.find((professional) => professional.id === professionalId)?.name ??
-    'Sin recurso asignado'
+    'Sin especialista asignado'
   )
 }
 

@@ -82,9 +82,11 @@ import {
 
 import {
   createEmptyLocal,
+  createEmptyCommerce,
   createClassSchedule,
   createSchedule,
   initialCommissions,
+  initialCommerces,
   initialConsents,
   initialGiftCards,
   initialGroups,
@@ -99,6 +101,7 @@ import {
   scheduleDays,
   surveyCategories,
   type CommissionRecord,
+  type CommerceRecord,
   type ClassScheduleDay,
   type ConsentRecord,
   type EntityStatus,
@@ -122,12 +125,19 @@ import {
   bookingStatuses,
   defaultBookingStatusColors,
   getBookingStatusColors,
-  schedulerCommerces,
   schedulerStatusColorStorageKey,
   type BookingStatus,
   type BookingStatusColors,
 } from "@/lib/mock-scheduler-data";
 import { schedulerFinancialProfiles } from "@/lib/scheduler-access";
+import {
+  getCommerceOperatingHours,
+  saveCommerceOperatingHours,
+} from "@/lib/commerce-operating-hours";
+import {
+  getAdministrationSchedulerConfig,
+  saveAdministrationSchedulerConfig,
+} from "@/lib/administration-scheduler-config";
 import {
   AdministrationNavMenu,
   ReportsNavMenu,
@@ -161,7 +171,7 @@ const sectionGroups: {
   {
     label: "Información básica",
     items: [
-      { id: "locals", label: "Sucursales", icon: <Globe2 className="h-4 w-4" /> },
+      { id: "locals", label: "Comercios", icon: <Globe2 className="h-4 w-4" /> },
       {
         id: "professionals",
         label: "Profesionales",
@@ -239,9 +249,9 @@ const sectionTitles: Record<
 > = {
   locals: {
     eyebrow: "Administración",
-    title: "Sucursales",
+    title: "Comercios",
     description:
-      "Configura las sucursales de cada comercio, sus horarios y los datos que utilizará la agenda.",
+      "Configura cada comercio, su horario operativo y las sucursales y especialistas asociados.",
   },
   professionals: {
     eyebrow: "Administración",
@@ -315,6 +325,10 @@ const cloneLocal = (local: LocalRecord): LocalRecord => ({
   ...local,
   schedule: cloneSchedule(local.schedule),
   specialDays: local.specialDays.map((day) => ({ ...day })),
+});
+const cloneCommerce = (commerce: CommerceRecord): CommerceRecord => ({
+  ...commerce,
+  schedule: cloneSchedule(commerce.schedule),
 });
 const cloneProfessional = (
   professional: ProfessionalRecord,
@@ -1498,11 +1512,13 @@ function ConfirmDialog({
 function LocalDialog({
   open,
   local,
+  commerces,
   onOpenChange,
   onSave,
 }: {
   open: boolean;
   local: LocalRecord | null;
+  commerces: CommerceRecord[];
   onOpenChange: (open: boolean) => void;
   onSave: (local: LocalRecord) => void;
 }) {
@@ -1567,8 +1583,8 @@ function LocalDialog({
               id="local-commerce"
               label="Comercio"
               value={draft.commerceId}
-              onChange={(value) => update({ commerceId: value })}
-              options={schedulerCommerces.map((commerce) => ({
+              onChange={(commerceId) => update({ commerceId })}
+              options={commerces.map((commerce) => ({
                 value: commerce.id,
                 label: commerce.name,
               }))}
@@ -1634,20 +1650,6 @@ function LocalDialog({
               onChange={(value) => update({ email: value })}
               type="email"
             />
-          </div>
-          <div>
-            <h3 className="admin-schedule-title">
-              Horario de inicio y fin de la jornada
-            </h3>
-            <p className="admin-help">
-              Activa los días en que atiendes y configura tus horas laborales.
-            </p>
-            <div className="mt-3">
-              <ScheduleRows
-                schedule={draft.schedule}
-                onChange={(schedule) => update({ schedule })}
-              />
-            </div>
           </div>
         </div>
       ) : (
@@ -1982,9 +1984,11 @@ function SpecialDayDialog({
 }
 
 function LocalSection({
+  commerces,
   locals,
   setLocals,
 }: {
+  commerces: CommerceRecord[];
   locals: LocalRecord[];
   setLocals: (
     value: LocalRecord[] | ((current: LocalRecord[]) => LocalRecord[]),
@@ -1995,8 +1999,6 @@ function LocalSection({
   const [search, setSearch] = useState("");
   const [editing, setEditing] = useState<LocalRecord | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [specialLocal, setSpecialLocal] = useState<LocalRecord | null>(null);
-  const [previewId, setPreviewId] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<LocalRecord | null>(null);
   const visible = useMemo(
     () =>
@@ -2032,8 +2034,8 @@ function LocalSection({
   return (
     <div className="space-y-6">
       <SectionHeader
-        title="Sucursales"
-        description="Configura las ubicaciones, horarios y datos operativos de cada comercio."
+        title="Sucursales de los comercios"
+        description="Da de alta las ubicaciones y asígnalas al comercio correspondiente. El horario se configura en el comercio."
         action={
           <Button
             className="admin-primary"
@@ -2048,9 +2050,8 @@ function LocalSection({
         }
       />
       <InfoBanner icon={<CalendarDays className="h-5 w-5" />}>
-        <strong>Configura el horario y la dirección de la sucursal.</strong> Esta
-        información será la base para agendar citas manuales y reservas en
-        línea.
+        <strong>La sucursal pertenece a un comercio.</strong> Aquí sólo se administra
+        su ubicación y datos de contacto; el horario operativo se define en el comercio.
       </InfoBanner>
       <div className="max-w-sm">
         <SelectField
@@ -2060,7 +2061,7 @@ function LocalSection({
           onChange={setCommerceFilter}
           options={[
             { value: "all", label: "Todos los comercios" },
-            ...schedulerCommerces.map((commerce) => ({
+            ...commerces.map((commerce) => ({
               value: commerce.id,
               label: commerce.name,
             })),
@@ -2113,7 +2114,7 @@ function LocalSection({
                       {local.address}
                     </p>
                     <p className="mt-1 text-xs font-medium text-[#7460a4]">
-                      {schedulerCommerces.find(
+                      {commerces.find(
                         (commerce) => commerce.id === local.commerceId,
                       )?.name ?? "Comercio sin asignar"}
                     </p>
@@ -2123,47 +2124,6 @@ function LocalSection({
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-2 lg:justify-end">
-                  <Popover
-                    open={previewId === local.id}
-                    onOpenChange={(open) =>
-                      setPreviewId(open ? local.id : null)
-                    }
-                  >
-                    <PopoverTrigger asChild>
-                      <Button variant="ghost" size="sm">
-                        <Eye className="mr-2 h-4 w-4" />
-                        Ver horario
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent align="end" className="admin-popover w-80">
-                      <div className="mb-3 flex items-center gap-2 font-semibold text-[#263649]">
-                        <Clock3 className="h-4 w-4 text-[#7460a4]" />
-                        Horario semanal
-                      </div>
-                      <div className="space-y-2 text-sm">
-                        {local.schedule.map((day) => (
-                          <div key={day.day} className="flex justify-between">
-                            <span>{day.day.slice(0, 3)}</span>
-                            <span className="text-slate-500">
-                              {day.enabled
-                                ? `${day.open} – ${day.close}`
-                                : "Cerrado"}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                      <Button
-                        variant="link"
-                        className="mt-3 h-auto p-0 text-[#7460a4]"
-                        onClick={() => {
-                          setPreviewId(null);
-                          setSpecialLocal(local);
-                        }}
-                      >
-                        Editar jornadas especiales
-                      </Button>
-                    </PopoverContent>
-                  </Popover>
                   <Button
                     variant="outline"
                     size="sm"
@@ -2192,14 +2152,6 @@ function LocalSection({
                       <Button
                         variant="ghost"
                         className="w-full justify-start"
-                        onClick={() => setSpecialLocal(local)}
-                      >
-                        <CalendarDays className="mr-2 h-4 w-4" />
-                        Habilitar jornada especial
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        className="w-full justify-start"
                         onClick={() => setConfirming(local)}
                       >
                         <SlidersHorizontal className="mr-2 h-4 w-4" />
@@ -2218,31 +2170,9 @@ function LocalSection({
       <LocalDialog
         open={dialogOpen}
         local={editing}
+        commerces={commerces}
         onOpenChange={setDialogOpen}
         onSave={save}
-      />
-      <SpecialDayDialog
-        open={Boolean(specialLocal)}
-        title={
-          specialLocal
-            ? `Abrir día para ${specialLocal.name}`
-            : "Jornada especial"
-        }
-        days={specialLocal?.specialDays ?? []}
-        onOpenChange={(open) => {
-          if (!open) setSpecialLocal(null);
-        }}
-        onSave={(days) => {
-          if (!specialLocal) return;
-          setLocals((current) =>
-            current.map((local) =>
-              local.id === specialLocal.id
-                ? { ...local, specialDays: days }
-                : local,
-            ),
-          );
-          toast.success("Jornada especial guardada.");
-        }}
       />
       <ConfirmDialog
         open={Boolean(confirming)}
@@ -2259,6 +2189,293 @@ function LocalSection({
           confirming?.status === "active" ? "Desactivar" : "Activar"
         }
         onConfirm={toggle}
+      />
+    </div>
+  );
+}
+
+function CommerceDialog({
+  open,
+  commerce,
+  branchNames,
+  professionalNames,
+  onOpenChange,
+  onSave,
+}: {
+  open: boolean;
+  commerce: CommerceRecord | null;
+  branchNames: string[];
+  professionalNames: string[];
+  onOpenChange: (open: boolean) => void;
+  onSave: (commerce: CommerceRecord) => void;
+}) {
+  const [draft, setDraft] = useState<CommerceRecord>(createEmptyCommerce());
+
+  useEffect(() => {
+    if (!open) return;
+    const next = commerce ? cloneCommerce(commerce) : createEmptyCommerce();
+    const savedHours = getCommerceOperatingHours(next.id);
+    setDraft({
+      ...next,
+      open24Hours: savedHours.is24Hours,
+      schedule: next.schedule.map((day) => ({
+        ...day,
+        ...savedHours.schedule.find((savedDay) => savedDay.day === day.day),
+        day: day.day,
+      })),
+    });
+  }, [commerce, open]);
+
+  const save = () => {
+    if (!draft.name.trim()) {
+      toast.error("Escribe el nombre del comercio.");
+      return;
+    }
+    if (
+      !draft.open24Hours &&
+      (!draft.schedule.some((day) => day.enabled) ||
+        draft.schedule.some((day) => day.enabled && day.close <= day.open))
+    ) {
+      toast.error("Configura al menos un día con un horario de servicio válido.");
+      return;
+    }
+    onSave({ ...draft, name: draft.name.trim() });
+    onOpenChange(false);
+  };
+
+  return (
+    <ModalShell
+      open={open}
+      onOpenChange={onOpenChange}
+      title={commerce ? `Editar ${commerce.name}` : "Nuevo comercio"}
+      onSave={save}
+      wide
+    >
+      <div className="space-y-6">
+        <div className="admin-form-grid">
+          <div className="sm:col-span-2">
+            <Field
+              id="commerce-name"
+              label="Nombre del comercio"
+              required
+              value={draft.name}
+              onChange={(name) => setDraft((current) => ({ ...current, name }))}
+              placeholder="Ej. Keysar Cosmetics"
+            />
+          </div>
+          <div className="admin-setting-row sm:col-span-2">
+            <div>
+              <p className="font-medium">Comercio activo</p>
+              <p className="admin-help">Permite utilizar sus sucursales y especialistas en Agenda.</p>
+            </div>
+            <Toggle
+              checked={draft.status === "active"}
+              label="Cambiar estado del comercio"
+              onChange={(active) =>
+                setDraft((current) => ({
+                  ...current,
+                  status: active ? "active" : "inactive",
+                }))
+              }
+            />
+          </div>
+        </div>
+
+        <section>
+          <h3 className="admin-schedule-title">Horario de servicio del comercio</h3>
+          <p className="admin-help">
+            Se aplica a todas las sucursales y especialistas asociados.
+          </p>
+          <div className="mt-3 space-y-3">
+            <div className="admin-setting-row">
+              <div>
+                <p className="font-medium">Comercio abierto 24 horas</p>
+                <p className="admin-help">Habilita todos los horarios, todos los días.</p>
+              </div>
+              <Toggle
+                checked={draft.open24Hours}
+                label="Activar operación 24 horas"
+                onChange={(open24Hours) =>
+                  setDraft((current) => ({ ...current, open24Hours }))
+                }
+              />
+            </div>
+            {draft.open24Hours ? (
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+                Operación continua: lunes a domingo, de 00:00 a 24:00.
+              </div>
+            ) : (
+              <ScheduleRows
+                schedule={draft.schedule}
+                onChange={(schedule) =>
+                  setDraft((current) => ({ ...current, schedule }))
+                }
+              />
+            )}
+          </div>
+        </section>
+
+        <section className="grid gap-4 md:grid-cols-2">
+          <div className="rounded-2xl border border-[#e6ddd7] bg-white p-4">
+            <h3 className="admin-section-title">Sucursales asociadas</h3>
+            <p className="admin-help mt-1">{branchNames.length} sucursales</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {branchNames.length ? branchNames.map((name) => (
+                <Badge key={name} variant="secondary">{name}</Badge>
+              )) : <span className="text-sm text-slate-400">Sin sucursales todavía.</span>}
+            </div>
+          </div>
+          <div className="rounded-2xl border border-[#e6ddd7] bg-white p-4">
+            <h3 className="admin-section-title">Especialistas asociados</h3>
+            <p className="admin-help mt-1">{professionalNames.length} especialistas</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {professionalNames.length ? professionalNames.map((name) => (
+                <Badge key={name} variant="secondary">{name}</Badge>
+              )) : <span className="text-sm text-slate-400">Sin especialistas todavía.</span>}
+            </div>
+          </div>
+        </section>
+      </div>
+    </ModalShell>
+  );
+}
+
+function CommerceSection({
+  commerces,
+  setCommerces,
+  locals,
+  setLocals,
+  professionals,
+}: {
+  commerces: CommerceRecord[];
+  setCommerces: (
+    value: CommerceRecord[] | ((current: CommerceRecord[]) => CommerceRecord[]),
+  ) => void;
+  locals: LocalRecord[];
+  setLocals: (
+    value: LocalRecord[] | ((current: LocalRecord[]) => LocalRecord[]),
+  ) => void;
+  professionals: ProfessionalRecord[];
+}) {
+  const [editing, setEditing] = useState<CommerceRecord | null>(null);
+  const [dialogOpen, setDialogOpen] = useState(false);
+
+  const save = (commerce: CommerceRecord) => {
+    setCommerces((current) =>
+      current.some((item) => item.id === commerce.id)
+        ? current.map((item) => (item.id === commerce.id ? commerce : item))
+        : [...current, commerce],
+    );
+    saveCommerceOperatingHours({
+      commerceId: commerce.id,
+      is24Hours: commerce.open24Hours,
+      schedule: commerce.schedule.map(({ day, enabled, open, close }) => ({
+        day,
+        enabled,
+        open,
+        close,
+      })),
+    });
+    toast.success(editing ? "Comercio actualizado." : "Comercio creado.", {
+      description: "La configuración ya está disponible en Agenda.",
+    });
+  };
+
+  const dialogCommerce = editing;
+  const dialogCommerceId = dialogCommerce?.id ?? "";
+  const branchNames = locals
+    .filter((local) => local.commerceId === dialogCommerceId)
+    .map((local) => local.name);
+  const professionalNames = professionals
+    .filter((professional) => professional.commerceIds.includes(dialogCommerceId))
+    .map((professional) => professional.name);
+
+  return (
+    <div className="space-y-8">
+      <section className="space-y-6">
+        <SectionHeader
+          title="Comercios"
+          description="Administra cada comercio, su horario operativo y las entidades que dependen de él."
+          action={
+            <Button
+              className="admin-primary"
+              onClick={() => {
+                setEditing(null);
+                setDialogOpen(true);
+              }}
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              Nuevo comercio
+            </Button>
+          }
+        />
+        <InfoBanner icon={<Globe2 className="h-5 w-5" />}>
+          <strong>El comercio es la entidad principal.</strong> Sus horarios se aplican en Agenda a todas sus sucursales y especialistas.
+        </InfoBanner>
+        <div className="grid gap-4 xl:grid-cols-2">
+          {commerces.map((commerce) => {
+            const commerceBranches = locals.filter((local) => local.commerceId === commerce.id);
+            const commerceProfessionals = professionals.filter((professional) =>
+              professional.commerceIds.includes(commerce.id),
+            );
+            return (
+              <Card key={commerce.id} className="admin-card">
+                <CardContent className="space-y-4 p-5">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex min-w-0 items-start gap-3">
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#f0ebf6] text-[#7460a4]">
+                        <Globe2 className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="font-semibold text-[#263649]">{commerce.name}</h3>
+                          <StatusBadge status={commerce.status} />
+                        </div>
+                        <p className="mt-1 text-sm text-slate-500">
+                          {commerce.open24Hours ? "Abierto 24 horas" : "Horario semanal configurado"}
+                        </p>
+                      </div>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setEditing(cloneCommerce(commerce));
+                        setDialogOpen(true);
+                      }}
+                    >
+                      <Pencil className="mr-2 h-4 w-4" />
+                      Editar
+                    </Button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="rounded-xl bg-slate-100 px-3 py-2.5">
+                      <p className="text-xs text-slate-500">Sucursales</p>
+                      <p className="mt-1 font-semibold text-slate-800">{commerceBranches.length}</p>
+                    </div>
+                    <div className="rounded-xl bg-slate-100 px-3 py-2.5">
+                      <p className="text-xs text-slate-500">Especialistas</p>
+                      <p className="mt-1 font-semibold text-slate-800">{commerceProfessionals.length}</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="border-t border-[#e1d8d1] pt-8">
+        <LocalSection commerces={commerces} locals={locals} setLocals={setLocals} />
+      </section>
+
+      <CommerceDialog
+        open={dialogOpen}
+        commerce={editing}
+        branchNames={branchNames}
+        professionalNames={professionalNames}
+        onOpenChange={setDialogOpen}
+        onSave={save}
       />
     </div>
   );
@@ -2355,6 +2572,7 @@ function Toolbar({
 function ProfessionalDialog({
   open,
   professional,
+  commerces,
   locals,
   services,
   onOpenChange,
@@ -2362,6 +2580,7 @@ function ProfessionalDialog({
 }: {
   open: boolean;
   professional: ProfessionalRecord | null;
+  commerces: CommerceRecord[];
   locals: LocalRecord[];
   services: ServiceRecord[];
   onOpenChange: (open: boolean) => void;
@@ -2539,7 +2758,7 @@ function ProfessionalDialog({
                   }}
                   options={locals.map((local) => ({
                     value: local.id,
-                    label: `${schedulerCommerces.find((commerce) => commerce.id === local.commerceId)?.name ?? "SIN COMERCIO"} · ${local.name}`,
+                    label: `${commerces.find((commerce) => commerce.id === local.commerceId)?.name ?? "SIN COMERCIO"} · ${local.name}`,
                   }))}
                   placeholder="Selecciona sucursales"
                   searchPlaceholder="Buscar comercio o sucursal"
@@ -2876,11 +3095,13 @@ function GroupDialog({
 }
 
 function ProfessionalsSection({
+  commerces,
   locals,
   services,
   professionals,
   setProfessionals,
 }: {
+  commerces: CommerceRecord[];
   locals: LocalRecord[];
   services: ServiceRecord[];
   professionals: ProfessionalRecord[];
@@ -3193,6 +3414,7 @@ function ProfessionalsSection({
       <ProfessionalDialog
         open={proDialog}
         professional={editing}
+        commerces={commerces}
         locals={locals}
         services={services}
         onOpenChange={setProDialog}
@@ -8221,13 +8443,13 @@ function AdministrationHeader({
   );
 }
 
-function StatusColorsSection() {
+function StatusColorsSection({ commerces }: { commerces: CommerceRecord[] }) {
   const [authorized, setAuthorized] = useState(false);
   const [authorizationCode, setAuthorizationCode] = useState("");
   const [authorizationError, setAuthorizationError] = useState("");
-  const [commerceId, setCommerceId] = useState(schedulerCommerces[0]?.id ?? "");
+  const [commerceId, setCommerceId] = useState(commerces[0]?.id ?? "");
   const [colors, setColors] = useState<BookingStatusColors>(() =>
-    getBookingStatusColors(schedulerCommerces[0]?.id ?? ""),
+    getBookingStatusColors(commerces[0]?.id ?? ""),
   );
   const [saved, setSaved] = useState(false);
 
@@ -8357,7 +8579,7 @@ function StatusColorsSection() {
                 value={commerceId}
                 onChange={(event) => setCommerceId(event.target.value)}
               >
-                {schedulerCommerces.map((commerce) => (
+                {commerces.map((commerce) => (
                   <option key={commerce.id} value={commerce.id}>
                     {commerce.name}
                   </option>
@@ -8422,12 +8644,16 @@ export function AdministrationWorkspace() {
     allowedAdminSections[0] ?? "locals",
   );
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [commerces, setCommerces] = useState<CommerceRecord[]>(() =>
+    initialCommerces.map(cloneCommerce),
+  );
   const [locals, setLocals] = useState<LocalRecord[]>(() =>
     initialLocals.map(cloneLocal),
   );
   const [professionals, setProfessionals] = useState<ProfessionalRecord[]>(() =>
     initialProfessionals.map(cloneProfessional),
   );
+  const [configurationHydrated, setConfigurationHydrated] = useState(false);
   const [services, setServices] = useState<ServiceRecord[]>(() =>
     initialServices.map((service) => ({
       ...service,
@@ -8435,12 +8661,39 @@ export function AdministrationWorkspace() {
     })),
   );
   useEffect(() => {
+    const configuration = getAdministrationSchedulerConfig();
+    setCommerces(
+      configuration.commerces.map((commerce) => {
+        const hours = getCommerceOperatingHours(commerce.id);
+        return {
+          ...cloneCommerce(commerce),
+          open24Hours: hours.is24Hours,
+          schedule: commerce.schedule.map((day) => ({
+            ...day,
+            ...hours.schedule.find((savedDay) => savedDay.day === day.day),
+            day: day.day,
+          })),
+        };
+      }),
+    );
+    setLocals(configuration.locals.map(cloneLocal));
+    setProfessionals(configuration.professionals.map(cloneProfessional));
+    setConfigurationHydrated(true);
+
     const params = new URLSearchParams(window.location.search);
     const section = params.get("section") as AdminSection | null;
     if (section && sectionTitles[section] && canAccessAdminSection(section)) {
       setActive(section);
     }
   }, []);
+  useEffect(() => {
+    if (!configurationHydrated) return;
+    try {
+      saveAdministrationSchedulerConfig({ commerces, locals, professionals });
+    } catch {
+      toast.error("No fue posible sincronizar la configuración con la agenda.");
+    }
+  }, [commerces, configurationHydrated, locals, professionals]);
   const selectSection = (section: AdminSection) => {
     if (!canAccessAdminSection(section)) return;
     setActive(section);
@@ -8450,10 +8703,19 @@ export function AdministrationWorkspace() {
   const renderSection = () => {
     switch (active) {
       case "locals":
-        return <LocalSection locals={locals} setLocals={setLocals} />;
+        return (
+          <CommerceSection
+            commerces={commerces}
+            setCommerces={setCommerces}
+            locals={locals}
+            setLocals={setLocals}
+            professionals={professionals}
+          />
+        );
       case "professionals":
         return (
           <ProfessionalsSection
+            commerces={commerces}
             locals={locals}
             services={services}
             professionals={professionals}
@@ -8487,7 +8749,7 @@ export function AdministrationWorkspace() {
       case "gift-cards":
         return <GiftCardsSection services={services} />;
       case "status-colors":
-        return <StatusColorsSection />;
+        return <StatusColorsSection commerces={commerces} />;
     }
   };
   return (

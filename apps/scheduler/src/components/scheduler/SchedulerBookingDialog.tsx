@@ -90,6 +90,7 @@ export function SchedulerBookingDialog({
         dateKey: selectedDateKey,
         professionalId: draft.professionalId,
         durationMinutes: selectedService?.durationMinutes ?? 60,
+        allowBlockedTimes: true,
         ...(draft.bookingId ? { editingBookingId: draft.bookingId } : {}),
       }),
     [
@@ -379,7 +380,7 @@ export function SchedulerBookingDialog({
                 </p>
               ) : (
                 <p className="mt-3 text-sm text-slate-500" role="status">
-                  Solo se muestran horarios libres; las reservas canceladas no bloquean disponibilidad.
+                  Se muestran horarios sin otra reserva. Las franjas bloqueadas requieren doble validación al guardar.
                 </p>
               )}
 

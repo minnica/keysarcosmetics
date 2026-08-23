@@ -51,7 +51,7 @@ const administrationGroups: Array<{
   {
     label: "Información básica",
     items: [
-      { id: "locals", label: "Sucursales", icon: <Globe2 className="h-4 w-4" /> },
+      { id: "locals", label: "Comercios", icon: <Globe2 className="h-4 w-4" /> },
       { id: "professionals", label: "Profesionales", icon: <UsersRound className="h-4 w-4" /> },
       { id: "services", label: "Servicios", icon: <Sparkles className="h-4 w-4" /> },
     ],

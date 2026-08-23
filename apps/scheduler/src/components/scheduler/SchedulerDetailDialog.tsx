@@ -20,7 +20,6 @@ import {
 } from '@/lib/mock-scheduler-data'
 import {
   formatMoney,
-  getProfessionalName,
   getServiceByName,
   type ClientPurchaseAccount,
 } from './scheduler-utils'
@@ -29,6 +28,7 @@ interface SchedulerDetailDialogProps {
   open: boolean
   view: 'payment' | 'attendance' | 'record'
   booking: Booking | null
+  commerceName: string
   attendingSpecialists: AttendingSpecialist[]
   clientAccount: ClientPurchaseAccount
   financialHistoryAuthorized: boolean
@@ -49,6 +49,7 @@ export function SchedulerDetailDialog({
   open,
   view,
   booking,
+  commerceName,
   attendingSpecialists,
   clientAccount,
   financialHistoryAuthorized,
@@ -93,7 +94,6 @@ export function SchedulerDetailDialog({
   if (!booking) return null
 
   const service = getServiceByName(booking.serviceName)
-  const professionalName = getProfessionalName(booking.professionalId)
 
   function validatePayment(): { amount: number; tentativeAmount?: number } | null {
     const parsedAmount = Number(amount.replace(',', '.'))
@@ -517,8 +517,8 @@ export function SchedulerDetailDialog({
                   <div className="flex items-start gap-3 rounded-xl border border-[rgba(236,209,200,0.88)] bg-white px-4 py-3">
                     <User className="mt-0.5 h-4 w-4 text-slate-500" />
                     <div>
-                      <p className="text-[0.78rem] font-medium text-slate-500">Recurso de agenda</p>
-                      <p className="mt-1 text-[0.96rem] text-[var(--scheduler-ink-strong)]">{professionalName}</p>
+                      <p className="text-[0.78rem] font-medium text-slate-500">Comercio</p>
+                      <p className="mt-1 text-[0.96rem] text-[var(--scheduler-ink-strong)]">{commerceName}</p>
                     </div>
                   </div>
 

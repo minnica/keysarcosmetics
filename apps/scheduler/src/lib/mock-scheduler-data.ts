@@ -332,8 +332,8 @@ export const schedulerServices: ServiceOption[] = [
   { id: 'svc-8', name: 'DOBLE FACIAL', durationMinutes: 120, price: 4200 },
 ]
 
-export const schedulerTimeSlots = Array.from({ length: 13 }, (_value, index) => {
-  const hour = 9 + index
+export const schedulerTimeSlots = Array.from({ length: 24 }, (_value, index) => {
+  const hour = index
   return `${hour.toString().padStart(2, '0')}:00`
 })
 

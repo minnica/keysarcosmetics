@@ -234,6 +234,8 @@
 
   .scheduler-grid-wrapper-day {
     justify-content: flex-start;
+    max-height: calc(100vh - 116px);
+    overflow-y: auto;
   }
 
   .scheduler-grid-day {
@@ -253,6 +255,9 @@
   }
 
   .scheduler-column-header {
+    position: sticky;
+    top: 0;
+    z-index: 3;
     display: flex;
     min-width: var(--scheduler-column-width);
     min-height: 124px;
@@ -320,6 +325,34 @@
       rgba(248, 242, 235, 0.88),
       rgba(248, 242, 235, 0.62)
     );
+  }
+
+  .scheduler-body-cell-commerce-closed {
+    isolation: isolate;
+    overflow: visible;
+    background: repeating-linear-gradient(
+      135deg,
+      rgba(241, 245, 249, 0.92),
+      rgba(241, 245, 249, 0.92) 7px,
+      rgba(226, 232, 240, 0.78) 7px,
+      rgba(226, 232, 240, 0.78) 14px
+    );
+  }
+
+  .scheduler-body-cell-commerce-closed::after {
+    content: "Bloqueado por horario del comercio";
+    position: absolute;
+    inset: auto 0.55rem 0.4rem;
+    z-index: 0;
+    overflow: hidden;
+    color: rgb(100 116 139 / 0.72);
+    font-size: 0.62rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-overflow: ellipsis;
+    text-transform: uppercase;
+    white-space: nowrap;
+    pointer-events: none;
   }
 
   .scheduler-cell-hitbox {

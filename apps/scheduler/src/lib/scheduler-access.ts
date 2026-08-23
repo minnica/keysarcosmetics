@@ -154,11 +154,17 @@ export function canAccessSchedulerScreen(screenId: SchedulerScreenId): boolean {
 }
 
 export function canAccessSchedulerCommerce(commerceId: string): boolean {
-  return currentSchedulerAccess.allowedCommerceIds.includes(commerceId);
+  return (
+    currentSchedulerAccess.id === "scheduler-admin" ||
+    currentSchedulerAccess.allowedCommerceIds.includes(commerceId)
+  );
 }
 
 export function canAccessSchedulerBranch(branchId: string): boolean {
-  return currentSchedulerAccess.allowedBranchIds.includes(branchId);
+  return (
+    currentSchedulerAccess.id === "scheduler-admin" ||
+    currentSchedulerAccess.allowedBranchIds.includes(branchId)
+  );
 }
 
 export function canAccessSchedulerProfessional(professionalId: string): boolean {

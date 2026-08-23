@@ -13,22 +13,20 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
+  Button,
   Input,
   toast,
 } from '@cosmetics/ui'
 import {
-  schedulerBranches,
-  schedulerAttendingSpecialists,
-  schedulerCommerces,
   schedulerDayBookings,
   schedulerDayBlocks,
-  schedulerProfessionals,
   schedulerReferenceDate,
   schedulerReferenceDateKey,
   schedulerServices,
   getBookingStatusColors,
   type BookingStatusColors,
   type AvailabilityBlock,
+  type AttendingSpecialist,
   type Booking,
   type BookingPurchaseType,
   type BookingServiceRecord,
@@ -80,6 +78,26 @@ import { SchedulerHeader } from './scheduler/SchedulerHeader'
 import { SchedulerAgendaGrid } from './scheduler/SchedulerAgendaGrid'
 import { SchedulerFinancialAccessDialog } from './scheduler/SchedulerFinancialAccessDialog'
 import { SchedulerClientHistoryDialog } from './scheduler/SchedulerClientHistoryDialog'
+import {
+  commerceOperatingHoursChangeEvent,
+  commerceOperatingHoursStorageKey,
+  getCommerceCalendarRange,
+  getCommerceDailyOperatingWindow,
+  getCommerceOperatingHours,
+  isOutsideCommerceOperatingHours,
+  type CommerceOperatingHours,
+} from '@/lib/commerce-operating-hours'
+import {
+  administrationSchedulerConfigChangeEvent,
+  administrationSchedulerConfigStorageKey,
+  createDefaultAdministrationSchedulerConfig,
+  getAdministrationSchedulerConfig,
+  getConfiguredAttendingSpecialists,
+  getConfiguredSchedulerCommerces,
+  getConfiguredSchedulerBranches,
+  getConfiguredSchedulerProfessionals,
+  type AdministrationSchedulerConfig,
+} from '@/lib/administration-scheduler-config'
 
 const initialAvailabilityBlocksById = new Map(schedulerDayBlocks.map((block) => [block.id, block]))
 
@@ -87,13 +105,14 @@ function buildServiceRecords(
   bookingId: string,
   amount: number,
   specialistIds: string[],
+  attendingSpecialists: AttendingSpecialist[],
 ): BookingServiceRecord[] {
   const sharePercentage = Number((100 / specialistIds.length).toFixed(2))
   const dividedAmount = Number((amount / specialistIds.length).toFixed(2))
   const recordTimestamp = Date.now()
 
   return specialistIds.map((specialistId, index) => {
-    const specialist = schedulerAttendingSpecialists.find(
+    const specialist = attendingSpecialists.find(
       (option) => option.id === specialistId,
     )
 
@@ -117,9 +136,29 @@ export function SchedulerWorkspace() {
   const [selectedDate, setSelectedDate] = useState(schedulerReferenceDate)
   const [monthCursor, setMonthCursor] = useState(startOfMonth(schedulerReferenceDate))
   const [currentView, setCurrentView] = useState<SchedulerView>('day')
+  const [administrationConfig, setAdministrationConfig] =
+    useState<AdministrationSchedulerConfig>(() =>
+      createDefaultAdministrationSchedulerConfig(),
+    )
+  const configuredBranches = useMemo(
+    () => getConfiguredSchedulerBranches(administrationConfig),
+    [administrationConfig],
+  )
+  const configuredCommerces = useMemo(
+    () => getConfiguredSchedulerCommerces(administrationConfig),
+    [administrationConfig],
+  )
+  const configuredProfessionals = useMemo(
+    () => getConfiguredSchedulerProfessionals(administrationConfig),
+    [administrationConfig],
+  )
+  const configuredAttendingSpecialists = useMemo(
+    () => getConfiguredAttendingSpecialists(administrationConfig),
+    [administrationConfig],
+  )
   const allowedCommerces = useMemo(
-    () => schedulerCommerces.filter((commerce) => canAccessSchedulerCommerce(commerce.id)),
-    [],
+    () => configuredCommerces.filter((commerce) => canAccessSchedulerCommerce(commerce.id)),
+    [configuredCommerces],
   )
   const [selectedCommerce, setSelectedCommerce] = useState(
     allowedCommerces[0]?.id ?? '',
@@ -127,13 +166,17 @@ export function SchedulerWorkspace() {
   const [statusColors, setStatusColors] = useState<BookingStatusColors>(() =>
     getBookingStatusColors(allowedCommerces[0]?.id ?? ''),
   )
+  const [commerceOperatingHours, setCommerceOperatingHours] =
+    useState<CommerceOperatingHours>(() =>
+      getCommerceOperatingHours(allowedCommerces[0]?.id ?? ''),
+    )
   const allowedBranches = useMemo(
     () =>
-      schedulerBranches.filter(
+      configuredBranches.filter(
         (branch) =>
           branch.commerceId === selectedCommerce && canAccessSchedulerBranch(branch.id),
       ),
-    [selectedCommerce],
+    [configuredBranches, selectedCommerce],
   )
   const [selectedBranch, setSelectedBranch] = useState(
     () => allowedBranches[0]?.id ?? '',
@@ -142,7 +185,7 @@ export function SchedulerWorkspace() {
   const [professionalQuery, setProfessionalQuery] = useState('')
   const [quickTimeFilter, setQuickTimeFilter] = useState('all')
   const [selectedProfessionalIds, setSelectedProfessionalIds] = useState<string[]>(
-    schedulerProfessionals.map((professional) => professional.id),
+    configuredProfessionals.map((professional) => professional.id),
   )
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [emptySlotAction, setEmptySlotAction] = useState<EmptySlotAction | null>(null)
@@ -150,7 +193,9 @@ export function SchedulerWorkspace() {
   const [clients, setClients] = useState<SchedulerClient[]>(initialSchedulerClients)
   const [duplicateClient, setDuplicateClient] = useState<SchedulerClient | null>(null)
   const [availabilityBlocks, setAvailabilityBlocks] = useState<AvailabilityBlock[]>(schedulerDayBlocks)
-  const [draft, setDraft] = useState<BookingDraft>(() => createDraft(schedulerReferenceDate, schedulerProfessionals))
+  const [draft, setDraft] = useState<BookingDraft>(() =>
+    createDraft(schedulerReferenceDate, configuredProfessionals),
+  )
   const [blockDraft, setBlockDraft] = useState<BlockDraft | null>(null)
   const [isBlockDialogOpen, setIsBlockDialogOpen] = useState(false)
   const [detailView, setDetailView] = useState<'payment' | 'attendance' | 'record'>('record')
@@ -170,9 +215,42 @@ export function SchedulerWorkspace() {
   } | null>(null)
   const [paymentHistoryDeleteStep, setPaymentHistoryDeleteStep] = useState<'review' | 'confirm'>('review')
   const [paymentHistoryDeleteKeyword, setPaymentHistoryDeleteKeyword] = useState('')
+  const [blockedBookingRequest, setBlockedBookingRequest] = useState<{
+    mergeClientId?: string
+    reason: string
+    detail: string
+  } | null>(null)
+  const [blockedBookingStep, setBlockedBookingStep] = useState<'review' | 'confirm'>('review')
+  const [blockedBookingKeyword, setBlockedBookingKeyword] = useState('')
   const [agendaMotionKey, setAgendaMotionKey] = useState(0)
   const sidebarBookingTimerRef = useRef<number | null>(null)
   const selectedDateKey = format(selectedDate, 'yyyy-MM-dd')
+
+  useEffect(() => {
+    function refreshAdministrationConfig() {
+      setAdministrationConfig(getAdministrationSchedulerConfig())
+    }
+
+    function handleStorage(event: StorageEvent) {
+      if (!event.key || event.key === administrationSchedulerConfigStorageKey) {
+        refreshAdministrationConfig()
+      }
+    }
+
+    refreshAdministrationConfig()
+    window.addEventListener(
+      administrationSchedulerConfigChangeEvent,
+      refreshAdministrationConfig,
+    )
+    window.addEventListener('storage', handleStorage)
+    return () => {
+      window.removeEventListener(
+        administrationSchedulerConfigChangeEvent,
+        refreshAdministrationConfig,
+      )
+      window.removeEventListener('storage', handleStorage)
+    }
+  }, [])
 
   useEffect(() => {
     function refreshStatusColors() {
@@ -184,14 +262,34 @@ export function SchedulerWorkspace() {
     return () => window.removeEventListener('scheduler-status-colors-change', refreshStatusColors)
   }, [selectedCommerce])
 
+  useEffect(() => {
+    function refreshOperatingHours() {
+      setCommerceOperatingHours(getCommerceOperatingHours(selectedCommerce))
+    }
+
+    function handleStorage(event: StorageEvent) {
+      if (!event.key || event.key === commerceOperatingHoursStorageKey) {
+        refreshOperatingHours()
+      }
+    }
+
+    refreshOperatingHours()
+    window.addEventListener(commerceOperatingHoursChangeEvent, refreshOperatingHours)
+    window.addEventListener('storage', handleStorage)
+    return () => {
+      window.removeEventListener(commerceOperatingHoursChangeEvent, refreshOperatingHours)
+      window.removeEventListener('storage', handleStorage)
+    }
+  }, [selectedCommerce])
+
   const branchProfessionals = useMemo(() => {
-    return schedulerProfessionals.filter(
+    return configuredProfessionals.filter(
       (professional) =>
         professional.commerceIds.includes(selectedCommerce) &&
         professional.branchIds.includes(selectedBranch) &&
         canAccessSchedulerProfessional(professional.id),
     )
-  }, [selectedBranch, selectedCommerce])
+  }, [configuredProfessionals, selectedBranch, selectedCommerce])
 
   const sidebarProfessionals = useMemo(() => {
     const normalizedQuery = professionalQuery.trim().toLowerCase()
@@ -216,7 +314,7 @@ export function SchedulerWorkspace() {
       const matchesProfessional = visibleProfessionals.some(
         (professional) => professional.id === booking.professionalId,
       )
-      const bookingProfessional = schedulerProfessionals.find(
+      const bookingProfessional = configuredProfessionals.find(
         (professional) => professional.id === booking.professionalId,
       )
       const matchesBranch = booking.branchId
@@ -231,12 +329,12 @@ export function SchedulerWorkspace() {
 
       return matchesProfessional && matchesBranch && matchesDate && matchesStatus && matchesTime
     })
-  }, [bookings, quickTimeFilter, selectedBranch, selectedDateKey, statusFilter, visibleProfessionals])
+  }, [bookings, configuredProfessionals, quickTimeFilter, selectedBranch, selectedDateKey, statusFilter, visibleProfessionals])
 
   const visibleBlocks = useMemo(() => {
     return availabilityBlocks.filter((block) => {
       const blockDateKey = block.date ?? schedulerReferenceDateKey
-      const blockProfessional = schedulerProfessionals.find(
+      const blockProfessional = configuredProfessionals.find(
         (professional) => professional.id === block.professionalId,
       )
       const matchesBranch = block.branchId
@@ -248,13 +346,27 @@ export function SchedulerWorkspace() {
         visibleProfessionals.some((professional) => professional.id === block.professionalId)
       )
     })
-  }, [availabilityBlocks, selectedBranch, selectedDateKey, visibleProfessionals])
+  }, [availabilityBlocks, configuredProfessionals, selectedBranch, selectedDateKey, visibleProfessionals])
 
   const weekDays = useMemo(() => {
     const start = startOfWeek(selectedDate, { locale: es, weekStartsOn: 1 })
     const end = endOfWeek(selectedDate, { locale: es, weekStartsOn: 1 })
     return eachDayOfInterval({ start, end })
   }, [selectedDate])
+  const calendarTimeSlots = useMemo(
+    () => getCommerceCalendarRange(commerceOperatingHours, [selectedDate])?.slots ?? [],
+    [commerceOperatingHours, selectedDate],
+  )
+
+  useEffect(() => {
+    if (quickTimeFilter === 'all' || calendarTimeSlots.includes(quickTimeFilter)) return
+    setQuickTimeFilter('all')
+  }, [calendarTimeSlots, quickTimeFilter])
+
+  useEffect(() => {
+    if (allowedCommerces.some((commerce) => commerce.id === selectedCommerce)) return
+    setSelectedCommerce(allowedCommerces[0]?.id ?? '')
+  }, [allowedCommerces, selectedCommerce])
 
   useEffect(() => {
     const branchIsStillAvailable = allowedBranches.some(
@@ -310,8 +422,10 @@ export function SchedulerWorkspace() {
   }
 
   function handleRefresh() {
+    setAdministrationConfig(getAdministrationSchedulerConfig())
+    setCommerceOperatingHours(getCommerceOperatingHours(selectedCommerce))
     toast.success('Agenda actualizada', {
-      description: 'La vista se sincronizo y la agenda quedo actualizada.',
+      description: 'Se cargaron nuevamente comercios, sucursales, especialistas y horarios.',
     })
   }
 
@@ -339,7 +453,7 @@ export function SchedulerWorkspace() {
   function handleBookingBranchChange(branchId: string) {
     if (!allowedBranches.some((branch) => branch.id === branchId)) return
 
-    const nextBranchProfessionals = schedulerProfessionals.filter(
+    const nextBranchProfessionals = configuredProfessionals.filter(
       (professional) =>
         professional.commerceIds.includes(selectedCommerce) &&
         professional.branchIds.includes(branchId) &&
@@ -595,7 +709,14 @@ export function SchedulerWorkspace() {
           purchaseAmount: amount,
           paymentLabel,
           ...(specialistIds.length
-            ? { serviceRecords: buildServiceRecords(paymentBookingId, amount, specialistIds) }
+            ? {
+                serviceRecords: buildServiceRecords(
+                  paymentBookingId,
+                  amount,
+                  specialistIds,
+                  configuredAttendingSpecialists,
+                ),
+              }
             : {}),
         }
         if (booking.purchaseType === 'layaway' && tentativeAmount) {
@@ -718,7 +839,12 @@ export function SchedulerWorkspace() {
       return
     }
 
-    const serviceRecords = buildServiceRecords(bookingId, 0, uniqueSpecialistIds)
+    const serviceRecords = buildServiceRecords(
+      bookingId,
+      0,
+      uniqueSpecialistIds,
+      configuredAttendingSpecialists,
+    )
     const completedBooking: Booking = {
       ...attendanceBooking,
       purchased: false,
@@ -781,7 +907,12 @@ export function SchedulerWorkspace() {
       return
     }
 
-    const serviceRecords = buildServiceRecords(bookingId, purchaseAmount, uniqueSpecialistIds)
+    const serviceRecords = buildServiceRecords(
+      bookingId,
+      purchaseAmount,
+      uniqueSpecialistIds,
+      configuredAttendingSpecialists,
+    )
     const paymentLabel = purchaseType === 'layaway'
       ? `Apartado · ${formatMoney(purchaseAmount)} de ${formatMoney(tentativePurchaseAmount ?? 0)}`
       : `${purchaseType === 'settlement' ? 'Liquidación' : 'Contado'} · ${formatMoney(purchaseAmount)}`
@@ -888,7 +1019,7 @@ export function SchedulerWorkspace() {
 
     const blockDateKey = format(blockDraft.date, 'yyyy-MM-dd')
     const professionalName =
-      schedulerProfessionals.find((professional) => professional.id === blockDraft.professionalId)?.name ?? 'Profesional'
+      configuredProfessionals.find((professional) => professional.id === blockDraft.professionalId)?.name ?? 'Profesional'
 
     const conflictingBooking = bookings.find((booking) => {
       const bookingDateKey = booking.date ?? schedulerReferenceDateKey
@@ -958,7 +1089,7 @@ export function SchedulerWorkspace() {
     })
   }
 
-  function handleSaveBooking(mergeClientId?: string) {
+  function handleSaveBooking(mergeClientId?: string, allowBlockedTime = false) {
     if (!draft.customerName.trim()) {
       toast.error('Falta el nombre del cliente')
       return
@@ -993,11 +1124,11 @@ export function SchedulerWorkspace() {
     const endMinutes = getMinutesFromTime(end)
     const bookingDateKey = format(draft.date, 'yyyy-MM-dd')
     const professionalName =
-      schedulerProfessionals.find((professional) => professional.id === draft.professionalId)?.name ?? 'Profesional'
+      configuredProfessionals.find((professional) => professional.id === draft.professionalId)?.name ?? 'Profesional'
 
     if (startMinutes < schedulerBaseMinutes || endMinutes > schedulerClosingMinutes) {
       toast.error('La reserva se sale del horario permitido', {
-        description: 'La agenda solo permite citas entre 09:00 y 21:00.',
+        description: 'La hora de inicio y fin debe pertenecer al mismo día.',
       })
       return
     }
@@ -1029,10 +1160,33 @@ export function SchedulerWorkspace() {
       )
     })
 
-    if (conflictingBlock) {
-      toast.error('Ese horario no esta disponible', {
-        description: `${professionalName} tiene un bloqueo de ${conflictingBlock.start} a ${conflictingBlock.end}.`,
+    const outsideCommerceHours =
+      draft.status !== 'canceled' &&
+      isOutsideCommerceOperatingHours(commerceOperatingHours, draft.date, start, end)
+
+    if (!allowBlockedTime && (conflictingBlock || outsideCommerceHours)) {
+      const dailyWindow = getCommerceDailyOperatingWindow(commerceOperatingHours, draft.date)
+      const commerceName =
+        allowedCommerces.find((commerce) => commerce.id === selectedCommerce)?.name ??
+        'El comercio'
+      const reason = conflictingBlock
+        ? 'La franja tiene un bloqueo manual'
+        : dailyWindow.enabled
+          ? 'La reserva está fuera del horario de servicio'
+          : 'El comercio está cerrado este día'
+      const detail = conflictingBlock
+        ? `${professionalName} tiene un bloqueo de ${conflictingBlock.start} a ${conflictingBlock.end}.`
+        : dailyWindow.enabled
+          ? `${commerceName} atiende de ${dailyWindow.open} a ${dailyWindow.close}. La reserva solicitada es de ${start} a ${end}.`
+          : `${commerceName} no tiene horario de servicio configurado para este día.`
+
+      setBlockedBookingRequest({
+        ...(mergeClientId ? { mergeClientId } : {}),
+        reason,
+        detail,
       })
+      setBlockedBookingStep('review')
+      setBlockedBookingKeyword('')
       return
     }
 
@@ -1150,6 +1304,7 @@ export function SchedulerWorkspace() {
     })
     setIsDialogOpen(false)
     setDuplicateClient(null)
+    setBlockedBookingRequest(null)
     toast.success(draft.bookingId ? 'Reserva actualizada' : 'Reserva creada', {
       description: draft.bookingId
         ? 'La cita se actualizo dentro de la agenda actual.'
@@ -1197,6 +1352,7 @@ export function SchedulerWorkspace() {
           statusFilter={statusFilter}
           onStatusFilterChange={setStatusFilter}
           quickTimeFilter={quickTimeFilter}
+          timeSlots={calendarTimeSlots}
           onQuickTimeFilterChange={setQuickTimeFilter}
           monthCursor={monthCursor}
           onMonthCursorChange={setMonthCursor}
@@ -1215,6 +1371,11 @@ export function SchedulerWorkspace() {
               statusColors={statusColors}
               visibleBlocks={visibleBlocks}
               selectedDate={selectedDate}
+              commerceOperatingHours={commerceOperatingHours}
+              commerceName={
+                allowedCommerces.find((commerce) => commerce.id === selectedCommerce)?.name ??
+                'Sin comercio'
+              }
               weekDays={weekDays}
               emptySlotAction={emptySlotAction}
               onOpenSlotAction={openSlotAction}
@@ -1272,7 +1433,7 @@ export function SchedulerWorkspace() {
 
       <SchedulerDetailDialog
         attendingSpecialists={
-          schedulerAttendingSpecialists.filter((specialist) =>
+          configuredAttendingSpecialists.filter((specialist) =>
             specialist.branchIds.includes(activeBooking?.branchId ?? selectedBranch) ||
             Boolean(
               activeBooking?.serviceRecords?.some(
@@ -1282,6 +1443,10 @@ export function SchedulerWorkspace() {
           )
         }
         booking={activeBooking}
+        commerceName={
+          allowedCommerces.find((commerce) => commerce.id === selectedCommerce)?.name ??
+          'Sin comercio'
+        }
         clientAccount={
           activeBooking
             ? getClientPurchaseAccount(bookings, activeBooking, activeBooking.id)
@@ -1328,6 +1493,90 @@ export function SchedulerWorkspace() {
           if (!open) setClientHistoryBooking(null)
         }}
       />
+
+      <AlertDialog
+        open={Boolean(blockedBookingRequest)}
+        onOpenChange={(open) => {
+          if (open) return
+          setBlockedBookingRequest(null)
+          setBlockedBookingStep('review')
+          setBlockedBookingKeyword('')
+        }}
+      >
+        <AlertDialogContent className="scheduler-modal-shell max-w-[480px] gap-0 overflow-hidden rounded-2xl border-0 bg-white p-0 shadow-[0_8px_24px_rgba(15,23,42,0.18)]">
+          <div className="px-5 pb-4 pt-5 sm:px-6">
+            <AlertDialogHeader className="text-left">
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-700">
+                  <AlertTriangle className="h-5 w-5" />
+                </div>
+                <div className="min-w-0">
+                  <AlertDialogTitle className="text-[1.25rem] leading-7 tracking-[-0.02em] text-[var(--scheduler-ink-strong)]">
+                    Reservar en un horario bloqueado
+                  </AlertDialogTitle>
+                  <AlertDialogDescription className="mt-1 text-[0.88rem] leading-5 text-slate-600">
+                    {blockedBookingRequest?.reason}
+                  </AlertDialogDescription>
+                </div>
+              </div>
+            </AlertDialogHeader>
+
+            {blockedBookingStep === 'review' ? (
+              <div className="mt-4 rounded-xl bg-amber-50 px-4 py-3 text-sm leading-5 text-amber-900">
+                {blockedBookingRequest?.detail}
+              </div>
+            ) : (
+              <div className="mt-4 space-y-3 rounded-xl bg-rose-50 px-4 py-4">
+                <p className="text-sm leading-5 text-rose-900">
+                  Esta es la segunda validación. Escribe <strong>RESERVAR</strong> para
+                  autorizar la excepción al horario del comercio.
+                </p>
+                <Input
+                  aria-label="Escribe RESERVAR para confirmar"
+                  autoFocus
+                  className="bg-white uppercase tracking-[0.16em]"
+                  onChange={(event) => setBlockedBookingKeyword(event.target.value.toUpperCase())}
+                  placeholder="RESERVAR"
+                  value={blockedBookingKeyword}
+                />
+              </div>
+            )}
+
+            <div className="mt-3 flex items-start gap-2 rounded-xl bg-slate-100 px-3.5 py-3 text-slate-700">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+              <p className="text-[0.78rem] leading-5">
+                La excepción sólo aplica a esta reserva; el horario del comercio no se modificará.
+              </p>
+            </div>
+          </div>
+
+          <AlertDialogFooter className="flex-row justify-end gap-2 border-t border-slate-200 bg-slate-50 px-5 py-4 sm:space-x-0 sm:px-6">
+            <AlertDialogCancel className="scheduler-modal-secondary mt-0">
+              Regresar
+            </AlertDialogCancel>
+            {blockedBookingStep === 'review' ? (
+              <Button
+                className="bg-amber-600 text-white hover:bg-amber-700 focus-visible:ring-amber-500"
+                onClick={() => setBlockedBookingStep('confirm')}
+                type="button"
+              >
+                Continuar
+              </Button>
+            ) : (
+              <AlertDialogAction
+                className="bg-rose-600 text-white hover:bg-rose-700 focus-visible:ring-rose-500 disabled:pointer-events-none disabled:opacity-50"
+                disabled={blockedBookingKeyword !== 'RESERVAR'}
+                onClick={() => {
+                  if (!blockedBookingRequest || blockedBookingKeyword !== 'RESERVAR') return
+                  handleSaveBooking(blockedBookingRequest.mergeClientId, true)
+                }}
+              >
+                Reservar de todas formas
+              </AlertDialogAction>
+            )}
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog
         open={Boolean(paymentHistoryDeleteRequest)}
@@ -1398,12 +1647,13 @@ export function SchedulerWorkspace() {
               Conservar pago
             </AlertDialogCancel>
             {paymentHistoryDeleteStep === 'review' ? (
-              <AlertDialogAction
+              <Button
                 className="bg-rose-600 text-white hover:bg-rose-700 focus-visible:ring-rose-500"
                 onClick={() => setPaymentHistoryDeleteStep('confirm')}
+                type="button"
               >
                 Continuar
-              </AlertDialogAction>
+              </Button>
             ) : (
               <AlertDialogAction
                 className="bg-rose-600 text-white hover:bg-rose-700 focus-visible:ring-rose-500 disabled:pointer-events-none disabled:opacity-50"

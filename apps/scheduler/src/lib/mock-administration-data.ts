@@ -44,6 +44,14 @@ export interface SpecialDay {
   close: string;
 }
 
+export interface CommerceRecord {
+  id: string;
+  name: string;
+  status: "active" | "inactive";
+  open24Hours: boolean;
+  schedule: ScheduleDay[];
+}
+
 export interface LocalRecord {
   id: string;
   commerceId: string;
@@ -60,6 +68,7 @@ export interface LocalRecord {
   secondaryPhone: string;
   description: string;
   coverImage: string | null;
+  open24Hours: boolean;
   schedule: ScheduleDay[];
   specialDays: SpecialDay[];
 }
@@ -217,6 +226,31 @@ export const createSchedule = (
     breakEnd: undefined,
   }));
 
+export const createEmptyCommerce = (): CommerceRecord => ({
+  id: `commerce-${Date.now()}`,
+  name: "",
+  status: "active",
+  open24Hours: false,
+  schedule: createSchedule("09:00", "21:00"),
+});
+
+export const initialCommerces: CommerceRecord[] = [
+  {
+    id: "opatra-mexico",
+    name: "OPATRA MEXICO",
+    status: "active",
+    open24Hours: false,
+    schedule: createSchedule("09:00", "21:00"),
+  },
+  {
+    id: "keysar-cosmetics",
+    name: "KEYSAR COSMETICS",
+    status: "active",
+    open24Hours: false,
+    schedule: createSchedule("09:00", "21:00"),
+  },
+];
+
 export const createClassSchedule = (): ClassScheduleDay[] =>
   scheduleDays.map((day) => ({ day, slots: [] }));
 
@@ -236,6 +270,7 @@ export const createEmptyLocal = (): LocalRecord => ({
   secondaryPhone: "",
   description: "",
   coverImage: null,
+  open24Hours: false,
   schedule: createSchedule(),
   specialDays: [],
 });

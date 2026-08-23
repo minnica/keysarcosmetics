@@ -6,7 +6,6 @@ import { addMonths, format, subMonths } from 'date-fns'
 import { es } from 'date-fns/locale'
 import {
   bookingStatusOptions,
-  schedulerTimeSlots,
   type BranchOption,
   type BookingStatus,
   type CommerceOption,
@@ -30,6 +29,7 @@ interface SchedulerSidebarProps {
   statusFilter: BookingStatus | 'active'
   onStatusFilterChange: (value: BookingStatus | 'active') => void
   quickTimeFilter: string
+  timeSlots: string[]
   onQuickTimeFilterChange: (value: string) => void
   monthCursor: Date
   onMonthCursorChange: (date: Date) => void
@@ -54,6 +54,7 @@ export function SchedulerSidebar({
   statusFilter,
   onStatusFilterChange,
   quickTimeFilter,
+  timeSlots,
   onQuickTimeFilterChange,
   monthCursor,
   onMonthCursorChange,
@@ -198,7 +199,7 @@ export function SchedulerSidebar({
                 </SelectTrigger>
                 <SelectContent className="scheduler-select-content max-h-[240px]">
                   <SelectItem className="scheduler-select-item" value="all">Todas las horas</SelectItem>
-                  {schedulerTimeSlots.map((slot) => (
+                  {timeSlots.map((slot) => (
                     <SelectItem key={slot} className="scheduler-select-item" value={slot}>
                       {slot}
                     </SelectItem>

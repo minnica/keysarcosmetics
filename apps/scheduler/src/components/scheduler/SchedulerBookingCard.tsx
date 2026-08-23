@@ -22,7 +22,6 @@ import {
   Trash2,
   User,
   UserRoundCheck,
-  Wallet,
   WalletCards,
   X,
 } from 'lucide-react'
@@ -39,7 +38,6 @@ import {
 } from '@/lib/scheduler-access'
 import {
   formatMoney,
-  getProfessionalName,
   getServiceByName,
   type ClientPurchaseAccount,
   type ClientPaymentHistoryEntry,
@@ -47,6 +45,7 @@ import {
 
 interface SchedulerBookingCardProps {
   booking: Booking
+  commerceName: string
   clientAccount: ClientPurchaseAccount
   paymentHistory: ClientPaymentHistoryEntry[]
   financialProfile?: SchedulerFinancialProfile
@@ -73,6 +72,7 @@ const statusOrder: BookingStatus[] = ['reserved', 'confirmed', 'arrived', 'no-sh
 
 export function SchedulerBookingCard({
   booking,
+  commerceName,
   clientAccount,
   paymentHistory,
   financialProfile,
@@ -94,15 +94,7 @@ export function SchedulerBookingCard({
   const [editingAmount, setEditingAmount] = useState('')
   const [editingTentativeAmount, setEditingTentativeAmount] = useState('')
   const statusMeta = bookingStatuses[booking.status]
-  const professionalName = getProfessionalName(booking.professionalId)
   const service = getServiceByName(booking.serviceName)
-  const canRegisterPayment =
-    booking.status === 'arrived' &&
-    !booking.serviceRecords?.length &&
-    (booking.purchased === true ||
-      (booking.purchased === false &&
-        Boolean(financialProfile) &&
-        clientAccount.outstandingBalance > 0))
   const hasPayment = typeof booking.purchaseAmount === 'number' && booking.purchaseAmount > 0
   const isCompleted = Boolean(booking.serviceRecords?.length)
   const canManagePaymentHistory = canManageSchedulerPaymentHistory(financialProfile)
@@ -137,7 +129,7 @@ export function SchedulerBookingCard({
             <User className="h-3.5 w-3.5" />
           </div>
           <p className="text-[0.9rem] text-slate-700">
-            Recurso: <span className="font-semibold text-[var(--scheduler-ink-strong)]">{professionalName}</span>
+            Comercio: <span className="font-semibold text-[var(--scheduler-ink-strong)]">{commerceName}</span>
           </p>
         </div>
 
@@ -547,20 +539,6 @@ export function SchedulerBookingCard({
               <span className="text-[0.9rem] font-medium">Editar</span>
             </button>
           </div>
-        ) : null}
-        {canRegisterPayment ? (
-          <button
-            className="inline-flex items-center gap-2 rounded-xl bg-[var(--scheduler-ink-strong)] px-3 py-2 text-[0.9rem] font-medium text-white transition hover:bg-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 focus-visible:ring-offset-2"
-            onClick={() => onOpenDetail(booking, 'payment')}
-            type="button"
-          >
-            <Wallet className="h-3.5 w-3.5" />
-            {hasPayment
-              ? 'Editar pago'
-              : booking.purchased === false
-                ? 'Registrar liquidación'
-                : 'Registrar pago'}
-          </button>
         ) : null}
         <button
           className="inline-flex items-center gap-2 rounded-xl border border-[rgba(236,209,200,0.95)] bg-white px-3 py-2 text-[0.9rem] text-[var(--scheduler-accent-strong)] transition hover:bg-[rgba(245,237,228,0.85)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(195,165,131,0.55)]"
