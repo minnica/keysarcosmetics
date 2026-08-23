@@ -1424,7 +1424,9 @@ router.get(
             position: { select: { nombre: true } },
           },
         },
-        installments: { orderBy: { sequence: "asc" } },
+        installments: {
+          orderBy: [{ periodStart: "asc" }, { sequence: "asc" }],
+        },
       },
     });
     ok(res, loans);
@@ -1450,7 +1452,12 @@ async function createLoan(input: z.infer<typeof loanSchema>, userId: string) {
       createdById: userId,
       installments: { create: schedule },
     },
-    include: { employee: true, installments: { orderBy: { sequence: "asc" } } },
+    include: {
+      employee: true,
+      installments: {
+        orderBy: [{ periodStart: "asc" }, { sequence: "asc" }],
+      },
+    },
   });
 }
 
@@ -1497,7 +1504,9 @@ router.put(
       },
       include: {
         employee: true,
-        installments: { orderBy: { sequence: "asc" } },
+        installments: {
+          orderBy: [{ periodStart: "asc" }, { sequence: "asc" }],
+        },
       },
     });
     ok(res, loan, "Préstamo o adelanto actualizado.");

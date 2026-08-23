@@ -8,6 +8,7 @@ import {
   assertStandardPayrollPeriod,
   calculatePayroll,
   money,
+  nextPayrollPeriod,
   type CalculationEmployee,
   type PayrollWarning,
 } from "./payroll-calculation";
@@ -155,18 +156,32 @@ async function calculatePayrollPeriod(input: {
         include: {
           installments: {
             where: {
-              periodStart: input.periodStart,
-              periodEnd: input.periodEnd,
               ...(input.includeAllPeriodSources
-                ? { status: { not: "CANCELED" as const } }
+                ? {
+                    OR: [
+                      {
+                        periodEnd: { lte: input.periodEnd },
+                        status: "SCHEDULED" as const,
+                      },
+                      {
+                        periodStart: input.periodStart,
+                        periodEnd: input.periodEnd,
+                        status: { not: "CANCELED" as const },
+                      },
+                    ],
+                  }
                 : input.runId
                   ? {
+                      periodEnd: { lte: input.periodEnd },
                       OR: [
                         { status: "SCHEDULED" },
                         { payrollRunId: input.runId },
                       ],
                     }
-                  : { status: "SCHEDULED" }),
+                  : {
+                      periodEnd: { lte: input.periodEnd },
+                      status: "SCHEDULED",
+                    }),
             },
           },
         },
@@ -832,15 +847,47 @@ export async function approvePayrollRun(runId: string, userId: string) {
       where: { date: range, deletedAt: null, payrollRunId: null },
       data: { payrollRunId: run.id },
     });
-    await tx.loanAdvanceInstallment.updateMany({
-      where: {
-        periodStart: run.periodStart,
-        periodEnd: run.periodEnd,
-        status: "SCHEDULED",
-        payrollRunId: null,
-      },
-      data: { status: "RESERVED", payrollRunId: run.id },
-    });
+    for (const line of run.lines) {
+      let remainingPayment = line.loanPayment;
+      if (!remainingPayment.greaterThan(0)) continue;
+
+      const dueInstallments = await tx.loanAdvanceInstallment.findMany({
+        where: {
+          periodEnd: { lte: run.periodEnd },
+          status: "SCHEDULED",
+          payrollRunId: null,
+          loanAdvance: {
+            employeeId: line.employeeId,
+            status: "PENDING",
+          },
+        },
+        orderBy: [{ periodStart: "asc" }, { sequence: "asc" }],
+      });
+
+      for (const installment of dueInstallments) {
+        if (!remainingPayment.greaterThan(0)) break;
+        const appliedAmount = Prisma.Decimal.min(
+          installment.amount,
+          remainingPayment,
+        );
+
+        await tx.loanAdvanceInstallment.update({
+          where: { id: installment.id },
+          data: {
+            status: "RESERVED",
+            payrollRunId: run.id,
+          },
+        });
+
+        remainingPayment = remainingPayment.minus(appliedAmount);
+      }
+
+      if (remainingPayment.greaterThan(0)) {
+        throw new Error(
+          `No fue posible reservar el descuento de préstamo de ${line.employeeName}. Recalcula la corrida e inténtalo nuevamente.`,
+        );
+      }
+    }
   });
   await audit(userId, "PayrollRun", run.id, "APPROVED");
   return getPayrollRun(run.id);
@@ -861,25 +908,76 @@ export async function payPayrollRun(runId: string, userId: string) {
     );
 
   await prisma.$transaction(async (tx) => {
-    const installments = await tx.loanAdvanceInstallment.findMany({
+    const reservedInstallments = await tx.loanAdvanceInstallment.findMany({
       where: { payrollRunId: run.id, status: "RESERVED" },
     });
-    await tx.loanAdvanceInstallment.updateMany({
-      where: { payrollRunId: run.id, status: "RESERVED" },
-      data: { status: "PAID", paidAt: new Date() },
-    });
+    const paidAt = new Date();
+    for (const line of run.lines) {
+      let remainingPayment = line.loanPayment;
+      if (!remainingPayment.greaterThan(0)) continue;
+
+      const employeeInstallments = await tx.loanAdvanceInstallment.findMany({
+        where: {
+          payrollRunId: run.id,
+          status: "RESERVED",
+          loanAdvance: { employeeId: line.employeeId },
+        },
+        orderBy: [{ periodStart: "asc" }, { sequence: "asc" }],
+      });
+
+      for (const installment of employeeInstallments) {
+        if (!remainingPayment.greaterThan(0)) break;
+        const appliedAmount = Prisma.Decimal.min(
+          installment.amount,
+          remainingPayment,
+        );
+        const deferredAmount = installment.amount.minus(appliedAmount);
+
+        await tx.loanAdvanceInstallment.update({
+          where: { id: installment.id },
+          data: {
+            amount: appliedAmount,
+            status: "PAID",
+            paidAt,
+          },
+        });
+
+        if (deferredAmount.greaterThan(0)) {
+          const nextPeriod = nextPayrollPeriod(run.periodStart);
+          const lastInstallment = await tx.loanAdvanceInstallment.findFirst({
+            where: { loanAdvanceId: installment.loanAdvanceId },
+            orderBy: { sequence: "desc" },
+            select: { sequence: true },
+          });
+          await tx.loanAdvanceInstallment.create({
+            data: {
+              loanAdvanceId: installment.loanAdvanceId,
+              sequence: (lastInstallment?.sequence ?? 0) + 1,
+              periodStart: nextPeriod.periodStart,
+              periodEnd: nextPeriod.periodEnd,
+              amount: deferredAmount,
+            },
+          });
+        }
+
+        remainingPayment = remainingPayment.minus(appliedAmount);
+      }
+
+      if (remainingPayment.greaterThan(0)) {
+        throw new Error(
+          `No fue posible liquidar el descuento de préstamo de ${line.employeeName}. Cancela la aprobación, recalcula e inténtalo nuevamente.`,
+        );
+      }
+    }
+
     for (const loanId of [
-      ...new Set(installments.map((item) => item.loanAdvanceId)),
+      ...new Set(reservedInstallments.map((item) => item.loanAdvanceId)),
     ]) {
       const loanInstallments = await tx.loanAdvanceInstallment.findMany({
         where: { loanAdvanceId: loanId },
       });
       const paidAmount = loanInstallments
-        .filter(
-          (item) =>
-            item.status === "PAID" ||
-            installments.some((paid) => paid.id === item.id),
-        )
+        .filter((item) => item.status === "PAID")
         .reduce((sum, item) => sum.plus(item.amount), new Prisma.Decimal(0));
       const loan = await tx.loanAdvance.findUniqueOrThrow({
         where: { id: loanId },

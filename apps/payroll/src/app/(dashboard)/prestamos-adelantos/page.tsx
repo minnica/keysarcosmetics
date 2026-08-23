@@ -78,6 +78,11 @@ function fortnightStartForDate(value: string): string {
   if (!year || !month || !day) return value;
   return `${year}-${String(month).padStart(2, "0")}-${day <= 15 ? "01" : "16"}`;
 }
+function firstPeriodStartForKind(kind: LoanKind, requestedAt: string): string {
+  return kind === "PAYROLL_ADVANCE"
+    ? fortnightStartForDate(requestedAt)
+    : nextFortnightStart();
+}
 const EMPTY: Form = {
   requestedAt: today(),
   employeeId: "",
@@ -432,7 +437,14 @@ export default function PrestamosPage() {
               <DatePicker
                 value={form.requestedAt}
                 onChange={(value) =>
-                  setForm((current) => ({ ...current, requestedAt: value }))
+                  setForm((current) => ({
+                    ...current,
+                    requestedAt: value,
+                    firstPeriodStart:
+                      current.kind === "PAYROLL_ADVANCE"
+                        ? fortnightStartForDate(value)
+                        : current.firstPeriodStart,
+                  }))
                 }
               />
             </div>
@@ -461,10 +473,17 @@ export default function PrestamosPage() {
               <Select
                 value={form.kind}
                 onValueChange={(value) =>
-                  setForm((current) => ({
-                    ...current,
-                    kind: value as LoanKind,
-                  }))
+                  setForm((current) => {
+                    const kind = value as LoanKind;
+                    return {
+                      ...current,
+                      kind,
+                      firstPeriodStart: firstPeriodStartForKind(
+                        kind,
+                        current.requestedAt,
+                      ),
+                    };
+                  })
                 }
               >
                 <SelectTrigger>
@@ -526,7 +545,7 @@ export default function PrestamosPage() {
               />
               <p className="text-xs text-[var(--text-muted)]">
                 Puedes elegir cualquier día; se usará el inicio de esa quincena:
-                día 1 o 16.
+                día 1 o 16. En adelantos se propone la quincena de la solicitud.
               </p>
             </div>
             <div className="space-y-2 md:col-span-2">
