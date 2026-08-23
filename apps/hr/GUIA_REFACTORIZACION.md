@@ -54,19 +54,19 @@ El `package.json` ya declara estos comandos y el stack objetivo. No se espera qu
 
 ## Datos existentes que debe reutilizar
 
-| Necesidad de HR | Fuente existente | Uso recomendado |
-| --- | --- | --- |
-| Identidad del empleado | `Empleado` | Poblar nombres, apellidos y `nombreCompleto`; será la única identidad laboral. |
-| Estado laboral básico | `Empleado.activo` | Poblar activo/inactivo. El historial de altas, bajas y reingresos requerirá modelos nuevos. |
-| Cumpleaños | `Empleado.fechaNacimiento` | Poblar calendario de cumpleaños; exponer solo día/mes cuando la pantalla no necesite el año. |
-| Teléfono | `Empleado.numeroTelefono` | Poblar contacto del expediente con control de permisos. |
-| Puesto | `Empleado.positionId` + `Position` | Sustituir `job_roles`; conservar `puesto` legacy solo como compatibilidad durante backfill. |
-| Sucursal laboral | `Empleado.sucursalId`, `Empleado.todasSucursales`, `Sucursal` | Sustituir `staff.branch` y `branches`. Distinguir sucursal concreta, `TODAS` y sin asignación. |
-| Usuario de acceso | `Usuario.empleadoId` | Reutilizar correo, credenciales, rol base y estado; no migrar códigos/sesiones propios como otra autenticación. |
-| Datos bancarios y sueldo | `Bank`, `Empleado.numeroCuenta`, `Empleado.sueldo` | Pueden poblar una sección restringida del expediente. Nunca deben incluirse en bootstrap general ni exportaciones sin permiso explícito. |
-| Metas y actividad comercial | `Empleado.metaIndividual`, `Venta` | Contexto opcional de desempeño; no mezclarlo con expediente disciplinario sin una regla aprobada. |
-| Citas de facialistas | `RegistroCita` | Alimentar demanda histórica y cobertura por facialista, sucursal, fecha y servicio. No representa por sí sola asistencia ni turno asignado. |
-| Permisos existentes | `PositionScreenPermission`, `PositionPayrollScreenPermission` | Reutilizar el patrón y las cuentas, pero crear una matriz HR independiente para evitar conceder acceso cruzado. |
+| Necesidad de HR             | Fuente existente                                              | Uso recomendado                                                                                                                             |
+| --------------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| Identidad del empleado      | `Empleado`                                                    | Poblar nombres, apellidos y `nombreCompleto`; será la única identidad laboral.                                                              |
+| Estado laboral básico       | `Empleado.activo`                                             | Poblar activo/inactivo. El historial de altas, bajas y reingresos requerirá modelos nuevos.                                                 |
+| Cumpleaños                  | `Empleado.fechaNacimiento`                                    | Poblar calendario de cumpleaños; exponer solo día/mes cuando la pantalla no necesite el año.                                                |
+| Teléfono                    | `Empleado.numeroTelefono`                                     | Poblar contacto del expediente con control de permisos.                                                                                     |
+| Puesto                      | `Empleado.positionId` + `Position`                            | Sustituir `job_roles`; conservar `puesto` legacy solo como compatibilidad durante backfill.                                                 |
+| Sucursal laboral            | `Empleado.sucursalId`, `Empleado.todasSucursales`, `Sucursal` | Sustituir `staff.branch` y `branches`. Distinguir sucursal concreta, `TODAS` y sin asignación.                                              |
+| Usuario de acceso           | `Usuario.empleadoId`                                          | Reutilizar correo, credenciales, rol base y estado; no migrar códigos/sesiones propios como otra autenticación.                             |
+| Datos bancarios y sueldo    | `Bank`, `Empleado.numeroCuenta`, `Empleado.sueldo`            | Pueden poblar una sección restringida del expediente. Nunca deben incluirse en bootstrap general ni exportaciones sin permiso explícito.    |
+| Metas y actividad comercial | `Empleado.metaIndividual`, `Venta`                            | Contexto opcional de desempeño; no mezclarlo con expediente disciplinario sin una regla aprobada.                                           |
+| Citas de facialistas        | `RegistroCita`                                                | Alimentar demanda histórica y cobertura por facialista, sucursal, fecha y servicio. No representa por sí sola asistencia ni turno asignado. |
+| Permisos existentes         | `PositionScreenPermission`, `PositionPayrollScreenPermission` | Reutilizar el patrón y las cuentas, pero crear una matriz HR independiente para evitar conceder acceso cruzado.                             |
 
 ### Datos que no existen todavía
 
@@ -168,7 +168,9 @@ Esta sesión cubrió únicamente el frontend funcional con mocks, tal como fue s
 - [x] Replicar con Tailwind la composición visual oscura del prototipo: sidebar/topbar, hero editorial, dorado Keysar, paneles y tablas densas.
 - [x] Sustituir los controles locales por los componentes canónicos de `@cosmetics/ui` usados por `envelope` y `payroll`: Sidebar, Button, Input, Label, Textarea, Select, Badge, Card, Table/DataTable, Dialog, AlertDialog, Tabs, Popover, Tooltip, Skeleton y toast; aplicar la apariencia negro/dorado mediante tokens y wrappers exclusivos de `apps/hr`.
 - [x] Implementar CRUD frontend persistente en `localStorage` para empleados, calendario, solicitudes, sucursales, puestos, facialistas, políticas y accesos; incluir búsqueda, selección masiva, estados, autorización/rechazo, importación mock y exportación CSV.
-- [x] Excluir del grafo de compilación los artefactos heredados Vinext/Vite/worker y D1/Drizzle sin modificar `db/`, `drizzle/` ni backend.
-- [x] Validar `npm run type-check` y `npm run build` en `apps/hr`.
+- [x] Eliminar de `apps/hr` los artefactos heredados Vinext/Vite/Worker, D1/Drizzle, scripts y pruebas de OpenAI Sites, componentes/CSS sin imports, lockfile de npm y documentación del repositorio standalone.
+- [x] Conservar únicamente la shell frontend activa, sus mocks, configuración Next/Tailwind, recursos públicos referenciados y este contrato para las fases de backend/BD.
+- [x] Configurar ESLint de Next de forma no interactiva para el paquete.
+- [x] Validar `pnpm --filter @cosmetics/hr lint`, `type-check` y `build` desde el monorepo.
 
-Queda explícitamente pendiente para fases posteriores: API `/api/hr/*`, autenticación JWT compartida, Prisma/PostgreSQL, permisos autoritativos, sustitución del CRUD mock por persistencia real, importación transaccional, pruebas de backend y configuración ESLint no interactiva. Por esa razón este archivo no se elimina todavía: continúa siendo el contrato de las fases de backend, datos y endurecimiento.
+Queda explícitamente pendiente para fases posteriores: API `/api/hr/*`, autenticación JWT compartida, Prisma/PostgreSQL, permisos autoritativos, sustitución del CRUD mock por persistencia real, importación transaccional y pruebas de backend. Por esa razón este archivo no se elimina: continúa siendo el contrato de las fases de backend, datos y endurecimiento.

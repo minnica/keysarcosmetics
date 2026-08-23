@@ -109,7 +109,7 @@ el diseño y el autocuidado.
 - Finance será dueño de rentas, servicios financieros, deuda y capital de socios; debe consumir sucursales/ventas de Envelope y costos aprobados de Payroll sin duplicarlos.
 - HR será dueño de expedientes, estatus laboral histórico, turnos, descansos, vacaciones, permisos y políticas; debe reutilizar `Empleado`, `Sucursal`, `Position` y `Usuario`, sin conservar D1/Drizzle ni autenticación paralela.
 - El análisis de fuentes existentes, límites, riesgos y plan por fases vive en `apps/finance/GUIA_REFACTORIZACION.md` y `apps/hr/GUIA_REFACTORIZACION.md`.
-- Mientras no se ejecute esa guía, los manifiestos objetivo no garantizan que el código heredado compile o arranque.
+- HR ya conserva únicamente su frontend Next homologado y la documentación del plan; Finance todavía puede contener código heredado que no compile o arranque con su manifiesto objetivo.
 
 ---
 
@@ -1084,8 +1084,8 @@ npx ts-node --project tsconfig.json prisma/seed-catalogs.ts
 - Los controles de HR consumen los componentes canónicos de `@cosmetics/ui` ya usados por `envelope` y `payroll`: Sidebar, Button, Input, Label, Textarea, Select, Badge, Card, Table/DataTable, Dialog, AlertDialog, Tabs, Popover, Tooltip, Skeleton y toast. Su apariencia negro/dorado se define únicamente en `apps/hr/tailwind.config.ts`, `apps/hr/app/globals.css` y los wrappers de `apps/hr/app/hr-ui.tsx`; no modificar `packages/ui` para personalizar visualmente HR.
 - Todos los módulos funcionan con mocks persistidos en `localStorage` bajo `keysar-hr-mocks`. Empleados incluye alta, edición, borrado individual/masivo, cambio de estado, búsqueda, importación mock y exportación CSV; solicitudes permite autorizar/rechazar; calendario, sucursales, puestos, horarios facialistas, políticas y perfiles de acceso tienen alta/edición/borrado; cumpleaños se edita desde el expediente. Preferencias permite restaurar los mocks iniciales.
 - Se eliminó el login paralelo del runtime frontend; la aplicación ya no lee sesión ni llama `/api/app`.
-- Se retiró del grafo de compilación de HR el route heredado D1/Drizzle/Cloudflare y el worker/Vinext quedó fuera del `tsconfig`; `db/`, `drizzle/`, ejemplos y backend no fueron modificados.
-- `npm run type-check` y `npm run build` pasan en `apps/hr`. `npm run lint` queda pendiente de una configuración ESLint no interactiva para Next.
+- Se eliminaron de `apps/hr` D1/Drizzle, Vinext/Vite/Worker, scripts y pruebas de OpenAI Sites, el lockfile npm, componentes/CSS sin imports y documentación standalone. La futura persistencia se implementará exclusivamente en el módulo HR de `backend/api` con Prisma/PostgreSQL.
+- `pnpm --filter @cosmetics/hr lint`, `type-check` y `build` son las validaciones requeridas para el paquete; ESLint usa configuración no interactiva de Next.
 - La persistencia real, API HR, auth compartida y permisos autoritativos permanecen pendientes y requieren una sesión posterior con alcance backend/BD. El CRUD actual es exclusivamente frontend/mock.
 
 - Automatizar deploy backend con GitHub Actions si se decide.
