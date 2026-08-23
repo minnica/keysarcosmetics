@@ -1,1 +1,0 @@
-ALTER TABLE `staff` ADD `rest_day_2` text DEFAULT 'Sin asignar' NOT NULL;

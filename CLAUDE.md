@@ -104,7 +104,7 @@ el diseño y el autocuidado.
 
 ## Nuevas apps en preparación
 
-- `apps/finance` (`@cosmetics/finance`) y `apps/hr` (`@cosmetics/hr`) fueron incorporadas originalmente como prototipos heredados. Finance ya completó la homologación del frontend mock; HR conserva su plan independiente.
+- `apps/finance` (`@cosmetics/finance`) y `apps/hr` (`@cosmetics/hr`) fueron incorporadas originalmente como prototipos heredados. Ambas ya tienen su frontend mock homologado con Next 14 y Tailwind; su backend, persistencia y autenticación compartida siguen deliberadamente pendientes según sus planes independientes.
 - Sus `package.json` ya fijan la arquitectura objetivo homologada: Next.js 14.2.4, React 18.3, TypeScript strict, `@cosmetics/ui`, `@cosmetics/types`, `@cosmetics/auth` y `@cosmetics/api-client`.
 - Finance será dueño de rentas, servicios financieros, deuda y capital de socios; debe consumir sucursales/ventas de Envelope y costos aprobados de Payroll sin duplicarlos.
 - HR será dueño de expedientes, estatus laboral histórico, turnos, descansos, vacaciones, permisos y políticas; debe reutilizar `Empleado`, `Sucursal`, `Position` y `Usuario`, sin conservar D1/Drizzle ni autenticación paralela.
@@ -1089,6 +1089,16 @@ npx ts-node --project tsconfig.json prisma/seed-catalogs.ts
 ---
 
 ## Pendientes conocidos
+
+### Estado de `apps/hr` (2026-08-23)
+
+- El frontend de HR usa una shell Tailwind responsive que replica el prototipo oscuro original: sidebar, topbar, hero y superficie de contenido negros, acentos dorados y tablas densas. Conserva el orden y etiquetas heredadas: Nuevo empleado, Todos los empleados, Personal y horarios, Calendario, Solicitudes, Historial de vacaciones, Sucursales, Puestos, Horarios facialistas, Cumpleaños, Políticas y reglamentos, Usuarios y permisos.
+- Los controles de HR consumen los componentes canónicos de `@cosmetics/ui` ya usados por `envelope` y `payroll`: Sidebar, Button, Input, Label, Textarea, Select, Badge, Card, Table/DataTable, Dialog, AlertDialog, Tabs, Popover, Tooltip, Skeleton y toast. Su apariencia negro/dorado se define únicamente en `apps/hr/tailwind.config.ts`, `apps/hr/app/globals.css` y los wrappers de `apps/hr/app/hr-ui.tsx`; no modificar `packages/ui` para personalizar visualmente HR.
+- Todos los módulos funcionan con mocks persistidos en `localStorage` bajo `keysar-hr-mocks`. Empleados incluye alta, edición, borrado individual/masivo, cambio de estado, búsqueda, importación mock y exportación CSV; solicitudes permite autorizar/rechazar; calendario, sucursales, puestos, horarios facialistas, políticas y perfiles de acceso tienen alta/edición/borrado; cumpleaños se edita desde el expediente. Preferencias permite restaurar los mocks iniciales.
+- Se eliminó el login paralelo del runtime frontend; la aplicación ya no lee sesión ni llama `/api/app`.
+- Se eliminaron de `apps/hr` D1/Drizzle, Vinext/Vite/Worker, scripts y pruebas de OpenAI Sites, el lockfile npm, componentes/CSS sin imports y documentación standalone. La futura persistencia se implementará exclusivamente en el módulo HR de `backend/api` con Prisma/PostgreSQL.
+- `pnpm --filter @cosmetics/hr lint`, `type-check` y `build` son las validaciones requeridas para el paquete; ESLint usa configuración no interactiva de Next.
+- La persistencia real, API HR, auth compartida y permisos autoritativos permanecen pendientes y requieren una sesión posterior con alcance backend/BD. El CRUD actual es exclusivamente frontend/mock.
 
 - Automatizar deploy backend con GitHub Actions si se decide.
 - Crear seeds separados seguros para dev/datos base si se requiere.

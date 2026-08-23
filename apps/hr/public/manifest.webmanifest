@@ -1,10 +1,17 @@
 {
-  "name": "Roles de Personal Keysar",
-  "short_name": "Roles Keysar",
-  "description": "Gestión de roles, horarios y calendarios de Keysar Cosmetics",
+  "name": "Keysar HR",
+  "short_name": "Keysar HR",
+  "description": "Recursos Humanos, turnos y bienestar de Keysar Cosmetics",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#f8f7f2",
-  "theme_color": "#174c3c",
-  "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+  "background_color": "#090909",
+  "theme_color": "#090909",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
 }
