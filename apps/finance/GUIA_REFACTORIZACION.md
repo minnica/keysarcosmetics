@@ -16,7 +16,7 @@ Nombre visible sugerido: **Keysar Finance** o **Control financiero**.
 - Catálogos, cálculos y permisos simulados en cliente.
 - Duplicación de datos que ya existen en la plataforma: sucursales, ventas, usuarios y algunos gastos.
 - Componentes y estilos locales que no consumen `@cosmetics/ui`.
-- Archivos de workspace, lockfile, artefactos `dist/`, service worker y PWA propios de un repositorio independiente.
+- El prototipo original incluía archivos de workspace, lockfile, artefactos `dist/`, service worker y PWA propios de un repositorio independiente; ya fueron retirados de `apps/finance` durante la homologación y limpieza.
 - No hay API, autorización autoritativa, auditoría, transacciones, snapshots contables ni pruebas de reglas financieras.
 
 El prototipo sí es útil como inventario funcional y referencia de flujos, pero no debe conservarse como base arquitectónica de producción.
@@ -109,9 +109,11 @@ Los nombres definitivos deben seguir el idioma inglés en código. Las migracion
 2. [x] Añadir `tsconfig.json`, `next.config.mjs`, PostCSS y Tailwind equivalentes al monorepo.
 3. [x] Migrar fuentes, tokens, tema claro/oscuro, sidebar, responsive layout y estados vacíos.
 4. [x] Eliminar `src/components/UI.jsx` y `styles.css` monolítico; los componentes visuales viven en la superficie TypeScript de la app.
-5. [x] Retirar `index.html`, Vite, service worker, manifest PWA y workspace anidado. El lockfile heredado se conserva temporalmente como referencia y debe retirarse en la limpieza de workspace.
+5. [x] Retirar `index.html`, Vite, service worker, manifest PWA, workspace anidado, lockfile heredado, artefactos `dist/` y recursos PWA sin uso.
 
-**Pendiente:** instalar dependencias cuando haya acceso al registry y ejecutar `type-check`, `lint` y `build` desde el workspace raíz.
+La carpeta conserva únicamente el frontend Next.js, su configuración, la fuente local realmente utilizada y la documentación de las fases futuras. Los outputs reconstruibles (`.next`, `dist` y `*.tsbuildinfo`) permanecen ignorados por Git y no forman parte del inventario fuente.
+
+**Validación de cierre (2026-08-23):** `type-check`, `lint` y `build` se ejecutaron correctamente desde el workspace raíz después de limpiar el legado.
 
 ### Fase 2 — auth, permisos y datos de solo lectura
 
