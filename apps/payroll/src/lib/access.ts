@@ -44,6 +44,13 @@ export const PAYROLL_SCREEN_CONFIG: PayrollScreenConfig[] = [
     description: "Consulta de nómina y comisiones por ventas.",
   },
   {
+    key: "payroll/nomina-comisiones-gerencia",
+    path: "/nomina-comisiones-gerencia",
+    section: "payroll",
+    label: "Comisiones gerencia",
+    description: "Consulta de comisiones para puestos de gerencia.",
+  },
+  {
     key: "payroll/movimientos",
     path: "/movimientos",
     section: "operations",

@@ -50,6 +50,12 @@ type PayrollOverviewPageProps = {
   description: string;
 };
 
+function isCommissionPayrollType(payrollType: PayrollOverviewType) {
+  return (
+    payrollType === "COMMISSION" || payrollType === "MANAGEMENT_COMMISSION"
+  );
+}
+
 function isoDate(year: number, month: number, day: number) {
   return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
@@ -133,8 +139,7 @@ export function PayrollOverviewPage({
     currentFortnightValue(options),
   );
   const [month, setMonth] = useState(currentMonth);
-  const [mode, setMode] =
-    useState<PayrollCalculationMode>("WITH_VAT");
+  const [mode, setMode] = useState<PayrollCalculationMode>("WITH_VAT");
   const [report, setReport] = useState<PayrollOverviewReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -170,7 +175,7 @@ export function PayrollOverviewPage({
               view,
               periodStart: selectedPeriod.from,
               periodEnd: selectedPeriod.to,
-              ...(payrollType === "COMMISSION" ? { mode } : {}),
+              ...(isCommissionPayrollType(payrollType) ? { mode } : {}),
             },
           },
         );
@@ -188,7 +193,14 @@ export function PayrollOverviewPage({
     return () => {
       cancelled = true;
     };
-  }, [mode, payrollType, reloadKey, selectedPeriod.from, selectedPeriod.to, view]);
+  }, [
+    mode,
+    payrollType,
+    reloadKey,
+    selectedPeriod.from,
+    selectedPeriod.to,
+    view,
+  ]);
 
   const rows = report?.rows ?? [];
   const exportFooter: PayrollOverviewLine = {
@@ -201,25 +213,50 @@ export function PayrollOverviewPage({
   };
   const exportConfig = {
     title,
-    subtitle: `${view === "FORTNIGHT" ? "Quincena" : "Mes"}: ${formatDate(selectedPeriod.from)} - ${formatDate(selectedPeriod.to)}${payrollType === "COMMISSION" ? ` · ${mode === "WITH_VAT" ? "Con IVA" : "Sin IVA"}` : ""}`,
+    subtitle: `${view === "FORTNIGHT" ? "Quincena" : "Mes"}: ${formatDate(selectedPeriod.from)} - ${formatDate(selectedPeriod.to)}${isCommissionPayrollType(payrollType) ? ` · ${mode === "WITH_VAT" ? "Con IVA" : "Sin IVA"}` : ""}`,
     filename: `${payrollType.toLocaleLowerCase()}-${selectedPeriod.from}-${selectedPeriod.to}`,
     sheetName: "Nómina",
     orientation: "landscape" as const,
     rows,
     footerRow: exportFooter,
     columns: [
-      { header: "NOMBRE COMPLETO", accessor: (row: PayrollOverviewLine) => row.fullName, width: 32 },
-      { header: "PUESTO", accessor: (row: PayrollOverviewLine) => row.position, width: 24 },
-      { header: "BANCO", accessor: (row: PayrollOverviewLine) => row.bank ?? "—", width: 20 },
-      { header: "CUENTA", accessor: (row: PayrollOverviewLine) => row.account ?? "—", width: 22 },
-      { header: "NÓMINA", accessor: (row: PayrollOverviewLine) => row.payroll, format: "currency" as const, width: 16 },
+      {
+        header: "NOMBRE COMPLETO",
+        accessor: (row: PayrollOverviewLine) => row.fullName,
+        width: 32,
+      },
+      {
+        header: "PUESTO",
+        accessor: (row: PayrollOverviewLine) => row.position,
+        width: 24,
+      },
+      {
+        header: "BANCO",
+        accessor: (row: PayrollOverviewLine) => row.bank ?? "—",
+        width: 20,
+      },
+      {
+        header: "CUENTA",
+        accessor: (row: PayrollOverviewLine) => row.account ?? "—",
+        width: 22,
+      },
+      {
+        header: "NÓMINA",
+        accessor: (row: PayrollOverviewLine) => row.payroll,
+        format: "currency" as const,
+        width: 16,
+      },
     ],
     summarySection: {
       title: "Total por puesto",
       sheetName: "Por puesto",
       labelHeader: "Puesto",
       valueHeader: "Nómina",
-      rows: report?.byPosition.map((item) => ({ label: item.position, value: item.total })) ?? [],
+      rows:
+        report?.byPosition.map((item) => ({
+          label: item.position,
+          value: item.total,
+        })) ?? [],
       totalLabel: "Total general",
       total: report?.total ?? 0,
     },
@@ -234,7 +271,10 @@ export function PayrollOverviewPage({
             {description}
           </p>
         </div>
-        <ReportExportButtons config={exportConfig} disabled={loading || !rows.length} />
+        <ReportExportButtons
+          config={exportConfig}
+          disabled={loading || !rows.length}
+        />
       </header>
 
       <Card>
@@ -289,12 +329,17 @@ export function PayrollOverviewPage({
               </Select>
             )}
 
-            {payrollType === "COMMISSION" && (
+            {isCommissionPayrollType(payrollType) && (
               <Select
                 value={mode}
-                onValueChange={(value) => setMode(value as PayrollCalculationMode)}
+                onValueChange={(value) =>
+                  setMode(value as PayrollCalculationMode)
+                }
               >
-                <SelectTrigger className="w-full sm:w-48" aria-label="Base de comisión">
+                <SelectTrigger
+                  className="w-full sm:w-48"
+                  aria-label="Base de comisión"
+                >
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -306,7 +351,8 @@ export function PayrollOverviewPage({
           </div>
           {report?.usesCurrentSalary && (
             <p className="max-w-md text-xs text-[color:var(--text-muted)]">
-              Los periodos históricos se calculan con el sueldo capturado actualmente.
+              Los periodos históricos se calculan con el sueldo capturado
+              actualmente.
             </p>
           )}
         </CardContent>
@@ -314,7 +360,10 @@ export function PayrollOverviewPage({
 
       {loading ? (
         <Card>
-          <CardContent className="p-8 text-sm text-[color:var(--text-muted)]" role="status">
+          <CardContent
+            className="p-8 text-sm text-[color:var(--text-muted)]"
+            role="status"
+          >
             Calculando la consulta de nómina…
           </CardContent>
         </Card>
@@ -322,7 +371,10 @@ export function PayrollOverviewPage({
         <Card>
           <CardContent className="space-y-4 p-8">
             <p className="text-sm text-red-600">{error}</p>
-            <Button variant="outline" onClick={() => setReloadKey((key) => key + 1)}>
+            <Button
+              variant="outline"
+              onClick={() => setReloadKey((key) => key + 1)}
+            >
               <RefreshCw className="mr-1.5 h-4 w-4" />
               Reintentar
             </Button>
@@ -354,11 +406,22 @@ export function PayrollOverviewPage({
                 <TableBody>
                   {rows.length ? (
                     rows.map((row) => (
-                      <TableRow key={row.employeeId} className="border-[color:var(--border-color)]">
-                        <TableCell className="font-medium uppercase">{row.fullName}</TableCell>
-                        <TableCell className="uppercase">{row.position}</TableCell>
-                        <TableCell className="uppercase">{row.bank || "—"}</TableCell>
-                        <TableCell className="tabular-nums">{row.account || "—"}</TableCell>
+                      <TableRow
+                        key={row.employeeId}
+                        className="border-[color:var(--border-color)]"
+                      >
+                        <TableCell className="font-medium uppercase">
+                          {row.fullName}
+                        </TableCell>
+                        <TableCell className="uppercase">
+                          {row.position}
+                        </TableCell>
+                        <TableCell className="uppercase">
+                          {row.bank || "—"}
+                        </TableCell>
+                        <TableCell className="tabular-nums">
+                          {row.account || "—"}
+                        </TableCell>
                         <TableCell className="number-display text-right">
                           {formatCurrency(row.payroll)}
                         </TableCell>
@@ -366,7 +429,10 @@ export function PayrollOverviewPage({
                     ))
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={5} className="h-24 text-center text-[color:var(--text-muted)]">
+                      <TableCell
+                        colSpan={5}
+                        className="h-24 text-center text-[color:var(--text-muted)]"
+                      >
                         SIN EMPLEADOS PARA EL PERIODO SELECCIONADO
                       </TableCell>
                     </TableRow>
@@ -388,23 +454,38 @@ export function PayrollOverviewPage({
 
           <Card>
             <CardHeader>
-              <CardTitle className="section-heading uppercase">Total por puesto</CardTitle>
+              <CardTitle className="section-heading uppercase">
+                Total por puesto
+              </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="divide-y divide-[color:var(--border-color)] border-y border-[color:var(--border-color)]">
                 {(report?.byPosition ?? []).map((item) => (
-                  <div key={item.position} className="flex items-center justify-between gap-6 py-3">
-                    <span className="text-sm font-medium uppercase">{item.position}</span>
-                    <span className="number-display shrink-0">{formatCurrency(item.total)}</span>
+                  <div
+                    key={item.position}
+                    className="flex items-center justify-between gap-6 py-3"
+                  >
+                    <span className="text-sm font-medium uppercase">
+                      {item.position}
+                    </span>
+                    <span className="number-display shrink-0">
+                      {formatCurrency(item.total)}
+                    </span>
                   </div>
                 ))}
                 {!report?.byPosition.length && (
-                  <p className="py-5 text-sm text-[color:var(--text-muted)]">SIN PUESTOS PARA MOSTRAR</p>
+                  <p className="py-5 text-sm text-[color:var(--text-muted)]">
+                    SIN PUESTOS PARA MOSTRAR
+                  </p>
                 )}
               </div>
               <div className="flex items-center justify-between gap-6 pt-5">
-                <span className="text-sm font-semibold uppercase tracking-wider">Total general</span>
-                <span className="number-display text-xl">{formatCurrency(report?.total ?? 0)}</span>
+                <span className="text-sm font-semibold uppercase tracking-wider">
+                  Total general
+                </span>
+                <span className="number-display text-xl">
+                  {formatCurrency(report?.total ?? 0)}
+                </span>
               </div>
             </CardContent>
           </Card>

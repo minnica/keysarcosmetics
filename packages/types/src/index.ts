@@ -34,6 +34,7 @@ export const PAYROLL_SCREEN_KEYS = [
   "payroll/nomina-salario-fijo",
   "payroll/nomina-especialistas",
   "payroll/nomina-comisiones",
+  "payroll/nomina-comisiones-gerencia",
   "payroll/movimientos",
   "payroll/gastos",
   "payroll/prestamos-adelantos",

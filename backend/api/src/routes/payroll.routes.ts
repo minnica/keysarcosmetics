@@ -221,6 +221,7 @@ async function payrollScreensForRequest(
       FIXED_SALARY: "payroll/nomina-salario-fijo",
       SPECIALIST: "payroll/nomina-especialistas",
       COMMISSION: "payroll/nomina-comisiones",
+      MANAGEMENT_COMMISSION: "payroll/nomina-comisiones-gerencia",
     } as const satisfies Record<string, PayrollScreenKey>;
     const payrollType =
       typeof req.query["payrollType"] === "string"
@@ -656,22 +657,48 @@ const allocationSchema = z.object({
   amount: positiveMoney,
   commissionable: z.boolean().default(true),
 });
-const movementSchema = z.object({
-  date: dateString,
-  kind: z.enum([
-    "BONUS",
-    "ADJUSTMENT_POSITIVE",
-    "ADJUSTMENT_NEGATIVE",
-    "FINE",
-    "PER_DIEM",
-    "SUPPLIES",
-  ]),
-  catalogItemId: nullableId,
-  concept: z.string().trim().min(1).max(160),
-  totalAmount: positiveMoney,
-  notes: z.string().trim().max(1500).optional().default(""),
-  allocations: z.array(allocationSchema).min(1).max(5),
-});
+const movementSchema = z
+  .object({
+    date: dateString,
+    kind: z.enum([
+      "BONUS",
+      "ADJUSTMENT_POSITIVE",
+      "ADJUSTMENT_NEGATIVE",
+      "FINE",
+      "PER_DIEM",
+      "SUPPLIES",
+    ]),
+    payrollType: z
+      .enum([
+        "FIXED_SALARY",
+        "SPECIALIST",
+        "COMMISSION",
+        "MANAGEMENT_COMMISSION",
+      ])
+      .nullable()
+      .optional(),
+    catalogItemId: nullableId,
+    concept: z.string().trim().min(1).max(160),
+    totalAmount: positiveMoney,
+    notes: z.string().trim().max(1500).optional().default(""),
+    allocations: z.array(allocationSchema).min(1).max(5),
+  })
+  .superRefine((input, context) => {
+    if (input.kind === "FINE" && !input.payrollType) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["payrollType"],
+        message: "Selecciona la nómina donde se aplicará la multa.",
+      });
+    }
+    if (input.kind !== "FINE" && input.payrollType) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["payrollType"],
+        message: "La nómina destino solo aplica a las multas.",
+      });
+    }
+  });
 
 function validateAllocations(input: z.infer<typeof movementSchema>): void {
   if (
@@ -727,6 +754,7 @@ router.post(
       data: {
         date: parseDate(input.date),
         kind: input.kind,
+        payrollType: input.kind === "FINE" ? input.payrollType : null,
         catalogItemId: input.catalogItemId ?? null,
         concept: normalizeText(input.concept),
         totalAmount: input.totalAmount,
@@ -762,6 +790,7 @@ router.put(
       data: {
         date: parseDate(input.date),
         kind: input.kind,
+        payrollType: input.kind === "FINE" ? input.payrollType : null,
         catalogItemId: input.catalogItemId ?? null,
         concept: normalizeText(input.concept),
         totalAmount: input.totalAmount,
@@ -1643,7 +1672,12 @@ router.post(
 // ─── Reporte por sucursal y recibos ─────────────────────────────────────────
 
 const payrollOverviewQuery = z.object({
-  payrollType: z.enum(["FIXED_SALARY", "SPECIALIST", "COMMISSION"]),
+  payrollType: z.enum([
+    "FIXED_SALARY",
+    "SPECIALIST",
+    "COMMISSION",
+    "MANAGEMENT_COMMISSION",
+  ]),
   view: z.enum(["FORTNIGHT", "MONTHLY"]),
   periodStart: dateString,
   periodEnd: dateString,

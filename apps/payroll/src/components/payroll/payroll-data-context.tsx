@@ -109,6 +109,7 @@ function mapMovement(raw: any): PayrollMovement {
     id: raw.id,
     date: d(raw.date),
     kind: raw.kind,
+    payrollType: raw.payrollType ?? null,
     catalogItemId: raw.catalogItemId ?? null,
     concept: raw.concept,
     totalAmount: n(raw.totalAmount),
@@ -534,9 +535,7 @@ export function PayrollDataProvider({
         setCatalogs(catalogResponse.data.data.map(mapCatalog));
       if (schemeResponse) {
         setSchemes(schemeResponse.data.data.schemes.map(mapScheme));
-        setAssignments(
-          schemeResponse.data.data.assignments.map(mapAssignment),
-        );
+        setAssignments(schemeResponse.data.data.assignments.map(mapAssignment));
       }
       if (movementResponse)
         setMovements(movementResponse.data.data.map(mapMovement));

@@ -1,4 +1,8 @@
-import { PayrollRunStatus, Prisma } from "@prisma/client";
+import {
+  PayrollRunStatus,
+  Prisma,
+  type PayrollMovementPayrollType,
+} from "@prisma/client";
 import { prisma } from "../prisma/client";
 import {
   assertStandardPayrollPeriod,
@@ -94,6 +98,7 @@ async function calculatePayrollPeriod(input: {
   runId?: string;
   includeAllPeriodSources?: boolean;
   activeOnly?: boolean;
+  finePayrollType?: PayrollMovementPayrollType;
 }) {
   assertStandardPayrollPeriod(input.periodStart, input.periodEnd);
   const range = { gte: input.periodStart, lt: endExclusive(input.periodEnd) };
@@ -114,13 +119,28 @@ async function calculatePayrollPeriod(input: {
           movement: {
             date: range,
             status: "APPROVED",
+            ...(input.finePayrollType
+              ? {
+                  AND: [
+                    {
+                      OR: [
+                        { kind: { not: "FINE" as const } },
+                        {
+                          kind: "FINE" as const,
+                          payrollType: input.finePayrollType,
+                        },
+                      ],
+                    },
+                  ],
+                }
+              : {}),
             ...(input.includeAllPeriodSources
               ? {}
               : input.runId
-              ? {
-                  OR: [{ payrollRunId: null }, { payrollRunId: input.runId }],
-                }
-              : { payrollRunId: null }),
+                ? {
+                    OR: [{ payrollRunId: null }, { payrollRunId: input.runId }],
+                  }
+                : { payrollRunId: null }),
           },
         },
         include: {
@@ -140,13 +160,13 @@ async function calculatePayrollPeriod(input: {
               ...(input.includeAllPeriodSources
                 ? { status: { not: "CANCELED" as const } }
                 : input.runId
-                ? {
-                    OR: [
-                      { status: "SCHEDULED" },
-                      { payrollRunId: input.runId },
-                    ],
-                  }
-                : { status: "SCHEDULED" }),
+                  ? {
+                      OR: [
+                        { status: "SCHEDULED" },
+                        { payrollRunId: input.runId },
+                      ],
+                    }
+                  : { status: "SCHEDULED" }),
             },
           },
         },
@@ -239,7 +259,10 @@ async function calculatePayrollPeriod(input: {
 
   const plannedRecurringExpenses = input.runId
     ? await materializeRecurringExpenses(input.periodStart, input.periodEnd)
-    : await plannedRecurringExpensesForRange(input.periodStart, input.periodEnd);
+    : await plannedRecurringExpensesForRange(
+        input.periodStart,
+        input.periodEnd,
+      );
   const expenses = await prisma.payrollExpense.findMany({
     where: {
       date: range,
@@ -256,7 +279,9 @@ async function calculatePayrollPeriod(input: {
   const materializedRecurringKeys = new Set(
     expenses.flatMap((expense) =>
       expense.recurrenceVersionId
-        ? [`${expense.recurrenceVersionId}:${expense.date.toISOString().slice(0, 10)}`]
+        ? [
+            `${expense.recurrenceVersionId}:${expense.date.toISOString().slice(0, 10)}`,
+          ]
         : [],
     ),
   );
@@ -372,7 +397,8 @@ export async function getMonthlyPayrollSummary(month: string) {
 export type PayrollOverviewType =
   | "FIXED_SALARY"
   | "SPECIALIST"
-  | "COMMISSION";
+  | "COMMISSION"
+  | "MANAGEMENT_COMMISSION";
 export type PayrollOverviewView = "FORTNIGHT" | "MONTHLY";
 
 type PayrollOverviewRow = {
@@ -388,6 +414,43 @@ export function isSpecialistPosition(position: string | null): boolean {
   const normalized = (position ?? "").trim().toLocaleUpperCase("es-MX");
   return (
     normalized.includes("FACIALISTA") || normalized.includes("ESPECIALISTA")
+  );
+}
+
+export function isManagementPosition(position: string | null): boolean {
+  return (position ?? "").trim().toLocaleUpperCase("es-MX").includes("GERENTE");
+}
+
+function isCommissionPayrollType(
+  payrollType: PayrollOverviewType,
+): payrollType is "COMMISSION" | "MANAGEMENT_COMMISSION" {
+  return (
+    payrollType === "COMMISSION" || payrollType === "MANAGEMENT_COMMISSION"
+  );
+}
+
+async function fineTotalsForPayrollOverview(input: {
+  payrollType: "FIXED_SALARY" | "SPECIALIST";
+  periodStart: Date;
+  periodEnd: Date;
+}) {
+  const allocations = await prisma.payrollMovementAllocation.groupBy({
+    by: ["employeeId"],
+    where: {
+      movement: {
+        date: { gte: input.periodStart, lt: endExclusive(input.periodEnd) },
+        kind: "FINE",
+        status: "APPROVED",
+        payrollType: input.payrollType,
+      },
+    },
+    _sum: { amount: true },
+  });
+  return new Map(
+    allocations.map((allocation) => [
+      allocation.employeeId,
+      allocation._sum.amount ?? new Prisma.Decimal(0),
+    ]),
   );
 }
 
@@ -480,12 +543,19 @@ export function salaryOverviewPayment(
   monthlySalary: Prisma.Decimal.Value | null,
   view: PayrollOverviewView,
 ) {
-  const salary = monthlySalary == null
-    ? new Prisma.Decimal(0)
-    : new Prisma.Decimal(monthlySalary);
-  return view === "MONTHLY"
-    ? money(salary)
-    : money(salary.dividedBy(2));
+  const salary =
+    monthlySalary == null
+      ? new Prisma.Decimal(0)
+      : new Prisma.Decimal(monthlySalary);
+  return view === "MONTHLY" ? money(salary) : money(salary.dividedBy(2));
+}
+
+export function salaryOverviewNetPayment(
+  monthlySalary: Prisma.Decimal.Value | null,
+  view: PayrollOverviewView,
+  fine: Prisma.Decimal.Value,
+) {
+  return money(salaryOverviewPayment(monthlySalary, view).minus(fine));
 }
 
 export async function getPayrollOverview(input: {
@@ -495,10 +565,14 @@ export async function getPayrollOverview(input: {
   periodEnd: Date;
   mode: "WITH_VAT" | "WITHOUT_VAT";
 }) {
-  const periods = overviewPeriods(input.view, input.periodStart, input.periodEnd);
+  const periods = overviewPeriods(
+    input.view,
+    input.periodStart,
+    input.periodEnd,
+  );
   let rows: PayrollOverviewRow[];
 
-  if (input.payrollType === "COMMISSION") {
+  if (isCommissionPayrollType(input.payrollType)) {
     const calculations = await Promise.all(
       periods.map((period) =>
         calculatePayrollPeriod({
@@ -507,13 +581,20 @@ export async function getPayrollOverview(input: {
           vatRate: VAT_RATE,
           includeAllPeriodSources: true,
           activeOnly: true,
+          finePayrollType: input.payrollType,
         }),
       ),
     );
     const commissionEmployeeIds = new Set(
       calculations.flatMap((calculation) =>
         calculation.lines
-          .filter((line) => line.schemeName != null)
+          .filter((line) => {
+            if (line.schemeName == null) return false;
+            const management = isManagementPosition(line.positionName);
+            return input.payrollType === "MANAGEMENT_COMMISSION"
+              ? management
+              : !management;
+          })
           .map((line) => line.employeeId),
       ),
     );
@@ -538,6 +619,11 @@ export async function getPayrollOverview(input: {
       payroll: money(row.payroll),
     }));
   } else {
+    const fineTotals = await fineTotalsForPayrollOverview({
+      payrollType: input.payrollType,
+      periodStart: input.periodStart,
+      periodEnd: input.periodEnd,
+    });
     const employees = await prisma.empleado.findMany({
       where: { activo: true },
       orderBy: { nombreCompleto: "asc" },
@@ -547,11 +633,15 @@ export async function getPayrollOverview(input: {
       },
     });
     rows = employees.flatMap((employee) => {
-      const position = employee.position?.nombre ?? employee.puesto ?? "SIN PUESTO";
+      const position =
+        employee.position?.nombre ?? employee.puesto ?? "SIN PUESTO";
       const specialist = isSpecialistPosition(position);
       if (input.payrollType === "SPECIALIST" ? !specialist : specialist)
         return [];
-      if (input.payrollType === "FIXED_SALARY" && !employee.sueldo?.greaterThan(0))
+      if (
+        input.payrollType === "FIXED_SALARY" &&
+        !employee.sueldo?.greaterThan(0)
+      )
         return [];
       return [
         {
@@ -560,7 +650,11 @@ export async function getPayrollOverview(input: {
           position,
           bank: (employee.bank?.nombre ?? employee.banco) || null,
           account: employee.numeroCuenta || null,
-          payroll: salaryOverviewPayment(employee.sueldo, input.view),
+          payroll: salaryOverviewNetPayment(
+            employee.sueldo,
+            input.view,
+            fineTotals.get(employee.id) ?? new Prisma.Decimal(0),
+          ),
         },
       ];
     });
@@ -573,8 +667,8 @@ export async function getPayrollOverview(input: {
     view: input.view,
     periodStart: input.periodStart,
     periodEnd: input.periodEnd,
-    mode: input.payrollType === "COMMISSION" ? input.mode : null,
-    usesCurrentSalary: input.payrollType !== "COMMISSION",
+    mode: isCommissionPayrollType(input.payrollType) ? input.mode : null,
+    usesCurrentSalary: !isCommissionPayrollType(input.payrollType),
     rows,
     total: totals.total,
     byPosition: totals.byPosition,

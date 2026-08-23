@@ -88,6 +88,12 @@ const sections: NavSection[] = [
         icon: CircleDollarSign,
         screenKey: "payroll/nomina-comisiones",
       },
+      {
+        href: "/nomina-comisiones-gerencia",
+        label: "Comisiones gerencia",
+        icon: BadgeDollarSign,
+        screenKey: "payroll/nomina-comisiones-gerencia",
+      },
     ],
   },
   {
@@ -450,9 +456,9 @@ export function PayrollShell({ children }: { children: React.ReactNode }) {
   const activeScreen = getPayrollScreenByPath(pathname);
   const isReadOnly = Boolean(
     activeScreen &&
-      activeScreen.key !== "payroll/accesos" &&
-      !isAccessManager &&
-      !canWrite(activeScreen.key),
+    activeScreen.key !== "payroll/accesos" &&
+    !isAccessManager &&
+    !canWrite(activeScreen.key),
   );
 
   return (

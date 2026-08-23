@@ -307,6 +307,13 @@ enum PayrollMovementStatus {
   REJECTED
 }
 
+enum PayrollMovementPayrollType {
+  FIXED_SALARY
+  SPECIALIST
+  COMMISSION
+  MANAGEMENT_COMMISSION
+}
+
 enum PayrollCatalogKind {
   BONUS
   FINE
@@ -519,6 +526,7 @@ model PayrollMovement {
   id            String                      @id @default(cuid())
   date          DateTime                    @db.Date
   kind          PayrollMovementKind
+  payrollType   PayrollMovementPayrollType?
   catalogItemId String?
   catalogItem   PayrollCatalogItem?         @relation(fields: [catalogItemId], references: [id], onDelete: Restrict)
   concept       String
