@@ -842,6 +842,7 @@ La migración en Supabase dev, el backend `cosmetics-api-dev`, el login `SUPER_A
 ### CI y releases seguros (2026-08-23)
 
 - `.github/workflows/ci.yml` valida PRs y pushes a `develop`/`master` con lint, TypeScript, unit tests, builds productivos, sincronía de schemas Prisma, aplicación completa de migraciones sobre PostgreSQL 16 efímero e integración HTTP real de login/sesión.
+- Los scripts `type-check`, `test:unit` y `test:integration` de `@cosmetics/api` ejecutan previamente `prisma generate`; esto es obligatorio porque un runner limpio todavía no tiene los tipos y enums generados de `@prisma/client`.
 - Envelope conserva temporalmente un presupuesto máximo de 8 warnings ESLint y Payroll de 7; CI bloquea cualquier incremento mientras se reduce esa deuda en cambios separados.
 - `.github/workflows/deploy-api.yml` solo se ejecuta manualmente. Fija el SHA de la rama `develop` o `master` antes de la aprobación, usa el environment `development` o `production`, aplica `prisma migrate deploy`, despliega exactamente ese commit y espera `/ready`. Producción exige escribir `PRODUCCION_RESPALDADA`; esta confirmación no sustituye verificar backup/PITR ni la aprobación del environment.
 - `.github/workflows/staging-smoke.yml` ejecuta smoke tests Playwright de solo lectura contra API, Envelope y Payroll en el environment elegido.
