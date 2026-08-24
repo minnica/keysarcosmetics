@@ -17,7 +17,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@cosmetics/ui'
-import { ChevronRight } from 'lucide-react'
+import { ChevronRight, Search } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useSucursales } from '@/hooks'
 import { useI18n } from '@/lib/i18n'
@@ -61,8 +61,8 @@ export default function VentasPorVendedorPage() {
   const [filas, setFilas] = useState<SourceRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [mobileSearch, setMobileSearch] = useState('')
-  const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null)
+  const [employeeSearch, setEmployeeSearch] = useState('')
+  const [detailEmployeeId, setDetailEmployeeId] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -123,13 +123,23 @@ export default function VentasPorVendedorPage() {
       .sort((a, b) => b.totalVendido - a.totalVendido)
   }, [filas])
 
+  const filteredReportRows = useMemo(() => {
+    const normalizedSearch = employeeSearch.trim().toLocaleLowerCase('es-MX')
+
+    if (!normalizedSearch) return reportRows
+
+    return reportRows.filter((row) =>
+      row.nombreCompleto.toLocaleLowerCase('es-MX').includes(normalizedSearch),
+    )
+  }, [employeeSearch, reportRows])
+
   const totals = useMemo(() => {
     const ventasPorSucursal: Record<string, number> = {}
     let totalVendido = 0
     let meta = 0
     let porLlegar = 0
 
-    reportRows.forEach((row) => {
+    filteredReportRows.forEach((row) => {
       totalVendido += row.totalVendido
       meta += row.meta
       porLlegar += row.porLlegar
@@ -145,7 +155,7 @@ export default function VentasPorVendedorPage() {
       porLlegar,
       porcentaje: meta > 0 ? (totalVendido / meta) * 100 : 0,
     }
-  }, [reportRows, sucursales])
+  }, [filteredReportRows, sucursales])
 
   const exportColumns = useMemo<ExportColumn<ReportRow>[]>(() => [
     { header: t.common.employee, accessor: (row) => row.nombreCompleto, width: 26 },
@@ -169,23 +179,20 @@ export default function VentasPorVendedorPage() {
 
   const isLoading = loading || loadingSucursales
   const reportError = error ?? sucursalesError
-  const mobileRows = reportRows.filter((row) =>
-    row.nombreCompleto.toLowerCase().includes(mobileSearch.trim().toLowerCase()),
-  )
-  const selectedRow = selectedEmployeeId
-    ? reportRows.find((row) => row.empleadoId === selectedEmployeeId) ?? null
+  const selectedRow = detailEmployeeId
+    ? filteredReportRows.find((row) => row.empleadoId === detailEmployeeId) ?? null
     : null
 
   async function handleExport(kind: 'pdf' | 'excel') {
     setExporting(kind)
     const config = {
       title: t.reports.salesBySellerTitle,
-      subtitle: `${t.common.period} ${range.from} - ${range.to}`,
+      subtitle: `${t.common.period} ${range.from} - ${range.to}${employeeSearch.trim() ? ` · ${employeeSearch.trim()}` : ''}`,
       filename: `ventas-por-vendedor-${range.from}-${range.to}`,
       sheetName: 'Ventas Por Vendedor',
       orientation: 'landscape' as const,
       columns: exportColumns,
-      rows: reportRows,
+      rows: filteredReportRows,
       footerRow: exportFooterRow,
     }
 
@@ -205,7 +212,7 @@ export default function VentasPorVendedorPage() {
           <p className="mt-1 text-sm" style={{ color: 'var(--text-muted)' }}>{t.reports.salesBySellerDescription}</p>
         </div>
         <ReportExportButtons
-          disabled={isLoading || !!reportError || reportRows.length === 0}
+          disabled={isLoading || !!reportError || filteredReportRows.length === 0}
           exporting={exporting}
           onExportPdf={() => handleExport('pdf')}
           onExportExcel={() => handleExport('excel')}
@@ -214,31 +221,39 @@ export default function VentasPorVendedorPage() {
         />
       </div>
 
-      <div className="flex flex-wrap items-center gap-3">
-        <span className="text-sm font-medium" style={{ color: 'var(--text-muted)' }}>{t.common.period}</span>
-        <DateRangePicker value={range} onChange={setRange} fromLabel={t.common.from} toLabel={t.common.to} />
+      <div className="flex flex-wrap items-end gap-4">
+        <div className="space-y-2">
+          <Label className="uppercase">{t.common.period}</Label>
+          <DateRangePicker value={range} onChange={setRange} fromLabel={t.common.from} toLabel={t.common.to} />
+        </div>
       </div>
 
       {reportError && <p className="text-sm text-red-500">{reportError}</p>}
 
       {isLoading ? <TableLoadingSkeleton columns={6} rows={6} label={t.common.loadingData} /> : (
         <>
-          <div className="space-y-3 md:hidden">
-            <div className="space-y-1.5">
-              <Label className="text-xs uppercase tracking-[0.12em]">BUSCAR EMPLEADO</Label>
-              <Input
-                value={mobileSearch}
-                onChange={(event) => setMobileSearch(event.target.value)}
-                placeholder="Escribe el nombre del vendedor"
-                className="h-11 border-[color:var(--border-color)] bg-[var(--bg-card)]"
-              />
-            </div>
+          <div className="relative w-full">
+            <Search
+              className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2"
+              style={{ color: 'var(--text-muted)' }}
+            />
+            <Input
+              id="employee-search"
+              type="search"
+              value={employeeSearch}
+              onChange={(event) => setEmployeeSearch(event.target.value)}
+              placeholder={t.reports.searchEmployee.toUpperCase()}
+              aria-label={t.reports.searchEmployee}
+              className="pl-9 text-[0.9rem]"
+            />
+          </div>
 
+          <div className="space-y-3 md:hidden">
             <div className="grid grid-cols-2 gap-3">
               <Card className="border-[color:var(--border-color)] bg-[var(--bg-card)] shadow-sm">
                 <CardHeader className="p-4 pb-2">
                   <div className="text-[11px] uppercase tracking-[0.12em] text-[color:var(--text-muted)]">VENDEDORES</div>
-                  <CardTitle className="number-display text-xl">{reportRows.length}</CardTitle>
+                  <CardTitle className="number-display text-xl">{filteredReportRows.length}</CardTitle>
                 </CardHeader>
               </Card>
               <Card className="border-[color:var(--border-color)] bg-[var(--bg-card)] shadow-sm">
@@ -250,13 +265,13 @@ export default function VentasPorVendedorPage() {
             </div>
 
             <div className="space-y-3">
-              {mobileRows.map((row) => {
+              {filteredReportRows.map((row) => {
                 const progressColor = row.porcentaje < 50 ? 'text-red-600' : row.porcentaje < 80 ? 'text-yellow-600' : 'text-green-600'
                 return (
                   <Card key={row.empleadoId} className="border-[color:var(--border-color)] bg-[var(--bg-card)] shadow-sm">
                     <button
                       type="button"
-                      onClick={() => setSelectedEmployeeId(row.empleadoId)}
+                      onClick={() => setDetailEmployeeId(row.empleadoId)}
                       className="block w-full cursor-pointer text-left transition-colors duration-200 hover:bg-[color:var(--bg-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-gold)]"
                     >
                       <CardHeader className="flex-row items-start justify-between gap-3 p-4 pb-3">
@@ -296,13 +311,13 @@ export default function VentasPorVendedorPage() {
               <p className="py-6 text-center text-sm" style={{ color: 'var(--text-muted)' }}>
                 {t.common.noDataSelectedPeriod}
               </p>
-            ) : mobileRows.length === 0 && (
+            ) : filteredReportRows.length === 0 && (
               <p className="py-6 text-center text-sm" style={{ color: 'var(--text-muted)' }}>
-                No hay empleados que coincidan con la búsqueda.
+                {t.reports.noEmployeesFound}
               </p>
             )}
 
-            <Sheet open={!!selectedRow} onOpenChange={(open) => { if (!open) setSelectedEmployeeId(null) }}>
+            <Sheet open={!!selectedRow} onOpenChange={(open) => { if (!open) setDetailEmployeeId(null) }}>
               <SheetContent side="bottom" className="h-[100dvh] max-h-[100dvh] rounded-none border-none bg-[var(--bg-card)] p-0">
                 {selectedRow && (
                   <div className="flex h-full flex-col">
@@ -370,7 +385,7 @@ export default function VentasPorVendedorPage() {
               </tr>
             </thead>
             <tbody>
-              {reportRows.map((row, rowIndex) => {
+              {filteredReportRows.map((row, rowIndex) => {
                 const colorText = row.porcentaje < 50 ? 'text-red-600' : row.porcentaje < 80 ? 'text-yellow-600' : 'text-green-600'
                 const rowBackground = rowIndex % 2 === 1 ? 'var(--table-row-alt)' : 'var(--bg-card)'
                 return (
@@ -390,7 +405,7 @@ export default function VentasPorVendedorPage() {
                 )
               })}
             </tbody>
-            {reportRows.length > 0 && (
+            {filteredReportRows.length > 0 && (
               <tfoot className="border-t border-[color:var(--border-color)] bg-[color:var(--bg-card)] font-medium">
                 <tr>
                   <td className="sticky bottom-0 left-0 z-30 whitespace-nowrap bg-[color:var(--bg-card)] px-3 py-3 text-xs font-semibold uppercase shadow-[1px_0_0_var(--border-color)]">TOTAL</td>
@@ -404,6 +419,7 @@ export default function VentasPorVendedorPage() {
             )}
           </table>
           {!reportError && reportRows.length === 0 && <p className="py-6 text-center text-sm" style={{ color: 'var(--text-muted)' }}>{t.common.noDataSelectedPeriod}</p>}
+          {!reportError && reportRows.length > 0 && filteredReportRows.length === 0 && <p className="py-6 text-center text-sm" style={{ color: 'var(--text-muted)' }}>{t.reports.noEmployeesFound}</p>}
         </div>
         </>
       )}

@@ -63,6 +63,7 @@ import {
   sumBy,
   uppercaseInput,
 } from "@/lib/format";
+import { useSession } from "@/lib/session";
 import type {
   ExpenseFrequency,
   ExpenseKind,
@@ -172,6 +173,8 @@ const FREQUENCY: Record<ExpenseFrequency, string> = {
 
 export default function GastosPage() {
   const data = usePayrollData();
+  const { canWrite } = useSession();
+  const hasWriteAccess = canWrite("payroll/gastos");
   const [expenseView, setExpenseView] = useState<ExpenseView>("APPLICATIONS");
   const [open, setOpen] = useState(false);
   const [categoryOpen, setCategoryOpen] = useState(false);
@@ -467,7 +470,8 @@ export default function GastosPage() {
         header: "ACCIONES",
         enableSorting: false,
         enableGlobalFilter: false,
-        cell: ({ row }) => (
+        cell: ({ row }) =>
+          hasWriteAccess ? (
           <div className="flex justify-end gap-1">
             {row.original.recurrence ? (
               <>
@@ -515,7 +519,7 @@ export default function GastosPage() {
               </>
             ) : null}
           </div>
-        ),
+          ) : null,
       },
     ];
   }
@@ -534,7 +538,8 @@ export default function GastosPage() {
       header: "ACCIONES",
       enableSorting: false,
       enableGlobalFilter: false,
-      cell: ({ row }) => (
+      cell: ({ row }) =>
+        hasWriteAccess ? (
         <div className="flex justify-end gap-1">
           <Button
             size="icon"
@@ -553,7 +558,7 @@ export default function GastosPage() {
             <Trash2 className="h-4 w-4 text-red-500" />
           </Button>
         </div>
-      ),
+        ) : null,
     },
   ];
   const fixed = sumBy(
@@ -676,21 +681,25 @@ export default function GastosPage() {
             config={exportConfig}
             disabled={!visibleRows.length}
           />
-          <Button
-            variant="outline"
-            onClick={() => {
-              setCategoryEditingId(null);
-              setCategoryName("");
-              setCategoryOpen(true);
-            }}
-          >
-            <FolderPlus className="mr-1.5 h-4 w-4" />
-            Agregar categoría
-          </Button>
-          <Button onClick={create}>
-            <PlusCircle className="mr-1.5 h-4 w-4" />
-            Agregar gasto
-          </Button>
+          {hasWriteAccess ? (
+            <>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setCategoryEditingId(null);
+                  setCategoryName("");
+                  setCategoryOpen(true);
+                }}
+              >
+                <FolderPlus className="mr-1.5 h-4 w-4" />
+                Agregar categoría
+              </Button>
+              <Button onClick={create}>
+                <PlusCircle className="mr-1.5 h-4 w-4" />
+                Agregar gasto
+              </Button>
+            </>
+          ) : null}
         </div>
       </header>
       <DateFilterCard
@@ -748,7 +757,9 @@ export default function GastosPage() {
           emptyMessage={
             recurrenceRows.length
               ? "No hay gastos recurrentes dentro del periodo seleccionado."
-              : "No hay gastos recurrentes activos. Agrega uno seleccionando frecuencia mensual o quincenal."
+              : hasWriteAccess
+                ? "No hay gastos recurrentes activos. Agrega uno seleccionando frecuencia mensual o quincenal."
+                : "No hay gastos recurrentes activos."
           }
         />
       </Tabs>

@@ -1,5 +1,6 @@
 import type { NextFunction, Request, Response } from 'express'
 import type { Rol } from '@prisma/client'
+import { PAYROLL_SCREEN_KEYS, type PayrollScreenKey } from '@cosmetics/types'
 import { prisma } from '../prisma/client'
 
 export const ACCESS_SCREEN_ORDER = [
@@ -29,6 +30,8 @@ export const ACCESS_SCREEN_ORDER = [
 
 export type ScreenKey = (typeof ACCESS_SCREEN_ORDER)[number]
 
+export const PAYROLL_ACCESS_SCREEN_ORDER = PAYROLL_SCREEN_KEYS
+
 export interface ResolvedAccess {
   userId: string
   rol: Rol
@@ -39,6 +42,9 @@ export interface ResolvedAccess {
   canManageAccess: boolean
   selfDataOnly: boolean
   screenPermissions: ScreenKey[]
+  canManagePayrollAccess: boolean
+  payrollScreenPermissions: PayrollScreenKey[]
+  payrollWritePermissions: PayrollScreenKey[]
 }
 
 export interface AccessUserRecord {
@@ -54,6 +60,9 @@ export interface AccessUserRecord {
   canManageAccess: boolean
   selfDataOnly: boolean
   screenPermissions: ScreenKey[]
+  canManagePayrollAccess: boolean
+  payrollScreenPermissions: PayrollScreenKey[]
+  payrollWritePermissions: PayrollScreenKey[]
   creadoEn: Date
 }
 
@@ -74,9 +83,13 @@ async function fetchAccess(userId: string): Promise<ResolvedAccess | null> {
               id: true,
               nombre: true,
               canManageAccess: true,
+              canManagePayrollAccess: true,
               selfDataOnly: true,
               screenPermissions: {
                 select: { screenKey: true, allowed: true },
+              },
+              payrollScreenPermissions: {
+                select: { screenKey: true, allowed: true, canWrite: true },
               },
             },
           },
@@ -95,8 +108,14 @@ async function fetchAccess(userId: string): Promise<ResolvedAccess | null> {
         id: string
         nombre: string
         canManageAccess: boolean
+        canManagePayrollAccess: boolean
         selfDataOnly: boolean
         screenPermissions: Array<{ screenKey: ScreenKey; allowed: boolean }>
+        payrollScreenPermissions: Array<{
+          screenKey: PayrollScreenKey
+          allowed: boolean
+          canWrite: boolean
+        }>
       } | null
     } | null
   } | null
@@ -108,12 +127,47 @@ async function fetchAccess(userId: string): Promise<ResolvedAccess | null> {
   const position = usuario.empleado?.position ?? null
   const isGlobalAdmin = usuario.rol === 'SUPER_ADMIN'
   const canManageAccess = Boolean(isGlobalAdmin || position?.canManageAccess)
+  const canManagePayrollAccess = Boolean(isGlobalAdmin || position?.canManagePayrollAccess)
 
   const screenPermissions = canManageAccess
     ? [...ACCESS_SCREEN_ORDER]
     : (position?.screenPermissions ?? [])
         .filter((permission: { screenKey: ScreenKey; allowed: boolean }) => permission.allowed)
         .map((permission: { screenKey: ScreenKey; allowed: boolean }) => permission.screenKey)
+
+  const payrollScreenPermissions = canManagePayrollAccess
+    ? [...PAYROLL_ACCESS_SCREEN_ORDER]
+    : (position?.payrollScreenPermissions ?? [])
+        .filter(
+          (permission: {
+            screenKey: PayrollScreenKey
+            allowed: boolean
+          }) =>
+            permission.allowed &&
+            PAYROLL_ACCESS_SCREEN_ORDER.includes(permission.screenKey),
+        )
+        .map(
+          (permission: { screenKey: PayrollScreenKey }) =>
+            permission.screenKey,
+        )
+
+  const payrollWritePermissions = canManagePayrollAccess
+    ? [...PAYROLL_ACCESS_SCREEN_ORDER]
+    : (position?.payrollScreenPermissions ?? [])
+        .filter(
+          (permission: {
+            screenKey: PayrollScreenKey
+            allowed: boolean
+            canWrite: boolean
+          }) =>
+            permission.allowed &&
+            permission.canWrite &&
+            PAYROLL_ACCESS_SCREEN_ORDER.includes(permission.screenKey),
+        )
+        .map(
+          (permission: { screenKey: PayrollScreenKey }) =>
+            permission.screenKey,
+        )
 
   return {
     userId: usuario.id,
@@ -125,6 +179,9 @@ async function fetchAccess(userId: string): Promise<ResolvedAccess | null> {
     canManageAccess,
     selfDataOnly: Boolean(!canManageAccess && position?.selfDataOnly),
     screenPermissions: [...new Set(screenPermissions)],
+    canManagePayrollAccess,
+    payrollScreenPermissions: [...new Set(payrollScreenPermissions)],
+    payrollWritePermissions: [...new Set(payrollWritePermissions)],
   }
 }
 
@@ -154,6 +211,110 @@ export async function requireAccessManager(req: Request, res: Response, next: Ne
   }
 
   next()
+}
+
+export async function requirePayrollAccessManager(req: Request, res: Response, next: NextFunction): Promise<void> {
+  const access = await resolveAccessForRequest(req)
+
+  if (!access) {
+    res.status(401).json({ success: false, message: 'No autenticado', data: null })
+    return
+  }
+
+  if (!access.canManagePayrollAccess) {
+    res.status(403).json({
+      success: false,
+      message: 'No tienes permisos para administrar accesos de Payroll',
+      data: null,
+    })
+    return
+  }
+
+  next()
+}
+
+export function isPayrollReadMethod(method: string): boolean {
+  return method === 'GET' || method === 'HEAD'
+}
+
+export function hasAnyPayrollScreenAccess(
+  access: Pick<
+    ResolvedAccess,
+    'canManagePayrollAccess' | 'payrollScreenPermissions'
+  >,
+  screenKeys: readonly PayrollScreenKey[],
+): boolean {
+  return (
+    access.canManagePayrollAccess ||
+    screenKeys.some((screenKey) =>
+      access.payrollScreenPermissions.includes(screenKey),
+    )
+  )
+}
+
+export function hasAnyPayrollScreenWriteAccess(
+  access: Pick<
+    ResolvedAccess,
+    'canManagePayrollAccess' | 'payrollWritePermissions'
+  >,
+  screenKeys: readonly PayrollScreenKey[],
+): boolean {
+  return (
+    access.canManagePayrollAccess ||
+    screenKeys.some((screenKey) =>
+      access.payrollWritePermissions.includes(screenKey),
+    )
+  )
+}
+
+export function requireAnyPayrollScreenAccess(screenKeys: readonly PayrollScreenKey[]) {
+  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    const access = await resolveAccessForRequest(req)
+
+    if (!access) {
+      res.status(401).json({ success: false, message: 'No autenticado', data: null })
+      return
+    }
+
+    if (!hasAnyPayrollScreenAccess(access, screenKeys)) {
+      res.status(403).json({
+        success: false,
+        message: 'No tienes permisos para ver esta pantalla de Payroll',
+        data: null,
+      })
+      return
+    }
+
+    next()
+  }
+}
+
+export function requireAnyPayrollScreenWriteAccess(
+  screenKeys: readonly PayrollScreenKey[],
+) {
+  return async (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> => {
+    const access = await resolveAccessForRequest(req)
+
+    if (!access) {
+      res.status(401).json({ success: false, message: 'No autenticado', data: null })
+      return
+    }
+
+    if (!hasAnyPayrollScreenWriteAccess(access, screenKeys)) {
+      res.status(403).json({
+        success: false,
+        message: 'Solo tienes permiso de lectura para esta pantalla de Payroll',
+        data: null,
+      })
+      return
+    }
+
+    next()
+  }
 }
 
 export function requireScreenAccess(screenKey: ScreenKey) {
@@ -223,5 +384,8 @@ export function toSessionUser(access: ResolvedAccess, usuario: {
     canManageAccess: access.canManageAccess,
     selfDataOnly: access.selfDataOnly,
     screenPermissions: access.screenPermissions,
+    canManagePayrollAccess: access.canManagePayrollAccess,
+    payrollScreenPermissions: access.payrollScreenPermissions,
+    payrollWritePermissions: access.payrollWritePermissions,
   }
 }

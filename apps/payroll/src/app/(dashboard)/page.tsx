@@ -42,6 +42,7 @@ import { StatusBadge } from "@/components/payroll/status-badge";
 import { FortnightSelect } from "@/components/payroll/fortnight-select";
 import { usePayrollData } from "@/components/payroll/payroll-data-context";
 import { apiErrorMessage } from "@/lib/api";
+import { useSession } from "@/lib/session";
 import {
   formatCurrency,
   formatDate,
@@ -204,6 +205,8 @@ function hasApplicableSchemeAssignment(
 
 export default function DashboardPage() {
   const data = usePayrollData();
+  const { canWrite } = useSession();
+  const hasWriteAccess = canWrite("payroll/resumen");
   const defaults = useMemo(currentFortnight, []);
   const periodOptions = useMemo(payrollPeriodOptions, []);
   const initialMonth = useMemo(currentMonth, []);
@@ -279,6 +282,7 @@ export default function DashboardPage() {
   useEffect(() => {
     if (
       !staleSchemeConfigurationKey ||
+      !hasWriteAccess ||
       data.refreshing ||
       autoRecalculationKey.current === staleSchemeConfigurationKey
     ) {
@@ -307,7 +311,7 @@ export default function DashboardPage() {
         setWorking(false);
         setRecalculating(false);
       });
-  }, [data, data.refreshing, staleSchemeConfigurationKey]);
+  }, [data, data.refreshing, hasWriteAccess, staleSchemeConfigurationKey]);
 
   function selectPayrollPeriod(value: string) {
     const option = periodOptions.find((item) => item.value === value);
@@ -473,7 +477,7 @@ export default function DashboardPage() {
     },
     {
       accessorKey: "loanPayment",
-      header: "PAGO PRÉSTAMO",
+      header: "PRÉSTAMO / ADELANTO",
       meta: { align: "right" },
       cell: ({ row }) => (
         <div className="text-right">
@@ -1177,7 +1181,9 @@ export default function DashboardPage() {
 
           <SectionCard
             title={
-              editingSelectedDraft
+              !hasWriteAccess
+                ? "SELECCIONAR PERIODO"
+                : editingSelectedDraft
                 ? "CONFIGURAR BORRADOR"
                 : selectedExistingFinalRun
                   ? "PERIODO YA CALCULADO"
@@ -1185,12 +1191,20 @@ export default function DashboardPage() {
             }
           >
             <Card>
-              <CardContent className="grid gap-4 p-5 lg:grid-cols-[minmax(0,1fr)_13rem_13rem_auto] lg:items-end">
+              <CardContent
+                className={`grid gap-4 p-5 lg:items-end ${
+                  hasWriteAccess
+                    ? "lg:grid-cols-[minmax(0,1fr)_13rem_13rem_auto]"
+                    : "lg:grid-cols-1"
+                }`}
+              >
                 <div className="space-y-2">
                   <div>
                     <p className="text-sm font-medium">Quincena</p>
                     <p className="text-xs text-[color:var(--text-muted)]">
-                      Consulta o crea una corrida de los últimos 12 meses.
+                      {hasWriteAccess
+                        ? "Consulta o crea una corrida de los últimos 12 meses."
+                        : "Consulta una corrida de los últimos 12 meses."}
                     </p>
                   </div>
                   <FortnightSelect
@@ -1211,52 +1225,56 @@ export default function DashboardPage() {
                     }}
                   />
                 </div>
-                <div className="space-y-2">
-                  <p className="text-sm font-medium">Día de pago</p>
-                  <DatePicker
-                    value={payDate}
-                    onChange={setPayDate}
-                    disabled={selectedExistingFinalRun}
-                  />
-                </div>
-                <Select
-                  value={mode}
-                  disabled={selectedExistingFinalRun}
-                  onValueChange={(value) =>
-                    setMode(value as PayrollCalculationMode)
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="WITH_VAT">Calcular con IVA</SelectItem>
-                    <SelectItem value="WITHOUT_VAT">
-                      Calcular sin IVA
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-                <Button
-                  disabled={
-                    working || data.refreshing || selectedExistingFinalRun
-                  }
-                  onClick={() =>
-                    void (editingSelectedDraft ? updateRun() : createRun())
-                  }
-                >
-                  {editingSelectedDraft ? (
-                    <RefreshCw className="mr-1.5 h-4 w-4" />
-                  ) : (
-                    <PlusCircle className="mr-1.5 h-4 w-4" />
-                  )}
-                  {working
-                    ? "Procesando…"
-                    : selectedExistingFinalRun
-                      ? "Periodo ya calculado"
-                      : editingSelectedDraft
-                        ? "Guardar y recalcular"
-                        : "Crear corrida"}
-                </Button>
+                {hasWriteAccess ? (
+                  <>
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium">Día de pago</p>
+                      <DatePicker
+                        value={payDate}
+                        onChange={setPayDate}
+                        disabled={selectedExistingFinalRun}
+                      />
+                    </div>
+                    <Select
+                      value={mode}
+                      disabled={selectedExistingFinalRun}
+                      onValueChange={(value) =>
+                        setMode(value as PayrollCalculationMode)
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="WITH_VAT">Calcular con IVA</SelectItem>
+                        <SelectItem value="WITHOUT_VAT">
+                          Calcular sin IVA
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      disabled={
+                        working || data.refreshing || selectedExistingFinalRun
+                      }
+                      onClick={() =>
+                        void (editingSelectedDraft ? updateRun() : createRun())
+                      }
+                    >
+                      {editingSelectedDraft ? (
+                        <RefreshCw className="mr-1.5 h-4 w-4" />
+                      ) : (
+                        <PlusCircle className="mr-1.5 h-4 w-4" />
+                      )}
+                      {working
+                        ? "Procesando…"
+                        : selectedExistingFinalRun
+                          ? "Periodo ya calculado"
+                          : editingSelectedDraft
+                            ? "Guardar y recalcular"
+                            : "Crear corrida"}
+                    </Button>
+                  </>
+                ) : null}
               </CardContent>
             </Card>
           </SectionCard>
@@ -1377,7 +1395,7 @@ export default function DashboardPage() {
                   pageSize={10}
                 />
               </SectionCard>
-              <div className="space-y-2">
+              {hasWriteAccess ? <div className="space-y-2">
                 {recalculating && (
                   <p
                     className="text-right text-sm text-[var(--text-muted)]"
@@ -1440,7 +1458,7 @@ export default function DashboardPage() {
                     </>
                   )}
                 </div>
-              </div>
+              </div> : null}
             </>
           )}
         </>

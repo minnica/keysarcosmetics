@@ -30,6 +30,8 @@ import { SectionCard } from "./section-card";
 import { usePayrollData } from "./payroll-data-context";
 import { apiErrorMessage } from "@/lib/api";
 import { formatCurrency, uppercaseInput } from "@/lib/format";
+import { useSession } from "@/lib/session";
+import type { PayrollScreenKey } from "@cosmetics/types";
 import type { CatalogKind, PayrollCatalogItem } from "@/lib/types";
 
 type CatalogPageProps = {
@@ -43,6 +45,12 @@ type CatalogPageProps = {
 
 const EMPTY_FORM = { name: "", amount: "0", notes: "" };
 
+const CATALOG_SCREEN_KEYS = {
+  BONUS: "payroll/bonos",
+  FINE: "payroll/multas",
+  PER_DIEM: "payroll/viaticos",
+} as const satisfies Record<CatalogKind, PayrollScreenKey>;
+
 export function MovementCatalogPage({
   kind,
   singular,
@@ -52,6 +60,8 @@ export function MovementCatalogPage({
   tone,
 }: CatalogPageProps) {
   const data = usePayrollData();
+  const { canWrite } = useSession();
+  const hasWriteAccess = canWrite(CATALOG_SCREEN_KEYS[kind]);
   const items = data.catalogs.filter(
     (item) => item.kind === kind && item.active,
   );
@@ -131,33 +141,37 @@ export function MovementCatalogPage({
       ),
     },
     { accessorKey: "notes", header: "NOTAS" },
-    {
-      id: "actions",
-      header: "ACCIONES",
-      meta: { align: "right" },
-      enableSorting: false,
-      enableGlobalFilter: false,
-      cell: ({ row }) => (
-        <div className="flex justify-end gap-2">
-          <Button
-            size="icon"
-            variant="ghost"
-            aria-label={`Editar ${row.original.name}`}
-            onClick={() => openEditDialog(row.original)}
-          >
-            <Pencil className="h-4 w-4" />
-          </Button>
-          <Button
-            size="icon"
-            variant="ghost"
-            aria-label={`Desactivar ${row.original.name}`}
-            onClick={() => setDeleteTarget(row.original)}
-          >
-            <Trash2 className="h-4 w-4 text-red-500" />
-          </Button>
-        </div>
-      ),
-    },
+    ...(hasWriteAccess
+      ? [
+          {
+            id: "actions",
+            header: "ACCIONES",
+            meta: { align: "right" as const },
+            enableSorting: false,
+            enableGlobalFilter: false,
+            cell: ({ row }: { row: { original: PayrollCatalogItem } }) => (
+              <div className="flex justify-end gap-2">
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  aria-label={`Editar ${row.original.name}`}
+                  onClick={() => openEditDialog(row.original)}
+                >
+                  <Pencil className="h-4 w-4" />
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  aria-label={`Desactivar ${row.original.name}`}
+                  onClick={() => setDeleteTarget(row.original)}
+                >
+                  <Trash2 className="h-4 w-4 text-red-500" />
+                </Button>
+              </div>
+            ),
+          },
+        ]
+      : []),
   ];
 
   return (
@@ -171,10 +185,12 @@ export function MovementCatalogPage({
             {description}
           </p>
         </div>
-        <Button onClick={openCreateDialog}>
-          <PlusCircle className="mr-1.5 h-4 w-4" />
-          {createLabel ?? `Nuevo ${singular.toLowerCase()}`}
-        </Button>
+        {hasWriteAccess ? (
+          <Button onClick={openCreateDialog}>
+            <PlusCircle className="mr-1.5 h-4 w-4" />
+            {createLabel ?? `Nuevo ${singular.toLowerCase()}`}
+          </Button>
+        ) : null}
       </header>
       <div className="grid gap-4 md:grid-cols-2">
         <MetricCard
@@ -195,7 +211,11 @@ export function MovementCatalogPage({
           columns={columns}
           data={items}
           searchPlaceholder={`Buscar ${singular.toLowerCase()}`}
-          emptyMessage={`Sin ${plural.toLowerCase()}; crea el primero para usarlo en movimientos.`}
+          emptyMessage={
+            hasWriteAccess
+              ? `Sin ${plural.toLowerCase()}; crea el primero para usarlo en movimientos.`
+              : `Sin ${plural.toLowerCase()} disponibles.`
+          }
           pageSize={10}
         />
       </SectionCard>

@@ -2,7 +2,9 @@ import { Prisma } from "@prisma/client";
 import { describe, expect, it } from "vitest";
 import {
   commissionOverviewPayment,
+  isManagementPosition,
   isSpecialistPosition,
+  salaryOverviewNetPayment,
   salaryOverviewPayment,
 } from "./payroll.service";
 
@@ -16,12 +18,26 @@ describe("payroll overview rules", () => {
     expect(isSpecialistPosition(null)).toBe(false);
   });
 
+  it("identifica puestos de gerencia sin confundir otros puestos", () => {
+    expect(isManagementPosition("Gerente")).toBe(true);
+    expect(isManagementPosition("GERENTE DE SUCURSAL")).toBe(true);
+    expect(isManagementPosition("Administrador general")).toBe(false);
+    expect(isManagementPosition(null)).toBe(false);
+  });
+
   it("usa la mitad del sueldo en quincenal y el sueldo completo en mensual", () => {
-    expect(salaryOverviewPayment("9000", "FORTNIGHT").toString()).toBe(
-      "4500",
-    );
+    expect(salaryOverviewPayment("9000", "FORTNIGHT").toString()).toBe("4500");
     expect(salaryOverviewPayment("9000", "MONTHLY").toString()).toBe("9000");
     expect(salaryOverviewPayment(null, "FORTNIGHT").toString()).toBe("0");
+  });
+
+  it("resta la multa dirigida a una nómina salarial", () => {
+    expect(
+      salaryOverviewNetPayment("9000", "FORTNIGHT", "500").toString(),
+    ).toBe("4000");
+    expect(salaryOverviewNetPayment("9000", "MONTHLY", "500").toString()).toBe(
+      "8500",
+    );
   });
 
   it("calcula el neto de comisiones sin agregar sueldo", () => {

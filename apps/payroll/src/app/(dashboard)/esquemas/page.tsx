@@ -37,6 +37,7 @@ import { MetricCard } from "@/components/payroll/metric-card";
 import { SectionCard } from "@/components/payroll/section-card";
 import { usePayrollData } from "@/components/payroll/payroll-data-context";
 import { apiErrorMessage } from "@/lib/api";
+import { useSession } from "@/lib/session";
 import {
   formatCurrency,
   formatDate,
@@ -168,6 +169,8 @@ function hasRangeError(error: RangeFormError): boolean {
 
 export default function EsquemasPage() {
   const data = usePayrollData();
+  const { canWrite } = useSession();
+  const hasWriteAccess = canWrite("payroll/esquemas");
   const [schemeOpen, setSchemeOpen] = useState(false);
   const [assignmentOpen, setAssignmentOpen] = useState(false);
   const [editing, setEditing] = useState<CommissionScheme | null>(null);
@@ -405,7 +408,8 @@ export default function EsquemasPage() {
       header: "ACCIONES",
       enableSorting: false,
       enableGlobalFilter: false,
-      cell: ({ row }) => (
+      cell: ({ row }) =>
+        hasWriteAccess ? (
         <div className="flex justify-end gap-1">
           <Button
             size="icon"
@@ -424,7 +428,7 @@ export default function EsquemasPage() {
             <Trash2 className="h-4 w-4 text-red-500" />
           </Button>
         </div>
-      ),
+        ) : null,
     },
   ];
   const assignmentColumns: ColumnDef<SchemeAssignment>[] = [
@@ -460,7 +464,7 @@ export default function EsquemasPage() {
       enableSorting: false,
       enableGlobalFilter: false,
       cell: ({ row }) =>
-        !row.original.effectiveTo && (
+        hasWriteAccess && !row.original.effectiveTo ? (
           <div className="flex justify-end gap-1">
             <Button
               size="icon"
@@ -479,7 +483,7 @@ export default function EsquemasPage() {
               <Trash2 className="h-4 w-4 text-red-500" />
             </Button>
           </div>
-        ),
+        ) : null,
     },
   ];
   const maxRate = Math.max(
@@ -541,7 +545,7 @@ export default function EsquemasPage() {
             Versiones y asignaciones con vigencia quincenal.
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        {hasWriteAccess ? <div className="flex flex-wrap gap-2">
           <Button
             variant="outline"
             onClick={() => {
@@ -561,7 +565,7 @@ export default function EsquemasPage() {
             <PlusCircle className="mr-1.5 h-4 w-4" />
             Nuevo esquema
           </Button>
-        </div>
+        </div> : null}
       </header>
       <div className="grid gap-4 md:grid-cols-3">
         <MetricCard

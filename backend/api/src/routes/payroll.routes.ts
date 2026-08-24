@@ -8,7 +8,14 @@ import {
 import multer from "multer";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
+import type { PayrollScreenKey } from "@cosmetics/types";
 import { authMiddleware } from "../middlewares/auth.middleware";
+import {
+  PAYROLL_ACCESS_SCREEN_ORDER,
+  isPayrollReadMethod,
+  requireAnyPayrollScreenAccess,
+  requireAnyPayrollScreenWriteAccess,
+} from "../lib/access";
 import { prisma } from "../prisma/client";
 import {
   approvePayrollRun,
@@ -101,22 +108,6 @@ function normalizeText(value: string): string {
   return value.trim().toLocaleUpperCase("es-MX");
 }
 
-function requireSuperAdmin(
-  req: Request,
-  res: Response,
-  next: NextFunction,
-): void {
-  if (req.user?.rol !== "SUPER_ADMIN") {
-    res.status(403).json({
-      success: false,
-      data: null,
-      message: "Payroll está disponible únicamente para SUPER_ADMIN.",
-    });
-    return;
-  }
-  next();
-}
-
 function currentUserId(req: Request): string {
   if (!req.user?.id) throw new Error("No autenticado.");
   return req.user.id;
@@ -145,7 +136,123 @@ const monthString = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
 const positiveMoney = z.coerce.number().positive().max(999_999_999_999);
 const nullableId = z.string().min(1).nullable().optional();
 
-router.use(authMiddleware, requireSuperAdmin);
+const PAYROLL_OPERATION_SCREEN_KEYS = PAYROLL_ACCESS_SCREEN_ORDER.filter(
+  (screenKey) => screenKey !== "payroll/accesos",
+);
+
+const CATALOG_SCREEN_BY_KIND = {
+  BONUS: "payroll/bonos",
+  FINE: "payroll/multas",
+  PER_DIEM: "payroll/viaticos",
+} as const satisfies Record<string, PayrollScreenKey>;
+
+async function payrollScreensForRequest(
+  req: Request,
+): Promise<readonly PayrollScreenKey[]> {
+  const path = req.path;
+
+  if (path === "/bootstrap") return PAYROLL_OPERATION_SCREEN_KEYS;
+
+  if (path.startsWith("/catalog-items")) {
+    const readRequest = isPayrollReadMethod(req.method);
+    let rawKind = readRequest
+      ? typeof req.query["kind"] === "string"
+        ? req.query["kind"]
+        : null
+      : typeof req.body?.kind === "string"
+        ? req.body.kind
+        : null;
+
+    if (!readRequest) {
+      const catalogItemId = path.split("/")[2];
+      if (catalogItemId) {
+        const existingItem = await prisma.payrollCatalogItem.findUnique({
+          where: { id: catalogItemId },
+          select: { kind: true },
+        });
+        rawKind = existingItem?.kind ?? null;
+      }
+    }
+
+    const catalogScreen = rawKind
+      ? CATALOG_SCREEN_BY_KIND[rawKind as keyof typeof CATALOG_SCREEN_BY_KIND]
+      : null;
+
+    if (catalogScreen) {
+      return readRequest
+        ? [catalogScreen, "payroll/movimientos"]
+        : [catalogScreen];
+    }
+
+    return readRequest
+      ? [
+          "payroll/bonos",
+          "payroll/multas",
+          "payroll/viaticos",
+          "payroll/movimientos",
+        ]
+      : [];
+  }
+
+  if (path.startsWith("/schemes") || path.startsWith("/assignments")) {
+    return req.method === "GET"
+      ? ["payroll/esquemas", "payroll/resumen"]
+      : ["payroll/esquemas"];
+  }
+
+  if (path.startsWith("/movements") || path.startsWith("/attachments")) {
+    return ["payroll/movimientos"];
+  }
+
+  if (
+    path.startsWith("/expenses") ||
+    path.startsWith("/expense-categories") ||
+    path.startsWith("/expense-recurrences")
+  ) {
+    return ["payroll/gastos"];
+  }
+
+  if (path.startsWith("/loans")) return ["payroll/prestamos-adelantos"];
+  if (path.startsWith("/runs")) return ["payroll/resumen"];
+  if (path === "/reports/monthly-summary") return ["payroll/resumen"];
+
+  if (path === "/reports/payroll-overview") {
+    const screenByType = {
+      FIXED_SALARY: "payroll/nomina-salario-fijo",
+      SPECIALIST: "payroll/nomina-especialistas",
+      COMMISSION: "payroll/nomina-comisiones",
+      MANAGEMENT_COMMISSION: "payroll/nomina-comisiones-gerencia",
+    } as const satisfies Record<string, PayrollScreenKey>;
+    const payrollType =
+      typeof req.query["payrollType"] === "string"
+        ? req.query["payrollType"]
+        : "";
+    const screen = screenByType[payrollType as keyof typeof screenByType];
+    return screen ? [screen] : Object.values(screenByType);
+  }
+
+  if (path === "/reports/live-preview") {
+    return ["payroll/reportes/desglose-sucursal", "payroll/recibos"];
+  }
+  if (path === "/reports/branch-breakdown") {
+    return ["payroll/reportes/desglose-sucursal"];
+  }
+  if (path.startsWith("/receipts")) return ["payroll/recibos"];
+
+  return PAYROLL_OPERATION_SCREEN_KEYS;
+}
+
+router.use(authMiddleware);
+router.use((req, res, next) => {
+  void payrollScreensForRequest(req)
+    .then((screenKeys) => {
+      const guard = isPayrollReadMethod(req.method)
+        ? requireAnyPayrollScreenAccess(screenKeys)
+        : requireAnyPayrollScreenWriteAccess(screenKeys);
+      return guard(req, res, next);
+    })
+    .catch(next);
+});
 
 router.get(
   "/bootstrap",
@@ -251,7 +358,6 @@ router.put(
     const item = await prisma.payrollCatalogItem.update({
       where: { id: req.params["id"] },
       data: {
-        kind: input.kind,
         name: normalizeText(input.name),
         defaultAmount: input.defaultAmount,
         notes: normalizeText(input.notes),
@@ -551,22 +657,48 @@ const allocationSchema = z.object({
   amount: positiveMoney,
   commissionable: z.boolean().default(true),
 });
-const movementSchema = z.object({
-  date: dateString,
-  kind: z.enum([
-    "BONUS",
-    "ADJUSTMENT_POSITIVE",
-    "ADJUSTMENT_NEGATIVE",
-    "FINE",
-    "PER_DIEM",
-    "SUPPLIES",
-  ]),
-  catalogItemId: nullableId,
-  concept: z.string().trim().min(1).max(160),
-  totalAmount: positiveMoney,
-  notes: z.string().trim().max(1500).optional().default(""),
-  allocations: z.array(allocationSchema).min(1).max(5),
-});
+const movementSchema = z
+  .object({
+    date: dateString,
+    kind: z.enum([
+      "BONUS",
+      "ADJUSTMENT_POSITIVE",
+      "ADJUSTMENT_NEGATIVE",
+      "FINE",
+      "PER_DIEM",
+      "SUPPLIES",
+    ]),
+    payrollType: z
+      .enum([
+        "FIXED_SALARY",
+        "SPECIALIST",
+        "COMMISSION",
+        "MANAGEMENT_COMMISSION",
+      ])
+      .nullable()
+      .optional(),
+    catalogItemId: nullableId,
+    concept: z.string().trim().min(1).max(160),
+    totalAmount: positiveMoney,
+    notes: z.string().trim().max(1500).optional().default(""),
+    allocations: z.array(allocationSchema).min(1).max(5),
+  })
+  .superRefine((input, context) => {
+    if (input.kind === "FINE" && !input.payrollType) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["payrollType"],
+        message: "Selecciona la nómina donde se aplicará la multa.",
+      });
+    }
+    if (input.kind !== "FINE" && input.payrollType) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["payrollType"],
+        message: "La nómina destino solo aplica a las multas.",
+      });
+    }
+  });
 
 function validateAllocations(input: z.infer<typeof movementSchema>): void {
   if (
@@ -622,6 +754,7 @@ router.post(
       data: {
         date: parseDate(input.date),
         kind: input.kind,
+        payrollType: input.kind === "FINE" ? input.payrollType : null,
         catalogItemId: input.catalogItemId ?? null,
         concept: normalizeText(input.concept),
         totalAmount: input.totalAmount,
@@ -657,6 +790,7 @@ router.put(
       data: {
         date: parseDate(input.date),
         kind: input.kind,
+        payrollType: input.kind === "FINE" ? input.payrollType : null,
         catalogItemId: input.catalogItemId ?? null,
         concept: normalizeText(input.concept),
         totalAmount: input.totalAmount,
@@ -1290,7 +1424,9 @@ router.get(
             position: { select: { nombre: true } },
           },
         },
-        installments: { orderBy: { sequence: "asc" } },
+        installments: {
+          orderBy: [{ periodStart: "asc" }, { sequence: "asc" }],
+        },
       },
     });
     ok(res, loans);
@@ -1316,7 +1452,12 @@ async function createLoan(input: z.infer<typeof loanSchema>, userId: string) {
       createdById: userId,
       installments: { create: schedule },
     },
-    include: { employee: true, installments: { orderBy: { sequence: "asc" } } },
+    include: {
+      employee: true,
+      installments: {
+        orderBy: [{ periodStart: "asc" }, { sequence: "asc" }],
+      },
+    },
   });
 }
 
@@ -1363,7 +1504,9 @@ router.put(
       },
       include: {
         employee: true,
-        installments: { orderBy: { sequence: "asc" } },
+        installments: {
+          orderBy: [{ periodStart: "asc" }, { sequence: "asc" }],
+        },
       },
     });
     ok(res, loan, "Préstamo o adelanto actualizado.");
@@ -1538,7 +1681,12 @@ router.post(
 // ─── Reporte por sucursal y recibos ─────────────────────────────────────────
 
 const payrollOverviewQuery = z.object({
-  payrollType: z.enum(["FIXED_SALARY", "SPECIALIST", "COMMISSION"]),
+  payrollType: z.enum([
+    "FIXED_SALARY",
+    "SPECIALIST",
+    "COMMISSION",
+    "MANAGEMENT_COMMISSION",
+  ]),
   view: z.enum(["FORTNIGHT", "MONTHLY"]),
   periodStart: dateString,
   periodEnd: dateString,

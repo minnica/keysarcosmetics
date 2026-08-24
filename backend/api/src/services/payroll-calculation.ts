@@ -347,8 +347,7 @@ export function calculatePayroll(input: CalculationInput): CalculationResult {
       }
     }
 
-    const loanPayment = money(employee.loanPayment);
-    const totalPayment = money(
+    const paymentBeforeLoan = money(
       salaryPayment
         .plus(commission)
         .plus(movementTotals.BONUS)
@@ -356,9 +355,15 @@ export function calculatePayroll(input: CalculationInput): CalculationResult {
         .plus(movementTotals.PER_DIEM)
         .plus(movementTotals.SUPPLIES)
         .minus(movementTotals.FINE)
-        .minus(movementTotals.ADJUSTMENT_NEGATIVE)
-        .minus(loanPayment),
+        .minus(movementTotals.ADJUSTMENT_NEGATIVE),
     );
+    const loanPayment = money(
+      Prisma.Decimal.min(
+        money(employee.loanPayment),
+        Prisma.Decimal.max(ZERO, paymentBeforeLoan),
+      ),
+    );
+    const totalPayment = money(paymentBeforeLoan.minus(loanPayment));
     if (totalPayment.isNegative()) {
       warnings.push(
         warning(
