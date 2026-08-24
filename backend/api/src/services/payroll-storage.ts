@@ -63,12 +63,19 @@ export async function uploadPayrollAttachment(
 export async function removePayrollAttachment(
   storagePath: string,
 ): Promise<void> {
+  await removePayrollAttachments([storagePath]);
+}
+
+export async function removePayrollAttachments(
+  storagePaths: string[],
+): Promise<void> {
+  if (storagePaths.length === 0) return;
   const config = storageConfig();
   if (!config)
     throw new Error("Supabase Storage no está configurado para Payroll.");
   const { error } = await config.client.storage
     .from(config.bucket)
-    .remove([storagePath]);
+    .remove(storagePaths);
   if (error)
     throw new Error(`No se pudo borrar el comprobante: ${error.message}`);
 }

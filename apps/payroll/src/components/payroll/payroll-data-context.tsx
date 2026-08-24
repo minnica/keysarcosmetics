@@ -392,6 +392,7 @@ interface PayrollDataValue {
   }) => Promise<void>;
   removeAssignment: (id: string) => Promise<void>;
   saveMovement: (input: unknown, id?: string) => Promise<PayrollMovement>;
+  removeMovement: (id: string) => Promise<void>;
   setMovementStatus: (id: string, status: MovementStatus) => Promise<void>;
   uploadAttachment: (movementId: string, file: File) => Promise<void>;
   openAttachment: (id: string) => Promise<void>;
@@ -703,6 +704,8 @@ export function PayrollDataProvider({
         await refreshAll();
         return mapMovement(response.data.data);
       },
+      removeMovement: async (id) =>
+        reload(() => api.delete(`/api/payroll/movements/${id}`)),
       setMovementStatus: async (id, status) =>
         reload(() =>
           api.patch(`/api/payroll/movements/${id}/status`, { status }),

@@ -87,89 +87,260 @@ function issuedReceiptDocument(receipt: PayrollReceipt): ReceiptDocument {
   };
 }
 
+function formatReceiptCurrency(value: number) {
+  return new Intl.NumberFormat("es-MX", {
+    style: "currency",
+    currency: "MXN",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
+function formatReceiptDate(value: string, abbreviated = false) {
+  const [year, month, day] = value.split("-").map(Number);
+  return new Intl.DateTimeFormat("es-MX", {
+    day: "2-digit",
+    month: abbreviated ? "short" : "long",
+    year: "numeric",
+    timeZone: "UTC",
+  })
+    .format(new Date(Date.UTC(year ?? 0, (month ?? 1) - 1, day ?? 1)))
+    .replace(/\./g, "")
+    .replace(/\s+de\s+/gi, " ")
+    .toLocaleUpperCase("es-MX");
+}
+
+function formatReceiptPeriod(from: string, to: string) {
+  const [fromYear, fromMonth, fromDay] = from.split("-").map(Number);
+  const [toYear, toMonth, toDay] = to.split("-").map(Number);
+  if (fromYear === toYear && fromMonth === toMonth) {
+    const month = new Intl.DateTimeFormat("es-MX", {
+      month: "short",
+      timeZone: "UTC",
+    })
+      .format(new Date(Date.UTC(fromYear ?? 0, (fromMonth ?? 1) - 1, 1)))
+      .replace(/\./g, "")
+      .toLocaleUpperCase("es-MX");
+    return `${String(fromDay).padStart(2, "0")} — ${String(toDay).padStart(2, "0")} ${month} ${toYear}`;
+  }
+  return `${formatReceiptDate(from, true)} — ${formatReceiptDate(to, true)}`;
+}
+
+function loadReceiptLogo(): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = image.naturalWidth;
+      canvas.height = image.naturalHeight;
+      const context = canvas.getContext("2d");
+      if (!context) {
+        reject(new Error("No se pudo preparar el logo del recibo."));
+        return;
+      }
+      context.drawImage(image, 0, 0);
+      resolve(canvas.toDataURL("image/png"));
+    };
+    image.onerror = () =>
+      reject(new Error("No se pudo cargar el logo de Keysar Cosmetics."));
+    image.src = "/logo.svg";
+  });
+}
+
 async function downloadReceiptPdf(receipt: ReceiptDocument) {
-  const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+  const [{ jsPDF }, logo] = await Promise.all([
     import("jspdf"),
-    import("jspdf-autotable"),
+    loadReceiptLogo(),
   ]);
   const line = receipt.runLine;
   const doc = new jsPDF({ unit: "pt", format: "letter" });
-  doc.setFillColor(100, 134, 114);
-  doc.rect(0, 0, 612, 82, "F");
-  doc.setTextColor(255, 255, 255);
+  const ink: [number, number, number] = [28, 33, 31];
+  const muted: [number, number, number] = [98, 105, 101];
+  const green: [number, number, number] = [105, 145, 125];
+  const rose: [number, number, number] = [192, 140, 143];
+  const gold: [number, number, number] = [197, 167, 133];
+  const paleGreen: [number, number, number] = [239, 244, 241];
+  const rule: [number, number, number] = [211, 217, 214];
+
+  doc.setFillColor(252, 252, 250);
+  doc.rect(0, 0, 612, 792, "F");
+  doc.addImage(logo, "PNG", 42, 36, 44, 33);
+  doc.setTextColor(...ink);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(20);
-  doc.text("KEYSAR COSMETICS", 40, 38);
-  doc.setFontSize(10);
+  doc.setFontSize(16);
+  doc.text("KEYSAR COSMETICS", 96, 52);
+  doc.setTextColor(...muted);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8.5);
   doc.text(
     receipt.provisional ? "VISTA PREVIA DE RECIBO" : "RECIBO DE NÓMINA",
-    40,
-    58,
-  );
-  doc.setTextColor(24, 24, 24);
-  doc.setFontSize(15);
-  doc.text(line.employeeName, 40, 115);
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(9);
-  doc.text(`${line.position} · ${line.branch}`, 40, 132);
-  doc.text(
-    `Periodo: ${formatDate(receipt.periodStart)} al ${formatDate(receipt.periodEnd)} · Pago: ${formatDate(receipt.payDate)}`,
-    40,
-    149,
+    96,
+    68,
   );
 
-  const rows = [
-    ["Ventas con IVA", formatCurrency(line.salesWithVat)],
-    ["Ventas sin IVA", formatCurrency(line.salesWithoutVat)],
-    [
-      `Esquema ${line.scheme}${line.schemeVersion ? ` V${line.schemeVersion}` : ""}`,
-      formatPercent(line.individualRate),
-    ],
-    ["Sueldo base quincenal", formatCurrency(line.salaryBase)],
-    ["Comisiones", formatCurrency(line.commission)],
-    ["Bonos", formatCurrency(line.bonus)],
-    ["Ajustes positivos", formatCurrency(line.payrollAdjustmentPositive)],
-    ["Viáticos y suministros", formatCurrency(line.perDiem + line.supplies)],
-    ["Multas", `-${formatCurrency(line.fine)}`],
-    ["Ajustes negativos", `-${formatCurrency(line.payrollAdjustmentNegative)}`],
-    ["Pago de préstamo/adelanto", `-${formatCurrency(line.loanPayment)}`],
-  ];
-  autoTable(doc, {
-    startY: 172,
-    head: [["CONCEPTO", "IMPORTE"]],
-    body: rows,
-    theme: "plain",
-    styles: { font: "helvetica", fontSize: 9, cellPadding: 7 },
-    headStyles: {
-      fillColor: [238, 241, 239],
-      textColor: [55, 65, 60],
-      fontStyle: "bold",
-    },
-    columnStyles: { 1: { halign: "right", fontStyle: "bold" } },
-  });
-  const finalY =
-    (doc as typeof doc & { lastAutoTable?: { finalY: number } }).lastAutoTable
-      ?.finalY ?? 440;
-  doc.setFillColor(26, 26, 26);
-  doc.roundedRect(40, finalY + 18, 532, 48, 5, 5, "F");
+  doc.setFillColor(...green);
+  doc.roundedRect(438, 36, 132, 42, 7, 7, "F");
   doc.setTextColor(255, 255, 255);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(11);
-  doc.text("PAGO TOTAL", 56, finalY + 47);
-  doc.setFontSize(16);
-  doc.text(formatCurrency(line.totalPayment), 556, finalY + 47, {
-    align: "right",
-  });
-  doc.setTextColor(95, 95, 95);
+  doc.setFontSize(8.5);
+  doc.text("PERIODO QUINCENAL", 504, 52, { align: "center" });
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8);
-  doc.text(`Folio: ${receipt.id}`, 40, 744);
+  doc.text(
+    formatReceiptPeriod(receipt.periodStart, receipt.periodEnd),
+    504,
+    68,
+    {
+      align: "center",
+    },
+  );
+
+  doc.setDrawColor(...gold);
+  doc.setLineWidth(0.8);
+  doc.line(42, 100, 570, 100);
+
+  doc.setTextColor(62, 95, 80);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8.5);
+  doc.text("C O L A B O R A D O R", 42, 128);
+  doc.setTextColor(...ink);
+  let employeeFontSize = 19;
+  doc.setFontSize(employeeFontSize);
+  while (doc.getTextWidth(line.employeeName) > 528 && employeeFontSize > 12) {
+    employeeFontSize -= 1;
+    doc.setFontSize(employeeFontSize);
+  }
+  doc.text(line.employeeName, 42, 154);
+  doc.setTextColor(...muted);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.text(
+    `DEL ${formatReceiptDate(receipt.periodStart)} — ${formatReceiptDate(receipt.periodEnd)}`,
+    42,
+    174,
+  );
+
+  doc.setFillColor(...paleGreen);
+  doc.roundedRect(42, 198, 528, 94, 8, 8, "F");
+  doc.setDrawColor(...rule);
+  doc.line(218, 216, 218, 274);
+  doc.line(394, 216, 394, 274);
+  const metric = (label: string, value: string, x: number, maxWidth = 144) => {
+    doc.setTextColor(...muted);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8);
+    doc.text(label, x, 228);
+    doc.setTextColor(...ink);
+    let size = 15;
+    doc.setFontSize(size);
+    while (doc.getTextWidth(value) > maxWidth && size > 9) {
+      size -= 1;
+      doc.setFontSize(size);
+    }
+    doc.text(value, x, 257);
+  };
+  metric(
+    "V E N T A S  C O N  I V A",
+    formatReceiptCurrency(line.salesWithVat),
+    60,
+  );
+  metric(
+    "V E N T A S  S I N  I V A",
+    formatReceiptCurrency(line.salesWithoutVat),
+    236,
+  );
+  metric(
+    "E S Q U E M A  /  C O M I S I Ó N",
+    `${line.scheme} · ${formatPercent(line.individualRate)}`,
+    412,
+  );
+
+  const sectionHeader = (
+    x: number,
+    color: [number, number, number],
+    title: string,
+    subtitle: string,
+  ) => {
+    doc.setFillColor(...color);
+    doc.roundedRect(x, 328, 249, 38, 6, 6, "F");
+    doc.setTextColor(255, 255, 255);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10);
+    doc.text(title, x + 14, 345);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7.5);
+    doc.text(subtitle, x + 14, 358);
+  };
+  sectionHeader(42, green, "PERCEPCIONES", "IMPORTES QUE SUMAN AL PAGO");
+  sectionHeader(322, rose, "DEDUCCIONES", "IMPORTES QUE REDUCEN EL PAGO");
+
+  const receiptAmount = (value: number) =>
+    Math.abs(value) < 0.005 ? "—" : formatReceiptCurrency(value);
+  const drawRows = (
+    x: number,
+    width: number,
+    rows: Array<[string, number]>,
+  ) => {
+    rows.forEach(([label, value], index) => {
+      const y = 399 + index * 39;
+      doc.setTextColor(...ink);
+      doc.setFont(
+        "helvetica",
+        label === "Comisiones" || label === "Pago préstamo" ? "bold" : "normal",
+      );
+      doc.setFontSize(10);
+      doc.text(label, x + 2, y);
+      doc.setFont("helvetica", value ? "bold" : "normal");
+      doc.text(receiptAmount(value), x + width - 2, y, { align: "right" });
+      doc.setDrawColor(...rule);
+      doc.setLineWidth(0.6);
+      doc.line(x, y + 12, x + width, y + 12);
+    });
+  };
+  drawRows(42, 249, [
+    ["Sueldo base", line.salaryBase],
+    ["Comisiones", line.commission],
+    ["Bonos", line.bonus],
+    ["Ajustes +", line.payrollAdjustmentPositive],
+    ["Viáticos e insumos", line.perDiem + line.supplies],
+  ]);
+  drawRows(322, 248, [
+    ["Pago préstamo", line.loanPayment],
+    ["Multas", line.fine],
+    ["Ajustes -", line.payrollAdjustmentNegative],
+  ]);
+
+  doc.setFillColor(...ink);
+  doc.roundedRect(42, 610, 528, 88, 10, 10, "F");
+  doc.setFillColor(...gold);
+  doc.roundedRect(56, 624, 8, 60, 4, 4, "F");
+  doc.setTextColor(255, 255, 255);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(12);
+  doc.text("P A G O  T O T A L", 80, 648);
+  doc.setTextColor(190, 194, 191);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8.5);
+  doc.text("PERCEPCIONES - DEDUCCIONES", 80, 670);
+  doc.setTextColor(255, 255, 255);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(24);
+  doc.text(formatReceiptCurrency(line.totalPayment), 548, 663, {
+    align: "right",
+  });
+
+  doc.setDrawColor(...rule);
+  doc.line(42, 730, 570, 730);
+  doc.setTextColor(...muted);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7.5);
+  doc.text("KEYSAR COSMETICS", 42, 746);
   doc.text(
     receipt.provisional
-      ? "Vista provisional calculada con los datos vigentes; no acredita pago."
-      : "Documento generado desde la corrida aprobada y pagada.",
-    572,
-    744,
+      ? "VISTA PROVISIONAL · NO ACREDITA PAGO"
+      : `DOCUMENTO DE NÓMINA · FOLIO ${receipt.id}`,
+    570,
+    746,
     { align: "right" },
   );
   doc.save(

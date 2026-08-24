@@ -41,6 +41,7 @@ import {
   isPayrollStorageConfigured,
   MAX_PAYROLL_ATTACHMENT_BYTES,
   removePayrollAttachment,
+  removePayrollAttachments,
   uploadPayrollAttachment,
 } from "../services/payroll-storage";
 import {
@@ -806,6 +807,41 @@ router.put(
       include: { allocations: true, attachments: true },
     });
     ok(res, movement, "Movimiento actualizado.");
+  }),
+);
+
+router.delete(
+  "/movements/:id",
+  asyncRoute(async (req, res) => {
+    const current = await prisma.payrollMovement.findUniqueOrThrow({
+      where: { id: req.params["id"] },
+      include: { attachments: true },
+    });
+    if (current.status !== "PENDING" || current.payrollRunId)
+      throw new Error(
+        "Solo puede eliminarse un movimiento pendiente y no asignado.",
+      );
+    await removePayrollAttachments(
+      current.attachments.map((attachment) => attachment.storagePath),
+    );
+    await prisma.$transaction(async (tx) => {
+      await tx.payrollMovement.delete({ where: { id: current.id } });
+      await tx.payrollAuditEvent.create({
+        data: {
+          userId: currentUserId(req),
+          entityType: "PayrollMovement",
+          entityId: current.id,
+          action: "DELETED",
+          metadata: {
+            concept: current.concept,
+            date: isoDate(current.date),
+            kind: current.kind,
+            totalAmount: current.totalAmount.toString(),
+          },
+        },
+      });
+    });
+    ok(res, null, "Movimiento eliminado.");
   }),
 );
 
