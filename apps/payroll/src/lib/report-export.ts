@@ -49,7 +49,7 @@ function uppercase(value: string): string {
 function sanitizeSheetName(sheetName: string): string {
   return (
     sheetName
-      .replace(/[\\/?*\[\]:]+/g, " ")
+      .replace(/[\\/?*[\]:]+/g, " ")
       .trim()
       .slice(0, 31) || "Reporte"
   );

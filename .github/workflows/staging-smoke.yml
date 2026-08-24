@@ -1,0 +1,58 @@
+name: Environment smoke tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Ambiente de lectura
+        required: true
+        type: choice
+        options:
+          - development
+          - production
+
+permissions:
+  contents: read
+
+concurrency:
+  group: smoke-${{ inputs.environment }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    name: API, Envelope and Payroll
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    env:
+      TARGET_ENVIRONMENT: ${{ inputs.environment }}
+      API_BASE_URL: ${{ vars.API_BASE_URL }}
+      ENVELOPE_BASE_URL: ${{ vars.ENVELOPE_BASE_URL }}
+      PAYROLL_BASE_URL: ${{ vars.PAYROLL_BASE_URL }}
+      ENVELOPE_VERCEL_BYPASS_SECRET: ${{ secrets.ENVELOPE_VERCEL_BYPASS_SECRET }}
+      PAYROLL_VERCEL_BYPASS_SECRET: ${{ secrets.PAYROLL_VERCEL_BYPASS_SECRET }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 10.0.0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Validate environment URLs
+        run: |
+          test -n "$API_BASE_URL"
+          test -n "$ENVELOPE_BASE_URL"
+          test -n "$PAYROLL_BASE_URL"
+          if [ "$TARGET_ENVIRONMENT" = "development" ]; then
+            test -n "$ENVELOPE_VERCEL_BYPASS_SECRET"
+            test -n "$PAYROLL_VERCEL_BYPASS_SECRET"
+          fi
+      - run: pnpm test:smoke
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: apps/e2e/playwright-report
+          retention-days: 7

@@ -1,7 +1,15 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Check, FileText, Pencil, PlusCircle, Upload, X } from "lucide-react";
+import {
+  Check,
+  FileText,
+  Pencil,
+  PlusCircle,
+  Trash2,
+  Upload,
+  X,
+} from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -126,6 +134,9 @@ export default function MovimientosPage() {
     movement: PayrollMovement;
     status: MovementStatus;
   } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<PayrollMovement | null>(
+    null,
+  );
   const employees = data.employees.filter((employee) => employee.active);
   const catalog =
     form.kind === "BONUS"
@@ -336,6 +347,17 @@ export default function MovimientosPage() {
     }
   }
 
+  async function removeMovement() {
+    if (!deleteTarget) return;
+    try {
+      await data.removeMovement(deleteTarget.id);
+      setDeleteTarget(null);
+      toast.success("Movimiento eliminado.");
+    } catch (cause) {
+      toast.error(apiErrorMessage(cause));
+    }
+  }
+
   const columns = useMemo<ColumnDef<PayrollMovement>[]>(
     () => [
       {
@@ -437,16 +459,36 @@ export default function MovimientosPage() {
                   />
                 </label>
               )}
-            {row.original.status === "PENDING" && hasWriteAccess && (
+            {hasWriteAccess && (
               <>
                 <Button
                   size="icon"
                   variant="ghost"
-                  aria-label="Editar"
+                  disabled={
+                    row.original.status !== "PENDING" ||
+                    Boolean(row.original.payrollRunId)
+                  }
+                  aria-label={`Editar movimiento ${row.original.concept}`}
                   onClick={() => editMovement(row.original)}
                 >
                   <Pencil className="h-4 w-4" />
                 </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  disabled={
+                    row.original.status !== "PENDING" ||
+                    Boolean(row.original.payrollRunId)
+                  }
+                  aria-label={`Eliminar movimiento ${row.original.concept}`}
+                  onClick={() => setDeleteTarget(row.original)}
+                >
+                  <Trash2 className="h-4 w-4 text-red-500" />
+                </Button>
+              </>
+            )}
+            {row.original.status === "PENDING" && hasWriteAccess && (
+              <>
                 <Button
                   size="icon"
                   variant="ghost"
@@ -927,6 +969,29 @@ export default function MovimientosPage() {
               onClick={() => void changeStatus()}
             >
               Confirmar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog
+        open={Boolean(deleteTarget)}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Eliminar movimiento</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteTarget?.concept} y sus comprobantes se eliminarán de forma
+              permanente. Esta acción no se puede deshacer.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700"
+              onClick={() => void removeMovement()}
+            >
+              Eliminar
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

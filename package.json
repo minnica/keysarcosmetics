@@ -5,10 +5,20 @@
     "build": "turbo run build",
     "dev": "turbo run dev",
     "lint": "turbo run lint",
+    "test": "turbo run test",
+    "test:unit": "pnpm --filter @cosmetics/api test:unit",
+    "test:integration": "pnpm --filter @cosmetics/api test:integration",
+    "test:smoke": "pnpm --filter @cosmetics/e2e test:smoke",
+    "migrations:review": "node scripts/check-migration-safety.mjs",
     "type-check": "turbo run type-check",
-    "format": "prettier --write \"**/*.{ts,tsx,md}\""
+    "format": "prettier --write \"**/*.{ts,tsx,md,json,yml,yaml}\"",
+    "format:check:all": "prettier --check \"**/*.{ts,tsx,md,json,yml,yaml}\"",
+    "ci:quality": "pnpm lint && pnpm type-check && pnpm test:unit",
+    "ci:build": "pnpm --filter @cosmetics/api --filter @cosmetics/landing --filter @cosmetics/envelope --filter @cosmetics/payroll --filter @cosmetics/crm --filter @cosmetics/scheduler --filter @cosmetics/finance --filter @cosmetics/hr build"
   },
   "devDependencies": {
+    "@typescript-eslint/parser": "7.2.0",
+    "eslint": "^8.57.0",
     "prettier": "^3.3.2",
     "supabase": "^2.110.0",
     "turbo": "^1.13.4",

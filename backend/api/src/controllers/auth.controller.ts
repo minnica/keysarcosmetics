@@ -34,7 +34,7 @@ export async function login(req: Request, res: Response): Promise<void> {
 
   try {
     // Buscar usuario activo por email
-    const usuario = (await (prisma as any).usuario.findFirst({
+    const usuario = (await prisma.usuario.findFirst({
       where: { email, activo: true },
       include: {
         sucursal: { select: { id: true, nombre: true } },
@@ -152,7 +152,7 @@ export async function me(req: Request, res: Response): Promise<void> {
 
   try {
     // Refrescar datos desde la BD (por si cambiaron desde que se emitió el token)
-    const usuario = (await (prisma as any).usuario.findUnique({
+    const usuario = (await prisma.usuario.findUnique({
       where: { id: payload.id },
       select: {
         id: true,

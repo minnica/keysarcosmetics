@@ -1,6 +1,6 @@
 {
   "$schema": "https://turbo.build/schema.json",
-  "globalDependencies": ["**/.env.*", ".env"],
+  "globalDependencies": ["**/.env.*", ".env", ".eslintrc.cjs"],
   "pipeline": {
     "build": {
       "dependsOn": ["^build"],
@@ -12,6 +12,10 @@
     },
     "lint": {
       "outputs": []
+    },
+    "test": {
+      "dependsOn": ["^build"],
+      "outputs": ["coverage/**"]
     },
     "type-check": {
       "dependsOn": ["^build"],

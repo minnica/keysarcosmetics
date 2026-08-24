@@ -8,7 +8,7 @@ import { authMiddleware } from '../middlewares/auth.middleware'
 import { prisma } from '../prisma/client'
 
 const router: ExpressRouter = Router()
-const db = prisma as any
+const db = prisma
 
 router.use(authMiddleware)
 router.use(requirePayrollAccessManager)
@@ -134,7 +134,7 @@ router.put('/positions/:id/permissions', async (req, res) => {
       ]),
     )
 
-    await db.$transaction(async (tx: any) => {
+    await db.$transaction(async (tx: Prisma.TransactionClient) => {
       await tx.position.update({
         where: { id: positionId },
         data: {

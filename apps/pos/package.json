@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc && vite build && electron-builder",
     "preview": "vite preview",
-    "lint": "echo 'no lint configured'",
+    "lint": "eslint \"src/**/*.{ts,tsx}\" --max-warnings=0",
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
