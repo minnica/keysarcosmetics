@@ -24,9 +24,12 @@ jobs:
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment }}
     env:
+      TARGET_ENVIRONMENT: ${{ inputs.environment }}
       API_BASE_URL: ${{ vars.API_BASE_URL }}
       ENVELOPE_BASE_URL: ${{ vars.ENVELOPE_BASE_URL }}
       PAYROLL_BASE_URL: ${{ vars.PAYROLL_BASE_URL }}
+      ENVELOPE_VERCEL_BYPASS_SECRET: ${{ secrets.ENVELOPE_VERCEL_BYPASS_SECRET }}
+      PAYROLL_VERCEL_BYPASS_SECRET: ${{ secrets.PAYROLL_VERCEL_BYPASS_SECRET }}
     steps:
       - uses: actions/checkout@v6
       - uses: pnpm/action-setup@v4
@@ -42,6 +45,10 @@ jobs:
           test -n "$API_BASE_URL"
           test -n "$ENVELOPE_BASE_URL"
           test -n "$PAYROLL_BASE_URL"
+          if [ "$TARGET_ENVIRONMENT" = "development" ]; then
+            test -n "$ENVELOPE_VERCEL_BYPASS_SECRET"
+            test -n "$PAYROLL_VERCEL_BYPASS_SECRET"
+          fi
       - run: pnpm test:smoke
       - if: failure()
         uses: actions/upload-artifact@v4
