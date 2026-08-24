@@ -47,6 +47,7 @@ import type {
   BillingLocation,
   BillingProfile,
 } from "../types";
+import { HistoryPagination, useHistoryPagination } from "./HistoryPagination";
 
 interface MyAccountViewProps {
   authorized: boolean;
@@ -135,6 +136,7 @@ export function MyAccountView({
   const [newLocationName, setNewLocationName] = useState("");
   const [newLocationCostUsd, setNewLocationCostUsd] = useState("69");
   const [deactivationLocationId, setDeactivationLocationId] = useState("");
+  const billingPagination = useHistoryPagination(history, "billing-history");
 
   const authorize = () => {
     if (!isMasterCode(accessCode)) {
@@ -831,7 +833,7 @@ export function MyAccountView({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {history.map((entry) => (
+                {billingPagination.paginatedItems.map((entry) => (
                   <TableRow key={entry.id}>
                     <TableCell><strong>{entry.invoiceNumber}</strong></TableCell>
                     <TableCell>{entry.locationName}</TableCell>
@@ -850,6 +852,14 @@ export function MyAccountView({
               </TableBody>
             </Table>
           </div>
+          <HistoryPagination
+            total={history.length}
+            page={billingPagination.page}
+            pageSize={billingPagination.pageSize}
+            pageCount={billingPagination.pageCount}
+            onPageChange={billingPagination.setPage}
+            onPageSizeChange={billingPagination.setPageSize}
+          />
         </CardContent>
       </Card>
     </div>

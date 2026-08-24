@@ -33,6 +33,7 @@ import type {
   PaymentMethodOption,
   Ticket,
 } from "../types";
+import { HistoryPagination, useHistoryPagination } from "./HistoryPagination";
 
 interface ReportsCustomerDialogProps {
   open: boolean;
@@ -83,6 +84,14 @@ export function ReportsCustomerDialog({
             .sort((left, right) => right.date.localeCompare(left.date))
         : [],
     [appointments, client],
+  );
+  const ticketPagination = useHistoryPagination(
+    customerTickets,
+    client?.id ?? "",
+  );
+  const appointmentPagination = useHistoryPagination(
+    customerAppointments,
+    client?.id ?? "",
   );
   const activeSales = customerTickets.filter(
     (ticket) =>
@@ -185,7 +194,7 @@ export function ReportsCustomerDialog({
               <Table>
                 <TableHeader><TableRow><TableHead>FECHA / FOLIO</TableHead><TableHead>SUCURSAL</TableHead><TableHead>PRODUCTOS</TableHead><TableHead>TOTAL</TableHead><TableHead>PAGADO</TableHead><TableHead>SALDO</TableHead><TableHead>ESTATUS</TableHead></TableRow></TableHeader>
                 <TableBody>
-                  {customerTickets.map((ticket) => (
+                  {ticketPagination.paginatedItems.map((ticket) => (
                     <TableRow key={ticket.id}>
                       <TableCell><strong>{ticket.createdAt}</strong><small>{ticket.id}</small></TableCell>
                       <TableCell>{ticket.branchName ?? "—"}</TableCell>
@@ -199,6 +208,14 @@ export function ReportsCustomerDialog({
                 </TableBody>
               </Table>
             </div>
+            <HistoryPagination
+              total={customerTickets.length}
+              page={ticketPagination.page}
+              pageSize={ticketPagination.pageSize}
+              pageCount={ticketPagination.pageCount}
+              onPageChange={ticketPagination.setPage}
+              onPageSizeChange={ticketPagination.setPageSize}
+            />
           </section>
 
           <aside>
@@ -221,7 +238,7 @@ export function ReportsCustomerDialog({
         <section className="reports-customer-appointments">
           <div className="reports-customer-section-heading"><span>CITAS, CORTESÍAS Y SEGUIMIENTO</span><Badge variant="outline">{customerAppointments.length}</Badge></div>
           <div className="reports-customer-appointment-list">
-            {customerAppointments.map((appointment) => (
+            {appointmentPagination.paginatedItems.map((appointment) => (
               <article key={appointment.id}>
                 <CalendarHeart size={16} />
                 <span><strong>{appointment.service}</strong><small>{appointmentKindLabel[appointment.kind]} · {appointment.date} · {appointment.time}</small></span>
@@ -230,6 +247,14 @@ export function ReportsCustomerDialog({
             ))}
             {customerAppointments.length === 0 && <p>Sin citas registradas.</p>}
           </div>
+          <HistoryPagination
+            total={customerAppointments.length}
+            page={appointmentPagination.page}
+            pageSize={appointmentPagination.pageSize}
+            pageCount={appointmentPagination.pageCount}
+            onPageChange={appointmentPagination.setPage}
+            onPageSizeChange={appointmentPagination.setPageSize}
+          />
         </section>
       </DialogContent>
     </Dialog>

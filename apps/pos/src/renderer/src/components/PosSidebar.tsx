@@ -16,12 +16,16 @@ import {
   Menu,
   PanelLeftClose,
   PackagePlus,
+  ContactRound,
+  Pin,
+  PinOff,
   ReceiptText,
   Settings2,
   ShoppingBag,
   Trophy,
   UserRoundCog,
   UsersRound,
+  Warehouse,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -35,6 +39,7 @@ interface NavigationItem {
 }
 
 const navigationItems: NavigationItem[] = [
+  { id: "dashboard", label: "Dashboard", icon: Gauge, color: "#9b6841" },
   { id: "sale", label: "Sale", icon: ShoppingBag, color: "#20201f" },
   {
     id: "appointments",
@@ -63,6 +68,18 @@ const navigationItems: NavigationItem[] = [
   { id: "settings", label: "Settings", icon: Settings2, color: "#6b9bb8" },
   { id: "clock-in", label: "Clock In", icon: Clock3, color: "#4b9a70" },
 ];
+
+const utilityNavigationIds: ScreenId[] = [
+  "data-update",
+  "settings",
+  "clock-in",
+];
+const primaryNavigationItems = navigationItems.filter(
+  (item) => !utilityNavigationIds.includes(item.id),
+);
+const utilityNavigationItems = navigationItems.filter((item) =>
+  utilityNavigationIds.includes(item.id),
+);
 
 const saleNavigationItems: NavigationItem[] = [
   {
@@ -105,6 +122,18 @@ const inventoryNavigationItems: NavigationItem[] = [
     color: "#d97562",
   },
   {
+    id: "warehouse",
+    label: "Almacén bodega",
+    icon: Warehouse,
+    color: "#9a6a45",
+  },
+  {
+    id: "suppliers",
+    label: "Proveedores",
+    icon: ContactRound,
+    color: "#8f6b50",
+  },
+  {
     id: "catalog",
     label: "Catálogo",
     icon: BookOpenCheck,
@@ -128,20 +157,26 @@ interface PosSidebarProps {
   activeScreen: ScreenId;
   activeBranch: string;
   collapsed: boolean;
+  pinned: boolean;
+  allowedScreens: ScreenId[];
   cartCount: number;
   onNavigate: (screen: ScreenId) => void;
   onRequestLocationSwitch: () => void;
   onToggle: () => void;
+  onTogglePin: () => void;
 }
 
 export function PosSidebar({
   activeScreen,
   activeBranch,
   collapsed,
+  pinned,
+  allowedScreens,
   cartCount,
   onNavigate,
   onRequestLocationSwitch,
   onToggle,
+  onTogglePin,
 }: PosSidebarProps) {
   const saleIsActive = saleNavigationItems.some(
     (item) => item.id === activeScreen,
@@ -151,6 +186,12 @@ export function PosSidebar({
   );
   const [saleMenuOpen, setSaleMenuOpen] = useState(saleIsActive);
   const [inventoryMenuOpen, setInventoryMenuOpen] = useState(inventoryIsActive);
+  const visiblePrimaryNavigationItems = primaryNavigationItems.filter(
+    (item) =>
+      allowedScreens.includes(item.id) ||
+      (item.id === "sale" && saleNavigationItems.some((child) => allowedScreens.includes(child.id))) ||
+      (item.id === "inventory" && inventoryNavigationItems.some((child) => allowedScreens.includes(child.id))),
+  );
 
   useEffect(() => {
     if (saleIsActive) setSaleMenuOpen(true);
@@ -167,9 +208,9 @@ export function PosSidebar({
           <img src="/logo.svg" alt="" />
         </div>
         {!collapsed && (
-          <div>
+          <div className="brand-copy">
             <span className="brand-name">KEYSAR</span>
-            <span className="brand-caption">RETAIL POS</span>
+            <span className="brand-caption">COSMETICS · RETAIL</span>
           </div>
         )}
         <button
@@ -181,10 +222,21 @@ export function PosSidebar({
         >
           {collapsed ? <Menu size={18} /> : <PanelLeftClose size={18} />}
         </button>
+        <button
+          className={`sidebar-pin ${pinned ? "is-pinned" : ""}`}
+          type="button"
+          onClick={onTogglePin}
+          aria-label={pinned ? "Liberar menú automático" : "Fijar menú abierto"}
+          title={pinned ? "Menú fijado · liberar" : "Fijar menú para que no se contraiga"}
+          aria-pressed={pinned}
+        >
+          {pinned ? <PinOff size={15} /> : <Pin size={15} />}
+        </button>
       </div>
 
       <nav className="sidebar-nav" aria-label="Navegación principal">
-        {navigationItems.map((item) => {
+        {!collapsed && <span className="sidebar-section-label">OPERACIÓN</span>}
+        {visiblePrimaryNavigationItems.map((item) => {
           const Icon = item.icon;
           const isActive = item.id === activeScreen;
           if (item.id === "sale") {
@@ -205,7 +257,7 @@ export function PosSidebar({
                   title={collapsed ? "Sale" : undefined}
                 >
                   <span className="sidebar-icon" style={{ color: item.color }}>
-                    <Icon size={22} strokeWidth={1.8} />
+                    <Icon size={28} strokeWidth={1.7} />
                   </span>
                   {!collapsed && <span>Sale</span>}
                   {cartCount > 0 && (
@@ -223,7 +275,7 @@ export function PosSidebar({
                 </button>
                 {!collapsed && saleMenuOpen && (
                   <div className="sidebar-submenu" aria-label="Ventanas de Sale">
-                    {saleNavigationItems.map((child) => {
+                    {saleNavigationItems.filter((child) => allowedScreens.includes(child.id)).map((child) => {
                       const ChildIcon = child.icon;
                       const childActive = child.id === activeScreen;
                       return (
@@ -234,7 +286,7 @@ export function PosSidebar({
                           onClick={() => onNavigate(child.id)}
                           aria-current={childActive ? "page" : undefined}
                         >
-                          <ChildIcon size={15} style={{ color: child.color }} />
+                          <ChildIcon size={17} style={{ color: child.color }} />
                           <span>{child.label}</span>
                         </button>
                       );
@@ -263,7 +315,7 @@ export function PosSidebar({
                   title={collapsed ? "Inventory" : undefined}
                 >
                   <span className="sidebar-icon" style={{ color: item.color }}>
-                    <Icon size={22} strokeWidth={1.8} />
+                    <Icon size={28} strokeWidth={1.7} />
                   </span>
                   {!collapsed && <span>Inventory</span>}
                   {!collapsed && (
@@ -281,7 +333,7 @@ export function PosSidebar({
                     className="sidebar-submenu"
                     aria-label="Ventanas de Inventory"
                   >
-                    {inventoryNavigationItems.map((child) => {
+                    {inventoryNavigationItems.filter((child) => allowedScreens.includes(child.id)).map((child) => {
                       const ChildIcon = child.icon;
                       const childActive = child.id === activeScreen;
                       return (
@@ -292,7 +344,7 @@ export function PosSidebar({
                           onClick={() => onNavigate(child.id)}
                           aria-current={childActive ? "page" : undefined}
                         >
-                          <ChildIcon size={15} style={{ color: child.color }} />
+                          <ChildIcon size={17} style={{ color: child.color }} />
                           <span>{child.label}</span>
                         </button>
                       );
@@ -312,7 +364,30 @@ export function PosSidebar({
               title={collapsed ? item.label : undefined}
             >
               <span className="sidebar-icon" style={{ color: item.color }}>
-                <Icon size={22} strokeWidth={1.8} />
+                <Icon size={28} strokeWidth={1.7} />
+              </span>
+              {!collapsed && <span>{item.label}</span>}
+            </button>
+          );
+        })}
+      </nav>
+
+      <nav className="sidebar-utility-nav" aria-label="Sistema y asistencia">
+        {!collapsed && <span className="sidebar-section-label">SISTEMA</span>}
+        {utilityNavigationItems.filter((item) => allowedScreens.includes(item.id)).map((item) => {
+          const Icon = item.icon;
+          const isActive = item.id === activeScreen;
+          return (
+            <button
+              key={item.id}
+              type="button"
+              className={`sidebar-item ${isActive ? "is-active" : ""}`}
+              onClick={() => onNavigate(item.id)}
+              aria-current={isActive ? "page" : undefined}
+              title={collapsed ? item.label : undefined}
+            >
+              <span className="sidebar-icon" style={{ color: item.color }}>
+                <Icon size={27} strokeWidth={1.7} />
               </span>
               {!collapsed && <span>{item.label}</span>}
             </button>

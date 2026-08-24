@@ -108,6 +108,8 @@ const createDraft = (): Product => ({
   includesVat: false,
   costUsd: 0,
   costMxn: 0,
+  partnerCost: 0,
+  testerOrderEnabled: false,
   stock: 0,
   stockMin: 0,
   stockMax: 0,
@@ -281,6 +283,7 @@ export function CatalogView({
               ? {
                   "Costo unitario USD": product.costUsd,
                   "Costo unitario MXN": product.costMxn,
+                  "Costo socio MXN": product.partnerCost ?? product.costMxn,
                 }
               : {}),
           })),
@@ -473,7 +476,12 @@ export function CatalogView({
   const openEdit = (product: Product) => {
     setEditingId(product.id);
     setSkuMode("INTERNAL");
-    setDraft({ ...product, branches: [...product.branches] });
+    setDraft({
+      ...product,
+      partnerCost: product.partnerCost ?? product.costMxn,
+      testerOrderEnabled: Boolean(product.testerOrderEnabled),
+      branches: [...product.branches],
+    });
     setDialogOpen(true);
   };
 
@@ -500,6 +508,7 @@ export function CatalogView({
       | "maxPrice"
       | "costUsd"
       | "costMxn"
+      | "partnerCost"
       | "stock"
       | "stockMin"
       | "stockMax",
@@ -563,10 +572,11 @@ export function CatalogView({
       draft.kind === "PRODUCT" &&
       ((!editingId && !costAccessAuthorized) ||
         draft.costUsd <= 0 ||
-        draft.costMxn <= 0)
+        draft.costMxn <= 0 ||
+        (draft.partnerCost ?? 0) < draft.costMxn)
     ) {
       toast.error(
-        "Un usuario autorizado debe capturar el costo del producto en USD y MXN.",
+        "Captura costos USD/MXN y un costo socio igual o mayor al costo MXN.",
       );
       return;
     }
@@ -829,6 +839,11 @@ export function CatalogView({
                     <span>
                       <strong>{product.name}</strong>
                       <small>{product.sku}</small>
+                      {product.kind === "PRODUCT" && (
+                        <small className={`catalog-tester-flag ${product.testerOrderEnabled ? "is-enabled" : ""}`}>
+                          {product.testerOrderEnabled ? "TESTER AUTORIZADO" : "SIN TESTER"}
+                        </small>
+                      )}
                     </span>
                   </div>
                 </TableCell>
@@ -853,7 +868,7 @@ export function CatalogView({
                     {costAccessAuthorized && product.kind === "PRODUCT" && (
                       <small className="catalog-protected-cost">
                         Costo {formatCurrency(product.costMxn)} MXN · $
-                        {product.costUsd.toFixed(2)} USD
+                        {product.costUsd.toFixed(2)} USD · Socio {formatCurrency(product.partnerCost ?? product.costMxn)}
                       </small>
                     )}
                   </div>
@@ -882,11 +897,6 @@ export function CatalogView({
                       <small>
                         mín {product.stockMin} · máx {product.stockMax}
                       </small>
-                      <span className="catalog-stock-legend" aria-label="Semáforo de existencias">
-                        <small className="is-low">Bajo</small>
-                        <small className="is-healthy">En rango</small>
-                        <small className="is-over">Sobre máximo</small>
-                      </span>
                     </div>
                   )}
                 </TableCell>
@@ -1168,6 +1178,26 @@ export function CatalogView({
               </button>
               {draft.kind === "PRODUCT" && (
                 <>
+                  <button
+                    type="button"
+                    className={`catalog-vat-toggle catalog-tester-toggle ${draft.testerOrderEnabled ? "is-active" : ""}`}
+                    role="switch"
+                    aria-checked={Boolean(draft.testerOrderEnabled)}
+                    onClick={() => setDraft((current) => ({
+                      ...current,
+                      testerOrderEnabled: !current.testerOrderEnabled,
+                    }))}
+                  >
+                    <span>
+                      <strong>Autorizar pedido como tester</strong>
+                      <small>
+                        {draft.testerOrderEnabled
+                          ? "Las sucursales podrán solicitar este producto en el módulo Pedido de testers."
+                          : "El producto permanecerá oculto en las solicitudes de testers de las sucursales."}
+                      </small>
+                    </span>
+                    <span className={`mock-switch ${draft.testerOrderEnabled ? "is-on" : ""}`}><i /></span>
+                  </button>
                   <div className="catalog-cost-access-panel">
                     {costAccessAuthorized ? (
                       <>
@@ -1212,6 +1242,21 @@ export function CatalogView({
                               value={draft.costMxn}
                               onChange={(event) =>
                                 updateNumber("costMxn", event.target.value)
+                              }
+                            />
+                          </div>
+                          <div className="field-stack">
+                            <Label htmlFor="catalog-partner-cost">
+                              Costo socio MXN
+                            </Label>
+                            <Input
+                              id="catalog-partner-cost"
+                              type="number"
+                              min={draft.costMxn}
+                              step="0.01"
+                              value={draft.partnerCost ?? 0}
+                              onChange={(event) =>
+                                updateNumber("partnerCost", event.target.value)
                               }
                             />
                           </div>

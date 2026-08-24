@@ -47,10 +47,13 @@ import { formatCurrency } from "../mock-data";
 import { getTicketTaxSummary, roundCurrency } from "../tax";
 import { getProductSpare, getTicketSpare } from "../spare";
 import { ReportsCustomerDialog } from "./ReportsCustomerDialog";
+import { HistoryPagination, useHistoryPagination } from "./HistoryPagination";
 import type {
   Appointment,
   BranchInventory,
+  CashExpense,
   Client,
+  ExpenseType,
   InventoryMovement,
   PaymentMethodOption,
   Product,
@@ -61,6 +64,7 @@ import type {
 
 type ReportKey =
   | "SALES_DETAIL"
+  | "CASH_MOVEMENTS"
   | "SOLD_PRODUCTS"
   | "SALES_BY_EMPLOYEE"
   | "MERCHANDISE_OVERVIEW"
@@ -105,6 +109,8 @@ interface ReportsViewProps {
   branches: string[];
   branchInventory: BranchInventory;
   receiptSettings: ReceiptSettings;
+  expenses: CashExpense[];
+  expenseTypes: ExpenseType[];
 }
 
 const reportGroups: ReportGroup[] = [
@@ -127,6 +133,11 @@ const reportGroups: ReportGroup[] = [
         key: "SALES_BY_EMPLOYEE",
         label: "Ventas por empleados",
         description: "Venta atribuida, tickets y productividad comercial.",
+      },
+      {
+        key: "CASH_MOVEMENTS",
+        label: "Movimientos de efectivo",
+        description: "Cobros, gastos autorizados, anulaciones y flujo neto por folio.",
       },
     ],
   },
@@ -238,6 +249,11 @@ const currencyColumns = new Set(
     "spare",
     "spare unitario",
     "spare total",
+    "monto",
+    "impacto",
+    "ingresos",
+    "gastos",
+    "flujo neto",
   ].map((column) => column.toLocaleLowerCase("es-MX")),
 );
 
@@ -263,6 +279,8 @@ export function ReportsView({
   branches,
   branchInventory,
   receiptSettings,
+  expenses,
+  expenseTypes,
 }: ReportsViewProps) {
   const [activeReport, setActiveReport] =
     useState<ReportKey>("SALES_DETAIL");
@@ -272,6 +290,7 @@ export function ReportsView({
   const [selectedBranches, setSelectedBranches] = useState<string[]>(branches);
   const [sellerId, setSellerId] = useState("ALL");
   const [paymentMethodId, setPaymentMethodId] = useState("ALL");
+  const [expenseTypeId, setExpenseTypeId] = useState("ALL");
   const [productKind, setProductKind] =
     useState<ProductKindFilter>("ALL");
   const [search, setSearch] = useState("");
@@ -371,6 +390,29 @@ export function ReportsView({
     ],
   );
 
+  const filteredExpenses = useMemo(
+    () =>
+      validPeriod
+        ? expenses.filter(
+            (expense) =>
+              expense.expenseDate >= dateFrom &&
+              expense.expenseDate <= dateTo &&
+              selectedBranches.includes(expense.branch) &&
+              (sellerId === "ALL" || expense.sellerId === sellerId) &&
+              (expenseTypeId === "ALL" || expense.typeId === expenseTypeId),
+          )
+        : [],
+    [
+      dateFrom,
+      dateTo,
+      expenseTypeId,
+      expenses,
+      selectedBranches,
+      sellerId,
+      validPeriod,
+    ],
+  );
+
   const filteredMovements = useMemo(
     () =>
       validPeriod
@@ -454,6 +496,24 @@ export function ReportsView({
       sum + ticket.payments.reduce((paymentSum, payment) => paymentSum + payment.amount, 0),
     0,
   );
+  const cashIncomeTotal = filteredTickets.reduce(
+    (sum, ticket) =>
+      sum +
+      ticket.payments
+        .filter(
+          (payment) =>
+            paymentMethodId === "ALL" || payment.methodId === paymentMethodId,
+        )
+        .reduce((paymentSum, payment) => paymentSum + payment.amount, 0),
+    0,
+  );
+  const cashIncomeTicketCount = filteredTickets.filter((ticket) =>
+    ticket.payments.some(
+      (payment) =>
+        payment.amount > 0 &&
+        (paymentMethodId === "ALL" || payment.methodId === paymentMethodId),
+    ),
+  ).length;
   const discountTotal = filteredTickets.reduce(
     (sum, ticket) => sum + ticket.discountAmount,
     0,
@@ -472,6 +532,16 @@ export function ReportsView({
   const unitsSold = saleLines.reduce((sum, line) => sum + line.quantity, 0);
   const averageTicket =
     filteredTickets.length > 0 ? salesTotal / filteredTickets.length : 0;
+  const activeExpenses = filteredExpenses.filter(
+    (expense) => expense.status === "ACTIVE",
+  );
+  const expenseTotal = activeExpenses.reduce(
+    (sum, expense) => sum + expense.amount,
+    0,
+  );
+  const cashFlowNet = cashIncomeTotal - expenseTotal;
+  const averageExpense =
+    activeExpenses.length > 0 ? expenseTotal / activeExpenses.length : 0;
 
   const previousSales = useMemo(() => {
     if (!validPeriod || !comparePrevious) return 0;
@@ -750,6 +820,46 @@ export function ReportsView({
       : 0;
 
   const metrics: MetricDefinition[] = (() => {
+    if (activeReport === "CASH_MOVEMENTS") {
+      return [
+        {
+          label: "INGRESOS COBRADOS",
+          value: formatCurrency(cashIncomeTotal),
+          detail: `${cashIncomeTicketCount} tickets con cobro`,
+          tone: "positive",
+        },
+        {
+          label: "GASTOS VIGENTES",
+          value: formatCurrency(expenseTotal),
+          detail: `${activeExpenses.length} movimientos autorizados`,
+          tone: expenseTotal > 0 ? "negative" : "neutral",
+        },
+        {
+          label: "FLUJO NETO",
+          value: formatCurrency(cashFlowNet),
+          detail: "Ingresos cobrados menos gastos vigentes",
+          tone: cashFlowNet >= 0 ? "positive" : "negative",
+        },
+        {
+          label: "GASTO PROMEDIO",
+          value: formatCurrency(averageExpense),
+          detail: "Promedio por folio vigente",
+        },
+        {
+          label: "MOVIMIENTOS ANULADOS",
+          value: compactNumber(
+            filteredExpenses.filter((expense) => expense.status === "VOIDED").length,
+          ),
+          detail: "Visibles para auditoría · impacto $0.00",
+        },
+        {
+          label: "SALDO PENDIENTE",
+          value: formatCurrency(pendingTotal),
+          detail: "Cobros aún no recibidos",
+          tone: pendingTotal > 0 ? "negative" : "neutral",
+        },
+      ];
+    }
     if (activeGroup === "MERCHANDISE") {
       return [
         {
@@ -906,14 +1016,46 @@ export function ReportsView({
     const map = new Map<string, number>();
     filteredTickets.forEach((ticket) => {
       const date = getBusinessDate(ticket.createdAtIso);
-      map.set(date, (map.get(date) ?? 0) + ticket.total);
+      const ticketCollected = ticket.payments.reduce(
+        (sum, payment) =>
+          sum +
+          (paymentMethodId === "ALL" || payment.methodId === paymentMethodId
+            ? payment.amount
+            : 0),
+        0,
+      );
+      map.set(
+        date,
+        (map.get(date) ?? 0) +
+          (activeReport === "CASH_MOVEMENTS" ? ticketCollected : ticket.total),
+      );
     });
+    if (activeReport === "CASH_MOVEMENTS") {
+      activeExpenses.forEach((expense) => {
+        map.set(
+          expense.expenseDate,
+          (map.get(expense.expenseDate) ?? 0) - expense.amount,
+        );
+      });
+    }
     return Array.from(map, ([label, value]) => ({ label, value })).sort((left, right) =>
       left.label.localeCompare(right.label),
     );
-  }, [filteredTickets]);
+  }, [activeExpenses, activeReport, filteredTickets, paymentMethodId]);
 
   const distributionRows = useMemo(() => {
+    if (activeReport === "CASH_MOVEMENTS") {
+      const typeMap = new Map<string, number>();
+      activeExpenses.forEach((expense) =>
+        typeMap.set(
+          expense.typeName,
+          (typeMap.get(expense.typeName) ?? 0) + expense.amount,
+        ),
+      );
+      return Array.from(typeMap, ([label, value]) => ({ label, value })).sort(
+        (left, right) => right.value - left.value,
+      );
+    }
     if (activeGroup === "MERCHANDISE") {
       return [
         { label: "Entradas", value: movementAdditions },
@@ -951,6 +1093,8 @@ export function ReportsView({
       .filter((item) => item.value > 0);
   }, [
     activeGroup,
+    activeExpenses,
+    activeReport,
     customerSummary,
     employeeSummary,
     filteredTickets,
@@ -961,6 +1105,55 @@ export function ReportsView({
   ]);
 
   const detailRows: DetailRow[] = useMemo(() => {
+    if (activeReport === "CASH_MOVEMENTS") {
+      const incomeRows = filteredTickets.flatMap((ticket) =>
+        ticket.payments
+          .filter(
+            (payment) =>
+              paymentMethodId === "ALL" || payment.methodId === paymentMethodId,
+          )
+          .map((payment) => ({
+            sortAt: ticket.createdAtIso,
+            row: {
+              Fecha: getBusinessDate(ticket.createdAtIso),
+              Folio: ticket.id,
+              Movimiento: "INGRESO",
+              Tipo:
+                paymentMethods.find((method) => method.id === payment.methodId)
+                  ?.label ?? payment.methodId,
+              Usuario: ticket.sellerSummary,
+              Sucursal: ticketBranch(ticket),
+              Concepto: `Cobro de ticket · ${ticket.clientName}`,
+              Monto: roundCurrency(payment.amount),
+              Impacto: roundCurrency(payment.amount),
+              Estado: "VIGENTE",
+              Autorización: "Cobro registrado en ticket",
+              Comentario: "—",
+            } satisfies DetailRow,
+          })),
+      );
+      const expenseRows = filteredExpenses.map((expense) => ({
+        sortAt: expense.createdAtIso,
+        row: {
+          Fecha: expense.expenseDate,
+          Folio: expense.folio,
+          Movimiento: "GASTO",
+          Tipo: expense.typeName,
+          Usuario: expense.sellerName,
+          Sucursal: expense.branch,
+          Concepto: expense.concept,
+          Monto: roundCurrency(expense.amount),
+          Impacto:
+            expense.status === "ACTIVE" ? roundCurrency(-expense.amount) : 0,
+          Estado: expense.status === "ACTIVE" ? "VIGENTE" : "ANULADO",
+          Autorización: expense.authorizedBy,
+          Comentario: expense.comment || "—",
+        } satisfies DetailRow,
+      }));
+      return [...incomeRows, ...expenseRows]
+        .sort((left, right) => right.sortAt.localeCompare(left.sortAt))
+        .map((item) => item.row);
+    }
     if (activeReport === "SALES_DETAIL") {
       return filteredTickets.map((ticket) => {
         const tax = getTicketTaxSummary(ticket);
@@ -1097,8 +1290,10 @@ export function ReportsView({
     activeReport,
     customerSummary,
     employeeSummary,
+    filteredExpenses,
     filteredMovements,
     filteredTickets,
+    paymentMethodId,
     paymentMethods,
     productById,
     productSummary,
@@ -1117,6 +1312,10 @@ export function ReportsView({
       ),
     );
   }, [activeGroup, detailRows, search]);
+  const detailPagination = useHistoryPagination(
+    searchedDetailRows,
+    `${activeReport}|${dateFrom}|${dateTo}|${selectedBranches.join(",")}|${sellerId}|${paymentMethodId}|${expenseTypeId}|${productKind}|${search}`,
+  );
 
   const detailColumns = Object.keys(searchedDetailRows[0] ?? detailRows[0] ?? {});
   const maxTrend = Math.max(1, ...trendRows.map((item) => item.value));
@@ -1127,22 +1326,43 @@ export function ReportsView({
     .sort((left, right) => left.unitsSold - right.unitsSold)
     .slice(0, 6);
 
-  const summaryExportRows: DetailRow[] = [
-    { Concepto: "Reporte", Valor: activeDefinition.label },
-    { Concepto: "Periodo", Valor: `${dateFrom} al ${dateTo}` },
-    {
-      Concepto: "Sucursales",
-      Valor: allBranchesSelected ? "Empresa general" : selectedBranches.join(" / "),
-    },
-    { Concepto: "Venta completa", Valor: roundCurrency(salesTotal) },
-    { Concepto: "Venta sin IVA", Valor: roundCurrency(netSales) },
-    { Concepto: "IVA incluido", Valor: roundCurrency(vatTotal) },
-    { Concepto: "Costo vendido", Valor: roundCurrency(costOfGoods) },
-    { Concepto: "Utilidad bruta", Valor: roundCurrency(grossProfit) },
-    { Concepto: "Margen", Valor: percentage(marginRate) },
-    { Concepto: "SPARE", Valor: roundCurrency(totalSpare) },
-    { Concepto: "Registros detallados", Valor: searchedDetailRows.length },
-  ];
+  const summaryExportRows: DetailRow[] =
+    activeReport === "CASH_MOVEMENTS"
+      ? [
+          { Concepto: "Reporte", Valor: activeDefinition.label },
+          { Concepto: "Periodo", Valor: `${dateFrom} al ${dateTo}` },
+          {
+            Concepto: "Sucursales",
+            Valor: allBranchesSelected
+              ? "Empresa general"
+              : selectedBranches.join(" / "),
+          },
+          { Concepto: "Ingresos cobrados", Valor: roundCurrency(cashIncomeTotal) },
+          { Concepto: "Gastos vigentes", Valor: roundCurrency(expenseTotal) },
+          { Concepto: "Flujo neto", Valor: roundCurrency(cashFlowNet) },
+          { Concepto: "Gasto promedio", Valor: roundCurrency(averageExpense) },
+          { Concepto: "Gastos anulados", Valor: filteredExpenses.filter((expense) => expense.status === "VOIDED").length },
+          { Concepto: "Saldo pendiente", Valor: roundCurrency(pendingTotal) },
+          { Concepto: "Registros detallados", Valor: searchedDetailRows.length },
+        ]
+      : [
+          { Concepto: "Reporte", Valor: activeDefinition.label },
+          { Concepto: "Periodo", Valor: `${dateFrom} al ${dateTo}` },
+          {
+            Concepto: "Sucursales",
+            Valor: allBranchesSelected
+              ? "Empresa general"
+              : selectedBranches.join(" / "),
+          },
+          { Concepto: "Venta completa", Valor: roundCurrency(salesTotal) },
+          { Concepto: "Venta sin IVA", Valor: roundCurrency(netSales) },
+          { Concepto: "IVA incluido", Valor: roundCurrency(vatTotal) },
+          { Concepto: "Costo vendido", Valor: roundCurrency(costOfGoods) },
+          { Concepto: "Utilidad bruta", Valor: roundCurrency(grossProfit) },
+          { Concepto: "Margen", Valor: percentage(marginRate) },
+          { Concepto: "SPARE", Valor: roundCurrency(totalSpare) },
+          { Concepto: "Registros detallados", Valor: searchedDetailRows.length },
+        ];
 
   const exportFilename = `reporte-${slugify(activeDefinition.label)}-${dateFrom}-${dateTo}`;
 
@@ -1180,7 +1400,7 @@ export function ReportsView({
         const concept = String(row.Concepto ?? "");
         if (
           cell?.t === "n" &&
-          /venta|iva|costo|utilidad|spare/i.test(concept)
+          /venta|iva|costo|utilidad|spare|ingreso|gasto|flujo|saldo/i.test(concept)
         ) {
           cell.z = "$#,##0.00";
         }
@@ -1220,19 +1440,35 @@ export function ReportsView({
       );
       doc.setDrawColor(174, 139, 104);
       doc.line(36, 86, doc.internal.pageSize.getWidth() - 36, 86);
+      const pdfSummaryHead =
+        activeReport === "CASH_MOVEMENTS"
+          ? ["Ingresos", "Gastos", "Flujo neto", "Gasto promedio", "Anulados", "Saldo pendiente", "Registros"]
+          : ["Venta completa", "Sin IVA", "IVA", "Costo", "Utilidad", "Margen", "SPARE", "Registros"];
+      const pdfSummaryBody =
+        activeReport === "CASH_MOVEMENTS"
+          ? [
+              formatCurrency(cashIncomeTotal),
+              formatCurrency(expenseTotal),
+              formatCurrency(cashFlowNet),
+              formatCurrency(averageExpense),
+              filteredExpenses.filter((expense) => expense.status === "VOIDED").length,
+              formatCurrency(pendingTotal),
+              searchedDetailRows.length,
+            ]
+          : [
+              formatCurrency(salesTotal),
+              formatCurrency(netSales),
+              formatCurrency(vatTotal),
+              formatCurrency(costOfGoods),
+              formatCurrency(grossProfit),
+              percentage(marginRate),
+              formatCurrency(totalSpare),
+              searchedDetailRows.length,
+            ];
       autoTable(doc, {
         startY: 98,
-        head: [["Venta completa", "Sin IVA", "IVA", "Costo", "Utilidad", "Margen", "SPARE", "Registros"]],
-        body: [[
-          formatCurrency(salesTotal),
-          formatCurrency(netSales),
-          formatCurrency(vatTotal),
-          formatCurrency(costOfGoods),
-          formatCurrency(grossProfit),
-          percentage(marginRate),
-          formatCurrency(totalSpare),
-          searchedDetailRows.length,
-        ]],
+        head: [pdfSummaryHead],
+        body: [pdfSummaryBody],
         theme: "grid",
         headStyles: { fillColor: [83, 67, 55], textColor: [255, 255, 255] },
         styles: { fontSize: 7, cellPadding: 4 },
@@ -1404,6 +1640,22 @@ export function ReportsView({
                   </Select>
                 </div>
               )}
+              {activeReport === "CASH_MOVEMENTS" && (
+                <div className="field-stack">
+                  <Label>Tipo de gasto</Label>
+                  <Select value={expenseTypeId} onValueChange={setExpenseTypeId}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ALL">Todos los tipos de gasto</SelectItem>
+                      {expenseTypes.map((type) => (
+                        <SelectItem value={type.id} key={type.id}>
+                          {type.name}{type.active ? "" : " · Inactivo"}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
               {(activeGroup === "MERCHANDISE" || activeReport === "SOLD_PRODUCTS") && (
                 <div className="field-stack">
                   <Label>Tipo de artículo</Label>
@@ -1428,16 +1680,18 @@ export function ReportsView({
               {branches.map((branch) => (
                 <button type="button" key={branch} className={selectedBranches.includes(branch) ? "is-active" : ""} onClick={() => toggleBranch(branch)}>{branch}</button>
               ))}
-              <button
-                type="button"
-                role="switch"
-                aria-checked={comparePrevious}
-                className="reports-compare-switch"
-                onClick={() => setComparePrevious((current) => !current)}
-              >
-                <span className={`mock-switch ${comparePrevious ? "is-on" : ""}`}><i /></span>
-                Comparar periodo anterior
-              </button>
+              {activeReport !== "CASH_MOVEMENTS" && (
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={comparePrevious}
+                  className="reports-compare-switch"
+                  onClick={() => setComparePrevious((current) => !current)}
+                >
+                  <span className={`mock-switch ${comparePrevious ? "is-on" : ""}`}><i /></span>
+                  Comparar periodo anterior
+                </button>
+              )}
             </div>
             {!validPeriod && <p className="reports-filter-error">La fecha inicial debe ser igual o anterior a la final.</p>}
           </CardContent>
@@ -1457,7 +1711,7 @@ export function ReportsView({
           <Card className="reports-chart-card">
             <CardContent>
               <div className="reports-card-heading">
-                <div><span>TENDENCIA</span><h3>Operación por día</h3></div>
+                <div><span>TENDENCIA</span><h3>{activeReport === "CASH_MOVEMENTS" ? "Flujo neto por día" : "Operación por día"}</h3></div>
                 {salesChange >= 0 ? <TrendingUp size={19} /> : <TrendingDown size={19} />}
               </div>
               <div className="reports-column-chart">
@@ -1478,7 +1732,7 @@ export function ReportsView({
               <div className="reports-card-heading">
                 <div>
                   <span>DISTRIBUCIÓN</span>
-                  <h3>{activeGroup === "CUSTOMER" ? "Procedencia" : activeGroup === "EMPLOYEE" ? "Venta por vendedor" : activeGroup === "MERCHANDISE" ? "Flujo de inventario" : "Formas de pago"}</h3>
+                  <h3>{activeReport === "CASH_MOVEMENTS" ? "Gastos por tipo" : activeGroup === "CUSTOMER" ? "Procedencia" : activeGroup === "EMPLOYEE" ? "Venta por vendedor" : activeGroup === "MERCHANDISE" ? "Flujo de inventario" : "Formas de pago"}</h3>
                 </div>
                 <BarChart3 size={19} />
               </div>
@@ -1544,10 +1798,21 @@ export function ReportsView({
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {searchedDetailRows.map((row, index) => (
+                  {detailPagination.paginatedItems.map((row, index) => (
                     <TableRow key={`${String(row.Folio ?? row.SKU ?? row.Cliente ?? row.Vendedor ?? "row")}-${index}`}>
                       {detailColumns.map((column) => (
-                        <TableCell key={column}>
+                        <TableCell
+                          key={column}
+                          className={
+                            column === "Impacto" && typeof row[column] === "number"
+                              ? row[column] < 0
+                                ? "reports-cash-impact is-negative"
+                                : row[column] > 0
+                                  ? "reports-cash-impact is-positive"
+                                  : "reports-cash-impact is-neutral"
+                              : undefined
+                          }
+                        >
                           {column === "Cliente" ? (
                             <button
                               type="button"
@@ -1585,12 +1850,25 @@ export function ReportsView({
                 </TableBody>
               </Table>
             </div>
+            <HistoryPagination
+              total={searchedDetailRows.length}
+              page={detailPagination.page}
+              pageSize={detailPagination.pageSize}
+              pageCount={detailPagination.pageCount}
+              onPageChange={detailPagination.setPage}
+              onPageSizeChange={detailPagination.setPageSize}
+            />
           </CardContent>
         </Card>
 
         <div className="reports-insight-strip">
           <CircleDollarSign size={18} />
-          <span><strong>Lectura ejecutiva:</strong> utilidad estimada con costo MXN registrado y venta sin IVA; cancelaciones y abonos independientes no inflan la venta.</span>
+          <span>
+            <strong>Lectura ejecutiva:</strong>{" "}
+            {activeReport === "CASH_MOVEMENTS"
+              ? "el flujo neto considera cobros recibidos menos gastos vigentes; los folios anulados permanecen en auditoría con impacto $0.00."
+              : "utilidad estimada con costo MXN registrado y venta sin IVA; cancelaciones y abonos independientes no inflan la venta."}
+          </span>
           <WalletCards size={18} />
           <span>Descargas listas para conciliación, análisis comercial y revisión por sucursal.</span>
           <Download size={18} />

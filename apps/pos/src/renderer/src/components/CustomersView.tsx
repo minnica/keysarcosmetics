@@ -73,6 +73,7 @@ import type {
   Ticket,
   ReceiptSettings,
 } from "../types";
+import { HistoryPagination, useHistoryPagination } from "./HistoryPagination";
 
 type AccessMode = "search" | "seller";
 
@@ -360,6 +361,10 @@ export function CustomersView({
     selectedBranches,
     tickets,
   ]);
+  const customerPagination = useHistoryPagination(
+    visibleClients,
+    `${accessMode}|${authorizedSellerId}|${masterAuthorized}|${normalizedName}|${normalizedPhone}|${minimumAmount}|${maximumAmount}|${sellerFilter}|${selectedBranches.join(",")}`,
+  );
 
   const getClientOwner = (client: Client) => {
     if (client.companyLocked) return client.companyName;
@@ -1067,7 +1072,7 @@ export function CustomersView({
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {visibleClients.map((client) => {
+                  {customerPagination.paginatedItems.map((client) => {
                     const purchases = clientTickets(client);
                     const customerAppointments = clientAppointments(client);
                     const customerProductDebts = owedProducts.filter(
@@ -1621,6 +1626,14 @@ export function CustomersView({
                 </TableBody>
               </Table>
             </div>
+            <HistoryPagination
+              total={visibleClients.length}
+              page={customerPagination.page}
+              pageSize={customerPagination.pageSize}
+              pageCount={customerPagination.pageCount}
+              onPageChange={customerPagination.setPage}
+              onPageSizeChange={customerPagination.setPageSize}
+            />
           </CardContent>
         </Card>
       ) : (

@@ -59,12 +59,19 @@ const moduleOptions: Array<{
   description: string;
   masterOnly?: boolean;
 }> = [
+  {
+    id: "dashboard",
+    label: "Dashboard",
+    description: "Control ejecutivo y auditoría diaria de inventario.",
+  },
   { id: "sale", label: "Sale", description: "Captura y cobro de ventas." },
   { id: "seller-sales", label: "Mis ventas", description: "Ventas y cartera propia." },
   { id: "receipts", label: "Receipts", description: "Consulta e impresión de tickets." },
   { id: "customers", label: "Customers", description: "Directorio y expedientes." },
   { id: "appointments", label: "Citas", description: "Agenda y cortesías." },
   { id: "inventory", label: "Inventory", description: "Productos, stock y pedidos." },
+  { id: "warehouse", label: "Almacén bodega", description: "Existencias matriz, entradas, envíos y pedidos." },
+  { id: "suppliers", label: "Proveedores", description: "Datos fiscales, productos y compras con costos protegidos." },
   { id: "catalog", label: "Catálogo", description: "Consulta compacta del catálogo." },
   { id: "inventory-movements", label: "Movimientos", description: "Altas, bajas y transferencias." },
   { id: "deals", label: "Deal", description: "Paquetes y promociones autorizadas." },
@@ -98,7 +105,9 @@ const configurationOptions: Array<{
 }> = [
   { id: "TICKET", label: "Ticket e impresión", description: "Logo, dirección, textos e IVA." },
   { id: "INVENTORY_CATALOG", label: "Catálogo de inventario", description: "Familias, categorías y productos." },
+  { id: "INVENTORY_AUDIT", label: "Conteo real de inventario", description: "Existencias físicas, diferencias, errores y exportación de reconteos." },
   { id: "INVENTORY_MOVEMENTS", label: "Movimientos de inventario", description: "Motivos, lotes y aprobaciones." },
+  { id: "WAREHOUSE_MOVEMENTS", label: "Movimientos de almacén", description: "Crear, aprobar, recibir, editar y cancelar movimientos de bodega." },
   { id: "PAYMENT_METHODS", label: "Métodos de pago", description: "Alta, baja y edición de métodos." },
   { id: "CUSTOMER_FIELDS", label: "Configuración de clientes", description: "Campos obligatorios y procedencias." },
   { id: "DEALS", label: "Deals", description: "Configuración y publicación de paquetes." },

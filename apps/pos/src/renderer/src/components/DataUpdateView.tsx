@@ -40,6 +40,15 @@ const initialModules: UpdateModule[] = [
     lastUpdated: "Hoy · 10:05",
   },
   {
+    id: "warehouse",
+    name: "Almacén bodega",
+    description: "Existencias matriz, entradas, envíos, pedidos y aprobaciones.",
+    installedVersion: 1,
+    availableVersion: 1,
+    status: "CURRENT",
+    lastUpdated: "Hoy · 10:12",
+  },
+  {
     id: "customers",
     name: "Clientes",
     description: "Carteras, procedencia y asignación de vendedores.",

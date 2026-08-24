@@ -45,6 +45,7 @@ import type {
   Seller,
   Ticket,
 } from "../types";
+import { HistoryPagination, useHistoryPagination } from "./HistoryPagination";
 
 interface SellerSalesViewProps {
   sellers: Seller[];
@@ -164,6 +165,18 @@ export function SellerSalesView({
   const selectedClientTickets = selectedClient
     ? tickets.filter((ticket) => sameClient(selectedClient, ticket))
     : [];
+  const sellerTicketPagination = useHistoryPagination(
+    sellerTickets,
+    `${authorizedSellerId}|${dateFrom}|${dateTo}`,
+  );
+  const sellerClientPagination = useHistoryPagination(
+    visibleClients,
+    `${authorizedSellerId}|${dateFrom}|${dateTo}|${showAllClients}`,
+  );
+  const clientTicketPagination = useHistoryPagination(
+    selectedClientTickets,
+    selectedClientId,
+  );
   const selectedClientSaleTickets = selectedClientTickets.filter(
     (ticket) => ticket.ticketType !== "LAYAWAY_PAYMENT",
   );
@@ -481,7 +494,7 @@ export function SellerSalesView({
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {sellerTickets.map((ticket) => (
+                  {sellerTicketPagination.paginatedItems.map((ticket) => (
                     <TableRow key={ticket.id}>
                       <TableCell>
                         <strong>{ticket.id}</strong>
@@ -544,6 +557,14 @@ export function SellerSalesView({
                 </TableBody>
               </Table>
             </div>
+            <HistoryPagination
+              total={sellerTickets.length}
+              page={sellerTicketPagination.page}
+              pageSize={sellerTicketPagination.pageSize}
+              pageCount={sellerTicketPagination.pageCount}
+              onPageChange={sellerTicketPagination.setPage}
+              onPageSizeChange={sellerTicketPagination.setPageSize}
+            />
           </CardContent>
         </Card>
       ) : (
@@ -567,7 +588,7 @@ export function SellerSalesView({
                 </Button>
               </div>
               <div className="seller-client-list">
-                {visibleClients.map((client) => {
+                {sellerClientPagination.paginatedItems.map((client) => {
                   const history = tickets.filter((ticket) =>
                     sameClient(client, ticket),
                   );
@@ -623,6 +644,14 @@ export function SellerSalesView({
                   <p>No hay clientes propios con ventas en el periodo.</p>
                 )}
               </div>
+              <HistoryPagination
+                total={visibleClients.length}
+                page={sellerClientPagination.page}
+                pageSize={sellerClientPagination.pageSize}
+                pageCount={sellerClientPagination.pageCount}
+                onPageChange={sellerClientPagination.setPage}
+                onPageSizeChange={sellerClientPagination.setPageSize}
+              />
             </CardContent>
           </Card>
 
@@ -957,7 +986,7 @@ export function SellerSalesView({
                     </div>
                   )}
                   <div className="seller-client-ticket-history">
-                    {selectedClientTickets.map((ticket) => (
+                    {clientTicketPagination.paginatedItems.map((ticket) => (
                       <div key={ticket.id}>
                         <span>
                           <strong>{ticket.id}</strong>
@@ -985,6 +1014,14 @@ export function SellerSalesView({
                       <p>Esta clienta todavía no tiene historial de tickets.</p>
                     )}
                   </div>
+                  <HistoryPagination
+                    total={selectedClientTickets.length}
+                    page={clientTicketPagination.page}
+                    pageSize={clientTicketPagination.pageSize}
+                    pageCount={clientTicketPagination.pageCount}
+                    onPageChange={clientTicketPagination.setPage}
+                    onPageSizeChange={clientTicketPagination.setPageSize}
+                  />
                 </>
               ) : (
                 <div className="seller-client-empty">

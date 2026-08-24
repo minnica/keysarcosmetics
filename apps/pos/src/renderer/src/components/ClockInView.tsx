@@ -31,6 +31,7 @@ import {
   TableRow,
 } from "@cosmetics/ui";
 import type { AttendanceRecord, Seller } from "../types";
+import { HistoryPagination, useHistoryPagination } from "./HistoryPagination";
 
 interface ClockInViewProps {
   sellers: Seller[];
@@ -92,6 +93,7 @@ export function ClockInView({
         ),
     [records],
   );
+  const attendancePagination = useHistoryPagination(todayRecords, "today");
   const attendedSellerIds = new Set(
     todayRecords.map((record) => record.sellerId),
   );
@@ -274,7 +276,7 @@ export function ClockInView({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {todayRecords.map((record) => (
+                {attendancePagination.paginatedItems.map((record) => (
                   <TableRow key={record.id}>
                     <TableCell>
                       <strong>{record.sellerName}</strong>
@@ -315,6 +317,14 @@ export function ClockInView({
               </TableBody>
             </Table>
           </div>
+          <HistoryPagination
+            total={todayRecords.length}
+            page={attendancePagination.page}
+            pageSize={attendancePagination.pageSize}
+            pageCount={attendancePagination.pageCount}
+            onPageChange={attendancePagination.setPage}
+            onPageSizeChange={attendancePagination.setPageSize}
+          />
         </CardContent>
       </Card>
     </div>

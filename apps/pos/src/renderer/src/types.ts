@@ -1,10 +1,13 @@
 export type ScreenId =
+  | "dashboard"
   | "sale"
   | "seller-sales"
   | "receipts"
   | "customers"
   | "appointments"
   | "inventory"
+  | "warehouse"
+  | "suppliers"
   | "inventory-movements"
   | "deals"
   | "catalog"
@@ -19,6 +22,53 @@ export type ScreenId =
   | "websites"
   | "data-update"
   | "my-account";
+
+export interface PosSessionUser {
+  id: string;
+  name: string;
+  initials: string;
+  roleId: string;
+  isMaster: boolean;
+  branch: string;
+  loggedInAtIso: string;
+}
+
+export type InventoryAuditType = "OPENING" | "CLOSING";
+
+export interface InventoryAuditLine {
+  productId: string;
+  productName: string;
+  sku: string;
+  image: string;
+  expectedStock: number;
+  actualStock: number;
+  difference: number;
+}
+
+export interface InventoryCountAudit {
+  id: string;
+  type: InventoryAuditType;
+  branch: string;
+  createdAtIso: string;
+  createdById: string;
+  createdByName: string;
+  skipped: boolean;
+  comment: string;
+  lines: InventoryAuditLine[];
+}
+
+export interface PosDaySession {
+  id: string;
+  branch: string;
+  openedAtIso: string;
+  openedById: string;
+  openingAuditId: string;
+  status: "OPEN" | "CLOSED";
+  closingAuditId: string | null;
+  closedAtIso: string | null;
+  closedById: string | null;
+  closedByName: string | null;
+}
 
 export type ProductKind = "PRODUCT" | "SERVICE";
 
@@ -36,6 +86,12 @@ export interface Product {
   includesVat: boolean;
   costUsd: number;
   costMxn: number;
+  partnerCost?: number;
+  testerOrderEnabled?: boolean;
+  supplierId?: string | null;
+  supplierName?: string | null;
+  presentation?: string;
+  unitsPerPackage?: number;
   stock: number | null;
   stockMin: number | null;
   stockMax: number | null;
@@ -98,7 +154,9 @@ export interface Seller {
 export type EmployeeConfigurationPermission =
   | "TICKET"
   | "INVENTORY_CATALOG"
+  | "INVENTORY_AUDIT"
   | "INVENTORY_MOVEMENTS"
+  | "WAREHOUSE_MOVEMENTS"
   | "PAYMENT_METHODS"
   | "CUSTOMER_FIELDS"
   | "DEALS"
@@ -129,6 +187,62 @@ export interface AttendanceRecord {
   clockOutAtIso: string | null;
   status: "ONLINE" | "OFFLINE";
   clockOutReason: "MANUAL" | "CLOSE_DAY" | null;
+}
+
+export interface ExpenseType {
+  id: string;
+  name: string;
+  active: boolean;
+}
+
+export interface CashExpense {
+  id: string;
+  folio: string;
+  createdAt: string;
+  createdAtIso: string;
+  expenseDate: string;
+  typeId: string;
+  typeName: string;
+  amount: number;
+  branch: string;
+  sellerId: string;
+  sellerName: string;
+  concept: string;
+  comment: string;
+  authorizedBy: string;
+  status: "ACTIVE" | "VOIDED";
+  updatedAtIso: string | null;
+}
+
+export type OperationalNotificationType =
+  | "SALE_COMPLETED"
+  | "CASH_EXPENSE"
+  | "PRODUCT_CREATED"
+  | "INVENTORY_ADD"
+  | "INVENTORY_REMOVE"
+  | "INVENTORY_TRANSFER"
+  | "CLOSE_DAY"
+  | "CLOCK_IN";
+
+export interface OperationalNotificationPreference {
+  type: OperationalNotificationType;
+  enabled: boolean;
+  recipientUserIds: string[];
+}
+
+export interface OperationalNotification {
+  id: string;
+  type: OperationalNotificationType;
+  title: string;
+  detail: string;
+  moduleLabel: string;
+  branch: string;
+  actorId: string;
+  actorName: string;
+  reference: string;
+  createdAtIso: string;
+  recipientUserIds: string[];
+  readByUserIds: string[];
 }
 
 export type CompetitionType = "AMOUNT" | "PRODUCT" | "PACKAGE" | "PERIOD";
@@ -337,6 +451,134 @@ export interface InventoryAdjustmentBatch {
   adjustments: InventoryMovementDraft[];
   status: "PENDING" | "APPROVED" | "CANCELLED" | "REVERSED";
   resolvedAt: string | null;
+}
+
+export type WarehouseMovementKind = "ENTRY" | "SHIPMENT" | "BRANCH_REQUEST" | "PURCHASE_ORDER";
+export type WarehouseRequestType = "PRODUCT" | "TESTER" | "SUPPLY";
+
+export type WarehouseMovementStatus =
+  | "DRAFT"
+  | "REQUESTED"
+  | "CREATION_APPROVED"
+  | "SENT"
+  | "RECEIVED"
+  | "CANCELLED";
+
+export interface WarehouseMovementCategory {
+  id: string;
+  name: string;
+  active: boolean;
+  createdAtIso: string;
+}
+
+export interface WarehouseMovementLine {
+  productId: string;
+  productName: string;
+  sku: string;
+  itemType?: "PRODUCT" | "SUPPLY";
+  quantity: number;
+  unitCostUsd: number;
+  unitCostMxn: number;
+  partnerCost: number;
+  partnerCostUsd?: number;
+  retailPrice: number;
+  family?: string;
+  category?: string;
+  supplierId?: string | null;
+  supplierName?: string | null;
+  presentation?: string;
+  unitsPerPackage?: number;
+}
+
+export interface WarehouseMovement {
+  id: string;
+  folio: string;
+  kind: WarehouseMovementKind;
+  requestType?: WarehouseRequestType;
+  priceListId?: string | null;
+  priceListName?: string | null;
+  customerId?: string | null;
+  customerName?: string | null;
+  supplierId?: string | null;
+  supplierName?: string | null;
+  categoryId: string;
+  categoryLabel: string;
+  destinationBranch: string | null;
+  status: WarehouseMovementStatus;
+  lines: WarehouseMovementLine[];
+  comment: string;
+  createdAtIso: string;
+  createdByName: string;
+  creationApprovedAtIso: string | null;
+  creationApprovedByName: string | null;
+  sentAtIso: string | null;
+  sentByName: string | null;
+  receivedAtIso: string | null;
+  receivedByName: string | null;
+  cancelledAtIso: string | null;
+  cancelledByName: string | null;
+  returnedToOrdersAtIso?: string | null;
+  returnedToOrdersByName?: string | null;
+}
+
+export type WarehouseStock = Record<string, number>;
+
+export interface WarehouseSupplyItem {
+  id: string;
+  name: string;
+  sku: string;
+  unit: string;
+  image: string;
+  costUsd: number;
+  costMxn: number;
+  partnerCost: number;
+  retailPrice: number;
+  family: string;
+  category: string;
+  stockMin: number;
+  stockMax: number;
+  presentation: string;
+  unitsPerPackage: number;
+  supplierId: string | null;
+  supplierName: string | null;
+  active: boolean;
+  branchVisible: boolean;
+}
+
+export interface WarehouseSupplier {
+  id: string;
+  folio: string;
+  businessName: string;
+  contactName: string;
+  rfc: string;
+  taxRegime: string;
+  businessLine: string;
+  phone: string;
+  email: string;
+  address: string;
+  active: boolean;
+  createdAtIso: string;
+}
+
+export interface WarehousePriceListItem {
+  productId: string;
+  priceMxn: number;
+  priceUsd: number;
+}
+
+export interface WarehousePriceList {
+  id: string;
+  name: string;
+  active: boolean;
+  branchNames: string[];
+  clientIds: string[];
+  items: WarehousePriceListItem[];
+  createdAtIso: string;
+}
+
+export interface WarehousePricingSelection {
+  priceListId: string | null;
+  customerId: string | null;
 }
 
 export interface LayawayItem {

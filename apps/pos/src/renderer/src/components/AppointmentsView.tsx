@@ -19,6 +19,7 @@ import {
   TableRow,
 } from "@cosmetics/ui";
 import type { Appointment, AppointmentKind, Seller } from "../types";
+import { HistoryPagination, useHistoryPagination } from "./HistoryPagination";
 
 interface AppointmentsViewProps {
   appointments: Appointment[];
@@ -57,6 +58,10 @@ export function AppointmentsView({
   );
   const visibleAppointments = sortedAppointments.filter(
     (appointment) => filter === "ALL" || appointment.kind === filter,
+  );
+  const appointmentPagination = useHistoryPagination(
+    visibleAppointments,
+    filter,
   );
   const scheduledAppointments = appointments.filter(
     (appointment) => appointment.status === "SCHEDULED",
@@ -227,7 +232,7 @@ export function AppointmentsView({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {visibleAppointments.map((appointment) => (
+                {appointmentPagination.paginatedItems.map((appointment) => (
                   <TableRow key={appointment.id}>
                     <TableCell>
                       <Badge
@@ -299,6 +304,14 @@ export function AppointmentsView({
               </TableBody>
             </Table>
           </div>
+          <HistoryPagination
+            total={visibleAppointments.length}
+            page={appointmentPagination.page}
+            pageSize={appointmentPagination.pageSize}
+            pageCount={appointmentPagination.pageCount}
+            onPageChange={appointmentPagination.setPage}
+            onPageSizeChange={appointmentPagination.setPageSize}
+          />
         </CardContent>
       </Card>
     </div>

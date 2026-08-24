@@ -78,6 +78,10 @@ import {
 } from "./components/CheckoutDialog";
 import { AppointmentsView } from "./components/AppointmentsView";
 import { CatalogView } from "./components/CatalogView";
+import {
+  CashManagerView,
+  ExpenseTypeSettings,
+} from "./components/CashManagerView";
 import { ClockInView } from "./components/ClockInView";
 import { CompetitionSettings } from "./components/CompetitionSettings";
 import { CompetitionView } from "./components/CompetitionView";
@@ -87,13 +91,27 @@ import { DealPickerDialog } from "./components/DealPickerDialog";
 import { DealsView } from "./components/DealsView";
 import { EmployeesView } from "./components/EmployeesView";
 import { InventoryMovementsView } from "./components/InventoryMovementsView";
+import { WarehouseView } from "./components/WarehouseView";
+import { WarehouseSettings } from "./components/WarehouseSettings";
+import { SuppliersView } from "./components/SuppliersView";
+import { HistoryPagination } from "./components/HistoryPagination";
 import { InventoryCatalogSettings } from "./components/InventoryCatalogSettings";
 import { MyAccountView } from "./components/MyAccountView";
+import {
+  createDefaultNotificationPreferences,
+  NotificationBell,
+  NotificationSettings,
+} from "./components/NotificationCenter";
 import { PosSidebar } from "./components/PosSidebar";
 import { ProductDialog } from "./components/ProductDialog";
 import { ReceiptTicketDialog } from "./components/ReceiptTicketDialog";
 import { ReportsView } from "./components/ReportsView";
 import { SellerSalesView } from "./components/SellerSalesView";
+import {
+  InventoryCountScreen,
+  MasterDashboard,
+  PosLoginScreen,
+} from "./components/SessionWorkflow";
 import {
   compareTableValues,
   SortableTableHead,
@@ -112,10 +130,12 @@ import {
   initialBillingLocations,
   initialBillingProfile,
   initialBranchInventory,
+  initialCashExpenses,
   initialClientSources,
   initialCompetitions,
   initialDeals,
   initialEmployeeRoles,
+  initialExpenseTypes,
   initialClients,
   initialInventoryMovementReasons,
   initialInventoryMovements,
@@ -136,20 +156,38 @@ import type {
   BillingLocation,
   BillingProfile,
   BranchInventory,
+  CashExpense,
   CartItem,
   Client,
   ClientField,
   ClientSourceOption,
   DiscountMode,
   EmployeeRole,
+  ExpenseType,
   InventoryAdjustmentBatch,
   InventoryMovement,
   InventoryMovementDraft,
   InventoryMovementReason,
+  InventoryAuditLine,
+  InventoryCountAudit,
+  WarehouseMovement,
+  WarehouseMovementCategory,
+  WarehouseMovementLine,
+  WarehousePriceList,
+  WarehousePricingSelection,
+  WarehouseRequestType,
+  WarehouseSupplyItem,
+  WarehouseSupplier,
+  WarehouseStock,
   LayawayRecord,
   OwedProductRecord,
+  OperationalNotification,
+  OperationalNotificationPreference,
+  OperationalNotificationType,
   PaymentMethodOption,
   Product,
+  PosDaySession,
+  PosSessionUser,
   ReceiptSettings,
   RetailDeal,
   RequiredClientFields,
@@ -176,6 +214,10 @@ type CatalogTableSortKey =
   | "stock";
 
 const screenMetadata: Record<ScreenId, { title: string; subtitle: string }> = {
+  dashboard: {
+    title: "Dashboard",
+    subtitle: "Control ejecutivo de la jornada e inventario",
+  },
   sale: { title: "Sale", subtitle: "Venta retail" },
   "seller-sales": {
     title: "Mis ventas",
@@ -196,6 +238,14 @@ const screenMetadata: Record<ScreenId, { title: string; subtitle: string }> = {
   inventory: {
     title: "Inventory",
     subtitle: "Productos, existencias, pedidos y sucursales",
+  },
+  warehouse: {
+    title: "Almacén bodega",
+    subtitle: "Existencias matriz, entradas, envíos y pedidos de sucursales",
+  },
+  suppliers: {
+    title: "Proveedores",
+    subtitle: "Directorio fiscal, productos y abastecimiento",
   },
   "inventory-movements": {
     title: "Movimientos de inventario",
@@ -274,6 +324,91 @@ const paymentStatusLabels: Record<Ticket["paymentStatus"], string> = {
   PENDING: "Pendiente de cobro",
 };
 
+const operationalBusinessDate = (iso: string) =>
+  new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Mexico_City",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(iso));
+
+const createInitialOperationalNotifications = (): OperationalNotification[] => {
+  const currentDate = operationalBusinessDate(new Date().toISOString());
+  const recipients = [masterUser.id];
+  const ticketNotifications = initialTickets
+    .filter(
+      (ticket) =>
+        ticket.status === "COMPLETED" &&
+        operationalBusinessDate(ticket.createdAtIso) === currentDate,
+    )
+    .map<OperationalNotification>((ticket) => ({
+      id: `notification-ticket-${ticket.id}`,
+      type: "SALE_COMPLETED",
+      title: `Venta finalizada · ${ticket.id}`,
+      detail: `${ticket.clientName} · ${formatCurrency(ticket.total)} · ${ticket.sellerSummary}`,
+      moduleLabel: "Sale",
+      branch: ticket.branchName ?? "Polanco",
+      actorId: ticket.sellerSales[0]?.sellerId ?? masterUser.id,
+      actorName: ticket.sellerSummary,
+      reference: ticket.id,
+      createdAtIso: ticket.createdAtIso,
+      recipientUserIds: recipients,
+      readByUserIds: [],
+    }));
+  const expenseNotifications = initialCashExpenses
+    .filter((expense) => expense.expenseDate === currentDate)
+    .map<OperationalNotification>((expense) => ({
+      id: `notification-expense-${expense.id}`,
+      type: "CASH_EXPENSE",
+      title: `Gasto registrado · ${expense.folio}`,
+      detail: `${expense.typeName} · ${formatCurrency(expense.amount)} · ${expense.concept}`,
+      moduleLabel: "Cash manager",
+      branch: expense.branch,
+      actorId: expense.sellerId,
+      actorName: expense.sellerName,
+      reference: expense.folio,
+      createdAtIso: expense.createdAtIso,
+      recipientUserIds: recipients,
+      readByUserIds: [],
+    }));
+  const movementNotifications = initialInventoryMovements
+    .filter(
+      (movement) =>
+        movement.category !== "SALE" &&
+        operationalBusinessDate(movement.createdAtIso) === currentDate,
+    )
+    .map<OperationalNotification>((movement) => ({
+      id: `notification-movement-${movement.id}`,
+      type:
+        movement.direction === "ADD"
+          ? "INVENTORY_ADD"
+          : movement.direction === "TRANSFER"
+            ? "INVENTORY_TRANSFER"
+            : "INVENTORY_REMOVE",
+      title:
+        movement.direction === "ADD"
+          ? `Entrada de producto · ${movement.folio}`
+          : movement.direction === "TRANSFER"
+            ? `Transferencia · ${movement.folio}`
+            : `Baja de producto · ${movement.folio}`,
+      detail: `${movement.productName} · ${movement.quantity} pz · ${movement.reason}`,
+      moduleLabel: "Inventory · Movimientos",
+      branch:
+        movement.direction === "TRANSFER" && movement.destinationBranch
+          ? `${movement.sourceBranch} → ${movement.destinationBranch}`
+          : movement.sourceBranch,
+      actorId: masterUser.id,
+      actorName: masterUser.name,
+      reference: movement.folio,
+      createdAtIso: movement.createdAtIso,
+      recipientUserIds: recipients,
+      readByUserIds: [],
+    }));
+  return [...ticketNotifications, ...expenseNotifications, ...movementNotifications].sort(
+    (left, right) => right.createdAtIso.localeCompare(left.createdAtIso),
+  );
+};
+
 const createUniqueFolio = (tickets: Ticket[]) => {
   const existing = new Set(tickets.map((ticket) => ticket.id));
   let folio = "";
@@ -306,10 +441,199 @@ const isCartFloorCoveredOrAuthorized = (items: CartItem[]) => {
   return subtotal >= minimumTotal;
 };
 
+const initialWarehouseCategories: WarehouseMovementCategory[] = [
+  { id: "warehouse-products", name: "Envíos de producto", active: true, createdAtIso: "2026-08-01T14:00:00.000Z" },
+  { id: "warehouse-testers", name: "Envíos de tester", active: true, createdAtIso: "2026-08-01T14:01:00.000Z" },
+  { id: "warehouse-supplies", name: "Envíos de insumos", active: true, createdAtIso: "2026-08-01T14:02:00.000Z" },
+  { id: "warehouse-furniture", name: "Envíos de mobiliario", active: true, createdAtIso: "2026-08-01T14:03:00.000Z" },
+];
+
+const initialWarehouseSuppliers: WarehouseSupplier[] = [
+  { id: "supplier-keysar-labs", folio: "PROV-0001", businessName: "Keysar Labs International", contactName: "Laura Ortega", rfc: "KLI240101K91", taxRegime: "601 · General de Ley", businessLine: "Cosmética y dermocosmética", phone: "55 9001 2210", email: "pedidos@keysarlabs.example", address: "Naucalpan, Estado de México", active: true, createdAtIso: "2026-08-01T12:00:00.000Z" },
+  { id: "supplier-solaris", folio: "PROV-0002", businessName: "Solaris Dermal México", contactName: "Arturo Medina", rfc: "SDM2304158P2", taxRegime: "601 · General de Ley", businessLine: "Protección solar profesional", phone: "55 8110 4472", email: "ventas@solarisdermal.example", address: "Benito Juárez, Ciudad de México", active: true, createdAtIso: "2026-08-02T12:00:00.000Z" },
+  { id: "supplier-medical", folio: "PROV-0003", businessName: "Medical Supply Center", contactName: "Fernanda Vélez", rfc: "MSC220905QH7", taxRegime: "626 · Simplificado de confianza", businessLine: "Insumos médicos y de cabina", phone: "55 7340 1198", email: "compras@medicalsupply.example", address: "Tlalnepantla, Estado de México", active: true, createdAtIso: "2026-08-03T12:00:00.000Z" },
+];
+
+const initialWarehouseSupplies: WarehouseSupplyItem[] = [
+  { id: "supply-cotton", name: "Algodón facial profesional", sku: "INS-ALG-001", unit: "bolsa", image: "/products/hydra-cloud-cream.png", costUsd: 3.1, costMxn: 54, partnerCost: 66, retailPrice: 98, family: "Insumos", category: "Cabina facial", stockMin: 60, stockMax: 180, presentation: "Caja con 12 bolsas", unitsPerPackage: 12, supplierId: "supplier-medical", supplierName: "Medical Supply Center", active: true, branchVisible: true },
+  { id: "supply-gloves", name: "Guantes de nitrilo", sku: "INS-GUA-002", unit: "caja", image: "/products/mineral-spf-50.png", costUsd: 7.4, costMxn: 129, partnerCost: 158, retailPrice: 220, family: "Insumos", category: "Protección", stockMin: 40, stockMax: 120, presentation: "Caja con 100 piezas", unitsPerPackage: 100, supplierId: "supplier-medical", supplierName: "Medical Supply Center", active: true, branchVisible: true },
+  { id: "supply-headbands", name: "Bandas faciales desechables", sku: "INS-BAN-003", unit: "paquete", image: "/products/renewal-serum.png", costUsd: 4.6, costMxn: 80, partnerCost: 98, retailPrice: 145, family: "Insumos", category: "Cabina facial", stockMin: 80, stockMax: 220, presentation: "Caja con 20 paquetes", unitsPerPackage: 20, supplierId: "supplier-medical", supplierName: "Medical Supply Center", active: true, branchVisible: true },
+  { id: "supply-sheets", name: "Sábanas desechables", sku: "INS-SAB-004", unit: "rollo", image: "/products/vitamin-c-glow.png", costUsd: 9.2, costMxn: 160, partnerCost: 195, retailPrice: 280, family: "Insumos", category: "Cabina corporal", stockMin: 30, stockMax: 90, presentation: "Caja con 6 rollos", unitsPerPackage: 6, supplierId: "supplier-medical", supplierName: "Medical Supply Center", active: true, branchVisible: false },
+  { id: "supply-spatulas", name: "Espátulas cosméticas", sku: "INS-ESP-005", unit: "paquete", image: "/products/renewal-serum.png", costUsd: 2.8, costMxn: 49, partnerCost: 60, retailPrice: 90, family: "Insumos", category: "Aplicación", stockMin: 50, stockMax: 140, presentation: "Caja con 25 paquetes", unitsPerPackage: 25, supplierId: "supplier-medical", supplierName: "Medical Supply Center", active: true, branchVisible: true },
+];
+
+const initialWarehousePriceLists: WarehousePriceList[] = [
+  {
+    id: "warehouse-price-socio",
+    name: "Socio por sucursal",
+    active: true,
+    branchNames: ["Polanco", "Satélite", "Roma Norte"],
+    clientIds: [],
+    items: [
+      ...initialProducts.filter((product) => product.kind === "PRODUCT").map((product) => ({
+        productId: product.id,
+        priceMxn: product.partnerCost ?? Math.round(product.costMxn * 1.22),
+        priceUsd: Math.round(product.costUsd * 1.22 * 100) / 100,
+      })),
+      ...initialWarehouseSupplies.map((supply) => ({ productId: supply.id, priceMxn: supply.partnerCost, priceUsd: Math.round(supply.costUsd * 1.22 * 100) / 100 })),
+    ],
+    createdAtIso: "2026-08-01T14:10:00.000Z",
+  },
+  {
+    id: "warehouse-price-premium",
+    name: "Cliente premium",
+    active: true,
+    branchNames: ["Polanco", "Satélite", "Roma Norte"],
+    clientIds: ["client-1", "client-2"],
+    items: [
+      ...initialProducts.filter((product) => product.kind === "PRODUCT").map((product) => ({
+        productId: product.id,
+        priceMxn: Math.round((product.partnerCost ?? product.costMxn * 1.22) * 0.94),
+        priceUsd: Math.round(product.costUsd * 1.15 * 100) / 100,
+      })),
+      ...initialWarehouseSupplies.map((supply) => ({ productId: supply.id, priceMxn: Math.round(supply.partnerCost * 0.96), priceUsd: Math.round(supply.costUsd * 1.16 * 100) / 100 })),
+    ],
+    createdAtIso: "2026-08-01T14:11:00.000Z",
+  },
+];
+
+const initialWarehouseStock: WarehouseStock = Object.fromEntries(
+  [
+    ...initialProducts
+      .filter((product) => product.kind === "PRODUCT")
+      .map((product, index) => [product.id, [82, 64, 47, 91][index] ?? 25] as const),
+    ...initialWarehouseSupplies.map((supply, index) => [supply.id, [120, 84, 160, 42, 95][index] ?? 30] as const),
+  ],
+);
+
+const warehouseLineFromProduct = (product: Product, quantity: number): WarehouseMovementLine => ({
+  productId: product.id,
+  productName: product.name,
+  sku: product.sku,
+  itemType: "PRODUCT",
+  quantity,
+  unitCostUsd: product.costUsd,
+  unitCostMxn: product.costMxn,
+  partnerCost: product.partnerCost ?? Math.max(product.costMxn, Math.round(product.costMxn * 1.22)),
+  partnerCostUsd: Math.round(product.costUsd * 1.22 * 100) / 100,
+  retailPrice: product.maxPrice,
+  family: product.family,
+  category: product.category,
+  supplierId: product.supplierId ?? null,
+  supplierName: product.supplierName ?? null,
+  presentation: product.presentation ?? "Pieza individual",
+  unitsPerPackage: product.unitsPerPackage ?? 1,
+});
+
+const warehouseLineFromSupply = (supply: WarehouseSupplyItem, quantity: number): WarehouseMovementLine => ({
+  productId: supply.id,
+  productName: supply.name,
+  sku: supply.sku,
+  itemType: "SUPPLY",
+  quantity,
+  unitCostUsd: supply.costUsd,
+  unitCostMxn: supply.costMxn,
+  partnerCost: supply.partnerCost,
+  partnerCostUsd: Math.round(supply.costUsd * 1.22 * 100) / 100,
+  retailPrice: supply.retailPrice,
+  family: supply.family,
+  category: supply.category,
+  supplierId: supply.supplierId,
+  supplierName: supply.supplierName,
+  presentation: supply.presentation,
+  unitsPerPackage: supply.unitsPerPackage,
+});
+
+const initialWarehouseMovements: WarehouseMovement[] = (() => {
+  const physical = initialProducts.filter((product) => product.kind === "PRODUCT");
+  if (physical.length < 4) return [];
+  return [
+    {
+      id: "warehouse-entry-demo", folio: "ALM-ENT-0001", kind: "ENTRY",
+      categoryId: "warehouse-products", categoryLabel: "Ingreso de mercancía",
+      destinationBranch: null, status: "RECEIVED",
+      lines: [warehouseLineFromProduct(physical[0]!, 40), warehouseLineFromProduct(physical[1]!, 30)],
+      comment: "Recepción de proveedor validada en bodega matriz.", createdAtIso: "2026-08-24T13:10:00.000Z", createdByName: "Master Keysar",
+      creationApprovedAtIso: "2026-08-24T13:12:00.000Z", creationApprovedByName: "Master Keysar",
+      sentAtIso: null, sentByName: null, receivedAtIso: "2026-08-24T13:12:00.000Z", receivedByName: "Bodega matriz",
+      cancelledAtIso: null, cancelledByName: null,
+    },
+    {
+      id: "warehouse-shipment-demo", folio: "ALM-ENV-0002", kind: "SHIPMENT",
+      requestType: "TESTER",
+      categoryId: "warehouse-testers", categoryLabel: "Envíos de tester",
+      destinationBranch: "Satélite", status: "SENT", lines: [warehouseLineFromProduct(physical[2]!, 6)],
+      comment: "Guía mock KSR-8842 · pendiente de carga en sucursal.", createdAtIso: "2026-08-24T14:20:00.000Z", createdByName: "Master Keysar",
+      creationApprovedAtIso: "2026-08-24T14:25:00.000Z", creationApprovedByName: "Master Keysar",
+      sentAtIso: "2026-08-24T14:30:00.000Z", sentByName: "Master Keysar", receivedAtIso: null, receivedByName: null,
+      cancelledAtIso: null, cancelledByName: null,
+    },
+    {
+      id: "warehouse-request-demo", folio: "ALM-PRO-0003", kind: "BRANCH_REQUEST",
+      requestType: "PRODUCT",
+      priceListId: "warehouse-price-socio", priceListName: "Socio por sucursal", customerId: null, customerName: null,
+      categoryId: "warehouse-products", categoryLabel: "Envíos de producto",
+      destinationBranch: "Roma Norte", status: "REQUESTED", lines: [warehouseLineFromProduct(physical[3]!, 12)],
+      comment: "Solicitud para completar stock máximo de sucursal.", createdAtIso: "2026-08-24T15:05:00.000Z", createdByName: "Roma Norte",
+      creationApprovedAtIso: null, creationApprovedByName: null, sentAtIso: null, sentByName: null,
+      receivedAtIso: null, receivedByName: null, cancelledAtIso: null, cancelledByName: null,
+    },
+    {
+      id: "warehouse-tester-request-demo", folio: "ALM-TST-0004", kind: "BRANCH_REQUEST", requestType: "TESTER",
+      priceListId: "warehouse-price-premium", priceListName: "Cliente premium", customerId: "client-1", customerName: "Valeria Ruiz",
+      categoryId: "warehouse-testers", categoryLabel: "Envíos de tester",
+      destinationBranch: "Satélite", status: "CREATION_APPROVED", lines: [warehouseLineFromProduct(physical[0]!, 4)],
+      comment: "Testers para cabina y demostración comercial.", createdAtIso: "2026-08-24T16:05:00.000Z", createdByName: "Satélite",
+      creationApprovedAtIso: "2026-08-24T16:12:00.000Z", creationApprovedByName: "Master Keysar", sentAtIso: null, sentByName: null,
+      receivedAtIso: null, receivedByName: null, cancelledAtIso: null, cancelledByName: null,
+    },
+    {
+      id: "warehouse-supply-request-demo", folio: "ALM-INS-0005", kind: "BRANCH_REQUEST", requestType: "SUPPLY",
+      priceListId: "warehouse-price-socio", priceListName: "Socio por sucursal", customerId: null, customerName: null,
+      categoryId: "warehouse-supplies", categoryLabel: "Envíos de insumos",
+      destinationBranch: "Polanco", status: "RECEIVED", lines: [warehouseLineFromSupply(initialWarehouseSupplies[0]!, 12), warehouseLineFromSupply(initialWarehouseSupplies[1]!, 3)],
+      comment: "Insumos recibidos para operación de cabinas.", createdAtIso: "2026-08-24T16:40:00.000Z", createdByName: "Polanco",
+      creationApprovedAtIso: "2026-08-24T16:45:00.000Z", creationApprovedByName: "Master Keysar", sentAtIso: "2026-08-24T16:50:00.000Z", sentByName: "Master Keysar",
+      receivedAtIso: "2026-08-24T17:15:00.000Z", receivedByName: "Sofía Méndez", cancelledAtIso: null, cancelledByName: null,
+    },
+  ];
+})();
+
 function App() {
   const [activeScreen, setActiveScreen] = useState<ScreenId>("sale");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarPinned, setSidebarPinned] = useState(false);
+  const [sidebarActivityTick, setSidebarActivityTick] = useState(0);
+  const [sessionUser, setSessionUser] = useState<PosSessionUser | null>(null);
+  const [sessionStage, setSessionStage] = useState<
+    "LOGIN" | "OPENING_COUNT" | "OPEN" | "CLOSING_COUNT"
+  >("LOGIN");
+  const [daySession, setDaySession] = useState<PosDaySession | null>(null);
+  const [inventoryCountAudits, setInventoryCountAudits] = useState<
+    InventoryCountAudit[]
+  >([]);
+  const [closeDayAuthorizationOpen, setCloseDayAuthorizationOpen] = useState(false);
+  const [closeDayAuthorizationUser, setCloseDayAuthorizationUser] = useState("");
+  const [closeDayAuthorizationCode, setCloseDayAuthorizationCode] = useState("");
+  const [closeDayAuthorizationError, setCloseDayAuthorizationError] = useState("");
   const [search, setSearch] = useState("");
+
+  useEffect(() => {
+    const compactViewport = window.matchMedia("(max-width: 920px)");
+    const adaptSidebar = (event?: MediaQueryListEvent) =>
+      setSidebarCollapsed(event ? event.matches : compactViewport.matches);
+    adaptSidebar();
+    compactViewport.addEventListener("change", adaptSidebar);
+    return () => compactViewport.removeEventListener("change", adaptSidebar);
+  }, []);
+
+  useEffect(() => {
+    if (sidebarCollapsed || sidebarPinned || sessionStage !== "OPEN") return;
+    const inactivityTimer = window.setTimeout(() => {
+      setSidebarCollapsed(true);
+    }, 60_000);
+    return () => window.clearTimeout(inactivityTimer);
+  }, [sessionStage, sidebarActivityTick, sidebarCollapsed, sidebarPinned]);
   const [selectedFamily, setSelectedFamily] = useState("Todos");
   const [selectedCategory, setSelectedCategory] = useState("Todas");
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
@@ -369,6 +693,22 @@ function App() {
   const [inventoryMovements, setInventoryMovements] = useState<
     InventoryMovement[]
   >(initialInventoryMovements);
+  const [warehouseCategories, setWarehouseCategories] = useState<WarehouseMovementCategory[]>(initialWarehouseCategories);
+  const [warehouseSupplies, setWarehouseSupplies] = useState<WarehouseSupplyItem[]>(initialWarehouseSupplies);
+  const [warehouseSuppliers, setWarehouseSuppliers] = useState<WarehouseSupplier[]>(initialWarehouseSuppliers);
+  const [warehousePriceLists, setWarehousePriceLists] = useState<WarehousePriceList[]>(initialWarehousePriceLists);
+  const [warehouseStock, setWarehouseStock] = useState<WarehouseStock>(initialWarehouseStock);
+  const [warehouseMovements, setWarehouseMovements] = useState<WarehouseMovement[]>(initialWarehouseMovements);
+  const [expenseTypes, setExpenseTypes] =
+    useState<ExpenseType[]>(initialExpenseTypes);
+  const [cashExpenses, setCashExpenses] =
+    useState<CashExpense[]>(initialCashExpenses);
+  const [notificationPreferences, setNotificationPreferences] = useState<
+    OperationalNotificationPreference[]
+  >(() => createDefaultNotificationPreferences(masterUser.id));
+  const [operationalNotifications, setOperationalNotifications] = useState<
+    OperationalNotification[]
+  >(createInitialOperationalNotifications);
   const [inventoryAdjustmentBatches, setInventoryAdjustmentBatches] = useState<
     InventoryAdjustmentBatch[]
   >([]);
@@ -425,6 +765,10 @@ function App() {
   const [receiptSearch, setReceiptSearch] = useState("");
   const [receiptDate, setReceiptDate] = useState("");
   const [receiptBranch, setReceiptBranch] = useState("ALL");
+  const [receiptPageSize, setReceiptPageSize] = useState(20);
+  const [receiptPage, setReceiptPage] = useState(1);
+  const [xReportPageSize, setXReportPageSize] = useState(20);
+  const [xReportPage, setXReportPage] = useState(1);
   const [receiptHistoryCode, setReceiptHistoryCode] = useState("");
   const [receiptHistoryAuthorized, setReceiptHistoryAuthorized] =
     useState(false);
@@ -472,6 +816,886 @@ function App() {
       ...branches.filter((branch) => branch !== activeBranch),
     ];
   }, [activeBranch, branchInventory]);
+
+  const pushOperationalNotification = (
+    notification: Omit<
+      OperationalNotification,
+      "id" | "recipientUserIds" | "readByUserIds"
+    >,
+  ) => {
+    const preference = notificationPreferences.find(
+      (item) => item.type === notification.type,
+    );
+    if (
+      !preference?.enabled ||
+      preference.recipientUserIds.length === 0
+    )
+      return;
+    setOperationalNotifications((current) => [
+      {
+        ...notification,
+        id: `notification-${crypto.randomUUID()}`,
+        recipientUserIds: [...preference.recipientUserIds],
+        readByUserIds: [],
+      },
+      ...current,
+    ]);
+  };
+
+  const markOperationalNotificationRead = (
+    notificationId: string,
+    userId: string,
+  ) => {
+    setOperationalNotifications((current) =>
+      current.map((notification) =>
+        notification.id === notificationId &&
+        (userId === masterUser.id || notification.recipientUserIds.includes(userId)) &&
+        !notification.readByUserIds.includes(userId)
+          ? {
+              ...notification,
+              readByUserIds: [...notification.readByUserIds, userId],
+            }
+          : notification,
+      ),
+    );
+  };
+
+  const markAllOperationalNotificationsRead = (userId: string) => {
+    setOperationalNotifications((current) =>
+      current.map((notification) =>
+        operationalBusinessDate(notification.createdAtIso) ===
+          operationalBusinessDate(new Date().toISOString()) &&
+        (userId === masterUser.id || notification.recipientUserIds.includes(userId)) &&
+        !notification.readByUserIds.includes(userId)
+          ? {
+              ...notification,
+              readByUserIds: [...notification.readByUserIds, userId],
+            }
+          : notification,
+      ),
+    );
+  };
+
+  const allowedScreens = useMemo<ScreenId[]>(() => {
+    if (!sessionUser) return [];
+    if (sessionUser.isMaster)
+      return Object.keys(screenMetadata) as ScreenId[];
+    return (
+      employeeRoles.find(
+        (role) => role.id === sessionUser.roleId && role.active,
+      )?.moduleAccess ?? ["sale"]
+    );
+  }, [employeeRoles, sessionUser]);
+
+  const canManageWarehouse = Boolean(
+    sessionUser?.isMaster ||
+    employeeRoles
+      .find((role) => role.id === sessionUser?.roleId && role.active)
+      ?.configurationAccess.includes("WAREHOUSE_MOVEMENTS"),
+  );
+  const canCreateWarehouseRequest = allowedScreens.includes("warehouse");
+
+  const countableProducts = useMemo(
+    () =>
+      catalogProducts.filter(
+        (product) =>
+          product.kind === "PRODUCT" &&
+          product.active &&
+          product.branches.includes(activeBranch),
+      ),
+    [activeBranch, catalogProducts],
+  );
+
+  const handleSoftwareLogin = (credentials: {
+    company: string;
+    username: string;
+    password: string;
+    requestedBranch: string;
+  }): string | null => {
+    if (
+      credentials.company.trim().toLocaleLowerCase("es-MX") !==
+      receiptSettings.companyName.trim().toLocaleLowerCase("es-MX")
+    )
+      return "El nombre de la empresa no coincide con esta licencia.";
+    const normalizedUser = credentials.username
+      .trim()
+      .toLocaleLowerCase("es-MX");
+    const masterLogin =
+      normalizedUser === "master" ||
+      normalizedUser === masterUser.id.toLocaleLowerCase("es-MX") ||
+      normalizedUser === masterUser.name.toLocaleLowerCase("es-MX");
+    const seller = sellers.find(
+      (candidate) =>
+        candidate.active &&
+        [candidate.id, candidate.name, candidate.initials].some(
+          (value) => value.toLocaleLowerCase("es-MX") === normalizedUser,
+        ),
+    );
+    if (masterLogin && !isMasterAccessCode(credentials.password))
+      return "Contraseña master incorrecta.";
+    if (!masterLogin && (!seller || seller.accessCode !== credentials.password.trim()))
+      return "Usuario o contraseña incorrectos.";
+    const selectedBranch = masterLogin
+      ? credentials.requestedBranch
+      : activeBranch;
+    if (!branchInventory[selectedBranch]) return "La sucursal seleccionada no está activa.";
+    if (masterLogin && selectedBranch !== activeBranch)
+      applyTerminalLocation(selectedBranch);
+    const loginDate = new Date();
+    const nextUser: PosSessionUser = masterLogin
+      ? {
+          id: masterUser.id,
+          name: masterUser.name,
+          initials: masterUser.initials,
+          roleId: "role-master",
+          isMaster: true,
+          branch: selectedBranch,
+          loggedInAtIso: loginDate.toISOString(),
+        }
+      : {
+          id: seller!.id,
+          name: seller!.name,
+          initials: seller!.initials,
+          roleId: seller!.roleId,
+          isMaster: Boolean(seller!.masterAccessCode),
+          branch: selectedBranch,
+          loggedInAtIso: loginDate.toISOString(),
+        };
+    if (
+      !nextUser.isMaster &&
+      !attendanceRecords.some(
+        (record) => record.sellerId === nextUser.id && record.status === "ONLINE",
+      )
+    ) {
+      const clockInAt = new Intl.DateTimeFormat("es-MX", {
+        timeZone: "America/Mexico_City",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+      }).format(loginDate);
+      const attendance: AttendanceRecord = {
+        id: `attendance-${crypto.randomUUID()}`,
+        sellerId: nextUser.id,
+        sellerName: nextUser.name,
+        sellerInitials: nextUser.initials,
+        branch: selectedBranch,
+        clockInAt,
+        clockInAtIso: loginDate.toISOString(),
+        clockOutAt: null,
+        clockOutAtIso: null,
+        status: "ONLINE",
+        clockOutReason: null,
+      };
+      setAttendanceRecords((current) => [attendance, ...current]);
+      pushOperationalNotification({
+        type: "CLOCK_IN",
+        title: `Clock In · ${nextUser.name}`,
+        detail: `Inicio de sesión y entrada a las ${clockInAt} en ${selectedBranch}.`,
+        moduleLabel: "Clock In",
+        branch: selectedBranch,
+        actorId: nextUser.id,
+        actorName: nextUser.name,
+        reference: attendance.id,
+        createdAtIso: attendance.clockInAtIso,
+      });
+    }
+    setSessionUser(nextUser);
+    setSessionStage("OPENING_COUNT");
+    setDaySession(null);
+    setActiveScreen("sale");
+    return null;
+  };
+
+  const applyPhysicalInventoryCount = (
+    lines: InventoryAuditLine[],
+    branch: string,
+  ) => {
+    setBranchInventory((current) => ({
+      ...current,
+      [branch]: {
+        ...(current[branch] ?? {}),
+        ...Object.fromEntries(lines.map((line) => [line.productId, line.actualStock])),
+      },
+    }));
+    if (branch === "Polanco") {
+      const actualByProduct = new Map(
+        lines.map((line) => [line.productId, line.actualStock]),
+      );
+      setCatalogProducts((current) =>
+        current.map((product) =>
+          actualByProduct.has(product.id)
+            ? { ...product, stock: actualByProduct.get(product.id)! }
+            : product,
+        ),
+      );
+    }
+  };
+
+  const completeOpeningCount = (
+    lines: InventoryAuditLine[],
+    skipped: boolean,
+    comment: string,
+  ) => {
+    if (!sessionUser) return;
+    const createdAtIso = new Date().toISOString();
+    const audit: InventoryCountAudit = {
+      id: `audit-open-${crypto.randomUUID()}`,
+      type: "OPENING",
+      branch: sessionUser.branch,
+      createdAtIso,
+      createdById: sessionUser.id,
+      createdByName: sessionUser.name,
+      skipped,
+      comment,
+      lines: skipped
+        ? lines.map((line) => ({
+            ...line,
+            actualStock: line.expectedStock,
+            difference: 0,
+          }))
+        : lines,
+    };
+    if (!skipped) applyPhysicalInventoryCount(audit.lines, sessionUser.branch);
+    setInventoryCountAudits((current) => [audit, ...current]);
+    setDaySession({
+      id: `day-${crypto.randomUUID()}`,
+      branch: sessionUser.branch,
+      openedAtIso: createdAtIso,
+      openedById: sessionUser.id,
+      openingAuditId: audit.id,
+      status: "OPEN",
+      closingAuditId: null,
+      closedAtIso: null,
+      closedById: null,
+      closedByName: null,
+    });
+    const nextAllowedScreens = sessionUser.isMaster
+      ? (Object.keys(screenMetadata) as ScreenId[])
+      : employeeRoles.find((role) => role.id === sessionUser.roleId)?.moduleAccess ?? ["sale"];
+    setActiveScreen(nextAllowedScreens.includes("dashboard") ? "dashboard" : "sale");
+    setSessionStage("OPEN");
+    setSidebarCollapsed(true);
+    toast.success(
+      skipped
+        ? "Open Day autorizado sin conteo por usuario master."
+        : "Conteo guardado. La jornada quedó abierta.",
+    );
+  };
+
+  const completeClosingCount = (
+    lines: InventoryAuditLine[],
+    skipped: boolean,
+    comment: string,
+  ) => {
+    if (!sessionUser || !daySession) return;
+    const auditLines = skipped
+      ? lines.map((line) => ({
+          ...line,
+          actualStock: line.expectedStock,
+          difference: 0,
+        }))
+      : lines;
+    const audit: InventoryCountAudit = {
+      id: `audit-close-${crypto.randomUUID()}`,
+      type: "CLOSING",
+      branch: sessionUser.branch,
+      createdAtIso: new Date().toISOString(),
+      createdById: sessionUser.id,
+      createdByName: sessionUser.name,
+      skipped,
+      comment,
+      lines: auditLines,
+    };
+    if (!skipped) applyPhysicalInventoryCount(auditLines, sessionUser.branch);
+    setInventoryCountAudits((current) => [audit, ...current]);
+    setDaySession((current) =>
+      current ? { ...current, closingAuditId: audit.id } : current,
+    );
+    setSessionStage("OPEN");
+    setActiveScreen("close-day");
+    toast.success(
+      skipped
+        ? "Conteo final omitido con autorización master. Ya puedes revisar el corte."
+        : "Conteo final guardado. Ya puedes revisar e imprimir el corte.",
+    );
+  };
+
+  const navigateToScreen = (screen: ScreenId) => {
+    if (!allowedScreens.includes(screen)) {
+      toast.error("Tu rol no tiene permiso para abrir este módulo.");
+      return;
+    }
+    if (screen === "close-day" && daySession && !daySession.closingAuditId) {
+      setSessionStage("CLOSING_COUNT");
+      setActiveScreen("close-day");
+      return;
+    }
+    setActiveScreen(screen);
+    setSidebarCollapsed(false);
+    setSidebarActivityTick((current) => current + 1);
+  };
+
+  const toggleSidebar = () => {
+    setSidebarCollapsed((current) => !current);
+    setSidebarActivityTick((current) => current + 1);
+  };
+
+  const toggleSidebarPin = () => {
+    setSidebarPinned((current) => {
+      const nextPinned = !current;
+      if (nextPinned) setSidebarCollapsed(false);
+      return nextPinned;
+    });
+    setSidebarActivityTick((current) => current + 1);
+  };
+
+  const warehouseAuthorizationActor = (code: string) => {
+    const normalizedCode = code.trim();
+    if (!normalizedCode) return null;
+    if (normalizedCode === masterUser.accessCode)
+      return { id: masterUser.id, name: masterUser.name };
+    const seller = sellers.find((candidate) => {
+      if (!candidate.active) return false;
+      const role = employeeRoles.find((item) => item.id === candidate.roleId && item.active);
+      const permitted = Boolean(
+        candidate.masterAccessCode ||
+        role?.configurationAccess.includes("WAREHOUSE_MOVEMENTS"),
+      );
+      return permitted && [candidate.accessCode, candidate.masterAccessCode].includes(normalizedCode);
+    });
+    return seller ? { id: seller.id, name: seller.name } : null;
+  };
+
+  const createWarehouseEntry = (
+    lines: WarehouseMovementLine[],
+    comment: string,
+    code: string,
+  ) => {
+    const actor = warehouseAuthorizationActor(code);
+    if (!actor) {
+      toast.error("Código sin permiso para ingresos de almacén.");
+      return false;
+    }
+    const now = new Date();
+    const movement: WarehouseMovement = {
+      id: `warehouse-${crypto.randomUUID()}`,
+      folio: `ALM-ENT-${Date.now().toString(36).toUpperCase()}`,
+      kind: "ENTRY",
+      categoryId: "warehouse-products",
+      categoryLabel: "Ingreso de mercancía",
+      destinationBranch: null,
+      status: "RECEIVED",
+      lines,
+      comment: comment.trim(),
+      createdAtIso: now.toISOString(),
+      createdByName: actor.name,
+      creationApprovedAtIso: now.toISOString(),
+      creationApprovedByName: actor.name,
+      sentAtIso: null,
+      sentByName: null,
+      receivedAtIso: now.toISOString(),
+      receivedByName: "Bodega matriz",
+      cancelledAtIso: null,
+      cancelledByName: null,
+    };
+    setWarehouseStock((current) => ({
+      ...current,
+      ...Object.fromEntries(lines.map((line) => [line.productId, (current[line.productId] ?? 0) + line.quantity])),
+    }));
+    setCatalogProducts((current) =>
+      current.map((product) => {
+        const line = lines.find((candidate) => candidate.productId === product.id);
+        return line ? { ...product, partnerCost: line.partnerCost } : product;
+      }),
+    );
+    setWarehouseMovements((current) => [movement, ...current]);
+    toast.success(`${movement.folio} registrado. Existencias de bodega actualizadas.`);
+    return true;
+  };
+
+  const createWarehouseMovement = (
+    kind: "SHIPMENT" | "BRANCH_REQUEST",
+    requestType: WarehouseRequestType,
+    categoryId: string,
+    branch: string,
+    lines: WarehouseMovementLine[],
+    comment: string,
+    pricing: WarehousePricingSelection,
+  ) => {
+    const category = warehouseCategories.find((candidate) => candidate.id === categoryId && candidate.active);
+    const authorizedToCreate = kind === "BRANCH_REQUEST" ? canCreateWarehouseRequest : canManageWarehouse;
+    const priceList = pricing.priceListId
+      ? warehousePriceLists.find((candidate) => candidate.id === pricing.priceListId && candidate.active)
+      : null;
+    const customer = pricing.customerId ? clients.find((candidate) => candidate.id === pricing.customerId) : null;
+    const priceListMatchesOrder = !priceList || (
+      priceList.branchNames.includes(branch) &&
+      (priceList.clientIds.length === 0 || Boolean(customer && priceList.clientIds.includes(customer.id)))
+    );
+    if (!authorizedToCreate || !category || !branchInventory[branch] || (kind === "BRANCH_REQUEST" && (!priceList || !priceListMatchesOrder))) {
+      toast.error("No tienes permiso o la configuración del movimiento no es válida.");
+      return false;
+    }
+    const pricedLines = lines.map((line) => {
+      const listItem = priceList?.items.find((item) => item.productId === line.productId);
+      return listItem ? { ...line, partnerCost: listItem.priceMxn, partnerCostUsd: listItem.priceUsd } : line;
+    });
+    const movement: WarehouseMovement = {
+      id: `warehouse-${crypto.randomUUID()}`,
+      folio: `ALM-${kind === "SHIPMENT" ? "ENV" : requestType === "TESTER" ? "TST" : requestType === "SUPPLY" ? "INS" : "PRO"}-${Date.now().toString(36).toUpperCase()}`,
+      kind,
+      requestType,
+      priceListId: priceList?.id ?? null,
+      priceListName: priceList?.name ?? null,
+      customerId: customer?.id ?? null,
+      customerName: customer ? `${customer.firstName} ${customer.lastName}`.trim() : null,
+      categoryId: category.id,
+      categoryLabel: category.name,
+      destinationBranch: branch,
+      status: kind === "BRANCH_REQUEST" ? "REQUESTED" : "DRAFT",
+      lines: pricedLines,
+      comment: comment.trim(),
+      createdAtIso: new Date().toISOString(),
+      createdByName: sessionUser?.name ?? masterUser.name,
+      creationApprovedAtIso: null,
+      creationApprovedByName: null,
+      sentAtIso: null,
+      sentByName: null,
+      receivedAtIso: null,
+      receivedByName: null,
+      cancelledAtIso: null,
+      cancelledByName: null,
+    };
+    setWarehouseMovements((current) => [movement, ...current]);
+    toast.success(`${movement.folio} creado y enviado a primera aprobación.`);
+    return true;
+  };
+
+  const editWarehouseMovement = (
+    id: string,
+    categoryId: string,
+    branch: string,
+    lines: WarehouseMovementLine[],
+    comment: string,
+    pricing: WarehousePricingSelection,
+  ) => {
+    if (!canManageWarehouse) return false;
+    const movement = warehouseMovements.find((candidate) => candidate.id === id);
+    const category = warehouseCategories.find((candidate) => candidate.id === categoryId && candidate.active);
+    const priceList = pricing.priceListId
+      ? warehousePriceLists.find((candidate) => candidate.id === pricing.priceListId && candidate.active)
+      : null;
+    const customer = pricing.customerId ? clients.find((candidate) => candidate.id === pricing.customerId) : null;
+    const priceListMatchesOrder = !priceList || (
+      priceList.branchNames.includes(branch) &&
+      (priceList.clientIds.length === 0 || Boolean(customer && priceList.clientIds.includes(customer.id)))
+    );
+    if (!movement || !category || (movement.kind === "BRANCH_REQUEST" && (!priceList || !priceListMatchesOrder)) || !["DRAFT", "REQUESTED"].includes(movement.status)) {
+      toast.error("Este movimiento ya no admite edición.");
+      return false;
+    }
+    const pricedLines = lines.map((line) => {
+      const listItem = priceList?.items.find((item) => item.productId === line.productId);
+      return listItem ? { ...line, partnerCost: listItem.priceMxn, partnerCostUsd: listItem.priceUsd } : line;
+    });
+    setWarehouseMovements((current) => current.map((candidate) => candidate.id === id ? {
+      ...candidate,
+      categoryId: category.id,
+      categoryLabel: category.name,
+      destinationBranch: movement.kind === "PURCHASE_ORDER" ? null : branch,
+      priceListId: movement.kind === "PURCHASE_ORDER" ? candidate.priceListId ?? null : priceList?.id ?? null,
+      priceListName: movement.kind === "PURCHASE_ORDER" ? candidate.priceListName ?? null : priceList?.name ?? null,
+      customerId: movement.kind === "PURCHASE_ORDER" ? candidate.customerId ?? null : customer?.id ?? null,
+      customerName: movement.kind === "PURCHASE_ORDER" ? candidate.customerName ?? null : customer ? `${customer.firstName} ${customer.lastName}`.trim() : null,
+      lines: pricedLines,
+      comment: comment.trim(),
+    } : candidate));
+    toast.success(`${movement.folio} actualizado antes de su aprobación.`);
+    return true;
+  };
+
+  const createWarehouseRestockOrder = (
+    supplierId: string,
+    lines: WarehouseMovementLine[],
+    comment: string,
+  ) => {
+    const supplier = warehouseSuppliers.find((candidate) => candidate.id === supplierId && candidate.active);
+    if (!canManageWarehouse || !supplier || lines.length === 0 || lines.some((line) => line.supplierId !== supplier.id)) {
+      toast.error("Selecciona un proveedor activo y productos vinculados a él.");
+      return false;
+    }
+    const movement: WarehouseMovement = {
+      id: `warehouse-${crypto.randomUUID()}`,
+      folio: `ALM-RES-${Date.now().toString(36).toUpperCase()}`,
+      kind: "PURCHASE_ORDER",
+      supplierId: supplier.id,
+      supplierName: supplier.businessName,
+      categoryId: "warehouse-products",
+      categoryLabel: "Pedido de resurtido",
+      destinationBranch: null,
+      status: "REQUESTED",
+      lines,
+      comment: comment.trim(),
+      createdAtIso: new Date().toISOString(),
+      createdByName: sessionUser?.name ?? masterUser.name,
+      creationApprovedAtIso: null,
+      creationApprovedByName: null,
+      sentAtIso: null,
+      sentByName: null,
+      receivedAtIso: null,
+      receivedByName: null,
+      cancelledAtIso: null,
+      cancelledByName: null,
+    };
+    setWarehouseMovements((current) => [movement, ...current]);
+    toast.success(`${movement.folio} generado según stock máximo; requiere doble aprobación.`);
+    return true;
+  };
+
+  const approveWarehouseCreation = (id: string, code: string) => {
+    const actor = warehouseAuthorizationActor(code);
+    const movement = warehouseMovements.find((candidate) => candidate.id === id);
+    if (!actor || !movement || !["DRAFT", "REQUESTED"].includes(movement.status)) {
+      toast.error("No fue posible autorizar la creación del movimiento.");
+      return false;
+    }
+    setWarehouseMovements((current) => current.map((candidate) => candidate.id === id ? {
+      ...candidate,
+      status: "CREATION_APPROVED",
+      creationApprovedAtIso: new Date().toISOString(),
+      creationApprovedByName: actor.name,
+    } : candidate));
+    toast.success(`Primera validación aprobada por ${actor.name}.`);
+    return true;
+  };
+
+  const approveWarehouseSend = (id: string, code: string) => {
+    const actor = warehouseAuthorizationActor(code);
+    const movement = warehouseMovements.find((candidate) => candidate.id === id);
+    if (!actor || !movement || movement.status !== "CREATION_APPROVED") {
+      toast.error("Segunda autorización inválida.");
+      return false;
+    }
+    const missing = movement.kind === "PURCHASE_ORDER" ? undefined : movement.lines.find((line) => (warehouseStock[line.productId] ?? 0) < line.quantity);
+    if (missing) {
+      toast.error(`Bodega no cuenta con existencias suficientes de ${missing.productName}.`);
+      return false;
+    }
+    if (movement.kind !== "PURCHASE_ORDER") setWarehouseStock((current) => ({
+      ...current,
+      ...Object.fromEntries(movement.lines.map((line) => [line.productId, (current[line.productId] ?? 0) - line.quantity])),
+    }));
+    setWarehouseMovements((current) => current.map((candidate) => candidate.id === id ? {
+      ...candidate,
+      status: "SENT",
+      sentAtIso: new Date().toISOString(),
+      sentByName: actor.name,
+    } : candidate));
+    toast.success(movement.kind === "PURCHASE_ORDER" ? `${movement.folio} autorizado y enviado al proveedor.` : `${movement.folio} enviado. Stock descontado de bodega; PDF disponible.`);
+    return true;
+  };
+
+  const receiveWarehouseMovement = (id: string, code: string) => {
+    const actor = warehouseAuthorizationActor(code);
+    if (!canManageWarehouse || !actor) {
+      toast.error("Código sin autorización para cargar mercancía.");
+      return false;
+    }
+    const movement = warehouseMovements.find((candidate) => candidate.id === id);
+    const destination = movement?.destinationBranch;
+    if (!movement || movement.status !== "SENT" || (movement.kind !== "PURCHASE_ORDER" && (!destination || !branchInventory[destination]))) {
+      toast.error("El movimiento no está listo para cargarse en sucursal.");
+      return false;
+    }
+    const receivedAt = new Date();
+    if (movement.kind === "PURCHASE_ORDER") {
+      setWarehouseStock((current) => ({
+        ...current,
+        ...Object.fromEntries(movement.lines.map((line) => [line.productId, (current[line.productId] ?? 0) + line.quantity])),
+      }));
+      setWarehouseMovements((current) => current.map((candidate) => candidate.id === id ? {
+        ...candidate,
+        status: "RECEIVED",
+        receivedAtIso: receivedAt.toISOString(),
+        receivedByName: actor.name,
+      } : candidate));
+      toast.success(`${movement.folio} recibido; existencias de bodega actualizadas.`);
+      return true;
+    }
+    if (!destination) return false;
+    const affectsRetailStock = movement.requestType !== "TESTER" && movement.requestType !== "SUPPLY";
+    const destinationStock = branchInventory[destination] ?? {};
+    if (affectsRetailStock) setBranchInventory((current) => ({
+      ...current,
+      [destination]: {
+        ...current[destination],
+        ...Object.fromEntries(movement.lines.map((line) => [line.productId, (current[destination]?.[line.productId] ?? 0) + line.quantity])),
+      },
+    }));
+    const inventoryRecords: InventoryMovement[] = affectsRetailStock ? movement.lines.map((line, index) => ({
+      id: `warehouse-inventory-${crypto.randomUUID()}`,
+      folio: `${movement.folio}-${index + 1}`,
+      createdAt: formatAttendanceTime(receivedAt),
+      createdAtIso: receivedAt.toISOString(),
+      productId: line.productId,
+      productName: line.productName,
+      direction: "TRANSFER",
+      reason: movement.categoryLabel,
+      quantity: line.quantity,
+      previousStock: warehouseStock[line.productId] ?? 0,
+      newStock: warehouseStock[line.productId] ?? 0,
+      sourceBranch: "Bodega matriz",
+      destinationBranch: destination,
+      destinationPreviousStock: destinationStock[line.productId] ?? 0,
+      destinationNewStock: (destinationStock[line.productId] ?? 0) + line.quantity,
+      comment: `Mercancía cargada desde ${movement.folio}`,
+      category: "TRANSFER",
+      unitCostUsd: line.unitCostUsd,
+      unitCostMxn: line.unitCostMxn,
+      totalCostUsd: line.unitCostUsd * line.quantity,
+      totalCostMxn: line.unitCostMxn * line.quantity,
+    })) : [];
+    if (inventoryRecords.length > 0) setInventoryMovements((current) => [...inventoryRecords, ...current]);
+    setWarehouseMovements((current) => current.map((candidate) => candidate.id === id ? {
+      ...candidate,
+      status: "RECEIVED",
+      receivedAtIso: receivedAt.toISOString(),
+      receivedByName: actor.name,
+    } : candidate));
+    toast.success(affectsRetailStock
+      ? `${movement.folio} cargado al inventario de ${destination}.`
+      : `${movement.folio} recibido en ${destination}; se registró como consumo operativo sin sumar inventario vendible.`);
+    return true;
+  };
+
+  const reverseWarehouseMovement = (movement: WarehouseMovement) => {
+    if (movement.kind === "PURCHASE_ORDER") {
+      if (movement.status === "RECEIVED") setWarehouseStock((current) => ({
+        ...current,
+        ...Object.fromEntries(movement.lines.map((line) => [line.productId, Math.max(0, (current[line.productId] ?? 0) - line.quantity)])),
+      }));
+      return;
+    }
+    if (movement.kind === "ENTRY" && movement.status === "RECEIVED") {
+      setWarehouseStock((current) => ({
+        ...current,
+        ...Object.fromEntries(movement.lines.map((line) => [line.productId, Math.max(0, (current[line.productId] ?? 0) - line.quantity)])),
+      }));
+      return;
+    }
+    if (movement.status === "SENT" || movement.status === "RECEIVED") {
+      setWarehouseStock((current) => ({
+        ...current,
+        ...Object.fromEntries(movement.lines.map((line) => [line.productId, (current[line.productId] ?? 0) + line.quantity])),
+      }));
+    }
+    const affectsRetailStock = movement.requestType !== "TESTER" && movement.requestType !== "SUPPLY";
+    if (movement.status === "RECEIVED" && movement.destinationBranch && affectsRetailStock) {
+      const branch = movement.destinationBranch;
+      const reversedAt = new Date();
+      const currentBranchStock = branchInventory[branch] ?? {};
+      const reversalRecords: InventoryMovement[] = movement.lines.map((line, index) => ({
+        id: `warehouse-reversal-${crypto.randomUUID()}`,
+        folio: `${movement.folio}-REV-${index + 1}`,
+        createdAt: formatAttendanceTime(reversedAt),
+        createdAtIso: reversedAt.toISOString(),
+        productId: line.productId,
+        productName: line.productName,
+        direction: "TRANSFER",
+        reason: `Cancelación · ${movement.categoryLabel}`,
+        quantity: line.quantity,
+        previousStock: currentBranchStock[line.productId] ?? 0,
+        newStock: (currentBranchStock[line.productId] ?? 0) - line.quantity,
+        sourceBranch: branch,
+        destinationBranch: "Bodega matriz",
+        destinationPreviousStock: warehouseStock[line.productId] ?? 0,
+        destinationNewStock: (warehouseStock[line.productId] ?? 0) + line.quantity,
+        comment: `Reversa automática del movimiento ${movement.folio}`,
+        category: "TRANSFER",
+        unitCostUsd: line.unitCostUsd,
+        unitCostMxn: line.unitCostMxn,
+        totalCostUsd: line.unitCostUsd * line.quantity,
+        totalCostMxn: line.unitCostMxn * line.quantity,
+      }));
+      setBranchInventory((current) => ({
+        ...current,
+        [branch]: {
+          ...current[branch],
+          ...Object.fromEntries(movement.lines.map((line) => [line.productId, (current[branch]?.[line.productId] ?? 0) - line.quantity])),
+        },
+      }));
+      setInventoryMovements((current) => [...reversalRecords, ...current]);
+    }
+  };
+
+  const cancelWarehouseMovement = (id: string, code: string) => {
+    const actor = warehouseAuthorizationActor(code);
+    const movement = warehouseMovements.find((candidate) => candidate.id === id);
+    if (!actor || !movement || movement.status === "CANCELLED") {
+      toast.error("No fue posible cancelar el movimiento.");
+      return false;
+    }
+    if (movement.status === "SENT" && ["BRANCH_REQUEST", "SHIPMENT"].includes(movement.kind)) {
+      reverseWarehouseMovement(movement);
+      const returnedAtIso = new Date().toISOString();
+      setWarehouseMovements((current) => current.map((candidate) => candidate.id === id ? {
+        ...candidate,
+        status: "REQUESTED",
+        creationApprovedAtIso: null,
+        creationApprovedByName: null,
+        sentAtIso: null,
+        sentByName: null,
+        receivedAtIso: null,
+        receivedByName: null,
+        returnedToOrdersAtIso: returnedAtIso,
+        returnedToOrdersByName: actor.name,
+        cancelledAtIso: null,
+        cancelledByName: null,
+        comment: `${candidate.comment}${candidate.comment ? " · " : ""}Envío devuelto a pedidos por ${actor.name}.`,
+      } : candidate));
+      toast.success(`${movement.folio} regresó a Pedidos de sucursales; el stock reservado volvió a bodega.`);
+      return true;
+    }
+    reverseWarehouseMovement(movement);
+    setWarehouseMovements((current) => current.map((candidate) => candidate.id === id ? {
+      ...candidate,
+      status: "CANCELLED",
+      cancelledAtIso: new Date().toISOString(),
+      cancelledByName: actor.name,
+    } : candidate));
+    toast.success(`${movement.folio} cancelado; inventarios revertidos.`);
+    return true;
+  };
+
+  const deleteWarehouseMovement = (id: string, code: string) => {
+    const actor = warehouseAuthorizationActor(code);
+    const movement = warehouseMovements.find((candidate) => candidate.id === id);
+    if (!actor || !movement) {
+      toast.error("Código sin permiso para borrar el movimiento.");
+      return false;
+    }
+    if (!["DRAFT", "REQUESTED", "CANCELLED"].includes(movement.status)) reverseWarehouseMovement(movement);
+    setWarehouseMovements((current) => current.filter((candidate) => candidate.id !== id));
+    toast.success(`${movement.folio} eliminado por ${actor.name}; cualquier impacto fue revertido.`);
+    return true;
+  };
+
+  const saveWarehouseCategory = (id: string | null, name: string) => {
+    if (!canManageWarehouse) return false;
+    const normalized = name.trim();
+    if (!normalized || warehouseCategories.some((category) => category.id !== id && category.name.toLocaleLowerCase("es-MX") === normalized.toLocaleLowerCase("es-MX"))) {
+      toast.error("El concepto ya existe o no es válido.");
+      return false;
+    }
+    if (id) setWarehouseCategories((current) => current.map((category) => category.id === id ? { ...category, name: normalized } : category));
+    else setWarehouseCategories((current) => [...current, { id: `warehouse-category-${crypto.randomUUID()}`, name: normalized, active: true, createdAtIso: new Date().toISOString() }]);
+    toast.success(id ? "Concepto de almacén actualizado." : "Concepto de almacén agregado.");
+    return true;
+  };
+
+  const toggleWarehouseCategory = (id: string) => {
+    if (!canManageWarehouse) return;
+    setWarehouseCategories((current) => current.map((category) => category.id === id ? { ...category, active: !category.active } : category));
+  };
+
+  const deleteWarehouseCategory = (id: string) => {
+    if (!canManageWarehouse) return;
+    const used = warehouseMovements.some((movement) => movement.categoryId === id);
+    setWarehouseCategories((current) => used ? current.map((category) => category.id === id ? { ...category, active: false } : category) : current.filter((category) => category.id !== id));
+    toast.success(used ? "Concepto inactivado; los históricos conservaron su nombre." : "Concepto eliminado.");
+  };
+
+  const toggleWarehouseSupplyVisibility = (id: string) => {
+    if (!canManageWarehouse) return;
+    setWarehouseSupplies((current) => current.map((supply) => supply.id === id
+      ? { ...supply, branchVisible: !supply.branchVisible }
+      : supply));
+    toast.success("Visibilidad del insumo actualizada para nuevas solicitudes de sucursal.");
+  };
+
+  const saveWarehouseSupplier = (supplier: WarehouseSupplier) => {
+    const folio = supplier.folio.trim().toLocaleUpperCase("es-MX");
+    const rfc = supplier.rfc.trim().toLocaleUpperCase("es-MX");
+    const duplicate = warehouseSuppliers.some((candidate) => candidate.id !== supplier.id && (candidate.folio === folio || candidate.rfc === rfc));
+    if (!canManageWarehouse || !supplier.businessName.trim() || !folio || !rfc || duplicate) {
+      toast.error(duplicate ? "El folio o RFC ya pertenece a otro proveedor." : "Completa razón social, folio y RFC del proveedor.");
+      return false;
+    }
+    const exists = warehouseSuppliers.some((candidate) => candidate.id === supplier.id);
+    const normalized = { ...supplier, folio, rfc, businessName: supplier.businessName.trim() };
+    setWarehouseSuppliers((current) => exists ? current.map((candidate) => candidate.id === supplier.id ? normalized : candidate) : [normalized, ...current]);
+    setWarehouseSupplies((current) => current.map((item) => item.supplierId === supplier.id ? { ...item, supplierName: normalized.businessName } : item));
+    setCatalogProducts((current) => current.map((product) => product.supplierId === supplier.id ? { ...product, supplierName: normalized.businessName } : product));
+    toast.success(exists ? "Proveedor y referencias actuales actualizados." : `${normalized.folio} registrado.`);
+    return true;
+  };
+
+  const toggleWarehouseSupplier = (id: string) => {
+    if (!canManageWarehouse) return;
+    setWarehouseSuppliers((current) => current.map((supplier) => supplier.id === id ? { ...supplier, active: !supplier.active } : supplier));
+  };
+
+  const deleteWarehouseSupplier = (id: string) => {
+    if (!canManageWarehouse) return;
+    const used = warehouseSupplies.some((item) => item.supplierId === id) || catalogProducts.some((product) => product.supplierId === id) || warehouseMovements.some((movement) => movement.supplierId === id || movement.lines.some((line) => line.supplierId === id));
+    setWarehouseSuppliers((current) => used ? current.map((supplier) => supplier.id === id ? { ...supplier, active: false } : supplier) : current.filter((supplier) => supplier.id !== id));
+    toast.success(used ? "Proveedor inactivado; pedidos y productos conservaron su histórico." : "Proveedor eliminado.");
+  };
+
+  const saveWarehouseSupply = (item: WarehouseSupplyItem) => {
+    const duplicate = warehouseSupplies.some((candidate) => candidate.id !== item.id && candidate.sku === item.sku) || catalogProducts.some((product) => product.sku === item.sku);
+    const supplier = item.supplierId ? warehouseSuppliers.find((candidate) => candidate.id === item.supplierId) : null;
+    if (!canManageWarehouse || !item.name.trim() || !item.sku.trim() || item.stockMax < item.stockMin || duplicate) {
+      toast.error(duplicate ? "El SKU ya está registrado." : "Revisa nombre, SKU y límites de stock.");
+      return false;
+    }
+    const exists = warehouseSupplies.some((candidate) => candidate.id === item.id);
+    const normalized = { ...item, name: item.name.trim(), sku: item.sku.trim().toLocaleUpperCase("es-MX"), supplierName: supplier?.businessName ?? null };
+    setWarehouseSupplies((current) => exists ? current.map((candidate) => candidate.id === item.id ? normalized : candidate) : [normalized, ...current]);
+    if (!exists) {
+      setWarehouseStock((current) => ({ ...current, [item.id]: 0 }));
+      setWarehousePriceLists((current) => current.map((list) => ({ ...list, items: [...list.items, { productId: item.id, priceMxn: item.partnerCost, priceUsd: Math.round(item.costUsd * 1.22 * 100) / 100 }] })));
+    }
+    toast.success(exists ? "Producto de bodega actualizado en módulos actuales." : "Producto agregado a bodega con existencia inicial en cero.");
+    return true;
+  };
+
+  const deleteWarehouseSupply = (id: string) => {
+    if (!canManageWarehouse) return;
+    const used = warehouseMovements.some((movement) => movement.lines.some((line) => line.productId === id));
+    setWarehouseSupplies((current) => used ? current.map((item) => item.id === id ? { ...item, active: false, branchVisible: false } : item) : current.filter((item) => item.id !== id));
+    if (!used) setWarehousePriceLists((current) => current.map((list) => ({ ...list, items: list.items.filter((price) => price.productId !== id) })));
+    toast.success(used ? "Artículo inactivado; el historial permanece intacto." : "Artículo eliminado de bodega.");
+  };
+
+  const saveWarehousePriceList = (list: WarehousePriceList) => {
+    const normalizedBranches = [...new Set(list.branchNames)].filter((branch) => operationalBranches.includes(branch));
+    const normalizedClients = [...new Set(list.clientIds)].filter((id) => clients.some((client) => client.id === id));
+    if (!canManageWarehouse || !list.name.trim() || normalizedBranches.length === 0 || list.items.length === 0 || list.items.some((item) => item.priceMxn < 0 || item.priceUsd < 0)) {
+      toast.error("Revisa nombre, sucursales y precios de la lista.");
+      return false;
+    }
+    const normalizedList = { ...list, name: list.name.trim(), branchNames: normalizedBranches, clientIds: normalizedClients };
+    setWarehousePriceLists((current) => current.some((candidate) => candidate.id === list.id)
+      ? current.map((candidate) => candidate.id === list.id ? normalizedList : candidate)
+      : [normalizedList, ...current]);
+    toast.success("Lista de precios guardada para nuevas solicitudes.");
+    return true;
+  };
+
+  const toggleWarehousePriceList = (id: string) => {
+    if (!canManageWarehouse) return;
+    setWarehousePriceLists((current) => current.map((list) => list.id === id ? { ...list, active: !list.active } : list));
+  };
+
+  const deleteWarehousePriceList = (id: string) => {
+    if (!canManageWarehouse) return;
+    const used = warehouseMovements.some((movement) => movement.priceListId === id);
+    setWarehousePriceLists((current) => used
+      ? current.map((list) => list.id === id ? { ...list, active: false } : list)
+      : current.filter((list) => list.id !== id));
+    toast.success(used ? "Lista inactivada; los pedidos históricos conservaron sus precios." : "Lista de precios eliminada.");
+  };
 
   const applyTerminalLocation = (branch: string) => {
     if (!branchInventory[branch]) return false;
@@ -851,6 +2075,17 @@ function App() {
       clockOutReason: null,
     };
     setAttendanceRecords((current) => [record, ...current]);
+    pushOperationalNotification({
+      type: "CLOCK_IN",
+      title: `Clock In · ${seller.name}`,
+      detail: `Entrada registrada a las ${record.clockInAt} en ${branch}.`,
+      moduleLabel: "Clock In",
+      branch,
+      actorId: seller.id,
+      actorName: seller.name,
+      reference: record.id,
+      createdAtIso: record.clockInAtIso,
+    });
     toast.success(`${seller.name} registró entrada en ${branch}.`);
     return true;
   };
@@ -878,7 +2113,7 @@ function App() {
     toast.success(`${record.sellerName} registró su salida.`);
   };
 
-  const completeCloseDay = () => {
+  const completeCloseDay = (authorizedBy: { id: string; name: string }) => {
     const onlineCount = attendanceRecords.filter(
       (record) => record.status === "ONLINE",
     ).length;
@@ -898,11 +2133,89 @@ function App() {
         ),
       );
     }
+    const closeDayTickets = tickets.filter(
+      (ticket) =>
+        ticket.status === "COMPLETED" &&
+        ticket.ticketType !== "LAYAWAY_PAYMENT" &&
+        (ticket.branchName ?? receiptSettings.branchName) === activeBranch &&
+        operationalBusinessDate(ticket.createdAtIso) ===
+          operationalBusinessDate(clockOutDate.toISOString()),
+    );
+    const closeDaySalesTotal = closeDayTickets.reduce(
+      (sum, ticket) => sum + ticket.total,
+      0,
+    );
+    const closeDayExpenseTotal = cashExpenses
+      .filter(
+        (expense) =>
+          expense.status === "ACTIVE" &&
+          expense.branch === activeBranch &&
+          expense.expenseDate === operationalBusinessDate(clockOutDate.toISOString()),
+      )
+      .reduce((sum, expense) => sum + expense.amount, 0);
+    pushOperationalNotification({
+      type: "CLOSE_DAY",
+      title: `Corte realizado · ${activeBranch}`,
+      detail: `${closeDayTickets.length} tickets · Venta ${formatCurrency(closeDaySalesTotal)} · Gastos ${formatCurrency(closeDayExpenseTotal)} · Neto ${formatCurrency(closeDaySalesTotal - closeDayExpenseTotal)}.`,
+      moduleLabel: "Close day",
+      branch: activeBranch,
+      actorId: authorizedBy.id,
+      actorName: authorizedBy.name,
+      reference: `CLOSE-${Date.now().toString(36).toUpperCase()}`,
+      createdAtIso: clockOutDate.toISOString(),
+    });
     toast.success(
       onlineCount > 0
-        ? `Cierre mock completado. ${onlineCount} vendedor${onlineCount === 1 ? "" : "es"} ${onlineCount === 1 ? "quedó" : "quedaron"} OFFLINE.`
-        : "Cierre mock completado. No había vendedores ONLINE.",
+        ? `Cierre realizado por ${authorizedBy.name} a las ${formatAttendanceTime(clockOutDate)}. ${onlineCount} vendedor${onlineCount === 1 ? "" : "es"} ${onlineCount === 1 ? "quedó" : "quedaron"} OFFLINE.`
+        : `Cierre realizado por ${authorizedBy.name} a las ${formatAttendanceTime(clockOutDate)}. No había vendedores ONLINE.`,
     );
+    setDaySession((current) =>
+      current
+        ? {
+            ...current,
+            status: "CLOSED",
+            closedAtIso: clockOutDate.toISOString(),
+            closedById: authorizedBy.id,
+            closedByName: authorizedBy.name,
+          }
+        : current,
+    );
+    setSessionUser(null);
+    setSessionStage("LOGIN");
+    setActiveScreen("sale");
+    setSidebarCollapsed(false);
+    setCloseDayAuthorizationOpen(false);
+    setCloseDayAuthorizationUser("");
+    setCloseDayAuthorizationCode("");
+    setCloseDayAuthorizationError("");
+  };
+
+  const authorizeCloseDay = () => {
+    const normalizedUser = closeDayAuthorizationUser
+      .trim()
+      .toLocaleLowerCase("es-MX");
+    const code = closeDayAuthorizationCode.trim();
+    const isMasterIdentity =
+      normalizedUser === "master" ||
+      normalizedUser === masterUser.id.toLocaleLowerCase("es-MX") ||
+      normalizedUser === masterUser.name.toLocaleLowerCase("es-MX");
+    if (isMasterIdentity && isMasterAccessCode(code)) {
+      completeCloseDay({ id: masterUser.id, name: masterUser.name });
+      return;
+    }
+    const seller = sellers.find(
+      (candidate) =>
+        candidate.active &&
+        [candidate.id, candidate.name, candidate.initials].some(
+          (value) => value.toLocaleLowerCase("es-MX") === normalizedUser,
+        ) &&
+        (candidate.accessCode === code || candidate.masterAccessCode === code),
+    );
+    if (!seller) {
+      setCloseDayAuthorizationError("Usuario o clave incorrectos. El corte no fue registrado.");
+      return;
+    }
+    completeCloseDay({ id: seller.id, name: seller.name });
   };
 
   const updateClientRecord = (updatedClient: Client) => {
@@ -1497,6 +2810,17 @@ function App() {
         : [];
     });
     setTickets((current) => [ticket, ...current]);
+    pushOperationalNotification({
+      type: "SALE_COMPLETED",
+      title: `Venta finalizada · ${ticket.id}`,
+      detail: `${ticket.clientName} · ${formatCurrency(ticket.total)} · ${ticket.sellerSummary}`,
+      moduleLabel: "Sale",
+      branch: ticketBranch,
+      actorId: result.sellerSales[0]?.sellerId ?? masterUser.id,
+      actorName: ticket.sellerSummary,
+      reference: ticket.id,
+      createdAtIso: ticket.createdAtIso,
+    });
     if (saleInventoryMovements.length > 0) {
       setInventoryMovements((current) => [
         ...[...saleInventoryMovements].reverse(),
@@ -1910,19 +3234,19 @@ function App() {
   };
 
   const saveCatalogProduct = (product: Product) => {
-    setCatalogProducts((current) => {
-      const exists = current.some((item) => item.id === product.id);
-      const duplicateSku = current.some(
-        (item) => item.id !== product.id && item.sku === product.sku,
-      );
-      if (duplicateSku) {
-        toast.error("El SKU base ya está registrado.");
-        return current;
-      }
-      return exists
+    const exists = catalogProducts.some((item) => item.id === product.id);
+    const duplicateSku = catalogProducts.some(
+      (item) => item.id !== product.id && item.sku === product.sku,
+    );
+    if (duplicateSku) {
+      toast.error("El SKU base ya está registrado.");
+      return;
+    }
+    setCatalogProducts((current) =>
+      exists
         ? current.map((item) => (item.id === product.id ? product : item))
-        : [product, ...current];
-    });
+        : [product, ...current],
+    );
     if (product.kind === "PRODUCT") {
       setBranchInventory((current) =>
         Object.fromEntries(
@@ -1939,6 +3263,22 @@ function App() {
           ]),
         ),
       );
+    }
+    if (!exists) {
+      pushOperationalNotification({
+        type: "PRODUCT_CREATED",
+        title: `Alta de ${product.kind === "SERVICE" ? "servicio" : "producto"}`,
+        detail: `${product.name} · ${product.sku} · ${formatCurrency(product.maxPrice)}.`,
+        moduleLabel: "Inventory · Catálogo",
+        branch:
+          product.branches.length === operationalBranches.length
+            ? "Todas las sucursales"
+            : product.branches.join(" · "),
+        actorId: masterUser.id,
+        actorName: masterUser.name,
+        reference: product.sku,
+        createdAtIso: new Date().toISOString(),
+      });
     }
   };
 
@@ -2360,6 +3700,33 @@ function App() {
       ...[...movements].reverse(),
       ...current,
     ]);
+    movements.forEach((movement) => {
+      const type: OperationalNotificationType =
+        movement.direction === "ADD"
+          ? "INVENTORY_ADD"
+          : movement.direction === "TRANSFER"
+            ? "INVENTORY_TRANSFER"
+            : "INVENTORY_REMOVE";
+      pushOperationalNotification({
+        type,
+        title:
+          movement.direction === "ADD"
+            ? `Entrada aprobada · ${movement.folio}`
+            : movement.direction === "TRANSFER"
+              ? `Transferencia aprobada · ${movement.folio}`
+              : `Baja aprobada · ${movement.folio}`,
+        detail: `${movement.productName} · ${movement.quantity} pz · ${movement.reason}.`,
+        moduleLabel: "Inventory · Movimientos",
+        branch:
+          movement.direction === "TRANSFER" && movement.destinationBranch
+            ? `${movement.sourceBranch} → ${movement.destinationBranch}`
+            : movement.sourceBranch,
+        actorId: masterUser.id,
+        actorName: masterUser.name,
+        reference: movement.folio,
+        createdAtIso: movement.createdAtIso,
+      });
+    });
     if (settledDeliveries.length > 0) {
       setOwedProducts(nextOwedProducts);
       setTickets((current) =>
@@ -3288,6 +4655,48 @@ function App() {
     toast.success(
       `${reason.name} se borró de nuevos movimientos. El historial permanece intacto.`,
     );
+  };
+
+  const saveExpenseType = (type: ExpenseType) => {
+    setExpenseTypes((current) =>
+      current.some((item) => item.id === type.id)
+        ? current.map((item) => (item.id === type.id ? type : item))
+        : [...current, type],
+    );
+  };
+
+  const toggleExpenseType = (typeId: string) => {
+    setExpenseTypes((current) => {
+      const target = current.find((type) => type.id === typeId);
+      const activeCount = current.filter((type) => type.active).length;
+      if (target?.active && activeCount <= 1) {
+        toast.error("Debe permanecer al menos un tipo de gasto activo.");
+        return current;
+      }
+      return current.map((type) =>
+        type.id === typeId ? { ...type, active: !type.active } : type,
+      );
+    });
+  };
+
+  const deleteExpenseType = (typeId: string) => {
+    const type = expenseTypes.find((item) => item.id === typeId);
+    if (!type) return;
+    if (cashExpenses.some((expense) => expense.typeId === typeId)) {
+      setExpenseTypes((current) =>
+        current.map((item) =>
+          item.id === typeId ? { ...item, active: false } : item,
+        ),
+      );
+      toast.info(
+        `${type.name} se inactivó porque tiene movimientos históricos.`,
+      );
+      return;
+    }
+    setExpenseTypes((current) =>
+      current.filter((item) => item.id !== typeId),
+    );
+    toast.success(`${type.name} se eliminó de nuevos registros.`);
   };
 
   const previewTicket = (ticket: Ticket) => {
@@ -4678,6 +6087,15 @@ function App() {
     const activeFilteredTickets = filteredTickets.filter(
       (ticket) => ticket.status === "COMPLETED",
     );
+    const receiptPageCount = Math.max(
+      1,
+      Math.ceil(filteredTickets.length / receiptPageSize),
+    );
+    const safeReceiptPage = Math.min(receiptPage, receiptPageCount);
+    const paginatedReceiptTickets = filteredTickets.slice(
+      (safeReceiptPage - 1) * receiptPageSize,
+      safeReceiptPage * receiptPageSize,
+    );
     const filteredSaleTickets = activeFilteredTickets.filter(
       (ticket) => ticket.ticketType !== "LAYAWAY_PAYMENT",
     );
@@ -4773,6 +6191,7 @@ function App() {
                   setReceiptDate("");
                   setReceiptBranch("ALL");
                   setReceiptSearch("");
+                  setReceiptPage(1);
                   toast.info("Receipts volvió a la vista operativa del día.");
                 }}
               >
@@ -4916,13 +6335,19 @@ function App() {
                   <CalendarDays size={17} />
                   <DatePicker
                     value={receiptDate}
-                    onChange={setReceiptDate}
+                    onChange={(date) => {
+                      setReceiptDate(date);
+                      setReceiptPage(1);
+                    }}
                     placeholder="Todas las fechas"
                   />
                 </div>
                 <div className="receipt-filter-field receipt-branch-filter">
                   <Filter size={17} />
-                  <Select value={receiptBranch} onValueChange={setReceiptBranch}>
+                  <Select value={receiptBranch} onValueChange={(branch) => {
+                    setReceiptBranch(branch);
+                    setReceiptPage(1);
+                  }}>
                     <SelectTrigger aria-label="Filtrar Receipts por sucursal">
                       <SelectValue placeholder="Todas las sucursales" />
                     </SelectTrigger>
@@ -4950,7 +6375,10 @@ function App() {
               <Search size={17} />
               <Input
                 value={receiptSearch}
-                onChange={(event) => setReceiptSearch(event.target.value)}
+                onChange={(event) => {
+                  setReceiptSearch(event.target.value);
+                  setReceiptPage(1);
+                }}
                 placeholder="Buscar por cliente, vendedor o folio"
                 aria-label="Buscar tickets por nombre o folio"
               />
@@ -4966,6 +6394,7 @@ function App() {
                   setReceiptDate("");
                   setReceiptBranch("ALL");
                   setReceiptSearch("");
+                  setReceiptPage(1);
                 }}
               >
                 <RotateCcw size={15} /> Limpiar filtros
@@ -5007,7 +6436,7 @@ function App() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredTickets.map((ticket) => (
+                  {paginatedReceiptTickets.map((ticket) => (
                     <TableRow key={ticket.id}>
                       <TableCell>
                         <strong>{ticket.id}</strong>
@@ -5108,6 +6537,17 @@ function App() {
                 </TableBody>
               </Table>
             </div>
+            <HistoryPagination
+              total={filteredTickets.length}
+              page={safeReceiptPage}
+              pageSize={receiptPageSize}
+              pageCount={receiptPageCount}
+              onPageChange={setReceiptPage}
+              onPageSizeChange={(size) => {
+                setReceiptPageSize(size);
+                setReceiptPage(1);
+              }}
+            />
           </CardContent>
         </Card>
       </div>
@@ -5213,6 +6653,13 @@ function App() {
 
   const renderSettings = () => (
     <div className="settings-grid">
+      <NotificationSettings
+        preferences={notificationPreferences}
+        sellers={sellers}
+        masterUser={masterUser}
+        isMasterCode={isMasterAccessCode}
+        onChange={setNotificationPreferences}
+      />
       <InventoryCatalogSettings
         families={catalogFamilies}
         categories={catalogCategories}
@@ -5229,6 +6676,20 @@ function App() {
           setCatalogTaxonomyStatus("CATEGORY", name, active)
         }
         onToggleProduct={setCatalogProductStatus}
+      />
+      <WarehouseSettings
+        categories={warehouseCategories}
+        canManage={canManageWarehouse}
+        onSave={saveWarehouseCategory}
+        onToggle={toggleWarehouseCategory}
+        onDelete={deleteWarehouseCategory}
+      />
+      <ExpenseTypeSettings
+        types={expenseTypes}
+        isMasterCode={isMasterAccessCode}
+        onSave={saveExpenseType}
+        onToggle={toggleExpenseType}
+        onDelete={deleteExpenseType}
       />
       <CompetitionSettings
         open={competitionSettingsOpen}
@@ -5820,6 +7281,15 @@ function App() {
     const reportTickets = dailyActiveTickets.filter(
       (ticket) => ticket.ticketType !== "LAYAWAY_PAYMENT",
     );
+    const xReportPageCount = Math.max(
+      1,
+      Math.ceil(reportTickets.length / xReportPageSize),
+    );
+    const safeXReportPage = Math.min(xReportPage, xReportPageCount);
+    const paginatedXReportTickets = reportTickets.slice(
+      (safeXReportPage - 1) * xReportPageSize,
+      safeXReportPage * xReportPageSize,
+    );
     const dailyMovements = inventoryMovements.filter((movement) =>
       isToday(movement.createdAtIso),
     );
@@ -6358,7 +7828,7 @@ function App() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {reportTickets.map((ticket) => (
+                  {paginatedXReportTickets.map((ticket) => (
                     <TableRow key={ticket.id}>
                       <TableCell>
                         <strong>{ticket.id}</strong>
@@ -6382,6 +7852,17 @@ function App() {
                 </TableBody>
               </Table>
             </div>
+            <HistoryPagination
+              total={reportTickets.length}
+              page={safeXReportPage}
+              pageSize={xReportPageSize}
+              pageCount={xReportPageCount}
+              onPageChange={setXReportPage}
+              onPageSizeChange={(size) => {
+                setXReportPageSize(size);
+                setXReportPage(1);
+              }}
+            />
           </CardContent>
         </Card>
       </div>
@@ -6393,6 +7874,60 @@ function App() {
       (ticket) => ticket.ticketType !== "LAYAWAY_PAYMENT",
     );
     const total = saleTickets.reduce((sum, ticket) => sum + ticket.total, 0);
+    const closeDayDate = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/Mexico_City",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date());
+    const closeDayDisplayDate = new Intl.DateTimeFormat("es-MX", {
+      timeZone: "America/Mexico_City",
+      day: "2-digit",
+      month: "long",
+      year: "numeric",
+    })
+      .format(new Date())
+      .toLocaleUpperCase("es-MX");
+    const closeDayReceiptDate = closeDayDate.split("-").reverse().join("/");
+    const closingInventoryAudit = daySession?.closingAuditId
+      ? inventoryCountAudits.find(
+          (audit) => audit.id === daySession.closingAuditId,
+        ) ?? null
+      : null;
+    const closingInventoryErrors =
+      closingInventoryAudit?.lines.filter((line) => line.difference !== 0) ?? [];
+    const canViewInventoryDifferences = Boolean(
+      sessionUser?.isMaster ||
+      employeeRoles
+        .find((role) => role.id === sessionUser?.roleId && role.active)
+        ?.configurationAccess.includes("INVENTORY_AUDIT"),
+    );
+    const dailyExpenses = cashExpenses.filter(
+      (expense) =>
+        expense.status === "ACTIVE" &&
+        expense.expenseDate === closeDayDate &&
+        expense.branch === activeBranch,
+    );
+    const dailyExpenseTotal = dailyExpenses.reduce(
+      (sum, expense) => sum + expense.amount,
+      0,
+    );
+    const closeDayNetTotal = total - dailyExpenseTotal;
+    const expensesBySeller = Array.from(
+      dailyExpenses
+        .reduce<
+          Map<string, { name: string; total: number; expenses: CashExpense[] }>
+        >((summary, expense) => {
+          const current = summary.get(expense.sellerId);
+          summary.set(expense.sellerId, {
+            name: expense.sellerName,
+            total: (current?.total ?? 0) + expense.amount,
+            expenses: [...(current?.expenses ?? []), expense],
+          });
+          return summary;
+        }, new Map())
+        .values(),
+    );
     const closeDayTaxSummary = saleTickets.reduce(
       (summary, ticket) => {
         const tax = getTicketTaxSummary(ticket);
@@ -6497,7 +8032,7 @@ function App() {
       <div className="close-day-grid">
         <Card className="close-day-card">
           <CardContent>
-            <span className="section-kicker">22 AGOSTO 2026</span>
+            <span className="section-kicker">{closeDayDisplayDate}</span>
             <h2>Terminal lista para cierre</h2>
             <div className="closing-checks">
               <span>
@@ -6512,6 +8047,16 @@ function App() {
               <span>
                 <CheckCircle2 size={18} /> {inventoryMovements.length} ajustes
                 de inventario registrados
+              </span>
+              <span>
+                <CheckCircle2 size={18} /> {dailyExpenses.length} gastos de caja
+                conciliados
+              </span>
+              <span className={canViewInventoryDifferences && closingInventoryErrors.length > 0 ? "is-audit-error" : ""}>
+                {canViewInventoryDifferences && closingInventoryErrors.length > 0 ? <AlertTriangle size={18} /> : <CheckCircle2 size={18} />}
+                {canViewInventoryDifferences
+                  ? `Auditoría final · ${closingInventoryErrors.length} diferencias`
+                  : "Auditoría final completada · detalle protegido"}
               </span>
               <span>
                 <CheckCircle2 size={18} />{" "}
@@ -6535,10 +8080,33 @@ function App() {
                 ))}
               </div>
             )}
-            <div className="closing-total">
-              <span>TOTAL DEL DÍA</span>
-              <strong>{formatCurrency(total)}</strong>
-            </div>
+            {dailyExpenses.length > 0 ? (
+              <div className="closing-expense-summary">
+                <div>
+                  <span>SUBTOTAL DE VENTA</span>
+                  <strong>{formatCurrency(total)}</strong>
+                </div>
+                <div className="is-expense">
+                  <span>GASTOS REGISTRADOS</span>
+                  <strong>-{formatCurrency(dailyExpenseTotal)}</strong>
+                </div>
+                {expensesBySeller.map((seller) => (
+                  <small key={seller.name}>
+                    {seller.name} · {seller.expenses.length} movimientos · -
+                    {formatCurrency(seller.total)}
+                  </small>
+                ))}
+                <div className="closing-total">
+                  <span>TOTAL DESPUÉS DE GASTOS</span>
+                  <strong>{formatCurrency(closeDayNetTotal)}</strong>
+                </div>
+              </div>
+            ) : (
+              <div className="closing-total">
+                <span>TOTAL DEL DÍA</span>
+                <strong>{formatCurrency(total)}</strong>
+              </div>
+            )}
             <div className="close-day-actions">
               <Button
                 type="button"
@@ -6549,7 +8117,13 @@ function App() {
               </Button>
               <Button
                 type="button"
-                onClick={completeCloseDay}
+                onClick={() => {
+                  setCloseDayAuthorizationError("");
+                  setCloseDayAuthorizationUser("");
+                  setCloseDayAuthorizationCode("");
+                  setCloseDayAuthorizationOpen(true);
+                }}
+                disabled={!closingInventoryAudit}
               >
                 Cerrar día <ArrowRight size={17} />
               </Button>
@@ -6571,8 +8145,8 @@ function App() {
             <strong>{receiptSettings.companyName}</strong>
             <span>{receiptSettings.branchName.toLocaleUpperCase("es-MX")} · TERMINAL 01</span>
             <span>{receiptSettings.address}</span>
-            <span>CIERRE DE DÍA · 22/08/2026</span>
-            <span>OPERADOR: EMMA</span>
+            <span>CIERRE DE DÍA · {closeDayReceiptDate}</span>
+            <span>OPERADOR DEL CORTE: PENDIENTE DE AUTORIZACIÓN</span>
           </header>
 
           <section>
@@ -6678,9 +8252,30 @@ function App() {
             ))}
           </section>
 
+          {dailyExpenses.length > 0 && (
+            <section>
+              <h3>GASTOS POR VENDEDOR</h3>
+              {expensesBySeller.flatMap((seller) => [
+                <div className="receipt-detail-line receipt-expense-seller" key={`${seller.name}-total`}>
+                  <span>{seller.name}</span>
+                  <strong>-{formatCurrency(seller.total)}</strong>
+                </div>,
+                ...seller.expenses.map((expense) => (
+                  <div className="receipt-detail-line receipt-expense-detail" key={expense.id}>
+                    <span>
+                      {expense.folio} · {expense.typeName} · {expense.concept}
+                      {expense.comment ? ` · ${expense.comment}` : ""}
+                    </span>
+                    <strong>-{formatCurrency(expense.amount)}</strong>
+                  </div>
+                )),
+              ])}
+            </section>
+          )}
+
           <section className="receipt-totals">
             <div>
-              <span>Venta final</span>
+              <span>{dailyExpenses.length > 0 ? "Subtotal de venta" : "Venta final"}</span>
               <strong>{formatCurrency(total)}</strong>
             </div>
             <div>
@@ -6703,11 +8298,34 @@ function App() {
               <span>Saldo pendiente</span>
               <strong>{formatCurrency(pending)}</strong>
             </div>
+            {dailyExpenses.length > 0 && (
+              <>
+                <div className="receipt-expense-total">
+                  <span>Gastos de caja</span>
+                  <strong>-{formatCurrency(dailyExpenseTotal)}</strong>
+                </div>
+                <div className="receipt-cash-net-total">
+                  <span>TOTAL DESPUÉS DE GASTOS</span>
+                  <strong>{formatCurrency(closeDayNetTotal)}</strong>
+                </div>
+              </>
+            )}
             <div className="receipt-grand-total">
               <span>TICKETS</span>
               <strong>{activeTickets.length}</strong>
             </div>
           </section>
+          {canViewInventoryDifferences && closingInventoryErrors.length > 0 && (
+            <section className="receipt-inventory-audit">
+              <h3>AUDITORÍA DE INVENTARIO</h3>
+              {closingInventoryErrors.map((line) => (
+                <div className="receipt-detail-line" key={line.productId}>
+                  <span>{line.productName} · Sistema {line.expectedStock} / Real {line.actualStock}</span>
+                  <strong>{line.difference > 0 ? "+" : ""}{line.difference} PZ</strong>
+                </div>
+              ))}
+            </section>
+          )}
           <footer>*** CIERRE MOCK · SIN MOVIMIENTOS REALES ***</footer>
         </article>
         <div className="closing-note">
@@ -6775,6 +8393,50 @@ function App() {
 
   const renderScreen = () => {
     switch (activeScreen) {
+      case "dashboard": {
+        const dashboardRole = employeeRoles.find(
+          (role) => role.id === sessionUser?.roleId && role.active,
+        );
+        const dashboardSeller = sellers.find(
+          (seller) => seller.id === sessionUser?.id && seller.active,
+        );
+        const canViewInventoryAudit = Boolean(
+          sessionUser?.isMaster ||
+          dashboardRole?.configurationAccess.includes("INVENTORY_AUDIT"),
+        );
+        const canViewDashboardCosts = Boolean(
+          sessionUser?.isMaster ||
+          dashboardSeller?.canViewCosts ||
+          dashboardRole?.configurationAccess.includes("REPORTS_COSTS"),
+        );
+        const openingAudit = daySession
+          ? inventoryCountAudits.find(
+              (audit) => audit.id === daySession.openingAuditId,
+            )
+          : null;
+        const closingAudit =
+          daySession?.closingAuditId
+            ? inventoryCountAudits.find(
+                (audit) => audit.id === daySession.closingAuditId,
+              ) ?? null
+            : null;
+        return daySession && openingAudit ? (
+          <MasterDashboard
+            session={daySession}
+            openingAudit={openingAudit}
+            closingAudit={closingAudit}
+            products={catalogProducts}
+            branchInventory={branchInventory}
+            movements={inventoryMovements}
+            tickets={tickets}
+            expenses={cashExpenses}
+            showInventoryDifferences={canViewInventoryAudit}
+            showCosts={canViewDashboardCosts}
+          />
+        ) : (
+          renderGenericModule()
+        );
+      }
       case "sale":
         return renderSale();
       case "seller-sales":
@@ -6853,6 +8515,53 @@ function App() {
         );
       case "catalog":
         return renderInventory();
+      case "warehouse":
+        return (
+          <WarehouseView
+            products={catalogProducts}
+            tickets={tickets}
+            branches={sessionUser?.isMaster || canManageWarehouse ? operationalBranches : [activeBranch]}
+            stock={warehouseStock}
+            movements={warehouseMovements}
+            categories={warehouseCategories}
+            supplies={warehouseSupplies}
+            suppliers={warehouseSuppliers}
+            priceLists={warehousePriceLists}
+            clients={clients}
+            canManage={canManageWarehouse}
+            canRequest={canCreateWarehouseRequest}
+            currentUserName={sessionUser?.name ?? masterUser.name}
+            onCreateEntry={createWarehouseEntry}
+            onCreateMovement={createWarehouseMovement}
+            onEditMovement={editWarehouseMovement}
+            onApproveCreation={approveWarehouseCreation}
+            onApproveSend={approveWarehouseSend}
+            onReceive={receiveWarehouseMovement}
+            onCancel={cancelWarehouseMovement}
+            onDelete={deleteWarehouseMovement}
+            onToggleSupplyVisibility={toggleWarehouseSupplyVisibility}
+            onSaveSupply={saveWarehouseSupply}
+            onDeleteSupply={deleteWarehouseSupply}
+            onCreateRestockOrder={createWarehouseRestockOrder}
+            onSavePriceList={saveWarehousePriceList}
+            onTogglePriceList={toggleWarehousePriceList}
+            onDeletePriceList={deleteWarehousePriceList}
+          />
+        );
+      case "suppliers":
+        return (
+          <SuppliersView
+            suppliers={warehouseSuppliers}
+            products={catalogProducts}
+            supplies={warehouseSupplies}
+            canManage={canManageWarehouse}
+            onSaveSupplier={saveWarehouseSupplier}
+            onToggleSupplier={toggleWarehouseSupplier}
+            onDeleteSupplier={deleteWarehouseSupplier}
+            onSaveItem={saveWarehouseSupply}
+            onDeleteItem={deleteWarehouseSupply}
+          />
+        );
       case "inventory-movements":
         return (
           <InventoryMovementsView
@@ -6912,6 +8621,83 @@ function App() {
             branches={operationalBranches}
             branchInventory={branchInventory}
             receiptSettings={receiptSettings}
+            expenses={cashExpenses}
+            expenseTypes={expenseTypes}
+          />
+        );
+      case "cash-manager":
+        return (
+          <CashManagerView
+            sellers={sellers}
+            branches={operationalBranches}
+            activeBranch={activeBranch}
+            expenseTypes={expenseTypes}
+            expenses={cashExpenses}
+            companyName={receiptSettings.companyName}
+            logoUrl={receiptSettings.logoUrl}
+            isMasterCode={isMasterAccessCode}
+            onCreateExpense={(expense) => {
+              setCashExpenses((current) => [expense, ...current]);
+              pushOperationalNotification({
+                type: "CASH_EXPENSE",
+                title: `Gasto registrado · ${expense.folio}`,
+                detail: `${expense.typeName} · ${formatCurrency(expense.amount)} · ${expense.concept}`,
+                moduleLabel: "Cash manager",
+                branch: expense.branch,
+                actorId: expense.sellerId,
+                actorName: expense.sellerName,
+                reference: expense.folio,
+                createdAtIso: expense.createdAtIso,
+              });
+            }}
+            onUpdateExpense={(expense) => {
+              setCashExpenses((current) =>
+                current.map((item) =>
+                  item.id === expense.id ? expense : item,
+                ),
+              );
+              pushOperationalNotification({
+                type: "CASH_EXPENSE",
+                title: `Gasto editado · ${expense.folio}`,
+                detail: `${expense.typeName} · ${formatCurrency(expense.amount)} · ${expense.concept}`,
+                moduleLabel: "Cash manager",
+                branch: expense.branch,
+                actorId: expense.sellerId,
+                actorName: expense.sellerName,
+                reference: expense.folio,
+                createdAtIso: new Date().toISOString(),
+              });
+            }}
+            onVoidExpense={(expenseId) => {
+              const voidedExpense = cashExpenses.find(
+                (expense) => expense.id === expenseId,
+              );
+              setCashExpenses((current) =>
+                current.map((expense) =>
+                  expense.id === expenseId
+                    ? {
+                        ...expense,
+                        status: "VOIDED",
+                        updatedAtIso: new Date().toISOString(),
+                      }
+                    : expense,
+                ),
+              );
+              if (voidedExpense) {
+                pushOperationalNotification({
+                  type: "CASH_EXPENSE",
+                  title: `Gasto anulado · ${voidedExpense.folio}`,
+                  detail: `${voidedExpense.typeName} · ${formatCurrency(voidedExpense.amount)} · impacto retirado del corte.`,
+                  moduleLabel: "Cash manager",
+                  branch: voidedExpense.branch,
+                  actorId: masterUser.id,
+                  actorName: masterUser.name,
+                  reference: voidedExpense.folio,
+                  createdAtIso: new Date().toISOString(),
+                });
+              }
+              toast.success("El gasto quedó anulado y dejó de afectar el corte.");
+            }}
           />
         );
       case "clock-in":
@@ -6989,6 +8775,155 @@ function App() {
     }
   };
 
+  if (!sessionUser || sessionStage === "LOGIN") {
+    return (
+      <>
+        <PosLoginScreen
+          companyName={receiptSettings.companyName}
+          branches={operationalBranches}
+          fixedBranch={activeBranch}
+          masterUser={masterUser}
+          sellers={sellers}
+          onLogin={handleSoftwareLogin}
+        />
+        <Toaster richColors position="top-right" />
+      </>
+    );
+  }
+
+  if (sessionStage === "OPENING_COUNT") {
+    return (
+      <>
+        <InventoryCountScreen
+          mode="OPENING"
+          branch={sessionUser.branch}
+          user={sessionUser}
+          products={countableProducts}
+          expectedStock={branchInventory[sessionUser.branch] ?? {}}
+          canSkip={sessionUser.isMaster}
+          showDifferences={sessionUser.isMaster}
+          onComplete={completeOpeningCount}
+        />
+        <Toaster richColors position="top-right" />
+      </>
+    );
+  }
+
+  if (sessionStage === "CLOSING_COUNT") {
+    return (
+      <>
+        <InventoryCountScreen
+          mode="CLOSING"
+          branch={sessionUser.branch}
+          user={sessionUser}
+          products={countableProducts}
+          expectedStock={branchInventory[sessionUser.branch] ?? {}}
+          canSkip={sessionUser.isMaster}
+          showDifferences={sessionUser.isMaster}
+          onComplete={completeClosingCount}
+        />
+        <Toaster richColors position="top-right" />
+      </>
+    );
+  }
+
+  if (activeScreen === "close-day") {
+    const closeDayReturnScreen: ScreenId = allowedScreens.includes("dashboard")
+      ? "dashboard"
+      : "sale";
+    return (
+      <div className="close-day-focus-shell">
+        <main className="close-day-focus-window">
+          <header className="close-day-focus-header">
+            <div>
+              <span className="section-kicker">CIERRE OPERATIVO · {activeBranch.toLocaleUpperCase("es-MX")}</span>
+              <h1>Close Day</h1>
+              <p>Revisa el resumen, imprime el corte y autoriza el cierre final.</p>
+            </div>
+            <Button type="button" variant="outline" onClick={() => setActiveScreen(closeDayReturnScreen)}>
+              <X size={16} /> Volver al sistema
+            </Button>
+          </header>
+          {renderCloseDay()}
+        </main>
+        <Dialog
+          open={closeDayAuthorizationOpen}
+          onOpenChange={(open) => {
+            setCloseDayAuthorizationOpen(open);
+            if (!open) {
+              setCloseDayAuthorizationUser("");
+              setCloseDayAuthorizationCode("");
+              setCloseDayAuthorizationError("");
+            }
+          }}
+        >
+          <DialogContent className="close-day-authorization-dialog sm:max-w-[500px]">
+            <DialogHeader className="dialog-header">
+              <div className="terminal-location-dialog-icon"><ShieldCheck size={22} /></div>
+              <DialogTitle>Autorizar cierre de día</DialogTitle>
+              <DialogDescription>
+                Vuelve a ingresar el usuario y su clave. El sistema registrará quién realizó el corte y la hora exacta.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="close-day-authorization-fields">
+              <label className="field-stack">
+                <span>Usuario responsable</span>
+                <Input
+                  value={closeDayAuthorizationUser}
+                  onChange={(event) => {
+                    setCloseDayAuthorizationUser(event.target.value);
+                    setCloseDayAuthorizationError("");
+                  }}
+                  placeholder="Nombre, usuario o iniciales"
+                  autoComplete="off"
+                />
+              </label>
+              <label className="field-stack">
+                <span>Clave de usuario</span>
+                <Input
+                  type="password"
+                  inputMode="numeric"
+                  value={closeDayAuthorizationCode}
+                  onChange={(event) => {
+                    setCloseDayAuthorizationCode(event.target.value);
+                    setCloseDayAuthorizationError("");
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") authorizeCloseDay();
+                  }}
+                  placeholder="••••"
+                  autoComplete="off"
+                />
+              </label>
+            </div>
+            {closeDayAuthorizationError && (
+              <div className="close-day-authorization-error" role="alert">
+                <AlertTriangle size={16} /> {closeDayAuthorizationError}
+              </div>
+            )}
+            <div className="terminal-location-lock-note">
+              <Clock3 size={15} />
+              <span>La autorización quedará ligada al corte de {activeBranch} con fecha y hora de Ciudad de México.</span>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setCloseDayAuthorizationOpen(false)}>
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                onClick={authorizeCloseDay}
+                disabled={!closeDayAuthorizationUser.trim() || !closeDayAuthorizationCode.trim()}
+              >
+                <LockKeyhole size={16} /> Autorizar y cerrar día
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+        <Toaster richColors position="top-right" />
+      </div>
+    );
+  }
+
   const metadata = screenMetadata[activeScreen];
   const secondsUntilNextUpdate = Math.max(
     0,
@@ -7006,10 +8941,13 @@ function App() {
         activeScreen={activeScreen}
         activeBranch={activeBranch}
         collapsed={sidebarCollapsed}
+        pinned={sidebarPinned}
+        allowedScreens={allowedScreens}
         cartCount={cartCount}
-        onNavigate={setActiveScreen}
+        onNavigate={navigateToScreen}
         onRequestLocationSwitch={openLocationSwitcher}
-        onToggle={() => setSidebarCollapsed((current) => !current)}
+        onToggle={toggleSidebar}
+        onTogglePin={toggleSidebarPin}
       />
       <main className="pos-main">
         <header className="page-header">
@@ -7021,6 +8959,15 @@ function App() {
             <p>{metadata.subtitle}</p>
           </div>
           <div className="header-actions">
+            <NotificationBell
+              notifications={operationalNotifications}
+              preferences={notificationPreferences}
+              masterUser={masterUser}
+              sellers={sellers}
+              isMasterCode={isMasterAccessCode}
+              onMarkRead={markOperationalNotificationRead}
+              onMarkAllRead={markAllOperationalNotificationsRead}
+            />
             <div className="header-status">
               <div className="header-sync-status" aria-live="polite">
                 <span className={sessionDataSync.updating ? "is-updating" : ""}>
@@ -7044,14 +8991,14 @@ function App() {
                 <span className="status-dot" />
                 <div>
                   <strong>Terminal 01</strong>
-                  <small>Operador: EMMA</small>
+                  <small>Operador: {sessionUser.name}</small>
                 </div>
               </div>
             </div>
-            <button
+            {allowedScreens.includes("my-account") && <button
               type="button"
               className={`header-account-button ${activeScreen === "my-account" ? "is-active" : ""}`}
-              onClick={() => setActiveScreen("my-account")}
+              onClick={() => navigateToScreen("my-account")}
               aria-current={activeScreen === "my-account" ? "page" : undefined}
             >
               <span className="header-account-icon">
@@ -7062,7 +9009,7 @@ function App() {
                 <small>Perfil, ubicaciones y facturación</small>
               </span>
               <ChevronRight size={16} />
-            </button>
+            </button>}
           </div>
         </header>
         <div className="page-content">{renderScreen()}</div>

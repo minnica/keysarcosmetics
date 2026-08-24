@@ -72,6 +72,7 @@ import {
   SortableTableHead,
   type TableSortDirection,
 } from "./SortableTableHead";
+import { HistoryPagination, useHistoryPagination } from "./HistoryPagination";
 
 interface InventoryMovementsViewProps {
   products: Product[];
@@ -494,6 +495,10 @@ export function InventoryMovementsView({
     movementFilter,
     movementFolioGroups,
   ]);
+  const movementHistoryPagination = useHistoryPagination(
+    filteredMovementGroups,
+    `${filterDate}|${filterSearch}|${movementFilter}|${historySort.key}|${historySort.direction}`,
+  );
 
   const selectedMovementGroup = movementFolioGroups.find(
     (group) => group.key === selectedMovementGroupKey,
@@ -2185,7 +2190,7 @@ export function InventoryMovementsView({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredMovementGroups.map((group) => {
+                {movementHistoryPagination.paginatedItems.map((group) => {
                   const productNames = Array.from(
                     new Set(
                       group.movements.map((movement) => movement.productName),
@@ -2333,6 +2338,14 @@ export function InventoryMovementsView({
               </TableBody>
             </Table>
           </div>
+          <HistoryPagination
+            total={filteredMovementGroups.length}
+            page={movementHistoryPagination.page}
+            pageSize={movementHistoryPagination.pageSize}
+            pageCount={movementHistoryPagination.pageCount}
+            onPageChange={movementHistoryPagination.setPage}
+            onPageSizeChange={movementHistoryPagination.setPageSize}
+          />
         </CardContent>
       </Card>
 
