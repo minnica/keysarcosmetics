@@ -43,7 +43,9 @@
     --color-charcoal: #606060;
     --color-ivory: #f3f0e9;
     --bg-primary: #f3f0e9;
+    --bg-sidebar: #ffffff;
     --text-primary: #606060;
+    --border-color: #ecd1c8;
     --scheduler-accent: #c3a583;
     --scheduler-accent-strong: #ad8b67;
     --scheduler-accent-soft: #f5ede4;
@@ -175,6 +177,34 @@
 
   .scheduler-header-button:hover {
     background-color: rgba(255, 255, 255, 0.1);
+  }
+
+  .scheduler-sidebar-nav-item {
+    @apply rounded-lg text-sm font-medium text-slate-600 transition-colors duration-200;
+  }
+
+  .scheduler-sidebar-nav-active {
+    @apply rounded-lg text-sm font-medium text-white transition-colors duration-200;
+    color: #ffffff !important;
+    background: var(--scheduler-accent) !important;
+  }
+
+  .scheduler-sidebar-nav-active:hover,
+  .scheduler-sidebar-nav-active:focus-visible {
+    color: #ffffff !important;
+    background: var(--scheduler-accent) !important;
+  }
+
+  .group[data-collapsible="icon"] .scheduler-sidebar-nav-item,
+  .group[data-collapsible="icon"] .scheduler-sidebar-nav-active {
+    margin-inline: auto;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .scheduler-sidebar-nav-item,
+    .scheduler-sidebar-nav-active {
+      transition-duration: 0.01ms;
+    }
   }
 
   .scheduler-icon-toggle {
@@ -529,7 +559,16 @@
     @apply hidden;
   }
 
+  .scheduler-dialog {
+    min-width: 0;
+    max-width: calc(100vw - 2rem);
+    overflow-x: hidden !important;
+  }
+
   .scheduler-modal-shell {
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: hidden;
     border: 1px solid rgba(236, 209, 200, 0.88);
     background: linear-gradient(
       180deg,
@@ -540,6 +579,9 @@
   }
 
   .scheduler-modal-body {
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: hidden;
     overflow-y: auto;
   }
 
@@ -607,6 +649,26 @@
     height: 52px;
     background: linear-gradient(135deg, #c3a583 0%, #ad8b67 100%);
     box-shadow: 0 16px 34px rgba(195, 165, 131, 0.24);
+  }
+
+  @media (max-width: 639px) {
+    .scheduler-dialog {
+      width: calc(100vw - 1rem);
+      max-width: calc(100vw - 1rem);
+    }
+
+    .scheduler-booking-time-grid {
+      grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    }
+
+    .scheduler-booking-time-grid > button:last-child {
+      grid-column: 1 / -1;
+      justify-self: start;
+    }
+
+    .scheduler-modal-footer {
+      flex-wrap: wrap;
+    }
   }
 
   .scheduler-modal-cta:hover {
@@ -892,6 +954,8 @@
     margin-inline: -0.15rem;
     background: #fffdfb;
     padding-top: 0.25rem;
+    flex-wrap: wrap;
+    overflow-x: hidden;
   }
 
   .admin-tab:hover {
@@ -946,6 +1010,12 @@
     background-color: #fffdfb !important;
     color: #263649;
     opacity: 1 !important;
+  }
+
+  [data-radix-dialog-content],
+  [data-radix-alert-dialog-content] {
+    max-width: calc(100vw - 2rem);
+    overflow-x: hidden !important;
   }
 
   [data-radix-dialog-overlay],
@@ -1074,6 +1144,11 @@
     border-bottom: 1px solid #e6ddd7;
     color: #56616d;
     font-size: 0.9rem;
+  }
+
+  [data-radix-popover-content] {
+    border: 1px solid #dfd1c6;
+    box-shadow: 0 18px 44px rgba(38, 54, 73, 0.18);
   }
 
   .schedule-table-row {
@@ -1285,16 +1360,90 @@
 
   @media (max-width: 767px) {
     .schedule-table,
-    .schedule-break-table {
-      overflow-x: auto;
+    .schedule-break-table,
+    .class-schedule-table {
+      overflow-x: hidden;
     }
 
     .schedule-table-header,
-    .schedule-table-row,
     .schedule-break-table-header,
+    .class-schedule-header {
+      display: none;
+    }
+
+    .schedule-table-row,
     .schedule-break-table-row,
-    .schedule-break-row {
-      min-width: 52rem;
+    .schedule-break-row,
+    .class-schedule-day-row,
+    .class-schedule-slot-row {
+      min-width: 0;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      row-gap: 0.75rem;
+      padding: 1rem;
+    }
+
+    .schedule-table-row > .schedule-day,
+    .schedule-break-table-row > .schedule-day {
+      align-self: center;
+      font-weight: 600;
+    }
+
+    .schedule-table-row > button:nth-child(2),
+    .schedule-break-table-row > button:nth-child(2) {
+      justify-self: end;
+    }
+
+    .schedule-table-row > :last-child,
+    .schedule-break-table-row > :last-child {
+      grid-column: 1 / -1;
+      justify-self: start;
+    }
+
+    .schedule-break-row > span:first-child {
+      grid-column: 1 / -1;
+      font-weight: 600;
+    }
+
+    .schedule-break-row > span:empty {
+      display: none;
+    }
+
+    .schedule-time {
+      min-width: 0;
+    }
+
+    .schedule-time-select {
+      width: 100%;
+      min-width: 0;
+    }
+
+    .class-schedule-day-row {
+      align-items: center;
+    }
+
+    .class-schedule-day-row > :nth-child(3),
+    .class-schedule-day-row > :nth-child(4) {
+      display: none;
+    }
+
+    .class-schedule-day-row > :last-child {
+      justify-self: end;
+    }
+
+    .class-schedule-slot-row {
+      margin-left: 0;
+      border-top: 1px solid #edf0f2;
+    }
+
+    .class-schedule-slot-row > select {
+      grid-column: 1 / -1;
+      width: 100%;
+      min-width: 0;
+    }
+
+    .class-schedule-slot-row > button:last-child {
+      grid-column: 1 / -1;
+      justify-self: end;
     }
   }
 
@@ -1680,6 +1829,27 @@
     border-top: 1px solid #eee7e2;
     color: #344256;
     font-size: 0.85rem;
+  }
+
+  @media (max-width: 639px) {
+    .bulk-price-filters {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .bulk-price-table {
+      overflow-x: hidden;
+    }
+
+    .bulk-price-table-header {
+      display: none;
+    }
+
+    .bulk-price-table-row {
+      min-width: 0;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 0.65rem;
+      padding: 1rem;
+    }
   }
 
   .bulk-price-current {
@@ -2354,6 +2524,200 @@
     padding: 1.25rem;
   }
 
+  .professional-commission-stack {
+    display: grid;
+    gap: 1rem;
+  }
+
+  .professional-commission-card {
+    border: 1px solid #dfe3e6;
+    border-radius: 1rem;
+    background: #fff;
+    padding: 1.25rem;
+  }
+
+  .professional-commission-switch-card {
+    display: grid;
+    gap: 1.25rem;
+    background: linear-gradient(135deg, #fff 0%, #faf7fd 100%);
+  }
+
+  .professional-required-heading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1rem;
+  }
+
+  .professional-commission-mode-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem;
+  }
+
+  .professional-commission-mode {
+    display: flex;
+    min-width: 0;
+    gap: 0.75rem;
+    border: 1px solid #dfe3e6;
+    border-radius: 0.9rem;
+    background: #fff;
+    padding: 1rem;
+    cursor: pointer;
+    transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
+  }
+
+  .professional-commission-mode:hover {
+    border-color: #bba7d5;
+  }
+
+  .professional-commission-mode-active {
+    border-color: #9860df;
+    background: #faf7fd;
+    box-shadow: 0 0 0 2px rgba(152, 96, 223, 0.1);
+  }
+
+  .professional-commission-mode input {
+    margin-top: 0.2rem;
+    accent-color: #7540bc;
+  }
+
+  .professional-commission-mode span {
+    display: grid;
+    gap: 0.25rem;
+  }
+
+  .professional-commission-mode strong {
+    color: #344256;
+    font-size: 0.9rem;
+  }
+
+  .professional-commission-mode small {
+    color: #7b8794;
+    font-size: 0.75rem;
+    line-height: 1.35;
+  }
+
+  .professional-commission-context {
+    display: grid;
+    align-content: center;
+    gap: 0.3rem;
+    min-height: 4.5rem;
+    border: 1px solid #e5e0ea;
+    border-radius: 0.8rem;
+    background: #faf8fc;
+    padding: 0.75rem 1rem;
+  }
+
+  .professional-commission-context span {
+    color: #7b8794;
+    font-size: 0.75rem;
+  }
+
+  .professional-commission-context strong {
+    color: #4b3f5d;
+    font-size: 0.9rem;
+  }
+
+  .professional-commission-tier-list {
+    overflow-x: hidden;
+  }
+
+  .professional-commission-tier-header,
+  .professional-commission-tier {
+    display: grid;
+    grid-template-columns: minmax(9rem, 1fr) minmax(9rem, 1fr) minmax(7rem, 0.75fr) 2.5rem;
+    align-items: end;
+    gap: 0.75rem;
+    min-width: 38rem;
+  }
+
+  .professional-commission-tier-header {
+    padding: 0 0.25rem 0.45rem;
+    color: #7b8794;
+    font-size: 0.72rem;
+    font-weight: 600;
+  }
+
+  .professional-commission-tier {
+    border-top: 1px solid #edf0f2;
+    padding: 0.8rem 0.25rem;
+  }
+
+  .professional-commission-tier label > span {
+    display: none;
+  }
+
+  .professional-money-input,
+  .professional-percentage-input {
+    position: relative;
+  }
+
+  .professional-money-input > span,
+  .professional-percentage-input > span {
+    position: absolute;
+    top: 50%;
+    z-index: 1;
+    color: #7b8794;
+    transform: translateY(-50%);
+    pointer-events: none;
+  }
+
+  .professional-money-input > span {
+    left: 0.8rem;
+  }
+
+  .professional-money-input input {
+    padding-left: 1.7rem;
+  }
+
+  .professional-percentage-input > span {
+    right: 0.8rem;
+  }
+
+  .professional-percentage-input input {
+    padding-right: 1.8rem;
+  }
+
+  @media (max-width: 640px) {
+    .professional-commission-mode-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .professional-required-heading {
+      flex-direction: column;
+    }
+
+    .professional-commission-tier-header {
+      display: none;
+    }
+
+    .professional-commission-tier {
+      min-width: 0;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      align-items: end;
+      padding-block: 1rem;
+    }
+
+    .professional-commission-tier label > span {
+      display: block;
+      margin-bottom: 0.35rem;
+      color: #7b8794;
+      font-size: 0.72rem;
+      font-weight: 600;
+    }
+
+    .professional-commission-tier > label:nth-child(3) {
+      grid-column: 1 / -1;
+    }
+
+    .professional-commission-tier > button:last-child {
+      grid-column: 1 / -1;
+      justify-self: end;
+    }
+  }
+
   .professional-avatar-picker {
     display: flex;
     width: min(15rem, 100%);
@@ -2508,6 +2872,8 @@
 
   .admin-dialog {
     width: min(calc(100vw - 2rem), 42rem);
+    min-width: 0;
+    max-width: calc(100vw - 2rem);
     height: fit-content;
     max-height: min(94vh, 900px);
     align-content: start;
@@ -2659,6 +3025,58 @@
 
   .report-nav-active:hover {
     background: rgba(195, 165, 131, 0.3);
+  }
+
+  .scheduler-module-link,
+  .scheduler-module-link-active {
+    display: inline-flex;
+    align-items: stretch;
+    overflow: hidden;
+    border-radius: 999px;
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 0.875rem;
+    font-weight: 500;
+    transition: background-color 160ms ease, color 160ms ease;
+  }
+
+  .scheduler-module-link:hover,
+  .scheduler-module-link:focus-within {
+    background: rgba(255, 255, 255, 0.1);
+    color: white;
+  }
+
+  .scheduler-module-link-active {
+    border: 1px solid rgba(195, 165, 131, 0.45);
+    background: rgba(195, 165, 131, 0.2);
+    color: white;
+  }
+
+  .scheduler-module-link-active:hover,
+  .scheduler-module-link-active:focus-within {
+    background: rgba(195, 165, 131, 0.3);
+  }
+
+  .scheduler-module-link > a,
+  .scheduler-module-link-active > a {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.625rem 0.35rem 0.625rem 1rem;
+  }
+
+  .scheduler-module-menu-trigger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 2.25rem;
+    padding: 0.625rem 0.65rem 0.625rem 0.25rem;
+    color: inherit;
+  }
+
+  .scheduler-module-link > a:focus-visible,
+  .scheduler-module-link-active > a:focus-visible,
+  .scheduler-module-menu-trigger:focus-visible {
+    outline: 2px solid rgba(195, 165, 131, 0.9);
+    outline-offset: -2px;
   }
 
   .scheduler-nav-menu-item,
@@ -5162,6 +5580,41 @@
     box-shadow: 0 14px 36px rgba(38, 54, 73, 0.05);
   }
 
+  .reservation-date-range {
+    display: grid !important;
+    width: 100%;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem;
+  }
+
+  .reservation-date-range > button {
+    width: 100% !important;
+    min-width: 0;
+    height: 3rem;
+    justify-content: flex-start;
+    border: 1px solid #cfbcae;
+    border-radius: 1rem;
+    background: #ffffff;
+    padding-inline: 1rem;
+    color: #263649;
+    box-shadow: 0 4px 12px rgba(38, 54, 73, 0.06);
+  }
+
+  .reservation-date-range > button:hover {
+    border-color: var(--scheduler-accent-strong);
+    background: #fffdfb;
+    color: #263649;
+  }
+
+  .reservation-date-range > button:focus-visible {
+    border-color: var(--scheduler-accent-strong);
+    box-shadow: 0 0 0 3px rgba(195, 165, 131, 0.25);
+  }
+
+  .reservation-date-range > button svg {
+    color: var(--scheduler-accent-strong);
+  }
+
   .reservation-report-nav {
     min-width: 0;
     width: 100%;
@@ -5811,6 +6264,10 @@
     .reservation-filter-card,
     .reservation-report-nav {
       border-radius: 1.3rem;
+    }
+
+    .reservation-date-range {
+      grid-template-columns: minmax(0, 1fr);
     }
 
     .reservation-history-table > div > div:first-child {
@@ -7779,25 +8236,29 @@
   }
 
   .admin-dialog-body {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
     min-height: 0;
     max-height: calc(min(90vh, 900px) - 190px);
+    overflow-x: hidden;
     overflow-y: auto;
     padding-block: 0.2rem;
   }
 
   @media (max-width: 639px) {
     .admin-dialog {
-      width: 100%;
-      max-width: none;
+      width: calc(100vw - 1rem);
+      max-width: calc(100vw - 1rem);
       max-height: 100dvh;
-      border-radius: 0;
+      border-radius: 1rem;
       padding: 1rem;
     }
 
     .admin-dialog.gift-card-dialog {
-      width: 100% !important;
-      max-width: none !important;
-      border-radius: 0;
+      width: calc(100vw - 1rem) !important;
+      max-width: calc(100vw - 1rem) !important;
+      border-radius: 1rem;
       padding: 1rem;
     }
 

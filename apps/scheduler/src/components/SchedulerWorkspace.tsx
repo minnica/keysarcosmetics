@@ -15,6 +15,11 @@ import {
   AlertDialogTitle,
   Button,
   Input,
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
   toast,
 } from '@cosmetics/ui'
 import {
@@ -231,6 +236,7 @@ export function SchedulerWorkspace() {
   const [blockedBookingStep, setBlockedBookingStep] = useState<'review' | 'confirm'>('review')
   const [blockedBookingKeyword, setBlockedBookingKeyword] = useState('')
   const [agendaMotionKey, setAgendaMotionKey] = useState(0)
+  const [filtersOpen, setFiltersOpen] = useState(false)
   const sidebarBookingTimerRef = useRef<number | null>(null)
   const selectedDateKey = format(selectedDate, 'yyyy-MM-dd')
 
@@ -1360,34 +1366,54 @@ export function SchedulerWorkspace() {
         onDateStep={handleDateStep}
         onGoToday={() => setSelectedDate(schedulerReferenceDate)}
         onRefresh={handleRefresh}
+        onOpenFilters={() => setFiltersOpen(true)}
         onOpenNewBooking={() => openNewBooking()}
       />
 
-        <main className="grid min-h-[calc(100vh-84px)] grid-cols-1 items-start xl:grid-cols-[300px_minmax(0,1fr)]">
-        <SchedulerSidebar
-          commerces={allowedCommerces}
-          selectedCommerce={selectedCommerce}
-          onCommerceChange={setSelectedCommerce}
-          branches={allowedBranches}
-          selectedBranch={selectedBranch}
-          onBranchChange={setSelectedBranch}
-          visibleProfessionalCount={visibleProfessionals.length}
-          professionals={sidebarProfessionals}
-          selectedProfessionalIds={selectedProfessionalIds}
-          onToggleProfessional={toggleProfessional}
-          professionalQuery={professionalQuery}
-          onProfessionalQueryChange={setProfessionalQuery}
-          statusFilter={statusFilter}
-          onStatusFilterChange={setStatusFilter}
-          quickTimeFilter={quickTimeFilter}
-          timeSlots={calendarTimeSlots}
-          onQuickTimeFilterChange={setQuickTimeFilter}
-          monthCursor={monthCursor}
-          onMonthCursorChange={setMonthCursor}
-          selectedDate={selectedDate}
-          onSelectedDateChange={setSelectedDate}
-          onDateQuickCreate={handleSidebarDateQuickCreate}
-        />
+      <Sheet open={filtersOpen} onOpenChange={setFiltersOpen}>
+        <SheetContent
+          className="w-[min(92vw,390px)] max-w-none overflow-y-auto border-[rgba(236,209,200,0.75)] bg-[#f8f3ed] p-0 sm:max-w-[390px]"
+          side="right"
+        >
+          <SheetHeader className="border-b border-[rgba(236,209,200,0.75)] bg-white/80 px-5 py-5 pr-14 text-left">
+            <SheetTitle className="page-title text-2xl text-[var(--scheduler-ink-strong)]">
+              Filtros de agenda
+            </SheetTitle>
+            <SheetDescription className="text-sm text-slate-500">
+              Ajusta el comercio, sucursal, profesionales, estatus, hora y fecha visibles.
+            </SheetDescription>
+          </SheetHeader>
+          <SchedulerSidebar
+            commerces={allowedCommerces}
+            selectedCommerce={selectedCommerce}
+            onCommerceChange={setSelectedCommerce}
+            branches={allowedBranches}
+            selectedBranch={selectedBranch}
+            onBranchChange={setSelectedBranch}
+            visibleProfessionalCount={visibleProfessionals.length}
+            professionals={sidebarProfessionals}
+            selectedProfessionalIds={selectedProfessionalIds}
+            onToggleProfessional={toggleProfessional}
+            professionalQuery={professionalQuery}
+            onProfessionalQueryChange={setProfessionalQuery}
+            statusFilter={statusFilter}
+            onStatusFilterChange={setStatusFilter}
+            quickTimeFilter={quickTimeFilter}
+            timeSlots={calendarTimeSlots}
+            onQuickTimeFilterChange={setQuickTimeFilter}
+            monthCursor={monthCursor}
+            onMonthCursorChange={setMonthCursor}
+            selectedDate={selectedDate}
+            onSelectedDateChange={setSelectedDate}
+            onDateQuickCreate={(date) => {
+              setFiltersOpen(false)
+              handleSidebarDateQuickCreate(date)
+            }}
+          />
+        </SheetContent>
+      </Sheet>
+
+      <main className="min-h-[calc(100vh-84px)]">
 
         <section className="flex min-w-0 flex-col px-4 py-5 sm:px-6 xl:px-8">
           <div key={agendaMotionKey} className="scheduler-content-entrance">

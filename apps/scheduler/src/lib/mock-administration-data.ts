@@ -73,6 +73,83 @@ export interface LocalRecord {
   specialDays: SpecialDay[];
 }
 
+export type ProfessionalCommissionMode =
+  | "appointment"
+  | "attended-appointment"
+  | "sales-amount"
+  | "branch-sales-tiers";
+
+export type ProfessionalCommissionPeriod =
+  | "day"
+  | "week"
+  | "fortnight"
+  | "month";
+
+export interface ProfessionalCommissionTier {
+  id: string;
+  from: number;
+  to: number | null;
+  percentage: number;
+}
+
+export interface ProfessionalCommissionSettings {
+  enabled: boolean;
+  modes: ProfessionalCommissionMode[];
+  period: ProfessionalCommissionPeriod | "";
+  appointmentAmount: number;
+  attendedAppointmentAmount: number;
+  percentage: number;
+  tiers: ProfessionalCommissionTier[];
+}
+
+export function createDefaultProfessionalCommission(): ProfessionalCommissionSettings {
+  return {
+    enabled: false,
+    modes: [],
+    period: "",
+    appointmentAmount: 0,
+    attendedAppointmentAmount: 0,
+    percentage: 0,
+    tiers: [
+      { id: "tier-1", from: 0, to: 50000, percentage: 3 },
+      { id: "tier-2", from: 50000, to: 100000, percentage: 5 },
+      { id: "tier-3", from: 100000, to: null, percentage: 7 },
+    ],
+  };
+}
+
+export function normalizeProfessionalCommission(
+  value?: Partial<ProfessionalCommissionSettings> & {
+    /** Modalidad única utilizada antes de admitir combinaciones. */
+    mode?: ProfessionalCommissionMode | "";
+    /** Monto compartido utilizado antes de separar ambos tipos de cita. */
+    fixedAmount?: number;
+  },
+): ProfessionalCommissionSettings {
+  const fallback = createDefaultProfessionalCommission();
+  const modes = Array.isArray(value?.modes)
+    ? value.modes
+    : value?.mode
+      ? [value.mode]
+      : fallback.modes;
+  const settings = { ...value };
+  delete settings.mode;
+  delete settings.fixedAmount;
+
+  return {
+    ...fallback,
+    ...settings,
+    modes: [...new Set(modes)],
+    appointmentAmount:
+      value?.appointmentAmount ?? value?.fixedAmount ?? fallback.appointmentAmount,
+    attendedAppointmentAmount:
+      value?.attendedAppointmentAmount ??
+      value?.fixedAmount ??
+      fallback.attendedAppointmentAmount,
+    tiers: (value?.tiers ?? fallback.tiers).map((tier) => ({ ...tier })),
+  };
+}
+
 export interface ProfessionalRecord {
   id: string;
   commerceIds: string[];
@@ -88,6 +165,7 @@ export interface ProfessionalRecord {
   biography: string;
   avatar: string | null;
   status: "active" | "inactive";
+  commission: ProfessionalCommissionSettings;
   schedule: ScheduleDay[];
   specialDays: SpecialDay[];
 }
@@ -351,6 +429,7 @@ export const initialProfessionals: ProfessionalRecord[] = [
       "Especialista en rituales faciales y experiencias de relajación.",
     avatar: null,
     status: "active",
+    commission: createDefaultProfessionalCommission(),
     schedule: createSchedule("09:00", "22:00"),
     specialDays: [],
   },
@@ -369,6 +448,7 @@ export const initialProfessionals: ProfessionalRecord[] = [
       "Acompaña cada visita con precisión, calidez y atención al detalle.",
     avatar: null,
     status: "active",
+    commission: createDefaultProfessionalCommission(),
     schedule: createSchedule("10:00", "22:00"),
     specialDays: [],
   },
@@ -387,6 +467,7 @@ export const initialProfessionals: ProfessionalRecord[] = [
       "Terapias corporales personalizadas para recuperar el equilibrio.",
     avatar: null,
     status: "inactive",
+    commission: createDefaultProfessionalCommission(),
     schedule: createSchedule("11:00", "22:00"),
     specialDays: [],
   },

@@ -673,8 +673,10 @@ export function ReservationReportWorkspace({
                 Periodo de análisis
               </p>
               <DateRangePicker
-                className="h-12 w-full rounded-2xl border-[#e6ddd5] bg-white px-4 text-sm text-[#263649] shadow-none"
+                className="reservation-date-range"
+                fromLabel="Desde"
                 onChange={setDraftRange}
+                toLabel="Hasta"
                 value={draftRange}
               />
             </div>
@@ -737,9 +739,7 @@ export function ReservationReportWorkspace({
           </div>
         </section>
 
-        <div className="mt-6 grid grid-cols-[minmax(0,1fr)] gap-5 lg:grid-cols-[14rem_minmax(0,1fr)]">
-          <ReportBreakdownNav view={view} />
-
+        <div className="mt-6">
           <div className="min-w-0 space-y-5">
             {view === "history" ? (
               <ReservationHistory records={filteredHistory} />

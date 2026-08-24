@@ -16,13 +16,7 @@ import {
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { schedulerLegendItems, type SchedulerView } from '@/lib/mock-scheduler-data'
-import {
-  AdministrationNavMenu,
-  ReportsNavMenu,
-  SchedulerPrimaryNav,
-} from '@/components/SchedulerPrimaryNav'
 import { getLegendIcon } from './scheduler-utils'
-import { SettingsMenu } from '@/components/SettingsMenu'
 
 interface SchedulerHeaderProps {
   currentView: SchedulerView
@@ -34,6 +28,7 @@ interface SchedulerHeaderProps {
   onDateStep: (direction: 'prev' | 'next') => void
   onGoToday: () => void
   onRefresh: () => void
+  onOpenFilters: () => void
   onOpenNewBooking: () => void
 }
 
@@ -47,6 +42,7 @@ export function SchedulerHeader({
   onDateStep,
   onGoToday,
   onRefresh,
+  onOpenFilters,
   onOpenNewBooking,
 }: SchedulerHeaderProps) {
   return (
@@ -54,24 +50,15 @@ export function SchedulerHeader({
       <header className="sticky top-0 z-40 border-b border-white/10 bg-[linear-gradient(90deg,#172230_0%,#1d2937_100%)] text-white shadow-[0_18px_44px_rgba(8,14,24,0.2)]">
         <div className="flex min-h-[78px] items-center justify-between gap-6 px-5 sm:px-6 xl:px-8">
           <div className="flex items-center gap-5">
-            <div className="flex items-center gap-3 rounded-[24px] border border-white/10 bg-white/5 px-4 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
-              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,rgba(195,165,131,0.28),rgba(236,209,200,0.12))] ring-1 ring-white/10">
-                <img alt="Keysar Cosmetics" className="h-7 w-7 object-contain" src="/logo.svg" />
-              </div>
-              <div>
-                <p className="page-title text-[1.68rem] text-white">Keysar Scheduler</p>
-                <p className="text-[0.68rem] uppercase tracking-[0.32em] text-white/45">Agenda interna</p>
-              </div>
+            <div>
+              <p className="page-title text-[1.55rem] text-white">Agenda</p>
+              <p className="text-[0.68rem] uppercase tracking-[0.24em] text-white/45">
+                {selectedCommerceName} · {selectedBranchName}
+              </p>
             </div>
-            <SchedulerPrimaryNav activeArea="agenda" />
           </div>
 
           <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2 xl:hidden">
-              <ReportsNavMenu compact />
-              <AdministrationNavMenu compact />
-              <SettingsMenu />
-            </div>
             <div className="hidden items-center gap-3 xl:flex">
             <button className="scheduler-header-button" type="button">
               <Search className="h-5 w-5" />
@@ -79,7 +66,6 @@ export function SchedulerHeader({
             <div className="rounded-full border border-emerald-300/20 bg-emerald-400/10 px-5 py-2.5 text-sm font-medium text-emerald-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
               Reservas Online
             </div>
-            <SettingsMenu />
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white text-sm font-semibold text-slate-700 shadow-[0_10px_24px_rgba(0,0,0,0.2)]">
               ER
             </div>
@@ -185,7 +171,12 @@ export function SchedulerHeader({
             <button className="scheduler-toolbar-button" type="button">
               <ChevronsLeftRight className="h-4 w-4" />
             </button>
-            <button className="scheduler-toolbar-button" type="button">
+            <button
+              aria-label="Abrir filtros de agenda"
+              className="scheduler-toolbar-button"
+              onClick={onOpenFilters}
+              type="button"
+            >
               <Filter className="h-4 w-4" />
             </button>
             <button className="scheduler-toolbar-button" type="button">

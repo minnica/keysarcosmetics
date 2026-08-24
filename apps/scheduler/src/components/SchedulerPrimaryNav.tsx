@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import {
   Popover,
   PopoverContent,
@@ -81,6 +81,10 @@ function triggerClass(active: boolean, compact: boolean) {
   return active ? "report-nav-active" : "report-nav-link inline-flex items-center gap-1.5";
 }
 
+function moduleLinkClass(active: boolean) {
+  return active ? "scheduler-module-link-active" : "scheduler-module-link";
+}
+
 export function ReportsNavMenu({
   active,
   compact = false,
@@ -88,6 +92,7 @@ export function ReportsNavMenu({
   active?: SchedulerReportPage | undefined;
   compact?: boolean;
 }) {
+  const [open, setOpen] = useState(false);
   const canViewSummary = canAccessSchedulerScreen("reports.summary");
   const canViewReservations = canAccessSchedulerScreen("reports.reservations");
   const canViewSales = canAccessSchedulerScreen("reports.sales");
@@ -95,17 +100,35 @@ export function ReportsNavMenu({
   if (!canViewSummary && !canViewReservations && !canViewSales) return null;
 
   return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <button
-          aria-label="Abrir menú de reportes"
-          className={triggerClass(Boolean(active), compact)}
-          type="button"
-        >
-          {compact ? <BarChart3 className="h-5 w-5" /> : <span>Reportes</span>}
-          <ChevronDown className={compact ? "h-3.5 w-3.5" : "h-4 w-4"} />
-        </button>
-      </PopoverTrigger>
+    <Popover open={open} onOpenChange={setOpen}>
+      {compact ? (
+        <PopoverTrigger asChild>
+          <button
+            aria-label="Abrir menú de reportes"
+            className={triggerClass(Boolean(active), true)}
+            type="button"
+          >
+            <BarChart3 className="h-5 w-5" />
+            <ChevronDown className="h-3.5 w-3.5" />
+          </button>
+        </PopoverTrigger>
+      ) : (
+        <div className={moduleLinkClass(Boolean(active))}>
+          <Link href="/reportes" onClick={() => setOpen(false)}>
+            Reportes
+          </Link>
+          <PopoverTrigger asChild>
+            <button
+              aria-label="Abrir submenú de reportes"
+              aria-expanded={open}
+              className="scheduler-module-menu-trigger"
+              type="button"
+            >
+              <ChevronDown className={`h-4 w-4 transition-transform ${open ? "rotate-180" : ""}`} />
+            </button>
+          </PopoverTrigger>
+        </div>
+      )}
       <PopoverContent
         align="start"
         sideOffset={10}
@@ -115,6 +138,7 @@ export function ReportsNavMenu({
           <Link
             className={active === "summary" ? "scheduler-nav-menu-item-active" : "scheduler-nav-menu-item"}
             href="/reportes"
+            onClick={() => setOpen(false)}
           >
             <span>Resumen</span>
             {active === "summary" ? <span className="h-2 w-2 rounded-full bg-[#c3a583]" /> : null}
@@ -124,6 +148,7 @@ export function ReportsNavMenu({
           <Link
             className={active === "reservations" ? "scheduler-nav-menu-item-active" : "scheduler-nav-menu-item"}
             href="/reportes/reservas"
+            onClick={() => setOpen(false)}
           >
             <span>Reporte de reservas</span>
             {active === "reservations" ? <span className="h-2 w-2 rounded-full bg-[#c3a583]" /> : null}
@@ -149,6 +174,7 @@ export function AdministrationNavMenu({
   compact?: boolean;
   onSelect?: ((section: AdministrationSectionId) => void) | undefined;
 }) {
+  const [open, setOpen] = useState(false);
   const visibleGroups = administrationGroups
     .map((group) => ({
       ...group,
@@ -161,17 +187,41 @@ export function AdministrationNavMenu({
   if (visibleGroups.length === 0) return null;
 
   return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <button
-          aria-label="Abrir menú de administración"
-          className={triggerClass(Boolean(active), compact)}
-          type="button"
-        >
-          {compact ? <SlidersHorizontal className="h-5 w-5" /> : <span>Administración</span>}
-          <ChevronDown className={compact ? "h-3.5 w-3.5" : "h-4 w-4"} />
-        </button>
-      </PopoverTrigger>
+    <Popover open={open} onOpenChange={setOpen}>
+      {compact ? (
+        <PopoverTrigger asChild>
+          <button
+            aria-label="Abrir menú de administración"
+            className={triggerClass(Boolean(active), true)}
+            type="button"
+          >
+            <SlidersHorizontal className="h-5 w-5" />
+            <ChevronDown className="h-3.5 w-3.5" />
+          </button>
+        </PopoverTrigger>
+      ) : (
+        <div className={moduleLinkClass(Boolean(active))}>
+          <Link
+            href="/administracion"
+            onClick={() => {
+              setOpen(false);
+              onSelect?.("locals");
+            }}
+          >
+            Administración
+          </Link>
+          <PopoverTrigger asChild>
+            <button
+              aria-label="Abrir submenú de administración"
+              aria-expanded={open}
+              className="scheduler-module-menu-trigger"
+              type="button"
+            >
+              <ChevronDown className={`h-4 w-4 transition-transform ${open ? "rotate-180" : ""}`} />
+            </button>
+          </PopoverTrigger>
+        </div>
+      )}
       <PopoverContent
         align="start"
         sideOffset={10}
@@ -187,7 +237,10 @@ export function AdministrationNavMenu({
                 key={item.id}
                 className={active === item.id ? "scheduler-nav-menu-item-active" : "scheduler-nav-menu-item"}
                 href={`/administracion?section=${item.id}`}
-                onClick={() => onSelect?.(item.id)}
+                onClick={() => {
+                  setOpen(false);
+                  onSelect?.(item.id);
+                }}
               >
                 <span className="flex items-center gap-3">
                   <span className="text-[#c3a583]">{item.icon}</span>

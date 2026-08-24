@@ -63,8 +63,8 @@ export function SchedulerSidebar({
   onDateQuickCreate,
 }: SchedulerSidebarProps) {
   return (
-    <aside className="sticky top-[84px] self-start border-r border-[rgba(236,209,200,0.55)] bg-[linear-gradient(180deg,rgba(255,251,247,0.96)_0%,rgba(245,239,232,0.92)_100%)] backdrop-blur">
-      <div className="flex min-h-[calc(100vh-84px)] flex-col px-4 pb-5 pt-2">
+    <div className="bg-[linear-gradient(180deg,rgba(255,251,247,0.96)_0%,rgba(245,239,232,0.92)_100%)] backdrop-blur">
+      <div className="flex min-h-full flex-col px-4 pb-5 pt-4">
         <div className="mb-5 flex items-center gap-3">
           <button className="scheduler-icon-toggle" type="button">
             <CalendarDays className="h-5 w-5" />
@@ -254,6 +254,6 @@ export function SchedulerSidebar({
           </Card>
         </div>
       </div>
-    </aside>
+    </div>
   )
 }

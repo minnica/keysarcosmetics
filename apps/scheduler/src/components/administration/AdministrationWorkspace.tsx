@@ -28,7 +28,6 @@ import {
   KeyRound,
   ListFilter,
   Mail,
-  Menu,
   MessageCircle,
   MoreHorizontal,
   Palette,
@@ -84,6 +83,7 @@ import {
   createEmptyLocal,
   createEmptyCommerce,
   createClassSchedule,
+  createDefaultProfessionalCommission,
   createSchedule,
   initialCommissions,
   initialCommerces,
@@ -100,6 +100,7 @@ import {
   initialWhatsAppMessages,
   scheduleDays,
   surveyCategories,
+  normalizeProfessionalCommission,
   type CommissionRecord,
   type CommerceRecord,
   type ClassScheduleDay,
@@ -108,6 +109,8 @@ import {
   type GiftCardRecord,
   type LocalRecord,
   type ProfessionalGroup,
+  type ProfessionalCommissionMode,
+  type ProfessionalCommissionPeriod,
   type ProfessionalRecord,
   type ResourceRecord,
   type ScheduleBreak,
@@ -138,18 +141,19 @@ import {
   getAdministrationSchedulerConfig,
   saveAdministrationSchedulerConfig,
 } from "@/lib/administration-scheduler-config";
-import {
-  AdministrationNavMenu,
-  ReportsNavMenu,
-  SchedulerPrimaryNav,
-  type AdministrationSectionId,
-} from "@/components/SchedulerPrimaryNav";
+import type { AdministrationSectionId } from "@/components/SchedulerPrimaryNav";
 import { canAccessSchedulerScreen } from "@/lib/scheduler-access";
-import { SettingsMenu } from "@/components/SettingsMenu";
 
 type AdminSection = AdministrationSectionId;
+const ADMIN_SECTION_CHANGE_EVENT = "scheduler-administration-section-change";
 type StatusFilter = "all" | "active" | "inactive";
-type FormTab = "basic" | "website" | "advanced" | "schedule" | "profile";
+type FormTab =
+  | "basic"
+  | "website"
+  | "advanced"
+  | "schedule"
+  | "profile"
+  | "commissions";
 
 const timeOptions = Array.from({ length: 48 }, (_, index) => {
   const hour = Math.floor(index / 2)
@@ -157,6 +161,43 @@ const timeOptions = Array.from({ length: 48 }, (_, index) => {
     .padStart(2, "0");
   return `${hour}:${index % 2 === 0 ? "00" : "30"}`;
 });
+
+const professionalCommissionModes: Array<{
+  id: ProfessionalCommissionMode;
+  title: string;
+  description: string;
+}> = [
+  {
+    id: "appointment",
+    title: "Por cita",
+    description: "Genera un monto fijo por cada cita registrada.",
+  },
+  {
+    id: "attended-appointment",
+    title: "Por cita asistida",
+    description: "Sólo genera comisión cuando la cita tiene estatus Asiste.",
+  },
+  {
+    id: "sales-amount",
+    title: "Por monto de venta",
+    description: "Calcula un porcentaje sobre las ventas del especialista.",
+  },
+  {
+    id: "branch-sales-tiers",
+    title: "Esquema personalizado",
+    description: "Aplica una escala porcentual según las ventas de la sucursal.",
+  },
+];
+
+const professionalCommissionPeriods: Array<{
+  value: ProfessionalCommissionPeriod;
+  label: string;
+}> = [
+  { value: "day", label: "Diaria" },
+  { value: "week", label: "Semanal" },
+  { value: "fortnight", label: "Quincenal" },
+  { value: "month", label: "Mensual" },
+];
 
 const createServiceSpecialHours = (): ServiceSpecialHours => ({
   mode: "none",
@@ -333,14 +374,17 @@ const cloneCommerce = (commerce: CommerceRecord): CommerceRecord => ({
 });
 const cloneProfessional = (
   professional: ProfessionalRecord,
-): ProfessionalRecord => ({
-  ...professional,
-  commerceIds: [...professional.commerceIds],
-  localIds: [...professional.localIds],
-  services: [...professional.services],
-  schedule: cloneSchedule(professional.schedule),
-  specialDays: professional.specialDays.map((day) => ({ ...day })),
-});
+): ProfessionalRecord => {
+  return {
+    ...professional,
+    commerceIds: [...professional.commerceIds],
+    localIds: [...professional.localIds],
+    services: [...professional.services],
+    commission: normalizeProfessionalCommission(professional.commission),
+    schedule: cloneSchedule(professional.schedule),
+    specialDays: professional.specialDays.map((day) => ({ ...day })),
+  };
+};
 const cloneScheduledResource = (
   resource: ScheduledResourceRecord,
 ): ScheduledResourceRecord => ({
@@ -2570,6 +2614,301 @@ function Toolbar({
   );
 }
 
+function ProfessionalCommissionsPanel({
+  commission,
+  onChange,
+}: {
+  commission: ProfessionalRecord["commission"];
+  onChange: (commission: ProfessionalRecord["commission"]) => void;
+}) {
+  const update = (patch: Partial<ProfessionalRecord["commission"]>) =>
+    onChange({ ...commission, ...patch });
+
+  const updateTier = (
+    id: string,
+    patch: Partial<ProfessionalRecord["commission"]["tiers"][number]>,
+  ) =>
+    update({
+      tiers: commission.tiers.map((tier) =>
+        tier.id === id ? { ...tier, ...patch } : tier,
+      ),
+    });
+
+  const addTier = () => {
+    const lastTier = commission.tiers.at(-1);
+    const from = lastTier?.to ?? (lastTier ? lastTier.from + 50000 : 0);
+    const nextTiers = lastTier?.to === null
+      ? commission.tiers.map((tier, index) =>
+          index === commission.tiers.length - 1
+            ? { ...tier, to: from }
+            : tier,
+        )
+      : commission.tiers;
+
+    update({
+      tiers: [
+        ...nextTiers,
+        {
+          id: makeId("commission-tier"),
+          from,
+          to: null,
+          percentage: lastTier?.percentage ?? 0,
+        },
+      ],
+    });
+  };
+
+  return (
+    <div className="professional-commission-stack">
+      <section className="professional-commission-card professional-commission-switch-card">
+        <div>
+          <h3 className="professional-section-title">Generación de comisiones</h3>
+          <p className="admin-help mt-1">
+            Define si este especialista participa en el cálculo de comisiones.
+          </p>
+        </div>
+        <div className="professional-toggle-row">
+          <Toggle
+            checked={commission.enabled}
+            label="Este especialista genera comisiones"
+            onChange={(enabled) => update({ enabled })}
+          />
+          <div>
+            <p className="font-medium">Este especialista genera comisiones</p>
+            <p className="admin-help">
+              Si se activa, todos los campos de esta pestaña son obligatorios.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {commission.enabled ? (
+        <>
+          <section className="professional-commission-card">
+            <div className="professional-required-heading">
+              <div>
+                <h3 className="professional-section-title">Modalidad de comisión</h3>
+                <p className="admin-help mt-1">
+                  Selecciona una o varias reglas para calcular la comisión.
+                </p>
+              </div>
+              <Badge variant="outline">Obligatorio</Badge>
+            </div>
+            <div className="professional-commission-mode-grid">
+              {professionalCommissionModes.map((mode) => (
+                <label
+                  key={mode.id}
+                  className={`professional-commission-mode ${
+                    commission.modes.includes(mode.id)
+                      ? "professional-commission-mode-active"
+                      : ""
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={commission.modes.includes(mode.id)}
+                    onChange={(event) =>
+                      update({
+                        modes: event.target.checked
+                          ? [...commission.modes, mode.id]
+                          : commission.modes.filter(
+                              (selectedMode) => selectedMode !== mode.id,
+                            ),
+                      })
+                    }
+                  />
+                  <span>
+                    <strong>{mode.title}</strong>
+                    <small>{mode.description}</small>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </section>
+
+          <section className="professional-commission-card">
+            <div className="admin-form-grid">
+              <SelectField
+                id="professional-commission-period"
+                label="Periodo de cálculo"
+                required
+                value={commission.period}
+                onChange={(value) =>
+                  update({ period: value as ProfessionalCommissionPeriod })
+                }
+                options={professionalCommissionPeriods}
+              />
+              {commission.modes.includes("appointment") ? (
+                <Field
+                  id="professional-commission-appointment-amount"
+                  label="Comisión por cita (MXN)"
+                  required
+                  type="number"
+                  value={
+                    commission.appointmentAmount
+                      ? String(commission.appointmentAmount)
+                      : ""
+                  }
+                  onChange={(value) =>
+                    update({ appointmentAmount: Number(value) || 0 })
+                  }
+                  placeholder="Ej. 250"
+                />
+              ) : null}
+              {commission.modes.includes("attended-appointment") ? (
+                <Field
+                  id="professional-commission-attended-appointment-amount"
+                  label="Comisión por cita asistida (MXN)"
+                  required
+                  type="number"
+                  value={
+                    commission.attendedAppointmentAmount
+                      ? String(commission.attendedAppointmentAmount)
+                      : ""
+                  }
+                  onChange={(value) =>
+                    update({ attendedAppointmentAmount: Number(value) || 0 })
+                  }
+                  placeholder="Ej. 350"
+                />
+              ) : null}
+              {commission.modes.includes("sales-amount") ? (
+                <Field
+                  id="professional-commission-percentage"
+                  label="Porcentaje sobre venta"
+                  required
+                  type="number"
+                  value={commission.percentage ? String(commission.percentage) : ""}
+                  onChange={(value) => update({ percentage: Number(value) || 0 })}
+                  placeholder="Ej. 5"
+                />
+              ) : null}
+              {commission.modes.includes("branch-sales-tiers") ? (
+                <div className="professional-commission-context">
+                  <span>Base del cálculo</span>
+                  <strong>Venta acumulada de la sucursal</strong>
+                </div>
+              ) : null}
+            </div>
+          </section>
+
+          {commission.modes.includes("branch-sales-tiers") ? (
+            <section className="professional-commission-card">
+              <div className="professional-required-heading">
+                <div>
+                  <h3 className="professional-section-title">
+                    Escala por venta de sucursal
+                  </h3>
+                  <p className="admin-help mt-1">
+                    Los rangos deben ser continuos. Deja “Hasta” vacío únicamente
+                    en el último nivel para indicar que no tiene límite.
+                  </p>
+                </div>
+                <Button type="button" variant="outline" onClick={addTier}>
+                  <Plus className="mr-2 h-4 w-4" />
+                  Agregar nivel
+                </Button>
+              </div>
+              <div className="professional-commission-tier-list">
+                <div className="professional-commission-tier-header" aria-hidden="true">
+                  <span>Desde venta</span>
+                  <span>Hasta venta</span>
+                  <span>Comisión</span>
+                  <span />
+                </div>
+                {commission.tiers.map((tier, index) => (
+                  <div className="professional-commission-tier" key={tier.id}>
+                    <label>
+                      <span>Desde</span>
+                      <div className="professional-money-input">
+                        <span>$</span>
+                        <Input
+                          aria-label={`Venta mínima del nivel ${index + 1}`}
+                          className="admin-input"
+                          min="0"
+                          type="number"
+                          value={String(tier.from)}
+                          onChange={(event) =>
+                            updateTier(tier.id, {
+                              from: Number(event.target.value) || 0,
+                            })
+                          }
+                        />
+                      </div>
+                    </label>
+                    <label>
+                      <span>Hasta</span>
+                      <div className="professional-money-input">
+                        <span>$</span>
+                        <Input
+                          aria-label={`Venta máxima del nivel ${index + 1}`}
+                          className="admin-input"
+                          min="0"
+                          placeholder="Sin límite"
+                          type="number"
+                          value={tier.to === null ? "" : String(tier.to)}
+                          onChange={(event) =>
+                            updateTier(tier.id, {
+                              to: event.target.value
+                                ? Number(event.target.value)
+                                : null,
+                            })
+                          }
+                        />
+                      </div>
+                    </label>
+                    <label>
+                      <span>Comisión</span>
+                      <div className="professional-percentage-input">
+                        <Input
+                          aria-label={`Porcentaje del nivel ${index + 1}`}
+                          className="admin-input"
+                          min="0"
+                          max="100"
+                          type="number"
+                          value={tier.percentage ? String(tier.percentage) : ""}
+                          onChange={(event) =>
+                            updateTier(tier.id, {
+                              percentage: Number(event.target.value) || 0,
+                            })
+                          }
+                        />
+                        <span>%</span>
+                      </div>
+                    </label>
+                    <Button
+                      aria-label={`Eliminar nivel ${index + 1}`}
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      disabled={commission.tiers.length === 1}
+                      className="text-rose-500"
+                      onClick={() =>
+                        update({
+                          tiers: commission.tiers.filter(
+                            (current) => current.id !== tier.id,
+                          ),
+                        })
+                      }
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </section>
+          ) : null}
+        </>
+      ) : (
+        <InfoBanner icon={<Info className="h-5 w-5" />}>
+          El especialista quedará registrado sin esquema de comisiones. Puedes
+          activarlo después desde esta misma pestaña.
+        </InfoBanner>
+      )}
+    </div>
+  );
+}
+
 function ProfessionalDialog({
   open,
   professional,
@@ -2606,6 +2945,7 @@ function ProfessionalDialog({
           biography: "",
           avatar: null,
           status: "active",
+          commission: createDefaultProfessionalCommission(),
           schedule: createSchedule(),
           specialDays: [],
       },
@@ -2629,6 +2969,7 @@ function ProfessionalDialog({
               biography: "",
               avatar: null,
               status: "active",
+              commission: createDefaultProfessionalCommission(),
               schedule: createSchedule(),
               specialDays: [],
             },
@@ -2689,6 +3030,68 @@ function ProfessionalDialog({
       toast.error("Ingresa un email válido para crear el usuario.");
       return;
     }
+    if (draft.commission.enabled) {
+      if (draft.commission.modes.length === 0) {
+        setTab("commissions");
+        toast.error("Selecciona al menos una modalidad de comisión.");
+        return;
+      }
+      if (!draft.commission.period) {
+        setTab("commissions");
+        toast.error("Selecciona el periodo de cálculo de comisiones.");
+        return;
+      }
+      if (
+        draft.commission.modes.includes("appointment") &&
+        draft.commission.appointmentAmount <= 0
+      ) {
+        setTab("commissions");
+        toast.error("Ingresa una comisión por cita mayor a cero.");
+        return;
+      }
+      if (
+        draft.commission.modes.includes("attended-appointment") &&
+        draft.commission.attendedAppointmentAmount <= 0
+      ) {
+        setTab("commissions");
+        toast.error("Ingresa una comisión por cita asistida mayor a cero.");
+        return;
+      }
+      if (
+        draft.commission.modes.includes("sales-amount") &&
+        (draft.commission.percentage <= 0 ||
+          draft.commission.percentage > 100)
+      ) {
+        setTab("commissions");
+        toast.error("Ingresa un porcentaje de venta entre 0 y 100.");
+        return;
+      }
+      if (draft.commission.modes.includes("branch-sales-tiers")) {
+        const invalidTier = draft.commission.tiers.some(
+          (tier, index, tiers) =>
+            tier.from < 0 ||
+            tier.percentage <= 0 ||
+            tier.percentage > 100 ||
+            (tier.to !== null && tier.to <= tier.from) ||
+            (index < tiers.length - 1 && tier.to === null) ||
+            (index > 0 && tiers[index - 1]?.to !== tier.from),
+        );
+        const firstTier = draft.commission.tiers[0];
+        const lastTier = draft.commission.tiers.at(-1);
+        if (
+          draft.commission.tiers.length === 0 ||
+          firstTier?.from !== 0 ||
+          lastTier?.to !== null ||
+          invalidTier
+        ) {
+          setTab("commissions");
+          toast.error(
+            "Completa una escala continua desde $0 y deja sin límite únicamente el último nivel.",
+          );
+          return;
+        }
+      }
+    }
     onSave({
       ...draft,
       name: draft.name.trim(),
@@ -2710,6 +3113,7 @@ function ProfessionalDialog({
           { id: "basic", label: "Datos básicos" },
           { id: "schedule", label: "Horario" },
           { id: "profile", label: "Perfil" },
+          { id: "commissions", label: "Comisiones" },
         ]}
         active={tab}
         onChange={(value) => setTab(value as FormTab)}
@@ -2899,6 +3303,11 @@ function ProfessionalDialog({
             </div>
           </div>
         </div>
+      ) : tab === "commissions" ? (
+        <ProfessionalCommissionsPanel
+          commission={draft.commission}
+          onChange={(commission) => update({ commission })}
+        />
       ) : tab === "schedule" ? (
         <div>
           <h3 className="admin-section-title">Disponibilidad semanal</h3>
@@ -8339,93 +8748,23 @@ function GiftCardsSection({ services }: { services: ServiceRecord[] }) {
   );
 }
 
-function AdministrationNav({
-  active,
-  onSelect,
-}: {
-  active: AdminSection;
-  onSelect: (section: AdminSection) => void;
-}) {
-  return (
-    <nav className="space-y-6">
-      {visibleSectionGroups.map((group) => (
-        <div key={group.label}>
-          <p className="admin-nav-label">{group.label}</p>
-          <div className="mt-2 space-y-1">
-            {group.items.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                className={`admin-nav-item ${active === item.id ? "admin-nav-item-active" : ""}`}
-                onClick={() => onSelect(item.id)}
-              >
-                {item.icon}
-                <span>{item.label}</span>
-                {active === item.id ? (
-                  <ChevronRight className="ml-auto h-4 w-4" />
-                ) : null}
-              </button>
-            ))}
-          </div>
-        </div>
-      ))}
-    </nav>
-  );
-}
-
 function AdministrationHeader({
   active,
-  onOpenMenu,
-  onSelectSection,
 }: {
   active: AdminSection;
-  onOpenMenu: () => void;
-  onSelectSection: (section: AdminSection) => void;
 }) {
   return (
     <header className="sticky top-0 z-40 border-b border-white/10 bg-[linear-gradient(90deg,#172230_0%,#1d2937_100%)] text-white shadow-[0_18px_44px_rgba(8,14,24,0.2)]">
       <div className="flex min-h-[78px] items-center justify-between gap-4 px-4 sm:px-6 xl:px-8">
         <div className="flex items-center gap-3">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="text-white hover:bg-white/10 lg:hidden"
-            onClick={onOpenMenu}
-            aria-label="Abrir menú"
-          >
-            <Menu className="h-5 w-5" />
-          </Button>
-          <div className="flex items-center gap-3 rounded-[24px] border border-white/10 bg-white/5 px-3 py-2 sm:px-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,rgba(195,165,131,0.28),rgba(236,209,200,0.12))] ring-1 ring-white/10">
-              <img
-                alt="Keysar Cosmetics"
-                className="h-7 w-7 object-contain"
-                src="/logo.svg"
-              />
-            </div>
-            <div>
-              <p className="admin-brand-title">Keysar Scheduler</p>
-              <p className="text-[0.62rem] uppercase tracking-[0.28em] text-white/45">
-                Agenda interna
-              </p>
-            </div>
+          <div>
+            <p className="page-title text-[1.55rem] text-white">Administración</p>
+            <p className="text-[0.62rem] uppercase tracking-[0.24em] text-white/45">
+              {sectionTitles[active].title}
+            </p>
           </div>
-          <SchedulerPrimaryNav
-            activeAdmin={active}
-            activeArea="administration"
-            onAdministrationSelect={onSelectSection}
-          />
         </div>
         <div className="flex items-center gap-2 sm:gap-3">
-          <div className="flex items-center gap-2 xl:hidden">
-            <ReportsNavMenu compact />
-            <AdministrationNavMenu
-              active={active}
-              compact
-              onSelect={onSelectSection}
-            />
-            <SettingsMenu />
-          </div>
           <button
             type="button"
             className="scheduler-header-button hidden xl:flex"
@@ -8436,7 +8775,6 @@ function AdministrationHeader({
           <div className="hidden rounded-full border border-emerald-300/20 bg-emerald-400/10 px-4 py-2.5 text-sm font-medium text-emerald-50 xl:block">
             Reservas online
           </div>
-          <div className="hidden xl:block"><SettingsMenu /></div>
           <div className="flex h-11 w-11 items-center justify-center rounded-full bg-white text-sm font-semibold text-slate-700">
             ER
           </div>
@@ -8646,7 +8984,6 @@ export function AdministrationWorkspace() {
   const [active, setActive] = useState<AdminSection>(
     allowedAdminSections[0] ?? "locals",
   );
-  const [mobileOpen, setMobileOpen] = useState(false);
   const [commerces, setCommerces] = useState<CommerceRecord[]>(() =>
     initialCommerces.map(cloneCommerce),
   );
@@ -8688,6 +9025,17 @@ export function AdministrationWorkspace() {
     if (section && sectionTitles[section] && canAccessAdminSection(section)) {
       setActive(section);
     }
+
+    const handleExternalSectionChange = (event: Event) => {
+      const nextSection = (event as CustomEvent<AdminSection>).detail;
+      if (nextSection && sectionTitles[nextSection] && canAccessAdminSection(nextSection)) {
+        setActive(nextSection);
+      }
+    };
+
+    window.addEventListener(ADMIN_SECTION_CHANGE_EVENT, handleExternalSectionChange);
+    return () =>
+      window.removeEventListener(ADMIN_SECTION_CHANGE_EVENT, handleExternalSectionChange);
   }, []);
   useEffect(() => {
     if (!configurationHydrated) return;
@@ -8697,12 +9045,6 @@ export function AdministrationWorkspace() {
       toast.error("No fue posible sincronizar la configuración con la agenda.");
     }
   }, [commerces, configurationHydrated, locals, professionals]);
-  const selectSection = (section: AdminSection) => {
-    if (!canAccessAdminSection(section)) return;
-    setActive(section);
-    setMobileOpen(false);
-    window.history.replaceState(null, "", `/administracion?section=${section}`);
-  };
   const renderSection = () => {
     switch (active) {
       case "locals":
@@ -8757,33 +9099,12 @@ export function AdministrationWorkspace() {
   };
   return (
     <div className="admin-workspace min-h-screen bg-[#f4f1ed] text-[#263649]">
-      <AdministrationHeader
-        active={active}
-        onOpenMenu={() => setMobileOpen(true)}
-        onSelectSection={selectSection}
-      />
-      <div className="flex">
-        <aside className="hidden w-64 shrink-0 border-r border-[#e9e1da] bg-[#f8f5f1] p-5 lg:block">
-          <AdministrationNav active={active} onSelect={selectSection} />
-        </aside>
-        <Dialog open={mobileOpen} onOpenChange={setMobileOpen}>
-          <DialogContent className="left-0 top-0 h-full w-[min(88vw,340px)] translate-x-0 translate-y-0 rounded-none border-0 bg-[#f8f5f1] p-0">
-            <DialogHeader className="border-b border-[#e9e1da] p-5 text-left">
-              <DialogTitle className="text-[#263649]">
-                Administración
-              </DialogTitle>
-            </DialogHeader>
-            <div className="p-5">
-              <AdministrationNav active={active} onSelect={selectSection} />
-            </div>
-          </DialogContent>
-        </Dialog>
-        <main className="min-w-0 flex-1">
-          <div className="mx-auto max-w-[1440px] p-4 sm:p-6 lg:p-8">
-            {renderSection()}
-          </div>
-        </main>
-      </div>
+      <AdministrationHeader active={active} />
+      <main className="min-w-0">
+        <div className="mx-auto max-w-[1440px] p-4 sm:p-6 lg:p-8">
+          {renderSection()}
+        </div>
+      </main>
     </div>
   );
 }

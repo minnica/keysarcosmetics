@@ -2,6 +2,7 @@ import {
   initialLocals,
   initialCommerces,
   initialProfessionals,
+  normalizeProfessionalCommission,
   type CommerceRecord,
   type LocalRecord,
   type ProfessionalRecord,
@@ -54,6 +55,7 @@ function cloneProfessional(professional: ProfessionalRecord): ProfessionalRecord
     commerceIds: [...professional.commerceIds],
     localIds: [...professional.localIds],
     services: [...professional.services],
+    commission: normalizeProfessionalCommission(professional.commission),
     schedule: cloneSchedule(professional.schedule),
     specialDays: professional.specialDays.map((day) => ({ ...day })),
   }
