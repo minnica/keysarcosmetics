@@ -32,7 +32,7 @@ jobs:
       PAYROLL_VERCEL_BYPASS_SECRET: ${{ secrets.PAYROLL_VERCEL_BYPASS_SECRET }}
     steps:
       - uses: actions/checkout@v6
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
         with:
           version: 10.0.0
       - uses: actions/setup-node@v6
