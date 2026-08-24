@@ -44,8 +44,9 @@ desktop.ini
 *.swp
 *.swo
 
-# Prisma
-prisma/migrations/
+# Las migraciones Prisma son código fuente y deben versionarse.
+# Solo se ignoran artefactos generados del cliente.
+backend/api/src/generated/
 
 # Misc
 .cache/

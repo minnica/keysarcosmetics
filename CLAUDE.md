@@ -156,6 +156,7 @@ el diseño y el autocuidado.
 - **Infra frontend**: Vercel
 - **POS**: Electron + React + Vite
 - **Auth**: JWT + bcrypt
+- **Calidad y release**: GitHub Actions, PostgreSQL efímero para integración y Playwright para smoke tests de ambientes
 
 ---
 
@@ -411,9 +412,12 @@ pnpm --filter @cosmetics/payroll build
 pnpm --filter @cosmetics/api test
 pnpm --filter @cosmetics/api type-check
 pnpm --filter @cosmetics/api build
+pnpm lint
+pnpm type-check
 ```
 
 El motor tiene pruebas de base con/sin IVA, selección de tasa, distribución exacta por sucursal, advertencias/bloqueos y amortización quincenal. Probar flujos integrados únicamente en una BD de desarrollo con la migración aplicada; no usar producción como ambiente de QA.
+La suite de integración `backend/api/src/app.integration.test.ts` requiere `RUN_DATABASE_TESTS=true` y una BD PostgreSQL desechable con todas las migraciones aplicadas; nunca debe apuntar a producción.
 
 ---
 
@@ -827,13 +831,25 @@ La migración en Supabase dev, el backend `cosmetics-api-dev`, el login `SUPER_A
 **Notas importantes:**
 
 - Frontend en Vercel se despliega automáticamente por push a `master`/`develop`.
-- Backend en Fly.io se despliega **manualmente** por ahora.
-- Migraciones de BD se aplican manualmente y con cuidado.
+- Backend en Fly.io se despliega mediante el workflow manual protegido `.github/workflows/deploy-api.yml`; no se despliega automáticamente por push.
+- Migraciones de BD se aplican dentro del workflow manual protegido y con revisión previa; nunca por un push automático.
 - No subir `.env` ni `.env.local` al repositorio.
 - `apps/envelope/.env.local` es solo local y no debe commitearse.
 - `apps/payroll/.env.local` también es solo local y no debe commitearse; las variables de Vercel se configuran por proyecto y ambiente.
 - Para probar frontend local contra backend dev, conservar simultáneamente los origins de Envelope y Payroll en `CORS_ORIGINS`; no reemplazar uno por otro.
 - Un `Network Error` en login normalmente significa que el frontend apunta a `localhost:4000`, el backend no responde o CORS rechazó el origin antes de llegar a `/api/auth/login`. Verificar primero Request URL, `/health` y el preflight `OPTIONS`.
+
+### CI y releases seguros (2026-08-23)
+
+- `.github/workflows/ci.yml` valida PRs y pushes a `develop`/`master` con lint, TypeScript, unit tests, builds productivos, sincronía de schemas Prisma, aplicación completa de migraciones sobre PostgreSQL 16 efímero e integración HTTP real de login/sesión.
+- Envelope conserva temporalmente un presupuesto máximo de 8 warnings ESLint y Payroll de 7; CI bloquea cualquier incremento mientras se reduce esa deuda en cambios separados.
+- `.github/workflows/deploy-api.yml` solo se ejecuta manualmente. Fija el SHA de la rama `develop` o `master` antes de la aprobación, usa el environment `development` o `production`, aplica `prisma migrate deploy`, despliega exactamente ese commit y espera `/ready`. Producción exige escribir `PRODUCCION_RESPALDADA`; esta confirmación no sustituye verificar backup/PITR ni la aprobación del environment.
+- `.github/workflows/staging-smoke.yml` ejecuta smoke tests Playwright de solo lectura contra API, Envelope y Payroll en el environment elegido.
+- El API separa `src/app.ts` (Express importable) de `src/index.ts` (listener y cierre ordenado). `/health` verifica el proceso y `/ready` verifica conectividad PostgreSQL; Fly enruta mediante el segundo.
+- Las migraciones Prisma dejaron de estar ignoradas por Git. `scripts/check-migration-safety.mjs` bloquea SQL nuevo potencialmente destructivo salvo revisión explícita documentada con `-- migration-safety: reviewed`.
+- `db:push` y el alias directo `db:migrate:prod` fueron retirados de los scripts. Los despliegues usan `db:migrate:deploy` dentro del environment protegido.
+- Dependabot revisa dependencias npm y GitHub Actions semanalmente. Secret scanning/push protection, rulesets, required checks, environments/secrets, PITR y promoción manual de Vercel requieren configuración administrativa externa.
+- El procedimiento completo, variables, protecciones, secuencia de release y rollback vive en `docs/RELEASE_RUNBOOK.md`.
 
 ---
 
@@ -931,6 +947,7 @@ backend/api/
 │   ├── seed.ts                    → seed general/demo, usar con cuidado
 │   └── seed-catalogs.ts           → seed seguro para Bank/Position
 └── src/
+    ├── app.ts                             → aplicación Express importable, health/readiness y manejo HTTP global
     ├── controllers/
     │   └── auth.controller.ts
     ├── middlewares/
@@ -954,7 +971,20 @@ backend/api/
     ├── types/
     │   ├── express.d.ts           → extensión de tipos de Express
     │   └── jwt.ts
-    └── index.ts                   → entrada Express, CORS, middleware global
+    └── index.ts                           → listener HTTP y cierre ordenado de servidor/Prisma
+```
+
+### apps/e2e y automatización
+
+```text
+apps/e2e/
+├── playwright.config.ts          → proyectos API, Envelope y Payroll
+└── tests/                        → smoke tests de solo lectura por ambiente
+
+.github/workflows/
+├── ci.yml                        → gates obligatorios de PR
+├── deploy-api.yml                → migración + deploy manual protegido
+└── staging-smoke.yml             → smoke tests manuales development/production
 ```
 
 ### packages/ui
@@ -1035,17 +1065,28 @@ pnpm --filter @cosmetics/hr build
 pnpm --filter @cosmetics/api test
 pnpm --filter @cosmetics/api type-check
 pnpm --filter @cosmetics/api build
+pnpm lint
+pnpm type-check
+pnpm test:unit
+pnpm ci:build
 ```
 
-### Deploy backend (ejecutar desde raíz del repo)
+### CI, Prisma y smoke
 
 ```bash
-# Dev
-fly deploy -a cosmetics-api-dev --config backend/api/fly.toml --dockerfile backend/api/Dockerfile
-
-# Prod
-fly deploy -a cosmetics-api --config backend/api/fly.toml --dockerfile backend/api/Dockerfile
+pnpm --filter @cosmetics/api prisma:schemas
+pnpm --filter @cosmetics/api prisma:validate
+pnpm migrations:review -- origin/develop
+pnpm test:integration  # requiere RUN_DATABASE_TESTS=true + PostgreSQL desechable
+pnpm test:smoke        # requiere URLs de ambiente o servicios locales activos
 ```
+
+### Deploy backend
+
+Ejecutar manualmente el workflow de GitHub Actions `Deploy API` y elegir el
+environment `development` o `production`. Producción requiere aprobación del
+environment y escribir `PRODUCCION_RESPALDADA`; no desplegar directamente con
+Fly desde una terminal local. Ver `docs/RELEASE_RUNBOOK.md`.
 
 ### Prisma (ejecutar desde `backend/api/`)
 
@@ -1083,8 +1124,9 @@ npx ts-node --project tsconfig.json prisma/seed-catalogs.ts
 9. Para cambios en envelope: validar `type-check` y `build` antes de reportar tarea completa.
 10. Para cambios en Payroll: limitar la UI a `apps/payroll`, conservar las reglas históricas del backend y validar `pnpm --filter @cosmetics/payroll type-check` + `build`.
 11. Para backend Payroll: validar `test`, `type-check` y `build` de `@cosmetics/api`.
-12. No cambiar backend, Prisma ni variables de entorno salvo que la tarea lo pida explícitamente.
-13. Si hay duda sobre borrar datos o archivos → detenerse y pedir confirmación.
+12. Para cambios de API/Prisma: validar también schemas, migraciones sobre PostgreSQL desechable e integración HTTP; nunca usar una BD productiva en tests.
+13. No cambiar backend, Prisma ni variables de entorno salvo que la tarea lo pida explícitamente.
+14. Si hay duda sobre borrar datos o archivos → detenerse y pedir confirmación.
 
 ---
 
@@ -1100,7 +1142,8 @@ npx ts-node --project tsconfig.json prisma/seed-catalogs.ts
 - `pnpm --filter @cosmetics/hr lint`, `type-check` y `build` son las validaciones requeridas para el paquete; ESLint usa configuración no interactiva de Next.
 - La persistencia real, API HR, auth compartida y permisos autoritativos permanecen pendientes y requieren una sesión posterior con alcance backend/BD. El CRUD actual es exclusivamente frontend/mock.
 
-- Automatizar deploy backend con GitHub Actions si se decide.
+- Configurar en GitHub los environments `development`/`production`, secrets, variables, required reviewers y rulesets descritos en `docs/RELEASE_RUNBOOK.md`; los workflows ya viven en el repositorio pero no pueden operar hasta completar esa configuración externa.
+- Activar secret scanning/push protection según el plan de GitHub y desactivar en Vercel la asignación automática del dominio productivo cuando se adopte la promoción manual.
 - Crear seeds separados seguros para dev/datos base si se requiere.
 - Limpieza futura de campos legacy `banco`/`puesto` en `Empleado` cuando todos los registros en prod tengan `bankId`/`positionId` asignados (Fase 4).
 - Payroll producción: confirmar respaldo/PITR, aplicar `20260730000000_add_payroll_models`, `20260731000000_add_employee_branch` y `20260801000000_add_employee_all_branches`, desplegar `cosmetics-api`, configurar/verificar `NEXT_PUBLIC_API_URL` y `CORS_ORIGINS`, y ejecutar una corrida paralela antes del primer pago oficial.

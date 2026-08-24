@@ -67,7 +67,7 @@ export interface AccessUserRecord {
 }
 
 async function fetchAccess(userId: string): Promise<ResolvedAccess | null> {
-  const usuario = (await (prisma as any).usuario.findUnique({
+  const usuario = (await prisma.usuario.findUnique({
     where: { id: userId },
     select: {
       id: true,
