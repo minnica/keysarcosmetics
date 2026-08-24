@@ -1,33 +1,49 @@
-import { useMemo, useState, type Dispatch, type SetStateAction } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+  type ChangeEvent,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
 import {
   AlertTriangle,
+  ArrowLeftRight,
   ArrowRight,
   BadgePercent,
+  Boxes,
   CalendarDays,
   CheckCircle2,
   ChevronRight,
   CircleDollarSign,
   Clock3,
+  CreditCard,
   Download,
   DollarSign,
   Filter,
   LockKeyhole,
   Minus,
   PackageCheck,
+  PackagePlus,
+  PackageMinus,
   Pencil,
   Percent,
   Printer,
   Plus,
+  RefreshCw,
   RotateCcw,
   Search,
   ShieldCheck,
   ShoppingBag,
   ShoppingCart,
   Sparkles,
+  Store,
   TrendingDown,
   TrendingUp,
   Trash2,
+  Users,
   WifiOff,
+  X,
 } from "lucide-react";
 import {
   Badge,
@@ -35,7 +51,18 @@ import {
   Card,
   CardContent,
   DatePicker,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
   Input,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
   Table,
   TableBody,
   TableCell,
@@ -51,39 +78,70 @@ import {
 } from "./components/CheckoutDialog";
 import { AppointmentsView } from "./components/AppointmentsView";
 import { CatalogView } from "./components/CatalogView";
+import { ClockInView } from "./components/ClockInView";
+import { CompetitionSettings } from "./components/CompetitionSettings";
+import { CompetitionView } from "./components/CompetitionView";
 import { CustomersView } from "./components/CustomersView";
 import { DataUpdateView } from "./components/DataUpdateView";
+import { DealPickerDialog } from "./components/DealPickerDialog";
+import { DealsView } from "./components/DealsView";
+import { EmployeesView } from "./components/EmployeesView";
 import { InventoryMovementsView } from "./components/InventoryMovementsView";
+import { InventoryCatalogSettings } from "./components/InventoryCatalogSettings";
+import { MyAccountView } from "./components/MyAccountView";
 import { PosSidebar } from "./components/PosSidebar";
 import { ProductDialog } from "./components/ProductDialog";
 import { ReceiptTicketDialog } from "./components/ReceiptTicketDialog";
+import { ReportsView } from "./components/ReportsView";
 import { SellerSalesView } from "./components/SellerSalesView";
+import {
+  compareTableValues,
+  SortableTableHead,
+  type TableSortDirection,
+} from "./components/SortableTableHead";
 import { TicketEditDialog } from "./components/TicketEditDialog";
 import { TicketCancellationDialog } from "./components/TicketCancellationDialog";
+import { XReportExecutiveExport } from "./components/XReportExecutiveExport";
 import {
   administratorCode,
-  encodeMinimumPrice,
   formatCurrency,
   getSellerSku,
-  getSellerSkuBase,
   initialAppointments,
+  initialBillingCards,
+  initialBillingHistory,
+  initialBillingLocations,
+  initialBillingProfile,
   initialBranchInventory,
+  initialClientSources,
+  initialCompetitions,
+  initialDeals,
+  initialEmployeeRoles,
   initialClients,
   initialInventoryMovementReasons,
+  initialInventoryMovements,
   initialPaymentMethods,
   initialLayaways,
   initialReceiptSettings,
   initialRequiredClientFields,
   initialTickets,
+  masterUser,
   products as initialProducts,
-  sellers,
+  sellers as initialSellers,
 } from "./mock-data";
 import type {
   Appointment,
+  AttendanceRecord,
+  BillingCard,
+  BillingHistoryEntry,
+  BillingLocation,
+  BillingProfile,
   BranchInventory,
   CartItem,
+  Client,
   ClientField,
+  ClientSourceOption,
   DiscountMode,
+  EmployeeRole,
   InventoryAdjustmentBatch,
   InventoryMovement,
   InventoryMovementDraft,
@@ -93,12 +151,29 @@ import type {
   PaymentMethodOption,
   Product,
   ReceiptSettings,
+  RetailDeal,
   RequiredClientFields,
   ScreenId,
+  SalesCompetition,
   Ticket,
   TicketCancellationRequest,
+  TicketEditRequest,
   TicketInventoryLine,
 } from "./types";
+import {
+  calculateIncludedVat,
+  getTicketTaxSummary,
+  roundCurrency,
+} from "./tax";
+import { getTicketSpare } from "./spare";
+
+type CatalogTableSortKey =
+  | "article"
+  | "sku"
+  | "family"
+  | "group"
+  | "price"
+  | "stock";
 
 const screenMetadata: Record<ScreenId, { title: string; subtitle: string }> = {
   sale: { title: "Sale", subtitle: "Venta retail" },
@@ -118,14 +193,21 @@ const screenMetadata: Record<ScreenId, { title: string; subtitle: string }> = {
     title: "Citas",
     subtitle: "Cortesías y próximas sesiones",
   },
-  inventory: { title: "Inventory", subtitle: "Existencias del catálogo mock" },
+  inventory: {
+    title: "Inventory",
+    subtitle: "Productos, existencias, pedidos y sucursales",
+  },
   "inventory-movements": {
     title: "Movimientos de inventario",
     subtitle: "Entradas, bajas y ajustes de existencias",
   },
+  deals: {
+    title: "Deal",
+    subtitle: "Paquetes, autorización y rentabilidad",
+  },
   catalog: {
     title: "Catálogo",
-    subtitle: "Productos, familias, categorías y sucursales",
+    subtitle: "Consulta compacta de productos y servicios",
   },
   settings: {
     title: "Settings",
@@ -135,12 +217,23 @@ const screenMetadata: Record<ScreenId, { title: string; subtitle: string }> = {
     title: "X-Report",
     subtitle: "Corte parcial sin cerrar el día",
   },
+  reports: {
+    title: "Reports",
+    subtitle: "Reportes ejecutivos de ventas, mercancía, empleados y clientes",
+  },
   "cash-manager": {
     title: "Cash manager",
     subtitle: "Movimientos de caja de la terminal",
   },
+  "clock-in": {
+    title: "Clock In",
+    subtitle: "Asistencia y presencia de vendedores",
+  },
   "close-day": { title: "Close day", subtitle: "Resumen y cierre operativo" },
-  employees: { title: "Employees", subtitle: "Equipo y estatus de vendedores" },
+  employees: {
+    title: "Employees",
+    subtitle: "Personal, puestos y control de accesos",
+  },
   competition: {
     title: "Competition",
     subtitle: "Metas retail y desempeño del equipo",
@@ -150,6 +243,18 @@ const screenMetadata: Record<ScreenId, { title: string; subtitle: string }> = {
     title: "Data update",
     subtitle: "Sincronización offline del POS",
   },
+  "my-account": {
+    title: "My Account",
+    subtitle: "Perfil, ubicaciones y facturación",
+  },
+};
+
+const automaticDataUpdateIntervalMs = 60_000;
+const terminalLocationStorageKey = "keysar-pos-terminal-location";
+const initialBranchAddresses: Record<string, string> = {
+  Polanco: "Av. Presidente Masaryk 123, Polanco, CDMX",
+  Satélite: "Circuito Centro Comercial 2251, Satélite, Estado de México",
+  "Roma Norte": "Av. Álvaro Obregón 180, Roma Norte, CDMX",
 };
 
 const clientFieldLabels: Record<ClientField, string> = {
@@ -180,6 +285,14 @@ const createUniqueFolio = (tickets: Ticket[]) => {
   return folio;
 };
 
+const getCartItemProtectedMinimum = (item: CartItem) => {
+  if (item.dealId) return item.unitPrice * item.quantity;
+  const protectedUnitPrice = item.adminAuthorized
+    ? Math.min(item.unitPrice, item.product.minPrice)
+    : item.product.minPrice;
+  return protectedUnitPrice * item.quantity;
+};
+
 const isCartFloorCoveredOrAuthorized = (items: CartItem[]) => {
   if (items.length === 0) return true;
   const subtotal = items.reduce(
@@ -187,10 +300,10 @@ const isCartFloorCoveredOrAuthorized = (items: CartItem[]) => {
     0,
   );
   const minimumTotal = items.reduce(
-    (sum, item) => sum + item.product.minPrice * item.quantity,
+    (sum, item) => sum + getCartItemProtectedMinimum(item),
     0,
   );
-  return subtotal >= minimumTotal || items.some((item) => item.adminAuthorized);
+  return subtotal >= minimumTotal;
 };
 
 function App() {
@@ -205,11 +318,47 @@ function App() {
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [catalogProducts, setCatalogProducts] = useState(initialProducts);
+  const [sellers, setSellers] = useState(initialSellers);
+  const isMasterAccessCode = (code: string) =>
+    code.trim() === administratorCode ||
+    sellers.some(
+      (seller) =>
+        seller.active &&
+        Boolean(seller.masterAccessCode) &&
+        seller.masterAccessCode === code.trim(),
+    );
+  const [employeeRoles, setEmployeeRoles] = useState<EmployeeRole[]>(
+    initialEmployeeRoles,
+  );
+  const [employeeAccessAuthorized, setEmployeeAccessAuthorized] =
+    useState(false);
+  const [catalogTableSort, setCatalogTableSort] = useState<{
+    key: CatalogTableSortKey;
+    direction: TableSortDirection;
+  }>({ key: "article", direction: "ASC" });
   const [catalogFamilies, setCatalogFamilies] = useState(() =>
     Array.from(new Set(initialProducts.map((product) => product.family))),
   );
+  const [catalogFamilyStatus, setCatalogFamilyStatus] = useState<
+    Record<string, boolean>
+  >(() =>
+    Object.fromEntries(
+      Array.from(new Set(initialProducts.map((product) => product.family))).map(
+        (family) => [family, true],
+      ),
+    ),
+  );
   const [catalogCategories, setCatalogCategories] = useState(() =>
     Array.from(new Set(initialProducts.map((product) => product.category))),
+  );
+  const [catalogCategoryStatus, setCatalogCategoryStatus] = useState<
+    Record<string, boolean>
+  >(() =>
+    Object.fromEntries(
+      Array.from(
+        new Set(initialProducts.map((product) => product.category)),
+      ).map((category) => [category, true]),
+    ),
   );
   const [catalogGroups, setCatalogGroups] = useState(() =>
     Array.from(new Set(initialProducts.map((product) => product.group))),
@@ -219,13 +368,25 @@ function App() {
   >(initialInventoryMovementReasons);
   const [inventoryMovements, setInventoryMovements] = useState<
     InventoryMovement[]
-  >([]);
+  >(initialInventoryMovements);
   const [inventoryAdjustmentBatches, setInventoryAdjustmentBatches] = useState<
     InventoryAdjustmentBatch[]
   >([]);
   const [branchInventory, setBranchInventory] = useState<BranchInventory>(
     initialBranchInventory,
   );
+  const [activeBranch, setActiveBranch] = useState(() => {
+    const storedBranch = window.localStorage.getItem(terminalLocationStorageKey);
+    return storedBranch && initialBranchInventory[storedBranch]
+      ? storedBranch
+      : "Polanco";
+  });
+  const [branchAddresses, setBranchAddresses] = useState<Record<string, string>>(
+    initialBranchAddresses,
+  );
+  const [locationSwitchOpen, setLocationSwitchOpen] = useState(false);
+  const [locationSwitchTarget, setLocationSwitchTarget] = useState("");
+  const [locationSwitchCode, setLocationSwitchCode] = useState("");
   const [owedProducts, setOwedProducts] = useState<OwedProductRecord[]>([]);
   const [newMovementReason, setNewMovementReason] = useState("");
   const [discountMode, setDiscountMode] = useState<DiscountMode>("PERCENT");
@@ -236,8 +397,22 @@ function App() {
   const [layaways, setLayaways] = useState<LayawayRecord[]>(initialLayaways);
   const [appointments, setAppointments] =
     useState<Appointment[]>(initialAppointments);
-  const [receiptSettings, setReceiptSettings] = useState<ReceiptSettings>(
-    initialReceiptSettings,
+  const [receiptSettings, setReceiptSettings] = useState<ReceiptSettings>(() => ({
+    ...initialReceiptSettings,
+    branchName: `Sucursal ${activeBranch}`,
+    address:
+      initialBranchAddresses[activeBranch] ?? initialReceiptSettings.address,
+  }));
+  const [myAccountAuthorized, setMyAccountAuthorized] = useState(false);
+  const [billingProfile, setBillingProfile] =
+    useState<BillingProfile>(initialBillingProfile);
+  const [billingCards, setBillingCards] =
+    useState<BillingCard[]>(initialBillingCards);
+  const [billingLocations, setBillingLocations] = useState<BillingLocation[]>(
+    initialBillingLocations,
+  );
+  const [billingHistory, setBillingHistory] = useState<BillingHistoryEntry[]>(
+    initialBillingHistory,
   );
   const [selectedReceiptTicket, setSelectedReceiptTicket] =
     useState<Ticket | null>(null);
@@ -246,10 +421,27 @@ function App() {
   const [ticketEditOpen, setTicketEditOpen] = useState(false);
   const [cancellingTicket, setCancellingTicket] = useState<Ticket | null>(null);
   const [ticketCancellationOpen, setTicketCancellationOpen] = useState(false);
+  const [costAccessAuthorized, setCostAccessAuthorized] = useState(false);
   const [receiptSearch, setReceiptSearch] = useState("");
   const [receiptDate, setReceiptDate] = useState("");
+  const [receiptBranch, setReceiptBranch] = useState("ALL");
+  const [receiptHistoryCode, setReceiptHistoryCode] = useState("");
+  const [receiptHistoryAuthorized, setReceiptHistoryAuthorized] =
+    useState(false);
   const [xReportAccessCode, setXReportAccessCode] = useState("");
   const [xReportAuthorized, setXReportAuthorized] = useState(false);
+  const [attendanceRecords, setAttendanceRecords] = useState<
+    AttendanceRecord[]
+  >([]);
+  const [competitions, setCompetitions] = useState<SalesCompetition[]>(
+    initialCompetitions,
+  );
+  const [deals, setDeals] = useState<RetailDeal[]>(initialDeals);
+  const [dealPickerOpen, setDealPickerOpen] = useState(false);
+  const [dealAccessAuthorized, setDealAccessAuthorized] = useState(false);
+  const [competitionSettingsOpen, setCompetitionSettingsOpen] = useState(false);
+  const [competitionSettingsAuthorized, setCompetitionSettingsAuthorized] =
+    useState(false);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodOption[]>(
     initialPaymentMethods,
   );
@@ -258,11 +450,552 @@ function App() {
   const [paymentSettingsAuthorized, setPaymentSettingsAuthorized] =
     useState(false);
   const [newPaymentMethodName, setNewPaymentMethodName] = useState("");
+  const [clientSources, setClientSources] = useState<ClientSourceOption[]>(
+    initialClientSources,
+  );
+  const [clientSourceName, setClientSourceName] = useState("");
+  const [editingClientSourceId, setEditingClientSourceId] = useState("");
   const [requiredFields, setRequiredFields] = useState<RequiredClientFields>(
     initialRequiredClientFields,
   );
+  const [syncClock, setSyncClock] = useState(() => Date.now());
+  const [sessionDataSync, setSessionDataSync] = useState(() => ({
+    lastUpdatedAt: Date.now(),
+    nextUpdateAt: Date.now() + automaticDataUpdateIntervalMs,
+    updating: false,
+    revision: 0,
+  }));
+  const operationalBranches = useMemo(() => {
+    const branches = Object.keys(branchInventory);
+    return [
+      ...(branches.includes(activeBranch) ? [activeBranch] : []),
+      ...branches.filter((branch) => branch !== activeBranch),
+    ];
+  }, [activeBranch, branchInventory]);
+
+  const applyTerminalLocation = (branch: string) => {
+    if (!branchInventory[branch]) return false;
+    setActiveBranch(branch);
+    setReceiptSettings((current) => ({
+      ...current,
+      branchName: `Sucursal ${branch}`,
+      address:
+        branchAddresses[branch] ?? "Dirección pendiente de configurar",
+    }));
+    window.localStorage.setItem(terminalLocationStorageKey, branch);
+    return true;
+  };
+
+  const openLocationSwitcher = () => {
+    setLocationSwitchTarget(
+      operationalBranches.find((branch) => branch !== activeBranch) ??
+        activeBranch,
+    );
+    setLocationSwitchCode("");
+    setLocationSwitchOpen(true);
+  };
+
+  const confirmLocationSwitch = () => {
+    if (!isMasterAccessCode(locationSwitchCode)) {
+      toast.error("Código incorrecto. Sólo el usuario master puede cambiar la ubicación.");
+      return;
+    }
+    if (!locationSwitchTarget || !branchInventory[locationSwitchTarget]) {
+      toast.error("Selecciona una sucursal operativa.");
+      return;
+    }
+    if (locationSwitchTarget === activeBranch) {
+      toast.info(`${activeBranch} ya es la ubicación fija de esta computadora.`);
+      setLocationSwitchOpen(false);
+      setLocationSwitchCode("");
+      return;
+    }
+    const previousBranch = activeBranch;
+    if (!applyTerminalLocation(locationSwitchTarget)) return;
+    setLocationSwitchOpen(false);
+    setLocationSwitchCode("");
+    toast.success(
+      `Terminal 01 cambió de ${previousBranch} a ${locationSwitchTarget}. La ubicación quedó fija en esta computadora.`,
+    );
+  };
+
+  useEffect(() => {
+    if (branchInventory[activeBranch]) return;
+    const fallbackBranch = Object.keys(branchInventory)[0];
+    if (fallbackBranch) applyTerminalLocation(fallbackBranch);
+  }, [activeBranch, branchInventory]);
+
+  useEffect(() => {
+    const clockInterval = window.setInterval(() => setSyncClock(Date.now()), 1_000);
+    return () => window.clearInterval(clockInterval);
+  }, []);
+
+  useEffect(() => {
+    if (
+      sessionDataSync.updating ||
+      syncClock < sessionDataSync.nextUpdateAt
+    )
+      return;
+    setSessionDataSync((current) => ({ ...current, updating: true }));
+  }, [sessionDataSync.nextUpdateAt, sessionDataSync.updating, syncClock]);
+
+  useEffect(() => {
+    if (!sessionDataSync.updating) return;
+    const updateTimeout = window.setTimeout(() => {
+      const completedAt = Date.now();
+      setSessionDataSync((current) => ({
+        ...current,
+        lastUpdatedAt: completedAt,
+        nextUpdateAt: completedAt + automaticDataUpdateIntervalMs,
+        updating: false,
+        revision: current.revision + 1,
+      }));
+      setSyncClock(completedAt);
+    }, 850);
+    return () => window.clearTimeout(updateTimeout);
+  }, [sessionDataSync.updating]);
+
+  const requestSessionDataSync = () => {
+    setSessionDataSync((current) =>
+      current.updating ? current : { ...current, updating: true },
+    );
+  };
+
+  const masterSessionActive =
+    myAccountAuthorized ||
+    costAccessAuthorized ||
+    receiptHistoryAuthorized ||
+    xReportAuthorized ||
+    paymentSettingsAuthorized ||
+    competitionSettingsAuthorized ||
+    dealAccessAuthorized ||
+    employeeAccessAuthorized;
+
+  useEffect(() => {
+    if (!masterSessionActive) return;
+    let inactivityTimer = window.setTimeout(() => undefined, 0);
+    const lockProtectedModules = () => {
+      setMyAccountAuthorized(false);
+      setCostAccessAuthorized(false);
+      setReceiptHistoryAuthorized(false);
+      setReceiptDate("");
+      setReceiptBranch("ALL");
+      setReceiptSearch("");
+      setXReportAuthorized(false);
+      setXReportAccessCode("");
+      setPaymentSettingsAuthorized(false);
+      setPaymentSettingsOpen(false);
+      setPaymentSettingsCode("");
+      setCompetitionSettingsAuthorized(false);
+      setCompetitionSettingsOpen(false);
+      setDealAccessAuthorized(false);
+      setEmployeeAccessAuthorized(false);
+      toast.info("Los módulos master se bloquearon por 3 minutos de inactividad.");
+    };
+    const restartTimer = () => {
+      window.clearTimeout(inactivityTimer);
+      inactivityTimer = window.setTimeout(lockProtectedModules, 180_000);
+    };
+    const activityEvents: Array<keyof WindowEventMap> = [
+      "pointerdown",
+      "keydown",
+      "touchstart",
+      "scroll",
+    ];
+    activityEvents.forEach((eventName) =>
+      window.addEventListener(eventName, restartTimer, { passive: true }),
+    );
+    restartTimer();
+    return () => {
+      window.clearTimeout(inactivityTimer);
+      activityEvents.forEach((eventName) =>
+        window.removeEventListener(eventName, restartTimer),
+      );
+    };
+  }, [masterSessionActive]);
+
+  const authorizeDealAccess = (code: string) => {
+    const authorized = isMasterAccessCode(code);
+    if (authorized) setDealAccessAuthorized(true);
+    return authorized;
+  };
+
+  const authorizeEmployeeAccess = (code: string) => {
+    const authorized = isMasterAccessCode(code);
+    if (authorized) setEmployeeAccessAuthorized(true);
+    return authorized;
+  };
+
+  const saveEmployeeRole = (role: EmployeeRole) => {
+    setEmployeeRoles((current) =>
+      current.some((candidate) => candidate.id === role.id)
+        ? current.map((candidate) =>
+            candidate.id === role.id ? role : candidate,
+          )
+        : [...current, role],
+    );
+    setSellers((current) =>
+      current.map((seller) =>
+        seller.roleId === role.id
+          ? {
+              ...seller,
+              canViewCosts:
+                role.configurationAccess.includes("REPORTS_COSTS"),
+            }
+          : seller,
+      ),
+    );
+  };
+
+  const toggleEmployeeRole = (roleId: string) => {
+    const role = employeeRoles.find((candidate) => candidate.id === roleId);
+    if (!role || role.system) return;
+    if (
+      role.active &&
+      sellers.some((seller) => seller.active && seller.roleId === roleId)
+    ) {
+      toast.error(
+        "Reasigna a los empleados activos antes de inactivar este rol.",
+      );
+      return;
+    }
+    setEmployeeRoles((current) =>
+      current.map((candidate) =>
+        candidate.id === roleId
+          ? { ...candidate, active: !candidate.active }
+          : candidate,
+      ),
+    );
+  };
+
+  const assignEmployeeRole = (sellerId: string, roleId: string) => {
+    const role = employeeRoles.find(
+      (candidate) =>
+        candidate.id === roleId && candidate.active && !candidate.system,
+    );
+    if (!role) {
+      toast.error("El rol seleccionado no está disponible.");
+      return;
+    }
+    setSellers((current) =>
+      current.map((seller) =>
+        seller.id === sellerId
+          ? {
+              ...seller,
+              roleId,
+              canViewCosts:
+                role.configurationAccess.includes("REPORTS_COSTS"),
+            }
+          : seller,
+      ),
+    );
+    const seller = sellers.find((candidate) => candidate.id === sellerId);
+    toast.success(
+      `${seller?.name ?? "Empleado"} ahora tiene el rol ${role.name}.`,
+    );
+  };
+
+  const setEmployeeMasterAccess = (
+    sellerIds: string[],
+    code: string | null,
+  ) => {
+    const selected = new Set(sellerIds);
+    if (selected.size === 0) return false;
+    if (code !== null) {
+      if (!/^\d{4}$/.test(code)) {
+        toast.error("El código master debe contener exactamente 4 dígitos.");
+        return false;
+      }
+      if (code === administratorCode) {
+        toast.error("Usa un código delegado diferente al código principal de Master Keysar.");
+        return false;
+      }
+      if (sellers.some((seller) => seller.accessCode === code)) {
+        toast.error("El código coincide con una clave personal de asistencia. Elige otro.");
+        return false;
+      }
+    }
+    if (
+      sellers.some(
+        (seller) => selected.has(seller.id) && !seller.active,
+      )
+    ) {
+      toast.error("No se puede asignar acceso master a un empleado de baja.");
+      return false;
+    }
+    setSellers((current) =>
+      current.map((seller) =>
+        selected.has(seller.id)
+          ? { ...seller, masterAccessCode: code }
+          : seller,
+      ),
+    );
+    return true;
+  };
+
+  const saveDeal = (deal: RetailDeal) => {
+    setDeals((current) =>
+      current.some((candidate) => candidate.id === deal.id)
+        ? current.map((candidate) => (candidate.id === deal.id ? deal : candidate))
+        : [deal, ...current],
+    );
+  };
+
+  const publishDeal = (dealId: string, code: string) => {
+    if (!isMasterAccessCode(code)) return false;
+    const deal = deals.find((candidate) => candidate.id === dealId);
+    if (!deal) return false;
+    const costTotal = deal.lines.reduce((sum, line) => {
+      const product = catalogProducts.find((candidate) => candidate.id === line.productId);
+      return sum + (product?.costMxn ?? 0) * line.quantity;
+    }, 0);
+    if (deal.price < costTotal || deal.lines.length < 2) return false;
+    setDeals((current) =>
+      current.map((candidate) =>
+        candidate.id === dealId
+          ? {
+              ...candidate,
+              status: "PUBLISHED",
+              publishedAtIso: new Date().toISOString(),
+              authorizedBy: masterUser.name,
+            }
+          : candidate,
+      ),
+    );
+    return true;
+  };
+
+  const deactivateDeal = (dealId: string) => {
+    setDeals((current) =>
+      current.map((deal) =>
+        deal.id === dealId ? { ...deal, status: "INACTIVE" } : deal,
+      ),
+    );
+    toast.info("Deal inactivado. Los tickets históricos conservaron su registro.");
+  };
+
+  const authorizeCompetitionSettings = (code: string) => {
+    const authorized = isMasterAccessCode(code);
+    if (authorized) setCompetitionSettingsAuthorized(true);
+    return authorized;
+  };
+
+  const saveCompetition = (competition: SalesCompetition) => {
+    setCompetitions((current) =>
+      current.some((candidate) => candidate.id === competition.id)
+        ? current.map((candidate) =>
+            candidate.id === competition.id ? competition : candidate,
+          )
+        : [competition, ...current],
+    );
+  };
+
+  const toggleCompetition = (competitionId: string) => {
+    setCompetitions((current) =>
+      current.map((competition) =>
+        competition.id === competitionId
+          ? { ...competition, active: !competition.active }
+          : competition,
+      ),
+    );
+  };
+
+  const deleteCompetition = (competitionId: string) => {
+    setCompetitions((current) =>
+      current.filter((competition) => competition.id !== competitionId),
+    );
+    toast.success("Competencia eliminada de la configuración mock.");
+  };
+
   const paymentLabel = (methodId: string) =>
     paymentMethods.find((method) => method.id === methodId)?.label ?? methodId;
+
+  const formatAttendanceTime = (date: Date) =>
+    new Intl.DateTimeFormat("es-MX", {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      timeZone: "America/Mexico_City",
+    }).format(date);
+
+  const clockInSeller = (accessCode: string, branch: string): boolean => {
+    const seller = sellers.find(
+      (candidate) =>
+        candidate.active && candidate.accessCode === accessCode,
+    );
+    if (!seller) {
+      toast.error("Código de vendedor incorrecto o inactivo.");
+      return false;
+    }
+    if (
+      attendanceRecords.some(
+        (record) =>
+          record.sellerId === seller.id && record.status === "ONLINE",
+      )
+    ) {
+      toast.info(`${seller.name} ya se encuentra ONLINE.`);
+      return false;
+    }
+    const clockInDate = new Date();
+    const record: AttendanceRecord = {
+      id: `attendance-${crypto.randomUUID()}`,
+      sellerId: seller.id,
+      sellerName: seller.name,
+      sellerInitials: seller.initials,
+      branch,
+      clockInAt: formatAttendanceTime(clockInDate),
+      clockInAtIso: clockInDate.toISOString(),
+      clockOutAt: null,
+      clockOutAtIso: null,
+      status: "ONLINE",
+      clockOutReason: null,
+    };
+    setAttendanceRecords((current) => [record, ...current]);
+    toast.success(`${seller.name} registró entrada en ${branch}.`);
+    return true;
+  };
+
+  const clockOutSeller = (recordId: string) => {
+    const record = attendanceRecords.find(
+      (candidate) =>
+        candidate.id === recordId && candidate.status === "ONLINE",
+    );
+    if (!record) return;
+    const clockOutDate = new Date();
+    setAttendanceRecords((current) =>
+      current.map((candidate) =>
+        candidate.id === recordId
+          ? {
+              ...candidate,
+              clockOutAt: formatAttendanceTime(clockOutDate),
+              clockOutAtIso: clockOutDate.toISOString(),
+              status: "OFFLINE",
+              clockOutReason: "MANUAL",
+            }
+          : candidate,
+      ),
+    );
+    toast.success(`${record.sellerName} registró su salida.`);
+  };
+
+  const completeCloseDay = () => {
+    const onlineCount = attendanceRecords.filter(
+      (record) => record.status === "ONLINE",
+    ).length;
+    const clockOutDate = new Date();
+    if (onlineCount > 0) {
+      setAttendanceRecords((current) =>
+        current.map((record) =>
+          record.status === "ONLINE"
+            ? {
+                ...record,
+                clockOutAt: formatAttendanceTime(clockOutDate),
+                clockOutAtIso: clockOutDate.toISOString(),
+                status: "OFFLINE",
+                clockOutReason: "CLOSE_DAY",
+              }
+            : record,
+        ),
+      );
+    }
+    toast.success(
+      onlineCount > 0
+        ? `Cierre mock completado. ${onlineCount} vendedor${onlineCount === 1 ? "" : "es"} ${onlineCount === 1 ? "quedó" : "quedaron"} OFFLINE.`
+        : "Cierre mock completado. No había vendedores ONLINE.",
+    );
+  };
+
+  const updateClientRecord = (updatedClient: Client) => {
+    const previousClient = clients.find((client) => client.id === updatedClient.id);
+    if (!previousClient) return;
+    const previousName = `${previousClient.firstName} ${previousClient.lastName}`;
+    const updatedName = `${updatedClient.firstName.trim()} ${updatedClient.lastName.trim()}`.trim();
+    setClients((current) =>
+      current.map((client) =>
+        client.id === updatedClient.id
+          ? {
+              ...updatedClient,
+              firstName: updatedClient.firstName.trim(),
+              lastName: updatedClient.lastName.trim(),
+            }
+          : client,
+      ),
+    );
+    setTickets((current) =>
+      current.map((ticket) =>
+        ticket.clientPhone === previousClient.phone || ticket.clientName === previousName
+          ? { ...ticket, clientName: updatedName, clientPhone: updatedClient.phone }
+          : ticket,
+      ),
+    );
+    setAppointments((current) =>
+      current.map((appointment) =>
+        appointment.clientId === updatedClient.id
+          ? { ...appointment, clientName: updatedName, clientPhone: updatedClient.phone }
+          : appointment,
+      ),
+    );
+    setLayaways((current) =>
+      current.map((layaway) =>
+        layaway.clientId === updatedClient.id
+          ? { ...layaway, clientName: updatedName, clientPhone: updatedClient.phone }
+          : layaway,
+      ),
+    );
+    setOwedProducts((current) =>
+      current.map((record) =>
+        record.clientId === updatedClient.id
+          ? { ...record, clientName: updatedName, clientPhone: updatedClient.phone }
+          : record,
+      ),
+    );
+  };
+
+  const deleteClientRecord = (clientId: string) => {
+    setClients((current) => current.filter((client) => client.id !== clientId));
+  };
+
+  const importClientRecords = (importedClients: Client[]) => {
+    setClients((current) => [...importedClients, ...current]);
+  };
+
+  const handleReceiptLogoUpload = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast.error("Selecciona un archivo de imagen válido.");
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error("El logo no debe superar 2 MB.");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result !== "string") return;
+      setReceiptSettings((current) => ({ ...current, logoUrl: reader.result as string }));
+      toast.success("Logo cargado y ajustado al formato de impresión.");
+    };
+    reader.onerror = () => toast.error("No fue posible leer la imagen.");
+    reader.readAsDataURL(file);
+  };
+
+  const authorizeCostAccess = (code: string) => {
+    const authorized =
+      isMasterAccessCode(code) ||
+      sellers.some(
+        (seller) =>
+          seller.active && seller.canViewCosts && seller.accessCode === code,
+      );
+    if (!authorized) {
+      toast.error("Código sin permiso para consultar costos.");
+      return false;
+    }
+    setCostAccessAuthorized(true);
+    toast.success("Costos y reportes mensuales desbloqueados.");
+    return true;
+  };
   const activeTickets = useMemo(
     () => tickets.filter((ticket) => ticket.status === "COMPLETED"),
     [tickets],
@@ -281,20 +1014,80 @@ function App() {
               productId: line.productId,
               productName: line.name,
               quantity: line.quantity,
-              branch: "Polanco",
+              branch: cancellingTicket.branchName ?? activeBranch,
             },
           ]
         : [];
     });
-  }, [cancellingTicket, catalogProducts]);
+  }, [activeBranch, cancellingTicket, catalogProducts]);
 
   const saleProducts = useMemo(
     () =>
-      catalogProducts.filter(
-        (product) => product.active && product.branches.includes("Polanco"),
-      ),
-    [catalogProducts],
+      catalogProducts
+        .filter(
+          (product) =>
+            product.active &&
+            catalogFamilyStatus[product.family] !== false &&
+            catalogCategoryStatus[product.category] !== false &&
+            product.branches.includes(activeBranch),
+        )
+        .map((product) =>
+          product.stock === null
+            ? product
+            : {
+                ...product,
+                stock: branchInventory[activeBranch]?.[product.id] ?? 0,
+              },
+        ),
+    [
+      activeBranch,
+      branchInventory,
+      catalogCategoryStatus,
+      catalogFamilyStatus,
+      catalogProducts,
+    ],
   );
+  const compactCatalogProducts = useMemo(() => {
+    const visibleProducts = catalogProducts.filter(
+      (product) =>
+        product.active &&
+        catalogFamilyStatus[product.family] !== false &&
+        catalogCategoryStatus[product.category] !== false,
+    );
+    const sortValue = (product: Product): string | number => {
+      switch (catalogTableSort.key) {
+        case "article":
+          return product.name;
+        case "sku":
+          return product.sku;
+        case "family":
+          return product.family;
+        case "group":
+          return product.group;
+        case "price":
+          return product.maxPrice;
+        case "stock":
+          return product.stock ?? Number.MAX_SAFE_INTEGER;
+      }
+    };
+
+    return [...visibleProducts].sort((left, right) => {
+      const comparison = compareTableValues(sortValue(left), sortValue(right));
+      return catalogTableSort.direction === "ASC" ? comparison : -comparison;
+    });
+  }, [
+    catalogCategoryStatus,
+    catalogFamilyStatus,
+    catalogProducts,
+    catalogTableSort,
+  ]);
+  const toggleCatalogTableSort = (key: CatalogTableSortKey) => {
+    setCatalogTableSort((current) => ({
+      key,
+      direction:
+        current.key === key && current.direction === "ASC" ? "DESC" : "ASC",
+    }));
+  };
   const families = useMemo(
     () => [
       "Todos",
@@ -338,7 +1131,7 @@ function App() {
     0,
   );
   const cartMinimumTotal = cart.reduce(
-    (sum, item) => sum + item.product.minPrice * item.quantity,
+    (sum, item) => sum + getCartItemProtectedMinimum(item),
     0,
   );
   const maxPromotionalDiscount = Math.max(0, cartSubtotal - cartMinimumTotal);
@@ -361,7 +1154,7 @@ function App() {
     0,
   );
   const dialogOtherItemsMinimumTotal = dialogOtherItems.reduce(
-    (sum, item) => sum + item.product.minPrice * item.quantity,
+    (sum, item) => sum + getCartItemProtectedMinimum(item),
     0,
   );
 
@@ -389,6 +1182,62 @@ function App() {
     }
     setCart((current) => [...current, item]);
     toast.success(`${item.product.name} se añadió al carrito.`);
+  };
+
+  const addDealToCart = (deal: RetailDeal, dealQuantity: number) => {
+    const dealProducts = deal.lines.flatMap((line) => {
+      const product = catalogProducts.find(
+        (candidate) => candidate.id === line.productId && candidate.active,
+      );
+      return product ? [{ line, product }] : [];
+    });
+    if (dealProducts.length !== deal.lines.length || dealProducts.length < 2) {
+      toast.error("Uno de los artículos del Deal ya no está disponible.");
+      return;
+    }
+    const instanceId = `deal-instance-${crypto.randomUUID()}`;
+    const weightTotal = dealProducts.reduce(
+      (sum, item) => sum + item.product.maxPrice * item.line.quantity,
+      0,
+    );
+    let allocated = 0;
+    const dealCartItems = dealProducts.map(({ line, product }, index) => {
+      const lineAllocation =
+        index === dealProducts.length - 1
+          ? Math.round((deal.price - allocated) * 100) / 100
+          : Math.round(
+              ((deal.price * product.maxPrice * line.quantity) /
+                Math.max(weightTotal, 1)) *
+                100,
+            ) / 100;
+      allocated += lineAllocation;
+      return {
+        id: crypto.randomUUID(),
+        product,
+        quantity: line.quantity * dealQuantity,
+        unitPrice: lineAllocation / line.quantity,
+        comment: `Deal ${deal.name}`,
+        adminAuthorized: true,
+        dealId: deal.id,
+        dealName: deal.name,
+        dealInstanceId: instanceId,
+        dealQuantity,
+      } satisfies CartItem;
+    });
+    setCart((current) => [...current, ...dealCartItems]);
+    toast.success(
+      `${dealQuantity} × ${deal.name} se añadió al ticket con ${dealProducts.length} artículos.`,
+    );
+  };
+
+  const removeDealFromCart = (dealInstanceId: string) => {
+    const dealName = cart.find(
+      (item) => item.dealInstanceId === dealInstanceId,
+    )?.dealName;
+    setCart((current) =>
+      current.filter((item) => item.dealInstanceId !== dealInstanceId),
+    );
+    if (dealName) toast.info(`${dealName} se quitó completo del ticket.`);
   };
 
   const removeCartItem = (itemId: string) => {
@@ -434,6 +1283,7 @@ function App() {
   };
 
   const completeTicket = (result: CheckoutResult) => {
+    const ticketBranch = activeBranch;
     setClients((current) =>
       result.createdClient
         ? [result.client, ...current]
@@ -446,6 +1296,44 @@ function App() {
     const courtesyAppointments = result.appointments.filter(
       (appointment) => appointment.kind === "COURTESY",
     );
+    const dealInstanceIds = Array.from(
+      new Set(
+        cart.flatMap((item) =>
+          item.dealInstanceId ? [item.dealInstanceId] : [],
+        ),
+      ),
+    );
+    const ticketDeals = dealInstanceIds.flatMap((instanceId) => {
+      const dealItems = cart.filter(
+        (item) => item.dealInstanceId === instanceId,
+      );
+      const firstItem = dealItems[0];
+      const deal = deals.find((candidate) => candidate.id === firstItem?.dealId);
+      return firstItem && deal
+        ? [
+            {
+              dealId: deal.id,
+              dealName: deal.name,
+              dealSku: deal.sku,
+              quantity: firstItem.dealQuantity ?? 1,
+              unitPrice: deal.price,
+              total: deal.price * (firstItem.dealQuantity ?? 1),
+              productIds: dealItems.map((item) => item.product.id),
+            },
+          ]
+        : [];
+    });
+    const ticketTaxRatio = cartSubtotal > 0 ? ticketTotal / cartSubtotal : 1;
+    const cartTaxLines = cart.map((item) =>
+      calculateIncludedVat(
+        item.unitPrice * item.quantity * ticketTaxRatio,
+        item.product.includesVat,
+      ),
+    );
+    const ticketNetTotal = roundCurrency(
+      cartTaxLines.reduce((sum, line) => sum + line.net, 0),
+    );
+    const ticketVatAmount = roundCurrency(ticketTotal - ticketNetTotal);
     const ticket: Ticket = {
       id: ticketId,
       createdAt: new Intl.DateTimeFormat("es-MX", {
@@ -458,11 +1346,15 @@ function App() {
       createdAtIso: createdAt.toISOString(),
       clientName: `${result.client.firstName} ${result.client.lastName}`,
       clientPhone: result.client.phone,
+      branchName: ticketBranch,
+      branchAddress: branchAddresses[ticketBranch] ?? receiptSettings.address,
       sellerSummary: result.sellerSummary,
       items: cartCount + courtesyAppointments.length,
       discountAmount: ticketDiscountAmount,
       subtotal: cartSubtotal,
       total: ticketTotal,
+      netTotal: ticketNetTotal,
+      vatAmount: ticketVatAmount,
       deviation: ticketDeviation,
       paymentMethod: result.paymentMethod,
       payments: result.payments,
@@ -470,20 +1362,34 @@ function App() {
       balanceDue: result.balanceDue,
       paymentStatus: result.paymentStatus,
       products: [
-        ...cart.map((item) => ({
+        ...cart.map((item, index) => ({
           productId: item.product.id,
           name: item.product.name,
           quantity: item.quantity,
           total: item.unitPrice * item.quantity,
+          includesVat: item.product.includesVat,
+          netTotal: cartTaxLines[index]?.net ?? item.unitPrice * item.quantity,
+          vatAmount: cartTaxLines[index]?.vat ?? 0,
+          ...(item.dealId
+            ? {
+                dealId: item.dealId,
+                dealName: item.dealName ?? "Deal",
+                dealInstanceId: item.dealInstanceId ?? item.dealId,
+              }
+            : {}),
         })),
         ...courtesyAppointments.map((appointment, index) => ({
           productId: `courtesy-${ticketId}-${index + 1}`,
           name: `${appointment.service} · REGALO`,
           quantity: 1,
           total: 0,
+          includesVat: false,
+          netTotal: 0,
+          vatAmount: 0,
         })),
       ],
       sellerSales: result.sellerSales,
+      deals: ticketDeals,
       status: "COMPLETED",
     };
     const clientName = `${result.client.firstName} ${result.client.lastName}`;
@@ -511,17 +1417,47 @@ function App() {
           ? result.deliveredCartItemIds
           : [],
     );
-    const polancoStock = { ...(branchInventory.Polanco ?? {}) };
+    const ticketBranchStock = { ...(branchInventory[ticketBranch] ?? {}) };
     const deliveredByCartItem = new Map<string, number>();
     const deliveryDebts: OwedProductRecord[] = [];
+    const saleInventoryMovements: InventoryMovement[] = [];
     cart.forEach((item) => {
       if (item.product.kind !== "PRODUCT" || !requestedDeliveryIds.has(item.id))
         return;
-      const available = polancoStock[item.product.id] ?? 0;
-      const delivered = Math.min(available, item.quantity);
+      const available = ticketBranchStock[item.product.id] ?? 0;
+      const delivered = Math.min(Math.max(available, 0), item.quantity);
       const shortage = item.quantity - delivered;
-      polancoStock[item.product.id] = available - delivered;
+      const newStock = available - item.quantity;
+      ticketBranchStock[item.product.id] = newStock;
       deliveredByCartItem.set(item.id, delivered);
+      if (item.quantity > 0) {
+        saleInventoryMovements.push({
+          id: crypto.randomUUID(),
+          folio: `VEN-${ticketId}-${saleInventoryMovements.length + 1}`,
+          createdAt: ticket.createdAt,
+          createdAtIso: ticket.createdAtIso,
+          productId: item.product.id,
+          productName: item.product.name,
+          direction: "REMOVE",
+          reason: `Venta ${ticketId}`,
+          quantity: item.quantity,
+          previousStock: available,
+          newStock,
+          sourceBranch: ticketBranch,
+          destinationBranch: null,
+          destinationPreviousStock: null,
+          destinationNewStock: null,
+          comment:
+            shortage > 0
+              ? `Venta a ${clientName}${item.dealName ? ` · Deal ${item.dealName}` : ""} · ${delivered} entregado(s), ${shortage} pendiente(s)`
+              : `Salida por venta a ${clientName}${item.dealName ? ` · Deal ${item.dealName}` : ""}`,
+          category: "SALE",
+          unitCostUsd: item.product.costUsd,
+          unitCostMxn: item.product.costMxn,
+          totalCostUsd: item.product.costUsd * item.quantity,
+          totalCostMxn: item.product.costMxn * item.quantity,
+        });
+      }
       if (shortage > 0) {
         deliveryDebts.push({
           id: crypto.randomUUID(),
@@ -534,7 +1470,12 @@ function App() {
           productId: item.product.id,
           productName: item.product.name,
           quantity: shortage,
-          branch: "Polanco",
+          deliveredQuantity: 0,
+          branch: ticketBranch,
+          sellerIds: result.sellerSales.map((sale) => sale.sellerId),
+          sellerNames: result.sellerSales.map((sale) => sale.sellerName),
+          inventoryCommitted: true,
+          deliveryHistory: [],
           reason: "OUT_OF_STOCK",
           createdAt: ticket.createdAt,
           createdAtIso: ticket.createdAtIso,
@@ -550,21 +1491,27 @@ function App() {
               productId: item.product.id,
               productName: item.product.name,
               quantity: delivered,
-              branch: "Polanco",
+              branch: ticketBranch,
             },
           ]
         : [];
     });
     setTickets((current) => [ticket, ...current]);
+    if (saleInventoryMovements.length > 0) {
+      setInventoryMovements((current) => [
+        ...[...saleInventoryMovements].reverse(),
+        ...current,
+      ]);
+    }
     setBranchInventory((current) => ({
       ...current,
-      Polanco: polancoStock,
+      [ticketBranch]: ticketBranchStock,
     }));
     setCatalogProducts((current) =>
       current.map((product) =>
         product.stock === null
           ? product
-          : { ...product, stock: polancoStock[product.id] ?? 0 },
+          : { ...product, stock: ticketBranchStock[product.id] ?? 0 },
       ),
     );
     if (deliveryDebts.length > 0) {
@@ -579,6 +1526,7 @@ function App() {
         clientId: result.client.id,
         clientName,
         clientPhone: result.client.phone,
+        branch: ticketBranch,
         sellerIds: result.sellerSales.map((sale) => sale.sellerId),
         total: ticket.total,
         amountPaid: ticket.amountPaid,
@@ -629,7 +1577,7 @@ function App() {
   };
 
   const authorizePaymentSettings = () => {
-    if (paymentSettingsCode !== administratorCode) {
+    if (!isMasterAccessCode(paymentSettingsCode)) {
       toast.error("Código master incorrecto.");
       return;
     }
@@ -641,14 +1589,23 @@ function App() {
   const addPaymentMethod = () => {
     const label = newPaymentMethodName.trim();
     if (!label) return;
-    if (
-      paymentMethods.some(
-        (method) =>
-          method.label.toLocaleLowerCase("es-MX") ===
-          label.toLocaleLowerCase("es-MX"),
-      )
-    ) {
+    const existingMethod = paymentMethods.find(
+      (method) =>
+        method.label.toLocaleLowerCase("es-MX") ===
+        label.toLocaleLowerCase("es-MX"),
+    );
+    if (existingMethod?.active) {
       toast.error("Ese método de pago ya existe.");
+      return;
+    }
+    if (existingMethod) {
+      setPaymentMethods((current) =>
+        current.map((method) =>
+          method.id === existingMethod.id ? { ...method, active: true } : method,
+        ),
+      );
+      setNewPaymentMethodName("");
+      toast.success(`${label} quedó disponible nuevamente en el cobro.`);
       return;
     }
     setPaymentMethods((current) => [
@@ -661,6 +1618,295 @@ function App() {
     ]);
     setNewPaymentMethodName("");
     toast.success(`${label} quedó disponible en el cobro.`);
+  };
+
+  const removePaymentMethod = (methodId: string) => {
+    if (!paymentSettingsAuthorized) {
+      setPaymentSettingsOpen(true);
+      toast.info("Desbloquea la configuración master para borrar el método.");
+      return;
+    }
+    const activeMethods = paymentMethods.filter((method) => method.active);
+    if (activeMethods.length <= 1) {
+      toast.error("Debe permanecer al menos un método de pago activo.");
+      return;
+    }
+    const method = paymentMethods.find((item) => item.id === methodId);
+    if (!method) return;
+    setPaymentMethods((current) =>
+      current.map((item) =>
+        item.id === methodId ? { ...item, active: false } : item,
+      ),
+    );
+    toast.success(
+      `${method.label} se retiró de nuevos cobros. Los tickets históricos lo conservan.`,
+    );
+  };
+
+  const saveClientSource = () => {
+    const label = clientSourceName.trim();
+    if (!label) return;
+    if (
+      clientSources.some(
+        (source) =>
+          source.id !== editingClientSourceId &&
+          source.label.toLocaleLowerCase("es-MX") ===
+            label.toLocaleLowerCase("es-MX"),
+      )
+    ) {
+      toast.error("Ya existe una procedencia con ese nombre.");
+      return;
+    }
+    if (editingClientSourceId) {
+      setClientSources((current) =>
+        current.map((source) =>
+          source.id === editingClientSourceId ? { ...source, label } : source,
+        ),
+      );
+      toast.success("Procedencia actualizada para nuevos registros.");
+    } else {
+      setClientSources((current) => [
+        ...current,
+        {
+          id: `SOURCE-${Date.now()}`,
+          label,
+          active: true,
+          locksCompany: false,
+        },
+      ]);
+      toast.success("Nueva procedencia disponible en el alta de clientes.");
+    }
+    setClientSourceName("");
+    setEditingClientSourceId("");
+  };
+
+  const editClientSource = (source: ClientSourceOption) => {
+    setEditingClientSourceId(source.id);
+    setClientSourceName(source.label);
+  };
+
+  const toggleClientSource = (sourceId: string) => {
+    setClientSources((current) =>
+      current.map((source) =>
+        source.id === sourceId
+          ? { ...source, active: !source.active }
+          : source,
+      ),
+    );
+    if (editingClientSourceId === sourceId) {
+      setEditingClientSourceId("");
+      setClientSourceName("");
+    }
+  };
+
+  const saveBillingProfile = (profile: BillingProfile) => {
+    setBillingProfile(profile);
+    setReceiptSettings((current) => ({
+      ...current,
+      companyName: profile.companyName,
+    }));
+  };
+
+  const addBillingCard = (card: BillingCard) => {
+    setBillingCards((current) => [...current, card]);
+  };
+
+  const setDefaultBillingCard = (cardId: string) => {
+    setBillingCards((current) =>
+      current.map((card) => ({ ...card, isDefault: card.id === cardId })),
+    );
+    toast.success("Método de pago principal actualizado.");
+  };
+
+  const removeBillingCard = (cardId: string) => {
+    if (
+      billingLocations.some(
+        (location) =>
+          location.status === "ACTIVE" && location.paymentCardId === cardId,
+      )
+    ) {
+      toast.error(
+        "No puedes eliminar una tarjeta ligada a una ubicación activa.",
+      );
+      return;
+    }
+    setBillingCards((current) => {
+      const removed = current.find((card) => card.id === cardId);
+      const remaining = current.filter((card) => card.id !== cardId);
+      if (removed?.isDefault && remaining.length > 0)
+        return remaining.map((card, index) => ({
+          ...card,
+          isDefault: index === 0,
+        }));
+      return remaining;
+    });
+    toast.success("Tarjeta eliminada de la sesión mock.");
+  };
+
+  const activateBillingLocation = (
+    locationId: string,
+    cardId: string,
+    billingStartDate: string,
+    nextBillingDate: string,
+  ) => {
+    const location = billingLocations.find((item) => item.id === locationId);
+    const card = billingCards.find((item) => item.id === cardId);
+    if (!location || !card) return;
+    if (!branchInventory[location.name]) {
+      setBranchInventory((current) => ({
+        ...current,
+        [location.name]: Object.fromEntries(
+          catalogProducts
+            .filter((product) => product.kind === "PRODUCT")
+            .map((product) => [product.id, 0]),
+        ),
+      }));
+      setCatalogProducts((current) =>
+        current.map((product) => ({
+          ...product,
+          branches: product.branches.includes(location.name)
+            ? product.branches
+            : [...product.branches, location.name],
+        })),
+      );
+    }
+    setBranchAddresses((current) => ({
+      ...current,
+      [location.name]:
+        current[location.name] ?? "Dirección pendiente de configurar",
+    }));
+    setBillingLocations((current) =>
+      current.map((item) =>
+        item.id === locationId
+          ? {
+              ...item,
+              status: "ACTIVE",
+              paymentCardId: cardId,
+              billingStartDate,
+              nextBillingDate,
+            }
+          : item,
+      ),
+    );
+    setBillingHistory((current) => [
+      {
+        id: `billing-history-${Date.now()}`,
+        invoiceNumber: `INV-${Date.now().toString().slice(-8)}`,
+        locationId,
+        locationName: location.name,
+        period: new Intl.DateTimeFormat("es-MX", {
+          month: "long",
+          year: "numeric",
+        }).format(new Date(`${billingStartDate}T12:00:00`)),
+        billedAt: billingStartDate,
+        paidAt: null,
+        totalUsd: location.costUsd,
+        status: "PENDING",
+        cardLast4: card.last4,
+      },
+      ...current,
+    ]);
+  };
+
+  const addBillingLocation = (name: string, costUsd: number) => {
+    const normalizedName = name.trim();
+    if (
+      billingLocations.some(
+        (location) =>
+          location.name.toLocaleLowerCase("es-MX") ===
+          normalizedName.toLocaleLowerCase("es-MX"),
+      ) || branchInventory[normalizedName]
+    ) {
+      toast.error("Ya existe una sucursal con ese nombre.");
+      return false;
+    }
+    const location: BillingLocation = {
+      id: `billing-location-${crypto.randomUUID()}`,
+      name: normalizedName,
+      costUsd,
+      status: "PENDING",
+      billingStartDate: "",
+      nextBillingDate: "",
+      paymentCardId: null,
+    };
+    setBillingLocations((current) => [...current, location]);
+    setBranchAddresses((current) => ({
+      ...current,
+      [normalizedName]: "Dirección pendiente de configurar",
+    }));
+    setBranchInventory((current) => ({
+      ...current,
+      [normalizedName]: Object.fromEntries(
+        catalogProducts
+          .filter((product) => product.kind === "PRODUCT")
+          .map((product) => [product.id, 0]),
+      ),
+    }));
+    setCatalogProducts((current) =>
+      current.map((product) => ({
+        ...product,
+        branches: product.branches.includes(normalizedName)
+          ? product.branches
+          : [...product.branches, normalizedName],
+      })),
+    );
+    return true;
+  };
+
+  const deactivateBillingLocation = (locationId: string) => {
+    const location = billingLocations.find((item) => item.id === locationId);
+    if (!location) return false;
+    if (Object.keys(branchInventory).length <= 1) {
+      toast.error("La empresa debe conservar al menos una sucursal operativa.");
+      return false;
+    }
+    const remainingBranches = Object.keys(branchInventory).filter(
+      (branch) => branch !== location.name,
+    );
+    const deactivatedAt = new Date();
+    setBillingLocations((current) =>
+      current.map((item) =>
+        item.id === locationId
+          ? { ...item, status: "INACTIVE", paymentCardId: null }
+          : item,
+      ),
+    );
+    setBranchInventory((current) =>
+      Object.fromEntries(
+        Object.entries(current).filter(([branch]) => branch !== location.name),
+      ),
+    );
+    setCatalogProducts((current) =>
+      current.map((product) => ({
+        ...product,
+        branches: product.branches.filter(
+          (branch) => branch !== location.name,
+        ),
+      })),
+    );
+    setDeals((current) =>
+      current.map((deal) => ({
+        ...deal,
+        branches: deal.branches.filter((branch) => branch !== location.name),
+      })),
+    );
+    setAttendanceRecords((current) =>
+      current.map((record) =>
+        record.branch === location.name && record.status === "ONLINE"
+          ? {
+              ...record,
+              status: "OFFLINE",
+              clockOutAt: formatAttendanceTime(deactivatedAt),
+              clockOutAtIso: deactivatedAt.toISOString(),
+              clockOutReason: "MANUAL",
+            }
+          : record,
+      ),
+    );
+    if (activeBranch === location.name && remainingBranches[0]) {
+      applyTerminalLocation(remainingBranches[0]);
+    }
+    return true;
   };
 
   const saveCatalogProduct = (product: Product) => {
@@ -733,8 +1979,222 @@ function App() {
     );
   };
 
+  const renameCatalogFamily = (currentName: string, nextName: string) => {
+    const name = nextName.trim();
+    if (!name || name === currentName) return;
+    if (
+      catalogFamilies.some(
+        (family) =>
+          family !== currentName &&
+          family.toLocaleLowerCase("es-MX") === name.toLocaleLowerCase("es-MX"),
+      )
+    ) {
+      toast.error("Ya existe una familia con ese nombre.");
+      return;
+    }
+    setCatalogFamilies((current) =>
+      current.map((family) => (family === currentName ? name : family)),
+    );
+    setSelectedFamily((current) =>
+      current === currentName ? name : current,
+    );
+    setCatalogFamilyStatus((current) => {
+      const next = { ...current, [name]: current[currentName] !== false };
+      delete next[currentName];
+      return next;
+    });
+    setCatalogProducts((current) =>
+      current.map((product) =>
+        product.family === currentName ? { ...product, family: name } : product,
+      ),
+    );
+    setCart((current) =>
+      current.map((item) =>
+        item.product.family === currentName
+          ? { ...item, product: { ...item.product, family: name } }
+          : item,
+      ),
+    );
+    setSelectedProduct((current) =>
+      current?.family === currentName ? { ...current, family: name } : current,
+    );
+    setEditingCartItem((current) =>
+      current?.product.family === currentName
+        ? { ...current, product: { ...current.product, family: name } }
+        : current,
+    );
+    toast.success(`Familia actualizada a ${name} en todas las vistas actuales.`);
+  };
+
+  const renameCatalogCategory = (currentName: string, nextName: string) => {
+    const name = nextName.trim();
+    if (!name || name === currentName) return;
+    if (
+      catalogCategories.some(
+        (category) =>
+          category !== currentName &&
+          category.toLocaleLowerCase("es-MX") ===
+            name.toLocaleLowerCase("es-MX"),
+      )
+    ) {
+      toast.error("Ya existe una categoría con ese nombre.");
+      return;
+    }
+    setCatalogCategories((current) =>
+      current.map((category) => (category === currentName ? name : category)),
+    );
+    setSelectedCategory((current) =>
+      current === currentName ? name : current,
+    );
+    setCatalogCategoryStatus((current) => {
+      const next = { ...current, [name]: current[currentName] !== false };
+      delete next[currentName];
+      return next;
+    });
+    setCatalogProducts((current) =>
+      current.map((product) =>
+        product.category === currentName
+          ? { ...product, category: name }
+          : product,
+      ),
+    );
+    setCart((current) =>
+      current.map((item) =>
+        item.product.category === currentName
+          ? { ...item, product: { ...item.product, category: name } }
+          : item,
+      ),
+    );
+    setSelectedProduct((current) =>
+      current?.category === currentName
+        ? { ...current, category: name }
+        : current,
+    );
+    setEditingCartItem((current) =>
+      current?.product.category === currentName
+        ? { ...current, product: { ...current.product, category: name } }
+        : current,
+    );
+    toast.success(`Categoría actualizada a ${name} en todas las vistas actuales.`);
+  };
+
+  const renameCatalogProduct = (productId: string, nextName: string) => {
+    const name = nextName.trim();
+    const product = catalogProducts.find((item) => item.id === productId);
+    if (!product || !name || product.name === name) return;
+    const oldName = product.name;
+    setCatalogProducts((current) =>
+      current.map((item) => (item.id === productId ? { ...item, name } : item)),
+    );
+    setCart((current) =>
+      current.map((item) =>
+        item.product.id === productId
+          ? { ...item, product: { ...item.product, name } }
+          : item,
+      ),
+    );
+    setSelectedProduct((current) =>
+      current?.id === productId ? { ...current, name } : current,
+    );
+    setEditingCartItem((current) =>
+      current?.product.id === productId
+        ? { ...current, product: { ...current.product, name } }
+        : current,
+    );
+    const renameTicket = (ticket: Ticket): Ticket => {
+      const renamed: Ticket = {
+        ...ticket,
+        products: ticket.products.map((line) =>
+          line.productId === productId ? { ...line, name } : line,
+        ),
+      };
+      if (ticket.inventoryDeductions)
+        renamed.inventoryDeductions = ticket.inventoryDeductions.map((line) =>
+          line.productId === productId ? { ...line, productName: name } : line,
+        );
+      if (ticket.returnedProducts)
+        renamed.returnedProducts = ticket.returnedProducts.map((line) =>
+          line.productId === productId ? { ...line, productName: name } : line,
+        );
+      return renamed;
+    };
+    setTickets((current) => current.map(renameTicket));
+    setSelectedReceiptTicket((current) =>
+      current ? renameTicket(current) : current,
+    );
+    setEditingTicket((current) => (current ? renameTicket(current) : current));
+    setCancellingTicket((current) =>
+      current ? renameTicket(current) : current,
+    );
+    setInventoryMovements((current) =>
+      current.map((movement) =>
+        movement.productId === productId
+          ? { ...movement, productName: name }
+          : movement,
+      ),
+    );
+    setOwedProducts((current) =>
+      current.map((record) =>
+        record.productId === productId
+          ? { ...record, productName: name }
+          : record,
+      ),
+    );
+    setLayaways((current) =>
+      current.map((layaway) => ({
+        ...layaway,
+        items: layaway.items.map((item) =>
+          item.productId === productId ? { ...item, productName: name } : item,
+        ),
+      })),
+    );
+    setAppointments((current) =>
+      current.map((appointment) =>
+        appointment.service === oldName
+          ? { ...appointment, service: name }
+          : appointment,
+      ),
+    );
+    toast.success(`${oldName} se actualizó a ${name} en todos sus registros.`);
+  };
+
+  const setCatalogTaxonomyStatus = (
+    type: "FAMILY" | "CATEGORY",
+    name: string,
+    active: boolean,
+  ) => {
+    if (type === "FAMILY")
+      setCatalogFamilyStatus((current) => ({ ...current, [name]: active }));
+    else
+      setCatalogCategoryStatus((current) => ({ ...current, [name]: active }));
+    if (!active) {
+      if (type === "FAMILY")
+        setSelectedFamily((current) => (current === name ? "Todos" : current));
+      else
+        setSelectedCategory((current) =>
+          current === name ? "Todas" : current,
+        );
+      const matches = (product: Product) =>
+        type === "FAMILY" ? product.family === name : product.category === name;
+      setCart((current) =>
+        current.filter((item) => !matches(item.product)),
+      );
+      if (selectedProduct && matches(selectedProduct)) {
+        setProductDialogOpen(false);
+        setSelectedProduct(null);
+        setEditingCartItem(null);
+      }
+    }
+    toast.info(
+      active
+        ? `${type === "FAMILY" ? "Familia" : "Categoría"} activada en las pantallas operativas.`
+        : `${type === "FAMILY" ? "Familia" : "Categoría"} inactivada sin borrar el historial.`,
+    );
+  };
+
   const registerInventoryMovements = (
     adjustments: InventoryMovementDraft[],
+    approvalBatchId: string | null = null,
   ) => {
     if (adjustments.length === 0) return;
     const productsById = new Map(
@@ -746,6 +2206,18 @@ function App() {
         { ...stock },
       ]),
     ) as BranchInventory;
+    const nextOwedProducts = owedProducts.map((record) => ({
+      ...record,
+      deliveryHistory: [...record.deliveryHistory],
+    }));
+    const settledDeliveries: Array<{
+      ticketId: string;
+      layawayId: string | null;
+      productId: string;
+      productName: string;
+      branch: string;
+      quantity: number;
+    }> = [];
     const createdAt = new Date();
     const formattedDate = new Intl.DateTimeFormat("es-MX", {
       day: "2-digit",
@@ -764,7 +2236,7 @@ function App() {
         const newStock =
           adjustment.direction === "ADD"
             ? previousStock + adjustment.quantity
-            : Math.max(0, previousStock - adjustment.quantity);
+            : previousStock - adjustment.quantity;
         sourceStock[product.id] = newStock;
         let destinationPreviousStock: number | null = null;
         let destinationNewStock: number | null = null;
@@ -779,9 +2251,69 @@ function App() {
           destinationNewStock = destinationPreviousStock + adjustment.quantity;
           destinationStock[product.id] = destinationNewStock;
         }
+        const normalizedReason = adjustment.reason.toLocaleLowerCase("es-MX");
+        const category =
+          adjustment.direction === "TRANSFER"
+            ? ("TRANSFER" as const)
+            : adjustment.direction === "ADD"
+              ? ("ADJUSTMENT" as const)
+              : normalizedReason.includes("tester") ||
+                  normalizedReason.includes("demo")
+                ? ("DEMO" as const)
+                : ("WRITE_OFF" as const);
+        const movementId = crypto.randomUUID();
+        const settlementBranch =
+          adjustment.direction === "ADD"
+            ? adjustment.sourceBranch
+            : adjustment.direction === "TRANSFER"
+              ? adjustment.destinationBranch
+              : null;
+        const debtIndex = nextOwedProducts.findIndex(
+          (record) =>
+            record.id === adjustment.settlementOwedProductId &&
+            record.status === "PENDING" &&
+            record.productId === product.id &&
+            record.branch === settlementBranch,
+        );
+        const debt = debtIndex >= 0 ? nextOwedProducts[debtIndex] : null;
+        const remainingDebt = debt
+          ? Math.max(0, debt.quantity - debt.deliveredQuantity)
+          : 0;
+        const settledQuantity = Math.min(
+          adjustment.quantity,
+          remainingDebt,
+        );
+        if (debt && settledQuantity > 0) {
+          const deliveredQuantity = debt.deliveredQuantity + settledQuantity;
+          nextOwedProducts[debtIndex] = {
+            ...debt,
+            deliveredQuantity,
+            status:
+              deliveredQuantity >= debt.quantity ? "FULFILLED" : "PENDING",
+            deliveryHistory: [
+              ...debt.deliveryHistory,
+              {
+                id: crypto.randomUUID(),
+                quantity: settledQuantity,
+                deliveredAt: formattedDate,
+                deliveredAtIso: createdAt.toISOString(),
+                branch: debt.branch,
+                movementId,
+              },
+            ],
+          };
+          settledDeliveries.push({
+            ticketId: debt.ticketId,
+            layawayId: debt.layawayId,
+            productId: debt.productId,
+            productName: debt.productName,
+            branch: debt.branch,
+            quantity: settledQuantity,
+          });
+        }
         return [
           {
-            id: crypto.randomUUID(),
+            id: movementId,
             folio: `MOV-${Date.now().toString(36).toUpperCase()}-${index + 1}`,
             createdAt: formattedDate,
             createdAtIso: createdAt.toISOString(),
@@ -796,7 +2328,22 @@ function App() {
             destinationBranch: adjustment.destinationBranch,
             destinationPreviousStock,
             destinationNewStock,
-            comment: adjustment.comment.trim(),
+            comment:
+              settledQuantity > 0 && debt
+                ? `${adjustment.comment.trim()}${adjustment.comment.trim() ? " · " : ""}Entrega asignada a ${debt.clientName}`
+                : adjustment.comment.trim(),
+            category,
+            unitCostUsd: product.costUsd,
+            unitCostMxn: product.costMxn,
+            totalCostUsd: product.costUsd * adjustment.quantity,
+            totalCostMxn: product.costMxn * adjustment.quantity,
+            settledOwedProductId: debt?.id ?? null,
+            settledClientName: debt?.clientName ?? null,
+            settledClientPhone: debt?.clientPhone ?? null,
+            settledSellerNames: debt?.sellerNames ?? [],
+            settledQuantity,
+            approvalBatchId,
+            reversalOfMovementId: null,
           },
         ];
       },
@@ -813,8 +2360,62 @@ function App() {
       ...[...movements].reverse(),
       ...current,
     ]);
+    if (settledDeliveries.length > 0) {
+      setOwedProducts(nextOwedProducts);
+      setTickets((current) =>
+        current.map((ticket) => {
+          const deliveries = settledDeliveries.filter(
+            (delivery) => delivery.ticketId === ticket.id,
+          );
+          if (deliveries.length === 0) return ticket;
+          const deductions = (ticket.inventoryDeductions ?? []).map((line) => ({
+            ...line,
+          }));
+          deliveries.forEach((delivery) => {
+            const existing = deductions.find(
+              (line) =>
+                line.productId === delivery.productId &&
+                line.branch === delivery.branch,
+            );
+            if (existing) existing.quantity += delivery.quantity;
+            else deductions.push({
+              productId: delivery.productId,
+              productName: delivery.productName,
+              quantity: delivery.quantity,
+              branch: delivery.branch,
+            });
+          });
+          return { ...ticket, inventoryDeductions: deductions };
+        }),
+      );
+      setLayaways((current) =>
+        current.map((layaway) => {
+          const deliveries = settledDeliveries.filter(
+            (delivery) => delivery.layawayId === layaway.id,
+          );
+          if (deliveries.length === 0) return layaway;
+          return {
+            ...layaway,
+            items: layaway.items.map((item) => {
+              const delivered = deliveries
+                .filter((entry) => entry.productId === item.productId)
+                .reduce((sum, entry) => sum + entry.quantity, 0);
+              return delivered > 0
+                ? {
+                    ...item,
+                    deliveredQuantity: Math.min(
+                      item.quantity,
+                      item.deliveredQuantity + delivered,
+                    ),
+                  }
+                : item;
+            }),
+          };
+        }),
+      );
+    }
     toast.success(
-      `${movements.length} movimientos aplicados al inventario por sucursal.`,
+      `${movements.length} movimientos aplicados al inventario por sucursal${settledDeliveries.length > 0 ? `; ${settledDeliveries.length} entregas asignadas` : ""}.`,
     );
   };
 
@@ -847,13 +2448,7 @@ function App() {
       (candidate) => candidate.id === batchId,
     );
     if (!batch || batch.status !== "PENDING") return;
-    if (
-      !window.confirm(
-        `¿Aprobar ${batch.folio} y aplicar ${batch.adjustments.length} movimientos al inventario?`,
-      )
-    )
-      return;
-    registerInventoryMovements(batch.adjustments);
+    registerInventoryMovements(batch.adjustments, batch.id);
     setInventoryAdjustmentBatches((current) =>
       current.map((candidate) =>
         candidate.id === batchId
@@ -873,44 +2468,318 @@ function App() {
     );
   };
 
-  const cancelInventoryBatch = (batchId: string) => {
+  const updateInventoryBatch = (
+    batchId: string,
+    adjustments: InventoryMovementDraft[],
+  ) => {
     const batch = inventoryAdjustmentBatches.find(
       (candidate) => candidate.id === batchId,
     );
     if (!batch || batch.status !== "PENDING") return;
-    if (!window.confirm(`¿Cancelar ${batch.folio} sin afectar inventario?`))
+    if (adjustments.length === 0) {
+      cancelInventoryBatch(batchId);
       return;
+    }
+    setInventoryAdjustmentBatches((current) =>
+      current.map((candidate) =>
+        candidate.id === batchId
+          ? { ...candidate, adjustments }
+          : candidate,
+      ),
+    );
+    toast.info(`${batch.folio} actualizado antes de su aprobación.`);
+  };
+
+  const cancelInventoryBatch = (batchId: string) => {
+    const batch = inventoryAdjustmentBatches.find(
+      (candidate) => candidate.id === batchId,
+    );
+    if (
+      !batch ||
+      (batch.status !== "PENDING" && batch.status !== "APPROVED")
+    )
+      return;
+    const resolvedAt = new Intl.DateTimeFormat("es-MX", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(new Date());
+    if (batch.status === "PENDING") {
+      setInventoryAdjustmentBatches((current) =>
+        current.map((candidate) =>
+          candidate.id === batchId
+            ? {
+                ...candidate,
+                status: "CANCELLED",
+                resolvedAt,
+              }
+            : candidate,
+        ),
+      );
+      toast.info(`${batch.folio} cancelado. No se generaron movimientos.`);
+      return;
+    }
+
+    const appliedMovements = inventoryMovements.filter(
+      (movement) =>
+        movement.approvalBatchId === batchId &&
+        !movement.reversalOfMovementId,
+    );
+    if (appliedMovements.length === 0) {
+      toast.error("No se encontraron movimientos aplicados para revertir.");
+      return;
+    }
+    const nextInventory = Object.fromEntries(
+      Object.entries(branchInventory).map(([branch, stock]) => [
+        branch,
+        { ...stock },
+      ]),
+    ) as BranchInventory;
+    const reversedAt = new Date();
+    const reversalMovements = appliedMovements.map<InventoryMovement>(
+      (movement, index) => {
+        if (movement.direction === "TRANSFER" && movement.destinationBranch) {
+          const reversalSource = movement.destinationBranch;
+          const reversalDestination = movement.sourceBranch;
+          const sourceStock = nextInventory[reversalSource] ?? {};
+          const destinationStock = nextInventory[reversalDestination] ?? {};
+          nextInventory[reversalSource] = sourceStock;
+          nextInventory[reversalDestination] = destinationStock;
+          const previousStock = sourceStock[movement.productId] ?? 0;
+          const newStock = previousStock - movement.quantity;
+          const destinationPreviousStock =
+            destinationStock[movement.productId] ?? 0;
+          const destinationNewStock =
+            destinationPreviousStock + movement.quantity;
+          sourceStock[movement.productId] = newStock;
+          destinationStock[movement.productId] = destinationNewStock;
+          return {
+            ...movement,
+            id: crypto.randomUUID(),
+            folio: `REV-${batch.folio}-${index + 1}`,
+            createdAt: resolvedAt,
+            createdAtIso: reversedAt.toISOString(),
+            direction: "TRANSFER",
+            reason: `Reversa de aprobación ${batch.folio}`,
+            previousStock,
+            newStock,
+            sourceBranch: reversalSource,
+            destinationBranch: reversalDestination,
+            destinationPreviousStock,
+            destinationNewStock,
+            comment: `Cancelación de ${movement.folio} · ${movement.comment || "sin comentario"}`,
+            category: "TRANSFER",
+            totalCostUsd: -movement.totalCostUsd,
+            totalCostMxn: -movement.totalCostMxn,
+            approvalBatchId: batchId,
+            reversalOfMovementId: movement.id,
+            settledQuantity: 0,
+          };
+        }
+        const sourceStock = nextInventory[movement.sourceBranch] ?? {};
+        nextInventory[movement.sourceBranch] = sourceStock;
+        const previousStock = sourceStock[movement.productId] ?? 0;
+        const newStock =
+          movement.direction === "ADD"
+            ? previousStock - movement.quantity
+            : previousStock + movement.quantity;
+        sourceStock[movement.productId] = newStock;
+        return {
+          ...movement,
+          id: crypto.randomUUID(),
+          folio: `REV-${batch.folio}-${index + 1}`,
+          createdAt: resolvedAt,
+          createdAtIso: reversedAt.toISOString(),
+          direction: movement.direction === "ADD" ? "REMOVE" : "ADD",
+          reason: `Reversa de aprobación ${batch.folio}`,
+          previousStock,
+          newStock,
+          destinationBranch: null,
+          destinationPreviousStock: null,
+          destinationNewStock: null,
+          comment: `Cancelación de ${movement.folio} · ${movement.comment || "sin comentario"}`,
+          category: "ADJUSTMENT",
+          totalCostUsd: -movement.totalCostUsd,
+          totalCostMxn: -movement.totalCostMxn,
+          approvalBatchId: batchId,
+          reversalOfMovementId: movement.id,
+          settledQuantity: 0,
+        };
+      },
+    );
+    const settlementUndos = appliedMovements.flatMap((movement) => {
+      if (!movement.settledOwedProductId || !movement.settledQuantity) return [];
+      const debt = owedProducts.find(
+        (record) => record.id === movement.settledOwedProductId,
+      );
+      return debt
+        ? [
+            {
+              movementId: movement.id,
+              debtId: debt.id,
+              ticketId: debt.ticketId,
+              layawayId: debt.layawayId,
+              productId: debt.productId,
+              branch: debt.branch,
+              quantity: movement.settledQuantity,
+            },
+          ]
+        : [];
+    });
+    if (settlementUndos.length > 0) {
+      setOwedProducts((current) =>
+        current.map((record) => {
+          const undos = settlementUndos.filter(
+            (undo) => undo.debtId === record.id,
+          );
+          if (undos.length === 0) return record;
+          const quantity = undos.reduce(
+            (sum, undo) => sum + undo.quantity,
+            0,
+          );
+          return {
+            ...record,
+            deliveredQuantity: Math.max(0, record.deliveredQuantity - quantity),
+            status: record.status === "CANCELLED" ? "CANCELLED" : "PENDING",
+            deliveryHistory: record.deliveryHistory.filter(
+              (delivery) =>
+                !undos.some((undo) => undo.movementId === delivery.movementId),
+            ),
+          };
+        }),
+      );
+      setTickets((current) =>
+        current.map((ticket) => {
+          const undos = settlementUndos.filter(
+            (undo) => undo.ticketId === ticket.id,
+          );
+          if (undos.length === 0) return ticket;
+          const deductions = (ticket.inventoryDeductions ?? []).flatMap(
+            (line) => {
+              const quantity = undos
+                .filter(
+                  (undo) =>
+                    undo.productId === line.productId &&
+                    undo.branch === line.branch,
+                )
+                .reduce((sum, undo) => sum + undo.quantity, 0);
+              const nextQuantity = Math.max(0, line.quantity - quantity);
+              return nextQuantity > 0
+                ? [{ ...line, quantity: nextQuantity }]
+                : [];
+            },
+          );
+          return { ...ticket, inventoryDeductions: deductions };
+        }),
+      );
+      setLayaways((current) =>
+        current.map((layaway) => {
+          const undos = settlementUndos.filter(
+            (undo) => undo.layawayId === layaway.id,
+          );
+          if (undos.length === 0) return layaway;
+          return {
+            ...layaway,
+            items: layaway.items.map((item) => {
+              const quantity = undos
+                .filter((undo) => undo.productId === item.productId)
+                .reduce((sum, undo) => sum + undo.quantity, 0);
+              return quantity > 0
+                ? {
+                    ...item,
+                    deliveredQuantity: Math.max(
+                      0,
+                      item.deliveredQuantity - quantity,
+                    ),
+                  }
+                : item;
+            }),
+          };
+        }),
+      );
+    }
+    setBranchInventory(nextInventory);
+    setCatalogProducts((current) =>
+      current.map((product) =>
+        product.stock === null
+          ? product
+          : { ...product, stock: nextInventory.Polanco?.[product.id] ?? 0 },
+      ),
+    );
+    setInventoryMovements((current) => [
+      ...[...reversalMovements].reverse(),
+      ...current,
+    ]);
     setInventoryAdjustmentBatches((current) =>
       current.map((candidate) =>
         candidate.id === batchId
           ? {
               ...candidate,
-              status: "CANCELLED",
-              resolvedAt: new Intl.DateTimeFormat("es-MX", {
-                day: "2-digit",
-                month: "short",
-                year: "numeric",
-                hour: "2-digit",
-                minute: "2-digit",
-              }).format(new Date()),
+              status: "REVERSED",
+              resolvedAt,
             }
           : candidate,
       ),
     );
-    toast.info(`${batch.folio} cancelado. No se generaron movimientos.`);
+    toast.success(
+      `${batch.folio} cancelado y revertido en ${reversalMovements.length} movimientos de inventario.`,
+    );
   };
 
   const fulfillOwedProduct = (owedProductId: string) => {
     const record = owedProducts.find((item) => item.id === owedProductId);
     if (!record || record.status !== "PENDING") return;
     const available = branchInventory[record.branch]?.[record.productId] ?? 0;
-    if (available < record.quantity) {
-      toast.error("Todavía no hay existencia suficiente para entregar.");
+    const remaining = Math.max(
+      0,
+      record.quantity - record.deliveredQuantity,
+    );
+    const pendingCommitted = owedProducts
+      .filter(
+        (item) =>
+          item.status === "PENDING" &&
+          item.inventoryCommitted &&
+          item.branch === record.branch &&
+          item.productId === record.productId,
+      )
+      .reduce(
+        (sum, item) =>
+          sum + Math.max(0, item.quantity - item.deliveredQuantity),
+        0,
+      );
+    const coveredCommittedUnits = Math.max(
+      0,
+      pendingCommitted - Math.max(0, -available),
+    );
+    const deliveredNow = Math.min(
+      remaining,
+      record.inventoryCommitted
+        ? coveredCommittedUnits
+        : Math.max(available, 0),
+    );
+    if (deliveredNow < 1) {
+      toast.error(
+        "Todavía no hay entrada de inventario disponible para asignar a esta clienta.",
+      );
       return;
     }
+    const createdAt = new Date();
+    const createdAtLabel = new Intl.DateTimeFormat("es-MX", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(createdAt);
+    const movementId = crypto.randomUUID();
+    const newStock = record.inventoryCommitted
+      ? available
+      : available - deliveredNow;
     const nextBranchStock = {
       ...(branchInventory[record.branch] ?? {}),
-      [record.productId]: available - record.quantity,
+      [record.productId]: newStock,
     };
     const nextInventory = {
       ...branchInventory,
@@ -928,8 +2797,49 @@ function App() {
     }
     setOwedProducts((current) =>
       current.map((item) =>
-        item.id === owedProductId ? { ...item, status: "FULFILLED" } : item,
+        item.id === owedProductId
+          ? {
+              ...item,
+              deliveredQuantity: item.deliveredQuantity + deliveredNow,
+              status:
+                item.deliveredQuantity + deliveredNow >= item.quantity
+                  ? "FULFILLED"
+                  : "PENDING",
+              deliveryHistory: [
+                ...item.deliveryHistory,
+                {
+                  id: crypto.randomUUID(),
+                  quantity: deliveredNow,
+                  deliveredAt: createdAtLabel,
+                  deliveredAtIso: createdAt.toISOString(),
+                  branch: item.branch,
+                  movementId,
+                },
+              ],
+            }
+          : item,
       ),
+    );
+    setTickets((current) =>
+      current.map((ticket) => {
+        if (ticket.id !== record.ticketId) return ticket;
+        const deductions = (ticket.inventoryDeductions ?? []).map((line) => ({
+          ...line,
+        }));
+        const existing = deductions.find(
+          (line) =>
+            line.productId === record.productId &&
+            line.branch === record.branch,
+        );
+        if (existing) existing.quantity += deliveredNow;
+        else deductions.push({
+          productId: record.productId,
+          productName: record.productName,
+          quantity: deliveredNow,
+          branch: record.branch,
+        });
+        return { ...ticket, inventoryDeductions: deductions };
+      }),
     );
     if (record.layawayId) {
       setLayaways((current) =>
@@ -943,7 +2853,7 @@ function App() {
                         ...item,
                         deliveredQuantity: Math.min(
                           item.quantity,
-                          item.deliveredQuantity + record.quantity,
+                          item.deliveredQuantity + deliveredNow,
                         ),
                       }
                     : item,
@@ -953,7 +2863,45 @@ function App() {
         ),
       );
     }
-    toast.success(`${record.productName} quedó marcado como entregado.`);
+    const product = catalogProducts.find(
+      (candidate) => candidate.id === record.productId,
+    );
+    if (product) {
+      setInventoryMovements((current) => [
+        {
+          id: movementId,
+          folio: `ENT-${record.ticketId}`,
+          createdAt: createdAtLabel,
+          createdAtIso: createdAt.toISOString(),
+          productId: record.productId,
+          productName: record.productName,
+          direction: "REMOVE",
+          reason: `Entrega pendiente ${record.ticketId}`,
+          quantity: deliveredNow,
+          previousStock: available,
+          newStock,
+          sourceBranch: record.branch,
+          destinationBranch: null,
+          destinationPreviousStock: null,
+          destinationNewStock: null,
+          comment: `Producto entregado a ${record.clientName}`,
+          category: "DELIVERY",
+          unitCostUsd: product.costUsd,
+          unitCostMxn: product.costMxn,
+          totalCostUsd: product.costUsd * deliveredNow,
+          totalCostMxn: product.costMxn * deliveredNow,
+          settledOwedProductId: record.id,
+          settledClientName: record.clientName,
+          settledClientPhone: record.clientPhone,
+          settledSellerNames: record.sellerNames,
+          settledQuantity: deliveredNow,
+        },
+        ...current,
+      ]);
+    }
+    toast.success(
+      `${deliveredNow} ${record.productName} quedó${deliveredNow === 1 ? "" : "n"} entregado${deliveredNow === 1 ? "" : "s"} a ${record.clientName}.`,
+    );
   };
 
   const registerLayawayPayment = (
@@ -961,6 +2909,7 @@ function App() {
     requestedAmount: number,
     methodId: string,
     sellerId: string,
+    deliveredCartItemIds: string[],
   ) => {
     const layaway = layaways.find((item) => item.id === layawayId);
     const seller = sellers.find((item) => item.id === sellerId);
@@ -981,26 +2930,175 @@ function App() {
     const paymentFolio = `APT-${Date.now().toString(36).toUpperCase()}-${crypto.randomUUID().slice(0, 6).toUpperCase()}`;
     const balanceDue = Math.max(0, layaway.balanceDue - amount);
     const isLiquidation = balanceDue < 0.01;
-    const polancoStock = { ...(branchInventory.Polanco ?? {}) };
+    const liquidationDeliveryIds = new Set(deliveredCartItemIds);
+    const layawayBranchStock = {
+      ...(branchInventory[layaway.branch] ?? {}),
+    };
+    const nextOwedProducts = owedProducts.map((record) => ({
+      ...record,
+      deliveryHistory: [...record.deliveryHistory],
+    }));
     const newDebts: OwedProductRecord[] = [];
+    const liquidationMovements: InventoryMovement[] = [];
+    const liquidationDeliveredLines: TicketInventoryLine[] = [];
     const updatedItems = layaway.items.map((item) => {
       if (!isLiquidation || item.kind !== "PRODUCT") return item;
-      const alreadyOwed = owedProducts
+      const requestedAtLiquidation = liquidationDeliveryIds.has(
+        item.cartItemId,
+      );
+      let existingDeliveredNow = 0;
+      if (requestedAtLiquidation) {
+        const pendingCommitted = nextOwedProducts
+          .filter(
+            (record) =>
+              record.status === "PENDING" &&
+              record.inventoryCommitted &&
+              record.branch === layaway.branch &&
+              record.productId === item.productId,
+          )
+          .reduce(
+            (sum, record) =>
+              sum +
+              Math.max(0, record.quantity - record.deliveredQuantity),
+            0,
+          );
+        let assignable = Math.max(
+          0,
+          pendingCommitted -
+            Math.max(0, -(layawayBranchStock[item.productId] ?? 0)),
+        );
+        nextOwedProducts.forEach((record, index) => {
+          if (
+            assignable < 1 ||
+            record.status !== "PENDING" ||
+            record.layawayId !== layaway.id ||
+            record.productId !== item.productId
+          )
+            return;
+          const remaining = Math.max(
+            0,
+            record.quantity - record.deliveredQuantity,
+          );
+          const deliveredFromDebt = Math.min(remaining, assignable);
+          if (deliveredFromDebt < 1) return;
+          const movementId = crypto.randomUUID();
+          const deliveredQuantity =
+            record.deliveredQuantity + deliveredFromDebt;
+          nextOwedProducts[index] = {
+            ...record,
+            deliveredQuantity,
+            status:
+              deliveredQuantity >= record.quantity ? "FULFILLED" : "PENDING",
+            deliveryHistory: [
+              ...record.deliveryHistory,
+              {
+                id: crypto.randomUUID(),
+                quantity: deliveredFromDebt,
+                deliveredAt: createdAtLabel,
+                deliveredAtIso: createdAt.toISOString(),
+                branch: layaway.branch,
+                movementId,
+              },
+            ],
+          };
+          const product = catalogProducts.find(
+            (candidate) => candidate.id === item.productId,
+          );
+          if (product) {
+            const currentStock = layawayBranchStock[item.productId] ?? 0;
+            liquidationMovements.push({
+              id: movementId,
+              folio: `ENT-${paymentFolio}-${liquidationMovements.length + 1}`,
+              createdAt: createdAtLabel,
+              createdAtIso: createdAt.toISOString(),
+              productId: item.productId,
+              productName: item.productName,
+              direction: "REMOVE",
+              reason: `Entrega solicitada al liquidar ${layaway.originalTicketId}`,
+              quantity: deliveredFromDebt,
+              previousStock: currentStock,
+              newStock: currentStock,
+              sourceBranch: layaway.branch,
+              destinationBranch: null,
+              destinationPreviousStock: null,
+              destinationNewStock: null,
+              comment: `Producto previamente comprometido entregado a ${layaway.clientName}`,
+              category: "DELIVERY",
+              unitCostUsd: product.costUsd,
+              unitCostMxn: product.costMxn,
+              totalCostUsd: product.costUsd * deliveredFromDebt,
+              totalCostMxn: product.costMxn * deliveredFromDebt,
+              settledOwedProductId: record.id,
+              settledClientName: layaway.clientName,
+              settledClientPhone: layaway.clientPhone,
+              settledSellerNames: layaway.sellerIds.flatMap((id) => {
+                const debtSeller = sellers.find((candidate) => candidate.id === id);
+                return debtSeller ? [debtSeller.name] : [];
+              }),
+              settledQuantity: deliveredFromDebt,
+            });
+          }
+          existingDeliveredNow += deliveredFromDebt;
+          assignable -= deliveredFromDebt;
+        });
+      }
+      const alreadyOwed = nextOwedProducts
         .filter(
           (record) =>
             record.layawayId === layaway.id &&
             record.productId === item.productId &&
             record.status === "PENDING",
         )
-        .reduce((sum, record) => sum + record.quantity, 0);
+        .reduce(
+          (sum, record) =>
+            sum + Math.max(0, record.quantity - record.deliveredQuantity),
+          0,
+        );
       const quantityToDeliver = Math.max(
         0,
-        item.quantity - item.deliveredQuantity - alreadyOwed,
+        item.quantity -
+          item.deliveredQuantity -
+          existingDeliveredNow -
+          alreadyOwed,
       );
-      const available = polancoStock[item.productId] ?? 0;
-      const delivered = Math.min(available, quantityToDeliver);
+      const available = layawayBranchStock[item.productId] ?? 0;
+      const delivered = requestedAtLiquidation
+        ? Math.min(Math.max(available, 0), quantityToDeliver)
+        : 0;
       const shortage = quantityToDeliver - delivered;
-      polancoStock[item.productId] = available - delivered;
+      const newStock = available - quantityToDeliver;
+      layawayBranchStock[item.productId] = newStock;
+      const product = catalogProducts.find(
+        (candidate) => candidate.id === item.productId,
+      );
+      if (quantityToDeliver > 0 && product) {
+        liquidationMovements.push({
+          id: crypto.randomUUID(),
+          folio: `LIQ-${paymentFolio}-${liquidationMovements.length + 1}`,
+          createdAt: createdAtLabel,
+          createdAtIso: createdAt.toISOString(),
+          productId: item.productId,
+          productName: item.productName,
+          direction: "REMOVE",
+          reason: `Entrega por liquidación ${layaway.originalTicketId}`,
+          quantity: quantityToDeliver,
+          previousStock: available,
+          newStock,
+          sourceBranch: layaway.branch,
+          destinationBranch: null,
+          destinationPreviousStock: null,
+          destinationNewStock: null,
+          comment:
+            shortage > 0
+              ? `Liquidación ${paymentFolio} · ${delivered} entregado(s), ${shortage} pendiente(s)${requestedAtLiquidation ? "" : " por recoger"}`
+              : `Liquidación registrada en ${paymentFolio}`,
+          category: "DELIVERY",
+          unitCostUsd: product.costUsd,
+          unitCostMxn: product.costMxn,
+          totalCostUsd: product.costUsd * quantityToDeliver,
+          totalCostMxn: product.costMxn * quantityToDeliver,
+        });
+      }
       if (shortage > 0) {
         newDebts.push({
           id: crypto.randomUUID(),
@@ -1012,16 +3110,34 @@ function App() {
           productId: item.productId,
           productName: item.productName,
           quantity: shortage,
-          branch: "Polanco",
+          deliveredQuantity: 0,
+          branch: layaway.branch,
+          sellerIds: layaway.sellerIds,
+          sellerNames: layaway.sellerIds.flatMap((sellerId) => {
+            const debtSeller = sellers.find((candidate) => candidate.id === sellerId);
+            return debtSeller ? [debtSeller.name] : [];
+          }),
+          inventoryCommitted: true,
+          deliveryHistory: [],
           reason: "LAYAWAY_LIQUIDATION",
           createdAt: createdAtLabel,
           createdAtIso: createdAt.toISOString(),
           status: "PENDING",
         });
       }
+      const deliveredAtLiquidation = existingDeliveredNow + delivered;
+      if (deliveredAtLiquidation > 0) {
+        liquidationDeliveredLines.push({
+          productId: item.productId,
+          productName: item.productName,
+          quantity: deliveredAtLiquidation,
+          branch: layaway.branch,
+        });
+      }
       return {
         ...item,
-        deliveredQuantity: item.deliveredQuantity + delivered,
+        deliveredQuantity:
+          item.deliveredQuantity + deliveredAtLiquidation,
       };
     });
     const paymentRecord = {
@@ -1049,17 +3165,31 @@ function App() {
     if (isLiquidation) {
       setBranchInventory((current) => ({
         ...current,
-        Polanco: polancoStock,
+        [layaway.branch]: layawayBranchStock,
       }));
       setCatalogProducts((current) =>
         current.map((product) =>
           product.stock === null
             ? product
-            : { ...product, stock: polancoStock[product.id] ?? 0 },
+            : {
+                ...product,
+                stock: layawayBranchStock[product.id] ?? 0,
+              },
         ),
       );
-      if (newDebts.length > 0)
-        setOwedProducts((current) => [...newDebts, ...current]);
+      if (
+        newDebts.length > 0 ||
+        nextOwedProducts.some(
+          (record, index) =>
+            record.deliveredQuantity !== owedProducts[index]?.deliveredQuantity,
+        )
+      )
+        setOwedProducts([...newDebts, ...nextOwedProducts]);
+      if (liquidationMovements.length > 0)
+        setInventoryMovements((current) => [
+          ...[...liquidationMovements].reverse(),
+          ...current,
+        ]);
     }
     const paymentTicket: Ticket = {
       id: paymentFolio,
@@ -1067,6 +3197,9 @@ function App() {
       createdAtIso: createdAt.toISOString(),
       clientName: layaway.clientName,
       clientPhone: layaway.clientPhone,
+      branchName: layaway.branch,
+      branchAddress:
+        branchAddresses[layaway.branch] ?? "Dirección pendiente de configurar",
       sellerSummary: seller.name,
       items: 1,
       discountAmount: 0,
@@ -1094,6 +3227,7 @@ function App() {
       status: "COMPLETED",
       ticketType: "LAYAWAY_PAYMENT",
       relatedTicketId: layaway.originalTicketId,
+      inventoryDeductions: liquidationDeliveredLines,
     };
     setTickets((current) => [
       paymentTicket,
@@ -1140,6 +3274,22 @@ function App() {
     toast.success(`${name} agregado a movimientos de inventario.`);
   };
 
+  const removeInventoryMovementReason = (reasonId: string) => {
+    const reason = inventoryMovementReasons.find((item) => item.id === reasonId);
+    if (!reason) return;
+    const activeReasons = inventoryMovementReasons.filter((item) => item.active);
+    if (reason.active && activeReasons.length <= 1) {
+      toast.error("Debe permanecer al menos un motivo de movimiento activo.");
+      return;
+    }
+    setInventoryMovementReasons((current) =>
+      current.filter((item) => item.id !== reasonId),
+    );
+    toast.success(
+      `${reason.name} se borró de nuevos movimientos. El historial permanece intacto.`,
+    );
+  };
+
   const previewTicket = (ticket: Ticket) => {
     setSelectedReceiptTicket(ticket);
     setReceiptPreviewOpen(true);
@@ -1150,13 +3300,731 @@ function App() {
     setTicketEditOpen(true);
   };
 
-  const saveTicketChanges = (ticketId: string, changes: Partial<Ticket>) => {
-    setTickets((current) =>
-      current.map((ticket) =>
-        ticket.id === ticketId ? { ...ticket, ...changes } : ticket,
+  const saveTicketChanges = (
+    ticketId: string,
+    changes: TicketEditRequest,
+  ): boolean => {
+    const ticket = tickets.find((item) => item.id === ticketId);
+    if (!ticket || ticket.status === "REFUNDED") return false;
+
+    const selectedSellers = changes.sellerIds.flatMap((sellerId) => {
+      const seller = sellers.find((candidate) => candidate.id === sellerId);
+      return seller ? [seller] : [];
+    });
+    if (selectedSellers.length === 0 || changes.products.length === 0) {
+      toast.error("El ticket necesita al menos un vendedor y un producto.");
+      return false;
+    }
+
+    const nextProducts = changes.products.flatMap((line, index) => {
+      const product = catalogProducts.find(
+        (candidate) => candidate.id === line.productId,
+      );
+      const historicalLine = ticket.products[index];
+      const name = product?.name ?? historicalLine?.name;
+      return name
+        ? [
+            {
+              productId: line.productId,
+              name,
+              quantity: line.quantity,
+              total: line.quantity * line.unitPrice,
+              ...(historicalLine?.productId === line.productId && historicalLine.dealId
+                ? {
+                    dealId: historicalLine.dealId,
+                    dealName: historicalLine.dealName ?? "Deal",
+                    dealInstanceId:
+                      historicalLine.dealInstanceId ?? historicalLine.dealId,
+                  }
+                : {}),
+            },
+          ]
+        : [];
+    });
+    if (nextProducts.length !== changes.products.length) {
+      toast.error("Uno de los productos ya no está disponible para editar.");
+      return false;
+    }
+    const editedLineByOriginalProductId = new Map(
+      ticket.products.flatMap((originalLine, index) => {
+        const editedLine = nextProducts[index];
+        return editedLine
+          ? [
+              [
+                originalLine.productId,
+                {
+                  productId: editedLine.productId,
+                  productName: editedLine.name,
+                },
+              ] as const,
+            ]
+          : [];
+      }),
+    );
+    const editedServiceByOriginalName = new Map(
+      ticket.products.flatMap((originalLine, index) => {
+        const editedLine = nextProducts[index];
+        return editedLine
+          ? [
+              [
+                originalLine.name.replace(/ · REGALO$/, ""),
+                editedLine.name.replace(/ · REGALO$/, ""),
+              ] as const,
+            ]
+          : [];
+      }),
+    );
+
+    const subtotal = nextProducts.reduce((sum, line) => sum + line.total, 0);
+    const discountAmount = Math.min(
+      subtotal,
+      Math.max(0, changes.discountAmount),
+    );
+    const total = Math.max(0, subtotal - discountAmount);
+    const taxRatio = subtotal > 0 ? total / subtotal : 1;
+    const nextProductsWithTax = nextProducts.map((line, index) => {
+      const catalogProduct = catalogProducts.find(
+        (candidate) => candidate.id === line.productId,
+      );
+      const includesVat =
+        catalogProduct?.includesVat ??
+        ticket.products[index]?.includesVat ??
+        false;
+      const tax = calculateIncludedVat(line.total * taxRatio, includesVat);
+      return {
+        ...line,
+        includesVat,
+        netTotal: tax.net,
+        vatAmount: tax.vat,
+      };
+    });
+    const netTotal = roundCurrency(
+      nextProductsWithTax.reduce((sum, line) => sum + line.netTotal, 0),
+    );
+    const vatAmount = roundCurrency(total - netTotal);
+    const minimumTotal = changes.products.reduce((sum, line) => {
+      const product = catalogProducts.find(
+        (candidate) => candidate.id === line.productId,
+      );
+      return sum + (product?.minPrice ?? 0) * line.quantity;
+    }, 0);
+    const nextDeviation = total - minimumTotal;
+    if (
+      nextDeviation < Math.min(0, ticket.deviation) &&
+      !isMasterAccessCode(changes.authorizationCode)
+    ) {
+      toast.error(
+        "La edición queda por debajo del mínimo combinado. Ingresa el código master.",
+      );
+      return false;
+    }
+    const paymentStatus =
+      ticket.ticketType === "LAYAWAY_PAYMENT"
+        ? ("PAID" as const)
+        : changes.paymentStatus;
+    const amountPaid =
+      paymentStatus === "PAID"
+        ? total
+        : paymentStatus === "PENDING"
+          ? 0
+          : Math.min(total, Math.max(0, changes.amountPaid));
+    if (
+      paymentStatus === "LAYAWAY" &&
+      (amountPaid <= 0 || amountPaid >= total)
+    ) {
+      toast.error(
+        "El apartado necesita un abono mayor a cero y menor al total.",
+      );
+      return false;
+    }
+    const defaultPaymentMethod =
+      changes.paymentMethodId || ticket.paymentMethod;
+    const relatedPaymentTickets =
+      ticket.ticketType === "LAYAWAY_PAYMENT"
+        ? []
+        : tickets
+            .filter(
+              (candidate) =>
+                candidate.status === "COMPLETED" &&
+                candidate.ticketType === "LAYAWAY_PAYMENT" &&
+                candidate.relatedTicketId === ticketId,
+            )
+            .sort((left, right) =>
+              left.createdAtIso.localeCompare(right.createdAtIso),
+            );
+    let allocationCapacity = amountPaid;
+    const currentOriginalCollected = ticket.payments.reduce(
+      (sum, payment) => sum + payment.amount,
+      0,
+    );
+    let originalPaymentAmount = Math.min(
+      currentOriginalCollected,
+      allocationCapacity,
+    );
+    allocationCapacity -= originalPaymentAmount;
+    const relatedPaymentAllocations = new Map<string, number>();
+    relatedPaymentTickets.forEach((paymentTicket) => {
+      const currentCollected = paymentTicket.payments.reduce(
+        (sum, payment) => sum + payment.amount,
+        0,
+      );
+      const allocated = Math.min(currentCollected, allocationCapacity);
+      relatedPaymentAllocations.set(paymentTicket.id, allocated);
+      allocationCapacity -= allocated;
+    });
+    originalPaymentAmount += allocationCapacity;
+    const payments =
+      originalPaymentAmount > 0
+        ? [
+            {
+              id: ticket.payments[0]?.id ?? crypto.randomUUID(),
+              methodId: defaultPaymentMethod,
+              amount: originalPaymentAmount,
+            },
+          ]
+        : [];
+    const balanceDue = Math.max(0, total - amountPaid);
+    const relatedPaymentUpdates = new Map<string, Ticket>();
+    relatedPaymentTickets.forEach((paymentTicket) => {
+      const allocated = relatedPaymentAllocations.get(paymentTicket.id) ?? 0;
+      const paymentMethod =
+        paymentTicket.payments[0]?.methodId ?? paymentTicket.paymentMethod;
+      const nextRelatedPayments =
+        allocated > 0
+          ? [
+              {
+                id:
+                  paymentTicket.payments[0]?.id ?? crypto.randomUUID(),
+                methodId: paymentMethod,
+                amount: allocated,
+              },
+            ]
+          : [];
+      relatedPaymentUpdates.set(paymentTicket.id, {
+        ...paymentTicket,
+        clientName: changes.clientName,
+        clientPhone: changes.clientPhone,
+        sellerSummary: selectedSellers.map((seller) => seller.name).join(" / "),
+        sellerSales: selectedSellers.map((seller) => ({
+          sellerId: seller.id,
+          sellerName: seller.name,
+          amount: 0,
+        })),
+        subtotal: allocated,
+        total: allocated,
+        products: paymentTicket.products.map((product, index) =>
+          index === 0 ? { ...product, total: allocated } : product,
+        ),
+        paymentMethod,
+        payments: nextRelatedPayments,
+        amountPaid: allocated,
+        balanceDue,
+        paymentStatus,
+        status: allocated > 0 ? "COMPLETED" : "REFUNDED",
+        ...(allocated > 0
+          ? {}
+          : {
+              cancelledAt: new Date().toLocaleString("es-MX"),
+              cancelledAtIso: new Date().toISOString(),
+              refundAmount: paymentTicket.amountPaid,
+            }),
+      });
+    });
+    const baseSellerAmount = total / selectedSellers.length;
+    const sellerSales = selectedSellers.map((seller, index) => ({
+      sellerId: seller.id,
+      sellerName: seller.name,
+      amount:
+        index === selectedSellers.length - 1
+          ? total - baseSellerAmount * index
+          : baseSellerAmount,
+    }));
+    const sellerSummary = selectedSellers
+      .map((seller) => seller.name)
+      .join(" / ");
+    const dealStructurePreserved =
+      ticket.products.length === nextProducts.length &&
+      ticket.products.every((line, index) => {
+        const nextLine = nextProducts[index];
+        return (
+          nextLine?.productId === line.productId &&
+          nextLine.quantity === line.quantity &&
+          Math.abs(nextLine.total - line.total) < 0.01
+        );
+      });
+    const updatedTicket: Ticket = {
+      ...ticket,
+      clientName: changes.clientName,
+      clientPhone: changes.clientPhone,
+      sellerSummary,
+      sellerSales,
+      deals: dealStructurePreserved ? (ticket.deals ?? []) : [],
+      products: nextProductsWithTax,
+      items: nextProducts.reduce((sum, line) => sum + line.quantity, 0),
+      subtotal,
+      discountAmount,
+      total,
+      netTotal,
+      vatAmount,
+      deviation: nextDeviation,
+      payments,
+      amountPaid,
+      balanceDue,
+      paymentStatus,
+      paymentMethod: payments[0]?.methodId ?? defaultPaymentMethod,
+    };
+
+    const matchedClient = clients.find(
+      (client) =>
+        (ticket.clientPhone && client.phone === ticket.clientPhone) ||
+        `${client.firstName} ${client.lastName}` === ticket.clientName,
+    );
+    if (matchedClient) {
+      const nameParts = changes.clientName.split(/\s+/).filter(Boolean);
+      const firstName = nameParts.shift() ?? matchedClient.firstName;
+      const lastName = nameParts.join(" ") || matchedClient.lastName;
+      setClients((current) =>
+        current.map((client) =>
+          client.id === matchedClient.id
+            ? {
+                ...client,
+                firstName,
+                lastName,
+                phone: changes.clientPhone,
+                saleSellerIds: Array.from(
+                  new Set([...client.saleSellerIds, ...changes.sellerIds]),
+                ),
+              }
+            : client,
+        ),
+      );
+    }
+
+    setAppointments((current) =>
+      current.map((appointment) =>
+        appointment.ticketId === ticketId
+          ? {
+              ...appointment,
+              clientName: changes.clientName,
+              clientPhone: changes.clientPhone,
+              sellerIds: changes.sellerIds,
+              service:
+                editedServiceByOriginalName.get(appointment.service) ??
+                appointment.service,
+            }
+          : appointment,
       ),
     );
-    toast.success(`Ticket ${ticketId} actualizado.`);
+
+    const originalInventoryDeductions =
+      ticket.inventoryDeductions ??
+      (ticket.paymentStatus === "PAID"
+        ? ticket.products.flatMap((line) => {
+            const product = catalogProducts.find(
+              (candidate) => candidate.id === line.productId,
+            );
+            return product?.kind === "PRODUCT"
+              ? [
+                  {
+                    productId: product.id,
+                    productName: product.name,
+                    quantity: line.quantity,
+                    branch:
+                      ticket.branchName && branchInventory[ticket.branchName]
+                        ? ticket.branchName
+                        : activeBranch,
+                  },
+                ]
+              : [];
+          })
+        : []);
+    const canReconcileInventory = ticket.ticketType !== "LAYAWAY_PAYMENT";
+    let nextInventoryDeductions = originalInventoryDeductions;
+    if (canReconcileInventory) {
+      const nextInventory = Object.fromEntries(
+        Object.entries(branchInventory).map(([branch, stock]) => [
+          branch,
+          { ...stock },
+        ]),
+      ) as BranchInventory;
+      const inventoryBranch =
+        originalInventoryDeductions[0]?.branch ??
+        (ticket.branchName && nextInventory[ticket.branchName]
+          ? ticket.branchName
+          : activeBranch);
+      const branchStock = nextInventory[inventoryBranch] ?? {};
+      nextInventory[inventoryBranch] = branchStock;
+      const previousDelivered = new Map<string, number>();
+      originalInventoryDeductions.forEach((line) => {
+        branchStock[line.productId] =
+          (branchStock[line.productId] ?? 0) + line.quantity;
+        previousDelivered.set(
+          line.productId,
+          (previousDelivered.get(line.productId) ?? 0) + line.quantity,
+        );
+      });
+      owedProducts
+        .filter(
+          (record) =>
+            record.ticketId === ticketId &&
+            record.status === "PENDING" &&
+            record.inventoryCommitted,
+        )
+        .forEach((record) => {
+          const debtBranchStock = nextInventory[record.branch] ?? {};
+          nextInventory[record.branch] = debtBranchStock;
+          debtBranchStock[record.productId] =
+            (debtBranchStock[record.productId] ?? 0) +
+            Math.max(0, record.quantity - record.deliveredQuantity);
+        });
+
+      const editedAt = new Date();
+      const editedAtLabel = new Intl.DateTimeFormat("es-MX", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      }).format(editedAt);
+      const deductions: TicketInventoryLine[] = [];
+      const replacementMovements: InventoryMovement[] = [];
+      const replacementDebts: OwedProductRecord[] = [];
+      changes.products.forEach((line) => {
+        const product = catalogProducts.find(
+          (candidate) => candidate.id === line.productId,
+        );
+        if (!product || product.kind !== "PRODUCT") return;
+        const requestedQuantity =
+          paymentStatus === "PAID"
+            ? line.quantity
+            : Math.min(
+                line.quantity,
+                previousDelivered.get(line.productId) ?? 0,
+              );
+        const available = branchStock[line.productId] ?? 0;
+        const delivered = Math.min(Math.max(available, 0), requestedQuantity);
+        const shortage = requestedQuantity - delivered;
+        const newStock = available - requestedQuantity;
+        branchStock[line.productId] = newStock;
+        if (delivered > 0) {
+          deductions.push({
+            productId: product.id,
+            productName: product.name,
+            quantity: delivered,
+            branch: inventoryBranch,
+          });
+        }
+        if (requestedQuantity > 0) {
+          replacementMovements.push({
+            id: crypto.randomUUID(),
+            folio: `VEN-${ticketId}-EDIT-${replacementMovements.length + 1}`,
+            createdAt: editedAtLabel,
+            createdAtIso: editedAt.toISOString(),
+            productId: product.id,
+            productName: product.name,
+            direction: "REMOVE",
+            reason: `Venta ${ticketId} · ticket editado`,
+            quantity: requestedQuantity,
+            previousStock: available,
+            newStock,
+            sourceBranch: inventoryBranch,
+            destinationBranch: null,
+            destinationPreviousStock: null,
+            destinationNewStock: null,
+            comment:
+              shortage > 0
+                ? `Actualización de ticket · ${changes.clientName} · ${delivered} entregado(s), ${shortage} pendiente(s)`
+                : `Actualización automática de ticket · ${changes.clientName}`,
+            category: "SALE",
+            unitCostUsd: product.costUsd,
+            unitCostMxn: product.costMxn,
+            totalCostUsd: product.costUsd * requestedQuantity,
+            totalCostMxn: product.costMxn * requestedQuantity,
+          });
+        }
+        if (shortage > 0) {
+          replacementDebts.push({
+            id: crypto.randomUUID(),
+            ticketId,
+            layawayId:
+              paymentStatus === "LAYAWAY" ? `layaway-${ticketId}` : null,
+            clientId: matchedClient?.id ?? `client-${ticketId}`,
+            clientName: changes.clientName,
+            clientPhone: changes.clientPhone,
+            productId: product.id,
+            productName: product.name,
+            quantity: shortage,
+            deliveredQuantity: 0,
+            branch: inventoryBranch,
+            sellerIds: changes.sellerIds,
+            sellerNames: selectedSellers.map((seller) => seller.name),
+            inventoryCommitted: true,
+            deliveryHistory: [],
+            reason:
+              paymentStatus === "LAYAWAY"
+                ? "LAYAWAY_LIQUIDATION"
+                : "OUT_OF_STOCK",
+            createdAt: editedAtLabel,
+            createdAtIso: editedAt.toISOString(),
+            status: "PENDING",
+          });
+        }
+      });
+      nextInventoryDeductions = deductions;
+      updatedTicket.inventoryDeductions = deductions;
+      setBranchInventory(nextInventory);
+      setCatalogProducts((current) =>
+        current.map((product) =>
+          product.stock === null
+            ? product
+            : {
+                ...product,
+                stock: nextInventory.Polanco?.[product.id] ?? product.stock,
+              },
+        ),
+      );
+      setInventoryMovements((current) => [
+        ...replacementMovements,
+        ...current.filter(
+          (movement) =>
+            !(
+              movement.category === "SALE" &&
+              (movement.folio.includes(ticketId) ||
+                movement.reason.includes(ticketId))
+            ),
+        ),
+      ]);
+      setOwedProducts((current) => [
+        ...replacementDebts,
+        ...current
+          .filter(
+            (record) =>
+              record.ticketId !== ticketId || record.status === "FULFILLED",
+          )
+          .map((record) =>
+            record.ticketId === ticketId
+              ? (() => {
+                  const editedProduct = editedLineByOriginalProductId.get(
+                    record.productId,
+                  );
+                  return {
+                    ...record,
+                    clientName: changes.clientName,
+                    clientPhone: changes.clientPhone,
+                    sellerIds: changes.sellerIds,
+                    sellerNames: selectedSellers.map((seller) => seller.name),
+                    productId:
+                      editedProduct?.productId ?? record.productId,
+                    productName:
+                      editedProduct?.productName ?? record.productName,
+                  };
+                })()
+              : record,
+          ),
+      ]);
+    } else {
+      setOwedProducts((current) =>
+        current.map((record) =>
+          record.ticketId === ticketId
+            ? (() => {
+                const editedProduct = editedLineByOriginalProductId.get(
+                  record.productId,
+                );
+                return {
+                  ...record,
+                  clientName: changes.clientName,
+                  clientPhone: changes.clientPhone,
+                  sellerIds: changes.sellerIds,
+                  sellerNames: selectedSellers.map((seller) => seller.name),
+                  productId: editedProduct?.productId ?? record.productId,
+                  productName:
+                    editedProduct?.productName ?? record.productName,
+                };
+              })()
+            : record,
+        ),
+      );
+    }
+
+    if (ticket.ticketType === "LAYAWAY_PAYMENT" && ticket.relatedTicketId) {
+      const paymentDelta = amountPaid - ticket.amountPaid;
+      setLayaways((current) =>
+        current.map((layaway) =>
+          layaway.originalTicketId === ticket.relatedTicketId
+            ? (() => {
+                const nextAmountPaid = Math.min(
+                  layaway.total,
+                  Math.max(0, layaway.amountPaid + paymentDelta),
+                );
+                const nextBalanceDue = Math.max(
+                  0,
+                  layaway.total - nextAmountPaid,
+                );
+                const nextPayment = {
+                  id: payments[0]?.id ?? crypto.randomUUID(),
+                  folio: ticketId,
+                  createdAt: ticket.createdAt,
+                  createdAtIso: ticket.createdAtIso,
+                  amount: amountPaid,
+                  methodId: defaultPaymentMethod,
+                };
+                const hasPayment = layaway.payments.some(
+                  (payment) => payment.folio === ticketId,
+                );
+                return {
+                  ...layaway,
+                  amountPaid: nextAmountPaid,
+                  balanceDue: nextBalanceDue,
+                  status: nextBalanceDue < 0.01 ? "PAID" : "ACTIVE",
+                  payments: hasPayment
+                    ? layaway.payments.map((payment) =>
+                        payment.folio === ticketId
+                          ? nextPayment
+                          : payment,
+                      )
+                    : [...layaway.payments, nextPayment],
+                };
+              })()
+            : layaway,
+        ),
+      );
+    } else {
+      const deliveredByProduct = new Map(
+        (nextInventoryDeductions ?? []).map((line) => [
+          line.productId,
+          line.quantity,
+        ]),
+      );
+      const nextLayawayItems = changes.products.flatMap((line, index) => {
+        const product = catalogProducts.find(
+          (candidate) => candidate.id === line.productId,
+        );
+        const historicalLine = ticket.products.find(
+          (candidate) => candidate.productId === line.productId,
+        );
+        const productName = product?.name ?? historicalLine?.name;
+        return productName
+          ? [
+              {
+                cartItemId: `edited-${ticketId}-${index}`,
+                productId: line.productId,
+                productName,
+                kind: product?.kind ?? ("SERVICE" as const),
+                quantity: line.quantity,
+                deliveredQuantity:
+                  product?.kind === "PRODUCT"
+                    ? (deliveredByProduct.get(line.productId) ?? 0)
+                    : line.quantity,
+              },
+            ]
+          : [];
+      });
+      const originalPaymentRecords = payments.map((payment) => ({
+        id: payment.id,
+        folio: ticketId,
+        createdAt: ticket.createdAt,
+        createdAtIso: ticket.createdAtIso,
+        amount: payment.amount,
+        methodId: payment.methodId,
+      }));
+      const relatedPaymentRecords = relatedPaymentTickets.flatMap(
+        (paymentTicket) => {
+          const nextPaymentTicket =
+            relatedPaymentUpdates.get(paymentTicket.id) ?? paymentTicket;
+          return nextPaymentTicket.status === "COMPLETED"
+            ? nextPaymentTicket.payments.map((payment) => ({
+                id: payment.id,
+                folio: nextPaymentTicket.id,
+                createdAt: nextPaymentTicket.createdAt,
+                createdAtIso: nextPaymentTicket.createdAtIso,
+                amount: payment.amount,
+                methodId: payment.methodId,
+              }))
+            : [];
+        },
+      );
+      const nextLayawayPayments = [
+        ...originalPaymentRecords,
+        ...relatedPaymentRecords,
+      ];
+      const layawayBranch =
+        nextInventoryDeductions[0]?.branch ?? ticket.branchName ?? activeBranch;
+      setLayaways((current) => {
+        const existing = current.find(
+          (layaway) => layaway.originalTicketId === ticketId,
+        );
+        if (paymentStatus === "PENDING") {
+          return current.filter(
+            (layaway) => layaway.originalTicketId !== ticketId,
+          );
+        }
+        if (!existing && paymentStatus !== "LAYAWAY") return current;
+        const nextLayaway: LayawayRecord = {
+          id: existing?.id ?? `layaway-${ticketId}`,
+          originalTicketId: ticketId,
+          createdAt: existing?.createdAt ?? ticket.createdAt,
+          createdAtIso: existing?.createdAtIso ?? ticket.createdAtIso,
+          clientId:
+            existing?.clientId ?? matchedClient?.id ?? `client-${ticketId}`,
+          clientName: changes.clientName,
+          clientPhone: changes.clientPhone,
+          branch: existing?.branch ?? layawayBranch,
+          sellerIds: changes.sellerIds,
+          total,
+          amountPaid,
+          balanceDue,
+          items: nextLayawayItems,
+          payments: nextLayawayPayments,
+          status: paymentStatus === "PAID" ? "PAID" : "ACTIVE",
+        };
+        return existing
+          ? current.map((layaway) =>
+              layaway.originalTicketId === ticketId ? nextLayaway : layaway,
+            )
+          : [nextLayaway, ...current];
+      });
+    }
+
+    setTickets((current) =>
+      current.map((item) => {
+        if (item.id === ticketId) return updatedTicket;
+        const relatedUpdate = relatedPaymentUpdates.get(item.id);
+        if (relatedUpdate) return relatedUpdate;
+        if (
+          ticket.ticketType === "LAYAWAY_PAYMENT" &&
+          ticket.relatedTicketId === item.id
+        ) {
+          const amountPaid = Math.max(
+            0,
+            Math.min(item.total, item.amountPaid + (updatedTicket.amountPaid - ticket.amountPaid)),
+          );
+          const balanceDue = Math.max(0, item.total - amountPaid);
+          return {
+            ...item,
+            amountPaid,
+            balanceDue,
+            paymentStatus:
+              balanceDue === 0
+                ? ("PAID" as const)
+                : amountPaid > 0
+                  ? ("LAYAWAY" as const)
+                  : ("PENDING" as const),
+          };
+        }
+        return item;
+      }),
+    );
+    setSelectedReceiptTicket((current) =>
+      current?.id === ticketId ? updatedTicket : current,
+    );
+    setEditingTicket(updatedTicket);
+    setCancellingTicket((current) =>
+      current?.id === ticketId ? updatedTicket : current,
+    );
+    toast.success(
+      `Ticket ${ticketId} actualizado en ventas, cobros, apartados, inventario, cortes y dashboards.`,
+    );
+    return true;
   };
 
   const openTicketCancellation = (ticket: Ticket) => {
@@ -1176,6 +4044,16 @@ function App() {
       hour: "2-digit",
       minute: "2-digit",
     }).format(cancelledAt);
+    const cancelledTicketIds = new Set([
+      ticket.id,
+      ...tickets
+        .filter(
+          (candidate) =>
+            ticket.ticketType !== "LAYAWAY_PAYMENT" &&
+            candidate.relatedTicketId === ticket.id,
+        )
+        .map((candidate) => candidate.id),
+    ]);
     const nextInventory = Object.fromEntries(
       Object.entries(branchInventory).map(([branch, stock]) => [
         branch,
@@ -1212,12 +4090,75 @@ function App() {
             destinationPreviousStock: null,
             destinationNewStock: null,
             comment: `Ticket cancelado · devolución a inventario`,
+            category: "RETURN",
+            unitCostUsd: product.costUsd,
+            unitCostMxn: product.costMxn,
+            totalCostUsd: product.costUsd * line.quantity,
+            totalCostMxn: product.costMxn * line.quantity,
           },
         ];
       },
     );
+    const pendingTicketDebts = owedProducts.filter(
+      (record) =>
+        cancelledTicketIds.has(record.ticketId) &&
+        record.status === "PENDING" &&
+        record.inventoryCommitted,
+    );
+    const debtReversalMovements =
+      pendingTicketDebts.flatMap<InventoryMovement>((record, index) => {
+        const quantity = Math.max(
+          0,
+          record.quantity - record.deliveredQuantity,
+        );
+        const product = catalogProducts.find(
+          (candidate) => candidate.id === record.productId,
+        );
+        if (!product || quantity < 1) return [];
+        const branchStock = nextInventory[record.branch] ?? {};
+        nextInventory[record.branch] = branchStock;
+        const previousStock = branchStock[record.productId] ?? 0;
+        const newStock = previousStock + quantity;
+        branchStock[record.productId] = newStock;
+        return [
+          {
+            id: crypto.randomUUID(),
+            folio: `CAN-DEU-${ticket.id}-${index + 1}`,
+            createdAt: cancelledAtLabel,
+            createdAtIso: cancelledAt.toISOString(),
+            productId: record.productId,
+            productName: record.productName,
+            direction: "ADD",
+            reason: `Reversión de deuda por cancelación ${ticket.id}`,
+            quantity,
+            previousStock,
+            newStock,
+            sourceBranch: record.branch,
+            destinationBranch: null,
+            destinationPreviousStock: null,
+            destinationNewStock: null,
+            comment: `Se eliminó el compromiso pendiente de ${record.clientName}`,
+            category: "RETURN",
+            unitCostUsd: product.costUsd,
+            unitCostMxn: product.costMxn,
+            totalCostUsd: product.costUsd * quantity,
+            totalCostMxn: product.costMxn * quantity,
+            settledOwedProductId: record.id,
+            settledClientName: record.clientName,
+            settledClientPhone: record.clientPhone,
+            settledSellerNames: record.sellerNames,
+            settledQuantity: 0,
+          },
+        ];
+      });
+    const nonReturnDisposition = new Map(
+      request.nonReturnedProducts.map((line) => [
+        line.productId,
+        line.disposition,
+      ]),
+    );
 
-    if (returnMovements.length > 0) {
+    if (returnMovements.length > 0 || debtReversalMovements.length > 0) {
       setBranchInventory(nextInventory);
       setCatalogProducts((current) =>
         current.map((product) =>
@@ -1226,11 +4167,25 @@ function App() {
             : product,
         ),
       );
-      setInventoryMovements((current) => [
-        ...[...returnMovements].reverse(),
-        ...current,
-      ]);
     }
+    setInventoryMovements((current) => [
+      ...[...returnMovements, ...debtReversalMovements].reverse(),
+      ...current.map((movement) => {
+        const disposition = nonReturnDisposition.get(movement.productId);
+        const belongsToTicket =
+          movement.category === "SALE" &&
+          (movement.folio.includes(ticket.id) ||
+            movement.reason.includes(ticket.id));
+        if (!disposition || !belongsToTicket) return movement;
+        const label = disposition === "GIFT" ? "Regalo" : "Cortesía";
+        return {
+          ...movement,
+          category: "WRITE_OFF" as const,
+          reason: `${label} por cancelación ${ticket.id}`,
+          comment: `${movement.comment} · conservado como ${label.toLocaleLowerCase("es-MX")}`,
+        };
+      }),
+    ]);
 
     setTickets((current) =>
       current.map((item) => {
@@ -1242,6 +4197,7 @@ function App() {
             cancelledAtIso: cancelledAt.toISOString(),
             refundAmount: request.refundAmount,
             returnedProducts: request.returnedProducts,
+            nonReturnedProducts: request.nonReturnedProducts,
           };
         }
         if (
@@ -1255,6 +4211,7 @@ function App() {
             cancelledAtIso: cancelledAt.toISOString(),
             refundAmount: item.amountPaid,
             returnedProducts: [],
+            nonReturnedProducts: [],
           };
         }
         if (
@@ -1277,7 +4234,11 @@ function App() {
       current.filter((appointment) => appointment.ticketId !== ticket.id),
     );
     setOwedProducts((current) =>
-      current.filter((record) => record.ticketId !== ticket.id),
+      current.map((record) =>
+        cancelledTicketIds.has(record.ticketId) && record.status === "PENDING"
+          ? { ...record, status: "CANCELLED" }
+          : record,
+      ),
     );
     setLayaways((current) => {
       if (ticket.ticketType === "LAYAWAY_PAYMENT" && ticket.relatedTicketId) {
@@ -1304,9 +4265,13 @@ function App() {
     setTicketEditOpen(false);
     toast.success(
       `Ticket ${ticket.id} cancelado. Venta, cobros y citas fueron revertidos${
-        returnMovements.length > 0
-          ? `; ${returnMovements.length} productos regresaron al inventario`
+        returnMovements.length > 0 || debtReversalMovements.length > 0
+          ? `; ${returnMovements.length} devoluciones y ${debtReversalMovements.length} compromisos se ajustaron en inventario`
           : " sin devolución de inventario"
+      }${
+        request.nonReturnedProducts.length > 0
+          ? ` y ${request.nonReturnedProducts.length} quedaron registrados como regalo o cortesía`
+          : ""
       }.`,
     );
   };
@@ -1395,21 +4360,28 @@ function App() {
                   <h3>{product.name}</h3>
                   <div
                     className="product-seller-sku"
-                    aria-label={`SKU vendedor ${getSellerSku(product)}`}
+                    aria-label={`SKU ${product.sku}`}
                   >
                     <span>SKU</span>
-                    <strong>{getSellerSkuBase(product)}</strong>
-                    <b>-{encodeMinimumPrice(product.minPrice)}</b>
+                    <strong>{product.sku}</strong>
                   </div>
                   <div className="product-price-row">
                     <span>Precio de lista</span>
                     <strong>{formatCurrency(product.maxPrice)}</strong>
                   </div>
                   <div className="product-stock-row">
-                    <span>
+                    <span
+                      className={
+                        product.stock !== null && product.stock < 0
+                          ? "is-negative"
+                          : ""
+                      }
+                    >
                       {product.stock === null
                         ? "Agenda abierta"
-                        : `${product.stock} piezas`}
+                        : product.stock < 0
+                          ? `${product.stock} piezas · pendiente entregar`
+                          : `${product.stock} piezas`}
                     </span>
                     <span className="add-product-hint">
                       Elegir <ChevronRight size={15} />
@@ -1462,6 +4434,46 @@ function App() {
         ) : (
           <div className="cart-items">
             {cart.map((item) => {
+              if (item.dealInstanceId) {
+                const dealItems = cart.filter(
+                  (candidate) =>
+                    candidate.dealInstanceId === item.dealInstanceId,
+                );
+                if (dealItems[0]?.id !== item.id) return null;
+                const deal = deals.find(
+                  (candidate) => candidate.id === item.dealId,
+                );
+                const dealTotal = dealItems.reduce(
+                  (sum, dealItem) =>
+                    sum + dealItem.unitPrice * dealItem.quantity,
+                  0,
+                );
+                return (
+                  <article key={item.dealInstanceId} className="cart-deal-group">
+                    <div className="cart-deal-heading">
+                      <span><PackageCheck size={16} /></span>
+                      <div>
+                        <small>{deal?.sku ?? "DEAL"}</small>
+                        <strong>{item.dealName}</strong>
+                        <em>{item.dealQuantity ?? 1} paquete{(item.dealQuantity ?? 1) === 1 ? "" : "s"}</em>
+                      </div>
+                      <button type="button" onClick={() => removeDealFromCart(item.dealInstanceId ?? "")} aria-label={`Quitar Deal ${item.dealName}`}><Trash2 size={14} /></button>
+                    </div>
+                    <div className="cart-deal-products">
+                      {dealItems.map((dealItem) => (
+                        <div key={dealItem.id}>
+                          <img src={dealItem.product.image} alt="" />
+                          <span>{dealItem.quantity} × {dealItem.product.name}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="cart-deal-total">
+                      <span>Precio autorizado del Deal</span>
+                      <strong>{formatCurrency(dealTotal)}</strong>
+                    </div>
+                  </article>
+                );
+              }
               return (
                 <article key={item.id} className="cart-item">
                   <button
@@ -1524,20 +4536,34 @@ function App() {
         )}
         <div className="cart-summary">
           <div className="ticket-discount-compact">
-            <button
-              type="button"
-              className={`discount-trigger ${discountOpen ? "is-active" : ""}`}
-              onClick={() => setDiscountOpen((current) => !current)}
-              disabled={cart.length === 0}
-              aria-label="Abrir descuento promocional"
-              aria-expanded={discountOpen}
-            >
-              <BadgePercent size={15} />
-              <span>Descuento</span>
-              {ticketDiscountAmount > 0 && (
-                <strong>-{formatCurrency(ticketDiscountAmount)}</strong>
-              )}
-            </button>
+            <div className="ticket-offer-actions">
+              <button
+                type="button"
+                className={`discount-trigger ${discountOpen ? "is-active" : ""}`}
+                onClick={() => setDiscountOpen((current) => !current)}
+                disabled={cart.length === 0}
+                aria-label="Abrir descuento promocional"
+                aria-expanded={discountOpen}
+              >
+                <BadgePercent size={15} />
+                <span>Descuento</span>
+                {ticketDiscountAmount > 0 && (
+                  <strong>-{formatCurrency(ticketDiscountAmount)}</strong>
+                )}
+              </button>
+              <button
+                type="button"
+                className="deal-ticket-trigger"
+                onClick={() => {
+                  setDiscountOpen(false);
+                  setDealPickerOpen(true);
+                }}
+                aria-label="Abrir Deals disponibles"
+              >
+                <PackagePlus size={16} />
+                <span>Deal</span>
+              </button>
+            </div>
             {discountOpen && (
               <div className="discount-popover">
                 <div className="discount-mode-switch">
@@ -1615,12 +4641,29 @@ function App() {
   );
 
   const renderReceipts = () => {
+    const businessToday = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/Mexico_City",
+    }).format(new Date());
     const normalizedSearch = receiptSearch.trim().toLocaleLowerCase("es-MX");
+    const receiptBranches = Array.from(
+      new Set([
+        ...Object.keys(branchInventory),
+        ...tickets
+          .map((ticket) => ticket.branchName)
+          .filter((branch): branch is string => Boolean(branch)),
+      ]),
+    ).sort((left, right) => left.localeCompare(right, "es-MX"));
     const filteredTickets = tickets.filter((ticket) => {
       const ticketDate = new Intl.DateTimeFormat("en-CA", {
         timeZone: "America/Mexico_City",
       }).format(new Date(ticket.createdAtIso));
-      const matchesDate = !receiptDate || ticketDate === receiptDate;
+      const matchesDate = receiptHistoryAuthorized
+        ? !receiptDate || ticketDate === receiptDate
+        : ticketDate === businessToday;
+      const matchesBranch =
+        !receiptHistoryAuthorized ||
+        receiptBranch === "ALL" ||
+        ticket.branchName === receiptBranch;
       const matchesSearch =
         !normalizedSearch ||
         ticket.clientName
@@ -1630,7 +4673,7 @@ function App() {
           .toLocaleLowerCase("es-MX")
           .includes(normalizedSearch) ||
         ticket.id.toLocaleLowerCase("es-MX").includes(normalizedSearch);
-      return matchesDate && matchesSearch;
+      return matchesDate && matchesBranch && matchesSearch;
     });
     const activeFilteredTickets = filteredTickets.filter(
       (ticket) => ticket.status === "COMPLETED",
@@ -1686,8 +4729,78 @@ function App() {
     const paidTickets = filteredSaleTickets.filter(
       (ticket) => ticket.paymentStatus === "PAID",
     ).length;
+    const authorizeReceiptHistory = () => {
+      if (!isMasterAccessCode(receiptHistoryCode)) {
+        toast.error("Código master incorrecto.");
+        return;
+      }
+      setReceiptHistoryAuthorized(true);
+      setReceiptHistoryCode("");
+      setReceiptDate("");
+      setReceiptBranch("ALL");
+      toast.success("Historial completo y acciones administrativas habilitados.");
+    };
     return (
       <div className="view-stack">
+        <Card className="receipt-access-card">
+          <CardContent>
+            <div className="receipt-access-copy">
+              <LockKeyhole size={20} />
+              <span>
+                <small>
+                  {receiptHistoryAuthorized
+                    ? "SESIÓN MASTER"
+                    : "ACCESO OPERATIVO"}
+                </small>
+                <strong>
+                  {receiptHistoryAuthorized
+                    ? "Historial completo habilitado"
+                    : `Sólo tickets del día ${businessToday}`}
+                </strong>
+                <p>
+                  {receiptHistoryAuthorized
+                    ? "Puedes consultar fechas anteriores, editar y cancelar tickets."
+                    : "Sin autorización master únicamente puedes visualizar e imprimir."}
+                </p>
+              </span>
+            </div>
+            {receiptHistoryAuthorized ? (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setReceiptHistoryAuthorized(false);
+                  setReceiptDate("");
+                  setReceiptBranch("ALL");
+                  setReceiptSearch("");
+                  toast.info("Receipts volvió a la vista operativa del día.");
+                }}
+              >
+                <LockKeyhole size={15} /> Bloquear historial
+              </Button>
+            ) : (
+              <div className="receipt-master-access">
+                <Input
+                  type="password"
+                  value={receiptHistoryCode}
+                  onChange={(event) => setReceiptHistoryCode(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") authorizeReceiptHistory();
+                  }}
+                  placeholder="Código master"
+                  aria-label="Código master para historial de Receipts"
+                />
+                <Button
+                  type="button"
+                  onClick={authorizeReceiptHistory}
+                  disabled={!receiptHistoryCode}
+                >
+                  <ShieldCheck size={15} /> Ver historial
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
         <div className="metric-grid three-columns">
           <MetricCard
             label="VENTA DEL DÍA"
@@ -1797,14 +4910,42 @@ function App() {
         </div>
         <Card className="receipt-filter-card">
           <CardContent>
-            <div className="receipt-filter-field">
-              <CalendarDays size={17} />
-              <DatePicker
-                value={receiptDate}
-                onChange={setReceiptDate}
-                placeholder="Selecciona fecha"
-              />
-            </div>
+            {receiptHistoryAuthorized ? (
+              <>
+                <div className="receipt-filter-field">
+                  <CalendarDays size={17} />
+                  <DatePicker
+                    value={receiptDate}
+                    onChange={setReceiptDate}
+                    placeholder="Todas las fechas"
+                  />
+                </div>
+                <div className="receipt-filter-field receipt-branch-filter">
+                  <Filter size={17} />
+                  <Select value={receiptBranch} onValueChange={setReceiptBranch}>
+                    <SelectTrigger aria-label="Filtrar Receipts por sucursal">
+                      <SelectValue placeholder="Todas las sucursales" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ALL">Todas las sucursales</SelectItem>
+                      {receiptBranches.map((branch) => (
+                        <SelectItem key={branch} value={branch}>
+                          {branch}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </>
+            ) : (
+              <div className="receipt-current-day">
+                <CalendarDays size={17} />
+                <span>
+                  <small>DÍA VIGENTE</small>
+                  <strong>{businessToday}</strong>
+                </span>
+              </div>
+            )}
             <div className="receipt-filter-field">
               <Search size={17} />
               <Input
@@ -1814,13 +4955,16 @@ function App() {
                 aria-label="Buscar tickets por nombre o folio"
               />
             </div>
-            {(receiptDate || receiptSearch) && (
+            {(receiptSearch ||
+              (receiptHistoryAuthorized &&
+                (receiptDate || receiptBranch !== "ALL"))) && (
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
                 onClick={() => {
                   setReceiptDate("");
+                  setReceiptBranch("ALL");
                   setReceiptSearch("");
                 }}
               >
@@ -1834,11 +4978,17 @@ function App() {
             <div className="data-card-heading">
               <div>
                 <span>REGISTRO DE TICKETS</span>
-                <h2>Ventas recientes</h2>
+                <h2>
+                  {receiptHistoryAuthorized
+                    ? "Historial de ventas"
+                    : "Tickets del día vigente"}
+                </h2>
               </div>
-              <Button type="button" variant="outline">
-                <Download size={16} /> Exportar
-              </Button>
+              {receiptHistoryAuthorized && (
+                <Button type="button" variant="outline">
+                  <Download size={16} /> Exportar
+                </Button>
+              )}
             </div>
             <div className="table-scroll">
               <Table>
@@ -1913,15 +5063,17 @@ function App() {
                       </TableCell>
                       <TableCell>
                         <div className="receipt-row-actions">
-                          <button
-                            type="button"
-                            onClick={() => editTicket(ticket)}
-                            aria-label={`Editar ticket ${ticket.id}`}
-                            title="Editar"
-                            disabled={ticket.status === "REFUNDED"}
-                          >
-                            <Pencil size={15} />
-                          </button>
+                          {receiptHistoryAuthorized && (
+                            <button
+                              type="button"
+                              onClick={() => editTicket(ticket)}
+                              aria-label={`Editar ticket ${ticket.id}`}
+                              title="Editar"
+                              disabled={ticket.status === "REFUNDED"}
+                            >
+                              <Pencil size={15} />
+                            </button>
+                          )}
                           <button
                             type="button"
                             onClick={() => previewTicket(ticket)}
@@ -1930,16 +5082,18 @@ function App() {
                           >
                             <Printer size={15} />
                           </button>
-                          <button
-                            type="button"
-                            className="is-destructive"
-                            onClick={() => openTicketCancellation(ticket)}
-                            aria-label={`Cancelar ticket ${ticket.id}`}
-                            title="Cancelar ticket"
-                            disabled={ticket.status === "REFUNDED"}
-                          >
-                            <Trash2 size={15} />
-                          </button>
+                          {receiptHistoryAuthorized && (
+                            <button
+                              type="button"
+                              className="is-destructive"
+                              onClick={() => openTicketCancellation(ticket)}
+                              aria-label={`Cancelar ticket ${ticket.id}`}
+                              title="Cancelar ticket"
+                              disabled={ticket.status === "REFUNDED"}
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>
@@ -1970,7 +5124,13 @@ function App() {
           </div>
           <Badge>
             {catalogProducts
-              .filter((product) => product.active && product.kind === "PRODUCT")
+              .filter(
+                (product) =>
+                  product.active &&
+                  catalogFamilyStatus[product.family] !== false &&
+                  catalogCategoryStatus[product.category] !== false &&
+                  product.kind === "PRODUCT",
+              )
               .reduce((sum, product) => sum + (product.stock ?? 0), 0)}{" "}
             piezas
           </Badge>
@@ -1979,42 +5139,71 @@ function App() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>ARTÍCULO</TableHead>
-                <TableHead>SKU</TableHead>
-                <TableHead>FAMILIA</TableHead>
-                <TableHead>GRUPO</TableHead>
-                <TableHead>PRECIO DE LISTA</TableHead>
-                <TableHead>EXISTENCIA / LÍMITES</TableHead>
+                <SortableTableHead
+                  label="ARTÍCULO"
+                  active={catalogTableSort.key === "article"}
+                  direction={catalogTableSort.direction}
+                  onSort={() => toggleCatalogTableSort("article")}
+                />
+                <SortableTableHead
+                  label="SKU"
+                  active={catalogTableSort.key === "sku"}
+                  direction={catalogTableSort.direction}
+                  onSort={() => toggleCatalogTableSort("sku")}
+                />
+                <SortableTableHead
+                  label="FAMILIA"
+                  active={catalogTableSort.key === "family"}
+                  direction={catalogTableSort.direction}
+                  onSort={() => toggleCatalogTableSort("family")}
+                />
+                <SortableTableHead
+                  label="GRUPO"
+                  active={catalogTableSort.key === "group"}
+                  direction={catalogTableSort.direction}
+                  onSort={() => toggleCatalogTableSort("group")}
+                />
+                <SortableTableHead
+                  label="PRECIO DE LISTA"
+                  active={catalogTableSort.key === "price"}
+                  direction={catalogTableSort.direction}
+                  onSort={() => toggleCatalogTableSort("price")}
+                />
+                <SortableTableHead
+                  label="EXISTENCIA / LÍMITES"
+                  active={catalogTableSort.key === "stock"}
+                  direction={catalogTableSort.direction}
+                  onSort={() => toggleCatalogTableSort("stock")}
+                />
               </TableRow>
             </TableHeader>
             <TableBody>
-              {catalogProducts
-                .filter((product) => product.active)
-                .map((product) => (
-                  <TableRow key={product.id}>
-                    <TableCell>
-                      <div className="table-product">
-                        <img src={product.image} alt="" />
-                        <strong>{product.name}</strong>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <strong className="floor-code">
-                        {getSellerSku(product)}
-                      </strong>
-                    </TableCell>
-                    <TableCell>{product.family}</TableCell>
-                    <TableCell>{product.group}</TableCell>
-                    <TableCell>{formatCurrency(product.maxPrice)}</TableCell>
-                    <TableCell>
-                      {product.stock === null ? (
-                        <Badge variant="outline">SERVICIO</Badge>
-                      ) : (
-                        `${product.stock} · mín ${product.stockMin} / máx ${product.stockMax}`
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
+              {compactCatalogProducts.map((product) => (
+                <TableRow key={product.id}>
+                  <TableCell>
+                    <div className="table-product">
+                      <img src={product.image} alt="" />
+                      <strong>{product.name}</strong>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <strong className="floor-code">{product.sku}</strong>
+                  </TableCell>
+                  <TableCell>{product.family}</TableCell>
+                  <TableCell>{product.group}</TableCell>
+                  <TableCell>{formatCurrency(product.maxPrice)}</TableCell>
+                  <TableCell>
+                    {product.stock === null ? (
+                      <Badge variant="outline">SERVICIO</Badge>
+                    ) : (
+                      <span className={product.stock < 0 ? "is-negative" : ""}>
+                        {product.stock} · mín {product.stockMin} / máx{" "}
+                        {product.stockMax}
+                      </span>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
             </TableBody>
           </Table>
         </div>
@@ -2024,6 +5213,36 @@ function App() {
 
   const renderSettings = () => (
     <div className="settings-grid">
+      <InventoryCatalogSettings
+        families={catalogFamilies}
+        categories={catalogCategories}
+        products={catalogProducts}
+        familyStatus={catalogFamilyStatus}
+        categoryStatus={catalogCategoryStatus}
+        onRenameFamily={renameCatalogFamily}
+        onRenameCategory={renameCatalogCategory}
+        onRenameProduct={renameCatalogProduct}
+        onToggleFamily={(name, active) =>
+          setCatalogTaxonomyStatus("FAMILY", name, active)
+        }
+        onToggleCategory={(name, active) =>
+          setCatalogTaxonomyStatus("CATEGORY", name, active)
+        }
+        onToggleProduct={setCatalogProductStatus}
+      />
+      <CompetitionSettings
+        open={competitionSettingsOpen}
+        authorized={competitionSettingsAuthorized}
+        competitions={competitions}
+        products={catalogProducts}
+        branches={operationalBranches}
+        onOpenChange={setCompetitionSettingsOpen}
+        onAuthorize={authorizeCompetitionSettings}
+        onLock={() => setCompetitionSettingsAuthorized(false)}
+        onSave={saveCompetition}
+        onToggle={toggleCompetition}
+        onDelete={deleteCompetition}
+      />
       <Card className="settings-card">
         <CardContent>
           <span className="section-kicker">CLIENTES</span>
@@ -2065,13 +5284,110 @@ function App() {
           </div>
         </CardContent>
       </Card>
+      <Card className="settings-card client-source-settings-card">
+        <CardContent>
+          <span className="section-kicker">CLIENTES · PROCEDENCIA</span>
+          <h2>Catálogo de procedencias</h2>
+          <p>
+            Las altas futuras usarán el nombre vigente. Cada cliente histórico
+            conserva la procedencia registrada al momento de su alta.
+          </p>
+          <div className="client-source-editor">
+            <Input
+              value={clientSourceName}
+              onChange={(event) => setClientSourceName(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") saveClientSource();
+              }}
+              placeholder={
+                editingClientSourceId
+                  ? "Editar nombre de procedencia"
+                  : "Nueva procedencia"
+              }
+              aria-label="Nombre de procedencia"
+            />
+            <Button
+              type="button"
+              onClick={saveClientSource}
+              disabled={!clientSourceName.trim()}
+            >
+              {editingClientSourceId ? (
+                <>
+                  <CheckCircle2 size={15} /> Guardar
+                </>
+              ) : (
+                <>
+                  <Plus size={15} /> Agregar
+                </>
+              )}
+            </Button>
+            {editingClientSourceId && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setEditingClientSourceId("");
+                  setClientSourceName("");
+                }}
+              >
+                Cancelar
+              </Button>
+            )}
+          </div>
+          <div className="client-source-list">
+            {clientSources.map((source) => (
+              <div
+                key={source.id}
+                className={source.active ? "" : "is-inactive"}
+              >
+                <span>
+                  <strong>{source.label}</strong>
+                  <small>
+                    {source.active
+                      ? "Disponible para nuevos registros"
+                      : "Baja · se conserva en históricos"}
+                  </small>
+                </span>
+                <div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    aria-label={`Editar ${source.label}`}
+                    onClick={() => editClientSource(source)}
+                  >
+                    <Pencil size={15} />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    aria-label={
+                      source.active
+                        ? `Dar de baja ${source.label}`
+                        : `Restaurar ${source.label}`
+                    }
+                    onClick={() => toggleClientSource(source.id)}
+                  >
+                    {source.active ? (
+                      <Trash2 size={15} />
+                    ) : (
+                      <RotateCcw size={15} />
+                    )}
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
       <Card className="settings-card accent-card">
         <CardContent>
           <span className="section-kicker">PRECIOS</span>
           <h2>Control administrativo</h2>
           <p>
             El precio de lista puede incrementarse sin límite. Bajar del piso
-            interno requiere autorización y su margen sólo aparece en el
+            interno requiere autorización y el SPARE sólo aparece en el
             X-Report protegido.
           </p>
           <div className="admin-code-preview">
@@ -2087,7 +5403,7 @@ function App() {
               <CheckCircle2 size={16} /> Autorizar precios bajo el mínimo
             </span>
             <span>
-              <CheckCircle2 size={16} /> Margen visible sólo en X-Report
+              <CheckCircle2 size={16} /> SPARE visible sólo en X-Report
             </span>
           </div>
           <div className="cipher-legend">
@@ -2104,15 +5420,37 @@ function App() {
               <span className="section-kicker">IMPRESIÓN DE TICKET</span>
               <h2>Diseño y datos del comprobante</h2>
             </div>
-            <img src={receiptSettings.logoUrl} alt="Logo configurado" />
+            {receiptSettings.logoUrl && (
+              <img
+                src={receiptSettings.logoUrl}
+                alt="Logo configurado"
+                style={{
+                  width: `${Math.min(receiptSettings.logoWidth, 72)}px`,
+                  height: `${Math.min(receiptSettings.logoWidth, 72)}px`,
+                }}
+              />
+            )}
           </div>
           <p>
             Personaliza el encabezado, la información visible y el mensaje que
             recibirá la clienta en la impresión térmica.
           </p>
           <div className="receipt-settings-fields">
+            <div className="field-stack receipt-logo-upload-field">
+              <span>Adjuntar logo</span>
+              <label className="receipt-logo-upload" htmlFor="receipt-logo-file">
+                <Download size={16} /> Seleccionar imagen
+              </label>
+              <input
+                id="receipt-logo-file"
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                onChange={handleReceiptLogoUpload}
+              />
+              <small>PNG, JPG, WEBP o SVG · máximo 2 MB.</small>
+            </div>
             <div className="field-stack">
-              <span>URL del logo</span>
+              <span>URL del logo (opcional)</span>
               <Input
                 value={receiptSettings.logoUrl}
                 onChange={(event) =>
@@ -2122,6 +5460,24 @@ function App() {
                   }))
                 }
               />
+            </div>
+            <div className="field-stack receipt-logo-size-field">
+              <span>Tamaño del logo: {receiptSettings.logoWidth}px</span>
+              <input
+                type="range"
+                min="40"
+                max="140"
+                step="2"
+                value={receiptSettings.logoWidth}
+                onChange={(event) =>
+                  setReceiptSettings((current) => ({
+                    ...current,
+                    logoWidth: Number(event.target.value),
+                  }))
+                }
+                aria-label="Tamaño del logo en tickets"
+              />
+              <small>Se limita automáticamente al ancho del ticket térmico.</small>
             </div>
             <div className="field-stack">
               <span>Nombre de la empresa</span>
@@ -2136,27 +5492,28 @@ function App() {
               />
             </div>
             <div className="field-stack">
-              <span>Sucursal</span>
+              <span>Sucursal fija de esta computadora</span>
               <Input
-                value={receiptSettings.branchName}
-                onChange={(event) =>
-                  setReceiptSettings((current) => ({
-                    ...current,
-                    branchName: event.target.value,
-                  }))
-                }
+                value={`Sucursal ${activeBranch}`}
+                readOnly
               />
+              <small>Para cambiarla usa las flechas del indicador inferior e ingresa el código master.</small>
             </div>
             <div className="field-stack">
-              <span>Dirección</span>
+              <span>Dirección de {activeBranch}</span>
               <Input
                 value={receiptSettings.address}
-                onChange={(event) =>
+                onChange={(event) => {
+                  const address = event.target.value;
                   setReceiptSettings((current) => ({
                     ...current,
-                    address: event.target.value,
-                  }))
-                }
+                    address,
+                  }));
+                  setBranchAddresses((current) => ({
+                    ...current,
+                    [activeBranch]: address,
+                  }));
+                }}
               />
             </div>
             <div className="field-stack receipt-settings-wide">
@@ -2190,6 +5547,7 @@ function App() {
                 ["showClientName", "Mostrar nombre del cliente"],
                 ["showClientPhone", "Mostrar teléfono del cliente"],
                 ["showSellerName", "Mostrar nombre del vendedor"],
+                ["showVatBreakdown", "Mostrar desglose de IVA"],
               ] as const
             ).map(([field, label]) => (
               <button
@@ -2208,9 +5566,13 @@ function App() {
                 <span>
                   <strong>{label}</strong>
                   <small>
-                    {receiptSettings[field]
-                      ? "Visible en el ticket"
-                      : "Oculto en el ticket"}
+                    {field === "showVatBreakdown"
+                      ? receiptSettings[field]
+                        ? "Muestra precio sin IVA e impuesto incluido"
+                        : "Muestra la leyenda de precios con IVA incluido"
+                      : receiptSettings[field]
+                        ? "Visible en el ticket"
+                        : "Oculto en el ticket"}
                   </small>
                 </span>
                 <span
@@ -2227,7 +5589,9 @@ function App() {
         <CardContent>
           <div className="payment-settings-heading">
             <div>
-              <span className="section-kicker">USUARIO MASTER</span>
+              <span className="section-kicker">
+                USUARIO MASTER · {masterUser.name}
+              </span>
               <h2>Métodos de pago</h2>
             </div>
             <Button
@@ -2240,10 +5604,19 @@ function App() {
             </Button>
           </div>
           <div className="configured-payment-methods">
-            {paymentMethods.map((method) => (
-              <span key={method.id}>
-                <CheckCircle2 size={14} /> {method.label}
-              </span>
+            {paymentMethods.filter((method) => method.active).map((method) => (
+              <div className="configured-payment-method" key={method.id}>
+                <CheckCircle2 size={14} />
+                <span>{method.label}</span>
+                <button
+                  type="button"
+                  onClick={() => removePaymentMethod(method.id)}
+                  aria-label={`Borrar método ${method.label}`}
+                  title={`Borrar ${method.label}`}
+                >
+                  <X size={12} />
+                </button>
+              </div>
             ))}
           </div>
           {paymentSettingsOpen && !paymentSettingsAuthorized && (
@@ -2319,34 +5692,44 @@ function App() {
           </p>
           <div className="movement-reason-list">
             {inventoryMovementReasons.map((reason) => (
-              <button
-                key={reason.id}
-                type="button"
-                className="setting-row"
-                role="switch"
-                aria-checked={reason.active}
-                onClick={() =>
-                  setInventoryMovementReasons((current) =>
-                    current.map((item) =>
-                      item.id === reason.id
-                        ? { ...item, active: !item.active }
-                        : item,
-                    ),
-                  )
-                }
-              >
-                <span>
-                  <strong>{reason.name}</strong>
-                  <small>
-                    {reason.active
-                      ? "Disponible en movimientos"
-                      : "Opción desactivada"}
-                  </small>
-                </span>
-                <span className={`mock-switch ${reason.active ? "is-on" : ""}`}>
-                  <i />
-                </span>
-              </button>
+              <div className="movement-reason-row" key={reason.id}>
+                <button
+                  type="button"
+                  className="setting-row"
+                  role="switch"
+                  aria-checked={reason.active}
+                  onClick={() =>
+                    setInventoryMovementReasons((current) =>
+                      current.map((item) =>
+                        item.id === reason.id
+                          ? { ...item, active: !item.active }
+                          : item,
+                      ),
+                    )
+                  }
+                >
+                  <span>
+                    <strong>{reason.name}</strong>
+                    <small>
+                      {reason.active
+                        ? "Disponible en movimientos"
+                        : "Opción desactivada"}
+                    </small>
+                  </span>
+                  <span className={`mock-switch ${reason.active ? "is-on" : ""}`}>
+                    <i />
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className="movement-reason-delete"
+                  onClick={() => removeInventoryMovementReason(reason.id)}
+                  aria-label={`Borrar motivo ${reason.name}`}
+                  title={`Borrar ${reason.name}`}
+                >
+                  <X size={15} />
+                </button>
+              </div>
             ))}
           </div>
           <div className="movement-reason-editor">
@@ -2375,7 +5758,7 @@ function App() {
   const renderXReport = () => {
     if (!xReportAuthorized) {
       const authorizeReport = () => {
-        if (xReportAccessCode !== administratorCode) {
+        if (!isMasterAccessCode(xReportAccessCode)) {
           toast.error("Código administrativo incorrecto.");
           return;
         }
@@ -2390,11 +5773,12 @@ function App() {
             <div className="admin-report-icon">
               <LockKeyhole size={30} />
             </div>
-            <span className="section-kicker">REPORTE ADMINISTRATIVO</span>
-            <h2>Margen protegido</h2>
+            <span className="section-kicker">X-REPORT MULTISUCURSAL</span>
+            <h2>Dashboard diario protegido</h2>
             <p>
-              El margen contra precio mínimo y los ajustes bajo piso requieren
-              permisos administrativos.
+              Consulta ventas, ingresos, vendedores, productos y movimientos
+              de todas las sucursales. El SPARE entre precio máximo y mínimo continúa
+              restringido a permisos administrativos.
             </p>
             <div className="admin-report-code-row">
               <Input
@@ -2423,15 +5807,38 @@ function App() {
       );
     }
 
-    const reportTickets = activeTickets.filter(
+    const businessToday = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/Mexico_City",
+    }).format(new Date());
+    const isToday = (createdAtIso: string) =>
+      new Intl.DateTimeFormat("en-CA", {
+        timeZone: "America/Mexico_City",
+      }).format(new Date(createdAtIso)) === businessToday;
+    const dailyActiveTickets = activeTickets.filter((ticket) =>
+      isToday(ticket.createdAtIso),
+    );
+    const reportTickets = dailyActiveTickets.filter(
       (ticket) => ticket.ticketType !== "LAYAWAY_PAYMENT",
     );
+    const dailyMovements = inventoryMovements.filter((movement) =>
+      isToday(movement.createdAtIso),
+    );
     const total = reportTickets.reduce((sum, ticket) => sum + ticket.total, 0);
-    const margin = reportTickets.reduce(
-      (sum, ticket) => sum + ticket.deviation,
+    const dailyTaxSummary = reportTickets.reduce(
+      (summary, ticket) => {
+        const tax = getTicketTaxSummary(ticket);
+        return {
+          net: summary.net + tax.net,
+          vat: summary.vat + tax.vat,
+        };
+      },
+      { net: 0, vat: 0 },
+    );
+    const spare = reportTickets.reduce(
+      (sum, ticket) => sum + getTicketSpare(ticket, catalogProducts),
       0,
     );
-    const collected = activeTickets.reduce(
+    const collected = dailyActiveTickets.reduce(
       (sum, ticket) =>
         sum +
         ticket.payments.reduce(
@@ -2449,7 +5856,7 @@ function App() {
       0,
     );
     const paidByMethod = (methodId: string) =>
-      activeTickets.reduce(
+      dailyActiveTickets.reduce(
         (sum, ticket) =>
           sum +
           ticket.payments.reduce(
@@ -2459,32 +5866,438 @@ function App() {
           ),
         0,
       );
+    const reportBranches = Array.from(
+      new Set([
+        ...Object.keys(branchInventory),
+        ...reportTickets
+          .map((ticket) => ticket.branchName)
+          .filter((branch): branch is string => Boolean(branch)),
+        ...dailyMovements.flatMap((movement) => [
+          movement.sourceBranch,
+          ...(movement.destinationBranch ? [movement.destinationBranch] : []),
+        ]),
+      ]),
+    ).sort((left, right) => left.localeCompare(right, "es-MX"));
+    const dailySoldProducts = Array.from(
+      reportTickets
+        .flatMap((ticket) => ticket.products)
+        .reduce<
+          Map<
+            string,
+            { id: string; name: string; quantity: number; total: number }
+          >
+        >((summary, product) => {
+          const current = summary.get(product.productId);
+          summary.set(product.productId, {
+            id: product.productId,
+            name: product.name,
+            quantity: (current?.quantity ?? 0) + product.quantity,
+            total: (current?.total ?? 0) + product.total,
+          });
+          return summary;
+        }, new Map())
+        .values(),
+    ).sort((left, right) => right.quantity - left.quantity);
+    const soldUnits = dailySoldProducts.reduce(
+      (sum, product) => sum + product.quantity,
+      0,
+    );
+    const dailySellerTotals = Array.from(
+      reportTickets
+        .flatMap((ticket) => ticket.sellerSales)
+        .reduce<Map<string, { id: string; name: string; total: number }>>(
+          (summary, sale) => {
+            const current = summary.get(sale.sellerId);
+            summary.set(sale.sellerId, {
+              id: sale.sellerId,
+              name: sale.sellerName,
+              total: (current?.total ?? 0) + sale.amount,
+            });
+            return summary;
+          },
+          new Map(),
+        )
+        .values(),
+    )
+      .map((seller) => ({
+        ...seller,
+        tickets: reportTickets.filter((ticket) =>
+          ticket.sellerSales.some((sale) => sale.sellerId === seller.id),
+        ).length,
+      }))
+      .sort((left, right) => right.total - left.total);
+    const dailyWriteOffs = dailyMovements.filter(
+      (movement) =>
+        movement.direction === "REMOVE" &&
+        movement.category !== "SALE" &&
+        movement.category !== "DELIVERY",
+    );
+    const writeOffUnits = dailyWriteOffs.reduce(
+      (sum, movement) => sum + movement.quantity,
+      0,
+    );
+    const dailyAdditions = dailyMovements
+      .filter((movement) => movement.direction === "ADD")
+      .reduce((sum, movement) => sum + movement.quantity, 0);
+    const dailyTransfers = dailyMovements
+      .filter((movement) => movement.direction === "TRANSFER")
+      .reduce((sum, movement) => sum + movement.quantity, 0);
+    const branchDashboard = reportBranches.map((branch) => {
+      const branchSaleTickets = reportTickets.filter(
+        (ticket) =>
+          (ticket.branchName ?? activeBranch) === branch,
+      );
+      const branchPaymentTickets = dailyActiveTickets.filter(
+        (ticket) =>
+          (ticket.branchName ?? activeBranch) === branch,
+      );
+      const branchWriteOffs = dailyWriteOffs.filter(
+        (movement) => movement.sourceBranch === branch,
+      );
+      const sellerIds = new Set(
+        branchSaleTickets.flatMap((ticket) =>
+          ticket.sellerSales.map((sale) => sale.sellerId),
+        ),
+      );
+      return {
+        branch,
+        tickets: branchSaleTickets.length,
+        sales: branchSaleTickets.reduce(
+          (sum, ticket) => sum + ticket.total,
+          0,
+        ),
+        netSales: branchSaleTickets.reduce(
+          (sum, ticket) => sum + getTicketTaxSummary(ticket).net,
+          0,
+        ),
+        vat: branchSaleTickets.reduce(
+          (sum, ticket) => sum + getTicketTaxSummary(ticket).vat,
+          0,
+        ),
+        collected: branchPaymentTickets.reduce(
+          (sum, ticket) =>
+            sum +
+            ticket.payments.reduce(
+              (paymentSum, payment) => paymentSum + payment.amount,
+              0,
+            ),
+          0,
+        ),
+        soldUnits: branchSaleTickets.reduce(
+          (sum, ticket) =>
+            sum +
+            ticket.products.reduce(
+              (productSum, product) => productSum + product.quantity,
+              0,
+            ),
+          0,
+        ),
+        writeOffUnits: branchWriteOffs.reduce(
+          (sum, movement) => sum + movement.quantity,
+          0,
+        ),
+        sellers: sellerIds.size,
+        stock: Object.values(branchInventory[branch] ?? {}).reduce(
+          (sum, quantity) => sum + quantity,
+          0,
+        ),
+      };
+    });
+    const maxSellerTotal = Math.max(
+      1,
+      ...dailySellerTotals.map((seller) => seller.total),
+    );
+    const maxProductQuantity = Math.max(
+      1,
+      ...dailySoldProducts.map((product) => product.quantity),
+    );
+    const reportDayLabel = new Intl.DateTimeFormat("es-MX", {
+      weekday: "long",
+      day: "2-digit",
+      month: "long",
+      year: "numeric",
+      timeZone: "America/Mexico_City",
+    }).format(new Date());
+    const reportUpdatedAt = new Intl.DateTimeFormat("es-MX", {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      timeZone: "America/Mexico_City",
+    }).format(new Date(sessionDataSync.lastUpdatedAt));
     return (
       <div className="view-stack">
-        <div className="metric-grid three-columns">
+        <div className="x-report-live-banner" aria-live="polite">
+          <span className="status-dot" />
+          <div className="x-report-live-copy">
+            <strong>Dashboard en tiempo real · {reportDayLabel}</strong>
+            <small>
+              Todas las sucursales activas · Actualizado {reportUpdatedAt}
+            </small>
+          </div>
+          <Badge variant="outline">{reportBranches.length} SUCURSALES</Badge>
+        </div>
+
+        <XReportExecutiveExport
+          tickets={tickets}
+          products={catalogProducts}
+          movements={inventoryMovements}
+          paymentMethods={paymentMethods}
+          branches={operationalBranches}
+          receiptSettings={receiptSettings}
+        />
+
+        <div className="metric-grid x-report-metric-grid">
           <MetricCard
-            label="VENTA BRUTA"
+            label="VENTA DEL DÍA"
             value={formatCurrency(total)}
+            icon={ShoppingBag}
+            tone="neutral"
+          />
+          <MetricCard
+            label="VENTA SIN IVA"
+            value={formatCurrency(dailyTaxSummary.net)}
+            icon={DollarSign}
+            tone="neutral"
+          />
+          <MetricCard
+            label="IVA INCLUIDO"
+            value={formatCurrency(dailyTaxSummary.vat)}
+            icon={Percent}
+            tone="neutral"
+          />
+          <MetricCard
+            label="INGRESOS COBRADOS"
+            value={formatCurrency(collected)}
             icon={CircleDollarSign}
+            tone="positive"
+          />
+          <MetricCard
+            label="SUCURSALES EN ALTA"
+            value={String(reportBranches.length)}
+            icon={Store}
             tone="neutral"
           />
           <MetricCard
-            label="TICKETS"
-            value={String(reportTickets.length)}
-            icon={PackageCheck}
+            label="VENDEDORES CON VENTA"
+            value={String(dailySellerTotals.length)}
+            icon={Users}
             tone="neutral"
           />
           <MetricCard
-            label="MARGEN VS. MÍNIMO"
-            value={`${margin >= 0 ? "+" : ""}${formatCurrency(margin)}`}
-            icon={margin >= 0 ? TrendingUp : TrendingDown}
-            tone={margin >= 0 ? "positive" : "negative"}
+            label="PRODUCTOS / SERVICIOS"
+            value={String(soldUnits)}
+            icon={Boxes}
+            tone="neutral"
+          />
+          <MetricCard
+            label="BAJAS DE INVENTARIO"
+            value={String(writeOffUnits)}
+            icon={PackageMinus}
+            tone={writeOffUnits > 0 ? "negative" : "positive"}
+          />
+          <MetricCard
+            label="SPARE DEL DÍA"
+            value={formatCurrency(spare)}
+            icon={BadgePercent}
+            tone="positive"
           />
         </div>
+
+        <Card className="data-card x-report-branch-card">
+          <CardContent className="p-0">
+            <div className="data-card-heading">
+              <div>
+                <span>RESUMEN MULTISUCURSAL</span>
+                <h2>Operación de todas las tiendas</h2>
+              </div>
+              <Badge variant="outline">EN VIVO</Badge>
+            </div>
+            <div className="x-report-branch-grid">
+              {branchDashboard.map((branch) => (
+                <article key={branch.branch}>
+                  <div>
+                    <span className="x-report-store-icon">
+                      <Store size={17} />
+                    </span>
+                    <span>
+                      <strong>{branch.branch}</strong>
+                      <small>{branch.stock} piezas en existencia</small>
+                    </span>
+                    <Badge variant="outline">ACTIVA</Badge>
+                  </div>
+                  <dl>
+                    <div>
+                      <dt>Venta</dt>
+                      <dd>{formatCurrency(branch.sales)}</dd>
+                    </div>
+                    <div>
+                      <dt>Ingresos</dt>
+                      <dd>{formatCurrency(branch.collected)}</dd>
+                    </div>
+                    <div>
+                      <dt>Venta sin IVA</dt>
+                      <dd>{formatCurrency(branch.netSales)}</dd>
+                    </div>
+                    <div>
+                      <dt>IVA incluido</dt>
+                      <dd>{formatCurrency(branch.vat)}</dd>
+                    </div>
+                    <div>
+                      <dt>Tickets</dt>
+                      <dd>{branch.tickets}</dd>
+                    </div>
+                    <div>
+                      <dt>Unidades</dt>
+                      <dd>{branch.soldUnits}</dd>
+                    </div>
+                    <div>
+                      <dt>Vendedores</dt>
+                      <dd>{branch.sellers}</dd>
+                    </div>
+                    <div>
+                      <dt>Bajas</dt>
+                      <dd
+                        className={
+                          branch.writeOffUnits > 0 ? "is-negative" : ""
+                        }
+                      >
+                        {branch.writeOffUnits}
+                      </dd>
+                    </div>
+                  </dl>
+                </article>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
+        <div className="x-report-detail-grid">
+          <Card className="x-report-dashboard-card">
+            <CardContent>
+              <div className="dashboard-card-heading">
+                <div>
+                  <span>EQUIPO DEL DÍA</span>
+                  <h2>Vendedores con venta</h2>
+                </div>
+                <Users size={18} />
+              </div>
+              <div className="x-report-ranking-list">
+                {dailySellerTotals.map((seller, index) => (
+                  <div key={seller.id}>
+                    <span className="x-report-rank">{index + 1}</span>
+                    <span>
+                      <strong>{seller.name}</strong>
+                      <small>{seller.tickets} tickets</small>
+                    </span>
+                    <strong>{formatCurrency(seller.total)}</strong>
+                    <i>
+                      <b
+                        style={{
+                          width: `${Math.max(5, (seller.total / maxSellerTotal) * 100)}%`,
+                        }}
+                      />
+                    </i>
+                  </div>
+                ))}
+                {dailySellerTotals.length === 0 && (
+                  <p className="x-report-empty">Sin vendedores con venta hoy.</p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="x-report-dashboard-card">
+            <CardContent>
+              <div className="dashboard-card-heading">
+                <div>
+                  <span>PRODUCTOS Y SERVICIOS</span>
+                  <h2>Vendidos durante el día</h2>
+                </div>
+                <Boxes size={18} />
+              </div>
+              <div className="x-report-product-list">
+                {dailySoldProducts.map((product) => (
+                  <div key={product.id}>
+                    <span>
+                      <strong>{product.name}</strong>
+                      <small>{formatCurrency(product.total)}</small>
+                    </span>
+                    <strong>{product.quantity} u.</strong>
+                    <i>
+                      <b
+                        style={{
+                          width: `${Math.max(5, (product.quantity / maxProductQuantity) * 100)}%`,
+                        }}
+                      />
+                    </i>
+                  </div>
+                ))}
+                {dailySoldProducts.length === 0 && (
+                  <p className="x-report-empty">Sin productos vendidos hoy.</p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="x-report-dashboard-card">
+            <CardContent>
+              <div className="dashboard-card-heading">
+                <div>
+                  <span>FLUJO DE INVENTARIO</span>
+                  <h2>Movimientos del día</h2>
+                </div>
+                <PackageCheck size={18} />
+              </div>
+              <div className="x-report-inventory-flow">
+                <div>
+                  <span>Entradas</span>
+                  <strong className="is-positive">+{dailyAdditions}</strong>
+                </div>
+                <div>
+                  <span>Bajas</span>
+                  <strong className={writeOffUnits > 0 ? "is-negative" : ""}>
+                    -{writeOffUnits}
+                  </strong>
+                </div>
+                <div>
+                  <span>Transferidas</span>
+                  <strong>{dailyTransfers}</strong>
+                </div>
+              </div>
+              <div className="x-report-writeoff-list">
+                {dailyWriteOffs.map((movement) => (
+                  <div key={movement.id}>
+                    <span>
+                      <strong>{movement.productName}</strong>
+                      <small>
+                        {movement.sourceBranch} · {movement.reason}
+                      </small>
+                    </span>
+                    <strong className="is-negative">
+                      -{movement.quantity}
+                    </strong>
+                  </div>
+                ))}
+                {dailyWriteOffs.length === 0 && (
+                  <p className="x-report-empty">Sin bajas registradas hoy.</p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
         <Card className="report-card">
           <CardContent>
             <div className="report-card-header">
               <div>
+                {receiptSettings.logoUrl && (
+                  <img
+                    className="report-logo"
+                    src={receiptSettings.logoUrl}
+                    alt={receiptSettings.companyName}
+                    style={{ width: `${Math.min(receiptSettings.logoWidth, 72)}px` }}
+                  />
+                )}
                 <span>TERMINAL 01</span>
                 <h2>Corte parcial</h2>
               </div>
@@ -2522,9 +6335,6 @@ function App() {
                 <strong>{formatCurrency(collected)}</strong>
               </div>
             </div>
-            <Button type="button">
-              <Download size={16} /> Descargar X-Report mock
-            </Button>
           </CardContent>
         </Card>
         <Card className="data-card admin-margin-table">
@@ -2532,7 +6342,7 @@ function App() {
             <div className="data-card-heading">
               <div>
                 <span>CONTROL ADMINISTRATIVO</span>
-                <h2>Margen por ticket</h2>
+                <h2>SPARE por ticket</h2>
               </div>
               <ShieldCheck size={21} />
             </div>
@@ -2544,7 +6354,7 @@ function App() {
                     <TableHead>CLIENTE</TableHead>
                     <TableHead>VENTA FINAL</TableHead>
                     <TableHead>DESCUENTO</TableHead>
-                    <TableHead>MARGEN VS. MÍNIMO</TableHead>
+                    <TableHead>SPARE</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -2562,10 +6372,9 @@ function App() {
                       </TableCell>
                       <TableCell>
                         <span
-                          className={`deviation-pill ${ticket.deviation < 0 ? "is-negative" : "is-positive"}`}
+                          className="deviation-pill is-positive"
                         >
-                          {ticket.deviation >= 0 ? "+" : ""}
-                          {formatCurrency(ticket.deviation)}
+                          {formatCurrency(getTicketSpare(ticket, catalogProducts))}
                         </span>
                       </TableCell>
                     </TableRow>
@@ -2579,44 +6388,18 @@ function App() {
     );
   };
 
-  const renderEmployees = () => (
-    <div className="employee-grid">
-      {sellers.map((seller, index) => (
-        <Card
-          key={seller.id}
-          className={`employee-card ${seller.active ? "" : "is-inactive"}`}
-        >
-          <CardContent>
-            <div className="employee-avatar">{seller.initials}</div>
-            <div>
-              <h3>{seller.name}</h3>
-              <span>Vendedor retail</span>
-            </div>
-            <Badge variant={seller.active ? "default" : "outline"}>
-              {seller.active ? "ACTIVO" : "BAJA"}
-            </Badge>
-            <div className="employee-sales">
-              <small>VENTA HOY</small>
-              <strong>
-                {seller.active
-                  ? formatCurrency(1120 + index * 475)
-                  : formatCurrency(0)}
-              </strong>
-            </div>
-            {!seller.active && (
-              <p>Sus clientes ahora pertenecen a Keysar Cosmetics.</p>
-            )}
-          </CardContent>
-        </Card>
-      ))}
-    </div>
-  );
-
   const renderCloseDay = () => {
     const saleTickets = activeTickets.filter(
       (ticket) => ticket.ticketType !== "LAYAWAY_PAYMENT",
     );
     const total = saleTickets.reduce((sum, ticket) => sum + ticket.total, 0);
+    const closeDayTaxSummary = saleTickets.reduce(
+      (summary, ticket) => {
+        const tax = getTicketTaxSummary(ticket);
+        return { net: summary.net + tax.net, vat: summary.vat + tax.vat };
+      },
+      { net: 0, vat: 0 },
+    );
     const collected = activeTickets.reduce(
       (sum, ticket) =>
         sum +
@@ -2730,6 +6513,15 @@ function App() {
                 <CheckCircle2 size={18} /> {inventoryMovements.length} ajustes
                 de inventario registrados
               </span>
+              <span>
+                <CheckCircle2 size={18} />{" "}
+                {
+                  attendanceRecords.filter(
+                    (record) => record.status === "ONLINE",
+                  ).length
+                }{" "}
+                vendedores ONLINE por cerrar
+              </span>
             </div>
             {appointmentAlertsBySeller.length > 0 && (
               <div className="close-day-appointment-alerts">
@@ -2757,9 +6549,7 @@ function App() {
               </Button>
               <Button
                 type="button"
-                onClick={() =>
-                  toast.success("Cierre mock completado. No se enviaron datos.")
-                }
+                onClick={completeCloseDay}
               >
                 Cerrar día <ArrowRight size={17} />
               </Button>
@@ -2771,8 +6561,16 @@ function App() {
           aria-label="Ticket de cierre de día"
         >
           <header>
-            <strong>KEYSAR COSMETICS</strong>
-            <span>SUCURSAL POLANCO · TERMINAL 01</span>
+            {receiptSettings.logoUrl && (
+              <img
+                src={receiptSettings.logoUrl}
+                alt={receiptSettings.companyName}
+                style={{ width: `${receiptSettings.logoWidth}px` }}
+              />
+            )}
+            <strong>{receiptSettings.companyName}</strong>
+            <span>{receiptSettings.branchName.toLocaleUpperCase("es-MX")} · TERMINAL 01</span>
+            <span>{receiptSettings.address}</span>
             <span>CIERRE DE DÍA · 22/08/2026</span>
             <span>OPERADOR: EMMA</span>
           </header>
@@ -2886,6 +6684,14 @@ function App() {
               <strong>{formatCurrency(total)}</strong>
             </div>
             <div>
+              <span>Venta sin IVA</span>
+              <strong>{formatCurrency(closeDayTaxSummary.net)}</strong>
+            </div>
+            <div>
+              <span>IVA incluido</span>
+              <strong>{formatCurrency(closeDayTaxSummary.vat)}</strong>
+            </div>
+            <div>
               <span>Descuentos</span>
               <strong>-{formatCurrency(discounts)}</strong>
             </div>
@@ -2980,6 +6786,7 @@ function App() {
             paymentMethods={paymentMethods}
             layaways={layaways}
             appointments={appointments}
+            owedProducts={owedProducts}
             onPreviewTicket={previewTicket}
             onRegisterLayawayPayment={registerLayawayPayment}
           />
@@ -2987,92 +6794,379 @@ function App() {
       case "receipts":
         return renderReceipts();
       case "customers":
-        return <CustomersView clients={clients} sellers={sellers} />;
+        return (
+          <CustomersView
+            clients={clients}
+            sellers={sellers}
+            tickets={activeTickets}
+            appointments={appointments}
+            owedProducts={owedProducts}
+            layaways={layaways}
+            paymentMethods={paymentMethods}
+            branches={operationalBranches}
+            receiptSettings={receiptSettings}
+            isMasterCode={isMasterAccessCode}
+            onUpdateClient={updateClientRecord}
+            onDeleteClient={deleteClientRecord}
+            onBulkImportClients={importClientRecords}
+            onRegisterLayawayPayment={registerLayawayPayment}
+          />
+        );
       case "appointments":
         return (
           <AppointmentsView appointments={appointments} sellers={sellers} />
         );
       case "inventory":
-        return renderInventory();
-      case "catalog":
         return (
           <CatalogView
             products={catalogProducts}
-            families={catalogFamilies}
-            categories={catalogCategories}
+            branchInventory={branchInventory}
+            families={catalogFamilies.filter(
+              (family) => catalogFamilyStatus[family] !== false,
+            )}
+            categories={catalogCategories.filter(
+              (category) => catalogCategoryStatus[category] !== false,
+            )}
             groups={catalogGroups}
             onSave={saveCatalogProduct}
             onStatusChange={setCatalogProductStatus}
-            onAddFamily={(name) => addCatalogOption(setCatalogFamilies, name)}
-            onAddCategory={(name) =>
-              addCatalogOption(setCatalogCategories, name)
-            }
+            onAddFamily={(name) => {
+              addCatalogOption(setCatalogFamilies, name);
+              setCatalogFamilyStatus((current) => ({
+                ...current,
+                [name]: true,
+              }));
+            }}
+            onAddCategory={(name) => {
+              addCatalogOption(setCatalogCategories, name);
+              setCatalogCategoryStatus((current) => ({
+                ...current,
+                [name]: true,
+              }));
+            }}
             onAddGroup={(name) => addCatalogOption(setCatalogGroups, name)}
+            costAccessAuthorized={costAccessAuthorized}
+            onAuthorizeCostAccess={authorizeCostAccess}
+            isMasterCode={isMasterAccessCode}
+            onLockCostAccess={() => setCostAccessAuthorized(false)}
           />
         );
+      case "catalog":
+        return renderInventory();
       case "inventory-movements":
         return (
           <InventoryMovementsView
-            products={catalogProducts}
+            products={catalogProducts.map((product) => ({
+              ...product,
+              active:
+                product.active &&
+                catalogFamilyStatus[product.family] !== false &&
+                catalogCategoryStatus[product.category] !== false,
+            }))}
             reasons={inventoryMovementReasons}
             movements={inventoryMovements}
             branchInventory={branchInventory}
             owedProducts={owedProducts}
             batches={inventoryAdjustmentBatches}
+            tickets={activeTickets}
+            sellers={sellers}
             onRequestBatch={requestInventoryBatch}
+            onUpdateBatch={updateInventoryBatch}
             onApproveBatch={approveInventoryBatch}
             onCancelBatch={cancelInventoryBatch}
             onFulfillOwedProduct={fulfillOwedProduct}
+            costAccessAuthorized={costAccessAuthorized}
+            onAuthorizeCostAccess={authorizeCostAccess}
+            onLockCostAccess={() => setCostAccessAuthorized(false)}
+          />
+        );
+      case "deals":
+        return (
+          <DealsView
+            deals={deals}
+            products={catalogProducts}
+            tickets={activeTickets}
+            branches={operationalBranches}
+            authorized={dealAccessAuthorized}
+            onAuthorize={authorizeDealAccess}
+            onLock={() => setDealAccessAuthorized(false)}
+            onSave={saveDeal}
+            onPublish={publishDeal}
+            onDeactivate={deactivateDeal}
           />
         );
       case "settings":
         return renderSettings();
       case "x-report":
         return renderXReport();
+      case "reports":
+        return (
+          <ReportsView
+            tickets={tickets}
+            products={catalogProducts}
+            movements={inventoryMovements}
+            clients={clients}
+            sellers={sellers}
+            appointments={appointments}
+            paymentMethods={paymentMethods}
+            branches={operationalBranches}
+            branchInventory={branchInventory}
+            receiptSettings={receiptSettings}
+          />
+        );
+      case "clock-in":
+        return (
+          <ClockInView
+            sellers={sellers}
+            branches={operationalBranches}
+            records={attendanceRecords}
+            onClockIn={clockInSeller}
+            onClockOut={clockOutSeller}
+          />
+        );
       case "employees":
-        return renderEmployees();
+        return (
+          <EmployeesView
+            authorized={employeeAccessAuthorized}
+            roles={employeeRoles}
+            sellers={sellers}
+            onAuthorize={authorizeEmployeeAccess}
+            onLock={() => setEmployeeAccessAuthorized(false)}
+            onSaveRole={saveEmployeeRole}
+            onToggleRole={toggleEmployeeRole}
+            onAssignRole={assignEmployeeRole}
+            onSetMasterAccess={setEmployeeMasterAccess}
+          />
+        );
+      case "competition":
+        return (
+          <CompetitionView
+            competitions={competitions}
+            tickets={activeTickets}
+            sellers={sellers}
+            products={catalogProducts}
+            onOpenSettings={() => {
+              setActiveScreen("settings");
+              setCompetitionSettingsOpen(true);
+            }}
+          />
+        );
       case "close-day":
         return renderCloseDay();
       case "data-update":
-        return <DataUpdateView />;
+        return (
+          <DataUpdateView
+            lastUpdatedAt={sessionDataSync.lastUpdatedAt}
+            nextUpdateAt={sessionDataSync.nextUpdateAt}
+            updating={sessionDataSync.updating}
+            revision={sessionDataSync.revision}
+            now={syncClock}
+            onRequestSync={requestSessionDataSync}
+          />
+        );
+      case "my-account":
+        return (
+          <MyAccountView
+            authorized={myAccountAuthorized}
+            profile={billingProfile}
+            cards={billingCards}
+            locations={billingLocations}
+            history={billingHistory}
+            isMasterCode={isMasterAccessCode}
+            onAuthorize={() => setMyAccountAuthorized(true)}
+            onLock={() => setMyAccountAuthorized(false)}
+            onSaveProfile={saveBillingProfile}
+            onAddCard={addBillingCard}
+            onSetDefaultCard={setDefaultBillingCard}
+            onRemoveCard={removeBillingCard}
+            onActivateLocation={activateBillingLocation}
+            onAddLocation={addBillingLocation}
+            onDeactivateLocation={deactivateBillingLocation}
+          />
+        );
       default:
         return renderGenericModule();
     }
   };
 
   const metadata = screenMetadata[activeScreen];
+  const secondsUntilNextUpdate = Math.max(
+    0,
+    Math.ceil((sessionDataSync.nextUpdateAt - syncClock) / 1_000),
+  );
+  const nextUpdateCountdown = `${String(Math.floor(secondsUntilNextUpdate / 60)).padStart(2, "0")}:${String(secondsUntilNextUpdate % 60).padStart(2, "0")}`;
+  const lastUpdateTime = new Intl.DateTimeFormat("es-MX", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).format(new Date(sessionDataSync.lastUpdatedAt));
   return (
     <div className="pos-app">
       <PosSidebar
         activeScreen={activeScreen}
+        activeBranch={activeBranch}
         collapsed={sidebarCollapsed}
         cartCount={cartCount}
         onNavigate={setActiveScreen}
+        onRequestLocationSwitch={openLocationSwitcher}
         onToggle={() => setSidebarCollapsed((current) => !current)}
       />
       <main className="pos-main">
         <header className="page-header">
           <div>
-            <span className="eyebrow">KEYSAR COSMETICS · POLANCO</span>
+            <span className="eyebrow">
+              {receiptSettings.companyName.toLocaleUpperCase("es-MX")} · {activeBranch.toLocaleUpperCase("es-MX")}
+            </span>
             <h1>{metadata.title}</h1>
             <p>{metadata.subtitle}</p>
           </div>
-          <div className="header-status">
-            <span className="status-dot" />
-            <div>
-              <strong>Terminal 01</strong>
-              <small>Operador: EMMA</small>
+          <div className="header-actions">
+            <div className="header-status">
+              <div className="header-sync-status" aria-live="polite">
+                <span className={sessionDataSync.updating ? "is-updating" : ""}>
+                  <RefreshCw size={15} />
+                </span>
+                <div>
+                  <strong>
+                    {sessionDataSync.updating
+                      ? "Actualizando datos…"
+                      : `Actualizado · ${lastUpdateTime}`}
+                  </strong>
+                  <small>
+                    {sessionDataSync.updating
+                      ? "Sincronización automática en curso"
+                      : `Siguiente actualización en ${nextUpdateCountdown}`}
+                  </small>
+                </div>
+              </div>
+              <i className="header-status-divider" />
+              <div className="header-terminal-status">
+                <span className="status-dot" />
+                <div>
+                  <strong>Terminal 01</strong>
+                  <small>Operador: EMMA</small>
+                </div>
+              </div>
             </div>
+            <button
+              type="button"
+              className={`header-account-button ${activeScreen === "my-account" ? "is-active" : ""}`}
+              onClick={() => setActiveScreen("my-account")}
+              aria-current={activeScreen === "my-account" ? "page" : undefined}
+            >
+              <span className="header-account-icon">
+                <CreditCard size={18} />
+              </span>
+              <span>
+                <strong>My Account</strong>
+                <small>Perfil, ubicaciones y facturación</small>
+              </span>
+              <ChevronRight size={16} />
+            </button>
           </div>
         </header>
         <div className="page-content">{renderScreen()}</div>
       </main>
+      <Dialog
+        open={locationSwitchOpen}
+        onOpenChange={(open) => {
+          setLocationSwitchOpen(open);
+          if (!open) setLocationSwitchCode("");
+        }}
+      >
+        <DialogContent className="terminal-location-dialog sm:max-w-[520px]">
+          <DialogHeader className="dialog-header">
+            <div className="terminal-location-dialog-icon">
+              <ArrowLeftRight size={22} />
+            </div>
+            <DialogTitle>Cambiar ubicación de la terminal</DialogTitle>
+            <DialogDescription>
+              Sólo un usuario master puede fijar esta computadora en otra
+              sucursal. Las siguientes ventas, citas y movimientos usarán la
+              nueva ubicación.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="terminal-location-route">
+            <span>
+              <small>UBICACIÓN ACTUAL</small>
+              <strong>Sucursal {activeBranch}</strong>
+            </span>
+            <ArrowLeftRight size={18} />
+            <span>
+              <small>NUEVA UBICACIÓN</small>
+              <strong>
+                {locationSwitchTarget
+                  ? `Sucursal ${locationSwitchTarget}`
+                  : "Selecciona sucursal"}
+              </strong>
+            </span>
+          </div>
+          <div className="terminal-location-fields">
+            <div className="field-stack">
+              <span>Sucursal operativa</span>
+              <Select
+                value={locationSwitchTarget}
+                onValueChange={setLocationSwitchTarget}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecciona una sucursal" />
+                </SelectTrigger>
+                <SelectContent>
+                  {operationalBranches.map((branch) => (
+                    <SelectItem key={branch} value={branch}>
+                      Sucursal {branch}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="field-stack">
+              <span>Código de autorización master</span>
+              <Input
+                type="password"
+                inputMode="numeric"
+                value={locationSwitchCode}
+                onChange={(event) => setLocationSwitchCode(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") confirmLocationSwitch();
+                }}
+                placeholder="••••"
+                autoComplete="off"
+              />
+            </div>
+          </div>
+          <div className="terminal-location-lock-note">
+            <LockKeyhole size={15} />
+            <span>
+              La selección quedará guardada localmente y se conservará al
+              volver a abrir el POS en esta computadora.
+            </span>
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setLocationSwitchOpen(false)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              onClick={confirmLocationSwitch}
+              disabled={!locationSwitchTarget || !locationSwitchCode.trim()}
+            >
+              <ShieldCheck size={16} /> Autorizar y fijar sucursal
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <ProductDialog
         product={selectedProduct}
         cartItem={editingCartItem}
         otherItemsSubtotal={dialogOtherItemsSubtotal}
         otherItemsMinimumTotal={dialogOtherItemsMinimumTotal}
         open={productDialogOpen}
+        isMasterCode={isMasterAccessCode}
         onOpenChange={handleProductDialogOpenChange}
         onSubmit={submitCartItem}
         onRemove={removeCartItem}
@@ -3085,14 +7179,26 @@ function App() {
         clients={clients}
         sellers={sellers}
         paymentMethods={paymentMethods}
+        branches={operationalBranches}
+        sourceOptions={clientSources}
         requiredFields={requiredFields}
+        isMasterCode={isMasterAccessCode}
         onOpenChange={setCheckoutOpen}
         onComplete={completeTicket}
+      />
+      <DealPickerDialog
+        open={dealPickerOpen}
+        deals={deals}
+        products={catalogProducts}
+        branch={activeBranch}
+        onOpenChange={setDealPickerOpen}
+        onAddDeal={addDealToCart}
       />
       <ReceiptTicketDialog
         open={receiptPreviewOpen}
         ticket={selectedReceiptTicket}
         settings={receiptSettings}
+        branchAddresses={branchAddresses}
         paymentMethods={paymentMethods}
         onOpenChange={setReceiptPreviewOpen}
       />
@@ -3100,6 +7206,8 @@ function App() {
         open={ticketEditOpen}
         ticket={editingTicket}
         sellers={sellers}
+        products={catalogProducts}
+        paymentMethods={paymentMethods}
         onOpenChange={setTicketEditOpen}
         onSave={saveTicketChanges}
       />

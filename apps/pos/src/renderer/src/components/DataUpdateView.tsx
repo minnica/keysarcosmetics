@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   CheckCircle2,
   CloudDownload,
@@ -74,11 +74,24 @@ const currentTime = () =>
     minute: "2-digit",
   }).format(new Date());
 
-export function DataUpdateView() {
+interface DataUpdateViewProps {
+  lastUpdatedAt: number;
+  nextUpdateAt: number;
+  updating: boolean;
+  revision: number;
+  now: number;
+  onRequestSync: () => void;
+}
+
+export function DataUpdateView({
+  lastUpdatedAt,
+  nextUpdateAt,
+  updating,
+  revision,
+  now,
+  onRequestSync,
+}: DataUpdateViewProps) {
   const [modules, setModules] = useState(initialModules);
-  const pendingCount = modules.filter(
-    (module) => module.status === "PENDING",
-  ).length;
   const updatingCount = modules.filter(
     (module) => module.status === "UPDATING",
   ).length;
@@ -91,6 +104,34 @@ export function DataUpdateView() {
       ),
     [modules],
   );
+  const secondsUntilNextUpdate = Math.max(
+    0,
+    Math.ceil((nextUpdateAt - now) / 1_000),
+  );
+  const nextUpdateCountdown = `${String(Math.floor(secondsUntilNextUpdate / 60)).padStart(2, "0")}:${String(secondsUntilNextUpdate % 60).padStart(2, "0")}`;
+  const lastUpdateLabel = new Intl.DateTimeFormat("es-MX", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).format(new Date(lastUpdatedAt));
+
+  useEffect(() => {
+    if (!updating) return;
+    setModules((current) =>
+      current.map((module) => ({ ...module, status: "UPDATING" })),
+    );
+  }, [updating]);
+
+  useEffect(() => {
+    setModules((current) =>
+      current.map((module) => ({
+        ...module,
+        installedVersion: module.availableVersion,
+        status: "CURRENT",
+        lastUpdated: `Hoy · ${currentTime()}`,
+      })),
+    );
+  }, [revision]);
 
   const updateModules = (moduleIds: string[]) => {
     if (moduleIds.length === 0) return;
@@ -122,21 +163,28 @@ export function DataUpdateView() {
     }, 850);
   };
 
-  const pendingIds = modules
-    .filter((module) => module.status === "PENDING")
-    .map((module) => module.id);
-
   return (
     <div className="data-update-view">
       <Card className="data-update-summary">
         <CardContent>
           <div>
-            <span className="section-kicker">SINCRONIZACIÓN MANUAL</span>
+            <span className="section-kicker">SINCRONIZACIÓN AUTOMÁTICA</span>
             <h2>Estado de módulos</h2>
             <p>
-              Revisa qué información está pendiente y decide cuándo actualizar
-              cada módulo de esta terminal.
+              La sesión revisa y actualiza todos los módulos automáticamente
+              cada minuto, incluso mientras trabajas en otra pantalla.
             </p>
+            <div className="data-update-live-clock" aria-live="polite">
+              <span>
+                <CheckCircle2 size={14} /> Última actualización {lastUpdateLabel}
+              </span>
+              <span>
+                <RefreshCw className={updating ? "is-spinning" : ""} size={14} />
+                {updating
+                  ? "Actualizando módulos…"
+                  : `Siguiente actualización en ${nextUpdateCountdown}`}
+              </span>
+            </div>
           </div>
           <div className="data-update-progress">
             <strong>{progress}%</strong>
@@ -147,15 +195,15 @@ export function DataUpdateView() {
           </div>
           <Button
             type="button"
-            onClick={() => updateModules(pendingIds)}
-            disabled={pendingCount === 0 || updatingCount > 0}
+            onClick={onRequestSync}
+            disabled={updating || updatingCount > 0}
           >
-            {updatingCount > 0 ? (
+            {updating || updatingCount > 0 ? (
               <Loader2 className="is-spinning" size={16} />
             ) : (
               <CloudDownload size={16} />
             )}
-            Actualizar pendientes ({pendingCount})
+            {updating ? "Actualizando…" : "Sincronizar ahora"}
           </Button>
         </CardContent>
       </Card>

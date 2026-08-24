@@ -1,5 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, PackageCheck, RotateCcw, XCircle } from "lucide-react";
+import {
+  AlertTriangle,
+  Gift,
+  PackageCheck,
+  RotateCcw,
+  Sparkles,
+  XCircle,
+} from "lucide-react";
 import {
   Badge,
   Button,
@@ -11,6 +18,11 @@ import {
   DialogTitle,
   Input,
   Label,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
 } from "@cosmetics/ui";
 import { formatCurrency } from "../mock-data";
 import type {
@@ -19,7 +31,8 @@ import type {
   TicketInventoryLine,
 } from "../types";
 
-type ReturnMode = "ALL" | "PARTIAL" | "NONE";
+type ReturnMode = "ALL" | "SELECT" | "NONE";
+type ProductDecision = "RETURN" | "GIFT" | "COURTESY";
 
 interface TicketCancellationDialogProps {
   open: boolean;
@@ -38,32 +51,40 @@ export function TicketCancellationDialog({
 }: TicketCancellationDialogProps) {
   const [returnMode, setReturnMode] = useState<ReturnMode>("ALL");
   const [refundAmount, setRefundAmount] = useState(0);
-  const [quantities, setQuantities] = useState<Record<string, number>>({});
+  const [productDecisions, setProductDecisions] = useState<
+    Record<string, ProductDecision>
+  >({});
 
   useEffect(() => {
     if (!open || !ticket) return;
     setReturnMode(returnableProducts.length > 0 ? "ALL" : "NONE");
     setRefundAmount(ticket.amountPaid);
-    setQuantities(
+    setProductDecisions(
       Object.fromEntries(
-        returnableProducts.map((line) => [line.productId, line.quantity]),
+        returnableProducts.map((line) => [line.productId, "RETURN"]),
       ),
     );
   }, [open, returnableProducts, ticket]);
 
   const returnedProducts = useMemo(() => {
     if (returnMode === "NONE") return [];
+    return returnableProducts.filter(
+      (line) =>
+        returnMode === "ALL" ||
+        (returnMode === "SELECT" &&
+          productDecisions[line.productId] === "RETURN"),
+    );
+  }, [productDecisions, returnMode, returnableProducts]);
+
+  const nonReturnedProducts = useMemo(() => {
+    if (returnMode !== "SELECT") return [];
     return returnableProducts.flatMap((line) => {
-      const quantity =
-        returnMode === "ALL"
-          ? line.quantity
-          : Math.max(
-              0,
-              Math.min(line.quantity, quantities[line.productId] ?? 0),
-            );
-      return quantity > 0 ? [{ ...line, quantity }] : [];
+      const decision = productDecisions[line.productId];
+      return decision === "GIFT" || decision === "COURTESY"
+        ? [{ ...line, disposition: decision }]
+        : [];
     });
-  }, [quantities, returnMode, returnableProducts]);
+  }, [productDecisions, returnMode, returnableProducts]);
 
   if (!ticket) return null;
 
@@ -98,9 +119,9 @@ export function TicketCancellationDialog({
             <div className="ticket-return-options" role="radiogroup">
               {(
                 [
-                  ["ALL", "Regresar todo"],
-                  ["PARTIAL", "Regreso parcial"],
+                  ["ALL", "Sí, regresar todo"],
                   ["NONE", "No regresar"],
+                  ["SELECT", "Elegir regalo o cortesía"],
                 ] as const
               ).map(([value, label]) => (
                 <button
@@ -116,7 +137,7 @@ export function TicketCancellationDialog({
                   ) : value === "NONE" ? (
                     <XCircle size={16} />
                   ) : (
-                    <PackageCheck size={16} />
+                    <Gift size={16} />
                   )}
                   {label}
                 </button>
@@ -128,7 +149,7 @@ export function TicketCancellationDialog({
             </p>
           )}
 
-          {returnMode !== "NONE" && returnableProducts.length > 0 && (
+          {returnMode === "ALL" && returnableProducts.length > 0 && (
             <div className="ticket-return-product-list">
               {returnableProducts.map((line) => (
                 <div key={`${line.branch}-${line.productId}`}>
@@ -136,25 +157,61 @@ export function TicketCancellationDialog({
                     <strong>{line.productName}</strong>
                     <small>{line.branch} · entregado {line.quantity}</small>
                   </span>
-                  {returnMode === "PARTIAL" ? (
-                    <Input
-                      aria-label={`Cantidad a regresar de ${line.productName}`}
-                      type="number"
-                      min="0"
-                      max={line.quantity}
-                      value={quantities[line.productId] ?? 0}
-                      onChange={(event) =>
-                        setQuantities((current) => ({
-                          ...current,
-                          [line.productId]: Number(event.target.value),
-                        }))
-                      }
-                    />
-                  ) : (
-                    <Badge variant="outline">{line.quantity} unidades</Badge>
-                  )}
+                  <Badge variant="outline">{line.quantity} unidades</Badge>
                 </div>
               ))}
+            </div>
+          )}
+
+          {returnMode === "SELECT" && returnableProducts.length > 0 && (
+            <div className="ticket-return-product-list ticket-return-decision-list">
+              {returnableProducts.map((line) => (
+                <div key={`${line.branch}-${line.productId}`}>
+                  <span>
+                    <strong>{line.productName}</strong>
+                    <small>
+                      {line.branch} · {line.quantity} unidades
+                    </small>
+                  </span>
+                  <Select
+                    value={productDecisions[line.productId] ?? "RETURN"}
+                    onValueChange={(value) =>
+                      setProductDecisions((current) => ({
+                        ...current,
+                        [line.productId]: value as ProductDecision,
+                      }))
+                    }
+                  >
+                    <SelectTrigger
+                      aria-label={`Decisión para ${line.productName}`}
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="RETURN">
+                        <span className="ticket-decision-option">
+                          <RotateCcw size={14} /> Regresar a stock
+                        </span>
+                      </SelectItem>
+                      <SelectItem value="GIFT">
+                        <span className="ticket-decision-option">
+                          <Gift size={14} /> Producto de regalo
+                        </span>
+                      </SelectItem>
+                      <SelectItem value="COURTESY">
+                        <span className="ticket-decision-option">
+                          <Sparkles size={14} /> Producto de cortesía
+                        </span>
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              ))}
+              <small>
+                Sólo los productos marcados para regresar se sumarán al
+                inventario. Regalos y cortesías quedarán documentados en el
+                ticket cancelado.
+              </small>
             </div>
           )}
         </section>
@@ -193,12 +250,15 @@ export function TicketCancellationDialog({
             disabled={
               refundAmount < 0 ||
               refundAmount > ticket.amountPaid ||
-              (returnMode === "PARTIAL" && returnedProducts.length === 0)
+              (returnMode === "SELECT" &&
+                returnedProducts.length === 0 &&
+                nonReturnedProducts.length === 0)
             }
             onClick={() =>
               onConfirm({
                 refundAmount,
                 returnedProducts,
+                nonReturnedProducts,
               })
             }
           >

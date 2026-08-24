@@ -40,6 +40,7 @@ import type {
   Appointment,
   Client,
   LayawayRecord,
+  OwedProductRecord,
   PaymentMethodOption,
   Seller,
   Ticket,
@@ -52,12 +53,14 @@ interface SellerSalesViewProps {
   paymentMethods: PaymentMethodOption[];
   layaways: LayawayRecord[];
   appointments: Appointment[];
+  owedProducts: OwedProductRecord[];
   onPreviewTicket: (ticket: Ticket) => void;
   onRegisterLayawayPayment: (
     layawayId: string,
     amount: number,
     methodId: string,
     sellerId: string,
+    deliveredCartItemIds: string[],
   ) => void;
 }
 
@@ -69,7 +72,7 @@ const paymentStatusLabels: Record<Ticket["paymentStatus"], string> = {
   PENDING: "Pendiente",
 };
 
-const sourceLabels: Record<Client["source"], string> = {
+const sourceLabels: Record<string, string> = {
   APPROACH: "Abordaje",
   LEAD: "Lead",
   REFERRAL: "Recomendado",
@@ -100,6 +103,7 @@ export function SellerSalesView({
   paymentMethods,
   layaways,
   appointments,
+  owedProducts,
   onPreviewTicket,
   onRegisterLayawayPayment,
 }: SellerSalesViewProps) {
@@ -117,6 +121,9 @@ export function SellerSalesView({
   const [layawayMethods, setLayawayMethods] = useState<Record<string, string>>(
     {},
   );
+  const [layawayDeliveryIds, setLayawayDeliveryIds] = useState<
+    Record<string, string[]>
+  >({});
 
   const activeSellers = useMemo(
     () => sellers.filter((seller) => seller.active),
@@ -178,6 +185,11 @@ export function SellerSalesView({
       appointment.kind === "NO_APPOINTMENT" &&
       appointment.status === "PENDING" &&
       appointment.sellerIds.includes(authorizedSellerId),
+  );
+  const sellerOwedProducts = owedProducts.filter(
+    (record) =>
+      record.status === "PENDING" &&
+      record.sellerIds.includes(authorizedSellerId),
   );
   const selectedClientLayaways = selectedClient
     ? sellerLayaways.filter((layaway) => layaway.clientId === selectedClient.id)
@@ -366,6 +378,30 @@ export function SellerSalesView({
               </p>
             </div>
             <Badge variant="outline">AGENDAR HOY</Badge>
+          </CardContent>
+        </Card>
+      )}
+
+      {sellerOwedProducts.length > 0 && (
+        <Card className="seller-overdue-alert seller-product-debt-alert">
+          <CardContent>
+            <AlertTriangle size={22} />
+            <div>
+              <strong>
+                {sellerOwedProducts.length} entrega
+                {sellerOwedProducts.length === 1 ? "" : "s"} de producto pendiente
+                {sellerOwedProducts.length === 1 ? "" : "s"}
+              </strong>
+              <p>
+                {sellerOwedProducts
+                  .map(
+                    (record) =>
+                      `${record.clientName} · ${record.clientPhone} · ${record.productName} (${record.quantity - record.deliveredQuantity}) · ${record.branch}`,
+                  )
+                  .join(" | ")}
+              </p>
+            </div>
+            <Badge variant="outline">PENDIENTE ENTREGAR</Badge>
           </CardContent>
         </Card>
       )}
@@ -606,7 +642,11 @@ export function SellerSalesView({
                       <h2>
                         {selectedClient.firstName} {selectedClient.lastName}
                       </h2>
-                      <p>{sourceLabels[selectedClient.source]}</p>
+                      <p>
+                        {selectedClient.sourceLabel ??
+                          sourceLabels[selectedClient.source] ??
+                          selectedClient.source}
+                      </p>
                     </div>
                   </div>
                   <div className="seller-client-contact-grid">
@@ -710,6 +750,15 @@ export function SellerSalesView({
                         const isOverdue = overdueLayaways.some(
                           (item) => item.id === layaway.id,
                         );
+                        const pendingDeliveryItems = layaway.items.filter(
+                          (item) =>
+                            item.kind === "PRODUCT" &&
+                            item.deliveredQuantity < item.quantity,
+                        );
+                        const willLiquidate =
+                          enteredAmount >= layaway.balanceDue;
+                        const selectedDeliveryIds =
+                          layawayDeliveryIds[layaway.id] ?? [];
                         return (
                           <Card
                             key={layaway.id}
@@ -749,6 +798,59 @@ export function SellerSalesView({
                                   </span>
                                 ))}
                               </div>
+                              {layaway.status === "ACTIVE" &&
+                                willLiquidate &&
+                                pendingDeliveryItems.length > 0 && (
+                                  <div className="layaway-liquidation-delivery">
+                                    <div>
+                                      <span className="section-kicker">
+                                        ENTREGA AL LIQUIDAR
+                                      </span>
+                                      <strong>
+                                        Pregunta a la clienta qué productos recibe hoy
+                                      </strong>
+                                    </div>
+                                    <div className="layaway-delivery-list">
+                                      {pendingDeliveryItems.map((item) => {
+                                        const selected =
+                                          selectedDeliveryIds.includes(
+                                            item.cartItemId,
+                                          );
+                                        return (
+                                          <button
+                                            key={item.cartItemId}
+                                            type="button"
+                                            className={selected ? "is-selected" : ""}
+                                            aria-pressed={selected}
+                                            onClick={() =>
+                                              setLayawayDeliveryIds((current) => ({
+                                                ...current,
+                                                [layaway.id]: selected
+                                                  ? selectedDeliveryIds.filter(
+                                                      (id) => id !== item.cartItemId,
+                                                    )
+                                                  : [
+                                                      ...selectedDeliveryIds,
+                                                      item.cartItemId,
+                                                    ],
+                                              }))
+                                            }
+                                          >
+                                            <span>
+                                              <strong>{item.productName}</strong>
+                                              <small>
+                                                {item.quantity - item.deliveredQuantity} pendiente(s) · {layaway.branch}
+                                              </small>
+                                            </span>
+                                            <Badge variant={selected ? "default" : "outline"}>
+                                              {selected ? "ENTREGAR HOY" : "MANTENER PENDIENTE"}
+                                            </Badge>
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                )}
                               <div className="layaway-payment-history">
                                 {layaway.payments.map((payment) => (
                                   <div key={payment.id}>
@@ -823,6 +925,9 @@ export function SellerSalesView({
                                         enteredAmount,
                                         selectedMethod,
                                         authorizedSeller.id,
+                                        willLiquidate
+                                          ? selectedDeliveryIds
+                                          : [],
                                       )
                                     }
                                   >
@@ -837,6 +942,7 @@ export function SellerSalesView({
                                         layaway.balanceDue,
                                         selectedMethod,
                                         authorizedSeller.id,
+                                        selectedDeliveryIds,
                                       )
                                     }
                                   >

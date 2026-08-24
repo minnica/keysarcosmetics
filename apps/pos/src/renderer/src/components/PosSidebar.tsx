@@ -5,13 +5,17 @@ import {
   BarChart3,
   Boxes,
   CalendarHeart,
+  ChevronDown,
+  ChevronRight,
   ClipboardList,
+  Clock3,
   CloudDownload,
   DoorClosed,
   Gauge,
   Globe2,
   Menu,
   PanelLeftClose,
+  PackagePlus,
   ReceiptText,
   Settings2,
   ShoppingBag,
@@ -20,6 +24,7 @@ import {
   UsersRound,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { useEffect, useState } from "react";
 import type { ScreenId } from "../types";
 
 interface NavigationItem {
@@ -32,36 +37,20 @@ interface NavigationItem {
 const navigationItems: NavigationItem[] = [
   { id: "sale", label: "Sale", icon: ShoppingBag, color: "#20201f" },
   {
-    id: "seller-sales",
-    label: "Mis ventas",
-    icon: BarChart3,
-    color: "#9c744e",
-  },
-  { id: "receipts", label: "Receipts", icon: ReceiptText, color: "#3a9ac7" },
-  { id: "customers", label: "Customers", icon: UsersRound, color: "#c89856" },
-  {
     id: "appointments",
     label: "Citas",
     icon: CalendarHeart,
     color: "#c78494",
   },
   { id: "inventory", label: "Inventory", icon: Boxes, color: "#d97562" },
-  { id: "catalog", label: "Catálogo", icon: BookOpenCheck, color: "#8b6f54" },
-  {
-    id: "inventory-movements",
-    label: "Mov. inventario",
-    icon: ArrowLeftRight,
-    color: "#7a8c72",
-  },
-  { id: "settings", label: "Settings", icon: Settings2, color: "#6b9bb8" },
   { id: "x-report", label: "X-Report", icon: ClipboardList, color: "#242321" },
+  { id: "reports", label: "Reports", icon: BarChart3, color: "#a17452" },
   {
     id: "cash-manager",
     label: "Cash manager",
     icon: Banknote,
     color: "#86a95c",
   },
-  { id: "close-day", label: "Close day", icon: DoorClosed, color: "#d46f5d" },
   { id: "employees", label: "Employees", icon: UserRoundCog, color: "#2b2926" },
   { id: "competition", label: "Competition", icon: Trophy, color: "#a17b45" },
   { id: "websites", label: "Websites", icon: Globe2, color: "#637e8b" },
@@ -71,23 +60,106 @@ const navigationItems: NavigationItem[] = [
     icon: CloudDownload,
     color: "#70716f",
   },
+  { id: "settings", label: "Settings", icon: Settings2, color: "#6b9bb8" },
+  { id: "clock-in", label: "Clock In", icon: Clock3, color: "#4b9a70" },
+];
+
+const saleNavigationItems: NavigationItem[] = [
+  {
+    id: "sale",
+    label: "Venta",
+    icon: ShoppingBag,
+    color: "#20201f",
+  },
+  {
+    id: "seller-sales",
+    label: "Mis ventas",
+    icon: BarChart3,
+    color: "#9c744e",
+  },
+  {
+    id: "receipts",
+    label: "Receipts",
+    icon: ReceiptText,
+    color: "#3a9ac7",
+  },
+  {
+    id: "customers",
+    label: "Customers",
+    icon: UsersRound,
+    color: "#c89856",
+  },
+  {
+    id: "close-day",
+    label: "Close day",
+    icon: DoorClosed,
+    color: "#d46f5d",
+  },
+];
+
+const inventoryNavigationItems: NavigationItem[] = [
+  {
+    id: "inventory",
+    label: "Inventario",
+    icon: Boxes,
+    color: "#d97562",
+  },
+  {
+    id: "catalog",
+    label: "Catálogo",
+    icon: BookOpenCheck,
+    color: "#8b6f54",
+  },
+  {
+    id: "inventory-movements",
+    label: "Movimientos",
+    icon: ArrowLeftRight,
+    color: "#7a8c72",
+  },
+  {
+    id: "deals",
+    label: "Deal",
+    icon: PackagePlus,
+    color: "#b07a47",
+  },
 ];
 
 interface PosSidebarProps {
   activeScreen: ScreenId;
+  activeBranch: string;
   collapsed: boolean;
   cartCount: number;
   onNavigate: (screen: ScreenId) => void;
+  onRequestLocationSwitch: () => void;
   onToggle: () => void;
 }
 
 export function PosSidebar({
   activeScreen,
+  activeBranch,
   collapsed,
   cartCount,
   onNavigate,
+  onRequestLocationSwitch,
   onToggle,
 }: PosSidebarProps) {
+  const saleIsActive = saleNavigationItems.some(
+    (item) => item.id === activeScreen,
+  );
+  const inventoryIsActive = inventoryNavigationItems.some(
+    (item) => item.id === activeScreen,
+  );
+  const [saleMenuOpen, setSaleMenuOpen] = useState(saleIsActive);
+  const [inventoryMenuOpen, setInventoryMenuOpen] = useState(inventoryIsActive);
+
+  useEffect(() => {
+    if (saleIsActive) setSaleMenuOpen(true);
+  }, [saleIsActive]);
+
+  useEffect(() => {
+    if (inventoryIsActive) setInventoryMenuOpen(true);
+  }, [inventoryIsActive]);
+
   return (
     <aside className={`pos-sidebar ${collapsed ? "is-collapsed" : ""}`}>
       <div className="sidebar-brand">
@@ -115,6 +187,121 @@ export function PosSidebar({
         {navigationItems.map((item) => {
           const Icon = item.icon;
           const isActive = item.id === activeScreen;
+          if (item.id === "sale") {
+            return (
+              <div
+                key={item.id}
+                className={`sidebar-nav-group ${saleIsActive ? "is-active" : ""}`}
+              >
+                <button
+                  type="button"
+                  className={`sidebar-item ${saleIsActive ? "is-active" : ""}`}
+                  onClick={() => {
+                    onNavigate("sale");
+                    if (!collapsed) setSaleMenuOpen((current) => !current);
+                  }}
+                  aria-expanded={!collapsed ? saleMenuOpen : undefined}
+                  aria-current={isActive ? "page" : undefined}
+                  title={collapsed ? "Sale" : undefined}
+                >
+                  <span className="sidebar-icon" style={{ color: item.color }}>
+                    <Icon size={22} strokeWidth={1.8} />
+                  </span>
+                  {!collapsed && <span>Sale</span>}
+                  {cartCount > 0 && (
+                    <span className="sidebar-count">{cartCount}</span>
+                  )}
+                  {!collapsed && (
+                    <span className="sidebar-group-chevron">
+                      {saleMenuOpen ? (
+                        <ChevronDown size={15} />
+                      ) : (
+                        <ChevronRight size={15} />
+                      )}
+                    </span>
+                  )}
+                </button>
+                {!collapsed && saleMenuOpen && (
+                  <div className="sidebar-submenu" aria-label="Ventanas de Sale">
+                    {saleNavigationItems.map((child) => {
+                      const ChildIcon = child.icon;
+                      const childActive = child.id === activeScreen;
+                      return (
+                        <button
+                          key={child.id}
+                          type="button"
+                          className={childActive ? "is-active" : ""}
+                          onClick={() => onNavigate(child.id)}
+                          aria-current={childActive ? "page" : undefined}
+                        >
+                          <ChildIcon size={15} style={{ color: child.color }} />
+                          <span>{child.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          }
+          if (item.id === "inventory") {
+            return (
+              <div
+                key={item.id}
+                className={`sidebar-nav-group ${inventoryIsActive ? "is-active" : ""}`}
+              >
+                <button
+                  type="button"
+                  className={`sidebar-item ${inventoryIsActive ? "is-active" : ""}`}
+                  onClick={() => {
+                    onNavigate("inventory");
+                    if (!collapsed)
+                      setInventoryMenuOpen((current) => !current);
+                  }}
+                  aria-expanded={!collapsed ? inventoryMenuOpen : undefined}
+                  aria-current={isActive ? "page" : undefined}
+                  title={collapsed ? "Inventory" : undefined}
+                >
+                  <span className="sidebar-icon" style={{ color: item.color }}>
+                    <Icon size={22} strokeWidth={1.8} />
+                  </span>
+                  {!collapsed && <span>Inventory</span>}
+                  {!collapsed && (
+                    <span className="sidebar-group-chevron">
+                      {inventoryMenuOpen ? (
+                        <ChevronDown size={15} />
+                      ) : (
+                        <ChevronRight size={15} />
+                      )}
+                    </span>
+                  )}
+                </button>
+                {!collapsed && inventoryMenuOpen && (
+                  <div
+                    className="sidebar-submenu"
+                    aria-label="Ventanas de Inventory"
+                  >
+                    {inventoryNavigationItems.map((child) => {
+                      const ChildIcon = child.icon;
+                      const childActive = child.id === activeScreen;
+                      return (
+                        <button
+                          key={child.id}
+                          type="button"
+                          className={childActive ? "is-active" : ""}
+                          onClick={() => onNavigate(child.id)}
+                          aria-current={childActive ? "page" : undefined}
+                        >
+                          <ChildIcon size={15} style={{ color: child.color }} />
+                          <span>{child.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          }
           return (
             <button
               key={item.id}
@@ -128,9 +315,6 @@ export function PosSidebar({
                 <Icon size={22} strokeWidth={1.8} />
               </span>
               {!collapsed && <span>{item.label}</span>}
-              {item.id === "sale" && cartCount > 0 && (
-                <span className="sidebar-count">{cartCount}</span>
-              )}
             </button>
           );
         })}
@@ -140,10 +324,19 @@ export function PosSidebar({
         <Gauge size={17} />
         {!collapsed && (
           <div>
-            <strong>Sucursal Polanco</strong>
-            <span>Terminal conectada · Mock</span>
+            <strong>Sucursal {activeBranch}</strong>
+            <span>Ubicación fija · Terminal 01</span>
           </div>
         )}
+        <button
+          type="button"
+          className="sidebar-location-switch"
+          onClick={onRequestLocationSwitch}
+          aria-label={`Cambiar ubicación actual: ${activeBranch}`}
+          title="Cambiar sucursal · requiere usuario master"
+        >
+          <ArrowLeftRight size={16} />
+        </button>
       </div>
     </aside>
   );

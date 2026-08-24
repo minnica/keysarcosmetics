@@ -33,6 +33,7 @@ interface ProductDialogProps {
   otherItemsSubtotal: number;
   otherItemsMinimumTotal: number;
   open: boolean;
+  isMasterCode: (code: string) => boolean;
   onOpenChange: (open: boolean) => void;
   onSubmit: (item: CartItem) => void;
   onRemove?: (itemId: string) => void;
@@ -44,6 +45,7 @@ export function ProductDialog({
   otherItemsSubtotal,
   otherItemsMinimumTotal,
   open,
+  isMasterCode,
   onOpenChange,
   onSubmit,
   onRemove,
@@ -78,10 +80,11 @@ export function ProductDialog({
       belowLineMinimum: difference < 0,
       ticketCovered: !authorizationRequired,
       authorizationRequired,
-      authorized: adminCode === administratorCode,
+      authorized: isMasterCode(adminCode),
     };
   }, [
     adminCode,
+    isMasterCode,
     otherItemsMinimumTotal,
     otherItemsSubtotal,
     price,
@@ -135,8 +138,13 @@ export function ProductDialog({
               <DialogTitle>
                 {cartItem ? `Editar ${product.name}` : product.name}
               </DialogTitle>
-              <DialogDescription>
-                {getSellerSku(product)} · {product.family} / {product.category}
+              <DialogDescription className="product-dialog-description">
+                <strong aria-label="SKU operativo codificado">
+                  {getSellerSku(product)}
+                </strong>
+                <span>
+                  {product.family} / {product.category}
+                </span>
               </DialogDescription>
             </DialogHeader>
 
@@ -144,10 +152,6 @@ export function ProductDialog({
               <div>
                 <span>PRECIO DE LISTA</span>
                 <strong>{formatCurrency(product.maxPrice)}</strong>
-              </div>
-              <div>
-                <span>SKU CON PRECIO MÍNIMO</span>
-                <strong>{getSellerSku(product)}</strong>
               </div>
             </div>
 
@@ -168,7 +172,7 @@ export function ProductDialog({
                 </p>
               ) : priceState.belowLineMinimum && priceState.ticketCovered ? (
                 <p className="field-message is-positive">
-                  Reducción cubierta por el margen total del ticket. No requiere
+                  Reducción cubierta por el SPARE total del ticket. No requiere
                   autorización.
                 </p>
               ) : (

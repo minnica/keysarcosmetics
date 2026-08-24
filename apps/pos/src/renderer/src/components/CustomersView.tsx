@@ -1,61 +1,365 @@
-import { useMemo, useState } from "react";
 import {
+  Fragment,
+  useEffect,
+  useMemo,
+  useState,
+  type ChangeEvent,
+  type CSSProperties,
+} from "react";
+import {
+  AlertTriangle,
   Building2,
-  Cake,
+  CakeSlice,
+  CalendarDays,
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
+  CreditCard,
   KeyRound,
   LogOut,
-  MessageCircle,
+  Eye,
+  FileSpreadsheet,
+  Gift,
+  ImageDown,
+  Pencil,
   Phone,
+  Printer,
+  ReceiptText,
   Search,
   ShieldCheck,
+  Sparkles,
+  Store,
+  Trash2,
+  Upload,
   UserRound,
+  MessageCircle,
+  Plus,
+  Save,
 } from "lucide-react";
-import { Button, Card, CardContent, Input } from "@cosmetics/ui";
-import type { Client, Seller } from "../types";
+import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  Input,
+  Label,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+  toast,
+} from "@cosmetics/ui";
+import { formatCurrency, masterUser } from "../mock-data";
+import type {
+  Appointment,
+  Client,
+  LayawayRecord,
+  OwedProductRecord,
+  PaymentMethodOption,
+  Seller,
+  Ticket,
+  ReceiptSettings,
+} from "../types";
 
-type AccessMode = "phone" | "seller";
+type AccessMode = "search" | "seller";
 
 interface CustomersViewProps {
   clients: Client[];
   sellers: Seller[];
+  tickets: Ticket[];
+  appointments: Appointment[];
+  owedProducts: OwedProductRecord[];
+  layaways: LayawayRecord[];
+  paymentMethods: PaymentMethodOption[];
+  branches: string[];
+  receiptSettings: ReceiptSettings;
+  isMasterCode: (code: string) => boolean;
+  onUpdateClient: (client: Client) => void;
+  onDeleteClient: (clientId: string) => void;
+  onBulkImportClients: (clients: Client[]) => void;
+  onRegisterLayawayPayment: (
+    layawayId: string,
+    amount: number,
+    methodId: string,
+    sellerId: string,
+    deliveredCartItemIds: string[],
+  ) => void;
 }
 
+const normalize = (value: string) =>
+  value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("es-MX")
+    .trim();
 const normalizePhone = (value: string) => value.replace(/\D/g, "");
-const sourceLabels: Record<Client["source"], string> = {
-  APPROACH: "Abordaje",
-  LEAD: "Lead",
-  REFERRAL: "Recomendado",
-  SOCIAL: "Redes sociales",
+
+interface BirthdayMessage {
+  id: string;
+  name: string;
+  text: string;
+}
+
+const initialBirthdayMessages: BirthdayMessage[] = [
+  {
+    id: "message-elegant",
+    name: "Elegante",
+    text: "Que este nuevo año de vida esté lleno de bienestar, belleza y momentos inolvidables. ¡Feliz cumpleaños!",
+  },
+  {
+    id: "message-warm",
+    name: "Cálido",
+    text: "Hoy celebramos tu esencia y todo lo bonito que compartes con el mundo. Deseamos que tengas un cumpleaños maravilloso.",
+  },
+  {
+    id: "message-gift",
+    name: "Con regalo",
+    text: "¡Feliz cumpleaños! Tenemos una sorpresa especial para consentirte. Gracias por formar parte de Keysar Cosmetics.",
+  },
+];
+
+const birthdayDesigns = [
+  {
+    id: "gold",
+    name: "Elegancia dorada",
+    season: "Todo el año",
+    colors: ["#f6ead9", "#a97945", "#3b2b22"],
+  },
+  {
+    id: "spring",
+    name: "Primavera floral",
+    season: "Primavera",
+    colors: ["#f7e7ec", "#bd7188", "#5f3d4b"],
+  },
+  {
+    id: "summer",
+    name: "Verano coral",
+    season: "Verano",
+    colors: ["#ffeadf", "#dd765e", "#59352d"],
+  },
+  {
+    id: "holiday",
+    name: "Temporada festiva",
+    season: "Invierno",
+    colors: ["#e8efe8", "#55745f", "#263c2e"],
+  },
+] as const;
+
+const loadBirthdayMessages = () => {
+  try {
+    const stored = window.sessionStorage.getItem("keysar-birthday-messages");
+    if (!stored) return initialBirthdayMessages;
+    const parsed = JSON.parse(stored) as BirthdayMessage[];
+    return parsed.length > 0 ? parsed : initialBirthdayMessages;
+  } catch {
+    return initialBirthdayMessages;
+  }
 };
 
-export function CustomersView({ clients, sellers }: CustomersViewProps) {
-  const [accessMode, setAccessMode] = useState<AccessMode>("phone");
+export function CustomersView({
+  clients,
+  sellers,
+  tickets,
+  appointments,
+  owedProducts,
+  layaways,
+  paymentMethods,
+  branches,
+  receiptSettings,
+  isMasterCode,
+  onUpdateClient,
+  onDeleteClient,
+  onBulkImportClients,
+  onRegisterLayawayPayment,
+}: CustomersViewProps) {
+  const [accessMode, setAccessMode] = useState<AccessMode>("search");
+  const [nameSearch, setNameSearch] = useState("");
   const [phoneSearch, setPhoneSearch] = useState("");
+  const [minimumAmount, setMinimumAmount] = useState("");
+  const [maximumAmount, setMaximumAmount] = useState("");
+  const [selectedBranches, setSelectedBranches] = useState<string[]>([]);
+  const [sellerFilter, setSellerFilter] = useState("ALL");
   const [accessCode, setAccessCode] = useState("");
   const [authorizedSellerId, setAuthorizedSellerId] = useState("");
+  const [masterAuthorized, setMasterAuthorized] = useState(false);
   const [accessError, setAccessError] = useState("");
+  const [expandedClientId, setExpandedClientId] = useState("");
+  const [editingClient, setEditingClient] = useState<Client | null>(null);
+  const [deletingClient, setDeletingClient] = useState<Client | null>(null);
+  const [deleteFolio, setDeleteFolio] = useState("");
+  const [deleteMasterCode, setDeleteMasterCode] = useState("");
+  const [bulkImportOpen, setBulkImportOpen] = useState(false);
+  const [bulkMasterCode, setBulkMasterCode] = useState("");
+  const [bulkFilename, setBulkFilename] = useState("");
+  const [bulkImportRows, setBulkImportRows] = useState<Client[]>([]);
+  const [bulkImportErrors, setBulkImportErrors] = useState<string[]>([]);
+  const [birthdayClient, setBirthdayClient] = useState<Client | null>(null);
+  const [selectedBirthdayDesignId, setSelectedBirthdayDesignId] = useState("gold");
+  const [birthdayMessages, setBirthdayMessages] = useState<BirthdayMessage[]>(
+    loadBirthdayMessages,
+  );
+  const [selectedBirthdayMessageId, setSelectedBirthdayMessageId] = useState(
+    initialBirthdayMessages[0]!.id,
+  );
+  const [layawayAmounts, setLayawayAmounts] = useState<Record<string, number>>(
+    {},
+  );
+  const [layawayMethods, setLayawayMethods] = useState<Record<string, string>>(
+    {},
+  );
+  const [layawayDeliveryIds, setLayawayDeliveryIds] = useState<
+    Record<string, string[]>
+  >({});
 
   const activeSellers = useMemo(
     () => sellers.filter((seller) => seller.active),
     [sellers],
   );
+
+  useEffect(() => {
+    window.sessionStorage.setItem(
+      "keysar-birthday-messages",
+      JSON.stringify(birthdayMessages),
+    );
+  }, [birthdayMessages]);
   const authorizedSeller = activeSellers.find(
     (seller) => seller.id === authorizedSellerId,
   );
-  const normalizedSearch = normalizePhone(phoneSearch);
-  const phoneResults = useMemo(() => {
-    if (normalizedSearch.length < 4) return [];
-    return clients.filter((client) =>
-      normalizePhone(client.phone).includes(normalizedSearch),
+  const normalizedName = normalize(nameSearch);
+  const normalizedPhone = normalizePhone(phoneSearch);
+  const searchIsReady =
+    normalizedName.length >= 2 ||
+    normalizedPhone.length >= 4 ||
+    minimumAmount !== "" ||
+    maximumAmount !== "" ||
+    selectedBranches.length > 0 ||
+    sellerFilter !== "ALL";
+
+  useEffect(() => {
+    if (!masterAuthorized) return;
+    let inactivityTimer = window.setTimeout(() => undefined, 0);
+    const lockMasterSession = () => {
+      setMasterAuthorized(false);
+      setAccessMode("search");
+      setExpandedClientId("");
+      setEditingClient(null);
+      setDeletingClient(null);
+      toast.info("La sesión master se bloqueó por 3 minutos de inactividad.");
+    };
+    const restartTimer = () => {
+      window.clearTimeout(inactivityTimer);
+      inactivityTimer = window.setTimeout(lockMasterSession, 180_000);
+    };
+    const activityEvents: Array<keyof WindowEventMap> = [
+      "pointerdown",
+      "keydown",
+      "touchstart",
+      "scroll",
+    ];
+    activityEvents.forEach((eventName) =>
+      window.addEventListener(eventName, restartTimer, { passive: true }),
     );
-  }, [clients, normalizedSearch]);
-  const sellerResults = useMemo(() => {
-    if (!authorizedSellerId) return [];
-    return clients.filter((client) =>
-      client.saleSellerIds.includes(authorizedSellerId),
+    restartTimer();
+    return () => {
+      window.clearTimeout(inactivityTimer);
+      activityEvents.forEach((eventName) =>
+        window.removeEventListener(eventName, restartTimer),
+      );
+    };
+  }, [masterAuthorized]);
+
+  const clientTickets = (client: Client) => {
+    const phone = normalizePhone(client.phone);
+    const fullName = normalize(`${client.firstName} ${client.lastName}`);
+    return tickets.filter(
+      (ticket) =>
+        ticket.status === "COMPLETED" &&
+        ((phone && normalizePhone(ticket.clientPhone) === phone) ||
+          normalize(ticket.clientName) === fullName),
     );
-  }, [authorizedSellerId, clients]);
-  const visibleClients = accessMode === "phone" ? phoneResults : sellerResults;
+  };
+
+  const clientAppointments = (client: Client) =>
+    appointments.filter(
+      (appointment) =>
+        appointment.clientId === client.id ||
+        normalizePhone(appointment.clientPhone) === normalizePhone(client.phone),
+    );
+
+  const paymentLabel = (methodId: string) =>
+    paymentMethods.find((method) => method.id === methodId)?.label ?? methodId;
+
+  const visibleClients = useMemo(() => {
+    const base =
+      accessMode === "seller"
+        ? masterAuthorized
+          ? clients
+          : authorizedSellerId
+          ? clients.filter((client) =>
+              client.saleSellerIds.includes(authorizedSellerId),
+            )
+          : []
+        : searchIsReady
+          ? clients
+          : [];
+    const minimum = minimumAmount === "" ? null : Number(minimumAmount);
+    const maximum = maximumAmount === "" ? null : Number(maximumAmount);
+
+    return base.filter((client) => {
+      const fullName = normalize(`${client.firstName} ${client.lastName}`);
+      const phone = normalizePhone(client.phone);
+      if (normalizedName && !fullName.includes(normalizedName)) return false;
+      if (normalizedPhone && !phone.includes(normalizedPhone)) return false;
+      if (
+        sellerFilter !== "ALL" &&
+        client.ownerId !== sellerFilter &&
+        !client.saleSellerIds.includes(sellerFilter)
+      )
+        return false;
+
+      const purchases = clientTickets(client);
+      const purchaseTotal = purchases.reduce(
+        (sum, ticket) => sum + ticket.total,
+        0,
+      );
+      if (minimum !== null && purchaseTotal < minimum) return false;
+      if (maximum !== null && purchaseTotal > maximum) return false;
+      if (
+        selectedBranches.length > 0 &&
+        !purchases.some((ticket) =>
+          selectedBranches.includes(ticket.branchName ?? "Polanco"),
+        )
+      )
+        return false;
+      return true;
+    });
+  }, [
+    accessMode,
+    authorizedSellerId,
+    clients,
+    maximumAmount,
+    masterAuthorized,
+    minimumAmount,
+    normalizedName,
+    normalizedPhone,
+    searchIsReady,
+    sellerFilter,
+    selectedBranches,
+    tickets,
+  ]);
 
   const getClientOwner = (client: Client) => {
     if (client.companyLocked) return client.companyName;
@@ -66,6 +370,13 @@ export function CustomersView({ clients, sellers }: CustomersViewProps) {
   };
 
   const authorizeSeller = () => {
+    if (isMasterCode(accessCode)) {
+      setMasterAuthorized(true);
+      setAuthorizedSellerId("");
+      setAccessError("");
+      setAccessCode("");
+      return;
+    }
     const seller = activeSellers.find(
       (candidate) => candidate.accessCode === accessCode.trim(),
     );
@@ -75,99 +386,506 @@ export function CustomersView({ clients, sellers }: CustomersViewProps) {
       return;
     }
     setAuthorizedSellerId(seller.id);
+    setMasterAuthorized(false);
     setAccessError("");
     setAccessCode("");
   };
 
   const changeAccessMode = (mode: AccessMode) => {
     setAccessMode(mode);
+    setNameSearch("");
     setPhoneSearch("");
+    setSellerFilter("ALL");
     setAccessCode("");
     setAuthorizedSellerId("");
+    setMasterAuthorized(false);
     setAccessError("");
+    setExpandedClientId("");
+  };
+
+  const escapeHtml = (value: string) =>
+    value
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+
+  const printClient = (client: Client) => {
+    const purchases = clientTickets(client);
+    const customerAppointments = clientAppointments(client);
+    const popup = window.open("", "_blank", "width=720,height=860");
+    if (!popup) {
+      toast.error("El navegador bloqueó la ventana de impresión.");
+      return;
+    }
+    const logo = receiptSettings.logoUrl
+      ? `<img src="${escapeHtml(receiptSettings.logoUrl)}" alt="Logo" />`
+      : "";
+    popup.document.write(`<!doctype html><html lang="es"><head><title>${escapeHtml(client.registrationFolio)}</title><style>
+      body{font-family:Arial,sans-serif;color:#111;margin:32px}header{text-align:center;border-bottom:2px solid #111;padding-bottom:18px}header img{display:block;max-width:${receiptSettings.logoWidth}px;max-height:72px;object-fit:contain;margin:0 auto 10px}h1{font-size:20px;margin:5px 0}h2{font-size:14px;margin-top:24px}.meta{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:18px}.meta div,article{border:1px solid #bbb;padding:9px}small{color:#666}article{margin:7px 0}article strong{display:block}@media print{body{margin:8mm}}
+    </style></head><body><header>${logo}<h1>${escapeHtml(receiptSettings.companyName)}</h1><strong>EXPEDIENTE DE CLIENTE</strong></header><div class="meta"><div><small>FOLIO</small><br><strong>${escapeHtml(client.registrationFolio)}</strong></div><div><small>CLIENTE</small><br><strong>${escapeHtml(`${client.firstName} ${client.lastName}`)}</strong></div><div><small>TELÉFONO</small><br>${escapeHtml(client.phone || "Sin registro")}</div><div><small>VENDEDOR</small><br>${escapeHtml(getClientOwner(client) || "Empresa")}</div><div><small>CUMPLEAÑOS</small><br>${escapeHtml(client.birthday || "Sin registro")}</div><div><small>PROCEDENCIA</small><br>${escapeHtml(client.sourceLabel)}</div></div><h2>HISTORIAL DE COMPRA</h2>${purchases.length ? purchases.map((ticket) => `<article><strong>${escapeHtml(ticket.id)} · ${escapeHtml(formatCurrency(ticket.total))}</strong><small>${escapeHtml(ticket.createdAt)} · ${escapeHtml(ticket.branchName ?? "Polanco")}</small><br>${escapeHtml(ticket.products.map((product) => `${product.quantity} × ${product.name}`).join(" · "))}</article>`).join("") : "<p>Sin compras registradas.</p>"}<h2>CITAS Y CORTESÍAS</h2>${customerAppointments.length ? customerAppointments.map((appointment) => `<article><strong>${escapeHtml(appointment.service)}</strong><small>${escapeHtml(`${appointment.date} · ${appointment.time} · ${appointment.branch}`)}</small></article>`).join("") : "<p>Sin citas registradas.</p>"}<script>window.onload=()=>window.print();</script></body></html>`);
+    popup.document.close();
+  };
+
+  const saveClientEdit = () => {
+    if (!editingClient) return;
+    if (!editingClient.firstName.trim() || !editingClient.phone.trim()) {
+      toast.error("Nombre y teléfono son obligatorios.");
+      return;
+    }
+    onUpdateClient(editingClient);
+    setEditingClient(null);
+    toast.success("Registro del cliente actualizado.");
+  };
+
+  const confirmClientDeletion = () => {
+    if (!deletingClient) return;
+    if (deleteFolio.trim() !== deletingClient.registrationFolio) {
+      toast.error("La primera validación no coincide con el folio.");
+      return;
+    }
+    if (!isMasterCode(deleteMasterCode)) {
+      toast.error("La segunda validación requiere el código master.");
+      return;
+    }
+    onDeleteClient(deletingClient.id);
+    setExpandedClientId("");
+    setDeletingClient(null);
+    setDeleteFolio("");
+    setDeleteMasterCode("");
+    toast.success("Cliente borrado del directorio activo; el histórico se conserva.");
+  };
+
+  const exportClientsToExcel = async () => {
+    if (visibleClients.length === 0) {
+      toast.error("Realiza una búsqueda para exportar clientes autorizados.");
+      return;
+    }
+    const XLSX = await import("xlsx");
+    const rows = visibleClients.map((client) => {
+      const purchases = clientTickets(client);
+      return {
+        Folio: client.registrationFolio,
+        Nombre: client.firstName,
+        Apellido: client.lastName,
+        Cumpleaños: client.birthday,
+        Género: client.gender,
+        Teléfono: client.phone,
+        WhatsApp: client.whatsapp,
+        Procedencia: client.sourceLabel,
+        Empresa: client.companyName || "Keysar Cosmetics",
+        Vendedor: getClientOwner(client),
+        "Sucursal de registro": client.registrationBranch ?? "",
+        "Compra total": purchases.reduce((sum, ticket) => sum + ticket.total, 0),
+      };
+    });
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    worksheet["!cols"] = [
+      { wch: 18 },
+      { wch: 16 },
+      { wch: 18 },
+      { wch: 13 },
+      { wch: 14 },
+      { wch: 17 },
+      { wch: 17 },
+      { wch: 18 },
+      { wch: 22 },
+      { wch: 22 },
+      { wch: 19 },
+      { wch: 15 },
+    ];
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Clientes");
+    XLSX.writeFile(
+      workbook,
+      `clientes-keysar-${new Date().toISOString().slice(0, 10)}.xlsx`,
+    );
+    toast.success(`${visibleClients.length} clientes exportados a Excel.`);
+  };
+
+  const downloadBulkTemplate = () => {
+    const anchor = document.createElement("a");
+    anchor.href = "/templates/clientes-carga-masiva.xlsx";
+    anchor.download = "plantilla-carga-masiva-clientes.xlsx";
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    toast.success("Plantilla de clientes descargada.");
+  };
+
+  const formatImportedBirthday = (value: unknown) => {
+    if (value instanceof Date && !Number.isNaN(value.getTime()))
+      return value.toISOString().slice(0, 10);
+    if (typeof value === "number") {
+      const date = new Date(Math.round((value - 25_569) * 86_400_000));
+      return Number.isNaN(date.getTime()) ? "" : date.toISOString().slice(0, 10);
+    }
+    const text = String(value ?? "").trim();
+    if (!text) return "";
+    const isoMatch = text.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+    if (isoMatch) {
+      const [, year = "", month = "", day = ""] = isoMatch;
+      return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+    }
+    return text;
+  };
+
+  const readBulkClientFile = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    setBulkFilename(file.name);
+    setBulkImportRows([]);
+    setBulkImportErrors([]);
+    try {
+      const XLSX = await import("xlsx");
+      const workbook = XLSX.read(await file.arrayBuffer(), {
+        type: "array",
+        cellDates: true,
+      });
+      const firstSheetName = workbook.SheetNames[0];
+      if (!firstSheetName) throw new Error("El archivo no contiene hojas.");
+      const worksheet = workbook.Sheets[firstSheetName];
+      if (!worksheet) throw new Error("No fue posible leer la primera hoja.");
+      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(worksheet, {
+        defval: "",
+        raw: true,
+        range: 3,
+      });
+      const imported: Client[] = [];
+      const errors: string[] = [];
+      const knownPhones = new Set(clients.map((client) => normalizePhone(client.phone)));
+      rows.forEach((row, index) => {
+        const line = index + 5;
+        const firstName = String(row["nombre*"] ?? "").trim();
+        const lastName = String(row["apellido*"] ?? "").trim();
+        const phone = String(row["telefono*"] ?? "").trim();
+        const normalizedImportedPhone = normalizePhone(phone);
+        if (!firstName || !lastName || normalizedImportedPhone.length < 7) {
+          errors.push(`Fila ${line}: nombre, apellido y teléfono válido son obligatorios.`);
+          return;
+        }
+        if (knownPhones.has(normalizedImportedPhone)) {
+          errors.push(`Fila ${line}: el teléfono ${phone} ya está registrado o repetido.`);
+          return;
+        }
+        knownPhones.add(normalizedImportedPhone);
+        const sourceLabel = String(row.procedencia ?? "Abordaje").trim() || "Abordaje";
+        const normalizedSource = normalize(sourceLabel);
+        const companyLocked =
+          normalizedSource.includes("lead") || normalizedSource.includes("redes");
+        const requestedOwnerId = String(row.vendedor_id ?? "").trim();
+        const owner = activeSellers.find((seller) => seller.id === requestedOwnerId);
+        const createdAt = new Date();
+        imported.push({
+          id: `client-bulk-${createdAt.getTime()}-${index}-${crypto.randomUUID().slice(0, 8)}`,
+          registrationFolio: `CLI-MAS-${String(createdAt.getFullYear()).slice(-2)}-${String(createdAt.getTime()).slice(-6)}-${String(index + 1).padStart(2, "0")}`,
+          registeredAtIso: createdAt.toISOString(),
+          firstName,
+          lastName,
+          birthday: formatImportedBirthday(row.cumpleanos),
+          gender: String(row.genero ?? "Sin especificar").trim() || "Sin especificar",
+          phone,
+          whatsapp: String(row.whatsapp ?? phone).trim() || phone,
+          source: sourceLabel.toLocaleUpperCase("es-MX").replaceAll(" ", "_"),
+          sourceLabel,
+          companyName:
+            String(row.empresa ?? "").trim() ||
+            (companyLocked ? "Keysar Cosmetics" : ""),
+          companyLocked,
+          ownerId: owner?.id ?? null,
+          saleSellerIds: owner ? [owner.id] : [],
+          registrationBranch: String(row.sucursal ?? "").trim(),
+        });
+      });
+      setBulkImportRows(imported);
+      setBulkImportErrors(errors);
+      if (imported.length === 0)
+        toast.error("El archivo no contiene clientes válidos para importar.");
+      else toast.success(`${imported.length} clientes listos para importar.`);
+    } catch {
+      setBulkImportErrors(["No fue posible leer el archivo. Usa la plantilla XLSX descargable."]);
+      toast.error("Archivo inválido para carga masiva.");
+    }
+  };
+
+  const confirmBulkImport = () => {
+    if (!masterAuthorized && !isMasterCode(bulkMasterCode)) {
+      toast.error("La carga masiva requiere el código master.");
+      return;
+    }
+    if (bulkImportRows.length === 0) {
+      toast.error("Selecciona un archivo con clientes válidos.");
+      return;
+    }
+    onBulkImportClients(bulkImportRows);
+    toast.success(`${bulkImportRows.length} clientes agregados al directorio.`);
+    setBulkImportOpen(false);
+    setBulkMasterCode("");
+    setBulkFilename("");
+    setBulkImportRows([]);
+    setBulkImportErrors([]);
+  };
+
+  const birthdayScope = useMemo(() => {
+    if (masterAuthorized) return clients;
+    if (authorizedSellerId)
+      return clients.filter((client) =>
+        client.saleSellerIds.includes(authorizedSellerId),
+      );
+    return visibleClients;
+  }, [authorizedSellerId, clients, masterAuthorized, visibleClients]);
+  const today = new Date();
+  const birthdayParts = (client: Client) =>
+    client.birthday.split("-").map((part) => Number(part));
+  const todayBirthdays = birthdayScope.filter((client) => {
+    const [, month, day] = birthdayParts(client);
+    return month === today.getMonth() + 1 && day === today.getDate();
+  });
+  const monthlyBirthdays = birthdayScope
+    .filter((client) => birthdayParts(client)[1] === today.getMonth() + 1)
+    .sort((a, b) => (birthdayParts(a)[2] ?? 0) - (birthdayParts(b)[2] ?? 0));
+  const selectedBirthdayMessage =
+    birthdayMessages.find((message) => message.id === selectedBirthdayMessageId) ??
+    birthdayMessages[0];
+  const selectedBirthdayDesign =
+    birthdayDesigns.find((design) => design.id === selectedBirthdayDesignId) ??
+    birthdayDesigns[0];
+
+  const updateSelectedBirthdayMessage = (text: string) => {
+    if (!selectedBirthdayMessage) return;
+    setBirthdayMessages((current) =>
+      current.map((message) =>
+        message.id === selectedBirthdayMessage.id ? { ...message, text } : message,
+      ),
+    );
+  };
+
+  const addBirthdayMessage = () => {
+    const id = `message-${Date.now()}`;
+    setBirthdayMessages((current) => [
+      ...current,
+      { id, name: `Mensaje ${current.length + 1}`, text: "Escribe aquí tu felicitación personalizada." },
+    ]);
+    setSelectedBirthdayMessageId(id);
+  };
+
+  const deleteBirthdayMessage = () => {
+    if (birthdayMessages.length <= 1 || !selectedBirthdayMessage) {
+      toast.error("Debe conservarse al menos un mensaje.");
+      return;
+    }
+    const remaining = birthdayMessages.filter(
+      (message) => message.id !== selectedBirthdayMessage.id,
+    );
+    setBirthdayMessages(remaining);
+    setSelectedBirthdayMessageId(remaining[0]!.id);
+    toast.success("Mensaje eliminado.");
+  };
+
+  const createBirthdayCardBlob = async () => {
+    if (!birthdayClient || !selectedBirthdayMessage) return null;
+    const canvas = document.createElement("canvas");
+    canvas.width = 1080;
+    canvas.height = 1080;
+    const context = canvas.getContext("2d");
+    if (!context) return null;
+    const [background, accent, ink] = selectedBirthdayDesign.colors;
+    const gradient = context.createLinearGradient(0, 0, 1080, 1080);
+    gradient.addColorStop(0, background);
+    gradient.addColorStop(1, "#ffffff");
+    context.fillStyle = gradient;
+    context.fillRect(0, 0, 1080, 1080);
+    context.globalAlpha = 0.16;
+    context.fillStyle = accent;
+    for (let index = 0; index < 18; index += 1) {
+      const x = (index * 173) % 1080;
+      const y = (index * 241) % 1080;
+      context.beginPath();
+      context.arc(x, y, 36 + (index % 4) * 18, 0, Math.PI * 2);
+      context.fill();
+    }
+    context.globalAlpha = 1;
+    context.strokeStyle = accent;
+    context.lineWidth = 5;
+    context.strokeRect(48, 48, 984, 984);
+
+    if (receiptSettings.logoUrl) {
+      try {
+        const logo = await new Promise<HTMLImageElement>((resolve, reject) => {
+          const image = new Image();
+          const timeout = window.setTimeout(
+            () => reject(new Error("Tiempo de carga del logo agotado.")),
+            1_500,
+          );
+          image.onload = () => {
+            window.clearTimeout(timeout);
+            resolve(image);
+          };
+          image.onerror = () => {
+            window.clearTimeout(timeout);
+            reject(new Error("No se pudo cargar el logo."));
+          };
+          image.src = new URL(receiptSettings.logoUrl, window.location.href).href;
+        });
+        const ratio = Math.min(190 / logo.width, 120 / logo.height);
+        context.drawImage(
+          logo,
+          540 - (logo.width * ratio) / 2,
+          125,
+          logo.width * ratio,
+          logo.height * ratio,
+        );
+      } catch {
+        // Si la imagen no carga, el nombre de la empresa mantiene la identidad.
+      }
+    }
+    context.fillStyle = ink;
+    context.textAlign = "center";
+    context.font = "600 30px Georgia";
+    context.fillText(receiptSettings.companyName, 540, 285);
+    context.fillStyle = accent;
+    context.font = "italic 42px Georgia";
+    context.fillText("Una celebración para ti", 540, 390);
+    context.fillStyle = ink;
+    context.font = "700 78px Georgia";
+    context.fillText(`${birthdayClient.firstName}`, 540, 510);
+    context.font = "700 62px Georgia";
+    context.fillText("¡Feliz cumpleaños!", 540, 600);
+
+    const words = selectedBirthdayMessage.text.split(/\s+/);
+    const lines: string[] = [];
+    let line = "";
+    context.font = "32px Arial";
+    words.forEach((word) => {
+      const candidate = line ? `${line} ${word}` : word;
+      if (context.measureText(candidate).width > 780 && line) {
+        lines.push(line);
+        line = word;
+      } else line = candidate;
+    });
+    if (line) lines.push(line);
+    lines.slice(0, 5).forEach((text, index) =>
+      context.fillText(text, 540, 700 + index * 45),
+    );
+    context.fillStyle = accent;
+    context.font = "700 25px Arial";
+    context.fillText(`Con cariño, ${receiptSettings.companyName}`, 540, 950);
+    return new Promise<Blob | null>((resolve) =>
+      canvas.toBlob(resolve, "image/png", 0.96),
+    );
+  };
+
+  const downloadBirthdayCard = async () => {
+    const blob = await createBirthdayCardBlob();
+    if (!blob || !birthdayClient) return;
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `feliz-cumpleanos-${normalize(`${birthdayClient.firstName}-${birthdayClient.lastName}`).replaceAll(" ", "-")}.png`;
+    anchor.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
+    toast.success("Tarjeta de cumpleaños descargada en PNG.");
+  };
+
+  const shareBirthdayCard = async () => {
+    const blob = await createBirthdayCardBlob();
+    if (!blob || !birthdayClient || !selectedBirthdayMessage) return;
+    const filename = `feliz-cumpleanos-${birthdayClient.firstName}.png`;
+    const file = new File([blob], filename, { type: "image/png" });
+    const shareData = {
+      files: [file],
+      text: `${selectedBirthdayMessage.text}\n\n${receiptSettings.companyName}`,
+      title: `Feliz cumpleaños, ${birthdayClient.firstName}`,
+    };
+    if (navigator.share && navigator.canShare?.({ files: [file] })) {
+      try {
+        await navigator.share(shareData);
+      } catch {
+        toast.info("El envío de la tarjeta fue cancelado.");
+      }
+      return;
+    }
+    await downloadBirthdayCard();
+    const phone = normalizePhone(birthdayClient.whatsapp || birthdayClient.phone);
+    window.open(
+      `https://wa.me/${phone}?text=${encodeURIComponent(shareData.text)}`,
+      "_blank",
+      "noopener,noreferrer",
+    );
+    toast.info("Se descargó la tarjeta; adjúntala en la conversación de WhatsApp.");
+  };
+
+  const toggleBranch = (branch: string) => {
+    setSelectedBranches((current) =>
+      current.includes(branch)
+        ? current.filter((item) => item !== branch)
+        : [...current, branch],
+    );
   };
 
   const emptyMessage =
-    accessMode === "phone"
-      ? normalizedSearch.length < 4
-        ? "Escribe al menos 4 dígitos del teléfono para consultar un registro."
-        : "No se encontró ningún cliente con ese teléfono."
-      : authorizedSeller
-        ? "Este vendedor todavía no participa en ventas con clientes registrados."
+    accessMode === "search"
+      ? !searchIsReady
+        ? "Escribe al menos 2 letras del nombre o 4 dígitos del teléfono."
+        : "No se encontraron clientes con los filtros seleccionados."
+      : authorizedSeller || masterAuthorized
+        ? "No se encontraron clientes con estos filtros."
         : "Ingresa la clave personal del vendedor para consultar sus registros.";
 
   return (
-    <div className="view-stack">
+    <div className="view-stack customers-register-view">
       <Card className="customer-access-card">
         <CardContent>
           <div className="customer-access-heading">
             <div>
-              <span className="section-kicker">ACCESO RESTRINGIDO</span>
-              <h2>Consulta de clientes</h2>
+              <span className="section-kicker">CONSULTA PROTEGIDA</span>
+              <h2>Registro de clientes</h2>
               <p>
-                No se muestra el directorio completo. Consulta por teléfono o
-                entra con la clave personal del vendedor.
+                Busca un registro específico o entra con la clave del vendedor
+                para consultar únicamente su cartera.
               </p>
             </div>
-            <ShieldCheck size={28} />
+            <div className="customer-directory-actions">
+              <span className="customer-security-icon"><ShieldCheck size={24} /></span>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={exportClientsToExcel}
+                disabled={visibleClients.length === 0}
+              >
+                <FileSpreadsheet size={15} /> Descargar Excel
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => setBulkImportOpen(true)}
+              >
+                <Upload size={15} /> Carga masiva
+              </Button>
+            </div>
           </div>
 
           <div className="segmented-control customer-access-tabs">
             <button
               type="button"
-              className={accessMode === "phone" ? "is-active" : ""}
-              onClick={() => changeAccessMode("phone")}
+              className={accessMode === "search" ? "is-active" : ""}
+              onClick={() => changeAccessMode("search")}
             >
-              <Phone size={16} /> Buscar por teléfono
+              <Search size={16} /> Buscar cliente
             </button>
             <button
               type="button"
               className={accessMode === "seller" ? "is-active" : ""}
               onClick={() => changeAccessMode("seller")}
             >
-              <KeyRound size={16} /> Acceso de vendedor
+              <KeyRound size={16} /> Vendedor o master
             </button>
           </div>
 
-          {accessMode === "phone" ? (
-            <div className="customer-access-controls">
-              <div className="search-input-wrap">
-                <Search size={17} />
-                <Input
-                  type="tel"
-                  inputMode="numeric"
-                  value={phoneSearch}
-                  onChange={(event) => setPhoneSearch(event.target.value)}
-                  placeholder="Número telefónico"
-                  aria-label="Buscar cliente por número telefónico"
-                />
-              </div>
-              <span className="customer-access-note">
-                La búsqueda por nombre está deshabilitada en esta pantalla.
-              </span>
-            </div>
-          ) : authorizedSeller ? (
-            <div className="customer-access-session">
-              <div>
-                <span className="seller-avatar">
-                  {authorizedSeller.initials}
-                </span>
-                <span>
-                  <strong>{authorizedSeller.name}</strong>
-                  <small>
-                    Sólo puede ver clientes donde participa en la venta.
-                  </small>
-                </span>
-              </div>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setAuthorizedSellerId("")}
-              >
-                <LogOut size={15} /> Cerrar acceso
-              </Button>
-            </div>
-          ) : (
+          {accessMode === "seller" && !authorizedSeller && !masterAuthorized ? (
             <div className="customer-access-controls">
               <div className="customer-access-code-row">
                 <div className="search-input-wrap">
@@ -182,7 +900,7 @@ export function CustomersView({ clients, sellers }: CustomersViewProps) {
                       if (event.key === "Enter") authorizeSeller();
                     }}
                     placeholder="Clave de 4 dígitos"
-                    aria-label="Clave de acceso del vendedor"
+                    aria-label="Clave de acceso de vendedor o master"
                   />
                 </div>
                 <Button
@@ -193,86 +911,722 @@ export function CustomersView({ clients, sellers }: CustomersViewProps) {
                   Consultar
                 </Button>
               </div>
-              {accessError ? (
-                <span className="customer-access-error" role="alert">
-                  {accessError}
-                </span>
-              ) : (
-                <span className="customer-access-note">
-                  Claves mock: Ana 1101 · Sofía 2202 · Daniela 3303.
-                </span>
-              )}
+              <span
+                className={
+                  accessError
+                    ? "customer-access-error"
+                    : "customer-access-note"
+                }
+              >
+                {accessError ||
+                  "Master 2468 · Ana 1101 · Sofía 2202 · Daniela 3303."}
+              </span>
             </div>
+          ) : (
+            <>
+              {(authorizedSeller || masterAuthorized) && (
+                <div className="customer-access-session">
+                  <div>
+                    <span className="seller-avatar">
+                      {masterAuthorized
+                        ? masterUser.initials
+                        : authorizedSeller?.initials}
+                    </span>
+                    <span>
+                      <strong>
+                        {masterAuthorized
+                          ? masterUser.name
+                          : authorizedSeller?.name}
+                      </strong>
+                      <small>
+                        {masterAuthorized
+                          ? "Acceso master al directorio completo."
+                          : "Consulta limitada a sus propios registros."}
+                      </small>
+                    </span>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setAuthorizedSellerId("");
+                      setMasterAuthorized(false);
+                    }}
+                  >
+                    <LogOut size={15} /> Cerrar acceso
+                  </Button>
+                </div>
+              )}
+              <div className="customer-query-grid">
+                <div className="field-stack">
+                  <span>Nombre</span>
+                  <div className="search-input-wrap">
+                    <Search size={16} />
+                    <Input
+                      value={nameSearch}
+                      onChange={(event) => setNameSearch(event.target.value)}
+                      placeholder="Nombre o apellido"
+                    />
+                  </div>
+                </div>
+                <div className="field-stack">
+                  <span>Teléfono</span>
+                  <div className="search-input-wrap">
+                    <Phone size={16} />
+                    <Input
+                      value={phoneSearch}
+                      onChange={(event) => setPhoneSearch(event.target.value)}
+                      placeholder="Número telefónico"
+                    />
+                  </div>
+                </div>
+                <div className="field-stack">
+                  <span>Vendedor</span>
+                  <Select value={sellerFilter} onValueChange={setSellerFilter}>
+                    <SelectTrigger aria-label="Filtrar clientes por vendedor">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ALL">Todos los vendedores</SelectItem>
+                      {activeSellers.map((seller) => (
+                        <SelectItem key={seller.id} value={seller.id}>
+                          {seller.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="field-stack">
+                  <span>Compra desde</span>
+                  <Input
+                    type="number"
+                    min="0"
+                    value={minimumAmount}
+                    onChange={(event) => setMinimumAmount(event.target.value)}
+                    placeholder="$0"
+                  />
+                </div>
+                <div className="field-stack">
+                  <span>Compra hasta</span>
+                  <Input
+                    type="number"
+                    min="0"
+                    value={maximumAmount}
+                    onChange={(event) => setMaximumAmount(event.target.value)}
+                    placeholder="Sin límite"
+                  />
+                </div>
+              </div>
+              <div className="customer-branch-filter">
+                <span>SUCURSAL DE COMPRA</span>
+                <button
+                  type="button"
+                  className={selectedBranches.length === 0 ? "is-active" : ""}
+                  onClick={() => setSelectedBranches([])}
+                >
+                  Todas
+                </button>
+                {branches.map((branch) => (
+                  <button
+                    key={branch}
+                    type="button"
+                    className={
+                      selectedBranches.includes(branch) ? "is-active" : ""
+                    }
+                    onClick={() => toggleBranch(branch)}
+                  >
+                    {branch}
+                  </button>
+                ))}
+              </div>
+            </>
           )}
         </CardContent>
       </Card>
 
       {visibleClients.length > 0 ? (
-        <>
-          <div className="customer-results-heading">
-            <div>
-              <span className="section-kicker">RESULTADOS AUTORIZADOS</span>
-              <h2>
-                {accessMode === "seller" && authorizedSeller
-                  ? `Clientes de ${authorizedSeller.name}`
-                  : "Coincidencias por teléfono"}
-              </h2>
+        <Card className="data-card customer-register-card">
+          <CardContent className="p-0">
+            <div className="data-card-heading">
+              <div>
+                <span>REGISTROS AUTORIZADOS</span>
+                <h2>Clientes encontrados</h2>
+              </div>
+              <Badge variant="outline">{visibleClients.length} registros</Badge>
             </div>
-            <strong>{visibleClients.length}</strong>
-          </div>
-          <div className="customer-grid">
-            {visibleClients.map((client) => (
-              <Card key={client.id} className="customer-card">
-                <CardContent>
-                  <div className="customer-card-head">
-                    <span className="customer-avatar">
-                      {client.firstName.charAt(0)}
-                      {client.lastName.charAt(0)}
-                    </span>
-                    <div>
-                      <h3>
-                        {client.firstName} {client.lastName}
-                      </h3>
-                      <span>{client.gender || "Sin género capturado"}</span>
-                    </div>
-                  </div>
-                  <div className="customer-details">
-                    <span>
-                      <Phone size={15} /> {client.phone || "Sin teléfono"}
-                    </span>
-                    <span>
-                      <MessageCircle size={15} />{" "}
-                      {client.whatsapp || "Sin WhatsApp"}
-                    </span>
-                    <span>
-                      <Cake size={15} /> {client.birthday || "Sin cumpleaños"}
-                    </span>
-                    <span>
-                      <Building2 size={15} /> Procedencia:{" "}
-                      {sourceLabels[client.source]}
-                    </span>
-                  </div>
-                  <div className="customer-owner">
-                    {getClientOwner(client) === "Keysar Cosmetics" ||
-                    client.companyLocked ? (
-                      <Building2 size={16} />
-                    ) : (
-                      <UserRound size={16} />
-                    )}
-                    <span>
-                      <small>PERTENECE A</small>
-                      <strong>{getClientOwner(client)}</strong>
-                    </span>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </>
+            <div className="table-scroll">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>FOLIO</TableHead>
+                    <TableHead>NOMBRE COMPLETO</TableHead>
+                    <TableHead>TELÉFONO</TableHead>
+                    <TableHead>CUMPLEAÑOS</TableHead>
+                    <TableHead>COMPRA TOTAL</TableHead>
+                    <TableHead className="text-right">ACCIONES</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {visibleClients.map((client) => {
+                    const purchases = clientTickets(client);
+                    const customerAppointments = clientAppointments(client);
+                    const customerProductDebts = owedProducts.filter(
+                      (record) =>
+                        record.clientId === client.id ||
+                        normalizePhone(record.clientPhone) ===
+                          normalizePhone(client.phone),
+                    );
+                    const customerLayaways = layaways.filter(
+                      (layaway) =>
+                        layaway.clientId === client.id ||
+                        normalizePhone(layaway.clientPhone) ===
+                          normalizePhone(client.phone),
+                    );
+                    const purchaseTotal = purchases.reduce(
+                      (sum, ticket) => sum + ticket.total,
+                      0,
+                    );
+                    const expanded = expandedClientId === client.id;
+                    return (
+                      <Fragment key={client.id}>
+                        <TableRow>
+                          <TableCell>
+                            <strong>{client.registrationFolio}</strong>
+                          </TableCell>
+                          <TableCell>
+                            <div className="customer-table-name">
+                              <span>
+                                {client.firstName.charAt(0)}
+                                {client.lastName.charAt(0)}
+                              </span>
+                              <strong>
+                                {client.firstName} {client.lastName}
+                              </strong>
+                            </div>
+                          </TableCell>
+                          <TableCell>{client.phone || "Sin teléfono"}</TableCell>
+                          <TableCell>
+                            {client.birthday || "Sin registro"}
+                          </TableCell>
+                          <TableCell>
+                            <strong>{formatCurrency(purchaseTotal)}</strong>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="customer-row-actions">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                aria-label={`Visualizar expediente de ${client.firstName}`}
+                                onClick={() =>
+                                  setExpandedClientId(expanded ? "" : client.id)
+                                }
+                              >
+                                {expanded ? (
+                                  <ChevronUp size={15} />
+                                ) : (
+                                  <Eye size={15} />
+                                )}
+                                Visualizar
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => printClient(client)}
+                              >
+                                <Printer size={15} /> Imprimir
+                              </Button>
+                              {masterAuthorized && (
+                                <>
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => setEditingClient({ ...client })}
+                                  >
+                                    <Pencil size={15} /> Editar
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    className="customer-delete-action"
+                                    onClick={() => {
+                                      setDeletingClient(client);
+                                      setDeleteFolio("");
+                                      setDeleteMasterCode("");
+                                    }}
+                                  >
+                                    <Trash2 size={15} /> Borrar
+                                  </Button>
+                                </>
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                        {expanded && (
+                          <TableRow className="customer-history-row">
+                            <TableCell colSpan={6}>
+                              <div className="customer-history-panel">
+                                <div className="customer-profile-summary">
+                                  <div>
+                                    <ReceiptText size={17} />
+                                    <span>
+                                      <small>REGISTRO</small>
+                                      <strong>{client.registrationFolio}</strong>
+                                    </span>
+                                  </div>
+                                  <div>
+                                    <CalendarDays size={17} />
+                                    <span>
+                                      <small>FECHA DE ALTA</small>
+                                      <strong>
+                                        {new Date(
+                                          client.registeredAtIso,
+                                        ).toLocaleDateString("es-MX")}
+                                      </strong>
+                                    </span>
+                                  </div>
+                                  <div>
+                                    <Building2 size={17} />
+                                    <span>
+                                      <small>PROCEDENCIA</small>
+                                      <strong>{client.sourceLabel}</strong>
+                                    </span>
+                                  </div>
+                                  <div>
+                                    {getClientOwner(client) ===
+                                    "Keysar Cosmetics" ? (
+                                      <Building2 size={17} />
+                                    ) : (
+                                      <UserRound size={17} />
+                                    )}
+                                    <span>
+                                      <small>PERTENECE A</small>
+                                      <strong>{getClientOwner(client)}</strong>
+                                    </span>
+                                  </div>
+                                </div>
+                                {customerLayaways.length > 0 && (
+                                  <div className="customer-layaway-section">
+                                    <div className="section-title-row">
+                                      <div>
+                                        <span className="section-kicker">
+                                          TICKETS Y PAGOS
+                                        </span>
+                                        <h3>
+                                          <CreditCard size={16} /> Apartados liquidados y Add payment
+                                        </h3>
+                                      </div>
+                                      <Badge variant="outline">
+                                        {customerLayaways.filter(
+                                          (layaway) => layaway.status === "ACTIVE",
+                                        ).length} activos
+                                      </Badge>
+                                    </div>
+                                    {customerLayaways.map((layaway) => {
+                                      const selectedMethod =
+                                        layawayMethods[layaway.id] ??
+                                        paymentMethods.find(
+                                          (method) => method.active,
+                                        )?.id ??
+                                        "";
+                                      const enteredAmount =
+                                        layawayAmounts[layaway.id] ??
+                                        layaway.balanceDue;
+                                      const pendingDeliveryItems =
+                                        layaway.items.filter(
+                                          (item) =>
+                                            item.kind === "PRODUCT" &&
+                                            item.deliveredQuantity < item.quantity,
+                                        );
+                                      const selectedDeliveryIds =
+                                        layawayDeliveryIds[layaway.id] ?? [];
+                                      const willLiquidate =
+                                        enteredAmount >= layaway.balanceDue;
+                                      const sellerId =
+                                        layaway.sellerIds.find((id) =>
+                                          sellers.some(
+                                            (seller) =>
+                                              seller.id === id && seller.active,
+                                          ),
+                                        ) ??
+                                        client.ownerId ??
+                                        activeSellers[0]?.id ??
+                                        "";
+                                      const submitPayment = (
+                                        amount: number,
+                                        deliveryIds: string[],
+                                      ) => {
+                                        if (!sellerId || !selectedMethod) return;
+                                        onRegisterLayawayPayment(
+                                          layaway.id,
+                                          amount,
+                                          selectedMethod,
+                                          sellerId,
+                                          deliveryIds,
+                                        );
+                                        setLayawayAmounts((current) => {
+                                          const next = { ...current };
+                                          delete next[layaway.id];
+                                          return next;
+                                        });
+                                        setLayawayDeliveryIds((current) => ({
+                                          ...current,
+                                          [layaway.id]: [],
+                                        }));
+                                      };
+                                      return (
+                                        <Card
+                                          key={layaway.id}
+                                          className="layaway-account-card"
+                                        >
+                                          <CardContent>
+                                            <div className="layaway-account-heading">
+                                              <span>
+                                                <strong>
+                                                  {layaway.originalTicketId}
+                                                </strong>
+                                                <small>
+                                                  {layaway.createdAt} · {layaway.branch}
+                                                </small>
+                                              </span>
+                                              <span>
+                                                <small>PAGADO</small>
+                                                <strong>
+                                                  {formatCurrency(
+                                                    layaway.amountPaid,
+                                                  )}
+                                                </strong>
+                                              </span>
+                                              <span>
+                                                <small>SALDO</small>
+                                                <strong>
+                                                  {formatCurrency(
+                                                    layaway.balanceDue,
+                                                  )}
+                                                </strong>
+                                              </span>
+                                              <Badge
+                                                variant={
+                                                  layaway.status === "PAID"
+                                                    ? "default"
+                                                    : "outline"
+                                                }
+                                              >
+                                                {layaway.status === "PAID"
+                                                  ? "LIQUIDADO"
+                                                  : "PENDIENTE"}
+                                              </Badge>
+                                            </div>
+                                            <div className="layaway-products-summary">
+                                              {layaway.items.map((item) => (
+                                                <span key={item.cartItemId}>
+                                                  {item.productName}: {item.deliveredQuantity}/{item.quantity} entregado(s)
+                                                </span>
+                                              ))}
+                                            </div>
+                                            <div className="layaway-payment-history">
+                                              {layaway.payments.map((payment) => (
+                                                <div key={payment.id}>
+                                                  <span>
+                                                    <strong>{payment.folio}</strong>
+                                                    <small>{payment.createdAt}</small>
+                                                  </span>
+                                                  <span>
+                                                    {paymentLabel(payment.methodId)} · <strong>{formatCurrency(payment.amount)}</strong>
+                                                  </span>
+                                                </div>
+                                              ))}
+                                            </div>
+                                            {layaway.status === "ACTIVE" && (
+                                              <>
+                                                {willLiquidate &&
+                                                  pendingDeliveryItems.length > 0 && (
+                                                    <div className="layaway-liquidation-delivery">
+                                                      <strong>
+                                                        Pregunta qué productos recibe al liquidar
+                                                      </strong>
+                                                      <div className="layaway-delivery-list">
+                                                        {pendingDeliveryItems.map(
+                                                          (item) => {
+                                                            const selected =
+                                                              selectedDeliveryIds.includes(
+                                                                item.cartItemId,
+                                                              );
+                                                            return (
+                                                              <button
+                                                                key={item.cartItemId}
+                                                                type="button"
+                                                                className={
+                                                                  selected
+                                                                    ? "is-selected"
+                                                                    : ""
+                                                                }
+                                                                aria-pressed={selected}
+                                                                onClick={() =>
+                                                                  setLayawayDeliveryIds(
+                                                                    (current) => ({
+                                                                      ...current,
+                                                                      [layaway.id]: selected
+                                                                        ? selectedDeliveryIds.filter(
+                                                                            (id) =>
+                                                                              id !== item.cartItemId,
+                                                                          )
+                                                                        : [
+                                                                            ...selectedDeliveryIds,
+                                                                            item.cartItemId,
+                                                                          ],
+                                                                    }),
+                                                                  )
+                                                                }
+                                                              >
+                                                                <span>
+                                                                  <strong>{item.productName}</strong>
+                                                                  <small>
+                                                                    {item.quantity - item.deliveredQuantity} pendiente(s)
+                                                                  </small>
+                                                                </span>
+                                                                <Badge variant={selected ? "default" : "outline"}>
+                                                                  {selected ? "ENTREGAR" : "PENDIENTE"}
+                                                                </Badge>
+                                                              </button>
+                                                            );
+                                                          },
+                                                        )}
+                                                      </div>
+                                                    </div>
+                                                  )}
+                                                <div className="layaway-payment-form">
+                                                  <div className="field-stack">
+                                                    <Label>Método de pago</Label>
+                                                    <Select
+                                                      value={selectedMethod}
+                                                      onValueChange={(methodId) =>
+                                                        setLayawayMethods(
+                                                          (current) => ({
+                                                            ...current,
+                                                            [layaway.id]: methodId,
+                                                          }),
+                                                        )
+                                                      }
+                                                    >
+                                                      <SelectTrigger>
+                                                        <SelectValue />
+                                                      </SelectTrigger>
+                                                      <SelectContent>
+                                                        {paymentMethods
+                                                          .filter(
+                                                            (method) =>
+                                                              method.active,
+                                                          )
+                                                          .map((method) => (
+                                                            <SelectItem
+                                                              key={method.id}
+                                                              value={method.id}
+                                                            >
+                                                              {method.label}
+                                                            </SelectItem>
+                                                          ))}
+                                                      </SelectContent>
+                                                    </Select>
+                                                  </div>
+                                                  <div className="field-stack">
+                                                    <Label>Monto</Label>
+                                                    <Input
+                                                      type="number"
+                                                      min="0.01"
+                                                      max={layaway.balanceDue}
+                                                      step="0.01"
+                                                      value={enteredAmount}
+                                                      onChange={(event) =>
+                                                        setLayawayAmounts(
+                                                          (current) => ({
+                                                            ...current,
+                                                            [layaway.id]: Number(
+                                                              event.target.value,
+                                                            ),
+                                                          }),
+                                                        )
+                                                      }
+                                                    />
+                                                  </div>
+                                                  <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    disabled={
+                                                      !selectedMethod ||
+                                                      !sellerId ||
+                                                      enteredAmount <= 0
+                                                    }
+                                                    onClick={() =>
+                                                      submitPayment(
+                                                        enteredAmount,
+                                                        willLiquidate
+                                                          ? selectedDeliveryIds
+                                                          : [],
+                                                      )
+                                                    }
+                                                  >
+                                                    Add payment
+                                                  </Button>
+                                                  <Button
+                                                    type="button"
+                                                    disabled={
+                                                      !selectedMethod || !sellerId
+                                                    }
+                                                    onClick={() =>
+                                                      submitPayment(
+                                                        layaway.balanceDue,
+                                                        selectedDeliveryIds,
+                                                      )
+                                                    }
+                                                  >
+                                                    Liquidar ticket
+                                                  </Button>
+                                                </div>
+                                              </>
+                                            )}
+                                          </CardContent>
+                                        </Card>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                                <div className="customer-history-columns">
+                                  <section>
+                                    <h3>
+                                      <ReceiptText size={16} /> Historial de
+                                      compra
+                                    </h3>
+                                    {purchases.map((ticket) => (
+                                      <article
+                                        key={ticket.id}
+                                        className="customer-history-item"
+                                      >
+                                        <div>
+                                          <strong>{ticket.id}</strong>
+                                          <Badge variant="outline">
+                                            {ticket.paymentStatus}
+                                          </Badge>
+                                        </div>
+                                        <p>
+                                          {ticket.products
+                                            .map(
+                                              (product) =>
+                                                `${product.quantity} × ${product.name}`,
+                                            )
+                                            .join(" · ")}
+                                        </p>
+                                        <footer>
+                                          <span>
+                                            <Store size={13} />{" "}
+                                            {ticket.branchName ?? "Polanco"}
+                                          </span>
+                                          <span>{ticket.createdAt}</span>
+                                          <strong>
+                                            {formatCurrency(ticket.total)}
+                                          </strong>
+                                        </footer>
+                                      </article>
+                                    ))}
+                                    {purchases.length === 0 && (
+                                      <p className="empty-inline">
+                                        Sin compras registradas.
+                                      </p>
+                                    )}
+                                  </section>
+                                  <section>
+                                    <h3>
+                                      <CalendarDays size={16} /> Citas y
+                                      cortesías
+                                    </h3>
+                                    {customerAppointments.map((appointment) => (
+                                      <article
+                                        key={appointment.id}
+                                        className="customer-history-item"
+                                      >
+                                        <div>
+                                          <strong>{appointment.service}</strong>
+                                          <Badge variant="outline">
+                                            {appointment.status}
+                                          </Badge>
+                                        </div>
+                                        <p>
+                                          {appointment.date} · {appointment.time}
+                                        </p>
+                                        <footer>
+                                          <span>
+                                            <Store size={13} />{" "}
+                                            {appointment.branch}
+                                          </span>
+                                          <span>{appointment.kind}</span>
+                                        </footer>
+                                      </article>
+                                    ))}
+                                    {customerAppointments.length === 0 && (
+                                      <p className="empty-inline">
+                                        Sin citas registradas.
+                                      </p>
+                                    )}
+                                  </section>
+                                  <section>
+                                    <h3>
+                                      <AlertTriangle size={16} /> Productos por entregar
+                                    </h3>
+                                    {customerProductDebts.map((record) => (
+                                      <article
+                                        key={record.id}
+                                        className="customer-history-item"
+                                      >
+                                        <div>
+                                          <strong>{record.productName}</strong>
+                                          <Badge variant="outline">
+                                            {record.status === "PENDING"
+                                              ? "PENDIENTE"
+                                              : record.status === "FULFILLED"
+                                                ? "ENTREGADO"
+                                                : "CANCELADO"}
+                                          </Badge>
+                                        </div>
+                                        <p>
+                                          Debe {record.quantity - record.deliveredQuantity} · Entregado {record.deliveredQuantity} de {record.quantity}
+                                        </p>
+                                        <footer>
+                                          <span><Store size={13} /> {record.branch}</span>
+                                          <span>{record.sellerNames.join(" / ") || "Empresa"}</span>
+                                        </footer>
+                                        {record.deliveryHistory.map((delivery) => (
+                                          <small key={delivery.id}>
+                                            Entrega: {delivery.quantity} pza · {delivery.deliveredAt}
+                                          </small>
+                                        ))}
+                                      </article>
+                                    ))}
+                                    {customerProductDebts.length === 0 && (
+                                      <p className="empty-inline">
+                                        Sin compromisos de producto.
+                                      </p>
+                                    )}
+                                  </section>
+                                </div>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </Fragment>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
       ) : (
         <div className="customer-locked-empty">
-          {accessMode === "phone" ? (
-            <Phone size={28} />
+          {accessMode === "search" ? (
+            <Search size={28} />
           ) : (
             <KeyRound size={28} />
           )}
@@ -280,6 +1634,442 @@ export function CustomersView({ clients, sellers }: CustomersViewProps) {
           <p>{emptyMessage}</p>
         </div>
       )}
+
+      <Card className="customer-birthday-dashboard">
+        <CardContent>
+          <div className="birthday-dashboard-heading">
+            <div>
+              <span className="section-kicker">CUMPLEAÑOS DE CLIENTES</span>
+              <h2>Celebraciones y tarjetas</h2>
+              <p>
+                Consulta las celebraciones autorizadas y crea una felicitación
+                personalizada con la identidad de la empresa.
+              </p>
+            </div>
+            <CakeSlice size={28} />
+          </div>
+          {birthdayScope.length > 0 ? (
+            <div className="birthday-lists-grid">
+              <section className="birthday-list-card is-today">
+                <header>
+                  <span><Gift size={17} /> CUMPLEAÑOS DE HOY</span>
+                  <Badge>{todayBirthdays.length}</Badge>
+                </header>
+                <div>
+                  {todayBirthdays.map((client) => (
+                    <article key={client.id}>
+                      <span className="birthday-client-avatar">
+                        {client.firstName.charAt(0)}{client.lastName.charAt(0)}
+                      </span>
+                      <div>
+                        <strong>{client.firstName} {client.lastName}</strong>
+                        <small>{client.whatsapp || client.phone} · {getClientOwner(client)}</small>
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={() => setBirthdayClient(client)}
+                      >
+                        <Sparkles size={14} /> Crear tarjeta
+                      </Button>
+                    </article>
+                  ))}
+                  {todayBirthdays.length === 0 && (
+                    <p className="empty-inline">No hay cumpleaños registrados para hoy.</p>
+                  )}
+                </div>
+              </section>
+              <section className="birthday-list-card">
+                <header>
+                  <span><CalendarDays size={17} /> CUMPLEAÑOS DEL MES</span>
+                  <Badge variant="outline">{monthlyBirthdays.length}</Badge>
+                </header>
+                <div>
+                  {monthlyBirthdays.map((client) => {
+                    const [, , birthdayDay] = birthdayParts(client);
+                    return (
+                      <article key={client.id}>
+                        <span className="birthday-day-badge">{String(birthdayDay).padStart(2, "0")}</span>
+                        <div>
+                          <strong>{client.firstName} {client.lastName}</strong>
+                          <small>{client.whatsapp || client.phone}</small>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setBirthdayClient(client)}
+                        >
+                          <Gift size={14} /> Felicitar
+                        </Button>
+                      </article>
+                    );
+                  })}
+                  {monthlyBirthdays.length === 0 && (
+                    <p className="empty-inline">No hay cumpleaños registrados este mes.</p>
+                  )}
+                </div>
+              </section>
+            </div>
+          ) : (
+            <div className="birthday-locked-state">
+              <ShieldCheck size={22} />
+              <span>
+                <strong>Información protegida</strong>
+                <small>Busca una clienta o ingresa la clave del vendedor/master para consultar cumpleaños.</small>
+              </span>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Dialog
+        open={bulkImportOpen}
+        onOpenChange={(open) => {
+          setBulkImportOpen(open);
+          if (!open) {
+            setBulkMasterCode("");
+            setBulkFilename("");
+            setBulkImportRows([]);
+            setBulkImportErrors([]);
+          }
+        }}
+      >
+        <DialogContent className="customer-bulk-dialog sm:max-w-[640px]">
+          <DialogHeader>
+            <DialogTitle>Carga masiva de clientes</DialogTitle>
+            <DialogDescription>
+              Descarga la plantilla, completa una clienta por fila y vuelve a cargar el archivo XLSX.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="bulk-import-steps">
+            <section>
+              <span className="bulk-step-number">1</span>
+              <div>
+                <strong>Descargar plantilla</strong>
+                <small>Incluye ejemplo, campos obligatorios y catálogos permitidos.</small>
+              </div>
+              <Button type="button" variant="outline" onClick={downloadBulkTemplate}>
+                <FileSpreadsheet size={15} /> Descargar XLSX
+              </Button>
+            </section>
+            <section>
+              <span className="bulk-step-number">2</span>
+              <div>
+                <strong>Seleccionar archivo completado</strong>
+                <small>{bulkFilename || "Sólo archivos .xlsx o .xls"}</small>
+              </div>
+              <label className="bulk-file-button" htmlFor="bulk-client-file">
+                <Upload size={15} /> Elegir archivo
+              </label>
+              <input
+                id="bulk-client-file"
+                type="file"
+                accept=".xlsx,.xls"
+                onChange={readBulkClientFile}
+              />
+            </section>
+          </div>
+          {(bulkImportRows.length > 0 || bulkImportErrors.length > 0) && (
+            <div className="bulk-import-result">
+              <div>
+                <CheckCircle2 size={17} />
+                <span><strong>{bulkImportRows.length} válidos</strong><small>Listos para agregar</small></span>
+              </div>
+              <div className={bulkImportErrors.length > 0 ? "has-errors" : ""}>
+                <AlertTriangle size={17} />
+                <span><strong>{bulkImportErrors.length} observaciones</strong><small>{bulkImportErrors.slice(0, 3).join(" · ") || "Sin errores"}</small></span>
+              </div>
+            </div>
+          )}
+          {!masterAuthorized && (
+            <div className="field-stack">
+              <Label>Código master para confirmar la carga</Label>
+              <Input
+                type="password"
+                inputMode="numeric"
+                maxLength={4}
+                value={bulkMasterCode}
+                onChange={(event) => setBulkMasterCode(event.target.value)}
+                placeholder="Código de 4 dígitos"
+              />
+            </div>
+          )}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setBulkImportOpen(false)}>
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              disabled={
+                bulkImportRows.length === 0 ||
+                (!masterAuthorized && !isMasterCode(bulkMasterCode))
+              }
+              onClick={confirmBulkImport}
+            >
+              <Upload size={15} /> Importar {bulkImportRows.length} clientes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={birthdayClient !== null} onOpenChange={(open) => !open && setBirthdayClient(null)}>
+        <DialogContent className="birthday-card-dialog sm:max-w-[900px]">
+          <DialogHeader>
+            <DialogTitle>Tarjeta de cumpleaños</DialogTitle>
+            <DialogDescription>
+              Elige un diseño de temporada, personaliza el mensaje y descarga o comparte la tarjeta.
+            </DialogDescription>
+          </DialogHeader>
+          {birthdayClient && selectedBirthdayMessage && (
+            <div className="birthday-card-workspace">
+              <div className="birthday-card-controls">
+                <div className="field-stack">
+                  <Label>Diseño por temporada</Label>
+                  <div className="birthday-design-grid">
+                    {birthdayDesigns.map((design) => (
+                      <button
+                        key={design.id}
+                        type="button"
+                        className={selectedBirthdayDesignId === design.id ? "is-selected" : ""}
+                        onClick={() => setSelectedBirthdayDesignId(design.id)}
+                      >
+                        <span style={{ background: `linear-gradient(135deg, ${design.colors[0]}, ${design.colors[1]})` }} />
+                        <strong>{design.name}</strong>
+                        <small>{design.season}</small>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="field-stack">
+                  <Label>Mensaje</Label>
+                  <Select value={selectedBirthdayMessageId} onValueChange={setSelectedBirthdayMessageId}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {birthdayMessages.map((message) => (
+                        <SelectItem key={message.id} value={message.id}>{message.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <textarea
+                    className="birthday-message-editor"
+                    value={selectedBirthdayMessage.text}
+                    onChange={(event) => updateSelectedBirthdayMessage(event.target.value)}
+                  />
+                  <div className="birthday-message-actions">
+                    <Button type="button" variant="outline" size="sm" onClick={addBirthdayMessage}>
+                      <Plus size={14} /> Nuevo
+                    </Button>
+                    <Button type="button" variant="outline" size="sm" onClick={() => toast.success("Mensaje guardado para esta sesión.")}>
+                      <Save size={14} /> Guardar
+                    </Button>
+                    <Button type="button" variant="outline" size="sm" onClick={deleteBirthdayMessage}>
+                      <Trash2 size={14} /> Borrar
+                    </Button>
+                  </div>
+                </div>
+              </div>
+              <article
+                className={`birthday-card-preview design-${selectedBirthdayDesign.id}`}
+                style={{
+                  "--birthday-bg": selectedBirthdayDesign.colors[0],
+                  "--birthday-accent": selectedBirthdayDesign.colors[1],
+                  "--birthday-ink": selectedBirthdayDesign.colors[2],
+                } as CSSProperties}
+              >
+                <i className="birthday-orb orb-one" />
+                <i className="birthday-orb orb-two" />
+                {receiptSettings.logoUrl && <img src={receiptSettings.logoUrl} alt={receiptSettings.companyName} />}
+                <small>{receiptSettings.companyName}</small>
+                <span>Una celebración para ti</span>
+                <strong>{birthdayClient.firstName}</strong>
+                <h3>¡Feliz cumpleaños!</h3>
+                <p>{selectedBirthdayMessage.text}</p>
+                <footer>Con cariño, {receiptSettings.companyName}</footer>
+              </article>
+            </div>
+          )}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setBirthdayClient(null)}>
+              Cerrar
+            </Button>
+            <Button type="button" variant="outline" onClick={downloadBirthdayCard}>
+              <ImageDown size={16} /> Descargar PNG
+            </Button>
+            <Button type="button" onClick={shareBirthdayCard}>
+              <MessageCircle size={16} /> Enviar por WhatsApp
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={editingClient !== null}
+        onOpenChange={(open) => {
+          if (!open) setEditingClient(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-[620px]">
+          <DialogHeader>
+            <DialogTitle>Editar registro de cliente</DialogTitle>
+            <DialogDescription>
+              Acceso master. Los datos vigentes se actualizarán en los módulos relacionados.
+            </DialogDescription>
+          </DialogHeader>
+          {editingClient && (
+            <div className="customer-edit-grid">
+              <div className="field-stack">
+                <Label>Nombre</Label>
+                <Input
+                  value={editingClient.firstName}
+                  onChange={(event) =>
+                    setEditingClient({ ...editingClient, firstName: event.target.value })
+                  }
+                />
+              </div>
+              <div className="field-stack">
+                <Label>Apellido</Label>
+                <Input
+                  value={editingClient.lastName}
+                  onChange={(event) =>
+                    setEditingClient({ ...editingClient, lastName: event.target.value })
+                  }
+                />
+              </div>
+              <div className="field-stack">
+                <Label>Teléfono</Label>
+                <Input
+                  value={editingClient.phone}
+                  onChange={(event) =>
+                    setEditingClient({ ...editingClient, phone: event.target.value })
+                  }
+                />
+              </div>
+              <div className="field-stack">
+                <Label>WhatsApp</Label>
+                <Input
+                  value={editingClient.whatsapp}
+                  onChange={(event) =>
+                    setEditingClient({ ...editingClient, whatsapp: event.target.value })
+                  }
+                />
+              </div>
+              <div className="field-stack">
+                <Label>Cumpleaños</Label>
+                <Input
+                  type="date"
+                  value={editingClient.birthday}
+                  onChange={(event) =>
+                    setEditingClient({ ...editingClient, birthday: event.target.value })
+                  }
+                />
+              </div>
+              <div className="field-stack">
+                <Label>Género</Label>
+                <Select
+                  value={editingClient.gender || "Sin especificar"}
+                  onValueChange={(gender) => setEditingClient({ ...editingClient, gender })}
+                >
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Femenino">Femenino</SelectItem>
+                    <SelectItem value="Masculino">Masculino</SelectItem>
+                    <SelectItem value="No binario">No binario</SelectItem>
+                    <SelectItem value="Sin especificar">Sin especificar</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="field-stack customer-edit-wide">
+                <Label>Vendedor asignado</Label>
+                <Select
+                  value={editingClient.ownerId ?? "COMPANY"}
+                  onValueChange={(ownerId) =>
+                    setEditingClient({
+                      ...editingClient,
+                      ownerId: ownerId === "COMPANY" ? null : ownerId,
+                      companyLocked: ownerId === "COMPANY",
+                    })
+                  }
+                >
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="COMPANY">Keysar Cosmetics</SelectItem>
+                    {activeSellers.map((seller) => (
+                      <SelectItem key={seller.id} value={seller.id}>{seller.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setEditingClient(null)}>
+              Cancelar
+            </Button>
+            <Button type="button" onClick={saveClientEdit}>Guardar cambios</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={deletingClient !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeletingClient(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-[520px]">
+          <DialogHeader>
+            <DialogTitle>Doble validación para borrar</DialogTitle>
+            <DialogDescription>
+              El cliente saldrá del directorio activo. Sus tickets e historial no se eliminan.
+            </DialogDescription>
+          </DialogHeader>
+          {deletingClient && (
+            <div className="customer-delete-validation">
+              <div className="customer-delete-warning">
+                <AlertTriangle size={18} />
+                <span><strong>{deletingClient.firstName} {deletingClient.lastName}</strong><small>{deletingClient.registrationFolio}</small></span>
+              </div>
+              <div className="field-stack">
+                <Label>1. Escribe el folio del cliente</Label>
+                <Input
+                  value={deleteFolio}
+                  onChange={(event) => setDeleteFolio(event.target.value)}
+                  placeholder={deletingClient.registrationFolio}
+                />
+              </div>
+              <div className="field-stack">
+                <Label>2. Confirma con código master</Label>
+                <Input
+                  type="password"
+                  inputMode="numeric"
+                  maxLength={4}
+                  value={deleteMasterCode}
+                  onChange={(event) => setDeleteMasterCode(event.target.value)}
+                  placeholder="Código de 4 dígitos"
+                />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setDeletingClient(null)}>
+              Conservar cliente
+            </Button>
+            <Button
+              type="button"
+              className="customer-confirm-delete"
+              disabled={
+                !deletingClient ||
+                deleteFolio.trim() !== deletingClient.registrationFolio ||
+                !isMasterCode(deleteMasterCode)
+              }
+              onClick={confirmClientDeletion}
+            >
+              <Trash2 size={16} /> Borrar registro
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

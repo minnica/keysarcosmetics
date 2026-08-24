@@ -39,12 +39,13 @@ import {
   SelectValue,
   toast,
 } from "@cosmetics/ui";
-import { administratorCode, formatCurrency } from "../mock-data";
+import { formatCurrency } from "../mock-data";
 import type {
   AppointmentDraft,
   CartItem,
   Client,
   ClientField,
+  ClientSourceOption,
   NewClientDraft,
   PaymentMethod,
   PaymentEntry,
@@ -90,7 +91,10 @@ interface CheckoutDialogProps {
   clients: Client[];
   sellers: Seller[];
   paymentMethods: PaymentMethodOption[];
+  branches: string[];
+  sourceOptions: ClientSourceOption[];
   requiredFields: RequiredClientFields;
+  isMasterCode: (code: string) => boolean;
   onOpenChange: (open: boolean) => void;
   onComplete: (result: CheckoutResult) => void;
 }
@@ -117,26 +121,10 @@ const clientFieldLabels: Record<ClientField, string> = {
   companyName: "Empresa asignada",
 };
 
-const sourceLabels = {
-  APPROACH: "Abordaje",
-  LEAD: "Lead",
-  REFERRAL: "Recomendado",
-  SOCIAL: "Redes sociales",
-};
-
-const appointmentBranches = [
-  {
-    name: "Polanco",
-    times: ["10:00", "11:30", "13:00", "16:00", "18:30"],
-  },
-  {
-    name: "Satélite",
-    times: ["09:30", "12:00", "14:30", "17:00", "19:00"],
-  },
-  {
-    name: "Roma Norte",
-    times: ["10:30", "12:30", "15:00", "17:30", "19:30"],
-  },
+const appointmentTimeSets = [
+  ["10:00", "11:30", "13:00", "16:00", "18:30"],
+  ["09:30", "12:00", "14:30", "17:00", "19:00"],
+  ["10:30", "12:30", "15:00", "17:30", "19:30"],
 ] as const;
 
 const nextSessionServices = [
@@ -188,13 +176,26 @@ export function CheckoutDialog({
   clients,
   sellers,
   paymentMethods,
+  branches,
+  sourceOptions,
   requiredFields,
+  isMasterCode,
   onOpenChange,
   onComplete,
 }: CheckoutDialogProps) {
   const activeSellers = useMemo(
     () => sellers.filter((seller) => seller.active),
     [sellers],
+  );
+  const appointmentBranches = useMemo(
+    () =>
+      branches.map((name, index) => ({
+        name,
+        times:
+          appointmentTimeSets[index % appointmentTimeSets.length] ??
+          appointmentTimeSets[0],
+      })),
+    [branches],
   );
   const [clientMode, setClientMode] = useState<ClientMode>("search");
   const [checkoutStep, setCheckoutStep] = useState<CheckoutStep>(1);
@@ -296,6 +297,9 @@ export function CheckoutDialog({
   const newClientOwner = activeSellers.find(
     (seller) => seller.id === clientOwnerId,
   );
+  const selectedSourceOption = sourceOptions.find(
+    (source) => source.id === newClient.source,
+  );
   const clientHadInactiveOwner = Boolean(
     selectedClient?.ownerId && !activeOwner,
   );
@@ -305,7 +309,7 @@ export function CheckoutDialog({
           selectedClient &&
           (selectedClient.companyLocked || clientHadInactiveOwner),
         )
-      : newClient.source === "LEAD" || newClient.source === "SOCIAL";
+      : Boolean(selectedSourceOption?.locksCompany);
   const defaultSellerId =
     activeOwner?.id ?? (clientMode === "new" ? (newClientOwner?.id ?? "") : "");
   const visibleSellers = showAdditionalSellers
@@ -356,14 +360,16 @@ export function CheckoutDialog({
   const sellerStepIsValid =
     selectedSellerIds.length > 0 && splitIsValid && ownershipIsValid;
   const nextSessionIsValid =
-    nextSessionAnswer === "NO" ||
-    (nextSessionAnswer === "YES" &&
-      Boolean(
-        nextSessionService &&
-        nextSessionDate &&
-        nextSessionBranch &&
-        nextSessionTime,
-      ));
+    clientMode === "new"
+      ? courtesyAppointmentIsValid
+      : nextSessionAnswer === "NO" ||
+        (nextSessionAnswer === "YES" &&
+          Boolean(
+            nextSessionService &&
+            nextSessionDate &&
+            nextSessionBranch &&
+            nextSessionTime,
+          ));
   const canComplete =
     clientIsValid &&
     sellerStepIsValid &&
@@ -399,7 +405,7 @@ export function CheckoutDialog({
   };
 
   const authorizeOwnershipChange = () => {
-    if (ownershipMasterCode !== administratorCode) {
+    if (!isMasterCode(ownershipMasterCode)) {
       toast.error("Código master incorrecto.");
       return;
     }
@@ -463,6 +469,8 @@ export function CheckoutDialog({
         ? { ...selectedClient, ownerId, saleSellerIds }
         : {
             id: `client-${Date.now()}`,
+            registrationFolio: `CLI-${new Date().getFullYear()}-${Date.now().toString().slice(-6)}-${crypto.randomUUID().slice(0, 4).toUpperCase()}`,
+            registeredAtIso: new Date().toISOString(),
             ...newClient,
             ownerId,
             companyLocked: clientIsCompanyLocked,
@@ -470,6 +478,7 @@ export function CheckoutDialog({
               ? newClient.companyName.trim()
               : "",
             source: newClient.source || "APPROACH",
+            sourceLabel: selectedSourceOption?.label ?? "Abordaje",
             saleSellerIds,
           };
     const selectedSellers = selectedSellerIds
@@ -485,7 +494,7 @@ export function CheckoutDialog({
             time: courtesyTime,
           }))
         : []),
-      ...(nextSessionAnswer === "YES"
+      ...(clientMode === "search" && nextSessionAnswer === "YES"
         ? [
             {
               kind: "NEXT_SESSION" as const,
@@ -495,7 +504,7 @@ export function CheckoutDialog({
               time: nextSessionTime,
             },
           ]
-        : nextSessionAnswer === "NO"
+        : clientMode === "search" && nextSessionAnswer === "NO"
           ? [
               {
                 kind: "NO_APPOINTMENT" as const,
@@ -503,7 +512,7 @@ export function CheckoutDialog({
                 date: new Intl.DateTimeFormat("en-CA", {
                   timeZone: "America/Mexico_City",
                 }).format(new Date()),
-                branch: "Polanco",
+                branch: branches[0] ?? "Sin sucursal",
                 time: "Sin horario",
               },
             ]
@@ -678,7 +687,7 @@ export function CheckoutDialog({
                               {client.firstName} {client.lastName}
                             </strong>
                             <small>
-                              {client.phone} · {sourceLabels[client.source]}
+                              {client.phone} · {client.sourceLabel}
                             </small>
                             <small>
                               {client.companyLocked
@@ -808,9 +817,10 @@ export function CheckoutDialog({
                       onValueChange={(source) =>
                         setNewClient((current) => ({
                           ...current,
-                          source: source as NewClientDraft["source"],
+                          source,
                           companyName:
-                            source === "LEAD" || source === "SOCIAL"
+                            sourceOptions.find((item) => item.id === source)
+                              ?.locksCompany
                               ? current.companyName || "Keysar Cosmetics"
                               : "",
                         }))
@@ -820,11 +830,13 @@ export function CheckoutDialog({
                         <SelectValue placeholder="Selecciona procedencia" />
                       </SelectTrigger>
                       <SelectContent>
-                        {Object.entries(sourceLabels).map(([value, label]) => (
-                          <SelectItem key={value} value={value}>
-                            {label}
+                        {sourceOptions
+                          .filter((source) => source.active)
+                          .map((source) => (
+                          <SelectItem key={source.id} value={source.id}>
+                            {source.label}
                           </SelectItem>
-                        ))}
+                          ))}
                       </SelectContent>
                     </Select>
                   </div>
@@ -1241,34 +1253,51 @@ export function CheckoutDialog({
                 </div>
               )}
 
-              <div className="next-session-question">
-                <div>
-                  <strong>
-                    ¿La clienta ya cuenta con cita para su próxima sesión?
-                  </strong>
-                  <small>
-                    La respuesta es obligatoria antes de continuar al cobro.
-                  </small>
+              {clientMode === "search" ? (
+                <div className="next-session-question">
+                  <div>
+                    <strong>
+                      ¿La clienta ya cuenta con cita para su próxima sesión?
+                    </strong>
+                    <small>
+                      La respuesta es obligatoria antes de continuar al cobro.
+                    </small>
+                  </div>
+                  <div className="appointment-answer-buttons">
+                    <button
+                      type="button"
+                      className={
+                        nextSessionAnswer === "YES" ? "is-active" : ""
+                      }
+                      onClick={() => setNextSessionAnswer("YES")}
+                    >
+                      Sí, agendar ahora
+                    </button>
+                    <button
+                      type="button"
+                      className={
+                        nextSessionAnswer === "NO" ? "is-active" : ""
+                      }
+                      onClick={() => setNextSessionAnswer("NO")}
+                    >
+                      No por ahora
+                    </button>
+                  </div>
                 </div>
-                <div className="appointment-answer-buttons">
-                  <button
-                    type="button"
-                    className={nextSessionAnswer === "YES" ? "is-active" : ""}
-                    onClick={() => setNextSessionAnswer("YES")}
-                  >
-                    Sí, agendar ahora
-                  </button>
-                  <button
-                    type="button"
-                    className={nextSessionAnswer === "NO" ? "is-active" : ""}
-                    onClick={() => setNextSessionAnswer("NO")}
-                  >
-                    No por ahora
-                  </button>
+              ) : (
+                <div className="appointment-declined-note">
+                  <CheckCircle2 size={18} />
+                  <span>
+                    <strong>Cita registrada durante el alta</strong>
+                    <small>
+                      No es necesario responder de nuevo. La cortesía se
+                      conservará en el ticket y en el historial de la clienta.
+                    </small>
+                  </span>
                 </div>
-              </div>
+              )}
 
-              {nextSessionAnswer === "YES" && (
+              {clientMode === "search" && nextSessionAnswer === "YES" && (
                 <div className="next-session-scheduler">
                   <div className="appointment-scheduler-heading">
                     <MapPin size={18} />
@@ -1354,7 +1383,7 @@ export function CheckoutDialog({
                 </div>
               )}
 
-              {nextSessionAnswer === "NO" && (
+              {clientMode === "search" && nextSessionAnswer === "NO" && (
                 <div className="appointment-declined-note">
                   <CheckCircle2 size={18} />
                   <span>
@@ -1539,8 +1568,9 @@ export function CheckoutDialog({
                     <Gift size={20} />
                   </div>
                   <p>
-                    Sólo los artículos marcados se descuentan ahora. Los demás
-                    se reservarán para descontarse cuando se liquide el saldo.
+                    Sólo los artículos marcados se descuentan ahora de la
+                    sucursal del ticket. Al liquidar el saldo se volverá a
+                    preguntar cuáles productos pendientes recibe la clienta.
                   </p>
                   <div className="layaway-delivery-list">
                     {cart

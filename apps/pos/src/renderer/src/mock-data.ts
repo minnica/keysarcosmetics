@@ -1,16 +1,80 @@
 import type {
   Appointment,
+  BillingCard,
+  BillingHistoryEntry,
+  BillingLocation,
+  BillingProfile,
   BranchInventory,
   Client,
+  ClientSourceOption,
+  EmployeeRole,
+  InventoryMovement,
   InventoryMovementReason,
+  MasterUser,
   PaymentMethodOption,
   Product,
   ReceiptSettings,
   RequiredClientFields,
+  RetailDeal,
+  SalesCompetition,
   Seller,
   LayawayRecord,
   Ticket,
 } from "./types";
+
+const createCurrentBusinessDayTimestamp = (time: string) => {
+  const date = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Mexico_City",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+  const createdAtIso = `${date}T${time}:00-06:00`;
+  return {
+    createdAtIso,
+    createdAt: new Intl.DateTimeFormat("es-MX", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZone: "America/Mexico_City",
+    })
+      .format(new Date(createdAtIso))
+      .replace(",", " ·"),
+  };
+};
+
+const mockToday0915 = createCurrentBusinessDayTimestamp("09:15");
+const mockToday1018 = createCurrentBusinessDayTimestamp("10:18");
+const mockToday1042 = createCurrentBusinessDayTimestamp("10:42");
+const mockToday1152 = createCurrentBusinessDayTimestamp("11:52");
+const mockToday1224 = createCurrentBusinessDayTimestamp("12:24");
+const mockToday1318 = createCurrentBusinessDayTimestamp("13:18");
+const mockToday1605 = createCurrentBusinessDayTimestamp("16:05");
+
+const currentBusinessDate = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "America/Mexico_City",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+}).format(new Date());
+
+export const initialCompetitions: SalesCompetition[] = [
+  {
+    id: "competition-daily-sales",
+    name: "Venta del día",
+    type: "AMOUNT",
+    active: true,
+    dateFrom: currentBusinessDate,
+    dateTo: currentBusinessDate,
+    branch: "ALL",
+    targetAmount: 2_500,
+    productId: null,
+    packageProductIds: [],
+    createdAtIso: new Date().toISOString(),
+  },
+];
 
 export const products: Product[] = [
   {
@@ -24,6 +88,9 @@ export const products: Product[] = [
     image: "/products/renewal-serum.png",
     minPrice: 690,
     maxPrice: 890,
+    includesVat: true,
+    costUsd: 18,
+    costMxn: 330,
     stock: 18,
     stockMin: 5,
     stockMax: 30,
@@ -41,6 +108,9 @@ export const products: Product[] = [
     image: "/products/hydra-cloud-cream.png",
     minPrice: 580,
     maxPrice: 760,
+    includesVat: true,
+    costUsd: 15,
+    costMxn: 280,
     stock: 12,
     stockMin: 4,
     stockMax: 24,
@@ -58,6 +128,9 @@ export const products: Product[] = [
     image: "/products/vitamin-c-glow.png",
     minPrice: 620,
     maxPrice: 820,
+    includesVat: true,
+    costUsd: 16,
+    costMxn: 295,
     stock: 9,
     stockMin: 3,
     stockMax: 20,
@@ -75,6 +148,9 @@ export const products: Product[] = [
     image: "/products/mineral-spf-50.png",
     minPrice: 420,
     maxPrice: 590,
+    includesVat: true,
+    costUsd: 11,
+    costMxn: 205,
     stock: 24,
     stockMin: 8,
     stockMax: 40,
@@ -92,6 +168,9 @@ export const products: Product[] = [
     image: "/products/brow-sculpt.png",
     minPrice: 350,
     maxPrice: 520,
+    includesVat: true,
+    costUsd: 0,
+    costMxn: 0,
     stock: null,
     stockMin: null,
     stockMax: null,
@@ -109,11 +188,64 @@ export const products: Product[] = [
     image: "/products/signature-facial.png",
     minPrice: 780,
     maxPrice: 1100,
+    includesVat: true,
+    costUsd: 0,
+    costMxn: 0,
     stock: null,
     stockMin: null,
     stockMax: null,
     branches: ["Polanco", "Roma Norte"],
     active: true,
+  },
+];
+
+const currentBusinessMonth = currentBusinessDate.slice(0, 7);
+const currentBusinessMonthEnd = new Date(
+  Date.UTC(
+    Number(currentBusinessDate.slice(0, 4)),
+    Number(currentBusinessDate.slice(5, 7)),
+    0,
+  ),
+)
+  .toISOString()
+  .slice(0, 10);
+
+export const initialDeals: RetailDeal[] = [
+  {
+    id: "deal-glow-ritual",
+    name: "Glow Ritual",
+    sku: "DEAL-GLW-001",
+    description: "Renovación facial y definición de ceja en una sola experiencia.",
+    price: 990,
+    lines: [
+      { productId: "prod-serum-renewal", quantity: 1 },
+      { productId: "service-brow-sculpt", quantity: 1 },
+    ],
+    branches: ["Polanco", "Satélite", "Roma Norte"],
+    startDate: `${currentBusinessMonth}-01`,
+    endDate: currentBusinessMonthEnd,
+    status: "PUBLISHED",
+    createdAtIso: new Date().toISOString(),
+    publishedAtIso: new Date().toISOString(),
+    authorizedBy: "Master Keysar",
+  },
+  {
+    id: "deal-hydra-protection",
+    name: "Hydra Protection",
+    sku: "DEAL-HYD-002",
+    description: "Hidratación y protección diaria para una rutina completa.",
+    price: 1_090,
+    lines: [
+      { productId: "prod-hydra-cloud", quantity: 1 },
+      { productId: "prod-spf-50", quantity: 1 },
+    ],
+    branches: ["Polanco"],
+    startDate: `${currentBusinessMonth}-01`,
+    endDate: currentBusinessMonthEnd,
+    status: "DRAFT",
+    createdAtIso: new Date().toISOString(),
+    publishedAtIso: null,
+    authorizedBy: null,
   },
 ];
 
@@ -124,6 +256,9 @@ export const sellers: Seller[] = [
     initials: "AT",
     active: true,
     accessCode: "1101",
+    masterAccessCode: null,
+    canViewCosts: true,
+    roleId: "role-manager",
   },
   {
     id: "seller-sofia",
@@ -131,6 +266,9 @@ export const sellers: Seller[] = [
     initials: "SM",
     active: true,
     accessCode: "2202",
+    masterAccessCode: null,
+    canViewCosts: false,
+    roleId: "role-seller",
   },
   {
     id: "seller-daniela",
@@ -138,6 +276,9 @@ export const sellers: Seller[] = [
     initials: "DR",
     active: true,
     accessCode: "3303",
+    masterAccessCode: null,
+    canViewCosts: false,
+    roleId: "role-seller",
   },
   {
     id: "seller-paola",
@@ -145,8 +286,126 @@ export const sellers: Seller[] = [
     initials: "PC",
     active: false,
     accessCode: "4404",
+    masterAccessCode: null,
+    canViewCosts: false,
+    roleId: "role-seller",
   },
 ];
+
+export const initialEmployeeRoles: EmployeeRole[] = [
+  {
+    id: "role-master",
+    name: "Master",
+    description: "Control total del sistema, usuarios, sucursales y configuración.",
+    active: true,
+    system: true,
+    moduleAccess: [
+      "sale",
+      "seller-sales",
+      "receipts",
+      "customers",
+      "appointments",
+      "inventory",
+      "inventory-movements",
+      "deals",
+      "catalog",
+      "settings",
+      "x-report",
+      "reports",
+      "cash-manager",
+      "clock-in",
+      "close-day",
+      "employees",
+      "competition",
+      "websites",
+      "data-update",
+      "my-account",
+    ],
+    configurationAccess: [
+      "TICKET",
+      "INVENTORY_CATALOG",
+      "INVENTORY_MOVEMENTS",
+      "PAYMENT_METHODS",
+      "CUSTOMER_FIELDS",
+      "DEALS",
+      "COMPETITIONS",
+      "REPORTS_COSTS",
+      "BRANCHES",
+      "USERS_ROLES",
+    ],
+  },
+  {
+    id: "role-manager",
+    name: "Gerente de sucursal",
+    description: "Supervisa venta, clientes, inventario, cierres y reportes de su operación.",
+    active: true,
+    system: false,
+    moduleAccess: [
+      "sale",
+      "seller-sales",
+      "receipts",
+      "customers",
+      "appointments",
+      "inventory",
+      "inventory-movements",
+      "catalog",
+      "settings",
+      "x-report",
+      "reports",
+      "cash-manager",
+      "clock-in",
+      "close-day",
+      "competition",
+      "data-update",
+    ],
+    configurationAccess: [
+      "TICKET",
+      "INVENTORY_CATALOG",
+      "INVENTORY_MOVEMENTS",
+      "CUSTOMER_FIELDS",
+    ],
+  },
+  {
+    id: "role-seller",
+    name: "Vendedor retail",
+    description: "Opera ventas, consulta su cartera, registra citas y revisa sus resultados.",
+    active: true,
+    system: false,
+    moduleAccess: [
+      "sale",
+      "seller-sales",
+      "customers",
+      "appointments",
+      "clock-in",
+      "competition",
+    ],
+    configurationAccess: [],
+  },
+  {
+    id: "role-inventory",
+    name: "Encargado de inventario",
+    description: "Administra existencias, movimientos, pedidos y catálogo operativo.",
+    active: true,
+    system: false,
+    moduleAccess: [
+      "inventory",
+      "inventory-movements",
+      "catalog",
+      "data-update",
+      "clock-in",
+    ],
+    configurationAccess: ["INVENTORY_CATALOG", "INVENTORY_MOVEMENTS"],
+  },
+];
+
+export const masterUser: MasterUser = {
+  id: "user-master",
+  name: "Master Keysar",
+  initials: "MK",
+  active: true,
+  accessCode: "2468",
+  role: "MASTER",
+};
 
 export const initialPaymentMethods: PaymentMethodOption[] = [
   { id: "CASH", label: "Efectivo", active: true },
@@ -156,6 +415,7 @@ export const initialPaymentMethods: PaymentMethodOption[] = [
 
 export const initialReceiptSettings: ReceiptSettings = {
   logoUrl: "/logo.svg",
+  logoWidth: 64,
   companyName: "KEYSAR COSMETICS",
   branchName: "Sucursal Polanco",
   address: "Av. Presidente Masaryk 123, Polanco, CDMX",
@@ -165,6 +425,7 @@ export const initialReceiptSettings: ReceiptSettings = {
   showClientName: true,
   showClientPhone: false,
   showSellerName: true,
+  showVatBreakdown: false,
 };
 
 export const initialInventoryMovementReasons: InventoryMovementReason[] = [
@@ -174,16 +435,127 @@ export const initialInventoryMovementReasons: InventoryMovementReason[] = [
   { id: "reason-gift", name: "Gift", active: true },
 ];
 
+export const initialInventoryMovements: InventoryMovement[] = [
+  {
+    id: "movement-demo-sale",
+    folio: "MOV-AGO-0001",
+    ...mockToday1318,
+    productId: "prod-serum-renewal",
+    productName: "Renewal Peptide Serum",
+    direction: "REMOVE",
+    reason: "Venta",
+    quantity: 2,
+    previousStock: 20,
+    newStock: 18,
+    sourceBranch: "Polanco",
+    destinationBranch: null,
+    destinationPreviousStock: null,
+    destinationNewStock: null,
+    comment: "Salida consolidada de tickets del día",
+    category: "SALE",
+    unitCostUsd: 18,
+    unitCostMxn: 330,
+    totalCostUsd: 36,
+    totalCostMxn: 660,
+  },
+  {
+    id: "movement-demo-writeoff",
+    folio: "MOV-AGO-0002",
+    ...mockToday1042,
+    productId: "prod-hydra-cloud",
+    productName: "Hydra Cloud Cream",
+    direction: "REMOVE",
+    reason: "Damage",
+    quantity: 1,
+    previousStock: 9,
+    newStock: 8,
+    sourceBranch: "Satélite",
+    destinationBranch: null,
+    destinationPreviousStock: null,
+    destinationNewStock: null,
+    comment: "Empaque dañado",
+    category: "WRITE_OFF",
+    unitCostUsd: 14.5,
+    unitCostMxn: 270,
+    totalCostUsd: 14.5,
+    totalCostMxn: 270,
+  },
+  {
+    id: "movement-demo-tester",
+    folio: "MOV-AGO-0003",
+    ...mockToday1605,
+    productId: "prod-spf-50",
+    productName: "Mineral Shield SPF 50",
+    direction: "REMOVE",
+    reason: "Tester",
+    quantity: 1,
+    previousStock: 7,
+    newStock: 6,
+    sourceBranch: "Roma Norte",
+    destinationBranch: null,
+    destinationPreviousStock: null,
+    destinationNewStock: null,
+    comment: "Demostración en piso de venta",
+    category: "DEMO",
+    unitCostUsd: 11,
+    unitCostMxn: 205,
+    totalCostUsd: 11,
+    totalCostMxn: 205,
+  },
+  {
+    id: "movement-demo-transfer",
+    folio: "MOV-AGO-0004",
+    ...mockToday0915,
+    productId: "prod-serum-renewal",
+    productName: "Renewal Peptide Serum",
+    direction: "TRANSFER",
+    reason: "Transferencia Polanco → Satélite",
+    quantity: 1,
+    previousStock: 19,
+    newStock: 18,
+    sourceBranch: "Polanco",
+    destinationBranch: "Satélite",
+    destinationPreviousStock: 10,
+    destinationNewStock: 11,
+    comment: "Reposición entre sucursales",
+    category: "TRANSFER",
+    unitCostUsd: 18,
+    unitCostMxn: 330,
+    totalCostUsd: 18,
+    totalCostMxn: 330,
+  },
+];
+
+export const initialClientSources: ClientSourceOption[] = [
+  { id: "APPROACH", label: "Abordaje", active: true, locksCompany: false },
+  { id: "LEAD", label: "Lead", active: true, locksCompany: true },
+  {
+    id: "REFERRAL",
+    label: "Recomendado",
+    active: true,
+    locksCompany: false,
+  },
+  {
+    id: "SOCIAL",
+    label: "Redes sociales",
+    active: true,
+    locksCompany: true,
+  },
+];
+
 export const initialClients: Client[] = [
   {
     id: "client-1",
+    registrationFolio: "CLI-2026-0001",
+    registeredAtIso: "2026-02-14T10:30:00-06:00",
     firstName: "Valeria",
     lastName: "Campos",
-    birthday: "1992-04-18",
+    birthday: "1992-08-23",
     gender: "Mujer",
     phone: "55 1087 2254",
     whatsapp: "55 1087 2254",
     source: "APPROACH",
+    sourceLabel: "Abordaje",
     companyName: "",
     companyLocked: false,
     ownerId: "seller-ana",
@@ -191,6 +563,8 @@ export const initialClients: Client[] = [
   },
   {
     id: "client-2",
+    registrationFolio: "CLI-2026-0002",
+    registeredAtIso: "2026-03-02T12:15:00-06:00",
     firstName: "Mariana",
     lastName: "López",
     birthday: "1988-10-03",
@@ -198,6 +572,7 @@ export const initialClients: Client[] = [
     phone: "55 6712 9041",
     whatsapp: "55 6712 9041",
     source: "LEAD",
+    sourceLabel: "Lead",
     companyName: "Keysar Cosmetics",
     companyLocked: true,
     ownerId: "seller-sofia",
@@ -205,6 +580,8 @@ export const initialClients: Client[] = [
   },
   {
     id: "client-3",
+    registrationFolio: "CLI-2026-0003",
+    registeredAtIso: "2026-04-21T17:40:00-06:00",
     firstName: "Renata",
     lastName: "Silva",
     birthday: "1996-01-27",
@@ -212,6 +589,7 @@ export const initialClients: Client[] = [
     phone: "55 9920 4418",
     whatsapp: "55 9920 4418",
     source: "REFERRAL",
+    sourceLabel: "Recomendado",
     companyName: "",
     companyLocked: false,
     ownerId: null,
@@ -302,6 +680,7 @@ export const initialLayaways: LayawayRecord[] = [
     clientId: "client-1",
     clientName: "Valeria Campos",
     clientPhone: "55 1087 2254",
+    branch: "Polanco",
     sellerIds: ["seller-ana"],
     total: 1780,
     amountPaid: 880,
@@ -333,15 +712,17 @@ export const initialLayaways: LayawayRecord[] = [
 export const initialTickets: Ticket[] = [
   {
     id: "KSR-1048",
-    createdAt: "22 ago 2026 · 12:24",
-    createdAtIso: "2026-08-22T12:24:00-06:00",
+    ...mockToday1224,
     clientName: "Valeria Campos",
     clientPhone: "55 1087 2254",
+    branchName: "Polanco",
     sellerSummary: "Ana Torres",
     items: 2,
     discountAmount: 0,
     subtotal: 1430,
     total: 1430,
+    netTotal: 1232.76,
+    vatAmount: 197.24,
     deviation: 160,
     paymentMethod: "CASH",
     payments: [{ id: "pay-1048-1", methodId: "CASH", amount: 1430 }],
@@ -369,15 +750,17 @@ export const initialTickets: Ticket[] = [
   },
   {
     id: "KSR-1047",
-    createdAt: "22 ago 2026 · 11:52",
-    createdAtIso: "2026-08-22T11:52:00-06:00",
+    ...mockToday1152,
     clientName: "Mariana López",
     clientPhone: "55 6712 9041",
+    branchName: "Satélite",
     sellerSummary: "Sofía Méndez / Daniela Ruiz",
     items: 3,
     discountAmount: 120,
     subtotal: 1880,
     total: 1760,
+    netTotal: 1517.24,
+    vatAmount: 242.76,
     deviation: 230,
     paymentMethod: "CARD",
     payments: [{ id: "pay-1047-1", methodId: "CARD", amount: 1760 }],
@@ -414,15 +797,17 @@ export const initialTickets: Ticket[] = [
   },
   {
     id: "KSR-1046",
-    createdAt: "22 ago 2026 · 10:18",
-    createdAtIso: "2026-08-22T10:18:00-06:00",
+    ...mockToday1018,
     clientName: "Venta mostrador",
     clientPhone: "",
+    branchName: "Roma Norte",
     sellerSummary: "Ana Torres",
     items: 1,
     discountAmount: 0,
     subtotal: 540,
     total: 540,
+    netTotal: 465.52,
+    vatAmount: 74.48,
     deviation: -40,
     paymentMethod: "TRANSFER",
     payments: [{ id: "pay-1046-1", methodId: "TRANSFER", amount: 300 }],
@@ -448,11 +833,14 @@ export const initialTickets: Ticket[] = [
     createdAtIso: "2026-08-21T18:40:00-06:00",
     clientName: "Renata Silva",
     clientPhone: "55 9920 4418",
+    branchName: "Polanco",
     sellerSummary: "Daniela Ruiz",
     items: 2,
     discountAmount: 0,
     subtotal: 1090,
     total: 1090,
+    netTotal: 939.66,
+    vatAmount: 150.34,
     deviation: 90,
     paymentMethod: "CASH",
     payments: [],
@@ -495,7 +883,95 @@ export const initialRequiredClientFields: RequiredClientFields = {
   companyName: false,
 };
 
-export const administratorCode = "2468";
+export const initialBillingProfile: BillingProfile = {
+  personalName: "Emma Keysar",
+  companyName: "Keysar Cosmetics",
+  notificationEmails: ["administracion@keysarcosmetics.mx"],
+};
+
+export const initialBillingCards: BillingCard[] = [
+  {
+    id: "card-demo-visa",
+    holderName: "Emma Keysar",
+    brand: "VISA",
+    last4: "4242",
+    expiryMonth: "12",
+    expiryYear: "2029",
+    authorizationCodeConfigured: true,
+    isDefault: true,
+  },
+];
+
+export const initialBillingLocations: BillingLocation[] = [
+  {
+    id: "billing-polanco",
+    name: "Polanco",
+    costUsd: 79,
+    status: "ACTIVE",
+    billingStartDate: "2026-01-28",
+    nextBillingDate: "2026-08-28",
+    paymentCardId: "card-demo-visa",
+  },
+  {
+    id: "billing-satelite",
+    name: "Satélite",
+    costUsd: 69,
+    status: "PENDING",
+    billingStartDate: "",
+    nextBillingDate: "",
+    paymentCardId: null,
+  },
+  {
+    id: "billing-roma",
+    name: "Roma Norte",
+    costUsd: 69,
+    status: "ACTIVE",
+    billingStartDate: "2026-02-15",
+    nextBillingDate: "2026-09-15",
+    paymentCardId: "card-demo-visa",
+  },
+];
+
+export const initialBillingHistory: BillingHistoryEntry[] = [
+  {
+    id: "billing-history-aug-polanco",
+    invoiceNumber: "INV-2026-0801",
+    locationId: "billing-polanco",
+    locationName: "Polanco",
+    period: "Agosto 2026",
+    billedAt: "2026-08-01",
+    paidAt: "2026-08-01",
+    totalUsd: 79,
+    status: "PAID",
+    cardLast4: "4242",
+  },
+  {
+    id: "billing-history-aug-roma",
+    invoiceNumber: "INV-2026-0802",
+    locationId: "billing-roma",
+    locationName: "Roma Norte",
+    period: "Agosto 2026",
+    billedAt: "2026-08-15",
+    paidAt: "2026-08-15",
+    totalUsd: 69,
+    status: "PAID",
+    cardLast4: "4242",
+  },
+  {
+    id: "billing-history-jul-polanco",
+    invoiceNumber: "INV-2026-0701",
+    locationId: "billing-polanco",
+    locationName: "Polanco",
+    period: "Julio 2026",
+    billedAt: "2026-07-01",
+    paidAt: "2026-07-02",
+    totalUsd: 79,
+    status: "PAID",
+    cardLast4: "4242",
+  },
+];
+
+export const administratorCode = masterUser.accessCode;
 
 export const encodeMinimumPrice = (value: number) =>
   Math.round(value).toString();

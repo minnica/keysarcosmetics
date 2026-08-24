@@ -1,4 +1,4 @@
-import { Printer, X } from "lucide-react";
+import { PackageCheck, Printer, X } from "lucide-react";
 import {
   Button,
   Dialog,
@@ -9,12 +9,14 @@ import {
   DialogTitle,
 } from "@cosmetics/ui";
 import { formatCurrency } from "../mock-data";
+import { getTicketTaxSummary } from "../tax";
 import type { PaymentMethodOption, ReceiptSettings, Ticket } from "../types";
 
 interface ReceiptTicketDialogProps {
   open: boolean;
   ticket: Ticket | null;
   settings: ReceiptSettings;
+  branchAddresses: Record<string, string>;
   paymentMethods: PaymentMethodOption[];
   onOpenChange: (open: boolean) => void;
 }
@@ -23,6 +25,7 @@ export function ReceiptTicketDialog({
   open,
   ticket,
   settings,
+  branchAddresses,
   paymentMethods,
   onOpenChange,
 }: ReceiptTicketDialogProps) {
@@ -30,6 +33,15 @@ export function ReceiptTicketDialog({
 
   const paymentLabel = (methodId: string) =>
     paymentMethods.find((method) => method.id === methodId)?.label ?? methodId;
+  const taxSummary = getTicketTaxSummary(ticket);
+  const ticketBranchName = ticket.branchName
+    ? `Sucursal ${ticket.branchName.replace(/^Sucursal\s+/i, "")}`
+    : settings.branchName;
+  const ticketBranchKey = ticket.branchName?.replace(/^Sucursal\s+/i, "");
+  const ticketBranchAddress =
+    ticket.branchAddress ||
+    (ticketBranchKey ? branchAddresses[ticketBranchKey] : "") ||
+    settings.address;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -48,11 +60,19 @@ export function ReceiptTicketDialog({
           >
             <header className="customer-ticket-header">
               {settings.logoUrl && (
-                <img src={settings.logoUrl} alt={settings.companyName} />
+                <img
+                  src={settings.logoUrl}
+                  alt={settings.companyName}
+                  style={{
+                    width: `${settings.logoWidth}px`,
+                    maxWidth: "100%",
+                    maxHeight: "72px",
+                  }}
+                />
               )}
               <h2>{settings.companyName}</h2>
-              <strong>{settings.branchName}</strong>
-              <span>{settings.address}</span>
+              <strong>{ticketBranchName}</strong>
+              <span>{ticketBranchAddress}</span>
             </header>
 
             <div className="customer-ticket-folio">
@@ -86,15 +106,28 @@ export function ReceiptTicketDialog({
               </section>
             )}
 
+            {(ticket.deals?.length ?? 0) > 0 && (
+              <section className="customer-ticket-deals">
+                <h3><PackageCheck size={14} /> DEALS</h3>
+                {ticket.deals?.map((deal) => (
+                  <div key={`${deal.dealId}-${deal.dealSku}`}>
+                    <span>{deal.quantity} × {deal.dealName}<small>{deal.dealSku}</small></span>
+                    <strong>{formatCurrency(deal.total)}</strong>
+                  </div>
+                ))}
+              </section>
+            )}
+
             <section className="customer-ticket-products">
               <div className="ticket-product-heading">
                 <span>DESCRIPCIÓN</span>
                 <span>IMPORTE</span>
               </div>
-              {ticket.products.map((product) => (
-                <div className="ticket-product-line" key={product.productId}>
+              {ticket.products.map((product, index) => (
+                <div className="ticket-product-line" key={`${product.productId}-${index}`}>
                   <span>
                     {product.quantity} × {product.name}
+                    {product.dealName && <small>Incluido en {product.dealName}</small>}
                   </span>
                   <strong>{formatCurrency(product.total)}</strong>
                 </div>
@@ -112,10 +145,27 @@ export function ReceiptTicketDialog({
                   <strong>-{formatCurrency(ticket.discountAmount)}</strong>
                 </div>
               )}
+              {settings.showVatBreakdown && (
+                <>
+                  <div>
+                    <span>Subtotal sin IVA</span>
+                    <strong>{formatCurrency(taxSummary.net)}</strong>
+                  </div>
+                  <div>
+                    <span>IVA 16% incluido</span>
+                    <strong>{formatCurrency(taxSummary.vat)}</strong>
+                  </div>
+                </>
+              )}
               <div className="ticket-final-total">
                 <span>TOTAL</span>
                 <strong>{formatCurrency(ticket.total)}</strong>
               </div>
+              {!settings.showVatBreakdown && (
+                <p className="customer-ticket-tax-note">
+                  Todos nuestros precios ya incluyen IVA.
+                </p>
+              )}
             </section>
 
             <section className="customer-ticket-payments">

@@ -6,15 +6,19 @@ export type ScreenId =
   | "appointments"
   | "inventory"
   | "inventory-movements"
+  | "deals"
   | "catalog"
   | "settings"
   | "x-report"
+  | "reports"
   | "cash-manager"
+  | "clock-in"
   | "close-day"
   | "employees"
   | "competition"
   | "websites"
-  | "data-update";
+  | "data-update"
+  | "my-account";
 
 export type ProductKind = "PRODUCT" | "SERVICE";
 
@@ -29,6 +33,9 @@ export interface Product {
   image: string;
   minPrice: number;
   maxPrice: number;
+  includesVat: boolean;
+  costUsd: number;
+  costMxn: number;
   stock: number | null;
   stockMin: number | null;
   stockMax: number | null;
@@ -43,10 +50,16 @@ export interface CartItem {
   unitPrice: number;
   comment: string;
   adminAuthorized: boolean;
+  dealId?: string;
+  dealName?: string;
+  dealInstanceId?: string;
+  dealQuantity?: number;
 }
 
 export interface Client {
   id: string;
+  registrationFolio: string;
+  registeredAtIso: string;
   firstName: string;
   lastName: string;
   birthday: string;
@@ -54,13 +67,22 @@ export interface Client {
   phone: string;
   whatsapp: string;
   source: ClientSource;
+  sourceLabel: string;
   companyName: string;
   companyLocked: boolean;
   ownerId: string | null;
   saleSellerIds: string[];
+  registrationBranch?: string;
 }
 
-export type ClientSource = "APPROACH" | "LEAD" | "REFERRAL" | "SOCIAL";
+export type ClientSource = string;
+
+export interface ClientSourceOption {
+  id: string;
+  label: string;
+  active: boolean;
+  locksCompany: boolean;
+}
 
 export interface Seller {
   id: string;
@@ -68,6 +90,93 @@ export interface Seller {
   initials: string;
   active: boolean;
   accessCode: string;
+  masterAccessCode: string | null;
+  canViewCosts: boolean;
+  roleId: string;
+}
+
+export type EmployeeConfigurationPermission =
+  | "TICKET"
+  | "INVENTORY_CATALOG"
+  | "INVENTORY_MOVEMENTS"
+  | "PAYMENT_METHODS"
+  | "CUSTOMER_FIELDS"
+  | "DEALS"
+  | "COMPETITIONS"
+  | "REPORTS_COSTS"
+  | "BRANCHES"
+  | "USERS_ROLES";
+
+export interface EmployeeRole {
+  id: string;
+  name: string;
+  description: string;
+  active: boolean;
+  system: boolean;
+  moduleAccess: ScreenId[];
+  configurationAccess: EmployeeConfigurationPermission[];
+}
+
+export interface AttendanceRecord {
+  id: string;
+  sellerId: string;
+  sellerName: string;
+  sellerInitials: string;
+  branch: string;
+  clockInAt: string;
+  clockInAtIso: string;
+  clockOutAt: string | null;
+  clockOutAtIso: string | null;
+  status: "ONLINE" | "OFFLINE";
+  clockOutReason: "MANUAL" | "CLOSE_DAY" | null;
+}
+
+export type CompetitionType = "AMOUNT" | "PRODUCT" | "PACKAGE" | "PERIOD";
+
+export interface SalesCompetition {
+  id: string;
+  name: string;
+  type: CompetitionType;
+  active: boolean;
+  dateFrom: string;
+  dateTo: string;
+  branch: string;
+  targetAmount: number | null;
+  productId: string | null;
+  packageProductIds: string[];
+  createdAtIso: string;
+}
+
+export type DealStatus = "DRAFT" | "PUBLISHED" | "INACTIVE";
+
+export interface RetailDealLine {
+  productId: string;
+  quantity: number;
+}
+
+export interface RetailDeal {
+  id: string;
+  name: string;
+  sku: string;
+  description: string;
+  price: number;
+  lines: RetailDealLine[];
+  branches: string[];
+  startDate: string;
+  endDate: string;
+  status: DealStatus;
+  createdAtIso: string;
+  publishedAtIso: string | null;
+  authorizedBy: string | null;
+}
+
+export interface MasterUser {
+  id: string;
+  name: string;
+  initials: string;
+  active: boolean;
+  accessCode: string;
+  role: "MASTER";
 }
 
 export interface SellerSplit {
@@ -81,11 +190,15 @@ export interface Ticket {
   createdAtIso: string;
   clientName: string;
   clientPhone: string;
+  branchName?: string;
+  branchAddress?: string;
   sellerSummary: string;
   items: number;
   discountAmount: number;
   subtotal: number;
   total: number;
+  netTotal?: number;
+  vatAmount?: number;
   deviation: number;
   paymentMethod: PaymentMethod;
   payments: PaymentEntry[];
@@ -94,6 +207,7 @@ export interface Ticket {
   paymentStatus: PaymentStatus;
   products: TicketProductLine[];
   sellerSales: TicketSellerSale[];
+  deals?: TicketDealSale[];
   status: "COMPLETED" | "REFUNDED";
   ticketType?: "SALE" | "LAYAWAY_PAYMENT";
   relatedTicketId?: string;
@@ -102,6 +216,7 @@ export interface Ticket {
   cancelledAtIso?: string;
   refundAmount?: number;
   returnedProducts?: TicketInventoryLine[];
+  nonReturnedProducts?: TicketNonReturnLine[];
 }
 
 export interface TicketInventoryLine {
@@ -111,13 +226,37 @@ export interface TicketInventoryLine {
   branch: string;
 }
 
+export interface TicketNonReturnLine extends TicketInventoryLine {
+  disposition: "GIFT" | "COURTESY";
+}
+
 export interface TicketCancellationRequest {
   refundAmount: number;
   returnedProducts: TicketInventoryLine[];
+  nonReturnedProducts: TicketNonReturnLine[];
+}
+
+export interface TicketEditProductInput {
+  productId: string;
+  quantity: number;
+  unitPrice: number;
+}
+
+export interface TicketEditRequest {
+  clientName: string;
+  clientPhone: string;
+  sellerIds: string[];
+  products: TicketEditProductInput[];
+  discountAmount: number;
+  paymentStatus: PaymentStatus;
+  amountPaid: number;
+  paymentMethodId: PaymentMethod;
+  authorizationCode: string;
 }
 
 export interface ReceiptSettings {
   logoUrl: string;
+  logoWidth: number;
   companyName: string;
   branchName: string;
   address: string;
@@ -126,9 +265,19 @@ export interface ReceiptSettings {
   showClientName: boolean;
   showClientPhone: boolean;
   showSellerName: boolean;
+  showVatBreakdown: boolean;
 }
 
 export type InventoryMovementDirection = "ADD" | "REMOVE" | "TRANSFER";
+
+export type InventoryMovementCategory =
+  | "SALE"
+  | "WRITE_OFF"
+  | "DEMO"
+  | "ADJUSTMENT"
+  | "TRANSFER"
+  | "RETURN"
+  | "DELIVERY";
 
 export type BranchInventory = Record<string, Record<string, number>>;
 
@@ -155,6 +304,18 @@ export interface InventoryMovement {
   destinationPreviousStock: number | null;
   destinationNewStock: number | null;
   comment: string;
+  category: InventoryMovementCategory;
+  unitCostUsd: number;
+  unitCostMxn: number;
+  totalCostUsd: number;
+  totalCostMxn: number;
+  settledOwedProductId?: string | null;
+  settledClientName?: string | null;
+  settledClientPhone?: string | null;
+  settledSellerNames?: string[];
+  settledQuantity?: number;
+  approvalBatchId?: string | null;
+  reversalOfMovementId?: string | null;
 }
 
 export interface InventoryMovementDraft {
@@ -165,6 +326,7 @@ export interface InventoryMovementDraft {
   sourceBranch: string;
   destinationBranch: string | null;
   comment: string;
+  settlementOwedProductId: string | null;
 }
 
 export interface InventoryAdjustmentBatch {
@@ -173,7 +335,7 @@ export interface InventoryAdjustmentBatch {
   createdAt: string;
   createdAtIso: string;
   adjustments: InventoryMovementDraft[];
-  status: "PENDING" | "APPROVED" | "CANCELLED";
+  status: "PENDING" | "APPROVED" | "CANCELLED" | "REVERSED";
   resolvedAt: string | null;
 }
 
@@ -203,6 +365,7 @@ export interface LayawayRecord {
   clientId: string;
   clientName: string;
   clientPhone: string;
+  branch: string;
   sellerIds: string[];
   total: number;
   amountPaid: number;
@@ -210,6 +373,15 @@ export interface LayawayRecord {
   items: LayawayItem[];
   payments: LayawayPaymentRecord[];
   status: "ACTIVE" | "PAID";
+}
+
+export interface OwedProductDelivery {
+  id: string;
+  quantity: number;
+  deliveredAt: string;
+  deliveredAtIso: string;
+  branch: string;
+  movementId: string | null;
 }
 
 export interface OwedProductRecord {
@@ -222,11 +394,16 @@ export interface OwedProductRecord {
   productId: string;
   productName: string;
   quantity: number;
+  deliveredQuantity: number;
   branch: string;
+  sellerIds: string[];
+  sellerNames: string[];
+  inventoryCommitted: boolean;
+  deliveryHistory: OwedProductDelivery[];
   reason: "OUT_OF_STOCK" | "LAYAWAY_LIQUIDATION";
   createdAt: string;
   createdAtIso: string;
-  status: "PENDING" | "FULFILLED";
+  status: "PENDING" | "FULFILLED" | "CANCELLED";
 }
 
 export type PaymentMethod = string;
@@ -248,6 +425,22 @@ export interface TicketProductLine {
   name: string;
   quantity: number;
   total: number;
+  includesVat?: boolean;
+  netTotal?: number;
+  vatAmount?: number;
+  dealId?: string;
+  dealName?: string;
+  dealInstanceId?: string;
+}
+
+export interface TicketDealSale {
+  dealId: string;
+  dealName: string;
+  dealSku: string;
+  quantity: number;
+  unitPrice: number;
+  total: number;
+  productIds: string[];
 }
 
 export interface TicketSellerSale {
@@ -303,4 +496,44 @@ export interface NewClientDraft {
   whatsapp: string;
   source: ClientSource | "";
   companyName: string;
+}
+
+export interface BillingProfile {
+  personalName: string;
+  companyName: string;
+  notificationEmails: string[];
+}
+
+export interface BillingCard {
+  id: string;
+  holderName: string;
+  brand: string;
+  last4: string;
+  expiryMonth: string;
+  expiryYear: string;
+  authorizationCodeConfigured: boolean;
+  isDefault: boolean;
+}
+
+export interface BillingLocation {
+  id: string;
+  name: string;
+  costUsd: number;
+  status: "ACTIVE" | "PENDING" | "INACTIVE";
+  billingStartDate: string;
+  nextBillingDate: string;
+  paymentCardId: string | null;
+}
+
+export interface BillingHistoryEntry {
+  id: string;
+  invoiceNumber: string;
+  locationId: string;
+  locationName: string;
+  period: string;
+  billedAt: string;
+  paidAt: string | null;
+  totalUsd: number;
+  status: "PAID" | "PENDING" | "FAILED";
+  cardLast4: string | null;
 }
