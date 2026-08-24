@@ -1,0 +1,14 @@
+{
+  "name": "@cosmetics/e2e",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "lint": "eslint \"**/*.ts\" --max-warnings=0",
+    "test:smoke": "playwright test",
+    "test:smoke:headed": "playwright test --headed"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.9",
+    "playwright": "^1.60.0"
+  }
+}

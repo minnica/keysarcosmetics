@@ -9,7 +9,7 @@
   },
   "scripts": {
     "type-check": "tsc --noEmit",
-    "lint": "echo 'no lint configured'"
+    "lint": "eslint \"src/**/*.{ts,tsx}\" --max-warnings=0"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
