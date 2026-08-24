@@ -10,6 +10,7 @@ import {
   ChevronDown,
   CircleDollarSign,
   FileText,
+  Eye,
   Gavel,
   HandCoins,
   LayoutDashboard,
@@ -17,6 +18,7 @@ import {
   Moon,
   Plane,
   ReceiptText,
+  ShieldCheck,
   Sun,
   TrendingUp,
   UserRoundCheck,
@@ -40,14 +42,22 @@ import {
   SidebarTrigger,
   useSidebar,
 } from "@cosmetics/ui";
+import type { PayrollScreenKey } from "@cosmetics/types";
 import { PayrollDataProvider } from "./payroll-data-context";
 import { useSession } from "@/lib/session";
+import { getPayrollScreenByPath } from "@/lib/access";
 
-type SectionId = "payroll" | "operations" | "settings" | "reports";
+type SectionId =
+  | "payroll"
+  | "operations"
+  | "settings"
+  | "reports"
+  | "administration";
 type NavItem = {
   href: string;
   label: string;
   icon: React.ElementType;
+  screenKey: PayrollScreenKey;
 };
 type NavSection = {
   id: SectionId;
@@ -64,16 +74,25 @@ const sections: NavSection[] = [
         href: "/nomina-salario-fijo",
         label: "Salario fijo",
         icon: WalletCards,
+        screenKey: "payroll/nomina-salario-fijo",
       },
       {
         href: "/nomina-especialistas",
         label: "Especialistas",
         icon: UserRoundCheck,
+        screenKey: "payroll/nomina-especialistas",
       },
       {
         href: "/nomina-comisiones",
         label: "Comisiones",
         icon: CircleDollarSign,
+        screenKey: "payroll/nomina-comisiones",
+      },
+      {
+        href: "/nomina-comisiones-gerencia",
+        label: "Comisiones gerencia",
+        icon: BadgeDollarSign,
+        screenKey: "payroll/nomina-comisiones-gerencia",
       },
     ],
   },
@@ -85,20 +104,56 @@ const sections: NavSection[] = [
         href: "/",
         label: "Resumen",
         icon: LayoutDashboard,
+        screenKey: "payroll/resumen",
       },
-      { href: "/movimientos", label: "Movimientos", icon: ArrowLeftRight },
-      { href: "/gastos", label: "Gastos", icon: ReceiptText },
-      { href: "/prestamos-adelantos", label: "Préstamos", icon: HandCoins },
+      {
+        href: "/movimientos",
+        label: "Movimientos",
+        icon: ArrowLeftRight,
+        screenKey: "payroll/movimientos",
+      },
+      {
+        href: "/gastos",
+        label: "Gastos",
+        icon: ReceiptText,
+        screenKey: "payroll/gastos",
+      },
+      {
+        href: "/prestamos-adelantos",
+        label: "Préstamos",
+        icon: HandCoins,
+        screenKey: "payroll/prestamos-adelantos",
+      },
     ],
   },
   {
     id: "settings",
     label: "Configuración",
     items: [
-      { href: "/esquemas", label: "Esquemas", icon: TrendingUp },
-      { href: "/bonos", label: "Bonos", icon: BadgeDollarSign },
-      { href: "/multas", label: "Multas", icon: Gavel },
-      { href: "/viaticos", label: "Viáticos", icon: Plane },
+      {
+        href: "/esquemas",
+        label: "Esquemas",
+        icon: TrendingUp,
+        screenKey: "payroll/esquemas",
+      },
+      {
+        href: "/bonos",
+        label: "Bonos",
+        icon: BadgeDollarSign,
+        screenKey: "payroll/bonos",
+      },
+      {
+        href: "/multas",
+        label: "Multas",
+        icon: Gavel,
+        screenKey: "payroll/multas",
+      },
+      {
+        href: "/viaticos",
+        label: "Viáticos",
+        icon: Plane,
+        screenKey: "payroll/viaticos",
+      },
     ],
   },
   {
@@ -109,8 +164,26 @@ const sections: NavSection[] = [
         href: "/reportes/desglose-sucursal",
         label: "Desglose por sucursal",
         icon: BarChart2,
+        screenKey: "payroll/reportes/desglose-sucursal",
       },
-      { href: "/recibos", label: "Recibos", icon: FileText },
+      {
+        href: "/recibos",
+        label: "Recibos",
+        icon: FileText,
+        screenKey: "payroll/recibos",
+      },
+    ],
+  },
+  {
+    id: "administration",
+    label: "Administración",
+    items: [
+      {
+        href: "/accesos",
+        label: "Control de accesos",
+        icon: ShieldCheck,
+        screenKey: "payroll/accesos",
+      },
     ],
   },
 ];
@@ -215,7 +288,7 @@ function ThemeToggle() {
 function PayrollSidebar() {
   const pathname = usePathname();
   const router = useRouter();
-  const { logout } = useSession();
+  const { logout, canAccess, isAccessManager } = useSession();
   const { isMobile, setOpenMobile, state: sidebarState } = useSidebar();
   const activeSection = getActiveSection(pathname);
   const [expandedSection, setExpandedSection] = useState<SectionId | null>(
@@ -271,6 +344,12 @@ function PayrollSidebar() {
 
       <SidebarContent className="py-2">
         {sections.map((section) => {
+          const visibleItems = section.items.filter((item) =>
+            item.screenKey === "payroll/accesos"
+              ? isAccessManager
+              : canAccess(item.screenKey),
+          );
+          if (visibleItems.length === 0) return null;
           const isExpanded = expandedSection === section.id;
           const showItems =
             (!isMobile && sidebarState === "collapsed") || isExpanded;
@@ -294,7 +373,7 @@ function PayrollSidebar() {
                     aria-hidden="true"
                   >
                     <span className="min-w-4 text-center text-[10px] tabular-nums text-[var(--text-muted)]">
-                      {section.items.length}
+                      {visibleItems.length}
                     </span>
                     <ChevronDown
                       className={`h-3.5 w-3.5 transition-transform duration-200 motion-reduce:transition-none ${
@@ -309,7 +388,7 @@ function PayrollSidebar() {
                 hidden={!showItems}
               >
                 <SidebarMenu>
-                  {section.items.map((item) => {
+                  {visibleItems.map((item) => {
                     const isActive =
                       item.href === "/"
                         ? pathname === "/"
@@ -372,6 +451,16 @@ function PayrollSidebar() {
 }
 
 export function PayrollShell({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  const { canWrite, isAccessManager } = useSession();
+  const activeScreen = getPayrollScreenByPath(pathname);
+  const isReadOnly = Boolean(
+    activeScreen &&
+    activeScreen.key !== "payroll/accesos" &&
+    !isAccessManager &&
+    !canWrite(activeScreen.key),
+  );
+
   return (
     <PayrollDataProvider>
       <SidebarProvider>
@@ -392,7 +481,24 @@ export function PayrollShell({ children }: { children: React.ReactNode }) {
               style={{ maxWidth: "100px" }}
             />
           </header>
-          <div className="min-w-0 p-6">{children}</div>
+          <div className="min-w-0 p-6">
+            {isReadOnly ? (
+              <div
+                role="status"
+                className="mb-6 flex items-start gap-3 rounded-lg border border-[var(--border-color)] bg-[var(--accent-hover)] px-4 py-3 text-sm"
+              >
+                <Eye className="mt-0.5 h-4 w-4 shrink-0" />
+                <div>
+                  <p className="font-semibold">Modo solo lectura</p>
+                  <p className="mt-0.5 text-xs leading-5 text-[var(--text-muted)]">
+                    Puedes consultar y exportar la información, pero no crear,
+                    editar, aprobar ni eliminar registros en esta pantalla.
+                  </p>
+                </div>
+              </div>
+            ) : null}
+            {children}
+          </div>
         </SidebarInset>
       </SidebarProvider>
     </PayrollDataProvider>

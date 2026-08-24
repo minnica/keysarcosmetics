@@ -2,14 +2,20 @@
   "name": "@cosmetics/types",
   "version": "0.0.1",
   "private": true,
-  "main": "./src/index.ts",
+  "main": "./dist/index.js",
   "types": "./src/index.ts",
   "exports": {
-    ".": "./src/index.ts"
+    ".": {
+      "types": "./src/index.ts",
+      "require": "./dist/index.js",
+      "import": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
   },
   "scripts": {
+    "build": "tsc",
     "type-check": "tsc --noEmit",
-    "lint": "echo 'no lint configured'"
+    "lint": "eslint \"src/**/*.ts\" --max-warnings=0"
   },
   "devDependencies": {
     "typescript": "^5.4.5"

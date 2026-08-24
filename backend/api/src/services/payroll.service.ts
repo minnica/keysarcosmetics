@@ -1,9 +1,14 @@
-import { PayrollRunStatus, Prisma } from "@prisma/client";
+import {
+  PayrollRunStatus,
+  Prisma,
+  type PayrollMovementPayrollType,
+} from "@prisma/client";
 import { prisma } from "../prisma/client";
 import {
   assertStandardPayrollPeriod,
   calculatePayroll,
   money,
+  nextPayrollPeriod,
   type CalculationEmployee,
   type PayrollWarning,
 } from "./payroll-calculation";
@@ -94,6 +99,7 @@ async function calculatePayrollPeriod(input: {
   runId?: string;
   includeAllPeriodSources?: boolean;
   activeOnly?: boolean;
+  finePayrollType?: PayrollMovementPayrollType;
 }) {
   assertStandardPayrollPeriod(input.periodStart, input.periodEnd);
   const range = { gte: input.periodStart, lt: endExclusive(input.periodEnd) };
@@ -114,13 +120,28 @@ async function calculatePayrollPeriod(input: {
           movement: {
             date: range,
             status: "APPROVED",
+            ...(input.finePayrollType
+              ? {
+                  AND: [
+                    {
+                      OR: [
+                        { kind: { not: "FINE" as const } },
+                        {
+                          kind: "FINE" as const,
+                          payrollType: input.finePayrollType,
+                        },
+                      ],
+                    },
+                  ],
+                }
+              : {}),
             ...(input.includeAllPeriodSources
               ? {}
               : input.runId
-              ? {
-                  OR: [{ payrollRunId: null }, { payrollRunId: input.runId }],
-                }
-              : { payrollRunId: null }),
+                ? {
+                    OR: [{ payrollRunId: null }, { payrollRunId: input.runId }],
+                  }
+                : { payrollRunId: null }),
           },
         },
         include: {
@@ -135,18 +156,32 @@ async function calculatePayrollPeriod(input: {
         include: {
           installments: {
             where: {
-              periodStart: input.periodStart,
-              periodEnd: input.periodEnd,
               ...(input.includeAllPeriodSources
-                ? { status: { not: "CANCELED" as const } }
-                : input.runId
                 ? {
                     OR: [
-                      { status: "SCHEDULED" },
-                      { payrollRunId: input.runId },
+                      {
+                        periodEnd: { lte: input.periodEnd },
+                        status: "SCHEDULED" as const,
+                      },
+                      {
+                        periodStart: input.periodStart,
+                        periodEnd: input.periodEnd,
+                        status: { not: "CANCELED" as const },
+                      },
                     ],
                   }
-                : { status: "SCHEDULED" }),
+                : input.runId
+                  ? {
+                      periodEnd: { lte: input.periodEnd },
+                      OR: [
+                        { status: "SCHEDULED" },
+                        { payrollRunId: input.runId },
+                      ],
+                    }
+                  : {
+                      periodEnd: { lte: input.periodEnd },
+                      status: "SCHEDULED",
+                    }),
             },
           },
         },
@@ -239,7 +274,10 @@ async function calculatePayrollPeriod(input: {
 
   const plannedRecurringExpenses = input.runId
     ? await materializeRecurringExpenses(input.periodStart, input.periodEnd)
-    : await plannedRecurringExpensesForRange(input.periodStart, input.periodEnd);
+    : await plannedRecurringExpensesForRange(
+        input.periodStart,
+        input.periodEnd,
+      );
   const expenses = await prisma.payrollExpense.findMany({
     where: {
       date: range,
@@ -256,7 +294,9 @@ async function calculatePayrollPeriod(input: {
   const materializedRecurringKeys = new Set(
     expenses.flatMap((expense) =>
       expense.recurrenceVersionId
-        ? [`${expense.recurrenceVersionId}:${expense.date.toISOString().slice(0, 10)}`]
+        ? [
+            `${expense.recurrenceVersionId}:${expense.date.toISOString().slice(0, 10)}`,
+          ]
         : [],
     ),
   );
@@ -372,7 +412,8 @@ export async function getMonthlyPayrollSummary(month: string) {
 export type PayrollOverviewType =
   | "FIXED_SALARY"
   | "SPECIALIST"
-  | "COMMISSION";
+  | "COMMISSION"
+  | "MANAGEMENT_COMMISSION";
 export type PayrollOverviewView = "FORTNIGHT" | "MONTHLY";
 
 type PayrollOverviewRow = {
@@ -388,6 +429,43 @@ export function isSpecialistPosition(position: string | null): boolean {
   const normalized = (position ?? "").trim().toLocaleUpperCase("es-MX");
   return (
     normalized.includes("FACIALISTA") || normalized.includes("ESPECIALISTA")
+  );
+}
+
+export function isManagementPosition(position: string | null): boolean {
+  return (position ?? "").trim().toLocaleUpperCase("es-MX").includes("GERENTE");
+}
+
+function isCommissionPayrollType(
+  payrollType: PayrollOverviewType,
+): payrollType is "COMMISSION" | "MANAGEMENT_COMMISSION" {
+  return (
+    payrollType === "COMMISSION" || payrollType === "MANAGEMENT_COMMISSION"
+  );
+}
+
+async function fineTotalsForPayrollOverview(input: {
+  payrollType: "FIXED_SALARY" | "SPECIALIST";
+  periodStart: Date;
+  periodEnd: Date;
+}) {
+  const allocations = await prisma.payrollMovementAllocation.groupBy({
+    by: ["employeeId"],
+    where: {
+      movement: {
+        date: { gte: input.periodStart, lt: endExclusive(input.periodEnd) },
+        kind: "FINE",
+        status: "APPROVED",
+        payrollType: input.payrollType,
+      },
+    },
+    _sum: { amount: true },
+  });
+  return new Map(
+    allocations.map((allocation) => [
+      allocation.employeeId,
+      allocation._sum.amount ?? new Prisma.Decimal(0),
+    ]),
   );
 }
 
@@ -480,12 +558,19 @@ export function salaryOverviewPayment(
   monthlySalary: Prisma.Decimal.Value | null,
   view: PayrollOverviewView,
 ) {
-  const salary = monthlySalary == null
-    ? new Prisma.Decimal(0)
-    : new Prisma.Decimal(monthlySalary);
-  return view === "MONTHLY"
-    ? money(salary)
-    : money(salary.dividedBy(2));
+  const salary =
+    monthlySalary == null
+      ? new Prisma.Decimal(0)
+      : new Prisma.Decimal(monthlySalary);
+  return view === "MONTHLY" ? money(salary) : money(salary.dividedBy(2));
+}
+
+export function salaryOverviewNetPayment(
+  monthlySalary: Prisma.Decimal.Value | null,
+  view: PayrollOverviewView,
+  fine: Prisma.Decimal.Value,
+) {
+  return money(salaryOverviewPayment(monthlySalary, view).minus(fine));
 }
 
 export async function getPayrollOverview(input: {
@@ -495,10 +580,14 @@ export async function getPayrollOverview(input: {
   periodEnd: Date;
   mode: "WITH_VAT" | "WITHOUT_VAT";
 }) {
-  const periods = overviewPeriods(input.view, input.periodStart, input.periodEnd);
+  const periods = overviewPeriods(
+    input.view,
+    input.periodStart,
+    input.periodEnd,
+  );
   let rows: PayrollOverviewRow[];
 
-  if (input.payrollType === "COMMISSION") {
+  if (isCommissionPayrollType(input.payrollType)) {
     const calculations = await Promise.all(
       periods.map((period) =>
         calculatePayrollPeriod({
@@ -507,13 +596,20 @@ export async function getPayrollOverview(input: {
           vatRate: VAT_RATE,
           includeAllPeriodSources: true,
           activeOnly: true,
+          finePayrollType: input.payrollType,
         }),
       ),
     );
     const commissionEmployeeIds = new Set(
       calculations.flatMap((calculation) =>
         calculation.lines
-          .filter((line) => line.schemeName != null)
+          .filter((line) => {
+            if (line.schemeName == null) return false;
+            const management = isManagementPosition(line.positionName);
+            return input.payrollType === "MANAGEMENT_COMMISSION"
+              ? management
+              : !management;
+          })
           .map((line) => line.employeeId),
       ),
     );
@@ -538,6 +634,11 @@ export async function getPayrollOverview(input: {
       payroll: money(row.payroll),
     }));
   } else {
+    const fineTotals = await fineTotalsForPayrollOverview({
+      payrollType: input.payrollType,
+      periodStart: input.periodStart,
+      periodEnd: input.periodEnd,
+    });
     const employees = await prisma.empleado.findMany({
       where: { activo: true },
       orderBy: { nombreCompleto: "asc" },
@@ -547,11 +648,15 @@ export async function getPayrollOverview(input: {
       },
     });
     rows = employees.flatMap((employee) => {
-      const position = employee.position?.nombre ?? employee.puesto ?? "SIN PUESTO";
+      const position =
+        employee.position?.nombre ?? employee.puesto ?? "SIN PUESTO";
       const specialist = isSpecialistPosition(position);
       if (input.payrollType === "SPECIALIST" ? !specialist : specialist)
         return [];
-      if (input.payrollType === "FIXED_SALARY" && !employee.sueldo?.greaterThan(0))
+      if (
+        input.payrollType === "FIXED_SALARY" &&
+        !employee.sueldo?.greaterThan(0)
+      )
         return [];
       return [
         {
@@ -560,7 +665,11 @@ export async function getPayrollOverview(input: {
           position,
           bank: (employee.bank?.nombre ?? employee.banco) || null,
           account: employee.numeroCuenta || null,
-          payroll: salaryOverviewPayment(employee.sueldo, input.view),
+          payroll: salaryOverviewNetPayment(
+            employee.sueldo,
+            input.view,
+            fineTotals.get(employee.id) ?? new Prisma.Decimal(0),
+          ),
         },
       ];
     });
@@ -573,8 +682,8 @@ export async function getPayrollOverview(input: {
     view: input.view,
     periodStart: input.periodStart,
     periodEnd: input.periodEnd,
-    mode: input.payrollType === "COMMISSION" ? input.mode : null,
-    usesCurrentSalary: input.payrollType !== "COMMISSION",
+    mode: isCommissionPayrollType(input.payrollType) ? input.mode : null,
+    usesCurrentSalary: !isCommissionPayrollType(input.payrollType),
     rows,
     total: totals.total,
     byPosition: totals.byPosition,
@@ -738,15 +847,47 @@ export async function approvePayrollRun(runId: string, userId: string) {
       where: { date: range, deletedAt: null, payrollRunId: null },
       data: { payrollRunId: run.id },
     });
-    await tx.loanAdvanceInstallment.updateMany({
-      where: {
-        periodStart: run.periodStart,
-        periodEnd: run.periodEnd,
-        status: "SCHEDULED",
-        payrollRunId: null,
-      },
-      data: { status: "RESERVED", payrollRunId: run.id },
-    });
+    for (const line of run.lines) {
+      let remainingPayment = line.loanPayment;
+      if (!remainingPayment.greaterThan(0)) continue;
+
+      const dueInstallments = await tx.loanAdvanceInstallment.findMany({
+        where: {
+          periodEnd: { lte: run.periodEnd },
+          status: "SCHEDULED",
+          payrollRunId: null,
+          loanAdvance: {
+            employeeId: line.employeeId,
+            status: "PENDING",
+          },
+        },
+        orderBy: [{ periodStart: "asc" }, { sequence: "asc" }],
+      });
+
+      for (const installment of dueInstallments) {
+        if (!remainingPayment.greaterThan(0)) break;
+        const appliedAmount = Prisma.Decimal.min(
+          installment.amount,
+          remainingPayment,
+        );
+
+        await tx.loanAdvanceInstallment.update({
+          where: { id: installment.id },
+          data: {
+            status: "RESERVED",
+            payrollRunId: run.id,
+          },
+        });
+
+        remainingPayment = remainingPayment.minus(appliedAmount);
+      }
+
+      if (remainingPayment.greaterThan(0)) {
+        throw new Error(
+          `No fue posible reservar el descuento de préstamo de ${line.employeeName}. Recalcula la corrida e inténtalo nuevamente.`,
+        );
+      }
+    }
   });
   await audit(userId, "PayrollRun", run.id, "APPROVED");
   return getPayrollRun(run.id);
@@ -767,25 +908,76 @@ export async function payPayrollRun(runId: string, userId: string) {
     );
 
   await prisma.$transaction(async (tx) => {
-    const installments = await tx.loanAdvanceInstallment.findMany({
+    const reservedInstallments = await tx.loanAdvanceInstallment.findMany({
       where: { payrollRunId: run.id, status: "RESERVED" },
     });
-    await tx.loanAdvanceInstallment.updateMany({
-      where: { payrollRunId: run.id, status: "RESERVED" },
-      data: { status: "PAID", paidAt: new Date() },
-    });
+    const paidAt = new Date();
+    for (const line of run.lines) {
+      let remainingPayment = line.loanPayment;
+      if (!remainingPayment.greaterThan(0)) continue;
+
+      const employeeInstallments = await tx.loanAdvanceInstallment.findMany({
+        where: {
+          payrollRunId: run.id,
+          status: "RESERVED",
+          loanAdvance: { employeeId: line.employeeId },
+        },
+        orderBy: [{ periodStart: "asc" }, { sequence: "asc" }],
+      });
+
+      for (const installment of employeeInstallments) {
+        if (!remainingPayment.greaterThan(0)) break;
+        const appliedAmount = Prisma.Decimal.min(
+          installment.amount,
+          remainingPayment,
+        );
+        const deferredAmount = installment.amount.minus(appliedAmount);
+
+        await tx.loanAdvanceInstallment.update({
+          where: { id: installment.id },
+          data: {
+            amount: appliedAmount,
+            status: "PAID",
+            paidAt,
+          },
+        });
+
+        if (deferredAmount.greaterThan(0)) {
+          const nextPeriod = nextPayrollPeriod(run.periodStart);
+          const lastInstallment = await tx.loanAdvanceInstallment.findFirst({
+            where: { loanAdvanceId: installment.loanAdvanceId },
+            orderBy: { sequence: "desc" },
+            select: { sequence: true },
+          });
+          await tx.loanAdvanceInstallment.create({
+            data: {
+              loanAdvanceId: installment.loanAdvanceId,
+              sequence: (lastInstallment?.sequence ?? 0) + 1,
+              periodStart: nextPeriod.periodStart,
+              periodEnd: nextPeriod.periodEnd,
+              amount: deferredAmount,
+            },
+          });
+        }
+
+        remainingPayment = remainingPayment.minus(appliedAmount);
+      }
+
+      if (remainingPayment.greaterThan(0)) {
+        throw new Error(
+          `No fue posible liquidar el descuento de préstamo de ${line.employeeName}. Cancela la aprobación, recalcula e inténtalo nuevamente.`,
+        );
+      }
+    }
+
     for (const loanId of [
-      ...new Set(installments.map((item) => item.loanAdvanceId)),
+      ...new Set(reservedInstallments.map((item) => item.loanAdvanceId)),
     ]) {
       const loanInstallments = await tx.loanAdvanceInstallment.findMany({
         where: { loanAdvanceId: loanId },
       });
       const paidAmount = loanInstallments
-        .filter(
-          (item) =>
-            item.status === "PAID" ||
-            installments.some((paid) => paid.id === item.id),
-        )
+        .filter((item) => item.status === "PAID")
         .reduce((sum, item) => sum.plus(item.amount), new Prisma.Decimal(0));
       const loan = await tx.loanAdvance.findUniqueOrThrow({
         where: { id: loanId },

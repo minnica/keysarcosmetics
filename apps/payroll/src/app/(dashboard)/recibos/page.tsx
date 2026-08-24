@@ -23,6 +23,7 @@ import { api, apiErrorMessage } from "@/lib/api";
 import { formatCurrency, formatDate, formatPercent, sumBy } from "@/lib/format";
 import { suggestedPayrollDate } from "@/lib/payroll-periods";
 import { mapPayrollRun, mapPayrollRunLine } from "@/lib/payroll-run-mappers";
+import { useSession } from "@/lib/session";
 import type {
   PayrollReceipt,
   PayrollRunLine,
@@ -196,6 +197,8 @@ function mapReceipt(raw: RawReceipt): PayrollReceipt {
 
 export default function RecibosPage() {
   const live = useLivePayrollPreview();
+  const { canWrite } = useSession();
+  const hasWriteAccess = canWrite("payroll/recibos");
   const [issuedReceipts, setIssuedReceipts] = useState<PayrollReceipt[]>([]);
   const [issuedLoading, setIssuedLoading] = useState(true);
   const [issuedError, setIssuedError] = useState<string | null>(null);
@@ -434,24 +437,28 @@ export default function RecibosPage() {
           >
             <Download className="h-4 w-4" />
           </Button>
-          <Button
-            size="icon"
-            variant="ghost"
-            disabled={!row.original.phone}
-            aria-label={`Enviar recibo de ${row.original.employeeName}`}
-            onClick={() => void send(row.original)}
-          >
-            <MessageCircle className="h-4 w-4" />
-          </Button>
-          <Button
-            size="icon"
-            variant="ghost"
-            disabled={row.original.status === "CONFIRMED"}
-            aria-label={`Confirmar recibo de ${row.original.employeeName}`}
-            onClick={() => void confirm(row.original)}
-          >
-            <CheckCircle2 className="h-4 w-4" />
-          </Button>
+          {hasWriteAccess ? (
+            <>
+              <Button
+                size="icon"
+                variant="ghost"
+                disabled={!row.original.phone}
+                aria-label={`Enviar recibo de ${row.original.employeeName}`}
+                onClick={() => void send(row.original)}
+              >
+                <MessageCircle className="h-4 w-4" />
+              </Button>
+              <Button
+                size="icon"
+                variant="ghost"
+                disabled={row.original.status === "CONFIRMED"}
+                aria-label={`Confirmar recibo de ${row.original.employeeName}`}
+                onClick={() => void confirm(row.original)}
+              >
+                <CheckCircle2 className="h-4 w-4" />
+              </Button>
+            </>
+          ) : null}
         </div>
       ),
     },

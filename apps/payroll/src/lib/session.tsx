@@ -10,22 +10,22 @@ import {
 } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Button } from "@cosmetics/ui";
+import type { PayrollScreenKey, UsuarioSession } from "@cosmetics/types";
 import { api } from "./api";
+import {
+  getFirstPayrollPath,
+  getPayrollScreenByPath,
+} from "./access";
 
-interface SessionUser {
-  id: string;
-  nombre: string;
-  email: string;
-  rol: "SUPER_ADMIN" | "GERENTE" | "CAPTURISTA";
-}
-type SessionStatus =
-  | "loading"
-  | "authenticated"
-  | "unauthenticated"
-  | "forbidden";
+type SessionUser = UsuarioSession;
+type SessionStatus = "loading" | "authenticated" | "unauthenticated";
 interface SessionValue {
   user: SessionUser | null;
   status: SessionStatus;
+  canAccess: (screenKey: PayrollScreenKey) => boolean;
+  canWrite: (screenKey: PayrollScreenKey) => boolean;
+  isAccessManager: boolean;
+  firstAccessiblePath: string | null;
   refreshSession: () => Promise<void>;
   logout: () => void;
 }
@@ -49,11 +49,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         "/api/auth/me",
       );
       setUser(response.data.data);
-      setStatus(
-        response.data.data.rol === "SUPER_ADMIN"
-          ? "authenticated"
-          : "forbidden",
-      );
+      setStatus("authenticated");
     } catch {
       setUser(null);
       setStatus("unauthenticated");
@@ -69,10 +65,26 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     void refreshSession();
   }, [refreshSession]);
-  const value = useMemo(
-    () => ({ user, status, refreshSession, logout }),
-    [logout, refreshSession, status, user],
-  );
+  const value = useMemo<SessionValue>(() => {
+    const permissions = user?.payrollScreenPermissions ?? [];
+    const permissionSet = new Set(permissions);
+    const writePermissionSet = new Set(user?.payrollWritePermissions ?? []);
+    const isAccessManager = Boolean(user?.canManagePayrollAccess);
+    return {
+      user,
+      status,
+      canAccess: (screenKey) =>
+        isAccessManager || permissionSet.has(screenKey),
+      canWrite: (screenKey) =>
+        isAccessManager || writePermissionSet.has(screenKey),
+      isAccessManager,
+      firstAccessiblePath: user
+        ? getFirstPayrollPath(permissions, isAccessManager)
+        : null,
+      refreshSession,
+      logout,
+    };
+  }, [logout, refreshSession, status, user]);
   return (
     <SessionContext.Provider value={value}>{children}</SessionContext.Provider>
   );
@@ -88,11 +100,25 @@ export function useSession() {
 export function SessionGate({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const { status, logout } = useSession();
+  const { status, user, logout, firstAccessiblePath, isAccessManager } =
+    useSession();
   useEffect(() => {
-    if (status === "unauthenticated")
+    if (status === "unauthenticated") {
       router.replace(`/login?next=${encodeURIComponent(pathname)}`);
-  }, [pathname, router, status]);
+      return;
+    }
+    if (status === "loading" || !user) return;
+
+    const screen = getPayrollScreenByPath(pathname);
+    const hasAccess = screen
+      ? screen.key === "payroll/accesos"
+        ? isAccessManager
+        : isAccessManager || user.payrollScreenPermissions.includes(screen.key)
+      : true;
+    if (!hasAccess && firstAccessiblePath && pathname !== firstAccessiblePath) {
+      router.replace(firstAccessiblePath);
+    }
+  }, [firstAccessiblePath, isAccessManager, pathname, router, status, user]);
   if (status === "loading" || status === "unauthenticated") {
     return (
       <div className="flex min-h-screen items-center justify-center text-sm text-[var(--text-muted)]">
@@ -100,10 +126,19 @@ export function SessionGate({ children }: { children: React.ReactNode }) {
       </div>
     );
   }
-  if (status === "forbidden") {
+  if (!user) return null;
+
+  const screen = getPayrollScreenByPath(pathname);
+  const hasAccess = screen
+    ? screen.key === "payroll/accesos"
+      ? isAccessManager
+      : isAccessManager || user.payrollScreenPermissions.includes(screen.key)
+    : true;
+
+  if (!firstAccessiblePath) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-4 p-6 text-center text-sm text-[var(--text-muted)]">
-        <p>Esta aplicación está disponible únicamente para SUPER_ADMIN.</p>
+        <p>Tu puesto todavía no tiene pantallas de Payroll asignadas.</p>
         <Button
           variant="outline"
           onClick={() => {
@@ -113,6 +148,13 @@ export function SessionGate({ children }: { children: React.ReactNode }) {
         >
           Volver al login
         </Button>
+      </div>
+    );
+  }
+  if (!hasAccess) {
+    return (
+      <div className="flex min-h-[40vh] items-center justify-center text-sm text-[var(--text-muted)]">
+        Redirigiendo…
       </div>
     );
   }

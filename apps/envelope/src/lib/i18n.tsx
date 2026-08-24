@@ -178,6 +178,8 @@ const translations = {
       salesBySellerTitle: 'Ventas por vendedor',
       salesBySellerDescription:
         'Avance de cada vendedor respecto a su meta en el período',
+      searchEmployee: 'Buscar empleado...',
+      noEmployeesFound: 'No hay empleados que coincidan con la búsqueda.',
       salesBySellerDayTitle: 'Ventas por vendedor por día',
       salesBySellerDayDescription:
         'Resumen mensual de ventas por vendedor y sucursal',
@@ -698,6 +700,8 @@ const translations = {
       salesBySellerTitle: 'Sales by seller',
       salesBySellerDescription:
         'Each seller progress against their goal in the period',
+      searchEmployee: 'Search employee...',
+      noEmployeesFound: 'No employees match the search.',
       salesBySellerDayTitle: 'Sales by seller by month',
       salesBySellerDayDescription:
         'Monthly summary of sales by seller and branch',

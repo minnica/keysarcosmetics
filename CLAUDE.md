@@ -15,7 +15,7 @@ Todas las apps son internas (detrás de login), excepto `landing` que es públic
 ## Identidad de marca
 
 ```text
-Introducción
+Introducciónn
 Keysar Cosmetics nace con el propósito de redefinir la bel-
 leza desde una visión sofisticada, minimalista y consciente.
 Este manual de marca es la guía fundamental que asegura
@@ -96,7 +96,32 @@ el diseño y el autocuidado.
 | `crm`         | Next.js                 | 3003       | Gestión de mensajes: WhatsApp, Messenger, Instagram     |
 | `scheduler`   | Next.js                 | 3004       | Agenda de citas con notificaciones y recordatorios      |
 | `pos`         | Electron + React + Vite | 3005       | Punto de venta offline con hardware                     |
+| `finance`     | Next.js                 | 3006       | Control financiero, rentas, deuda y socios              |
+| `hr`          | Next.js                 | 3007       | Recursos Humanos, turnos, vacaciones y expedientes      |
 | `backend/api` | Express                 | 4000       | API REST compartida                                     |
+
+---
+
+## Nuevas apps en preparación
+
+- `apps/finance` (`@cosmetics/finance`) y `apps/hr` (`@cosmetics/hr`) fueron incorporadas originalmente como prototipos heredados. Ambas ya tienen su frontend mock homologado con Next 14 y Tailwind; su backend, persistencia y autenticación compartida siguen deliberadamente pendientes según sus planes independientes.
+- Sus `package.json` ya fijan la arquitectura objetivo homologada: Next.js 14.2.4, React 18.3, TypeScript strict, `@cosmetics/ui`, `@cosmetics/types`, `@cosmetics/auth` y `@cosmetics/api-client`.
+- Finance será dueño de rentas, servicios financieros, deuda y capital de socios; debe consumir sucursales/ventas de Envelope y costos aprobados de Payroll sin duplicarlos.
+- HR será dueño de expedientes, estatus laboral histórico, turnos, descansos, vacaciones, permisos y políticas; debe reutilizar `Empleado`, `Sucursal`, `Position` y `Usuario`, sin conservar D1/Drizzle ni autenticación paralela.
+- El análisis de fuentes existentes, límites, riesgos y plan por fases vive en `apps/finance/GUIA_REFACTORIZACION.md` y `apps/hr/GUIA_REFACTORIZACION.md`.
+- Las fases pendientes de cada guía determinan qué integraciones todavía no están listas; no asumir backend, persistencia o autenticación terminados por la sola presencia de sus dependencias objetivo.
+
+### Estado de `finance` (frontend mock, 2026-08-23)
+
+- `apps/finance` ya tiene entrada Next.js App Router, TypeScript strict, Tailwind/PostCSS y layout responsivo propio del monorepo.
+- El inventario fuente de Finance quedó limpio del repositorio Vite/PWA heredado: no conservar `dist`, `.next`, `*.tsbuildinfo`, lockfiles anidados, service workers, manifests ni iconos/logos sin referencia. `public/geist.woff2` sí forma parte del frontend porque `globals.css` lo carga directamente.
+- El frontend fue migrado desde el prototipo Vite a `src/app/page.tsx` + `src/app/globals.css`; usa mocks en memoria y no persiste datos operativos en `localStorage` (solo la preferencia de tema), ni usa service worker, PWA o login local.
+- Finance reutiliza los primitivos canónicos de `@cosmetics/ui` para sidebar responsivo, botones, cards, badges, tablas, dialogs, inputs, selects, tabs, progreso y tooltips. Su paleta propia azul marino/índigo-violeta con superficies gris-lavanda y sus estados light/dark se definen exclusivamente en `apps/finance/src/app/globals.css` y `apps/finance/tailwind.config.ts`; no trasladar esos tonos a `packages/ui` ni a otras apps.
+- La preferencia visual de Finance se guarda de forma aislada en `keysar-finance-theme`; no comparte ni reemplaza `keysar-theme`, utilizada por Envelope y Payroll.
+- La navegación cubre resumen, sucursales, rentas, servicios, pagos, estado financiero, financiamientos, socios, aportaciones, proyecciones, accesos y reportes. Las 12 vistas conservan el inventario y la estructura funcional del prototipo heredado con datos mock: selector y consolidado del resumen; directorio de sucursales; resumen y tabla de rentas; catálogo/asignaciones de servicios; historial de pagos; estado y movimientos financieros; métricas/detalle de financiamientos; distribución y fichas de socios; resumen/detalle de aportaciones; métricas y gráficas de proyección; aviso/perfiles de acceso; y selector/catálogo de reportes. No sustituir estas estructuras por un placeholder genérico durante la integración con backend.
+- Los mocks de Finance son funcionales y viven exclusivamente en estado React durante la sesión. Sucursales, rentas, servicios, pagos, movimientos financieros, financiamientos, socios, aportaciones y accesos permiten alta, edición y eliminación con confirmación destructiva; los financiamientos también aceptan pagos, y dashboard/reportes recalculan o exportan desde el mismo estado. No persistir estos datos en `localStorage`, no crear API routes y no conectar Prisma/backend hasta que se soliciten explícitamente las fases posteriores.
+- Mantener sin cambios backend, Prisma, BD y autenticación compartida hasta ejecutar las fases 0, 2, 3 y 4 de `apps/finance/GUIA_REFACTORIZACION.md`.
+- Validación de cierre de limpieza (2026-08-23): `pnpm --filter @cosmetics/finance type-check`, `lint` y `build` terminaron correctamente. Los outputs generados se retiraron después de validar y deben seguir fuera del inventario fuente.
 
 ---
 
@@ -113,6 +138,7 @@ el diseño y el autocuidado.
 - En métricas y bloques resumen, priorizar `label + value`; si hace falta contexto, usarlo solo de forma puntual. La page resumen agrupa periodo, estado, exportaciones y KPIs en una única card, mantiene la configuración de corrida en un solo bloque compacto y muestra las métricas secundarias junto al encabezado de la tabla; no volver a fragmentar estas áreas en múltiples mini-cards.
 - La page resumen permite alternar entre vista quincenal y mensual. La configuración quincenal usa un único `Select` con los periodos estándar de los últimos 12 meses, agrupados por mes y con opciones breves de primera/segunda quincena; no duplicar ese control con otro selector de corridas en el encabezado. Al elegir un periodo con corrida no cancelada carga esa corrida; si está vacío permite crearla con día de pago sugerido siete días después del cierre. El selector mensual ofrece el mismo rango de 12 meses. Nunca crear una segunda corrida para el mismo periodo ni permitir fechas libres que rompan las quincenas 1–15/16–fin.
 - La vista mensual obtiene su consolidado desde `GET /api/payroll/reports/monthly-summary?month=AAAA-MM`. Suma los snapshots de las corridas no canceladas del 1–15 y 16–fin de mes aunque estén en `DRAFT` o `APPROVED`. Si una quincena ya terminó y nunca tuvo corrida, el backend la calcula en memoria con los datos históricos y la configuración disponible, la devuelve con estado sintético `ESTIMATED` y no crea registros, snapshots, reservas ni auditoría. La UI debe cambiar el encabezado a **nómina mensual aproximada**, identificar cada quincena estimada y recomendar crear la corrida histórica para validar y congelar el resultado. Una quincena vigente sin corrida permanece faltante. No describir ningún importe como pagado. Las comisiones mensuales se calculan por quincena y luego se suman; nunca se recalculan sobre las ventas combinadas del mes.
+- Las multas de `/movimientos` requieren una nómina destino: salario fijo, especialistas, comisiones o comisiones gerencia. La fecha determina la quincena y cada consulta resta solo las multas aprobadas dirigidas a ella. Comisiones excluye puestos cuyo nombre contiene `GERENTE`; estos se consultan en `/nomina-comisiones-gerencia`. Las multas históricas sin clasificación explícita se migran a comisiones.
 - Los encabezados de todas las pages de `payroll` replican el patrón de `envelope`: nombre de pantalla en un H1 con `.page-title`, subtítulo inmediato con `mt-1 text-sm` y `--text-muted`, y acciones alineadas al extremo derecho en desktop/apiladas en móvil. Título, subtítulo y acciones se muestran directamente sobre el fondo de la página, sin card; las cards funcionales cercanas se colocan debajo del encabezado para no alterar su posición.
 - Excepción exclusiva de `payroll`: solo los valores textuales que se capturan/guardarían en BD y los datos dinámicos mostrados en inputs, selects y cuerpos de tabla van en MAYÚSCULAS. Los formularios convierten esos valores mientras se escriben y vuelven a normalizarlos antes de guardarlos en estado; PDF/Excel exportan las celdas de datos en mayúsculas. Navegación, títulos, subtítulos, botones, descripciones y placeholders conservan su capitalización normal. No aplicar esta excepción automáticamente a otras apps.
 
@@ -130,6 +156,7 @@ el diseño y el autocuidado.
 - **Infra frontend**: Vercel
 - **POS**: Electron + React + Vite
 - **Auth**: JWT + bcrypt
+- **Calidad y release**: GitHub Actions, PostgreSQL efímero para integración y Playwright para smoke tests de ambientes
 
 ---
 
@@ -142,6 +169,14 @@ el diseño y el autocuidado.
 | `@cosmetics/auth`       | Lógica JWT y roles compartida                         |
 | `@cosmetics/api-client` | Cliente axios compartido                              |
 
+### Compilación de paquetes compartidos en backend
+
+- `backend/api` es una sola API REST compartida por `envelope`, `payroll`, `crm`, `scheduler`, `pos` y las aplicaciones internas que se agreguen después; cada producto mantiene sus rutas y servicios por módulo dentro de la misma API.
+- El backend nunca debe resolver imports contra `packages/*/src`. Su `tsconfig.json` resuelve `@cosmetics/*` contra `packages/*/dist/index.d.ts`, y Node carga la salida CommonJS de `dist`.
+- Todo paquete compartido que la API consuma debe declarar un script `build`, exponer una salida CommonJS en `dist` y figurar como dependencia workspace de `backend/api/package.json`.
+- Antes de `dev`, `build` y `type-check`, la API construye automáticamente sus dependencias internas mediante el grafo de pnpm (`@cosmetics/api^...`). No mantener listas manuales de paquetes en Docker.
+- Los frontends conservan la condición `import` hacia `src` para que Next.js/Vite puedan trabajar con el código fuente del workspace durante desarrollo.
+
 ---
 
 ## Roles del sistema
@@ -151,6 +186,9 @@ el diseño y el autocuidado.
 - `CAPTURISTA` → solo registro de ventas
 - `Position.canManageAccess` marca el puesto que administra permisos y credenciales de `envelope`.
 - El acceso efectivo a pantallas de `envelope` ya no depende solo del rol: también se resuelve por puesto/permisos por pantalla.
+- Payroll mantiene un control independiente por puesto mediante `Position.canManagePayrollAccess` y `PositionPayrollScreenPermission`; no reutiliza ni modifica los permisos de pantallas de Envelope. `SUPER_ADMIN` conserva acceso total a ambas apps.
+- La pantalla `/accesos` de `apps/payroll` permite asignar por puesto uno de tres niveles a cada pantalla: **Puede editar**, **Solo lectura** o **Denegada**, con autosave y acciones masivas por sección. `PositionPayrollScreenPermission.allowed` controla la visualización y `canWrite` las mutaciones. El permiso **Administrar accesos de Payroll** concede edición total y permite administrar otros puestos; solo `SUPER_ADMIN` o un puesto con `canManagePayrollAccess` puede abrirla.
+- La misma pantalla `/accesos` de `apps/payroll` administra credenciales por empleado: lista empleados y cuentas, crea o actualiza correo/contraseña temporal y permite eliminar exclusivamente la cuenta de login sin borrar al empleado. Las pantallas efectivas siguen heredándose del puesto del empleado; no existe una segunda matriz de permisos por persona. Las cuentas nuevas se crean con rol base `CAPTURISTA`, porque el acceso a Payroll se resuelve mediante `canManagePayrollAccess`/`PositionPayrollScreenPermission`, y la cuenta `SUPER_ADMIN` no puede eliminarse.
 - La pantalla `accesos` guarda permisos por clic inmediato en cada pantalla con autosave sin recarga, administra credenciales en un dialog dedicado, también autoriza permisos virtuales de acción como `ventas/generar-sobre` y elimina cuentas desde la tabla de estatus cuando se necesita re-crear el acceso después, excepto la cuenta principal `SUPER_ADMIN`, que queda protegida. El permiso transversal para incluir registros de `KEYSAR HOME` se configura dentro del bloque superior de alcance de datos; no pertenece al conteo ni a las acciones masivas de la sección Reportes.
 - En `accesos`, cualquier puesto sin administración global puede activar `Solo ver datos propios`. El ajuste se persiste en `Position.selfDataOnly` y se aplica en backend según la relación operativa del módulo: en ventas, dashboard y reportes de ventas usa `vendedorId`; en citas y su reporte usa `facialistaId`. También impide crear o mutar registros asignados a otro empleado. Un puesto sin empleado vinculado no recibe datos bajo esta restricción. Los puestos con `canManageAccess` no pueden combinarse con `selfDataOnly`.
 - Prisma genera el cliente desde `backend/api/prisma/schema.prisma`; el duplicado histórico `backend/api/src/prisma/schema.prisma` debe mantenerse sincronizado mientras exista. Toda modificación de modelo debe actualizar ambos para evitar que el cliente desplegado quede desfasado.
@@ -176,7 +214,6 @@ Wrappers custom en `packages/ui/src/components/custom`:
 
 - `ProgressKeysar` — wrapper custom sobre `Progress` oficial
 - `Combobox` — select con búsqueda integrada; usa `Popover` + `Input`. Props: `options`, `value`, `onValueChange`, `placeholder`, `searchPlaceholder`, `emptyMessage`, `disabled`, `id`. Exporta también `ComboboxOption` (interface `{ value: string; label: string }`).
-- `MultiCombobox` — select compacto con búsqueda y selección múltiple; usa `Popover` + `Input`. Props: `options`, `value`, `onValueChange`, `placeholder`, `searchPlaceholder`, `emptyMessage`, `disabled`, `id`.
 
 **Reglas de UI:**
 
@@ -229,7 +266,7 @@ Módulos implementados:
 - **metodos-pago** — CRUD de métodos de pago
 - **bancos** — CRUD propio con catálogo `Bank`
 - **puestos** — CRUD propio con catálogo `Position`
-- **reportes** — múltiples subvistas: total-general, detalle-metodo-pago, metodo-pago-por-dia, ventas-por-vendedor, ventas-por-vendedor-dia y citas; leen endpoints agregados en backend y exportan PDF/Excel desde esos datos usando `report-export.ts` + `ReportExportButtons` con imports dinámicos para las librerías pesadas. `reportes/citas` abre en la quincena vigente, filtra por rango, facialista y sucursal, y suma citas, faciales sencillos/dobles atendidos, estatus, conceptos de compra y bonos por facialista+sucursal desde `GET /api/envelope/reportes/citas`; PDF y Excel incluyen el mismo desglose agregado. `ventas-por-vendedor` pivota las sucursales en columnas dinámicas, conserva las métricas por empleado y muestra/exporta una fila final con los totales de cada sucursal. La vista `ventas-por-vendedor-dia` muestra `Días sin venta` y `Monto día aproximado` al final de la tabla, antes del total, calcula ese monto como `venta total del mes / días con venta` por vendedor, y cuando consulta el mes en curso solo renderiza días transcurridos hasta hoy
+- **reportes** — múltiples subvistas: total-general, detalle-metodo-pago, metodo-pago-por-dia, ventas-por-vendedor, ventas-por-vendedor-dia y citas; leen endpoints agregados en backend y exportan PDF/Excel desde esos datos usando `report-export.ts` + `ReportExportButtons` con imports dinámicos para las librerías pesadas. `reportes/citas` abre en la quincena vigente, filtra por rango, facialista y sucursal, y suma citas, faciales sencillos/dobles atendidos, estatus, conceptos de compra y bonos por facialista+sucursal desde `GET /api/envelope/reportes/citas`; PDF y Excel incluyen el mismo desglose agregado. `ventas-por-vendedor` pivota las sucursales en columnas dinámicas, conserva las métricas por empleado, permite buscar vendedores por nombre con el mismo patrón de búsqueda de `DataTable` y aplica las coincidencias también a totales y exportaciones; además muestra/exporta una fila final con los totales visibles de cada sucursal. La vista `ventas-por-vendedor-dia` muestra `Días sin venta` y `Monto día aproximado` al final de la tabla, antes del total, calcula ese monto como `venta total del mes / días con venta` por vendedor, y cuando consulta el mes en curso solo renderiza días transcurridos hasta hoy
 - **metas por sucursal** — `reportes/metas-sucursal` consume `GET /api/envelope/reportes/metas-sucursal`, que agrega en backend únicamente el mes vigente según la fecha de negocio de `America/Mexico_City`, mezcla sucursales activas con sucursales históricas presentes en las ventas y completa con cero los días/sucursales sin venta. La pantalla tiene pestañas semanal y mensual, exportación PDF/Excel y una sola matriz comparativa de escritorio: cada sucursal aparece una vez como columna, las ventas ocupan el cuerpo, el total acumulado cierra el período y las métricas de meta continúan debajo como un segundo footer alineado a las mismas columnas, incluidos los inputs de vendedores. En la vista mensual de escritorio, la matriz usa un área vertical acotada y mantiene sticky el encabezado completo durante el desplazamiento para conservar el contexto de cada sucursal. Las exportaciones reproducen tanto el total por sucursal como todas las filas de ese segundo footer y conservan como números los importes, días y vendedores. En móvil sustituye por completo la tabla y el scroll horizontal por una jerarquía de cards: resumen de meta, totales por período y una card por sucursal con avance, cálculos, vendedores y desglose temporal plegable. La vista mensual compara la meta mensual contra el acumulado del footer; la semanal divide la meta mensual entre los lunes que inician dentro del mes, muestra semanas lunes-domingo iniciadas en el mes y calcula el faltante usando solo la semana actual. Los días restantes excluyen hoy; si ya no quedan días y aún falta meta, el monto diario y por vendedor se presentan sin importe para evitar dividir entre cero. Esta pantalla usa el permiso independiente `reportes/metas-sucursal` y respeta `selfDataOnly`.
 - **rankings de ventas** — `reportes/ranking-vendedores` y `reportes/ranking-sucursales` abren por defecto desde el día 1 hasta el día actual del mes, permiten cualquier rango válido de hasta 366 días y consumen endpoints SQL agregados propios. Ambas vistas muestran podio, participación, operaciones, promedio y ranking completo, permiten buscar por nombre sin modificar el podio y exportan a PDF/Excel únicamente las filas visibles del filtro usando los componentes canónicos. El ranking de vendedores respeta `selfDataOnly` y `reportes/ver-datos-keysar-home`; el ranking de sucursales respeta `selfDataOnly`. Cada pantalla tiene permiso independiente y usa GSAP únicamente al actualizar el rango, nunca para ocultar el contenido inicial y siempre desactivado con `prefers-reduced-motion`.
   En móvil, `total-general` usa tarjetas por día con todas las sucursales —incluidas las que no tuvieron venta, marcadas con badge de importe cero—, el total diario y una tarjeta final con los totales acumulados por sucursal; desde `md` conserva la tabla completa para comparar días y sucursales.
@@ -352,11 +389,11 @@ La ruta `/reportes` contiene la primera fase local/mock de reportes: resumen eje
 
 ### Límites y seguridad
 
-- La UI y todos los endpoints `/api/payroll/*` requieren sesión JWT y rol `SUPER_ADMIN`.
+- La UI y todos los endpoints `/api/payroll/*` requieren sesión JWT y permisos efectivos de Payroll. `SUPER_ADMIN` tiene acceso total; los demás usuarios entran únicamente cuando su puesto tiene al menos una pantalla permitida en `PositionPayrollScreenPermission`. `GET`/`HEAD` requieren `allowed`; `POST`/`PUT`/`PATCH`/`DELETE` requieren además `canWrite`. El sidebar y el guard de rutas aplican la visualización, la UI oculta controles de mutación en modo solo lectura y el backend mantiene la validación autoritativa por familia de endpoints.
 - Payroll reutiliza `Empleado`, `Bank`, `Position`, `Sucursal`, `Venta` y `VentaDetalle`. La administración permanece en Envelope; Payroll los consume en lectura.
 - `Empleado.sucursalId` es nullable y conserva una sucursal laboral concreta; `Empleado.todasSucursales` distingue la selección explícita `TODAS` de `Sin sucursal asignada`. Cuando `todasSucursales = true`, `sucursalId` debe ser `null`. Por decisión operativa vigente, este dato es informativo para Payroll y no interviene en el cálculo ni en el reporte por sucursal.
 - Los cambios propios de nómina deben limitarse a `apps/payroll`, rutas/servicios/modelos Payroll en `backend/api` y documentación relacionada. La relación laboral `Empleado.sucursalId` se administra exclusivamente desde `apps/envelope`.
-- Las migraciones `20260730000000_add_payroll_models`, `20260731000000_add_employee_branch`, `20260801000000_add_employee_all_branches`, `20260813010000_add_recurring_payroll_expenses`, `20260813020000_add_payroll_expense_categories` y `20260813030000_link_payroll_expense_categories` son aditivas. Deben revisarse y ejecutarse manualmente con `prisma migrate deploy`; nunca usar `db push`, `migrate reset` ni seeds demo contra producción.
+- Las migraciones `20260730000000_add_payroll_models`, `20260731000000_add_employee_branch`, `20260801000000_add_employee_all_branches`, `20260813010000_add_recurring_payroll_expenses`, `20260813020000_add_payroll_expense_categories`, `20260813030000_link_payroll_expense_categories`, `20260822000000_add_payroll_access_control` y `20260823000000_add_payroll_read_only_access` son aditivas. Deben revisarse y ejecutarse manualmente con `prisma migrate deploy`; nunca usar `db push`, `migrate reset` ni seeds demo contra producción.
 - Los adjuntos están preparados para un bucket privado de Supabase Storage, pero su habilitación está pospuesta. Cuando se cree el bucket, configurar `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` y opcionalmente `PAYROLL_STORAGE_BUCKET`; nunca exponer la service-role key al frontend.
 
 ### Fuentes reales reutilizadas
@@ -378,7 +415,7 @@ Los catálogos de métodos de pago no participan en el cálculo de comisión. Lo
 - Motor puro: `backend/api/src/services/payroll-calculation.ts`.
 - Ciclo de corridas y snapshots: `backend/api/src/services/payroll.service.ts`.
 - Storage privado: `backend/api/src/services/payroll-storage.ts`.
-- Modelos: `PayrollCatalogItem`, `CommissionScheme`, `CommissionSchemeVersion`, `CommissionSchemeTier`, `EmployeeCommissionAssignment`, `PayrollRun`, `PayrollRunLine`, `PayrollRunBranchLine`, `PayrollMovement`, `PayrollMovementAllocation`, `PayrollAttachment`, `PayrollExpense`, `PayrollExpenseCategory`, `PayrollExpenseRecurrence`, `PayrollExpenseRecurrenceVersion`, `LoanAdvance`, `LoanAdvanceInstallment`, `PayrollReceipt` y `PayrollAuditEvent`.
+- Modelos: `PositionPayrollScreenPermission`, `PayrollCatalogItem`, `CommissionScheme`, `CommissionSchemeVersion`, `CommissionSchemeTier`, `EmployeeCommissionAssignment`, `PayrollRun`, `PayrollRunLine`, `PayrollRunBranchLine`, `PayrollMovement`, `PayrollMovementAllocation`, `PayrollAttachment`, `PayrollExpense`, `PayrollExpenseCategory`, `PayrollExpenseRecurrence`, `PayrollExpenseRecurrenceVersion`, `LoanAdvance`, `LoanAdvanceInstallment`, `PayrollReceipt` y `PayrollAuditEvent`.
 - El schema canónico y el duplicado en `backend/api/src/prisma/schema.prisma` deben mantenerse sincronizados. Payroll usa el cliente estándar `@prisma/client`, regenerado durante el build del backend; no importar clientes generados desde rutas relativas porque `dist` no incluye esos artefactos.
 
 La API cubre bootstrap de fuentes compartidas; CRUD de catálogos, esquemas/versiones/asignaciones, movimientos, gastos y préstamos; adjuntos; corridas y transiciones; desglose por sucursal; recibos y seguimiento de WhatsApp.
@@ -398,21 +435,24 @@ La API cubre bootstrap de fuentes compartidas; CRUD de catálogos, esquemas/vers
 - Bloquea aprobación: ventas sin esquema/rango, pago total negativo o viáticos/insumos sin evidencia. Sueldo faltante es advertencia. Banco o cuenta faltante bloquean pago. Teléfono faltante bloquea solo la preparación de WhatsApp.
 - En la vista quincenal de Resumen, el bloque de atención combina las advertencias guardadas en cada línea con una comprobación informativa de la asignación laboral actual. Solo `sucursalId = null` con `todasSucursales = false` incluye el pendiente `SUCURSAL`; una selección explícita `TODAS` se considera configurada. Esta asignación no modifica la corrida ni el desglose por punto de venta. Para evitar paredes de texto, el bloque muestra por defecto únicamente el número de empleados, el total de pendientes y conteos por tipo (`ESQUEMA`, `SUELDO`, `TELÉFONO`, `SUCURSAL`, etc.); `Ver detalle por empleado` despliega una `DataTable` paginada con la cantidad y etiquetas breves de los datos faltantes de cada persona.
 - Si una corrida en borrador conserva `MISSING_SCHEME` pero Resumen detecta que el empleado ya tiene una asignación y una versión de esquema aplicables al inicio de esa quincena, la page recalcula esa corrida una sola vez con la configuración vigente. No se recalculan corridas aprobadas o pagadas, porque sus líneas son snapshots históricos.
-- Préstamos y adelantos generan cuotas quincenales automáticas; el último pago absorbe el ajuste de centavos. Los estados históricos no se eliminan.
+- Préstamos y adelantos generan cuotas quincenales automáticas; el último pago absorbe el ajuste de centavos. El descuento de una corrida se limita al pago positivo disponible del empleado y las cuotas programadas vencidas se arrastran a la siguiente corrida. Aprobar reserva las cuotas originales sin mutar el calendario, para que cancelar restaure exactamente su estado anterior. Al pagar, si la corrida solo cubre parte de una cuota, la porción aplicada queda pagada y el remanente se programa para la quincena siguiente. Las corridas aprobadas/pagadas conservan sus snapshots y los estados históricos no se eliminan.
 - Los gastos con frecuencia `MONTHLY` o `BIWEEKLY` se administran como series recurrentes versionadas. `PayrollExpenseRecurrenceVersion` conserva concepto, categoría, monto, centro de costo, frecuencia, ancla del calendario y vigencia; editar una serie cierra la versión anterior y crea otra desde la siguiente aplicación elegida. El motor materializa una `PayrollExpense` concreta por fecha al consultar gastos o calcular una corrida. Esa ocurrencia conserva `branchId` y puede ligarse a una sola corrida al aprobarla. Las corridas aprobadas no se reescriben; los gastos legacy sin `recurrenceId` continúan como ocurrencias individuales aunque históricamente tengan una frecuencia distinta de `ONE_TIME`. Las estimaciones mensuales calculan recurrencias faltantes en memoria y no crean registros.
 - Las categorías de gasto se administran desde la misma page `/gastos` mediante `PayrollExpenseCategory`: se pueden crear, renombrar y desactivar con confirmación. El formulario solo acepta categorías activas del catálogo. `PayrollExpense.category` conserva el nombre como snapshot histórico y `categoryId` enlaza el catálogo para las capturas futuras; renombrar actualiza ocurrencias todavía no congeladas, pero no reescribe gastos incluidos en corridas aprobadas. No se puede desactivar una categoría usada por una recurrencia activa. La migración inicial recupera los nombres ya usados en gastos y recurrencias para no perder opciones existentes.
 - La page `/gastos` contiene exactamente dos tablas visibles: **Gastos**, cuya vista principal es **Historial** y deja **Recurrentes activos** como consulta secundaria para no presentar una serie y su ocurrencia como cargos duplicados, y **Categorías de gasto**, con acciones de edición y eliminación lógica. En el selector de vista, **Historial** ocupa la posición izquierda y queda activo al abrir la pantalla. Las métricas cambian con la vista: aplicaciones reales de los últimos 12 meses frente a programación activa.
 - En Préstamos y adelantos, el usuario puede seleccionar cualquier día dentro de la primera quincena de cobro. El frontend normaliza la selección al inicio canónico del periodo: días 1–15 al día 1 y días 16–fin al día 16, que es el contrato enviado al motor de amortización.
+- Al seleccionar **ADELANTO DE NÓMINA** en `/prestamos-adelantos`, la primera quincena de cobro se propone desde la fecha de solicitud para que `Guardar y recalcular` lo descuente de la corrida correspondiente; en préstamos se conserva la siguiente quincena como propuesta. La fecha sigue siendo editable. Este comportamiento solo aplica a capturas/ediciones futuras: no muta solicitudes guardadas ni recalcula snapshots existentes automáticamente.
 - Recibos se generan desde el snapshot pagado, se descargan en PDF y WhatsApp se abre mediante `wa.me`; el archivo se adjunta manualmente. Estados: `GENERATED`, `SENT`, `CONFIRMED`.
 - `GET /api/payroll/reports/live-preview?periodStart=AAAA-MM-DD&periodEnd=AAAA-MM-DD&mode=WITH_VAT|WITHOUT_VAT` calcula en memoria una quincena con las fuentes vigentes, incluidos conceptos ya ligados a una corrida de ese periodo. No crea ni recalcula corridas, no materializa recurrencias, no reserva movimientos/gastos/cuotas y no altera préstamos, recibos ni auditoría. Se usa para consultas operativas que deben mostrar el estado actual independientemente del ciclo `DRAFT → APPROVED → PAID`.
 
 ### Frontend operativo
 
-Rutas: `/`, `/bonos`, `/multas`, `/viaticos`, `/movimientos`, `/gastos`, `/esquemas`, `/prestamos-adelantos`, `/reportes/desglose-sucursal`, `/recibos` y `/login`. La ruta `/` contiene las vistas quincenal y mensual; no se crea una page separada para el consolidado.
+Rutas: `/`, `/nomina-salario-fijo`, `/nomina-especialistas`, `/nomina-comisiones`, `/bonos`, `/multas`, `/viaticos`, `/movimientos`, `/gastos`, `/esquemas`, `/prestamos-adelantos`, `/reportes/desglose-sucursal`, `/recibos`, `/accesos` y `/login`. La ruta `/` contiene las vistas quincenal y mensual; no se crea una page separada para el consolidado.
 
-- `apps/payroll/src/lib/session.tsx` gestiona sesión real y el guard `SUPER_ADMIN`.
+- `apps/payroll/src/lib/session.tsx` gestiona la sesión real, resuelve `canManagePayrollAccess`, `payrollScreenPermissions` y `payrollWritePermissions`, bloquea rutas sin permiso, expone `canWrite(screenKey)` y redirige a la primera pantalla permitida. El login admite cualquier cuenta con al menos una pantalla de Payroll y mantiene el rechazo explícito cuando el puesto no tiene acceso.
 - `apps/payroll/src/components/payroll/payroll-data-context.tsx` conecta toda la UI a `/api/payroll/*`.
-- El sidebar de Payroll replica el patrón canónico de Envelope: `Nómina`, `Operación`, `Configuración` y `Reportes` son categorías desplegables accesibles, solo una permanece abierta y la categoría de la ruta activa se abre automáticamente al cargar y navegar. En modo icon-only se mantienen visibles todas las opciones con tooltip y cada enlace activo expone `aria-current="page"`. El footer oculta las preferencias al colapsarse, usa una fila `role="switch"` para alternar tema claro/oscuro con la preferencia compartida `keysar-theme`, conserva `Cerrar sesión` como acción con tooltip y no muestra textos decorativos debajo del botón. Payroll no agrega selector de idioma mientras no tenga un proveedor de i18n propio.
+- El sidebar de Payroll replica el patrón canónico de Envelope: `Nómina`, `Operación`, `Configuración`, `Reportes` y, cuando corresponde, `Administración` son categorías desplegables accesibles. Solo muestra las pantallas permitidas al puesto, solo una categoría permanece abierta y la categoría de la ruta activa se abre automáticamente al cargar y navegar. En modo icon-only se mantienen visibles todas las opciones autorizadas con tooltip y cada enlace activo expone `aria-current="page"`. El footer oculta las preferencias al colapsarse, usa una fila `role="switch"` para alternar tema claro/oscuro con la preferencia compartida `keysar-theme`, conserva `Cerrar sesión` como acción con tooltip y no muestra textos decorativos debajo del botón. Payroll no agrega selector de idioma mientras no tenga un proveedor de i18n propio.
+- `apps/payroll/src/lib/access.ts` es el catálogo canónico de rutas/pantallas de Payroll. Los keys usan el prefijo `payroll/`; al agregar una page también debe registrarse allí, en `PAYROLL_SCREEN_KEYS` de `@cosmetics/types` y en la resolución de endpoints de `backend/api/src/routes/payroll.routes.ts`.
+- `/accesos` consume `GET /api/payroll/access/bootstrap`, que entrega puestos, empleados y cuentas con una selección explícita de campos públicos; nunca debe exponer `passwordHash`, tokens de configuración ni otros secretos. `PUT /api/payroll/access/users/:employeeId/credentials` crea o actualiza correo y contraseña, mientras `DELETE /api/payroll/access/users/:id` elimina la cuenta de acceso y protege `SUPER_ADMIN`. Todas estas rutas requieren `requirePayrollAccessManager`.
 - Exportaciones PDF/Excel se generan desde datasets reales con imports dinámicos.
 - `/recibos` y `/reportes/desglose-sucursal` ya no dependen de la corrida seleccionada en Resumen. Ambas abren en la quincena vigente, permiten elegir cualquier quincena estándar de los últimos 12 meses y el modo con/sin IVA, consultan el cálculo en memoria al abrir, al cambiar filtros, al recuperar foco y cada 60 segundos, y ofrecen actualización manual. Desglose y sus exportaciones siempre usan esa vista actual. Recibos separa **Vista actual** —previsualizaciones provisionales descargables que no acreditan pago— de **Emitidos**, que conserva el snapshot, estatus y acciones de WhatsApp de los recibos creados al pagar; `GET /api/payroll/receipts` acepta también `periodStart` + `periodEnd` para cargar esos históricos sin depender de `selectedRun`.
 - Las pages `/movimientos`, `/gastos` y `/prestamos-adelantos` comparten un filtro accesible de periodo con dos calendarios separados (`DateRangePicker`). El rango se inicia abierto para conservar todos los registros disponibles y, al elegir fechas, filtra tabla, contadores y métricas; **Limpiar fechas** restaura la vista completa. PDF y Excel reciben exactamente el mismo dataset filtrado y agregan el periodo al subtítulo y nombre del archivo. En `/gastos`, la exportación y el contador siguen la pestaña activa (`Recurrentes activos` o `Historial`) sin incluir el catálogo de categorías.
@@ -453,9 +493,12 @@ pnpm --filter @cosmetics/payroll build
 pnpm --filter @cosmetics/api test
 pnpm --filter @cosmetics/api type-check
 pnpm --filter @cosmetics/api build
+pnpm lint
+pnpm type-check
 ```
 
 El motor tiene pruebas de base con/sin IVA, selección de tasa, distribución exacta por sucursal, advertencias/bloqueos y amortización quincenal. Probar flujos integrados únicamente en una BD de desarrollo con la migración aplicada; no usar producción como ambiente de QA.
+La suite de integración `backend/api/src/app.integration.test.ts` requiere `RUN_DATABASE_TESTS=true` y una BD PostgreSQL desechable con todas las migraciones aplicadas; nunca debe apuntar a producción.
 
 ---
 
@@ -816,6 +859,7 @@ Reglas para futuras sesiones:
 - La migración `20260813010000_add_recurring_payroll_expenses` es aditiva: agrega series/versiones de gastos recurrentes y referencias opcionales desde `PayrollExpense`; no convierte ni modifica los gastos históricos existentes.
 - La migración `20260813020000_add_payroll_expense_categories` es aditiva: crea el catálogo de categorías y hace backfill con los nombres distintos ya guardados en ocurrencias y versiones; no reescribe el texto de los gastos históricos.
 - La migración `20260813030000_link_payroll_expense_categories` agrega referencias opcionales `categoryId` y hace backfill por nombre normalizado. El texto histórico permanece en cada ocurrencia; las relaciones permiten que las recurrencias futuras adopten un nombre editado sin modificar corridas aprobadas.
+- La migración `20260823000000_add_payroll_read_only_access` agrega `PositionPayrollScreenPermission.canWrite` con default `true`. Es aditiva y conserva edición para todos los permisos existentes; debe aplicarse antes de desplegar la API/UI que distinguen edición de solo lectura.
 - Aplicar Payroll por ambiente en este orden: confirmar conexión y respaldo/PITR, ejecutar `prisma migrate status`, aplicar `prisma migrate deploy`, desplegar el backend correspondiente y después desplegar/verificar el frontend.
 - `seed.ts` contiene datos demo — usar con cuidado, puede sobreescribir datos.
 - `seed-catalogs.ts` es el seed seguro para catálogos `Bank`/`Position`.
@@ -868,13 +912,26 @@ La migración en Supabase dev, el backend `cosmetics-api-dev`, el login `SUPER_A
 **Notas importantes:**
 
 - Frontend en Vercel se despliega automáticamente por push a `master`/`develop`.
-- Backend en Fly.io se despliega **manualmente** por ahora.
-- Migraciones de BD se aplican manualmente y con cuidado.
+- Backend en Fly.io se despliega mediante el workflow manual protegido `.github/workflows/deploy-api.yml`; no se despliega automáticamente por push.
+- Migraciones de BD se aplican dentro del workflow manual protegido y con revisión previa; nunca por un push automático.
 - No subir `.env` ni `.env.local` al repositorio.
 - `apps/envelope/.env.local` es solo local y no debe commitearse.
 - `apps/payroll/.env.local` también es solo local y no debe commitearse; las variables de Vercel se configuran por proyecto y ambiente.
 - Para probar frontend local contra backend dev, conservar simultáneamente los origins de Envelope y Payroll en `CORS_ORIGINS`; no reemplazar uno por otro.
 - Un `Network Error` en login normalmente significa que el frontend apunta a `localhost:4000`, el backend no responde o CORS rechazó el origin antes de llegar a `/api/auth/login`. Verificar primero Request URL, `/health` y el preflight `OPTIONS`.
+
+### CI y releases seguros (2026-08-23)
+
+- `.github/workflows/ci.yml` valida PRs y pushes a `develop`/`master` con lint, TypeScript, unit tests, builds productivos, sincronía de schemas Prisma, aplicación completa de migraciones sobre PostgreSQL 16 efímero e integración HTTP real de login/sesión.
+- Los scripts `type-check`, `test:unit` y `test:integration` de `@cosmetics/api` ejecutan previamente `prisma generate`; esto es obligatorio porque un runner limpio todavía no tiene los tipos y enums generados de `@prisma/client`.
+- Envelope conserva temporalmente un presupuesto máximo de 8 warnings ESLint y Payroll de 7; CI bloquea cualquier incremento mientras se reduce esa deuda en cambios separados.
+- `.github/workflows/deploy-api.yml` solo se ejecuta manualmente. Fija el SHA de la rama `develop` o `master` antes de la aprobación, usa el environment `development` o `production`, aplica `prisma migrate deploy`, despliega exactamente ese commit y espera `/ready`. Producción exige escribir `PRODUCCION_RESPALDADA`; esta confirmación no sustituye verificar backup/PITR ni la aprobación del environment.
+- `.github/workflows/staging-smoke.yml` ejecuta smoke tests Playwright de solo lectura contra API, Envelope y Payroll en el environment elegido.
+- El API separa `src/app.ts` (Express importable) de `src/index.ts` (listener y cierre ordenado). `/health` verifica el proceso y `/ready` verifica conectividad PostgreSQL; Fly enruta mediante el segundo.
+- Las migraciones Prisma dejaron de estar ignoradas por Git. `scripts/check-migration-safety.mjs` bloquea SQL nuevo potencialmente destructivo salvo revisión explícita documentada con `-- migration-safety: reviewed`.
+- `db:push` y el alias directo `db:migrate:prod` fueron retirados de los scripts. Los despliegues usan `db:migrate:deploy` dentro del environment protegido.
+- Dependabot revisa dependencias npm y GitHub Actions semanalmente. Secret scanning/push protection, rulesets, required checks, environments/secrets, PITR y promoción manual de Vercel requieren configuración administrativa externa.
+- El procedimiento completo, variables, protecciones, secuencia de release y rollback vive en `docs/RELEASE_RUNBOOK.md`.
 
 ---
 
@@ -888,6 +945,7 @@ apps/payroll/
 │   ├── (auth)/login/                       → login JWT real
 │   └── (dashboard)/
 │       ├── page.tsx                        → corridas quincenales y consolidado mensual calculado
+│       ├── accesos/                        → permisos por puesto y credenciales por empleado
 │       ├── bonos|multas|viaticos/          → catálogos dinámicos
 │       ├── movimientos/                    → movimientos, asignaciones y evidencias
 │       ├── gastos/                         → recurrencias, historial aplicado y categorías
@@ -904,6 +962,8 @@ apps/payroll/
 │   ├── session.tsx                         → sesión y guard SUPER_ADMIN
 │   ├── report-export.ts                    → exportación dinámica
 │   └── types.ts                            → tipos del frontend Payroll
+├── src/hooks/
+│   └── use-payroll-access-admin.ts         → puestos, empleados, cuentas y mutaciones de acceso
 ├── PENDIENTES.md                           → despliegue y Storage pospuesto
 └── GUIA_PRIMERA_NOMINA.md                  → recorrido operativo inicial
 ```
@@ -1001,10 +1061,13 @@ backend/api/
 │   │   ├── 20260813000000_add_branch_monthly_goal_and_deactivation_date/ → meta mensual y fecha de desactivación de sucursales
 │   │   ├── 20260813010000_add_recurring_payroll_expenses/ → series versionadas y ocurrencias automáticas de gastos
 │   │   ├── 20260813020000_add_payroll_expense_categories/ → catálogo y backfill de categorías de gasto
-│   │   └── 20260813030000_link_payroll_expense_categories/ → referencias de catálogo con snapshots históricos
+│   │   ├── 20260813030000_link_payroll_expense_categories/ → referencias de catálogo con snapshots históricos
+│   │   ├── 20260822000000_add_payroll_access_control/ → acceso independiente de Payroll por puesto y pantalla
+│   │   └── 20260823000000_add_payroll_read_only_access/ → nivel de escritura por permiso de pantalla
 │   ├── seed.ts                    → seed general/demo, usar con cuidado
 │   └── seed-catalogs.ts           → seed seguro para Bank/Position
 └── src/
+    ├── app.ts                             → aplicación Express importable, health/readiness y manejo HTTP global
     ├── controllers/
     │   └── auth.controller.ts
     ├── middlewares/
@@ -1017,6 +1080,7 @@ backend/api/
     │   ├── access.routes.ts      → bootstrap y guardado de permisos/credenciales de acceso de envelope
     │   ├── envelope.routes.ts     → endpoints del módulo envelope
     │   ├── crm.routes.ts
+    │   ├── payroll-access.routes.ts → permisos y credenciales administrativas de Payroll
     │   ├── payroll.routes.ts
     │   ├── pos.routes.ts
     │   └── scheduler.routes.ts
@@ -1027,7 +1091,20 @@ backend/api/
     ├── types/
     │   ├── express.d.ts           → extensión de tipos de Express
     │   └── jwt.ts
-    └── index.ts                   → entrada Express, CORS, middleware global
+    └── index.ts                           → listener HTTP y cierre ordenado de servidor/Prisma
+```
+
+### apps/e2e y automatización
+
+```text
+apps/e2e/
+├── playwright.config.ts          → proyectos API, Envelope y Payroll
+└── tests/                        → smoke tests de solo lectura por ambiente
+
+.github/workflows/
+├── ci.yml                        → gates obligatorios de PR
+├── deploy-api.yml                → migración + deploy manual protegido
+└── staging-smoke.yml             → smoke tests manuales development/production
 ```
 
 ### packages/ui
@@ -1095,17 +1172,11 @@ packages/ui/
 
 ```bash
 pnpm install
-pnpm dev                         # inicia los proyectos frontend; también abre POS (Electron)
 pnpm --filter @cosmetics/envelope dev
-pnpm --filter @cosmetics/scheduler dev
 pnpm --filter @cosmetics/payroll dev
+pnpm --filter @cosmetics/finance dev
+pnpm --filter @cosmetics/hr dev
 pnpm --filter @cosmetics/api dev
-```
-
-Para trabajar únicamente en Scheduler y evitar abrir POS:
-
-```powershell
-pnpm.cmd --filter @cosmetics/scheduler dev
 ```
 
 ### Type-check y build
@@ -1113,26 +1184,39 @@ pnpm.cmd --filter @cosmetics/scheduler dev
 ```bash
 pnpm --filter @cosmetics/envelope type-check
 pnpm --filter @cosmetics/envelope build
-pnpm --filter @cosmetics/scheduler type-check
-pnpm --filter @cosmetics/scheduler build
 pnpm --filter @cosmetics/payroll type-check
 pnpm --filter @cosmetics/payroll build
+pnpm --filter @cosmetics/finance type-check
+pnpm --filter @cosmetics/finance build
+pnpm --filter @cosmetics/hr type-check
+pnpm --filter @cosmetics/hr build
 pnpm --filter @cosmetics/api test
 pnpm --filter @cosmetics/api type-check
 pnpm --filter @cosmetics/api build
+pnpm lint
+pnpm type-check
+pnpm test:unit
+pnpm ci:build
 ```
 
 El scheduler usa `.next-dev` para `next dev` y `.next` para `next build`. Esta separación evita que una validación de producción sobrescriba los chunks que está sirviendo la instancia local en el puerto 3004.
 
-### Deploy backend (ejecutar desde raíz del repo)
+### CI, Prisma y smoke
 
 ```bash
-# Dev
-fly deploy -a cosmetics-api-dev --config backend/api/fly.toml --dockerfile backend/api/Dockerfile
-
-# Prod
-fly deploy -a cosmetics-api --config backend/api/fly.toml --dockerfile backend/api/Dockerfile
+pnpm --filter @cosmetics/api prisma:schemas
+pnpm --filter @cosmetics/api prisma:validate
+pnpm migrations:review -- origin/develop
+pnpm test:integration  # requiere RUN_DATABASE_TESTS=true + PostgreSQL desechable
+pnpm test:smoke        # requiere URLs de ambiente o servicios locales activos
 ```
+
+### Deploy backend
+
+Ejecutar manualmente el workflow de GitHub Actions `Deploy API` y elegir el
+environment `development` o `production`. Producción requiere aprobación del
+environment y escribir `PRODUCCION_RESPALDADA`; no desplegar directamente con
+Fly desde una terminal local. Ver `docs/RELEASE_RUNBOOK.md`.
 
 ### Prisma (ejecutar desde `backend/api/`)
 
@@ -1170,14 +1254,26 @@ npx ts-node --project tsconfig.json prisma/seed-catalogs.ts
 9. Para cambios en envelope: validar `type-check` y `build` antes de reportar tarea completa.
 10. Para cambios en Payroll: limitar la UI a `apps/payroll`, conservar las reglas históricas del backend y validar `pnpm --filter @cosmetics/payroll type-check` + `build`.
 11. Para backend Payroll: validar `test`, `type-check` y `build` de `@cosmetics/api`.
-12. No cambiar backend, Prisma ni variables de entorno salvo que la tarea lo pida explícitamente.
-13. Si hay duda sobre borrar datos o archivos → detenerse y pedir confirmación.
+12. Para cambios de API/Prisma: validar también schemas, migraciones sobre PostgreSQL desechable e integración HTTP; nunca usar una BD productiva en tests.
+13. No cambiar backend, Prisma ni variables de entorno salvo que la tarea lo pida explícitamente.
+14. Si hay duda sobre borrar datos o archivos → detenerse y pedir confirmación.
 
 ---
 
 ## Pendientes conocidos
 
-- Automatizar deploy backend con GitHub Actions si se decide.
+### Estado de `apps/hr` (2026-08-23)
+
+- El frontend de HR usa una shell Tailwind responsive que replica el prototipo oscuro original: sidebar, topbar, hero y superficie de contenido negros, acentos dorados y tablas densas. Conserva el orden y etiquetas heredadas: Nuevo empleado, Todos los empleados, Personal y horarios, Calendario, Solicitudes, Historial de vacaciones, Sucursales, Puestos, Horarios facialistas, Cumpleaños, Políticas y reglamentos, Usuarios y permisos.
+- Los controles de HR consumen los componentes canónicos de `@cosmetics/ui` ya usados por `envelope` y `payroll`: Sidebar, Button, Input, Label, Textarea, Select, Badge, Card, Table/DataTable, Dialog, AlertDialog, Tabs, Popover, Tooltip, Skeleton y toast. Su apariencia negro/dorado se define únicamente en `apps/hr/tailwind.config.ts`, `apps/hr/app/globals.css` y los wrappers de `apps/hr/app/hr-ui.tsx`; no modificar `packages/ui` para personalizar visualmente HR.
+- Todos los módulos funcionan con mocks persistidos en `localStorage` bajo `keysar-hr-mocks`. Empleados incluye alta, edición, borrado individual/masivo, cambio de estado, búsqueda, importación mock y exportación CSV; solicitudes permite autorizar/rechazar; calendario, sucursales, puestos, horarios facialistas, políticas y perfiles de acceso tienen alta/edición/borrado; cumpleaños se edita desde el expediente. Preferencias permite restaurar los mocks iniciales.
+- Se eliminó el login paralelo del runtime frontend; la aplicación ya no lee sesión ni llama `/api/app`.
+- Se eliminaron de `apps/hr` D1/Drizzle, Vinext/Vite/Worker, scripts y pruebas de OpenAI Sites, el lockfile npm, componentes/CSS sin imports y documentación standalone. La futura persistencia se implementará exclusivamente en el módulo HR de `backend/api` con Prisma/PostgreSQL.
+- `pnpm --filter @cosmetics/hr lint`, `type-check` y `build` son las validaciones requeridas para el paquete; ESLint usa configuración no interactiva de Next.
+- La persistencia real, API HR, auth compartida y permisos autoritativos permanecen pendientes y requieren una sesión posterior con alcance backend/BD. El CRUD actual es exclusivamente frontend/mock.
+
+- Configurar en GitHub los environments `development`/`production`, secrets, variables, required reviewers y rulesets descritos en `docs/RELEASE_RUNBOOK.md`; los workflows ya viven en el repositorio pero no pueden operar hasta completar esa configuración externa.
+- Activar secret scanning/push protection según el plan de GitHub y desactivar en Vercel la asignación automática del dominio productivo cuando se adopte la promoción manual.
 - Crear seeds separados seguros para dev/datos base si se requiere.
 - Limpieza futura de campos legacy `banco`/`puesto` en `Empleado` cuando todos los registros en prod tengan `bankId`/`positionId` asignados (Fase 4).
 - Payroll producción: confirmar respaldo/PITR, aplicar `20260730000000_add_payroll_models`, `20260731000000_add_employee_branch` y `20260801000000_add_employee_all_branches`, desplegar `cosmetics-api`, configurar/verificar `NEXT_PUBLIC_API_URL` y `CORS_ORIGINS`, y ejecutar una corrida paralela antes del primer pago oficial.
@@ -1185,12 +1281,5 @@ npx ts-node --project tsconfig.json prisma/seed-catalogs.ts
 - Payroll: aplicar `20260813010000_add_recurring_payroll_expenses` en cada ambiente antes de desplegar la API/UI de recurrencias. No convierte automáticamente gastos legacy con frecuencia mensual/quincenal para evitar duplicar capturas históricas.
 - Payroll: aplicar después `20260813020000_add_payroll_expense_categories`; debe desplegarse junto con la API/UI que sustituyen el texto libre de categoría por catálogo.
 - Payroll: aplicar finalmente `20260813030000_link_payroll_expense_categories` para habilitar edición segura de nombres y referencias futuras sin alterar snapshots aprobados.
+- Payroll: aplicar `20260822000000_add_payroll_access_control` y después `20260823000000_add_payroll_read_only_access` antes de desplegar el control de accesos por pantalla. La segunda conserva edición para permisos existentes mediante `canWrite = true`.
 - Payroll Storage: crear más adelante el bucket privado y configurar `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` y opcionalmente `PAYROLL_STORAGE_BUCKET` solo después de que exista.
-- `/reportes/reservas/mensajeria-movil` implementa el seguimiento mock de WhatsApp con reservas sin confirmar, proporción de envíos, confirmaciones, cuota de conversaciones, descarga visual y tabla de actividad reciente. Comparte los filtros del reporte de reservas y todavía no conecta el proveedor real de mensajería.
-- `/reportes/reservas/servicios-por-local/opatra-mexico` implementa el dropdown `Servicios por local` y el desglose de los 53 servicios de OPATRA MEXICO en el orden del reporte operativo, reutilizando sus totales, buscador, tabla compacta y rankings.
-- `/reportes/reservas/prestadores-por-local/opatra-mexico` implementa el dropdown `Prestadores por local` y el consolidado mock de OPATRA MEXICO por prestador, con reservas, ingresos estimados, ocupación, tendencia semanal y demanda por hora.
-- La carga de precios y subida de plantillas `.xlsx` son flujos visuales/mock: todavía no procesan archivos reales ni persisten información.
-- `Local` y `Profesional` son entidades separadas; `Planes` en Comisiones muestra por ahora un estado vacío mock, sin persistencia. `Consentimientos` permite crear y editar documentos con nombre y archivo, cargados de forma visual/mock, y los lista en un `DataTable` con búsqueda y eliminación confirmada; todavía no incluye firma, resultados ni persistencia real.
-- `Encuestas` funciona en estado local/mock: permite seleccionar servicios y preguntas por categoría, crear preguntas de tipo estrellas o comentario, y visualizar un preview vivo con servicios, numeración y cinco estrellas. Todavía no incluye resultados ni persistencia real.
-- `WhatsApp` funciona en estado local/mock: lista 13 mensajes precargados de operación (OPATRA, Mitikah, bienvenida, confirmación, postventa, agradecimiento, recordatorios, reagenda y no asistencia), permite crear/editar plantillas personalizadas, insertar variables agrupadas por reserva, local y compañía, probar plantillas prediseñadas y ver un preview estilo WhatsApp. El envío real, conexión del canal y persistencia quedan fuera de alcance.
-- Siguiente etapa de integración del scheduler: modelar `Cliente`, `Servicio`, `Cita`, `BloqueHorario`, horarios, recursos y relaciones en `/api/scheduler` antes de conectar persistencia real.

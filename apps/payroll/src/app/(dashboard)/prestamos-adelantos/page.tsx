@@ -39,6 +39,7 @@ import { SectionCard } from "@/components/payroll/section-card";
 import { StatusBadge } from "@/components/payroll/status-badge";
 import { usePayrollData } from "@/components/payroll/payroll-data-context";
 import { apiErrorMessage } from "@/lib/api";
+import { useSession } from "@/lib/session";
 import {
   dateRangeFilename,
   describeDateRange,
@@ -77,6 +78,11 @@ function fortnightStartForDate(value: string): string {
   if (!year || !month || !day) return value;
   return `${year}-${String(month).padStart(2, "0")}-${day <= 15 ? "01" : "16"}`;
 }
+function firstPeriodStartForKind(kind: LoanKind, requestedAt: string): string {
+  return kind === "PAYROLL_ADVANCE"
+    ? fortnightStartForDate(requestedAt)
+    : nextFortnightStart();
+}
 const EMPTY: Form = {
   requestedAt: today(),
   employeeId: "",
@@ -89,6 +95,8 @@ const EMPTY: Form = {
 
 export default function PrestamosPage() {
   const data = usePayrollData();
+  const { canWrite } = useSession();
+  const hasWriteAccess = canWrite("payroll/prestamos-adelantos");
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<Form>(EMPTY);
@@ -259,6 +267,7 @@ export default function PrestamosPage() {
       enableSorting: false,
       enableGlobalFilter: false,
       cell: ({ row }) => {
+        if (!hasWriteAccess) return null;
         const editable =
           row.original.status === "PENDING" &&
           row.original.installments.every(
@@ -365,10 +374,12 @@ export default function PrestamosPage() {
             config={exportConfig}
             disabled={!filteredLoans.length}
           />
-          <Button onClick={create}>
-            <PlusCircle className="mr-1.5 h-4 w-4" />
-            Nueva solicitud
-          </Button>
+          {hasWriteAccess ? (
+            <Button onClick={create}>
+              <PlusCircle className="mr-1.5 h-4 w-4" />
+              Nueva solicitud
+            </Button>
+          ) : null}
         </div>
       </header>
       <DateFilterCard
@@ -426,7 +437,14 @@ export default function PrestamosPage() {
               <DatePicker
                 value={form.requestedAt}
                 onChange={(value) =>
-                  setForm((current) => ({ ...current, requestedAt: value }))
+                  setForm((current) => ({
+                    ...current,
+                    requestedAt: value,
+                    firstPeriodStart:
+                      current.kind === "PAYROLL_ADVANCE"
+                        ? fortnightStartForDate(value)
+                        : current.firstPeriodStart,
+                  }))
                 }
               />
             </div>
@@ -455,10 +473,17 @@ export default function PrestamosPage() {
               <Select
                 value={form.kind}
                 onValueChange={(value) =>
-                  setForm((current) => ({
-                    ...current,
-                    kind: value as LoanKind,
-                  }))
+                  setForm((current) => {
+                    const kind = value as LoanKind;
+                    return {
+                      ...current,
+                      kind,
+                      firstPeriodStart: firstPeriodStartForKind(
+                        kind,
+                        current.requestedAt,
+                      ),
+                    };
+                  })
                 }
               >
                 <SelectTrigger>
@@ -520,7 +545,7 @@ export default function PrestamosPage() {
               />
               <p className="text-xs text-[var(--text-muted)]">
                 Puedes elegir cualquier día; se usará el inicio de esa quincena:
-                día 1 o 16.
+                día 1 o 16. En adelantos se propone la quincena de la solicitud.
               </p>
             </div>
             <div className="space-y-2 md:col-span-2">

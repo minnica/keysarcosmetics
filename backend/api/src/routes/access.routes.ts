@@ -7,7 +7,7 @@ import { requireAccessManager, ACCESS_SCREEN_ORDER, type ScreenKey } from '../li
 import { authMiddleware } from '../middlewares/auth.middleware'
 
 const router: ExpressRouter = Router()
-const db = prisma as any
+const db = prisma
 
 router.use(authMiddleware)
 router.use(requireAccessManager)
@@ -120,7 +120,7 @@ router.put('/positions/:id/permissions', async (req, res) => {
       return
     }
 
-    await db.$transaction(async (tx: any) => {
+    await db.$transaction(async (tx: Prisma.TransactionClient) => {
       await tx.position.update({
         where: { id: positionId },
         data: {

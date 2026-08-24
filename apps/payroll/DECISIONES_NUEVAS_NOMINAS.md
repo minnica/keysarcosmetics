@@ -5,6 +5,7 @@ Este documento registra las preguntas realizadas y las decisiones tomadas durant
 - Nómina salario fijo.
 - Nómina especialistas.
 - Nómina comisiones.
+- Comisiones gerencia.
 
 ## Objetivo acordado
 
@@ -29,6 +30,7 @@ Reglas derivadas:
 - Salario fijo parte de los empleados con sueldo capturado.
 - Especialistas se identifican por el nombre de su puesto.
 - Comisiones parte de los empleados con esquema de comisión vigente.
+- Comisiones gerencia separa a quienes tienen esquema vigente y un puesto cuyo nombre contiene `GERENTE`.
 - No se agrega una clasificación nueva a `Position` ni una migración de base de datos.
 
 ### 2. ¿Qué debe sumar la columna Nómina en Nómina especialistas?
@@ -73,6 +75,12 @@ Nómina comisiones =
 ```
 
 El sueldo base no participa en esta pantalla.
+
+Las multas registradas en **Movimientos** guardan una nómina destino obligatoria:
+salario fijo, especialistas, comisiones o comisiones gerencia. Cada consulta
+resta únicamente las multas aprobadas dirigidas a ella y cuya fecha pertenece al
+periodo consultado. Las multas históricas anteriores a esta clasificación se
+conservan en comisiones.
 
 ### 4. ¿Un empleado puede aparecer en más de una nómina?
 

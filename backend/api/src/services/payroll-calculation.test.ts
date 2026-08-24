@@ -110,6 +110,33 @@ describe("calculatePayroll", () => {
     expect(result.lines[0]?.branchLines[0]?.totalCost.toString()).toBe("4600");
   });
 
+  it("limita el descuento de préstamo al pago disponible", () => {
+    const result = calculatePayroll({
+      mode: "WITH_VAT",
+      vatRate: "0.16",
+      expenseTotal: 0,
+      employees: [
+        {
+          ...employee,
+          monthlySalary: "1000",
+          scheme: null,
+          sales: [],
+          movements: [],
+          loanPayment: "1000",
+        },
+      ],
+    });
+
+    expect(result.lines[0]?.salaryPayment.toString()).toBe("500");
+    expect(result.lines[0]?.loanPayment.toString()).toBe("500");
+    expect(result.lines[0]?.totalPayment.toString()).toBe("0");
+    expect(
+      result.lines[0]?.warnings.some(
+        (item) => item.code === "NEGATIVE_PAYMENT",
+      ),
+    ).toBe(false);
+  });
+
   it("bloquea aprobación sin esquema y pago sin datos bancarios", () => {
     const result = calculatePayroll({
       mode: "WITH_VAT",

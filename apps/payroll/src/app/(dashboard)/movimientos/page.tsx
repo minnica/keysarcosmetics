@@ -39,6 +39,7 @@ import { SectionCard } from "@/components/payroll/section-card";
 import { StatusBadge } from "@/components/payroll/status-badge";
 import { usePayrollData } from "@/components/payroll/payroll-data-context";
 import { apiErrorMessage } from "@/lib/api";
+import { useSession } from "@/lib/session";
 import {
   dateRangeFilename,
   describeDateRange,
@@ -56,6 +57,7 @@ import type {
   MovementKind,
   MovementStatus,
   PayrollMovement,
+  PayrollMovementPayrollType,
 } from "@/lib/types";
 
 const KIND_OPTIONS: Array<{ value: MovementKind; label: string }> = [
@@ -66,6 +68,15 @@ const KIND_OPTIONS: Array<{ value: MovementKind; label: string }> = [
   { value: "PER_DIEM", label: "Viáticos" },
   { value: "SUPPLIES", label: "Insumos" },
 ];
+const PAYROLL_TYPE_OPTIONS: Array<{
+  value: PayrollMovementPayrollType;
+  label: string;
+}> = [
+  { value: "FIXED_SALARY", label: "Salario fijo" },
+  { value: "SPECIALIST", label: "Especialistas" },
+  { value: "COMMISSION", label: "Comisiones" },
+  { value: "MANAGEMENT_COMMISSION", label: "Comisiones gerencia" },
+];
 type AllocationForm = {
   employeeId: string;
   branchId: string;
@@ -75,6 +86,7 @@ type AllocationForm = {
 type FormState = {
   date: string;
   kind: MovementKind | "";
+  payrollType: PayrollMovementPayrollType | "";
   catalogItemId: string;
   concept: string;
   totalAmount: string;
@@ -85,6 +97,7 @@ const today = () => new Date().toISOString().slice(0, 10);
 const EMPTY_FORM: FormState = {
   date: today(),
   kind: "",
+  payrollType: "",
   catalogItemId: "",
   concept: "",
   totalAmount: "0",
@@ -101,6 +114,8 @@ const EMPTY_FORM: FormState = {
 
 export default function MovimientosPage() {
   const data = usePayrollData();
+  const { canWrite } = useSession();
+  const hasWriteAccess = canWrite("payroll/movimientos");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
@@ -142,6 +157,7 @@ export default function MovimientosPage() {
     setForm((current) => ({
       ...current,
       kind,
+      payrollType: "",
       catalogItemId: "",
       concept: "",
       totalAmount: "0",
@@ -160,6 +176,7 @@ export default function MovimientosPage() {
     setForm({
       date: movement.date,
       kind: movement.kind,
+      payrollType: movement.payrollType ?? "",
       catalogItemId: movement.catalogItemId ?? "",
       concept: movement.concept,
       totalAmount: String(movement.totalAmount),
@@ -218,11 +235,16 @@ export default function MovimientosPage() {
     if (
       !form.date ||
       !form.kind ||
+      (form.kind === "FINE" && !form.payrollType) ||
       !form.concept.trim() ||
       !Number.isFinite(total) ||
       total <= 0
     ) {
-      toast.warning("Completa fecha, tipo, concepto y monto.");
+      toast.warning(
+        form.kind === "FINE" && !form.payrollType
+          ? "Selecciona la nómina donde se aplicará la multa."
+          : "Completa fecha, tipo, concepto y monto.",
+      );
       return;
     }
     if (
@@ -255,6 +277,7 @@ export default function MovimientosPage() {
         {
           date: form.date,
           kind: form.kind,
+          payrollType: form.kind === "FINE" ? form.payrollType : null,
           catalogItemId: form.catalogItemId || null,
           concept: form.concept,
           totalAmount: total,
@@ -338,6 +361,16 @@ export default function MovimientosPage() {
         cell: ({ row }) =>
           KIND_OPTIONS.find((item) => item.value === row.original.kind)?.label,
       },
+      {
+        accessorKey: "payrollType",
+        header: "NÓMINA DESTINO",
+        cell: ({ row }) =>
+          row.original.kind === "FINE"
+            ? (PAYROLL_TYPE_OPTIONS.find(
+                (item) => item.value === row.original.payrollType,
+              )?.label ?? "SIN ASIGNAR")
+            : "—",
+      },
       { accessorKey: "concept", header: "CONCEPTO" },
       {
         accessorKey: "amount",
@@ -381,7 +414,8 @@ export default function MovimientosPage() {
             )}
             {row.original.status === "PENDING" &&
               !row.original.payrollRunId &&
-              data.storageConfigured && (
+              data.storageConfigured &&
+              hasWriteAccess && (
                 <label
                   className="inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-md hover:bg-[var(--accent-hover)]"
                   aria-label="Subir comprobante"
@@ -403,7 +437,7 @@ export default function MovimientosPage() {
                   />
                 </label>
               )}
-            {row.original.status === "PENDING" && (
+            {row.original.status === "PENDING" && hasWriteAccess && (
               <>
                 <Button
                   size="icon"
@@ -445,7 +479,7 @@ export default function MovimientosPage() {
         ),
       },
     ],
-    [data],
+    [data, hasWriteAccess],
   );
 
   const exportConfig = {
@@ -476,6 +510,16 @@ export default function MovimientosPage() {
           KIND_OPTIONS.find((item) => item.value === row.kind)?.label ??
           row.kind,
       },
+      {
+        header: "NÓMINA DESTINO",
+        accessor: (row: PayrollMovement) =>
+          row.kind === "FINE"
+            ? (PAYROLL_TYPE_OPTIONS.find(
+                (item) => item.value === row.payrollType,
+              )?.label ?? "SIN ASIGNAR")
+            : "—",
+        width: 24,
+      },
       { header: "CONCEPTO", accessor: (row: PayrollMovement) => row.concept },
       {
         header: "MONTO",
@@ -503,17 +547,19 @@ export default function MovimientosPage() {
             config={exportConfig}
             disabled={!filteredMovements.length}
           />
-          <Button
-            onClick={() => {
-              setEditingId(null);
-              setForm({ ...EMPTY_FORM, date: today() });
-              setFile(null);
-              setDialogOpen(true);
-            }}
-          >
-            <PlusCircle className="mr-1.5 h-4 w-4" />
-            Nuevo movimiento
-          </Button>
+          {hasWriteAccess ? (
+            <Button
+              onClick={() => {
+                setEditingId(null);
+                setForm({ ...EMPTY_FORM, date: today() });
+                setFile(null);
+                setDialogOpen(true);
+              }}
+            >
+              <PlusCircle className="mr-1.5 h-4 w-4" />
+              Nuevo movimiento
+            </Button>
+          ) : null}
         </div>
       </header>
       <DateFilterCard
@@ -591,6 +637,35 @@ export default function MovimientosPage() {
                 </SelectContent>
               </Select>
             </div>
+            {form.kind === "FINE" && (
+              <div className="space-y-2 sm:col-span-2">
+                <Label>Nómina donde se aplicará el descuento</Label>
+                <Select
+                  value={form.payrollType}
+                  onValueChange={(value) =>
+                    setForm((current) => ({
+                      ...current,
+                      payrollType: value as PayrollMovementPayrollType,
+                    }))
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecciona una nómina" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PAYROLL_TYPE_OPTIONS.map((item) => (
+                      <SelectItem key={item.value} value={item.value}>
+                        {item.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-[var(--text-muted)]">
+                  La multa se descontará únicamente en esta consulta de nómina
+                  durante la quincena seleccionada.
+                </p>
+              </div>
+            )}
             {catalog.length > 0 && (
               <div className="space-y-2 sm:col-span-2">
                 <Label>Concepto predefinido</Label>
@@ -747,28 +822,34 @@ export default function MovimientosPage() {
                       }
                     />
                   </div>
-                  <label className="flex min-h-9 items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={allocation.commissionable}
-                      onChange={(event) =>
-                        setForm((current) => ({
-                          ...current,
-                          allocations: current.allocations.map(
-                            (item, itemIndex) =>
-                              itemIndex === index
-                                ? {
-                                    ...item,
-                                    commissionable: event.target.checked,
-                                  }
-                                : item,
-                          ),
-                        }))
-                      }
-                      className="h-4 w-4 accent-[var(--accent)]"
-                    />
-                    Pagable
-                  </label>
+                  {form.kind === "FINE" ? (
+                    <p className="flex min-h-9 items-center text-sm text-[var(--text-muted)]">
+                      Descuento obligatorio
+                    </p>
+                  ) : (
+                    <label className="flex min-h-9 items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={allocation.commissionable}
+                        onChange={(event) =>
+                          setForm((current) => ({
+                            ...current,
+                            allocations: current.allocations.map(
+                              (item, itemIndex) =>
+                                itemIndex === index
+                                  ? {
+                                      ...item,
+                                      commissionable: event.target.checked,
+                                    }
+                                  : item,
+                            ),
+                          }))
+                        }
+                        className="h-4 w-4 accent-[var(--accent)]"
+                      />
+                      Pagable
+                    </label>
+                  )}
                 </div>
               ))}
             </div>

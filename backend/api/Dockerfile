@@ -20,8 +20,6 @@ COPY backend/api ./backend/api
 
 WORKDIR /app/backend/api
 
-RUN pnpm exec prisma generate
-
 RUN pnpm run build
 
 EXPOSE 4000

@@ -3,18 +3,28 @@
   "version": "0.0.1",
   "private": true,
   "scripts": {
+    "build:workspace-deps": "pnpm --filter @cosmetics/api^... --if-present run build",
+    "predev": "pnpm run build:workspace-deps",
     "dev": "tsx watch src/index.ts",
+    "prebuild": "pnpm run build:workspace-deps",
     "build": "prisma generate && tsc",
     "start": "node dist/index.js",
-    "lint": "echo 'no lint configured'",
+    "lint": "eslint \"src/**/*.ts\" --max-warnings=0",
+    "checks:prepare": "pnpm run build:workspace-deps && prisma generate",
+    "pretype-check": "pnpm run checks:prepare",
     "type-check": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "pnpm run test:unit",
+    "pretest:unit": "pnpm run checks:prepare",
+    "test:unit": "vitest run --exclude \"src/**/*.integration.test.ts\"",
+    "pretest:integration": "pnpm run checks:prepare",
+    "test:integration": "vitest run src/app.integration.test.ts",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
-    "db:push": "prisma db push",
     "db:studio": "prisma studio",
     "db:migrate:dev": "dotenv -e .env.dev -- prisma migrate deploy",
-    "db:migrate:prod": "prisma migrate deploy"
+    "db:migrate:deploy": "prisma migrate deploy",
+    "prisma:validate": "prisma validate",
+    "prisma:schemas": "node scripts/check-prisma-schema-sync.mjs"
   },
   "prisma": {
     "seed": "ts-node --project tsconfig.json prisma/seed.ts"

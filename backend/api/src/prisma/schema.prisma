@@ -121,15 +121,17 @@ model Bank {
 }
 
 model Position {
-  id                String                     @id @default(cuid())
-  nombre            String                     @unique
-  activo            Boolean                    @default(true)
-  canManageAccess   Boolean                    @default(false)
-  selfDataOnly      Boolean                    @default(false)
-  empleados         Empleado[]
-  screenPermissions PositionScreenPermission[]
-  creadoEn          DateTime                   @default(now())
-  actualizadoEn     DateTime                   @updatedAt
+  id                       String                            @id @default(cuid())
+  nombre                   String                            @unique
+  activo                   Boolean                           @default(true)
+  canManageAccess          Boolean                           @default(false)
+  canManagePayrollAccess   Boolean                           @default(false)
+  selfDataOnly             Boolean                           @default(false)
+  empleados                Empleado[]
+  screenPermissions        PositionScreenPermission[]
+  payrollScreenPermissions PositionPayrollScreenPermission[]
+  creadoEn                 DateTime                          @default(now())
+  actualizadoEn            DateTime                          @updatedAt
 }
 
 model PositionScreenPermission {
@@ -138,6 +140,19 @@ model PositionScreenPermission {
   position      Position @relation(fields: [positionId], references: [id], onDelete: Cascade)
   screenKey     String
   allowed       Boolean  @default(true)
+  creadoEn      DateTime @default(now())
+  actualizadoEn DateTime @updatedAt
+
+  @@unique([positionId, screenKey])
+}
+
+model PositionPayrollScreenPermission {
+  id            String   @id @default(cuid())
+  positionId    String
+  position      Position @relation(fields: [positionId], references: [id], onDelete: Cascade)
+  screenKey     String
+  allowed       Boolean  @default(true)
+  canWrite      Boolean  @default(true)
   creadoEn      DateTime @default(now())
   actualizadoEn DateTime @updatedAt
 
@@ -290,6 +305,13 @@ enum PayrollMovementStatus {
   PENDING
   APPROVED
   REJECTED
+}
+
+enum PayrollMovementPayrollType {
+  FIXED_SALARY
+  SPECIALIST
+  COMMISSION
+  MANAGEMENT_COMMISSION
 }
 
 enum PayrollCatalogKind {
@@ -504,6 +526,7 @@ model PayrollMovement {
   id            String                      @id @default(cuid())
   date          DateTime                    @db.Date
   kind          PayrollMovementKind
+  payrollType   PayrollMovementPayrollType?
   catalogItemId String?
   catalogItem   PayrollCatalogItem?         @relation(fields: [catalogItemId], references: [id], onDelete: Restrict)
   concept       String

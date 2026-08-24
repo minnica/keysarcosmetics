@@ -1,0 +1,17 @@
+{
+  "name": "Keysar HR",
+  "short_name": "Keysar HR",
+  "description": "Recursos Humanos, turnos y bienestar de Keysar Cosmetics",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#090909",
+  "theme_color": "#090909",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

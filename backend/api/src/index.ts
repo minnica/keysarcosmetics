@@ -1,62 +1,32 @@
-// Punto de entrada del servidor Express
-import 'dotenv/config'
-import express from 'express'
-import cors from 'cors'
+import "dotenv/config";
+import { app } from "./app";
+import { prisma } from "./prisma/client";
 
-import authRoutes from './routes/auth.routes'
-import accessRoutes from './routes/access.routes'
-import envelopeRoutes from './routes/envelope.routes'
-import payrollRoutes from './routes/payroll.routes'
-import crmRoutes from './routes/crm.routes'
-import schedulerRoutes from './routes/scheduler.routes'
-import posRoutes from './routes/pos.routes'
+const port = Number(process.env["PORT"] ?? 4000);
+const host = "0.0.0.0";
+const server = app.listen(port, host, () => {
+  console.log(`API corriendo en http://${host}:${port}`);
+});
 
-const app = express()
-const PORT = Number(process.env['PORT'] ?? 4000)
+async function shutdown(signal: NodeJS.Signals): Promise<void> {
+  console.log(`Cerrando API por ${signal}`);
 
-// ─── Middlewares globales ────────────────────────────────────────────────────
-const rawOrigins = process.env['CORS_ORIGINS'] ?? ''
-const allowedOrigins = rawOrigins.split(',').map((o) => o.trim()).filter(Boolean)
+  server.close(async (error) => {
+    await prisma.$disconnect();
 
-app.use(
-  cors({
-    origin: (origin, callback) => {
-      // Permitir peticiones sin origin (Postman, curl, apps móviles)
-      if (!origin || allowedOrigins.includes(origin)) {
-        callback(null, true)
-      } else {
-        callback(new Error(`Origen no permitido por CORS: ${origin}`))
-      }
-    },
-    credentials: true,
-  })
-)
+    if (error) {
+      console.error("[shutdown]", error);
+      process.exitCode = 1;
+      return;
+    }
 
-app.use(express.json())
-app.use(express.urlencoded({ extended: true }))
+    process.exitCode = 0;
+  });
+}
 
-// ─── Rutas ───────────────────────────────────────────────────────────────────
-app.use('/api/auth', authRoutes)
-app.use('/api/envelope', envelopeRoutes)
-app.use('/api/envelope/access', accessRoutes)
-app.use('/api/payroll', payrollRoutes)
-app.use('/api/crm', crmRoutes)
-app.use('/api/scheduler', schedulerRoutes)
-app.use('/api/pos', posRoutes)
-
-// ─── Health check ────────────────────────────────────────────────────────────
-app.get('/health', (_req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() })
-})
-
-// ─── Manejo de rutas no encontradas ──────────────────────────────────────────
-app.use((_req, res) => {
-  res.status(404).json({ success: false, message: 'Ruta no encontrada', data: null })
-})
-
-const HOST = '0.0.0.0'
-
-app.listen(PORT, HOST, () => {
-  console.log(`🚀 API corriendo en http://${HOST}:${PORT}`)
-  console.log(`   CORS habilitado para: ${allowedOrigins.join(', ') || '(ningún origen configurado)'}`)
-})
+process.once("SIGINT", () => {
+  void shutdown("SIGINT");
+});
+process.once("SIGTERM", () => {
+  void shutdown("SIGTERM");
+});

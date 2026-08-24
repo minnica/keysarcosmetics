@@ -1,0 +1,93 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [develop, master]
+  push:
+    branches: [develop, master]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CI: true
+  DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/cosmetics_ci?schema=public
+  DIRECT_URL: postgresql://postgres:postgres@127.0.0.1:5432/cosmetics_ci?schema=public
+  NEXT_PUBLIC_API_URL: http://127.0.0.1:4000
+
+jobs:
+  quality:
+    name: Lint, types and unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.0.0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: git diff --check
+      - if: github.event_name == 'pull_request'
+        run: pnpm migrations:review -- origin/${{ github.base_ref }}
+      - run: pnpm lint
+      - run: pnpm type-check
+      - run: pnpm test:unit
+
+  build:
+    name: Production builds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.0.0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm ci:build
+
+  database-integration:
+    name: Migrations and API integration
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: cosmetics_ci
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d cosmetics_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.0.0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @cosmetics/api prisma:schemas
+      - run: pnpm --filter @cosmetics/api prisma:validate
+      - run: pnpm --filter @cosmetics/api db:migrate:deploy
+      - run: pnpm test:integration
+        env:
+          RUN_DATABASE_TESTS: true
+          JWT_SECRET: integration-test-secret-with-adequate-length
