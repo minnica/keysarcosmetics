@@ -69,7 +69,10 @@ jobs:
       - run: pnpm --filter @cosmetics/api build
       - name: Apply compatible migrations
         run: pnpm --filter @cosmetics/api db:migrate:deploy
-      - uses: superfly/flyctl-actions/setup-flyctl@v1.5
+      - name: Set up pinned Fly CLI
+        uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1 # master 2026-04-08
+        with:
+          version: 0.4.76
       - name: Deploy exact environment branch
         run: |
           if [ "${{ inputs.environment }}" = "production" ]; then
