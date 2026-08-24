@@ -11,6 +11,8 @@ En ambos environments configurar estos secretos:
 - `DATABASE_URL`: conexión PostgreSQL del ambiente usada por Prisma.
 - `DIRECT_URL`: conexión directa de Supabase para migraciones.
 - `FLY_API_TOKEN`: deploy token limitado a `cosmetics-api-dev` o `cosmetics-api` según el environment. No usar un token personal de la organización.
+- `ENVELOPE_VERCEL_BYPASS_SECRET`: bypass de automatización generado exclusivamente en el proyecto Vercel de Envelope cuando la URL del ambiente esté protegida.
+- `PAYROLL_VERCEL_BYPASS_SECRET`: bypass independiente generado en el proyecto Vercel de Payroll cuando la URL del ambiente esté protegida. No reutilizar el secreto de Envelope.
 
 Configurar estas variables:
 
@@ -43,7 +45,7 @@ Si solo existe una persona desarrolladora, la aprobación de código puede queda
 6. Ejecutar manualmente `Deploy API` hacia `development` cuando cambien API o Prisma.
 7. Ejecutar `Environment smoke tests` contra `development`.
 
-Los smoke tests no autentican ni escriben datos: comprueban `/health`, `/ready`, el contrato JSON 404 y las pantallas de login de Envelope y Payroll.
+Los smoke tests no autentican usuarios ni escriben datos: comprueban `/health`, `/ready`, el contrato JSON 404 y las pantallas de login de Envelope y Payroll. En previews protegidos envían los bypass de automatización mediante headers; las trazas web permanecen desactivadas para que esos secretos no entren en artefactos de Playwright.
 
 ## 4. Release a producción
 
