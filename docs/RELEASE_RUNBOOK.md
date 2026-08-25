@@ -24,14 +24,17 @@ En `production`, habilitar required reviewer, impedir self-review cuando exista 
 
 ## 2. Rulesets de ramas
 
-Aplicar reglas a `develop` y `master`:
+Aplicar estas reglas compartidas a `develop` y `master`:
 
 - Bloquear pushes directos, force-push y eliminación.
 - Exigir pull request y resolución de conversaciones.
-- Exigir que la rama esté actualizada antes del merge.
 - Marcar como requeridos los checks `Lint, types and unit tests`, `Production builds` y `Migrations and API integration` del workflow `CI`.
-- Usar squash merge para `feature/* → develop`.
-- Usar merge commit para `develop → master`; no hacer squash de releases completas.
+
+Configurar la estrategia de integración por rama:
+
+- En `develop`, exigir historial lineal, usar squash merge para `feature/* → develop` y activar `Require branches to be up to date before merging`.
+- En `master`, usar merge commit para `develop → master`; no hacer squash de releases completas. Mantener desactivado `Require branches to be up to date before merging`: los merge commits de releases anteriores existen solo en `master`, por lo que la rama longeva `develop` aparecería desactualizada aunque los checks del PR y la integración automática sean correctos.
+- `master` debe recibir cambios exclusivamente mediante promociones desde `develop`. Si un hotfix excepcional entra directamente a `master`, incorporarlo a `develop` antes de abrir el siguiente release.
 
 Si solo existe una persona desarrolladora, la aprobación de código puede quedar en cero revisores, pero los checks y la protección de producción no deben poder omitirse.
 
@@ -49,7 +52,7 @@ Los smoke tests no autentican usuarios ni escriben datos: comprueban `/health`, 
 
 ## 4. Release a producción
 
-1. Abrir PR `develop → master` y volver a ejecutar todos los checks sobre el SHA exacto.
+1. Abrir PR `develop → master`, confirmar que GitHub indique que no hay conflictos y esperar los tres checks requeridos del PR. Los fallos opcionales de proveedores externos por cuota, como `Deployment rate limited` de Vercel, no sustituyen ni invalidan esos checks; el frontend debe verificarse por separado antes de promoverlo.
 2. Confirmar en Supabase que existe un backup recuperable o PITR vigente.
 3. Hacer merge commit hacia `master`.
 4. Ejecutar `Deploy API` seleccionando `production` y escribiendo `PRODUCCION_RESPALDADA`.
@@ -97,6 +100,7 @@ pnpm test:integration
 
 ## 7. Releases verificadas
 
-| Tag                 | SHA                                        | Ambiente     | Validación                                                                                                                                             |
-| ------------------- | ------------------------------------------ | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `prod-2026-08-24.1` | `8e2f8e711d42a552d2799a5e323f4de3d9debed2` | `production` | Backup manual confirmado; 22/22 migraciones aplicadas; `/ready`; smoke `4/4`; login y navegación de solo lectura en Envelope/Payroll; logs observados. |
+| Tag                 | SHA                                        | Ambiente     | Validación                                                                                                                                                            |
+| ------------------- | ------------------------------------------ | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `prod-2026-08-24.1` | `8e2f8e711d42a552d2799a5e323f4de3d9debed2` | `production` | Backup manual confirmado; 22/22 migraciones aplicadas; `/ready`; smoke `4/4`; login y navegación de solo lectura en Envelope/Payroll; logs observados.                |
+| `prod-2026-08-25.1` | `952a675ecf882829e388562a024661300376fefc` | `production` | Node.js 22; backup manual confirmado; deploy protegido; `/health` con SHA exacto; `/ready`; smoke `4/4`; validación funcional manual en Envelope/Payroll; logs sanos. |
