@@ -810,7 +810,7 @@ CORS_ORIGINS=https://keysarcosmetics-envelope.vercel.app,https://keysarcosmetics
 - Los origins CORS no llevan `/` final, espacios ni comillas. El backend lee `CORS_ORIGINS` en plural; `CORS_ORIGIN` en singular no participa.
 - Fly no revela el valor anterior de un Secret al editarlo. Antes de reemplazarlo, recuperar la lista desde la línea `CORS habilitado para:` de los logs de arranque o conservar explícitamente todos los dominios existentes.
 - La cuenta que entra a Payroll debe existir en Supabase producción, estar activa y tener rol `SUPER_ADMIN`. Los usuarios de desarrollo no se replican automáticamente a producción.
-- Estado documentado al 31 de julio de 2026: Payroll está publicado en `https://keysarcosmetics-payroll.vercel.app`; todavía debe verificarse su variable `NEXT_PUBLIC_API_URL`, y las migraciones/backend productivos deben desplegarse y validarse explícitamente antes de probar el flujo real. No asumir que una validación exitosa en dev confirma producción.
+- Estado verificado al 24 de agosto de 2026: Envelope y Payroll están publicados en Vercel Production y ambos bundles apuntan a `https://cosmetics-api.fly.dev`; CORS admite exactamente sus dos dominios productivos. Las 22 migraciones versionadas hasta `20260823010000_add_movement_payroll_type` están aplicadas en Supabase producción. El API sirve el SHA `8e2f8e711d42a552d2799a5e323f4de3d9debed2`, registrado con el tag `prod-2026-08-24.1`; pasó `/ready`, smoke tests `4/4`, login/navegación autenticada de solo lectura y observación de logs. La corrida paralela previa al primer pago oficial y Supabase Storage para comprobantes continúan pendientes.
 
 ### Desarrollo
 
@@ -818,17 +818,20 @@ CORS_ORIGINS=https://keysarcosmetics-envelope.vercel.app,https://keysarcosmetics
 develop → Vercel Preview → cosmetics-api-dev.fly.dev → Supabase dev
 ```
 
-Configuración validada para desarrollo local de Payroll:
+Configuración validada para desarrollo local y previews de Envelope/Payroll:
 
 ```text
 # apps/payroll/.env.local (ignorado por Git)
 NEXT_PUBLIC_API_URL=https://cosmetics-api-dev.fly.dev
 
+# Vercel Preview de apps/payroll, limitada a la rama develop
+NEXT_PUBLIC_API_URL=https://cosmetics-api-dev.fly.dev
+
 # Fly.io, app cosmetics-api-dev
-CORS_ORIGINS=http://localhost:3001,https://keysarcosmetics-envelope-git-develop-minnicas-projects.vercel.app,http://localhost:3002
+CORS_ORIGINS=http://localhost:3001,http://localhost:3002,https://keysarcosmetics-envelope-git-develop-minnicas-projects.vercel.app,https://keysarcosmetics-payroll-git-develop-minnicas-projects.vercel.app
 ```
 
-La migración en Supabase dev, el backend `cosmetics-api-dev`, el login `SUPER_ADMIN` y el flujo de formularios de Payroll fueron probados correctamente. Si cambia el dominio Preview de Payroll, agregar también su origin exacto a `CORS_ORIGINS`.
+La migración en Supabase dev, el backend `cosmetics-api-dev`, el login `SUPER_ADMIN` y el flujo de formularios de Payroll fueron probados correctamente. Los dominios únicos de cada deployment Vercel cambian y no se agregan a CORS; para validación manual se usan los alias estables `git-develop`. Si cambia alguno de esos alias, actualizar simultáneamente la variable del environment `development` en GitHub y `CORS_ORIGINS` en Fly.
 
 **Notas importantes:**
 
@@ -841,7 +844,7 @@ La migración en Supabase dev, el backend `cosmetics-api-dev`, el login `SUPER_A
 - Para probar frontend local contra backend dev, conservar simultáneamente los origins de Envelope y Payroll en `CORS_ORIGINS`; no reemplazar uno por otro.
 - Un `Network Error` en login normalmente significa que el frontend apunta a `localhost:4000`, el backend no responde o CORS rechazó el origin antes de llegar a `/api/auth/login`. Verificar primero Request URL, `/health` y el preflight `OPTIONS`.
 
-### CI y releases seguros (2026-08-23)
+### CI y releases seguros (2026-08-24)
 
 - `.github/workflows/ci.yml` valida PRs y pushes a `develop`/`master` con lint, TypeScript, unit tests, builds productivos, sincronía de schemas Prisma, aplicación completa de migraciones sobre PostgreSQL 16 efímero e integración HTTP real de login/sesión.
 - Los scripts `type-check`, `test:unit` y `test:integration` de `@cosmetics/api` ejecutan previamente `prisma generate`; esto es obligatorio porque un runner limpio todavía no tiene los tipos y enums generados de `@prisma/client`.
@@ -851,7 +854,7 @@ La migración en Supabase dev, el backend `cosmetics-api-dev`, el login `SUPER_A
 - El API separa `src/app.ts` (Express importable) de `src/index.ts` (listener y cierre ordenado). `/health` verifica el proceso y `/ready` verifica conectividad PostgreSQL; Fly enruta mediante el segundo.
 - Las migraciones Prisma dejaron de estar ignoradas por Git. `scripts/check-migration-safety.mjs` bloquea SQL nuevo potencialmente destructivo salvo revisión explícita documentada con `-- migration-safety: reviewed`.
 - `db:push` y el alias directo `db:migrate:prod` fueron retirados de los scripts. Los despliegues usan `db:migrate:deploy` dentro del environment protegido.
-- Dependabot revisa dependencias npm y GitHub Actions semanalmente. Secret scanning/push protection, rulesets, required checks, environments/secrets, PITR y promoción manual de Vercel requieren configuración administrativa externa.
+- Dependabot revisa dependencias npm y GitHub Actions semanalmente. Los rulesets de `develop`/`master`, required checks y environments protegidos `development`/`production` están configurados en GitHub; conservarlos sincronizados con este runbook. Secret scanning/push protection y la promoción manual de Vercel continúan sujetos a configuración administrativa externa.
 - El procedimiento completo, variables, protecciones, secuencia de release y rollback vive en `docs/RELEASE_RUNBOOK.md`.
 
 ---
@@ -1145,14 +1148,16 @@ npx ts-node --project tsconfig.json prisma/seed-catalogs.ts
 - `pnpm --filter @cosmetics/hr lint`, `type-check` y `build` son las validaciones requeridas para el paquete; ESLint usa configuración no interactiva de Next.
 - La persistencia real, API HR, auth compartida y permisos autoritativos permanecen pendientes y requieren una sesión posterior con alcance backend/BD. El CRUD actual es exclusivamente frontend/mock.
 
-- Configurar en GitHub los environments `development`/`production`, secrets, variables, required reviewers y rulesets descritos en `docs/RELEASE_RUNBOOK.md`; los workflows ya viven en el repositorio pero no pueden operar hasta completar esa configuración externa.
+### Runtime Node.js
+
+- CI, smoke tests, despliegues protegidos y la imagen Docker del backend usan Node.js `22.23.2`; `.nvmrc` alinea el entorno local y `package.json` exige Node.js `>=22.12.0`.
+- La imagen Docker fija también pnpm `10.0.0`, igual que `packageManager`, para que instalaciones y builds sean reproducibles.
+- Todo cambio de runtime debe pasar los tres checks de CI y validarse primero mediante despliegue y smoke tests en `development` antes de promoverlo a producción.
+- Estado validado en `development` el 24 de agosto de 2026: commit `86f7f89f1db152d67d7ed28c1d3c19dc81ea8cc3`, deploy protegido correcto, `/health` y `/ready` sanos, smoke tests `4/4`, ausencia de la advertencia de Node.js 20 y login/navegación autenticada de solo lectura en Envelope y Payroll.
+
 - Activar secret scanning/push protection según el plan de GitHub y desactivar en Vercel la asignación automática del dominio productivo cuando se adopte la promoción manual.
 - Crear seeds separados seguros para dev/datos base si se requiere.
 - Limpieza futura de campos legacy `banco`/`puesto` en `Empleado` cuando todos los registros en prod tengan `bankId`/`positionId` asignados (Fase 4).
-- Payroll producción: confirmar respaldo/PITR, aplicar `20260730000000_add_payroll_models`, `20260731000000_add_employee_branch` y `20260801000000_add_employee_all_branches`, desplegar `cosmetics-api`, configurar/verificar `NEXT_PUBLIC_API_URL` y `CORS_ORIGINS`, y ejecutar una corrida paralela antes del primer pago oficial.
-- Sucursales: aplicar `20260813000000_add_branch_monthly_goal_and_deactivation_date` en cada ambiente con `prisma migrate deploy` antes de desplegar el backend/frontend que capturan `metaMensual` y `desactivadaEn`.
-- Payroll: aplicar `20260813010000_add_recurring_payroll_expenses` en cada ambiente antes de desplegar la API/UI de recurrencias. No convierte automáticamente gastos legacy con frecuencia mensual/quincenal para evitar duplicar capturas históricas.
-- Payroll: aplicar después `20260813020000_add_payroll_expense_categories`; debe desplegarse junto con la API/UI que sustituyen el texto libre de categoría por catálogo.
-- Payroll: aplicar finalmente `20260813030000_link_payroll_expense_categories` para habilitar edición segura de nombres y referencias futuras sin alterar snapshots aprobados.
-- Payroll: aplicar `20260822000000_add_payroll_access_control` y después `20260823000000_add_payroll_read_only_access` antes de desplegar el control de accesos por pantalla. La segunda conserva edición para permisos existentes mediante `canWrite = true`.
+- Payroll producción: ejecutar y validar una corrida paralela antes del primer pago oficial; no reemplazar todavía el proceso vigente sólo porque el despliegue técnico esté sano.
+- Backend: promover el runtime Node.js 22 ya validado en `development` a producción mediante PR `develop → master`, respaldo confirmado, deploy protegido y smoke tests posteriores.
 - Payroll Storage: crear más adelante el bucket privado y configurar `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` y opcionalmente `PAYROLL_STORAGE_BUCKET` solo después de que exista.

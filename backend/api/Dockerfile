@@ -1,4 +1,4 @@
-FROM node:20-bookworm-slim
+FROM node:22.23.2-bookworm-slim
 
 WORKDIR /app
 
@@ -6,7 +6,7 @@ RUN apt-get update \
   && apt-get install -y openssl ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 
-RUN npm install -g pnpm
+RUN npm install -g pnpm@10.0.0
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.json ./
 

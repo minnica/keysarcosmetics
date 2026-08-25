@@ -154,7 +154,7 @@ Qué solventa:
 - Valida la integración completa con datos representativos sin arriesgar producción.
 - Permite comparar resultados contra la operación actual antes de autorizar pagos.
 
-### 7. Aplicar y desplegar en producción
+### 7. Aplicar y desplegar en producción — completado el 24 de agosto de 2026
 
 Solo después de aprobar desarrollo:
 
@@ -170,6 +170,8 @@ Qué solventa:
 
 - Habilita las tablas y API de Payroll en producción sin alterar registros existentes de ventas o empleados.
 - La migración es aditiva: no elimina ni transforma datos actuales de Envelope.
+
+La promoción quedó registrada como `prod-2026-08-24.1` sobre el SHA `8e2f8e711d42a552d2799a5e323f4de3d9debed2`. Se confirmaron backup manual, 22/22 migraciones aplicadas, backend listo, smoke productivo `4/4`, login y navegación autenticada de solo lectura. La corrida paralela del paso 7 permanece pendiente antes del primer pago oficial.
 
 ## Pendiente pospuesto: comprobantes en Supabase Storage
 
@@ -389,13 +391,13 @@ No. Solo impide preparar WhatsApp para ese empleado.
 
 ## Checklist resumido
 
-- [ ] Aplicar migración en Supabase desarrollo.
-- [ ] Desplegar `cosmetics-api-dev`.
-- [ ] Verificar `NEXT_PUBLIC_API_URL` del Preview de Payroll.
+- [x] Aplicar migración en Supabase desarrollo.
+- [x] Desplegar `cosmetics-api-dev`.
+- [x] Verificar `NEXT_PUBLIC_API_URL` del Preview de Payroll.
 - [ ] Capturar catálogos, esquemas y asignaciones iniciales.
 - [ ] Revisar datos faltantes de empleados; la sucursal laboral pendiente es informativa y no bloquea el cálculo ni el pago.
 - [ ] Ejecutar pruebas de aceptación completas en desarrollo.
 - [ ] Aprobar resultados contra el proceso actual.
-- [ ] Aplicar migración y desplegar backend/frontend en producción.
+- [x] Aplicar migración y desplegar backend/frontend en producción (`prod-2026-08-24.1`).
 - [ ] Ejecutar una corrida paralela antes del primer pago oficial.
 - [ ] Más adelante: crear bucket privado y configurar secretos de Storage.
