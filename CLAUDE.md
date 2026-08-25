@@ -818,17 +818,20 @@ CORS_ORIGINS=https://keysarcosmetics-envelope.vercel.app,https://keysarcosmetics
 develop → Vercel Preview → cosmetics-api-dev.fly.dev → Supabase dev
 ```
 
-Configuración validada para desarrollo local de Payroll:
+Configuración validada para desarrollo local y previews de Envelope/Payroll:
 
 ```text
 # apps/payroll/.env.local (ignorado por Git)
 NEXT_PUBLIC_API_URL=https://cosmetics-api-dev.fly.dev
 
+# Vercel Preview de apps/payroll, limitada a la rama develop
+NEXT_PUBLIC_API_URL=https://cosmetics-api-dev.fly.dev
+
 # Fly.io, app cosmetics-api-dev
-CORS_ORIGINS=http://localhost:3001,https://keysarcosmetics-envelope-git-develop-minnicas-projects.vercel.app,http://localhost:3002
+CORS_ORIGINS=http://localhost:3001,http://localhost:3002,https://keysarcosmetics-envelope-git-develop-minnicas-projects.vercel.app,https://keysarcosmetics-payroll-git-develop-minnicas-projects.vercel.app
 ```
 
-La migración en Supabase dev, el backend `cosmetics-api-dev`, el login `SUPER_ADMIN` y el flujo de formularios de Payroll fueron probados correctamente. Si cambia el dominio Preview de Payroll, agregar también su origin exacto a `CORS_ORIGINS`.
+La migración en Supabase dev, el backend `cosmetics-api-dev`, el login `SUPER_ADMIN` y el flujo de formularios de Payroll fueron probados correctamente. Los dominios únicos de cada deployment Vercel cambian y no se agregan a CORS; para validación manual se usan los alias estables `git-develop`. Si cambia alguno de esos alias, actualizar simultáneamente la variable del environment `development` en GitHub y `CORS_ORIGINS` en Fly.
 
 **Notas importantes:**
 
@@ -1150,10 +1153,11 @@ npx ts-node --project tsconfig.json prisma/seed-catalogs.ts
 - CI, smoke tests, despliegues protegidos y la imagen Docker del backend usan Node.js `22.23.2`; `.nvmrc` alinea el entorno local y `package.json` exige Node.js `>=22.12.0`.
 - La imagen Docker fija también pnpm `10.0.0`, igual que `packageManager`, para que instalaciones y builds sean reproducibles.
 - Todo cambio de runtime debe pasar los tres checks de CI y validarse primero mediante despliegue y smoke tests en `development` antes de promoverlo a producción.
+- Estado validado en `development` el 24 de agosto de 2026: commit `86f7f89f1db152d67d7ed28c1d3c19dc81ea8cc3`, deploy protegido correcto, `/health` y `/ready` sanos, smoke tests `4/4`, ausencia de la advertencia de Node.js 20 y login/navegación autenticada de solo lectura en Envelope y Payroll.
 
 - Activar secret scanning/push protection según el plan de GitHub y desactivar en Vercel la asignación automática del dominio productivo cuando se adopte la promoción manual.
 - Crear seeds separados seguros para dev/datos base si se requiere.
 - Limpieza futura de campos legacy `banco`/`puesto` en `Empleado` cuando todos los registros en prod tengan `bankId`/`positionId` asignados (Fase 4).
 - Payroll producción: ejecutar y validar una corrida paralela antes del primer pago oficial; no reemplazar todavía el proceso vigente sólo porque el despliegue técnico esté sano.
-- Backend: completar la validación de Node.js 22 mediante deploy y smoke tests en `development`; promoverlo a producción únicamente después de esa validación.
+- Backend: promover el runtime Node.js 22 ya validado en `development` a producción mediante PR `develop → master`, respaldo confirmado, deploy protegido y smoke tests posteriores.
 - Payroll Storage: crear más adelante el bucket privado y configurar `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` y opcionalmente `PAYROLL_STORAGE_BUCKET` solo después de que exista.
