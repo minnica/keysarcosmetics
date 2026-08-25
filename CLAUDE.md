@@ -1145,9 +1145,15 @@ npx ts-node --project tsconfig.json prisma/seed-catalogs.ts
 - `pnpm --filter @cosmetics/hr lint`, `type-check` y `build` son las validaciones requeridas para el paquete; ESLint usa configuración no interactiva de Next.
 - La persistencia real, API HR, auth compartida y permisos autoritativos permanecen pendientes y requieren una sesión posterior con alcance backend/BD. El CRUD actual es exclusivamente frontend/mock.
 
+### Runtime Node.js
+
+- CI, smoke tests, despliegues protegidos y la imagen Docker del backend usan Node.js `22.23.2`; `.nvmrc` alinea el entorno local y `package.json` exige Node.js `>=22.12.0`.
+- La imagen Docker fija también pnpm `10.0.0`, igual que `packageManager`, para que instalaciones y builds sean reproducibles.
+- Todo cambio de runtime debe pasar los tres checks de CI y validarse primero mediante despliegue y smoke tests en `development` antes de promoverlo a producción.
+
 - Activar secret scanning/push protection según el plan de GitHub y desactivar en Vercel la asignación automática del dominio productivo cuando se adopte la promoción manual.
 - Crear seeds separados seguros para dev/datos base si se requiere.
 - Limpieza futura de campos legacy `banco`/`puesto` en `Empleado` cuando todos los registros en prod tengan `bankId`/`positionId` asignados (Fase 4).
 - Payroll producción: ejecutar y validar una corrida paralela antes del primer pago oficial; no reemplazar todavía el proceso vigente sólo porque el despliegue técnico esté sano.
-- Backend: migrar y validar Node.js 20 → 22 primero en `development`, porque `@supabase/supabase-js` anunció que dejará de soportar Node.js 20. Hacerlo en una PR de mantenimiento separada antes de que la advertencia se convierta en incompatibilidad.
+- Backend: completar la validación de Node.js 22 mediante deploy y smoke tests en `development`; promoverlo a producción únicamente después de esa validación.
 - Payroll Storage: crear más adelante el bucket privado y configurar `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` y opcionalmente `PAYROLL_STORAGE_BUCKET` solo después de que exista.
