@@ -119,6 +119,11 @@ import {
   type TableSortDirection,
 } from "./components/SortableTableHead";
 import { TicketEditDialog } from "./components/TicketEditDialog";
+import {
+  getStoredInterfaceLanguage,
+  useGlobalInterfaceTranslation,
+  type InterfaceLanguage,
+} from "./i18n";
 import { TicketCancellationDialog } from "./components/TicketCancellationDialog";
 import { XReportExecutiveExport } from "./components/XReportExecutiveExport";
 import {
@@ -302,8 +307,6 @@ const screenMetadata: Record<ScreenId, { title: string; subtitle: string }> = {
   },
 };
 
-type InterfaceLanguage = "ES" | "EN";
-
 const screenMetadataEnglish: Record<ScreenId, { title: string; subtitle: string }> = {
   dashboard: { title: "Dashboard", subtitle: "Executive control of the day and inventory" },
   sale: { title: "Sale", subtitle: "Retail sales" },
@@ -332,7 +335,6 @@ const screenMetadataEnglish: Record<ScreenId, { title: string; subtitle: string 
 
 const automaticDataUpdateIntervalMs = 60_000;
 const terminalLocationStorageKey = "keysar-pos-terminal-location";
-const interfaceLanguageStorageKey = "keysar-pos-language";
 const initialBranchAddresses: Record<string, string> = {
   Polanco: "Av. Presidente Masaryk 123, Polanco, CDMX",
   Satélite: "Circuito Centro Comercial 2251, Satélite, Estado de México",
@@ -650,11 +652,9 @@ function App() {
   const [closeDayAuthorizationError, setCloseDayAuthorizationError] = useState("");
   const [search, setSearch] = useState("");
   const [interfaceLanguage, setInterfaceLanguage] =
-    useState<InterfaceLanguage>(() =>
-      window.localStorage.getItem(interfaceLanguageStorageKey) === "EN"
-        ? "EN"
-        : "ES",
-    );
+    useState<InterfaceLanguage>(getStoredInterfaceLanguage);
+
+  useGlobalInterfaceTranslation(interfaceLanguage);
 
   useEffect(() => {
     document.body.classList.add("executive-ledger-theme");
@@ -667,11 +667,6 @@ function App() {
       );
     };
   }, []);
-
-  useEffect(() => {
-    document.documentElement.lang = interfaceLanguage === "EN" ? "en" : "es-MX";
-    window.localStorage.setItem(interfaceLanguageStorageKey, interfaceLanguage);
-  }, [interfaceLanguage]);
 
   useEffect(() => {
     const compactViewport = window.matchMedia("(max-width: 920px)");
@@ -9414,7 +9409,7 @@ function InterfacePreferenceControls({
   return (
     <div
       className={`interface-preference-controls ${floating ? "is-floating" : ""}`}
-      aria-label={english ? "Interface preferences" : "Preferencias de interfaz"}
+      aria-label={english ? "Language preference" : "Preferencia de idioma"}
     >
       <button
         type="button"

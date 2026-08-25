@@ -46,6 +46,11 @@ import {
 import { formatCurrency } from "../mock-data";
 import { getTicketTaxSummary, roundCurrency } from "../tax";
 import { getProductSpare, getTicketSpare } from "../spare";
+import {
+  getStoredInterfaceLanguage,
+  translateInterfaceRecord,
+  translateInterfaceText,
+} from "../i18n";
 import { ReportsCustomerDialog } from "./ReportsCustomerDialog";
 import { HistoryPagination, useHistoryPagination } from "./HistoryPagination";
 import type {
@@ -1370,13 +1375,20 @@ export function ReportsView({
     if (!validPeriod) return;
     setExporting("EXCEL");
     try {
+      const exportLanguage = getStoredInterfaceLanguage();
+      const translatedSummaryRows = summaryExportRows.map((row) =>
+        translateInterfaceRecord(row, exportLanguage),
+      );
+      const translatedDetailRows = searchedDetailRows.map((row) =>
+        translateInterfaceRecord(row, exportLanguage),
+      );
       const XLSX = await import("xlsx");
       const workbook = XLSX.utils.book_new();
-      const summarySheet = XLSX.utils.json_to_sheet(summaryExportRows);
+      const summarySheet = XLSX.utils.json_to_sheet(translatedSummaryRows);
       const detailSheet = XLSX.utils.json_to_sheet(
-        searchedDetailRows.length > 0
-          ? searchedDetailRows
-          : [{ Resultado: "Sin operaciones para los filtros seleccionados" }],
+        translatedDetailRows.length > 0
+          ? translatedDetailRows
+          : [translateInterfaceRecord({ Resultado: "Sin operaciones para los filtros seleccionados" }, exportLanguage)],
       );
       if (detailSheet["!ref"])
         detailSheet["!autofilter"] = { ref: detailSheet["!ref"] };
@@ -1405,8 +1417,8 @@ export function ReportsView({
           cell.z = "$#,##0.00";
         }
       });
-      XLSX.utils.book_append_sheet(workbook, summarySheet, "Resumen ejecutivo");
-      XLSX.utils.book_append_sheet(workbook, detailSheet, "Detalle");
+      XLSX.utils.book_append_sheet(workbook, summarySheet, translateInterfaceText("Resumen ejecutivo", exportLanguage));
+      XLSX.utils.book_append_sheet(workbook, detailSheet, translateInterfaceText("Detalle", exportLanguage));
       XLSX.writeFile(workbook, `${exportFilename}.xlsx`, { compression: true });
       toast.success("Reporte ejecutivo descargado en Excel.");
     } catch {
@@ -1420,6 +1432,8 @@ export function ReportsView({
     if (!validPeriod) return;
     setExporting("PDF");
     try {
+      const exportLanguage = getStoredInterfaceLanguage();
+      const tr = (value: string) => translateInterfaceText(value, exportLanguage);
       const [{ jsPDF }, { autoTable }] = await Promise.all([
         import("jspdf"),
         import("jspdf-autotable"),
@@ -1430,11 +1444,11 @@ export function ReportsView({
       doc.setFontSize(18);
       doc.text(receiptSettings.companyName.toLocaleUpperCase("es-MX"), 36, 36);
       doc.setFontSize(14);
-      doc.text(activeDefinition.label.toLocaleUpperCase("es-MX"), 36, 57);
+      doc.text(tr(activeDefinition.label).toLocaleUpperCase(exportLanguage === "EN" ? "en-US" : "es-MX"), 36, 57);
       doc.setFont("helvetica", "normal");
       doc.setFontSize(8.5);
       doc.text(
-        `${dateFrom} al ${dateTo} · ${allBranchesSelected ? "Empresa general" : selectedBranches.join(" / ")}`,
+        `${dateFrom} ${exportLanguage === "EN" ? "to" : "al"} ${dateTo} · ${allBranchesSelected ? tr("Empresa general") : selectedBranches.join(" / ")}`,
         36,
         74,
       );
@@ -1442,8 +1456,8 @@ export function ReportsView({
       doc.line(36, 86, doc.internal.pageSize.getWidth() - 36, 86);
       const pdfSummaryHead =
         activeReport === "CASH_MOVEMENTS"
-          ? ["Ingresos", "Gastos", "Flujo neto", "Gasto promedio", "Anulados", "Saldo pendiente", "Registros"]
-          : ["Venta completa", "Sin IVA", "IVA", "Costo", "Utilidad", "Margen", "SPARE", "Registros"];
+          ? ["Ingresos", "Gastos", "Flujo neto", "Gasto promedio", "Anulados", "Saldo pendiente", "Registros"].map(tr)
+          : ["Venta completa", "Sin IVA", "IVA", "Costo", "Utilidad", "Margen", "SPARE", "Registros"].map(tr);
       const pdfSummaryBody =
         activeReport === "CASH_MOVEMENTS"
           ? [
@@ -1476,7 +1490,7 @@ export function ReportsView({
       const tableDoc = doc as typeof doc & { lastAutoTable?: { finalY: number } };
       autoTable(doc, {
         startY: (tableDoc.lastAutoTable?.finalY ?? 135) + 20,
-        head: [detailColumns.length > 0 ? detailColumns : ["Resultado"]],
+        head: [detailColumns.length > 0 ? detailColumns.map(tr) : [tr("Resultado")]],
         body:
           searchedDetailRows.length > 0
             ? searchedDetailRows.map((row) =>
@@ -1484,10 +1498,10 @@ export function ReportsView({
                   const value = row[column];
                   return typeof value === "number" && isCurrencyColumn(column)
                     ? formatCurrency(value)
-                    : String(value ?? "");
+                    : tr(String(value ?? ""));
                 }),
               )
-            : [["Sin operaciones para los filtros seleccionados"]],
+            : [[tr("Sin operaciones para los filtros seleccionados")]],
         theme: "grid",
         styles: {
           fontSize: detailColumns.length > 10 ? 5.2 : 6.3,
