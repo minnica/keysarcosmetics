@@ -8,6 +8,7 @@ import {
 } from "react";
 import {
   AlertTriangle,
+  ArrowLeft,
   ArrowLeftRight,
   ArrowRight,
   BadgePercent,
@@ -22,7 +23,7 @@ import {
   DollarSign,
   Filter,
   LockKeyhole,
-  Languages,
+  Menu,
   Minus,
   PackageCheck,
   PackagePlus,
@@ -90,6 +91,7 @@ import { CustomersView } from "./components/CustomersView";
 import { DataUpdateView } from "./components/DataUpdateView";
 import { DealPickerDialog } from "./components/DealPickerDialog";
 import { DealsView } from "./components/DealsView";
+import { DigitalCatalogView } from "./components/DigitalCatalogView";
 import { EmployeesView } from "./components/EmployeesView";
 import { InventoryMovementsView } from "./components/InventoryMovementsView";
 import { WarehouseView } from "./components/WarehouseView";
@@ -113,18 +115,9 @@ import {
   MasterDashboard,
   PosLoginScreen,
 } from "./components/SessionWorkflow";
-import {
-  compareTableValues,
-  SortableTableHead,
-  type TableSortDirection,
-} from "./components/SortableTableHead";
 import { TicketEditDialog } from "./components/TicketEditDialog";
-import {
-  getStoredInterfaceLanguage,
-  useGlobalInterfaceTranslation,
-  type InterfaceLanguage,
-} from "./i18n";
 import { TicketCancellationDialog } from "./components/TicketCancellationDialog";
+import { VoucherSettings } from "./components/VoucherSettings";
 import { XReportExecutiveExport } from "./components/XReportExecutiveExport";
 import {
   administratorCode,
@@ -192,6 +185,7 @@ import type {
   OperationalNotification,
   OperationalNotificationPreference,
   OperationalNotificationType,
+  PaymentEntry,
   PaymentMethodOption,
   Product,
   PosDaySession,
@@ -201,10 +195,13 @@ import type {
   RequiredClientFields,
   ScreenId,
   SalesCompetition,
+  Seller,
   Ticket,
   TicketCancellationRequest,
   TicketEditRequest,
   TicketInventoryLine,
+  VoucherIssue,
+  VoucherTemplate,
 } from "./types";
 import {
   calculateIncludedVat,
@@ -213,13 +210,15 @@ import {
 } from "./tax";
 import { getTicketSpare } from "./spare";
 
-type CatalogTableSortKey =
-  | "article"
-  | "sku"
-  | "family"
-  | "group"
-  | "price"
-  | "stock";
+const getSaleProductBrand = (product: Product) =>
+  product.kind === "SERVICE"
+    ? "Keysar Experiences"
+    : product.supplierName
+      ?.replace(" International", "")
+      .replace(" México", "") ?? product.family;
+
+const formatSaleCount = (count: number, singular: string, plural: string) =>
+  `${count} ${count === 1 ? singular : plural}`;
 
 const screenMetadata: Record<ScreenId, { title: string; subtitle: string }> = {
   dashboard: {
@@ -264,8 +263,8 @@ const screenMetadata: Record<ScreenId, { title: string; subtitle: string }> = {
     subtitle: "Paquetes, autorización y rentabilidad",
   },
   catalog: {
-    title: "Catálogo",
-    subtitle: "Consulta compacta de productos y servicios",
+    title: "Catálogo digital",
+    subtitle: "Libro visual por familias para mostrar al cliente",
   },
   settings: {
     title: "Settings",
@@ -307,6 +306,8 @@ const screenMetadata: Record<ScreenId, { title: string; subtitle: string }> = {
   },
 };
 
+type InterfaceLanguage = "ES" | "EN";
+
 const screenMetadataEnglish: Record<ScreenId, { title: string; subtitle: string }> = {
   dashboard: { title: "Dashboard", subtitle: "Executive control of the day and inventory" },
   sale: { title: "Sale", subtitle: "Retail sales" },
@@ -319,7 +320,7 @@ const screenMetadataEnglish: Record<ScreenId, { title: string; subtitle: string 
   suppliers: { title: "Suppliers", subtitle: "Tax directory, products and procurement" },
   "inventory-movements": { title: "Inventory movements", subtitle: "Entries, write-offs and stock adjustments" },
   deals: { title: "Deals", subtitle: "Packages, authorization and profitability" },
-  catalog: { title: "Catalog", subtitle: "Compact product and service directory" },
+  catalog: { title: "Digital catalog", subtitle: "Visual family book for customers" },
   settings: { title: "Settings", subtitle: "Point-of-sale capture rules" },
   "x-report": { title: "X-Report", subtitle: "Partial report without closing the day" },
   reports: { title: "Reports", subtitle: "Executive sales, merchandise, employee and customer reports" },
@@ -635,6 +636,7 @@ const initialWarehouseMovements: WarehouseMovement[] = (() => {
 
 function App() {
   const [activeScreen, setActiveScreen] = useState<ScreenId>("sale");
+  const [saleFocusMode, setSaleFocusMode] = useState(true);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [sidebarPinned, setSidebarPinned] = useState(false);
   const [sidebarActivityTick, setSidebarActivityTick] = useState(0);
@@ -651,15 +653,13 @@ function App() {
   const [closeDayAuthorizationCode, setCloseDayAuthorizationCode] = useState("");
   const [closeDayAuthorizationError, setCloseDayAuthorizationError] = useState("");
   const [search, setSearch] = useState("");
-  const [interfaceLanguage, setInterfaceLanguage] =
-    useState<InterfaceLanguage>(getStoredInterfaceLanguage);
-
-  useGlobalInterfaceTranslation(interfaceLanguage);
+  const [interfaceLanguage] = useState<InterfaceLanguage>("ES");
 
   useEffect(() => {
     document.body.classList.add("executive-ledger-theme");
     document.body.classList.remove("executive-dark-mode");
     window.localStorage.removeItem("keysar-pos-color-mode");
+    window.localStorage.removeItem("keysar-pos-language");
     return () => {
       document.body.classList.remove(
         "executive-ledger-theme",
@@ -686,6 +686,7 @@ function App() {
   }, [sessionStage, sidebarActivityTick, sidebarCollapsed, sidebarPinned]);
   const [selectedFamily, setSelectedFamily] = useState("Todos");
   const [selectedCategory, setSelectedCategory] = useState("Todas");
+  const [selectedBrand, setSelectedBrand] = useState("Todas");
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [editingCartItem, setEditingCartItem] = useState<CartItem | null>(null);
   const [productDialogOpen, setProductDialogOpen] = useState(false);
@@ -706,10 +707,6 @@ function App() {
   );
   const [employeeAccessAuthorized, setEmployeeAccessAuthorized] =
     useState(false);
-  const [catalogTableSort, setCatalogTableSort] = useState<{
-    key: CatalogTableSortKey;
-    direction: TableSortDirection;
-  }>({ key: "article", direction: "ASC" });
   const [catalogFamilies, setCatalogFamilies] = useState(() =>
     Array.from(new Set(initialProducts.map((product) => product.family))),
   );
@@ -844,6 +841,37 @@ function App() {
   const [paymentSettingsAuthorized, setPaymentSettingsAuthorized] =
     useState(false);
   const [newPaymentMethodName, setNewPaymentMethodName] = useState("");
+  const [activeSettingsSection, setActiveSettingsSection] = useState("notifications");
+  const [voucherTemplates, setVoucherTemplates] = useState<VoucherTemplate[]>([
+    {
+      id: "voucher-next-10",
+      name: "10% en próxima compra",
+      kind: "NEXT_PURCHASE_DISCOUNT",
+      value: 10,
+      message: "Disfruta 10% de descuento en tu próxima compra.",
+      active: true,
+      visibleToSellers: true,
+    },
+    {
+      id: "voucher-companion-facial",
+      name: "Facial para acompañante",
+      kind: "COMPANION_FACIAL",
+      value: 100,
+      message: "Invita a una persona especial a disfrutar un facial de cortesía.",
+      active: true,
+      visibleToSellers: true,
+    },
+    {
+      id: "voucher-membership-15",
+      name: "15% en membresía",
+      kind: "MEMBERSHIP_DISCOUNT",
+      value: 15,
+      message: "Obtén 15% de descuento al adquirir tu membresía.",
+      active: true,
+      visibleToSellers: false,
+    },
+  ]);
+  const [voucherIssues, setVoucherIssues] = useState<VoucherIssue[]>([]);
   const [clientSources, setClientSources] = useState<ClientSourceOption[]>(
     initialClientSources,
   );
@@ -938,11 +966,14 @@ function App() {
     if (!sessionUser) return [];
     if (sessionUser.isMaster)
       return Object.keys(screenMetadata) as ScreenId[];
-    return sessionEmployeeRole?.moduleAccess ?? ["sale"];
+    return Array.from(
+      new Set([...(sessionEmployeeRole?.moduleAccess ?? ["sale"]), "my-account" as ScreenId]),
+    );
   }, [sessionEmployeeRole, sessionUser]);
 
   const canEditActiveModule = Boolean(
     sessionUser?.isMaster ||
+      activeScreen === "my-account" ||
       sessionEmployeeRole?.moduleEditAccess.includes(activeScreen),
   );
 
@@ -992,7 +1023,7 @@ function App() {
     const seller = sellers.find(
       (candidate) =>
         candidate.active &&
-        [candidate.id, candidate.name, candidate.initials].some(
+        [candidate.alias].some(
           (value) => value.toLocaleLowerCase("es-MX") === normalizedUser,
         ),
     );
@@ -1069,6 +1100,22 @@ function App() {
     setDaySession(null);
     setActiveScreen("sale");
     return null;
+  };
+
+  const authorizeCatalogExit = (alias: string, code: string) => {
+    const normalizedAlias = alias.trim().toLocaleLowerCase("es-MX");
+    const normalizedCode = code.trim();
+    const isMasterAlias =
+      normalizedAlias === "master" ||
+      normalizedAlias === masterUser.id.toLocaleLowerCase("es-MX") ||
+      normalizedAlias === masterUser.name.toLocaleLowerCase("es-MX");
+    if (isMasterAlias) return isMasterAccessCode(normalizedCode);
+    return sellers.some(
+      (seller) =>
+        seller.active &&
+        seller.alias.toLocaleLowerCase("es-MX") === normalizedAlias &&
+        [seller.accessCode, seller.masterAccessCode].includes(normalizedCode),
+    );
   };
 
   const applyPhysicalInventoryCount = (
@@ -1196,7 +1243,8 @@ function App() {
       return;
     }
     setActiveScreen(screen);
-    setSidebarCollapsed(false);
+    setSaleFocusMode(screen === "sale");
+    setSidebarCollapsed(screen === "sale");
     setSidebarActivityTick((current) => current + 1);
   };
 
@@ -2031,6 +2079,130 @@ function App() {
     );
   };
 
+  const saveEmployeeSeller = (seller: Seller) => {
+    const name = seller.name.trim();
+    const alias = seller.alias.trim().toLocaleLowerCase("es-MX");
+    const accessCode = seller.accessCode.trim();
+    if (!name) {
+      toast.error("Captura el nombre que aparecerá en el ticket.");
+      return false;
+    }
+    if (!/^[a-z0-9._-]{3,24}$/i.test(alias)) {
+      toast.error("El alias debe tener de 3 a 24 caracteres sin espacios.");
+      return false;
+    }
+    if (
+      sellers.some(
+        (candidate) =>
+          candidate.id !== seller.id &&
+          candidate.alias.toLocaleLowerCase("es-MX") === alias,
+      )
+    ) {
+      toast.error("Ese alias ya pertenece a otro vendedor.");
+      return false;
+    }
+    if (!/^\d{4}$/.test(accessCode)) {
+      toast.error("El código personal debe contener exactamente 4 dígitos.");
+      return false;
+    }
+    if (
+      accessCode === administratorCode ||
+      sellers.some(
+        (candidate) =>
+          candidate.id !== seller.id &&
+          (candidate.accessCode === accessCode ||
+            candidate.masterAccessCode === accessCode),
+      )
+    ) {
+      toast.error("El código personal ya está asignado.");
+      return false;
+    }
+    const role = employeeRoles.find(
+      (candidate) => candidate.id === seller.roleId && candidate.active,
+    );
+    if (!role || role.system) {
+      toast.error("Selecciona un rol activo para el vendedor.");
+      return false;
+    }
+    const initials = name
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toLocaleUpperCase("es-MX") ?? "")
+      .join("");
+    const normalizedSeller: Seller = {
+      ...seller,
+      name,
+      alias,
+      accessCode,
+      initials: initials || "VE",
+      canViewCosts: role.configurationAccess.includes("REPORTS_COSTS"),
+    };
+    setSellers((current) =>
+      current.some((candidate) => candidate.id === seller.id)
+        ? current.map((candidate) =>
+            candidate.id === seller.id ? normalizedSeller : candidate,
+          )
+        : [...current, normalizedSeller],
+    );
+    return true;
+  };
+
+  const saveCurrentSellerAccess = (input: {
+    sellerId: string;
+    currentCode: string;
+    alias: string;
+    newCode: string;
+  }): string | null => {
+    const seller = sellers.find(
+      (candidate) => candidate.id === input.sellerId && candidate.active,
+    );
+    if (!seller || seller.id !== sessionUser?.id) {
+      return "La sesión no está ligada a un vendedor activo.";
+    }
+    if (seller.accessCode !== input.currentCode.trim()) {
+      return "La contraseña personal actual es incorrecta.";
+    }
+    const alias = input.alias.trim().toLocaleLowerCase("es-MX");
+    if (!/^[a-z0-9._-]{3,24}$/i.test(alias)) {
+      return "El alias debe tener de 3 a 24 caracteres válidos y no puede contener espacios.";
+    }
+    if (
+      sellers.some(
+        (candidate) =>
+          candidate.id !== seller.id &&
+          candidate.alias.toLocaleLowerCase("es-MX") === alias,
+      )
+    ) {
+      return "Ese alias ya pertenece a otro vendedor.";
+    }
+    const requestedCode = input.newCode.trim();
+    const nextAccessCode = requestedCode || seller.accessCode;
+    if (requestedCode && !/^\d{4}$/.test(requestedCode)) {
+      return "La nueva contraseña debe contener exactamente 4 dígitos.";
+    }
+    if (
+      requestedCode &&
+      (requestedCode === administratorCode ||
+        sellers.some(
+          (candidate) =>
+            candidate.id !== seller.id &&
+            (candidate.accessCode === requestedCode ||
+              candidate.masterAccessCode === requestedCode),
+        ))
+    ) {
+      return "La nueva contraseña ya está asignada a otro acceso.";
+    }
+    setSellers((current) =>
+      current.map((candidate) =>
+        candidate.id === seller.id
+          ? { ...candidate, alias, accessCode: nextAccessCode }
+          : candidate,
+      ),
+    );
+    return null;
+  };
+
   const toggleEmployeeRole = (roleId: string) => {
     const role = employeeRoles.find((candidate) => candidate.id === roleId);
     if (!role || role.system) return;
@@ -2305,6 +2477,33 @@ function App() {
       (sum, ticket) => sum + ticket.total,
       0,
     );
+    const closeDayDate = operationalBusinessDate(clockOutDate.toISOString());
+    const closeDayMonth = closeDayDate.slice(0, 7);
+    const [closeYear, closeMonthNumber, closeDayNumber] = closeDayDate
+      .split("-")
+      .map(Number);
+    const isLastCalendarDay =
+      closeDayNumber ===
+      new Date(closeYear ?? 0, closeMonthNumber ?? 1, 0).getDate();
+    const branchMonthlySales = tickets
+      .filter(
+        (ticket) =>
+          ticket.status === "COMPLETED" &&
+          ticket.ticketType !== "LAYAWAY_PAYMENT" &&
+          (ticket.branchName ?? receiptSettings.branchName) === activeBranch,
+      )
+      .reduce<Map<string, number>>((summary, ticket) => {
+        const month = operationalBusinessDate(ticket.createdAtIso).slice(0, 7);
+        summary.set(month, (summary.get(month) ?? 0) + ticket.total);
+        return summary;
+      }, new Map());
+    const currentMonthSales = branchMonthlySales.get(closeDayMonth) ?? 0;
+    const historicMonthlySalesRecord = Math.max(
+      0,
+      ...Array.from(branchMonthlySales.entries())
+        .filter(([month]) => month < closeDayMonth)
+        .map(([, amount]) => amount),
+    );
     const closeDayExpenseTotal = cashExpenses
       .filter(
         (expense) =>
@@ -2329,6 +2528,15 @@ function App() {
         ? `Cierre realizado por ${authorizedBy.name} a las ${formatAttendanceTime(clockOutDate)}. ${onlineCount} vendedor${onlineCount === 1 ? "" : "es"} ${onlineCount === 1 ? "quedó" : "quedaron"} OFFLINE.`
         : `Cierre realizado por ${authorizedBy.name} a las ${formatAttendanceTime(clockOutDate)}. No había vendedores ONLINE.`,
     );
+    if (
+      isLastCalendarDay &&
+      historicMonthlySalesRecord > 0 &&
+      currentMonthSales > historicMonthlySalesRecord
+    ) {
+      toast.success(
+        `¡FELICIDADES! ${activeBranch} superó su récord mensual: ${formatCurrency(currentMonthSales)} frente a ${formatCurrency(historicMonthlySalesRecord)}.`,
+      );
+    }
     setDaySession((current) =>
       current
         ? {
@@ -2366,7 +2574,7 @@ function App() {
     const seller = sellers.find(
       (candidate) =>
         candidate.active &&
-        [candidate.id, candidate.name, candidate.initials].some(
+        [candidate.alias].some(
           (value) => value.toLocaleLowerCase("es-MX") === normalizedUser,
         ) &&
         (candidate.accessCode === code || candidate.masterAccessCode === code),
@@ -2473,6 +2681,38 @@ function App() {
     () => tickets.filter((ticket) => ticket.status === "COMPLETED"),
     [tickets],
   );
+  useEffect(() => {
+    const currentMonth = operationalBusinessDate(new Date().toISOString()).slice(0, 7);
+    const monthlyCounts = tickets
+      .filter(
+        (ticket) =>
+          ticket.status === "COMPLETED" &&
+          ticket.ticketType !== "LAYAWAY_PAYMENT",
+      )
+      .reduce<Map<string, number>>((summary, ticket) => {
+        const month = operationalBusinessDate(ticket.createdAtIso).slice(0, 7);
+        summary.set(month, (summary.get(month) ?? 0) + 1);
+        return summary;
+      }, new Map());
+    const currentCount = monthlyCounts.get(currentMonth) ?? 0;
+    const historicRecord = Math.max(
+      0,
+      ...Array.from(monthlyCounts.entries())
+        .filter(([month]) => month < currentMonth)
+        .map(([, count]) => count),
+    );
+    const celebrationKey = `keysar-ticket-record-${currentMonth}-${currentCount}`;
+    if (
+      historicRecord > 0 &&
+      currentCount > historicRecord &&
+      window.sessionStorage.getItem(celebrationKey) !== "shown"
+    ) {
+      window.sessionStorage.setItem(celebrationKey, "shown");
+      toast.success(
+        `¡FELICIDADES! Nuevo récord mensual: ${currentCount} tickets. Superaste la marca histórica de ${historicRecord}.`,
+      );
+    }
+  }, [tickets]);
   const cancellationReturnableProducts = useMemo<TicketInventoryLine[]>(() => {
     if (!cancellingTicket) return [];
     if (cancellingTicket.inventoryDeductions)
@@ -2520,47 +2760,6 @@ function App() {
       catalogProducts,
     ],
   );
-  const compactCatalogProducts = useMemo(() => {
-    const visibleProducts = catalogProducts.filter(
-      (product) =>
-        product.active &&
-        catalogFamilyStatus[product.family] !== false &&
-        catalogCategoryStatus[product.category] !== false,
-    );
-    const sortValue = (product: Product): string | number => {
-      switch (catalogTableSort.key) {
-        case "article":
-          return product.name;
-        case "sku":
-          return product.sku;
-        case "family":
-          return product.family;
-        case "group":
-          return product.group;
-        case "price":
-          return product.maxPrice;
-        case "stock":
-          return product.stock ?? Number.MAX_SAFE_INTEGER;
-      }
-    };
-
-    return [...visibleProducts].sort((left, right) => {
-      const comparison = compareTableValues(sortValue(left), sortValue(right));
-      return catalogTableSort.direction === "ASC" ? comparison : -comparison;
-    });
-  }, [
-    catalogCategoryStatus,
-    catalogFamilyStatus,
-    catalogProducts,
-    catalogTableSort,
-  ]);
-  const toggleCatalogTableSort = (key: CatalogTableSortKey) => {
-    setCatalogTableSort((current) => ({
-      key,
-      direction:
-        current.key === key && current.direction === "ASC" ? "DESC" : "ASC",
-    }));
-  };
   const families = useMemo(
     () => [
       "Todos",
@@ -2578,6 +2777,17 @@ function App() {
       ...Array.from(new Set(scoped.map((product) => product.category))),
     ];
   }, [saleProducts, selectedFamily]);
+  const brands = useMemo(() => {
+    const scoped = saleProducts.filter(
+      (product) =>
+        (selectedFamily === "Todos" || product.family === selectedFamily) &&
+        (selectedCategory === "Todas" || product.category === selectedCategory),
+    );
+    return [
+      "Todas",
+      ...Array.from(new Set(scoped.map((product) => getSaleProductBrand(product)))),
+    ];
+  }, [saleProducts, selectedCategory, selectedFamily]);
   const filteredProducts = useMemo(() => {
     const query = search.trim().toLocaleLowerCase("es-MX");
     return saleProducts.filter((product) => {
@@ -2588,10 +2798,11 @@ function App() {
       return (
         matchesSearch &&
         (selectedFamily === "Todos" || product.family === selectedFamily) &&
-        (selectedCategory === "Todas" || product.category === selectedCategory)
+        (selectedCategory === "Todas" || product.category === selectedCategory) &&
+        (selectedBrand === "Todas" || getSaleProductBrand(product) === selectedBrand)
       );
     });
-  }, [saleProducts, search, selectedCategory, selectedFamily]);
+  }, [saleProducts, search, selectedBrand, selectedCategory, selectedFamily]);
 
   const cartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
   const cartSubtotal = cart.reduce(
@@ -2766,6 +2977,28 @@ function App() {
     );
     const createdAt = new Date();
     const ticketId = createUniqueFolio(tickets);
+    const initialPaymentFolio =
+      result.paymentStatus === "LAYAWAY"
+        ? `APT-${Date.now().toString(36).toUpperCase()}-${crypto.randomUUID().slice(0, 6).toUpperCase()}`
+        : null;
+    const createdAtLabel = new Intl.DateTimeFormat("es-MX", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(createdAt);
+    const ticketPayments = result.payments.map((payment) =>
+      initialPaymentFolio
+        ? {
+            ...payment,
+            folio: initialPaymentFolio,
+            createdAt: createdAtLabel,
+            createdAtIso: createdAt.toISOString(),
+            relatedTicketId: ticketId,
+          }
+        : payment,
+    );
     const courtesyAppointments = result.appointments.filter(
       (appointment) => appointment.kind === "COURTESY",
     );
@@ -2809,13 +3042,7 @@ function App() {
     const ticketVatAmount = roundCurrency(ticketTotal - ticketNetTotal);
     const ticket: Ticket = {
       id: ticketId,
-      createdAt: new Intl.DateTimeFormat("es-MX", {
-        day: "2-digit",
-        month: "short",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      }).format(createdAt),
+      createdAt: createdAtLabel,
       createdAtIso: createdAt.toISOString(),
       clientName: `${result.client.firstName} ${result.client.lastName}`,
       clientPhone: result.client.phone,
@@ -2830,7 +3057,7 @@ function App() {
       vatAmount: ticketVatAmount,
       deviation: ticketDeviation,
       paymentMethod: result.paymentMethod,
-      payments: result.payments,
+      payments: ticketPayments,
       amountPaid: result.amountPaid,
       balanceDue: result.balanceDue,
       paymentStatus: result.paymentStatus,
@@ -3026,14 +3253,29 @@ function App() {
               ? item.quantity
               : (deliveredByCartItem.get(item.id) ?? 0),
         })),
-        payments: result.payments.map((payment) => ({
-          id: payment.id,
-          folio: ticketId,
-          createdAt: ticket.createdAt,
-          createdAtIso: ticket.createdAtIso,
-          amount: payment.amount,
-          methodId: payment.methodId,
-        })),
+        payments: initialPaymentFolio
+          ? [
+              {
+                id: crypto.randomUUID(),
+                folio: initialPaymentFolio,
+                createdAt: ticket.createdAt,
+                createdAtIso: ticket.createdAtIso,
+                amount: ticketPayments.reduce(
+                  (sum, payment) => sum + payment.amount,
+                  0,
+                ),
+                methodId: ticketPayments[0]?.methodId ?? "CASH",
+                payments: ticketPayments,
+                balanceAfter: ticket.balanceDue,
+                ...(result.sellerSales[0]
+                  ? {
+                      sellerId: result.sellerSales[0].sellerId,
+                      sellerName: result.sellerSales[0].sellerName,
+                    }
+                  : {}),
+              },
+            ]
+          : [],
         status: "ACTIVE",
       };
       setLayaways((current) => [layaway, ...current]);
@@ -3050,7 +3292,7 @@ function App() {
       result.paymentStatus === "PAID"
         ? `Ticket ${ticket.id} cobrado correctamente.`
         : result.paymentStatus === "LAYAWAY"
-          ? `Apartado ${ticket.id} registrado con saldo pendiente.`
+          ? `Apartado ${ticket.id} registrado. Pago ${initialPaymentFolio} generado.`
           : `Ticket ${ticket.id} registrado como pendiente de cobro.`,
     );
     if (createdAppointments.length > 0) {
@@ -4433,15 +4675,28 @@ function App() {
 
   const registerLayawayPayment = (
     layawayId: string,
-    requestedAmount: number,
-    methodId: string,
+    requestedPayments: PaymentEntry[],
     sellerId: string,
     deliveredCartItemIds: string[],
   ) => {
     const layaway = layaways.find((item) => item.id === layawayId);
     const seller = sellers.find((item) => item.id === sellerId);
     if (!layaway || layaway.status === "PAID" || !seller) return;
-    const amount = Math.min(layaway.balanceDue, Math.max(0, requestedAmount));
+    let remainingPaymentCapacity = layaway.balanceDue;
+    const appliedPayments = requestedPayments
+      .map((payment) => {
+        const amount = Math.min(
+          remainingPaymentCapacity,
+          Math.max(0, Number(payment.amount) || 0),
+        );
+        remainingPaymentCapacity -= amount;
+        return { ...payment, amount };
+      })
+      .filter((payment) => payment.amount > 0);
+    const amount = appliedPayments.reduce(
+      (sum, payment) => sum + payment.amount,
+      0,
+    );
     if (amount <= 0) {
       toast.error("Ingresa un monto de abono mayor a cero.");
       return;
@@ -4667,13 +4922,24 @@ function App() {
           item.deliveredQuantity + deliveredAtLiquidation,
       };
     });
+    const paymentEntries = appliedPayments.map((payment) => ({
+      ...payment,
+      folio: paymentFolio,
+      createdAt: createdAtLabel,
+      createdAtIso: createdAt.toISOString(),
+      relatedTicketId: layaway.originalTicketId,
+    }));
     const paymentRecord = {
       id: crypto.randomUUID(),
       folio: paymentFolio,
       createdAt: createdAtLabel,
       createdAtIso: createdAt.toISOString(),
       amount,
-      methodId,
+      methodId: paymentEntries[0]?.methodId ?? "CASH",
+      payments: paymentEntries,
+      balanceAfter: balanceDue,
+      sellerId: seller.id,
+      sellerName: seller.name,
     };
     setLayaways((current) =>
       current.map((item) =>
@@ -4733,10 +4999,8 @@ function App() {
       subtotal: amount,
       total: amount,
       deviation: 0,
-      paymentMethod: methodId,
-      payments: [
-        { id: paymentRecord.id, methodId: paymentRecord.methodId, amount },
-      ],
+      paymentMethod: paymentRecord.methodId,
+      payments: paymentEntries,
       amountPaid: amount,
       balanceDue,
       paymentStatus: isLiquidation ? "PAID" : "LAYAWAY",
@@ -4864,6 +5128,44 @@ function App() {
     setReceiptPreviewOpen(true);
   };
 
+  const issueVoucher = (ticket: Ticket, voucherId: string): VoucherIssue | null => {
+    const template = voucherTemplates.find(
+      (candidate) =>
+        candidate.id === voucherId &&
+        candidate.active &&
+        candidate.visibleToSellers,
+    );
+    if (!template) return null;
+    const branch = ticket.branchName ?? activeBranch;
+    const branchCode = branch
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^A-Za-z0-9]/g, "")
+      .slice(0, 3)
+      .toUpperCase();
+    const sequence =
+      voucherIssues.filter((issue) => issue.branch === branch).length + 1;
+    const issuedAtIso = new Date().toISOString();
+    const issue: VoucherIssue = {
+      id: crypto.randomUUID(),
+      folio: `VCH-${branchCode}-${String(sequence).padStart(6, "0")}`,
+      voucherId: template.id,
+      voucherName: template.name,
+      voucherKind: template.kind,
+      value: template.value,
+      message: template.message,
+      ticketId: ticket.id,
+      clientName: ticket.clientName,
+      clientPhone: ticket.clientPhone,
+      branch,
+      issuedAtIso,
+      status: "ISSUED",
+    };
+    setVoucherIssues((current) => [issue, ...current]);
+    toast.success(`Voucher ${issue.folio} generado para ${ticket.clientName}.`);
+    return issue;
+  };
+
   const editTicket = (ticket: Ticket) => {
     setEditingTicket(ticket);
     setTicketEditOpen(true);
@@ -4875,6 +5177,9 @@ function App() {
   ): boolean => {
     const ticket = tickets.find((item) => item.id === ticketId);
     if (!ticket || ticket.status === "REFUNDED") return false;
+    const currentLayaway = layaways.find(
+      (layaway) => layaway.originalTicketId === ticketId,
+    );
 
     const selectedSellers = changes.sellerIds.flatMap((sellerId) => {
       const seller = sellers.find((candidate) => candidate.id === sellerId);
@@ -5042,16 +5347,31 @@ function App() {
       allocationCapacity -= allocated;
     });
     originalPaymentAmount += allocationCapacity;
-    const payments =
-      originalPaymentAmount > 0
-        ? [
-            {
-              id: ticket.payments[0]?.id ?? crypto.randomUUID(),
-              methodId: defaultPaymentMethod,
-              amount: originalPaymentAmount,
-            },
-          ]
-        : [];
+    let remainingOriginalPayment = originalPaymentAmount;
+    const payments = changes.payments
+      .map((payment, paymentIndex) => {
+        const amount = Math.min(
+          remainingOriginalPayment,
+          Math.max(0, payment.amount),
+        );
+        remainingOriginalPayment -= amount;
+        const historicalPayment = ticket.payments[paymentIndex];
+        return {
+          ...(historicalPayment ?? {}),
+          ...payment,
+          amount,
+          ...(ticket.payments[0]?.folio
+            ? { folio: ticket.payments[0].folio }
+            : {}),
+        };
+      })
+      .filter((payment) => payment.amount > 0);
+    if (remainingOriginalPayment > 0 && payments[0]) {
+      payments[0] = {
+        ...payments[0],
+        amount: payments[0].amount + remainingOriginalPayment,
+      };
+    }
     const balanceDue = Math.max(0, total - amountPaid);
     const relatedPaymentUpdates = new Map<string, Ticket>();
     relatedPaymentTickets.forEach((paymentTicket) => {
@@ -5436,6 +5756,8 @@ function App() {
                   createdAtIso: ticket.createdAtIso,
                   amount: amountPaid,
                   methodId: defaultPaymentMethod,
+                  payments,
+                  balanceAfter: nextBalanceDue,
                 };
                 const hasPayment = layaway.payments.some(
                   (payment) => payment.folio === ticketId,
@@ -5488,28 +5810,60 @@ function App() {
             ]
           : [];
       });
-      const originalPaymentRecords = payments.map((payment) => ({
-        id: payment.id,
-        folio: ticketId,
-        createdAt: ticket.createdAt,
-        createdAtIso: ticket.createdAtIso,
-        amount: payment.amount,
-        methodId: payment.methodId,
-      }));
+      const originalPaymentFolio =
+        ticket.payments[0]?.folio ??
+        currentLayaway?.payments[0]?.folio ??
+        ticketId;
+      const originalPaymentRecords =
+        payments.length > 0
+          ? [
+              {
+                id:
+                  currentLayaway?.payments.find(
+                    (payment) => payment.folio === originalPaymentFolio,
+                  )?.id ?? payments[0]?.id ?? crypto.randomUUID(),
+                folio: originalPaymentFolio,
+                createdAt: ticket.createdAt,
+                createdAtIso: ticket.createdAtIso,
+                amount: payments.reduce(
+                  (sum, payment) => sum + payment.amount,
+                  0,
+                ),
+                methodId: payments[0]?.methodId ?? defaultPaymentMethod,
+                payments,
+                balanceAfter: balanceDue,
+              },
+            ]
+          : [];
       const relatedPaymentRecords = relatedPaymentTickets.flatMap(
         (paymentTicket) => {
           const nextPaymentTicket =
             relatedPaymentUpdates.get(paymentTicket.id) ?? paymentTicket;
-          return nextPaymentTicket.status === "COMPLETED"
-            ? nextPaymentTicket.payments.map((payment) => ({
-                id: payment.id,
-                folio: nextPaymentTicket.id,
-                createdAt: nextPaymentTicket.createdAt,
-                createdAtIso: nextPaymentTicket.createdAtIso,
-                amount: payment.amount,
-                methodId: payment.methodId,
-              }))
-            : [];
+          if (
+            nextPaymentTicket.status !== "COMPLETED" ||
+            nextPaymentTicket.payments.length === 0
+          )
+            return [];
+          return [
+            {
+              id:
+                currentLayaway?.payments.find(
+                  (payment) => payment.folio === nextPaymentTicket.id,
+                )?.id ?? nextPaymentTicket.payments[0]?.id ?? crypto.randomUUID(),
+              folio: nextPaymentTicket.id,
+              createdAt: nextPaymentTicket.createdAt,
+              createdAtIso: nextPaymentTicket.createdAtIso,
+              amount: nextPaymentTicket.payments.reduce(
+                (sum, payment) => sum + payment.amount,
+                0,
+              ),
+              methodId:
+                nextPaymentTicket.payments[0]?.methodId ??
+                nextPaymentTicket.paymentMethod,
+              payments: nextPaymentTicket.payments,
+              balanceAfter: nextPaymentTicket.balanceDue,
+            },
+          ];
         },
       );
       const nextLayawayPayments = [
@@ -5847,6 +6201,114 @@ function App() {
 
   const renderSale = () => (
     <div className="sale-layout">
+      <aside className="sale-catalog-navigation">
+        <header className="sale-catalog-navigation-header">
+          <button
+            type="button"
+            className="sale-general-menu-button"
+            onClick={() => {
+              setSaleFocusMode(false);
+              setSidebarCollapsed(false);
+              setSidebarActivityTick((current) => current + 1);
+            }}
+          >
+            <Menu size={15} /> Menú general
+          </button>
+          <span>CATÁLOGO DE VENTA</span>
+          <h2>Explorar productos</h2>
+          <p>Elige una familia, categoría o marca para mostrar su colección.</p>
+        </header>
+
+        <div className="sale-catalog-groups">
+          <section className="sale-catalog-group">
+            <div className="sale-catalog-group-title">
+              <span><Boxes size={15} /></span>
+              <div><strong>Familias</strong><small>{formatSaleCount(Math.max(0, families.length - 1), "colección", "colecciones")}</small></div>
+            </div>
+            <div className="sale-catalog-options" role="list" aria-label="Familias de productos">
+              {families.map((family) => {
+                const optionCount = family === "Todos"
+                  ? saleProducts.length
+                  : saleProducts.filter((product) => product.family === family).length;
+                return (
+                  <button
+                    key={family}
+                    type="button"
+                    className={selectedFamily === family ? "is-active" : ""}
+                    onClick={() => {
+                      setSelectedFamily(family);
+                      setSelectedCategory("Todas");
+                      setSelectedBrand("Todas");
+                    }}
+                  >
+                    <span><strong>{family === "Todos" ? "Todo el catálogo" : family}</strong><small>{formatSaleCount(optionCount, "opción", "opciones")}</small></span>
+                    <ChevronRight size={14} />
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+
+          <section className="sale-catalog-group">
+            <div className="sale-catalog-group-title">
+              <span><Filter size={15} /></span>
+              <div><strong>Categorías</strong><small>{formatSaleCount(Math.max(0, categories.length - 1), "disponible", "disponibles")}</small></div>
+            </div>
+            <div className="sale-catalog-options" role="list" aria-label="Categorías de productos">
+              {categories.map((category) => {
+                const optionCount = saleProducts.filter(
+                  (product) =>
+                    (selectedFamily === "Todos" || product.family === selectedFamily) &&
+                    (category === "Todas" || product.category === category),
+                ).length;
+                return (
+                  <button
+                    key={category}
+                    type="button"
+                    className={selectedCategory === category ? "is-active" : ""}
+                    onClick={() => {
+                      setSelectedCategory(category);
+                      setSelectedBrand("Todas");
+                    }}
+                  >
+                    <span><strong>{category === "Todas" ? "Todas las categorías" : category}</strong><small>{formatSaleCount(optionCount, "opción", "opciones")}</small></span>
+                    <ChevronRight size={14} />
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+
+          <section className="sale-catalog-group">
+            <div className="sale-catalog-group-title">
+              <span><Sparkles size={15} /></span>
+              <div><strong>Marcas</strong><small>{formatSaleCount(Math.max(0, brands.length - 1), "disponible", "disponibles")}</small></div>
+            </div>
+            <div className="sale-catalog-options" role="list" aria-label="Marcas de productos">
+              {brands.map((brand) => {
+                const optionCount = saleProducts.filter(
+                  (product) =>
+                    (selectedFamily === "Todos" || product.family === selectedFamily) &&
+                    (selectedCategory === "Todas" || product.category === selectedCategory) &&
+                    (brand === "Todas" || getSaleProductBrand(product) === brand),
+                ).length;
+                return (
+                  <button
+                    key={brand}
+                    type="button"
+                    className={selectedBrand === brand ? "is-active" : ""}
+                    onClick={() => setSelectedBrand(brand)}
+                  >
+                    <span><strong>{brand === "Todas" ? "Todas las marcas" : brand}</strong><small>{formatSaleCount(optionCount, "opción", "opciones")}</small></span>
+                    <ChevronRight size={14} />
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        </div>
+      </aside>
+
       <section className="catalog-panel">
         <div className="sale-toolbar">
           <div className="catalog-search">
@@ -5868,43 +6330,7 @@ function App() {
             )}
           </div>
           <div className="catalog-count">
-            <Sparkles size={17} /> {filteredProducts.length} opciones
-          </div>
-        </div>
-
-        <div className="filter-section">
-          <span className="filter-label">
-            <Filter size={14} /> Familia
-          </span>
-          <div className="filter-pills">
-            {families.map((family) => (
-              <button
-                key={family}
-                type="button"
-                className={selectedFamily === family ? "is-active" : ""}
-                onClick={() => {
-                  setSelectedFamily(family);
-                  setSelectedCategory("Todas");
-                }}
-              >
-                {family}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div className="filter-section is-compact">
-          <span className="filter-label">Categoría</span>
-          <div className="filter-pills is-secondary">
-            {categories.map((category) => (
-              <button
-                key={category}
-                type="button"
-                className={selectedCategory === category ? "is-active" : ""}
-                onClick={() => setSelectedCategory(category)}
-              >
-                {category}
-              </button>
-            ))}
+            <Sparkles size={17} /> {formatSaleCount(filteredProducts.length, "opción", "opciones")}
           </div>
         </div>
 
@@ -5972,6 +6398,7 @@ function App() {
                 setSearch("");
                 setSelectedFamily("Todos");
                 setSelectedCategory("Todas");
+                setSelectedBrand("Todas");
               }}
             >
               Limpiar filtros
@@ -6307,6 +6734,37 @@ function App() {
     const paidTickets = filteredSaleTickets.filter(
       (ticket) => ticket.paymentStatus === "PAID",
     ).length;
+    const averageTicket = filteredSaleTickets.length > 0
+      ? total / filteredSaleTickets.length
+      : 0;
+    const currentMonthKey = businessToday.slice(0, 7);
+    const [currentYear = new Date().getFullYear(), currentMonthNumber = 1] =
+      currentMonthKey.split("-").map(Number);
+    const previousMonthKey = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/Mexico_City",
+      year: "numeric",
+      month: "2-digit",
+    }).format(new Date(currentYear, currentMonthNumber - 2, 1));
+    const reportScopeTickets = tickets.filter(
+      (ticket) =>
+        ticket.status === "COMPLETED" &&
+        ticket.ticketType !== "LAYAWAY_PAYMENT" &&
+        (receiptBranch === "ALL" || ticket.branchName === receiptBranch),
+    );
+    const currentMonthTicketCount = reportScopeTickets.filter(
+      (ticket) =>
+        operationalBusinessDate(ticket.createdAtIso).slice(0, 7) === currentMonthKey,
+    ).length;
+    const previousMonthTicketCount = reportScopeTickets.filter(
+      (ticket) =>
+        operationalBusinessDate(ticket.createdAtIso).slice(0, 7) === previousMonthKey,
+    ).length;
+    const ticketCountComparison = previousMonthTicketCount > 0
+      ? ((currentMonthTicketCount - previousMonthTicketCount) /
+          previousMonthTicketCount) * 100
+      : currentMonthTicketCount > 0
+        ? 100
+        : 0;
     const authorizeReceiptHistory = () => {
       if (!isMasterAccessCode(receiptHistoryCode)) {
         toast.error("Código master incorrecto.");
@@ -6398,6 +6856,26 @@ function App() {
             value={formatCurrency(pending)}
             icon={Clock3}
             tone="negative"
+          />
+        </div>
+        <div className="metric-grid three-columns receipt-ticket-kpis">
+          <MetricCard
+            label="TICKETS DEL PERIODO"
+            value={String(filteredSaleTickets.length)}
+            icon={ShoppingBag}
+            tone="neutral"
+          />
+          <MetricCard
+            label="PROMEDIO POR TICKET"
+            value={formatCurrency(averageTicket)}
+            icon={TrendingUp}
+            tone="positive"
+          />
+          <MetricCard
+            label="COMPARATIVO VS. MES ANTERIOR"
+            value={`${ticketCountComparison >= 0 ? "+" : ""}${ticketCountComparison.toFixed(1)}%`}
+            icon={ticketCountComparison >= 0 ? TrendingUp : TrendingDown}
+            tone={ticketCountComparison >= 0 ? "positive" : "negative"}
           />
         </div>
         <div className="receipts-dashboard-grid">
@@ -6715,104 +7193,51 @@ function App() {
   };
 
   const renderInventory = () => (
-    <Card className="data-card">
-      <CardContent className="p-0">
-        <div className="data-card-heading">
-          <div>
-            <span>CATÁLOGO MOCK</span>
-            <h2>Productos y servicios</h2>
-          </div>
-          <Badge>
-            {catalogProducts
-              .filter(
-                (product) =>
-                  product.active &&
-                  catalogFamilyStatus[product.family] !== false &&
-                  catalogCategoryStatus[product.category] !== false &&
-                  product.kind === "PRODUCT",
-              )
-              .reduce((sum, product) => sum + (product.stock ?? 0), 0)}{" "}
-            piezas
-          </Badge>
-        </div>
-        <div className="table-scroll">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <SortableTableHead
-                  label="ARTÍCULO"
-                  active={catalogTableSort.key === "article"}
-                  direction={catalogTableSort.direction}
-                  onSort={() => toggleCatalogTableSort("article")}
-                />
-                <SortableTableHead
-                  label="SKU"
-                  active={catalogTableSort.key === "sku"}
-                  direction={catalogTableSort.direction}
-                  onSort={() => toggleCatalogTableSort("sku")}
-                />
-                <SortableTableHead
-                  label="FAMILIA"
-                  active={catalogTableSort.key === "family"}
-                  direction={catalogTableSort.direction}
-                  onSort={() => toggleCatalogTableSort("family")}
-                />
-                <SortableTableHead
-                  label="GRUPO"
-                  active={catalogTableSort.key === "group"}
-                  direction={catalogTableSort.direction}
-                  onSort={() => toggleCatalogTableSort("group")}
-                />
-                <SortableTableHead
-                  label="PRECIO DE LISTA"
-                  active={catalogTableSort.key === "price"}
-                  direction={catalogTableSort.direction}
-                  onSort={() => toggleCatalogTableSort("price")}
-                />
-                <SortableTableHead
-                  label="EXISTENCIA / LÍMITES"
-                  active={catalogTableSort.key === "stock"}
-                  direction={catalogTableSort.direction}
-                  onSort={() => toggleCatalogTableSort("stock")}
-                />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {compactCatalogProducts.map((product) => (
-                <TableRow key={product.id}>
-                  <TableCell>
-                    <div className="table-product">
-                      <img src={product.image} alt="" />
-                      <strong>{product.name}</strong>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <strong className="floor-code">{product.sku}</strong>
-                  </TableCell>
-                  <TableCell>{product.family}</TableCell>
-                  <TableCell>{product.group}</TableCell>
-                  <TableCell>{formatCurrency(product.maxPrice)}</TableCell>
-                  <TableCell>
-                    {product.stock === null ? (
-                      <Badge variant="outline">SERVICIO</Badge>
-                    ) : (
-                      <span className={product.stock < 0 ? "is-negative" : ""}>
-                        {product.stock} · mín {product.stockMin} / máx{" "}
-                        {product.stockMax}
-                      </span>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      </CardContent>
-    </Card>
+    <DigitalCatalogView
+      products={catalogProducts.filter(
+        (product) =>
+          catalogFamilyStatus[product.family] !== false &&
+          catalogCategoryStatus[product.category] !== false,
+      )}
+      companyName={receiptSettings.companyName}
+      logoUrl={receiptSettings.logoUrl}
+      authorizeExit={authorizeCatalogExit}
+    />
   );
 
   const renderSettings = () => (
-    <div className="settings-grid">
+    <div className={`settings-grid is-sectioned settings-section-${activeSettingsSection}`}>
+      <Card className="settings-card settings-directory-card">
+        <CardContent>
+          <span className="section-kicker">CENTRO DE CONFIGURACIÓN</span>
+          <h2>Ajustes del sistema</h2>
+          <p>Selecciona una categoría. Al abrir otra, la anterior se contrae automáticamente.</p>
+          <div className="settings-directory-list">
+            {([
+              ["notifications", "Notificaciones", RefreshCw],
+              ["inventory", "Inventario y catálogos", Boxes],
+              ["cash", "Tipos de gastos", CircleDollarSign],
+              ["competition", "Competiciones", TrendingUp],
+              ["clients", "Clientes y procedencias", Users],
+              ["pricing", "Precios y autorización", BadgePercent],
+              ["receipt", "Diseño de ticket", Printer],
+              ["payments", "Métodos de pago", CreditCard],
+              ["vouchers", "Vouchers promocionales", Sparkles],
+            ] as const).map(([id, label, Icon]) => (
+              <button
+                key={id}
+                type="button"
+                className={activeSettingsSection === id ? "is-active" : ""}
+                onClick={() => setActiveSettingsSection(id)}
+              >
+                <Icon size={18} />
+                <strong>{label}</strong>
+                <ChevronRight size={16} />
+              </button>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
       <NotificationSettings
         preferences={notificationPreferences}
         sellers={sellers}
@@ -6864,7 +7289,7 @@ function App() {
         onToggle={toggleCompetition}
         onDelete={deleteCompetition}
       />
-      <Card className="settings-card">
+      <Card className="settings-card client-required-settings-card">
         <CardContent>
           <span className="section-kicker">CLIENTES</span>
           <h2>Campos obligatorios</h2>
@@ -7002,7 +7427,7 @@ function App() {
           </div>
         </CardContent>
       </Card>
-      <Card className="settings-card accent-card">
+      <Card className="settings-card accent-card pricing-settings-card">
         <CardContent>
           <span className="section-kicker">PRECIOS</span>
           <h2>Control administrativo</h2>
@@ -7378,6 +7803,13 @@ function App() {
           </div>
         </CardContent>
       </Card>
+      <VoucherSettings
+        templates={voucherTemplates}
+        issues={voucherIssues}
+        isMasterCode={isMasterAccessCode}
+        onChangeTemplates={setVoucherTemplates}
+        onChangeIssues={setVoucherIssues}
+      />
     </div>
   );
 
@@ -8636,6 +9068,8 @@ function App() {
             paymentMethods={paymentMethods}
             branches={operationalBranches}
             receiptSettings={receiptSettings}
+            sessionSellerId={sessionUser?.isMaster ? null : sessionUser?.id ?? null}
+            sessionIsMaster={sessionUser?.isMaster ?? false}
             isMasterCode={isMasterAccessCode}
             onUpdateClient={updateClientRecord}
             onDeleteClient={deleteClientRecord}
@@ -8889,6 +9323,7 @@ function App() {
             onAuthorize={authorizeEmployeeAccess}
             onLock={() => setEmployeeAccessAuthorized(false)}
             onSaveRole={saveEmployeeRole}
+            onSaveSeller={saveEmployeeSeller}
             onToggleRole={toggleEmployeeRole}
             onAssignRole={assignEmployeeRole}
             onSetMasterAccess={setEmployeeMasterAccess}
@@ -8923,6 +9358,8 @@ function App() {
       case "my-account":
         return (
           <MyAccountView
+            isMasterSession={Boolean(sessionUser?.isMaster)}
+            currentSeller={sessionUser ? sellers.find((seller) => seller.id === sessionUser.id) ?? null : null}
             authorized={myAccountAuthorized}
             profile={billingProfile}
             cards={billingCards}
@@ -8938,6 +9375,7 @@ function App() {
             onActivateLocation={activateBillingLocation}
             onAddLocation={addBillingLocation}
             onDeactivateLocation={deactivateBillingLocation}
+            onSaveSellerAccess={saveCurrentSellerAccess}
           />
         );
       default:
@@ -8956,11 +9394,6 @@ function App() {
           sellers={sellers}
           language={interfaceLanguage}
           onLogin={handleSoftwareLogin}
-        />
-        <InterfacePreferenceControls
-          language={interfaceLanguage}
-          floating
-          onLanguageChange={setInterfaceLanguage}
         />
         <Toaster richColors position="top-right" />
       </>
@@ -8981,11 +9414,6 @@ function App() {
           language={interfaceLanguage}
           onComplete={completeOpeningCount}
         />
-        <InterfacePreferenceControls
-          language={interfaceLanguage}
-          floating
-          onLanguageChange={setInterfaceLanguage}
-        />
         <Toaster richColors position="top-right" />
       </>
     );
@@ -9003,12 +9431,11 @@ function App() {
           canSkip={sessionUser.isMaster}
           showDifferences={canViewInventoryCountDifferences}
           language={interfaceLanguage}
+          onBack={() => {
+            setSessionStage("OPEN");
+            setActiveScreen("sale");
+          }}
           onComplete={completeClosingCount}
-        />
-        <InterfacePreferenceControls
-          language={interfaceLanguage}
-          floating
-          onLanguageChange={setInterfaceLanguage}
         />
         <Toaster richColors position="top-right" />
       </>
@@ -9021,21 +9448,21 @@ function App() {
       : "sale";
     return (
       <div className="close-day-focus-shell">
-        <InterfacePreferenceControls
-          language={interfaceLanguage}
-          floating
-          onLanguageChange={setInterfaceLanguage}
-        />
         <main className="close-day-focus-window">
+          <Button
+            type="button"
+            variant="outline"
+            className="close-day-back-button"
+            onClick={() => setActiveScreen(closeDayReturnScreen)}
+          >
+            <ArrowLeft size={16} /> Regresar al menú
+          </Button>
           <header className="close-day-focus-header">
             <div>
               <span className="section-kicker">CIERRE OPERATIVO · {activeBranch.toLocaleUpperCase("es-MX")}</span>
               <h1>Close Day</h1>
               <p>Revisa el resumen, imprime el corte y autoriza el cierre final.</p>
             </div>
-            <Button type="button" variant="outline" onClick={() => setActiveScreen(closeDayReturnScreen)}>
-              <X size={16} /> Volver al sistema
-            </Button>
           </header>
           {renderCloseDay()}
         </main>
@@ -9055,19 +9482,19 @@ function App() {
               <div className="terminal-location-dialog-icon"><ShieldCheck size={22} /></div>
               <DialogTitle>Autorizar cierre de día</DialogTitle>
               <DialogDescription>
-                Vuelve a ingresar el usuario y su clave. El sistema registrará quién realizó el corte y la hora exacta.
+                Vuelve a ingresar el alias y su clave. El sistema registrará quién realizó el corte y la hora exacta.
               </DialogDescription>
             </DialogHeader>
             <div className="close-day-authorization-fields">
               <label className="field-stack">
-                <span>Usuario responsable</span>
+                <span>Alias del responsable</span>
                 <Input
                   value={closeDayAuthorizationUser}
                   onChange={(event) => {
                     setCloseDayAuthorizationUser(event.target.value);
                     setCloseDayAuthorizationError("");
                   }}
-                  placeholder="Nombre, usuario o iniciales"
+                  placeholder="Alias de acceso"
                   autoComplete="off"
                 />
               </label>
@@ -9118,9 +9545,9 @@ function App() {
   }
 
   const metadata =
-    (interfaceLanguage === "EN" ? screenMetadataEnglish : screenMetadata)[
-      activeScreen
-    ];
+    activeScreen === "my-account" && !sessionUser.isMaster
+      ? { title: "My Account", subtitle: "Alias y contraseña personal" }
+      : screenMetadata[activeScreen];
   const secondsUntilNextUpdate = Math.max(
     0,
     Math.ceil((sessionDataSync.nextUpdateAt - syncClock) / 1_000),
@@ -9132,20 +9559,22 @@ function App() {
     second: "2-digit",
   }).format(new Date(sessionDataSync.lastUpdatedAt));
   return (
-    <div className="pos-app">
-      <PosSidebar
-        activeScreen={activeScreen}
-        activeBranch={activeBranch}
-        collapsed={sidebarCollapsed}
-        pinned={sidebarPinned}
-        allowedScreens={allowedScreens}
-        cartCount={cartCount}
-        language={interfaceLanguage}
-        onNavigate={navigateToScreen}
-        onRequestLocationSwitch={openLocationSwitcher}
-        onToggle={toggleSidebar}
-        onTogglePin={toggleSidebarPin}
-      />
+    <div className={`pos-app ${activeScreen === "sale" && saleFocusMode ? "is-sale-focus" : ""}`}>
+      {!(activeScreen === "sale" && saleFocusMode) && (
+        <PosSidebar
+          activeScreen={activeScreen}
+          activeBranch={activeBranch}
+          collapsed={sidebarCollapsed}
+          pinned={sidebarPinned}
+          allowedScreens={allowedScreens}
+          cartCount={cartCount}
+          language={interfaceLanguage}
+          onNavigate={navigateToScreen}
+          onRequestLocationSwitch={openLocationSwitcher}
+          onToggle={toggleSidebar}
+          onTogglePin={toggleSidebarPin}
+        />
+      )}
       <main className="pos-main">
         <header className="page-header">
           <div>
@@ -9173,10 +9602,6 @@ function App() {
               isMasterCode={isMasterAccessCode}
               onMarkRead={markOperationalNotificationRead}
               onMarkAllRead={markAllOperationalNotificationsRead}
-            />
-            <InterfacePreferenceControls
-              language={interfaceLanguage}
-              onLanguageChange={setInterfaceLanguage}
             />
             <div className="header-status">
               <div className="header-sync-status" aria-live="polite">
@@ -9223,9 +9648,9 @@ function App() {
               <span>
                 <strong>My Account</strong>
                 <small>
-                  {interfaceLanguage === "EN"
-                    ? "Profile, locations and billing"
-                    : "Perfil, ubicaciones y facturación"}
+                  {sessionUser.isMaster
+                    ? "Perfil, ubicaciones y facturación"
+                    : "Alias y contraseña personal"}
                 </small>
               </span>
               <ChevronRight size={16} />
@@ -9365,9 +9790,24 @@ function App() {
       <ReceiptTicketDialog
         open={receiptPreviewOpen}
         ticket={selectedReceiptTicket}
+        layaway={
+          selectedReceiptTicket
+            ? layaways.find(
+                (layaway) =>
+                  layaway.originalTicketId ===
+                  (selectedReceiptTicket.ticketType === "LAYAWAY_PAYMENT"
+                    ? selectedReceiptTicket.relatedTicketId
+                    : selectedReceiptTicket.id),
+              ) ?? null
+            : null
+        }
         settings={receiptSettings}
         branchAddresses={branchAddresses}
         paymentMethods={paymentMethods}
+        voucherTemplates={voucherTemplates.filter(
+          (voucher) => voucher.active && voucher.visibleToSellers,
+        )}
+        onIssueVoucher={issueVoucher}
         onOpenChange={setReceiptPreviewOpen}
       />
       <TicketEditDialog
@@ -9390,42 +9830,6 @@ function App() {
         onConfirm={cancelTicket}
       />
       <Toaster position="bottom-center" richColors />
-    </div>
-  );
-}
-
-interface InterfacePreferenceControlsProps {
-  language: InterfaceLanguage;
-  floating?: boolean;
-  onLanguageChange: (language: InterfaceLanguage) => void;
-}
-
-function InterfacePreferenceControls({
-  language,
-  floating = false,
-  onLanguageChange,
-}: InterfacePreferenceControlsProps) {
-  const english = language === "EN";
-  return (
-    <div
-      className={`interface-preference-controls ${floating ? "is-floating" : ""}`}
-      aria-label={english ? "Language preference" : "Preferencia de idioma"}
-    >
-      <button
-        type="button"
-        className="interface-preference-switch"
-        role="switch"
-        aria-checked={english}
-        onClick={() => onLanguageChange(english ? "ES" : "EN")}
-        title={english ? "Cambiar a español" : "Switch to English"}
-      >
-        <span className="interface-preference-icon"><Languages size={15} /></span>
-        <span className="interface-preference-copy">
-          <small>{english ? "LANGUAGE" : "IDIOMA"}</small>
-          <strong>{english ? "English" : "Español"}</strong>
-        </span>
-        <i aria-hidden="true"><b /></i>
-      </button>
     </div>
   );
 }

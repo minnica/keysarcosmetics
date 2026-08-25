@@ -1,11 +1,2 @@
-import { PayrollOverviewPage } from "@/components/payroll/payroll-overview-page";
-
-export default function NominaEspecialistasPage() {
-  return (
-    <PayrollOverviewPage
-      payrollType="SPECIALIST"
-      title="Nómina especialistas"
-      description="Consulta el sueldo de facialistas y especialistas activos."
-    />
-  );
-}
+import { PayrollDemoPage } from "@/components/payroll/payroll-demo-page";
+export default function Page() { return <PayrollDemoPage view="SPECIALIST" />; }

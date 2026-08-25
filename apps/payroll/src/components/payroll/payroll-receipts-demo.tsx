@@ -1,0 +1,48 @@
+"use client";
+
+import { useState } from "react";
+import { Banknote, Download, Eye, FileText, ReceiptText, Send } from "lucide-react";
+import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  Label,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  Separator,
+  toast,
+} from "@cosmetics/ui";
+import { type EmployeePayrollLine, usePayrollDemo } from "./payroll-demo-context";
+
+const money = new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" });
+
+function Receipt({ line, periodStart, periodEnd }: { line: EmployeePayrollLine; periodStart: string; periodEnd: string }) {
+  const { state } = usePayrollDemo();
+  const movements = state.movements.filter((movement) => movement.employeeId === line.employee.id && movement.periodStart === periodStart && movement.status === "APPROVED");
+  const branch = state.branches.find((item) => item.id === line.employee.branchId);
+  return <div className="mx-auto max-w-xl overflow-hidden rounded-2xl border border-[color:var(--border-color)] bg-[color:var(--bg-card)] shadow-xl"><div className="bg-[#4f4a44] px-6 py-5 text-white"><p className="font-brand text-xl tracking-widest">KEYSAR COSMETICS</p><p className="mt-1 text-xs uppercase tracking-[0.16em] text-white/65">Recibo de nómina · demostración</p></div><div className="space-y-5 p-6"><div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><p className="text-xs uppercase tracking-wider text-[color:var(--text-muted)]">Empleado</p><p className="mt-1 font-semibold">{line.employee.name}</p><p className="text-sm text-[color:var(--text-muted)]">{line.employee.position} · {branch?.name}</p></div><Badge variant="outline">{periodStart} — {periodEnd}</Badge></div><Separator /><div className="grid gap-3 sm:grid-cols-2"><div className="rounded-xl bg-[color:var(--accent-hover)]/40 p-4"><p className="text-xs uppercase tracking-wider text-[color:var(--text-muted)]">Ventas compactadas</p><p className="number-display mt-1 text-xl">{money.format(line.sales)}</p></div><div className="rounded-xl bg-[color:var(--accent-hover)]/40 p-4"><p className="text-xs uppercase tracking-wider text-[color:var(--text-muted)]">Tasa / esquema</p><p className="mt-1 font-semibold">{line.rate > 0 ? `${(line.rate * 100).toFixed(1)}%` : "NO APLICA"}</p><p className="text-xs text-[color:var(--text-muted)]">{line.schemeName}</p></div></div><div className="space-y-2 text-sm"><div className="flex justify-between"><span>Sueldo fijo</span><strong>{money.format(line.fixedSalary)}</strong></div><div className="flex justify-between"><span>Comisión</span><strong>{money.format(line.commission)}</strong></div>{movements.map((movement) => <div key={movement.id} className="flex justify-between"><span>{movement.concept}</span><strong className={movement.type === "FINE" ? "text-rose-700 dark:text-rose-300" : "text-emerald-700 dark:text-emerald-300"}>{movement.type === "FINE" ? "−" : "+"}{money.format(movement.amount)}</strong></div>)}<div className="flex justify-between"><span>Cuota de préstamo</span><strong className="text-rose-700 dark:text-rose-300">−{money.format(line.loanDeduction)}</strong></div></div><Separator /><div className="flex items-end justify-between gap-4"><div><p className="text-xs text-[color:var(--text-muted)]">Pago a {line.employee.bank}</p><p className="text-sm font-medium">{line.employee.account}</p></div><div className="text-right"><p className="text-xs uppercase tracking-wider text-[color:var(--text-muted)]">Total neto</p><p className="number-display text-2xl">{money.format(line.total)}</p></div></div></div></div>;
+}
+
+export function PayrollReceiptsDemo() {
+  const { state, currentPeriod, periodOptions, payrollLines } = usePayrollDemo();
+  const [periodStart, setPeriodStart] = useState(currentPeriod.start);
+  const [preview, setPreview] = useState<EmployeePayrollLine | null>(null);
+  const period = periodOptions.find((item) => item.start === periodStart) ?? currentPeriod;
+  const run = state.runs.find((item) => item.periodStart === periodStart);
+  const lines = payrollLines(periodStart, run?.mode ?? "WITH_VAT");
+
+  return <div className="space-y-7"><header className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between"><div><div className="mb-2 flex items-center gap-2"><Badge variant="outline">RECIBO COMPACTO</Badge><span className="text-xs text-[color:var(--text-muted)]">Ventas, bonos, multas y movimientos</span></div><h1 className="page-title">Recibos de nómina</h1><p className="mt-1 text-sm text-[color:var(--text-muted)]">Previsualiza el contenido consolidado que recibirá cada empleado.</p></div><div className="w-full max-w-md space-y-2"><Label>Periodo</Label><Select value={periodStart} onValueChange={setPeriodStart}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{periodOptions.map((item) => <SelectItem key={item.start} value={item.start}>{item.label}</SelectItem>)}</SelectContent></Select></div></header><div className="grid gap-4 sm:grid-cols-3"><Card><CardContent className="p-5"><ReceiptText className="h-5 w-5 text-[color:var(--text-secondary)]" /><p className="label-caps mt-4">RECIBOS</p><p className="number-display mt-2 text-2xl">{lines.length}</p></CardContent></Card><Card><CardContent className="p-5"><Banknote className="h-5 w-5 text-emerald-600" /><p className="label-caps mt-4">TOTAL NETO</p><p className="number-display mt-2 text-2xl">{money.format(lines.reduce((sum, line) => sum + line.total, 0))}</p></CardContent></Card><Card><CardContent className="p-5"><FileText className="h-5 w-5 text-sky-600" /><p className="label-caps mt-4">ESTATUS DE CORRIDA</p><p className="mt-2 text-lg font-semibold">{run?.status ?? "SIN CORRIDA"}</p></CardContent></Card></div><Card className="border-[color:var(--border-color)]"><CardHeader><CardTitle className="section-heading uppercase">Empleados del periodo</CardTitle><CardDescription>Las acciones de descarga y envío son simuladas; no generan archivos ni mensajes reales.</CardDescription></CardHeader><CardContent className="grid gap-3 lg:grid-cols-2">{lines.map((line) => { const decision = state.decisions.find((item) => item.employeeId === line.employee.id && item.periodStart === periodStart); return <div key={line.employee.id} className="flex flex-col gap-4 rounded-xl border border-[color:var(--border-color)] p-4 sm:flex-row sm:items-center sm:justify-between"><div><div className="flex flex-wrap items-center gap-2"><p className="font-semibold">{line.employee.name}</p>{decision?.status === "AUTHORIZED" && <Badge className="bg-emerald-600 text-white">VALIDADO</Badge>}</div><p className="text-xs text-[color:var(--text-muted)]">{line.employee.position} · {line.employee.bank}</p><p className="number-display mt-2 text-lg">{money.format(line.total)}</p></div><div className="flex gap-1"><Button size="icon" variant="outline" aria-label="Previsualizar" onClick={() => setPreview(line)}><Eye className="h-4 w-4" /></Button><Button size="icon" variant="outline" aria-label="Descargar" onClick={() => toast.success("Descarga simulada: el backend no fue utilizado.")}><Download className="h-4 w-4" /></Button><Button size="icon" aria-label="Enviar" onClick={() => toast.info("Envío simulado; no se contactó al empleado.")}><Send className="h-4 w-4" /></Button></div></div>; })}</CardContent></Card><Dialog open={Boolean(preview)} onOpenChange={(open) => { if (!open) setPreview(null); }}><DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto"><DialogHeader><DialogTitle>Vista previa del recibo</DialogTitle><DialogDescription>Documento informativo generado desde el estado mock actual.</DialogDescription></DialogHeader>{preview && <Receipt line={preview} periodStart={period.start} periodEnd={period.end} />}</DialogContent></Dialog></div>;
+}
+

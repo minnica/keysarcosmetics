@@ -48,6 +48,7 @@ interface EmployeesViewProps {
   onAuthorize: (code: string) => boolean;
   onLock: () => void;
   onSaveRole: (role: EmployeeRole) => void;
+  onSaveSeller: (seller: Seller) => boolean;
   onToggleRole: (roleId: string) => void;
   onAssignRole: (sellerId: string, roleId: string) => void;
   onSetMasterAccess: (sellerIds: string[], code: string | null) => boolean;
@@ -131,6 +132,7 @@ export function EmployeesView({
   onAuthorize,
   onLock,
   onSaveRole,
+  onSaveSeller,
   onToggleRole,
   onAssignRole,
   onSetMasterAccess,
@@ -150,6 +152,7 @@ export function EmployeesView({
   const [newRoleDescription, setNewRoleDescription] = useState("");
   const [selectedMasterSellerIds, setSelectedMasterSellerIds] = useState<string[]>([]);
   const [newMasterCode, setNewMasterCode] = useState("");
+  const [sellerDraft, setSellerDraft] = useState<Seller | null>(null);
 
   useEffect(() => {
     if (selectedRole) setRoleDraft(cloneRole(selectedRole));
@@ -371,6 +374,39 @@ export function EmployeesView({
     toast.success(`${name} registrado. Configura ahora sus accesos.`);
   };
 
+  const openNewSeller = () => {
+    const defaultRole =
+      roles.find((role) => role.id === "role-seller" && role.active) ??
+      roles.find((role) => role.active && !role.system);
+    if (!defaultRole) {
+      toast.error("Primero registra o activa un rol para el vendedor.");
+      return;
+    }
+    setSellerDraft({
+      id: `seller-${crypto.randomUUID()}`,
+      name: "",
+      alias: "",
+      initials: "",
+      active: true,
+      accessCode: "",
+      masterAccessCode: null,
+      canViewCosts: defaultRole.configurationAccess.includes("REPORTS_COSTS"),
+      roleId: defaultRole.id,
+    });
+  };
+
+  const saveSeller = () => {
+    if (!sellerDraft) return;
+    const editing = sellers.some((seller) => seller.id === sellerDraft.id);
+    if (!onSaveSeller(sellerDraft)) return;
+    toast.success(
+      editing
+        ? `${sellerDraft.name.trim()} actualizado.`
+        : `${sellerDraft.name.trim()} registrado. Ya puede ingresar con el alias ${sellerDraft.alias.trim().toLocaleLowerCase("es-MX")}.`,
+    );
+    setSellerDraft(null);
+  };
+
   return (
     <div className="employees-admin-view view-stack">
       <div className="employees-admin-heading">
@@ -382,6 +418,9 @@ export function EmployeesView({
         <div>
           <Button type="button" variant="outline" onClick={onLock}>
             <LockKeyhole size={15} /> Bloquear módulo
+          </Button>
+          <Button type="button" variant="outline" onClick={openNewSeller}>
+            <Plus size={15} /> Registrar vendedor
           </Button>
           <Button type="button" onClick={() => setNewRoleOpen(true)}>
             <Plus size={15} /> Registrar rol
@@ -654,7 +693,7 @@ export function EmployeesView({
                   <span className="employee-assignment-avatar">{seller.initials}</span>
                   <span>
                     <strong>{seller.name}</strong>
-                    <small>Código personal •••• · {seller.active ? "Activo" : "Baja"}</small>
+                    <small>Alias: {seller.alias} · Código personal •••• · {seller.active ? "Activo" : "Baja"}</small>
                   </span>
                   <Select
                     value={seller.roleId}
@@ -675,12 +714,112 @@ export function EmployeesView({
                   <Badge variant="outline">
                     {assignedRole?.moduleAccess.length ?? 0} MÓDULOS
                   </Badge>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="employee-edit-button"
+                    aria-label={`Editar ${seller.name}`}
+                    onClick={() => setSellerDraft({ ...seller })}
+                  >
+                    <PencilLine size={15} />
+                  </Button>
                 </article>
               );
             })}
           </div>
         </CardContent>
       </Card>
+
+      <Dialog open={Boolean(sellerDraft)} onOpenChange={(open) => !open && setSellerDraft(null)}>
+        <DialogContent className="sm:max-w-[620px]">
+          <DialogHeader>
+            <DialogTitle>
+              {sellerDraft && sellers.some((seller) => seller.id === sellerDraft.id)
+                ? "Editar vendedor"
+                : "Registrar nuevo vendedor"}
+            </DialogTitle>
+            <DialogDescription>
+              El nombre se mostrará en tickets, ventas y reportes. El alias será el usuario corto para ingresar al sistema.
+            </DialogDescription>
+          </DialogHeader>
+          {sellerDraft && (
+            <div className="employee-new-seller-fields">
+              <div className="field-stack">
+                <Label htmlFor="employee-ticket-name">Nombre para ticket</Label>
+                <Input
+                  id="employee-ticket-name"
+                  value={sellerDraft.name}
+                  onChange={(event) => setSellerDraft((current) => current ? { ...current, name: event.target.value } : current)}
+                  placeholder="Ej. Ana Torres"
+                  autoComplete="name"
+                />
+                <small>Este nombre será visible para el cliente y en todos los reportes.</small>
+              </div>
+              <div className="field-stack">
+                <Label htmlFor="employee-login-alias">Alias de acceso</Label>
+                <Input
+                  id="employee-login-alias"
+                  value={sellerDraft.alias}
+                  onChange={(event) => setSellerDraft((current) => current ? { ...current, alias: event.target.value.toLocaleLowerCase("es-MX").replace(/\s+/g, "") } : current)}
+                  placeholder="Ej. ana"
+                  autoComplete="username"
+                />
+                <small>Único, de 3 a 24 caracteres y sin espacios.</small>
+              </div>
+              <div className="field-stack">
+                <Label htmlFor="employee-personal-code">Código personal</Label>
+                <Input
+                  id="employee-personal-code"
+                  type="password"
+                  inputMode="numeric"
+                  maxLength={4}
+                  value={sellerDraft.accessCode}
+                  onChange={(event) => setSellerDraft((current) => current ? { ...current, accessCode: event.target.value.replace(/\D/g, "") } : current)}
+                  placeholder="4 dígitos"
+                  autoComplete="new-password"
+                />
+              </div>
+              <div className="field-stack">
+                <Label>Rol o puesto</Label>
+                <Select value={sellerDraft.roleId} onValueChange={(roleId) => setSellerDraft((current) => current ? { ...current, roleId } : current)}>
+                  <SelectTrigger><SelectValue placeholder="Selecciona rol" /></SelectTrigger>
+                  <SelectContent>
+                    {roles.filter((role) => role.active && !role.system).map((role) => (
+                      <SelectItem key={role.id} value={role.id}>{role.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="field-stack">
+                <Label>Estado del vendedor</Label>
+                <Select value={sellerDraft.active ? "ACTIVE" : "INACTIVE"} onValueChange={(value) => setSellerDraft((current) => current ? { ...current, active: value === "ACTIVE" } : current)}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ACTIVE">Activo</SelectItem>
+                    <SelectItem value="INACTIVE">Baja / inactivo</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setSellerDraft(null)}>Cancelar</Button>
+            <Button
+              type="button"
+              onClick={saveSeller}
+              disabled={
+                !sellerDraft ||
+                !sellerDraft.name.trim() ||
+                !sellerDraft.alias.trim() ||
+                sellerDraft.accessCode.length !== 4
+              }
+            >
+              <Check size={15} /> Guardar vendedor
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={newRoleOpen} onOpenChange={setNewRoleOpen}>
         <DialogContent className="sm:max-w-[520px]">

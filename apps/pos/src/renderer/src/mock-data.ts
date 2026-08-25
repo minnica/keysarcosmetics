@@ -88,6 +88,14 @@ export const products: Product[] = [
     group: "Cuidado facial",
     kind: "PRODUCT",
     image: "/products/renewal-serum.png",
+    description:
+      "Sérum de textura sedosa que acompaña la renovación visible de la piel y deja una apariencia tersa, luminosa y confortable.",
+    benefits: [
+      "Favorece una apariencia más firme",
+      "Aporta luminosidad y suavidad",
+      "Textura ligera de rápida absorción",
+    ],
+    showInDigitalCatalog: true,
     minPrice: 690,
     maxPrice: 890,
     includesVat: true,
@@ -113,6 +121,14 @@ export const products: Product[] = [
     group: "Cuidado facial",
     kind: "PRODUCT",
     image: "/products/hydra-cloud-cream.png",
+    description:
+      "Crema envolvente de sensación nube que ayuda a conservar la hidratación y aporta confort sin una sensación pesada.",
+    benefits: [
+      "Hidratación prolongada",
+      "Acabado suave y aterciopelado",
+      "Ideal para el ritual diario",
+    ],
+    showInDigitalCatalog: true,
     minPrice: 580,
     maxPrice: 760,
     includesVat: true,
@@ -138,6 +154,14 @@ export const products: Product[] = [
     group: "Cuidado facial",
     kind: "PRODUCT",
     image: "/products/vitamin-c-glow.png",
+    description:
+      "Concentrado antioxidante que ilumina la apariencia del rostro y complementa la rutina con un acabado fresco y uniforme.",
+    benefits: [
+      "Ayuda a recuperar la luminosidad",
+      "Contribuye a una apariencia uniforme",
+      "Sensación fresca y refinada",
+    ],
+    showInDigitalCatalog: true,
     minPrice: 620,
     maxPrice: 820,
     includesVat: true,
@@ -163,6 +187,14 @@ export const products: Product[] = [
     group: "Cuidado facial",
     kind: "PRODUCT",
     image: "/products/mineral-spf-50.png",
+    description:
+      "Protección mineral diaria de textura elegante que acompaña la piel frente a la exposición solar con un acabado cómodo.",
+    benefits: [
+      "Protección de amplio espectro SPF 50",
+      "Textura de uso cotidiano",
+      "Complemento esencial del cuidado facial",
+    ],
+    showInDigitalCatalog: true,
     minPrice: 420,
     maxPrice: 590,
     includesVat: true,
@@ -188,6 +220,14 @@ export const products: Product[] = [
     group: "Servicios de belleza",
     kind: "SERVICE",
     image: "/products/brow-sculpt.png",
+    description:
+      "Diseño de ceja personalizado que armoniza las facciones y crea un acabado pulido respetando la expresión natural.",
+    benefits: [
+      "Diseño adaptado al rostro",
+      "Definición de apariencia natural",
+      "Atención profesional personalizada",
+    ],
+    showInDigitalCatalog: true,
     minPrice: 350,
     maxPrice: 520,
     includesVat: true,
@@ -208,6 +248,14 @@ export const products: Product[] = [
     group: "Servicios de belleza",
     kind: "SERVICE",
     image: "/products/signature-facial.png",
+    description:
+      "Ritual facial insignia que combina preparación, cuidado y relajación para devolver al rostro una apariencia descansada y radiante.",
+    benefits: [
+      "Protocolo ajustado a la piel",
+      "Experiencia de relajación profunda",
+      "Apariencia luminosa y revitalizada",
+    ],
+    showInDigitalCatalog: true,
     minPrice: 780,
     maxPrice: 1100,
     includesVat: true,
@@ -275,6 +323,7 @@ export const sellers: Seller[] = [
   {
     id: "seller-ana",
     name: "Ana Torres",
+    alias: "ana",
     initials: "AT",
     active: true,
     accessCode: "1101",
@@ -285,6 +334,7 @@ export const sellers: Seller[] = [
   {
     id: "seller-sofia",
     name: "Sofía Méndez",
+    alias: "sofia",
     initials: "SM",
     active: true,
     accessCode: "2202",
@@ -295,6 +345,7 @@ export const sellers: Seller[] = [
   {
     id: "seller-daniela",
     name: "Daniela Ruiz",
+    alias: "daniela",
     initials: "DR",
     active: true,
     accessCode: "3303",
@@ -305,6 +356,7 @@ export const sellers: Seller[] = [
   {
     id: "seller-paola",
     name: "Paola Castro",
+    alias: "paola",
     initials: "PC",
     active: false,
     accessCode: "4404",

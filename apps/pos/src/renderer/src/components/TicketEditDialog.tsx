@@ -27,6 +27,7 @@ import {
 import { formatCurrency } from "../mock-data";
 import type {
   Product,
+  PaymentEntry,
   PaymentMethodOption,
   PaymentStatus,
   Seller,
@@ -64,8 +65,7 @@ export function TicketEditDialog({
   const [lines, setLines] = useState<EditableLine[]>([]);
   const [discountAmount, setDiscountAmount] = useState(0);
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>("PAID");
-  const [amountPaid, setAmountPaid] = useState(0);
-  const [paymentMethodId, setPaymentMethodId] = useState("");
+  const [payments, setPayments] = useState<PaymentEntry[]>([]);
   const [authorizationCode, setAuthorizationCode] = useState("");
 
   useEffect(() => {
@@ -77,21 +77,41 @@ export function TicketEditDialog({
     setPaymentStatus(
       ticket.ticketType === "LAYAWAY_PAYMENT" ? "PAID" : ticket.paymentStatus,
     );
-    setAmountPaid(
-      ticket.ticketType === "LAYAWAY_PAYMENT" ? ticket.total : ticket.amountPaid,
-    );
-    setPaymentMethodId(
-      ticket.payments[0]?.methodId ??
-        paymentMethods.find((method) => method.active)?.id ??
-        "",
+    const fallbackMethod = paymentMethods.find((method) => method.active)?.id ?? "";
+    setPayments(
+      ticket.payments.length > 0
+        ? ticket.payments.map((payment) => ({ ...payment }))
+        : ticket.amountPaid > 0 && fallbackMethod
+          ? [
+              {
+                id: crypto.randomUUID(),
+                methodId: fallbackMethod,
+                amount:
+                  ticket.ticketType === "LAYAWAY_PAYMENT"
+                    ? ticket.total
+                    : ticket.amountPaid,
+              },
+            ]
+          : [],
     );
     setAuthorizationCode("");
+    const recordedProductTotal = ticket.products.reduce(
+      (sum, line) => sum + line.total,
+      0,
+    );
+    const subtotalScale =
+      recordedProductTotal > 0 ? ticket.subtotal / recordedProductTotal : 1;
     setLines(
       ticket.products.map((line, index) => ({
         id: `${line.productId}-${index}-${crypto.randomUUID()}`,
         productId: line.productId,
         quantity: line.quantity,
-        unitPrice: line.quantity > 0 ? line.total / line.quantity : 0,
+        unitPrice:
+          line.quantity > 0
+            ? Math.round(
+                ((line.total * subtotalScale) / line.quantity) * 100,
+              ) / 100
+            : 0,
       })),
     );
   }, [open, paymentMethods, ticket]);
@@ -109,18 +129,19 @@ export function TicketEditDialog({
     Math.max(0, discountAmount || 0),
   );
   const total = Math.max(0, subtotal - normalizedDiscount);
+  const enteredPaymentTotal = payments.reduce(
+    (sum, payment) => sum + Math.max(0, Number(payment.amount) || 0),
+    0,
+  );
   const normalizedAmountPaid =
-    paymentStatus === "PAID"
-      ? total
-      : paymentStatus === "PENDING"
-        ? 0
-        : Math.min(total, Math.max(0, amountPaid || 0));
+    paymentStatus === "PENDING" ? 0 : Math.min(total, enteredPaymentTotal);
   const nextBalanceDue = Math.max(0, total - normalizedAmountPaid);
   const invalidLayaway =
     paymentStatus === "LAYAWAY" &&
     (normalizedAmountPaid <= 0 || normalizedAmountPaid >= total);
-  const needsPaymentMethod =
-    paymentStatus !== "PENDING" && normalizedAmountPaid > 0;
+  const invalidPaid =
+    paymentStatus === "PAID" && Math.abs(enteredPaymentTotal - total) > 0.01;
+  const needsPaymentMethod = paymentStatus !== "PENDING";
   const minimumTotal = lines.reduce((sum, line) => {
     const product = productById.get(line.productId);
     return sum + (product?.minPrice ?? 0) * line.quantity;
@@ -137,6 +158,40 @@ export function TicketEditDialog({
         ? current.filter((id) => id !== sellerId)
         : [...current, sellerId],
     );
+  };
+
+  const addPayment = () => {
+    const methodId =
+      paymentMethods.find(
+        (method) =>
+          method.active &&
+          !payments.some((payment) => payment.methodId === method.id),
+      )?.id ?? paymentMethods.find((method) => method.active)?.id ?? "";
+    if (!methodId) return;
+    const remaining = Math.max(0, total - enteredPaymentTotal);
+    setPayments((current) => {
+      if (remaining > 0.01 || current.length === 0) {
+        return [
+          ...current,
+          { id: crypto.randomUUID(), methodId, amount: remaining },
+        ];
+      }
+      const donorIndex = current.findIndex((payment) => payment.amount > 0.01);
+      if (donorIndex < 0)
+        return [
+          ...current,
+          { id: crypto.randomUUID(), methodId, amount: 0 },
+        ];
+      const dividedAmount = Math.round((current[donorIndex]!.amount / 2) * 100) / 100;
+      return [
+        ...current.map((payment, index) =>
+          index === donorIndex
+            ? { ...payment, amount: payment.amount - dividedAmount }
+            : payment,
+        ),
+        { id: crypto.randomUUID(), methodId, amount: dividedAmount },
+      ];
+    });
   };
 
   const updateLine = (lineId: string, changes: Partial<EditableLine>) => {
@@ -163,16 +218,35 @@ export function TicketEditDialog({
 
   const changePaymentStatus = (status: PaymentStatus) => {
     setPaymentStatus(status);
-    if (status === "PAID") setAmountPaid(total);
-    if (status === "PENDING") setAmountPaid(0);
+    const defaultMethod =
+      payments[0]?.methodId ??
+      paymentMethods.find((method) => method.active)?.id ??
+      "";
+    if (status === "PAID" && defaultMethod) {
+      setPayments((current) => [
+        { ...(current[0] ?? { id: crypto.randomUUID(), methodId: defaultMethod }), amount: total },
+      ]);
+    }
+    if (status === "PENDING") setPayments([]);
     if (status === "LAYAWAY") {
       const suggestedAmount = Math.min(
         Math.max(1, total * 0.3),
         Math.max(0, total - 0.01),
       );
-      setAmountPaid(
-        amountPaid > 0 && amountPaid < total ? amountPaid : suggestedAmount,
-      );
+      if (defaultMethod) {
+        setPayments((current) => [
+          {
+            ...(current[0] ?? {
+              id: crypto.randomUUID(),
+              methodId: defaultMethod,
+            }),
+            amount:
+              enteredPaymentTotal > 0 && enteredPaymentTotal < total
+                ? enteredPaymentTotal
+                : suggestedAmount,
+          },
+        ]);
+      }
     }
   };
 
@@ -243,6 +317,16 @@ export function TicketEditDialog({
                   >
                     <span>{seller.initials}</span>
                     {seller.name}
+                    <i
+                      className="ticket-edit-seller-action"
+                      aria-hidden="true"
+                    >
+                      {sellerIds.includes(seller.id) ? (
+                        <Minus size={12} />
+                      ) : (
+                        <Plus size={12} />
+                      )}
+                    </i>
                   </button>
                 ))}
             </div>
@@ -388,45 +472,92 @@ export function TicketEditDialog({
                 </button>
               ))}
             </div>
+            <div className="ticket-edit-payments-heading">
+              <span>FORMAS DE PAGO REGISTRADAS</span>
+              {paymentStatus !== "PENDING" && (
+                <Button type="button" variant="outline" size="sm" onClick={addPayment}>
+                  <Plus size={14} /> Agregar método
+                </Button>
+              )}
+            </div>
             <div className="ticket-edit-payment-grid">
-              <div className="field-stack">
-                <Label>Método de pago</Label>
-                <Select
-                  value={paymentMethodId}
-                  onValueChange={setPaymentMethodId}
-                  disabled={paymentStatus === "PENDING"}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecciona método" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {paymentMethods
-                      .filter(
-                        (method) =>
-                          method.active || method.id === paymentMethodId,
-                      )
-                      .map((method) => (
-                        <SelectItem key={method.id} value={method.id}>
-                          {method.label}
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="field-stack">
-                <Label htmlFor="ticket-edit-amount-paid">Monto cobrado</Label>
-                <Input
-                  id="ticket-edit-amount-paid"
-                  type="number"
-                  min="0"
-                  max={total}
-                  step="0.01"
-                  value={normalizedAmountPaid}
-                  disabled={paymentStatus !== "LAYAWAY"}
-                  onChange={(event) =>
-                    setAmountPaid(Number(event.target.value))
-                  }
-                />
+              <div className="ticket-edit-payment-list">
+                {payments.map((payment, index) => (
+                  <div className="ticket-edit-payment-row" key={payment.id}>
+                    <span className="payment-row-number">{index + 1}</span>
+                    <div className="field-stack">
+                      <Label>Método de pago</Label>
+                      <Select
+                        value={payment.methodId}
+                        onValueChange={(methodId) =>
+                          setPayments((current) =>
+                            current.map((item) =>
+                              item.id === payment.id
+                                ? { ...item, methodId }
+                                : item,
+                            ),
+                          )
+                        }
+                      >
+                        <SelectTrigger aria-label={`Método editado ${index + 1}`}>
+                          <SelectValue placeholder="Selecciona método" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {paymentMethods
+                            .filter(
+                              (method) =>
+                                method.active || method.id === payment.methodId,
+                            )
+                            .map((method) => (
+                              <SelectItem key={method.id} value={method.id}>
+                                {method.label}
+                              </SelectItem>
+                            ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="field-stack">
+                      <Label>Monto cobrado</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        max={total}
+                        step="0.01"
+                        value={payment.amount}
+                        aria-label={`Monto editado ${index + 1}`}
+                        onChange={(event) =>
+                          setPayments((current) =>
+                            current.map((item) =>
+                              item.id === payment.id
+                                ? { ...item, amount: Number(event.target.value) }
+                                : item,
+                            ),
+                          )
+                        }
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      title="Quitar método"
+                      aria-label={`Quitar método de pago ${index + 1}`}
+                      disabled={payments.length === 1}
+                      onClick={() =>
+                        setPayments((current) =>
+                          current.filter((item) => item.id !== payment.id),
+                        )
+                      }
+                    >
+                      <Minus size={15} />
+                    </Button>
+                  </div>
+                ))}
+                {paymentStatus !== "PENDING" && payments.length === 0 && (
+                  <button type="button" className="ticket-edit-empty-payment" onClick={addPayment}>
+                    <Plus size={15} /> Agregar el primer método de pago
+                  </button>
+                )}
               </div>
               <div className="ticket-edit-payment-preview">
                 <span>Saldo actualizado</span>
@@ -442,6 +573,11 @@ export function TicketEditDialog({
                 </small>
               </div>
             </div>
+            {invalidPaid && (
+              <small className="is-negative">
+                Los métodos de pago deben sumar exactamente {formatCurrency(total)}.
+              </small>
+            )}
             {invalidLayaway && (
               <small className="is-negative">
                 El apartado requiere un abono mayor a $0 y menor al total.
@@ -519,7 +655,12 @@ export function TicketEditDialog({
               discountAmount < 0 ||
               discountAmount > subtotal ||
               invalidLayaway ||
-              (needsPaymentMethod && !paymentMethodId)
+              invalidPaid ||
+              (needsPaymentMethod &&
+                (payments.length === 0 ||
+                  payments.some(
+                    (payment) => !payment.methodId || payment.amount <= 0,
+                  )))
             }
             onClick={() => {
               const saved = onSave(ticket.id, {
@@ -534,7 +675,8 @@ export function TicketEditDialog({
                 discountAmount: normalizedDiscount,
                 paymentStatus,
                 amountPaid: normalizedAmountPaid,
-                paymentMethodId,
+                paymentMethodId: payments[0]?.methodId ?? "",
+                payments: payments.map((payment) => ({ ...payment })),
                 authorizationCode,
               });
               if (saved) onOpenChange(false);

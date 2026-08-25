@@ -1,16 +1,2 @@
-"use client";
-
-import { MovementCatalogPage } from "@/components/payroll/movement-catalog-page";
-
-export default function MultasPage() {
-  return (
-    <MovementCatalogPage
-      kind="FINE"
-      singular="Multa"
-      plural="Multas"
-      createLabel="Nueva multa"
-      description="Conceptos de descuento listos para movimientos."
-      tone="rose"
-    />
-  );
-}
+import { PayrollSettingsDemo } from "@/components/payroll/payroll-settings-demo";
+export default function Page() { return <PayrollSettingsDemo />; }

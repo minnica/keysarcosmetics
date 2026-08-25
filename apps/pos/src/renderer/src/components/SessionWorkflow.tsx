@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   AlertTriangle,
+  ArrowLeft,
   ArrowRight,
   BadgePercent,
   Boxes,
@@ -163,15 +164,15 @@ export function PosLoginScreen({
         <div className="software-login-form">
           <span className="section-kicker">{english ? "SYSTEM ACCESS" : "ACCESO AL SISTEMA"}</span>
           <h1>{english ? "Start your day" : "Iniciar jornada"}</h1>
-          <p>{english ? "Identify the company, your user and today's operating terminal." : "Identifica la empresa, tu usuario y la terminal donde operarás hoy."}</p>
+          <p>{english ? "Identify the company, your access alias and today's operating terminal." : "Identifica la empresa, tu alias de acceso y la terminal donde operarás hoy."}</p>
 
           <div className="field-stack">
             <Label>{english ? "Company name" : "Nombre de la empresa"}</Label>
             <div className="software-login-input"><Building2 size={17} /><Input value={company} onChange={(event) => setCompany(event.target.value)} placeholder={english ? "Company" : "Empresa"} /></div>
           </div>
           <div className="field-stack">
-            <Label>{english ? "User" : "Usuario"}</Label>
-            <div className="software-login-input"><UserRound size={17} /><Input value={username} onChange={(event) => setUsername(event.target.value)} placeholder={english ? "Name or username" : "Nombre o usuario"} autoComplete="username" /></div>
+            <Label>{english ? "Access alias" : "Alias de acceso"}</Label>
+            <div className="software-login-input"><UserRound size={17} /><Input value={username} onChange={(event) => setUsername(event.target.value)} placeholder={english ? "Employee alias" : "Alias del vendedor"} autoComplete="username" /></div>
           </div>
           <div className="field-stack">
             <Label>{english ? "Password or code" : "Contraseña o código"}</Label>
@@ -202,7 +203,7 @@ export function PosLoginScreen({
           </Button>
           <small className="software-login-demo">
             {english ? "Demo" : "Pruebas"}: <b>{masterUser.name}</b> / <b>{masterUser.accessCode}</b>
-            {sellers.filter((seller) => seller.active).slice(0, 1).map((seller) => ` · ${seller.name} / ${seller.accessCode}`)}
+            {sellers.filter((seller) => seller.active).slice(0, 1).map((seller) => ` · ${seller.alias} / ${seller.accessCode}`)}
           </small>
         </div>
       </section>
@@ -219,6 +220,7 @@ interface InventoryCountScreenProps {
   canSkip: boolean;
   showDifferences: boolean;
   language: "ES" | "EN";
+  onBack?: () => void;
   onComplete: (lines: InventoryAuditLine[], skipped: boolean, comment: string) => void;
 }
 
@@ -231,6 +233,7 @@ export function InventoryCountScreen({
   canSkip,
   showDifferences,
   language,
+  onBack,
   onComplete,
 }: InventoryCountScreenProps) {
   const english = language === "EN";
@@ -243,6 +246,10 @@ export function InventoryCountScreen({
     const value = counts[product.id];
     return value !== undefined && value !== "" && Number(value) !== (expectedStock[product.id] ?? 0);
   }).length;
+  const correctCounts = counted - differences;
+  const countedPercentage = products.length > 0 ? Math.round((counted / products.length) * 100) : 0;
+  const correctPercentage = products.length > 0 ? Math.round((correctCounts / products.length) * 100) : 0;
+  const errorPercentage = products.length > 0 ? Math.round((differences / products.length) * 100) : 0;
 
   const buildLines = () =>
     products.map((product) => {
@@ -261,6 +268,16 @@ export function InventoryCountScreen({
 
   return (
     <main className="inventory-count-screen">
+      {mode === "CLOSING" && onBack && (
+        <Button
+          type="button"
+          variant="outline"
+          className="inventory-count-back-button"
+          onClick={onBack}
+        >
+          <ArrowLeft size={16} /> Regresar al menú
+        </Button>
+      )}
       <header className="inventory-count-header">
         <div>
           <span className="section-kicker">{mode === "OPENING" ? (english ? "DAY OPENING" : "APERTURA DE JORNADA") : (english ? "PRE-CLOSING AUDIT" : "AUDITORÍA PREVIA AL CORTE")}</span>
@@ -270,7 +287,39 @@ export function InventoryCountScreen({
         <div className="inventory-count-progress">
           <strong>{counted}/{products.length}</strong>
           <span>{english ? "products counted" : "productos contados"}</span>
-          <i><b style={{ width: `${products.length > 0 ? (counted / products.length) * 100 : 0}%` }} /></i>
+          <i><b style={{ width: `${countedPercentage}%` }} /></i>
+          <div className="inventory-count-progress-bars">
+            <div className="inventory-count-quality is-correct">
+              <span>
+                <b>{english ? "Correct count" : "Conteo correcto"}</b>
+                <strong>{correctPercentage}%</strong>
+              </span>
+              <i
+                role="progressbar"
+                aria-label={english ? "Correct count percentage" : "Porcentaje de conteo correcto"}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={correctPercentage}
+              >
+                <b style={{ width: `${correctPercentage}%` }} />
+              </i>
+            </div>
+            <div className="inventory-count-quality is-error">
+              <span>
+                <b>{english ? "Count error" : "Error en conteo"}</b>
+                <strong>{errorPercentage}%</strong>
+              </span>
+              <i
+                role="progressbar"
+                aria-label={english ? "Count error percentage" : "Porcentaje de error en conteo"}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={errorPercentage}
+              >
+                <b style={{ width: `${errorPercentage}%` }} />
+              </i>
+            </div>
+          </div>
         </div>
       </header>
 
@@ -279,7 +328,14 @@ export function InventoryCountScreen({
           <>
             <span><i className="is-match" /> {english ? "Matches system" : "Coincide con sistema"}</span>
             <span><i className="is-error" /> {english ? "Inventory difference" : "Diferencia de inventario"}</span>
-            {differences > 0 && <Badge variant="outline">{differences} {english ? "differences detected" : "diferencias detectadas"}</Badge>}
+            {differences > 0 && (
+              <Badge variant="outline">
+                {differences}{" "}
+                {english
+                  ? differences === 1 ? "difference detected" : "differences detected"
+                  : differences === 1 ? "diferencia detectada" : "diferencias detectadas"}
+              </Badge>
+            )}
           </>
         ) : (
           <span><ShieldCheck size={15} /> {english ? "Blind count · differences are protected for administration" : "Conteo ciego · las diferencias están protegidas para administración"}</span>

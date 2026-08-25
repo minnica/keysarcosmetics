@@ -1,4 +1,5 @@
-import { PackageCheck, Printer, X } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Gift, PackageCheck, Printer, X } from "lucide-react";
 import {
   Button,
   Dialog,
@@ -7,28 +8,54 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
 } from "@cosmetics/ui";
 import { formatCurrency } from "../mock-data";
 import { getTicketTaxSummary } from "../tax";
-import type { PaymentMethodOption, ReceiptSettings, Ticket } from "../types";
+import type {
+  LayawayRecord,
+  PaymentMethodOption,
+  ReceiptSettings,
+  Ticket,
+  VoucherIssue,
+  VoucherTemplate,
+} from "../types";
 
 interface ReceiptTicketDialogProps {
   open: boolean;
   ticket: Ticket | null;
+  layaway: LayawayRecord | null;
   settings: ReceiptSettings;
   branchAddresses: Record<string, string>;
   paymentMethods: PaymentMethodOption[];
+  voucherTemplates: VoucherTemplate[];
+  onIssueVoucher: (ticket: Ticket, voucherId: string) => VoucherIssue | null;
   onOpenChange: (open: boolean) => void;
 }
 
 export function ReceiptTicketDialog({
   open,
   ticket,
+  layaway,
   settings,
   branchAddresses,
   paymentMethods,
+  voucherTemplates,
+  onIssueVoucher,
   onOpenChange,
 }: ReceiptTicketDialogProps) {
+  const [selectedVoucherId, setSelectedVoucherId] = useState("");
+  const [issuedVoucher, setIssuedVoucher] = useState<VoucherIssue | null>(null);
+
+  useEffect(() => {
+    setSelectedVoucherId("");
+    setIssuedVoucher(null);
+  }, [open, ticket?.id]);
+
   if (!ticket) return null;
 
   const paymentLabel = (methodId: string) =>
@@ -174,6 +201,7 @@ export function ReceiptTicketDialog({
                 ticket.payments.map((payment) => (
                   <div key={payment.id}>
                     <span>
+                      {payment.folio && <small>Folio {payment.folio}</small>}
                       {paymentLabel(payment.methodId)}
                       {payment.cardOrBank ? ` · ${payment.cardOrBank}` : ""}
                       {payment.authorizationCode
@@ -197,6 +225,56 @@ export function ReceiptTicketDialog({
               )}
             </section>
 
+            {layaway && layaway.payments.length > 0 && (
+              <section className="customer-ticket-payment-history">
+                <h3>HISTORIAL DE PAGOS</h3>
+                {layaway.payments.map((payment) => {
+                  const entries = payment.payments ?? [
+                    {
+                      id: payment.id,
+                      methodId: payment.methodId,
+                      amount: payment.amount,
+                    },
+                  ];
+                  return (
+                    <div key={payment.id}>
+                      <span>
+                        <strong>{payment.folio}</strong>
+                        <small>{payment.createdAt}</small>
+                        <small>
+                          {entries
+                            .map(
+                              (entry) =>
+                                `${paymentLabel(entry.methodId)}${entry.cardOrBank ? ` · ${entry.cardOrBank}` : ""}${entry.authorizationCode ? ` · Aut. ${entry.authorizationCode}` : ""} ${formatCurrency(entry.amount)}`,
+                            )
+                            .join(" + ")}
+                        </small>
+                      </span>
+                      <span>
+                        <strong>{formatCurrency(payment.amount)}</strong>
+                        {typeof payment.balanceAfter === "number" && (
+                          <small>
+                            Saldo {formatCurrency(payment.balanceAfter)}
+                          </small>
+                        )}
+                      </span>
+                    </div>
+                  );
+                })}
+                <div className={layaway.status === "PAID" ? "is-paid" : ""}>
+                  <span>
+                    <strong>ESTATUS DEL APARTADO</strong>
+                  </span>
+                  <span>
+                    <strong>
+                      {layaway.status === "PAID" ? "LIQUIDADO" : "SALDO PENDIENTE"}
+                    </strong>
+                    <small>{formatCurrency(layaway.balanceDue)}</small>
+                  </span>
+                </div>
+              </section>
+            )}
+
             <footer className="customer-ticket-footer">
               {settings.footerMessage && (
                 <strong>{settings.footerMessage}</strong>
@@ -206,6 +284,46 @@ export function ReceiptTicketDialog({
             </footer>
           </article>
         </div>
+
+        {ticket.ticketType !== "LAYAWAY_PAYMENT" && voucherTemplates.length > 0 && (
+          <section className="receipt-voucher-picker">
+            <div>
+              <Gift size={18} />
+              <span>
+                <strong>Promoción para la próxima visita</strong>
+                <small>Elige sólo si deseas emitir e imprimir un voucher.</small>
+              </span>
+            </div>
+            {!issuedVoucher ? (
+              <div className="receipt-voucher-picker-actions">
+                <Select value={selectedVoucherId} onValueChange={setSelectedVoucherId}>
+                  <SelectTrigger><SelectValue placeholder="Elegir voucher" /></SelectTrigger>
+                  <SelectContent>
+                    {voucherTemplates.map((voucher) => (
+                      <SelectItem key={voucher.id} value={voucher.id}>{voucher.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={!selectedVoucherId}
+                  onClick={() => setIssuedVoucher(onIssueVoucher(ticket, selectedVoucherId))}
+                >
+                  <Gift size={15} /> Generar
+                </Button>
+              </div>
+            ) : (
+              <article className="customer-voucher-print">
+                <small>VOUCHER PROMOCIONAL</small>
+                <h3>{issuedVoucher.voucherName}</h3>
+                <p>{issuedVoucher.message}</p>
+                <strong>{issuedVoucher.folio}</strong>
+                <span>{issuedVoucher.clientName} · {issuedVoucher.branch}</span>
+              </article>
+            )}
+          </section>
+        )}
 
         <DialogFooter>
           <Button

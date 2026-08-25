@@ -4,21 +4,18 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
-  ArrowLeftRight,
-  BadgeDollarSign,
   BarChart2,
   ChevronDown,
   CircleDollarSign,
   FileText,
-  Gavel,
   HandCoins,
   LayoutDashboard,
   LogOut,
   Moon,
-  Plane,
-  ReceiptText,
+  ShieldCheck,
   Sun,
   TrendingUp,
+  UserCircle2,
   UserRoundCheck,
   WalletCards,
   X,
@@ -40,8 +37,7 @@ import {
   SidebarTrigger,
   useSidebar,
 } from "@cosmetics/ui";
-import { PayrollDataProvider } from "./payroll-data-context";
-import { useSession } from "@/lib/session";
+import { PayrollDemoProvider } from "./payroll-demo-context";
 
 type SectionId = "payroll" | "operations" | "settings" | "reports";
 type NavItem = {
@@ -83,22 +79,19 @@ const sections: NavSection[] = [
     items: [
       {
         href: "/",
-        label: "Resumen",
+        label: "Consolidado",
         icon: LayoutDashboard,
       },
-      { href: "/movimientos", label: "Movimientos", icon: ArrowLeftRight },
-      { href: "/gastos", label: "Gastos", icon: ReceiptText },
       { href: "/prestamos-adelantos", label: "Préstamos", icon: HandCoins },
+      { href: "/mi-nomina", label: "Portal personal", icon: UserCircle2 },
     ],
   },
   {
     id: "settings",
     label: "Configuración",
     items: [
-      { href: "/esquemas", label: "Esquemas", icon: TrendingUp },
-      { href: "/bonos", label: "Bonos", icon: BadgeDollarSign },
-      { href: "/multas", label: "Multas", icon: Gavel },
-      { href: "/viaticos", label: "Viáticos", icon: Plane },
+      { href: "/configuracion", label: "Esquemas y conceptos", icon: TrendingUp },
+      { href: "/accesos", label: "Roles y accesos", icon: ShieldCheck },
     ],
   },
   {
@@ -215,7 +208,6 @@ function ThemeToggle() {
 function PayrollSidebar() {
   const pathname = usePathname();
   const router = useRouter();
-  const { logout } = useSession();
   const { isMobile, setOpenMobile, state: sidebarState } = useSidebar();
   const activeSection = getActiveSection(pathname);
   const [expandedSection, setExpandedSection] = useState<SectionId | null>(
@@ -227,7 +219,6 @@ function PayrollSidebar() {
   }, [activeSection]);
 
   function handleLogout() {
-    logout();
     router.push("/login");
   }
 
@@ -373,7 +364,7 @@ function PayrollSidebar() {
 
 export function PayrollShell({ children }: { children: React.ReactNode }) {
   return (
-    <PayrollDataProvider>
+    <PayrollDemoProvider>
       <SidebarProvider>
         <PayrollSidebar />
         <SidebarInset className="min-w-0 overflow-x-hidden">
@@ -395,6 +386,6 @@ export function PayrollShell({ children }: { children: React.ReactNode }) {
           <div className="min-w-0 p-6">{children}</div>
         </SidebarInset>
       </SidebarProvider>
-    </PayrollDataProvider>
+    </PayrollDemoProvider>
   );
 }

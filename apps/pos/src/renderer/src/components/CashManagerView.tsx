@@ -295,7 +295,7 @@ export function CashManagerView({
 
     const seller = activeSellers.find(
       (item) =>
-        matchesAccessUser(item.name, item.id, normalizedUser) &&
+        matchesAccessUser(item.alias, item.alias, normalizedUser) &&
         (hasMasterCode || item.accessCode === normalizedCode),
     );
     if (!seller) {
@@ -532,8 +532,8 @@ export function CashManagerView({
               value={loginSellerId}
               onChange={(event) => setLoginSellerId(event.target.value)}
               onKeyDown={(event) => { if (event.key === "Enter") login(); }}
-              placeholder="Escribe tu usuario"
-              aria-label="Usuario de Cash Manager"
+              placeholder="Escribe tu alias"
+              aria-label="Alias de acceso de Cash Manager"
               autoComplete="username"
             />
             <Input
@@ -550,7 +550,7 @@ export function CashManagerView({
               <UserRoundCheck size={16} /> Ingresar
             </Button>
           </div>
-          <small>Pruebas: Ana 1101 · Sofía 2202 · Daniela 3303 · Master 2468.</small>
+          <small>Pruebas: ana 1101 · sofia 2202 · daniela 3303 · master 2468.</small>
         </CardContent>
       </Card>
     );

@@ -22,11 +22,6 @@ import {
 import { formatCurrency } from "../mock-data";
 import { getTicketSpare } from "../spare";
 import { getTicketTaxSummary, roundCurrency } from "../tax";
-import {
-  getStoredInterfaceLanguage,
-  translateInterfaceRecord,
-  translateInterfaceText,
-} from "../i18n";
 import type {
   InventoryMovement,
   PaymentMethodOption,
@@ -454,7 +449,6 @@ export function XReportExecutiveExport({
     }
     setExporting("EXCEL");
     try {
-      const exportLanguage = getStoredInterfaceLanguage();
       const XLSX = await import("xlsx");
       const workbook = XLSX.utils.book_new();
       const appendSheet = (
@@ -462,14 +456,12 @@ export function XReportExecutiveExport({
         rows: Array<Record<string, string | number>>,
       ) => {
         const worksheet = XLSX.utils.json_to_sheet(
-          rows.length > 0
-            ? rows.map((row) => translateInterfaceRecord(row, exportLanguage))
-            : [translateInterfaceRecord({ Resultado: "Sin operaciones" }, exportLanguage)],
+          rows.length > 0 ? rows : [{ Resultado: "Sin operaciones" }],
         );
         if (worksheet["!ref"])
           worksheet["!autofilter"] = { ref: worksheet["!ref"] };
         worksheet["!cols"] = Array.from({ length: 15 }, () => ({ wch: 22 }));
-        XLSX.utils.book_append_sheet(workbook, worksheet, translateInterfaceText(name, exportLanguage));
+        XLSX.utils.book_append_sheet(workbook, worksheet, name);
       };
       appendSheet("Resumen ejecutivo", summaryRows);
       appendSheet("Sucursales", branchRows);
@@ -494,8 +486,6 @@ export function XReportExecutiveExport({
     }
     setExporting("PDF");
     try {
-      const exportLanguage = getStoredInterfaceLanguage();
-      const tr = (value: string) => translateInterfaceText(value, exportLanguage);
       const [{ jsPDF }, { autoTable }] = await Promise.all([
         import("jspdf"),
         import("jspdf-autotable"),
@@ -507,16 +497,16 @@ export function XReportExecutiveExport({
       doc.setFontSize(19);
       doc.text(receiptSettings.companyName.toUpperCase(), 36, 36);
       doc.setFontSize(15);
-      doc.text(exportLanguage === "EN" ? "EXECUTIVE OPERATIONS X-REPORT" : "X-REPORT EJECUTIVO DE OPERACIONES", 36, 58);
+      doc.text("X-REPORT EJECUTIVO DE OPERACIONES", 36, 58);
       doc.setFont("helvetica", "normal");
       doc.setFontSize(8.5);
       doc.text(
-        `${selectedBranch === "ALL" ? tr("Todas las sucursales") : selectedBranch} · ${dateFrom} ${exportLanguage === "EN" ? "to" : "al"} ${dateTo}`,
+        `${selectedBranch === "ALL" ? "Todas las sucursales" : selectedBranch} · ${dateFrom} al ${dateTo}`,
         36,
         75,
       );
       doc.text(
-        `${exportLanguage === "EN" ? "Generated" : "Generado"} ${new Date().toLocaleString(exportLanguage === "EN" ? "en-US" : "es-MX")} · ${receiptSettings.address}`,
+        `Generado ${new Date().toLocaleString("es-MX")} · ${receiptSettings.address}`,
         36,
         88,
       );
@@ -538,13 +528,11 @@ export function XReportExecutiveExport({
         }
         doc.setFont("helvetica", "bold");
         doc.setFontSize(10);
-        doc.text(tr(title), 36, cursorY);
+        doc.text(title, 36, cursorY);
         autoTable(doc, {
           startY: cursorY + 7,
-          head: [headers.map(tr)],
-          body: rows.length > 0
-            ? rows.map((row) => row.map((value) => typeof value === "string" ? tr(value) : value))
-            : [[tr("Sin operaciones")]],
+          head: [headers],
+          body: rows.length > 0 ? rows : [["Sin operaciones"]],
           theme: "grid",
           margin: { left: 36, right: 36 },
           styles: {

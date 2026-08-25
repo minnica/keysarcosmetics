@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   AlertTriangle,
   BellRing,
@@ -18,6 +18,7 @@ import {
   ShieldCheck,
   Star,
   Trash2,
+  UserRoundCheck,
   UserRound,
 } from "lucide-react";
 import {
@@ -46,10 +47,13 @@ import type {
   BillingHistoryEntry,
   BillingLocation,
   BillingProfile,
+  Seller,
 } from "../types";
 import { HistoryPagination, useHistoryPagination } from "./HistoryPagination";
 
 interface MyAccountViewProps {
+  isMasterSession: boolean;
+  currentSeller: Seller | null;
   authorized: boolean;
   profile: BillingProfile;
   cards: BillingCard[];
@@ -70,6 +74,192 @@ interface MyAccountViewProps {
   ) => void;
   onAddLocation: (name: string, costUsd: number) => boolean;
   onDeactivateLocation: (locationId: string) => boolean;
+  onSaveSellerAccess: (input: {
+    sellerId: string;
+    currentCode: string;
+    alias: string;
+    newCode: string;
+  }) => string | null;
+}
+
+interface SellerAccessAccountProps {
+  seller: Seller | null;
+  onSave: MyAccountViewProps["onSaveSellerAccess"];
+}
+
+function SellerAccessAccount({ seller, onSave }: SellerAccessAccountProps) {
+  const [alias, setAlias] = useState(seller?.alias ?? "");
+  const [currentCode, setCurrentCode] = useState("");
+  const [newCode, setNewCode] = useState("");
+  const [confirmCode, setConfirmCode] = useState("");
+  const [formError, setFormError] = useState("");
+
+  useEffect(() => {
+    setAlias(seller?.alias ?? "");
+  }, [seller?.alias]);
+
+  if (!seller) {
+    return (
+      <Card className="my-account-gate">
+        <CardContent>
+          <div className="my-account-gate-icon"><AlertTriangle size={27} /></div>
+          <span className="section-kicker">CUENTA NO DISPONIBLE</span>
+          <h2>No encontramos tu perfil</h2>
+          <p>La sesión no está ligada a un vendedor activo. Solicita apoyo a administración.</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const hasNewCode = newCode.length > 0 || confirmCode.length > 0;
+  const formIsReady =
+    alias.trim().length >= 3 &&
+    currentCode.length === 4 &&
+    (!hasNewCode || (newCode.length === 4 && confirmCode === newCode));
+
+  const saveAccess = () => {
+    setFormError("");
+    if (hasNewCode && newCode !== confirmCode) {
+      setFormError("La confirmación no coincide con la nueva contraseña.");
+      return;
+    }
+    const error = onSave({
+      sellerId: seller.id,
+      currentCode,
+      alias,
+      newCode,
+    });
+    if (error) {
+      setFormError(error);
+      return;
+    }
+    setCurrentCode("");
+    setNewCode("");
+    setConfirmCode("");
+    toast.success("Tus accesos generales se actualizaron correctamente.");
+  };
+
+  return (
+    <div className="seller-access-account">
+      <Card className="seller-access-identity-card">
+        <CardContent>
+          <div className="seller-access-avatar">{seller.initials}</div>
+          <div>
+            <span className="section-kicker">CUENTA PERSONAL</span>
+            <h2>{seller.name}</h2>
+            <p>Este nombre seguirá apareciendo en tickets, ventas y reportes.</p>
+          </div>
+          <Badge variant="outline"><ShieldCheck size={13} /> ACCESO PERSONAL</Badge>
+        </CardContent>
+      </Card>
+
+      <Card className="seller-access-form-card">
+        <CardContent>
+          <div className="account-section-heading data-card-heading">
+            <div>
+              <span className="section-kicker">SEGURIDAD DE LA CUENTA</span>
+              <h2>Alias y contraseña personal</h2>
+              <p>Los cambios se aplicarán a cualquier pantalla que solicite tu usuario o clave.</p>
+            </div>
+            <UserRoundCheck size={25} />
+          </div>
+
+          <div className="seller-access-fields">
+            <div className="field-stack seller-access-alias-field">
+              <Label htmlFor="seller-account-alias">Alias de acceso</Label>
+              <div className="account-input-icon">
+                <UserRound size={16} />
+                <Input
+                  id="seller-account-alias"
+                  value={alias}
+                  onChange={(event) => {
+                    setAlias(event.target.value.toLocaleLowerCase("es-MX").replace(/\s+/g, ""));
+                    setFormError("");
+                  }}
+                  placeholder="Tu alias"
+                  autoComplete="username"
+                />
+              </div>
+              <small>Único, de 3 a 24 caracteres; acepta letras, números, punto, guion y guion bajo.</small>
+            </div>
+
+            <div className="field-stack">
+              <Label htmlFor="seller-account-current-code">Contraseña personal actual</Label>
+              <div className="account-input-icon">
+                <LockKeyhole size={16} />
+                <Input
+                  id="seller-account-current-code"
+                  type="password"
+                  inputMode="numeric"
+                  maxLength={4}
+                  value={currentCode}
+                  onChange={(event) => {
+                    setCurrentCode(event.target.value.replace(/\D/g, ""));
+                    setFormError("");
+                  }}
+                  placeholder="4 dígitos"
+                  autoComplete="current-password"
+                />
+              </div>
+              <small>Confirma tu identidad antes de guardar cualquier modificación.</small>
+            </div>
+
+            <div className="field-stack">
+              <Label htmlFor="seller-account-new-code">Nueva contraseña personal</Label>
+              <div className="account-input-icon">
+                <LockKeyhole size={16} />
+                <Input
+                  id="seller-account-new-code"
+                  type="password"
+                  inputMode="numeric"
+                  maxLength={4}
+                  value={newCode}
+                  onChange={(event) => {
+                    setNewCode(event.target.value.replace(/\D/g, ""));
+                    setFormError("");
+                  }}
+                  placeholder="4 dígitos"
+                  autoComplete="new-password"
+                />
+              </div>
+              <small>Déjala vacía si sólo deseas cambiar el alias.</small>
+            </div>
+
+            <div className="field-stack">
+              <Label htmlFor="seller-account-confirm-code">Confirmar nueva contraseña</Label>
+              <div className="account-input-icon">
+                <ShieldCheck size={16} />
+                <Input
+                  id="seller-account-confirm-code"
+                  type="password"
+                  inputMode="numeric"
+                  maxLength={4}
+                  value={confirmCode}
+                  onChange={(event) => {
+                    setConfirmCode(event.target.value.replace(/\D/g, ""));
+                    setFormError("");
+                  }}
+                  placeholder="Repite los 4 dígitos"
+                  autoComplete="new-password"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="seller-access-security-note">
+            <LockKeyhole size={16} />
+            <span>La clave anterior dejará de funcionar inmediatamente después de guardar.</span>
+          </div>
+          {formError && <div className="seller-access-error"><AlertTriangle size={15} /> {formError}</div>}
+          <div className="seller-access-actions">
+            <Button type="button" onClick={saveAccess} disabled={!formIsReady}>
+              <Save size={16} /> Guardar cambios
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
 }
 
 const formatUsd = (value: number) =>
@@ -100,6 +290,8 @@ const daysUntil = (dateValue: string) => {
 };
 
 export function MyAccountView({
+  isMasterSession,
+  currentSeller,
   authorized,
   profile,
   cards,
@@ -115,6 +307,7 @@ export function MyAccountView({
   onActivateLocation,
   onAddLocation,
   onDeactivateLocation,
+  onSaveSellerAccess,
 }: MyAccountViewProps) {
   const [accessCode, setAccessCode] = useState("");
   const [accessError, setAccessError] = useState("");
@@ -137,6 +330,10 @@ export function MyAccountView({
   const [newLocationCostUsd, setNewLocationCostUsd] = useState("69");
   const [deactivationLocationId, setDeactivationLocationId] = useState("");
   const billingPagination = useHistoryPagination(history, "billing-history");
+
+  if (!isMasterSession) {
+    return <SellerAccessAccount seller={currentSeller} onSave={onSaveSellerAccess} />;
+  }
 
   const authorize = () => {
     if (!isMasterCode(accessCode)) {

@@ -41,11 +41,13 @@ import type {
   Client,
   LayawayRecord,
   OwedProductRecord,
+  PaymentEntry,
   PaymentMethodOption,
   Seller,
   Ticket,
 } from "../types";
 import { HistoryPagination, useHistoryPagination } from "./HistoryPagination";
+import { LayawayPaymentDialog } from "./LayawayPaymentDialog";
 
 interface SellerSalesViewProps {
   sellers: Seller[];
@@ -58,14 +60,14 @@ interface SellerSalesViewProps {
   onPreviewTicket: (ticket: Ticket) => void;
   onRegisterLayawayPayment: (
     layawayId: string,
-    amount: number,
-    methodId: string,
+    payments: PaymentEntry[],
     sellerId: string,
     deliveredCartItemIds: string[],
   ) => void;
 }
 
 type SellerViewMode = "SALES" | "CLIENTS";
+type ClientQuickFilter = "ALL" | "DEBT" | "NO_APPOINTMENT";
 
 const paymentStatusLabels: Record<Ticket["paymentStatus"], string> = {
   PAID: "Pagado",
@@ -116,15 +118,8 @@ export function SellerSalesView({
   const [viewMode, setViewMode] = useState<SellerViewMode>("SALES");
   const [showAllClients, setShowAllClients] = useState(true);
   const [selectedClientId, setSelectedClientId] = useState("");
-  const [layawayAmounts, setLayawayAmounts] = useState<Record<string, number>>(
-    {},
-  );
-  const [layawayMethods, setLayawayMethods] = useState<Record<string, string>>(
-    {},
-  );
-  const [layawayDeliveryIds, setLayawayDeliveryIds] = useState<
-    Record<string, string[]>
-  >({});
+  const [clientQuickFilter, setClientQuickFilter] =
+    useState<ClientQuickFilter>("ALL");
 
   const activeSellers = useMemo(
     () => sellers.filter((seller) => seller.active),
@@ -154,11 +149,46 @@ export function SellerSalesView({
     return clients.filter((client) => client.ownerId === authorizedSellerId);
   }, [authorizedSellerId, clients]);
 
-  const visibleClients = showAllClients
+  const clientIdsWithDebt = useMemo(
+    () =>
+      new Set(
+        layaways
+          .filter(
+            (layaway) =>
+              layaway.status === "ACTIVE" &&
+              layaway.balanceDue > 0.01 &&
+              layaway.sellerIds.includes(authorizedSellerId),
+          )
+          .map((layaway) => layaway.clientId),
+      ),
+    [authorizedSellerId, layaways],
+  );
+  const clientIdsWithoutAppointment = useMemo(
+    () =>
+      new Set(
+        appointments
+          .filter(
+            (appointment) =>
+              appointment.kind === "NO_APPOINTMENT" &&
+              appointment.status === "PENDING" &&
+              appointment.sellerIds.includes(authorizedSellerId),
+          )
+          .map((appointment) => appointment.clientId),
+      ),
+    [appointments, authorizedSellerId],
+  );
+
+  const visibleClients = (showAllClients
     ? ownedClients
     : ownedClients.filter((client) =>
         sellerTickets.some((ticket) => sameClient(client, ticket)),
-      );
+      )
+  ).filter((client) => {
+    if (clientQuickFilter === "DEBT") return clientIdsWithDebt.has(client.id);
+    if (clientQuickFilter === "NO_APPOINTMENT")
+      return clientIdsWithoutAppointment.has(client.id);
+    return true;
+  });
   const selectedClient = visibleClients.find(
     (client) => client.id === selectedClientId,
   );
@@ -171,7 +201,7 @@ export function SellerSalesView({
   );
   const sellerClientPagination = useHistoryPagination(
     visibleClients,
-    `${authorizedSellerId}|${dateFrom}|${dateTo}|${showAllClients}`,
+    `${authorizedSellerId}|${dateFrom}|${dateTo}|${showAllClients}|${clientQuickFilter}`,
   );
   const clientTicketPagination = useHistoryPagination(
     selectedClientTickets,
@@ -255,6 +285,14 @@ export function SellerSalesView({
     setSelectedClientId("");
     setDateFrom("");
     setDateTo("");
+    setClientQuickFilter("ALL");
+  };
+
+  const openClientQuickFilter = (filter: ClientQuickFilter) => {
+    setClientQuickFilter(filter);
+    setShowAllClients(true);
+    setSelectedClientId("");
+    setViewMode("CLIENTS");
   };
 
   if (!authorizedSeller) {
@@ -461,9 +499,32 @@ export function SellerSalesView({
         <button
           type="button"
           className={viewMode === "CLIENTS" ? "is-active" : ""}
-          onClick={() => setViewMode("CLIENTS")}
+          onClick={() => {
+            setClientQuickFilter("ALL");
+            setViewMode("CLIENTS");
+          }}
         >
           <UsersRound size={16} /> Mis clientes e historial
+        </button>
+      </div>
+
+      <div className="seller-client-quick-actions">
+        <button type="button" onClick={() => openClientQuickFilter("DEBT")}>
+          <CircleDollarSign size={17} />
+          <span>
+            <strong>Mis clientes con adeudo</strong>
+            <small>{clientIdsWithDebt.size} pendientes</small>
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={() => openClientQuickFilter("NO_APPOINTMENT")}
+        >
+          <CalendarRange size={17} />
+          <span>
+            <strong>Clientes sin cita</strong>
+            <small>{clientIdsWithoutAppointment.size} por agendar</small>
+          </span>
         </button>
       </div>
 
@@ -574,7 +635,13 @@ export function SellerSalesView({
               <div className="data-card-heading">
                 <div>
                   <span>CARTERA PERSONAL</span>
-                  <h2>Clientes de {authorizedSeller.name}</h2>
+                  <h2>
+                    {clientQuickFilter === "DEBT"
+                      ? "Clientes con adeudo"
+                      : clientQuickFilter === "NO_APPOINTMENT"
+                        ? "Clientes sin próxima cita"
+                        : `Clientes de ${authorizedSeller.name}`}
+                  </h2>
                 </div>
                 <Button
                   type="button"
@@ -770,24 +837,9 @@ export function SellerSalesView({
                         </Badge>
                       </div>
                       {selectedClientLayaways.map((layaway) => {
-                        const selectedMethod =
-                          layawayMethods[layaway.id] ??
-                          paymentMethods.find((method) => method.active)?.id ??
-                          "";
-                        const enteredAmount =
-                          layawayAmounts[layaway.id] ?? layaway.balanceDue;
                         const isOverdue = overdueLayaways.some(
                           (item) => item.id === layaway.id,
                         );
-                        const pendingDeliveryItems = layaway.items.filter(
-                          (item) =>
-                            item.kind === "PRODUCT" &&
-                            item.deliveredQuantity < item.quantity,
-                        );
-                        const willLiquidate =
-                          enteredAmount >= layaway.balanceDue;
-                        const selectedDeliveryIds =
-                          layawayDeliveryIds[layaway.id] ?? [];
                         return (
                           <Card
                             key={layaway.id}
@@ -806,6 +858,11 @@ export function SellerSalesView({
                                   </strong>
                                 </span>
                                 <Badge
+                                  className={
+                                    layaway.status === "PAID"
+                                      ? "layaway-status-paid"
+                                      : undefined
+                                  }
                                   variant={
                                     layaway.status === "PAID"
                                       ? "default"
@@ -827,59 +884,6 @@ export function SellerSalesView({
                                   </span>
                                 ))}
                               </div>
-                              {layaway.status === "ACTIVE" &&
-                                willLiquidate &&
-                                pendingDeliveryItems.length > 0 && (
-                                  <div className="layaway-liquidation-delivery">
-                                    <div>
-                                      <span className="section-kicker">
-                                        ENTREGA AL LIQUIDAR
-                                      </span>
-                                      <strong>
-                                        Pregunta a la clienta qué productos recibe hoy
-                                      </strong>
-                                    </div>
-                                    <div className="layaway-delivery-list">
-                                      {pendingDeliveryItems.map((item) => {
-                                        const selected =
-                                          selectedDeliveryIds.includes(
-                                            item.cartItemId,
-                                          );
-                                        return (
-                                          <button
-                                            key={item.cartItemId}
-                                            type="button"
-                                            className={selected ? "is-selected" : ""}
-                                            aria-pressed={selected}
-                                            onClick={() =>
-                                              setLayawayDeliveryIds((current) => ({
-                                                ...current,
-                                                [layaway.id]: selected
-                                                  ? selectedDeliveryIds.filter(
-                                                      (id) => id !== item.cartItemId,
-                                                    )
-                                                  : [
-                                                      ...selectedDeliveryIds,
-                                                      item.cartItemId,
-                                                    ],
-                                              }))
-                                            }
-                                          >
-                                            <span>
-                                              <strong>{item.productName}</strong>
-                                              <small>
-                                                {item.quantity - item.deliveredQuantity} pendiente(s) · {layaway.branch}
-                                              </small>
-                                            </span>
-                                            <Badge variant={selected ? "default" : "outline"}>
-                                              {selected ? "ENTREGAR HOY" : "MANTENER PENDIENTE"}
-                                            </Badge>
-                                          </button>
-                                        );
-                                      })}
-                                    </div>
-                                  </div>
-                                )}
                               <div className="layaway-payment-history">
                                 {layaway.payments.map((payment) => (
                                   <div key={payment.id}>
@@ -888,96 +892,39 @@ export function SellerSalesView({
                                       <small>{payment.createdAt}</small>
                                     </span>
                                     <span>
-                                      {paymentLabel(payment.methodId)} ·{" "}
-                                      <strong>
-                                        {formatCurrency(payment.amount)}
-                                      </strong>
+                                      {(payment.payments ?? [{
+                                        id: payment.id,
+                                        methodId: payment.methodId,
+                                        amount: payment.amount,
+                                      }])
+                                        .map(
+                                          (entry) =>
+                                            `${paymentLabel(entry.methodId)}${entry.cardOrBank ? ` · ${entry.cardOrBank}` : ""}${entry.authorizationCode ? ` · Aut. ${entry.authorizationCode}` : ""} ${formatCurrency(entry.amount)}`,
+                                        )
+                                        .join(" + ")}
+                                      {typeof payment.balanceAfter === "number" && (
+                                        <small>
+                                          Saldo {formatCurrency(payment.balanceAfter)}
+                                        </small>
+                                      )}
                                     </span>
                                   </div>
                                 ))}
                               </div>
                               {layaway.status === "ACTIVE" && (
-                                <div className="layaway-payment-form">
-                                  <div className="field-stack">
-                                    <Label>Método de pago</Label>
-                                    <Select
-                                      value={selectedMethod}
-                                      onValueChange={(methodId) =>
-                                        setLayawayMethods((current) => ({
-                                          ...current,
-                                          [layaway.id]: methodId,
-                                        }))
-                                      }
-                                    >
-                                      <SelectTrigger>
-                                        <SelectValue />
-                                      </SelectTrigger>
-                                      <SelectContent>
-                                        {paymentMethods
-                                          .filter((method) => method.active)
-                                          .map((method) => (
-                                            <SelectItem
-                                              key={method.id}
-                                              value={method.id}
-                                            >
-                                              {method.label}
-                                            </SelectItem>
-                                          ))}
-                                      </SelectContent>
-                                    </Select>
-                                  </div>
-                                  <div className="field-stack">
-                                    <Label>Monto del abono</Label>
-                                    <Input
-                                      type="number"
-                                      min="0.01"
-                                      max={layaway.balanceDue}
-                                      step="0.01"
-                                      value={enteredAmount}
-                                      onChange={(event) =>
-                                        setLayawayAmounts((current) => ({
-                                          ...current,
-                                          [layaway.id]: Number(
-                                            event.target.value,
-                                          ),
-                                        }))
-                                      }
-                                    />
-                                  </div>
-                                  <Button
-                                    type="button"
-                                    variant="outline"
-                                    disabled={!selectedMethod}
-                                    onClick={() =>
-                                      onRegisterLayawayPayment(
-                                        layaway.id,
-                                        enteredAmount,
-                                        selectedMethod,
-                                        authorizedSeller.id,
-                                        willLiquidate
-                                          ? selectedDeliveryIds
-                                          : [],
-                                      )
-                                    }
-                                  >
-                                    Registrar abono
-                                  </Button>
-                                  <Button
-                                    type="button"
-                                    disabled={!selectedMethod}
-                                    onClick={() =>
-                                      onRegisterLayawayPayment(
-                                        layaway.id,
-                                        layaway.balanceDue,
-                                        selectedMethod,
-                                        authorizedSeller.id,
-                                        selectedDeliveryIds,
-                                      )
-                                    }
-                                  >
-                                    Liquidar saldo
-                                  </Button>
-                                </div>
+                                <LayawayPaymentDialog
+                                  layaway={layaway}
+                                  paymentMethods={paymentMethods}
+                                  sellerId={authorizedSeller.id}
+                                  onRegister={(payments, deliveryIds) =>
+                                    onRegisterLayawayPayment(
+                                      layaway.id,
+                                      payments,
+                                      authorizedSeller.id,
+                                      deliveryIds,
+                                    )
+                                  }
+                                />
                               )}
                             </CardContent>
                           </Card>

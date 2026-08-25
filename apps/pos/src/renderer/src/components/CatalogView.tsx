@@ -41,6 +41,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
+  Textarea,
   toast,
 } from "@cosmetics/ui";
 import { formatCurrency, getSellerSku } from "../mock-data";
@@ -113,6 +114,9 @@ const createDraft = (): Product => ({
   group: "",
   kind: "PRODUCT",
   image: "/products/renewal-serum.png",
+  description: "",
+  benefits: [],
+  showInDigitalCatalog: true,
   minPrice: 0,
   maxPrice: 0,
   includesVat: false,
@@ -489,6 +493,9 @@ export function CatalogView({
     setSkuMode("INTERNAL");
     setDraft({
       ...product,
+      description: product.description ?? "",
+      benefits: product.benefits ?? [],
+      showInDigitalCatalog: product.showInDigitalCatalog !== false,
       partnerCost: product.partnerCost ?? product.costMxn,
       testerOrderEnabled: Boolean(product.testerOrderEnabled),
       branches: [...product.branches],
@@ -595,6 +602,15 @@ export function CatalogView({
       toast.error("Selecciona al menos una sucursal.");
       return;
     }
+    if (
+      draft.showInDigitalCatalog !== false &&
+      (!draft.description?.trim() || (draft.benefits?.length ?? 0) === 0)
+    ) {
+      toast.error(
+        "Agrega la descripción y al menos un beneficio para mostrarlo en el catálogo digital.",
+      );
+      return;
+    }
     if (draft.kind === "PRODUCT") {
       const currentStock = draft.stock ?? 0;
       const minimumStock = draft.stockMin ?? 0;
@@ -619,6 +635,11 @@ export function CatalogView({
       family: draft.family.trim(),
       category: draft.category.trim(),
       group: draft.group.trim(),
+      description: draft.description?.trim() ?? "",
+      benefits: (draft.benefits ?? [])
+        .map((benefit) => benefit.trim())
+        .filter(Boolean),
+      showInDigitalCatalog: draft.showInDigitalCatalog !== false,
       active: editingId ? draft.active : true,
     });
     setDialogOpen(false);
@@ -1020,6 +1041,68 @@ export function CatalogView({
                   }
                 />
               </div>
+              <div className="field-stack catalog-editor-wide">
+                <Label htmlFor="catalog-description">
+                  Descripción para catálogo
+                </Label>
+                <Textarea
+                  id="catalog-description"
+                  value={draft.description ?? ""}
+                  maxLength={520}
+                  onChange={(event) =>
+                    setDraft((current) => ({
+                      ...current,
+                      description: event.target.value,
+                    }))
+                  }
+                  placeholder="Describe la experiencia, textura, uso o resultado que verá el cliente."
+                />
+                <small>
+                  Este texto es comercial y sólo aparece en el catálogo digital.
+                </small>
+              </div>
+              <div className="field-stack catalog-editor-wide">
+                <Label htmlFor="catalog-benefits">Beneficios</Label>
+                <Textarea
+                  id="catalog-benefits"
+                  value={(draft.benefits ?? []).join("\n")}
+                  maxLength={420}
+                  onChange={(event) =>
+                    setDraft((current) => ({
+                      ...current,
+                      benefits: event.target.value.split("\n"),
+                    }))
+                  }
+                  placeholder={"Un beneficio por línea\nHidratación prolongada\nLuminosidad visible"}
+                />
+                <small>Escribe un beneficio por línea.</small>
+              </div>
+              <button
+                type="button"
+                className={`catalog-vat-toggle catalog-digital-toggle catalog-editor-wide ${draft.showInDigitalCatalog !== false ? "is-active" : ""}`}
+                role="switch"
+                aria-checked={draft.showInDigitalCatalog !== false}
+                onClick={() =>
+                  setDraft((current) => ({
+                    ...current,
+                    showInDigitalCatalog: current.showInDigitalCatalog === false,
+                  }))
+                }
+              >
+                <span>
+                  <strong>Mostrar en catálogo</strong>
+                  <small>
+                    {draft.showInDigitalCatalog !== false
+                      ? "El cliente podrá visualizarlo en el libro digital."
+                      : "Quedará oculto del libro sin afectar Sale, Inventory ni tickets anteriores."}
+                  </small>
+                </span>
+                <span
+                  className={`mock-switch ${draft.showInDigitalCatalog !== false ? "is-on" : ""}`}
+                >
+                  <i />
+                </span>
+              </button>
               <div className="field-stack catalog-sku-field">
                 <Label htmlFor="catalog-sku">SKU base</Label>
                 <div className="segmented-control catalog-sku-mode">

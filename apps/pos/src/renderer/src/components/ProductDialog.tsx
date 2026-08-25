@@ -125,7 +125,7 @@ export function ProductDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="product-dialog sm:max-w-[900px]">
+      <DialogContent className="product-dialog sm:max-w-[840px]">
         <div className="product-dialog-grid">
           <aside className="product-dialog-executive-rail">
             <div className="product-dialog-executive-brand">

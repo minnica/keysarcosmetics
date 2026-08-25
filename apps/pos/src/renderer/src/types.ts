@@ -81,6 +81,9 @@ export interface Product {
   group: string;
   kind: ProductKind;
   image: string;
+  description?: string;
+  benefits?: string[];
+  showInDigitalCatalog?: boolean;
   minPrice: number;
   maxPrice: number;
   includesVat: boolean;
@@ -143,6 +146,7 @@ export interface ClientSourceOption {
 export interface Seller {
   id: string;
   name: string;
+  alias: string;
   initials: string;
   active: boolean;
   accessCode: string;
@@ -366,7 +370,40 @@ export interface TicketEditRequest {
   paymentStatus: PaymentStatus;
   amountPaid: number;
   paymentMethodId: PaymentMethod;
+  payments: PaymentEntry[];
   authorizationCode: string;
+}
+
+export type VoucherKind =
+  | "NEXT_PURCHASE_DISCOUNT"
+  | "COMPANION_FACIAL"
+  | "MEMBERSHIP_DISCOUNT";
+
+export interface VoucherTemplate {
+  id: string;
+  name: string;
+  kind: VoucherKind;
+  value: number;
+  message: string;
+  active: boolean;
+  visibleToSellers: boolean;
+}
+
+export interface VoucherIssue {
+  id: string;
+  folio: string;
+  voucherId: string;
+  voucherName: string;
+  voucherKind: VoucherKind;
+  value: number;
+  message: string;
+  ticketId: string;
+  clientName: string;
+  clientPhone: string;
+  branch: string;
+  issuedAtIso: string;
+  status: "ISSUED" | "REDEEMED" | "CANCELLED";
+  redeemedAtIso?: string;
 }
 
 export interface ReceiptSettings {
@@ -612,6 +649,10 @@ export interface LayawayPaymentRecord {
   createdAtIso: string;
   amount: number;
   methodId: PaymentMethod;
+  payments?: PaymentEntry[];
+  balanceAfter?: number;
+  sellerId?: string;
+  sellerName?: string;
 }
 
 export interface LayawayRecord {
@@ -677,6 +718,10 @@ export interface PaymentEntry {
   amount: number;
   authorizationCode?: string;
   cardOrBank?: string;
+  folio?: string;
+  createdAt?: string;
+  createdAtIso?: string;
+  relatedTicketId?: string;
 }
 
 export interface TicketProductLine {

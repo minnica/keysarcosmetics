@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { BaseToaster, Toaster } from "@cosmetics/ui";
-import { SessionProvider } from "@/lib/session";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -17,16 +16,6 @@ export default function RootLayout({
   return (
     <html lang="es" suppressHydrationWarning>
       <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link
-          rel="preconnect"
-          href="https://fonts.gstatic.com"
-          crossOrigin="anonymous"
-        />
-        <link
-          href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
-          rel="stylesheet"
-        />
         <script
           dangerouslySetInnerHTML={{
             __html: `(function(){try{var t=localStorage.getItem('keysar-theme');if(t==='dark'){document.documentElement.classList.add('dark');}}catch(e){}})();`,
@@ -34,7 +23,7 @@ export default function RootLayout({
         />
       </head>
       <body className="bg-[var(--bg-primary)] font-sans text-[var(--text-primary)] antialiased">
-        <SessionProvider>{children}</SessionProvider>
+        {children}
         <BaseToaster />
         <Toaster
           position="bottom-center"
