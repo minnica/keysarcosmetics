@@ -8,7 +8,7 @@
     "test:smoke:headed": "playwright test --headed"
   },
   "devDependencies": {
-    "@types/node": "^20.14.9",
-    "playwright": "^1.60.0"
+    "@types/node": "^26.2.0",
+    "playwright": "^1.62.1"
   }
 }
