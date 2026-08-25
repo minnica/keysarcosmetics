@@ -856,6 +856,7 @@ La migración en Supabase dev, el backend `cosmetics-api-dev`, el login `SUPER_A
 - `db:push` y el alias directo `db:migrate:prod` fueron retirados de los scripts. Los despliegues usan `db:migrate:deploy` dentro del environment protegido.
 - Dependabot revisa dependencias npm y GitHub Actions semanalmente. Los rulesets de `develop`/`master`, required checks y environments protegidos `development`/`production` están configurados en GitHub; conservarlos sincronizados con este runbook. `develop` exige historial lineal, squash y que la rama del PR esté actualizada. `master` acepta únicamente promociones `develop → master` mediante merge commit y no exige `Require branches to be up to date`, porque los merge commits de releases anteriores existen solo en `master`; cualquier hotfix excepcional aplicado a `master` debe incorporarse a `develop` antes del siguiente release. Secret scanning/push protection y la promoción manual de Vercel continúan sujetos a configuración administrativa externa.
 - El procedimiento completo, variables, protecciones, secuencia de release y rollback vive en `docs/RELEASE_RUNBOOK.md`.
+- La guía paso a paso para el trabajo diario, integración en `develop` y promoción a `master` vive en `FLUJO_TRABAJO_Y_DESPLIEGUE.md`.
 
 ---
 
