@@ -49,7 +49,7 @@ import {
   WalletCards,
   X,
 } from "lucide-react";
-import { formatCurrency } from "../mock-data";
+import { formatCurrency, masterUser } from "../mock-data";
 import type { CashExpense, ExpenseType, Seller } from "../types";
 import { HistoryPagination } from "./HistoryPagination";
 
@@ -99,6 +99,19 @@ const escapeHtml = (value: string) =>
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
+
+const normalizeAccessUser = (value: string) =>
+  value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLocaleLowerCase("es-MX");
+
+const matchesAccessUser = (name: string, id: string, input: string) => {
+  const normalizedName = normalizeAccessUser(name);
+  return [normalizedName, normalizedName.split(" ")[0], normalizeAccessUser(id)].includes(input);
+};
 
 interface CashManagerViewProps {
   sellers: Seller[];
@@ -151,7 +164,9 @@ export function CashManagerView({
   const [page, setPage] = useState(1);
   const [exporting, setExporting] = useState<"EXCEL" | "PDF" | null>(null);
 
-  const loggedSeller = sellers.find((seller) => seller.id === loggedSellerId);
+  const loggedSeller =
+    sellers.find((seller) => seller.id === loggedSellerId) ??
+    (loggedSellerId === masterUser.id ? masterUser : undefined);
 
   useEffect(() => {
     if (!masterAuthorized) return;
@@ -261,21 +276,37 @@ export function CashManagerView({
   );
 
   const login = () => {
-    const normalizedUser = loginSellerId.trim().toLocaleLowerCase("es-MX");
+    const normalizedUser = normalizeAccessUser(loginSellerId);
+    const normalizedCode = loginCode.trim();
+    const hasMasterCode = isMasterCode(normalizedCode);
+
+    if (
+      hasMasterCode &&
+      matchesAccessUser(masterUser.name, masterUser.id, normalizedUser)
+    ) {
+      setLoggedSellerId(masterUser.id);
+      setMasterAuthorized(true);
+      setLoginCode("");
+      setDateFilter(today);
+      setBranchFilter("ALL");
+      toast.success(`Cash Manager abierto para ${masterUser.name}.`);
+      return;
+    }
+
     const seller = activeSellers.find(
       (item) =>
-        item.name.toLocaleLowerCase("es-MX") === normalizedUser ||
-        item.id.toLocaleLowerCase("es-MX") === normalizedUser,
+        matchesAccessUser(item.name, item.id, normalizedUser) &&
+        (hasMasterCode || item.accessCode === normalizedCode),
     );
-    if (!seller || (!isMasterCode(loginCode) && seller.accessCode !== loginCode.trim())) {
+    if (!seller) {
       toast.error("Usuario o código de empleado incorrecto.");
       return;
     }
     setLoggedSellerId(seller.id);
-    setMasterAuthorized(isMasterCode(loginCode));
+    setMasterAuthorized(hasMasterCode);
     setLoginCode("");
     setDateFilter(today);
-    setBranchFilter(isMasterCode(loginCode) ? "ALL" : activeBranch);
+    setBranchFilter(hasMasterCode ? "ALL" : activeBranch);
     toast.success(`Cash Manager abierto para ${seller.name}.`);
   };
 
@@ -334,7 +365,9 @@ export function CashManagerView({
 
   const saveExpense = () => {
     const amount = Number(form.amount);
-    const seller = sellers.find((item) => item.id === form.sellerId);
+    const seller =
+      sellers.find((item) => item.id === form.sellerId) ??
+      (form.sellerId === masterUser.id ? masterUser : undefined);
     const type = expenseTypes.find((item) => item.id === form.typeId);
     if (!seller || !type || !form.branch || !form.concept.trim() || amount <= 0) {
       toast.error("Completa tipo, monto, sucursal, usuario y concepto.");

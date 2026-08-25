@@ -173,7 +173,13 @@ export function ReceiptTicketDialog({
               {ticket.payments.length > 0 ? (
                 ticket.payments.map((payment) => (
                   <div key={payment.id}>
-                    <span>{paymentLabel(payment.methodId)}</span>
+                    <span>
+                      {paymentLabel(payment.methodId)}
+                      {payment.cardOrBank ? ` · ${payment.cardOrBank}` : ""}
+                      {payment.authorizationCode
+                        ? ` · Aut. ${payment.authorizationCode}`
+                        : ""}
+                    </span>
                     <strong>{formatCurrency(payment.amount)}</strong>
                   </div>
                 ))

@@ -411,6 +411,13 @@ export const initialEmployeeRoles: EmployeeRole[] = [
       "data-update",
       "my-account",
     ],
+    moduleEditAccess: [
+      "dashboard", "sale", "seller-sales", "receipts", "customers",
+      "appointments", "inventory", "warehouse", "suppliers",
+      "inventory-movements", "deals", "catalog", "settings", "x-report",
+      "reports", "cash-manager", "clock-in", "close-day", "employees",
+      "competition", "websites", "data-update", "my-account",
+    ],
     configurationAccess: [
       "TICKET",
       "INVENTORY_CATALOG",
@@ -452,6 +459,11 @@ export const initialEmployeeRoles: EmployeeRole[] = [
       "competition",
       "data-update",
     ],
+    moduleEditAccess: [
+      "sale", "seller-sales", "receipts", "customers", "appointments",
+      "inventory", "warehouse", "inventory-movements", "catalog", "settings",
+      "cash-manager", "clock-in", "close-day", "data-update",
+    ],
     configurationAccess: [
       "TICKET",
       "INVENTORY_CATALOG",
@@ -473,6 +485,9 @@ export const initialEmployeeRoles: EmployeeRole[] = [
       "clock-in",
       "competition",
     ],
+    moduleEditAccess: [
+      "sale", "seller-sales", "customers", "appointments", "clock-in",
+    ],
     configurationAccess: [],
   },
   {
@@ -490,6 +505,10 @@ export const initialEmployeeRoles: EmployeeRole[] = [
       "catalog",
       "data-update",
       "clock-in",
+    ],
+    moduleEditAccess: [
+      "inventory", "warehouse", "suppliers", "inventory-movements",
+      "catalog", "data-update", "clock-in",
     ],
     configurationAccess: ["INVENTORY_CATALOG", "INVENTORY_AUDIT", "INVENTORY_MOVEMENTS", "WAREHOUSE_MOVEMENTS"],
   },
@@ -523,6 +542,7 @@ export const initialReceiptSettings: ReceiptSettings = {
   showClientPhone: false,
   showSellerName: true,
   showVatBreakdown: false,
+  showSpareCoverageMessage: true,
 };
 
 export const initialInventoryMovementReasons: InventoryMovementReason[] = [

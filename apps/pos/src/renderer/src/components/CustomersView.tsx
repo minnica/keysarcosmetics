@@ -196,6 +196,7 @@ export function CustomersView({
   const [accessCode, setAccessCode] = useState("");
   const [authorizedSellerId, setAuthorizedSellerId] = useState("");
   const [masterAuthorized, setMasterAuthorized] = useState(false);
+  const [debtOnly, setDebtOnly] = useState(false);
   const [accessError, setAccessError] = useState("");
   const [expandedClientId, setExpandedClientId] = useState("");
   const [editingClient, setEditingClient] = useState<Client | null>(null);
@@ -254,6 +255,7 @@ export function CustomersView({
     let inactivityTimer = window.setTimeout(() => undefined, 0);
     const lockMasterSession = () => {
       setMasterAuthorized(false);
+      setDebtOnly(false);
       setAccessMode("search");
       setExpandedClientId("");
       setEditingClient(null);
@@ -300,6 +302,12 @@ export function CustomersView({
         normalizePhone(appointment.clientPhone) === normalizePhone(client.phone),
     );
 
+  const clientOutstandingBalance = (client: Client) =>
+    clientTickets(client).reduce(
+      (sum, ticket) => sum + Math.max(0, ticket.balanceDue),
+      0,
+    );
+
   const paymentLabel = (methodId: string) =>
     paymentMethods.find((method) => method.id === methodId)?.label ?? methodId;
 
@@ -332,6 +340,7 @@ export function CustomersView({
         return false;
 
       const purchases = clientTickets(client);
+      if (debtOnly && clientOutstandingBalance(client) <= 0.01) return false;
       const purchaseTotal = purchases.reduce(
         (sum, ticket) => sum + ticket.total,
         0,
@@ -351,6 +360,7 @@ export function CustomersView({
     accessMode,
     authorizedSellerId,
     clients,
+    debtOnly,
     maximumAmount,
     masterAuthorized,
     minimumAmount,
@@ -363,7 +373,7 @@ export function CustomersView({
   ]);
   const customerPagination = useHistoryPagination(
     visibleClients,
-    `${accessMode}|${authorizedSellerId}|${masterAuthorized}|${normalizedName}|${normalizedPhone}|${minimumAmount}|${maximumAmount}|${sellerFilter}|${selectedBranches.join(",")}`,
+    `${accessMode}|${authorizedSellerId}|${masterAuthorized}|${debtOnly}|${normalizedName}|${normalizedPhone}|${minimumAmount}|${maximumAmount}|${sellerFilter}|${selectedBranches.join(",")}`,
   );
 
   const getClientOwner = (client: Client) => {
@@ -377,6 +387,7 @@ export function CustomersView({
   const authorizeSeller = () => {
     if (isMasterCode(accessCode)) {
       setMasterAuthorized(true);
+      setDebtOnly(false);
       setAuthorizedSellerId("");
       setAccessError("");
       setAccessCode("");
@@ -392,6 +403,7 @@ export function CustomersView({
     }
     setAuthorizedSellerId(seller.id);
     setMasterAuthorized(false);
+    setDebtOnly(false);
     setAccessError("");
     setAccessCode("");
   };
@@ -404,6 +416,7 @@ export function CustomersView({
     setAccessCode("");
     setAuthorizedSellerId("");
     setMasterAuthorized(false);
+    setDebtOnly(false);
     setAccessError("");
     setExpandedClientId("");
   };
@@ -960,6 +973,23 @@ export function CustomersView({
                   >
                     <LogOut size={15} /> Cerrar acceso
                   </Button>
+                  {(masterAuthorized || authorizedSeller) && (
+                    <Button
+                      type="button"
+                      variant={debtOnly ? "default" : "outline"}
+                      className="customer-debt-search-button"
+                      onClick={() => setDebtOnly((current) => !current)}
+                    >
+                      <AlertTriangle size={15} />
+                      {debtOnly
+                        ? masterAuthorized
+                          ? "Mostrando adeudos"
+                          : "Mostrando mis adeudos"
+                        : masterAuthorized
+                          ? "Clientes con adeudo"
+                          : "Mis clientes con adeudo"}
+                    </Button>
+                  )}
                 </div>
               )}
               <div className="customer-query-grid">
@@ -1091,6 +1121,10 @@ export function CustomersView({
                       (sum, ticket) => sum + ticket.total,
                       0,
                     );
+                    const outstandingBalance = clientOutstandingBalance(client);
+                    const outstandingTickets = purchases.filter(
+                      (ticket) => ticket.balanceDue > 0.01,
+                    );
                     const expanded = expandedClientId === client.id;
                     return (
                       <Fragment key={client.id}>
@@ -1107,6 +1141,11 @@ export function CustomersView({
                               <strong>
                                 {client.firstName} {client.lastName}
                               </strong>
+                              {outstandingBalance > 0.01 && (
+                                <span className="customer-debt-badge">
+                                  <AlertTriangle size={12} /> Adeudo {formatCurrency(outstandingBalance)}
+                                </span>
+                              )}
                             </div>
                           </TableCell>
                           <TableCell>{client.phone || "Sin teléfono"}</TableCell>
@@ -1174,6 +1213,17 @@ export function CustomersView({
                           <TableRow className="customer-history-row">
                             <TableCell colSpan={6}>
                               <div className="customer-history-panel">
+                                {outstandingBalance > 0.01 && (
+                                  <div className="customer-debt-alert">
+                                    <AlertTriangle size={21} />
+                                    <span>
+                                      <strong>Cliente con saldo pendiente</strong>
+                                      <small>
+                                        {outstandingTickets.length} {outstandingTickets.length === 1 ? "ticket pendiente" : "tickets pendientes"} · Total por cobrar {formatCurrency(outstandingBalance)}
+                                      </small>
+                                    </span>
+                                  </div>
+                                )}
                                 <div className="customer-profile-summary">
                                   <div>
                                     <ReceiptText size={17} />

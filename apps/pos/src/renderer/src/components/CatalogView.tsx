@@ -45,7 +45,13 @@ import {
 } from "@cosmetics/ui";
 import { formatCurrency, getSellerSku } from "../mock-data";
 import { calculateIncludedVat } from "../tax";
-import type { BranchInventory, Product, ProductKind } from "../types";
+import type {
+  BranchInventory,
+  InventoryBranchOrderDraft,
+  InventoryBranchOrderResult,
+  Product,
+  ProductKind,
+} from "../types";
 import { InventoryOrderDialog } from "./InventoryOrderDialog";
 import {
   compareTableValues,
@@ -67,6 +73,10 @@ interface CatalogViewProps {
   costAccessAuthorized: boolean;
   onAuthorizeCostAccess: (code: string) => boolean;
   isMasterCode: (code: string) => boolean;
+  onCreateInventoryOrders: (
+    orders: InventoryBranchOrderDraft[],
+    authorizationCode: string,
+  ) => InventoryBranchOrderResult[] | null;
   onLockCostAccess: () => void;
 }
 
@@ -131,6 +141,7 @@ export function CatalogView({
   costAccessAuthorized,
   onAuthorizeCostAccess,
   isMasterCode,
+  onCreateInventoryOrders,
   onLockCostAccess,
 }: CatalogViewProps) {
   const [search, setSearch] = useState("");
@@ -700,6 +711,7 @@ export function CatalogView({
         branchInventory={branchInventory}
         defaultBranches={selectedBranches}
         isMasterCode={isMasterCode}
+        onCreateOrders={onCreateInventoryOrders}
       />
 
       <section className="catalog-inventory-toolbar">

@@ -33,7 +33,12 @@ import {
   TableRow,
   toast,
 } from "@cosmetics/ui";
-import type { BranchInventory, Product } from "../types";
+import type {
+  BranchInventory,
+  InventoryBranchOrderDraft,
+  InventoryBranchOrderResult,
+  Product,
+} from "../types";
 
 type OrderStep = "SCOPE" | "REVIEW" | "APPROVED";
 type OrderScope = "TOTAL" | "BRANCH";
@@ -57,6 +62,10 @@ interface InventoryOrderDialogProps {
   branchInventory: BranchInventory;
   defaultBranches: string[];
   isMasterCode: (code: string) => boolean;
+  onCreateOrders: (
+    orders: InventoryBranchOrderDraft[],
+    authorizationCode: string,
+  ) => InventoryBranchOrderResult[] | null;
 }
 
 const escapeHtml = (value: string) =>
@@ -74,6 +83,7 @@ export function InventoryOrderDialog({
   branchInventory,
   defaultBranches,
   isMasterCode,
+  onCreateOrders,
 }: InventoryOrderDialogProps) {
   const branches = useMemo(
     () => Object.keys(branchInventory),
@@ -94,6 +104,7 @@ export function InventoryOrderDialog({
   const [selectedBranches, setSelectedBranches] = useState<string[]>([]);
   const [lines, setLines] = useState<InventoryOrderLine[]>([]);
   const [folio, setFolio] = useState("");
+  const [createdOrders, setCreatedOrders] = useState<InventoryBranchOrderResult[]>([]);
   const [approvalCode, setApprovalCode] = useState("");
   const [manualProductId, setManualProductId] = useState("");
   const [manualBranch, setManualBranch] = useState("");
@@ -111,6 +122,7 @@ export function InventoryOrderDialog({
     );
     setLines([]);
     setFolio("");
+    setCreatedOrders([]);
     setApprovalCode("");
     setManualProductId(physicalProducts[0]?.id ?? "");
     setManualBranch(initialBranches[0] ?? branches[0] ?? "");
@@ -237,9 +249,25 @@ export function InventoryOrderDialog({
       toast.error("Código master incorrecto para aprobar el pedido.");
       return;
     }
+    const orders = Array.from(new Set(lines.map((line) => line.branch))).map(
+      (branch) => ({
+        branch,
+        lines: lines
+          .filter((line) => line.branch === branch)
+          .map((line) => ({
+            productId: line.productId,
+            quantity: line.quantity,
+          })),
+      }),
+    );
+    const results = onCreateOrders(orders, approvalCode);
+    if (!results || results.length !== orders.length) return;
+    setCreatedOrders(results);
     setApprovalCode("");
     setStep("APPROVED");
-    toast.success(`${folio} aprobado con ${totalUnits} piezas.`);
+    toast.success(
+      `${results.length} ${results.length === 1 ? "pedido creado" : "pedidos creados"} con ${totalUnits} piezas.`,
+    );
   };
 
   const exportOrderPdf = async () => {
@@ -253,7 +281,7 @@ export function InventoryOrderDialog({
       doc.setFontSize(18);
       doc.text("KEYSAR COSMETICS", 36, 38);
       doc.setFontSize(12);
-      doc.text(`Pedido de inventario ${folio}`, 36, 58);
+      doc.text(`Pedidos de inventario · ${createdOrders.length} folios`, 36, 58);
       doc.setFont("helvetica", "normal");
       doc.setFontSize(9);
       doc.text(
@@ -263,8 +291,9 @@ export function InventoryOrderDialog({
       );
       autoTable(doc, {
         startY: 90,
-        head: [["SKU", "Producto", "Sucursal", "Actual", "Máximo", "Pedido"]],
+        head: [["Folio", "SKU", "Producto", "Sucursal", "Actual", "Máximo", "Pedido"]],
         body: lines.map((line) => [
+          createdOrders.find((order) => order.branch === line.branch)?.folio ?? folio,
           line.sku,
           line.productName,
           line.branch,
@@ -276,7 +305,7 @@ export function InventoryOrderDialog({
         styles: { fontSize: 8, cellPadding: 5 },
         headStyles: { fillColor: [83, 67, 55] },
       });
-      doc.save(`${folio.toLocaleLowerCase("es-MX")}.pdf`);
+      doc.save(`pedidos-inventario-${Date.now()}.pdf`);
       toast.success("PDF del pedido generado.");
     } catch {
       toast.error("No fue posible generar el PDF del pedido.");
@@ -291,10 +320,10 @@ export function InventoryOrderDialog({
     }
     const rows = lines
       .map(
-        (line) => `<tr><td>${escapeHtml(line.sku)}</td><td>${escapeHtml(line.productName)}</td><td>${escapeHtml(line.branch)}</td><td>${line.currentStock}</td><td>${line.maximumStock}</td><td><strong>${line.quantity}</strong></td></tr>`,
+        (line) => `<tr><td>${escapeHtml(createdOrders.find((order) => order.branch === line.branch)?.folio ?? folio)}</td><td>${escapeHtml(line.sku)}</td><td>${escapeHtml(line.productName)}</td><td>${escapeHtml(line.branch)}</td><td>${line.currentStock}</td><td>${line.maximumStock}</td><td><strong>${line.quantity}</strong></td></tr>`,
       )
       .join("");
-    printWindow.document.write(`<!doctype html><html><head><title>${escapeHtml(folio)}</title><style>body{font-family:Arial,sans-serif;color:#171513;padding:28px}h1{font-size:22px;margin:0}h2{font-size:15px;margin:6px 0 4px}p{font-size:11px;color:#665f59}table{width:100%;border-collapse:collapse;margin-top:20px;font-size:11px}th,td{border:1px solid #bdb4ac;padding:7px;text-align:left}th{background:#2d2926;color:white}@media print{button{display:none}}</style></head><body><h1>KEYSAR COSMETICS</h1><h2>Pedido de inventario ${escapeHtml(folio)}</h2><p>${new Date().toLocaleString("es-MX")} · ${totalUnits} piezas · ${totalProducts} productos</p><table><thead><tr><th>SKU</th><th>Producto</th><th>Sucursal</th><th>Actual</th><th>Máximo</th><th>Pedido</th></tr></thead><tbody>${rows}</tbody></table><script>window.onload=()=>{window.print();window.close();}</script></body></html>`);
+    printWindow.document.write(`<!doctype html><html><head><title>Pedidos de inventario</title><style>body{font-family:Arial,sans-serif;color:#171513;padding:28px}h1{font-size:22px;margin:0}h2{font-size:15px;margin:6px 0 4px}p{font-size:11px;color:#665f59}table{width:100%;border-collapse:collapse;margin-top:20px;font-size:11px}th,td{border:1px solid #bdb4ac;padding:7px;text-align:left}th{background:#2d2926;color:white}@media print{button{display:none}}</style></head><body><h1>KEYSAR COSMETICS</h1><h2>Pedidos de inventario · ${createdOrders.length} folios</h2><p>${new Date().toLocaleString("es-MX")} · ${totalUnits} piezas · ${totalProducts} productos</p><table><thead><tr><th>Folio</th><th>SKU</th><th>Producto</th><th>Sucursal</th><th>Actual</th><th>Máximo</th><th>Pedido</th></tr></thead><tbody>${rows}</tbody></table><script>window.onload=()=>{window.print();window.close();}</script></body></html>`);
     printWindow.document.close();
   };
 
@@ -387,8 +416,12 @@ export function InventoryOrderDialog({
           <div className="inventory-order-review">
             <div className="inventory-order-summary">
               <span>
-                <small>FOLIO</small>
-                <strong>{folio}</strong>
+                <small>{step === "APPROVED" ? "FOLIOS GENERADOS" : "PROPUESTA"}</small>
+                <strong>
+                  {step === "APPROVED"
+                    ? `${createdOrders.length} ${createdOrders.length === 1 ? "solicitud" : "solicitudes"}`
+                    : folio}
+                </strong>
               </span>
               <Badge variant="outline">{lines.length} partidas</Badge>
               <Badge>{totalUnits} piezas</Badge>
@@ -526,11 +559,16 @@ export function InventoryOrderDialog({
               <div className="inventory-order-approved">
                 <CheckCircle2 size={22} />
                 <span>
-                  <strong>Pedido aprobado</strong>
+                  <strong>Solicitudes enviadas a Almacén bodega</strong>
                   <small>
-                    Listo para descargar o enviar a la impresora. No modifica
-                    existencias hasta registrar la entrada en Movimientos.
+                    Cada sucursal tiene un folio independiente en Pedidos de
+                    sucursales. Las existencias cambiarán al recibir el envío.
                   </small>
+                  {createdOrders.map((order) => (
+                    <small key={order.folio}>
+                      <strong>{order.folio}</strong> · {order.branch} · SOLICITADO
+                    </small>
+                  ))}
                 </span>
               </div>
             )}

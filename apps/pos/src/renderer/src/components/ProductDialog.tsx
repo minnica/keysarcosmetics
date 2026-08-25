@@ -33,6 +33,7 @@ interface ProductDialogProps {
   otherItemsSubtotal: number;
   otherItemsMinimumTotal: number;
   open: boolean;
+  showSpareCoverageMessage: boolean;
   isMasterCode: (code: string) => boolean;
   onOpenChange: (open: boolean) => void;
   onSubmit: (item: CartItem) => void;
@@ -45,26 +46,28 @@ export function ProductDialog({
   otherItemsSubtotal,
   otherItemsMinimumTotal,
   open,
+  showSpareCoverageMessage,
   isMasterCode,
   onOpenChange,
   onSubmit,
   onRemove,
 }: ProductDialogProps) {
   const [quantity, setQuantity] = useState(1);
-  const [price, setPrice] = useState(0);
+  const [priceInput, setPriceInput] = useState("");
   const [comment, setComment] = useState("");
   const [adminCode, setAdminCode] = useState("");
+  const price = priceInput === "" ? null : Number(priceInput);
 
   useEffect(() => {
     if (!product || !open) return;
     setQuantity(cartItem?.quantity ?? 1);
-    setPrice(cartItem?.unitPrice ?? product.maxPrice);
+    setPriceInput(String(cartItem?.unitPrice ?? product.maxPrice));
     setComment(cartItem?.comment ?? "");
     setAdminCode(cartItem?.adminAuthorized ? administratorCode : "");
   }, [cartItem, open, product]);
 
   const priceState = useMemo(() => {
-    if (!product)
+    if (!product || price === null || !Number.isFinite(price))
       return {
         belowLineMinimum: false,
         ticketCovered: true,
@@ -96,11 +99,13 @@ export function ProductDialog({
 
   const canSubmit =
     quantity >= 1 &&
+    price !== null &&
+    Number.isFinite(price) &&
     price >= 0 &&
     (!priceState.authorizationRequired || priceState.authorized);
 
   const handleSubmit = () => {
-    if (!canSubmit) return;
+    if (!canSubmit || price === null) return;
     onSubmit({
       id: cartItem?.id ?? `${product.id}-${Date.now()}`,
       product,
@@ -120,68 +125,116 @@ export function ProductDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="product-dialog sm:max-w-[760px]">
+      <DialogContent className="product-dialog sm:max-w-[900px]">
         <div className="product-dialog-grid">
-          <div className="product-dialog-image-wrap">
-            <img
-              src={product.image}
-              alt={product.name}
-              className="product-dialog-image"
-            />
-            <Badge className="product-kind-badge">
-              {product.kind === "SERVICE" ? "SERVICIO" : "PRODUCTO"}
-            </Badge>
-          </div>
+          <aside className="product-dialog-executive-rail">
+            <div className="product-dialog-executive-brand">
+              <span className="product-dialog-executive-mark">K</span>
+              <span>PRIVATE RETAIL</span>
+            </div>
+            <div className="product-dialog-executive-product">
+              <Badge className="product-kind-badge">
+                {product.kind === "SERVICE" ? "SERVICIO" : "PRODUCTO"}
+              </Badge>
+              <div className="product-dialog-executive-image-wrap">
+                <img
+                  src={product.image}
+                  alt={product.name}
+                  className="product-dialog-image"
+                />
+              </div>
+              <h2>{product.name}</h2>
+              <strong aria-label="SKU operativo codificado">
+                {getSellerSku(product)}
+              </strong>
+              <p>{product.family} · {product.category}</p>
+            </div>
+            <div className="product-dialog-executive-price">
+              <span>PRECIO DE LISTA</span>
+              <strong>{formatCurrency(product.maxPrice)}</strong>
+              <small>
+                {product.kind === "PRODUCT"
+                  ? `${product.stock ?? 0} piezas disponibles`
+                  : "Servicio disponible"}
+              </small>
+            </div>
+          </aside>
 
           <div className="product-dialog-form">
             <DialogHeader>
+              <span className="product-dialog-executive-kicker">
+                CONFIGURACIÓN DE LÍNEA
+              </span>
               <DialogTitle>
-                {cartItem ? `Editar ${product.name}` : product.name}
+                {cartItem ? "Editar venta personalizada" : "Venta personalizada"}
               </DialogTitle>
               <DialogDescription className="product-dialog-description">
-                <strong aria-label="SKU operativo codificado">
-                  {getSellerSku(product)}
-                </strong>
-                <span>
-                  {product.family} / {product.category}
-                </span>
+                Captura ejecutiva con validación automática de precio y ticket.
               </DialogDescription>
             </DialogHeader>
 
-            <div className="price-band">
-              <div>
-                <span>PRECIO DE LISTA</span>
-                <strong>{formatCurrency(product.maxPrice)}</strong>
+            <div className="product-dialog-executive-fields">
+              <div className="field-stack">
+                <Label htmlFor="sale-price">Precio de venta</Label>
+                <Input
+                  id="sale-price"
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={priceInput}
+                  onChange={(event) => setPriceInput(event.target.value)}
+                />
+                {price === null ? (
+                  <p className="field-message is-neutral">
+                    Captura manualmente el precio de venta.
+                  </p>
+                ) : priceState.authorizationRequired ? (
+                  <p className="field-message is-negative" role="alert">
+                    El total del ticket no cubre el piso combinado. Requiere
+                    autorización administrativa.
+                  </p>
+                ) : priceState.belowLineMinimum && priceState.ticketCovered ? (
+                  showSpareCoverageMessage ? (
+                    <p className="field-message is-positive">
+                      Reducción cubierta por el SPARE total del ticket. No
+                      requiere autorización.
+                    </p>
+                  ) : null
+                ) : (
+                  <p className="field-message is-neutral">
+                    {price > product.maxPrice
+                      ? "Precio libre sobre lista."
+                      : "Precio permitido para venta."}
+                  </p>
+                )}
               </div>
-            </div>
 
-            <div className="field-stack">
-              <Label htmlFor="sale-price">Precio de venta</Label>
-              <Input
-                id="sale-price"
-                type="number"
-                min="0"
-                step="1"
-                value={price}
-                onChange={(event) => setPrice(Number(event.target.value))}
-              />
-              {priceState.authorizationRequired ? (
-                <p className="field-message is-negative" role="alert">
-                  El total del ticket no cubre el piso combinado. Requiere
-                  autorización administrativa.
-                </p>
-              ) : priceState.belowLineMinimum && priceState.ticketCovered ? (
-                <p className="field-message is-positive">
-                  Reducción cubierta por el SPARE total del ticket. No requiere
-                  autorización.
-                </p>
-              ) : (
-                <p className="field-message is-neutral">
-                  {price > product.maxPrice
-                    ? "Precio libre sobre lista."
-                    : "Precio permitido para venta."}
-                </p>
-              )}
+              <div className="field-stack product-dialog-quantity-field">
+                <Label>Cantidad</Label>
+                <div className="quantity-control">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    onClick={() =>
+                      setQuantity((current) => Math.max(1, current - 1))
+                    }
+                    aria-label="Reducir cantidad"
+                  >
+                    <Minus size={16} />
+                  </Button>
+                  <strong>{quantity}</strong>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    onClick={() => setQuantity((current) => current + 1)}
+                    aria-label="Aumentar cantidad"
+                  >
+                    <Plus size={16} />
+                  </Button>
+                </div>
+              </div>
             </div>
 
             {priceState.authorizationRequired && (
@@ -209,33 +262,6 @@ export function ProductDialog({
             )}
 
             <div className="field-stack">
-              <Label>Cantidad</Label>
-              <div className="quantity-control">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  onClick={() =>
-                    setQuantity((current) => Math.max(1, current - 1))
-                  }
-                  aria-label="Reducir cantidad"
-                >
-                  <Minus size={16} />
-                </Button>
-                <strong>{quantity}</strong>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  onClick={() => setQuantity((current) => current + 1)}
-                  aria-label="Aumentar cantidad"
-                >
-                  <Plus size={16} />
-                </Button>
-              </div>
-            </div>
-
-            <div className="field-stack">
               <Label htmlFor="product-comment">Comentarios</Label>
               <Textarea
                 id="product-comment"
@@ -258,7 +284,9 @@ export function ProductDialog({
                     : "Ticket global bajo piso"}
                 </small>
               </span>
-              <strong>{formatCurrency(price * quantity)}</strong>
+              <strong>
+                {price === null ? "—" : formatCurrency(price * quantity)}
+              </strong>
             </div>
 
             <DialogFooter className="product-dialog-actions">

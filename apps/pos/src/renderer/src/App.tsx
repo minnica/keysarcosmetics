@@ -22,6 +22,7 @@ import {
   DollarSign,
   Filter,
   LockKeyhole,
+  Languages,
   Minus,
   PackageCheck,
   PackagePlus,
@@ -165,6 +166,8 @@ import type {
   EmployeeRole,
   ExpenseType,
   InventoryAdjustmentBatch,
+  InventoryBranchOrderDraft,
+  InventoryBranchOrderResult,
   InventoryMovement,
   InventoryMovementDraft,
   InventoryMovementReason,
@@ -299,8 +302,37 @@ const screenMetadata: Record<ScreenId, { title: string; subtitle: string }> = {
   },
 };
 
+type InterfaceLanguage = "ES" | "EN";
+
+const screenMetadataEnglish: Record<ScreenId, { title: string; subtitle: string }> = {
+  dashboard: { title: "Dashboard", subtitle: "Executive control of the day and inventory" },
+  sale: { title: "Sale", subtitle: "Retail sales" },
+  "seller-sales": { title: "My sales", subtitle: "Personal sales, customers and payments" },
+  receipts: { title: "Receipts", subtitle: "Tickets, payments and discounts" },
+  customers: { title: "Customers", subtitle: "Customer directory and ownership" },
+  appointments: { title: "Appointments", subtitle: "Courtesy services and upcoming sessions" },
+  inventory: { title: "Inventory", subtitle: "Products, stock, orders and locations" },
+  warehouse: { title: "Warehouse", subtitle: "Central stock, entries, shipments and store orders" },
+  suppliers: { title: "Suppliers", subtitle: "Tax directory, products and procurement" },
+  "inventory-movements": { title: "Inventory movements", subtitle: "Entries, write-offs and stock adjustments" },
+  deals: { title: "Deals", subtitle: "Packages, authorization and profitability" },
+  catalog: { title: "Catalog", subtitle: "Compact product and service directory" },
+  settings: { title: "Settings", subtitle: "Point-of-sale capture rules" },
+  "x-report": { title: "X-Report", subtitle: "Partial report without closing the day" },
+  reports: { title: "Reports", subtitle: "Executive sales, merchandise, employee and customer reports" },
+  "cash-manager": { title: "Cash manager", subtitle: "Terminal cash movements" },
+  "clock-in": { title: "Clock In", subtitle: "Seller attendance and presence" },
+  "close-day": { title: "Close day", subtitle: "Operational summary and closing" },
+  employees: { title: "Employees", subtitle: "People, roles and access control" },
+  competition: { title: "Competition", subtitle: "Retail targets and team performance" },
+  websites: { title: "Websites", subtitle: "Quick operational links" },
+  "data-update": { title: "Data update", subtitle: "POS offline synchronization" },
+  "my-account": { title: "My Account", subtitle: "Profile, locations and billing" },
+};
+
 const automaticDataUpdateIntervalMs = 60_000;
 const terminalLocationStorageKey = "keysar-pos-terminal-location";
+const interfaceLanguageStorageKey = "keysar-pos-language";
 const initialBranchAddresses: Record<string, string> = {
   Polanco: "Av. Presidente Masaryk 123, Polanco, CDMX",
   Satélite: "Circuito Centro Comercial 2251, Satélite, Estado de México",
@@ -617,6 +649,29 @@ function App() {
   const [closeDayAuthorizationCode, setCloseDayAuthorizationCode] = useState("");
   const [closeDayAuthorizationError, setCloseDayAuthorizationError] = useState("");
   const [search, setSearch] = useState("");
+  const [interfaceLanguage, setInterfaceLanguage] =
+    useState<InterfaceLanguage>(() =>
+      window.localStorage.getItem(interfaceLanguageStorageKey) === "EN"
+        ? "EN"
+        : "ES",
+    );
+
+  useEffect(() => {
+    document.body.classList.add("executive-ledger-theme");
+    document.body.classList.remove("executive-dark-mode");
+    window.localStorage.removeItem("keysar-pos-color-mode");
+    return () => {
+      document.body.classList.remove(
+        "executive-ledger-theme",
+        "executive-dark-mode",
+      );
+    };
+  }, []);
+
+  useEffect(() => {
+    document.documentElement.lang = interfaceLanguage === "EN" ? "en" : "es-MX";
+    window.localStorage.setItem(interfaceLanguageStorageKey, interfaceLanguage);
+  }, [interfaceLanguage]);
 
   useEffect(() => {
     const compactViewport = window.matchMedia("(max-width: 920px)");
@@ -876,16 +931,25 @@ function App() {
     );
   };
 
+  const sessionEmployeeRole = useMemo(
+    () =>
+      employeeRoles.find(
+        (role) => role.id === sessionUser?.roleId && role.active,
+      ),
+    [employeeRoles, sessionUser?.roleId],
+  );
+
   const allowedScreens = useMemo<ScreenId[]>(() => {
     if (!sessionUser) return [];
     if (sessionUser.isMaster)
       return Object.keys(screenMetadata) as ScreenId[];
-    return (
-      employeeRoles.find(
-        (role) => role.id === sessionUser.roleId && role.active,
-      )?.moduleAccess ?? ["sale"]
-    );
-  }, [employeeRoles, sessionUser]);
+    return sessionEmployeeRole?.moduleAccess ?? ["sale"];
+  }, [sessionEmployeeRole, sessionUser]);
+
+  const canEditActiveModule = Boolean(
+    sessionUser?.isMaster ||
+      sessionEmployeeRole?.moduleEditAccess.includes(activeScreen),
+  );
 
   const canManageWarehouse = Boolean(
     sessionUser?.isMaster ||
@@ -894,6 +958,12 @@ function App() {
       ?.configurationAccess.includes("WAREHOUSE_MOVEMENTS"),
   );
   const canCreateWarehouseRequest = allowedScreens.includes("warehouse");
+  const canViewInventoryCountDifferences = Boolean(
+    sessionUser?.isMaster ||
+      employeeRoles
+        .find((role) => role.id === sessionUser?.roleId && role.active)
+        ?.configurationAccess.includes("INVENTORY_AUDIT"),
+  );
 
   const countableProducts = useMemo(
     () =>
@@ -1269,6 +1339,101 @@ function App() {
     setWarehouseMovements((current) => [movement, ...current]);
     toast.success(`${movement.folio} creado y enviado a primera aprobación.`);
     return true;
+  };
+
+  const createInventoryBranchOrders = (
+    orders: InventoryBranchOrderDraft[],
+    authorizationCode: string,
+  ): InventoryBranchOrderResult[] | null => {
+    if (!isMasterAccessCode(authorizationCode) || !canCreateWarehouseRequest) {
+      toast.error("Se requiere autorización master para generar los pedidos.");
+      return null;
+    }
+    const category = warehouseCategories.find(
+      (candidate) => candidate.id === "warehouse-products" && candidate.active,
+    );
+    if (!category || orders.length === 0) {
+      toast.error("No existe una categoría activa para envíos de producto.");
+      return null;
+    }
+    const prepared = orders.map((order, index) => {
+      const priceList = warehousePriceLists.find(
+        (candidate) =>
+          candidate.active &&
+          candidate.branchNames.includes(order.branch) &&
+          candidate.clientIds.length === 0,
+      );
+      const orderLines = order.lines.flatMap((draftLine) => {
+        const product = catalogProducts.find(
+          (candidate) =>
+            candidate.id === draftLine.productId &&
+            candidate.kind === "PRODUCT" &&
+            candidate.active,
+        );
+        if (!product || draftLine.quantity < 1) return [];
+        const baseLine = warehouseLineFromProduct(product, draftLine.quantity);
+        const price = priceList?.items.find(
+          (item) => item.productId === product.id,
+        );
+        return [
+          price
+            ? {
+                ...baseLine,
+                partnerCost: price.priceMxn,
+                partnerCostUsd: price.priceUsd,
+              }
+            : baseLine,
+        ];
+      });
+      if (!branchInventory[order.branch] || !priceList || orderLines.length === 0)
+        return null;
+      const nonce = crypto.randomUUID().slice(0, 5).toUpperCase();
+      const folio = `ALM-PRO-${Date.now().toString(36).toUpperCase()}-${index + 1}-${nonce}`;
+      const movement: WarehouseMovement = {
+        id: `warehouse-${crypto.randomUUID()}`,
+        folio,
+        kind: "BRANCH_REQUEST",
+        requestType: "PRODUCT",
+        priceListId: priceList.id,
+        priceListName: priceList.name,
+        customerId: null,
+        customerName: null,
+        categoryId: category.id,
+        categoryLabel: category.name,
+        destinationBranch: order.branch,
+        status: "REQUESTED",
+        lines: orderLines,
+        comment: "Pedido generado desde Inventory para completar stock máximo.",
+        createdAtIso: new Date().toISOString(),
+        createdByName: sessionUser?.name ?? masterUser.name,
+        creationApprovedAtIso: null,
+        creationApprovedByName: null,
+        sentAtIso: null,
+        sentByName: null,
+        receivedAtIso: null,
+        receivedByName: null,
+        cancelledAtIso: null,
+        cancelledByName: null,
+      };
+      return { movement, result: { branch: order.branch, folio } };
+    });
+    if (prepared.some((item) => item === null)) {
+      toast.error(
+        "Revisa las sucursales, productos y listas de precios antes de generar el pedido.",
+      );
+      return null;
+    }
+    const validPrepared = prepared.filter(
+      (item): item is NonNullable<typeof item> => item !== null,
+    );
+    setWarehouseMovements((current) => [
+      ...validPrepared.map((item) => item.movement),
+      ...current,
+    ]);
+    toast.success(
+      `${validPrepared.length} ${validPrepared.length === 1 ? "folio enviado" : "folios enviados"} a Pedidos de sucursales.`,
+    );
+    return validPrepared.map((item) => item.result);
   };
 
   const editWarehouseMovement = (
@@ -7009,6 +7174,7 @@ function App() {
                 ["showClientPhone", "Mostrar teléfono del cliente"],
                 ["showSellerName", "Mostrar nombre del vendedor"],
                 ["showVatBreakdown", "Mostrar desglose de IVA"],
+                ["showSpareCoverageMessage", "Mostrar mensaje de SPARE en Sale"],
               ] as const
             ).map(([field, label]) => (
               <button
@@ -7031,6 +7197,10 @@ function App() {
                       ? receiptSettings[field]
                         ? "Muestra precio sin IVA e impuesto incluido"
                         : "Muestra la leyenda de precios con IVA incluido"
+                      : field === "showSpareCoverageMessage"
+                        ? receiptSettings[field]
+                          ? "Muestra la confirmación cuando el ticket cubre la reducción"
+                          : "Oculta únicamente la leyenda; conserva la validación"
                       : receiptSettings[field]
                         ? "Visible en el ticket"
                         : "Oculto en el ticket"}
@@ -8430,6 +8600,10 @@ function App() {
             movements={inventoryMovements}
             tickets={tickets}
             expenses={cashExpenses}
+            appointments={appointments}
+            paymentMethods={paymentMethods}
+            availableBranches={operationalBranches}
+            canViewAllBranches={Boolean(sessionUser?.isMaster)}
             showInventoryDifferences={canViewInventoryAudit}
             showCosts={canViewDashboardCosts}
           />
@@ -8510,6 +8684,7 @@ function App() {
             costAccessAuthorized={costAccessAuthorized}
             onAuthorizeCostAccess={authorizeCostAccess}
             isMasterCode={isMasterAccessCode}
+            onCreateInventoryOrders={createInventoryBranchOrders}
             onLockCostAccess={() => setCostAccessAuthorized(false)}
           />
         );
@@ -8784,7 +8959,13 @@ function App() {
           fixedBranch={activeBranch}
           masterUser={masterUser}
           sellers={sellers}
+          language={interfaceLanguage}
           onLogin={handleSoftwareLogin}
+        />
+        <InterfacePreferenceControls
+          language={interfaceLanguage}
+          floating
+          onLanguageChange={setInterfaceLanguage}
         />
         <Toaster richColors position="top-right" />
       </>
@@ -8801,8 +8982,14 @@ function App() {
           products={countableProducts}
           expectedStock={branchInventory[sessionUser.branch] ?? {}}
           canSkip={sessionUser.isMaster}
-          showDifferences={sessionUser.isMaster}
+          showDifferences={canViewInventoryCountDifferences}
+          language={interfaceLanguage}
           onComplete={completeOpeningCount}
+        />
+        <InterfacePreferenceControls
+          language={interfaceLanguage}
+          floating
+          onLanguageChange={setInterfaceLanguage}
         />
         <Toaster richColors position="top-right" />
       </>
@@ -8819,8 +9006,14 @@ function App() {
           products={countableProducts}
           expectedStock={branchInventory[sessionUser.branch] ?? {}}
           canSkip={sessionUser.isMaster}
-          showDifferences={sessionUser.isMaster}
+          showDifferences={canViewInventoryCountDifferences}
+          language={interfaceLanguage}
           onComplete={completeClosingCount}
+        />
+        <InterfacePreferenceControls
+          language={interfaceLanguage}
+          floating
+          onLanguageChange={setInterfaceLanguage}
         />
         <Toaster richColors position="top-right" />
       </>
@@ -8833,6 +9026,11 @@ function App() {
       : "sale";
     return (
       <div className="close-day-focus-shell">
+        <InterfacePreferenceControls
+          language={interfaceLanguage}
+          floating
+          onLanguageChange={setInterfaceLanguage}
+        />
         <main className="close-day-focus-window">
           <header className="close-day-focus-header">
             <div>
@@ -8924,7 +9122,10 @@ function App() {
     );
   }
 
-  const metadata = screenMetadata[activeScreen];
+  const metadata =
+    (interfaceLanguage === "EN" ? screenMetadataEnglish : screenMetadata)[
+      activeScreen
+    ];
   const secondsUntilNextUpdate = Math.max(
     0,
     Math.ceil((sessionDataSync.nextUpdateAt - syncClock) / 1_000),
@@ -8944,6 +9145,7 @@ function App() {
         pinned={sidebarPinned}
         allowedScreens={allowedScreens}
         cartCount={cartCount}
+        language={interfaceLanguage}
         onNavigate={navigateToScreen}
         onRequestLocationSwitch={openLocationSwitcher}
         onToggle={toggleSidebar}
@@ -8957,6 +9159,15 @@ function App() {
             </span>
             <h1>{metadata.title}</h1>
             <p>{metadata.subtitle}</p>
+            {!sessionUser.isMaster && (
+              <Badge
+                variant="outline"
+                className={`module-edit-status ${canEditActiveModule ? "is-editable" : "is-read-only"}`}
+              >
+                {canEditActiveModule ? <Pencil size={12} /> : <LockKeyhole size={12} />}
+                {canEditActiveModule ? "Edición permitida" : "Solo consulta"}
+              </Badge>
+            )}
           </div>
           <div className="header-actions">
             <NotificationBell
@@ -8968,6 +9179,10 @@ function App() {
               onMarkRead={markOperationalNotificationRead}
               onMarkAllRead={markAllOperationalNotificationsRead}
             />
+            <InterfacePreferenceControls
+              language={interfaceLanguage}
+              onLanguageChange={setInterfaceLanguage}
+            />
             <div className="header-status">
               <div className="header-sync-status" aria-live="polite">
                 <span className={sessionDataSync.updating ? "is-updating" : ""}>
@@ -8976,13 +9191,17 @@ function App() {
                 <div>
                   <strong>
                     {sessionDataSync.updating
-                      ? "Actualizando datos…"
-                      : `Actualizado · ${lastUpdateTime}`}
+                      ? interfaceLanguage === "EN"
+                        ? "Updating data…"
+                        : "Actualizando datos…"
+                      : `${interfaceLanguage === "EN" ? "Updated" : "Actualizado"} · ${lastUpdateTime}`}
                   </strong>
                   <small>
                     {sessionDataSync.updating
-                      ? "Sincronización automática en curso"
-                      : `Siguiente actualización en ${nextUpdateCountdown}`}
+                      ? interfaceLanguage === "EN"
+                        ? "Automatic synchronization in progress"
+                        : "Sincronización automática en curso"
+                      : `${interfaceLanguage === "EN" ? "Next update in" : "Siguiente actualización en"} ${nextUpdateCountdown}`}
                   </small>
                 </div>
               </div>
@@ -8991,7 +9210,9 @@ function App() {
                 <span className="status-dot" />
                 <div>
                   <strong>Terminal 01</strong>
-                  <small>Operador: {sessionUser.name}</small>
+                  <small>
+                    {interfaceLanguage === "EN" ? "Operator" : "Operador"}: {sessionUser.name}
+                  </small>
                 </div>
               </div>
             </div>
@@ -9006,7 +9227,11 @@ function App() {
               </span>
               <span>
                 <strong>My Account</strong>
-                <small>Perfil, ubicaciones y facturación</small>
+                <small>
+                  {interfaceLanguage === "EN"
+                    ? "Profile, locations and billing"
+                    : "Perfil, ubicaciones y facturación"}
+                </small>
               </span>
               <ChevronRight size={16} />
             </button>}
@@ -9113,6 +9338,7 @@ function App() {
         otherItemsSubtotal={dialogOtherItemsSubtotal}
         otherItemsMinimumTotal={dialogOtherItemsMinimumTotal}
         open={productDialogOpen}
+        showSpareCoverageMessage={receiptSettings.showSpareCoverageMessage}
         isMasterCode={isMasterAccessCode}
         onOpenChange={handleProductDialogOpenChange}
         onSubmit={submitCartItem}
@@ -9169,6 +9395,42 @@ function App() {
         onConfirm={cancelTicket}
       />
       <Toaster position="bottom-center" richColors />
+    </div>
+  );
+}
+
+interface InterfacePreferenceControlsProps {
+  language: InterfaceLanguage;
+  floating?: boolean;
+  onLanguageChange: (language: InterfaceLanguage) => void;
+}
+
+function InterfacePreferenceControls({
+  language,
+  floating = false,
+  onLanguageChange,
+}: InterfacePreferenceControlsProps) {
+  const english = language === "EN";
+  return (
+    <div
+      className={`interface-preference-controls ${floating ? "is-floating" : ""}`}
+      aria-label={english ? "Interface preferences" : "Preferencias de interfaz"}
+    >
+      <button
+        type="button"
+        className="interface-preference-switch"
+        role="switch"
+        aria-checked={english}
+        onClick={() => onLanguageChange(english ? "ES" : "EN")}
+        title={english ? "Cambiar a español" : "Switch to English"}
+      >
+        <span className="interface-preference-icon"><Languages size={15} /></span>
+        <span className="interface-preference-copy">
+          <small>{english ? "LANGUAGE" : "IDIOMA"}</small>
+          <strong>{english ? "English" : "Español"}</strong>
+        </span>
+        <i aria-hidden="true"><b /></i>
+      </button>
     </div>
   );
 }

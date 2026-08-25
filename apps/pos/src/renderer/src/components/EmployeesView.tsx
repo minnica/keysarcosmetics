@@ -120,6 +120,7 @@ const configurationOptions: Array<{
 const cloneRole = (role: EmployeeRole): EmployeeRole => ({
   ...role,
   moduleAccess: [...role.moduleAccess],
+  moduleEditAccess: [...role.moduleEditAccess],
   configurationAccess: [...role.configurationAccess],
 });
 
@@ -265,6 +266,27 @@ export function EmployeesView({
         moduleAccess: selected
           ? current.moduleAccess.filter((item) => item !== screen)
           : [...current.moduleAccess, screen],
+        moduleEditAccess: selected
+          ? current.moduleEditAccess.filter((item) => item !== screen)
+          : current.moduleEditAccess,
+      };
+    });
+  };
+
+  const toggleModuleEdit = (screen: ScreenId) => {
+    if (!roleDraft || roleDraft.system) return;
+    setRoleDraft((current) => {
+      if (!current) return current;
+      const selected = current.moduleEditAccess.includes(screen);
+      return {
+        ...current,
+        moduleAccess:
+          !selected && !current.moduleAccess.includes(screen)
+            ? [...current.moduleAccess, screen]
+            : current.moduleAccess,
+        moduleEditAccess: selected
+          ? current.moduleEditAccess.filter((item) => item !== screen)
+          : [...current.moduleEditAccess, screen],
       };
     });
   };
@@ -302,11 +324,15 @@ export function EmployeesView({
       !roleDraft.moduleAccess.includes("settings")
         ? [...roleDraft.moduleAccess, "settings" as const]
         : roleDraft.moduleAccess;
+    const normalizedModuleEditAccess = roleDraft.moduleEditAccess.filter((screen) =>
+      normalizedModuleAccess.includes(screen),
+    );
     onSaveRole({
       ...roleDraft,
       name: roleDraft.name.trim(),
       description: roleDraft.description.trim(),
       moduleAccess: normalizedModuleAccess,
+      moduleEditAccess: normalizedModuleEditAccess,
     });
     toast.success(`Permisos de ${roleDraft.name} actualizados.`);
   };
@@ -334,6 +360,7 @@ export function EmployeesView({
       active: true,
       system: false,
       moduleAccess: ["sale", "clock-in"],
+      moduleEditAccess: ["sale", "clock-in"],
       configurationAccess: [],
     };
     onSaveRole(role);
@@ -464,19 +491,38 @@ export function EmployeesView({
                   <div className="employee-permission-grid">
                     {moduleOptions.map((module) => {
                       const selected = roleDraft.moduleAccess.includes(module.id);
+                      const canEdit = roleDraft.moduleEditAccess.includes(module.id);
                       const locked = Boolean(module.masterOnly) && !roleDraft.system;
                       return (
-                        <button
-                          type="button"
+                        <article
                           key={module.id}
-                          className={selected ? "is-selected" : ""}
-                          disabled={roleDraft.system || locked}
-                          onClick={() => toggleModule(module.id)}
+                          className={`employee-module-permission ${selected ? "is-selected" : ""}`}
                         >
-                          <span>{selected ? <Check size={14} /> : <KeyRound size={14} />}</span>
-                          <span><strong>{module.label}</strong><small>{module.description}</small></span>
-                          {locked && <LockKeyhole size={13} />}
-                        </button>
+                          <button
+                            type="button"
+                            className="employee-module-access"
+                            disabled={roleDraft.system || locked}
+                            onClick={() => toggleModule(module.id)}
+                          >
+                            <span>{selected ? <Check size={14} /> : <KeyRound size={14} />}</span>
+                            <span><strong>{module.label}</strong><small>{module.description}</small></span>
+                            {locked && <LockKeyhole size={13} />}
+                          </button>
+                          <div className="employee-module-edit-control">
+                            <span>{canEdit ? "EDICIÓN" : "SOLO CONSULTA"}</span>
+                            <button
+                              type="button"
+                              role="switch"
+                              aria-label={`Permitir edición en ${module.label}`}
+                              aria-checked={canEdit}
+                              className={`mock-switch ${canEdit ? "is-on" : ""}`}
+                              disabled={roleDraft.system || locked || !selected}
+                              onClick={() => toggleModuleEdit(module.id)}
+                            >
+                              <i />
+                            </button>
+                          </div>
+                        </article>
                       );
                     })}
                   </div>

@@ -68,6 +68,19 @@ type CourtesyPackage =
   | "DOUBLE_BODY"
   | "MIXED";
 
+const cardAndBankOptions = [
+  "Visa",
+  "Mastercard",
+  "American Express",
+  "BBVA",
+  "Banamex",
+  "Santander",
+  "Banorte",
+  "HSBC",
+  "Mercado Pago",
+  "Otro banco",
+];
+
 export interface CheckoutResult {
   client: Client;
   createdClient: boolean;
@@ -357,6 +370,17 @@ export function CheckoutDialog({
   const paymentStatus: PaymentStatus =
     balanceDue < 0.01 ? "PAID" : amountPaid > 0 ? "LAYAWAY" : "PENDING";
   const changeDue = Math.max(0, totalReceived - total);
+  const paymentNeedsAuthorization = (methodId: string) => {
+    const method = paymentMethods.find((candidate) => candidate.id === methodId);
+    const identity = `${methodId} ${method?.label ?? ""}`.toLocaleLowerCase("es-MX");
+    return !identity.includes("cash") && !identity.includes("efectivo");
+  };
+  const paymentReferencesAreValid = appliedPayments.every(
+    (payment) =>
+      !paymentNeedsAuthorization(payment.methodId) ||
+      (/^\d{4}$/.test(payment.authorizationCode ?? "") &&
+        Boolean(payment.cardOrBank?.trim())),
+  );
   const sellerStepIsValid =
     selectedSellerIds.length > 0 && splitIsValid && ownershipIsValid;
   const nextSessionIsValid =
@@ -374,7 +398,8 @@ export function CheckoutDialog({
     clientIsValid &&
     sellerStepIsValid &&
     nextSessionIsValid &&
-    payments.length > 0;
+    payments.length > 0 &&
+    paymentReferencesAreValid;
   const courtesyTimes =
     appointmentBranches.find((branch) => branch.name === courtesyBranch)
       ?.times ?? [];
@@ -444,6 +469,8 @@ export function CheckoutDialog({
         id: `payment-${Date.now()}-${current.length}`,
         methodId: method.id,
         amount: balanceDue,
+        authorizationCode: "",
+        cardOrBank: "",
       },
     ]);
   };
@@ -1420,6 +1447,9 @@ export function CheckoutDialog({
                         : payment.methodId === "TRANSFER"
                           ? Landmark
                           : WalletCards;
+                  const requiresAuthorization = paymentNeedsAuthorization(
+                    payment.methodId,
+                  );
                   return (
                     <div className="multi-payment-row" key={payment.id}>
                       <span className="payment-row-number">{index + 1}</span>
@@ -1431,7 +1461,12 @@ export function CheckoutDialog({
                             setPayments((current) =>
                               current.map((item) =>
                                 item.id === payment.id
-                                  ? { ...item, methodId }
+                                  ? {
+                                      ...item,
+                                      methodId,
+                                      authorizationCode: "",
+                                      cardOrBank: "",
+                                    }
                                   : item,
                               ),
                             )
@@ -1489,10 +1524,74 @@ export function CheckoutDialog({
                           <Trash2 size={15} />
                         </button>
                       )}
+                      {requiresAuthorization && (
+                        <div className="payment-reference-fields">
+                          <div className="field-stack">
+                            <Label>Tipo de tarjeta o banco</Label>
+                            <Select
+                              value={payment.cardOrBank ?? ""}
+                              onValueChange={(cardOrBank) =>
+                                setPayments((current) =>
+                                  current.map((item) =>
+                                    item.id === payment.id
+                                      ? { ...item, cardOrBank }
+                                      : item,
+                                  ),
+                                )
+                              }
+                            >
+                              <SelectTrigger
+                                aria-label={`Tipo de tarjeta o banco ${index + 1}`}
+                              >
+                                <SelectValue placeholder="Selecciona tarjeta o banco" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {cardAndBankOptions.map((option) => (
+                                  <SelectItem key={option} value={option}>
+                                    {option}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="field-stack">
+                            <Label htmlFor={`payment-authorization-${payment.id}`}>
+                              4 dígitos de autorización
+                            </Label>
+                            <Input
+                              id={`payment-authorization-${payment.id}`}
+                              value={payment.authorizationCode ?? ""}
+                              inputMode="numeric"
+                              maxLength={4}
+                              placeholder="0000"
+                              aria-label={`Autorización de pago ${index + 1}`}
+                              onChange={(event) => {
+                                const authorizationCode = event.target.value
+                                  .replace(/\D/g, "")
+                                  .slice(0, 4);
+                                setPayments((current) =>
+                                  current.map((item) =>
+                                    item.id === payment.id
+                                      ? { ...item, authorizationCode }
+                                      : item,
+                                  ),
+                                );
+                              }}
+                            />
+                          </div>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
               </div>
+
+              {!paymentReferencesAreValid && (
+                <p className="payment-authorization-note">
+                  Selecciona la tarjeta o banco y captura exactamente cuatro
+                  dígitos de autorización en cada cobro no efectivo.
+                </p>
+              )}
 
               {balanceDue > 0.01 && (
                 <Button

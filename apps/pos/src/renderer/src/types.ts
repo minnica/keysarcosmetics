@@ -172,6 +172,7 @@ export interface EmployeeRole {
   active: boolean;
   system: boolean;
   moduleAccess: ScreenId[];
+  moduleEditAccess: ScreenId[];
   configurationAccess: EmployeeConfigurationPermission[];
 }
 
@@ -380,6 +381,7 @@ export interface ReceiptSettings {
   showClientPhone: boolean;
   showSellerName: boolean;
   showVatBreakdown: boolean;
+  showSpareCoverageMessage: boolean;
 }
 
 export type InventoryMovementDirection = "ADD" | "REMOVE" | "TRANSFER";
@@ -394,6 +396,19 @@ export type InventoryMovementCategory =
   | "DELIVERY";
 
 export type BranchInventory = Record<string, Record<string, number>>;
+
+export interface InventoryBranchOrderDraft {
+  branch: string;
+  lines: Array<{
+    productId: string;
+    quantity: number;
+  }>;
+}
+
+export interface InventoryBranchOrderResult {
+  branch: string;
+  folio: string;
+}
 
 export interface InventoryMovementReason {
   id: string;
@@ -660,6 +675,8 @@ export interface PaymentEntry {
   id: string;
   methodId: PaymentMethod;
   amount: number;
+  authorizationCode?: string;
+  cardOrBank?: string;
 }
 
 export interface TicketProductLine {
