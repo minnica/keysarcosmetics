@@ -201,6 +201,8 @@ el diseño y el autocuidado.
 
 La regresión visual de los componentes de alto riesgo usa `apps/ui-testbed`, una app interna sin API, BD, secretos ni deploy, con datos/fechas fijos. `pnpm test:ui:visual` construye ese testbed y valida los baselines versionados mediante Playwright/Chromium en escritorio `1440×900` y móvil `390×844`, con `es-MX`, `America/Mexico_City`, fuentes cargadas y animaciones desactivadas. El check obligatorio es **UI regression canaries**. Para aceptar una variación visual intencional, ejecutar `pnpm test:ui:visual:update`, revisar los PNG modificados y volver a ejecutar el comando normal; CI nunca actualiza baselines. Ver `apps/ui-testbed/README.md`. La Fase 3 de `PLAN_PRUEBAS_UI_COMPARTIDA_Y_E2E.md` concluyó el 2026-08-27 con 34 baselines versionados y 22 canaries en verde.
 
+El E2E funcional autenticado de development vive en `apps/e2e/development` y se ejecuta con `pnpm test:e2e:development` o mediante **Authenticated development E2E**. Usa cuentas técnicas distintas y de mínimo privilegio, genera `storageState` temporal bajo `apps/e2e/.auth`, y cubre ocho recorridos de solo lectura por app; ambos incluyen calendarios reales, tablas, selects, navegación móvil y logout. Un fixture falla ante cualquier método distinto de `GET`, `HEAD` u `OPTIONS`. Los proyectos autenticados desactivan traces, screenshots y video para que JWT, bypass secrets y datos operativos no entren en artefactos; solo se conserva siete días el reporte HTML seguro. Antes de los recorridos, los alias Vercel deben exponer el SHA indicado en `meta[name="keysar-release"]` y `/health.release` debe coincidir con el SHA de API indicado. La preparación de cuentas, permisos, variables y diagnóstico está en `apps/e2e/README.md`. La Fase 4 de `PLAN_PRUEBAS_UI_COMPARTIDA_Y_E2E.md` quedó implementada el 2026-08-27.
+
 Componentes shadcn canónicos en `packages/ui/src/components/ui`:
 
 - Button, Card, Input, Label, Textarea, Badge
@@ -855,6 +857,7 @@ La migración en Supabase dev, el backend `cosmetics-api-dev`, el login `SUPER_A
 - Envelope conserva temporalmente un presupuesto máximo de 8 warnings ESLint y Payroll de 7; CI bloquea cualquier incremento mientras se reduce esa deuda en cambios separados.
 - `.github/workflows/deploy-api.yml` solo se ejecuta manualmente. Fija el SHA de la rama `develop` o `master` antes de la aprobación, usa el environment `development` o `production`, aplica `prisma migrate deploy`, despliega exactamente ese commit y espera `/ready`. Producción exige escribir `PRODUCCION_RESPALDADA`; esta confirmación no sustituye verificar backup/PITR ni la aprobación del environment.
 - `.github/workflows/staging-smoke.yml` ejecuta smoke tests Playwright de solo lectura contra API, Envelope y Payroll en el environment elegido. Los previews protegidos usan `ENVELOPE_VERCEL_BYPASS_SECRET` y `PAYROLL_VERCEL_BYPASS_SECRET`, generados por separado en cada proyecto Vercel; las trazas de los proyectos web se desactivan cuando se usa un bypass para impedir que los headers sensibles entren en artefactos.
+- `.github/workflows/development-e2e.yml` ejecuta manualmente 16 recorridos autenticados de solo lectura (8 Envelope + 8 Payroll) únicamente en el environment `development`. Requiere las cuatro credenciales `E2E_*`, los bypass de Vercel y los SHA completos de frontend/API; compara la identidad desplegada antes de probar y elimina los `storageState` antes de adjuntar el reporte seguro.
 - El API separa `src/app.ts` (Express importable) de `src/index.ts` (listener y cierre ordenado). `/health` verifica el proceso y `/ready` verifica conectividad PostgreSQL; Fly enruta mediante el segundo.
 - Las migraciones Prisma dejaron de estar ignoradas por Git. `scripts/check-migration-safety.mjs` bloquea SQL nuevo potencialmente destructivo salvo revisión explícita documentada con `-- migration-safety: reviewed`.
 - `db:push` y el alias directo `db:migrate:prod` fueron retirados de los scripts. Los despliegues usan `db:migrate:deploy` dentro del environment protegido.
@@ -989,12 +992,16 @@ backend/api/
 
 ```text
 apps/e2e/
-├── playwright.config.ts          → proyectos API, Envelope y Payroll
-└── tests/                        → smoke tests de solo lectura por ambiente
+├── playwright.config.ts                     → proyectos smoke API, Envelope y Payroll
+├── playwright.development.config.ts         → E2E autenticado seguro de development
+├── development/                             → setup de sesión, guard de escritura y 16 recorridos
+├── tests/                                   → smoke tests públicos por ambiente
+└── README.md                                → cuentas, permisos, secrets y diagnóstico
 
 .github/workflows/
 ├── ci.yml                        → gates obligatorios de PR
 ├── deploy-api.yml                → migración + deploy manual protegido
+├── development-e2e.yml           → E2E autenticado por SHA, solo development
 └── staging-smoke.yml             → smoke tests manuales development/production
 ```
 
@@ -1096,6 +1103,7 @@ pnpm --filter @cosmetics/api prisma:validate
 pnpm migrations:review -- origin/develop
 pnpm test:integration  # requiere RUN_DATABASE_TESTS=true + PostgreSQL desechable
 pnpm test:smoke        # requiere URLs de ambiente o servicios locales activos
+pnpm test:e2e:development # requiere development desplegado, cuentas E2E y SHA exactos
 ```
 
 ### Deploy backend

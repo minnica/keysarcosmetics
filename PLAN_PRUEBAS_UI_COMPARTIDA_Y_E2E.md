@@ -1,6 +1,6 @@
 # Plan de pruebas para UI compartida y regresiones E2E
 
-> Estado: Fases 1 a 3 concluidas; Fases 4 y 5 pendientes
+> Estado: Fases 1 a 3 concluidas; Fase 4 implementada en repositorio y pendiente de activación externa; Fase 5 pendiente
 > Fecha del plan: 2026-08-25
 > Última ejecución: 2026-08-27
 > Propósito: entregar a otra sesión/modelo un plan ejecutable para impedir que un cambio en UI compartida rompa Envelope, Payroll u otra aplicación sin ser detectado antes de producción.
@@ -553,14 +553,16 @@ Resultado: protección frente a cambios visuales que compilan pero rompen layout
 
 ### Fase 4: E2E autenticado de desarrollo
 
-- crear cuentas E2E de mínimo privilegio en Supabase dev;
-- configurar secrets en GitHub environment `development`;
-- implementar autenticación reutilizable en Playwright mediante `storageState` sin exponer credenciales;
-- implementar 6 a 10 recorridos críticos de solo lectura en Envelope;
-- implementar 6 a 10 recorridos críticos de solo lectura en Payroll;
-- incluir interacción de fecha en ambas apps;
-- vincular la ejecución al SHA realmente desplegado en development;
-- documentar diagnóstico y artifacts seguros.
+- [ ] Crear las cuentas E2E de mínimo privilegio en Supabase dev (requiere acceso administrativo externo; permisos exactos documentados en `apps/e2e/README.md`).
+- [ ] Configurar los cuatro secrets `E2E_*` en el GitHub environment `development` (requiere acceso administrativo externo).
+- [x] Implementar autenticación reutilizable en Playwright mediante `storageState` sin exponer credenciales.
+- [x] Implementar 6 a 10 recorridos críticos de solo lectura en Envelope.
+- [x] Implementar 6 a 10 recorridos críticos de solo lectura en Payroll.
+- [x] Incluir interacción de fecha en ambas apps.
+- [x] Vincular la ejecución al SHA realmente desplegado en development.
+- [x] Documentar diagnóstico y artifacts seguros.
+
+Estado de implementación: **concluida en el repositorio el 2026-08-27; activación externa pendiente**. `apps/e2e/development` contiene 8 recorridos para Envelope y 8 para Payroll, más setup de sesión e identidad de release. El fixture autenticado bloquea cualquier método distinto de `GET`, `HEAD` u `OPTIONS`; CI permite como máximo un retry y desactiva traces, screenshots y video. El workflow manual **Authenticated development E2E** compara ambos alias Vercel con `E2E_EXPECTED_FRONTEND_SHA`, compara `/health.release` con `E2E_EXPECTED_API_SHA`, elimina los `storageState` antes de publicar un reporte HTML de siete días y solo usa el environment `development`. El lint y type-check E2E, el descubrimiento de los 19 casos de la suite (16 recorridos, 2 setups y 1 identidad de release), los type-checks y builds de Envelope/Payroll terminaron correctamente. No se marcó como activada porque este checkout no dispone de credenciales administrativas válidas de GitHub/Supabase para crear cuentas, guardar secrets ni ejecutar el workflow sobre los alias desplegados.
 
 Resultado: validación real de que las aplicaciones funcionan integradas antes de promoverlas.
 
@@ -623,17 +625,17 @@ La iniciativa se considera completada cuando:
 - [ ] una actualización incompatible de `react-day-picker` bloquea el PR;
 - [ ] un cambio en UI compartida construye todos los consumidores;
 - [ ] los componentes de alto riesgo tienen snapshots desktop y móvil estables;
-- [ ] Envelope tiene al menos un E2E autenticado que interactúa con fechas;
-- [ ] Payroll tiene al menos un E2E autenticado que interactúa con fechas;
-- [ ] existen recorridos críticos de solo lectura para ambas apps en development;
+- [x] Envelope tiene al menos un E2E autenticado que interactúa con fechas;
+- [x] Payroll tiene al menos un E2E autenticado que interactúa con fechas;
+- [x] existen recorridos críticos de solo lectura para ambas apps en development;
 - [ ] ningún test automático escribe en producción;
-- [ ] los artifacts no contienen passwords, bypass secrets, JWT ni datos sensibles;
+- [x] los artifacts de development no contienen passwords, bypass secrets, JWT ni datos sensibles;
 - [ ] los nuevos checks tienen nombres estables y están requeridos por los rulesets correspondientes;
 - [ ] la suite de componentes tarda menos de 2 minutos;
 - [ ] el conjunto de required checks permanece idealmente por debajo de 10 minutos;
 - [ ] tests de componentes tienen cero retries;
-- [ ] E2E permite como máximo un retry y todo caso flaky se corrige o se retira del gate;
-- [ ] documentación y flujo de release están actualizados.
+- [x] E2E permite como máximo un retry y todo caso flaky se corrige o se retira del gate;
+- [x] documentación y flujo de release están actualizados para la Fase 4.
 
 ### Prueba de mutación controlada obligatoria
 

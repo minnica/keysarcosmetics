@@ -201,6 +201,24 @@ Los smoke tests comprueban:
 - Pantalla de login de Envelope.
 - Pantalla de login de Payroll.
 
+## Ejecutar E2E autenticado de solo lectura
+
+Antes de promover un SHA de `develop`, esperar a que los alias estables de Envelope y Payroll terminen su deploy y ejecutar:
+
+```text
+Actions
+→ Authenticated development E2E
+→ Run workflow
+→ release_sha: SHA completo servido por ambos alias Vercel
+→ api_sha: SHA completo reportado por /health en API development
+```
+
+El workflow inicia sesión con dos cuentas técnicas de mínimo privilegio, genera `storageState` temporal y ejecuta ocho recorridos por app. Ambos incluyen una interacción real con calendario; también cubren tablas, selects, módulos críticos, sidebar móvil y logout. La suite falla si detecta un `POST`, `PUT`, `PATCH` o `DELETE`, si un alias sirve otro SHA o si la API no reporta el SHA indicado.
+
+No habilitar esta suite contra producción. Las credenciales viven exclusivamente en secrets del environment `development`; las sesiones temporales se eliminan antes de publicar el reporte. El diagnóstico seguro no incluye traces, screenshots ni video. La preparación exacta de puestos, permisos y variables está en `apps/e2e/README.md`.
+
+Excepción de bootstrap: `workflow_dispatch` solo aparece cuando este archivo ya existe en la rama por defecto `master`. Para la primera promoción que incorpora la Fase 4, ejecutar el mismo comando desde el SHA de `develop` contra development y registrar el resultado en el PR; una vez publicado el workflow en `master`, todas las promociones posteriores deben usar Actions.
+
 ## Pruebas manuales
 
 Después de los smoke tests:
@@ -214,6 +232,7 @@ Después de los smoke tests:
 - [ ] Confirmar que no existen errores nuevos.
 
 Los smoke tests son una barrera inicial de solo lectura. No reemplazan las pruebas funcionales manuales.
+El E2E autenticado reemplaza los chequeos manuales repetitivos de solo lectura, pero no autoriza ni sustituye las pruebas manuales de altas, ediciones o eliminaciones que correspondan al cambio.
 
 ---
 
@@ -241,6 +260,7 @@ La promoción a producción se realiza cuando el conjunto de cambios esté listo
 - [ ] El deploy de development terminó correctamente.
 - [ ] `/health` y `/ready` responden.
 - [ ] Los smoke tests de development pasaron.
+- [ ] `Authenticated development E2E` pasó contra los SHA exactos desplegados.
 - [ ] Las pruebas funcionales manuales pasaron.
 - [ ] Existe un respaldo recuperable de Supabase producción.
 
@@ -428,13 +448,13 @@ El tag funciona como referencia inmutable y punto de rollback.
 
 # Matriz según el tipo de cambio
 
-| Tipo de cambio          | Después del merge a `develop`          | Al liberar a producción            |
-| ----------------------- | -------------------------------------- | ---------------------------------- |
-| Solo frontend           | Preview automático y pruebas manuales  | Vercel desde `master` y validación |
-| Solo backend            | Deploy API a development y smoke tests | Deploy API a production            |
-| Migración de BD         | CI desechable y Deploy API development | Respaldo y Deploy API production   |
-| Frontend + backend + BD | Flujo completo de development          | Flujo completo protegido           |
-| Solo documentación      | CI, sin deploy                         | Normalmente sin deploy             |
+| Tipo de cambio          | Después del merge a `develop`                              | Al liberar a producción            |
+| ----------------------- | ---------------------------------------------------------- | ---------------------------------- |
+| Solo frontend           | Preview automático, E2E autenticado y pruebas manuales     | Vercel desde `master` y validación |
+| Solo backend            | Deploy API, smoke y E2E autenticado en development         | Deploy API a production            |
+| Migración de BD         | CI desechable, Deploy API y E2E autenticado en development | Respaldo y Deploy API production   |
+| Frontend + backend + BD | Flujo completo de development, incluido E2E autenticado    | Flujo completo protegido           |
+| Solo documentación      | CI, sin deploy                                             | Normalmente sin deploy             |
 
 ---
 
@@ -459,6 +479,7 @@ feature
 → develop
 → deploy aislado en development
 → smoke tests
+→ E2E autenticado de solo lectura sobre el SHA desplegado
 → pruebas funcionales
 → respaldo
 → Pull Request de release
@@ -481,7 +502,8 @@ feature
 6. Toda release entra a `master` mediante PR y merge commit.
 7. Confirmar el respaldo antes de desplegar producción.
 8. Los smoke tests no sustituyen las pruebas funcionales.
-9. Verificar que `/health` reporte el SHA desplegado.
-10. Crear un tag después de validar cada release productiva.
-11. Si existe un hotfix en `master`, sincronizarlo con `develop`.
-12. Una feature integrada en `develop` no tiene que liberarse inmediatamente a producción.
+9. El E2E autenticado se ejecuta solo en `development` y nunca debe emitir requests de escritura.
+10. Verificar que `/health` reporte el SHA desplegado.
+11. Crear un tag después de validar cada release productiva.
+12. Si existe un hotfix en `master`, sincronizarlo con `develop`.
+13. Una feature integrada en `develop` no tiene que liberarse inmediatamente a producción.

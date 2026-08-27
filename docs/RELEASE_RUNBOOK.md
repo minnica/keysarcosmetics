@@ -14,11 +14,20 @@ En ambos environments configurar estos secretos:
 - `ENVELOPE_VERCEL_BYPASS_SECRET`: bypass de automatización generado exclusivamente en el proyecto Vercel de Envelope cuando la URL del ambiente esté protegida.
 - `PAYROLL_VERCEL_BYPASS_SECRET`: bypass independiente generado en el proyecto Vercel de Payroll cuando la URL del ambiente esté protegida. No reutilizar el secreto de Envelope.
 
+Solo en `development`, crear además las cuentas técnicas de mínimo privilegio descritas en `apps/e2e/README.md` y configurar:
+
+- `E2E_ENVELOPE_EMAIL` y `E2E_ENVELOPE_PASSWORD`;
+- `E2E_PAYROLL_EMAIL` y `E2E_PAYROLL_PASSWORD`.
+
+Estas credenciales nunca se configuran en `production`. Envelope debe limitarse a `dashboard`, `ventas`, `citas` y `reportes/total-general` con alcance propio; Payroll debe tener únicamente las cinco pantallas E2E documentadas y todas en modo solo lectura.
+
 Configurar estas variables:
 
 - `API_BASE_URL`: URL pública del API correspondiente, sin `/` final.
 - `ENVELOPE_BASE_URL`: URL del frontend Envelope del ambiente.
 - `PAYROLL_BASE_URL`: URL del frontend Payroll del ambiente.
+
+En los proyectos Vercel de Envelope y Payroll, habilitar **Automatically expose System Environment Variables**. El E2E usa `VERCEL_GIT_COMMIT_SHA` durante el build para comprobar la identidad exacta de los alias estables.
 
 En `production`, habilitar required reviewer, impedir self-review cuando exista otra persona autorizada y deshabilitar bypass de administradores si el plan lo permite.
 
@@ -47,8 +56,11 @@ Si solo existe una persona desarrolladora, la aprobación de código puede queda
 5. Hacer squash merge y eliminar la rama.
 6. Ejecutar manualmente `Deploy API` hacia `development` cuando cambien API o Prisma.
 7. Ejecutar `Environment smoke tests` contra `development`.
+8. Cuando el SHA vaya a promoverse, ejecutar `Authenticated development E2E` indicando el SHA completo servido por Vercel y el SHA completo de la API desplegada.
 
 Los smoke tests no autentican usuarios ni escriben datos: comprueban `/health`, `/ready`, el contrato JSON 404 y las pantallas de login de Envelope y Payroll. En previews protegidos envían los bypass de automatización mediante headers; las trazas web permanecen desactivadas para que esos secretos no entren en artefactos de Playwright.
+
+El E2E autenticado sí inicia sesiones dedicadas, pero continúa siendo de solo lectura: ocho recorridos por app cubren calendarios, tablas, selects, navegación móvil y módulos críticos. Un guard bloquea cualquier método de escritura. El workflow compara `release_sha` contra `meta[name="keysar-release"]` en ambos frontends y `api_sha` contra `/health.release`; un alias desfasado detiene la promoción. No publicar `apps/e2e/.auth`: contiene JWT/cookies. El único artefacto permitido es el reporte HTML sin traces, screenshots ni video.
 
 ## 4. Release a producción
 
@@ -80,6 +92,7 @@ pnpm test:ui
 pnpm test:ui:visual
 pnpm test:unit
 pnpm ci:build
+pnpm test:e2e:development # solo contra development, requiere variables y cuentas técnicas
 pnpm --filter @cosmetics/api prisma:schemas
 pnpm --filter @cosmetics/api prisma:validate
 ```
