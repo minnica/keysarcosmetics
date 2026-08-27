@@ -10,7 +10,7 @@ import { cn } from '../../lib/utils'
 import { Button } from './button'
 import { Input } from './input'
 import { Separator } from './separator'
-import { Sheet, SheetContent } from './sheet'
+import { Sheet, SheetContent, SheetDescription, SheetTitle } from './sheet'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './tooltip'
 
 // ── Constantes ────────────────────────────────────────────────────────────────
@@ -180,6 +180,10 @@ const Sidebar = React.forwardRef<HTMLDivElement, SidebarProps>(
             style={{ '--sidebar-width': SIDEBAR_WIDTH_MOBILE } as React.CSSProperties}
             side={side}
           >
+            <SheetTitle className="sr-only">Navegación principal</SheetTitle>
+            <SheetDescription className="sr-only">
+              Menú de módulos, acceso personal y preferencias del sistema.
+            </SheetDescription>
             <div className="flex h-full w-full flex-col">{children}</div>
           </SheetContent>
         </Sheet>

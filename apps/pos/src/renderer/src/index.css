@@ -12312,6 +12312,79 @@ button {
   }
 }
 
+/* Connectivity and offline ticket queue */
+.connectivity-dialog {
+  overflow: hidden;
+  border-color: #d7c3b1;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(180, 130, 86, 0.16), transparent 38%),
+    #fffdf9;
+}
+.connectivity-dialog-header {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr);
+  align-items: start;
+  gap: 16px;
+}
+.connectivity-dialog-header > div:last-child {
+  display: grid;
+  gap: 6px;
+}
+.connectivity-dialog-icon {
+  display: grid;
+  width: 56px;
+  height: 56px;
+  place-items: center;
+  border: 1px solid #bddccc;
+  border-radius: 18px;
+  background: #eaf6f0;
+  color: #2f8763;
+  box-shadow: 0 12px 28px rgba(60, 103, 81, 0.12);
+}
+.connectivity-dialog-icon.is-offline {
+  border-color: #e6c6a8;
+  background: #fff4e8;
+  color: #a6672d;
+  box-shadow: 0 12px 28px rgba(123, 78, 38, 0.12);
+}
+.connectivity-dialog-icon.is-synced {
+  border-color: #b9d9ca;
+  background: linear-gradient(145deg, #eef9f3, #dcefe6);
+}
+.connectivity-dialog-summary {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid #e4d8ce;
+  border-radius: 14px;
+  background: rgba(249, 245, 240, 0.82);
+}
+.connectivity-dialog-summary span {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: #64584f;
+  font-size: 12px;
+  font-weight: 600;
+}
+.connectivity-dialog-summary svg {
+  flex: 0 0 auto;
+  color: #478b6c;
+}
+.connectivity-dialog-queue {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  color: #9a6132;
+}
+.connectivity-dialog-queue strong {
+  font-family: "Emofera Regular", serif;
+  font-size: 28px;
+}
+.connectivity-dialog-queue span {
+  font-size: 11px;
+}
+
 /* Manual data updates */
 .data-update-view {
   display: grid;
@@ -12345,6 +12418,14 @@ button {
 }
 .data-update-live-clock svg {
   color: var(--positive);
+}
+.data-update-live-clock span.is-offline {
+  border-color: #e4c3a5;
+  background: #fff4e8;
+  color: #965d2e;
+}
+.data-update-live-clock span.is-offline svg {
+  color: #a6672d;
 }
 .data-update-summary h2 {
   margin: 4px 0;
@@ -12386,6 +12467,42 @@ button {
 .update-module-list {
   display: grid;
   gap: 9px;
+}
+.offline-ticket-queue > div {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 13px;
+  padding: 14px 16px;
+}
+.offline-ticket-queue.is-offline {
+  border-color: #e3bf9e;
+  background: linear-gradient(105deg, #fff8f0, #fffdf9);
+}
+.offline-ticket-queue-icon {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border-radius: 13px;
+  background: var(--positive-bg);
+  color: var(--positive);
+}
+.offline-ticket-queue.is-offline .offline-ticket-queue-icon {
+  background: #f9e7d5;
+  color: #9b6030;
+}
+.offline-ticket-queue > div > div:nth-child(2) {
+  display: grid;
+  gap: 3px;
+}
+.offline-ticket-queue strong {
+  font-size: 11px;
+}
+.offline-ticket-queue p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 9px;
 }
 .update-module-card > div {
   display: grid;
@@ -16626,5 +16743,21 @@ body.executive-ledger-theme [role="dialog"].product-dialog {
   .product-dialog-executive-product p { grid-row: 4; }
   .product-dialog-form {
     padding: 17px;
+  }
+}
+
+@media (max-width: 620px) {
+  .connectivity-dialog-header,
+  .offline-ticket-queue > div {
+    grid-template-columns: 1fr;
+  }
+
+  .connectivity-dialog-icon {
+    width: 48px;
+    height: 48px;
+  }
+
+  .offline-ticket-queue > div > [data-slot="badge"] {
+    justify-self: start;
   }
 }

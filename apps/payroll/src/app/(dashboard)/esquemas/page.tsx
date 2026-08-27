@@ -1,2 +1,5 @@
-import { PayrollSettingsDemo } from "@/components/payroll/payroll-settings-demo";
-export default function Page() { return <PayrollSettingsDemo />; }
+import { PayrollSchemesDemo } from "@/components/payroll/payroll-schemes-demo";
+
+export default function Page() {
+  return <PayrollSchemesDemo />;
+}

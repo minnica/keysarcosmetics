@@ -1,6 +1,7 @@
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ChangeEvent,
   type Dispatch,
@@ -44,6 +45,7 @@ import {
   TrendingUp,
   Trash2,
   Users,
+  Wifi,
   WifiOff,
   X,
 } from "lucide-react";
@@ -336,6 +338,38 @@ const screenMetadataEnglish: Record<ScreenId, { title: string; subtitle: string 
 
 const automaticDataUpdateIntervalMs = 60_000;
 const terminalLocationStorageKey = "keysar-pos-terminal-location";
+const offlineTicketQueueStorageKey = "keysar-pos-offline-ticket-queue";
+
+type ConnectivityNoticeKind = "ONLINE" | "OFFLINE" | "SYNCED";
+
+interface ConnectivityNotice {
+  kind: ConnectivityNoticeKind;
+  title: string;
+  description: string;
+  pendingCount: number;
+}
+
+const loadOfflineTicketQueue = (): Ticket[] => {
+  try {
+    const storedQueue = window.localStorage.getItem(
+      offlineTicketQueueStorageKey,
+    );
+    if (!storedQueue) return [];
+    const parsedQueue: unknown = JSON.parse(storedQueue);
+    return Array.isArray(parsedQueue) ? (parsedQueue as Ticket[]) : [];
+  } catch {
+    return [];
+  }
+};
+
+const mergeOfflineTicketQueue = (baseTickets: Ticket[]) => {
+  const queuedTickets = loadOfflineTicketQueue();
+  const queuedIds = new Set(queuedTickets.map((ticket) => ticket.id));
+  return [
+    ...queuedTickets,
+    ...baseTickets.filter((ticket) => !queuedIds.has(ticket.id)),
+  ];
+};
 const initialBranchAddresses: Record<string, string> = {
   Polanco: "Av. Presidente Masaryk 123, Polanco, CDMX",
   Satélite: "Circuito Centro Comercial 2251, Satélite, Estado de México",
@@ -635,6 +669,10 @@ const initialWarehouseMovements: WarehouseMovement[] = (() => {
 })();
 
 function App() {
+  const [isOnline, setIsOnline] = useState(() => navigator.onLine);
+  const [connectivityNotice, setConnectivityNotice] =
+    useState<ConnectivityNotice | null>(null);
+  const previousOnlineState = useRef(navigator.onLine);
   const [activeScreen, setActiveScreen] = useState<ScreenId>("sale");
   const [saleFocusMode, setSaleFocusMode] = useState(true);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -665,6 +703,16 @@ function App() {
         "executive-ledger-theme",
         "executive-dark-mode",
       );
+    };
+  }, []);
+
+  useEffect(() => {
+    const updateConnectionState = () => setIsOnline(navigator.onLine);
+    window.addEventListener("online", updateConnectionState);
+    window.addEventListener("offline", updateConnectionState);
+    return () => {
+      window.removeEventListener("online", updateConnectionState);
+      window.removeEventListener("offline", updateConnectionState);
     };
   }, []);
 
@@ -780,7 +828,9 @@ function App() {
   const [discountValue, setDiscountValue] = useState(0);
   const [discountOpen, setDiscountOpen] = useState(false);
   const [clients, setClients] = useState(initialClients);
-  const [tickets, setTickets] = useState(initialTickets);
+  const [tickets, setTickets] = useState<Ticket[]>(() =>
+    mergeOfflineTicketQueue(initialTickets),
+  );
   const [layaways, setLayaways] = useState<LayawayRecord[]>(initialLayaways);
   const [appointments, setAppointments] =
     useState<Appointment[]>(initialAppointments);
@@ -1095,6 +1145,28 @@ function App() {
         createdAtIso: attendance.clockInAtIso,
       });
     }
+    const pendingTicketCount = tickets.filter(
+      (ticket) => ticket.syncStatus === "PENDING_SYNC",
+    ).length;
+    setConnectivityNotice(
+      isOnline
+        ? {
+            kind: "ONLINE",
+            title: "Terminal conectada",
+            description:
+              pendingTicketCount > 0
+                ? `Hay ${pendingTicketCount} ticket${pendingTicketCount === 1 ? "" : "s"} local${pendingTicketCount === 1 ? "" : "es"} listo${pendingTicketCount === 1 ? "" : "s"} para sincronizar.`
+                : "La conexión a internet está disponible. Los tickets se enviarán al sistema en tiempo real.",
+            pendingCount: pendingTicketCount,
+          }
+        : {
+            kind: "OFFLINE",
+            title: "Modo offline activado",
+            description:
+              "No hay conexión a internet. Puedes continuar usando el sistema y crear tickets; quedarán protegidos en esta terminal hasta recuperar la conexión.",
+            pendingCount: pendingTicketCount,
+          },
+    );
     setSessionUser(nextUser);
     setSessionStage("OPENING_COUNT");
     setDaySession(null);
@@ -1964,12 +2036,13 @@ function App() {
 
   useEffect(() => {
     if (
+      !isOnline ||
       sessionDataSync.updating ||
       syncClock < sessionDataSync.nextUpdateAt
     )
       return;
     setSessionDataSync((current) => ({ ...current, updating: true }));
-  }, [sessionDataSync.nextUpdateAt, sessionDataSync.updating, syncClock]);
+  }, [isOnline, sessionDataSync.nextUpdateAt, sessionDataSync.updating, syncClock]);
 
   useEffect(() => {
     if (!sessionDataSync.updating) return;
@@ -1988,8 +2061,154 @@ function App() {
   }, [sessionDataSync.updating]);
 
   const requestSessionDataSync = () => {
+    if (!isOnline) {
+      setConnectivityNotice({
+        kind: "OFFLINE",
+        title: "Sin conexión para sincronizar",
+        description:
+          "Los datos permanecen seguros en esta terminal. La sincronización comenzará automáticamente cuando vuelva internet.",
+        pendingCount: tickets.filter(
+          (ticket) => ticket.syncStatus === "PENDING_SYNC",
+        ).length,
+      });
+      return;
+    }
     setSessionDataSync((current) =>
       current.updating ? current : { ...current, updating: true },
+    );
+  };
+
+  useEffect(() => {
+    const pendingTickets = tickets.filter(
+      (ticket) => ticket.syncStatus === "PENDING_SYNC",
+    );
+    if (pendingTickets.length === 0) {
+      window.localStorage.removeItem(offlineTicketQueueStorageKey);
+      return;
+    }
+    window.localStorage.setItem(
+      offlineTicketQueueStorageKey,
+      JSON.stringify(pendingTickets),
+    );
+  }, [tickets]);
+
+  useEffect(() => {
+    if (previousOnlineState.current === isOnline) return;
+    previousOnlineState.current = isOnline;
+    if (!sessionUser) return;
+    const pendingCount = tickets.filter(
+      (ticket) => ticket.syncStatus === "PENDING_SYNC",
+    ).length;
+    setConnectivityNotice(
+      isOnline
+        ? {
+            kind: "ONLINE",
+            title: "Conexión recuperada",
+            description:
+              pendingCount > 0
+                ? `Internet volvió. El sistema está enviando ${pendingCount} ticket${pendingCount === 1 ? "" : "s"} pendiente${pendingCount === 1 ? "" : "s"}.`
+                : "Internet volvió y la terminal está operando en línea.",
+            pendingCount,
+          }
+        : {
+            kind: "OFFLINE",
+            title: "Conexión interrumpida",
+            description:
+              "El POS cambió a modo offline. Puedes seguir vendiendo y los nuevos tickets se sincronizarán automáticamente después.",
+            pendingCount,
+          },
+    );
+  }, [isOnline, sessionUser, tickets]);
+
+  useEffect(() => {
+    if (!isOnline || !sessionUser) return;
+    const pendingTickets = tickets.filter(
+      (ticket) => ticket.syncStatus === "PENDING_SYNC",
+    );
+    if (pendingTickets.length === 0) return;
+    const syncedAtIso = new Date().toISOString();
+    setTickets((current) =>
+      current.map((ticket) =>
+        ticket.syncStatus === "PENDING_SYNC"
+          ? { ...ticket, syncStatus: "SYNCED", syncedAtIso }
+          : ticket,
+      ),
+    );
+    setSessionDataSync((current) => ({ ...current, updating: true }));
+    setConnectivityNotice({
+      kind: "SYNCED",
+      title: "Tickets sincronizados",
+      description: `${pendingTickets.length} ticket${pendingTickets.length === 1 ? " local fue enviado" : "s locales fueron enviados"} correctamente al sistema.`,
+      pendingCount: 0,
+    });
+  }, [isOnline, sessionUser, tickets]);
+
+  const renderConnectivityNotice = () => {
+    const ConnectivityIcon =
+      connectivityNotice?.kind === "OFFLINE" ? WifiOff : Wifi;
+    return (
+      <Dialog
+        open={Boolean(connectivityNotice)}
+        onOpenChange={(open) => {
+          if (!open) setConnectivityNotice(null);
+        }}
+      >
+        <DialogContent className="connectivity-dialog sm:max-w-[520px]">
+          <DialogHeader className="dialog-header connectivity-dialog-header">
+            <div
+              className={`connectivity-dialog-icon is-${(connectivityNotice?.kind ?? "ONLINE").toLocaleLowerCase("en-US")}`}
+            >
+              <ConnectivityIcon size={25} />
+            </div>
+            <div>
+              <span className="section-kicker">
+                {connectivityNotice?.kind === "OFFLINE"
+                  ? "OPERACIÓN LOCAL SEGURA"
+                  : connectivityNotice?.kind === "SYNCED"
+                    ? "SINCRONIZACIÓN COMPLETADA"
+                    : "CONEXIÓN DISPONIBLE"}
+              </span>
+              <DialogTitle>{connectivityNotice?.title}</DialogTitle>
+              <DialogDescription>
+                {connectivityNotice?.description}
+              </DialogDescription>
+            </div>
+          </DialogHeader>
+          <div className="connectivity-dialog-summary">
+            <span>
+              <CheckCircle2 size={16} /> Acceso al sistema disponible
+            </span>
+            <span>
+              <CheckCircle2 size={16} /> Venta y creación de tickets disponible
+            </span>
+            <span>
+              {connectivityNotice?.kind === "OFFLINE" ? (
+                <WifiOff size={16} />
+              ) : (
+                <RefreshCw size={16} />
+              )}
+              {connectivityNotice?.kind === "OFFLINE"
+                ? "Sincronización automática en espera"
+                : "Sincronización automática activa"}
+            </span>
+          </div>
+          {connectivityNotice?.kind === "OFFLINE" && (
+            <div className="connectivity-dialog-queue">
+              <strong>{connectivityNotice.pendingCount}</strong>
+              <span>
+                {connectivityNotice.pendingCount === 1
+                  ? "ticket pendiente en esta terminal"
+                  : "tickets pendientes en esta terminal"}
+              </span>
+            </div>
+          )}
+          <DialogFooter>
+            <Button type="button" onClick={() => setConnectivityNotice(null)}>
+              Entendido
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     );
   };
 
@@ -3091,6 +3310,9 @@ function App() {
       sellerSales: result.sellerSales,
       deals: ticketDeals,
       status: "COMPLETED",
+      syncStatus: isOnline ? "SYNCED" : "PENDING_SYNC",
+      createdOffline: !isOnline,
+      syncedAtIso: isOnline ? createdAt.toISOString() : null,
     };
     const clientName = `${result.client.firstName} ${result.client.lastName}`;
     const createdAppointments: Appointment[] = result.appointments.map(
@@ -5019,6 +5241,9 @@ function App() {
       ticketType: "LAYAWAY_PAYMENT",
       relatedTicketId: layaway.originalTicketId,
       inventoryDeductions: liquidationDeliveredLines,
+      syncStatus: isOnline ? "SYNCED" : "PENDING_SYNC",
+      createdOffline: !isOnline,
+      syncedAtIso: isOnline ? createdAt.toISOString() : null,
     };
     setTickets((current) => [
       paymentTicket,
@@ -5031,6 +5256,8 @@ function App() {
               paymentStatus: isLiquidation
                 ? ("PAID" as const)
                 : ("LAYAWAY" as const),
+              syncStatus: isOnline ? "SYNCED" : "PENDING_SYNC",
+              syncedAtIso: isOnline ? createdAt.toISOString() : null,
             }
           : ticket,
       ),
@@ -5461,6 +5688,9 @@ function App() {
       balanceDue,
       paymentStatus,
       paymentMethod: payments[0]?.methodId ?? defaultPaymentMethod,
+      syncStatus: isOnline ? "SYNCED" : "PENDING_SYNC",
+      createdOffline: ticket.createdOffline,
+      syncedAtIso: isOnline ? new Date().toISOString() : null,
     };
 
     const matchedClient = clients.find(
@@ -9353,6 +9583,10 @@ function App() {
             revision={sessionDataSync.revision}
             now={syncClock}
             onRequestSync={requestSessionDataSync}
+            isOnline={isOnline}
+            pendingTicketCount={tickets.filter(
+              (ticket) => ticket.syncStatus === "PENDING_SYNC",
+            ).length}
           />
         );
       case "my-account":
@@ -9395,6 +9629,7 @@ function App() {
           language={interfaceLanguage}
           onLogin={handleSoftwareLogin}
         />
+        {renderConnectivityNotice()}
         <Toaster richColors position="top-right" />
       </>
     );
@@ -9414,6 +9649,7 @@ function App() {
           language={interfaceLanguage}
           onComplete={completeOpeningCount}
         />
+        {renderConnectivityNotice()}
         <Toaster richColors position="top-right" />
       </>
     );
@@ -9437,6 +9673,7 @@ function App() {
           }}
           onComplete={completeClosingCount}
         />
+        {renderConnectivityNotice()}
         <Toaster richColors position="top-right" />
       </>
     );
@@ -9539,6 +9776,7 @@ function App() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+        {renderConnectivityNotice()}
         <Toaster richColors position="top-right" />
       </div>
     );
@@ -9604,20 +9842,27 @@ function App() {
               onMarkAllRead={markAllOperationalNotificationsRead}
             />
             <div className="header-status">
-              <div className="header-sync-status" aria-live="polite">
+              <div
+                className={`header-sync-status ${isOnline ? "is-online" : "is-offline"}`}
+                aria-live="polite"
+              >
                 <span className={sessionDataSync.updating ? "is-updating" : ""}>
-                  <RefreshCw size={15} />
+                  {isOnline ? <RefreshCw size={15} /> : <WifiOff size={15} />}
                 </span>
                 <div>
                   <strong>
-                    {sessionDataSync.updating
+                    {!isOnline
+                      ? "Modo offline"
+                      : sessionDataSync.updating
                       ? interfaceLanguage === "EN"
                         ? "Updating data…"
                         : "Actualizando datos…"
                       : `${interfaceLanguage === "EN" ? "Updated" : "Actualizado"} · ${lastUpdateTime}`}
                   </strong>
                   <small>
-                    {sessionDataSync.updating
+                    {!isOnline
+                      ? `${tickets.filter((ticket) => ticket.syncStatus === "PENDING_SYNC").length} tickets pendientes de sincronizar`
+                      : sessionDataSync.updating
                       ? interfaceLanguage === "EN"
                         ? "Automatic synchronization in progress"
                         : "Sincronización automática en curso"
@@ -9829,6 +10074,7 @@ function App() {
         }}
         onConfirm={cancelTicket}
       />
+      {renderConnectivityNotice()}
       <Toaster position="bottom-center" richColors />
     </div>
   );

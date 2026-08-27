@@ -336,6 +336,9 @@ export interface Ticket {
   refundAmount?: number;
   returnedProducts?: TicketInventoryLine[];
   nonReturnedProducts?: TicketNonReturnLine[];
+  syncStatus?: "SYNCED" | "PENDING_SYNC";
+  createdOffline?: boolean;
+  syncedAtIso?: string | null;
 }
 
 export interface TicketInventoryLine {

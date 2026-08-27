@@ -1,2 +1,5 @@
-import { PayrollReceiptsDemo } from "@/components/payroll/payroll-receipts-demo";
-export default function Page() { return <PayrollReceiptsDemo />; }
+import { PayrollReceiptsExecutiveDemo } from "@/components/payroll/payroll-receipts-executive-demo";
+
+export default function Page() {
+  return <PayrollReceiptsExecutiveDemo />;
+}

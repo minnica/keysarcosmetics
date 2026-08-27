@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   CheckCircle2,
+  CloudOff,
   CloudDownload,
+  CloudUpload,
   DatabaseZap,
   Loader2,
   RefreshCw,
@@ -90,6 +92,8 @@ interface DataUpdateViewProps {
   revision: number;
   now: number;
   onRequestSync: () => void;
+  isOnline: boolean;
+  pendingTicketCount: number;
 }
 
 export function DataUpdateView({
@@ -99,6 +103,8 @@ export function DataUpdateView({
   revision,
   now,
   onRequestSync,
+  isOnline,
+  pendingTicketCount,
 }: DataUpdateViewProps) {
   const [modules, setModules] = useState(initialModules);
   const updatingCount = modules.filter(
@@ -144,6 +150,12 @@ export function DataUpdateView({
 
   const updateModules = (moduleIds: string[]) => {
     if (moduleIds.length === 0) return;
+    if (!isOnline) {
+      toast.info(
+        "Sin internet. La actualización continuará automáticamente al recuperar la conexión.",
+      );
+      return;
+    }
     setModules((current) =>
       current.map((module) =>
         moduleIds.includes(module.id)
@@ -177,13 +189,20 @@ export function DataUpdateView({
       <Card className="data-update-summary">
         <CardContent>
           <div>
-            <span className="section-kicker">SINCRONIZACIÓN AUTOMÁTICA</span>
+            <span className="section-kicker">
+              {isOnline ? "SINCRONIZACIÓN AUTOMÁTICA" : "MODO OFFLINE"}
+            </span>
             <h2>Estado de módulos</h2>
             <p>
-              La sesión revisa y actualiza todos los módulos automáticamente
-              cada minuto, incluso mientras trabajas en otra pantalla.
+              {isOnline
+                ? "La sesión revisa y actualiza todos los módulos automáticamente cada minuto, incluso mientras trabajas en otra pantalla."
+                : "La terminal conserva la operación local. Tickets y cambios pendientes se enviarán automáticamente cuando vuelva internet."}
             </p>
             <div className="data-update-live-clock" aria-live="polite">
+              <span className={isOnline ? "is-online" : "is-offline"}>
+                {isOnline ? <CheckCircle2 size={14} /> : <CloudOff size={14} />}
+                {isOnline ? "Terminal en línea" : "Terminal sin internet"}
+              </span>
               <span>
                 <CheckCircle2 size={14} /> Última actualización {lastUpdateLabel}
               </span>
@@ -205,15 +224,43 @@ export function DataUpdateView({
           <Button
             type="button"
             onClick={onRequestSync}
-            disabled={updating || updatingCount > 0}
+            disabled={!isOnline || updating || updatingCount > 0}
           >
             {updating || updatingCount > 0 ? (
               <Loader2 className="is-spinning" size={16} />
             ) : (
               <CloudDownload size={16} />
             )}
-            {updating ? "Actualizando…" : "Sincronizar ahora"}
+            {!isOnline
+              ? "En espera de internet"
+              : updating
+                ? "Actualizando…"
+                : "Sincronizar ahora"}
           </Button>
+        </CardContent>
+      </Card>
+
+      <Card className={`offline-ticket-queue ${isOnline ? "is-online" : "is-offline"}`}>
+        <CardContent>
+          <div className="offline-ticket-queue-icon">
+            {isOnline ? <CloudUpload size={22} /> : <CloudOff size={22} />}
+          </div>
+          <div>
+            <span className="section-kicker">COLA LOCAL DE TICKETS</span>
+            <strong>
+              {pendingTicketCount === 0
+                ? "Todos los tickets están sincronizados"
+                : `${pendingTicketCount} ticket${pendingTicketCount === 1 ? "" : "s"} pendiente${pendingTicketCount === 1 ? "" : "s"}`}
+            </strong>
+            <p>
+              {isOnline
+                ? "Los registros pendientes se cargan automáticamente al sistema."
+                : "Puedes seguir vendiendo: cada ticket queda guardado en esta terminal."}
+            </p>
+          </div>
+          <Badge variant={pendingTicketCount === 0 ? "default" : "outline"}>
+            {pendingTicketCount === 0 ? "AL DÍA" : "PENDIENTE"}
+          </Badge>
         </CardContent>
       </Card>
 
@@ -260,7 +307,11 @@ export function DataUpdateView({
                 variant="outline"
                 size="sm"
                 onClick={() => updateModules([module.id])}
-                disabled={module.status !== "PENDING" || updatingCount > 0}
+                disabled={
+                  !isOnline ||
+                  module.status !== "PENDING" ||
+                  updatingCount > 0
+                }
               >
                 {module.status === "UPDATING" ? (
                   <Loader2 className="is-spinning" size={14} />
@@ -275,8 +326,8 @@ export function DataUpdateView({
       </div>
 
       <p className="data-update-disclaimer">
-        Demostración frontend: la actualización es simulada y no descarga datos
-        de un servidor.
+        Demostración frontend: la cola se conserva localmente y la carga al
+        servidor se representa mediante una sincronización simulada.
       </p>
     </div>
   );
