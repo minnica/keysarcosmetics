@@ -527,12 +527,14 @@ Resultado: protección conductual inmediata para el área que causó el incident
 
 ### Fase 2: cobertura completa del barrel público
 
-- inventariar cada export de `packages/ui/src/index.ts`;
-- agregar contrato mínimo a todos los exports;
-- cubrir Sidebar, Toast, Sheet, Tabs, Popover y Tooltip con mayor profundidad;
-- configurar umbrales de cobertura;
-- agregar checklist de cambios compartidos al PR template;
-- documentar cómo agregar pruebas a un componente nuevo.
+- [x] Inventariar cada export de `packages/ui/src/index.ts`.
+- [x] Agregar contrato mínimo a todos los exports.
+- [x] Cubrir Sidebar, Toast, Sheet, Tabs, Popover y Tooltip con mayor profundidad.
+- [x] Configurar umbrales de cobertura.
+- [x] Agregar checklist de cambios compartidos al PR template.
+- [x] Documentar cómo agregar pruebas a un componente nuevo.
+
+Estado de cierre: **concluida el 2026-08-27**. `src/public-barrel.test.tsx` protege el inventario completo de runtime y los tipos públicos; la suite suma 36 contratos en 13 archivos. Se añadieron contratos de interacción para Sidebar, Toast, Sheet, Tabs, Popover y Tooltip, junto con pruebas de los primitives restantes. Vitest exige como mínimo 90% de statements/líneas, 80% de funciones y 75% de branches; al cierre, `pnpm test:ui:coverage` reportó 95.69% de statements/líneas, 88.46% de funciones y 80.43% de branches. La guía para cambios futuros está en `packages/ui/GUIA_PRUEBAS_COMPONENTES.md`.
 
 Resultado: ningún componente global queda fuera de la red de seguridad.
 

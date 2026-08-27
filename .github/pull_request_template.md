@@ -6,6 +6,7 @@
 ## Validación
 
 - [ ] Lint, type-check, tests y build aplicables terminaron correctamente.
+- [ ] Si cambié `@cosmetics/ui`, agregué o actualicé su contrato, el inventario del barrel cuando aplica y ejecuté `pnpm test:ui:coverage`.
 - [ ] Probé permisos de lectura y escritura cuando corresponde.
 - [ ] Revisé el Preview Deployment y los estados responsive relevantes.
 

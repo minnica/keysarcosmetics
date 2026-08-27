@@ -197,7 +197,7 @@ el diseño y el autocuidado.
 
 ## Estado actual de @cosmetics/ui
 
-`packages/ui` cuenta con contratos de comportamiento en Vitest + React Testing Library para `DatePicker`, `DateRangePicker`, `Calendar`, `Combobox`, `Select`, `Dialog`, `AlertDialog` y `DataTable`. El setup común usa jsdom, jest-dom y user-event con timezone fija `America/Mexico_City`. Ejecutar `pnpm test:ui` para la suite rápida y `pnpm test:ui:coverage` para el reporte informativo; los umbrales y la cobertura completa del barrel siguen pendientes de las fases posteriores de `PLAN_PRUEBAS_UI_COMPARTIDA_Y_E2E.md`.
+`packages/ui` cuenta con contratos de comportamiento en Vitest + React Testing Library para todo el barrel público, incluidos `DatePicker`, `DateRangePicker`, `Calendar`, `Combobox`, `Select`, `Dialog`, `AlertDialog`, `DataTable`, `Sidebar`, Toast, Sheet, Tabs, Popover y Tooltip. El setup común usa jsdom, jest-dom y user-event con timezone fija `America/Mexico_City`. Ejecutar `pnpm test:ui` para la suite rápida y `pnpm test:ui:coverage` para el gate de cobertura: mínimo global de 90% statements/líneas, 80% funciones y 75% branches. Al agregar o modificar un componente compartido, seguir `packages/ui/GUIA_PRUEBAS_COMPONENTES.md` y actualizar el contrato del barrel cuando corresponda. La Fase 2 de `PLAN_PRUEBAS_UI_COMPARTIDA_Y_E2E.md` concluyó el 2026-08-27.
 
 Componentes shadcn canónicos en `packages/ui/src/components/ui`:
 
@@ -848,7 +848,7 @@ La migración en Supabase dev, el backend `cosmetics-api-dev`, el login `SUPER_A
 
 ### CI y releases seguros (2026-08-24)
 
-- `.github/workflows/ci.yml` valida PRs y pushes a `develop`/`master` con el check independiente `Shared UI contracts`, lint, TypeScript, unit tests, builds productivos, sincronía de schemas Prisma, aplicación completa de migraciones sobre PostgreSQL 16 efímero e integración HTTP real de login/sesión. `Shared UI contracts` ejecuta la suite y cobertura informativa de `@cosmetics/ui`; sus umbrales se incorporarán en la fase de cobertura completa.
+- `.github/workflows/ci.yml` valida PRs y pushes a `develop`/`master` con el check independiente `Shared UI contracts`, lint, TypeScript, unit tests, builds productivos, sincronía de schemas Prisma, aplicación completa de migraciones sobre PostgreSQL 16 efímero e integración HTTP real de login/sesión. `Shared UI contracts` ejecuta la suite de `@cosmetics/ui` con sus umbrales obligatorios de cobertura.
 - Los scripts `type-check`, `test:unit` y `test:integration` de `@cosmetics/api` ejecutan previamente `prisma generate`; esto es obligatorio porque un runner limpio todavía no tiene los tipos y enums generados de `@prisma/client`.
 - Envelope conserva temporalmente un presupuesto máximo de 8 warnings ESLint y Payroll de 7; CI bloquea cualquier incremento mientras se reduce esa deuda en cambios separados.
 - `.github/workflows/deploy-api.yml` solo se ejecuta manualmente. Fija el SHA de la rama `develop` o `master` antes de la aprobación, usa el environment `development` o `production`, aplica `prisma migrate deploy`, despliega exactamente ese commit y espera `/ready`. Producción exige escribir `PRODUCCION_RESPALDADA`; esta confirmación no sustituye verificar backup/PITR ni la aprobación del environment.

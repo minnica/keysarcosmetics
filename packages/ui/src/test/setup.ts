@@ -21,7 +21,7 @@ Object.defineProperty(window, 'ResizeObserver', {
 Object.defineProperty(window, 'matchMedia', {
   configurable: true,
   writable: true,
-  value: vi.fn().mockImplementation((query: string) => ({
+  value: (query: string) => ({
     matches: false,
     media: query,
     onchange: null,
@@ -30,7 +30,7 @@ Object.defineProperty(window, 'matchMedia', {
     addEventListener: vi.fn(),
     removeEventListener: vi.fn(),
     dispatchEvent: vi.fn(),
-  })),
+  }),
 })
 
 if (!window.PointerEvent) {
