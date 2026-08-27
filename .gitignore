@@ -51,3 +51,5 @@ backend/api/src/generated/
 # Misc
 .cache/
 coverage/
+playwright-report/
+test-results/

@@ -8,6 +8,8 @@
     "test": "turbo run test",
     "test:ui": "pnpm --filter @cosmetics/ui test:ui",
     "test:ui:coverage": "pnpm --filter @cosmetics/ui test:ui:coverage",
+    "test:ui:visual": "pnpm --filter @cosmetics/ui-testbed build && pnpm --filter @cosmetics/e2e test:ui:visual",
+    "test:ui:visual:update": "pnpm --filter @cosmetics/ui-testbed build && pnpm --filter @cosmetics/e2e test:ui:visual:update",
     "test:unit": "pnpm --filter @cosmetics/api test:unit",
     "test:integration": "pnpm --filter @cosmetics/api test:integration",
     "test:smoke": "pnpm --filter @cosmetics/e2e test:smoke",

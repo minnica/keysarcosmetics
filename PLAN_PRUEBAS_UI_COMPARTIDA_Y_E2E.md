@@ -1,6 +1,6 @@
 # Plan de pruebas para UI compartida y regresiones E2E
 
-> Estado: Fase 1 concluida; Fases 2 a 5 pendientes
+> Estado: Fases 1 a 3 concluidas; Fases 4 y 5 pendientes
 > Fecha del plan: 2026-08-25
 > Última ejecución: 2026-08-27
 > Propósito: entregar a otra sesión/modelo un plan ejecutable para impedir que un cambio en UI compartida rompa Envelope, Payroll u otra aplicación sin ser detectado antes de producción.
@@ -540,12 +540,14 @@ Resultado: ningún componente global queda fuera de la red de seguridad.
 
 ### Fase 3: testbed y regresión visual
 
-- crear `apps/ui-testbed` sin deploy;
-- renderizar estados deterministas de componentes de alto riesgo;
-- configurar screenshots desktop/móvil;
-- versionar baselines;
-- agregar `UI regression canaries` a CI;
-- documentar el proceso para aceptar un cambio visual intencional.
+- [x] Crear `apps/ui-testbed` sin deploy.
+- [x] Renderizar estados deterministas de componentes de alto riesgo.
+- [x] Configurar screenshots desktop/móvil.
+- [x] Versionar baselines.
+- [x] Agregar `UI regression canaries` a CI.
+- [x] Documentar el proceso para aceptar un cambio visual intencional.
+
+Estado de cierre: **concluida el 2026-08-27**. El testbed aislado cubre DatePicker, DateRangePicker, Calendar, Combobox, DataTable, Select, Dialog, AlertDialog, Sidebar y Toast con valores fijos. Se versionaron 34 PNG de baseline: 17 por viewport Chromium (`1440×900` y `390×844`). La ejecución de `pnpm test:ui:visual` terminó con los 22 canaries en verde. La suite usa locale `es-MX`, timezone `America/Mexico_City`, movimiento reducido, fuentes listas y sin animaciones. `pnpm test:ui:visual:update` es la única vía documentada para aceptar variaciones; CI las bloquea mediante **UI regression canaries** y adjunta artefactos solo cuando falla.
 
 Resultado: protección frente a cambios visuales que compilan pero rompen layout o interacción.
 

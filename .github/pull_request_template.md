@@ -7,6 +7,7 @@
 
 - [ ] Lint, type-check, tests y build aplicables terminaron correctamente.
 - [ ] Si cambié `@cosmetics/ui`, agregué o actualicé su contrato, el inventario del barrel cuando aplica y ejecuté `pnpm test:ui:coverage`.
+- [ ] Si cambié UI compartida, dependencias UI, tokens, Tailwind o fuentes, ejecuté `pnpm test:ui:visual` y revisé conscientemente los cambios de snapshots.
 - [ ] Probé permisos de lectura y escritura cuando corresponde.
 - [ ] Revisé el Preview Deployment y los estados responsive relevantes.
 

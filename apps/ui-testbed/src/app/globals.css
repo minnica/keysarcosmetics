@@ -1,0 +1,57 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --bg-primary: #f7f3ee;
+    --bg-card: #ffffff;
+    --bg-sidebar: #ffffff;
+    --text-primary: #4f4a44;
+    --text-muted: #766d64;
+    --accent: #a88662;
+    --accent-hover: #f0e2d6;
+    --border-color: #e7d2c2;
+    --sidebar-active-bg: #a88662;
+    --card-shadow: 0 1px 4px rgba(107, 79, 63, 0.12);
+    --table-header-label: #7b634a;
+    --table-body-text: #4f4a44;
+    --table-row-hover: rgba(168, 134, 98, 0.1);
+    --table-row-selected: rgba(168, 134, 98, 0.16);
+    color-scheme: light;
+  }
+
+  * {
+    border-color: var(--border-color);
+  }
+
+  html {
+    background: var(--bg-primary);
+  }
+
+  body {
+    min-height: 100vh;
+    margin: 0;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-family: Arial, Helvetica, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  button,
+  input {
+    font: inherit;
+  }
+}
+
+@layer components {
+  .testbed-shell {
+    @apply min-h-screen bg-background p-6 sm:p-10;
+  }
+  .testbed-panel {
+    @apply mx-auto w-full max-w-3xl rounded-xl border bg-card p-6 shadow-brand;
+  }
+  .testbed-caption {
+    @apply mb-5 text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--text-muted)];
+  }
+}

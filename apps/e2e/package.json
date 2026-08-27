@@ -5,7 +5,9 @@
   "scripts": {
     "lint": "eslint \"**/*.ts\" --max-warnings=0",
     "test:smoke": "playwright test",
-    "test:smoke:headed": "playwright test --headed"
+    "test:smoke:headed": "playwright test --headed",
+    "test:ui:visual": "playwright test -c playwright.visual.config.ts",
+    "test:ui:visual:update": "playwright test -c playwright.visual.config.ts --update-snapshots"
   },
   "devDependencies": {
     "@types/node": "^20.14.9",
