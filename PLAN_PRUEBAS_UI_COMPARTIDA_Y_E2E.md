@@ -1,6 +1,6 @@
 # Plan de pruebas para UI compartida y regresiones E2E
 
-> Estado: Fases 1 a 3 concluidas; Fase 4 implementada en repositorio y pendiente de activación externa; Fase 5 pendiente
+> Estado: Fases 1 a 3 concluidas; Fases 4 y 5 implementadas en repositorio y pendientes de activación/observación externa
 > Fecha del plan: 2026-08-25
 > Última ejecución: 2026-08-27
 > Propósito: entregar a otra sesión/modelo un plan ejecutable para impedir que un cambio en UI compartida rompa Envelope, Payroll u otra aplicación sin ser detectado antes de producción.
@@ -568,15 +568,21 @@ Resultado: validación real de que las aplicaciones funcionan integradas antes d
 
 ### Fase 5: producción y endurecimiento
 
-- agregar 2 a 4 smoke autenticados de solo lectura por app;
-- crear cuenta de monitoreo productiva de mínimo privilegio;
-- revisar que traces/screenshots no filtren datos o secrets;
-- sincronizar los nuevos required checks con los rulesets de GitHub;
-- actualizar `CLAUDE.md`, `FLUJO_TRABAJO_Y_DESPLIEGUE.md` y `docs/RELEASE_RUNBOOK.md`;
-- ejecutar prueba de mutación controlada;
-- medir duración y flakiness durante varios PR.
+- [x] Agregar 2 a 4 smoke autenticados de solo lectura por app.
+- [ ] Crear las cuentas de monitoreo productivas de mínimo privilegio y guardar los cuatro secrets `PRODUCTION_MONITOR_*` (requiere acceso administrativo externo a producción/GitHub).
+- [x] Revisar que traces/screenshots no filtren datos o secrets.
+- [x] Conservar estables y documentados los cinco required checks de PR; `Authenticated production smoke` queda como gate del environment protegido, no como status check de rama.
+- [ ] Verificar administrativamente los rulesets en GitHub (el checkout no tiene una sesión `gh` válida).
+- [x] Actualizar `CLAUDE.md`, `FLUJO_TRABAJO_Y_DESPLIEGUE.md` y `docs/RELEASE_RUNBOOK.md`.
+- [x] Ejecutar la mutación controlada contra contratos y revertirla por completo.
+- [x] Instrumentar duración, número de intento, retries y resultado en los resúmenes de CI/smoke.
+- [ ] Completar la observación de cinco promociones productivas para medir flakiness real.
 
-Resultado: cierre operativo y gate verificable de release.
+Estado de implementación: **concluida en el repositorio el 2026-08-27; activación y burn-in externos pendientes**. `apps/e2e/production` añade tres recorridos por app más dos setups de sesión. Envelope valida permisos exactos (`dashboard`, `reportes/total-general`, `selfDataOnly`) y Payroll valida únicamente `payroll/esquemas` sin escritura; ambas cuentas se rechazan si son `SUPER_ADMIN` o tienen permisos adicionales. El fixture falla ante cualquier método distinto de `GET`, `HEAD` u `OPTIONS`. El workflow **Environment smoke tests** exige los SHA completos, ejecuta cinco smokes públicos y encadena **Authenticated production smoke** solo en `production`. La configuración autenticada usa cero retries, desactiva traces/screenshots/video, no publica reporte HTML y elimina sesiones/resultados en `always()`.
+
+La mutación temporal `hidden` sobre el trigger de `DatePicker` provocó 4/4 fallos del contrato; después de revertirla, `pnpm test:ui:coverage` terminó con 36/36 casos en 3.34 s y los umbrales esperados. El canary visual no pudo ejecutarse localmente porque el sandbox bloqueó tanto el listener `127.0.0.1:3010` como Chromium con `EPERM`; el intento no llegó a comparar snapshots. Por ello la comprobación visual de la mutación debe repetirse en **UI regression canaries** del PR, cuyo runner Ubuntu sí es el entorno canónico. Lint/type-check E2E quedaron verdes y Playwright descubrió 5 smokes públicos y 8 casos productivos. La CLI alternativa `agent-browser` indicada por la skill no está instalada en este entorno.
+
+Resultado del repositorio: gate de release implementado y verificable; el cierre operativo depende de la activación externa indicada.
 
 ## 8. PR sugeridos
 
@@ -619,23 +625,23 @@ No modificar API, Prisma, migraciones, BD o variables de producción como parte 
 
 La iniciativa se considera completada cuando:
 
-- [ ] cada export público de `@cosmetics/ui` tiene al menos una prueba de contrato;
-- [ ] DatePicker, DateRangePicker y Calendar tienen cobertura de interacción, navegación, disabled y timezone;
-- [ ] una ruptura intencional del DatePicker o Calendar bloquea el PR;
+- [x] cada export público de `@cosmetics/ui` tiene al menos una prueba de contrato;
+- [x] DatePicker, DateRangePicker y Calendar tienen cobertura de interacción, navegación, disabled y timezone;
+- [x] una ruptura intencional del DatePicker bloquea `Shared UI contracts`; falta confirmar el canary visual en CI por la restricción local descrita en Fase 5;
 - [ ] una actualización incompatible de `react-day-picker` bloquea el PR;
-- [ ] un cambio en UI compartida construye todos los consumidores;
-- [ ] los componentes de alto riesgo tienen snapshots desktop y móvil estables;
+- [x] un cambio en UI compartida construye todos los consumidores mediante `Production builds`;
+- [x] los componentes de alto riesgo tienen snapshots desktop y móvil estables;
 - [x] Envelope tiene al menos un E2E autenticado que interactúa con fechas;
 - [x] Payroll tiene al menos un E2E autenticado que interactúa con fechas;
 - [x] existen recorridos críticos de solo lectura para ambas apps en development;
-- [ ] ningún test automático escribe en producción;
+- [x] ningún recorrido automático productivo emite métodos de escritura; el fixture lo convierte en fallo;
 - [x] los artifacts de development no contienen passwords, bypass secrets, JWT ni datos sensibles;
 - [ ] los nuevos checks tienen nombres estables y están requeridos por los rulesets correspondientes;
-- [ ] la suite de componentes tarda menos de 2 minutos;
+- [x] la suite de componentes tarda menos de 2 minutos (3.34 s local en el cierre de Fase 5);
 - [ ] el conjunto de required checks permanece idealmente por debajo de 10 minutos;
-- [ ] tests de componentes tienen cero retries;
+- [x] tests de componentes tienen cero retries;
 - [x] E2E permite como máximo un retry y todo caso flaky se corrige o se retira del gate;
-- [x] documentación y flujo de release están actualizados para la Fase 4.
+- [x] documentación y flujo de release están actualizados para las Fases 4 y 5.
 
 ### Prueba de mutación controlada obligatoria
 
@@ -649,6 +655,8 @@ Antes de cerrar la iniciativa, en una rama temporal:
 6. no fusionar jamás la mutación.
 
 Esto demuestra que los tests detectan el tipo de regresión para el cual fueron creados.
+
+Ejecución de cierre del 2026-08-27: los pasos 1, 2, 4 y 5 se completaron; la mutación no permanece en el árbol. El paso 3 requiere repetición en el runner canónico de GitHub porque el sandbox local no permite iniciar el servidor ni Chromium. No considerar activado el gate productivo hasta que ese check, las cuentas/secrets y la auditoría administrativa de rulesets estén completos.
 
 ## 11. Límites y decisiones explícitas
 

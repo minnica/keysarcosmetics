@@ -191,6 +191,8 @@ Actions
 → Run workflow
 → Branch: develop
 → Environment: development
+→ release_sha: SHA completo servido por Envelope y Payroll
+→ api_sha: SHA completo reportado por /health
 ```
 
 Los smoke tests comprueban:
@@ -200,6 +202,7 @@ Los smoke tests comprueban:
 - Contrato básico del API.
 - Pantalla de login de Envelope.
 - Pantalla de login de Payroll.
+- Identidad exacta de ambos frontends y la API.
 
 ## Ejecutar E2E autenticado de solo lectura
 
@@ -389,15 +392,22 @@ Actions
 → Run workflow
 → Branch: master
 → Environment: production
+→ release_sha: SHA completo servido por Envelope y Payroll
+→ api_sha: SHA completo reportado por /health
 ```
 
 Después de aprobar el environment:
 
-- [ ] Los cuatro smoke tests pasaron.
+- [ ] Los cinco smoke tests públicos pasaron.
+- [ ] `Authenticated production smoke` pasó sus tres recorridos por app.
 - [ ] `/health` reporta el SHA esperado.
 - [ ] `/ready` está sano.
 - [ ] Envelope funciona.
 - [ ] Payroll funciona.
+
+El segundo job usa cuentas productivas exclusivas de monitoreo. Envelope solo puede abrir dashboard y total general con alcance propio; Payroll solo puede abrir esquemas en modo `canWrite = false`. Un fixture falla ante cualquier `POST`, `PUT`, `PATCH` o `DELETE`. La configuración desactiva traces, screenshots y video, usa cero retries, no publica reporte HTML y elimina los `storageState` y resultados locales incluso si falla.
+
+Durante las primeras cinco promociones, revisar en el resumen del workflow la duración, intento y resultado. Un rerun manual o falla intermitente se registra y corrige; no se compensa aumentando retries. La preparación y rotación de cuentas/secrets está en `apps/e2e/README.md`.
 
 ---
 
@@ -485,7 +495,7 @@ feature
 → Pull Request de release
 → master
 → deploy productivo protegido
-→ smoke tests de producción
+→ smokes públicos + autenticados de producción
 → observación
 → tag
 ```
@@ -502,7 +512,7 @@ feature
 6. Toda release entra a `master` mediante PR y merge commit.
 7. Confirmar el respaldo antes de desplegar producción.
 8. Los smoke tests no sustituyen las pruebas funcionales.
-9. El E2E autenticado se ejecuta solo en `development` y nunca debe emitir requests de escritura.
+9. El E2E amplio se ejecuta solo en `development`; producción admite únicamente el smoke autenticado pequeño y ambos deben fallar ante requests de escritura.
 10. Verificar que `/health` reporte el SHA desplegado.
 11. Crear un tag después de validar cada release productiva.
 12. Si existe un hotfix en `master`, sincronizarlo con `develop`.

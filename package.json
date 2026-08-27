@@ -14,6 +14,7 @@
     "test:integration": "pnpm --filter @cosmetics/api test:integration",
     "test:smoke": "pnpm --filter @cosmetics/e2e test:smoke",
     "test:e2e:development": "pnpm --filter @cosmetics/e2e test:development",
+    "test:e2e:production": "pnpm --filter @cosmetics/e2e test:production",
     "migrations:review": "node scripts/check-migration-safety.mjs",
     "type-check": "turbo run type-check",
     "format": "prettier --write \"**/*.{ts,tsx,md,json,yml,yaml}\"",

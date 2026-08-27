@@ -33,7 +33,24 @@ jobs:
           node-version: 22.23.2
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm test:ui:coverage
+      - name: Run UI contracts and record duration
+        run: |
+          started_at=$(date +%s)
+          set +e
+          pnpm test:ui:coverage
+          status=$?
+          duration_seconds=$(($(date +%s) - started_at))
+          {
+            echo "### Shared UI contracts"
+            echo ""
+            echo "| Métrica | Valor |"
+            echo "| --- | --- |"
+            echo "| Duración | ${duration_seconds}s |"
+            echo "| Intento del workflow | $GITHUB_RUN_ATTEMPT |"
+            echo "| Retries | 0 |"
+            echo "| Resultado | $([ "$status" -eq 0 ] && echo verde || echo falló) |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
 
   ui-regression-canaries:
     name: UI regression canaries
@@ -49,7 +66,24 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @cosmetics/e2e exec playwright install --with-deps chromium
-      - run: pnpm test:ui:visual
+      - name: Run visual canaries and record duration
+        run: |
+          started_at=$(date +%s)
+          set +e
+          pnpm test:ui:visual
+          status=$?
+          duration_seconds=$(($(date +%s) - started_at))
+          {
+            echo "### UI regression canaries"
+            echo ""
+            echo "| Métrica | Valor |"
+            echo "| --- | --- |"
+            echo "| Duración | ${duration_seconds}s |"
+            echo "| Intento del workflow | $GITHUB_RUN_ATTEMPT |"
+            echo "| Retries máximos | 1 |"
+            echo "| Resultado | $([ "$status" -eq 0 ] && echo verde || echo falló) |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
       - name: Upload visual regression artifacts
         if: failure()
         uses: actions/upload-artifact@v7

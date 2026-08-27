@@ -17,7 +17,7 @@ export const test = base.extend<{ readOnlyNetworkGuard: void }>({
 
       expect(
         writes,
-        "Los E2E autenticados de development deben permanecer en solo lectura.",
+        "Los recorridos autenticados de ambientes deben permanecer en solo lectura.",
       ).toEqual([]);
     },
     { auto: true },

@@ -9,6 +9,8 @@
     "test:smoke:headed": "playwright test --headed",
     "test:development": "playwright test -c playwright.development.config.ts",
     "test:development:headed": "playwright test -c playwright.development.config.ts --headed",
+    "test:production": "playwright test -c playwright.production.config.ts",
+    "test:production:headed": "playwright test -c playwright.production.config.ts --headed",
     "test:ui:visual": "playwright test -c playwright.visual.config.ts",
     "test:ui:visual:update": "playwright test -c playwright.visual.config.ts --update-snapshots"
   },
