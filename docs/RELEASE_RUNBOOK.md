@@ -28,7 +28,7 @@ Aplicar estas reglas compartidas a `develop` y `master`:
 
 - Bloquear pushes directos, force-push y eliminación.
 - Exigir pull request y resolución de conversaciones.
-- Marcar como requeridos los checks `Lint, types and unit tests`, `Production builds` y `Migrations and API integration` del workflow `CI`.
+- Marcar como requeridos los checks `Shared UI contracts`, `Lint, types and unit tests`, `Production builds` y `Migrations and API integration` del workflow `CI`.
 
 Configurar la estrategia de integración por rama:
 
@@ -52,7 +52,7 @@ Los smoke tests no autentican usuarios ni escriben datos: comprueban `/health`, 
 
 ## 4. Release a producción
 
-1. Abrir PR `develop → master`, confirmar que GitHub indique que no hay conflictos y esperar los tres checks requeridos del PR. Los fallos opcionales de proveedores externos por cuota, como `Deployment rate limited` de Vercel, no sustituyen ni invalidan esos checks; el frontend debe verificarse por separado antes de promoverlo.
+1. Abrir PR `develop → master`, confirmar que GitHub indique que no hay conflictos y esperar los cuatro checks requeridos del PR. Los fallos opcionales de proveedores externos por cuota, como `Deployment rate limited` de Vercel, no sustituyen ni invalidan esos checks; el frontend debe verificarse por separado antes de promoverlo.
 2. Confirmar en Supabase que existe un backup recuperable o PITR vigente.
 3. Hacer merge commit hacia `master`.
 4. Ejecutar `Deploy API` seleccionando `production` y escribiendo `PRODUCCION_RESPALDADA`.
@@ -76,6 +76,7 @@ Registrar en el incidente el SHA, migraciones aplicadas, hora, impacto y decisi�
 ```bash
 pnpm lint
 pnpm type-check
+pnpm test:ui
 pnpm test:unit
 pnpm ci:build
 pnpm --filter @cosmetics/api prisma:schemas

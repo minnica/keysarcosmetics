@@ -59,6 +59,7 @@ Nunca se utiliza producción como ambiente de pruebas.
 ```bash
 pnpm lint
 pnpm type-check
+pnpm test:ui
 pnpm test:unit
 pnpm ci:build
 ```
@@ -94,6 +95,7 @@ GitHub ejecutará automáticamente:
 
 - Lint.
 - TypeScript.
+- Contratos y cobertura informativa de UI compartida (`Shared UI contracts`).
 - Pruebas unitarias.
 - Builds productivos.
 - Validación de Prisma.
@@ -102,13 +104,13 @@ GitHub ejecutará automáticamente:
 
 ## Condiciones para hacer merge
 
-- [ ] Los tres checks obligatorios de CI están en verde.
+- [ ] Los cuatro checks obligatorios de CI están en verde.
 - [ ] No existen conflictos.
 - [ ] Se revisó el Preview de Vercel cuando esté disponible.
 - [ ] Las migraciones son aditivas o están explícitamente revisadas.
 - [ ] No existen secretos ni archivos `.env` en los cambios.
 
-Los errores opcionales de Vercel por `Deployment rate limited` no significan que el código esté mal. Sin embargo, los tres checks requeridos de CI sí deben pasar.
+Los errores opcionales de Vercel por `Deployment rate limited` no significan que el código esté mal. Sin embargo, los cuatro checks requeridos de CI sí deben pasar.
 
 ## Integrar la funcionalidad
 
@@ -249,7 +251,7 @@ develop → master
 ## Condiciones para el merge
 
 - [ ] GitHub indica que no existen conflictos.
-- [ ] Los tres checks requeridos de CI están en verde.
+- [ ] Los cuatro checks requeridos de CI están en verde.
 - [ ] El respaldo de producción está confirmado.
 - [ ] Se conoce el alcance exacto de la release.
 - [ ] Existe un plan de rollback.
@@ -276,7 +278,7 @@ Esto es intencional porque los merge commits de releases anteriores existen en `
 
 La seguridad se conserva porque:
 
-- Los tres checks de CI siguen siendo obligatorios.
+- Los cuatro checks de CI siguen siendo obligatorios.
 - GitHub debe indicar que no hay conflictos.
 - `master` solo debe recibir promociones desde `develop`.
 - Los pushes directos y force-push están bloqueados.

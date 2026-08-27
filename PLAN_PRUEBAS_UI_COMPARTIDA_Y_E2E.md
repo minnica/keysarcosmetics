@@ -1,7 +1,8 @@
 # Plan de pruebas para UI compartida y regresiones E2E
 
-> Estado: pendiente de implementación  
-> Fecha del plan: 2026-08-25  
+> Estado: Fase 1 concluida; Fases 2 a 5 pendientes
+> Fecha del plan: 2026-08-25
+> Última ejecución: 2026-08-27
 > Propósito: entregar a otra sesión/modelo un plan ejecutable para impedir que un cambio en UI compartida rompa Envelope, Payroll u otra aplicación sin ser detectado antes de producción.
 
 ## 1. Instrucciones para retomar este plan
@@ -512,12 +513,15 @@ El incidente histórico debería ser detectado en varios puntos:
 
 ### Fase 1: infraestructura y componentes de mayor riesgo
 
-- configurar Vitest, Testing Library, user-event, jest-dom y jsdom en `packages/ui`;
-- crear setup común y helpers de render;
-- probar DatePicker, DateRangePicker, Calendar, Combobox, Select, Dialog/AlertDialog y DataTable;
-- agregar script raíz para ejecutar contratos;
-- incorporar `Shared UI contracts` a CI;
-- validar localmente y en un PR.
+- [x] Configurar Vitest, Testing Library, user-event, jest-dom y jsdom en `packages/ui`.
+- [x] Crear setup común y helpers de render.
+- [x] Probar DatePicker, DateRangePicker, Calendar, Combobox, Select, Dialog/AlertDialog y DataTable.
+- [x] Agregar script raíz para ejecutar contratos.
+- [x] Incorporar `Shared UI contracts` a CI.
+- [x] Instalar las dependencias declaradas y actualizar `pnpm-lock.yaml`.
+- [x] Ejecutar `pnpm test:ui` y `pnpm test:ui:coverage`; usar el mismo comando en el check de PR.
+
+Estado de cierre: **concluida el 2026-08-27**. La implementación suma 25 contratos en 8 archivos para los componentes de mayor riesgo. `pnpm test:ui` y `pnpm test:ui:coverage` terminaron con 25/25 casos en verde; también pasaron el type-check y lint completos de `@cosmetics/ui`, la instalación con lockfile congelado y `git diff --check`. La cobertura es informativa en esta fase; los umbrales y el resto del barrel público pertenecen a la Fase 2.
 
 Resultado: protección conductual inmediata para el área que causó el incidente.
 

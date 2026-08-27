@@ -197,6 +197,8 @@ el diseño y el autocuidado.
 
 ## Estado actual de @cosmetics/ui
 
+`packages/ui` cuenta con contratos de comportamiento en Vitest + React Testing Library para `DatePicker`, `DateRangePicker`, `Calendar`, `Combobox`, `Select`, `Dialog`, `AlertDialog` y `DataTable`. El setup común usa jsdom, jest-dom y user-event con timezone fija `America/Mexico_City`. Ejecutar `pnpm test:ui` para la suite rápida y `pnpm test:ui:coverage` para el reporte informativo; los umbrales y la cobertura completa del barrel siguen pendientes de las fases posteriores de `PLAN_PRUEBAS_UI_COMPARTIDA_Y_E2E.md`.
+
 Componentes shadcn canónicos en `packages/ui/src/components/ui`:
 
 - Button, Card, Input, Label, Textarea, Badge
@@ -846,7 +848,7 @@ La migración en Supabase dev, el backend `cosmetics-api-dev`, el login `SUPER_A
 
 ### CI y releases seguros (2026-08-24)
 
-- `.github/workflows/ci.yml` valida PRs y pushes a `develop`/`master` con lint, TypeScript, unit tests, builds productivos, sincronía de schemas Prisma, aplicación completa de migraciones sobre PostgreSQL 16 efímero e integración HTTP real de login/sesión.
+- `.github/workflows/ci.yml` valida PRs y pushes a `develop`/`master` con el check independiente `Shared UI contracts`, lint, TypeScript, unit tests, builds productivos, sincronía de schemas Prisma, aplicación completa de migraciones sobre PostgreSQL 16 efímero e integración HTTP real de login/sesión. `Shared UI contracts` ejecuta la suite y cobertura informativa de `@cosmetics/ui`; sus umbrales se incorporarán en la fase de cobertura completa.
 - Los scripts `type-check`, `test:unit` y `test:integration` de `@cosmetics/api` ejecutan previamente `prisma generate`; esto es obligatorio porque un runner limpio todavía no tiene los tipos y enums generados de `@prisma/client`.
 - Envelope conserva temporalmente un presupuesto máximo de 8 warnings ESLint y Payroll de 7; CI bloquea cualquier incremento mientras se reduce esa deuda en cambios separados.
 - `.github/workflows/deploy-api.yml` solo se ejecuta manualmente. Fija el SHA de la rama `develop` o `master` antes de la aprobación, usa el environment `development` o `production`, aplica `prisma migrate deploy`, despliega exactamente ese commit y espera `/ready`. Producción exige escribir `PRODUCCION_RESPALDADA`; esta confirmación no sustituye verificar backup/PITR ni la aprobación del environment.
@@ -998,10 +1000,13 @@ apps/e2e/
 
 ```
 packages/ui/
+├── vitest.config.mts              → configuración ESM de jsdom y cobertura de contratos
 ├── src/components/
-│   ├── ui/                        → componentes shadcn/Base UI canónicos, incluido tabs.tsx
+│   ├── ui/                        → componentes canónicos y contratos de alto riesgo
 │   └── custom/
-│       └── progress-keysar.tsx    → wrapper custom sobre Progress
+│       ├── progress-keysar.tsx    → wrapper custom sobre Progress
+│       └── combobox.test.tsx      → contrato de búsqueda y selección
+├── src/test/                      → setup jsdom y helper de render con user-event
 ├── src/hooks/
 │   └── use-mobile.ts              → hook useIsMobile compartido
 ├── src/lib/
@@ -1074,6 +1079,8 @@ pnpm --filter @cosmetics/api type-check
 pnpm --filter @cosmetics/api build
 pnpm lint
 pnpm type-check
+pnpm test:ui
+pnpm test:ui:coverage
 pnpm test:unit
 pnpm ci:build
 ```
@@ -1153,7 +1160,7 @@ npx ts-node --project tsconfig.json prisma/seed-catalogs.ts
 
 - CI, smoke tests, despliegues protegidos y la imagen Docker del backend usan Node.js `22.23.2`; `.nvmrc` alinea el entorno local y `package.json` exige Node.js `>=22.12.0`.
 - La imagen Docker fija también pnpm `10.0.0`, igual que `packageManager`, para que instalaciones y builds sean reproducibles.
-- Todo cambio de runtime debe pasar los tres checks de CI y validarse primero mediante despliegue y smoke tests en `development` antes de promoverlo a producción.
+- Todo cambio de runtime debe pasar los cuatro checks de CI y validarse primero mediante despliegue y smoke tests en `development` antes de promoverlo a producción.
 - Estado validado en `development` el 24 de agosto de 2026: commit `86f7f89f1db152d67d7ed28c1d3c19dc81ea8cc3`, deploy protegido correcto, `/health` y `/ready` sanos, smoke tests `4/4`, ausencia de la advertencia de Node.js 20 y login/navegación autenticada de solo lectura en Envelope y Payroll.
 - Estado promovido y validado en `production` el 25 de agosto de 2026: commit `952a675ecf882829e388562a024661300376fefc`, tag `prod-2026-08-25.1`, respaldo manual confirmado, deploy protegido correcto, `/health` reportando el SHA exacto, `/ready` sano, smoke tests `4/4`, validación funcional manual de Envelope/Payroll y logs posteriores sin la advertencia de Node.js 20.
 
