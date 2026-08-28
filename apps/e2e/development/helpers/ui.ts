@@ -27,7 +27,7 @@ export async function selectDifferentCalendarDay(
 
   const grid = page.getByRole("grid").last();
   await expect(grid).toBeVisible();
-  const days = grid.getByRole("button");
+  const days = grid.getByRole("gridcell");
   const count = await days.count();
 
   for (let index = 0; index < count; index += 1) {
