@@ -54,8 +54,8 @@ test.describe("Payroll autenticado en development", () => {
     await openAuthenticatedPage(page, "/recibos", "Recibos");
     await page.getByRole("tab", { name: "Emitidos" }).click();
     await expect(page.getByRole("tab", { name: "Emitidos" })).toHaveAttribute(
-      "data-state",
-      "active",
+      "aria-selected",
+      "true",
     );
     await expect(
       page.getByRole("combobox", { name: "Quincena" }),
@@ -90,7 +90,7 @@ test.describe("Payroll autenticado en development", () => {
   test("cierra la sesión y vuelve al login", async ({ page }) => {
     await openAuthenticatedPage(page, "/", /Corridas de nómina/i);
     await page.getByRole("button", { name: /Cerrar sesión/i }).click();
-    await expect(page).toHaveURL(/\/login$/);
+    await expect(page).toHaveURL(/\/login(?:\?|$)/);
     await expect(page.locator("#email")).toBeVisible();
   });
 });

@@ -72,7 +72,7 @@ test.describe("Envelope autenticado en development", () => {
   test("cierra la sesión y vuelve al login", async ({ page }) => {
     await openAuthenticatedPage(page, "/", "Dashboard");
     await page.getByRole("button", { name: /Cerrar sesión/i }).click();
-    await expect(page).toHaveURL(/\/login$/);
+    await expect(page).toHaveURL(/\/login(?:\?|$)/);
     await expect(page.locator("#email")).toBeVisible();
   });
 });
