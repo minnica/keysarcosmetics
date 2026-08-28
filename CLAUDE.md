@@ -197,6 +197,14 @@ el diseño y el autocuidado.
 
 ## Estado actual de @cosmetics/ui
 
+`packages/ui` cuenta con contratos de comportamiento en Vitest + React Testing Library para todo el barrel público, incluidos `DatePicker`, `DateRangePicker`, `Calendar`, `Combobox`, `Select`, `Dialog`, `AlertDialog`, `DataTable`, `Sidebar`, Toast, Sheet, Tabs, Popover y Tooltip. El setup común usa jsdom, jest-dom y user-event con timezone fija `America/Mexico_City`. Ejecutar `pnpm test:ui` para la suite rápida y `pnpm test:ui:coverage` para el gate de cobertura: mínimo global de 90% statements/líneas, 80% funciones y 75% branches. Al agregar o modificar un componente compartido, seguir `packages/ui/GUIA_PRUEBAS_COMPONENTES.md` y actualizar el contrato del barrel cuando corresponda.
+
+La regresión visual de los componentes de alto riesgo usa `apps/ui-testbed`, una app interna sin API, BD, secretos ni deploy, con datos/fechas fijos. `pnpm test:ui:visual` construye ese testbed y valida los baselines versionados mediante Playwright/Chromium en escritorio `1440×900` y móvil `390×844`, con `es-MX`, `America/Mexico_City`, fuentes cargadas y animaciones desactivadas. El check obligatorio es **UI regression canaries**. Para aceptar una variación visual intencional, ejecutar `pnpm test:ui:visual:update`, revisar los PNG modificados y volver a ejecutar el comando normal; CI nunca actualiza baselines. Ver `apps/ui-testbed/README.md`. La Fase 3 de `PLAN_PRUEBAS_UI_COMPARTIDA_Y_E2E.md` concluyó el 2026-08-27 con 34 baselines versionados y 22 canaries en verde.
+
+El E2E funcional autenticado de development vive en `apps/e2e/development` y se ejecuta con `pnpm test:e2e:development` o mediante **Authenticated development E2E**. Usa cuentas técnicas distintas y de mínimo privilegio, genera `storageState` temporal bajo `apps/e2e/.auth`, y cubre ocho recorridos de solo lectura por app; ambos incluyen calendarios reales, tablas, selects, navegación móvil y logout. Un fixture falla ante cualquier método distinto de `GET`, `HEAD` u `OPTIONS`. Los proyectos autenticados desactivan traces, screenshots y video para que JWT, bypass secrets y datos operativos no entren en artefactos; solo se conserva siete días el reporte HTML seguro. Antes de los recorridos, los alias Vercel deben exponer el SHA indicado en `meta[name="keysar-release"]` y `/health.release` debe coincidir con el SHA de API indicado. La preparación de cuentas, permisos, variables y diagnóstico está en `apps/e2e/README.md`. La Fase 4 de `PLAN_PRUEBAS_UI_COMPARTIDA_Y_E2E.md` quedó implementada el 2026-08-27.
+
+El smoke autenticado productivo vive en `apps/e2e/production` y solo se ejecuta después de los cinco smokes públicos mediante **Environment smoke tests** sobre el environment protegido `production`. Usa cuentas productivas separadas: Envelope recibe exclusivamente `dashboard` y `reportes/total-general` con `selfDataOnly`; Payroll recibe únicamente `payroll/esquemas` con `canWrite = false`. Cada app tiene tres recorridos y el mismo guard bloquea escrituras. La configuración productiva usa cero retries, desactiva traces/screenshots/video, no publica reporte HTML y elimina sesiones/resultados incluso al fallar. El workflow exige los SHA exactos de frontends/API y registra duración, intento y resultado en el resumen. Las cuentas, los cuatro secrets `PRODUCTION_MONITOR_*` y la observación de cinco promociones son activación administrativa externa; no crear seeds ni credenciales en el repositorio. La implementación de la Fase 5 concluyó en repositorio el 2026-08-27.
+
 Componentes shadcn canónicos en `packages/ui/src/components/ui`:
 
 - Button, Card, Input, Label, Textarea, Badge
@@ -846,11 +854,12 @@ La migración en Supabase dev, el backend `cosmetics-api-dev`, el login `SUPER_A
 
 ### CI y releases seguros (2026-08-24)
 
-- `.github/workflows/ci.yml` valida PRs y pushes a `develop`/`master` con lint, TypeScript, unit tests, builds productivos, sincronía de schemas Prisma, aplicación completa de migraciones sobre PostgreSQL 16 efímero e integración HTTP real de login/sesión.
+- `.github/workflows/ci.yml` valida PRs y pushes a `develop`/`master` con los checks independientes `Shared UI contracts` y `UI regression canaries`, lint, TypeScript, unit tests, builds productivos, sincronía de schemas Prisma, aplicación completa de migraciones sobre PostgreSQL 16 efímero e integración HTTP real de login/sesión. `Shared UI contracts` ejecuta la suite de `@cosmetics/ui` con sus umbrales obligatorios de cobertura; `UI regression canaries` compara los snapshots del testbed en Chromium.
 - Los scripts `type-check`, `test:unit` y `test:integration` de `@cosmetics/api` ejecutan previamente `prisma generate`; esto es obligatorio porque un runner limpio todavía no tiene los tipos y enums generados de `@prisma/client`.
 - Envelope conserva temporalmente un presupuesto máximo de 8 warnings ESLint y Payroll de 7; CI bloquea cualquier incremento mientras se reduce esa deuda en cambios separados.
 - `.github/workflows/deploy-api.yml` solo se ejecuta manualmente. Fija el SHA de la rama `develop` o `master` antes de la aprobación, usa el environment `development` o `production`, aplica `prisma migrate deploy`, despliega exactamente ese commit y espera `/ready`. Producción exige escribir `PRODUCCION_RESPALDADA`; esta confirmación no sustituye verificar backup/PITR ni la aprobación del environment.
-- `.github/workflows/staging-smoke.yml` ejecuta smoke tests Playwright de solo lectura contra API, Envelope y Payroll en el environment elegido. Los previews protegidos usan `ENVELOPE_VERCEL_BYPASS_SECRET` y `PAYROLL_VERCEL_BYPASS_SECRET`, generados por separado en cada proyecto Vercel; las trazas de los proyectos web se desactivan cuando se usa un bypass para impedir que los headers sensibles entren en artefactos.
+- `.github/workflows/staging-smoke.yml` exige los SHA completos servidos y ejecuta cinco smoke tests Playwright públicos de solo lectura contra API, Envelope y Payroll en el environment elegido. En producción encadena además `Authenticated production smoke`, con tres recorridos por app, cuentas de monitoreo, cero retries y sin artefactos sensibles. Los previews protegidos usan `ENVELOPE_VERCEL_BYPASS_SECRET` y `PAYROLL_VERCEL_BYPASS_SECRET`, generados por separado en cada proyecto Vercel; todas las suites de ambiente desactivan traces, screenshots y video.
+- `.github/workflows/development-e2e.yml` ejecuta manualmente 16 recorridos autenticados de solo lectura (8 Envelope + 8 Payroll) únicamente en el environment `development`. Requiere las cuatro credenciales `E2E_*`, los bypass de Vercel y los SHA completos de frontend/API; compara la identidad desplegada antes de probar y elimina los `storageState` antes de adjuntar el reporte seguro.
 - El API separa `src/app.ts` (Express importable) de `src/index.ts` (listener y cierre ordenado). `/health` verifica el proceso y `/ready` verifica conectividad PostgreSQL; Fly enruta mediante el segundo.
 - Las migraciones Prisma dejaron de estar ignoradas por Git. `scripts/check-migration-safety.mjs` bloquea SQL nuevo potencialmente destructivo salvo revisión explícita documentada con `-- migration-safety: reviewed`.
 - `db:push` y el alias directo `db:migrate:prod` fueron retirados de los scripts. Los despliegues usan `db:migrate:deploy` dentro del environment protegido.
@@ -985,12 +994,16 @@ backend/api/
 
 ```text
 apps/e2e/
-├── playwright.config.ts          → proyectos API, Envelope y Payroll
-└── tests/                        → smoke tests de solo lectura por ambiente
+├── playwright.config.ts                     → proyectos smoke API, Envelope y Payroll
+├── playwright.development.config.ts         → E2E autenticado seguro de development
+├── development/                             → setup de sesión, guard de escritura y 16 recorridos
+├── tests/                                   → smoke tests públicos por ambiente
+└── README.md                                → cuentas, permisos, secrets y diagnóstico
 
 .github/workflows/
 ├── ci.yml                        → gates obligatorios de PR
 ├── deploy-api.yml                → migración + deploy manual protegido
+├── development-e2e.yml           → E2E autenticado por SHA, solo development
 └── staging-smoke.yml             → smoke tests manuales development/production
 ```
 
@@ -998,10 +1011,13 @@ apps/e2e/
 
 ```
 packages/ui/
+├── vitest.config.mts              → configuración ESM de jsdom y cobertura de contratos
 ├── src/components/
-│   ├── ui/                        → componentes shadcn/Base UI canónicos, incluido tabs.tsx
+│   ├── ui/                        → componentes canónicos y contratos de alto riesgo
 │   └── custom/
-│       └── progress-keysar.tsx    → wrapper custom sobre Progress
+│       ├── progress-keysar.tsx    → wrapper custom sobre Progress
+│       └── combobox.test.tsx      → contrato de búsqueda y selección
+├── src/test/                      → setup jsdom y helper de render con user-event
 ├── src/hooks/
 │   └── use-mobile.ts              → hook useIsMobile compartido
 ├── src/lib/
@@ -1074,6 +1090,9 @@ pnpm --filter @cosmetics/api type-check
 pnpm --filter @cosmetics/api build
 pnpm lint
 pnpm type-check
+pnpm test:ui
+pnpm test:ui:coverage
+pnpm test:ui:visual
 pnpm test:unit
 pnpm ci:build
 ```
@@ -1086,6 +1105,8 @@ pnpm --filter @cosmetics/api prisma:validate
 pnpm migrations:review -- origin/develop
 pnpm test:integration  # requiere RUN_DATABASE_TESTS=true + PostgreSQL desechable
 pnpm test:smoke        # requiere URLs de ambiente o servicios locales activos
+pnpm test:e2e:development # requiere development desplegado, cuentas E2E y SHA exactos
+pnpm test:e2e:production  # diagnóstico administrado; solo cuentas de monitoreo productivas
 ```
 
 ### Deploy backend
@@ -1153,7 +1174,7 @@ npx ts-node --project tsconfig.json prisma/seed-catalogs.ts
 
 - CI, smoke tests, despliegues protegidos y la imagen Docker del backend usan Node.js `22.23.2`; `.nvmrc` alinea el entorno local y `package.json` exige Node.js `>=22.12.0`.
 - La imagen Docker fija también pnpm `10.0.0`, igual que `packageManager`, para que instalaciones y builds sean reproducibles.
-- Todo cambio de runtime debe pasar los tres checks de CI y validarse primero mediante despliegue y smoke tests en `development` antes de promoverlo a producción.
+- Todo cambio de runtime debe pasar los cinco checks de CI y validarse primero mediante despliegue y smoke tests en `development` antes de promoverlo a producción.
 - Estado validado en `development` el 24 de agosto de 2026: commit `86f7f89f1db152d67d7ed28c1d3c19dc81ea8cc3`, deploy protegido correcto, `/health` y `/ready` sanos, smoke tests `4/4`, ausencia de la advertencia de Node.js 20 y login/navegación autenticada de solo lectura en Envelope y Payroll.
 - Estado promovido y validado en `production` el 25 de agosto de 2026: commit `952a675ecf882829e388562a024661300376fefc`, tag `prod-2026-08-25.1`, respaldo manual confirmado, deploy protegido correcto, `/health` reportando el SHA exacto, `/ready` sano, smoke tests `4/4`, validación funcional manual de Envelope/Payroll y logs posteriores sin la advertencia de Node.js 20.
 

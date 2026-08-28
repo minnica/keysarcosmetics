@@ -10,8 +10,6 @@ function vercelProtectionBypass(secret: string | undefined) {
       "x-vercel-protection-bypass": secret,
       "x-vercel-set-bypass-cookie": "true",
     },
-    // Playwright traces include request headers. Keep bypass secrets out of CI artifacts.
-    trace: "off" as const,
   };
 }
 
@@ -19,16 +17,26 @@ export default defineConfig({
   testDir: "./tests",
   fullyParallel: true,
   forbidOnly: Boolean(process.env["CI"]),
-  retries: process.env["CI"] ? 2 : 0,
+  retries: process.env["CI"] ? 1 : 0,
   reporter: process.env["CI"]
     ? [["github"], ["html", { open: "never" }]]
     : "list",
   timeout: 30_000,
   use: {
-    screenshot: "only-on-failure",
-    trace: "on-first-retry",
+    // Environment diagnostics must never persist pages, request headers or data.
+    screenshot: "off",
+    trace: "off",
+    video: "off",
   },
   projects: [
+    {
+      name: "release-identity",
+      testMatch: /release\.smoke\.spec\.ts/,
+      use: {
+        ...devices["Desktop Chrome"],
+        channel: "chrome",
+      },
+    },
     {
       name: "api",
       testMatch: /api\.smoke\.spec\.ts/,

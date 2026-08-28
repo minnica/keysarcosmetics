@@ -14,11 +14,27 @@ En ambos environments configurar estos secretos:
 - `ENVELOPE_VERCEL_BYPASS_SECRET`: bypass de automatización generado exclusivamente en el proyecto Vercel de Envelope cuando la URL del ambiente esté protegida.
 - `PAYROLL_VERCEL_BYPASS_SECRET`: bypass independiente generado en el proyecto Vercel de Payroll cuando la URL del ambiente esté protegida. No reutilizar el secreto de Envelope.
 
+Solo en `development`, crear además las cuentas técnicas de mínimo privilegio descritas en `apps/e2e/README.md` y configurar:
+
+- `E2E_ENVELOPE_EMAIL` y `E2E_ENVELOPE_PASSWORD`;
+- `E2E_PAYROLL_EMAIL` y `E2E_PAYROLL_PASSWORD`.
+
+Estas credenciales de development nunca se configuran en `production`. Envelope debe limitarse a `dashboard`, `ventas`, `citas` y `reportes/total-general` con alcance propio; Payroll debe tener únicamente las cinco pantallas E2E documentadas y todas en modo solo lectura.
+
+Solo en `production`, crear dos cuentas distintas de monitoreo y configurar:
+
+- `PRODUCTION_MONITOR_ENVELOPE_EMAIL` y `PRODUCTION_MONITOR_ENVELOPE_PASSWORD`;
+- `PRODUCTION_MONITOR_PAYROLL_EMAIL` y `PRODUCTION_MONITOR_PAYROLL_PASSWORD`.
+
+Envelope productivo recibe únicamente `dashboard` y `reportes/total-general`, con `selfDataOnly = true`, sin permisos virtuales y mediante un empleado exclusivo sin actividad. Payroll recibe únicamente `payroll/esquemas` con `canWrite = false`. Ninguna cuenta puede ser personal, `SUPER_ADMIN` ni compartirse con development. La creación y rotación se hace administrativamente; no agregar seeds, SQL ni credenciales al repositorio.
+
 Configurar estas variables:
 
 - `API_BASE_URL`: URL pública del API correspondiente, sin `/` final.
 - `ENVELOPE_BASE_URL`: URL del frontend Envelope del ambiente.
 - `PAYROLL_BASE_URL`: URL del frontend Payroll del ambiente.
+
+En los proyectos Vercel de Envelope y Payroll, habilitar **Automatically expose System Environment Variables**. El E2E usa `VERCEL_GIT_COMMIT_SHA` durante el build para comprobar la identidad exacta de los alias estables.
 
 En `production`, habilitar required reviewer, impedir self-review cuando exista otra persona autorizada y deshabilitar bypass de administradores si el plan lo permite.
 
@@ -28,7 +44,7 @@ Aplicar estas reglas compartidas a `develop` y `master`:
 
 - Bloquear pushes directos, force-push y eliminación.
 - Exigir pull request y resolución de conversaciones.
-- Marcar como requeridos los checks `Lint, types and unit tests`, `Production builds` y `Migrations and API integration` del workflow `CI`.
+- Marcar como requeridos los checks `Shared UI contracts`, `UI regression canaries`, `Lint, types and unit tests`, `Production builds` y `Migrations and API integration` del workflow `CI`.
 
 Configurar la estrategia de integración por rama:
 
@@ -38,6 +54,8 @@ Configurar la estrategia de integración por rama:
 
 Si solo existe una persona desarrolladora, la aprobación de código puede quedar en cero revisores, pero los checks y la protección de producción no deben poder omitirse.
 
+`Authenticated production smoke` pertenece al workflow manual del environment `production`, no al evento de Pull Request; por ello no se agrega como required status check de rama. Su protección se obtiene mediante el reviewer del environment y el orden obligatorio del runbook. Los cinco nombres requeridos de CI permanecen estables. Después de modificar un nombre de job, auditar y sincronizar ambos rulesets antes de fusionar; no dejar checks requeridos apuntando a nombres obsoletos.
+
 ## 3. Flujo de una feature
 
 1. Crear una rama corta desde el `develop` actualizado.
@@ -46,21 +64,27 @@ Si solo existe una persona desarrolladora, la aprobación de código puede queda
 4. Para cambios Prisma, confirmar que la migración sea aditiva. SQL destructivo requiere una revisión explícita y el comentario `-- migration-safety: reviewed` dentro de la migración.
 5. Hacer squash merge y eliminar la rama.
 6. Ejecutar manualmente `Deploy API` hacia `development` cuando cambien API o Prisma.
-7. Ejecutar `Environment smoke tests` contra `development`.
+7. Ejecutar `Environment smoke tests` contra `development`, indicando el SHA completo servido por ambos frontends y el SHA completo de `/health`.
+8. Cuando el SHA vaya a promoverse, ejecutar `Authenticated development E2E` indicando el SHA completo servido por Vercel y el SHA completo de la API desplegada.
 
-Los smoke tests no autentican usuarios ni escriben datos: comprueban `/health`, `/ready`, el contrato JSON 404 y las pantallas de login de Envelope y Payroll. En previews protegidos envían los bypass de automatización mediante headers; las trazas web permanecen desactivadas para que esos secretos no entren en artefactos de Playwright.
+Los cinco smoke tests públicos no autentican usuarios ni escriben datos: comprueban identidad exacta de frontends/API, `/health`, `/ready`, el contrato JSON 404 y las pantallas de login de Envelope y Payroll. En previews protegidos envían los bypass de automatización mediante headers. Traces, screenshots y video están desactivados para que secretos o datos no entren en artefactos.
+
+El E2E autenticado sí inicia sesiones dedicadas, pero continúa siendo de solo lectura: ocho recorridos por app cubren calendarios, tablas, selects, navegación móvil y módulos críticos. Un guard bloquea cualquier método de escritura. El workflow compara `release_sha` contra `meta[name="keysar-release"]` en ambos frontends y `api_sha` contra `/health.release`; un alias desfasado detiene la promoción. No publicar `apps/e2e/.auth`: contiene JWT/cookies. El único artefacto permitido es el reporte HTML sin traces, screenshots ni video.
 
 ## 4. Release a producción
 
-1. Abrir PR `develop → master`, confirmar que GitHub indique que no hay conflictos y esperar los tres checks requeridos del PR. Los fallos opcionales de proveedores externos por cuota, como `Deployment rate limited` de Vercel, no sustituyen ni invalidan esos checks; el frontend debe verificarse por separado antes de promoverlo.
+1. Abrir PR `develop → master`, confirmar que GitHub indique que no hay conflictos y esperar los cinco checks requeridos del PR. Los fallos opcionales de proveedores externos por cuota, como `Deployment rate limited` de Vercel, no sustituyen ni invalidan esos checks; el frontend debe verificarse por separado antes de promoverlo.
 2. Confirmar en Supabase que existe un backup recuperable o PITR vigente.
 3. Hacer merge commit hacia `master`.
 4. Ejecutar `Deploy API` seleccionando `production` y escribiendo `PRODUCCION_RESPALDADA`.
 5. El workflow fija el SHA de `master` antes de solicitar aprobación, valida schemas, unit tests y build; aplica `prisma migrate deploy`; despliega exactamente ese commit en Fly; espera el health check y consulta `/ready`.
 6. En Vercel, revisar el build de producción preparado y promover Envelope/Payroll solo después de que el API esté listo. Se recomienda desactivar la asignación automática del dominio productivo.
-7. Ejecutar `Environment smoke tests` contra `production`.
-8. Observar errores, latencia y acciones críticas durante al menos 15 minutos.
-9. Crear un tag inmutable `prod-AAAA-MM-DD.N` sobre el commit desplegado.
+7. Ejecutar `Environment smoke tests` contra `production` e indicar los SHA completos realmente servidos. El primer job ejecuta los cinco smokes públicos; si quedan verdes, `Authenticated production smoke` ejecuta tres recorridos de solo lectura por app con las cuentas productivas de monitoreo.
+8. Confirmar que el resumen de Actions muestre cero retries en el smoke autenticado y que el workflow eliminó los `storageState` y `test-results`; producción no publica reporte HTML, traces, screenshots ni video.
+9. Observar errores, latencia y acciones críticas durante al menos 15 minutos.
+10. Crear un tag inmutable `prod-AAAA-MM-DD.N` sobre el commit desplegado.
+
+Durante las primeras cinco promociones después de activar este gate, registrar duración, intento y resultado desde `GITHUB_STEP_SUMMARY`. Una falla intermitente o un rerun manual cuenta como flakiness y debe corregirse antes de declarar estable el gate; no aumentar retries para ocultarla.
 
 ## 5. Rollback
 
@@ -76,8 +100,12 @@ Registrar en el incidente el SHA, migraciones aplicadas, hora, impacto y decisi�
 ```bash
 pnpm lint
 pnpm type-check
+pnpm test:ui
+pnpm test:ui:visual
 pnpm test:unit
 pnpm ci:build
+pnpm test:e2e:development # solo contra development, requiere variables y cuentas técnicas
+pnpm test:e2e:production  # solo diagnóstico administrado; validar antes los SHA con test:smoke
 pnpm --filter @cosmetics/api prisma:schemas
 pnpm --filter @cosmetics/api prisma:validate
 ```
