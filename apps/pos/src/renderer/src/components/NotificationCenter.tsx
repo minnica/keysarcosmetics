@@ -3,21 +3,37 @@ import {
   Bell,
   BellRing,
   Boxes,
-  Check,
   CheckCheck,
   Clock3,
+  Eye,
   LockKeyhole,
   PackageMinus,
   PackagePlus,
+  Pencil,
+  Plus,
   ReceiptText,
+  ShieldAlert,
   ShoppingCart,
   UserRoundCheck,
   WalletCards,
   X,
 } from "lucide-react";
-import { Badge, Button, Card, CardContent, Input, toast } from "@cosmetics/ui";
+import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  Input,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  toast,
+} from "@cosmetics/ui";
 import type {
   OperationalNotification,
+  OperationalNotificationAccess,
   OperationalNotificationPreference,
   OperationalNotificationType,
   MasterUser,
@@ -98,6 +114,7 @@ export const createDefaultNotificationPreferences = (
     type: definition.type,
     enabled: true,
     recipientUserIds: [masterUserId],
+    recipientAccess: { [masterUserId]: "EDIT" },
   }));
 
 const businessDate = (iso: string) =>
@@ -392,7 +409,21 @@ export function NotificationSettings({
 }: NotificationSettingsProps) {
   const [authorized, setAuthorized] = useState(false);
   const [accessCode, setAccessCode] = useState("");
+  const [recipientDrafts, setRecipientDrafts] = useState<
+    Partial<Record<OperationalNotificationType, string>>
+  >({});
+  const [accessDrafts, setAccessDrafts] = useState<
+    Partial<Record<OperationalNotificationType, OperationalNotificationAccess>>
+  >({});
   const users = [masterUser, ...sellers.filter((seller) => seller.active)];
+  const usersWithoutPermissions = sellers.filter(
+    (seller) =>
+      seller.active &&
+      !preferences.some(
+        (preference) =>
+          preference.enabled && preference.recipientUserIds.includes(seller.id),
+      ),
+  );
 
   const updatePreference = (
     type: OperationalNotificationType,
@@ -414,6 +445,45 @@ export function NotificationSettings({
     toast.success("Configuración de notificaciones desbloqueada.");
     window.setTimeout(() => setAuthorized(false), 180_000);
   };
+
+  const assignRecipient = (
+    type: OperationalNotificationType,
+  ) => {
+    const userId = recipientDrafts[type];
+    if (!userId) {
+      toast.error("Selecciona un vendedor antes de asignar el permiso.");
+      return;
+    }
+    const access = accessDrafts[type] ?? "VIEW";
+    updatePreference(type, (current) => ({
+      ...current,
+      recipientUserIds: current.recipientUserIds.includes(userId)
+        ? current.recipientUserIds
+        : [...current.recipientUserIds, userId],
+      recipientAccess: {
+        ...current.recipientAccess,
+        [userId]: access,
+      },
+    }));
+    setRecipientDrafts((current) => ({ ...current, [type]: "" }));
+    toast.success(
+      `${users.find((user) => user.id === userId)?.name ?? "Usuario"}: permiso de ${access === "EDIT" ? "edición" : "visualización"} asignado.`,
+    );
+  };
+
+  const removeRecipient = (
+    type: OperationalNotificationType,
+    userId: string,
+  ) =>
+    updatePreference(type, (current) => {
+      const recipientAccess = { ...current.recipientAccess };
+      delete recipientAccess[userId];
+      return {
+        ...current,
+        recipientUserIds: current.recipientUserIds.filter((id) => id !== userId),
+        recipientAccess,
+      };
+    });
 
   return (
     <Card className="settings-card notification-settings-card">
@@ -454,6 +524,18 @@ export function NotificationSettings({
           </div>
         ) : (
           <div className="notification-preference-list">
+            {usersWithoutPermissions.length > 0 && (
+              <div className="notification-unassigned-alert" role="alert">
+                <ShieldAlert size={19} />
+                <span>
+                  <strong>Usuarios sin permisos de notificación</strong>
+                  <small>
+                    {usersWithoutPermissions.map((seller) => seller.name).join(" · ")}
+                  </small>
+                </span>
+                <Badge variant="outline">{usersWithoutPermissions.length} SIN ASIGNAR</Badge>
+              </div>
+            )}
             {notificationDefinitions.map((definition) => {
               const preference = preferences.find(
                 (item) => item.type === definition.type,
@@ -465,7 +547,7 @@ export function NotificationSettings({
               const Icon = definition.icon;
               return (
                 <article
-                  className={`notification-preference-row ${preference.enabled ? "is-active" : ""}`}
+                  className={`notification-preference-row ${preference.enabled ? "is-active" : ""} ${preference.enabled && preference.recipientUserIds.length === 0 ? "has-no-recipients" : ""}`}
                   key={definition.type}
                 >
                   <span className="notification-preference-icon"><Icon size={19} /></span>
@@ -475,30 +557,82 @@ export function NotificationSettings({
                       <Badge variant="outline">{definition.module}</Badge>
                     </span>
                     <small>{definition.description}</small>
+                    <div className="notification-recipient-picker">
+                      <Select
+                        value={recipientDrafts[definition.type] ?? ""}
+                        onValueChange={(userId) =>
+                          setRecipientDrafts((current) => ({
+                            ...current,
+                            [definition.type]: userId,
+                          }))
+                        }
+                        disabled={!preference.enabled}
+                      >
+                        <SelectTrigger aria-label={`Seleccionar vendedor para ${definition.label}`}>
+                          <SelectValue placeholder="Seleccionar vendedor" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {users.map((user) => (
+                            <SelectItem key={user.id} value={user.id}>{user.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Select
+                        value={accessDrafts[definition.type] ?? "VIEW"}
+                        onValueChange={(access) =>
+                          setAccessDrafts((current) => ({
+                            ...current,
+                            [definition.type]: access as OperationalNotificationAccess,
+                          }))
+                        }
+                        disabled={!preference.enabled}
+                      >
+                        <SelectTrigger aria-label={`Tipo de permiso para ${definition.label}`}>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="VIEW">Visualiza</SelectItem>
+                          <SelectItem value="EDIT">Edición</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Button
+                        type="button"
+                        size="icon"
+                        className="icon-action-button"
+                        disabled={!preference.enabled || !recipientDrafts[definition.type]}
+                        onClick={() => assignRecipient(definition.type)}
+                        aria-label={`Asignar permiso en ${definition.label}`}
+                        title="Asignar permiso"
+                      >
+                        <Plus size={15} />
+                      </Button>
+                    </div>
                     <div className="notification-recipient-list">
-                      {users.map((user) => {
-                        const selected = preference.recipientUserIds.includes(user.id);
+                      {preference.recipientUserIds.map((userId) => {
+                        const user = users.find((candidate) => candidate.id === userId);
+                        if (!user) return null;
+                        const access = preference.recipientAccess?.[userId] ??
+                          (userId === masterUser.id ? "EDIT" : "VIEW");
                         return (
-                          <button
-                            type="button"
-                            className={selected ? "is-selected" : ""}
-                            disabled={!preference.enabled}
-                            key={user.id}
-                            onClick={() =>
-                              updatePreference(definition.type, (current) => ({
-                                ...current,
-                                recipientUserIds: selected
-                                  ? current.recipientUserIds.filter((id) => id !== user.id)
-                                  : [...current.recipientUserIds, user.id],
-                              }))
-                            }
-                          >
-                            <span>{user.initials}</span>
-                            {user.name}
-                            {selected && <Check size={13} />}
-                          </button>
+                          <span className="notification-recipient-permission" key={userId}>
+                            <i>{user.initials}</i>
+                            <span><strong>{user.name}</strong><small>{access === "EDIT" ? "Edición" : "Visualiza"}</small></span>
+                            {access === "EDIT" ? <Pencil size={13} /> : <Eye size={13} />}
+                            <button
+                              type="button"
+                              disabled={!preference.enabled}
+                              onClick={() => removeRecipient(definition.type, userId)}
+                              aria-label={`Quitar permiso de ${user.name}`}
+                              title="Quitar permiso"
+                            >
+                              <X size={12} />
+                            </button>
+                          </span>
                         );
                       })}
+                      {preference.recipientUserIds.length === 0 && (
+                        <span className="notification-no-recipient"><ShieldAlert size={13} /> Sin usuarios asignados</span>
+                      )}
                     </div>
                   </div>
                   <button
@@ -510,10 +644,7 @@ export function NotificationSettings({
                       updatePreference(definition.type, (current) => ({
                         ...current,
                         enabled: !current.enabled,
-                        recipientUserIds:
-                          !current.enabled && current.recipientUserIds.length === 0
-                            ? [masterUser.id]
-                            : current.recipientUserIds,
+                        recipientUserIds: current.recipientUserIds,
                       }))
                     }
                   >

@@ -43,6 +43,8 @@ import { formatCurrency } from "../mock-data";
 import type {
   AppointmentDraft,
   CartItem,
+  CourtesyPackage,
+  CourtesySettings,
   Client,
   ClientField,
   ClientSourceOption,
@@ -61,13 +63,6 @@ type ClientMode = "search" | "new";
 type SplitMode = "amount" | "percent";
 type CheckoutStep = 1 | 2 | 3 | 4;
 type AppointmentAnswer = "" | "YES" | "NO";
-type CourtesyPackage =
-  | "FACIAL"
-  | "BODY"
-  | "DOUBLE_FACIAL"
-  | "DOUBLE_BODY"
-  | "MIXED";
-
 const cardAndBankOptions = [
   "Visa",
   "Mastercard",
@@ -107,6 +102,7 @@ interface CheckoutDialogProps {
   branches: string[];
   sourceOptions: ClientSourceOption[];
   requiredFields: RequiredClientFields;
+  courtesySettings: CourtesySettings;
   isMasterCode: (code: string) => boolean;
   onOpenChange: (open: boolean) => void;
   onComplete: (result: CheckoutResult) => void;
@@ -192,6 +188,7 @@ export function CheckoutDialog({
   branches,
   sourceOptions,
   requiredFields,
+  courtesySettings,
   isMasterCode,
   onOpenChange,
   onComplete,
@@ -228,7 +225,7 @@ export function CheckoutDialog({
     [],
   );
   const [courtesyPackage, setCourtesyPackage] =
-    useState<CourtesyPackage>("FACIAL");
+    useState<CourtesyPackage>(courtesySettings.defaultPackage);
   const [courtesyDate, setCourtesyDate] = useState("");
   const [courtesyBranch, setCourtesyBranch] = useState("");
   const [courtesyTime, setCourtesyTime] = useState("");
@@ -259,7 +256,7 @@ export function CheckoutDialog({
     setOwnershipAuthorized(false);
     setShowAdditionalSellers(false);
     setDeliveredCartItemIds([]);
-    setCourtesyPackage("FACIAL");
+    setCourtesyPackage(courtesySettings.defaultPackage);
     setCourtesyDate("");
     setCourtesyBranch("");
     setCourtesyTime("");
@@ -279,7 +276,7 @@ export function CheckoutDialog({
           ]
         : [],
     );
-  }, [activeSellers, open, paymentMethods, total]);
+  }, [activeSellers, courtesySettings.defaultPackage, open, paymentMethods, total]);
 
   const filteredClients = useMemo(() => {
     const query = clientSearch.trim().toLocaleLowerCase("es-MX");
@@ -333,7 +330,7 @@ export function CheckoutDialog({
     Object.keys(requiredFields) as ClientField[]
   ).filter((field) => requiredFields[field] && !newClient[field].trim());
   const courtesyAppointmentIsValid =
-    clientMode !== "new" ||
+    clientMode !== "new" || !courtesySettings.required ||
     Boolean(courtesyPackage && courtesyDate && courtesyBranch && courtesyTime);
   const clientIsValid =
     clientMode === "search"
@@ -512,7 +509,7 @@ export function CheckoutDialog({
       .map((sellerId) => sellers.find((seller) => seller.id === sellerId))
       .filter((seller): seller is Seller => Boolean(seller));
     const appointments: AppointmentDraft[] = [
-      ...(clientMode === "new"
+      ...(clientMode === "new" && courtesySettings.required
         ? courtesyPackages[courtesyPackage].services.map((service) => ({
             kind: "COURTESY" as const,
             service,
@@ -915,7 +912,7 @@ export function CheckoutDialog({
                       en sus próximas ventas.
                     </small>
                   </div>
-                  <div className="courtesy-appointment-panel new-client-grid-span">
+                  {courtesySettings.required && <div className="courtesy-appointment-panel new-client-grid-span">
                     <div className="courtesy-appointment-heading">
                       <span>
                         <Gift size={18} />
@@ -943,7 +940,7 @@ export function CheckoutDialog({
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            {Object.entries(courtesyPackages).map(
+                            {Object.entries(courtesyPackages).filter(([value]) => courtesySettings.enabledPackages.includes(value as CourtesyPackage)).map(
                               ([value, option]) => (
                                 <SelectItem key={value} value={value}>
                                   {option.label}
@@ -1015,7 +1012,7 @@ export function CheckoutDialog({
                         registrar la cortesía.
                       </p>
                     )}
-                  </div>
+                  </div>}
                   {missingNewClientFields.length > 0 && (
                     <p className="form-hint new-client-grid-span">
                       Obligatorios pendientes:{" "}
@@ -1260,7 +1257,7 @@ export function CheckoutDialog({
                 <CalendarHeart size={22} />
               </div>
 
-              {clientMode === "new" && (
+              {clientMode === "new" && courtesySettings.required && (
                 <div className="courtesy-confirmation-card">
                   <Gift size={19} />
                   <span>
@@ -1311,7 +1308,7 @@ export function CheckoutDialog({
                     </button>
                   </div>
                 </div>
-              ) : (
+              ) : courtesySettings.required ? (
                 <div className="appointment-declined-note">
                   <CheckCircle2 size={18} />
                   <span>
@@ -1322,7 +1319,7 @@ export function CheckoutDialog({
                     </small>
                   </span>
                 </div>
-              )}
+              ) : null}
 
               {clientMode === "search" && nextSessionAnswer === "YES" && (
                 <div className="next-session-scheduler">

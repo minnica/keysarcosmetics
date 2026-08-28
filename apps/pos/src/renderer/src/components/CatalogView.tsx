@@ -4,6 +4,7 @@ import {
   ChevronDown,
   FileSpreadsheet,
   FileText,
+  FlaskConical,
   FolderPlus,
   ImagePlus,
   Layers3,
@@ -14,6 +15,7 @@ import {
   Power,
   PowerOff,
   Search,
+  ShoppingBasket,
   ShieldCheck,
   Store,
   Tags,
@@ -52,6 +54,7 @@ import type {
   InventoryBranchOrderResult,
   Product,
   ProductKind,
+  WarehouseRequestType,
 } from "../types";
 import { InventoryOrderDialog } from "./InventoryOrderDialog";
 import {
@@ -79,6 +82,7 @@ interface CatalogViewProps {
     authorizationCode: string,
   ) => InventoryBranchOrderResult[] | null;
   onLockCostAccess: () => void;
+  onOpenBranchRequest: (requestType: WarehouseRequestType) => void;
 }
 
 type AddOptionType = "family" | "category" | "group";
@@ -113,7 +117,7 @@ const createDraft = (): Product => ({
   category: "",
   group: "",
   kind: "PRODUCT",
-  image: "/products/renewal-serum.png",
+  image: "./products/renewal-serum.png",
   description: "",
   benefits: [],
   showInDigitalCatalog: true,
@@ -147,6 +151,7 @@ export function CatalogView({
   isMasterCode,
   onCreateInventoryOrders,
   onLockCostAccess,
+  onOpenBranchRequest,
 }: CatalogViewProps) {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] =
@@ -160,6 +165,7 @@ export function CatalogView({
   const [optionName, setOptionName] = useState("");
   const [costAccessCode, setCostAccessCode] = useState("");
   const [orderDialogOpen, setOrderDialogOpen] = useState(false);
+  const [orderMenuOpen, setOrderMenuOpen] = useState(false);
   const [sortConfig, setSortConfig] = useState<{
     key: InventorySortKey;
     direction: TableSortDirection;
@@ -689,13 +695,32 @@ export function CatalogView({
           ))}
         </div>
         <div className="catalog-add-menu-wrap">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => setOrderDialogOpen(true)}
-          >
-            <PackagePlus size={17} /> Generar pedido
-          </Button>
+          <div className="catalog-order-menu-wrap">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setOrderMenuOpen((current) => !current)}
+              aria-expanded={orderMenuOpen}
+            >
+              <PackagePlus size={17} /> Generar pedido <ChevronDown size={15} />
+            </Button>
+            {orderMenuOpen && (
+              <div className="catalog-order-menu">
+                <button type="button" onClick={() => { setOrderMenuOpen(false); setOrderDialogOpen(true); }}>
+                  <PackagePlus size={16} /><span><strong>Resurtido por stock</strong><small>Completar existencia máxima por sucursal.</small></span>
+                </button>
+                <button type="button" onClick={() => { setOrderMenuOpen(false); onOpenBranchRequest("PRODUCT"); }}>
+                  <Boxes size={16} /><span><strong>Solicitar productos</strong><small>Pedido de mercancía vendible a bodega.</small></span>
+                </button>
+                <button type="button" onClick={() => { setOrderMenuOpen(false); onOpenBranchRequest("TESTER"); }}>
+                  <FlaskConical size={16} /><span><strong>Solicitar testers</strong><small>Sólo productos autorizados como demo.</small></span>
+                </button>
+                <button type="button" onClick={() => { setOrderMenuOpen(false); onOpenBranchRequest("SUPPLY"); }}>
+                  <ShoppingBasket size={16} /><span><strong>Solicitar insumos</strong><small>Consumibles visibles para sucursales.</small></span>
+                </button>
+              </div>
+            )}
+          </div>
           <Button
             type="button"
             onClick={() => setAddMenuOpen((current) => !current)}
@@ -948,15 +973,21 @@ export function CatalogView({
                     <Button
                       type="button"
                       variant="outline"
-                      size="sm"
+                      size="icon"
+                      className="icon-action-button"
                       onClick={() => openEdit(product)}
+                      aria-label={`Editar ${product.name}`}
+                      title="Editar"
                     >
-                      <Pencil size={14} /> Editar
+                      <Pencil size={16} />
                     </Button>
                     <Button
                       type="button"
                       variant="outline"
-                      size="sm"
+                      size="icon"
+                      className="icon-action-button"
+                      aria-label={`${product.active ? "Desactivar" : "Activar"} ${product.name}`}
+                      title={product.active ? "Desactivar" : "Activar"}
                       onClick={() => {
                         const nextActive = !product.active;
                         const message = nextActive
@@ -972,7 +1003,6 @@ export function CatalogView({
                       ) : (
                         <Power size={14} />
                       )}
-                      {product.active ? "Desactivar" : "Activar"}
                     </Button>
                   </div>
                 </TableCell>

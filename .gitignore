@@ -5,12 +5,14 @@ node_modules/
 
 # Next.js
 .next/
+.next.*/
 out/
 build/
 
 # Electron / Vite
 dist/
 dist-electron/
+electron-preview/
 release/
 
 # Variables de entorno (nunca subir)

@@ -398,7 +398,7 @@ export function CompetitionSettings({
                             </AlertDialogHeader>
                             <AlertDialogFooter>
                               <AlertDialogCancel>Conservar</AlertDialogCancel>
-                              <AlertDialogAction onClick={() => onDelete(competition.id)}>Borrar competencia</AlertDialogAction>
+                              <AlertDialogAction className="icon-action-button is-danger" onClick={() => onDelete(competition.id)} aria-label={`Borrar ${competition.name}`} title="Borrar"><Trash2 size={15} /></AlertDialogAction>
                             </AlertDialogFooter>
                           </AlertDialogContent>
                         </AlertDialog>

@@ -5,6 +5,7 @@ import {
   ArrowRight,
   BadgeDollarSign,
   BarChart3,
+  Bell,
   Boxes,
   Building2,
   CheckCircle2,
@@ -82,6 +83,7 @@ import type {
 } from "../types";
 
 type WarehouseTab = "STOCK" | "PURCHASE_ORDERS" | "ENTRY" | "BRANCH_ORDERS" | "SHIPMENTS" | "REQUEST_PRODUCTS" | "REQUEST_TESTERS" | "REQUEST_SUPPLIES" | "PRICE_LISTS" | "REPORT";
+export type WarehouseScope = "MATRIX" | "BRANCHES";
 type WarehouseApprovalAction = "CREATION" | "SEND" | "RECEIVE" | "CANCEL" | "DELETE";
 type WarehouseSortKey = "folio" | "date" | "type" | "branch" | "status" | "units" | "value";
 
@@ -92,6 +94,8 @@ interface DraftLine {
 }
 
 interface WarehouseViewProps {
+  scope: WarehouseScope;
+  initialRequestType?: WarehouseRequestType;
   products: Product[];
   tickets: Ticket[];
   branches: string[];
@@ -103,6 +107,7 @@ interface WarehouseViewProps {
   priceLists: WarehousePriceList[];
   clients: Client[];
   canManage: boolean;
+  canViewCosts: boolean;
   canRequest: boolean;
   currentUserName: string;
   onCreateEntry: (lines: WarehouseMovementLine[], comment: string, code: string) => boolean;
@@ -227,6 +232,8 @@ const formatDateTime = (iso: string) =>
   }).format(new Date(iso));
 
 export function WarehouseView({
+  scope,
+  initialRequestType = "PRODUCT",
   products,
   tickets,
   branches,
@@ -238,6 +245,7 @@ export function WarehouseView({
   priceLists,
   clients,
   canManage,
+  canViewCosts,
   canRequest,
   currentUserName,
   onCreateEntry,
@@ -258,7 +266,15 @@ export function WarehouseView({
 }: WarehouseViewProps) {
   const physicalProducts = products.filter((product) => product.kind === "PRODUCT" && product.active);
   const activeCategories = categories.filter((category) => category.active);
-  const [tab, setTab] = useState<WarehouseTab>("STOCK");
+  const [tab, setTab] = useState<WarehouseTab>(
+    scope === "MATRIX"
+      ? "STOCK"
+      : initialRequestType === "TESTER"
+        ? "REQUEST_TESTERS"
+        : initialRequestType === "SUPPLY"
+          ? "REQUEST_SUPPLIES"
+          : "REQUEST_PRODUCTS",
+  );
   const [selectedCategory, setSelectedCategory] = useState("ALL");
   const [formOpen, setFormOpen] = useState(false);
   const [formKind, setFormKind] = useState<WarehouseMovementKind>("ENTRY");
@@ -416,9 +432,36 @@ export function WarehouseView({
     });
   }, [branchFilter, dateFrom, dateTo, historyTypeFilter, movements, search, selectedCategory, sort, statusFilter, supplierFilter]);
 
-  const shipments = movements.filter((movement) => ["SHIPMENT", "BRANCH_REQUEST"].includes(movement.kind) && ["SENT", "RECEIVED"].includes(movement.status));
-  const requests = movements.filter((movement) => movement.kind === "BRANCH_REQUEST");
-  const pendingBranchOrders = movements.filter((movement) => ["BRANCH_REQUEST", "SHIPMENT"].includes(movement.kind) && ["DRAFT", "REQUESTED", "CREATION_APPROVED"].includes(movement.status));
+  const shipments = movements.filter((movement) =>
+    ["SHIPMENT", "BRANCH_REQUEST"].includes(movement.kind) &&
+    ["SENT", "RECEIVED"].includes(movement.status) &&
+    Boolean(
+      movement.destinationBranch &&
+        branches.includes(movement.destinationBranch),
+    ),
+  );
+  const requests = movements.filter(
+    (movement) =>
+      movement.kind === "BRANCH_REQUEST" &&
+      Boolean(
+        movement.destinationBranch &&
+          branches.includes(movement.destinationBranch),
+      ),
+  );
+  const pendingBranchOrders = movements.filter(
+    (movement) =>
+      ["BRANCH_REQUEST", "SHIPMENT"].includes(movement.kind) &&
+      ["DRAFT", "REQUESTED", "CREATION_APPROVED"].includes(
+        movement.status,
+      ) &&
+      Boolean(
+        movement.destinationBranch &&
+          branches.includes(movement.destinationBranch),
+      ),
+  );
+  const newBranchRequests = requests.filter(
+    (movement) => movement.status === "REQUESTED",
+  );
   const purchaseOrders = movements.filter((movement) => movement.kind === "PURCHASE_ORDER");
   const productRequests = requests.filter((movement) => (movement.requestType ?? "PRODUCT") === "PRODUCT");
   const testerRequests = requests.filter((movement) => movement.requestType === "TESTER");
@@ -560,11 +603,11 @@ export function WarehouseView({
     doc.setFontSize(9);
     doc.text(`${movement.folio} · ${movement.requestType ? requestTypeLabels[movement.requestType] : kindLabels[movement.kind]} · ${statusLabels[movement.status]}`, 40, 64);
     doc.text(`Destino: ${movement.destinationBranch ?? "Bodega matriz"} · Creado por: ${movement.createdByName}`, 40, 80);
-    doc.text(`Lista: ${movement.priceListName ?? "Costo base de bodega"} · Cliente: ${movement.customerName ?? "General"} · Proveedor: ${movement.supplierName ?? movement.lines.find((line) => line.supplierName)?.supplierName ?? "—"}`, 40, 94);
+    doc.text(`${canViewCosts ? `Lista: ${movement.priceListName ?? "Costo base de bodega"} · ` : ""}Cliente: ${movement.customerName ?? "General"} · Proveedor: ${movement.supplierName ?? movement.lines.find((line) => line.supplierName)?.supplierName ?? "—"}`, 40, 94);
     autoTable(doc, {
       startY: 108,
-      head: [["SKU", "Producto", "Cantidad", "Costo base", "Precio lista MXN", "Precio lista USD", "Total lista"]],
-      body: movement.lines.map((line) => [line.sku, line.productName, line.quantity, formatCurrency(line.unitCostMxn), formatCurrency(line.partnerCost), `$${(line.partnerCostUsd ?? line.unitCostUsd).toFixed(2)}`, formatCurrency(line.quantity * (movement.kind === "BRANCH_REQUEST" ? line.partnerCost : line.unitCostMxn))]),
+      head: [["SKU", "Producto", "Cantidad", ...(canViewCosts ? ["Costo base", "Precio lista MXN", "Precio lista USD", "Total lista"] : [])]],
+      body: movement.lines.map((line) => [line.sku, line.productName, line.quantity, ...(canViewCosts ? [formatCurrency(line.unitCostMxn), formatCurrency(line.partnerCost), `$${(line.partnerCostUsd ?? line.unitCostUsd).toFixed(2)}`, formatCurrency(line.quantity * (movement.kind === "BRANCH_REQUEST" ? line.partnerCost : line.unitCostMxn))] : [])]),
       styles: { fontSize: 8 },
       headStyles: { fillColor: [109, 82, 61] },
     });
@@ -585,11 +628,10 @@ export function WarehouseView({
       Estatus: statusLabels[movement.status],
       Productos: movement.lines.length,
       Unidades: movementUnits(movement),
-      "Lista de precios": movement.priceListName ?? "Costo base de bodega",
+      ...(canViewCosts ? { "Lista de precios": movement.priceListName ?? "Costo base de bodega" } : {}),
       Cliente: movement.customerName ?? "General",
       Proveedor: movement.supplierName ?? ([...new Set(movement.lines.map((line) => line.supplierName).filter(Boolean))].join(" · ") || "—"),
-      "Total listado MXN": movementValue(movement),
-      "Total listado USD": movementValueUsd(movement),
+      ...(canViewCosts ? { "Total listado MXN": movementValue(movement), "Total listado USD": movementValueUsd(movement) } : {}),
       "Creado por": movement.createdByName,
     }));
     const book = XLSX.utils.book_new();
@@ -607,11 +649,11 @@ export function WarehouseView({
     doc.setFontSize(18);
     doc.text(`KEYSAR · ${reportTitle}`, 38, 42);
     doc.setFontSize(9);
-    doc.text(`${reportRows.length} movimientos · ${totalUnits} piezas en bodega · Valor ${formatCurrency(totalMxn)}`, 38, 59);
+    doc.text(`${reportRows.length} movimientos · ${totalUnits} piezas en bodega${canViewCosts ? ` · Valor ${formatCurrency(totalMxn)}` : ""}`, 38, 59);
     autoTable(doc, {
       startY: 75,
-      head: [["Folio", "Fecha", "Concepto", "Sucursal", "Lista / cliente", "Estatus", "Unidades", "Total MXN", "Total USD"]],
-      body: reportRows.map((movement) => [movement.folio, formatDateTime(movement.createdAtIso), movement.categoryLabel, movement.destinationBranch ?? "Bodega", `${movement.priceListName ?? "Costo base"} · ${movement.customerName ?? "General"}`, statusLabels[movement.status], movementUnits(movement), formatCurrency(movementValue(movement)), `$${movementValueUsd(movement).toFixed(2)}`]),
+      head: [["Folio", "Fecha", "Concepto", "Sucursal", "Cliente", "Estatus", "Unidades", ...(canViewCosts ? ["Total MXN", "Total USD"] : [])]],
+      body: reportRows.map((movement) => [movement.folio, formatDateTime(movement.createdAtIso), movement.categoryLabel, movement.destinationBranch ?? "Bodega", movement.customerName ?? "General", statusLabels[movement.status], movementUnits(movement), ...(canViewCosts ? [formatCurrency(movementValue(movement)), `$${movementValueUsd(movement).toFixed(2)}`] : [])]),
       styles: { fontSize: 7 },
       headStyles: { fillColor: [109, 82, 61] },
     });
@@ -680,7 +722,7 @@ export function WarehouseView({
   const movementTable = (rows: WarehouseMovement[]) => (
     <div className="warehouse-table-wrap">
       <Table>
-        <TableHeader><TableRow><TableHead>{sortButton("folio", "Folio / fecha")}</TableHead><TableHead>{sortButton("type", "Movimiento")}</TableHead><TableHead>{sortButton("branch", "Sucursal")}</TableHead><TableHead>Productos</TableHead><TableHead>{sortButton("units", "Unidades")}</TableHead><TableHead>{sortButton("value", "Costo")}</TableHead><TableHead>{sortButton("status", "Estatus")}</TableHead><TableHead>Acciones</TableHead></TableRow></TableHeader>
+        <TableHeader><TableRow><TableHead>{sortButton("folio", "Folio / fecha")}</TableHead><TableHead>{sortButton("type", "Movimiento")}</TableHead><TableHead>{sortButton("branch", "Sucursal")}</TableHead><TableHead>Productos</TableHead><TableHead>{sortButton("units", "Unidades")}</TableHead>{canViewCosts && <TableHead>{sortButton("value", "Costo")}</TableHead>}<TableHead>{sortButton("status", "Estatus")}</TableHead><TableHead>Acciones</TableHead></TableRow></TableHeader>
         <TableBody>
           {rows.map((movement) => <TableRow key={movement.id}>
             <TableCell><strong>{movement.folio}</strong><small>{formatDateTime(movement.createdAtIso)}</small></TableCell>
@@ -688,11 +730,11 @@ export function WarehouseView({
             <TableCell><strong>{movement.destinationBranch ?? "Bodega matriz"}</strong><small>{movement.supplierName ?? movement.priceListName ?? "Costo base"}{movement.customerName ? ` · ${movement.customerName}` : ""}</small></TableCell>
             <TableCell>{movement.lines.length}</TableCell>
             <TableCell><strong>{movementUnits(movement)}</strong></TableCell>
-            <TableCell><strong>{formatCurrency(movementValue(movement))}</strong><small>USD ${movementValueUsd(movement).toFixed(2)}</small></TableCell>
+            {canViewCosts && <TableCell><strong>{formatCurrency(movementValue(movement))}</strong><small>USD ${movementValueUsd(movement).toFixed(2)}</small></TableCell>}
             <TableCell><Badge variant="outline" className={`warehouse-status is-${movement.status.toLocaleLowerCase()}`}>{movement.kind === "PURCHASE_ORDER" && movement.status === "RECEIVED" ? "Recibido en bodega" : movement.status === "RECEIVED" ? "Entregado" : statusLabels[movement.status]}</Badge></TableCell>
             <TableCell>{actionButtons(movement)}</TableCell>
           </TableRow>)}
-          {rows.length === 0 && <TableRow><TableCell colSpan={8}>No hay movimientos para los filtros seleccionados.</TableCell></TableRow>}
+          {rows.length === 0 && <TableRow><TableCell colSpan={canViewCosts ? 8 : 7}>No hay movimientos para los filtros seleccionados.</TableCell></TableRow>}
         </TableBody>
       </Table>
     </div>
@@ -758,42 +800,102 @@ export function WarehouseView({
     );
   };
 
+  const matrixTabs: Array<[WarehouseTab, string, typeof Warehouse]> = [
+    ["STOCK", "Inventario en bodega", Warehouse],
+    ["PURCHASE_ORDERS", "Pedidos a proveedores", PackagePlus],
+    ["ENTRY", "Ingreso de mercancía", ArrowDownToLine],
+    ["BRANCH_ORDERS", "Solicitudes de sucursales", ClipboardCheck],
+    ["SHIPMENTS", "Envíos", Truck],
+    ["PRICE_LISTS", "Listas de precios", BadgeDollarSign],
+    ["REPORT", "Reporte general", BarChart3],
+  ];
+  const branchTabs: Array<[WarehouseTab, string, typeof Warehouse]> = [
+    ["REQUEST_PRODUCTS", "Solicitar productos", ClipboardCheck],
+    ["REQUEST_TESTERS", "Solicitar testers", FlaskConical],
+    ["REQUEST_SUPPLIES", "Solicitar insumos", ShoppingBasket],
+  ];
+  const availableTabs = scope === "MATRIX" ? matrixTabs : branchTabs;
+  const branchRequestUnits = requests.reduce(
+    (sum, movement) => sum + movementUnits(movement),
+    0,
+  );
+  const branchPendingUnits = requests
+    .filter((movement) =>
+      ["DRAFT", "REQUESTED", "CREATION_APPROVED", "SENT"].includes(
+        movement.status,
+      ),
+    )
+    .reduce((sum, movement) => sum + movementUnits(movement), 0);
+  const branchReceivedUnits = requests
+    .filter((movement) => movement.status === "RECEIVED")
+    .reduce((sum, movement) => sum + movementUnits(movement), 0);
+
   return (
     <div className="warehouse-view view-stack">
       <section className="warehouse-hero">
-        <div><span className="section-kicker">CENTRO DE DISTRIBUCIÓN</span><h2>Almacén bodega matriz</h2><p>Controla existencias, entradas, pedidos y envíos con trazabilidad por sucursal.</p></div>
-        <div><span className="status-dot" /><strong>REPORTE EN VIVO</strong><small>Operador: {currentUserName}</small></div>
+        <div>
+          <span className="section-kicker">
+            {scope === "MATRIX" ? "CENTRO DE DISTRIBUCIÓN" : "OPERACIÓN DE TIENDAS"}
+          </span>
+          <h2>
+            {scope === "MATRIX"
+              ? "Almacén bodega matriz"
+              : "Inventario y solicitudes de sucursales"}
+          </h2>
+          <p>
+            {scope === "MATRIX"
+              ? "Controla existencias, compras, entradas, solicitudes recibidas y envíos con trazabilidad por sucursal."
+              : "Genera pedidos de productos, testers e insumos; cada folio llegará automáticamente a bodega matriz."}
+          </p>
+        </div>
+        <div className="warehouse-hero-actions">
+          {scope === "MATRIX" && (
+            <button
+              type="button"
+              className={`warehouse-order-bell ${newBranchRequests.length > 0 ? "has-alerts" : ""}`}
+              onClick={() => {
+                setTab("BRANCH_ORDERS");
+                setSelectedCategory("ALL");
+              }}
+              aria-label={`${newBranchRequests.length} pedidos nuevos de sucursales`}
+              title="Nuevos pedidos de sucursales"
+            >
+              <Bell size={19} />
+              {newBranchRequests.length > 0 && (
+                <b>{newBranchRequests.length}</b>
+              )}
+            </button>
+          )}
+          <span className="status-dot" />
+          <strong>REPORTE EN VIVO</strong>
+          <small>Operador: {currentUserName}</small>
+        </div>
       </section>
 
-      {!canManage && <div className="warehouse-readonly"><LockKeyhole size={18} /><span><strong>Consulta autorizada en modo lectura</strong><small>Solicita el permiso “Movimientos de almacén” para crear, aprobar, editar o cancelar.</small></span></div>}
+      {scope === "MATRIX" && !canManage && <div className="warehouse-readonly"><LockKeyhole size={18} /><span><strong>Consulta autorizada en modo lectura</strong><small>Solicita el permiso “Movimientos de almacén” para crear, aprobar, editar o cancelar.</small></span></div>}
+      {scope === "BRANCHES" && !canRequest && <div className="warehouse-readonly"><LockKeyhole size={18} /><span><strong>Solicitudes deshabilitadas para este rol</strong><small>Un usuario master puede habilitar Pedido sucursales desde Employees.</small></span></div>}
 
-      <nav className="warehouse-tabs" aria-label="Secciones de almacén">
-        {([
-          ["STOCK", "Inventario en bodega", Warehouse],
-          ["PURCHASE_ORDERS", "Pedidos a proveedores", PackagePlus],
-          ["ENTRY", "Ingreso de mercancía", ArrowDownToLine],
-          ["BRANCH_ORDERS", "Pedidos de sucursales", ClipboardCheck],
-          ["SHIPMENTS", "Envíos", Truck],
-          ["REQUEST_PRODUCTS", "Pedido de productos", ClipboardCheck],
-          ["REQUEST_TESTERS", "Pedido de testers", FlaskConical],
-          ["REQUEST_SUPPLIES", "Pedido de insumos", ShoppingBasket],
-          ["PRICE_LISTS", "Listas de precios", BadgeDollarSign],
-          ["REPORT", "Reporte general", BarChart3],
-        ] as Array<[WarehouseTab, string, typeof Warehouse]>).map(([id, label, Icon]) => <button type="button" key={id} className={tab === id ? "is-active" : ""} onClick={() => { setTab(id); setSelectedCategory("ALL"); }}><Icon size={18} /><span>{label}</span></button>)}
-      </nav>
+      {scope === "MATRIX" && (
+        <nav className="warehouse-tabs" aria-label="Secciones de almacén">
+          {availableTabs.map(([id, label, Icon]) => <button type="button" key={id} className={tab === id ? "is-active" : ""} onClick={() => { setTab(id); setSelectedCategory("ALL"); }}><Icon size={18} /><span>{label}</span></button>)}
+        </nav>
+      )}
 
-      <section className="warehouse-metrics">
+      {scope === "MATRIX" ? <section className="warehouse-metrics">
         <Card><CardContent className="warehouse-metric-content"><Boxes size={20} /><span>STOCK GENERAL</span><strong>{totalUnits}</strong><small>{stockRows.length} productos · {supplyRows.length} insumos</small></CardContent></Card>
-        <Card><CardContent className="warehouse-metric-content"><TrendingDown size={20} /><span>COSTO ALMACÉN MXN</span><strong>{formatCurrency(totalMxn)}</strong><small>Base de costo</small></CardContent></Card>
-        <Card><CardContent className="warehouse-metric-content"><Building2 size={20} /><span>COSTO ALMACÉN USD</span><strong>${totalUsd.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong><small>Costo unitario acumulado</small></CardContent></Card>
-        <Card><CardContent className="warehouse-metric-content"><TrendingUp size={20} /><span>VALOR PRECIO SOCIO</span><strong>{formatCurrency(partnerValue)}</strong><small>Utilidad potencial {formatCurrency(partnerValue - totalMxn)}</small></CardContent></Card>
-      </section>
+        {canViewCosts ? <><Card><CardContent className="warehouse-metric-content"><TrendingDown size={20} /><span>COSTO ALMACÉN MXN</span><strong>{formatCurrency(totalMxn)}</strong><small>Base de costo</small></CardContent></Card><Card><CardContent className="warehouse-metric-content"><Building2 size={20} /><span>COSTO ALMACÉN USD</span><strong>${totalUsd.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong><small>Costo unitario acumulado</small></CardContent></Card><Card><CardContent className="warehouse-metric-content"><TrendingUp size={20} /><span>VALOR PRECIO SOCIO</span><strong>{formatCurrency(partnerValue)}</strong><small>Utilidad potencial {formatCurrency(partnerValue - totalMxn)}</small></CardContent></Card></> : <Card><CardContent className="warehouse-metric-content"><LockKeyhole size={20} /><span>COSTOS PROTEGIDOS</span><strong>OCULTOS</strong><small>Requiere permiso por rol</small></CardContent></Card>}
+      </section> : <section className="warehouse-metrics warehouse-branch-metrics">
+        <Card><CardContent className="warehouse-metric-content"><ClipboardCheck size={20} /><span>FOLIOS GENERADOS</span><strong>{requests.length}</strong><small>{branches.length === 1 ? branches[0] : `${branches.length} sucursales`}</small></CardContent></Card>
+        <Card><CardContent className="warehouse-metric-content"><Boxes size={20} /><span>UNIDADES SOLICITADAS</span><strong>{branchRequestUnits}</strong><small>Productos, testers e insumos</small></CardContent></Card>
+        <Card><CardContent className="warehouse-metric-content"><Truck size={20} /><span>PENDIENTES</span><strong>{branchPendingUnits}</strong><small>Por aprobar, enviar o recibir</small></CardContent></Card>
+        <Card><CardContent className="warehouse-metric-content"><PackageCheck size={20} /><span>RECIBIDAS</span><strong>{branchReceivedUnits}</strong><small>Historial conectado con matriz</small></CardContent></Card>
+      </section>}
 
-      {tab === "STOCK" && <WarehouseStockView products={products} supplies={supplies} suppliers={suppliers} stock={stock} movements={movements} canManage={canManage} onToggleVisibility={onToggleSupplyVisibility} onSaveSupply={onSaveSupply} onDeleteSupply={onDeleteSupply} onCreateRestockOrder={onCreateRestockOrder} />}
+      {tab === "STOCK" && <WarehouseStockView products={products} supplies={supplies} suppliers={suppliers} stock={stock} movements={movements} canManage={canManage} canViewCosts={canViewCosts} onToggleVisibility={onToggleSupplyVisibility} onSaveSupply={onSaveSupply} onDeleteSupply={onDeleteSupply} onCreateRestockOrder={onCreateRestockOrder} />}
 
       {tab === "PURCHASE_ORDERS" && <Card className="warehouse-panel"><CardContent><div className="warehouse-panel-heading"><div><span>COMPRAS A PROVEEDORES</span><h2>Pedidos y resurtidos de bodega</h2><p>Propuestas generadas desde stock máximo con doble aprobación y recepción en matriz.</p></div><Badge variant="outline">{purchaseOrders.length} folios</Badge></div>{movementTable(purchaseOrders)}</CardContent></Card>}
 
-      {tab === "ENTRY" && <Card className="warehouse-panel"><CardContent><div className="warehouse-panel-heading"><div><span>ABASTECIMIENTO MATRIZ</span><h2>Ingresos de mercancía</h2><p>Carga varios productos y actualiza su costo socio.</p></div><div><Button type="button" variant="outline" onClick={downloadTemplate}><Download size={16} /> Plantilla</Button><label className="warehouse-upload-button"><Upload size={16} /> Carga masiva<input type="file" accept=".xlsx,.xls" onChange={importTemplate} /></label>{canManage && <Button type="button" onClick={() => openForm("ENTRY")}><PackagePlus size={16} /> Ingreso de mercancía</Button>}</div></div>{movementTable(movements.filter((movement) => movement.kind === "ENTRY"))}</CardContent></Card>}
+      {tab === "ENTRY" && <Card className="warehouse-panel"><CardContent><div className="warehouse-panel-heading"><div><span>ABASTECIMIENTO MATRIZ</span><h2>Ingresos de mercancía</h2><p>Carga varios productos y actualiza su costo socio.</p></div><div>{canViewCosts && <><Button type="button" variant="outline" onClick={downloadTemplate}><Download size={16} /> Plantilla</Button><label className="warehouse-upload-button"><Upload size={16} /> Carga masiva<input type="file" accept=".xlsx,.xls" onChange={importTemplate} /></label></>}{canManage && <Button type="button" onClick={() => openForm("ENTRY")}><PackagePlus size={16} /> Ingreso de mercancía</Button>}</div></div>{movementTable(movements.filter((movement) => movement.kind === "ENTRY"))}</CardContent></Card>}
 
       {tab === "BRANCH_ORDERS" && <Card className="warehouse-panel"><CardContent><div className="warehouse-panel-heading"><div><span>CENTRO DE SOLICITUDES</span><h2>Pedidos de sucursales</h2><p>Concentra todas las solicitudes de tienda y permite crear pedidos para cualquier sucursal. Después de dos aprobaciones el folio pasa automáticamente a Envíos.</p></div><div className="warehouse-branch-order-create">{canRequest && <><Select value={branchOrderRequestType} onValueChange={(value) => setBranchOrderRequestType(value as WarehouseRequestType)}><SelectTrigger aria-label="Tipo de pedido"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="PRODUCT">Productos</SelectItem><SelectItem value="TESTER">Testers</SelectItem><SelectItem value="SUPPLY">Insumos</SelectItem></SelectContent></Select><Button type="button" onClick={() => openForm("BRANCH_REQUEST", branchOrderRequestType)}><Plus size={16} /> Generar pedido</Button></>}<Badge variant="outline">{pendingBranchOrders.length} pendientes</Badge></div></div>{movementTable(pendingBranchOrders)}</CardContent></Card>}
 
@@ -803,21 +905,21 @@ export function WarehouseView({
       {tab === "REQUEST_TESTERS" && renderRequestModule("TESTER", testerRequests, "Pedidos de testers", "Sólo aparecen productos autorizados desde Catálogo. Su recepción genera historial, pero no inventario vendible.", FlaskConical)}
       {tab === "REQUEST_SUPPLIES" && renderRequestModule("SUPPLY", supplyRequests, "Pedidos de insumos", "Utiliza únicamente insumos visibles de la lista precargada. Su recepción no aumenta el inventario de venta.", ShoppingBasket)}
 
-      {tab === "PRICE_LISTS" && <WarehousePriceLists lists={priceLists} products={products} supplies={supplies} branches={branches} clients={clients} canManage={canManage} onSave={onSavePriceList} onToggle={onTogglePriceList} onDelete={onDeletePriceList} />}
+      {tab === "PRICE_LISTS" && (canViewCosts ? <WarehousePriceLists lists={priceLists} products={products} supplies={supplies} branches={branches} clients={clients} canManage={canManage} onSave={onSavePriceList} onToggle={onTogglePriceList} onDelete={onDeletePriceList} /> : <div className="warehouse-readonly"><LockKeyhole size={18} /><span><strong>Listas de precios protegidas</strong><small>Este rol no tiene autorización para visualizar costos ni precios internos.</small></span></div>)}
 
       {tab === "REPORT" && <div className="view-stack"><Card className="warehouse-panel"><CardContent><div className="warehouse-panel-heading"><div><span>HISTORIAL COMPLETO</span><h2>Reporte general de almacén y tiendas</h2><p>Pedidos autorizados, salidas, pendientes, productos, testers, insumos y ventas completas.</p></div><div><Button type="button" variant="outline" onClick={() => void exportReportExcel()}><FileSpreadsheet size={16} /> Excel</Button><Button type="button" variant="outline" onClick={() => void exportReportPdf()}><FileDown size={16} /> PDF</Button><Button type="button" variant="outline" onClick={() => window.print()}><Printer size={16} /> Imprimir</Button></div></div><div className="warehouse-filters is-advanced"><div className="search-input-wrap"><Search size={16} /><Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Folio, producto, proveedor, sucursal o usuario" /></div><Select value={historyTypeFilter} onValueChange={setHistoryTypeFilter}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ALL">Historial general</SelectItem><SelectItem value="AUTHORIZED">Pedidos autorizados / salidas</SelectItem><SelectItem value="PENDING">Pendientes</SelectItem><SelectItem value="PRODUCT">Productos / ventas completas</SelectItem><SelectItem value="TESTER">Testers</SelectItem><SelectItem value="SUPPLY">Insumos</SelectItem></SelectContent></Select><Select value={selectedCategory} onValueChange={setSelectedCategory}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ALL">Todos los conceptos</SelectItem>{categories.map((category) => <SelectItem key={category.id} value={category.id}>{category.name}{category.active ? "" : " · Inactivo"}</SelectItem>)}</SelectContent></Select><Select value={statusFilter} onValueChange={setStatusFilter}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ALL">Todos los estatus</SelectItem>{Object.entries(statusLabels).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select><Select value={supplierFilter} onValueChange={setSupplierFilter}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ALL">Todos los proveedores</SelectItem>{suppliers.map((supplier) => <SelectItem key={supplier.id} value={supplier.id}>{supplier.businessName}</SelectItem>)}</SelectContent></Select><Select value={branchFilter} onValueChange={setBranchFilter}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ALL">Todas las sucursales</SelectItem>{branches.map((branch) => <SelectItem key={branch} value={branch}>{branch}</SelectItem>)}</SelectContent></Select><Input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} aria-label="Fecha inicial" /><Input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} aria-label="Fecha final" /></div>{movementTable(filteredMovements)}</CardContent></Card><section className="warehouse-analytics"><Card><CardContent className="warehouse-metric-content"><TrendingUp size={20} /><span>PRODUCTO MÁS VENDIDO</span><strong>{topProduct?.product.name ?? "Sin datos"}</strong><small>{topProduct?.sold ?? 0} unidades</small></CardContent></Card><Card><CardContent className="warehouse-metric-content"><TrendingDown size={20} /><span>MENOR ROTACIÓN</span><strong>{slowProduct?.product.name ?? "Sin datos"}</strong><small>{slowProduct?.sold ?? 0} unidades</small></CardContent></Card><Card className="warehouse-flow-chart"><CardContent><div><span>GRÁFICA ANALÍTICA DE COSTOS Y FLUJO</span><h2>Entradas contra salidas</h2></div>{stockRows.slice(0, 6).map((row) => <div key={row.product.id}><span>{row.product.name}</span><i><b style={{ width: `${Math.min(100, (row.entries / Math.max(1, row.entries + row.outputs)) * 100)}%` }} /></i><small>+{row.entries} / -{row.outputs}</small></div>)}</CardContent></Card></section></div>}
 
       <Dialog open={formOpen} onOpenChange={setFormOpen}><DialogContent className="warehouse-form-dialog sm:max-w-[900px]"><DialogHeader><DialogTitle>{editingMovementId ? formKind === "PURCHASE_ORDER" ? "Editar pedido de resurtido" : "Editar movimiento" : formKind === "ENTRY" ? "Ingreso de mercancía" : formKind === "BRANCH_REQUEST" ? formRequestType === "TESTER" ? "Pedido de testers" : formRequestType === "SUPPLY" ? "Pedido de insumos" : "Pedido de productos" : "Nuevo envío de bodega"}</DialogTitle><DialogDescription>Agrega varios artículos en una sola partida. El folio y su historial permanecerán separados por tipo de pedido.</DialogDescription></DialogHeader><div className="warehouse-form-grid">{formKind !== "ENTRY" && formKind !== "PURCHASE_ORDER" && <><div className="field-stack"><Label>Sucursal destino</Label><Select value={destinationBranch} onValueChange={selectBranchForOrder}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{branches.map((branch) => <SelectItem key={branch} value={branch}>{branch}</SelectItem>)}</SelectContent></Select></div><div className="field-stack"><Label>Concepto de movimiento</Label><Select value={categoryId} onValueChange={setCategoryId} disabled={formKind === "BRANCH_REQUEST"}><SelectTrigger><SelectValue placeholder="Selecciona concepto" /></SelectTrigger><SelectContent>{activeCategories.map((category) => <SelectItem key={category.id} value={category.id}>{category.name}</SelectItem>)}</SelectContent></Select></div></>}
         {formKind === "BRANCH_REQUEST" && <><div className="field-stack"><Label>Cliente del listado</Label><Select value={selectedCustomerId} onValueChange={selectCustomerForOrder}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="NONE">Pedido general de sucursal</SelectItem>{clients.map((client) => <SelectItem key={client.id} value={client.id}>{client.firstName} {client.lastName}</SelectItem>)}</SelectContent></Select></div><div className="field-stack"><Label>Lista de precios MXN / USD</Label><Select value={selectedPriceListId} onValueChange={setSelectedPriceListId}><SelectTrigger><SelectValue placeholder="Selecciona lista" /></SelectTrigger><SelectContent>{eligiblePriceLists.map((list) => <SelectItem key={list.id} value={list.id}>{list.name}</SelectItem>)}</SelectContent></Select>{eligiblePriceLists.length === 0 && <small className="warehouse-price-warning">No hay una lista activa para esta sucursal y cliente.</small>}</div></>}
         {formItems.length === 0 && <div className="warehouse-empty-authorization"><AlertTriangle size={18} /><span><strong>No hay artículos autorizados disponibles</strong><small>{formRequestType === "TESTER" ? "Activa el switch de tester en Catálogo." : "Activa la visibilidad del insumo en Inventario de bodega."}</small></span></div>}
-        <div className="warehouse-line-builder"><div className="field-stack"><Label>{formRequestType === "SUPPLY" ? "Insumo" : "Producto"}</Label><Select value={lineProductId} onValueChange={(value) => { setLineProductId(value); const item = findWarehouseItem(value); setLinePartnerCost(item?.partnerCost ?? item?.costMxn ?? 0); }} disabled={formItems.length === 0}><SelectTrigger><SelectValue placeholder="Selecciona un artículo" /></SelectTrigger><SelectContent>{formItems.map((item) => <SelectItem key={item.id} value={item.id}>{item.name} · {item.sku}</SelectItem>)}</SelectContent></Select></div><div className="field-stack"><Label>Cantidad</Label><Input type="number" min="1" value={lineQuantity} onChange={(event) => setLineQuantity(Math.max(1, Number(event.target.value) || 1))} /></div>{formKind === "ENTRY" && <div className="field-stack"><Label>Costo socio MXN</Label><Input type="number" min="0" step="0.01" value={linePartnerCost} onChange={(event) => setLinePartnerCost(Math.max(0, Number(event.target.value) || 0))} /></div>}<Button type="button" onClick={addDraftLine} disabled={formItems.length === 0}><Plus size={16} /> Agregar artículo</Button></div>
-        <div className="warehouse-draft-lines">{draftLines.map((line) => { const item = findWarehouseItem(line.productId); const listPrice = selectedPriceList?.items.find((price) => price.productId === line.productId); return <div key={line.productId}><img src={item?.image} alt="" /><span><strong>{item?.name}</strong><small>{item?.sku} · {formKind === "BRANCH_REQUEST" && listPrice ? `${formatCurrency(listPrice.priceMxn)} / USD $${listPrice.priceUsd.toFixed(2)} · ${selectedPriceList?.name}` : `${formatCurrency(item?.costMxn ?? 0)} costo`}</small></span><Input type="number" min="1" value={line.quantity} onChange={(event) => setDraftLines((current) => current.map((candidate) => candidate.productId === line.productId ? { ...candidate, quantity: Math.max(1, Number(event.target.value) || 1) } : candidate))} />{formKind === "ENTRY" && <Input type="number" min={item?.costMxn ?? 0} value={line.partnerCost} onChange={(event) => setDraftLines((current) => current.map((candidate) => candidate.productId === line.productId ? { ...candidate, partnerCost: Math.max(item?.costMxn ?? 0, Number(event.target.value) || 0) } : candidate))} />}<Button type="button" variant="outline" onClick={() => setDraftLines((current) => current.filter((candidate) => candidate.productId !== line.productId))}><X size={14} /></Button></div>})}{draftLines.length === 0 && <p>Agrega artículos autorizados para preparar la solicitud.</p>}</div>
-        {formKind === "ENTRY" && <div className="warehouse-partner-adjustment"><span><strong>Ganancia interna / socio</strong><small>Calcula el costo socio desde el costo MXN de cada producto.</small></span><Select value={partnerAdjustmentMode} onValueChange={(value) => setPartnerAdjustmentMode(value as "PERCENT" | "AMOUNT")}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="PERCENT">Porcentaje</SelectItem><SelectItem value="AMOUNT">Importe MXN</SelectItem></SelectContent></Select><Input type="number" min="0" step="0.01" value={partnerAdjustmentValue} onChange={(event) => setPartnerAdjustmentValue(Math.max(0, Number(event.target.value) || 0))} /><Button type="button" variant="outline" onClick={applyPartnerAdjustment}>Aplicar a partida</Button></div>}
+        <div className="warehouse-line-builder"><div className="field-stack"><Label>{formRequestType === "SUPPLY" ? "Insumo" : "Producto"}</Label><Select value={lineProductId} onValueChange={(value) => { setLineProductId(value); const item = findWarehouseItem(value); setLinePartnerCost(item?.partnerCost ?? item?.costMxn ?? 0); }} disabled={formItems.length === 0}><SelectTrigger><SelectValue placeholder="Selecciona un artículo" /></SelectTrigger><SelectContent>{formItems.map((item) => <SelectItem key={item.id} value={item.id}>{item.name} · {item.sku}</SelectItem>)}</SelectContent></Select></div><div className="field-stack"><Label>Cantidad</Label><Input type="number" min="1" value={lineQuantity} onChange={(event) => setLineQuantity(Math.max(1, Number(event.target.value) || 1))} /></div>{formKind === "ENTRY" && canViewCosts && <div className="field-stack"><Label>Costo socio MXN</Label><Input type="number" min="0" step="0.01" value={linePartnerCost} onChange={(event) => setLinePartnerCost(Math.max(0, Number(event.target.value) || 0))} /></div>}<Button type="button" onClick={addDraftLine} disabled={formItems.length === 0}><Plus size={16} /> Agregar artículo</Button></div>
+        <div className="warehouse-draft-lines">{draftLines.map((line) => { const item = findWarehouseItem(line.productId); const listPrice = selectedPriceList?.items.find((price) => price.productId === line.productId); return <div key={line.productId}><img src={item?.image} alt="" /><span><strong>{item?.name}</strong><small>{item?.sku}{canViewCosts ? ` · ${formKind === "BRANCH_REQUEST" && listPrice ? `${formatCurrency(listPrice.priceMxn)} / USD $${listPrice.priceUsd.toFixed(2)} · ${selectedPriceList?.name}` : `${formatCurrency(item?.costMxn ?? 0)} costo`}` : ""}</small></span><Input type="number" min="1" value={line.quantity} onChange={(event) => setDraftLines((current) => current.map((candidate) => candidate.productId === line.productId ? { ...candidate, quantity: Math.max(1, Number(event.target.value) || 1) } : candidate))} />{formKind === "ENTRY" && canViewCosts && <Input type="number" min={item?.costMxn ?? 0} value={line.partnerCost} onChange={(event) => setDraftLines((current) => current.map((candidate) => candidate.productId === line.productId ? { ...candidate, partnerCost: Math.max(item?.costMxn ?? 0, Number(event.target.value) || 0) } : candidate))} />}<Button type="button" variant="outline" onClick={() => setDraftLines((current) => current.filter((candidate) => candidate.productId !== line.productId))}><X size={14} /></Button></div>})}{draftLines.length === 0 && <p>Agrega artículos autorizados para preparar la solicitud.</p>}</div>
+        {formKind === "ENTRY" && canViewCosts && <div className="warehouse-partner-adjustment"><span><strong>Ganancia interna / socio</strong><small>Calcula el costo socio desde el costo MXN de cada producto.</small></span><Select value={partnerAdjustmentMode} onValueChange={(value) => setPartnerAdjustmentMode(value as "PERCENT" | "AMOUNT")}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="PERCENT">Porcentaje</SelectItem><SelectItem value="AMOUNT">Importe MXN</SelectItem></SelectContent></Select><Input type="number" min="0" step="0.01" value={partnerAdjustmentValue} onChange={(event) => setPartnerAdjustmentValue(Math.max(0, Number(event.target.value) || 0))} /><Button type="button" variant="outline" onClick={applyPartnerAdjustment}>Aplicar a partida</Button></div>}
         <div className="field-stack warehouse-comment"><Label>Comentarios</Label><Textarea value={comment} onChange={(event) => setComment(event.target.value)} placeholder="Proveedor, guía, responsable o detalle del movimiento…" /></div>{formKind === "ENTRY" && !editingMovementId && <div className="field-stack"><Label>Código de autorización</Label><Input type="password" inputMode="numeric" value={authorizationCode} onChange={(event) => setAuthorizationCode(event.target.value)} placeholder="Código de usuario autorizado" /></div>}</div><DialogFooter><Button type="button" variant="outline" onClick={() => setFormOpen(false)}>Cancelar</Button><Button type="button" onClick={submitForm} disabled={draftLines.length === 0 || (formKind === "BRANCH_REQUEST" && !selectedPriceListId) || (formKind === "ENTRY" && !editingMovementId && !authorizationCode.trim())}>{editingMovementId ? "Guardar edición" : formKind === "ENTRY" ? "Registrar ingreso" : "Crear para aprobación"}</Button></DialogFooter></DialogContent></Dialog>
 
-      <Dialog open={Boolean(approval)} onOpenChange={(open) => !open && setApproval(null)}><DialogContent className="sm:max-w-[520px]"><DialogHeader><DialogTitle>{approval?.action === "CREATION" ? "Primera validación · aprobar creación" : approval?.action === "SEND" ? "Segunda validación · aprobar envío" : approval?.action === "RECEIVE" ? "Autorizar carga de mercancía" : approval?.action === "CANCEL" ? approval.movement.status === "SENT" && approval.movement.kind !== "PURCHASE_ORDER" ? "Regresar envío a pedidos" : "Cancelar y revertir movimiento" : "Borrar movimiento"}</DialogTitle><DialogDescription>{approval?.action === "SEND" ? "La segunda validación moverá el pedido al módulo de Envíos y descontará bodega cuando corresponda." : approval?.action === "RECEIVE" ? "La autorización marcará el folio como entregado y cargará la mercancía en la sucursal destino o en bodega matriz." : approval?.action === "CANCEL" ? approval.movement.status === "SENT" && approval.movement.kind !== "PURCHASE_ORDER" ? "El folio regresará a Pedidos de sucursales, quedará editable y el producto reservado volverá a bodega." : "La mercancía será retirada de la sucursal cuando corresponda y regresará al almacén matriz." : "Ingresa un código con el rol de movimientos de almacén."}</DialogDescription></DialogHeader>{approval && <div className="warehouse-approval-summary"><strong>{approval.movement.folio}</strong><span>{approval.movement.lines.length} productos · {movementUnits(approval.movement)} unidades · {approval.movement.destinationBranch ?? approval.movement.supplierName ?? "Bodega"}</span></div>}{approval?.action === "SEND" && <button type="button" className={`warehouse-final-confirmation ${finalConfirmation ? "is-checked" : ""}`} onClick={() => setFinalConfirmation((current) => !current)}><AlertTriangle size={18} /><span><strong>Finalizar movimiento</strong><small>Confirmo que productos, cantidades y destino fueron revisados.</small></span><CheckCircle2 size={19} /></button>}<div className="field-stack"><Label>Código de autorización</Label><Input type="password" inputMode="numeric" value={approvalCode} onChange={(event) => setApprovalCode(event.target.value)} placeholder="••••" /></div><DialogFooter><Button type="button" variant="outline" onClick={() => setApproval(null)}>{approval?.action === "RECEIVE" ? "Conservar en envíos" : "Cancelar"}</Button><Button type="button" onClick={runApproval} disabled={!approvalCode.trim() || (approval?.action === "SEND" && !finalConfirmation)}><ShieldCheck size={16} /> Confirmar acción</Button></DialogFooter></DialogContent></Dialog>
+      <Dialog open={Boolean(approval)} onOpenChange={(open) => !open && setApproval(null)}><DialogContent className="warehouse-approval-dialog sm:max-w-[520px]"><DialogHeader><DialogTitle>{approval?.action === "CREATION" ? "Primera validación · aprobar creación" : approval?.action === "SEND" ? "Segunda validación · aprobar envío" : approval?.action === "RECEIVE" ? "Autorizar carga de mercancía" : approval?.action === "CANCEL" ? approval.movement.status === "SENT" && approval.movement.kind !== "PURCHASE_ORDER" ? "Regresar envío a pedidos" : "Cancelar y revertir movimiento" : "Borrar movimiento"}</DialogTitle><DialogDescription>{approval?.action === "SEND" ? "La segunda validación moverá el pedido al módulo de Envíos y descontará bodega cuando corresponda." : approval?.action === "RECEIVE" ? "La autorización marcará el folio como entregado y cargará la mercancía en la sucursal destino o en bodega matriz." : approval?.action === "CANCEL" ? approval.movement.status === "SENT" && approval.movement.kind !== "PURCHASE_ORDER" ? "El folio regresará a Pedidos de sucursales, quedará editable y el producto reservado volverá a bodega." : "La mercancía será retirada de la sucursal cuando corresponda y regresará al almacén matriz." : "Ingresa un código con el rol de movimientos de almacén."}</DialogDescription></DialogHeader>{approval && <div className="warehouse-approval-summary"><strong>{approval.movement.folio}</strong><span>{approval.movement.lines.length} productos · {movementUnits(approval.movement)} unidades · {approval.movement.destinationBranch ?? approval.movement.supplierName ?? "Bodega"}</span></div>}{approval?.action === "SEND" && <button type="button" className={`warehouse-final-confirmation ${finalConfirmation ? "is-checked" : ""}`} onClick={() => setFinalConfirmation((current) => !current)}><AlertTriangle size={18} /><span><strong>Finalizar movimiento</strong><small>Confirmo que productos, cantidades y destino fueron revisados.</small></span><CheckCircle2 size={19} /></button>}<div className="field-stack"><Label>Código de autorización</Label><Input type="password" inputMode="numeric" value={approvalCode} onChange={(event) => setApprovalCode(event.target.value)} placeholder="••••" /></div><DialogFooter><Button type="button" variant="outline" onClick={() => setApproval(null)}>{approval?.action === "RECEIVE" ? "Conservar en envíos" : "Cancelar"}</Button><Button type="button" onClick={runApproval} disabled={!approvalCode.trim() || (approval?.action === "SEND" && !finalConfirmation)}><ShieldCheck size={16} /> Confirmar acción</Button></DialogFooter></DialogContent></Dialog>
 
-      <Dialog open={Boolean(detailMovement)} onOpenChange={(open) => !open && setDetailMovement(null)}><DialogContent className="sm:max-w-[720px]"><DialogHeader><DialogTitle>{detailMovement?.folio}</DialogTitle><DialogDescription>{detailMovement ? `${detailMovement.requestType ? requestTypeLabels[detailMovement.requestType] : kindLabels[detailMovement.kind]} · ${statusLabels[detailMovement.status]} · ${detailMovement.destinationBranch ?? "Bodega matriz"}` : ""}</DialogDescription></DialogHeader>{detailMovement && <><div className="warehouse-detail-pricing"><BadgeDollarSign size={18} /><span><strong>{detailMovement.priceListName ?? "Costo base de bodega"}</strong><small>{detailMovement.customerName ? `Cliente: ${detailMovement.customerName}` : "Pedido general de sucursal"}</small></span><b>{formatCurrency(movementValue(detailMovement))}<small>USD ${movementValueUsd(detailMovement).toFixed(2)}</small></b></div>{detailMovement.returnedToOrdersAtIso && <div className="warehouse-return-notice"><RotateCcw size={17} /><span><strong>Envío regresado a pedidos</strong><small>{formatDateTime(detailMovement.returnedToOrdersAtIso)} · {detailMovement.returnedToOrdersByName}</small></span></div>}<div className="warehouse-detail-timeline"><span className="is-done">Creado<br /><small>{formatDateTime(detailMovement.createdAtIso)}</small></span><span className={detailMovement.creationApprovedAtIso ? "is-done" : ""}>Aprobación 1<br /><small>{detailMovement.creationApprovedByName ?? "Pendiente"}</small></span><span className={detailMovement.sentAtIso ? "is-done" : ""}>Aprobación 2<br /><small>{detailMovement.sentByName ?? "Pendiente"}</small></span><span className={detailMovement.receivedAtIso ? "is-done" : ""}>Entrega<br /><small>{detailMovement.receivedByName ?? "Pendiente"}</small></span></div><div className="warehouse-detail-lines">{detailMovement.lines.map((line) => <div key={line.productId}><span><strong>{line.productName}</strong><small>{line.sku} · USD ${(line.partnerCostUsd ?? line.unitCostUsd).toFixed(2)}</small></span><b>{line.quantity} pz</b><span>{formatCurrency(line.quantity * (detailMovement.kind === "BRANCH_REQUEST" ? line.partnerCost : line.unitCostMxn))}</span></div>)}</div>{detailMovement.comment && <p className="warehouse-detail-comment">{detailMovement.comment}</p>}</>}<DialogFooter><Button type="button" variant="outline" onClick={() => detailMovement && void exportMovementPdf(detailMovement)}><FileDown size={16} /> Descargar PDF</Button><Button type="button" onClick={() => setDetailMovement(null)}>Cerrar</Button></DialogFooter></DialogContent></Dialog>
+      <Dialog open={Boolean(detailMovement)} onOpenChange={(open) => !open && setDetailMovement(null)}><DialogContent className="sm:max-w-[720px]"><DialogHeader><DialogTitle>{detailMovement?.folio}</DialogTitle><DialogDescription>{detailMovement ? `${detailMovement.requestType ? requestTypeLabels[detailMovement.requestType] : kindLabels[detailMovement.kind]} · ${statusLabels[detailMovement.status]} · ${detailMovement.destinationBranch ?? "Bodega matriz"}` : ""}</DialogDescription></DialogHeader>{detailMovement && <>{canViewCosts && <div className="warehouse-detail-pricing"><BadgeDollarSign size={18} /><span><strong>{detailMovement.priceListName ?? "Costo base de bodega"}</strong><small>{detailMovement.customerName ? `Cliente: ${detailMovement.customerName}` : "Pedido general de sucursal"}</small></span><b>{formatCurrency(movementValue(detailMovement))}<small>USD ${movementValueUsd(detailMovement).toFixed(2)}</small></b></div>}{detailMovement.returnedToOrdersAtIso && <div className="warehouse-return-notice"><RotateCcw size={17} /><span><strong>Envío regresado a pedidos</strong><small>{formatDateTime(detailMovement.returnedToOrdersAtIso)} · {detailMovement.returnedToOrdersByName}</small></span></div>}<div className="warehouse-detail-timeline"><span className="is-done">Creado<br /><small>{formatDateTime(detailMovement.createdAtIso)}</small></span><span className={detailMovement.creationApprovedAtIso ? "is-done" : ""}>Aprobación 1<br /><small>{detailMovement.creationApprovedByName ?? "Pendiente"}</small></span><span className={detailMovement.sentAtIso ? "is-done" : ""}>Aprobación 2<br /><small>{detailMovement.sentByName ?? "Pendiente"}</small></span><span className={detailMovement.receivedAtIso ? "is-done" : ""}>Entrega<br /><small>{detailMovement.receivedByName ?? "Pendiente"}</small></span></div><div className="warehouse-detail-lines">{detailMovement.lines.map((line) => <div key={line.productId}><span><strong>{line.productName}</strong><small>{line.sku}{canViewCosts ? ` · USD ${(line.partnerCostUsd ?? line.unitCostUsd).toFixed(2)}` : ""}</small></span><b>{line.quantity} pz</b>{canViewCosts && <span>{formatCurrency(line.quantity * (detailMovement.kind === "BRANCH_REQUEST" ? line.partnerCost : line.unitCostMxn))}</span>}</div>)}</div>{detailMovement.comment && <p className="warehouse-detail-comment">{detailMovement.comment}</p>}</>}<DialogFooter><Button type="button" variant="outline" onClick={() => detailMovement && void exportMovementPdf(detailMovement)}><FileDown size={16} /> Descargar PDF</Button><Button type="button" onClick={() => setDetailMovement(null)}>Cerrar</Button></DialogFooter></DialogContent></Dialog>
     </div>
   );
 }

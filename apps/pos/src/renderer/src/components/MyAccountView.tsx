@@ -903,10 +903,13 @@ export function MyAccountView({
                       <Button
                         type="button"
                         variant="outline"
-                        size="sm"
+                        size="icon"
+                        className="icon-action-button"
                         onClick={() => setDeactivationLocationId(location.id)}
+                        aria-label={`Inactivar sucursal ${location.name}`}
+                        title="Inactivar sucursal"
                       >
-                        <Power size={14} /> Inactivar sucursal
+                        <Power size={15} />
                       </Button>
                     </div>
                   ) : isActivating ? (
@@ -962,11 +965,15 @@ export function MyAccountView({
                         <Button
                           type="button"
                           variant="ghost"
+                          size="icon"
+                          className="icon-action-button"
                           onClick={() =>
                             setDeactivationLocationId(location.id)
                           }
+                          aria-label={`Inactivar sucursal ${location.name}`}
+                          title="Inactivar"
                         >
-                          Inactivar
+                          <Power size={15} />
                         </Button>
                       )}
                     </div>

@@ -6,11 +6,14 @@ import {
   Eye,
   FileDown,
   FileSpreadsheet,
+  LockKeyhole,
   Mail,
   PackagePlus,
   Pencil,
   Phone,
   Plus,
+  Power,
+  PowerOff,
   Search,
   Trash2,
   Upload,
@@ -50,6 +53,7 @@ interface SuppliersViewProps {
   products: Product[];
   supplies: WarehouseSupplyItem[];
   canManage: boolean;
+  canViewCosts: boolean;
   onSaveSupplier: (supplier: WarehouseSupplier) => boolean;
   onToggleSupplier: (id: string) => void;
   onDeleteSupplier: (id: string) => void;
@@ -77,7 +81,7 @@ const emptyItem = (supplier?: WarehouseSupplier): WarehouseSupplyItem => ({
   name: "",
   sku: `INS-${Date.now().toString(36).toUpperCase()}`,
   unit: "pieza",
-  image: "/products/renewal-serum.png",
+  image: "./products/renewal-serum.png",
   costUsd: 0,
   costMxn: 0,
   partnerCost: 0,
@@ -99,6 +103,7 @@ export function SuppliersView({
   products,
   supplies,
   canManage,
+  canViewCosts,
   onSaveSupplier,
   onToggleSupplier,
   onDeleteSupplier,
@@ -193,9 +198,11 @@ export function SuppliersView({
       Categoría: item.category,
       Presentación: item.presentation,
       "Piezas por caja": item.units,
-      "Costo MXN": item.costMxn,
-      "Costo USD": item.costUsd,
-      "Precio socio": item.partnerCost,
+      ...(canViewCosts ? {
+        "Costo MXN": item.costMxn,
+        "Costo USD": item.costUsd,
+        "Precio socio": item.partnerCost,
+      } : {}),
       Origen: item.source,
     })));
     const book = XLSX.utils.book_new();
@@ -275,7 +282,7 @@ export function SuppliersView({
       <section className="suppliers-metrics">
         <Card><CardContent className="supplier-metric-content"><Building2 size={20} /><span>PROVEEDORES ACTIVOS</span><strong>{suppliers.filter((supplier) => supplier.active).length}</strong><small>{suppliers.length} registros</small></CardContent></Card>
         <Card><CardContent className="supplier-metric-content"><PackagePlus size={20} /><span>ARTÍCULOS VINCULADOS</span><strong>{totalCatalogItems}</strong><small>Retail, insumos y artículos</small></CardContent></Card>
-        <Card><CardContent className="supplier-metric-content"><BadgeCheck size={20} /><span>VALOR CATÁLOGO SOCIO</span><strong>{formatCurrency(totalCatalogValue)}</strong><small>Suma de precios unitarios</small></CardContent></Card>
+        {canViewCosts ? <Card><CardContent className="supplier-metric-content"><BadgeCheck size={20} /><span>VALOR CATÁLOGO SOCIO</span><strong>{formatCurrency(totalCatalogValue)}</strong><small>Suma de precios unitarios</small></CardContent></Card> : <Card><CardContent className="supplier-metric-content"><LockKeyhole size={20} /><span>COSTOS PROTEGIDOS</span><strong>OCULTOS</strong><small>Requiere permiso por rol</small></CardContent></Card>}
       </section>
 
       <Card className="suppliers-panel"><CardContent>
@@ -296,7 +303,7 @@ export function SuppliersView({
             <TableCell><span className="supplier-contact"><strong>{supplier.contactName}</strong><small><Phone size={11} /> {supplier.phone}</small><small><Mail size={11} /> {supplier.email}</small></span></TableCell>
             <TableCell><strong>{supplierItems(supplier.id).length}</strong><small>productos / insumos</small></TableCell>
             <TableCell><Badge variant="outline">{supplier.active ? "ACTIVO" : "INACTIVO"}</Badge></TableCell>
-            <TableCell><div className="warehouse-row-actions"><Button size="sm" variant="outline" onClick={() => setDetailSupplier(supplier)}><Eye size={14} /></Button>{canManage && <><Button size="sm" variant="outline" onClick={() => setSupplierDraft({ ...supplier })}><Pencil size={14} /></Button><Button size="sm" variant="outline" onClick={() => onToggleSupplier(supplier.id)}>{supplier.active ? "Inactivar" : "Activar"}</Button><Button size="sm" variant="outline" onClick={() => onDeleteSupplier(supplier.id)}><Trash2 size={14} /></Button></>}</div></TableCell>
+            <TableCell><div className="warehouse-row-actions"><Button size="icon" variant="outline" className="icon-action-button" onClick={() => setDetailSupplier(supplier)} aria-label={`Visualizar ${supplier.businessName}`} title="Visualizar"><Eye size={15} /></Button>{canManage && <><Button size="icon" variant="outline" className="icon-action-button" onClick={() => setSupplierDraft({ ...supplier })} aria-label={`Editar ${supplier.businessName}`} title="Editar"><Pencil size={15} /></Button><Button size="icon" variant="outline" className="icon-action-button" onClick={() => onToggleSupplier(supplier.id)} aria-label={`${supplier.active ? "Inactivar" : "Activar"} ${supplier.businessName}`} title={supplier.active ? "Inactivar" : "Activar"}>{supplier.active ? <PowerOff size={15} /> : <Power size={15} />}</Button><Button size="icon" variant="outline" className="icon-action-button is-danger" onClick={() => onDeleteSupplier(supplier.id)} aria-label={`Borrar ${supplier.businessName}`} title="Borrar"><Trash2 size={15} /></Button></>}</div></TableCell>
           </TableRow>)}
           {filtered.length === 0 && <TableRow><TableCell colSpan={7}>No hay proveedores para los filtros seleccionados.</TableCell></TableRow>}
         </TableBody></Table></div>
@@ -314,9 +321,9 @@ export function SuppliersView({
         <div className="field-stack supplier-address"><Label>Dirección fiscal</Label><Textarea value={supplierDraft.address} onChange={(event) => setSupplierDraft({ ...supplierDraft, address: event.target.value })} /></div>
       </div>}<DialogFooter><Button variant="outline" onClick={() => setSupplierDraft(null)}>Cancelar</Button><Button onClick={saveSupplier} disabled={!supplierDraft?.businessName.trim() || !supplierDraft?.folio.trim() || !supplierDraft?.rfc.trim()}>Guardar proveedor</Button></DialogFooter></DialogContent></Dialog>
 
-      <Dialog open={Boolean(detailSupplier)} onOpenChange={(open) => !open && setDetailSupplier(null)}><DialogContent className="supplier-detail-dialog sm:max-w-[900px]"><DialogHeader><DialogTitle>{detailSupplier?.businessName}</DialogTitle><DialogDescription>{detailSupplier ? `${detailSupplier.folio} · ${detailSupplier.rfc} · ${detailSupplier.businessLine}` : ""}</DialogDescription></DialogHeader>{detailSupplier && <><div className="supplier-detail-contact"><span><Phone size={14} /> {detailSupplier.phone}</span><span><Mail size={14} /> {detailSupplier.email}</span><span><Building2 size={14} /> {detailSupplier.address}</span></div><div className="supplier-detail-heading"><strong>Productos, insumos y artículos</strong>{canManage && <Button size="sm" onClick={() => setItemDraft(emptyItem(detailSupplier))}><Plus size={14} /> Agregar producto</Button>}</div><div className="warehouse-table-wrap"><Table><TableHeader><TableRow><TableHead>Artículo</TableHead><TableHead>Familia / categoría</TableHead><TableHead>Presentación</TableHead><TableHead>Costo MXN</TableHead><TableHead>Costo USD</TableHead><TableHead>Precio socio</TableHead><TableHead>Origen</TableHead><TableHead>Acciones</TableHead></TableRow></TableHeader><TableBody>{supplierItems(detailSupplier.id).map((item) => <TableRow key={item.id}><TableCell><strong>{item.name}</strong><small>{item.sku}</small></TableCell><TableCell><strong>{item.family}</strong><small>{item.category}</small></TableCell><TableCell>{item.presentation}<small>{item.units} piezas</small></TableCell><TableCell>{formatCurrency(item.costMxn)}</TableCell><TableCell>${item.costUsd.toFixed(2)}</TableCell><TableCell>{formatCurrency(item.partnerCost)}</TableCell><TableCell>{item.source}</TableCell><TableCell><div className="warehouse-row-actions"><Button size="sm" variant="outline" onClick={() => setDetailItemId(item.id)}><Eye size={14} /></Button>{item.source === "Bodega / insumo" && canManage ? <><Button size="sm" variant="outline" onClick={() => setItemDraft({ ...supplies.find((candidate) => candidate.id === item.id)! })}><Pencil size={14} /></Button><Button size="sm" variant="outline" onClick={() => onDeleteItem(item.id)}><Trash2 size={14} /></Button></> : <Badge variant="outline">Editar en Catálogo</Badge>}</div></TableCell></TableRow>)}</TableBody></Table></div></>}</DialogContent></Dialog>
+      <Dialog open={Boolean(detailSupplier)} onOpenChange={(open) => !open && setDetailSupplier(null)}><DialogContent className="supplier-detail-dialog sm:max-w-[900px]"><DialogHeader><DialogTitle>{detailSupplier?.businessName}</DialogTitle><DialogDescription>{detailSupplier ? `${detailSupplier.folio} · ${detailSupplier.rfc} · ${detailSupplier.businessLine}` : ""}</DialogDescription></DialogHeader>{detailSupplier && <><div className="supplier-detail-contact"><span><Phone size={14} /> {detailSupplier.phone}</span><span><Mail size={14} /> {detailSupplier.email}</span><span><Building2 size={14} /> {detailSupplier.address}</span></div><div className="supplier-detail-heading"><strong>Productos, insumos y artículos</strong>{canManage && <Button size="sm" onClick={() => setItemDraft(emptyItem(detailSupplier))}><Plus size={14} /> Agregar producto</Button>}</div><div className="warehouse-table-wrap"><Table><TableHeader><TableRow><TableHead>Artículo</TableHead><TableHead>Familia / categoría</TableHead><TableHead>Presentación</TableHead>{canViewCosts && <><TableHead>Costo MXN</TableHead><TableHead>Costo USD</TableHead><TableHead>Precio socio</TableHead></>}<TableHead>Origen</TableHead><TableHead>Acciones</TableHead></TableRow></TableHeader><TableBody>{supplierItems(detailSupplier.id).map((item) => <TableRow key={item.id}><TableCell><strong>{item.name}</strong><small>{item.sku}</small></TableCell><TableCell><strong>{item.family}</strong><small>{item.category}</small></TableCell><TableCell>{item.presentation}<small>{item.units} piezas</small></TableCell>{canViewCosts && <><TableCell>{formatCurrency(item.costMxn)}</TableCell><TableCell>${item.costUsd.toFixed(2)}</TableCell><TableCell>{formatCurrency(item.partnerCost)}</TableCell></>}<TableCell>{item.source}</TableCell><TableCell><div className="warehouse-row-actions"><Button size="sm" variant="outline" onClick={() => setDetailItemId(item.id)}><Eye size={14} /></Button>{item.source === "Bodega / insumo" && canManage ? <><Button size="sm" variant="outline" onClick={() => setItemDraft({ ...supplies.find((candidate) => candidate.id === item.id)! })}><Pencil size={14} /></Button><Button size="sm" variant="outline" onClick={() => onDeleteItem(item.id)}><Trash2 size={14} /></Button></> : <Badge variant="outline">Editar en Catálogo</Badge>}</div></TableCell></TableRow>)}</TableBody></Table></div></>}</DialogContent></Dialog>
 
-      <Dialog open={Boolean(detailCatalogItem)} onOpenChange={(open) => !open && setDetailItemId(null)}><DialogContent className="sm:max-w-[520px]"><DialogHeader><DialogTitle>{detailCatalogItem?.name}</DialogTitle><DialogDescription>{detailCatalogItem ? `${detailCatalogItem.sku} · ${detailCatalogItem.source}` : ""}</DialogDescription></DialogHeader>{detailCatalogItem && <div className="supplier-item-summary"><span><small>Familia / categoría</small><strong>{detailCatalogItem.family} · {detailCatalogItem.category}</strong></span><span><small>Presentación</small><strong>{detailCatalogItem.presentation} · {detailCatalogItem.units} piezas</strong></span><span><small>Costo</small><strong>{formatCurrency(detailCatalogItem.costMxn)} · USD ${detailCatalogItem.costUsd.toFixed(2)}</strong></span><span><small>Precio socio</small><strong>{formatCurrency(detailCatalogItem.partnerCost)}</strong></span></div>}<DialogFooter><Button onClick={() => setDetailItemId(null)}>Cerrar</Button></DialogFooter></DialogContent></Dialog>
+      <Dialog open={Boolean(detailCatalogItem)} onOpenChange={(open) => !open && setDetailItemId(null)}><DialogContent className="sm:max-w-[520px]"><DialogHeader><DialogTitle>{detailCatalogItem?.name}</DialogTitle><DialogDescription>{detailCatalogItem ? `${detailCatalogItem.sku} · ${detailCatalogItem.source}` : ""}</DialogDescription></DialogHeader>{detailCatalogItem && <div className="supplier-item-summary"><span><small>Familia / categoría</small><strong>{detailCatalogItem.family} · {detailCatalogItem.category}</strong></span><span><small>Presentación</small><strong>{detailCatalogItem.presentation} · {detailCatalogItem.units} piezas</strong></span>{canViewCosts ? <><span><small>Costo</small><strong>{formatCurrency(detailCatalogItem.costMxn)} · USD ${detailCatalogItem.costUsd.toFixed(2)}</strong></span><span><small>Precio socio</small><strong>{formatCurrency(detailCatalogItem.partnerCost)}</strong></span></> : <span><small>Costos</small><strong>Protegidos por rol</strong></span>}</div>}<DialogFooter><Button onClick={() => setDetailItemId(null)}>Cerrar</Button></DialogFooter></DialogContent></Dialog>
 
       <Dialog open={Boolean(itemDraft)} onOpenChange={(open) => !open && setItemDraft(null)}><DialogContent className="sm:max-w-[800px]"><DialogHeader><DialogTitle>{supplies.some((item) => item.id === itemDraft?.id) ? "Editar producto de proveedor" : "Agregar producto de proveedor"}</DialogTitle><DialogDescription>El artículo se agregará a existencias de bodega y estará disponible en listas y resurtidos.</DialogDescription></DialogHeader>{itemDraft && <div className="supplier-item-form">
         <div className="field-stack"><Label>Proveedor</Label><Select value={itemDraft.supplierId ?? "NONE"} onValueChange={(value) => setItemDraft({ ...itemDraft, supplierId: value === "NONE" ? null : value })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="NONE">Sin proveedor</SelectItem>{suppliers.filter((supplier) => supplier.active).map((supplier) => <SelectItem key={supplier.id} value={supplier.id}>{supplier.businessName}</SelectItem>)}</SelectContent></Select></div>
@@ -327,9 +334,9 @@ export function SuppliersView({
         <div className="field-stack"><Label>Unidad de medida</Label><Input value={itemDraft.unit} onChange={(event) => setItemDraft({ ...itemDraft, unit: event.target.value })} /></div>
         <div className="field-stack"><Label>Presentación</Label><Input value={itemDraft.presentation} onChange={(event) => setItemDraft({ ...itemDraft, presentation: event.target.value })} /></div>
         <div className="field-stack"><Label>Piezas por caja</Label><Input type="number" min="1" value={itemDraft.unitsPerPackage} onChange={(event) => setItemDraft({ ...itemDraft, unitsPerPackage: Math.max(1, Number(event.target.value) || 1) })} /></div>
-        <div className="field-stack"><Label>Costo MXN</Label><Input type="number" min="0" step="0.01" value={itemDraft.costMxn} onChange={(event) => setItemDraft({ ...itemDraft, costMxn: Math.max(0, Number(event.target.value) || 0) })} /></div>
-        <div className="field-stack"><Label>Costo USD</Label><Input type="number" min="0" step="0.01" value={itemDraft.costUsd} onChange={(event) => setItemDraft({ ...itemDraft, costUsd: Math.max(0, Number(event.target.value) || 0) })} /></div>
-        <div className="field-stack"><Label>Precio socio</Label><Input type="number" min="0" step="0.01" value={itemDraft.partnerCost} onChange={(event) => setItemDraft({ ...itemDraft, partnerCost: Math.max(0, Number(event.target.value) || 0) })} /></div>
+        {canViewCosts && <div className="field-stack"><Label>Costo MXN</Label><Input type="number" min="0" step="0.01" value={itemDraft.costMxn} onChange={(event) => setItemDraft({ ...itemDraft, costMxn: Math.max(0, Number(event.target.value) || 0) })} /></div>}
+        {canViewCosts && <div className="field-stack"><Label>Costo USD</Label><Input type="number" min="0" step="0.01" value={itemDraft.costUsd} onChange={(event) => setItemDraft({ ...itemDraft, costUsd: Math.max(0, Number(event.target.value) || 0) })} /></div>}
+        {canViewCosts && <div className="field-stack"><Label>Precio socio</Label><Input type="number" min="0" step="0.01" value={itemDraft.partnerCost} onChange={(event) => setItemDraft({ ...itemDraft, partnerCost: Math.max(0, Number(event.target.value) || 0) })} /></div>}
         <div className="field-stack"><Label>Precio sugerido</Label><Input type="number" min="0" step="0.01" value={itemDraft.retailPrice} onChange={(event) => setItemDraft({ ...itemDraft, retailPrice: Math.max(0, Number(event.target.value) || 0) })} /></div>
         <div className="field-stack"><Label>Stock mínimo</Label><Input type="number" min="0" value={itemDraft.stockMin} onChange={(event) => setItemDraft({ ...itemDraft, stockMin: Math.max(0, Number(event.target.value) || 0) })} /></div>
         <div className="field-stack"><Label>Stock máximo</Label><Input type="number" min="0" value={itemDraft.stockMax} onChange={(event) => setItemDraft({ ...itemDraft, stockMax: Math.max(0, Number(event.target.value) || 0) })} /></div>

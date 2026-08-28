@@ -3,11 +3,15 @@ import {
   BadgeCheck,
   BriefcaseBusiness,
   Check,
+  Eye,
+  FolderTree,
   KeyRound,
   LockKeyhole,
   PencilLine,
   Plus,
   Power,
+  Printer,
+  ShieldAlert,
   ShieldCheck,
   SlidersHorizontal,
   UserCog,
@@ -71,7 +75,8 @@ const moduleOptions: Array<{
   { id: "customers", label: "Customers", description: "Directorio y expedientes." },
   { id: "appointments", label: "Citas", description: "Agenda y cortesías." },
   { id: "inventory", label: "Inventory", description: "Productos, stock y pedidos." },
-  { id: "warehouse", label: "Almacén bodega", description: "Existencias matriz, entradas, envíos y pedidos." },
+  { id: "warehouse", label: "Almacén matriz", description: "Existencias de bodega, compras, entradas, solicitudes y envíos." },
+  { id: "branch-inventory", label: "Pedido sucursales", description: "Solicitudes de productos, testers e insumos hacia bodega matriz." },
   { id: "suppliers", label: "Proveedores", description: "Datos fiscales, productos y compras con costos protegidos." },
   { id: "catalog", label: "Catálogo", description: "Consulta compacta del catálogo." },
   { id: "inventory-movements", label: "Movimientos", description: "Altas, bajas y transferencias." },
@@ -99,6 +104,47 @@ const moduleOptions: Array<{
   },
 ];
 
+const modulePermissionGroups: Array<{
+  label: string;
+  description: string;
+  moduleIds: ScreenId[];
+}> = [
+  {
+    label: "Operación de venta",
+    description: "Venta, tickets, caja y cierre diario.",
+    moduleIds: ["sale", "seller-sales", "receipts", "cash-manager", "x-report", "close-day"],
+  },
+  {
+    label: "Clientes y servicio",
+    description: "Expedientes, citas, competiciones y accesos web.",
+    moduleIds: ["customers", "appointments", "competition", "websites"],
+  },
+  {
+    label: "Inventario y almacén",
+    description: "Catálogo, existencias, movimientos, proveedores y Deals.",
+    moduleIds: ["inventory", "catalog", "inventory-movements", "warehouse", "branch-inventory", "suppliers", "deals"],
+  },
+  {
+    label: "Administración y análisis",
+    description: "Dashboard, reportes, usuarios y cuenta maestra.",
+    moduleIds: ["dashboard", "reports", "employees", "my-account"],
+  },
+  {
+    label: "Sistema",
+    description: "Configuración, sincronización y asistencia.",
+    moduleIds: ["settings", "data-update", "clock-in"],
+  },
+];
+
+const printableModuleIds = new Set<ScreenId>([
+  "sale",
+  "seller-sales",
+  "receipts",
+  "customers",
+  "x-report",
+  "close-day",
+]);
+
 const configurationOptions: Array<{
   id: EmployeeConfigurationPermission;
   label: string;
@@ -122,6 +168,7 @@ const cloneRole = (role: EmployeeRole): EmployeeRole => ({
   ...role,
   moduleAccess: [...role.moduleAccess],
   moduleEditAccess: [...role.moduleEditAccess],
+  modulePrintAccess: [...role.modulePrintAccess],
   configurationAccess: [...role.configurationAccess],
 });
 
@@ -153,6 +200,7 @@ export function EmployeesView({
   const [selectedMasterSellerIds, setSelectedMasterSellerIds] = useState<string[]>([]);
   const [newMasterCode, setNewMasterCode] = useState("");
   const [sellerDraft, setSellerDraft] = useState<Seller | null>(null);
+  const [roleSaveCode, setRoleSaveCode] = useState("");
 
   useEffect(() => {
     if (selectedRole) setRoleDraft(cloneRole(selectedRole));
@@ -161,6 +209,10 @@ export function EmployeesView({
   const activeRoles = roles.filter((role) => role.active);
   const activeSellers = sellers.filter((seller) => seller.active);
   const masterSellers = activeSellers.filter((seller) => seller.masterAccessCode);
+  const sellersWithoutPermissions = activeSellers.filter((seller) => {
+    const role = roles.find((candidate) => candidate.id === seller.roleId && candidate.active);
+    return !role || (role.moduleAccess.length === 0 && role.configurationAccess.length === 0);
+  });
   const assignedByRole = useMemo(
     () =>
       sellers.reduce<Record<string, number>>((summary, seller) => {
@@ -272,6 +324,47 @@ export function EmployeesView({
         moduleEditAccess: selected
           ? current.moduleEditAccess.filter((item) => item !== screen)
           : current.moduleEditAccess,
+        modulePrintAccess: selected
+          ? current.modulePrintAccess.filter((item) => item !== screen)
+          : current.modulePrintAccess,
+      };
+    });
+  };
+
+  const toggleModulePrint = (screen: ScreenId) => {
+    if (!roleDraft || roleDraft.system || !printableModuleIds.has(screen)) return;
+    setRoleDraft((current) => {
+      if (!current) return current;
+      const selected = current.modulePrintAccess.includes(screen);
+      return {
+        ...current,
+        moduleAccess:
+          !selected && !current.moduleAccess.includes(screen)
+            ? [...current.moduleAccess, screen]
+            : current.moduleAccess,
+        modulePrintAccess: selected
+          ? current.modulePrintAccess.filter((item) => item !== screen)
+          : [...current.modulePrintAccess, screen],
+      };
+    });
+  };
+
+  const toggleModuleGroup = (moduleIds: ScreenId[]) => {
+    if (!roleDraft || roleDraft.system) return;
+    const editableIds = moduleIds.filter(
+      (id) => !moduleOptions.find((module) => module.id === id)?.masterOnly,
+    );
+    const allSelected = editableIds.every((id) => roleDraft.moduleAccess.includes(id));
+    setRoleDraft((current) => {
+      if (!current) return current;
+      const nextAccess = allSelected
+        ? current.moduleAccess.filter((id) => !editableIds.includes(id))
+        : Array.from(new Set([...current.moduleAccess, ...editableIds]));
+      return {
+        ...current,
+        moduleAccess: nextAccess,
+        moduleEditAccess: current.moduleEditAccess.filter((id) => nextAccess.includes(id)),
+        modulePrintAccess: current.modulePrintAccess.filter((id) => nextAccess.includes(id)),
       };
     });
   };
@@ -322,6 +415,10 @@ export function EmployeesView({
       toast.error("El rol debe conservar acceso por lo menos a un módulo.");
       return;
     }
+    if (roleSaveCode.length !== 4 || !onAuthorize(roleSaveCode)) {
+      toast.error("Ingresa un código Master válido para guardar los permisos.");
+      return;
+    }
     const normalizedModuleAccess =
       roleDraft.configurationAccess.length > 0 &&
       !roleDraft.moduleAccess.includes("settings")
@@ -330,13 +427,18 @@ export function EmployeesView({
     const normalizedModuleEditAccess = roleDraft.moduleEditAccess.filter((screen) =>
       normalizedModuleAccess.includes(screen),
     );
+    const normalizedModulePrintAccess = roleDraft.modulePrintAccess.filter(
+      (screen) => normalizedModuleAccess.includes(screen) && printableModuleIds.has(screen),
+    );
     onSaveRole({
       ...roleDraft,
       name: roleDraft.name.trim(),
       description: roleDraft.description.trim(),
       moduleAccess: normalizedModuleAccess,
       moduleEditAccess: normalizedModuleEditAccess,
+      modulePrintAccess: normalizedModulePrintAccess,
     });
+    setRoleSaveCode("");
     toast.success(`Permisos de ${roleDraft.name} actualizados.`);
   };
 
@@ -362,8 +464,9 @@ export function EmployeesView({
       description: newRoleDescription.trim() || "Rol personalizado de la empresa.",
       active: true,
       system: false,
-      moduleAccess: ["sale", "clock-in"],
-      moduleEditAccess: ["sale", "clock-in"],
+      moduleAccess: [],
+      moduleEditAccess: [],
+      modulePrintAccess: [],
       configurationAccess: [],
     };
     onSaveRole(role);
@@ -375,13 +478,6 @@ export function EmployeesView({
   };
 
   const openNewSeller = () => {
-    const defaultRole =
-      roles.find((role) => role.id === "role-seller" && role.active) ??
-      roles.find((role) => role.active && !role.system);
-    if (!defaultRole) {
-      toast.error("Primero registra o activa un rol para el vendedor.");
-      return;
-    }
     setSellerDraft({
       id: `seller-${crypto.randomUUID()}`,
       name: "",
@@ -390,8 +486,8 @@ export function EmployeesView({
       active: true,
       accessCode: "",
       masterAccessCode: null,
-      canViewCosts: defaultRole.configurationAccess.includes("REPORTS_COSTS"),
-      roleId: defaultRole.id,
+      canViewCosts: false,
+      roleId: "",
     });
   };
 
@@ -402,7 +498,7 @@ export function EmployeesView({
     toast.success(
       editing
         ? `${sellerDraft.name.trim()} actualizado.`
-        : `${sellerDraft.name.trim()} registrado. Ya puede ingresar con el alias ${sellerDraft.alias.trim().toLocaleLowerCase("es-MX")}.`,
+        : `${sellerDraft.name.trim()} registrado sin permisos automáticos. Asigna un rol antes de permitir su operación.`,
     );
     setSellerDraft(null);
   };
@@ -485,6 +581,20 @@ export function EmployeesView({
                         <Power size={15} /> {roleDraft.active ? "Inactivar" : "Activar"}
                       </Button>
                     )}
+                    {!roleDraft.system && (
+                      <Input
+                        className="employee-role-save-code"
+                        type="password"
+                        inputMode="numeric"
+                        maxLength={4}
+                        value={roleSaveCode}
+                        onChange={(event) =>
+                          setRoleSaveCode(event.target.value.replace(/\D/g, "").slice(0, 4))
+                        }
+                        placeholder="Código Master"
+                        aria-label="Código Master para guardar permisos"
+                      />
+                    )}
                     <Button
                       type="button"
                       onClick={saveRole}
@@ -527,43 +637,77 @@ export function EmployeesView({
                     <span>ACCESO A MÓDULOS</span>
                     <strong>{roleDraft.moduleAccess.length} seleccionados</strong>
                   </div>
-                  <div className="employee-permission-grid">
-                    {moduleOptions.map((module) => {
+                  <div className="employee-permission-tree">
+                    {modulePermissionGroups.map((group) => (
+                      <section className="employee-permission-group" key={group.label}>
+                        <header>
+                          <FolderTree size={17} />
+                          <span><strong>{group.label}</strong><small>{group.description}</small></span>
+                          <label className="employee-tree-group-check">
+                            <input
+                              type="checkbox"
+                              checked={group.moduleIds
+                                .filter((id) => !moduleOptions.find((module) => module.id === id)?.masterOnly)
+                                .every((id) => roleDraft.moduleAccess.includes(id))}
+                              disabled={roleDraft.system}
+                              onChange={() => toggleModuleGroup(group.moduleIds)}
+                            />
+                            <span>Todo el grupo</span>
+                          </label>
+                        </header>
+                        <div className="employee-permission-grid">
+                    {moduleOptions.filter((module) => group.moduleIds.includes(module.id)).map((module) => {
                       const selected = roleDraft.moduleAccess.includes(module.id);
                       const canEdit = roleDraft.moduleEditAccess.includes(module.id);
+                      const canPrint = roleDraft.modulePrintAccess.includes(module.id);
                       const locked = Boolean(module.masterOnly) && !roleDraft.system;
                       return (
                         <article
                           key={module.id}
                           className={`employee-module-permission ${selected ? "is-selected" : ""}`}
                         >
-                          <button
-                            type="button"
-                            className="employee-module-access"
-                            disabled={roleDraft.system || locked}
-                            onClick={() => toggleModule(module.id)}
-                          >
+                          <div className="employee-module-access">
                             <span>{selected ? <Check size={14} /> : <KeyRound size={14} />}</span>
                             <span><strong>{module.label}</strong><small>{module.description}</small></span>
                             {locked && <LockKeyhole size={13} />}
-                          </button>
-                          <div className="employee-module-edit-control">
-                            <span>{canEdit ? "EDICIÓN" : "SOLO CONSULTA"}</span>
-                            <button
-                              type="button"
-                              role="switch"
-                              aria-label={`Permitir edición en ${module.label}`}
-                              aria-checked={canEdit}
-                              className={`mock-switch ${canEdit ? "is-on" : ""}`}
-                              disabled={roleDraft.system || locked || !selected}
-                              onClick={() => toggleModuleEdit(module.id)}
-                            >
-                              <i />
-                            </button>
+                          </div>
+                          <div className="employee-module-permission-checks">
+                            <label className={selected ? "is-checked" : ""}>
+                              <input
+                                type="checkbox"
+                                checked={selected}
+                                disabled={roleDraft.system || locked}
+                                onChange={() => toggleModule(module.id)}
+                              />
+                              <Eye size={13} /> Visibilidad
+                            </label>
+                            <label className={canEdit ? "is-checked" : ""}>
+                              <input
+                                type="checkbox"
+                                checked={canEdit}
+                                disabled={roleDraft.system || locked || !selected}
+                                onChange={() => toggleModuleEdit(module.id)}
+                              />
+                              <PencilLine size={13} /> Edición
+                            </label>
+                            {printableModuleIds.has(module.id) && (
+                              <label className={canPrint ? "is-checked" : ""}>
+                                <input
+                                  type="checkbox"
+                                  checked={canPrint}
+                                  disabled={roleDraft.system || locked || !selected}
+                                  onChange={() => toggleModulePrint(module.id)}
+                                />
+                                <Printer size={13} /> Imprimir ticket
+                              </label>
+                            )}
                           </div>
                         </article>
                       );
                     })}
+                        </div>
+                      </section>
+                    ))}
                   </div>
                 </div>
 
@@ -572,8 +716,26 @@ export function EmployeesView({
                     <span>PERMISOS DE CONFIGURACIÓN</span>
                     <strong>{roleDraft.configurationAccess.length} seleccionados</strong>
                   </div>
+                  <button
+                    type="button"
+                    className={`employee-cost-permission ${roleDraft.configurationAccess.includes("REPORTS_COSTS") ? "is-selected" : ""}`}
+                    role="switch"
+                    aria-checked={roleDraft.configurationAccess.includes("REPORTS_COSTS")}
+                    disabled={roleDraft.system}
+                    onClick={() => toggleConfiguration("REPORTS_COSTS")}
+                  >
+                    <span><Eye size={19} /></span>
+                    <span>
+                      <strong>Visualizar costos de productos</strong>
+                      <small>Habilita la función protegida; cada consulta todavía exige un código Master.</small>
+                    </span>
+                    <Badge variant={roleDraft.configurationAccess.includes("REPORTS_COSTS") ? "default" : "outline"}>
+                      {roleDraft.system ? "MASTER" : roleDraft.configurationAccess.includes("REPORTS_COSTS") ? "AUTORIZADO" : "OCULTO"}
+                    </Badge>
+                    <span className={`mock-switch ${roleDraft.configurationAccess.includes("REPORTS_COSTS") ? "is-on" : ""}`}><i /></span>
+                  </button>
                   <div className="employee-permission-grid">
-                    {configurationOptions.map((permission) => {
+                    {configurationOptions.filter((permission) => permission.id !== "REPORTS_COSTS").map((permission) => {
                       const selected = roleDraft.configurationAccess.includes(permission.id);
                       return (
                         <button
@@ -685,11 +847,25 @@ export function EmployeesView({
             </div>
             <Badge><ShieldCheck size={13} /> MASTER KEYSAR</Badge>
           </div>
+          {sellersWithoutPermissions.length > 0 && (
+            <div className="employee-unassigned-permission-alert" role="alert">
+              <ShieldAlert size={18} />
+              <span>
+                <strong>Empleados sin permisos asignados</strong>
+                <small>{sellersWithoutPermissions.map((seller) => seller.name).join(" · ")}</small>
+              </span>
+              <Badge variant="outline">{sellersWithoutPermissions.length} SIN PERMISOS</Badge>
+            </div>
+          )}
           <div className="employee-assignment-list">
             {sellers.map((seller) => {
               const assignedRole = roles.find((role) => role.id === seller.roleId);
+              const hasPermissions = Boolean(
+                assignedRole &&
+                (assignedRole.moduleAccess.length > 0 || assignedRole.configurationAccess.length > 0),
+              );
               return (
-                <article key={seller.id} className={!seller.active ? "is-inactive" : ""}>
+                <article key={seller.id} className={`${!seller.active ? "is-inactive" : ""} ${seller.active && !hasPermissions ? "has-no-permissions" : ""}`}>
                   <span className="employee-assignment-avatar">{seller.initials}</span>
                   <span>
                     <strong>{seller.name}</strong>
@@ -711,8 +887,8 @@ export function EmployeesView({
                         ))}
                     </SelectContent>
                   </Select>
-                  <Badge variant="outline">
-                    {assignedRole?.moduleAccess.length ?? 0} MÓDULOS
+                  <Badge variant={hasPermissions ? "outline" : "destructive"}>
+                    {hasPermissions ? `${assignedRole?.moduleAccess.length ?? 0} MÓDULOS` : "SIN PERMISOS"}
                   </Badge>
                   <Button
                     type="button"
@@ -781,15 +957,16 @@ export function EmployeesView({
                 />
               </div>
               <div className="field-stack">
-                <Label>Rol o puesto</Label>
+                <Label>Rol o puesto · opcional</Label>
                 <Select value={sellerDraft.roleId} onValueChange={(roleId) => setSellerDraft((current) => current ? { ...current, roleId } : current)}>
-                  <SelectTrigger><SelectValue placeholder="Selecciona rol" /></SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder="Sin permisos asignados" /></SelectTrigger>
                   <SelectContent>
                     {roles.filter((role) => role.active && !role.system).map((role) => (
                       <SelectItem key={role.id} value={role.id}>{role.name}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+                {!sellerDraft.roleId && <small className="employee-no-permissions-note">Se registrará sin acceso a módulos ni configuraciones.</small>}
               </div>
               <div className="field-stack">
                 <Label>Estado del vendedor</Label>
@@ -826,8 +1003,8 @@ export function EmployeesView({
           <DialogHeader>
             <DialogTitle>Registrar nuevo rol o puesto</DialogTitle>
             <DialogDescription>
-              El rol inicia con acceso a Sale y Clock In. Después podrás ajustar
-              todos sus módulos y configuraciones.
+              El rol se registrará sin permisos. Después podrás asignar módulos,
+              elegir si sólo visualiza o también edita y habilitar configuraciones.
             </DialogDescription>
           </DialogHeader>
           <div className="employee-new-role-fields">

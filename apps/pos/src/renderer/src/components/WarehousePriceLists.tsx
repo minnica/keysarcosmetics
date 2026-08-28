@@ -146,7 +146,7 @@ export function WarehousePriceLists({
                 <div><Users size={14} /><span>{list.clientIds.length > 0 ? clients.filter((client) => list.clientIds.includes(client.id)).map((client) => `${client.firstName} ${client.lastName}`).join(" · ") : "Disponible para cualquier cliente"}</span></div>
                 <footer>
                   <strong>{list.items.length} precios</strong>
-                  {canManage && <span><Button type="button" size="sm" variant="outline" onClick={() => openEdit(list)}><Pencil size={14} /> Editar</Button><Button type="button" size="sm" variant="outline" onClick={() => onToggle(list.id)}>{list.active ? <PowerOff size={14} /> : <Power size={14} />}{list.active ? "Inactivar" : "Activar"}</Button><Button type="button" size="sm" variant="outline" onClick={() => onDelete(list.id)}><Trash2 size={14} /></Button></span>}
+                  {canManage && <span><Button type="button" size="icon" variant="outline" className="icon-action-button" onClick={() => openEdit(list)} aria-label={`Editar ${list.name}`} title="Editar"><Pencil size={15} /></Button><Button type="button" size="icon" variant="outline" className="icon-action-button" onClick={() => onToggle(list.id)} aria-label={`${list.active ? "Inactivar" : "Activar"} ${list.name}`} title={list.active ? "Inactivar" : "Activar"}>{list.active ? <PowerOff size={15} /> : <Power size={15} />}</Button><Button type="button" size="icon" variant="outline" className="icon-action-button is-danger" onClick={() => onDelete(list.id)} aria-label={`Borrar ${list.name}`} title="Borrar"><Trash2 size={15} /></Button></span>}
                 </footer>
               </article>
             ))}

@@ -87,7 +87,7 @@ export const products: Product[] = [
     category: "Sérums",
     group: "Cuidado facial",
     kind: "PRODUCT",
-    image: "/products/renewal-serum.png",
+    image: "./products/renewal-serum.png",
     description:
       "Sérum de textura sedosa que acompaña la renovación visible de la piel y deja una apariencia tersa, luminosa y confortable.",
     benefits: [
@@ -120,7 +120,7 @@ export const products: Product[] = [
     category: "Hidratación",
     group: "Cuidado facial",
     kind: "PRODUCT",
-    image: "/products/hydra-cloud-cream.png",
+    image: "./products/hydra-cloud-cream.png",
     description:
       "Crema envolvente de sensación nube que ayuda a conservar la hidratación y aporta confort sin una sensación pesada.",
     benefits: [
@@ -153,7 +153,7 @@ export const products: Product[] = [
     category: "Sérums",
     group: "Cuidado facial",
     kind: "PRODUCT",
-    image: "/products/vitamin-c-glow.png",
+    image: "./products/vitamin-c-glow.png",
     description:
       "Concentrado antioxidante que ilumina la apariencia del rostro y complementa la rutina con un acabado fresco y uniforme.",
     benefits: [
@@ -186,7 +186,7 @@ export const products: Product[] = [
     category: "Protección",
     group: "Cuidado facial",
     kind: "PRODUCT",
-    image: "/products/mineral-spf-50.png",
+    image: "./products/mineral-spf-50.png",
     description:
       "Protección mineral diaria de textura elegante que acompaña la piel frente a la exposición solar con un acabado cómodo.",
     benefits: [
@@ -219,7 +219,7 @@ export const products: Product[] = [
     category: "Cejas",
     group: "Servicios de belleza",
     kind: "SERVICE",
-    image: "/products/brow-sculpt.png",
+    image: "./products/brow-sculpt.png",
     description:
       "Diseño de ceja personalizado que armoniza las facciones y crea un acabado pulido respetando la expresión natural.",
     benefits: [
@@ -247,7 +247,7 @@ export const products: Product[] = [
     category: "Faciales",
     group: "Servicios de belleza",
     kind: "SERVICE",
-    image: "/products/signature-facial.png",
+    image: "./products/signature-facial.png",
     description:
       "Ritual facial insignia que combina preparación, cuidado y relajación para devolver al rostro una apariencia descansada y radiante.",
     benefits: [
@@ -447,6 +447,7 @@ export const initialEmployeeRoles: EmployeeRole[] = [
       "appointments",
       "inventory",
       "warehouse",
+      "branch-inventory",
       "suppliers",
       "inventory-movements",
       "deals",
@@ -465,11 +466,12 @@ export const initialEmployeeRoles: EmployeeRole[] = [
     ],
     moduleEditAccess: [
       "dashboard", "sale", "seller-sales", "receipts", "customers",
-      "appointments", "inventory", "warehouse", "suppliers",
+      "appointments", "inventory", "warehouse", "branch-inventory", "suppliers",
       "inventory-movements", "deals", "catalog", "settings", "x-report",
       "reports", "cash-manager", "clock-in", "close-day", "employees",
       "competition", "websites", "data-update", "my-account",
     ],
+    modulePrintAccess: ["sale", "seller-sales", "receipts", "customers", "x-report", "close-day"],
     configurationAccess: [
       "TICKET",
       "INVENTORY_CATALOG",
@@ -500,6 +502,7 @@ export const initialEmployeeRoles: EmployeeRole[] = [
       "appointments",
       "inventory",
       "warehouse",
+      "branch-inventory",
       "inventory-movements",
       "catalog",
       "settings",
@@ -513,9 +516,10 @@ export const initialEmployeeRoles: EmployeeRole[] = [
     ],
     moduleEditAccess: [
       "sale", "seller-sales", "receipts", "customers", "appointments",
-      "inventory", "warehouse", "inventory-movements", "catalog", "settings",
+      "inventory", "warehouse", "branch-inventory", "inventory-movements", "catalog", "settings",
       "cash-manager", "clock-in", "close-day", "data-update",
     ],
+    modulePrintAccess: ["sale", "seller-sales", "receipts", "customers", "x-report", "close-day"],
     configurationAccess: [
       "TICKET",
       "INVENTORY_CATALOG",
@@ -540,6 +544,7 @@ export const initialEmployeeRoles: EmployeeRole[] = [
     moduleEditAccess: [
       "sale", "seller-sales", "customers", "appointments", "clock-in",
     ],
+    modulePrintAccess: ["sale", "seller-sales", "customers"],
     configurationAccess: [],
   },
   {
@@ -552,6 +557,7 @@ export const initialEmployeeRoles: EmployeeRole[] = [
       "dashboard",
       "inventory",
       "warehouse",
+      "branch-inventory",
       "suppliers",
       "inventory-movements",
       "catalog",
@@ -559,9 +565,10 @@ export const initialEmployeeRoles: EmployeeRole[] = [
       "clock-in",
     ],
     moduleEditAccess: [
-      "inventory", "warehouse", "suppliers", "inventory-movements",
+      "inventory", "warehouse", "branch-inventory", "suppliers", "inventory-movements",
       "catalog", "data-update", "clock-in",
     ],
+    modulePrintAccess: [],
     configurationAccess: ["INVENTORY_CATALOG", "INVENTORY_AUDIT", "INVENTORY_MOVEMENTS", "WAREHOUSE_MOVEMENTS"],
   },
 ];
@@ -582,7 +589,7 @@ export const initialPaymentMethods: PaymentMethodOption[] = [
 ];
 
 export const initialReceiptSettings: ReceiptSettings = {
-  logoUrl: "/logo.svg",
+  logoUrl: "./logo.svg",
   logoWidth: 64,
   companyName: "KEYSAR COSMETICS",
   branchName: "Sucursal Polanco",

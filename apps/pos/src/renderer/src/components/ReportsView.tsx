@@ -111,6 +111,7 @@ interface ReportsViewProps {
   receiptSettings: ReceiptSettings;
   expenses: CashExpense[];
   expenseTypes: ExpenseType[];
+  canViewCosts: boolean;
 }
 
 const reportGroups: ReportGroup[] = [
@@ -281,6 +282,7 @@ export function ReportsView({
   receiptSettings,
   expenses,
   expenseTypes,
+  canViewCosts,
 }: ReportsViewProps) {
   const [activeReport, setActiveReport] =
     useState<ReportKey>("SALES_DETAIL");
@@ -819,7 +821,7 @@ export function ReportsView({
       ? (repeatCustomers / customerSummary.length) * 100
       : 0;
 
-  const metrics: MetricDefinition[] = (() => {
+  const rawMetrics: MetricDefinition[] = (() => {
     if (activeReport === "CASH_MOVEMENTS") {
       return [
         {
@@ -1011,6 +1013,15 @@ export function ReportsView({
       },
     ];
   })();
+  const metrics = canViewCosts
+    ? rawMetrics
+    : rawMetrics
+        .filter((metric) => !/costo|utilidad|margen/i.test(metric.label))
+        .map((metric) =>
+          metric.label === "BAJAS / SALIDAS"
+            ? { ...metric, detail: "Unidades descontadas del inventario" }
+            : metric,
+        );
 
   const trendRows = useMemo(() => {
     const map = new Map<string, number>();
@@ -1104,7 +1115,7 @@ export function ReportsView({
     paymentMethods,
   ]);
 
-  const detailRows: DetailRow[] = useMemo(() => {
+  const rawDetailRows: DetailRow[] = useMemo(() => {
     if (activeReport === "CASH_MOVEMENTS") {
       const incomeRows = filteredTickets.flatMap((ticket) =>
         ticket.payments
@@ -1303,6 +1314,20 @@ export function ReportsView({
     unitsSold,
   ]);
 
+  const detailRows = useMemo(
+    () =>
+      canViewCosts
+        ? rawDetailRows
+        : rawDetailRows.map((row) =>
+            Object.fromEntries(
+              Object.entries(row).filter(
+                ([column]) => !/costo|utilidad|margen/i.test(column),
+              ),
+            ) as DetailRow,
+          ),
+    [canViewCosts, rawDetailRows],
+  );
+
   const searchedDetailRows = useMemo(() => {
     if (activeGroup === "CUSTOMER" || !search.trim()) return detailRows;
     const query = search.trim().toLocaleLowerCase("es-MX");
@@ -1357,9 +1382,11 @@ export function ReportsView({
           { Concepto: "Venta completa", Valor: roundCurrency(salesTotal) },
           { Concepto: "Venta sin IVA", Valor: roundCurrency(netSales) },
           { Concepto: "IVA incluido", Valor: roundCurrency(vatTotal) },
-          { Concepto: "Costo vendido", Valor: roundCurrency(costOfGoods) },
-          { Concepto: "Utilidad bruta", Valor: roundCurrency(grossProfit) },
-          { Concepto: "Margen", Valor: percentage(marginRate) },
+          ...(canViewCosts ? [
+            { Concepto: "Costo vendido", Valor: roundCurrency(costOfGoods) },
+            { Concepto: "Utilidad bruta", Valor: roundCurrency(grossProfit) },
+            { Concepto: "Margen", Valor: percentage(marginRate) },
+          ] : []),
           { Concepto: "SPARE", Valor: roundCurrency(totalSpare) },
           { Concepto: "Registros detallados", Valor: searchedDetailRows.length },
         ];
@@ -1443,7 +1470,7 @@ export function ReportsView({
       const pdfSummaryHead =
         activeReport === "CASH_MOVEMENTS"
           ? ["Ingresos", "Gastos", "Flujo neto", "Gasto promedio", "Anulados", "Saldo pendiente", "Registros"]
-          : ["Venta completa", "Sin IVA", "IVA", "Costo", "Utilidad", "Margen", "SPARE", "Registros"];
+          : ["Venta completa", "Sin IVA", "IVA", ...(canViewCosts ? ["Costo", "Utilidad", "Margen"] : []), "SPARE", "Registros"];
       const pdfSummaryBody =
         activeReport === "CASH_MOVEMENTS"
           ? [
@@ -1459,9 +1486,7 @@ export function ReportsView({
               formatCurrency(salesTotal),
               formatCurrency(netSales),
               formatCurrency(vatTotal),
-              formatCurrency(costOfGoods),
-              formatCurrency(grossProfit),
-              percentage(marginRate),
+              ...(canViewCosts ? [formatCurrency(costOfGoods), formatCurrency(grossProfit), percentage(marginRate)] : []),
               formatCurrency(totalSpare),
               searchedDetailRows.length,
             ];
@@ -1867,7 +1892,9 @@ export function ReportsView({
             <strong>Lectura ejecutiva:</strong>{" "}
             {activeReport === "CASH_MOVEMENTS"
               ? "el flujo neto considera cobros recibidos menos gastos vigentes; los folios anulados permanecen en auditoría con impacto $0.00."
-              : "utilidad estimada con costo MXN registrado y venta sin IVA; cancelaciones y abonos independientes no inflan la venta."}
+              : canViewCosts
+                ? "utilidad estimada con costo MXN registrado y venta sin IVA; cancelaciones y abonos independientes no inflan la venta."
+                : "ventas, impuestos, SPARE y operación del periodo; los costos permanecen protegidos por rol."}
           </span>
           <WalletCards size={18} />
           <span>Descargas listas para conciliación, análisis comercial y revisión por sucursal.</span>

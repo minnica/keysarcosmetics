@@ -1328,7 +1328,10 @@ export function InventoryMovementsView({
                         <Button
                           type="button"
                           variant="ghost"
-                          size="sm"
+                          size="icon"
+                          className="icon-action-button"
+                          aria-label={`Editar movimiento ${row.draftId}`}
+                          title="Editar"
                           onClick={() =>
                             editDraft(
                               pendingAdjustments.find(
@@ -1337,15 +1340,18 @@ export function InventoryMovementsView({
                             )
                           }
                         >
-                          <Pencil size={14} /> Editar
+                          <Pencil size={15} />
                         </Button>
                         <Button
                           type="button"
                           variant="ghost"
-                          size="sm"
+                          size="icon"
+                          className="icon-action-button is-danger"
+                          aria-label={`Quitar movimiento ${row.draftId}`}
+                          title="Quitar"
                           onClick={() => removeDraft(row.draftId)}
                         >
-                          <Trash2 size={14} /> Quitar
+                          <Trash2 size={15} />
                         </Button>
                       </div>
                     </TableCell>
@@ -1547,7 +1553,10 @@ export function InventoryMovementsView({
                                 <Button
                                   type="button"
                                   variant="ghost"
-                                  size="sm"
+                                  size="icon"
+                                  className="icon-action-button"
+                                  aria-label={`Editar ${product?.name ?? "producto"}`}
+                                  title="Editar"
                                   onClick={() =>
                                     setEditingBatchAdjustment({
                                       batchId: batch.id,
@@ -1556,12 +1565,15 @@ export function InventoryMovementsView({
                                     })
                                   }
                                 >
-                                  <Pencil size={14} /> Editar
+                                  <Pencil size={15} />
                                 </Button>
                                 <Button
                                   type="button"
                                   variant="ghost"
-                                  size="sm"
+                                  size="icon"
+                                  className="icon-action-button is-danger"
+                                  aria-label={`Borrar ${product?.name ?? "producto"}`}
+                                  title="Borrar"
                                   onClick={() =>
                                     onUpdateBatch(
                                       batch.id,
@@ -1572,7 +1584,7 @@ export function InventoryMovementsView({
                                     )
                                   }
                                 >
-                                  <Trash2 size={14} /> Borrar
+                                  <Trash2 size={15} />
                                 </Button>
                               </div>
                             )}

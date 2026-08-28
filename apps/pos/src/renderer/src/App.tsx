@@ -22,6 +22,7 @@ import {
   CreditCard,
   Download,
   DollarSign,
+  Eye,
   Filter,
   LockKeyhole,
   Menu,
@@ -96,7 +97,10 @@ import { DealsView } from "./components/DealsView";
 import { DigitalCatalogView } from "./components/DigitalCatalogView";
 import { EmployeesView } from "./components/EmployeesView";
 import { InventoryMovementsView } from "./components/InventoryMovementsView";
-import { WarehouseView } from "./components/WarehouseView";
+import {
+  WarehouseView,
+  type WarehouseScope,
+} from "./components/WarehouseView";
 import { WarehouseSettings } from "./components/WarehouseSettings";
 import { SuppliersView } from "./components/SuppliersView";
 import { HistoryPagination } from "./components/HistoryPagination";
@@ -162,6 +166,8 @@ import type {
   Client,
   ClientField,
   ClientSourceOption,
+  CourtesyPackage,
+  CourtesySettings,
   DiscountMode,
   EmployeeRole,
   ExpenseType,
@@ -222,6 +228,14 @@ const getSaleProductBrand = (product: Product) =>
 const formatSaleCount = (count: number, singular: string, plural: string) =>
   `${count} ${count === 1 ? singular : plural}`;
 
+const courtesyPackageOptions: Array<{ id: CourtesyPackage; label: string; detail: string }> = [
+  { id: "FACIAL", label: "Facial", detail: "1 servicio de cortesía" },
+  { id: "BODY", label: "Corporal", detail: "1 servicio de cortesía" },
+  { id: "DOUBLE_FACIAL", label: "Doble facial", detail: "2 servicios de cortesía" },
+  { id: "DOUBLE_BODY", label: "Doble corporal", detail: "2 servicios de cortesía" },
+  { id: "MIXED", label: "Mixto", detail: "Facial + corporal" },
+];
+
 const screenMetadata: Record<ScreenId, { title: string; subtitle: string }> = {
   dashboard: {
     title: "Dashboard",
@@ -249,8 +263,12 @@ const screenMetadata: Record<ScreenId, { title: string; subtitle: string }> = {
     subtitle: "Productos, existencias, pedidos y sucursales",
   },
   warehouse: {
-    title: "Almacén bodega",
-    subtitle: "Existencias matriz, entradas, envíos y pedidos de sucursales",
+    title: "Almacén matriz",
+    subtitle: "Existencias, compras, solicitudes recibidas y distribución",
+  },
+  "branch-inventory": {
+    title: "Pedido sucursales",
+    subtitle: "Solicitudes de productos, testers e insumos a bodega matriz",
   },
   suppliers: {
     title: "Proveedores",
@@ -318,7 +336,8 @@ const screenMetadataEnglish: Record<ScreenId, { title: string; subtitle: string 
   customers: { title: "Customers", subtitle: "Customer directory and ownership" },
   appointments: { title: "Appointments", subtitle: "Courtesy services and upcoming sessions" },
   inventory: { title: "Inventory", subtitle: "Products, stock, orders and locations" },
-  warehouse: { title: "Warehouse", subtitle: "Central stock, entries, shipments and store orders" },
+  warehouse: { title: "Central warehouse", subtitle: "Central stock, purchases, requests and shipments" },
+  "branch-inventory": { title: "Branch inventory", subtitle: "Product, tester and supply requests to the central warehouse" },
   suppliers: { title: "Suppliers", subtitle: "Tax directory, products and procurement" },
   "inventory-movements": { title: "Inventory movements", subtitle: "Entries, write-offs and stock adjustments" },
   deals: { title: "Deals", subtitle: "Packages, authorization and profitability" },
@@ -524,11 +543,11 @@ const initialWarehouseSuppliers: WarehouseSupplier[] = [
 ];
 
 const initialWarehouseSupplies: WarehouseSupplyItem[] = [
-  { id: "supply-cotton", name: "Algodón facial profesional", sku: "INS-ALG-001", unit: "bolsa", image: "/products/hydra-cloud-cream.png", costUsd: 3.1, costMxn: 54, partnerCost: 66, retailPrice: 98, family: "Insumos", category: "Cabina facial", stockMin: 60, stockMax: 180, presentation: "Caja con 12 bolsas", unitsPerPackage: 12, supplierId: "supplier-medical", supplierName: "Medical Supply Center", active: true, branchVisible: true },
-  { id: "supply-gloves", name: "Guantes de nitrilo", sku: "INS-GUA-002", unit: "caja", image: "/products/mineral-spf-50.png", costUsd: 7.4, costMxn: 129, partnerCost: 158, retailPrice: 220, family: "Insumos", category: "Protección", stockMin: 40, stockMax: 120, presentation: "Caja con 100 piezas", unitsPerPackage: 100, supplierId: "supplier-medical", supplierName: "Medical Supply Center", active: true, branchVisible: true },
-  { id: "supply-headbands", name: "Bandas faciales desechables", sku: "INS-BAN-003", unit: "paquete", image: "/products/renewal-serum.png", costUsd: 4.6, costMxn: 80, partnerCost: 98, retailPrice: 145, family: "Insumos", category: "Cabina facial", stockMin: 80, stockMax: 220, presentation: "Caja con 20 paquetes", unitsPerPackage: 20, supplierId: "supplier-medical", supplierName: "Medical Supply Center", active: true, branchVisible: true },
-  { id: "supply-sheets", name: "Sábanas desechables", sku: "INS-SAB-004", unit: "rollo", image: "/products/vitamin-c-glow.png", costUsd: 9.2, costMxn: 160, partnerCost: 195, retailPrice: 280, family: "Insumos", category: "Cabina corporal", stockMin: 30, stockMax: 90, presentation: "Caja con 6 rollos", unitsPerPackage: 6, supplierId: "supplier-medical", supplierName: "Medical Supply Center", active: true, branchVisible: false },
-  { id: "supply-spatulas", name: "Espátulas cosméticas", sku: "INS-ESP-005", unit: "paquete", image: "/products/renewal-serum.png", costUsd: 2.8, costMxn: 49, partnerCost: 60, retailPrice: 90, family: "Insumos", category: "Aplicación", stockMin: 50, stockMax: 140, presentation: "Caja con 25 paquetes", unitsPerPackage: 25, supplierId: "supplier-medical", supplierName: "Medical Supply Center", active: true, branchVisible: true },
+  { id: "supply-cotton", name: "Algodón facial profesional", sku: "INS-ALG-001", unit: "bolsa", image: "./products/hydra-cloud-cream.png", costUsd: 3.1, costMxn: 54, partnerCost: 66, retailPrice: 98, family: "Insumos", category: "Cabina facial", stockMin: 60, stockMax: 180, presentation: "Caja con 12 bolsas", unitsPerPackage: 12, supplierId: "supplier-medical", supplierName: "Medical Supply Center", active: true, branchVisible: true },
+  { id: "supply-gloves", name: "Guantes de nitrilo", sku: "INS-GUA-002", unit: "caja", image: "./products/mineral-spf-50.png", costUsd: 7.4, costMxn: 129, partnerCost: 158, retailPrice: 220, family: "Insumos", category: "Protección", stockMin: 40, stockMax: 120, presentation: "Caja con 100 piezas", unitsPerPackage: 100, supplierId: "supplier-medical", supplierName: "Medical Supply Center", active: true, branchVisible: true },
+  { id: "supply-headbands", name: "Bandas faciales desechables", sku: "INS-BAN-003", unit: "paquete", image: "./products/renewal-serum.png", costUsd: 4.6, costMxn: 80, partnerCost: 98, retailPrice: 145, family: "Insumos", category: "Cabina facial", stockMin: 80, stockMax: 220, presentation: "Caja con 20 paquetes", unitsPerPackage: 20, supplierId: "supplier-medical", supplierName: "Medical Supply Center", active: true, branchVisible: true },
+  { id: "supply-sheets", name: "Sábanas desechables", sku: "INS-SAB-004", unit: "rollo", image: "./products/vitamin-c-glow.png", costUsd: 9.2, costMxn: 160, partnerCost: 195, retailPrice: 280, family: "Insumos", category: "Cabina corporal", stockMin: 30, stockMax: 90, presentation: "Caja con 6 rollos", unitsPerPackage: 6, supplierId: "supplier-medical", supplierName: "Medical Supply Center", active: true, branchVisible: false },
+  { id: "supply-spatulas", name: "Espátulas cosméticas", sku: "INS-ESP-005", unit: "paquete", image: "./products/renewal-serum.png", costUsd: 2.8, costMxn: 49, partnerCost: 60, retailPrice: 90, family: "Insumos", category: "Aplicación", stockMin: 50, stockMax: 140, presentation: "Caja con 25 paquetes", unitsPerPackage: 25, supplierId: "supplier-medical", supplierName: "Medical Supply Center", active: true, branchVisible: true },
 ];
 
 const initialWarehousePriceLists: WarehousePriceList[] = [
@@ -794,6 +813,7 @@ function App() {
   const [warehousePriceLists, setWarehousePriceLists] = useState<WarehousePriceList[]>(initialWarehousePriceLists);
   const [warehouseStock, setWarehouseStock] = useState<WarehouseStock>(initialWarehouseStock);
   const [warehouseMovements, setWarehouseMovements] = useState<WarehouseMovement[]>(initialWarehouseMovements);
+  const [branchRequestEntryType, setBranchRequestEntryType] = useState<WarehouseRequestType>("PRODUCT");
   const [expenseTypes, setExpenseTypes] =
     useState<ExpenseType[]>(initialExpenseTypes);
   const [cashExpenses, setCashExpenses] =
@@ -892,6 +912,11 @@ function App() {
     useState(false);
   const [newPaymentMethodName, setNewPaymentMethodName] = useState("");
   const [activeSettingsSection, setActiveSettingsSection] = useState("notifications");
+  const [courtesySettings, setCourtesySettings] = useState<CourtesySettings>({
+    required: true,
+    defaultPackage: "FACIAL",
+    enabledPackages: ["FACIAL", "BODY", "DOUBLE_FACIAL", "DOUBLE_BODY", "MIXED"],
+  });
   const [voucherTemplates, setVoucherTemplates] = useState<VoucherTemplate[]>([
     {
       id: "voucher-next-10",
@@ -1017,7 +1042,7 @@ function App() {
     if (sessionUser.isMaster)
       return Object.keys(screenMetadata) as ScreenId[];
     return Array.from(
-      new Set([...(sessionEmployeeRole?.moduleAccess ?? ["sale"]), "my-account" as ScreenId]),
+      new Set([...(sessionEmployeeRole?.moduleAccess ?? []), "my-account" as ScreenId]),
     );
   }, [sessionEmployeeRole, sessionUser]);
 
@@ -1026,6 +1051,10 @@ function App() {
       activeScreen === "my-account" ||
       sessionEmployeeRole?.moduleEditAccess.includes(activeScreen),
   );
+  const canPrintActiveModule = Boolean(
+    sessionUser?.isMaster ||
+      sessionEmployeeRole?.modulePrintAccess.includes(activeScreen),
+  );
 
   const canManageWarehouse = Boolean(
     sessionUser?.isMaster ||
@@ -1033,7 +1062,10 @@ function App() {
       .find((role) => role.id === sessionUser?.roleId && role.active)
       ?.configurationAccess.includes("WAREHOUSE_MOVEMENTS"),
   );
-  const canCreateWarehouseRequest = allowedScreens.includes("warehouse");
+  const canViewProductCosts = Boolean(
+    sessionUser?.isMaster || costAccessAuthorized,
+  );
+  const canCreateWarehouseRequest = allowedScreens.includes("branch-inventory");
   const canViewInventoryCountDifferences = Boolean(
     sessionUser?.isMaster ||
       employeeRoles
@@ -1255,8 +1287,12 @@ function App() {
     });
     const nextAllowedScreens = sessionUser.isMaster
       ? (Object.keys(screenMetadata) as ScreenId[])
-      : employeeRoles.find((role) => role.id === sessionUser.roleId)?.moduleAccess ?? ["sale"];
-    setActiveScreen(nextAllowedScreens.includes("dashboard") ? "dashboard" : "sale");
+      : employeeRoles.find((role) => role.id === sessionUser.roleId)?.moduleAccess ?? [];
+    setActiveScreen(
+      nextAllowedScreens.includes("dashboard")
+        ? "dashboard"
+        : (nextAllowedScreens[0] ?? "my-account"),
+    );
     setSessionStage("OPEN");
     setSidebarCollapsed(true);
     toast.success(
@@ -2336,11 +2372,13 @@ function App() {
       toast.error("El código personal ya está asignado.");
       return false;
     }
-    const role = employeeRoles.find(
-      (candidate) => candidate.id === seller.roleId && candidate.active,
-    );
-    if (!role || role.system) {
-      toast.error("Selecciona un rol activo para el vendedor.");
+    const role = seller.roleId
+      ? employeeRoles.find(
+          (candidate) => candidate.id === seller.roleId && candidate.active,
+        )
+      : null;
+    if (seller.roleId && (!role || role.system)) {
+      toast.error("Selecciona un rol activo válido para el vendedor.");
       return false;
     }
     const initials = name
@@ -2355,7 +2393,7 @@ function App() {
       alias,
       accessCode,
       initials: initials || "VE",
-      canViewCosts: role.configurationAccess.includes("REPORTS_COSTS"),
+      canViewCosts: role?.configurationAccess.includes("REPORTS_COSTS") ?? false,
     };
     setSellers((current) =>
       current.some((candidate) => candidate.id === seller.id)
@@ -2882,14 +2920,9 @@ function App() {
   };
 
   const authorizeCostAccess = (code: string) => {
-    const authorized =
-      isMasterAccessCode(code) ||
-      sellers.some(
-        (seller) =>
-          seller.active && seller.canViewCosts && seller.accessCode === code,
-      );
+    const authorized = isMasterAccessCode(code);
     if (!authorized) {
-      toast.error("Código sin permiso para consultar costos.");
+      toast.error("Los costos sólo se desbloquean con un código Master.");
       return false;
     }
     setCostAccessAuthorized(true);
@@ -5247,7 +5280,7 @@ function App() {
     };
     setTickets((current) => [
       paymentTicket,
-      ...current.map((ticket) =>
+      ...current.map((ticket): Ticket =>
         ticket.id === layaway.originalTicketId
           ? {
               ...ticket,
@@ -5689,7 +5722,9 @@ function App() {
       paymentStatus,
       paymentMethod: payments[0]?.methodId ?? defaultPaymentMethod,
       syncStatus: isOnline ? "SYNCED" : "PENDING_SYNC",
-      createdOffline: ticket.createdOffline,
+      ...(ticket.createdOffline === undefined
+        ? {}
+        : { createdOffline: ticket.createdOffline }),
       syncedAtIso: isOnline ? new Date().toISOString() : null,
     };
 
@@ -7374,10 +7409,10 @@ function App() {
                           <button
                             type="button"
                             onClick={() => previewTicket(ticket)}
-                            aria-label={`Imprimir ticket ${ticket.id}`}
-                            title="Imprimir"
+                            aria-label={`Visualizar ticket ${ticket.id}`}
+                            title="Visualizar"
                           >
-                            <Printer size={15} />
+                            <Eye size={15} />
                           </button>
                           {receiptHistoryAuthorized && (
                             <button
@@ -7449,6 +7484,7 @@ function App() {
               ["cash", "Tipos de gastos", CircleDollarSign],
               ["competition", "Competiciones", TrendingUp],
               ["clients", "Clientes y procedencias", Users],
+              ["courtesy", "Cortesías de bienvenida", Sparkles],
               ["pricing", "Precios y autorización", BadgePercent],
               ["receipt", "Diseño de ticket", Printer],
               ["payments", "Métodos de pago", CreditCard],
@@ -7519,6 +7555,70 @@ function App() {
         onToggle={toggleCompetition}
         onDelete={deleteCompetition}
       />
+      <Card className="settings-card courtesy-settings-card">
+        <CardContent>
+          <span className="section-kicker">VENTA · CLIENTE NUEVO</span>
+          <h2>Paquetes y productos de cortesía</h2>
+          <p>Define si la cortesía es obligatoria y cuáles opciones podrá ofrecer el vendedor durante Checkout.</p>
+          <button
+            type="button"
+            className={`courtesy-required-toggle ${courtesySettings.required ? "is-active" : ""}`}
+            role="switch"
+            aria-checked={courtesySettings.required}
+            onClick={() => setCourtesySettings((current) => ({ ...current, required: !current.required }))}
+          >
+            <span>
+              <strong>Solicitar cortesía al registrar cliente</strong>
+              <small>{courtesySettings.required ? "Checkout exige paquete, fecha, sucursal y horario." : "La pregunta y el mensaje se omiten; la venta continúa normalmente."}</small>
+            </span>
+            <span className={`mock-switch ${courtesySettings.required ? "is-on" : ""}`}><i /></span>
+          </button>
+          <div className="courtesy-settings-options">
+            {courtesyPackageOptions.map((option) => {
+              const selected = courtesySettings.enabledPackages.includes(option.id);
+              return (
+                <label key={option.id} className={selected ? "is-selected" : ""}>
+                  <input
+                    type="checkbox"
+                    checked={selected}
+                    onChange={() => setCourtesySettings((current) => {
+                      if (selected && current.enabledPackages.length === 1) {
+                        toast.error("Conserva al menos un paquete de cortesía disponible.");
+                        return current;
+                      }
+                      const enabledPackages = selected
+                        ? current.enabledPackages.filter((id) => id !== option.id)
+                        : [...current.enabledPackages, option.id];
+                      return {
+                        ...current,
+                        enabledPackages,
+                        defaultPackage: enabledPackages.includes(current.defaultPackage)
+                          ? current.defaultPackage
+                          : enabledPackages[0] ?? "FACIAL",
+                      };
+                    })}
+                  />
+                  <span><strong>{option.label}</strong><small>{option.detail}</small></span>
+                </label>
+              );
+            })}
+          </div>
+          <div className="field-stack courtesy-default-package">
+            <span>Paquete seleccionado por defecto</span>
+            <Select
+              value={courtesySettings.defaultPackage}
+              onValueChange={(value) => setCourtesySettings((current) => ({ ...current, defaultPackage: value as CourtesyPackage }))}
+            >
+              <SelectTrigger aria-label="Paquete de cortesía por defecto"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {courtesyPackageOptions.filter((option) => courtesySettings.enabledPackages.includes(option.id)).map((option) => (
+                  <SelectItem key={option.id} value={option.id}>{option.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </CardContent>
+      </Card>
       <Card className="settings-card client-required-settings-card">
         <CardContent>
           <span className="section-kicker">CLIENTES</span>
@@ -8935,13 +9035,15 @@ function App() {
               </div>
             )}
             <div className="close-day-actions">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => window.print()}
-              >
-                <Printer size={17} /> Imprimir ticket de cierre
-              </Button>
+              {canPrintActiveModule && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => window.print()}
+                >
+                  <Printer size={17} /> Imprimir ticket de cierre
+                </Button>
+              )}
               <Button
                 type="button"
                 onClick={() => {
@@ -9218,23 +9320,60 @@ function App() {
     );
   };
 
+  const renderWarehouseScreen = (scope: WarehouseScope) => (
+    <WarehouseView
+      scope={scope}
+      products={catalogProducts}
+      tickets={tickets}
+      branches={
+        sessionUser?.isMaster || canManageWarehouse
+          ? operationalBranches
+          : [activeBranch]
+      }
+      stock={warehouseStock}
+      movements={warehouseMovements}
+      categories={warehouseCategories}
+      supplies={warehouseSupplies}
+      suppliers={warehouseSuppliers}
+      priceLists={warehousePriceLists}
+      clients={clients}
+      canManage={canManageWarehouse}
+      canViewCosts={canViewProductCosts}
+      canRequest={canCreateWarehouseRequest}
+      currentUserName={sessionUser?.name ?? masterUser.name}
+      {...(scope === "BRANCHES"
+        ? { initialRequestType: branchRequestEntryType }
+        : {})}
+      onCreateEntry={createWarehouseEntry}
+      onCreateMovement={createWarehouseMovement}
+      onEditMovement={editWarehouseMovement}
+      onApproveCreation={approveWarehouseCreation}
+      onApproveSend={approveWarehouseSend}
+      onReceive={receiveWarehouseMovement}
+      onCancel={cancelWarehouseMovement}
+      onDelete={deleteWarehouseMovement}
+      onToggleSupplyVisibility={toggleWarehouseSupplyVisibility}
+      onSaveSupply={saveWarehouseSupply}
+      onDeleteSupply={deleteWarehouseSupply}
+      onCreateRestockOrder={createWarehouseRestockOrder}
+      onSavePriceList={saveWarehousePriceList}
+      onTogglePriceList={toggleWarehousePriceList}
+      onDeletePriceList={deleteWarehousePriceList}
+    />
+  );
+
   const renderScreen = () => {
     switch (activeScreen) {
       case "dashboard": {
         const dashboardRole = employeeRoles.find(
           (role) => role.id === sessionUser?.roleId && role.active,
         );
-        const dashboardSeller = sellers.find(
-          (seller) => seller.id === sessionUser?.id && seller.active,
-        );
         const canViewInventoryAudit = Boolean(
           sessionUser?.isMaster ||
           dashboardRole?.configurationAccess.includes("INVENTORY_AUDIT"),
         );
         const canViewDashboardCosts = Boolean(
-          sessionUser?.isMaster ||
-          dashboardSeller?.canViewCosts ||
-          dashboardRole?.configurationAccess.includes("REPORTS_COSTS"),
+          sessionUser?.isMaster || costAccessAuthorized,
         );
         const openingAudit = daySession
           ? inventoryCountAudits.find(
@@ -9345,43 +9484,18 @@ function App() {
             isMasterCode={isMasterAccessCode}
             onCreateInventoryOrders={createInventoryBranchOrders}
             onLockCostAccess={() => setCostAccessAuthorized(false)}
+            onOpenBranchRequest={(requestType) => {
+              setBranchRequestEntryType(requestType);
+              navigateToScreen("branch-inventory");
+            }}
           />
         );
       case "catalog":
         return renderInventory();
       case "warehouse":
-        return (
-          <WarehouseView
-            products={catalogProducts}
-            tickets={tickets}
-            branches={sessionUser?.isMaster || canManageWarehouse ? operationalBranches : [activeBranch]}
-            stock={warehouseStock}
-            movements={warehouseMovements}
-            categories={warehouseCategories}
-            supplies={warehouseSupplies}
-            suppliers={warehouseSuppliers}
-            priceLists={warehousePriceLists}
-            clients={clients}
-            canManage={canManageWarehouse}
-            canRequest={canCreateWarehouseRequest}
-            currentUserName={sessionUser?.name ?? masterUser.name}
-            onCreateEntry={createWarehouseEntry}
-            onCreateMovement={createWarehouseMovement}
-            onEditMovement={editWarehouseMovement}
-            onApproveCreation={approveWarehouseCreation}
-            onApproveSend={approveWarehouseSend}
-            onReceive={receiveWarehouseMovement}
-            onCancel={cancelWarehouseMovement}
-            onDelete={deleteWarehouseMovement}
-            onToggleSupplyVisibility={toggleWarehouseSupplyVisibility}
-            onSaveSupply={saveWarehouseSupply}
-            onDeleteSupply={deleteWarehouseSupply}
-            onCreateRestockOrder={createWarehouseRestockOrder}
-            onSavePriceList={saveWarehousePriceList}
-            onTogglePriceList={toggleWarehousePriceList}
-            onDeletePriceList={deleteWarehousePriceList}
-          />
-        );
+        return renderWarehouseScreen("MATRIX");
+      case "branch-inventory":
+        return renderWarehouseScreen("BRANCHES");
       case "suppliers":
         return (
           <SuppliersView
@@ -9389,6 +9503,7 @@ function App() {
             products={catalogProducts}
             supplies={warehouseSupplies}
             canManage={canManageWarehouse}
+            canViewCosts={canViewProductCosts}
             onSaveSupplier={saveWarehouseSupplier}
             onToggleSupplier={toggleWarehouseSupplier}
             onDeleteSupplier={deleteWarehouseSupplier}
@@ -9431,6 +9546,7 @@ function App() {
             tickets={activeTickets}
             branches={operationalBranches}
             authorized={dealAccessAuthorized}
+            canViewCosts={canViewProductCosts}
             onAuthorize={authorizeDealAccess}
             onLock={() => setDealAccessAuthorized(false)}
             onSave={saveDeal}
@@ -9457,6 +9573,7 @@ function App() {
             receiptSettings={receiptSettings}
             expenses={cashExpenses}
             expenseTypes={expenseTypes}
+            canViewCosts={canViewProductCosts}
           />
         );
       case "cash-manager":
@@ -10020,6 +10137,7 @@ function App() {
         branches={operationalBranches}
         sourceOptions={clientSources}
         requiredFields={requiredFields}
+        courtesySettings={courtesySettings}
         isMasterCode={isMasterAccessCode}
         onOpenChange={setCheckoutOpen}
         onComplete={completeTicket}
@@ -10052,6 +10170,7 @@ function App() {
         voucherTemplates={voucherTemplates.filter(
           (voucher) => voucher.active && voucher.visibleToSellers,
         )}
+        allowPrint={canPrintActiveModule}
         onIssueVoucher={issueVoucher}
         onOpenChange={setReceiptPreviewOpen}
       />

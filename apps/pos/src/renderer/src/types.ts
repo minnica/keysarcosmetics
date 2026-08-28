@@ -7,6 +7,7 @@ export type ScreenId =
   | "appointments"
   | "inventory"
   | "warehouse"
+  | "branch-inventory"
   | "suppliers"
   | "inventory-movements"
   | "deals"
@@ -177,7 +178,21 @@ export interface EmployeeRole {
   system: boolean;
   moduleAccess: ScreenId[];
   moduleEditAccess: ScreenId[];
+  modulePrintAccess: ScreenId[];
   configurationAccess: EmployeeConfigurationPermission[];
+}
+
+export type CourtesyPackage =
+  | "FACIAL"
+  | "BODY"
+  | "DOUBLE_FACIAL"
+  | "DOUBLE_BODY"
+  | "MIXED";
+
+export interface CourtesySettings {
+  required: boolean;
+  defaultPackage: CourtesyPackage;
+  enabledPackages: CourtesyPackage[];
 }
 
 export interface AttendanceRecord {
@@ -229,10 +244,13 @@ export type OperationalNotificationType =
   | "CLOSE_DAY"
   | "CLOCK_IN";
 
+export type OperationalNotificationAccess = "VIEW" | "EDIT";
+
 export interface OperationalNotificationPreference {
   type: OperationalNotificationType;
   enabled: boolean;
   recipientUserIds: string[];
+  recipientAccess?: Partial<Record<string, OperationalNotificationAccess>>;
 }
 
 export interface OperationalNotification {

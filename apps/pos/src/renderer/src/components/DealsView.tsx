@@ -10,6 +10,7 @@ import {
   PackageCheck,
   PackagePlus,
   Plus,
+  PowerOff,
   ShieldCheck,
   Sparkles,
   Store,
@@ -55,6 +56,7 @@ interface DealsViewProps {
   tickets: Ticket[];
   branches: string[];
   authorized: boolean;
+  canViewCosts: boolean;
   onAuthorize: (code: string) => boolean;
   onLock: () => void;
   onSave: (deal: RetailDeal) => void;
@@ -152,6 +154,7 @@ export function DealsView({
   tickets,
   branches,
   authorized,
+  canViewCosts,
   onAuthorize,
   onLock,
   onSave,
@@ -458,7 +461,7 @@ export function DealsView({
                 <div className="deal-recommendation-pricing">
                   <span>Lista {formatCurrency(recommendation.listTotal)}</span>
                   <strong>Sugerido {formatCurrency(recommendation.suggestedPrice)}</strong>
-                  <small>Costo {formatCurrency(recommendation.costTotal)} · utilidad estimada {formatCurrency(recommendation.suggestedPrice - recommendation.costTotal)}</small>
+                  <small>{canViewCosts ? `Costo ${formatCurrency(recommendation.costTotal)} · utilidad estimada ${formatCurrency(recommendation.suggestedPrice - recommendation.costTotal)}` : "Análisis protegido · requiere permiso para visualizar costos"}</small>
                 </div>
                 <Button type="button" variant="outline" size="sm" onClick={() => useRecommendation(recommendation)}>
                   Usar sugerencia
@@ -522,20 +525,20 @@ export function DealsView({
                   <div className="deal-record-numbers">
                     <span><small>PRECIO DEAL</small><strong>{formatCurrency(deal.price)}</strong></span>
                     <span><small>MÍNIMO CONJUNTO</small><strong>{formatCurrency(totals.minimum)}</strong></span>
-                    <span><small>COSTO MXN</small><strong>{formatCurrency(totals.costMxn)}</strong></span>
+                    {canViewCosts && <span><small>COSTO MXN</small><strong>{formatCurrency(totals.costMxn)}</strong></span>}
                     <span><small>VENDIDOS</small><strong>{salesCount}</strong></span>
                   </div>
                   <div className="deal-record-footer">
                     <span><CalendarRange size={14} /> {deal.startDate} — {deal.endDate}</span>
                     <span><Store size={14} /> {deal.branches.join(", ")}</span>
                     <div>
-                      <Button type="button" variant="ghost" size="sm" onClick={() => editDeal(deal)}><Edit3 size={14} /> Editar</Button>
+                      <Button type="button" variant="ghost" size="icon" className="icon-action-button" onClick={() => editDeal(deal)} aria-label={`Editar ${deal.name}`} title="Editar"><Edit3 size={15} /></Button>
                       {deal.status !== "PUBLISHED" ? (
                         <Button type="button" size="sm" onClick={() => { setPublishDeal(deal); setPublishCode(""); }}><ShieldCheck size={14} /> Autorizar y publicar</Button>
                       ) : (
                         <AlertDialog>
                           <AlertDialogTrigger asChild>
-                            <Button type="button" variant="outline" size="sm">Inactivar</Button>
+                            <Button type="button" variant="outline" size="icon" className="icon-action-button" aria-label={`Inactivar ${deal.name}`} title="Inactivar"><PowerOff size={15} /></Button>
                           </AlertDialogTrigger>
                           <AlertDialogContent>
                             <AlertDialogHeader>
@@ -546,7 +549,7 @@ export function DealsView({
                             </AlertDialogHeader>
                             <AlertDialogFooter>
                               <AlertDialogCancel>Conservar publicado</AlertDialogCancel>
-                              <AlertDialogAction onClick={() => onDeactivate(deal.id)}>Inactivar Deal</AlertDialogAction>
+                              <AlertDialogAction className="icon-action-button" onClick={() => onDeactivate(deal.id)} aria-label={`Inactivar ${deal.name}`} title="Inactivar"><PowerOff size={15} /></AlertDialogAction>
                             </AlertDialogFooter>
                           </AlertDialogContent>
                         </AlertDialog>
@@ -595,10 +598,10 @@ export function DealsView({
               <h3>Vista financiera</h3>
               <div><span>Precio de lista</span><strong>{formatCurrency(formTotals.list)}</strong></div>
               <div><span>Mínimo conjunto</span><strong>{formatCurrency(formTotals.minimum)}</strong></div>
-              <div><span>Costo MXN</span><strong>{formatCurrency(formTotals.costMxn)}</strong></div>
-              <div><span>Costo USD</span><strong>US${formTotals.costUsd.toFixed(2)}</strong></div>
-              <div className={formProfit >= 0 ? "is-profit" : "is-loss"}><span>Utilidad estimada</span><strong>{formatCurrency(formProfit)}</strong></div>
-              <p>{formProfit >= 0 ? "El precio cubre el costo registrado. Puede enviarse a autorización." : "Este precio representa pérdida y no podrá publicarse."}</p>
+              {canViewCosts && <div><span>Costo MXN</span><strong>{formatCurrency(formTotals.costMxn)}</strong></div>}
+              {canViewCosts && <div><span>Costo USD</span><strong>US${formTotals.costUsd.toFixed(2)}</strong></div>}
+              {canViewCosts && <div className={formProfit >= 0 ? "is-profit" : "is-loss"}><span>Utilidad estimada</span><strong>{formatCurrency(formProfit)}</strong></div>}
+              <p>{canViewCosts ? (formProfit >= 0 ? "El precio cubre el costo registrado. Puede enviarse a autorización." : "Este precio representa pérdida y no podrá publicarse.") : "Los costos y la utilidad están protegidos por rol."}</p>
               {Number(form.price || 0) < formTotals.minimum && <Badge variant="outline">Debajo del mínimo conjunto · permitido sólo como Deal</Badge>}
             </aside>
           </div>
@@ -609,7 +612,7 @@ export function DealsView({
       <Dialog open={Boolean(publishDeal)} onOpenChange={(open) => { if (!open) { setPublishDeal(null); setPublishCode(""); } }}>
         <DialogContent className="sm:max-w-[520px]">
           <DialogHeader><DialogTitle>Autorizar publicación</DialogTitle><DialogDescription>El Deal aparecerá en Sale únicamente después de validar rentabilidad y código master.</DialogDescription></DialogHeader>
-          {publishDeal && (() => { const totals = getDealTotals(publishDeal, products); return <div className="deal-publish-confirm"><div><PackageCheck size={21} /><span><strong>{publishDeal.name}</strong><small>{publishDeal.sku}</small></span></div><div><span>Precio Deal</span><strong>{formatCurrency(publishDeal.price)}</strong></div><div><span>Costo registrado</span><strong>{formatCurrency(totals.costMxn)}</strong></div><div><span>Utilidad estimada</span><strong className={publishDeal.price >= totals.costMxn ? "is-positive" : "is-negative"}>{formatCurrency(publishDeal.price - totals.costMxn)}</strong></div><div className="deal-publish-code"><KeyRound size={16} /><Input type="password" inputMode="numeric" maxLength={4} value={publishCode} onChange={(event) => setPublishCode(event.target.value)} placeholder="Código master" aria-label="Código para publicar Deal" /></div></div>; })()}
+          {publishDeal && (() => { const totals = getDealTotals(publishDeal, products); return <div className="deal-publish-confirm"><div><PackageCheck size={21} /><span><strong>{publishDeal.name}</strong><small>{publishDeal.sku}</small></span></div><div><span>Precio Deal</span><strong>{formatCurrency(publishDeal.price)}</strong></div>{canViewCosts && <div><span>Costo registrado</span><strong>{formatCurrency(totals.costMxn)}</strong></div>}{canViewCosts && <div><span>Utilidad estimada</span><strong className={publishDeal.price >= totals.costMxn ? "is-positive" : "is-negative"}>{formatCurrency(publishDeal.price - totals.costMxn)}</strong></div>}<div className="deal-publish-code"><KeyRound size={16} /><Input type="password" inputMode="numeric" maxLength={4} value={publishCode} onChange={(event) => setPublishCode(event.target.value)} placeholder="Código master" aria-label="Código para publicar Deal" /></div></div>; })()}
           <DialogFooter><Button type="button" variant="outline" onClick={() => setPublishDeal(null)}>Cancelar</Button><Button type="button" onClick={confirmPublish} disabled={publishCode.length !== 4}><ShieldCheck size={15} /> Publicar en Sale</Button></DialogFooter>
         </DialogContent>
       </Dialog>

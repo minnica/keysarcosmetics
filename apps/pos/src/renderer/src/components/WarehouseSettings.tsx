@@ -55,21 +55,23 @@ export function WarehouseSettings({
                 <div>
                   <Button
                     type="button"
-                    size="sm"
+                    size="icon"
                     variant="outline"
+                    className="icon-action-button"
+                    aria-label={`Editar ${category.name}`}
+                    title="Editar"
                     onClick={() => {
                       setEditingId(category.id);
                       setName(category.name);
                     }}
                   >
-                    <Pencil size={14} /> Editar
+                    <Pencil size={15} />
                   </Button>
-                  <Button type="button" size="sm" variant="outline" onClick={() => onToggle(category.id)}>
-                    {category.active ? <PowerOff size={14} /> : <Power size={14} />}
-                    {category.active ? "Inactivar" : "Activar"}
+                  <Button type="button" size="icon" variant="outline" className="icon-action-button" onClick={() => onToggle(category.id)} aria-label={`${category.active ? "Inactivar" : "Activar"} ${category.name}`} title={category.active ? "Inactivar" : "Activar"}>
+                    {category.active ? <PowerOff size={15} /> : <Power size={15} />}
                   </Button>
-                  <Button type="button" size="sm" variant="outline" onClick={() => onDelete(category.id)}>
-                    <Trash2 size={14} /> Borrar
+                  <Button type="button" size="icon" variant="outline" className="icon-action-button is-danger" onClick={() => onDelete(category.id)} aria-label={`Borrar ${category.name}`} title="Borrar">
+                    <Trash2 size={15} />
                   </Button>
                 </div>
               )}

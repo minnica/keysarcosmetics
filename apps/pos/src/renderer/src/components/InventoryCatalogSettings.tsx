@@ -146,7 +146,7 @@ export function InventoryCatalogSettings({
                         <TableCell><strong>{family}</strong></TableCell>
                         <TableCell>{count} productos o servicios</TableCell>
                         <TableCell><Badge variant={active ? "default" : "outline"}>{active ? "ACTIVA" : "INACTIVA"}</Badge></TableCell>
-                        <TableCell><div className="inventory-settings-actions"><Button type="button" variant="outline" size="sm" onClick={() => openEdit({ type: "FAMILY", id: family, label: family })}><Pencil size={14} /> Editar</Button><Button type="button" variant="outline" size="sm" onClick={() => onToggleFamily(family, !active)}>{active ? <PowerOff size={14} /> : <Power size={14} />}{active ? "Inactivar" : "Activar"}</Button></div></TableCell>
+                        <TableCell><div className="inventory-settings-actions"><Button type="button" variant="outline" size="icon" className="icon-action-button" title="Editar" aria-label={`Editar ${family}`} onClick={() => openEdit({ type: "FAMILY", id: family, label: family })}><Pencil size={15} /></Button><Button type="button" variant="outline" size="icon" className="icon-action-button" title={active ? "Inactivar" : "Activar"} aria-label={`${active ? "Inactivar" : "Activar"} ${family}`} onClick={() => onToggleFamily(family, !active)}>{active ? <PowerOff size={15} /> : <Power size={15} />}</Button></div></TableCell>
                       </TableRow>
                     );
                   })}
@@ -161,7 +161,7 @@ export function InventoryCatalogSettings({
                         <TableCell><strong>{category}</strong></TableCell>
                         <TableCell>{count} productos o servicios</TableCell>
                         <TableCell><Badge variant={active ? "default" : "outline"}>{active ? "ACTIVA" : "INACTIVA"}</Badge></TableCell>
-                        <TableCell><div className="inventory-settings-actions"><Button type="button" variant="outline" size="sm" onClick={() => openEdit({ type: "CATEGORY", id: category, label: category })}><Pencil size={14} /> Editar</Button><Button type="button" variant="outline" size="sm" onClick={() => onToggleCategory(category, !active)}>{active ? <PowerOff size={14} /> : <Power size={14} />}{active ? "Inactivar" : "Activar"}</Button></div></TableCell>
+                        <TableCell><div className="inventory-settings-actions"><Button type="button" variant="outline" size="icon" className="icon-action-button" title="Editar" aria-label={`Editar ${category}`} onClick={() => openEdit({ type: "CATEGORY", id: category, label: category })}><Pencil size={15} /></Button><Button type="button" variant="outline" size="icon" className="icon-action-button" title={active ? "Inactivar" : "Activar"} aria-label={`${active ? "Inactivar" : "Activar"} ${category}`} onClick={() => onToggleCategory(category, !active)}>{active ? <PowerOff size={15} /> : <Power size={15} />}</Button></div></TableCell>
                       </TableRow>
                     );
                   })}
@@ -171,7 +171,7 @@ export function InventoryCatalogSettings({
                       <TableCell><div className="inventory-settings-product"><img src={product.image} alt="" /><span><strong>{product.name}</strong><small>{getSellerSku(product)}</small></span></div></TableCell>
                       <TableCell>{product.family} · {product.category}</TableCell>
                       <TableCell><Badge variant={product.active ? "default" : "outline"}>{product.active ? "ACTIVO" : "INACTIVO"}</Badge></TableCell>
-                      <TableCell><div className="inventory-settings-actions"><Button type="button" variant="outline" size="sm" onClick={() => openEdit({ type: "PRODUCT", id: product.id, label: product.name })}><Pencil size={14} /> Editar</Button><Button type="button" variant="outline" size="sm" onClick={() => onToggleProduct(product.id, !product.active)}>{product.active ? <PowerOff size={14} /> : <Power size={14} />}{product.active ? "Inactivar" : "Activar"}</Button></div></TableCell>
+                      <TableCell><div className="inventory-settings-actions"><Button type="button" variant="outline" size="icon" className="icon-action-button" title="Editar" aria-label={`Editar ${product.name}`} onClick={() => openEdit({ type: "PRODUCT", id: product.id, label: product.name })}><Pencil size={15} /></Button><Button type="button" variant="outline" size="icon" className="icon-action-button" title={product.active ? "Inactivar" : "Activar"} aria-label={`${product.active ? "Inactivar" : "Activar"} ${product.name}`} onClick={() => onToggleProduct(product.id, !product.active)}>{product.active ? <PowerOff size={15} /> : <Power size={15} />}</Button></div></TableCell>
                     </TableRow>
                   ))}
               </TableBody>

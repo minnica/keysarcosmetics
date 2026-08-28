@@ -4,6 +4,7 @@ import {
   ArrowLeftRight,
   BarChart3,
   Boxes,
+  Building2,
   CalendarHeart,
   ChevronDown,
   ChevronRight,
@@ -126,9 +127,15 @@ const inventoryNavigationItems: NavigationItem[] = [
   },
   {
     id: "warehouse",
-    label: "Almacén bodega",
+    label: "Almacén matriz",
     icon: Warehouse,
     color: "#9a6a45",
+  },
+  {
+    id: "branch-inventory",
+    label: "Pedido sucursales",
+    icon: Building2,
+    color: "#8a785e",
   },
   {
     id: "suppliers",
@@ -165,6 +172,7 @@ const navigationLabelsEnglish: Partial<Record<ScreenId, string>> = {
   appointments: "Appointments",
   inventory: "Inventory",
   warehouse: "Warehouse",
+  "branch-inventory": "Branch inventory",
   suppliers: "Suppliers",
   catalog: "Catalog",
   "inventory-movements": "Movements",
@@ -244,7 +252,7 @@ export function PosSidebar({
     <aside className={`pos-sidebar ${collapsed ? "is-collapsed" : ""}`}>
       <div className="sidebar-brand">
         <div className="brand-mark" aria-hidden="true">
-          <img src="/logo.svg" alt="" />
+          <img src="./logo.svg" alt="" />
         </div>
         {!collapsed && (
           <div className="brand-copy">

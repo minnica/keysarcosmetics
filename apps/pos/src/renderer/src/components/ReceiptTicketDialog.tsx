@@ -33,6 +33,7 @@ interface ReceiptTicketDialogProps {
   branchAddresses: Record<string, string>;
   paymentMethods: PaymentMethodOption[];
   voucherTemplates: VoucherTemplate[];
+  allowPrint: boolean;
   onIssueVoucher: (ticket: Ticket, voucherId: string) => VoucherIssue | null;
   onOpenChange: (open: boolean) => void;
 }
@@ -45,6 +46,7 @@ export function ReceiptTicketDialog({
   branchAddresses,
   paymentMethods,
   voucherTemplates,
+  allowPrint,
   onIssueVoucher,
   onOpenChange,
 }: ReceiptTicketDialogProps) {
@@ -333,9 +335,15 @@ export function ReceiptTicketDialog({
           >
             <X size={16} /> Cerrar
           </Button>
-          <Button type="button" onClick={() => window.print()}>
-            <Printer size={16} /> Imprimir ticket
-          </Button>
+          {allowPrint ? (
+            <Button type="button" onClick={() => window.print()}>
+              <Printer size={16} /> Imprimir ticket
+            </Button>
+          ) : (
+            <span className="receipt-print-restricted">
+              Impresión no autorizada para este rol
+            </span>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

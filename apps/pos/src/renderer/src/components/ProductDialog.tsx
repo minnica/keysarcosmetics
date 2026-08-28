@@ -294,10 +294,13 @@ export function ProductDialog({
                 <Button
                   type="button"
                   variant="outline"
-                  className="remove-line-button"
+                  size="icon"
+                  className="remove-line-button icon-action-button is-danger"
                   onClick={handleRemove}
+                  aria-label="Quitar producto"
+                  title="Quitar producto"
                 >
-                  <Trash2 size={16} /> Quitar producto
+                  <Trash2 size={16} />
                 </Button>
               ) : (
                 <span />

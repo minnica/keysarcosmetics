@@ -1786,8 +1786,8 @@ export function CustomersView({
                     <Button type="button" variant="outline" size="sm" onClick={() => toast.success("Mensaje guardado para esta sesión.")}>
                       <Save size={14} /> Guardar
                     </Button>
-                    <Button type="button" variant="outline" size="sm" onClick={deleteBirthdayMessage}>
-                      <Trash2 size={14} /> Borrar
+                    <Button type="button" variant="outline" size="icon" className="icon-action-button is-danger" onClick={deleteBirthdayMessage} aria-label="Borrar mensaje" title="Borrar">
+                      <Trash2 size={15} />
                     </Button>
                   </div>
                 </div>
@@ -1980,7 +1980,10 @@ export function CustomersView({
             </Button>
             <Button
               type="button"
-              className="customer-confirm-delete"
+              size="icon"
+              className="customer-confirm-delete icon-action-button is-danger"
+              aria-label="Borrar registro"
+              title="Borrar registro"
               disabled={
                 !deletingClient ||
                 deleteFolio.trim() !== deletingClient.registrationFolio ||
@@ -1988,7 +1991,7 @@ export function CustomersView({
               }
               onClick={confirmClientDeletion}
             >
-              <Trash2 size={16} /> Borrar registro
+              <Trash2 size={16} />
             </Button>
           </DialogFooter>
         </DialogContent>
