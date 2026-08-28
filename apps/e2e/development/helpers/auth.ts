@@ -16,12 +16,16 @@ export async function authenticateAndSaveState({
   const response = await page.goto("/login", { waitUntil: "domcontentloaded" });
   expect(response?.ok()).toBe(true);
 
+  const form = page.locator('form[data-e2e-ready="true"]');
+  await expect(form).toBeVisible();
+
   await page.locator("#email").fill(email);
   await page.locator("#password").fill(password);
+  await expect(form.locator('button[type="submit"]')).toBeEnabled();
 
   await Promise.all([
     page.waitForURL((url) => url.pathname !== "/login"),
-    page.locator('button[type="submit"]').click(),
+    form.locator('button[type="submit"]').click(),
   ]);
 
   await expect(page).not.toHaveURL(/\/login(?:\?|$)/);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Image from "next/image";
 import { Button, Input, Label } from "@cosmetics/ui";
 import { api, apiErrorMessage } from "@/lib/api";
@@ -10,6 +10,11 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isHydrated, setIsHydrated] = useState(false);
+
+  useEffect(() => {
+    setIsHydrated(true);
+  }, []);
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -60,7 +65,12 @@ export default function LoginPage() {
             <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(9,8,7,0.08)_0%,rgba(9,8,7,0.34)_48%,rgba(9,8,7,0.92)_100%)]" />
           </section>
           <section className="relative flex items-center justify-center px-5 py-6 sm:px-8 sm:py-10 lg:px-10 lg:py-12">
-            <form onSubmit={submit} className="w-full max-w-[24rem]">
+            <form
+              method="post"
+              data-e2e-ready={isHydrated ? "true" : undefined}
+              onSubmit={submit}
+              className="w-full max-w-[24rem]"
+            >
               <Image
                 src="/logo.svg"
                 alt="Keysar Cosmetics"
@@ -124,7 +134,7 @@ export default function LoginPage() {
                 )}
                 <Button
                   type="submit"
-                  disabled={loading}
+                  disabled={loading || !isHydrated}
                   className="h-12 w-full rounded-full bg-[#d7b488] text-[0.72rem] uppercase tracking-[0.22em] text-[#110f0d] hover:bg-[#e4c79d]"
                 >
                   {loading ? "Validando…" : "Entrar a nómina"}
