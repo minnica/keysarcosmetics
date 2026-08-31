@@ -280,7 +280,7 @@ export function CheckoutDialog({
 
   const filteredClients = useMemo(() => {
     const query = clientSearch.trim().toLocaleLowerCase("es-MX");
-    if (!query) return clients.slice(0, 4);
+    if (!query) return [];
     return clients.filter((client) => {
       const fullName =
         `${client.firstName} ${client.lastName}`.toLocaleLowerCase("es-MX");
@@ -290,6 +290,7 @@ export function CheckoutDialog({
       );
     });
   }, [clientSearch, clients]);
+  const hasClientSearch = clientSearch.trim().length > 0;
 
   const selectedClient = clients.find(
     (client) => client.id === selectedClientId,
@@ -692,45 +693,47 @@ export function CheckoutDialog({
                       aria-label="Buscar cliente por nombre o teléfono"
                     />
                   </div>
-                  <div className="client-results">
-                    {filteredClients.map((client) => {
-                      const isSelected = selectedClientId === client.id;
-                      return (
-                        <button
-                          key={client.id}
-                          type="button"
-                          className={`client-result ${isSelected ? "is-selected" : ""}`}
-                          onClick={() => selectClient(client)}
-                        >
-                          <span className="client-avatar">
-                            {client.firstName.charAt(0)}
-                            {client.lastName.charAt(0)}
-                          </span>
-                          <span>
-                            <strong>
-                              {client.firstName} {client.lastName}
-                            </strong>
-                            <small>
-                              {client.phone} · {client.sourceLabel}
-                            </small>
-                            <small>
-                              {client.companyLocked
-                                ? `Cartera: ${client.companyName}`
-                                : (sellers.find(
-                                    (seller) => seller.id === client.ownerId,
-                                  )?.name ?? "Cartera de la empresa")}
-                            </small>
-                          </span>
-                          {isSelected && <CheckCircle2 size={19} />}
-                        </button>
-                      );
-                    })}
-                    {filteredClients.length === 0 && (
-                      <p className="empty-inline">
-                        No encontramos coincidencias.
-                      </p>
-                    )}
-                  </div>
+                  {hasClientSearch && (
+                    <div className="client-results">
+                      {filteredClients.map((client) => {
+                        const isSelected = selectedClientId === client.id;
+                        return (
+                          <button
+                            key={client.id}
+                            type="button"
+                            className={`client-result ${isSelected ? "is-selected" : ""}`}
+                            onClick={() => selectClient(client)}
+                          >
+                            <span className="client-avatar">
+                              {client.firstName.charAt(0)}
+                              {client.lastName.charAt(0)}
+                            </span>
+                            <span>
+                              <strong>
+                                {client.firstName} {client.lastName}
+                              </strong>
+                              <small>
+                                {client.phone} · {client.sourceLabel}
+                              </small>
+                              <small>
+                                {client.companyLocked
+                                  ? `Cartera: ${client.companyName}`
+                                  : (sellers.find(
+                                      (seller) => seller.id === client.ownerId,
+                                    )?.name ?? "Cartera de la empresa")}
+                              </small>
+                            </span>
+                            {isSelected && <CheckCircle2 size={19} />}
+                          </button>
+                        );
+                      })}
+                      {filteredClients.length === 0 && (
+                        <p className="empty-inline">
+                          No encontramos coincidencias.
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="new-client-grid">
@@ -1710,7 +1713,7 @@ export function CheckoutDialog({
           )}
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="checkout-dialog-footer">
           <Button
             type="button"
             variant="outline"

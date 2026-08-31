@@ -60,6 +60,19 @@ export function ReceiptTicketDialog({
 
   if (!ticket) return null;
 
+  const printTicketSequence = () => {
+    if (!issuedVoucher && selectedVoucherId) {
+      const nextVoucher = onIssueVoucher(ticket, selectedVoucherId);
+      if (!nextVoucher) return;
+      setIssuedVoucher(nextVoucher);
+      window.requestAnimationFrame(() =>
+        window.requestAnimationFrame(() => window.print()),
+      );
+      return;
+    }
+    window.print();
+  };
+
   const paymentLabel = (methodId: string) =>
     paymentMethods.find((method) => method.id === methodId)?.label ?? methodId;
   const taxSummary = getTicketTaxSummary(ticket);
@@ -83,10 +96,11 @@ export function ReceiptTicketDialog({
         </DialogHeader>
 
         <div className="customer-ticket-shell">
-          <article
-            className="customer-ticket"
-            aria-label={`Ticket ${ticket.id}`}
-          >
+          <div className="receipt-print-sequence">
+            <article
+              className="customer-ticket"
+              aria-label={`Ticket ${ticket.id}`}
+            >
             <header className="customer-ticket-header">
               {settings.logoUrl && (
                 <img
@@ -284,7 +298,17 @@ export function ReceiptTicketDialog({
               {settings.policies && <p>{settings.policies}</p>}
               <span>••• {settings.companyName} •••</span>
             </footer>
-          </article>
+            </article>
+            {issuedVoucher && (
+              <article className="customer-voucher-print">
+                <small>VOUCHER PROMOCIONAL</small>
+                <h3>{issuedVoucher.voucherName}</h3>
+                <p>{issuedVoucher.message}</p>
+                <strong>{issuedVoucher.folio}</strong>
+                <span>{issuedVoucher.clientName} · {issuedVoucher.branch}</span>
+              </article>
+            )}
+          </div>
         </div>
 
         {ticket.ticketType !== "LAYAWAY_PAYMENT" && voucherTemplates.length > 0 && (
@@ -316,13 +340,15 @@ export function ReceiptTicketDialog({
                 </Button>
               </div>
             ) : (
-              <article className="customer-voucher-print">
-                <small>VOUCHER PROMOCIONAL</small>
-                <h3>{issuedVoucher.voucherName}</h3>
-                <p>{issuedVoucher.message}</p>
-                <strong>{issuedVoucher.folio}</strong>
-                <span>{issuedVoucher.clientName} · {issuedVoucher.branch}</span>
-              </article>
+              <div className="receipt-voucher-issued-summary">
+                <PackageCheck size={17} />
+                <span>
+                  <strong>{issuedVoucher.folio}</strong>
+                  <small>
+                    Voucher listo: se imprimirá inmediatamente después del ticket.
+                  </small>
+                </span>
+              </div>
             )}
           </section>
         )}
@@ -336,8 +362,11 @@ export function ReceiptTicketDialog({
             <X size={16} /> Cerrar
           </Button>
           {allowPrint ? (
-            <Button type="button" onClick={() => window.print()}>
-              <Printer size={16} /> Imprimir ticket
+            <Button type="button" onClick={printTicketSequence}>
+              <Printer size={16} />
+              {issuedVoucher || selectedVoucherId
+                ? "Imprimir ticket y voucher"
+                : "Imprimir ticket"}
             </Button>
           ) : (
             <span className="receipt-print-restricted">

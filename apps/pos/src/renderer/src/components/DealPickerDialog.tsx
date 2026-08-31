@@ -93,7 +93,7 @@ export function DealPickerDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="deal-picker-dialog sm:max-w-[940px]">
         <DialogHeader>
-          <DialogTitle>Deals disponibles</DialogTitle>
+          <DialogTitle>Paquetes disponibles</DialogTitle>
           <DialogDescription>
             Selecciona un paquete autorizado. Sus artículos conservarán precio,
             costo y movimiento de inventario individuales.
@@ -102,8 +102,8 @@ export function DealPickerDialog({
         {availableDeals.length === 0 ? (
           <div className="deal-picker-empty">
             <PackagePlus size={34} />
-            <strong>No hay Deals publicados para {branch}</strong>
-            <span>Un usuario master puede configurarlos desde Inventory → Deal.</span>
+            <strong>No hay paquetes publicados para {branch}</strong>
+            <span>Un usuario master puede configurarlos desde Inventario → Paquetes y promociones.</span>
           </div>
         ) : (
           <div className="deal-picker-layout">
@@ -139,7 +139,7 @@ export function DealPickerDialog({
               <section className="deal-picker-detail">
                 <div className="deal-picker-detail-heading">
                   <div>
-                    <Badge><Sparkles size={12} /> DEAL AUTORIZADO</Badge>
+                    <Badge><Sparkles size={12} /> PAQUETE AUTORIZADO</Badge>
                     <h3>{selectedDeal.name}</h3>
                     <p>{selectedDeal.description}</p>
                   </div>
@@ -160,9 +160,9 @@ export function DealPickerDialog({
                 </div>
                 <div className="deal-picker-pricing">
                   <div><span>Precio de lista</span><strong>{formatCurrency(listTotal * quantity)}</strong></div>
-                  <div><span>Ahorro Deal</span><strong>-{formatCurrency(savings * quantity)}</strong></div>
+                  <div><span>Ahorro del paquete</span><strong>-{formatCurrency(savings * quantity)}</strong></div>
                   <div className="deal-picker-final"><span>Total</span><strong>{formatCurrency(selectedDeal.price * quantity)}</strong></div>
-                  {selectedDeal.price < minimumTotal && <small><ShieldCheck size={13} /> Precio debajo del mínimo conjunto autorizado exclusivamente para este Deal.</small>}
+                  {selectedDeal.price < minimumTotal && <small><ShieldCheck size={13} /> Precio debajo del mínimo conjunto autorizado exclusivamente para este paquete.</small>}
                 </div>
                 <div className="deal-picker-quantity">
                   <span>Cantidad de paquetes</span>
@@ -178,7 +178,7 @@ export function DealPickerDialog({
         )}
         <DialogFooter>
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
-          <Button type="button" onClick={addSelected} disabled={!selectedDeal}><PackagePlus size={16} /> Añadir Deal al ticket</Button>
+          <Button type="button" onClick={addSelected} disabled={!selectedDeal}><PackagePlus size={16} /> Añadir paquete al ticket</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

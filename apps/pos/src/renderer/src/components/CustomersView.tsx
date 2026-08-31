@@ -73,6 +73,7 @@ import type {
   Seller,
   Ticket,
   ReceiptSettings,
+  VoucherIssue,
 } from "../types";
 import { HistoryPagination, useHistoryPagination } from "./HistoryPagination";
 import { LayawayPaymentDialog } from "./LayawayPaymentDialog";
@@ -83,6 +84,7 @@ interface CustomersViewProps {
   clients: Client[];
   sellers: Seller[];
   tickets: Ticket[];
+  voucherIssues: VoucherIssue[];
   appointments: Appointment[];
   owedProducts: OwedProductRecord[];
   layaways: LayawayRecord[];
@@ -177,6 +179,7 @@ export function CustomersView({
   clients,
   sellers,
   tickets,
+  voucherIssues,
   appointments,
   owedProducts,
   layaways,
@@ -298,6 +301,17 @@ export function CustomersView({
         appointment.clientId === client.id ||
         normalizePhone(appointment.clientPhone) === normalizePhone(client.phone),
     );
+
+  const clientVouchers = (client: Client) => {
+    const phone = normalizePhone(client.phone);
+    const fullName = normalize(`${client.firstName} ${client.lastName}`);
+    return voucherIssues.filter(
+      (voucher) =>
+        voucher.clientId === client.id ||
+        (phone && normalizePhone(voucher.clientPhone) === phone) ||
+        normalize(voucher.clientName) === fullName,
+    );
+  };
 
   const clientOutstandingBalance = (client: Client) =>
     clientTickets(client).reduce(
@@ -429,6 +443,7 @@ export function CustomersView({
   const printClient = (client: Client) => {
     const purchases = clientTickets(client);
     const customerAppointments = clientAppointments(client);
+    const customerVouchers = clientVouchers(client);
     const popup = window.open("", "_blank", "width=720,height=860");
     if (!popup) {
       toast.error("El navegador bloqueó la ventana de impresión.");
@@ -437,9 +452,19 @@ export function CustomersView({
     const logo = receiptSettings.logoUrl
       ? `<img src="${escapeHtml(receiptSettings.logoUrl)}" alt="Logo" />`
       : "";
+    const voucherHistoryHtml = `<h2>VOUCHERS ENTREGADOS · ${customerVouchers.length}</h2>${
+      customerVouchers.length
+        ? customerVouchers
+            .map(
+              (voucher) =>
+                `<article><strong>${escapeHtml(voucher.folio)} · ${escapeHtml(voucher.voucherName)}</strong><small>${escapeHtml(new Date(voucher.issuedAtIso).toLocaleString("es-MX"))} · ${escapeHtml(voucher.branch)} · Ticket ${escapeHtml(voucher.ticketId)}</small><br>${escapeHtml(voucher.status)}</article>`,
+            )
+            .join("")
+        : "<p>Sin vouchers entregados.</p>"
+    }`;
     popup.document.write(`<!doctype html><html lang="es"><head><title>${escapeHtml(client.registrationFolio)}</title><style>
       body{font-family:Arial,sans-serif;color:#111;margin:32px}header{text-align:center;border-bottom:2px solid #111;padding-bottom:18px}header img{display:block;max-width:${receiptSettings.logoWidth}px;max-height:72px;object-fit:contain;margin:0 auto 10px}h1{font-size:20px;margin:5px 0}h2{font-size:14px;margin-top:24px}.meta{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:18px}.meta div,article{border:1px solid #bbb;padding:9px}small{color:#666}article{margin:7px 0}article strong{display:block}@media print{body{margin:8mm}}
-    </style></head><body><header>${logo}<h1>${escapeHtml(receiptSettings.companyName)}</h1><strong>EXPEDIENTE DE CLIENTE</strong></header><div class="meta"><div><small>FOLIO</small><br><strong>${escapeHtml(client.registrationFolio)}</strong></div><div><small>CLIENTE</small><br><strong>${escapeHtml(`${client.firstName} ${client.lastName}`)}</strong></div><div><small>TELÉFONO</small><br>${escapeHtml(client.phone || "Sin registro")}</div><div><small>VENDEDOR</small><br>${escapeHtml(getClientOwner(client) || "Empresa")}</div><div><small>CUMPLEAÑOS</small><br>${escapeHtml(client.birthday || "Sin registro")}</div><div><small>PROCEDENCIA</small><br>${escapeHtml(client.sourceLabel)}</div></div><h2>HISTORIAL DE COMPRA</h2>${purchases.length ? purchases.map((ticket) => `<article><strong>${escapeHtml(ticket.id)} · ${escapeHtml(formatCurrency(ticket.total))}</strong><small>${escapeHtml(ticket.createdAt)} · ${escapeHtml(ticket.branchName ?? "Polanco")}</small><br>${escapeHtml(ticket.products.map((product) => `${product.quantity} × ${product.name}`).join(" · "))}</article>`).join("") : "<p>Sin compras registradas.</p>"}<h2>CITAS Y CORTESÍAS</h2>${customerAppointments.length ? customerAppointments.map((appointment) => `<article><strong>${escapeHtml(appointment.service)}</strong><small>${escapeHtml(`${appointment.date} · ${appointment.time} · ${appointment.branch}`)}</small></article>`).join("") : "<p>Sin citas registradas.</p>"}<script>window.onload=()=>window.print();</script></body></html>`);
+    </style></head><body><header>${logo}<h1>${escapeHtml(receiptSettings.companyName)}</h1><strong>EXPEDIENTE DE CLIENTE</strong></header><div class="meta"><div><small>FOLIO</small><br><strong>${escapeHtml(client.registrationFolio)}</strong></div><div><small>CLIENTE</small><br><strong>${escapeHtml(`${client.firstName} ${client.lastName}`)}</strong></div><div><small>TELÉFONO</small><br>${escapeHtml(client.phone || "Sin registro")}</div><div><small>VENDEDOR</small><br>${escapeHtml(getClientOwner(client) || "Empresa")}</div><div><small>CUMPLEAÑOS</small><br>${escapeHtml(client.birthday || "Sin registro")}</div><div><small>PROCEDENCIA</small><br>${escapeHtml(client.sourceLabel)}</div></div><h2>HISTORIAL DE COMPRA</h2>${purchases.length ? purchases.map((ticket) => `<article><strong>${escapeHtml(ticket.id)} · ${escapeHtml(formatCurrency(ticket.total))}</strong><small>${escapeHtml(ticket.createdAt)} · ${escapeHtml(ticket.branchName ?? "Polanco")}</small><br>${escapeHtml(ticket.products.map((product) => `${product.quantity} × ${product.name}`).join(" · "))}</article>`).join("") : "<p>Sin compras registradas.</p>"}<h2>CITAS Y CORTESÍAS</h2>${customerAppointments.length ? customerAppointments.map((appointment) => `<article><strong>${escapeHtml(appointment.service)}</strong><small>${escapeHtml(`${appointment.date} · ${appointment.time} · ${appointment.branch}`)}</small></article>`).join("") : "<p>Sin citas registradas.</p>"}${voucherHistoryHtml}<script>window.onload=()=>window.print();</script></body></html>`);
     popup.document.close();
   };
 
@@ -1114,6 +1139,7 @@ export function CustomersView({
                   {customerPagination.paginatedItems.map((client) => {
                     const purchases = clientTickets(client);
                     const customerAppointments = clientAppointments(client);
+                    const customerVouchers = clientVouchers(client);
                     const customerProductDebts = owedProducts.filter(
                       (record) =>
                         record.clientId === client.id ||
@@ -1522,6 +1548,58 @@ export function CustomersView({
                                     {customerProductDebts.length === 0 && (
                                       <p className="empty-inline">
                                         Sin compromisos de producto.
+                                      </p>
+                                    )}
+                                  </section>
+                                  <section>
+                                    <h3>
+                                      <Gift size={16} /> Vouchers entregados
+                                      <Badge variant="outline">
+                                        {customerVouchers.length}
+                                      </Badge>
+                                    </h3>
+                                    {customerVouchers.map((voucher) => {
+                                      const promotionCount = customerVouchers.filter(
+                                        (issue) => issue.voucherId === voucher.voucherId,
+                                      ).length;
+                                      return (
+                                        <article
+                                          key={voucher.id}
+                                          className="customer-history-item"
+                                        >
+                                          <div>
+                                            <strong>{voucher.voucherName}</strong>
+                                            <Badge variant="outline">
+                                              {voucher.status === "ISSUED"
+                                                ? "ENTREGADO"
+                                                : voucher.status === "REDEEMED"
+                                                  ? "CANJEADO"
+                                                  : "CANCELADO"}
+                                            </Badge>
+                                          </div>
+                                          <p>
+                                            {voucher.folio} · Esta promoción se ha
+                                            entregado {promotionCount} {promotionCount === 1
+                                              ? "vez"
+                                              : "veces"} a la clienta.
+                                          </p>
+                                          <footer>
+                                            <span>
+                                              <Store size={13} /> {voucher.branch}
+                                            </span>
+                                            <span>
+                                              {new Date(
+                                                voucher.issuedAtIso,
+                                              ).toLocaleString("es-MX")}
+                                            </span>
+                                            <strong>{voucher.ticketId}</strong>
+                                          </footer>
+                                        </article>
+                                      );
+                                    })}
+                                    {customerVouchers.length === 0 && (
+                                      <p className="empty-inline">
+                                        Sin vouchers entregados.
                                       </p>
                                     )}
                                   </section>

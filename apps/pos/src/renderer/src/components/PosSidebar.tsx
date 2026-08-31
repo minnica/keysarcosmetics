@@ -44,7 +44,7 @@ const navigationIconStyle = (color: string) =>
 
 const navigationItems: NavigationItem[] = [
   { id: "dashboard", label: "Dashboard", icon: Gauge, color: "#9b6841" },
-  { id: "sale", label: "Sale", icon: ShoppingBag, color: "#20201f" },
+  { id: "sale", label: "Ventas", icon: ShoppingBag, color: "#20201f" },
   {
     id: "appointments",
     label: "Citas",
@@ -88,7 +88,7 @@ const utilityNavigationItems = navigationItems.filter((item) =>
 const saleNavigationItems: NavigationItem[] = [
   {
     id: "sale",
-    label: "Venta",
+    label: "Ventas",
     icon: ShoppingBag,
     color: "#20201f",
   },
@@ -127,13 +127,13 @@ const inventoryNavigationItems: NavigationItem[] = [
   },
   {
     id: "warehouse",
-    label: "Almacén matriz",
+    label: "Pedido sucursales",
     icon: Warehouse,
     color: "#9a6a45",
   },
   {
     id: "branch-inventory",
-    label: "Pedido sucursales",
+    label: "Almacén matriz",
     icon: Building2,
     color: "#8a785e",
   },
@@ -157,7 +157,7 @@ const inventoryNavigationItems: NavigationItem[] = [
   },
   {
     id: "deals",
-    label: "Deal",
+    label: "Paquetes y promociones",
     icon: PackagePlus,
     color: "#b07a47",
   },
@@ -325,7 +325,7 @@ export function PosSidebar({
                   )}
                 </button>
                 {!collapsed && saleMenuOpen && (
-                  <div className="sidebar-submenu" aria-label={language === "EN" ? "Sale views" : "Ventanas de Sale"}>
+                  <div className="sidebar-submenu" aria-label={language === "EN" ? "Sale views" : "Opciones de Ventas"}>
                     {saleNavigationItems.filter((child) => allowedScreens.includes(child.id)).map((child) => {
                       const ChildIcon = child.icon;
                       const childActive = child.id === activeScreen;

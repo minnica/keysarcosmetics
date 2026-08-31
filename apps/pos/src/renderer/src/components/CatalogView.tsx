@@ -1027,7 +1027,7 @@ export function CatalogView({
               {editingId ? "Editar producto" : "Alta de producto o servicio"}
             </DialogTitle>
             <DialogDescription>
-              Los cambios afectan inmediatamente Sale e Inventory, pero no los
+              Los cambios afectan inmediatamente Ventas e Inventario, pero no los
               tickets históricos.
             </DialogDescription>
           </DialogHeader>
@@ -1124,7 +1124,7 @@ export function CatalogView({
                   <small>
                     {draft.showInDigitalCatalog !== false
                       ? "El cliente podrá visualizarlo en el libro digital."
-                      : "Quedará oculto del libro sin afectar Sale, Inventory ni tickets anteriores."}
+                      : "Quedará oculto del libro sin afectar Ventas, Inventario ni tickets anteriores."}
                   </small>
                 </span>
                 <span
@@ -1476,7 +1476,7 @@ export function CatalogView({
 
           <div className="branch-selector">
             <span>
-              <Boxes size={15} /> Visible en Sale para estas sucursales
+              <Boxes size={15} /> Visible en Ventas para estas sucursales
             </span>
             <div>
               {branches.map((branch) => (

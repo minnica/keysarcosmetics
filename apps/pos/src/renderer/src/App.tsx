@@ -241,7 +241,7 @@ const screenMetadata: Record<ScreenId, { title: string; subtitle: string }> = {
     title: "Dashboard",
     subtitle: "Control ejecutivo de la jornada e inventario",
   },
-  sale: { title: "Sale", subtitle: "Venta retail" },
+  sale: { title: "Ventas", subtitle: "Captura y cobro de ventas" },
   "seller-sales": {
     title: "Mis ventas",
     subtitle: "Consulta personal de ventas, clientes y pagos",
@@ -263,11 +263,11 @@ const screenMetadata: Record<ScreenId, { title: string; subtitle: string }> = {
     subtitle: "Productos, existencias, pedidos y sucursales",
   },
   warehouse: {
-    title: "Almacén matriz",
+    title: "Pedido sucursales",
     subtitle: "Existencias, compras, solicitudes recibidas y distribución",
   },
   "branch-inventory": {
-    title: "Pedido sucursales",
+    title: "Almacén matriz",
     subtitle: "Solicitudes de productos, testers e insumos a bodega matriz",
   },
   suppliers: {
@@ -279,7 +279,7 @@ const screenMetadata: Record<ScreenId, { title: string; subtitle: string }> = {
     subtitle: "Entradas, bajas y ajustes de existencias",
   },
   deals: {
-    title: "Deal",
+    title: "Paquetes y promociones",
     subtitle: "Paquetes, autorización y rentabilidad",
   },
   catalog: {
@@ -358,6 +358,7 @@ const screenMetadataEnglish: Record<ScreenId, { title: string; subtitle: string 
 const automaticDataUpdateIntervalMs = 60_000;
 const terminalLocationStorageKey = "keysar-pos-terminal-location";
 const offlineTicketQueueStorageKey = "keysar-pos-offline-ticket-queue";
+const voucherIssuesStorageKey = "keysar-pos-voucher-issues";
 
 type ConnectivityNoticeKind = "ONLINE" | "OFFLINE" | "SYNCED";
 
@@ -376,6 +377,17 @@ const loadOfflineTicketQueue = (): Ticket[] => {
     if (!storedQueue) return [];
     const parsedQueue: unknown = JSON.parse(storedQueue);
     return Array.isArray(parsedQueue) ? (parsedQueue as Ticket[]) : [];
+  } catch {
+    return [];
+  }
+};
+
+const loadVoucherIssues = (): VoucherIssue[] => {
+  try {
+    const storedIssues = window.localStorage.getItem(voucherIssuesStorageKey);
+    if (!storedIssues) return [];
+    const parsedIssues: unknown = JSON.parse(storedIssues);
+    return Array.isArray(parsedIssues) ? (parsedIssues as VoucherIssue[]) : [];
   } catch {
     return [];
   }
@@ -434,7 +446,7 @@ const createInitialOperationalNotifications = (): OperationalNotification[] => {
       type: "SALE_COMPLETED",
       title: `Venta finalizada · ${ticket.id}`,
       detail: `${ticket.clientName} · ${formatCurrency(ticket.total)} · ${ticket.sellerSummary}`,
-      moduleLabel: "Sale",
+      moduleLabel: "Ventas",
       branch: ticket.branchName ?? "Polanco",
       actorId: ticket.sellerSales[0]?.sellerId ?? masterUser.id,
       actorName: ticket.sellerSummary,
@@ -946,7 +958,8 @@ function App() {
       visibleToSellers: false,
     },
   ]);
-  const [voucherIssues, setVoucherIssues] = useState<VoucherIssue[]>([]);
+  const [voucherIssues, setVoucherIssues] =
+    useState<VoucherIssue[]>(loadVoucherIssues);
   const [clientSources, setClientSources] = useState<ClientSourceOption[]>(
     initialClientSources,
   );
@@ -962,6 +975,13 @@ function App() {
     updating: false,
     revision: 0,
   }));
+
+  useEffect(() => {
+    window.localStorage.setItem(
+      voucherIssuesStorageKey,
+      JSON.stringify(voucherIssues),
+    );
+  }, [voucherIssues]);
   const operationalBranches = useMemo(() => {
     const branches = Object.keys(branchInventory);
     return [
@@ -2584,7 +2604,7 @@ function App() {
         deal.id === dealId ? { ...deal, status: "INACTIVE" } : deal,
       ),
     );
-    toast.info("Deal inactivado. Los tickets históricos conservaron su registro.");
+    toast.info("Paquete inactivado. Los tickets históricos conservaron su registro.");
   };
 
   const authorizeCompetitionSettings = (code: string) => {
@@ -3128,7 +3148,7 @@ function App() {
       return product ? [{ line, product }] : [];
     });
     if (dealProducts.length !== deal.lines.length || dealProducts.length < 2) {
-      toast.error("Uno de los artículos del Deal ya no está disponible.");
+      toast.error("Uno de los artículos del paquete ya no está disponible.");
       return;
     }
     const instanceId = `deal-instance-${crypto.randomUUID()}`;
@@ -3152,7 +3172,7 @@ function App() {
         product,
         quantity: line.quantity * dealQuantity,
         unitPrice: lineAllocation / line.quantity,
-        comment: `Deal ${deal.name}`,
+        comment: `Paquete ${deal.name}`,
         adminAuthorized: true,
         dealId: deal.id,
         dealName: deal.name,
@@ -3296,6 +3316,7 @@ function App() {
       id: ticketId,
       createdAt: createdAtLabel,
       createdAtIso: createdAt.toISOString(),
+      clientId: result.client.id,
       clientName: `${result.client.firstName} ${result.client.lastName}`,
       clientPhone: result.client.phone,
       branchName: ticketBranch,
@@ -3325,7 +3346,7 @@ function App() {
           ...(item.dealId
             ? {
                 dealId: item.dealId,
-                dealName: item.dealName ?? "Deal",
+                dealName: item.dealName ?? "Paquete",
                 dealInstanceId: item.dealInstanceId ?? item.dealId,
               }
             : {}),
@@ -3404,8 +3425,8 @@ function App() {
           destinationNewStock: null,
           comment:
             shortage > 0
-              ? `Venta a ${clientName}${item.dealName ? ` · Deal ${item.dealName}` : ""} · ${delivered} entregado(s), ${shortage} pendiente(s)`
-              : `Salida por venta a ${clientName}${item.dealName ? ` · Deal ${item.dealName}` : ""}`,
+              ? `Venta a ${clientName}${item.dealName ? ` · Paquete ${item.dealName}` : ""} · ${delivered} entregado(s), ${shortage} pendiente(s)`
+              : `Salida por venta a ${clientName}${item.dealName ? ` · Paquete ${item.dealName}` : ""}`,
           category: "SALE",
           unitCostUsd: item.product.costUsd,
           unitCostMxn: item.product.costMxn,
@@ -3456,7 +3477,7 @@ function App() {
       type: "SALE_COMPLETED",
       title: `Venta finalizada · ${ticket.id}`,
       detail: `${ticket.clientName} · ${formatCurrency(ticket.total)} · ${ticket.sellerSummary}`,
-      moduleLabel: "Sale",
+      moduleLabel: "Ventas",
       branch: ticketBranch,
       actorId: result.sellerSales[0]?.sellerId ?? masterUser.id,
       actorName: ticket.sellerSummary,
@@ -5406,6 +5427,25 @@ function App() {
     const sequence =
       voucherIssues.filter((issue) => issue.branch === branch).length + 1;
     const issuedAtIso = new Date().toISOString();
+    const normalizedTicketPhone = ticket.clientPhone.replace(/\D/g, "");
+    const normalizedTicketName = ticket.clientName
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLocaleLowerCase("es-MX")
+      .trim();
+    const voucherClient = clients.find((client) => {
+      if (ticket.clientId) return client.id === ticket.clientId;
+      const clientPhone = client.phone.replace(/\D/g, "");
+      const clientName = `${client.firstName} ${client.lastName}`
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLocaleLowerCase("es-MX")
+        .trim();
+      return (
+        (normalizedTicketPhone && clientPhone === normalizedTicketPhone) ||
+        clientName === normalizedTicketName
+      );
+    });
     const issue: VoucherIssue = {
       id: crypto.randomUUID(),
       folio: `VCH-${branchCode}-${String(sequence).padStart(6, "0")}`,
@@ -5415,6 +5455,7 @@ function App() {
       value: template.value,
       message: template.message,
       ticketId: ticket.id,
+      clientId: ticket.clientId ?? voucherClient?.id ?? null,
       clientName: ticket.clientName,
       clientPhone: ticket.clientPhone,
       branch,
@@ -5466,7 +5507,7 @@ function App() {
               ...(historicalLine?.productId === line.productId && historicalLine.dealId
                 ? {
                     dealId: historicalLine.dealId,
-                    dealName: historicalLine.dealName ?? "Deal",
+                    dealName: historicalLine.dealName ?? "Paquete",
                     dealInstanceId:
                       historicalLine.dealInstanceId ?? historicalLine.dealId,
                   }
@@ -6479,7 +6520,7 @@ function App() {
           >
             <Menu size={15} /> Menú general
           </button>
-          <span>CATÁLOGO DE VENTA</span>
+          <span>CATÁLOGO DE VENTAS</span>
           <h2>Explorar productos</h2>
           <p>Elige una familia, categoría o marca para mostrar su colección.</p>
         </header>
@@ -6718,18 +6759,17 @@ function App() {
                         <strong>{item.dealName}</strong>
                         <em>{item.dealQuantity ?? 1} paquete{(item.dealQuantity ?? 1) === 1 ? "" : "s"}</em>
                       </div>
-                      <button type="button" onClick={() => removeDealFromCart(item.dealInstanceId ?? "")} aria-label={`Quitar Deal ${item.dealName}`}><Trash2 size={14} /></button>
+                      <button type="button" onClick={() => removeDealFromCart(item.dealInstanceId ?? "")} aria-label={`Quitar paquete ${item.dealName}`}><Trash2 size={14} /></button>
                     </div>
                     <div className="cart-deal-products">
                       {dealItems.map((dealItem) => (
                         <div key={dealItem.id}>
-                          <img src={dealItem.product.image} alt="" />
                           <span>{dealItem.quantity} × {dealItem.product.name}</span>
                         </div>
                       ))}
                     </div>
                     <div className="cart-deal-total">
-                      <span>Precio autorizado del Deal</span>
+                      <span>Precio autorizado del paquete</span>
                       <strong>{formatCurrency(dealTotal)}</strong>
                     </div>
                   </article>
@@ -6737,14 +6777,6 @@ function App() {
               }
               return (
                 <article key={item.id} className="cart-item">
-                  <button
-                    type="button"
-                    className="cart-item-image-button"
-                    onClick={() => openCartItem(item)}
-                    aria-label={`Editar ${item.product.name}`}
-                  >
-                    <img src={item.product.image} alt={item.product.name} />
-                  </button>
                   <div className="cart-item-main">
                     <div className="cart-item-title-row">
                       <button
@@ -6819,10 +6851,10 @@ function App() {
                   setDiscountOpen(false);
                   setDealPickerOpen(true);
                 }}
-                aria-label="Abrir Deals disponibles"
+                aria-label="Abrir paquetes disponibles"
               >
                 <PackagePlus size={16} />
-                <span>Deal</span>
+                <span>Paquetes</span>
               </button>
             </div>
             {discountOpen && (
@@ -7924,7 +7956,7 @@ function App() {
                 ["showClientPhone", "Mostrar teléfono del cliente"],
                 ["showSellerName", "Mostrar nombre del vendedor"],
                 ["showVatBreakdown", "Mostrar desglose de IVA"],
-                ["showSpareCoverageMessage", "Mostrar mensaje de SPARE en Sale"],
+                ["showSpareCoverageMessage", "Mostrar mensaje de SPARE en Ventas"],
               ] as const
             ).map(([field, label]) => (
               <button
@@ -9431,6 +9463,7 @@ function App() {
             clients={clients}
             sellers={sellers}
             tickets={activeTickets}
+            voucherIssues={voucherIssues}
             appointments={appointments}
             owedProducts={owedProducts}
             layaways={layaways}

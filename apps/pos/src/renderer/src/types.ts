@@ -325,6 +325,7 @@ export interface Ticket {
   id: string;
   createdAt: string;
   createdAtIso: string;
+  clientId?: string;
   clientName: string;
   clientPhone: string;
   branchName?: string;
@@ -419,6 +420,7 @@ export interface VoucherIssue {
   value: number;
   message: string;
   ticketId: string;
+  clientId: string | null;
   clientName: string;
   clientPhone: string;
   branch: string;

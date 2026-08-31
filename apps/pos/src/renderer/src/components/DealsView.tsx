@@ -262,7 +262,7 @@ export function DealsView({
       return;
     }
     setAccessCode("");
-    toast.success("Módulo Deal desbloqueado.");
+    toast.success("Módulo Paquetes y promociones desbloqueado.");
   };
 
   const openNewDeal = () => {
@@ -290,7 +290,7 @@ export function DealsView({
     const range = currentMonthRange();
     setForm({
       ...emptyForm(branches),
-      name: `Deal ${recommendation.productNames.join(" + ")}`,
+      name: `Paquete ${recommendation.productNames.join(" + ")}`,
       description: "Sugerencia generada desde las combinaciones vendidas este mes.",
       price: recommendation.suggestedPrice.toString(),
       startDate: range.start,
@@ -316,11 +316,11 @@ export function DealsView({
       return;
     }
     if (form.lines.length < 2) {
-      toast.error("Un Deal debe contener al menos dos productos o servicios.");
+      toast.error("Un paquete debe contener al menos dos productos o servicios.");
       return;
     }
     if (!Number.isFinite(price) || price <= 0) {
-      toast.error("Captura un precio válido para el Deal.");
+      toast.error("Captura un precio válido para el paquete.");
       return;
     }
     if (!form.startDate || !form.endDate || form.startDate > form.endDate) {
@@ -349,8 +349,8 @@ export function DealsView({
     setEditorOpen(false);
     toast.success(
       form.id
-        ? "Cambios guardados. El Deal volvió a borrador y requiere nueva publicación."
-        : "Deal guardado como borrador. Autoriza su publicación para mostrarlo en Sale.",
+        ? "Cambios guardados. El paquete volvió a borrador y requiere nueva publicación."
+        : "Paquete guardado como borrador. Autoriza su publicación para mostrarlo en Ventas.",
     );
   };
 
@@ -360,7 +360,7 @@ export function DealsView({
       toast.error("No fue posible publicar. Revisa el código y que el precio cubra el costo.");
       return;
     }
-    toast.success(`${publishDeal.name} quedó publicado en Sale.`);
+    toast.success(`${publishDeal.name} quedó publicado en Ventas.`);
     setPublishDeal(null);
     setPublishCode("");
   };
@@ -370,7 +370,7 @@ export function DealsView({
       <Card className="deal-access-card">
         <CardContent>
           <div className="deal-access-icon"><PackagePlus size={31} /></div>
-          <span className="section-kicker">DEAL · ACCESO MASTER</span>
+          <span className="section-kicker">PAQUETES Y PROMOCIONES · ACCESO MASTER</span>
           <h2>Configura paquetes sin modificar el catálogo</h2>
           <p>
             Los precios especiales pertenecen al paquete. Productos, servicios,
@@ -388,7 +388,7 @@ export function DealsView({
                 if (event.key === "Enter") authorizeModule();
               }}
               placeholder="Código master"
-              aria-label="Código master para Deal"
+              aria-label="Código master para Paquetes y promociones"
             />
             <Button type="button" onClick={authorizeModule} disabled={accessCode.length !== 4}>
               <LockKeyhole size={15} /> Desbloquear
@@ -416,7 +416,7 @@ export function DealsView({
         <CardContent>
           <div>
             <span className="section-kicker">PAQUETES COMERCIALES</span>
-            <h2>Deals con precio propio</h2>
+            <h2>Paquetes con precio propio</h2>
             <p>
               Combina productos y servicios. El paquete puede quedar debajo del
               mínimo conjunto, pero su publicación se bloquea si no cubre el costo.
@@ -427,16 +427,16 @@ export function DealsView({
               <LockKeyhole size={15} /> Bloquear
             </Button>
             <Button type="button" onClick={openNewDeal}>
-              <Plus size={16} /> Nuevo Deal
+              <Plus size={16} /> Nuevo paquete
             </Button>
           </div>
         </CardContent>
       </Card>
 
       <div className="deals-metrics">
-        <Card><CardContent><PackageCheck size={19} /><span>Deals publicados</span><strong>{deals.filter((deal) => deal.status === "PUBLISHED").length}</strong></CardContent></Card>
+        <Card><CardContent><PackageCheck size={19} /><span>Paquetes publicados</span><strong>{deals.filter((deal) => deal.status === "PUBLISHED").length}</strong></CardContent></Card>
         <Card><CardContent><BarChart3 size={19} /><span>Paquetes vendidos · mes</span><strong>{monthlyDealCount}</strong></CardContent></Card>
-        <Card><CardContent><TrendingUp size={19} /><span>Ingreso por Deals · mes</span><strong>{formatCurrency(monthlyDealRevenue)}</strong></CardContent></Card>
+        <Card><CardContent><TrendingUp size={19} /><span>Ingreso por paquetes · mes</span><strong>{formatCurrency(monthlyDealRevenue)}</strong></CardContent></Card>
         <Card><CardContent><Lightbulb size={19} /><span>Recomendaciones</span><strong>{recommendations.length}</strong></CardContent></Card>
       </div>
 
@@ -479,11 +479,11 @@ export function DealsView({
         <CardContent>
           <div className="deals-section-heading">
             <div>
-              <span className="section-kicker">CATÁLOGO DE DEALS</span>
+              <span className="section-kicker">CATÁLOGO DE PAQUETES</span>
               <h2>Paquetes configurados</h2>
             </div>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger aria-label="Filtrar Deals por estado"><SelectValue /></SelectTrigger>
+              <SelectTrigger aria-label="Filtrar paquetes por estado"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="ALL">Todos los estados</SelectItem>
                 <SelectItem value="PUBLISHED">Publicados</SelectItem>
@@ -523,7 +523,7 @@ export function DealsView({
                     })}
                   </div>
                   <div className="deal-record-numbers">
-                    <span><small>PRECIO DEAL</small><strong>{formatCurrency(deal.price)}</strong></span>
+                    <span><small>PRECIO DEL PAQUETE</small><strong>{formatCurrency(deal.price)}</strong></span>
                     <span><small>MÍNIMO CONJUNTO</small><strong>{formatCurrency(totals.minimum)}</strong></span>
                     {canViewCosts && <span><small>COSTO MXN</small><strong>{formatCurrency(totals.costMxn)}</strong></span>}
                     <span><small>VENDIDOS</small><strong>{salesCount}</strong></span>
@@ -544,7 +544,7 @@ export function DealsView({
                             <AlertDialogHeader>
                               <AlertDialogTitle>¿Inactivar {deal.name}?</AlertDialogTitle>
                               <AlertDialogDescription>
-                                Dejará de aparecer en Sale. Los tickets, conteos, costos y movimientos históricos conservarán el Deal.
+                                Dejará de aparecer en Ventas. Los tickets, conteos, costos y movimientos históricos conservarán el paquete.
                               </AlertDialogDescription>
                             </AlertDialogHeader>
                             <AlertDialogFooter>
@@ -566,14 +566,14 @@ export function DealsView({
       <Dialog open={editorOpen} onOpenChange={setEditorOpen}>
         <DialogContent className="deal-editor-dialog sm:max-w-[920px]">
           <DialogHeader>
-            <DialogTitle>{form.id ? "Editar Deal" : "Nuevo Deal"}</DialogTitle>
+            <DialogTitle>{form.id ? "Editar paquete" : "Nuevo paquete"}</DialogTitle>
             <DialogDescription>Guardar cambios crea un borrador; la publicación requiere una autorización master independiente.</DialogDescription>
           </DialogHeader>
           <div className="deal-editor-grid">
             <section>
               <div className="deal-editor-fields">
                 <div className="field-stack"><Label>Nombre</Label><Input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} placeholder="Ej. Ritual de hidratación" /></div>
-                <div className="field-stack"><Label>SKU del Deal</Label><Input value={form.sku} onChange={(event) => setForm((current) => ({ ...current, sku: event.target.value }))} /></div>
+                <div className="field-stack"><Label>SKU del paquete</Label><Input value={form.sku} onChange={(event) => setForm((current) => ({ ...current, sku: event.target.value }))} /></div>
                 <div className="field-stack is-wide"><Label>Descripción</Label><Input value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} placeholder="Beneficio o mensaje comercial" /></div>
                 <div className="field-stack"><Label>Precio del paquete</Label><Input type="number" min="0" value={form.price} onChange={(event) => setForm((current) => ({ ...current, price: event.target.value }))} /></div>
                 <div className="field-stack"><Label>Agregar producto o servicio</Label><Select value="" onValueChange={addProductLine}><SelectTrigger><SelectValue placeholder="Seleccionar" /></SelectTrigger><SelectContent>{activeProducts.filter((product) => !form.lines.some((line) => line.productId === product.id)).map((product) => <SelectItem key={product.id} value={product.id}>{product.name} · {product.sku}</SelectItem>)}</SelectContent></Select></div>
@@ -602,7 +602,7 @@ export function DealsView({
               {canViewCosts && <div><span>Costo USD</span><strong>US${formTotals.costUsd.toFixed(2)}</strong></div>}
               {canViewCosts && <div className={formProfit >= 0 ? "is-profit" : "is-loss"}><span>Utilidad estimada</span><strong>{formatCurrency(formProfit)}</strong></div>}
               <p>{canViewCosts ? (formProfit >= 0 ? "El precio cubre el costo registrado. Puede enviarse a autorización." : "Este precio representa pérdida y no podrá publicarse.") : "Los costos y la utilidad están protegidos por rol."}</p>
-              {Number(form.price || 0) < formTotals.minimum && <Badge variant="outline">Debajo del mínimo conjunto · permitido sólo como Deal</Badge>}
+              {Number(form.price || 0) < formTotals.minimum && <Badge variant="outline">Debajo del mínimo conjunto · permitido sólo como paquete</Badge>}
             </aside>
           </div>
           <DialogFooter><Button type="button" variant="outline" onClick={() => setEditorOpen(false)}>Cancelar</Button><Button type="button" onClick={saveDeal}><PackagePlus size={15} /> Guardar borrador</Button></DialogFooter>
@@ -611,9 +611,9 @@ export function DealsView({
 
       <Dialog open={Boolean(publishDeal)} onOpenChange={(open) => { if (!open) { setPublishDeal(null); setPublishCode(""); } }}>
         <DialogContent className="sm:max-w-[520px]">
-          <DialogHeader><DialogTitle>Autorizar publicación</DialogTitle><DialogDescription>El Deal aparecerá en Sale únicamente después de validar rentabilidad y código master.</DialogDescription></DialogHeader>
-          {publishDeal && (() => { const totals = getDealTotals(publishDeal, products); return <div className="deal-publish-confirm"><div><PackageCheck size={21} /><span><strong>{publishDeal.name}</strong><small>{publishDeal.sku}</small></span></div><div><span>Precio Deal</span><strong>{formatCurrency(publishDeal.price)}</strong></div>{canViewCosts && <div><span>Costo registrado</span><strong>{formatCurrency(totals.costMxn)}</strong></div>}{canViewCosts && <div><span>Utilidad estimada</span><strong className={publishDeal.price >= totals.costMxn ? "is-positive" : "is-negative"}>{formatCurrency(publishDeal.price - totals.costMxn)}</strong></div>}<div className="deal-publish-code"><KeyRound size={16} /><Input type="password" inputMode="numeric" maxLength={4} value={publishCode} onChange={(event) => setPublishCode(event.target.value)} placeholder="Código master" aria-label="Código para publicar Deal" /></div></div>; })()}
-          <DialogFooter><Button type="button" variant="outline" onClick={() => setPublishDeal(null)}>Cancelar</Button><Button type="button" onClick={confirmPublish} disabled={publishCode.length !== 4}><ShieldCheck size={15} /> Publicar en Sale</Button></DialogFooter>
+          <DialogHeader><DialogTitle>Autorizar publicación</DialogTitle><DialogDescription>El paquete aparecerá en Ventas únicamente después de validar rentabilidad y código master.</DialogDescription></DialogHeader>
+          {publishDeal && (() => { const totals = getDealTotals(publishDeal, products); return <div className="deal-publish-confirm"><div><PackageCheck size={21} /><span><strong>{publishDeal.name}</strong><small>{publishDeal.sku}</small></span></div><div><span>Precio del paquete</span><strong>{formatCurrency(publishDeal.price)}</strong></div>{canViewCosts && <div><span>Costo registrado</span><strong>{formatCurrency(totals.costMxn)}</strong></div>}{canViewCosts && <div><span>Utilidad estimada</span><strong className={publishDeal.price >= totals.costMxn ? "is-positive" : "is-negative"}>{formatCurrency(publishDeal.price - totals.costMxn)}</strong></div>}<div className="deal-publish-code"><KeyRound size={16} /><Input type="password" inputMode="numeric" maxLength={4} value={publishCode} onChange={(event) => setPublishCode(event.target.value)} placeholder="Código master" aria-label="Código para publicar paquete" /></div></div>; })()}
+          <DialogFooter><Button type="button" variant="outline" onClick={() => setPublishDeal(null)}>Cancelar</Button><Button type="button" onClick={confirmPublish} disabled={publishCode.length !== 4}><ShieldCheck size={15} /> Publicar en Ventas</Button></DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
