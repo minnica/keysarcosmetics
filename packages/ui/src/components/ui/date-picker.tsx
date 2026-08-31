@@ -36,13 +36,12 @@ export function DatePicker({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
-          aria-hidden="true"
           id={id}
           type="button"
           variant="outline"
           disabled={disabled}
           className={cn(
-            'hidden h-9 w-full justify-start text-left font-normal',
+            'h-9 w-full justify-start text-left font-normal',
             !value && 'text-muted-foreground',
             className,
           )}
