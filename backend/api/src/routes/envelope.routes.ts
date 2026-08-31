@@ -347,6 +347,15 @@ async function canViewKeysarHomeData(
   );
 }
 
+/**
+ * Excluye a Keysar Home sin depender de cómo se capturó el nombre histórico.
+ * El frontend ya normaliza mayúsculas y espacios; los reportes deben aplicar
+ * exactamente el mismo criterio para que el permiso sea efectivo en API.
+ */
+function excludeKeysarHomeEmployee(): Prisma.Sql {
+  return Prisma.sql`UPPER(BTRIM(e."nombreCompleto")) <> ${"KEYSAR HOME"}`;
+}
+
 async function selfDataEmployeeId(
   req: Parameters<typeof resolveAccessForRequest>[0],
 ): Promise<string | null> {
@@ -2685,7 +2694,7 @@ router.get(
       ${dateRangeSql(fechaInicio, fechaFin, [
         ...(includeKeysarHome
           ? []
-          : [Prisma.sql`e."nombreCompleto" <> ${"KEYSAR HOME"}`]),
+          : [excludeKeysarHomeEmployee()]),
         selfDataCondition(ownEmployeeId),
       ])}
       GROUP BY v."vendedorId", e."nombreCompleto", v."sucursalId", s."nombre", e."metaIndividual"
@@ -2732,7 +2741,7 @@ router.get(
       if (vendedorId)
         conditions.push(Prisma.sql`v."vendedorId" = ${vendedorId}`);
       if (!includeKeysarHome)
-        conditions.push(Prisma.sql`e."nombreCompleto" <> ${"KEYSAR HOME"}`);
+        conditions.push(excludeKeysarHomeEmployee());
       if (ownEmployeeId) conditions.push(selfDataCondition(ownEmployeeId));
       const where =
         conditions.length > 0
@@ -2795,7 +2804,7 @@ router.get(
       const ownEmployeeId = await selfDataEmployeeId(req);
       const keysarHomeCondition = includeKeysarHome
         ? Prisma.sql`TRUE`
-        : Prisma.sql`e."nombreCompleto" <> ${"KEYSAR HOME"}`;
+        : excludeKeysarHomeEmployee();
       const data = await prisma.$queryRaw<
         Array<{
           id: string;
