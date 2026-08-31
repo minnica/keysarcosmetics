@@ -1,5 +1,6 @@
 import type { Server } from "node:http";
 import bcrypt from "bcryptjs";
+import { ProtectedEmployeeKey } from "@prisma/client";
 import { z } from "zod";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { app } from "./app";
@@ -78,6 +79,9 @@ integrationDescribe("API integration with PostgreSQL", () => {
         where: { ventaId: keysarHomeFixture.saleId },
       });
       await prisma.venta.deleteMany({ where: { id: keysarHomeFixture.saleId } });
+      await prisma.protectedEmployeeIdentity.deleteMany({
+        where: { employeeId: keysarHomeFixture.employeeId },
+      });
       await prisma.empleado.deleteMany({
         where: {
           id: {
@@ -152,7 +156,19 @@ integrationDescribe("API integration with PostgreSQL", () => {
     expect(body).toMatchObject({ message: "Credenciales incorrectas" });
   });
 
-  it("excludes Keysar Home from seller-day reports until its explicit permission is enabled", async () => {
+  it("excludes Keysar Home from every sales report until its explicit permission is enabled", async () => {
+    const reportDate = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/Mexico_City",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date());
+    const [year = "2026", month = "08"] = reportDate.split("-");
+    const monthStart = `${year}-${month}-01`;
+    const monthEnd = new Date(
+      Date.UTC(Number(year), Number(month), 0),
+    ).getUTCDate();
+    const monthEndDate = `${year}-${month}-${String(monthEnd).padStart(2, "0")}`;
     const branch = await prisma.sucursal.create({
       data: { nombre: `Integration Keysar Home ${process.pid}` },
     });
@@ -160,10 +176,21 @@ integrationDescribe("API integration with PostgreSQL", () => {
       data: {
         nombre: `Integration Gerente ${process.pid}`,
         screenPermissions: {
-          create: {
-            screenKey: "reportes/ventas-por-vendedor-dia",
-            allowed: true,
-          },
+          create: [
+            { screenKey: "dashboard", allowed: true },
+            { screenKey: "ventas", allowed: true },
+            { screenKey: "reportes/detalle-metodo-pago", allowed: true },
+            { screenKey: "reportes/metodo-pago-por-dia", allowed: true },
+            { screenKey: "reportes/ventas-por-vendedor", allowed: true },
+            {
+              screenKey: "reportes/ventas-por-vendedor-dia",
+              allowed: true,
+            },
+            { screenKey: "reportes/ranking-vendedores", allowed: true },
+            { screenKey: "reportes/ranking-sucursales", allowed: true },
+            { screenKey: "reportes/total-general", allowed: true },
+            { screenKey: "reportes/metas-sucursal", allowed: true },
+          ],
         },
       },
     });
@@ -185,20 +212,55 @@ integrationDescribe("API integration with PostgreSQL", () => {
         nombres: "Keysar",
         apellidoPaterno: "Home",
         apellidoMaterno: "Test",
-        // Cubre las variantes históricas que antes omitía la comparación SQL exacta.
-        nombreCompleto: "  Keysar Home  ",
+        // Replica el nombre histórico real que incluye espacios y un guion final.
+        nombreCompleto: "  Keysar Home -  ",
         banco: "TEST",
         numeroCuenta: `keysar-home-${process.pid}`,
         puesto: "VENDEDOR",
         metaIndividual: 0,
       },
     });
+    await prisma.protectedEmployeeIdentity.create({
+      data: {
+        key: ProtectedEmployeeKey.KEYSAR_HOME,
+        employeeId: keysarHomeEmployee.id,
+      },
+    });
+
+    const adminLogin = await jsonRequest("/api/auth/login", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: testEmail, password: testPassword }),
+    });
+    const adminLoginBody = loginResponseSchema.parse(adminLogin.body);
+    const protectedDelete = await jsonRequest(
+      `/api/envelope/empleados/${keysarHomeEmployee.id}`,
+      {
+        method: "DELETE",
+        headers: {
+          authorization: `Bearer ${adminLoginBody.data.token}`,
+        },
+      },
+    );
+    expect(protectedDelete.response.status).toBe(409);
+    expect(protectedDelete.body).toMatchObject({
+      success: false,
+      message: "No se puede eliminar un empleado protegido del sistema",
+    });
+    await expect(
+      prisma.empleado.delete({ where: { id: keysarHomeEmployee.id } }),
+    ).rejects.toMatchObject({ code: "P2003" });
+
+    await prisma.empleado.update({
+      where: { id: keysarHomeEmployee.id },
+      data: { nombreCompleto: "Cuenta Comercial Renombrada" },
+    });
     const paymentMethod = await prisma.metodoPago.create({
       data: { nombre: `Integration Keysar Home ${process.pid}`, tipo: "EFECTIVO" },
     });
     const sale = await prisma.venta.create({
       data: {
-        fecha: new Date("2026-08-12T12:00:00.000Z"),
+        fecha: new Date(`${reportDate}T12:00:00.000Z`),
         sucursalId: branch.id,
         vendedorId: keysarHomeEmployee.id,
         detalles: { create: { cantidad: 1250, metodoPagoId: paymentMethod.id } },
@@ -229,14 +291,82 @@ integrationDescribe("API integration with PostgreSQL", () => {
     });
     const loginBody = loginResponseSchema.parse(login.body);
     const headers = { authorization: `Bearer ${loginBody.data.token}` };
-
-    const hidden = await jsonRequest(
-      "/api/envelope/reportes/ventas-por-vendedor-dia?fechaInicio=2026-08-01&fechaFin=2026-08-31",
+    const savedSales = await jsonRequest(
+      `/api/envelope/ventas?fechaInicio=${monthStart}&fechaFin=${monthEndDate}`,
       { headers },
     );
-    expect(hidden.response.status).toBe(200);
-    expect(hidden.body).toMatchObject({ success: true });
-    expect(JSON.stringify(hidden.body)).not.toContain(keysarHomeEmployee.id);
+    expect(savedSales.response.status).toBe(200);
+    expect(JSON.stringify(savedSales.body)).not.toContain(keysarHomeEmployee.id);
+
+    const forbiddenEnvelopeSales = await jsonRequest(
+      `/api/envelope/ventas?fechaInicio=${monthStart}&fechaFin=${monthEndDate}&includeProtectedForEnvelope=true`,
+      { headers },
+    );
+    expect(forbiddenEnvelopeSales.response.status).toBe(403);
+
+    await prisma.positionScreenPermission.create({
+      data: {
+        positionId: position.id,
+        screenKey: "ventas/generar-sobre",
+        allowed: true,
+      },
+    });
+    const envelopeSales = await jsonRequest(
+      `/api/envelope/ventas?fechaInicio=${monthStart}&fechaFin=${monthEndDate}&includeProtectedForEnvelope=true`,
+      { headers },
+    );
+    expect(envelopeSales.response.status).toBe(200);
+    expect(JSON.stringify(envelopeSales.body)).toContain(
+      `"protectedIdentity":{"key":"KEYSAR_HOME"}`,
+    );
+    const reportCases = [
+      {
+        path: `/api/envelope/reportes/detalle-metodo-pago?fechaInicio=${monthStart}&fechaFin=${monthEndDate}`,
+        exposesEmployee: false,
+      },
+      {
+        path: `/api/envelope/reportes/metodo-pago-por-dia?mes=${month}&anio=${year}`,
+        exposesEmployee: false,
+      },
+      {
+        path: `/api/envelope/reportes/ventas-por-vendedor?fechaInicio=${monthStart}&fechaFin=${monthEndDate}`,
+        exposesEmployee: true,
+      },
+      {
+        path: `/api/envelope/reportes/ventas-por-vendedor-dia?fechaInicio=${monthStart}&fechaFin=${monthEndDate}`,
+        exposesEmployee: true,
+      },
+      {
+        path: `/api/envelope/reportes/ranking-vendedores?fechaInicio=${monthStart}&fechaFin=${monthEndDate}`,
+        exposesEmployee: true,
+      },
+      {
+        path: `/api/envelope/reportes/ranking-sucursales?fechaInicio=${monthStart}&fechaFin=${monthEndDate}`,
+        exposesEmployee: false,
+      },
+      {
+        path: `/api/envelope/reportes/total-general?fechaInicio=${monthStart}&fechaFin=${monthEndDate}`,
+        exposesEmployee: false,
+      },
+      {
+        path: "/api/envelope/reportes/metas-sucursal",
+        exposesEmployee: false,
+      },
+      {
+        path: `/api/envelope/reportes/dashboard?fecha=${reportDate}`,
+        exposesEmployee: true,
+      },
+    ];
+    const hiddenReports = new Map<string, string>();
+
+    for (const reportCase of reportCases) {
+      const hidden = await jsonRequest(reportCase.path, { headers });
+      expect(hidden.response.status).toBe(200);
+      expect(hidden.body).toMatchObject({ success: true });
+      const serialized = JSON.stringify(hidden.body);
+      expect(serialized).not.toContain(keysarHomeEmployee.id);
+      hiddenReports.set(reportCase.path, serialized);
+    }
 
     await prisma.positionScreenPermission.create({
       data: {
@@ -246,11 +376,29 @@ integrationDescribe("API integration with PostgreSQL", () => {
       },
     });
 
-    const visible = await jsonRequest(
-      "/api/envelope/reportes/ventas-por-vendedor-dia?fechaInicio=2026-08-01&fechaFin=2026-08-31",
-      { headers },
-    );
-    expect(visible.response.status).toBe(200);
-    expect(JSON.stringify(visible.body)).toContain(keysarHomeEmployee.id);
+    for (const reportCase of reportCases) {
+      const visible = await jsonRequest(reportCase.path, { headers });
+      expect(visible.response.status).toBe(200);
+      const serialized = JSON.stringify(visible.body);
+      expect(serialized).not.toBe(hiddenReports.get(reportCase.path));
+      if (reportCase.exposesEmployee) {
+        expect(serialized).toContain(keysarHomeEmployee.id);
+      }
+    }
+
+    await prisma.positionScreenPermission.deleteMany({
+      where: {
+        positionId: position.id,
+        screenKey: "reportes/ver-datos-keysar-home",
+      },
+    });
+    await prisma.protectedEmployeeIdentity.delete({
+      where: { key: ProtectedEmployeeKey.KEYSAR_HOME },
+    });
+    const blockedWithoutIdentity = await jsonRequest(reportCases[0]!.path, {
+      headers,
+    });
+    expect(blockedWithoutIdentity.response.status).toBe(500);
+    expect(blockedWithoutIdentity.body).toMatchObject({ success: false });
   });
 });

@@ -302,6 +302,7 @@ export function GenerateEnvelopeDialog({
     fechaInicio: selectedDate,
     fechaFin: selectedDate,
     enabled: open && canGenerateEnvelope,
+    includeProtectedForEnvelope: true,
   });
 
   useEffect(() => {

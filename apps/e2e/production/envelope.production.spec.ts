@@ -23,13 +23,17 @@ test.describe("Smoke autenticado de Envelope en producción", () => {
       "/reportes/total-general",
       /Total general de ventas/i,
     );
-    await expect(page.getByRole("table")).toBeVisible();
+    await expect(
+      page
+        .getByRole("table")
+        .or(page.getByText(/Sin ventas en el período seleccionado/i)),
+    ).toBeVisible();
   });
 
   test("cierra la sesión de monitoreo", async ({ page }) => {
     await openAuthenticatedPage(page, "/", "Dashboard");
     await page.getByRole("button", { name: /Cerrar sesión/i }).click();
-    await expect(page).toHaveURL(/\/login$/);
+    await expect(page).toHaveURL(/\/login(?:\?|$)/);
     await expect(page.locator("#email")).toBeVisible();
   });
 });
