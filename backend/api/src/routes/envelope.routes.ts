@@ -1,6 +1,11 @@
 // Rutas del módulo Envelope — ventas por sobre digitalizado
 import { Router, type Router as ExpressRouter } from "express";
-import { EstatusCita, Prisma, TipoCompraCita } from "@prisma/client";
+import {
+  EstatusCita,
+  Prisma,
+  ProtectedEmployeeKey,
+  TipoCompraCita,
+} from "@prisma/client";
 import { z } from "zod";
 import { authMiddleware } from "../middlewares/auth.middleware";
 import {
@@ -347,13 +352,44 @@ async function canViewKeysarHomeData(
   );
 }
 
-/**
- * Excluye a Keysar Home sin depender de cómo se capturó el nombre histórico.
- * El frontend ya normaliza mayúsculas y espacios; los reportes deben aplicar
- * exactamente el mismo criterio para que el permiso sea efectivo en API.
- */
-function excludeKeysarHomeEmployee(): Prisma.Sql {
-  return Prisma.sql`UPPER(BTRIM(e."nombreCompleto")) <> ${"KEYSAR HOME"}`;
+async function canGenerateEnvelope(
+  req: Parameters<typeof resolveAccessForRequest>[0],
+): Promise<boolean> {
+  const access = await resolveAccessForRequest(req);
+  return Boolean(
+    access?.canManageAccess ||
+    access?.screenPermissions.includes("ventas/generar-sobre"),
+  );
+}
+
+async function protectedKeysarHomeEmployeeId(): Promise<string> {
+  const protectedIdentity =
+    await prisma.protectedEmployeeIdentity.findUnique({
+      where: { key: ProtectedEmployeeKey.KEYSAR_HOME },
+      select: { employeeId: true },
+    });
+  if (!protectedIdentity) {
+    throw new Error(
+      "La identidad protegida KEYSAR_HOME no está configurada; se bloqueó el acceso a ventas",
+    );
+  }
+  return protectedIdentity.employeeId;
+}
+
+async function keysarHomeReportConditions(
+  req: Parameters<typeof resolveAccessForRequest>[0],
+): Promise<{ employee: Prisma.Sql; sale: Prisma.Sql }> {
+  const includeKeysarHome = await canViewKeysarHomeData(req);
+  if (includeKeysarHome) {
+    return { employee: Prisma.sql`TRUE`, sale: Prisma.sql`TRUE` };
+  }
+
+  const employeeId = await protectedKeysarHomeEmployeeId();
+
+  return {
+    employee: Prisma.sql`e."id" <> ${employeeId}`,
+    sale: Prisma.sql`v."vendedorId" <> ${employeeId}`,
+  };
 }
 
 async function selfDataEmployeeId(
@@ -911,6 +947,20 @@ router.put("/empleados/:id", access.empleados, async (req, res) => {
 
 router.delete("/empleados/:id", access.empleados, async (req, res) => {
   try {
+    const protectedIdentity =
+      await prisma.protectedEmployeeIdentity.findUnique({
+        where: { employeeId: req.params["id"] },
+        select: { key: true },
+      });
+    if (protectedIdentity) {
+      res.status(409).json({
+        success: false,
+        data: null,
+        message: "No se puede eliminar un empleado protegido del sistema",
+      });
+      return;
+    }
+
     const ventaCount = await prisma.venta.count({
       where: { vendedorId: req.params["id"] },
     });
@@ -1963,12 +2013,14 @@ router.delete("/citas/:id", access.citas, async (req, res) => {
 
 router.get("/ventas", access.ventas, async (req, res) => {
   try {
-    const { fechaInicio, fechaFin, limit, page } = req.query as {
-      fechaInicio?: string;
-      fechaFin?: string;
-      limit?: string;
-      page?: string;
-    };
+    const { fechaInicio, fechaFin, limit, page, includeProtectedForEnvelope } =
+      req.query as {
+        fechaInicio?: string;
+        fechaFin?: string;
+        limit?: string;
+        page?: string;
+        includeProtectedForEnvelope?: string;
+      };
     const parsedStart = parseQueryDate(fechaInicio);
     const parsedEnd = parseQueryDate(fechaFin);
 
@@ -2016,19 +2068,42 @@ router.get("/ventas", access.ventas, async (req, res) => {
       : undefined;
     const requestedPage = parsePositiveInt(page) ?? 1;
     const ownEmployeeId = await selfDataEmployeeId(req);
+    const envelopeDataRequested = includeProtectedForEnvelope === "true";
+    if (envelopeDataRequested && !(await canGenerateEnvelope(req))) {
+      res.status(403).json({
+        success: false,
+        data: null,
+        message: "No tienes permiso para consultar datos del sobre",
+      });
+      return;
+    }
+    const includeKeysarHome =
+      envelopeDataRequested || (await canViewKeysarHomeData(req));
+    const protectedEmployeeId = includeKeysarHome
+      ? null
+      : await protectedKeysarHomeEmployeeId();
 
     const data = await prisma.venta.findMany({
       where: {
-        ...(ownEmployeeId ? { vendedorId: ownEmployeeId } : {}),
         fecha: {
           gte: rangeStart,
           lte: rangeEnd,
         },
+        AND: [
+          ...(ownEmployeeId ? [{ vendedorId: ownEmployeeId }] : []),
+          ...(protectedEmployeeId
+            ? [{ vendedorId: { not: protectedEmployeeId } }]
+            : []),
+        ],
       },
       include: {
         detalles: { include: { metodoPago: true } },
         sucursal: true,
-        vendedor: true,
+        vendedor: {
+          include: {
+            protectedIdentity: { select: { key: true } },
+          },
+        },
       },
       orderBy: { fecha: "desc" },
       ...(take ? { take, skip: (requestedPage - 1) * take } : {}),
@@ -2567,6 +2642,8 @@ router.get(
         fechaInicio?: string;
         fechaFin?: string;
       };
+      const { sale: keysarHomeSaleCondition } =
+        await keysarHomeReportConditions(req);
       const ownEmployeeId = await selfDataEmployeeId(req);
       const data = await prisma.$queryRaw<
         Array<{
@@ -2587,7 +2664,10 @@ router.get(
       JOIN "Venta" v ON v."id" = vd."ventaId"
       JOIN "Sucursal" s ON s."id" = v."sucursalId"
       JOIN "MetodoPago" mp ON mp."id" = vd."metodoPagoId"
-      ${dateRangeSql(fechaInicio, fechaFin, [selfDataCondition(ownEmployeeId)])}
+      ${dateRangeSql(fechaInicio, fechaFin, [
+        keysarHomeSaleCondition,
+        selfDataCondition(ownEmployeeId),
+      ])}
       GROUP BY v."sucursalId", s."nombre", vd."metodoPagoId", mp."nombre"
       ORDER BY s."nombre" ASC, mp."nombre" ASC
     `;
@@ -2618,6 +2698,8 @@ router.get(
       const year = Number(anio ?? new Date().getFullYear());
       const month = Number(mes ?? new Date().getMonth() + 1);
       const { start, end } = monthRange(year, month);
+      const { sale: keysarHomeSaleCondition } =
+        await keysarHomeReportConditions(req);
       const ownEmployeeId = await selfDataEmployeeId(req);
       const methodFilter = metodoPagoId
         ? Prisma.sql`AND vd."metodoPagoId" = ${metodoPagoId}`
@@ -2640,6 +2722,7 @@ router.get(
       JOIN "Sucursal" s ON s."id" = v."sucursalId"
       WHERE v."fecha" >= ${start}
         AND v."fecha" <= ${end}
+        AND ${keysarHomeSaleCondition}
         AND ${selfDataCondition(ownEmployeeId)}
         ${methodFilter}
       GROUP BY TO_CHAR(v."fecha", 'YYYY-MM-DD'), v."sucursalId", s."nombre"
@@ -2668,7 +2751,8 @@ router.get(
         fechaInicio?: string;
         fechaFin?: string;
       };
-      const includeKeysarHome = await canViewKeysarHomeData(req);
+      const { employee: keysarHomeEmployeeCondition } =
+        await keysarHomeReportConditions(req);
       const ownEmployeeId = await selfDataEmployeeId(req);
       const rows = await prisma.$queryRaw<
         Array<{
@@ -2692,9 +2776,7 @@ router.get(
       JOIN "Empleado" e ON e."id" = v."vendedorId"
       JOIN "Sucursal" s ON s."id" = v."sucursalId"
       ${dateRangeSql(fechaInicio, fechaFin, [
-        ...(includeKeysarHome
-          ? []
-          : [excludeKeysarHomeEmployee()]),
+        keysarHomeEmployeeCondition,
         selfDataCondition(ownEmployeeId),
       ])}
       GROUP BY v."vendedorId", e."nombreCompleto", v."sucursalId", s."nombre", e."metaIndividual"
@@ -2730,7 +2812,8 @@ router.get(
         fechaFin?: string;
       };
       const conditions: Prisma.Sql[] = [];
-      const includeKeysarHome = await canViewKeysarHomeData(req);
+      const { employee: keysarHomeEmployeeCondition } =
+        await keysarHomeReportConditions(req);
       const ownEmployeeId = await selfDataEmployeeId(req);
       if (fechaInicio)
         conditions.push(Prisma.sql`v."fecha" >= ${new Date(fechaInicio)}`);
@@ -2740,8 +2823,7 @@ router.get(
         );
       if (vendedorId)
         conditions.push(Prisma.sql`v."vendedorId" = ${vendedorId}`);
-      if (!includeKeysarHome)
-        conditions.push(excludeKeysarHomeEmployee());
+      conditions.push(keysarHomeEmployeeCondition);
       if (ownEmployeeId) conditions.push(selfDataCondition(ownEmployeeId));
       const where =
         conditions.length > 0
@@ -2800,11 +2882,9 @@ router.get(
         return;
       }
 
-      const includeKeysarHome = await canViewKeysarHomeData(req);
+      const { employee: keysarHomeEmployeeCondition } =
+        await keysarHomeReportConditions(req);
       const ownEmployeeId = await selfDataEmployeeId(req);
-      const keysarHomeCondition = includeKeysarHome
-        ? Prisma.sql`TRUE`
-        : excludeKeysarHomeEmployee();
       const data = await prisma.$queryRaw<
         Array<{
           id: string;
@@ -2825,7 +2905,7 @@ router.get(
         JOIN "Empleado" e ON e."id" = v."vendedorId"
         WHERE v."fecha" >= ${range.start}
           AND v."fecha" <= ${range.end}
-          AND ${keysarHomeCondition}
+          AND ${keysarHomeEmployeeCondition}
           AND ${selfDataCondition(ownEmployeeId)}
         GROUP BY v."vendedorId", e."nombreCompleto"
         ORDER BY "totalVendido" DESC, e."nombreCompleto" ASC
@@ -2862,6 +2942,8 @@ router.get(
         return;
       }
 
+      const { sale: keysarHomeSaleCondition } =
+        await keysarHomeReportConditions(req);
       const ownEmployeeId = await selfDataEmployeeId(req);
       const data = await prisma.$queryRaw<
         Array<{
@@ -2883,6 +2965,7 @@ router.get(
         JOIN "Sucursal" s ON s."id" = v."sucursalId"
         WHERE v."fecha" >= ${range.start}
           AND v."fecha" <= ${range.end}
+          AND ${keysarHomeSaleCondition}
           AND ${selfDataCondition(ownEmployeeId)}
         GROUP BY v."sucursalId", s."nombre"
         ORDER BY "totalVendido" DESC, s."nombre" ASC
@@ -2906,6 +2989,8 @@ router.get("/reportes/total-general", access.totalGeneral, async (req, res) => {
       fechaInicio?: string;
       fechaFin?: string;
     };
+    const { sale: keysarHomeSaleCondition } =
+      await keysarHomeReportConditions(req);
     const ownEmployeeId = await selfDataEmployeeId(req);
     const rows = await prisma.$queryRaw<
       Array<{
@@ -2923,7 +3008,10 @@ router.get("/reportes/total-general", access.totalGeneral, async (req, res) => {
       FROM "VentaDetalle" vd
       JOIN "Venta" v ON v."id" = vd."ventaId"
       JOIN "Sucursal" s ON s."id" = v."sucursalId"
-      ${dateRangeSql(fechaInicio, fechaFin, [selfDataCondition(ownEmployeeId)])}
+      ${dateRangeSql(fechaInicio, fechaFin, [
+        keysarHomeSaleCondition,
+        selfDataCondition(ownEmployeeId),
+      ])}
       GROUP BY TO_CHAR(v."fecha", 'YYYY-MM-DD'), v."sucursalId", s."nombre"
       ORDER BY "fecha" ASC, s."nombre" ASC
     `;
@@ -2965,6 +3053,8 @@ router.get(
     try {
       const referenceDate = mexicoCityDateISO();
       const monthStart = `${referenceDate.slice(0, 7)}-01`;
+      const { sale: keysarHomeSaleCondition } =
+        await keysarHomeReportConditions(req);
       const ownEmployeeId = await selfDataEmployeeId(req);
       const [catalogBranches, salesRows] = await Promise.all([
         prisma.sucursal.findMany({
@@ -2984,6 +3074,7 @@ router.get(
           JOIN "Sucursal" s ON s."id" = v."sucursalId"
           WHERE v."fecha" >= ${new Date(`${monthStart}T00:00:00.000Z`)}
             AND v."fecha" <= ${new Date(`${referenceDate}T23:59:59.999Z`)}
+            AND ${keysarHomeSaleCondition}
             AND ${selfDataCondition(ownEmployeeId)}
           GROUP BY
             TO_CHAR(v."fecha", 'YYYY-MM-DD'),
@@ -3058,6 +3149,10 @@ router.get("/reportes/dashboard", access.dashboard, async (req, res) => {
     )`,
       ),
     );
+    const {
+      employee: keysarHomeEmployeeCondition,
+      sale: keysarHomeSaleCondition,
+    } = await keysarHomeReportConditions(req);
     const ownEmployeeId = await selfDataEmployeeId(req);
     const ownDataCondition = selfDataCondition(ownEmployeeId);
 
@@ -3084,6 +3179,7 @@ router.get("/reportes/dashboard", access.dashboard, async (req, res) => {
           ON v."sucursalId" = s."id"
           AND v."fecha" >= p."startDate"
           AND v."fecha" <= p."endDate"
+          AND ${keysarHomeSaleCondition}
           AND ${ownDataCondition}
         LEFT JOIN "VentaDetalle" vd ON vd."ventaId" = v."id"
         WHERE s."creadoEn" <= p."endDate"
@@ -3110,7 +3206,9 @@ router.get("/reportes/dashboard", access.dashboard, async (req, res) => {
           AND v."fecha" >= ${inicioMesDate}
           AND v."fecha" <= ${finMesDate}
         LEFT JOIN "VentaDetalle" vd ON vd."ventaId" = v."id"
-        WHERE e."activo" = true AND ${ownDataCondition}
+        WHERE e."activo" = true
+          AND ${keysarHomeEmployeeCondition}
+          AND ${ownDataCondition}
         GROUP BY e."id", e."nombreCompleto", e."metaIndividual"
         ORDER BY "vendido" DESC, e."nombreCompleto" ASC
       `,

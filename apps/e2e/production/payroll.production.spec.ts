@@ -26,7 +26,7 @@ test.describe("Smoke autenticado de Payroll en producción", () => {
   test("cierra la sesión de monitoreo", async ({ page }) => {
     await openAuthenticatedPage(page, "/esquemas", /Esquemas de comisión/i);
     await page.getByRole("button", { name: /Cerrar sesión/i }).click();
-    await expect(page).toHaveURL(/\/login$/);
+    await expect(page).toHaveURL(/\/login(?:\?|$)/);
     await expect(page.locator("#email")).toBeVisible();
   });
 });

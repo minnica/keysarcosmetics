@@ -20,6 +20,7 @@ interface UseVentasOptions {
   fechaInicio?: string;
   fechaFin?: string;
   enabled?: boolean;
+  includeProtectedForEnvelope?: boolean;
 }
 
 // Respuesta cruda de la API para una Venta
@@ -31,7 +32,10 @@ interface VentaRaw {
   sucursalId: string;
   sucursal?: { nombre: string };
   vendedorId: string;
-  vendedor?: { nombreCompleto: string };
+  vendedor?: {
+    nombreCompleto: string;
+    protectedIdentity?: { key: "KEYSAR_HOME" } | null;
+  };
   detalles: { id: string; cantidad: string; metodoPagoId: string; metodoPago?: { nombre: string } }[];
 }
 
@@ -43,6 +47,7 @@ function toRegistroVenta(v: VentaRaw): RegistroVenta {
     ...(v.sucursal ? { sucursalNombre: v.sucursal.nombre } : {}),
     vendedorId: v.vendedorId,
     ...(v.vendedor ? { vendedorNombre: v.vendedor.nombreCompleto } : {}),
+    vendedorIdentidadProtegida: v.vendedor?.protectedIdentity?.key ?? null,
     // El backend devuelve DateTime ISO; tomamos solo la parte de fecha
     fecha: v.fecha.slice(0, 10),
     sesionId: v.sesionId ?? null,
@@ -60,7 +65,12 @@ function toRegistroVenta(v: VentaRaw): RegistroVenta {
 }
 
 export function useVentas(options: UseVentasOptions = {}): UseVentasReturn {
-  const { fechaInicio, fechaFin, enabled = true } = options;
+  const {
+    fechaInicio,
+    fechaFin,
+    enabled = true,
+    includeProtectedForEnvelope = false,
+  } = options;
   const [registros, setRegistros] = useState<RegistroVenta[]>([]);
   const [loading, setLoading] = useState(enabled);
   const [error, setError] = useState<string | null>(null);
@@ -82,6 +92,9 @@ export function useVentas(options: UseVentasOptions = {}): UseVentasReturn {
           params: {
             ...(fechaInicio ? { fechaInicio } : {}),
             ...(fechaFin ? { fechaFin } : {}),
+            ...(includeProtectedForEnvelope
+              ? { includeProtectedForEnvelope: true }
+              : {}),
           },
         },
       );
@@ -91,7 +104,7 @@ export function useVentas(options: UseVentasOptions = {}): UseVentasReturn {
     } finally {
       setLoading(false);
     }
-  }, [enabled, fechaFin, fechaInicio]);
+  }, [enabled, fechaFin, fechaInicio, includeProtectedForEnvelope]);
 
   useEffect(() => {
     void refetch();

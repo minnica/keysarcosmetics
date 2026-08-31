@@ -77,6 +77,8 @@ export interface RegistroVenta {
   vendedorId: string;
   // Nombre embebido desde el include del backend — evita depender del catálogo de empleados
   vendedorNombre?: string;
+  // Identidad estable asignada en backend; nunca se deriva del nombre visible.
+  vendedorIdentidadProtegida?: "KEYSAR_HOME" | null;
   fecha: string; // YYYY-MM-DD
   items: VentaItem[];
   // Comparte sesionId con otros registros del mismo voucher multi-vendedor; null = venta individual
