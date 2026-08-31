@@ -47,7 +47,7 @@ import {
   toast,
 } from "@cosmetics/ui";
 import { formatCurrency, getSellerSku } from "../mock-data";
-import { calculateIncludedVat } from "../tax";
+import { calculateIncludedVat, roundCurrency } from "../tax";
 import type {
   BranchInventory,
   InventoryBranchOrderDraft,
@@ -578,6 +578,8 @@ export function CatalogView({
 
   const save = () => {
     const finalSku = skuMode === "AUTO" ? generatedSku : draft.sku.trim();
+    const normalizedMinPrice = roundCurrency(draft.minPrice);
+    const normalizedMaxPrice = roundCurrency(draft.maxPrice);
     if (
       !draft.name.trim() ||
       !finalSku ||
@@ -588,7 +590,16 @@ export function CatalogView({
       toast.error("Completa nombre, SKU, familia, categoría y grupo.");
       return;
     }
-    if (draft.minPrice <= 0 || draft.maxPrice < draft.minPrice) {
+    if (
+      !Number.isFinite(normalizedMinPrice) ||
+      !Number.isFinite(normalizedMaxPrice) ||
+      normalizedMinPrice <= 0 ||
+      normalizedMaxPrice <= 0
+    ) {
+      toast.error("Captura un precio mínimo y máximo válidos, mayores a cero.");
+      return;
+    }
+    if (normalizedMaxPrice < normalizedMinPrice) {
       toast.error("El precio máximo debe ser igual o mayor al mínimo.");
       return;
     }
@@ -641,6 +652,8 @@ export function CatalogView({
       family: draft.family.trim(),
       category: draft.category.trim(),
       group: draft.group.trim(),
+      minPrice: normalizedMinPrice,
+      maxPrice: normalizedMaxPrice,
       description: draft.description?.trim() ?? "",
       benefits: (draft.benefits ?? [])
         .map((benefit) => benefit.trim())
@@ -1259,6 +1272,7 @@ export function CatalogView({
                   id="catalog-min-price"
                   type="number"
                   min="0"
+                  step="0.01"
                   value={draft.minPrice}
                   onChange={(event) =>
                     updateNumber("minPrice", event.target.value)
@@ -1271,6 +1285,7 @@ export function CatalogView({
                   id="catalog-max-price"
                   type="number"
                   min="0"
+                  step="0.01"
                   value={draft.maxPrice}
                   onChange={(event) =>
                     updateNumber("maxPrice", event.target.value)

@@ -220,6 +220,7 @@ export function CheckoutDialog({
   const [ownershipMasterCode, setOwnershipMasterCode] = useState("");
   const [ownershipAuthorized, setOwnershipAuthorized] = useState(false);
   const [showAdditionalSellers, setShowAdditionalSellers] = useState(false);
+  const [sellerSearch, setSellerSearch] = useState("");
   const [payments, setPayments] = useState<PaymentEntry[]>([]);
   const [deliveredCartItemIds, setDeliveredCartItemIds] = useState<string[]>(
     [],
@@ -255,6 +256,7 @@ export function CheckoutDialog({
     setOwnershipMasterCode("");
     setOwnershipAuthorized(false);
     setShowAdditionalSellers(false);
+    setSellerSearch("");
     setDeliveredCartItemIds([]);
     setCourtesyPackage(courtesySettings.defaultPackage);
     setCourtesyDate("");
@@ -323,8 +325,28 @@ export function CheckoutDialog({
       : Boolean(selectedSourceOption?.locksCompany);
   const defaultSellerId =
     activeOwner?.id ?? (clientMode === "new" ? (newClientOwner?.id ?? "") : "");
+  const normalizedSellerSearch = sellerSearch
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("es-MX");
+  const sellerMatchesSearch = (seller: Seller) => {
+    if (!normalizedSellerSearch) return true;
+    const searchableSeller = `${seller.name} ${seller.alias}`
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLocaleLowerCase("es-MX");
+    return searchableSeller.includes(normalizedSellerSearch);
+  };
+  const matchingAdditionalSellers = activeSellers.filter(
+    (seller) =>
+      !selectedSellerIds.includes(seller.id) && sellerMatchesSearch(seller),
+  );
   const visibleSellers = showAdditionalSellers
-    ? activeSellers
+    ? activeSellers.filter(
+        (seller) =>
+          selectedSellerIds.includes(seller.id) || sellerMatchesSearch(seller),
+      )
     : activeSellers.filter((seller) => selectedSellerIds.includes(seller.id));
 
   const missingNewClientFields = (
@@ -417,6 +439,7 @@ export function CheckoutDialog({
     setOwnershipMasterCode("");
     setOwnershipAuthorized(false);
     setShowAdditionalSellers(false);
+    setSellerSearch("");
   };
 
   const selectClientOwner = (sellerId: string) => {
@@ -1057,6 +1080,25 @@ export function CheckoutDialog({
                 </div>
               </div>
 
+              {showAdditionalSellers && (
+                <div className="seller-search-filter">
+                  <Search size={16} aria-hidden="true" />
+                  <Input
+                    value={sellerSearch}
+                    onChange={(event) => setSellerSearch(event.target.value)}
+                    placeholder="Buscar vendedor por nombre o alias…"
+                    aria-label="Buscar vendedor por nombre o alias"
+                    autoFocus
+                  />
+                  <small>
+                    {matchingAdditionalSellers.length}{" "}
+                    {matchingAdditionalSellers.length === 1
+                      ? "vendedor disponible"
+                      : "vendedores disponibles"}
+                  </small>
+                </div>
+              )}
+
               <div className="seller-list">
                 {visibleSellers.map((seller) => {
                   const isSelected = selectedSellerIds.includes(seller.id);
@@ -1081,6 +1123,11 @@ export function CheckoutDialog({
                                 ? "Participa en la venta"
                                 : "Disponible para añadir"}
                           </small>
+                          {seller.alias && (
+                            <small className="seller-search-alias">
+                              Alias: {seller.alias}
+                            </small>
+                          )}
                         </span>
                       </button>
                       {isSelected && (
@@ -1104,6 +1151,13 @@ export function CheckoutDialog({
                     </div>
                   );
                 })}
+                {showAdditionalSellers &&
+                  normalizedSellerSearch &&
+                  matchingAdditionalSellers.length === 0 && (
+                    <p className="seller-search-empty">
+                      No se encontraron vendedores con ese nombre o alias.
+                    </p>
+                  )}
               </div>
 
               <Button
@@ -1111,7 +1165,10 @@ export function CheckoutDialog({
                 variant="outline"
                 size="sm"
                 className="add-sellers-button"
-                onClick={() => setShowAdditionalSellers((current) => !current)}
+                onClick={() => {
+                  setShowAdditionalSellers((current) => !current);
+                  if (showAdditionalSellers) setSellerSearch("");
+                }}
               >
                 <PlusCircle size={15} />
                 {showAdditionalSellers

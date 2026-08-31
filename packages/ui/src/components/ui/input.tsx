@@ -2,7 +2,34 @@ import * as React from 'react'
 import { cn } from '../../lib/utils'
 
 const Input = React.forwardRef<HTMLInputElement, React.ComponentProps<'input'>>(
-  ({ className, type, ...props }, ref) => {
+  ({ className, type, value, onChange, onFocus, onBlur, ...props }, ref) => {
+    const isControlledNumber = type === 'number' && value !== undefined
+    const [numberDraft, setNumberDraft] = React.useState<string | null>(null)
+    const [numberFocused, setNumberFocused] = React.useState(false)
+
+    React.useEffect(() => {
+      if (!isControlledNumber || numberDraft === null) return
+
+      const valueIsZero = value === 0 || value === '0' || value === ''
+      const emptyDraftMatchesZero = numberDraft === '' && valueIsZero
+      const numericDraft = Number(numberDraft)
+      const numericValue = Number(value)
+      const draftMatchesValue =
+        numberDraft !== '' &&
+        Number.isFinite(numericDraft) &&
+        Number.isFinite(numericValue) &&
+        numericDraft === numericValue
+
+      if (numberFocused) {
+        if (!emptyDraftMatchesZero && !draftMatchesValue) {
+          setNumberDraft(String(value ?? ''))
+        }
+        return
+      }
+
+      if (!emptyDraftMatchesZero) setNumberDraft(null)
+    }, [isControlledNumber, numberDraft, numberFocused, value])
+
     return (
       <input
         type={type}
@@ -11,6 +38,29 @@ const Input = React.forwardRef<HTMLInputElement, React.ComponentProps<'input'>>(
           className
         )}
         ref={ref}
+        value={isControlledNumber && numberDraft !== null ? numberDraft : value}
+        onFocus={(event) => {
+          if (isControlledNumber) {
+            setNumberFocused(true)
+            setNumberDraft((current) =>
+              current === '' ? '' : String(value ?? '')
+            )
+          }
+          onFocus?.(event)
+        }}
+        onChange={(event) => {
+          if (isControlledNumber) {
+            setNumberDraft(event.currentTarget.value)
+          }
+          onChange?.(event)
+        }}
+        onBlur={(event) => {
+          if (isControlledNumber) {
+            setNumberFocused(false)
+            setNumberDraft(event.currentTarget.value === '' ? '' : null)
+          }
+          onBlur?.(event)
+        }}
         {...props}
       />
     )

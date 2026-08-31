@@ -859,6 +859,9 @@ function App() {
   const [discountMode, setDiscountMode] = useState<DiscountMode>("PERCENT");
   const [discountValue, setDiscountValue] = useState(0);
   const [discountOpen, setDiscountOpen] = useState(false);
+  const [discountDraftMode, setDiscountDraftMode] =
+    useState<DiscountMode>("PERCENT");
+  const [discountDraftValue, setDiscountDraftValue] = useState(0);
   const [clients, setClients] = useState(initialClients);
   const [tickets, setTickets] = useState<Ticket[]>(() =>
     mergeOfflineTicketQueue(initialTickets),
@@ -3100,6 +3103,23 @@ function App() {
     maxPromotionalDiscount,
     rawDiscountAmount,
   );
+  const maxPromotionalDiscountPercent =
+    cartSubtotal > 0 ? (maxPromotionalDiscount / cartSubtotal) * 100 : 0;
+  const discountDraftMaximum =
+    discountDraftMode === "PERCENT"
+      ? maxPromotionalDiscountPercent
+      : maxPromotionalDiscount;
+  const normalizedDiscountDraftValue = Math.max(
+    0,
+    discountDraftValue || 0,
+  );
+  const discountDraftAmount = Math.min(
+    maxPromotionalDiscount,
+    discountDraftMode === "PERCENT"
+      ? cartSubtotal * (Math.min(normalizedDiscountDraftValue, 100) / 100)
+      : normalizedDiscountDraftValue,
+  );
+  const discountDraftTotal = Math.max(0, cartSubtotal - discountDraftAmount);
   const ticketTotal = Math.max(0, cartSubtotal - ticketDiscountAmount);
   const ticketDeviation = cartDeviation - ticketDiscountAmount;
   const dialogOtherItems = cart.filter(
@@ -3912,7 +3932,10 @@ function App() {
   };
 
   const saveCatalogProduct = (product: Product) => {
-    const exists = catalogProducts.some((item) => item.id === product.id);
+    const previousProduct = catalogProducts.find(
+      (item) => item.id === product.id,
+    );
+    const exists = Boolean(previousProduct);
     const duplicateSku = catalogProducts.some(
       (item) => item.id !== product.id && item.sku === product.sku,
     );
@@ -3925,6 +3948,27 @@ function App() {
         ? current.map((item) => (item.id === product.id ? product : item))
         : [product, ...current],
     );
+    if (previousProduct) {
+      const syncCartItemProduct = (item: CartItem): CartItem => {
+        if (item.product.id !== product.id) return item;
+        const usedPreviousListPrice =
+          !item.dealId &&
+          !item.adminAuthorized &&
+          item.unitPrice === previousProduct.maxPrice;
+        return {
+          ...item,
+          product,
+          unitPrice: usedPreviousListPrice ? product.maxPrice : item.unitPrice,
+        };
+      };
+      setCart((current) => current.map(syncCartItemProduct));
+      setSelectedProduct((current) =>
+        current?.id === product.id ? product : current,
+      );
+      setEditingCartItem((current) =>
+        current ? syncCartItemProduct(current) : current,
+      );
+    }
     if (product.kind === "PRODUCT") {
       setBranchInventory((current) =>
         Object.fromEntries(
@@ -6833,7 +6877,11 @@ function App() {
               <button
                 type="button"
                 className={`discount-trigger ${discountOpen ? "is-active" : ""}`}
-                onClick={() => setDiscountOpen((current) => !current)}
+                onClick={() => {
+                  setDiscountDraftMode(discountMode);
+                  setDiscountDraftValue(discountValue);
+                  setDiscountOpen(true);
+                }}
                 disabled={cart.length === 0}
                 aria-label="Abrir descuento promocional"
                 aria-expanded={discountOpen}
@@ -6857,55 +6905,6 @@ function App() {
                 <span>Paquetes</span>
               </button>
             </div>
-            {discountOpen && (
-              <div className="discount-popover">
-                <div className="discount-mode-switch">
-                  <button
-                    type="button"
-                    className={discountMode === "PERCENT" ? "is-active" : ""}
-                    onClick={() => setDiscountMode("PERCENT")}
-                    aria-label="Aplicar descuento por porcentaje"
-                  >
-                    <Percent size={13} />
-                  </button>
-                  <button
-                    type="button"
-                    className={discountMode === "AMOUNT" ? "is-active" : ""}
-                    onClick={() => setDiscountMode("AMOUNT")}
-                    aria-label="Aplicar descuento por importe"
-                  >
-                    <DollarSign size={13} />
-                  </button>
-                </div>
-                <div className="ticket-discount-input-row">
-                  <span>{discountMode === "PERCENT" ? "%" : "$"}</span>
-                  <Input
-                    type="number"
-                    min="0"
-                    max={
-                      discountMode === "PERCENT" && cartSubtotal > 0
-                        ? (maxPromotionalDiscount / cartSubtotal) * 100
-                        : maxPromotionalDiscount
-                    }
-                    step="0.01"
-                    value={discountValue}
-                    onChange={(event) =>
-                      setDiscountValue(Number(event.target.value))
-                    }
-                    aria-label={
-                      discountMode === "PERCENT"
-                        ? "Porcentaje de descuento promocional"
-                        : "Importe de descuento promocional"
-                    }
-                  />
-                  <strong>-{formatCurrency(ticketDiscountAmount)}</strong>
-                </div>
-                <small>
-                  Tope disponible {formatCurrency(maxPromotionalDiscount)} para
-                  respetar el precio mínimo del ticket.
-                </small>
-              </div>
-            )}
           </div>
           <div>
             <span>Subtotal</span>
@@ -6930,6 +6929,113 @@ function App() {
           <p>Los datos se conservan únicamente durante esta sesión mock.</p>
         </div>
       </aside>
+      <Dialog open={discountOpen} onOpenChange={setDiscountOpen}>
+        <DialogContent className="discount-entry-dialog sm:max-w-[440px]">
+          <DialogHeader>
+            <DialogTitle>Aplicar descuento</DialogTitle>
+            <DialogDescription>
+              Ingresa el descuento y confirma con la paloma para regresar al
+              ticket.
+            </DialogDescription>
+          </DialogHeader>
+          <form
+            className="discount-entry-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              setDiscountMode(discountDraftMode);
+              setDiscountValue(
+                Math.min(discountDraftMaximum, normalizedDiscountDraftValue),
+              );
+              setDiscountOpen(false);
+            }}
+          >
+            <div className="discount-entry-mode" aria-label="Tipo de descuento">
+              <button
+                type="button"
+                className={discountDraftMode === "PERCENT" ? "is-active" : ""}
+                onClick={() => {
+                  setDiscountDraftValue(
+                    cartSubtotal > 0
+                      ? (discountDraftAmount / cartSubtotal) * 100
+                      : 0,
+                  );
+                  setDiscountDraftMode("PERCENT");
+                }}
+                aria-pressed={discountDraftMode === "PERCENT"}
+              >
+                <Percent size={18} />
+                Porcentaje
+              </button>
+              <button
+                type="button"
+                className={discountDraftMode === "AMOUNT" ? "is-active" : ""}
+                onClick={() => {
+                  setDiscountDraftValue(discountDraftAmount);
+                  setDiscountDraftMode("AMOUNT");
+                }}
+                aria-pressed={discountDraftMode === "AMOUNT"}
+              >
+                <DollarSign size={18} />
+                Pesos
+              </button>
+            </div>
+
+            <label className="discount-entry-field">
+              <span>
+                {discountDraftMode === "PERCENT"
+                  ? "Porcentaje de descuento"
+                  : "Monto del descuento"}
+              </span>
+              <div>
+                <b>{discountDraftMode === "PERCENT" ? "%" : "$"}</b>
+                <Input
+                  type="number"
+                  min="0"
+                  max={discountDraftMaximum}
+                  step="0.01"
+                  value={discountDraftValue}
+                  onChange={(event) =>
+                    setDiscountDraftValue(Number(event.target.value))
+                  }
+                  aria-label={
+                    discountDraftMode === "PERCENT"
+                      ? "Porcentaje de descuento promocional"
+                      : "Importe de descuento promocional"
+                  }
+                  autoFocus
+                />
+              </div>
+            </label>
+
+            <section className="discount-entry-preview" aria-live="polite">
+              <span>DESCUENTO A APLICAR</span>
+              <strong>-{formatCurrency(discountDraftAmount)}</strong>
+              <div>
+                <span>Subtotal <b>{formatCurrency(cartSubtotal)}</b></span>
+                <span>Total actualizado <b>{formatCurrency(discountDraftTotal)}</b></span>
+              </div>
+            </section>
+
+            <p className="discount-entry-limit">
+              Tope disponible: <strong>{formatCurrency(maxPromotionalDiscount)}</strong>{" "}
+              para respetar el precio mínimo del ticket.
+            </p>
+
+            <DialogFooter className="discount-entry-footer">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setDiscountOpen(false)}
+              >
+                Cancelar
+              </Button>
+              <Button type="submit" className="discount-entry-accept">
+                <CheckCircle2 size={18} /> Aceptar descuento
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 

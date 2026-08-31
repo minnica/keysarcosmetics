@@ -117,7 +117,7 @@ interface ReportsViewProps {
 const reportGroups: ReportGroup[] = [
   {
     key: "SALES",
-    label: "Sales Reports",
+    label: "Reportes de ventas",
     icon: BadgeDollarSign,
     items: [
       {
@@ -144,7 +144,7 @@ const reportGroups: ReportGroup[] = [
   },
   {
     key: "MERCHANDISE",
-    label: "Merchandise Reports",
+    label: "Reportes de mercancía",
     icon: Boxes,
     items: [
       {
@@ -166,7 +166,7 @@ const reportGroups: ReportGroup[] = [
   },
   {
     key: "EMPLOYEE",
-    label: "Employee Reports",
+    label: "Reportes de empleados",
     icon: UserRoundSearch,
     items: [
       {
@@ -183,7 +183,7 @@ const reportGroups: ReportGroup[] = [
   },
   {
     key: "CUSTOMER",
-    label: "Customer Reports",
+    label: "Reportes de clientes",
     icon: UsersRound,
     items: [
       {
@@ -341,8 +341,10 @@ export function ReportsView({
     setCustomerDialogOpen(true);
   };
 
-  const toggleGroup = (group: ReportGroupKey) => {
-    setOpenGroup((current) => (current === group ? null : group));
+  const selectReportGroup = (group: ReportGroup) => {
+    const defaultReport = group.items[0];
+    if (defaultReport) setActiveReport(defaultReport.key);
+    setOpenGroup(group.key);
   };
 
   const selectReport = (definition: ReportDefinition, group: ReportGroupKey) => {
@@ -1564,8 +1566,9 @@ export function ReportsView({
                 <button
                   type="button"
                   className="reports-menu-trigger"
-                  onClick={() => toggleGroup(group.key)}
+                  onClick={() => selectReportGroup(group)}
                   aria-expanded={open}
+                  aria-current={groupActive ? "page" : undefined}
                 >
                   <Icon size={17} />
                   <span>{group.label}</span>
@@ -1599,7 +1602,11 @@ export function ReportsView({
         </div>
       </aside>
 
-      <div className="reports-main">
+      <div
+        className="reports-main"
+        key={activeReport}
+        aria-label={`Ventana de reporte: ${activeDefinition.label}`}
+      >
         <Card className="reports-hero-card">
           <CardContent>
             <div>
