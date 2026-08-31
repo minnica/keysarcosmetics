@@ -36,6 +36,7 @@ export function DatePicker({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
+          aria-hidden="true"
           id={id}
           type="button"
           variant="outline"
