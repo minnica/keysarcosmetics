@@ -310,6 +310,87 @@ Datos:
 
 ---
 
+## Estado actual de apps/scheduler
+
+`apps/scheduler` es la app de agenda y administración de reservas. Sigue en fase local/mock, sin backend real ni Prisma. Parte de la configuración se conserva en `localStorage`, pero todavía no existe persistencia compartida entre usuarios ni validación de servidor. No se modifican backend, Prisma ni variables de entorno en esta etapa. La agenda, la administración, las configuraciones y los reportes viven local/mock; toda la información técnica de esta app está concentrada en esta sección.
+
+### Agenda
+
+- La agenda principal (`/`) modela una agenda operativa estilo AgendaPro con vistas `day` y `week`, filtro por sucursal, selección de profesionales, filtro de estatus, búsqueda rápida por hora, calendario mensual y acciones directas sobre slots vacíos.
+- El contexto operativo de la agenda se generalizó a `Comercio → Sucursal → Profesional`. `schedulerCommerces` define los comercios disponibles; cada sucursal pertenece a un comercio y cada profesional puede estar asignado a varios comercios y sucursales mediante `commerceIds`/`branchIds`. Al cambiar de comercio, la UI carga solo las sucursales permitidas de ese comercio y después filtra los profesionales disponibles para la sucursal elegida.
+- La fuente efectiva de comercios, sucursales y profesionales combina los catálogos mock con la configuración guardada por Administración. `src/lib/administration-scheduler-config.ts` persiste el conjunto en `scheduler-administration-configuration`, normaliza registros estáticos por nombre y notifica cambios con `scheduler-administration-configuration-change`. Altas, cambios de nombre, asignaciones y activaciones/desactivaciones se reflejan en Agenda sin backend; los elementos inactivos dejan de ofrecerse operativamente.
+- El horario operativo pertenece al comercio, no a cada sucursal. `src/lib/commerce-operating-hours.ts` guarda una agenda semanal o modo 24 horas por comercio, calcula el rango visible de las vistas diaria/semanal y marca como bloqueadas las celdas fuera del servicio. Una reserva activa fuera de ese horario o sobre un bloqueo manual abre una confirmación de dos pasos y exige escribir `RESERVAR`; la excepción aplica solo a esa reserva y no modifica el horario general. Las reservas canceladas no disparan conflictos.
+- Configuraciones de Agenda permite elegir el tamaño visual del slot entre 15, 20, 30, 45 y 60 minutos. Se persiste en `keysar-scheduler-agenda-settings` y `SchedulerWorkspace` escucha el evento `scheduler-agenda-settings-change` y cambios de storage para recalcular filas, tarjetas y línea de hora actual sin recargar. Este tamaño visual no cambia el cálculo de horarios disponibles del modal, que continúa ofreciendo inicios cada 15 minutos.
+- Las reservas y bloqueos nuevos guardan `branchId` para evitar que una agenda compartida entre sucursales muestre el mismo registro en ubicaciones distintas. En el modal de reserva se elige la sucursal y, al cambiarla, se conserva el profesional si pertenece a ella o se asigna el primero disponible para mantener la disponibilidad coherente. Los registros mock anteriores sin `branchId` conservan compatibilidad usando la primera sucursal asignada al profesional.
+- El modal de nueva/edición de reserva calcula horarios disponibles en intervalos de 15 minutos según fecha, profesional y duración del servicio. Oculta cualquier inicio que se traslape total o parcialmente con otra reserva del profesional o con un bloqueo; al editar ignora la propia reserva. `BookingStatus` incluye `canceled`: una reserva cancelada libera su franja y no participa en conflictos, mientras `no-show` conserva la ocupación histórica. Si no queda disponibilidad, los selectores se deshabilitan, se muestra un estado explícito y no se permite guardar una reserva activa.
+- El registro mock de clientes vive en `src/lib/mock-client-data.ts` y es transversal a comercios/sucursales. Antes de abrir `Nuevo cliente`, el único input `Cliente` funciona como buscador combinado: acepta letras o números y consulta nombre completo, alias o cualquier segmento del teléfono normalizado; seleccionar una coincidencia completa nombre, teléfono y correo y vincula la reserva mediante `clientId`. El campo `Teléfono` solo aparece dentro del formulario `Nuevo cliente`; en clientes existentes se reutiliza el dato vinculado. El teléfono es obligatorio, se compara sin espacios/signos y debe ser único. Si se intenta guardar otro nombre con un teléfono existente, la UI pide confirmar la unificación: conserva el nombre/correo canónicos, guarda variantes como alias/correos alternativos y agrega la visita al mismo historial con `branchId`, fecha y `bookingId`. Esta lógica es local/mock; la futura API deberá repetir la restricción única y la unificación dentro de una transacción.
+- La entrada principal es `SchedulerWorkspace`, que compone `SchedulerHeader`, `SchedulerSidebar` y `SchedulerAgendaGrid`, y abre tres diálogos especializados: `SchedulerBookingDialog`, `SchedulerBlockDialog` y `SchedulerDetailDialog`.
+- Los datos salen de `src/lib/mock-scheduler-data.ts` y se manipulan con helpers en `src/components/scheduler/scheduler-utils.tsx`.
+- El login temporal solo redirige a la agenda principal; no hay flujo auth real para esta app todavía.
+- `src/lib/scheduler-access.ts` concentra el perfil de acceso mock actual: pantallas permitidas y alcance por comercio, sucursal y profesional. `SchedulerAppSidebar` oculta pantallas no autorizadas, `SchedulerAccessGuard` impide abrir directamente áreas completas sin permiso y Administración descarta secciones no permitidas. Esta capa sigue siendo demostrativa/local; la autorización real deberá validarse también en backend durante la fase de persistencia.
+- La agenda usa colores de estatus configurables por comercio desde Administración. La paleta se guarda en `scheduler-status-colors-by-commerce`, requiere desbloqueo mediante un código mock de perfil autorizado y actualiza puntos, selectores y tarjetas al emitir `scheduler-status-colors-change`.
+- El historial de visitas y el historial financiero del cliente son flujos separados. Consultar información sensible exige un código personal mock; los perfiles `master` y `admin` pueden editar o eliminar movimientos de pago, mientras un vendedor solo puede consultar clientes asignados. Las consultas y mutaciones generan auditoría local. Los códigos incluidos en `scheduler-access.ts` son exclusivamente demostrativos: en producción deben validarse en backend y nunca enviarse en el bundle del navegador.
+
+### Administración
+
+La ruta `/administracion` contiene el workspace administrativo completo, local/mock y sin conexión a backend. Incluye Comercios y sus sucursales, Profesionales, Grupos personalizados, Servicios, Clases, Paquetes, Adicionales, Comisiones, Recursos, Encuestas, Consentimientos, WhatsApp, Gift cards y Colores de status. Los listados, formularios, filtros, estados, modales, confirmaciones y feedback están implementados en `AdministrationWorkspace.tsx` y comparten catálogos desde `mock-administration-data.ts`. El comercio es la entidad principal y concentra su estado y horario operativo; cada `LocalRecord` incluye `commerceId` y administra ubicación/contacto, no un horario independiente. `ProfessionalRecord` usa `commerceIds` y `localIds` para asignaciones múltiples, manteniendo `localId` como referencia principal legacy mientras se adaptan los flujos mock que todavía requieren una sola sucursal. Tras hidratar el workspace, los cambios de esos tres catálogos se guardan automáticamente y se sincronizan con Agenda.
+
+El alta y la edición de Profesionales incluyen una pestaña `Comisiones`. Cada profesional define explícitamente si genera comisiones; al activarlas son obligatorios al menos una modalidad, el periodo y todos los valores correspondientes. Las modalidades son combinables: monto fijo por cita, monto fijo independiente solo por cita con estatus Asiste, porcentaje sobre monto de venta y esquema personalizado por venta acumulada de sucursal. La periodicidad compartida puede ser diaria, semanal, quincenal o mensual. El esquema personalizado exige rangos continuos desde cero, porcentajes entre 0 y 100 y un último nivel sin límite. `normalizeProfessionalCommission` migra automáticamente el campo legacy de modalidad única a `modes[]` y el antiguo monto fijo compartido a los dos importes de cita. Esta configuración se conserva dentro de `ProfessionalRecord` y `localStorage`, pero todavía no ejecuta un cálculo real de comisiones ni genera movimientos de pago.
+
+El catálogo de Servicios incluye listados por categoría, búsqueda, estados y edición; servicios individuales y con sesiones; clases con capacidad y horario por día; paquetes con selección de servicios y precio personalizado; adicionales; categorías; servicio destacado; nombres alternativos; sitio web con pago en línea; opciones avanzadas (modalidad, comisión por porcentaje o moneda, recursos y horario especial); y carga/descarga masiva de precios `.xlsx` en modo mock (no procesa archivos reales ni persiste). La carga/descarga masiva y la subida de plantillas son flujos visuales/mock: todavía no procesan archivos reales ni persisten información. La prioridad inmediata de Servicios es terminar la revisión visual e interacción de `Opciones avanzadas`; la conexión con API y Prisma queda para la fase de persistencia.
+
+**Alcance administrativo por módulo:**
+
+| Módulo | Alcance funcional | Estado de definición |
+|---|---|---|
+| Comercios y sucursales | Comercio como entidad principal con estado, horario semanal/24 horas y entidades asociadas; sucursales con ubicación y contacto | Implementado local/mock y sincronizado con Agenda mediante `localStorage` |
+| Profesionales | Asignación múltiple a comercios/sucursales, datos básicos, servicios, horario, descansos, perfil, grupos personalizados y configuración obligatoria de comisiones cuando se activa | Implementado local/mock |
+| Servicios | Servicios, clases, paquetes, adicionales, categorías, precios masivos | Definido por capturas |
+| Comisiones | Por profesional, servicio/producto y valor por defecto; porcentaje o monto | Definido por capturas |
+| Recursos | Recursos generales y recursos con horario, asignación a servicios y locales | Definido por capturas |
+| Encuestas | Encuestas, preguntas de apreciación/comentario, asociación a servicios y preview vivo con estrellas | Parcial; falta flujo de resultados |
+| Consentimientos | Nombre, carga visual de archivo PDF/DOC/DOCX, tabla con búsqueda, edición y eliminación | Catálogo local/mock; falta firma, flujo operativo y persistencia |
+| WhatsApp | Catálogo con 13 mensajes operativos precargados, plantillas prediseñadas, variables agrupadas y preview estilo WhatsApp | Implementado local/mock; falta conexión del canal, envío real y persistencia |
+| Gift Cards | Gift card de servicio o monto, vencimiento, diseño, borrador/activar | Definido por capturas |
+| Colores de status | Paleta por comercio para los estados de reserva, restauración de valores originales y desbloqueo por código | Implementado local/mock; falta autorización real de servidor |
+| Planes | No se implementa en este proyecto | Fuera de alcance |
+
+`Local` y `Profesional` son entidades separadas: las sucursales se administran dentro de Comercios; los profesionales son personas reales y no sustitutos de sucursales.
+
+### Configuraciones
+
+- La ruta `/configuraciones` monta `SettingsWorkspace`; sus secciones se abren desde el grupo desplegable `Configuraciones` de la sidebar global y conservan `?section=` al navegar.
+- El workspace ya no renderiza una sidebar propia. Detecta cambios sin guardar y pide confirmación antes de cambiar de sección desde la navegación global. Cada panel implementado guarda su propio documento local y ofrece feedback con `toast`; esto es una maqueta funcional local, no configuración multiusuario.
+- Secciones visibles implementadas: `Empresa` (identidad, logo, URL de reservas, LinkPro, redes y datos públicos), `Agenda` (slot visual, reglas de reservas, límites, horario extendido y campos adicionales), `Pagos Keysar` (datos bancarios, link y proveedor externo), `Recordatorios` (email/WhatsApp), `Fichas médicas`, `E-mails`, `Clientes` (categorías, campos, opciones y filtros), `Encuestas` y `Códigos de autorización`.
+- `Sitio web`, `Integraciones` y `Notificaciones` aparecen en la navegación con estado pendiente. Existe un panel de configuración de caja en el código, pero actualmente no tiene entrada visible en el sidebar; no tratarlo como un flujo expuesto hasta conectarlo a la navegación.
+- Salvo el tamaño visual de slots descrito en Agenda, las opciones guardadas en estos paneles todavía no gobiernan reservas, pagos, mensajes ni sitios reales. Al conectar backend se deberá definir alcance por comercio/sucursal, permisos, validación de secretos y migración de los documentos existentes en `localStorage`.
+
+### Reportes
+
+La ruta `/reportes` contiene la primera fase local/mock de reportes: resumen ejecutivo con selector de periodo, KPIs comparativos y desgloses; `/reportes/reservas` implementa la vista General del reporte de reservas con rango de fechas, filtros, KPIs, ranking de servicios, distribución semanal y demanda por hora, más subvistas de Historial, Métricas, Locales, Servicios, Mensajería móvil y desgloses por local. El reporte de ventas todavía no está implementado. Los desgloses de Servicios por local y Prestadores por local cubren los 53 servicios de OPATRA MEXICO en el orden del reporte operativo.
+
+### Navegación y UI
+
+- La navegación primaria de Scheduler usa el Sidebar canónico de `@cosmetics/ui`: `SchedulerLayoutShell` lo monta una sola vez para todo `(dashboard)` y `SchedulerAppSidebar` organiza Principal y los grupos desplegables Reportes, Administración y Configuraciones. Solo un grupo permanece abierto y el correspondiente a la ruta activa se expande automáticamente. En escritorio es persistente y colapsable a iconos con tooltips; en móvil se presenta como Sheet con cierre explícito. Administración, Configuraciones y los desgloses de Reportes ya no renderizan sidebars propias: todas sus secciones viven en la navegación global y sincronizan su estado mediante ruta y `?section=`. Agenda tampoco mantiene una segunda columna lateral: sus filtros operativos de comercio, sucursal, profesionales, estatus, hora y calendario se abren en un Sheet derecho desde el botón `Filtros de agenda` del toolbar.
+- Todo usa componentes de `@cosmetics/ui` y `toast` compartido; las pantallas montan `<Toaster />` en `src/app/layout.tsx`.
+- La interfaz es responsive desde el inicio: navegación compacta en móvil, tarjetas apiladas, formularios de pantalla completa y tablas que se convierten en bloques legibles.
+- Los modales de Scheduler permiten scroll vertical en el cuerpo, pero nunca scroll horizontal. `DialogContent`, `admin-dialog`, `scheduler-dialog` y sus cuerpos bloquean el eje X; pestañas, horarios, tablas editables y escalas de comisión deben envolver o transformarse en layouts apilados al reducir el viewport, sin depender de `min-width` de escritorio ni ocultar campos fuera del área visible.
+- En la vista diaria, el grid limita su altura al viewport y maneja su propio scroll vertical; la esquina, los encabezados de profesionales y la columna de horas permanecen sticky. Las tarjetas y la línea de hora actual se posicionan proporcionalmente al intervalo visual configurado.
+
+### Fases de construcción
+
+- **Fase 0 — Contexto y base visual**: consolidar mapa de navegación y decisiones funcionales; mantener identidad Keysar, componentes de `@cosmetics/ui` y patrones de feedback; validar accesibilidad, estados vacíos, loading, errores y responsive.
+- **Fase 1 — Shell administrativo**: navegación visible desde la agenda; pantalla `/administracion` con los módulos definidos; definir rutas, layouts y componentes compartidos sin inventar datos persistentes. Completada en modo local/mock; la prioridad actual es terminar `Opciones avanzadas`, validar todos los modales y cerrar el acabado visual antes de conectar backend.
+- **Fase 2 — Catálogos base**: implementar Comercios/sucursales, Profesionales y Servicios con listado, búsqueda/filtros, crear, editar, activar/desactivar y confirmaciones. Implementada en local/mock.
+- **Fase 3 — Reglas operativas**: implementar Comisiones, Recursos y Gift Cards; integrar horarios, descansos, recursos, categorías y restricciones de reserva; cubrir flujos alternativos de gift card de servicio y de monto. Implementada en local/mock.
+- **Fase 4 — Comunicación y documentos**: conectar WhatsApp real, envío de mensajes y persistencia de plantillas; implementar Consentimientos como catálogo de documentos; definir antes de construir el flujo de resultados de Encuestas y el uso de Consentimientos dentro de una cita. Catálogo y configuración implementados en local/mock; Consentimientos ya incluye nombre, archivo, validación de 5 MB, tabla CRUD y confirmación de eliminación; firma, uso dentro de una cita y persistencia siguen fuera de alcance.
+- **Fase 5 — Persistencia y conexión con agenda**: modelar y validar `Cliente`, `Servicio`, `Cita`, `BloqueHorario` y las entidades administrativas necesarias; crear endpoints `/api/scheduler` y conectar el frontend sin romper el mock actual; aplicar permisos por rol y reglas de sucursal. Pendiente: no iniciar hasta cerrar el acabado visual y recibir autorización explícita para modificar backend/Prisma.
+- **Fase 6 — Calidad y operación**: pruebas de flujos completos, responsive y accesibilidad; estados de error/reintento y protección contra cambios destructivos; preparar despliegue cuando el comportamiento local esté validado.
+
+**Criterios para cada módulo**: antes de marcar un módulo como terminado deben existir listado, estado vacío, búsqueda o filtro cuando aplique, alta, edición, validaciones, confirmación para eliminar/desactivar, feedback de éxito/error, comportamiento móvil y documentación de las decisiones no visibles en las capturas.
+
+---
+
 ## Payroll: implementación actual
 
 `apps/payroll` es una app operativa conectada a `backend/api` y PostgreSQL; ya no usa fixtures ni contextos mock. La referencia funcional original fue `nomina.xlsx`, pero las fórmulas viven en backend y cada corrida conserva snapshots históricos.
@@ -944,6 +1025,44 @@ apps/envelope/
     └── utils.ts
 ```
 
+### apps/scheduler
+
+```
+apps/scheduler/
+├── public/
+│   ├── logo.svg                   → logo compartido Keysar
+│   └── fonts/                     → Emofera + Gilroy para identidad visual
+├── src/app/
+│   ├── (auth)/login/              → acceso temporal/mock al scheduler
+│   ├── (dashboard)/page.tsx       → agenda principal (día / semana)
+│   ├── (dashboard)/administracion/ → workspace administrativo completo
+│   ├── (dashboard)/configuraciones/ → configuración visual/local del scheduler
+│   ├── (dashboard)/reportes/       → resumen ejecutivo + reporte general de reservas (mock)
+│   ├── globals.css                → tokens visuales del scheduler
+│   └── layout.tsx                 → metadata + Toaster global
+├── src/components/
+│   ├── SchedulerAccessGuard.tsx  → guard local/mock por permisos de pantalla
+│   ├── layout/
+│   │   ├── SchedulerLayoutShell.tsx → shell responsive compartido por las rutas autenticadas
+│   │   └── SchedulerAppSidebar.tsx  → navegación primaria global filtrada por permisos
+│   ├── SchedulerPrimaryNav.tsx    → tipos y menús legacy conservados durante la migración a sidebar
+│   ├── SettingsMenu.tsx           → acceso compartido a Configuraciones y próximos módulos de cuenta
+│   ├── SchedulerWorkspace.tsx     → shell principal con estado local, filtros y modales
+│   ├── scheduler/                 → header, sidebar, grid agenda, tarjetas y diálogos del scheduler
+│   ├── reports/                   → dashboards y contenidos de reportes; navegación en la sidebar global
+│   └── settings/                  → workspace y paneles locales; navegación en la sidebar global
+├── src/components/administration/ → contenidos y CRUDs mock; navegación en la sidebar global
+└── src/lib/
+    ├── administration-scheduler-config.ts → sincronización local de comercios, sucursales y profesionales
+    ├── commerce-operating-hours.ts → horario operativo y rango visible por comercio
+    ├── mock-client-data.ts        → clientes mock, alias, teléfono único e historial por sucursal
+    ├── mock-scheduler-data.ts     → datos mock de sucursales, profesionales, citas, bloqueos y leyenda
+    ├── scheduler-agenda-settings.ts → intervalo visual de slots persistido localmente
+    ├── scheduler-access.ts        → alcance mock por comercio, sucursal, profesional y pantalla
+    ├── mock-administration-data.ts → catálogos mock de locales, profesionales, servicios y módulos administrativos
+    └── mock-report-data.ts        → periodos, KPIs y series mock del resumen de reportes
+```
+
 ### backend/api
 
 ```
@@ -1054,6 +1173,14 @@ packages/ui/
 | Ciclo/snapshots payroll    | `backend/api/src/services/payroll.service.ts`                  |
 | Guía de despliegue payroll | `apps/payroll/PENDIENTES.md`                                   |
 | Guía operativa payroll     | `apps/payroll/GUIA_PRIMERA_NOMINA.md`                          |
+| Agenda scheduler           | `apps/scheduler/src/app/(dashboard)/page.tsx`                  |
+| Admin scheduler            | `apps/scheduler/src/app/(dashboard)/administracion/page.tsx`   |
+| Configuraciones scheduler  | `apps/scheduler/src/app/(dashboard)/configuraciones/page.tsx`  |
+| Reportes scheduler         | `apps/scheduler/src/app/(dashboard)/reportes/`                 |
+| Workspace scheduler        | `apps/scheduler/src/components/SchedulerWorkspace.tsx`         |
+| Admin workspace scheduler  | `apps/scheduler/src/components/administration/AdministrationWorkspace.tsx` |
+| Settings workspace scheduler | `apps/scheduler/src/components/settings/SettingsWorkspace.tsx` |
+| Mock data scheduler        | `apps/scheduler/src/lib/mock-scheduler-data.ts`                |
 | Prisma schema              | `backend/api/prisma/schema.prisma`                             |
 | Migraciones                | `backend/api/prisma/migrations/`                               |
 | Seed seguro catálogos      | `backend/api/prisma/seed-catalogs.ts`                          |
@@ -1096,6 +1223,8 @@ pnpm test:ui:visual
 pnpm test:unit
 pnpm ci:build
 ```
+
+El scheduler usa `.next-dev` para `next dev` y `.next` para `next build`. Esta separación evita que una validación de producción sobrescriba los chunks que está sirviendo la instancia local en el puerto 3004.
 
 ### CI, Prisma y smoke
 

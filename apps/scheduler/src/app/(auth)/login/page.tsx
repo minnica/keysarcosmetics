@@ -1,4 +1,5 @@
-// Página de login — pendiente de implementar
+import { redirect } from 'next/navigation'
+
 export default function LoginPage() {
-  return null
+  redirect('/')
 }
