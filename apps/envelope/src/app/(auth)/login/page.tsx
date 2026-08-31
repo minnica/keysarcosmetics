@@ -1,6 +1,6 @@
 'use client'
 // Pantalla de login — guarda el JWT en localStorage para que el interceptor de axios lo use
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Image from 'next/image'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -24,6 +24,7 @@ type LoginForm = z.infer<ReturnType<typeof createSchema>>
 export default function LoginPage() {
   const { t } = useI18n()
   const [serverError, setServerError] = useState<string | null>(null)
+  const [isHydrated, setIsHydrated] = useState(false)
   const schema = useMemo(
     () => createSchema({
       invalidEmail: t.login.invalidEmail,
@@ -35,6 +36,10 @@ export default function LoginPage() {
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<LoginForm>({
     resolver: zodResolver(schema),
   })
+
+  useEffect(() => {
+    setIsHydrated(true)
+  }, [])
 
   async function onSubmit(data: LoginForm) {
     setServerError(null)
@@ -114,7 +119,12 @@ export default function LoginPage() {
                 </p>
               </div>
 
-              <form onSubmit={handleSubmit(onSubmit)} className="mt-10 space-y-5">
+              <form
+                method="post"
+                data-e2e-ready={isHydrated ? 'true' : undefined}
+                onSubmit={handleSubmit(onSubmit)}
+                className="mt-10 space-y-5"
+              >
                 <div className="space-y-2">
                   <Label
                     htmlFor="email"
@@ -162,8 +172,8 @@ export default function LoginPage() {
 
                 <Button
                   type="submit"
-                    className="h-12 w-full rounded-full border border-[#d7b488]/35 bg-[#d7b488] text-[0.72rem] uppercase tracking-[0.3em] text-[#110f0d] shadow-[0_18px_36px_rgba(215,180,136,0.2)] transition-transform duration-300 hover:bg-[#e4c79d] hover:translate-y-[-1px]"
-                  disabled={isSubmitting}
+                  className="h-12 w-full rounded-full border border-[#d7b488]/35 bg-[#d7b488] text-[0.72rem] uppercase tracking-[0.3em] text-[#110f0d] shadow-[0_18px_36px_rgba(215,180,136,0.2)] transition-transform duration-300 hover:bg-[#e4c79d] hover:translate-y-[-1px]"
+                  disabled={isSubmitting || !isHydrated}
                 >
                   {isSubmitting ? t.login.entering : t.login.enter}
                 </Button>

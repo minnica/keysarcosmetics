@@ -8,6 +8,9 @@ export const metadata: Metadata = {
   title: 'Keysarcosmetics — Control de Ventas',
   description: 'Sistema de control de ventas por sucursal',
   icons: { icon: '/logo.svg' },
+  other: {
+    'keysar-release': process.env['VERCEL_GIT_COMMIT_SHA'] ?? 'local',
+  },
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

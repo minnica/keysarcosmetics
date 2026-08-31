@@ -771,11 +771,6 @@ export default function DashboardPage() {
         format: "currency" as const,
       },
       {
-        header: "SUELDO BASE",
-        accessor: (row: PayrollRunLine) => row.salaryBase,
-        format: "currency" as const,
-      },
-      {
         header: "BONO",
         accessor: (row: PayrollRunLine) => row.bonus,
         format: "currency" as const,
@@ -784,11 +779,6 @@ export default function DashboardPage() {
         header: "DEDUCCIONES",
         accessor: (row: PayrollRunLine) =>
           row.fine + row.loanPayment + row.payrollAdjustmentNegative,
-        format: "currency" as const,
-      },
-      {
-        header: "TOTAL PAGO",
-        accessor: commissionPaymentTotal,
         format: "currency" as const,
       },
     ],
@@ -825,21 +815,6 @@ export default function DashboardPage() {
         width: 24,
       },
       {
-        header: "PRIMERA QUINCENA",
-        accessor: (row: MonthlyPayrollLine) => row.firstFortnightTotal,
-        format: "currency" as const,
-      },
-      {
-        header: "SEGUNDA QUINCENA",
-        accessor: (row: MonthlyPayrollLine) => row.secondFortnightTotal,
-        format: "currency" as const,
-      },
-      {
-        header: "SUELDO BASE",
-        accessor: (row: MonthlyPayrollLine) => row.salaryPayment,
-        format: "currency" as const,
-      },
-      {
         header: "VENTAS CON IVA",
         accessor: (row: MonthlyPayrollLine) => row.salesWithVat,
         format: "currency" as const,
@@ -859,11 +834,6 @@ export default function DashboardPage() {
         header: "DEDUCCIONES",
         accessor: (row: MonthlyPayrollLine) =>
           row.fine + row.adjustmentNegative + row.loanPayment,
-        format: "currency" as const,
-      },
-      {
-        header: "TOTAL MENSUAL",
-        accessor: (row: MonthlyPayrollLine) => row.totalPayment,
         format: "currency" as const,
       },
     ],

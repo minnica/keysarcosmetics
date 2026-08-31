@@ -55,3 +55,7 @@ backend/api/src/generated/
 # Misc
 .cache/
 coverage/
+playwright-report/
+playwright-report-development/
+test-results/
+apps/e2e/.auth/

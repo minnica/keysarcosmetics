@@ -7,6 +7,9 @@ export const metadata: Metadata = {
   title: "Keysar Cosmetics — Payroll",
   description: "Administración de nómina de Keysar Cosmetics",
   icons: { icon: "/logo.svg" },
+  other: {
+    "keysar-release": process.env["VERCEL_GIT_COMMIT_SHA"] ?? "local",
+  },
 };
 
 export default function RootLayout({

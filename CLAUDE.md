@@ -197,6 +197,14 @@ el diseño y el autocuidado.
 
 ## Estado actual de @cosmetics/ui
 
+`packages/ui` cuenta con contratos de comportamiento en Vitest + React Testing Library para todo el barrel público, incluidos `DatePicker`, `DateRangePicker`, `Calendar`, `Combobox`, `Select`, `Dialog`, `AlertDialog`, `DataTable`, `Sidebar`, Toast, Sheet, Tabs, Popover y Tooltip. El setup común usa jsdom, jest-dom y user-event con timezone fija `America/Mexico_City`. Ejecutar `pnpm test:ui` para la suite rápida y `pnpm test:ui:coverage` para el gate de cobertura: mínimo global de 90% statements/líneas, 80% funciones y 75% branches. Al agregar o modificar un componente compartido, seguir `packages/ui/GUIA_PRUEBAS_COMPONENTES.md` y actualizar el contrato del barrel cuando corresponda.
+
+La regresión visual de los componentes de alto riesgo usa `apps/ui-testbed`, una app interna sin API, BD, secretos ni deploy, con datos/fechas fijos. `pnpm test:ui:visual` construye ese testbed y valida los baselines versionados mediante Playwright/Chromium en escritorio `1440×900` y móvil `390×844`, con `es-MX`, `America/Mexico_City`, fuentes cargadas y animaciones desactivadas. El check obligatorio es **UI regression canaries**. Para aceptar una variación visual intencional, ejecutar `pnpm test:ui:visual:update`, revisar los PNG modificados y volver a ejecutar el comando normal; CI nunca actualiza baselines. Ver `apps/ui-testbed/README.md`. La Fase 3 de `PLAN_PRUEBAS_UI_COMPARTIDA_Y_E2E.md` concluyó el 2026-08-27 con 34 baselines versionados y 22 canaries en verde.
+
+El E2E funcional autenticado de development vive en `apps/e2e/development` y se ejecuta con `pnpm test:e2e:development` o mediante **Authenticated development E2E**. Usa cuentas técnicas distintas y de mínimo privilegio, genera `storageState` temporal bajo `apps/e2e/.auth`, y cubre ocho recorridos de solo lectura por app; ambos incluyen calendarios reales, tablas, selects, navegación móvil y logout. Un fixture falla ante cualquier método distinto de `GET`, `HEAD` u `OPTIONS`. Los proyectos autenticados desactivan traces, screenshots y video para que JWT, bypass secrets y datos operativos no entren en artefactos; solo se conserva siete días el reporte HTML seguro. Antes de los recorridos, los alias Vercel deben exponer el SHA indicado en `meta[name="keysar-release"]` y `/health.release` debe coincidir con el SHA de API indicado. La preparación de cuentas, permisos, variables y diagnóstico está en `apps/e2e/README.md`. La Fase 4 de `PLAN_PRUEBAS_UI_COMPARTIDA_Y_E2E.md` quedó implementada el 2026-08-27.
+
+El smoke autenticado productivo vive en `apps/e2e/production` y solo se ejecuta después de los cinco smokes públicos mediante **Environment smoke tests** sobre el environment protegido `production`. Usa cuentas productivas separadas: Envelope recibe exclusivamente `dashboard` y `reportes/total-general` con `selfDataOnly`; Payroll recibe únicamente `payroll/esquemas` con `canWrite = false`. Cada app tiene tres recorridos y el mismo guard bloquea escrituras. La configuración productiva usa cero retries, desactiva traces/screenshots/video, no publica reporte HTML y elimina sesiones/resultados incluso al fallar. El workflow exige los SHA exactos de frontends/API y registra duración, intento y resultado en el resumen. Las cuentas, los cuatro secrets `PRODUCTION_MONITOR_*` y la observación de cinco promociones son activación administrativa externa; no crear seeds ni credenciales en el repositorio. La implementación de la Fase 5 concluyó en repositorio el 2026-08-27.
+
 Componentes shadcn canónicos en `packages/ui/src/components/ui`:
 
 - Button, Card, Input, Label, Textarea, Badge
@@ -429,6 +437,7 @@ La API cubre bootstrap de fuentes compartidas; CRUD de catálogos, esquemas/vers
 - El desglose usa la sucursal real de cada `Venta`. Sueldo, comisión y préstamo se distribuyen proporcionalmente entre las sucursales donde el empleado tuvo ventas en la quincena, conservando los centavos exactos; si no tuvo ventas, esos importes se asignan a `CORPORATIVO`. `Empleado.sucursalId` no participa en esta consulta ni en sus snapshots.
 - Esta distribución se materializa al crear o recalcular una corrida. Las corridas `APPROVED`/`PAID` conservan sus `PayrollRunBranchLine` históricos y no se reescriben; un borrador anterior debe recalcularse para adoptar la regla vigente.
 - Cada asignación de movimiento captura su propia sucursal o `CORPORATIVO`; ese centro se conserva en `PayrollMovementAllocation` y alimenta el desglose. Los gastos mantienen un centro de costo independiente porque no están vinculados a un empleado.
+- Los movimientos pendientes que todavía no pertenecen a una corrida pueden editarse o eliminarse desde `/movimientos`. El borrado requiere confirmación, elimina también sus comprobantes privados y conserva un evento de auditoría; movimientos aprobados, rechazados o reservados mantienen sus acciones bloqueadas.
 - Una corrida transita `DRAFT → APPROVED → PAID`; puede cancelarse antes de pagar. Aprobar congela líneas y reserva movimientos, gastos y cuotas. Pagar liquida cuotas reservadas y genera recibos. Una corrida pagada no se recalcula ni cancela.
 - El consolidado mensual es un reporte derivado, no una corrida nueva ni una entidad persistida. Incluye corridas `DRAFT`, `APPROVED` y `PAID`, excluye `CANCELED`, agrupa las líneas por `employeeId` y suma por separado primera quincena, segunda quincena, sueldo, ventas, comisión, extras, deducciones y total. Para una quincena terminada sin corrida, reutiliza el motor de cálculo sin `runId` y devuelve una referencia sintética `ESTIMATED`; no reserva ni persiste datos. El cierre del periodo se compara contra la fecha de negocio de `America/Mexico_City`. Si existe una corrida real en el mes, la estimación usa su modo; si no existe ninguna usa `WITH_VAT`. La estimación recupera ventas y sus sucursales, esquemas/asignaciones, movimientos, gastos y cuotas aplicables al periodo, pero sueldo, banco, cuenta y teléfono proceden del registro de empleado disponible al consultar, porque no existe snapshot histórico. Por eso siempre se presenta como aproximada hasta crear la corrida histórica. Una quincena actual o futura sin corrida sigue incompleta.
 - En el detalle quincenal de comisiones, `TOTAL PAGO` no agrega `salaryBase`: se compone de comisión, bonos, ajustes positivos, viáticos e insumos menos multas, ajustes negativos y préstamos. La tabla y las exportaciones PDF/Excel deben reutilizar `commissionPaymentTotal`; no duplicar la fórmula ni volver a sumar el sueldo mostrado en su columna informativa.
@@ -441,7 +450,7 @@ La API cubre bootstrap de fuentes compartidas; CRUD de catálogos, esquemas/vers
 - La page `/gastos` contiene exactamente dos tablas visibles: **Gastos**, cuya vista principal es **Historial** y deja **Recurrentes activos** como consulta secundaria para no presentar una serie y su ocurrencia como cargos duplicados, y **Categorías de gasto**, con acciones de edición y eliminación lógica. En el selector de vista, **Historial** ocupa la posición izquierda y queda activo al abrir la pantalla. Las métricas cambian con la vista: aplicaciones reales de los últimos 12 meses frente a programación activa.
 - En Préstamos y adelantos, el usuario puede seleccionar cualquier día dentro de la primera quincena de cobro. El frontend normaliza la selección al inicio canónico del periodo: días 1–15 al día 1 y días 16–fin al día 16, que es el contrato enviado al motor de amortización.
 - Al seleccionar **ADELANTO DE NÓMINA** en `/prestamos-adelantos`, la primera quincena de cobro se propone desde la fecha de solicitud para que `Guardar y recalcular` lo descuente de la corrida correspondiente; en préstamos se conserva la siguiente quincena como propuesta. La fecha sigue siendo editable. Este comportamiento solo aplica a capturas/ediciones futuras: no muta solicitudes guardadas ni recalcula snapshots existentes automáticamente.
-- Recibos se generan desde el snapshot pagado, se descargan en PDF y WhatsApp se abre mediante `wa.me`; el archivo se adjunta manualmente. Estados: `GENERATED`, `SENT`, `CONFIRMED`.
+- Recibos se generan desde el snapshot pagado, se descargan en PDF con la composición editorial canónica y el logo real de `apps/payroll/public/logo.svg`, y WhatsApp se abre mediante `wa.me`; el archivo se adjunta manualmente. Estados: `GENERATED`, `SENT`, `CONFIRMED`.
 - `GET /api/payroll/reports/live-preview?periodStart=AAAA-MM-DD&periodEnd=AAAA-MM-DD&mode=WITH_VAT|WITHOUT_VAT` calcula en memoria una quincena con las fuentes vigentes, incluidos conceptos ya ligados a una corrida de ese periodo. No crea ni recalcula corridas, no materializa recurrencias, no reserva movimientos/gastos/cuotas y no altera préstamos, recibos ni auditoría. Se usa para consultas operativas que deben mostrar el estado actual independientemente del ciclo `DRAFT → APPROVED → PAID`.
 
 ### Frontend operativo
@@ -454,6 +463,7 @@ Rutas: `/`, `/nomina-salario-fijo`, `/nomina-especialistas`, `/nomina-comisiones
 - `apps/payroll/src/lib/access.ts` es el catálogo canónico de rutas/pantallas de Payroll. Los keys usan el prefijo `payroll/`; al agregar una page también debe registrarse allí, en `PAYROLL_SCREEN_KEYS` de `@cosmetics/types` y en la resolución de endpoints de `backend/api/src/routes/payroll.routes.ts`.
 - `/accesos` consume `GET /api/payroll/access/bootstrap`, que entrega puestos, empleados y cuentas con una selección explícita de campos públicos; nunca debe exponer `passwordHash`, tokens de configuración ni otros secretos. `PUT /api/payroll/access/users/:employeeId/credentials` crea o actualiza correo y contraseña, mientras `DELETE /api/payroll/access/users/:id` elimina la cuenta de acceso y protege `SUPER_ADMIN`. Todas estas rutas requieren `requirePayrollAccessManager`.
 - Exportaciones PDF/Excel se generan desde datasets reales con imports dinámicos.
+- Las exportaciones PDF/Excel de Resumen omiten sueldo base, totales quincenales/mensuales y cualquier suma que permita inferir el sueldo; la tabla operativa en pantalla conserva su detalle completo.
 - `/recibos` y `/reportes/desglose-sucursal` ya no dependen de la corrida seleccionada en Resumen. Ambas abren en la quincena vigente, permiten elegir cualquier quincena estándar de los últimos 12 meses y el modo con/sin IVA, consultan el cálculo en memoria al abrir, al cambiar filtros, al recuperar foco y cada 60 segundos, y ofrecen actualización manual. Desglose y sus exportaciones siempre usan esa vista actual. Recibos separa **Vista actual** —previsualizaciones provisionales descargables que no acreditan pago— de **Emitidos**, que conserva el snapshot, estatus y acciones de WhatsApp de los recibos creados al pagar; `GET /api/payroll/receipts` acepta también `periodStart` + `periodEnd` para cargar esos históricos sin depender de `selectedRun`.
 - Las pages `/movimientos`, `/gastos` y `/prestamos-adelantos` comparten un filtro accesible de periodo con dos calendarios separados (`DateRangePicker`). El rango se inicia abierto para conservar todos los registros disponibles y, al elegir fechas, filtra tabla, contadores y métricas; **Limpiar fechas** restaura la vista completa. PDF y Excel reciben exactamente el mismo dataset filtrado y agregan el periodo al subtítulo y nombre del archivo. En `/gastos`, la exportación y el contador siguen la pestaña activa (`Recurrentes activos` o `Historial`) sin incluir el catálogo de categorías.
 - `apps/payroll/src/lib/report-export.ts` debe cargar `jsPDF` y `autoTable` mediante sus exports nombrados al hacer clic. Con las versiones actuales, el `default` de `jspdf` no es el constructor y provoca un error de runtime aunque TypeScript y el build terminen correctamente; no volver a usar `import("jspdf").default`.
@@ -889,7 +899,7 @@ CORS_ORIGINS=https://keysarcosmetics-envelope.vercel.app,https://keysarcosmetics
 - Los origins CORS no llevan `/` final, espacios ni comillas. El backend lee `CORS_ORIGINS` en plural; `CORS_ORIGIN` en singular no participa.
 - Fly no revela el valor anterior de un Secret al editarlo. Antes de reemplazarlo, recuperar la lista desde la línea `CORS habilitado para:` de los logs de arranque o conservar explícitamente todos los dominios existentes.
 - La cuenta que entra a Payroll debe existir en Supabase producción, estar activa y tener rol `SUPER_ADMIN`. Los usuarios de desarrollo no se replican automáticamente a producción.
-- Estado documentado al 31 de julio de 2026: Payroll está publicado en `https://keysarcosmetics-payroll.vercel.app`; todavía debe verificarse su variable `NEXT_PUBLIC_API_URL`, y las migraciones/backend productivos deben desplegarse y validarse explícitamente antes de probar el flujo real. No asumir que una validación exitosa en dev confirma producción.
+- Estado verificado al 25 de agosto de 2026: Envelope y Payroll están publicados en Vercel Production y ambos bundles apuntan a `https://cosmetics-api.fly.dev`; CORS admite exactamente sus dos dominios productivos. Las 22 migraciones versionadas hasta `20260823010000_add_movement_payroll_type` permanecen aplicadas en Supabase producción. El API ejecuta Node.js 22 y sirve el SHA `952a675ecf882829e388562a024661300376fefc`, registrado con el tag `prod-2026-08-25.1`; el deploy protegido, `/health` con el SHA exacto, `/ready`, smoke tests `4/4`, login y validación funcional manual en Envelope/Payroll y la observación de logs resultaron correctos. La corrida paralela previa al primer pago oficial y Supabase Storage para comprobantes continúan pendientes. El tag `prod-2026-08-24.1` conserva el release anterior como punto de rollback.
 
 ### Desarrollo
 
@@ -897,17 +907,20 @@ CORS_ORIGINS=https://keysarcosmetics-envelope.vercel.app,https://keysarcosmetics
 develop → Vercel Preview → cosmetics-api-dev.fly.dev → Supabase dev
 ```
 
-Configuración validada para desarrollo local de Payroll:
+Configuración validada para desarrollo local y previews de Envelope/Payroll:
 
 ```text
 # apps/payroll/.env.local (ignorado por Git)
 NEXT_PUBLIC_API_URL=https://cosmetics-api-dev.fly.dev
 
+# Vercel Preview de apps/payroll, limitada a la rama develop
+NEXT_PUBLIC_API_URL=https://cosmetics-api-dev.fly.dev
+
 # Fly.io, app cosmetics-api-dev
-CORS_ORIGINS=http://localhost:3001,https://keysarcosmetics-envelope-git-develop-minnicas-projects.vercel.app,http://localhost:3002
+CORS_ORIGINS=http://localhost:3001,http://localhost:3002,https://keysarcosmetics-envelope-git-develop-minnicas-projects.vercel.app,https://keysarcosmetics-payroll-git-develop-minnicas-projects.vercel.app
 ```
 
-La migración en Supabase dev, el backend `cosmetics-api-dev`, el login `SUPER_ADMIN` y el flujo de formularios de Payroll fueron probados correctamente. Si cambia el dominio Preview de Payroll, agregar también su origin exacto a `CORS_ORIGINS`.
+La migración en Supabase dev, el backend `cosmetics-api-dev`, el login `SUPER_ADMIN` y el flujo de formularios de Payroll fueron probados correctamente. Los dominios únicos de cada deployment Vercel cambian y no se agregan a CORS; para validación manual se usan los alias estables `git-develop`. Si cambia alguno de esos alias, actualizar simultáneamente la variable del environment `development` en GitHub y `CORS_ORIGINS` en Fly.
 
 **Notas importantes:**
 
@@ -920,18 +933,20 @@ La migración en Supabase dev, el backend `cosmetics-api-dev`, el login `SUPER_A
 - Para probar frontend local contra backend dev, conservar simultáneamente los origins de Envelope y Payroll en `CORS_ORIGINS`; no reemplazar uno por otro.
 - Un `Network Error` en login normalmente significa que el frontend apunta a `localhost:4000`, el backend no responde o CORS rechazó el origin antes de llegar a `/api/auth/login`. Verificar primero Request URL, `/health` y el preflight `OPTIONS`.
 
-### CI y releases seguros (2026-08-23)
+### CI y releases seguros (2026-08-24)
 
-- `.github/workflows/ci.yml` valida PRs y pushes a `develop`/`master` con lint, TypeScript, unit tests, builds productivos, sincronía de schemas Prisma, aplicación completa de migraciones sobre PostgreSQL 16 efímero e integración HTTP real de login/sesión.
+- `.github/workflows/ci.yml` valida PRs y pushes a `develop`/`master` con los checks independientes `Shared UI contracts` y `UI regression canaries`, lint, TypeScript, unit tests, builds productivos, sincronía de schemas Prisma, aplicación completa de migraciones sobre PostgreSQL 16 efímero e integración HTTP real de login/sesión. `Shared UI contracts` ejecuta la suite de `@cosmetics/ui` con sus umbrales obligatorios de cobertura; `UI regression canaries` compara los snapshots del testbed en Chromium.
 - Los scripts `type-check`, `test:unit` y `test:integration` de `@cosmetics/api` ejecutan previamente `prisma generate`; esto es obligatorio porque un runner limpio todavía no tiene los tipos y enums generados de `@prisma/client`.
 - Envelope conserva temporalmente un presupuesto máximo de 8 warnings ESLint y Payroll de 7; CI bloquea cualquier incremento mientras se reduce esa deuda en cambios separados.
 - `.github/workflows/deploy-api.yml` solo se ejecuta manualmente. Fija el SHA de la rama `develop` o `master` antes de la aprobación, usa el environment `development` o `production`, aplica `prisma migrate deploy`, despliega exactamente ese commit y espera `/ready`. Producción exige escribir `PRODUCCION_RESPALDADA`; esta confirmación no sustituye verificar backup/PITR ni la aprobación del environment.
-- `.github/workflows/staging-smoke.yml` ejecuta smoke tests Playwright de solo lectura contra API, Envelope y Payroll en el environment elegido.
+- `.github/workflows/staging-smoke.yml` exige los SHA completos servidos y ejecuta cinco smoke tests Playwright públicos de solo lectura contra API, Envelope y Payroll en el environment elegido. En producción encadena además `Authenticated production smoke`, con tres recorridos por app, cuentas de monitoreo, cero retries y sin artefactos sensibles. Los previews protegidos usan `ENVELOPE_VERCEL_BYPASS_SECRET` y `PAYROLL_VERCEL_BYPASS_SECRET`, generados por separado en cada proyecto Vercel; todas las suites de ambiente desactivan traces, screenshots y video.
+- `.github/workflows/development-e2e.yml` ejecuta manualmente 16 recorridos autenticados de solo lectura (8 Envelope + 8 Payroll) únicamente en el environment `development`. Requiere las cuatro credenciales `E2E_*`, los bypass de Vercel y los SHA completos de frontend/API; compara la identidad desplegada antes de probar y elimina los `storageState` antes de adjuntar el reporte seguro.
 - El API separa `src/app.ts` (Express importable) de `src/index.ts` (listener y cierre ordenado). `/health` verifica el proceso y `/ready` verifica conectividad PostgreSQL; Fly enruta mediante el segundo.
 - Las migraciones Prisma dejaron de estar ignoradas por Git. `scripts/check-migration-safety.mjs` bloquea SQL nuevo potencialmente destructivo salvo revisión explícita documentada con `-- migration-safety: reviewed`.
 - `db:push` y el alias directo `db:migrate:prod` fueron retirados de los scripts. Los despliegues usan `db:migrate:deploy` dentro del environment protegido.
-- Dependabot revisa dependencias npm y GitHub Actions semanalmente. Secret scanning/push protection, rulesets, required checks, environments/secrets, PITR y promoción manual de Vercel requieren configuración administrativa externa.
+- Dependabot revisa dependencias npm y GitHub Actions semanalmente. Los rulesets de `develop`/`master`, required checks y environments protegidos `development`/`production` están configurados en GitHub; conservarlos sincronizados con este runbook. `develop` exige historial lineal, squash y que la rama del PR esté actualizada. `master` acepta únicamente promociones `develop → master` mediante merge commit y no exige `Require branches to be up to date`, porque los merge commits de releases anteriores existen solo en `master`; cualquier hotfix excepcional aplicado a `master` debe incorporarse a `develop` antes del siguiente release. Secret scanning/push protection y la promoción manual de Vercel continúan sujetos a configuración administrativa externa.
 - El procedimiento completo, variables, protecciones, secuencia de release y rollback vive en `docs/RELEASE_RUNBOOK.md`.
+- La guía paso a paso para el trabajo diario, integración en `develop` y promoción a `master` vive en `FLUJO_TRABAJO_Y_DESPLIEGUE.md`.
 
 ---
 
@@ -1098,12 +1113,16 @@ backend/api/
 
 ```text
 apps/e2e/
-├── playwright.config.ts          → proyectos API, Envelope y Payroll
-└── tests/                        → smoke tests de solo lectura por ambiente
+├── playwright.config.ts                     → proyectos smoke API, Envelope y Payroll
+├── playwright.development.config.ts         → E2E autenticado seguro de development
+├── development/                             → setup de sesión, guard de escritura y 16 recorridos
+├── tests/                                   → smoke tests públicos por ambiente
+└── README.md                                → cuentas, permisos, secrets y diagnóstico
 
 .github/workflows/
 ├── ci.yml                        → gates obligatorios de PR
 ├── deploy-api.yml                → migración + deploy manual protegido
+├── development-e2e.yml           → E2E autenticado por SHA, solo development
 └── staging-smoke.yml             → smoke tests manuales development/production
 ```
 
@@ -1111,10 +1130,13 @@ apps/e2e/
 
 ```
 packages/ui/
+├── vitest.config.mts              → configuración ESM de jsdom y cobertura de contratos
 ├── src/components/
-│   ├── ui/                        → componentes shadcn/Base UI canónicos, incluido tabs.tsx
+│   ├── ui/                        → componentes canónicos y contratos de alto riesgo
 │   └── custom/
-│       └── progress-keysar.tsx    → wrapper custom sobre Progress
+│       ├── progress-keysar.tsx    → wrapper custom sobre Progress
+│       └── combobox.test.tsx      → contrato de búsqueda y selección
+├── src/test/                      → setup jsdom y helper de render con user-event
 ├── src/hooks/
 │   └── use-mobile.ts              → hook useIsMobile compartido
 ├── src/lib/
@@ -1195,6 +1217,9 @@ pnpm --filter @cosmetics/api type-check
 pnpm --filter @cosmetics/api build
 pnpm lint
 pnpm type-check
+pnpm test:ui
+pnpm test:ui:coverage
+pnpm test:ui:visual
 pnpm test:unit
 pnpm ci:build
 ```
@@ -1209,6 +1234,8 @@ pnpm --filter @cosmetics/api prisma:validate
 pnpm migrations:review -- origin/develop
 pnpm test:integration  # requiere RUN_DATABASE_TESTS=true + PostgreSQL desechable
 pnpm test:smoke        # requiere URLs de ambiente o servicios locales activos
+pnpm test:e2e:development # requiere development desplegado, cuentas E2E y SHA exactos
+pnpm test:e2e:production  # diagnóstico administrado; solo cuentas de monitoreo productivas
 ```
 
 ### Deploy backend
@@ -1272,14 +1299,16 @@ npx ts-node --project tsconfig.json prisma/seed-catalogs.ts
 - `pnpm --filter @cosmetics/hr lint`, `type-check` y `build` son las validaciones requeridas para el paquete; ESLint usa configuración no interactiva de Next.
 - La persistencia real, API HR, auth compartida y permisos autoritativos permanecen pendientes y requieren una sesión posterior con alcance backend/BD. El CRUD actual es exclusivamente frontend/mock.
 
-- Configurar en GitHub los environments `development`/`production`, secrets, variables, required reviewers y rulesets descritos en `docs/RELEASE_RUNBOOK.md`; los workflows ya viven en el repositorio pero no pueden operar hasta completar esa configuración externa.
+### Runtime Node.js
+
+- CI, smoke tests, despliegues protegidos y la imagen Docker del backend usan Node.js `22.23.2`; `.nvmrc` alinea el entorno local y `package.json` exige Node.js `>=22.12.0`.
+- La imagen Docker fija también pnpm `10.0.0`, igual que `packageManager`, para que instalaciones y builds sean reproducibles.
+- Todo cambio de runtime debe pasar los cinco checks de CI y validarse primero mediante despliegue y smoke tests en `development` antes de promoverlo a producción.
+- Estado validado en `development` el 24 de agosto de 2026: commit `86f7f89f1db152d67d7ed28c1d3c19dc81ea8cc3`, deploy protegido correcto, `/health` y `/ready` sanos, smoke tests `4/4`, ausencia de la advertencia de Node.js 20 y login/navegación autenticada de solo lectura en Envelope y Payroll.
+- Estado promovido y validado en `production` el 25 de agosto de 2026: commit `952a675ecf882829e388562a024661300376fefc`, tag `prod-2026-08-25.1`, respaldo manual confirmado, deploy protegido correcto, `/health` reportando el SHA exacto, `/ready` sano, smoke tests `4/4`, validación funcional manual de Envelope/Payroll y logs posteriores sin la advertencia de Node.js 20.
+
 - Activar secret scanning/push protection según el plan de GitHub y desactivar en Vercel la asignación automática del dominio productivo cuando se adopte la promoción manual.
 - Crear seeds separados seguros para dev/datos base si se requiere.
 - Limpieza futura de campos legacy `banco`/`puesto` en `Empleado` cuando todos los registros en prod tengan `bankId`/`positionId` asignados (Fase 4).
-- Payroll producción: confirmar respaldo/PITR, aplicar `20260730000000_add_payroll_models`, `20260731000000_add_employee_branch` y `20260801000000_add_employee_all_branches`, desplegar `cosmetics-api`, configurar/verificar `NEXT_PUBLIC_API_URL` y `CORS_ORIGINS`, y ejecutar una corrida paralela antes del primer pago oficial.
-- Sucursales: aplicar `20260813000000_add_branch_monthly_goal_and_deactivation_date` en cada ambiente con `prisma migrate deploy` antes de desplegar el backend/frontend que capturan `metaMensual` y `desactivadaEn`.
-- Payroll: aplicar `20260813010000_add_recurring_payroll_expenses` en cada ambiente antes de desplegar la API/UI de recurrencias. No convierte automáticamente gastos legacy con frecuencia mensual/quincenal para evitar duplicar capturas históricas.
-- Payroll: aplicar después `20260813020000_add_payroll_expense_categories`; debe desplegarse junto con la API/UI que sustituyen el texto libre de categoría por catálogo.
-- Payroll: aplicar finalmente `20260813030000_link_payroll_expense_categories` para habilitar edición segura de nombres y referencias futuras sin alterar snapshots aprobados.
-- Payroll: aplicar `20260822000000_add_payroll_access_control` y después `20260823000000_add_payroll_read_only_access` antes de desplegar el control de accesos por pantalla. La segunda conserva edición para permisos existentes mediante `canWrite = true`.
+- Payroll producción: ejecutar y validar una corrida paralela antes del primer pago oficial; no reemplazar todavía el proceso vigente sólo porque el despliegue técnico esté sano.
 - Payroll Storage: crear más adelante el bucket privado y configurar `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` y opcionalmente `PAYROLL_STORAGE_BUCKET` solo después de que exista.
