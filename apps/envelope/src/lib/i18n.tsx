@@ -334,7 +334,7 @@ const translations = {
       reportsAction: 'Acción de reportes',
       viewKeysarHomeDataPermission: 'Incluir registros de Keysar Home',
       viewKeysarHomeDataPermissionDescription:
-        'Muestra sus ventas en la tabla de ventas guardadas, los reportes por vendedor y sus exportaciones.',
+        'Muestra sus ventas en la tabla de ventas guardadas, todos los reportes de ventas y sus exportaciones.',
       viewKeysarHomeOwnScopeHint:
         'Con alcance individual, esta opción solo afecta a la cuenta vinculada a Keysar Home; las demás personas continúan viendo únicamente sus propios registros.',
       dataScopeTitle: '¿Qué registros puede ver este puesto?',
@@ -853,7 +853,7 @@ const translations = {
       reportsAction: 'Reports action',
       viewKeysarHomeDataPermission: 'Include Keysar Home records',
       viewKeysarHomeDataPermissionDescription:
-        'Shows their sales in the saved sales table, sales-by-seller reports, and exports.',
+        'Shows their sales in the saved sales table, every sales report, and exports.',
       viewKeysarHomeOwnScopeHint:
         'With individual scope, this option only affects the account linked to Keysar Home; everyone else continues to see only their own records.',
       dataScopeTitle: 'Which records can this position see?',
