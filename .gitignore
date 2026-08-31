@@ -19,6 +19,10 @@ release/
 .env.local
 .env.*.local
 .env.dev
+
+# Config local de pnpm
+.npmrc
+
 # Turbo
 .turbo/
 
@@ -51,3 +55,7 @@ backend/api/src/generated/
 # Misc
 .cache/
 coverage/
+playwright-report/
+playwright-report-development/
+test-results/
+apps/e2e/.auth/
