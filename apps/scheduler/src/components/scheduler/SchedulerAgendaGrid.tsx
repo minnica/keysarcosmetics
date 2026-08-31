@@ -509,7 +509,7 @@ export function SchedulerAgendaGrid({
             >
               <div className="scheduler-grid-corner flex items-center justify-center">
                 <Badge className="rounded-full bg-slate-100 px-4 py-1 text-slate-500">
-                  {visibleProfessionals[0]?.name ?? 'Profesional'}
+                  {visibleProfessionals[0]?.name ?? 'Especialista'}
                 </Badge>
               </div>
               {weekDays.map((day) => (

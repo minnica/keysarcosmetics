@@ -13,7 +13,7 @@ export function ReportsHeader({ active }: { active: ReportsPage }) {
           <div>
             <p className="page-title text-[1.55rem] text-white">Reportes</p>
             <p className="text-[0.62rem] uppercase tracking-[0.24em] text-white/45">
-              {active === "reservations" ? "Reservas" : active === "sales" ? "Ventas" : "Resumen"}
+              {active === "reservations" ? "Reservas" : "Resumen"}
             </p>
           </div>
         </div>

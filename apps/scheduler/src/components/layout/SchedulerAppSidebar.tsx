@@ -30,17 +30,13 @@ import {
   FileText,
   FileCheck2,
   Globe2,
-  History,
   LogOut,
   Mail,
-  MapPinned,
   MessageCircle,
   MessageSquareText,
   Palette,
-  Send,
   SlidersHorizontal,
   Sparkles,
-  UserRound,
   UsersRound,
   WalletCards,
   X,
@@ -51,6 +47,7 @@ import {
   type SchedulerScreenId,
 } from "@/lib/scheduler-access";
 import type { AdministrationSectionId } from "@/components/SchedulerPrimaryNav";
+import { clientNavigationItems } from "@/lib/client-navigation";
 
 const ADMIN_SECTION_CHANGE_EVENT = "scheduler-administration-section-change";
 const SETTINGS_SECTION_CHANGE_EVENT = "scheduler-settings-section-change";
@@ -69,7 +66,7 @@ type SettingsSectionId =
   | "surveys"
   | "authorizations";
 
-type NavigationSection = "reports" | "administration" | "settings";
+type NavigationSection = "clients" | "reports" | "administration" | "settings";
 
 interface NavigationItem {
   label: string;
@@ -83,32 +80,27 @@ interface NavigationItem {
 
 const primaryItems: NavigationItem[] = [
   { label: "Agenda", href: "/", icon: CalendarDays, screenId: "agenda" },
-  { label: "Clientes", icon: UserRound, screenId: "clients", pending: true },
-  { label: "Servicios", icon: Sparkles, screenId: "services", pending: true },
 ];
+
+const clientItems: NavigationItem[] = clientNavigationItems.map((item) => ({
+  ...item,
+  screenId: "clients",
+}));
 
 const reportItems: NavigationItem[] = [
   { label: "Resumen", href: "/reportes", icon: BarChart3, screenId: "reports.summary" },
   {
-    label: "Reservas · General",
+    label: "Reporte de reservas",
     href: "/reportes/reservas",
     icon: CalendarDays,
     screenId: "reports.reservations",
   },
-  { label: "Historial", href: "/reportes/reservas/historial", icon: History, screenId: "reports.reservations" },
-  { label: "Métricas", href: "/reportes/reservas/metricas", icon: BarChart3, screenId: "reports.reservations" },
-  { label: "Locales", href: "/reportes/reservas/locales", icon: MapPinned, screenId: "reports.reservations" },
-  { label: "Servicios", href: "/reportes/reservas/servicios", icon: Sparkles, screenId: "reports.reservations" },
-  { label: "Mensajería móvil", href: "/reportes/reservas/mensajeria-movil", icon: Send, screenId: "reports.reservations" },
-  { label: "Servicios por local", href: "/reportes/reservas/servicios-por-local/opatra-mexico", icon: Building2, screenId: "reports.reservations" },
-  { label: "Prestadores por local", href: "/reportes/reservas/prestadores-por-local/opatra-mexico", icon: UsersRound, screenId: "reports.reservations" },
-  { label: "Ventas", icon: WalletCards, screenId: "reports.sales", pending: true },
 ];
 
 const administrationItems: NavigationItem[] = [
   { label: "Comercios", icon: Globe2, adminSection: "locals", screenId: "administration.locals" },
   {
-    label: "Profesionales",
+    label: "Especialistas",
     icon: UsersRound,
     adminSection: "professionals",
     screenId: "administration.professionals",
@@ -293,7 +285,9 @@ export function SchedulerAppSidebar() {
     useState<AdministrationSectionId>("locals");
   const [activeSettingsSection, setActiveSettingsSection] =
     useState<SettingsSectionId>("company");
-  const activeNavigationSection: NavigationSection | null = pathname.startsWith("/reportes")
+  const activeNavigationSection: NavigationSection | null = pathname.startsWith("/clientes")
+    ? "clients"
+    : pathname.startsWith("/reportes")
     ? "reports"
     : pathname === "/administracion"
       ? "administration"
@@ -425,6 +419,19 @@ export function SchedulerAppSidebar() {
           items={primaryItems}
           label="Principal"
           onNavigate={handleNavigate}
+          pathname={pathname}
+          sidebarCollapsed={sidebarState === "collapsed"}
+        />
+        <SidebarSeparator className="my-1 hidden bg-[var(--border-color)] group-data-[collapsible=icon]:block" />
+        <NavigationGroup
+          activeAdminSection={activeAdminSection}
+          activeSettingsSection={activeSettingsSection}
+          collapsible
+          expanded={expandedSection === "clients"}
+          items={clientItems}
+          label="Clientes"
+          onNavigate={handleNavigate}
+          onToggle={() => setExpandedSection(expandedSection === "clients" ? null : "clients")}
           pathname={pathname}
           sidebarCollapsed={sidebarState === "collapsed"}
         />

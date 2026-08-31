@@ -216,7 +216,7 @@ const sectionGroups: {
       { id: "locals", label: "Comercios", icon: <Globe2 className="h-4 w-4" /> },
       {
         id: "professionals",
-        label: "Profesionales",
+        label: "Especialistas",
         icon: <UsersRound className="h-4 w-4" />,
       },
       {
@@ -297,7 +297,7 @@ const sectionTitles: Record<
   },
   professionals: {
     eyebrow: "Administración",
-    title: "Profesionales",
+    title: "Especialistas",
     description:
       "Organiza tu equipo, sus servicios, horarios y disponibilidad por local.",
   },
@@ -1393,7 +1393,7 @@ function ClassScheduleRows({
               <select
                 className="class-schedule-professional"
                 value={slot.professionalId}
-                aria-label={`Profesional de la clase del ${day.day}`}
+                aria-label={`Especialista de la clase del ${day.day}`}
                 onChange={(event) =>
                   updateDay(
                     day.day,
@@ -1405,7 +1405,7 @@ function ClassScheduleRows({
                   )
                 }
               >
-                <option value="">Profesional</option>
+                <option value="">Especialista</option>
                 {activeProfessionals.map((professional) => (
                   <option key={professional.id} value={professional.id}>
                     {professional.name}
@@ -3095,7 +3095,7 @@ function ProfessionalDialog({
     onSave({
       ...draft,
       name: draft.name.trim(),
-      role: draft.role.trim() || "Profesional",
+      role: draft.role.trim() || "Especialista",
     });
     onOpenChange(false);
   };
@@ -3103,7 +3103,7 @@ function ProfessionalDialog({
     <ModalShell
       open={open}
       onOpenChange={onOpenChange}
-      title={professional ? `Editar ${professional.name}` : "Nuevo profesional"}
+      title={professional ? `Editar ${professional.name}` : "Nuevo especialista"}
       onSave={save}
       wide
     >
@@ -3180,22 +3180,22 @@ function ProfessionalDialog({
                 />
                 <div>
                   <p className="font-medium">
-                    Este profesional acepta reservas en línea
+                    Este especialista acepta reservas en línea
                   </p>
                 </div>
               </div>
               <div className="professional-toggle-row">
                 <Toggle
                   checked={draft.createsUser}
-                  label="Crear un usuario para este profesional"
+                  label="Crear un usuario para este especialista"
                   onChange={(checked) => update({ createsUser: checked })}
                 />
                 <div className="min-w-0 flex-1">
                   <p className="font-medium">
-                    Crear un usuario a este profesional
+                    Crear un usuario a este especialista
                   </p>
                   <p className="admin-help">
-                    Ingresa el email para que el profesional pueda ver su propia agenda
+                    Ingresa el email para que el especialista pueda ver su propia agenda
                   </p>
                   {draft.createsUser ? (
                     <div className="mt-3">
@@ -3203,7 +3203,7 @@ function ProfessionalDialog({
                         id="professional-email"
                         type="email"
                         value={draft.email}
-                        placeholder="Ingresa el email del profesional"
+                        placeholder="Ingresa el email del especialista"
                         onChange={(event) =>
                           update({ email: event.target.value })
                         }
@@ -3219,7 +3219,7 @@ function ProfessionalDialog({
             <div className="mb-3 flex items-end justify-between gap-4">
               <div>
                 <h3 className="professional-section-title">
-                  Selecciona los servicios que realiza el profesional
+                  Selecciona los servicios que realiza el especialista
                 </h3>
               </div>
               <label
@@ -3312,7 +3312,7 @@ function ProfessionalDialog({
         <div>
           <h3 className="admin-section-title">Disponibilidad semanal</h3>
           <p className="admin-help">
-            Configura la jornada y los descansos del profesional.
+            Configura la jornada y los descansos del especialista.
           </p>
           <div className="mt-4">
             <ScheduleRows
@@ -3337,7 +3337,7 @@ function ProfessionalDialog({
               className="admin-textarea"
               value={draft.biography}
               onChange={(event) => update({ biography: event.target.value })}
-              placeholder="Incluye una breve biografía del profesional"
+              placeholder="Incluye una breve biografía del especialista"
             />
           </div>
           <div className="service-payment-card">
@@ -3366,7 +3366,7 @@ function ProfessionalDialog({
             </label>
           </div>
           <FilePicker
-            label="Foto del profesional"
+            label="Foto del especialista"
             recommendation="Te recomendamos tenga un tamaño mínimo de 100x100px y un peso máximo de 3MB."
             value={draft.avatar}
             onChange={(avatar) => update({ avatar })}
@@ -3458,7 +3458,7 @@ function GroupDialog({
         <div>
           <div className="mb-2 flex items-center justify-between">
             <div>
-              <h3 className="admin-section-title">Profesionales</h3>
+              <h3 className="admin-section-title">Especialistas</h3>
               <p className="admin-help">
                 {draft.professionalIds.length} seleccionados
               </p>
@@ -3552,7 +3552,7 @@ function ProfessionalsSection({
           )
         : [...current, professional],
     );
-    toast.success(editing ? "Profesional actualizado." : "Profesional creado.");
+    toast.success(editing ? "Especialista actualizado." : "Especialista creado.");
   };
   const saveGroup = (group: ProfessionalGroup) => {
     setGroups((current) =>
@@ -3572,14 +3572,14 @@ function ProfessionalsSection({
     );
     setConfirming(null);
     toast.success(
-      next === "active" ? "Profesional activado." : "Profesional desactivado.",
+      next === "active" ? "Especialista activado." : "Especialista desactivado.",
     );
   };
   return (
     <div className="space-y-6">
       <SectionHeader
-        title="Profesionales"
-        description="Asigna cada profesional a uno o varios comercios y sucursales según su disponibilidad."
+        title="Especialistas"
+        description="Asigna cada especialista a uno o varios comercios y sucursales según su disponibilidad."
         action={
           <Button
             className="admin-primary"
@@ -3589,13 +3589,13 @@ function ProfessionalsSection({
             }}
           >
             <Plus className="mr-2 h-4 w-4" />
-            Nuevo profesional
+            Nuevo especialista
           </Button>
         }
       />
       <Tabs
         items={[
-          { id: "professionals", label: "Profesionales" },
+          { id: "professionals", label: "Especialistas" },
           { id: "groups", label: "Grupos personalizados" },
         ]}
         active={tab}
@@ -3604,14 +3604,14 @@ function ProfessionalsSection({
       {tab === "professionals" ? (
         <>
           <InfoBanner icon={<UsersRound className="h-5 w-5" />}>
-            Edita a tu primer profesional y después agrega más personas a tu
+            Edita a tu primer especialista y después agrega más personas a tu
             equipo. Aquí puedes administrar horarios, servicios y acceso.
           </InfoBanner>
           <Toolbar
             search={search}
             onSearchChange={setSearch}
-            placeholder="Buscar profesional"
-            count={`${activeCount} profesionales activos de ${professionals.length}`}
+            placeholder="Buscar especialista"
+            count={`${activeCount} especialistas activos de ${professionals.length}`}
           />
           <div className="space-y-5">
             {locals.map((local) => {
@@ -3746,7 +3746,7 @@ function ProfessionalsSection({
             <div>
               <h2 className="admin-section-title">Grupos personalizados</h2>
               <p className="admin-help">
-                Agrupa profesionales para encontrarlos rápidamente en la agenda.
+                Agrupa especialistas para encontrarlos rápidamente en la agenda.
               </p>
             </div>
             <Button
@@ -3780,7 +3780,7 @@ function ProfessionalsSection({
                           locals.find((local) => local.id === group.localId)
                             ?.name
                         }{" "}
-                        · {group.professionalIds.length} profesionales
+                        · {group.professionalIds.length} especialistas
                       </p>
                       <Button
                         variant="link"
@@ -3866,7 +3866,7 @@ function ProfessionalsSection({
         onOpenChange={(open) => {
           if (!open) setConfirming(null);
         }}
-        title="Cambiar estado del profesional"
+        title="Cambiar estado del especialista"
         description="Puedes volver a activarlo en cualquier momento desde las opciones."
         confirmLabel={
           confirming?.status === "active" ? "Desactivar" : "Activar"
@@ -3879,7 +3879,7 @@ function ProfessionalsSection({
           if (!open) setConfirmGroup(null);
         }}
         title="¿Eliminar grupo?"
-        description="Los profesionales no se eliminan; solo se quitará este agrupamiento."
+        description="Los especialistas no se eliminan; solo se quitará este agrupamiento."
         confirmLabel="Eliminar grupo"
         onConfirm={() => {
           if (confirmGroup)
@@ -4333,7 +4333,7 @@ function ServiceDialog({
             <div className="mb-2 flex items-center justify-between">
               <div>
                 <h3 className="admin-section-title">
-                  Selecciona qué profesionales realizarán el servicio
+                  Selecciona qué especialistas realizarán el servicio
                 </h3>
                 <p className="admin-help">
                   {draft.professionalIds.length} seleccionados
@@ -4629,7 +4629,7 @@ function ServiceDialog({
             <p>Configura la forma en que se presenta y comisiona este servicio.</p>
           </div>
           <div className="service-commission-row">
-            <Label htmlFor="service-commission">Comisión para el profesional</Label>
+            <Label htmlFor="service-commission">Comisión para el especialista</Label>
             <div className="service-commission-field">
               <Input
                 id="service-commission"
@@ -4724,7 +4724,7 @@ function ServiceDialog({
                 <div className="service-accordion-info">
                   <Info className="h-5 w-5 shrink-0" />
                   <span>
-                    Ej: Sólo se realizan masajes en la mañana y no quieres que agenden otro horario. Estas restricciones son independientes del horario de los profesionales que proveen el servicio. <a href="#service-hours-info">Más info aquí.</a>
+                    Ej: Sólo se realizan masajes en la mañana y no quieres que agenden otro horario. Estas restricciones son independientes del horario de los especialistas que proveen el servicio. <a href="#service-hours-info">Más info aquí.</a>
                   </span>
                 </div>
                 <div className="service-hours-options">
@@ -5554,7 +5554,7 @@ function CommissionDialog({
         {record && (record.professionalId || record.id !== "default") ? (
           <InfoBanner icon={<WalletCards className="h-5 w-5" />}>
             {record?.professionalId
-              ? "Puedes definir una comisión específica para cada servicio de este profesional."
+              ? "Puedes definir una comisión específica para cada servicio de este especialista."
               : "Puedes definir una comisión específica para este servicio."}
           </InfoBanner>
         ) : (
@@ -5664,7 +5664,7 @@ function CommissionsSection({
             <div>
               <h2 className="admin-section-title commissions-subtitle">
                 {commissionView === "professional"
-                  ? "Comisiones por profesional"
+                  ? "Comisiones por especialista"
                   : "Comisiones por servicio"}
               </h2>
               <p className="admin-help commissions-help">
@@ -5684,7 +5684,7 @@ function CommissionsSection({
                 options={[
                   {
                     value: "professional",
-                    label: "Ver las comisiones por profesional",
+                    label: "Ver las comisiones por especialista",
                   },
                   {
                     value: "service",
@@ -7811,7 +7811,7 @@ const messagePreviewValues: Record<string, string> = {
 const messageTokenLabels: Record<string, string> = {
   "{{nombre_cliente}}": "Nombre cliente",
   "{{apellido_cliente}}": "Apellido cliente",
-  "{{profesional}}": "Profesional",
+  "{{profesional}}": "Especialista",
   "{{nombre_servicio}}": "Nombre servicio",
   "{{precio_reserva}}": "Precio reserva",
   "{{fecha_hora_reserva}}": "Fecha y hora reserva",

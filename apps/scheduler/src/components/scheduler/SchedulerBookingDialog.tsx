@@ -376,7 +376,7 @@ export function SchedulerBookingDialog({
               </div>
               {!hasAvailableTimes && draft.status !== 'canceled' ? (
                 <p className="mt-3 text-sm font-medium text-rose-700" role="status">
-                  No hay horarios disponibles para este profesional, fecha y duración de servicio.
+                  No hay horarios disponibles para este especialista, fecha y duración de servicio.
                 </p>
               ) : (
                 <p className="mt-3 text-sm text-slate-500" role="status">

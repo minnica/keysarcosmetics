@@ -14,6 +14,20 @@ export interface SchedulerClient {
   normalizedPhone: string
   email: string
   alternateEmails: string[]
+  lastName?: string
+  officialId?: string
+  gender?: 'female' | 'male' | 'other' | 'unspecified'
+  birthDate?: string
+  createdAt?: string
+  clientNumber?: string
+  address?: string
+  district?: string
+  city?: string
+  representativeId?: string
+  sharedWithId?: string
+  phoneAdvisorId?: string
+  originBranchId?: string
+  facialistId?: string
   history: SchedulerClientHistoryEntry[]
 }
 
@@ -36,6 +50,10 @@ export const initialSchedulerClients: SchedulerClient[] = [
     normalizedPhone: '525551000280',
     email: 'patricia@example.com',
     alternateEmails: [],
+    lastName: 'Delgado',
+    gender: 'female',
+    birthDate: '1992-09-03',
+    createdAt: '2025-10-18',
     history: [
       {
         id: 'history-patricia-first-visit',
@@ -61,7 +79,17 @@ export const initialSchedulerClients: SchedulerClient[] = [
     normalizedPhone: '525530019044',
     email: 'maria.camila@example.com',
     alternateEmails: [],
+    lastName: 'Celis',
+    gender: 'female',
+    birthDate: '1989-09-14',
+    createdAt: '2026-01-22',
     history: [
+      {
+        id: 'history-maria-follow-up',
+        branchId: 'mitikah',
+        date: '2026-08-18',
+        displayName: 'Maria Camila Celis',
+      },
       {
         id: 'history-maria-mitikah',
         branchId: 'mitikah',
@@ -79,7 +107,17 @@ export const initialSchedulerClients: SchedulerClient[] = [
     normalizedPhone: '525577123389',
     email: 'yumi@example.com',
     alternateEmails: [],
+    lastName: 'Hirasawa',
+    gender: 'female',
+    birthDate: '1994-10-02',
+    createdAt: '2025-12-08',
     history: [
+      {
+        id: 'history-yumi-follow-up',
+        branchId: 'galerias-insurgentes',
+        date: '2026-08-03',
+        displayName: 'Yumi Hirasawa',
+      },
       {
         id: 'history-yumi-insurgentes',
         branchId: 'galerias-insurgentes',
@@ -97,7 +135,17 @@ export const initialSchedulerClients: SchedulerClient[] = [
     normalizedPhone: '525570014477',
     email: 'adriana@example.com',
     alternateEmails: [],
+    lastName: 'Acosta',
+    gender: 'female',
+    birthDate: '1991-09-27',
+    createdAt: '2026-03-10',
     history: [
+      {
+        id: 'history-adriana-follow-up',
+        branchId: 'masaryk',
+        date: '2026-08-21',
+        displayName: 'Adriana Acosta',
+      },
       {
         id: 'history-adriana-masaryk',
         branchId: 'masaryk',

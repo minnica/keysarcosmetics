@@ -583,7 +583,7 @@ export const schedulerDayBlocks: AvailabilityBlock[] = [
     professionalId: 'mitikah-1',
     start: '10:00',
     end: '11:00',
-    label: 'Profesional no disponible',
+    label: 'Especialista no disponible',
     variant: 'unavailable',
   },
   {
@@ -591,7 +591,7 @@ export const schedulerDayBlocks: AvailabilityBlock[] = [
     professionalId: 'mitikah-vip-b',
     start: '10:00',
     end: '11:00',
-    label: 'Profesional no disponible',
+    label: 'Especialista no disponible',
     variant: 'unavailable',
   },
   {
@@ -599,7 +599,7 @@ export const schedulerDayBlocks: AvailabilityBlock[] = [
     professionalId: 'mitikah-vip-ind',
     start: '10:00',
     end: '11:00',
-    label: 'Profesional no disponible',
+    label: 'Especialista no disponible',
     variant: 'unavailable',
   },
   {
@@ -607,7 +607,7 @@ export const schedulerDayBlocks: AvailabilityBlock[] = [
     professionalId: 'mitikah-vip-c',
     start: '10:00',
     end: '11:00',
-    label: 'Profesional no disponible',
+    label: 'Especialista no disponible',
     variant: 'unavailable',
   },
   {
@@ -615,7 +615,7 @@ export const schedulerDayBlocks: AvailabilityBlock[] = [
     professionalId: 'opatra-cabina-1',
     start: '10:00',
     end: '11:00',
-    label: 'Profesional no disponible',
+    label: 'Especialista no disponible',
     variant: 'unavailable',
   },
   {
@@ -623,7 +623,7 @@ export const schedulerDayBlocks: AvailabilityBlock[] = [
     professionalId: 'opatra-cabina-2',
     start: '10:00',
     end: '11:00',
-    label: 'Profesional no disponible',
+    label: 'Especialista no disponible',
     variant: 'unavailable',
   },
   {
@@ -631,7 +631,7 @@ export const schedulerDayBlocks: AvailabilityBlock[] = [
     professionalId: 'masaryk-cabina-doble',
     start: '10:00',
     end: '11:00',
-    label: 'Profesional no disponible',
+    label: 'Especialista no disponible',
     variant: 'unavailable',
   },
   {
@@ -639,7 +639,7 @@ export const schedulerDayBlocks: AvailabilityBlock[] = [
     professionalId: 'masaryk-cabina-1',
     start: '10:00',
     end: '11:00',
-    label: 'Profesional no disponible',
+    label: 'Especialista no disponible',
     variant: 'unavailable',
   },
   {
@@ -647,7 +647,7 @@ export const schedulerDayBlocks: AvailabilityBlock[] = [
     professionalId: 'pending-1',
     start: '10:00',
     end: '11:00',
-    label: 'Profesional no disponible',
+    label: 'Especialista no disponible',
     variant: 'unavailable',
   },
   {
@@ -655,7 +655,7 @@ export const schedulerDayBlocks: AvailabilityBlock[] = [
     professionalId: 'pending-2',
     start: '10:00',
     end: '11:00',
-    label: 'Profesional no disponible',
+    label: 'Especialista no disponible',
     variant: 'unavailable',
   },
   {
@@ -701,7 +701,7 @@ export const schedulerLegendItems: SchedulerLegendItem[] = [
   { id: 'charly', label: 'Generada por Charly', icon: 'user-search' },
   { id: 'home', label: 'Reserva a domicilio', icon: 'house' },
   { id: 'video', label: 'Reserva por videollamada', icon: 'video' },
-  { id: 'no-pref', label: 'Sin preferencia de profesional', icon: 'user-search' },
+  { id: 'no-pref', label: 'Sin preferencia de especialista', icon: 'user-search' },
   { id: 'plan', label: 'Plan reservado', icon: 'package' },
   { id: 'payment', label: 'Agregar pago', icon: 'dollar' },
   { id: 'link', label: 'Copiar link', icon: 'link' },

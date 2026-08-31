@@ -1,5 +1,5 @@
-import { ReservationReportWorkspace } from "@/components/reports/ReservationReportWorkspace";
+import { redirect } from "next/navigation";
 
 export default function OpatraMexicoServicesReportPage() {
-  return <ReservationReportWorkspace view="services-by-location" />;
+  redirect("/reportes/reservas");
 }

@@ -2056,7 +2056,7 @@ function AgendaSettingsPanel({
           <div className="mt-6 divide-y divide-[#eee6df]">
             <AgendaToggleRow
               checked={settings.allowOverlapping}
-              description="Los profesionales pueden tener dos reservas en un mismo horario. Aplica a reservas ingresadas internamente."
+              description="Los especialistas pueden tener dos reservas en un mismo horario. Aplica a reservas ingresadas internamente."
               onChange={(value) => setField("allowOverlapping", value)}
               title="Reservas sobrepuestas"
             />
@@ -2114,7 +2114,7 @@ function AgendaSettingsPanel({
               onChange={(event) => setField("limitScope", event.target.value)}
               value={settings.limitScope}
             >
-              <option value="professionals">Grupo de profesionales</option>
+              <option value="professionals">Grupo de especialistas</option>
               <option value="services">Servicio</option>
               <option value="company">Toda la empresa</option>
             </select>
@@ -2741,7 +2741,7 @@ function RegisterSettingsPanel({
             />
             <AgendaToggleRow
               checked={settings.requireServiceInfo}
-              description="Al registrar un pago será obligatorio seleccionar el profesional asociado al servicio."
+              description="Al registrar un pago será obligatorio seleccionar el especialista asociado al servicio."
               onChange={(value) => setField("requireServiceInfo", value)}
               title="Requerir información de servicios en pagos"
             />
@@ -2838,9 +2838,9 @@ function RegisterSettingsPanel({
             />
             <AgendaToggleRow
               checked={settings.showProfessionalName}
-              description="Muestra el nombre de los profesionales que prestaron los servicios vendidos."
+              description="Muestra el nombre de los especialistas que prestaron los servicios vendidos."
               onChange={(value) => setField("showProfessionalName", value)}
-              title="Mostrar nombre de los profesionales"
+              title="Mostrar nombre de los especialistas"
             />
             <AgendaToggleRow
               checked={settings.separateBranchBilling}
@@ -2960,7 +2960,7 @@ function RegisterSettingsPanel({
       </AgendaAccordion>
 
       <AgendaAccordion
-        description="Define en qué casos se paga comisión a tus profesionales. Puedes combinar más de una condición."
+        description="Define en qué casos se paga comisión a tus especialistas. Puedes combinar más de una condición."
         onToggle={() => undefined}
         open
         title="Configuración de comisiones"
@@ -3853,7 +3853,7 @@ function MedicalOptionsModal({
             </Button>
           </div>
           <p className="text-xs text-slate-500">
-            Las opciones estarán disponibles para que el cliente o profesional
+            Las opciones estarán disponibles para que el cliente o especialista
             pueda seleccionar una o varias.
           </p>
           <div className="medical-options-list">

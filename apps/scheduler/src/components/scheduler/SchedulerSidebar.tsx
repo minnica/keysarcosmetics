@@ -1,7 +1,7 @@
 'use client'
 
 import { Badge, Calendar, Card, CardContent, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@cosmetics/ui'
-import { ChevronLeft, ChevronRight, LayoutGrid, CalendarDays, Search } from 'lucide-react'
+import { CalendarDays, ChevronLeft, ChevronRight, List, PanelLeftClose, Search } from 'lucide-react'
 import { addMonths, format, subMonths } from 'date-fns'
 import { es } from 'date-fns/locale'
 import {
@@ -12,6 +12,8 @@ import {
   type Professional,
 } from '@/lib/mock-scheduler-data'
 import { SchedulerAvatar } from './SchedulerAvatar'
+
+export type SchedulerDisplayMode = 'calendar' | 'list'
 
 interface SchedulerSidebarProps {
   commerces: CommerceOption[]
@@ -36,6 +38,9 @@ interface SchedulerSidebarProps {
   selectedDate: Date
   onSelectedDateChange: (date: Date) => void
   onDateQuickCreate: (date: Date) => void
+  displayMode: SchedulerDisplayMode
+  onDisplayModeChange: (mode: SchedulerDisplayMode) => void
+  onCollapse?: () => void
 }
 
 export function SchedulerSidebar({
@@ -61,20 +66,57 @@ export function SchedulerSidebar({
   selectedDate,
   onSelectedDateChange,
   onDateQuickCreate,
+  displayMode,
+  onDisplayModeChange,
+  onCollapse,
 }: SchedulerSidebarProps) {
   return (
     <div className="bg-[linear-gradient(180deg,rgba(255,251,247,0.96)_0%,rgba(245,239,232,0.92)_100%)] backdrop-blur">
       <div className="flex min-h-full flex-col px-4 pb-5 pt-4">
-        <div className="mb-5 flex items-center gap-3">
-          <button className="scheduler-icon-toggle" type="button">
-            <CalendarDays className="h-5 w-5" />
-          </button>
-        <button className="scheduler-icon-toggle scheduler-icon-toggle-active" type="button">
-          <LayoutGrid className="h-5 w-5" />
-        </button>
-        <div className="ml-auto flex h-12 w-12 items-center justify-center rounded-full border border-white/80 bg-white text-slate-500 shadow-[0_14px_30px_rgba(15,23,42,0.1)]">
-          <ChevronLeft className="h-5 w-5" />
+        <div className="mb-4">
+          <p className="label-caps">Vista y recursos</p>
+          <p className="mt-1 text-sm text-slate-500">Define qué quieres ver en la agenda.</p>
         </div>
+
+        <div className="mb-5 flex items-center gap-2 rounded-[20px] border border-[rgba(236,209,200,0.82)] bg-white p-1.5 shadow-sm">
+          <button
+            aria-label="Ver agenda como calendario"
+            aria-pressed={displayMode === 'calendar'}
+            className={`flex h-11 flex-1 items-center justify-center gap-2 rounded-[15px] text-sm font-semibold transition ${
+              displayMode === 'calendar'
+                ? 'bg-[var(--scheduler-ink-strong)] text-white shadow-sm'
+                : 'text-slate-500 hover:bg-[var(--scheduler-accent-soft)]'
+            }`}
+            onClick={() => onDisplayModeChange('calendar')}
+            type="button"
+          >
+            <CalendarDays className="h-5 w-5" />
+            Calendario
+          </button>
+          <button
+            aria-label="Ver agenda como lista"
+            aria-pressed={displayMode === 'list'}
+            className={`flex h-11 flex-1 items-center justify-center gap-2 rounded-[15px] text-sm font-semibold transition ${
+              displayMode === 'list'
+                ? 'bg-[var(--scheduler-ink-strong)] text-white shadow-sm'
+                : 'text-slate-500 hover:bg-[var(--scheduler-accent-soft)]'
+            }`}
+            onClick={() => onDisplayModeChange('list')}
+            type="button"
+          >
+            <List className="h-5 w-5" />
+            Lista
+          </button>
+          {onCollapse ? (
+            <button
+              aria-label="Ocultar panel de recursos"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[15px] text-slate-400 transition hover:bg-[var(--scheduler-accent-soft)] hover:text-slate-700"
+              onClick={onCollapse}
+              type="button"
+            >
+              <PanelLeftClose className="h-5 w-5" />
+            </button>
+          ) : null}
         </div>
 
         <div className="flex flex-1 flex-col gap-5">
@@ -116,7 +158,7 @@ export function SchedulerSidebar({
             <div className="scheduler-sidebar-card">
               <div className="mb-3 flex items-center justify-between">
                 <div>
-                  <label className="scheduler-label !mb-0">Profesional</label>
+                  <label className="scheduler-label !mb-0">Especialista</label>
                   <p className="mt-1 text-[0.78rem] uppercase tracking-[0.14em] text-slate-500">Disponibles en esta sucursal</p>
                 </div>
                 <Badge className="rounded-full border-0 bg-[rgba(195,165,131,0.12)] px-3 py-1 text-xs font-semibold text-[var(--scheduler-accent-strong)]">
@@ -128,7 +170,7 @@ export function SchedulerSidebar({
                 <Search className="h-4 w-4 text-slate-400" />
                 <input
                   className="w-full border-0 bg-transparent text-sm text-slate-600 outline-none placeholder:text-slate-400"
-                  placeholder="Buscar profesional"
+                  placeholder="Buscar especialista"
                   value={professionalQuery}
                   onChange={(event) => onProfessionalQueryChange(event.target.value)}
                 />
@@ -166,7 +208,7 @@ export function SchedulerSidebar({
                 })}
                 {professionals.length === 0 ? (
                   <div className="rounded-[22px] border border-dashed border-[rgba(236,209,200,0.92)] bg-[rgba(248,244,239,0.7)] px-4 py-5 text-sm text-slate-500">
-                    No tienes profesionales disponibles en esta sucursal. Revisa sus asignaciones o tus permisos.
+                    No tienes especialistas disponibles en esta sucursal. Revisa sus asignaciones o tus permisos.
                   </div>
                 ) : null}
               </div>
@@ -211,8 +253,13 @@ export function SchedulerSidebar({
 
           <Card className="mt-auto rounded-[30px] border-white/80 bg-white/85 shadow-[0_22px_48px_rgba(15,23,42,0.09)]">
             <CardContent className="p-4">
+              <div className="mb-3">
+                <p className="scheduler-label !mb-0">Ir a una fecha</p>
+                <p className="mt-1 text-xs leading-5 text-slate-400">Selecciona un día para abrir una nueva cita.</p>
+              </div>
               <div className="mb-3 flex items-center justify-between">
                 <button
+                  aria-label="Mes anterior"
                   className="rounded-full p-2 text-slate-500 transition hover:bg-slate-100"
                   onClick={() => onMonthCursorChange(subMonths(monthCursor, 1))}
                   type="button"
@@ -224,6 +271,7 @@ export function SchedulerSidebar({
                   <p className="text-xs uppercase tracking-[0.26em] text-slate-400">{format(monthCursor, 'yyyy', { locale: es })}</p>
                 </div>
                 <button
+                  aria-label="Mes siguiente"
                   className="rounded-full p-2 text-slate-500 transition hover:bg-slate-100"
                   onClick={() => onMonthCursorChange(addMonths(monthCursor, 1))}
                   type="button"

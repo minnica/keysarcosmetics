@@ -986,7 +986,7 @@ export const initialSurveyQuestions: SurveyQuestion[] = [
     id: "question-comment",
     category: "Atención del personal",
     type: "rating",
-    text: "¿Cómo calificarías la atención del profesional que te atendió?",
+    text: "¿Cómo calificarías la atención del especialista que te atendió?",
     description: "Evalúa la atención recibida durante tu visita.",
   },
   {

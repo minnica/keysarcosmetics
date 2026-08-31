@@ -11,7 +11,6 @@ import {
   MapPinned,
   Plus,
   RefreshCcw,
-  Search,
 } from 'lucide-react'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -47,34 +46,7 @@ export function SchedulerHeader({
 }: SchedulerHeaderProps) {
   return (
     <>
-      <header className="sticky top-0 z-40 border-b border-white/10 bg-[linear-gradient(90deg,#172230_0%,#1d2937_100%)] text-white shadow-[0_18px_44px_rgba(8,14,24,0.2)]">
-        <div className="flex min-h-[78px] items-center justify-between gap-6 px-5 sm:px-6 xl:px-8">
-          <div className="flex items-center gap-5">
-            <div>
-              <p className="page-title text-[1.55rem] text-white">Agenda</p>
-              <p className="text-[0.68rem] uppercase tracking-[0.24em] text-white/45">
-                {selectedCommerceName} · {selectedBranchName}
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <div className="hidden items-center gap-3 xl:flex">
-            <button className="scheduler-header-button" type="button">
-              <Search className="h-5 w-5" />
-            </button>
-            <div className="rounded-full border border-emerald-300/20 bg-emerald-400/10 px-5 py-2.5 text-sm font-medium text-emerald-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
-              Reservas Online
-            </div>
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white text-sm font-semibold text-slate-700 shadow-[0_10px_24px_rgba(0,0,0,0.2)]">
-              ER
-            </div>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      <div className="mb-0 rounded-br-[26px] border-x border-b border-white/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.82)_0%,rgba(255,255,255,0.7)_100%)] px-5 py-3 shadow-[0_18px_40px_rgba(15,23,42,0.07)] backdrop-blur sm:px-6">
+      <div className="mb-0 border-b border-[rgba(236,209,200,0.8)] bg-[linear-gradient(180deg,rgba(255,255,255,0.94)_0%,rgba(251,248,244,0.9)_100%)] px-5 py-5 shadow-[0_12px_30px_rgba(15,23,42,0.05)] sm:px-6">
         <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
           <div className="space-y-2.5">
             <div className="flex flex-wrap items-center gap-3">

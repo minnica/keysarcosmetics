@@ -1,5 +1,5 @@
-import { ReservationReportWorkspace } from "@/components/reports/ReservationReportWorkspace";
+import { redirect } from "next/navigation";
 
 export default function ReservationMobileMessagingPage() {
-  return <ReservationReportWorkspace view="mobile-messaging" />;
+  redirect("/reportes/reservas");
 }

@@ -111,7 +111,7 @@ export function SchedulerBlockDialog({
               </div>
 
               <div className="mt-4 space-y-2">
-                <label className="scheduler-modal-label">Profesional</label>
+                <label className="scheduler-modal-label">Especialista</label>
                 <Select value={currentDraft.professionalId} onValueChange={(value) => patchDraft({ professionalId: value })}>
                   <SelectTrigger className="scheduler-modal-select-trigger">
                     <SelectValue />

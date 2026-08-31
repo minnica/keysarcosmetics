@@ -1,5 +1,5 @@
-import { ReservationReportWorkspace } from "@/components/reports/ReservationReportWorkspace";
+import { redirect } from "next/navigation";
 
 export default function ReservationMetricsPage() {
-  return <ReservationReportWorkspace view="metrics" />;
+  redirect("/reportes/reservas/rendimiento");
 }

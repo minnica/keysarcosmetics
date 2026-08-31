@@ -9,6 +9,7 @@ import {
 } from "@/lib/scheduler-access";
 
 function getRequiredScreen(pathname: string): SchedulerScreenId | null {
+  if (pathname === "/clientes" || pathname.startsWith("/clientes/")) return "clients";
   if (pathname.startsWith("/administracion")) return null;
   if (pathname.startsWith("/reportes/reservas")) {
     return "reports.reservations";
@@ -26,6 +27,7 @@ function canAccessAdministration(): boolean {
 
 function getFallbackRoute(): string {
   if (canAccessSchedulerScreen("agenda")) return "/";
+  if (canAccessSchedulerScreen("clients")) return "/clientes";
   if (canAccessSchedulerScreen("reports.summary")) return "/reportes";
   if (canAccessSchedulerScreen("reports.reservations")) {
     return "/reportes/reservas";

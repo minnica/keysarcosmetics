@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState, type ReactNode } from "react";
+import { usePathname } from "next/navigation";
 import {
   Popover,
   PopoverContent,
@@ -17,7 +18,6 @@ import {
   Palette,
   SlidersHorizontal,
   Sparkles,
-  UserRound,
   UsersRound,
   WalletCards,
 } from "lucide-react";
@@ -25,9 +25,10 @@ import {
   canAccessSchedulerScreen,
   type SchedulerScreenId,
 } from "@/lib/scheduler-access";
+import { clientNavigationItems } from "@/lib/client-navigation";
 
-export type SchedulerNavArea = "agenda" | "reports" | "administration" | "settings";
-export type SchedulerReportPage = "summary" | "reservations" | "sales";
+export type SchedulerNavArea = "agenda" | "clients" | "reports" | "administration" | "settings";
+export type SchedulerReportPage = "summary" | "reservations";
 export type AdministrationSectionId =
   | "locals"
   | "professionals"
@@ -52,7 +53,7 @@ const administrationGroups: Array<{
     label: "Información básica",
     items: [
       { id: "locals", label: "Comercios", icon: <Globe2 className="h-4 w-4" /> },
-      { id: "professionals", label: "Profesionales", icon: <UsersRound className="h-4 w-4" /> },
+      { id: "professionals", label: "Especialistas", icon: <UsersRound className="h-4 w-4" /> },
       { id: "services", label: "Servicios", icon: <Sparkles className="h-4 w-4" /> },
     ],
   },
@@ -95,9 +96,8 @@ export function ReportsNavMenu({
   const [open, setOpen] = useState(false);
   const canViewSummary = canAccessSchedulerScreen("reports.summary");
   const canViewReservations = canAccessSchedulerScreen("reports.reservations");
-  const canViewSales = canAccessSchedulerScreen("reports.sales");
 
-  if (!canViewSummary && !canViewReservations && !canViewSales) return null;
+  if (!canViewSummary && !canViewReservations) return null;
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -153,12 +153,6 @@ export function ReportsNavMenu({
             <span>Reporte de reservas</span>
             {active === "reservations" ? <span className="h-2 w-2 rounded-full bg-[#c3a583]" /> : null}
           </Link>
-        ) : null}
-        {canViewSales ? (
-          <button className="scheduler-nav-menu-item-disabled" disabled type="button">
-            <span>Reporte de ventas</span>
-            <span className="text-[0.58rem] uppercase tracking-[0.16em] text-white/30">Pronto</span>
-          </button>
         ) : null}
       </PopoverContent>
     </Popover>
@@ -256,6 +250,42 @@ export function AdministrationNavMenu({
   );
 }
 
+export function ClientsNavMenu() {
+  const [open, setOpen] = useState(false);
+  const pathname = usePathname();
+
+  if (!canAccessSchedulerScreen("clients")) return null;
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          aria-label="Abrir menú de clientes"
+          aria-expanded={open}
+          className={moduleLinkClass(pathname.startsWith("/clientes"))}
+          type="button"
+        >
+          Clientes
+          <ChevronDown className={`h-4 w-4 transition-transform ${open ? "rotate-180" : ""}`} />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" sideOffset={10} className="w-64 rounded-[20px] border-white/10 bg-[#1c2835] p-2 text-white">
+        {clientNavigationItems.map(({ label, href, icon: Icon }) => (
+          <Link
+            key={href}
+            href={href}
+            aria-current={pathname === href ? "page" : undefined}
+            className={pathname === href ? "scheduler-nav-menu-item-active" : "scheduler-nav-menu-item"}
+            onClick={() => setOpen(false)}
+          >
+            <span className="flex items-center gap-3"><Icon className="h-4 w-4 text-[#c3a583]" />{label}</span>
+          </Link>
+        ))}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 export function SchedulerPrimaryNav({
   activeArea,
   activeAdmin,
@@ -274,12 +304,7 @@ export function SchedulerPrimaryNav({
           Agenda
         </Link>
       ) : null}
-      {canAccessSchedulerScreen("clients") ? (
-        <button className="report-nav-link" type="button">Clientes</button>
-      ) : null}
-      {canAccessSchedulerScreen("services") ? (
-        <button className="report-nav-link" type="button">Servicios</button>
-      ) : null}
+      <ClientsNavMenu />
       <ReportsNavMenu active={activeArea === "reports" ? activeReport : undefined} />
       <AdministrationNavMenu
         active={activeArea === "administration" ? activeAdmin : undefined}

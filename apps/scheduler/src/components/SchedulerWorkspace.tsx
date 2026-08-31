@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { addDays, eachDayOfInterval, endOfWeek, format, isSameDay, startOfMonth, startOfWeek } from 'date-fns'
 import { es } from 'date-fns/locale'
-import { AlertTriangle, ReceiptText, Trash2 } from 'lucide-react'
+import { AlertTriangle, PanelLeftOpen, ReceiptText, Trash2 } from 'lucide-react'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -78,9 +78,13 @@ import {
 import { SchedulerBookingDialog } from './scheduler/SchedulerBookingDialog'
 import { SchedulerBlockDialog } from './scheduler/SchedulerBlockDialog'
 import { SchedulerDetailDialog } from './scheduler/SchedulerDetailDialog'
-import { SchedulerSidebar } from './scheduler/SchedulerSidebar'
+import {
+  SchedulerSidebar,
+  type SchedulerDisplayMode,
+} from './scheduler/SchedulerSidebar'
 import { SchedulerHeader } from './scheduler/SchedulerHeader'
 import { SchedulerAgendaGrid } from './scheduler/SchedulerAgendaGrid'
+import { SchedulerAgendaList } from './scheduler/SchedulerAgendaList'
 import { SchedulerFinancialAccessDialog } from './scheduler/SchedulerFinancialAccessDialog'
 import { SchedulerClientHistoryDialog } from './scheduler/SchedulerClientHistoryDialog'
 import {
@@ -237,6 +241,8 @@ export function SchedulerWorkspace() {
   const [blockedBookingKeyword, setBlockedBookingKeyword] = useState('')
   const [agendaMotionKey, setAgendaMotionKey] = useState(0)
   const [filtersOpen, setFiltersOpen] = useState(false)
+  const [resourcePanelOpen, setResourcePanelOpen] = useState(true)
+  const [displayMode, setDisplayMode] = useState<SchedulerDisplayMode>('calendar')
   const sidebarBookingTimerRef = useRef<number | null>(null)
   const selectedDateKey = format(selectedDate, 'yyyy-MM-dd')
 
@@ -430,7 +436,7 @@ export function SchedulerWorkspace() {
 
   useEffect(() => {
     setAgendaMotionKey((current) => current + 1)
-  }, [currentView, selectedDateKey])
+  }, [currentView, displayMode, selectedDateKey])
 
   useEffect(() => {
     return () => {
@@ -461,6 +467,15 @@ export function SchedulerWorkspace() {
     toast.success('Agenda actualizada', {
       description: 'Se cargaron nuevamente comercios, sucursales, especialistas y horarios.',
     })
+  }
+
+  function handleOpenResources() {
+    if (window.matchMedia('(min-width: 1280px)').matches) {
+      setResourcePanelOpen(true)
+      return
+    }
+
+    setFiltersOpen(true)
   }
 
   function openSlotAction(professionalId: string, startTime: string) {
@@ -1053,7 +1068,7 @@ export function SchedulerWorkspace() {
 
     const blockDateKey = format(blockDraft.date, 'yyyy-MM-dd')
     const professionalName =
-      configuredProfessionals.find((professional) => professional.id === blockDraft.professionalId)?.name ?? 'Profesional'
+      configuredProfessionals.find((professional) => professional.id === blockDraft.professionalId)?.name ?? 'Especialista'
 
     const conflictingBooking = bookings.find((booking) => {
       const bookingDateKey = booking.date ?? schedulerReferenceDateKey
@@ -1158,7 +1173,7 @@ export function SchedulerWorkspace() {
     const endMinutes = getMinutesFromTime(end)
     const bookingDateKey = format(draft.date, 'yyyy-MM-dd')
     const professionalName =
-      configuredProfessionals.find((professional) => professional.id === draft.professionalId)?.name ?? 'Profesional'
+      configuredProfessionals.find((professional) => professional.id === draft.professionalId)?.name ?? 'Especialista'
 
     if (startMinutes < schedulerBaseMinutes || endMinutes > schedulerClosingMinutes) {
       toast.error('La reserva se sale del horario permitido', {
@@ -1366,7 +1381,7 @@ export function SchedulerWorkspace() {
         onDateStep={handleDateStep}
         onGoToday={() => setSelectedDate(schedulerReferenceDate)}
         onRefresh={handleRefresh}
-        onOpenFilters={() => setFiltersOpen(true)}
+        onOpenFilters={handleOpenResources}
         onOpenNewBooking={() => openNewBooking()}
       />
 
@@ -1380,7 +1395,7 @@ export function SchedulerWorkspace() {
               Filtros de agenda
             </SheetTitle>
             <SheetDescription className="text-sm text-slate-500">
-              Ajusta el comercio, sucursal, profesionales, estatus, hora y fecha visibles.
+              Ajusta el comercio, sucursal, especialistas, estatus, hora y fecha visibles.
             </SheetDescription>
           </SheetHeader>
           <SchedulerSidebar
@@ -1409,54 +1424,108 @@ export function SchedulerWorkspace() {
               setFiltersOpen(false)
               handleSidebarDateQuickCreate(date)
             }}
+            displayMode={displayMode}
+            onDisplayModeChange={setDisplayMode}
           />
         </SheetContent>
       </Sheet>
 
-      <main className="min-h-[calc(100vh-84px)]">
-
-        <section className="flex min-w-0 flex-col px-4 py-5 sm:px-6 xl:px-8">
-          <div key={agendaMotionKey} className="scheduler-content-entrance">
-            <SchedulerAgendaGrid
-              currentView={currentView}
-              slotMinutes={agendaSlotMinutes}
-              allBookings={bookings}
-              visibleProfessionals={visibleProfessionals}
-              visibleBookings={visibleBookings}
-              statusColors={statusColors}
-              visibleBlocks={visibleBlocks}
+      <main className="flex min-h-[calc(100vh-84px)] min-w-0 items-start">
+        {resourcePanelOpen ? (
+          <aside className="sticky top-0 hidden h-screen w-[340px] shrink-0 overflow-y-auto border-r border-[rgba(236,209,200,0.82)] xl:block">
+            <SchedulerSidebar
+              commerces={allowedCommerces}
+              selectedCommerce={selectedCommerce}
+              onCommerceChange={setSelectedCommerce}
+              branches={allowedBranches}
+              selectedBranch={selectedBranch}
+              onBranchChange={setSelectedBranch}
+              visibleProfessionalCount={visibleProfessionals.length}
+              professionals={sidebarProfessionals}
+              selectedProfessionalIds={selectedProfessionalIds}
+              onToggleProfessional={toggleProfessional}
+              professionalQuery={professionalQuery}
+              onProfessionalQueryChange={setProfessionalQuery}
+              statusFilter={statusFilter}
+              onStatusFilterChange={setStatusFilter}
+              quickTimeFilter={quickTimeFilter}
+              timeSlots={calendarTimeSlots}
+              onQuickTimeFilterChange={setQuickTimeFilter}
+              monthCursor={monthCursor}
+              onMonthCursorChange={setMonthCursor}
               selectedDate={selectedDate}
-              commerceOperatingHours={commerceOperatingHours}
-              commerceName={
-                allowedCommerces.find((commerce) => commerce.id === selectedCommerce)?.name ??
-                'Sin comercio'
-              }
-              weekDays={weekDays}
-              emptySlotAction={emptySlotAction}
-              onOpenSlotAction={openSlotAction}
-              onCloseSlotAction={() => setEmptySlotAction(null)}
-              onOpenNewBooking={openNewBooking}
-              onMockBlock={handleMockBlock}
-              onEditBlock={handleEditBlock}
-              onDeleteBooking={handleDeleteBooking}
-              onEditBooking={handleEditBooking}
-              onOpenBookingDetail={handleOpenBookingDetail}
-              onOpenClientHistory={handleOpenClientHistory}
-              onPurchaseDecision={handlePurchaseDecision}
-              onUpdateBookingStatus={handleUpdateBookingStatus}
-              financialAccessByClient={financialAccessByClient}
-              financialAuditEvents={financialAuditEvents}
-              onRequestFinancialAccess={(booking) => {
-                setFinancialAccessNextView(null)
-                setFinancialAccessRequest(booking)
-              }}
-              onRevokeFinancialAccess={handleRevokeFinancialHistory}
-              onUpdatePaymentHistory={handleUpdatePaymentHistory}
-              onDeletePaymentHistory={handleRequestDeletePaymentHistory}
+              onSelectedDateChange={setSelectedDate}
+              onDateQuickCreate={handleSidebarDateQuickCreate}
+              displayMode={displayMode}
+              onDisplayModeChange={setDisplayMode}
+              onCollapse={() => setResourcePanelOpen(false)}
             />
+          </aside>
+        ) : null}
+
+        <section className="flex min-w-0 flex-1 flex-col px-4 py-5 sm:px-6 xl:px-8">
+          {!resourcePanelOpen ? (
+            <button
+              className="mb-4 hidden h-11 w-fit items-center gap-2 rounded-2xl border border-[rgba(236,209,200,0.82)] bg-white px-4 text-sm font-semibold text-slate-600 shadow-sm transition hover:border-[var(--scheduler-accent)] hover:bg-[var(--scheduler-accent-soft)] xl:flex"
+              onClick={() => setResourcePanelOpen(true)}
+              type="button"
+            >
+              <PanelLeftOpen className="h-4 w-4" />
+              Mostrar recursos
+            </button>
+          ) : null}
+          <div key={agendaMotionKey} className="scheduler-content-entrance">
+            {displayMode === 'calendar' ? (
+              <SchedulerAgendaGrid
+                currentView={currentView}
+                slotMinutes={agendaSlotMinutes}
+                allBookings={bookings}
+                visibleProfessionals={visibleProfessionals}
+                visibleBookings={visibleBookings}
+                statusColors={statusColors}
+                visibleBlocks={visibleBlocks}
+                selectedDate={selectedDate}
+                commerceOperatingHours={commerceOperatingHours}
+                commerceName={
+                  allowedCommerces.find((commerce) => commerce.id === selectedCommerce)?.name ??
+                  'Sin comercio'
+                }
+                weekDays={weekDays}
+                emptySlotAction={emptySlotAction}
+                onOpenSlotAction={openSlotAction}
+                onCloseSlotAction={() => setEmptySlotAction(null)}
+                onOpenNewBooking={openNewBooking}
+                onMockBlock={handleMockBlock}
+                onEditBlock={handleEditBlock}
+                onDeleteBooking={handleDeleteBooking}
+                onEditBooking={handleEditBooking}
+                onOpenBookingDetail={handleOpenBookingDetail}
+                onOpenClientHistory={handleOpenClientHistory}
+                onPurchaseDecision={handlePurchaseDecision}
+                onUpdateBookingStatus={handleUpdateBookingStatus}
+                financialAccessByClient={financialAccessByClient}
+                financialAuditEvents={financialAuditEvents}
+                onRequestFinancialAccess={(booking) => {
+                  setFinancialAccessNextView(null)
+                  setFinancialAccessRequest(booking)
+                }}
+                onRevokeFinancialAccess={handleRevokeFinancialHistory}
+                onUpdatePaymentHistory={handleUpdatePaymentHistory}
+                onDeletePaymentHistory={handleRequestDeletePaymentHistory}
+              />
+            ) : (
+              <SchedulerAgendaList
+                bookings={visibleBookings}
+                professionals={visibleProfessionals}
+                selectedDate={selectedDate}
+                statusColors={statusColors}
+                onOpenBooking={(booking) => handleOpenBookingDetail(booking, 'record')}
+                onOpenNewBooking={() => openNewBooking()}
+              />
+            )}
           </div>
         </section>
-        </main>
+      </main>
 
       <SchedulerBookingDialog
         open={isDialogOpen}

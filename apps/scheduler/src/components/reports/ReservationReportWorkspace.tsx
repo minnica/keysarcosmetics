@@ -1,464 +1,59 @@
 "use client";
 
-import { useMemo, useState } from "react";
 import Link from "next/link";
+import { useMemo, useState, type ReactNode } from "react";
 import {
   Button,
-  DataTable,
-  DateRangePicker,
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
   toast,
-  type ColumnDef,
-  type DateRange,
 } from "@cosmetics/ui";
 import {
+  ArrowDownToLine,
+  ArrowDownRight,
   ArrowUpRight,
-  BarChart3,
   CalendarDays,
   ChevronDown,
-  ChevronRight,
   CircleDollarSign,
-  Clock,
-  Download,
-  Filter,
-  ListFilter,
+  Info,
   Search,
+  Settings2,
+  SlidersHorizontal,
   Sparkles,
+  UsersRound,
 } from "lucide-react";
 import {
-  reservationReportSections,
   reservationHistory,
-  reservationMobileMessagingTotals,
-  reservationProvidersByLocationReports,
-  reservationReportTotals,
-  reservationServiceReportTotals,
-  reservationServiceReports,
-  reservationServicesByLocationReports,
-  reservationStatusOptions,
-  reservationsByHour,
-  reservationsByWeekday,
-  serviceRanking,
-  type ReservationChartPoint,
   type ReservationHistoryRecord,
   type ReservationPaymentStatus,
   type ReservationReportStatus,
-  type ServiceRankingItem,
 } from "@/lib/mock-reservation-report-data";
-import { ReservationMetrics } from "./ReservationMetrics";
-import { ReservationLocations } from "./ReservationLocations";
-import { ReservationServices } from "./ReservationServices";
-import { ReservationMobileMessaging } from "./ReservationMobileMessaging";
-import { ReservationProvidersByLocation } from "./ReservationProvidersByLocation";
 import { ReportsHeader } from "./ReportsHeader";
+
+export type ReservationReportView = "general" | "history" | "performance";
 
 const currencyFormatter = new Intl.NumberFormat("es-MX", {
   style: "currency",
   currency: "MXN",
   maximumFractionDigits: 0,
 });
-
 const numberFormatter = new Intl.NumberFormat("es-MX");
-
-function buildDonutGradient(items: ServiceRankingItem[]) {
-  const total = items.reduce((sum, item) => sum + item.value, 0);
-  let cursor = 0;
-  const segments = items.map((item) => {
-    const start = cursor;
-    cursor += (item.value / total) * 100;
-    return `${item.color} ${start}% ${cursor}%`;
-  });
-  return `conic-gradient(${segments.join(", ")})`;
-}
-
-function WeekdayChart({ data }: { data: ReservationChartPoint[] }) {
-  const max = Math.max(...data.map((point) => point.value), 1);
-
-  return (
-    <div
-      className="mt-7 grid h-64 grid-cols-7 items-end gap-2 sm:gap-3"
-      aria-label="Reservas por día de la semana"
-    >
-      {data.map((point) => (
-        <div key={point.label} className="flex h-full min-w-0 flex-col items-center justify-end gap-2">
-          <span className="number-display text-[0.68rem] text-slate-500">
-            {point.value}
-          </span>
-          <div className="flex h-[190px] w-full items-end overflow-hidden rounded-xl bg-[#f0ebe6]">
-            <div
-              className="w-full rounded-xl bg-[linear-gradient(180deg,#c3a583,#ad8b67)] transition-[height] duration-500"
-              style={{ height: `${Math.max(8, (point.value / max) * 100)}%` }}
-            />
-          </div>
-          <span className="text-[0.68rem] font-medium text-slate-400">{point.label}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function HourlyChart({ data }: { data: ReservationChartPoint[] }) {
-  const width = 900;
-  const height = 220;
-  const max = Math.max(...data.map((point) => point.value), 1);
-  const points = data
-    .map((point, index) => {
-      const x = (index / (data.length - 1)) * width;
-      const y = height - (point.value / max) * (height - 34) - 12;
-      return `${x},${y}`;
-    })
-    .join(" ");
-
-  return (
-    <div className="mt-6">
-      <svg
-        aria-label="Reservas por hora del día"
-        className="h-[230px] w-full overflow-visible"
-        preserveAspectRatio="none"
-        role="img"
-        viewBox={`0 0 ${width} ${height}`}
-      >
-        {[44, 88, 132, 176].map((y) => (
-          <line key={y} x1="0" x2={width} y1={y} y2={y} stroke="#ece6e0" strokeWidth="1" />
-        ))}
-        <defs>
-          <linearGradient id="reservation-hour-area" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor="#648672" stopOpacity="0.26" />
-            <stop offset="100%" stopColor="#648672" stopOpacity="0" />
-          </linearGradient>
-        </defs>
-        <polygon points={`0,${height} ${points} ${width},${height}`} fill="url(#reservation-hour-area)" />
-        <polyline
-          fill="none"
-          points={points}
-          stroke="#648672"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth="5"
-        />
-        {data.map((point, index) => {
-          const x = (index / (data.length - 1)) * width;
-          const y = height - (point.value / max) * (height - 34) - 12;
-          return (
-            <circle
-              key={point.label}
-              cx={x}
-              cy={y}
-              fill="#fff"
-              r="5"
-              stroke="#648672"
-              strokeWidth="3"
-            />
-          );
-        })}
-      </svg>
-      <div className="grid grid-flow-col auto-cols-fr gap-1 text-center text-[0.62rem] font-medium text-slate-400">
-        {data.map((point) => (
-          <span key={point.label}>{point.label}</span>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-type ReservationReportView =
-  | "general"
-  | "history"
-  | "metrics"
-  | "locations"
-  | "services"
-  | "mobile-messaging"
-  | "services-by-location"
-  | "providers-by-location";
-
-function ReportBreakdownNav({ view }: { view: ReservationReportView }) {
-  const [reservationsOpen, setReservationsOpen] = useState(
-    view === "history" || view === "metrics",
-  );
-  const [servicesByLocationOpen, setServicesByLocationOpen] = useState(
-    view === "services-by-location",
-  );
-  const [providersByLocationOpen, setProvidersByLocationOpen] = useState(
-    view === "providers-by-location",
-  );
-
-  return (
-    <aside className="reservation-report-nav">
-      <div className="mb-4 flex items-center gap-2 px-2">
-        <ListFilter className="h-4 w-4 text-[#ad8b67]" />
-        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">
-          Desgloses
-        </p>
-      </div>
-      <nav className="flex gap-2 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible">
-        <Link
-          className={
-            view === "general"
-              ? "reservation-report-nav-item reservation-report-nav-item-active"
-              : "reservation-report-nav-item"
-          }
-          href="/reportes/reservas"
-        >
-          <span>General</span>
-          {view === "general" ? (
-            <span className="h-2 w-2 rounded-full bg-[#648672]" />
-          ) : (
-            <ChevronRight className="h-4 w-4 text-slate-300" />
-          )}
-        </Link>
-
-        <div className="reservation-report-nav-group">
-          <button
-            aria-expanded={reservationsOpen}
-            className={
-              view === "history" || view === "metrics"
-                ? "reservation-report-nav-item reservation-report-nav-item-active"
-                : "reservation-report-nav-item"
-            }
-            onClick={() => setReservationsOpen((current) => !current)}
-            type="button"
-          >
-            <span>Reservas</span>
-            <ChevronDown
-              className={`h-4 w-4 transition-transform ${reservationsOpen ? "rotate-180" : ""}`}
-            />
-          </button>
-          {reservationsOpen ? (
-            <div className="reservation-report-subnav">
-              <Link
-                className={
-                  view === "history"
-                    ? "reservation-report-subnav-item reservation-report-subnav-item-active"
-                    : "reservation-report-subnav-item"
-                }
-                href="/reportes/reservas/historial"
-              >
-                Historial
-              </Link>
-              <Link
-                className={
-                  view === "metrics"
-                    ? "reservation-report-subnav-item reservation-report-subnav-item-active"
-                    : "reservation-report-subnav-item"
-                }
-                href="/reportes/reservas/metricas"
-              >
-                Métricas
-              </Link>
-            </div>
-          ) : null}
-        </div>
-
-        <Link
-          className={
-            view === "locations"
-              ? "reservation-report-nav-item reservation-report-nav-item-active"
-              : "reservation-report-nav-item"
-          }
-          href="/reportes/reservas/locales"
-        >
-          <span>Locales</span>
-          {view === "locations" ? (
-            <span className="h-2 w-2 rounded-full bg-[#648672]" />
-          ) : (
-            <ChevronRight className="h-4 w-4 text-slate-300" />
-          )}
-        </Link>
-
-        <Link
-          className={
-            view === "services"
-              ? "reservation-report-nav-item reservation-report-nav-item-active"
-              : "reservation-report-nav-item"
-          }
-          href="/reportes/reservas/servicios"
-        >
-          <span>Servicios</span>
-          {view === "services" ? (
-            <span className="h-2 w-2 rounded-full bg-[#648672]" />
-          ) : (
-            <ChevronRight className="h-4 w-4 text-slate-300" />
-          )}
-        </Link>
-
-        <Link
-          className={
-            view === "mobile-messaging"
-              ? "reservation-report-nav-item reservation-report-nav-item-active"
-              : "reservation-report-nav-item"
-          }
-          href="/reportes/reservas/mensajeria-movil"
-        >
-          <span>Mensajería móvil</span>
-          {view === "mobile-messaging" ? (
-            <span className="h-2 w-2 rounded-full bg-[#648672]" />
-          ) : (
-            <ChevronRight className="h-4 w-4 text-slate-300" />
-          )}
-        </Link>
-
-        <div className="reservation-report-nav-group">
-          <button
-            aria-expanded={servicesByLocationOpen}
-            className={
-              view === "services-by-location"
-                ? "reservation-report-nav-item reservation-report-nav-item-active"
-                : "reservation-report-nav-item"
-            }
-            onClick={() => setServicesByLocationOpen((current) => !current)}
-            type="button"
-          >
-            <span>Servicios por local</span>
-            <ChevronDown
-              className={`h-4 w-4 transition-transform ${servicesByLocationOpen ? "rotate-180" : ""}`}
-            />
-          </button>
-          {servicesByLocationOpen ? (
-            <div className="reservation-report-subnav">
-              <Link
-                className={
-                  view === "services-by-location"
-                    ? "reservation-report-subnav-item reservation-report-subnav-item-active"
-                    : "reservation-report-subnav-item"
-                }
-                href="/reportes/reservas/servicios-por-local/opatra-mexico"
-              >
-                OPATRA MEXICO
-              </Link>
-            </div>
-          ) : null}
-        </div>
-
-        <div className="reservation-report-nav-group">
-          <button
-            aria-expanded={providersByLocationOpen}
-            className={
-              view === "providers-by-location"
-                ? "reservation-report-nav-item reservation-report-nav-item-active"
-                : "reservation-report-nav-item"
-            }
-            onClick={() => setProvidersByLocationOpen((current) => !current)}
-            type="button"
-          >
-            <span>Prestadores por local</span>
-            <ChevronDown
-              className={`h-4 w-4 transition-transform ${providersByLocationOpen ? "rotate-180" : ""}`}
-            />
-          </button>
-          {providersByLocationOpen ? (
-            <div className="reservation-report-subnav">
-              <Link
-                className="reservation-report-subnav-item reservation-report-subnav-item-active"
-                href="/reportes/reservas/prestadores-por-local/opatra-mexico"
-              >
-                OPATRA MEXICO
-              </Link>
-            </div>
-          ) : null}
-        </div>
-
-        {reservationReportSections.slice(7).map((section) => (
-          <button
-            key={section}
-            className="reservation-report-nav-item"
-            onClick={() =>
-              toast.info(`${section} estará disponible en la siguiente fase`, {
-                description: "Este desglose todavía se encuentra en construcción.",
-              })
-            }
-            type="button"
-          >
-            <span>{section}</span>
-            <ChevronRight className="h-4 w-4 text-slate-300" />
-          </button>
-        ))}
-      </nav>
-      {view === "services" || view === "services-by-location" || view === "providers-by-location" ? (
-        <div className="reservation-report-nav-summary">
-          <p className="label-caps">
-            {view === "services-by-location" || view === "providers-by-location" ? "OPATRA MEXICO" : "Catálogo actual"}
-          </p>
-          <div className="mt-3 grid grid-cols-2 gap-2">
-            <div>
-              <span className="number-display block text-lg text-[#263649]">
-                {view === "providers-by-location" ? 41 : reservationServiceReportTotals.bookings}
-              </span>
-              <span className="text-[0.65rem] text-slate-400">reservas</span>
-            </div>
-            <div>
-              <span className="number-display block text-lg text-[#263649]">
-                {view === "providers-by-location" ? reservationProvidersByLocationReports[0]!.providers.length : reservationServiceReports.length}
-              </span>
-              <span className="text-[0.65rem] text-slate-400">
-                {view === "providers-by-location" ? "prestadores" : "servicios"}
-              </span>
-            </div>
-          </div>
-          <div className="mt-3 border-t border-[#e8dfd8] pt-3">
-            <span className="number-display block text-sm text-[#526f5e]">
-              {view === "providers-by-location" ? "$52,699" : "$48,959"}
-            </span>
-            <span className="text-[0.65rem] text-slate-400">recaudación reportada</span>
-          </div>
-        </div>
-      ) : view === "mobile-messaging" ? (
-        <div className="reservation-report-nav-summary">
-          <p className="label-caps">Canal WhatsApp</p>
-          <div className="mt-3 grid grid-cols-2 gap-2">
-            <div>
-              <span className="number-display block text-lg text-[#263649]">
-                {reservationMobileMessagingTotals.messagesSent}
-              </span>
-              <span className="text-[0.65rem] text-slate-400">enviados</span>
-            </div>
-            <div>
-              <span className="number-display block text-lg text-[#263649]">
-                {reservationMobileMessagingTotals.confirmedByWhatsApp}
-              </span>
-              <span className="text-[0.65rem] text-slate-400">confirmado</span>
-            </div>
-          </div>
-          <div className="mt-3 border-t border-[#e8dfd8] pt-3">
-            <span className="number-display block text-sm text-[#526f5e]">1 / 100</span>
-            <span className="text-[0.65rem] text-slate-400">conversaciones utilizadas</span>
-          </div>
-        </div>
-      ) : null}
-    </aside>
-  );
-}
-
-function CompactMetric({
-  icon,
-  label,
-  value,
-  note,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-  note: string;
-}) {
-  return (
-    <article className="report-card !rounded-[24px] !p-5">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <p className="label-caps">{label}</p>
-          <p className="number-display mt-3 text-[1.75rem] leading-none tracking-[-0.04em] text-[#263649]">
-            {value}
-          </p>
-          <p className="mt-3 text-xs text-slate-400">{note}</p>
-        </div>
-        <span className="report-metric-icon">{icon}</span>
-      </div>
-    </article>
-  );
-}
-
-const statusLabels: Record<ReservationReportStatus, string> = {
+const periodLabels: Record<string, string> = {
+  "last-7": "23 ago – 29 ago 2026",
+  "last-30": "31 jul – 29 ago 2026",
+  "this-month": "1 ago – 29 ago 2026",
+  "last-month": "1 jul – 30 jul 2026",
+};
+const previousPeriodLabels: Record<string, string> = {
+  "last-7": "16 ago – 22 ago 2026",
+  "last-30": "1 jul – 30 jul 2026",
+  "this-month": "2 jul – 30 jul 2026",
+  "last-month": "1 jun – 30 jun 2026",
+};
+const historyStatusLabels: Record<ReservationReportStatus, string> = {
   reserved: "Reservada",
   confirmed: "Confirmada",
   attended: "Asistió",
@@ -466,12 +61,837 @@ const statusLabels: Record<ReservationReportStatus, string> = {
   canceled: "Cancelada",
   pending: "Pendiente",
 };
-
 const paymentLabels: Record<ReservationPaymentStatus, string> = {
   paid: "Pagada",
-  pending: "Pago pendiente",
+  pending: "Pendiente",
   unpaid: "No pagada",
 };
+
+const hourLabels = [
+  "10:00",
+  "11:00",
+  "12:00",
+  "13:00",
+  "14:00",
+  "15:00",
+  "16:00",
+  "17:00",
+  "18:00",
+  "19:00",
+  "20:00",
+  "21:00",
+];
+const hourSeries = [
+  {
+    label: "Lunes",
+    color: "#648672",
+    values: [0, 20, 10, 14, 13, 11, 14, 10, 19, 15, 0, 0],
+  },
+  {
+    label: "Martes",
+    color: "#c05e60",
+    values: [0, 19, 21, 16, 17, 15, 14, 18, 21, 13, 1, 0],
+  },
+  {
+    label: "Miércoles",
+    color: "#d7a247",
+    values: [0, 21, 21, 24, 17, 14, 13, 20, 15, 10, 0, 0],
+  },
+  {
+    label: "Jueves",
+    color: "#b97d89",
+    values: [0, 19, 20, 23, 18, 16, 23, 20, 20, 21, 0, 0],
+  },
+  {
+    label: "Viernes",
+    color: "#5e86bd",
+    values: [0, 28, 27, 33, 34, 23, 22, 31, 30, 26, 11, 0],
+  },
+  {
+    label: "Sábado",
+    color: "#9a78c6",
+    values: [0, 38, 35, 33, 32, 33, 40, 43, 35, 31, 23, 0],
+  },
+  {
+    label: "Domingo",
+    color: "#42a8b4",
+    values: [0, 26, 23, 21, 30, 30, 30, 27, 25, 18, 8, 0],
+  },
+];
+const evolutionSeries = [
+  {
+    label: "Reservas",
+    color: "#466a76",
+    values: [
+      42, 48, 35, 51, 39, 58, 44, 62, 37, 47, 53, 68, 45, 57, 64, 49, 72, 56,
+    ],
+  },
+  {
+    label: "Ingresos estimados",
+    color: "#648672",
+    values: [
+      27, 19, 31, 24, 37, 22, 30, 43, 34, 26, 40, 29, 45, 34, 23, 48, 30, 39,
+    ],
+  },
+];
+const statusBreakdown = [
+  { label: "Asistió", value: 181, color: "#9a78c6" },
+  { label: "Pendiente", value: 46, color: "#d88387" },
+  { label: "No asistió", value: 31, color: "#e7a78f" },
+  { label: "Confirmada", value: 18, color: "#e6b958" },
+  { label: "Cancelada", value: 4, color: "#d99aa0" },
+  { label: "En espera", value: 1, color: "#98bd71" },
+];
+const serviceLeaders = [
+  {
+    name: "Membresía 7 sesiones Celestial Renewal System",
+    value: 232,
+    share: "15.69%",
+    change: 0.4,
+  },
+  {
+    name: "Membresía 14 sesiones Celestial Renewal System",
+    value: 210,
+    share: "14.2%",
+    change: 21.4,
+  },
+  { name: "Facial de cortesía", value: 174, share: "11.76%", change: 62.6 },
+];
+const professionalLeaders = [
+  { name: "Masaryk Cab Doble", value: 286, share: "19.34%", change: 15.8 },
+  { name: "Mitikah VIP C-Doble", value: 266, share: "17.99%", change: 28.5 },
+  { name: "Masaryk", value: 197, share: "13.32%", change: 23.9 },
+];
+const activeClients = [
+  { name: "Ruth Masías / Abel", reservations: 12 },
+  { name: "Thelma Grappin / Keysar", reservations: 11 },
+  { name: "María de Lourdes Rico", reservations: 10 },
+];
+const performanceRows = [
+  {
+    name: "Masaryk Cab Doble",
+    reservations: 286,
+    reservationChange: 15.8,
+    occupancy: 65.4,
+    revenue: 381093,
+    revenueChange: -35.1,
+    commission: 6200,
+    newClients: 81,
+    newChange: -1,
+    recurring: 81,
+    recurringChange: 21,
+  },
+  {
+    name: "Mitikah VIP C-Doble",
+    reservations: 266,
+    reservationChange: 28.5,
+    occupancy: 67.8,
+    revenue: 548015,
+    revenueChange: -21,
+    commission: 5750,
+    newClients: 72,
+    newChange: 6,
+    recurring: 80,
+    recurringChange: 19,
+  },
+  {
+    name: "Masaryk",
+    reservations: 197,
+    reservationChange: 23.9,
+    occupancy: 36.6,
+    revenue: 464941,
+    revenueChange: 43.5,
+    commission: 4675,
+    newClients: 66,
+    newChange: 5,
+    recurring: 89,
+    recurringChange: 18,
+  },
+  {
+    name: "Opatra Cabina 1",
+    reservations: 194,
+    reservationChange: 6,
+    occupancy: 51.3,
+    revenue: 367025,
+    revenueChange: -50.5,
+    commission: 4850,
+    newClients: 47,
+    newChange: 2,
+    recurring: 106,
+    recurringChange: 1,
+  },
+  {
+    name: "Mitikah VIP B-Doble",
+    reservations: 189,
+    reservationChange: 20.4,
+    occupancy: 52.9,
+    revenue: 274468,
+    revenueChange: -33.7,
+    commission: 3910,
+    newClients: 56,
+    newChange: 12,
+    recurring: 49,
+    recurringChange: -4,
+  },
+  {
+    name: "Opatra Cabina 2",
+    reservations: 183,
+    reservationChange: -6.6,
+    occupancy: 49.3,
+    revenue: 510360,
+    revenueChange: 9.5,
+    commission: 4525,
+    newClients: 43,
+    newChange: -13,
+    recurring: 97,
+    recurringChange: 3,
+  },
+  {
+    name: "Mitikah VIP Individual",
+    reservations: 177,
+    reservationChange: 19.6,
+    occupancy: 37.8,
+    revenue: 367517,
+    revenueChange: -30.7,
+    commission: 4150,
+    newClients: 82,
+    newChange: 16,
+    recurring: 62,
+    recurringChange: 6,
+  },
+];
+
+function ReportTabs({ view }: { view: ReservationReportView }) {
+  const tabs: Array<{
+    href: string;
+    label: string;
+    value: ReservationReportView;
+  }> = [
+    { href: "/reportes/reservas", label: "General", value: "general" },
+    {
+      href: "/reportes/reservas/historial",
+      label: "Historial",
+      value: "history",
+    },
+    {
+      href: "/reportes/reservas/rendimiento",
+      label: "Rendimiento",
+      value: "performance",
+    },
+  ];
+  return (
+    <nav
+      aria-label="Secciones del reporte"
+      className="flex gap-2 border-b border-[#d8c5b5]"
+    >
+      {tabs.map((tab) => (
+        <Link
+          key={tab.value}
+          aria-current={view === tab.value ? "page" : undefined}
+          className={
+            view === tab.value
+              ? "reservation-tab reservation-tab-active"
+              : "reservation-tab"
+          }
+          href={tab.href}
+        >
+          {tab.label}
+        </Link>
+      ))}
+    </nav>
+  );
+}
+
+function PeriodFilters({
+  compare = true,
+  performance = false,
+  period,
+  setPeriod,
+  showExport = false,
+}: {
+  compare?: boolean;
+  performance?: boolean;
+  period: string;
+  setPeriod: (value: string) => void;
+  showExport?: boolean;
+}) {
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  return (
+    <section className="reservation-control-panel">
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+        <div className="grid min-w-0 gap-4 sm:grid-cols-2 xl:flex">
+          <label className="block min-w-0 xl:w-64">
+            <span className="reservation-control-label">Periodo</span>
+            <Select value={period} onValueChange={setPeriod}>
+              <SelectTrigger className="reservation-select">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="last-7">Últimos 7 días</SelectItem>
+                <SelectItem value="last-30">Últimos 30 días</SelectItem>
+                <SelectItem value="this-month">Este mes</SelectItem>
+                <SelectItem value="last-month">Mes anterior</SelectItem>
+              </SelectContent>
+            </Select>
+          </label>
+          {compare ? (
+            <label className="block min-w-0 xl:w-60">
+              <span className="reservation-control-label">Comparar con</span>
+              <Select defaultValue="previous">
+                <SelectTrigger className="reservation-select">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="previous">Periodo anterior</SelectItem>
+                  <SelectItem value="last-year">
+                    Mismo periodo del año anterior
+                  </SelectItem>
+                  <SelectItem value="none">Sin comparación</SelectItem>
+                </SelectContent>
+              </Select>
+            </label>
+          ) : null}
+          {performance ? (
+            <label className="block min-w-0 xl:w-60">
+              <span className="reservation-control-label">Ver por</span>
+              <Select defaultValue="professionals">
+                <SelectTrigger className="reservation-select">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="professionals">Especialistas</SelectItem>
+                  <SelectItem value="locations">Locales</SelectItem>
+                  <SelectItem value="services">Servicios</SelectItem>
+                </SelectContent>
+              </Select>
+            </label>
+          ) : null}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            className="reservation-outline-button"
+            onClick={() => setFiltersOpen((value) => !value)}
+            type="button"
+            variant="outline"
+          >
+            <SlidersHorizontal className="h-4 w-4" />
+            Más filtros
+            <ChevronDown
+              className={`h-4 w-4 transition-transform ${filtersOpen ? "rotate-180" : ""}`}
+            />
+          </Button>
+          {showExport ? (
+            <Button
+              className="reservation-outline-button"
+              onClick={() =>
+                toast.success("Reporte preparado", {
+                  description:
+                    "La exportación está lista para conectarse con los datos reales.",
+                })
+              }
+              type="button"
+              variant="outline"
+            >
+              <ArrowDownToLine className="h-4 w-4" />
+              Exportar
+            </Button>
+          ) : null}
+        </div>
+      </div>
+      <p className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+        <CalendarDays className="h-3.5 w-3.5 text-[#ad8b67]" />
+        Mostrando{" "}
+        <strong className="font-semibold text-[#263649]">
+          {periodLabels[period]}
+        </strong>
+        {compare ? (
+          <span>· comparado con {previousPeriodLabels[period]}</span>
+        ) : null}
+      </p>
+      {filtersOpen ? <ExtraFilters /> : null}
+    </section>
+  );
+}
+
+function ExtraFilters() {
+  return (
+    <div className="mt-4 grid gap-3 border-t border-[#ebe2da] pt-4 sm:grid-cols-2 lg:grid-cols-3">
+      <FilterSelect
+        label="Local"
+        options={[
+          "Todos los locales",
+          "OPATRA Masaryk",
+          "Keysar Mitikah",
+          "Keysar Polanco",
+        ]}
+      />
+      <FilterSelect
+        label="Especialista"
+        options={[
+          "Todos los especialistas",
+          "Masaryk Cab Doble",
+          "Mitikah VIP",
+          "Opatra Cabina 1",
+        ]}
+      />
+      <FilterSelect
+        label="Origen"
+        options={[
+          "Todos los orígenes",
+          "Agenda",
+          "Marketplace",
+          "Reservas online",
+        ]}
+      />
+    </div>
+  );
+}
+function FilterSelect({
+  label,
+  options,
+}: {
+  label: string;
+  options: [string, ...string[]];
+}) {
+  return (
+    <label className="block">
+      <span className="reservation-control-label">{label}</span>
+      <Select defaultValue={options[0]}>
+        <SelectTrigger className="reservation-select">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((option) => (
+            <SelectItem key={option} value={option}>
+              {option}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </label>
+  );
+}
+
+function MetricCard({
+  label,
+  value,
+  previous,
+  change,
+  good = true,
+  icon,
+}: {
+  label: string;
+  value: string;
+  previous: string;
+  change: string;
+  good?: boolean;
+  icon: ReactNode;
+}) {
+  return (
+    <article className="reservation-kpi-card">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-sm font-semibold text-[#263649]">{label}</p>
+          <p className="number-display mt-4 text-[2rem] font-semibold leading-none tracking-[-0.04em] text-[#263649]">
+            {value}
+          </p>
+        </div>
+        <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#f5f0eb] text-[#ad8b67]">
+          {icon}
+        </span>
+      </div>
+      <div className="mt-3 flex items-center justify-between gap-3 text-xs">
+        <span className="text-slate-400">Anterior: {previous}</span>
+        <span
+          className={good ? "reservation-trend-up" : "reservation-trend-down"}
+        >
+          {good ? (
+            <ArrowUpRight className="h-3.5 w-3.5" />
+          ) : (
+            <ArrowDownRight className="h-3.5 w-3.5" />
+          )}
+          {change}
+        </span>
+      </div>
+    </article>
+  );
+}
+
+function LineChart({
+  labels,
+  max,
+  series,
+}: {
+  labels: string[];
+  max: number;
+  series: Array<{ label: string; color: string; values: number[] }>;
+}) {
+  const width = 920,
+    height = 290,
+    left = 18,
+    top = 14,
+    bottom = 22,
+    usableWidth = width - left * 2,
+    usableHeight = height - top - bottom;
+  const pointsFor = (values: number[]) =>
+    values
+      .map(
+        (value, index) =>
+          `${left + (index / Math.max(values.length - 1, 1)) * usableWidth},${top + usableHeight - (value / max) * usableHeight}`,
+      )
+      .join(" ");
+  return (
+    <div className="mt-5 min-w-[38rem]">
+      <svg
+        aria-label="Gráfica de evolución"
+        className="h-auto w-full"
+        role="img"
+        viewBox={`0 0 ${width} ${height}`}
+      >
+        {[0, 1, 2, 3, 4].map((line) => {
+          const y = top + (line / 4) * usableHeight;
+          return (
+            <line
+              key={line}
+              stroke="#e9e2dc"
+              strokeDasharray="3 5"
+              x1={left}
+              x2={width - left}
+              y1={y}
+              y2={y}
+            />
+          );
+        })}
+        {labels.map((label, index) => {
+          const x =
+            left + (index / Math.max(labels.length - 1, 1)) * usableWidth;
+          return (
+            <g key={label}>
+              <line
+                stroke="#f0ebe6"
+                strokeDasharray="3 5"
+                x1={x}
+                x2={x}
+                y1={top}
+                y2={height - bottom}
+              />
+              <text
+                fill="#8a95a2"
+                fontSize="10"
+                textAnchor="middle"
+                x={x}
+                y={height - 2}
+              >
+                {label}
+              </text>
+            </g>
+          );
+        })}
+        {series.map((item) => (
+          <polyline
+            key={item.label}
+            fill="none"
+            points={pointsFor(item.values)}
+            stroke={item.color}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth="3"
+          />
+        ))}
+      </svg>
+      <div className="mt-3 flex flex-wrap justify-center gap-x-5 gap-y-2">
+        {series.map((item) => (
+          <span
+            key={item.label}
+            className="flex items-center gap-2 text-xs text-slate-500"
+          >
+            <span
+              className="h-2.5 w-2.5 rounded-sm"
+              style={{ backgroundColor: item.color }}
+            />
+            {item.label}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function DonutChart() {
+  const total = statusBreakdown.reduce((sum, item) => sum + item.value, 0);
+  let cursor = 0;
+  const gradient = statusBreakdown
+    .map((item) => {
+      const start = cursor;
+      cursor += (item.value / total) * 100;
+      return `${item.color} ${start}% ${cursor}%`;
+    })
+    .join(", ");
+  return (
+    <div className="mt-6 flex flex-col items-center">
+      <div
+        className="flex h-56 w-56 items-center justify-center rounded-full"
+        style={{ background: `conic-gradient(${gradient})` }}
+      >
+        <div className="flex h-28 w-28 flex-col items-center justify-center rounded-full bg-white shadow-[0_8px_25px_rgba(38,54,73,0.08)]">
+          <strong className="number-display text-2xl text-[#263649]">
+            {total}
+          </strong>
+          <span className="text-[0.65rem] uppercase tracking-[0.13em] text-slate-400">
+            reservas
+          </span>
+        </div>
+      </div>
+      <div className="mt-6 flex flex-wrap justify-center gap-x-4 gap-y-2">
+        {statusBreakdown.map((item) => (
+          <span
+            key={item.label}
+            className="flex items-center gap-2 text-xs text-slate-500"
+          >
+            <span
+              className="h-2.5 w-2.5 rounded-sm"
+              style={{ backgroundColor: item.color }}
+            />
+            {item.label}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function RankingCard({
+  title,
+  items,
+}: {
+  title: string;
+  items: typeof serviceLeaders;
+}) {
+  const max = Math.max(...items.map((item) => item.value));
+  return (
+    <article className="reservation-report-card">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-sm font-semibold text-[#263649]">{title}</h2>
+        <button
+          className="text-xs font-semibold text-[#8c6d52] underline underline-offset-4"
+          type="button"
+        >
+          Ver todos
+        </button>
+      </div>
+      <div className="mt-5 space-y-5">
+        {items.map((item) => (
+          <div key={item.name}>
+            <div className="flex items-end justify-between gap-3 text-xs">
+              <span className="font-medium leading-5 text-[#263649]">
+                {item.name}
+              </span>
+              <span className="shrink-0 text-slate-400">
+                ({item.share}){" "}
+                <strong className="number-display text-sm text-[#263649]">
+                  {item.value}
+                </strong>
+              </span>
+            </div>
+            <div className="mt-2 h-2 overflow-hidden rounded-full bg-[#ece9e6]">
+              <div
+                className="h-full rounded-full bg-[#648672]"
+                style={{ width: `${(item.value / max) * 100}%` }}
+              />
+            </div>
+            <p className="mt-1.5 flex items-center gap-1 text-[0.68rem] font-semibold text-[#4f9f79]">
+              <ArrowUpRight className="h-3 w-3" />+{item.change}%
+            </p>
+          </div>
+        ))}
+      </div>
+    </article>
+  );
+}
+
+function GeneralReport({
+  period,
+  setPeriod,
+}: {
+  period: string;
+  setPeriod: (value: string) => void;
+}) {
+  const factor =
+    period === "last-7" ? 0.27 : period === "last-month" ? 0.91 : 1;
+  return (
+    <>
+      <PeriodFilters period={period} setPeriod={setPeriod} />
+      <section className="mt-4 grid gap-4 md:grid-cols-3">
+        <MetricCard
+          change="14.1%"
+          icon={<CalendarDays className="h-5 w-5" />}
+          label="Reservas totales"
+          previous={numberFormatter.format(Math.round(1296 * factor))}
+          value={numberFormatter.format(Math.round(1479 * factor))}
+        />
+        <MetricCard
+          change="6.3%"
+          icon={<UsersRound className="h-5 w-5" />}
+          label="Ocupación"
+          previous="32.61%"
+          value="38.91%"
+        />
+        <MetricCard
+          change="1.6%"
+          icon={<Info className="h-5 w-5" />}
+          label="Tasa de inasistencias"
+          previous="12.83%"
+          value="11.19%"
+        />
+      </section>
+      <section className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(20rem,0.9fr)]">
+        <article className="reservation-report-card overflow-hidden">
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-semibold text-[#263649]">
+              Reservas por hora
+            </h2>
+            <Info className="h-3.5 w-3.5 text-slate-400" />
+          </div>
+          <div className="overflow-x-auto">
+            <LineChart labels={hourLabels} max={50} series={hourSeries} />
+          </div>
+        </article>
+        <article className="reservation-report-card">
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-semibold text-[#263649]">
+              Origen de las reservas
+            </h2>
+            <Info className="h-3.5 w-3.5 text-slate-400" />
+          </div>
+          <div className="mt-7 flex h-[245px] items-end justify-center gap-8 border-b border-l border-[#dcd5cf] px-6">
+            <div className="flex h-full flex-col items-center justify-end gap-2">
+              <span className="number-display text-xs text-slate-400">
+                1,008
+              </span>
+              <div
+                className="w-14 rounded-t-lg bg-[#c3a583]"
+                style={{ height: "66%" }}
+              />
+              <span className="pb-3 text-xs text-slate-500">Anterior</span>
+            </div>
+            <div className="flex h-full flex-col items-center justify-end gap-2">
+              <span className="number-display text-xs text-slate-400">
+                1,198
+              </span>
+              <div
+                className="w-14 rounded-t-lg bg-[#648672]"
+                style={{ height: "79%" }}
+              />
+              <span className="pb-3 text-xs text-slate-500">Agenda</span>
+            </div>
+          </div>
+          <button
+            className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-[#f4efe9] px-3 py-2.5 text-xs font-semibold text-[#8c6d52]"
+            type="button"
+          >
+            <Sparkles className="h-4 w-4" />
+            Potencia tus reservas online
+          </button>
+        </article>
+      </section>
+      <section className="mt-4 grid gap-4 xl:grid-cols-[minmax(20rem,0.9fr)_minmax(0,2fr)]">
+        <article className="reservation-report-card">
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-semibold text-[#263649]">
+              Reservas por estado
+            </h2>
+            <Info className="h-3.5 w-3.5 text-slate-400" />
+          </div>
+          <DonutChart />
+        </article>
+        <article className="reservation-report-card overflow-hidden">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm font-semibold text-[#263649]">
+                Evolución de reservas e ingresos
+              </h2>
+              <Info className="h-3.5 w-3.5 text-slate-400" />
+            </div>
+            <p className="text-xs text-slate-500">
+              Recaudación estimada:{" "}
+              <strong className="number-display text-[#648672]">
+                {currencyFormatter.format(2883218)}
+              </strong>
+            </p>
+          </div>
+          <div className="overflow-x-auto">
+            <LineChart
+              labels={[
+                "31 jul",
+                "4 ago",
+                "8 ago",
+                "12 ago",
+                "16 ago",
+                "20 ago",
+                "24 ago",
+                "29 ago",
+              ]}
+              max={80}
+              series={evolutionSeries}
+            />
+          </div>
+        </article>
+      </section>
+      <section className="mt-4 grid gap-4 xl:grid-cols-3">
+        <RankingCard items={serviceLeaders} title="Top 3 servicios" />
+        <RankingCard items={professionalLeaders} title="Top 3 especialistas" />
+        <article className="reservation-report-card">
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-semibold text-[#263649]">
+              Clientes más activos
+            </h2>
+            <Info className="h-3.5 w-3.5 text-slate-400" />
+          </div>
+          <div className="mt-4 divide-y divide-[#ebe3dc]">
+            {activeClients.map((client) => (
+              <div
+                key={client.name}
+                className="flex items-center justify-between gap-3 py-3 text-xs"
+              >
+                <span className="font-medium text-[#263649] underline decoration-[#cbb49e] underline-offset-4">
+                  {client.name}
+                </span>
+                <span>
+                  <strong className="number-display text-base text-[#263649]">
+                    {client.reservations}
+                  </strong>{" "}
+                  <span className="text-slate-400">reservas</span>
+                </span>
+              </div>
+            ))}
+          </div>
+          <div className="mt-8 grid grid-cols-2 gap-3">
+            <div className="rounded-xl border border-[#e9e1da] p-3">
+              <p className="text-xs text-slate-500">Clientes nuevos</p>
+              <p className="number-display mt-1 text-xl font-semibold text-[#263649]">
+                420
+              </p>
+              <span className="reservation-trend-up">
+                <ArrowUpRight className="h-3 w-3" />
+                2.2%
+              </span>
+            </div>
+            <div className="rounded-xl border border-[#e9e1da] p-3">
+              <p className="text-xs text-slate-500">Recurrentes</p>
+              <p className="number-display mt-1 text-xl font-semibold text-[#263649]">
+                475
+              </p>
+              <span className="reservation-trend-up">
+                <ArrowUpRight className="h-3 w-3" />
+                11.0%
+              </span>
+            </div>
+          </div>
+        </article>
+      </section>
+    </>
+  );
+}
 
 function formatHistoryDate(value: string) {
   return new Intl.DateTimeFormat("es-MX", {
@@ -483,90 +903,236 @@ function formatHistoryDate(value: string) {
     hour12: false,
   }).format(new Date(value));
 }
-
-const historyColumns: ColumnDef<ReservationHistoryRecord>[] = [
-  {
-    accessorKey: "performedAt",
-    header: "Fecha de realización",
-    cell: ({ row }) => (
-      <span className="whitespace-nowrap font-medium text-[#263649]">
-        {formatHistoryDate(row.original.performedAt)}
-      </span>
-    ),
-  },
-  { accessorKey: "branch", header: "Local" },
-  { accessorKey: "client", header: "Cliente" },
-  { accessorKey: "service", header: "Servicio" },
-  { accessorKey: "provider", header: "Prestador" },
-  {
-    accessorKey: "status",
-    header: "Estado",
-    cell: ({ row }) => (
-      <span className={`reservation-history-badge reservation-history-badge-${row.original.status}`}>
-        {statusLabels[row.original.status]}
-      </span>
-    ),
-  },
-  {
-    accessorKey: "paymentStatus",
-    header: "Estado de pago",
-    cell: ({ row }) => (
-      <span className={`reservation-payment-badge reservation-payment-badge-${row.original.paymentStatus}`}>
-        {paymentLabels[row.original.paymentStatus]}
-      </span>
-    ),
-  },
-  {
-    accessorKey: "amount",
-    header: "Monto",
-    cell: ({ row }) => (
-      <span className="number-display whitespace-nowrap text-[#263649]">
-        {row.original.amount > 0
-          ? currencyFormatter.format(row.original.amount)
-          : "—"}
-      </span>
-    ),
-  },
-];
-
-function ReservationHistory({ records }: { records: ReservationHistoryRecord[] }) {
+function HistoryReport({
+  period,
+  setPeriod,
+}: {
+  period: string;
+  setPeriod: (value: string) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const records = useMemo(
+    () =>
+      reservationHistory.filter((record) =>
+        [record.client, record.service, record.provider, record.branch].some(
+          (value) => value.toLowerCase().includes(query.toLowerCase()),
+        ),
+      ),
+    [query],
+  );
   return (
-    <section className="report-card reservation-history-card">
-      <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="label-caps">Reservas / Historial</p>
-          <h2 className="mt-1.5 text-2xl font-semibold tracking-[-0.03em] text-[#263649]">
-            Historial de reservas
-          </h2>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
-            Se muestran hasta 50 reservas del periodo y estados seleccionados.
-          </p>
+    <>
+      <PeriodFilters
+        compare={false}
+        period={period}
+        setPeriod={setPeriod}
+        showExport
+      />
+      <section className="reservation-table-card mt-4">
+        <div className="flex flex-col gap-4 border-b border-[#e7dfd8] p-4 sm:flex-row sm:items-center sm:justify-between">
+          <label className="relative block w-full sm:max-w-md">
+            <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input
+              className="h-11 w-full rounded-xl border border-[#e2d8cf] bg-white pl-10 pr-4 text-sm text-[#263649] outline-none transition focus:border-[#ad8b67] focus:ring-2 focus:ring-[#c3a583]/20"
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Buscar cliente, servicio o especialista..."
+              value={query}
+            />
+          </label>
+          <button
+            className="flex items-center gap-2 self-end text-xs font-semibold text-[#735b47] underline underline-offset-4"
+            onClick={() =>
+              toast.info("Selector de columnas", {
+                description:
+                  "La configuración quedará disponible al conectar el reporte.",
+              })
+            }
+            type="button"
+          >
+            <Settings2 className="h-4 w-4" />
+            Editar columnas
+          </button>
         </div>
-        <Button
-          className="h-11 rounded-2xl border-[#dfd6ce] bg-white px-5 text-[#263649] hover:bg-[#f8f5f1]"
-          onClick={() =>
-            toast.info("Descarga preparada en modo visual", {
-              description: "La exportación XLSX se conectará junto con la API.",
-            })
-          }
-          type="button"
-          variant="outline"
+        <div className="overflow-x-auto">
+          <table className="reservation-data-table min-w-[78rem]">
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Cliente</th>
+                <th>Servicio</th>
+                <th>Especialista</th>
+                <th>Local</th>
+                <th>Estado de la reserva</th>
+                <th>Estado de pago</th>
+                <th className="text-right">Monto</th>
+              </tr>
+            </thead>
+            <tbody>
+              {records.slice(0, 12).map((record) => (
+                <HistoryRow key={record.id} record={record} />
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#e7dfd8] px-5 py-4 text-xs text-slate-500">
+          <span>
+            Mostrando {Math.min(12, records.length)} de {records.length}{" "}
+            reservas
+          </span>
+          <div className="flex gap-2">
+            <button
+              className="rounded-lg border border-[#e2d8cf] px-3 py-2 disabled:opacity-40"
+              disabled
+              type="button"
+            >
+              Anterior
+            </button>
+            <button
+              className="rounded-lg border border-[#e2d8cf] px-3 py-2"
+              type="button"
+            >
+              Siguiente
+            </button>
+          </div>
+        </div>
+      </section>
+    </>
+  );
+}
+function HistoryRow({ record }: { record: ReservationHistoryRecord }) {
+  return (
+    <tr>
+      <td className="number-display whitespace-nowrap font-medium text-[#263649]">
+        {formatHistoryDate(record.performedAt)}
+      </td>
+      <td className="font-medium text-[#263649]">{record.client}</td>
+      <td>{record.service}</td>
+      <td>{record.provider}</td>
+      <td>{record.branch}</td>
+      <td>
+        <span
+          className={`reservation-history-badge reservation-history-badge-${record.status}`}
         >
-          <Download className="mr-2 h-4 w-4" />
-          Descargar historial
-        </Button>
-      </div>
-
-      <div className="reservation-history-table">
-        <DataTable
-          columns={historyColumns}
-          data={records.slice(0, 50)}
-          emptyMessage="No hay reservas para los filtros seleccionados."
-          pageSize={10}
-          searchPlaceholder="Buscar cliente, servicio, local o prestador..."
-        />
-      </div>
-    </section>
+          {historyStatusLabels[record.status]}
+        </span>
+      </td>
+      <td>
+        <span
+          className={`reservation-payment-badge reservation-payment-badge-${record.paymentStatus}`}
+        >
+          {paymentLabels[record.paymentStatus]}
+        </span>
+      </td>
+      <td className="number-display whitespace-nowrap text-right font-medium text-[#263649]">
+        {record.amount ? currencyFormatter.format(record.amount) : "—"}
+      </td>
+    </tr>
+  );
+}
+function TrendValue({
+  value,
+  suffix = "",
+}: {
+  value: number;
+  suffix?: string;
+}) {
+  return (
+    <span
+      className={
+        value >= 0 ? "reservation-inline-up" : "reservation-inline-down"
+      }
+    >
+      {value > 0 ? "+" : ""}
+      {value}
+      {suffix}
+    </span>
+  );
+}
+function PerformanceReport({
+  period,
+  setPeriod,
+}: {
+  period: string;
+  setPeriod: (value: string) => void;
+}) {
+  return (
+    <>
+      <PeriodFilters
+        performance
+        period={period}
+        setPeriod={setPeriod}
+        showExport
+      />
+      <section className="reservation-table-card mt-4 overflow-hidden">
+        <div className="flex items-center justify-between gap-3 border-b border-[#e7dfd8] px-5 py-4">
+          <div>
+            <p className="text-sm font-semibold text-[#263649]">
+              Rendimiento por especialista
+            </p>
+            <p className="mt-1 text-xs text-slate-400">
+              Comparativo de productividad, ocupación e ingresos estimados.
+            </p>
+          </div>
+          <CircleDollarSign className="h-5 w-5 text-[#ad8b67]" />
+        </div>
+        <div className="overflow-x-auto">
+          <table className="reservation-data-table min-w-[88rem]">
+            <thead>
+              <tr>
+                <th>Especialista</th>
+                <th>Reservas</th>
+                <th>
+                  Ocupación <Info className="inline h-3.5 w-3.5" />
+                </th>
+                <th>Recaudación estimada</th>
+                <th>Comisión estimada</th>
+                <th>Clientes nuevos</th>
+                <th>Clientes recurrentes</th>
+              </tr>
+            </thead>
+            <tbody>
+              {performanceRows.map((row) => (
+                <tr key={row.name}>
+                  <td className="max-w-56 font-medium uppercase text-[#263649]">
+                    {row.name}
+                  </td>
+                  <td>
+                    <span className="number-display font-medium text-[#263649]">
+                      {row.reservations}
+                    </span>{" "}
+                    <TrendValue suffix="%" value={row.reservationChange} />
+                  </td>
+                  <td className="number-display font-medium text-[#263649]">
+                    {row.occupancy}%
+                  </td>
+                  <td>
+                    <span className="number-display font-medium text-[#263649]">
+                      {currencyFormatter.format(row.revenue)}
+                    </span>{" "}
+                    <TrendValue suffix="%" value={row.revenueChange} />
+                  </td>
+                  <td className="number-display font-medium text-[#263649]">
+                    {currencyFormatter.format(row.commission)}
+                  </td>
+                  <td>
+                    <span className="number-display font-medium text-[#263649]">
+                      {row.newClients}
+                    </span>{" "}
+                    <TrendValue value={row.newChange} />
+                  </td>
+                  <td>
+                    <span className="number-display font-medium text-[#263649]">
+                      {row.recurring}
+                    </span>{" "}
+                    <TrendValue value={row.recurringChange} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </>
   );
 }
 
@@ -575,288 +1141,43 @@ export function ReservationReportWorkspace({
 }: {
   view?: ReservationReportView;
 }) {
-  const allStatuses = reservationStatusOptions.map((option) => option.value);
-  const [draftRange, setDraftRange] = useState<DateRange>({
-    from: "2026-08-03",
-    to: "2026-08-09",
-  });
-  const [draftStatuses, setDraftStatuses] =
-    useState<ReservationReportStatus[]>(allStatuses);
-  const [appliedStatuses, setAppliedStatuses] =
-    useState<ReservationReportStatus[]>(allStatuses);
-  const [dateBasis, setDateBasis] = useState("service-date");
-  const [appliedDateBasis, setAppliedDateBasis] = useState("service-date");
-  const [appliedRange, setAppliedRange] = useState<DateRange>(draftRange);
-
-  const selectedCount = useMemo(
-    () =>
-      reservationStatusOptions
-        .filter((option) => appliedStatuses.includes(option.value))
-        .reduce((sum, option) => sum + option.count, 0),
-    [appliedStatuses],
-  );
-  const filterRatio = selectedCount / reservationReportTotals.bookings;
-  const filteredRevenue = Math.round(reservationReportTotals.revenue * filterRatio);
-  const attendedCount = appliedStatuses.includes("attended")
-    ? reservationReportTotals.attended
-    : 0;
-  const attendanceRate = selectedCount > 0 ? (attendedCount / selectedCount) * 100 : 0;
-  const scaledWeekdays = reservationsByWeekday.map((point) => ({
-    ...point,
-    value: Math.max(0, Math.round(point.value * filterRatio)),
-  }));
-  const scaledHours = reservationsByHour.map((point) => ({
-    ...point,
-    value: Math.max(0, Math.round(point.value * filterRatio)),
-  }));
-  const donutBackground = buildDonutGradient(serviceRanking);
-  const filteredHistory = useMemo(
-    () =>
-      reservationHistory.filter((record) => {
-        if (!appliedStatuses.includes(record.status)) return false;
-        const sourceDate =
-          appliedDateBasis === "created-date"
-            ? record.createdAt
-            : record.performedAt;
-        const isoDate = sourceDate.slice(0, 10);
-        return isoDate >= appliedRange.from && isoDate <= appliedRange.to;
-      }),
-    [appliedDateBasis, appliedRange, appliedStatuses],
-  );
-
-  const toggleStatus = (status: ReservationReportStatus) => {
-    setDraftStatuses((current) => {
-      if (current.includes(status)) {
-        return current.length === 1
-          ? current
-          : current.filter((value) => value !== status);
-      }
-      return [...current, status];
-    });
-  };
-
-  const applyFilters = () => {
-    setAppliedStatuses(draftStatuses);
-    setAppliedDateBasis(dateBasis);
-    setAppliedRange(draftRange);
-    toast.success("Reporte actualizado", {
-      description: `${draftRange.from} al ${draftRange.to} · ${draftStatuses.length} estados`,
-    });
-  };
-
+  const [period, setPeriod] = useState("last-30");
   return (
     <div className="report-workspace min-h-screen bg-[#f4f1ed] text-[#263649]">
       <ReportsHeader active="reservations" />
-      <main className="mx-auto max-w-[1540px] px-4 py-6 sm:px-6 lg:px-8 lg:py-9">
-        <section className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+      <main className="mx-auto max-w-[1500px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+        <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="label-caps">
-              Reportes / Reservas / {view === "history" ? "Historial" : view === "metrics" ? "Métricas" : view === "locations" ? "Locales" : view === "services" ? "Servicios" : view === "mobile-messaging" ? "Mensajería móvil" : view === "services-by-location" ? "Servicios por local" : view === "providers-by-location" ? "Prestadores por local" : "General"}
-            </p>
-            <h1 className="page-title mt-2 text-[clamp(2rem,4vw,3.25rem)] text-[#263649]">
+            <p className="label-caps">Reportes / Reservas</p>
+            <h1 className="page-title mt-2 text-[clamp(2rem,4vw,3.2rem)] text-[#263649]">
               Reporte de reservas
             </h1>
-            <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-500 sm:text-base">
-              Analiza volumen, recaudación, servicios y horarios para entender el comportamiento de tu agenda.
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
+              Consulta el comportamiento de tu agenda, el historial de citas y
+              el rendimiento de tu equipo.
             </p>
           </div>
-          <div className="inline-flex items-center gap-2 self-start rounded-full border border-[#e6ddd5] bg-white px-4 py-2 text-xs text-slate-500 lg:self-auto">
-            <Sparkles className="h-4 w-4 text-[#ad8b67]" />
-            Datos mock de la agenda
-          </div>
-        </section>
-
-        <section className="reservation-filter-card mt-6">
-          <div className="grid gap-4 lg:grid-cols-[minmax(18rem,1fr)_minmax(18rem,1fr)_auto] lg:items-end">
-            <div>
-              <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">
-                Periodo de análisis
-              </p>
-              <DateRangePicker
-                className="reservation-date-range"
-                fromLabel="Desde"
-                onChange={setDraftRange}
-                toLabel="Hasta"
-                value={draftRange}
-              />
-            </div>
-            <div>
-              <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">
-                Considerar fecha de
-              </p>
-              <Select value={dateBasis} onValueChange={setDateBasis}>
-                <SelectTrigger className="h-12 rounded-2xl border-[#e6ddd5] bg-white px-4 text-sm text-[#263649] shadow-none">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="rounded-2xl border-[#e6ddd5] bg-white p-1.5">
-                  <SelectItem className="rounded-xl px-3 py-2.5" value="service-date">
-                    Realización de la reserva
-                  </SelectItem>
-                  <SelectItem className="rounded-xl px-3 py-2.5" value="created-date">
-                    Creación de la reserva
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <Button
-              className="h-12 rounded-2xl bg-[#648672] px-7 text-white hover:bg-[#526f5e]"
-              onClick={applyFilters}
-              type="button"
-            >
-              <Search className="mr-2 h-4 w-4" />
-              Buscar
-            </Button>
-          </div>
-
-          <div className="mt-5 border-t border-[#ebe4de] pt-5">
-            <div className="mb-3 flex items-center gap-2">
-              <Filter className="h-4 w-4 text-[#ad8b67]" />
-              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">
-                Estado de la reserva
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {reservationStatusOptions.map((status) => {
-                const selected = draftStatuses.includes(status.value);
-                return (
-                  <button
-                    key={status.value}
-                    aria-pressed={selected}
-                    className={selected ? "reservation-status-chip reservation-status-chip-active" : "reservation-status-chip"}
-                    onClick={() => toggleStatus(status.value)}
-                    type="button"
-                  >
-                    <span
-                      className="h-2 w-2 rounded-full"
-                      style={{ backgroundColor: status.color }}
-                    />
-                    {status.label}
-                    <span className="number-display text-[0.65rem] opacity-55">{status.count}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        </section>
-
-        <div className="mt-6">
-          <div className="min-w-0 space-y-5">
-            {view === "history" ? (
-              <ReservationHistory records={filteredHistory} />
-            ) : view === "metrics" ? (
-              <ReservationMetrics
-                activeStatuses={appliedStatuses}
-                totalBookings={selectedCount}
-              />
-            ) : view === "locations" ? (
-              <ReservationLocations selectedBookings={selectedCount} />
-            ) : view === "services" ? (
-              <ReservationServices selectedBookings={selectedCount} />
-            ) : view === "mobile-messaging" ? (
-              <ReservationMobileMessaging selectedBookings={selectedCount} />
-            ) : view === "services-by-location" ? (
-              <ReservationServices
-                locationName={reservationServicesByLocationReports[0]!.name}
-                reportTotals={reservationServiceReportTotals}
-                selectedBookings={selectedCount}
-                servicesData={reservationServicesByLocationReports[0]!.services}
-              />
-            ) : view === "providers-by-location" ? (
-              <ReservationProvidersByLocation
-                report={reservationProvidersByLocationReports[0]!}
-                selectedBookings={selectedCount}
-              />
-            ) : (
-              <>
-            <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              <CompactMetric
-                icon={<CalendarDays className="h-5 w-5" />}
-                label="Reservas"
-                note="según los estados aplicados"
-                value={numberFormatter.format(selectedCount)}
-              />
-              <CompactMetric
-                icon={<CircleDollarSign className="h-5 w-5" />}
-                label="Recaudación"
-                note="ingreso asociado estimado"
-                value={currencyFormatter.format(filteredRevenue)}
-              />
-              <CompactMetric
-                icon={<BarChart3 className="h-5 w-5" />}
-                label="Tasa de asistencia"
-                note="reservas marcadas como asistidas"
-                value={`${attendanceRate.toFixed(1)}%`}
-              />
-              <CompactMetric
-                icon={<ArrowUpRight className="h-5 w-5" />}
-                label="Ticket promedio"
-                note="por reserva atendida"
-                value={currencyFormatter.format(reservationReportTotals.averageTicket)}
-              />
-            </section>
-
-            <section className="grid gap-5 xl:grid-cols-2">
-              <article className="report-card">
-                <p className="label-caps">Preferencias</p>
-                <h2 className="mt-1.5 text-xl font-semibold tracking-[-0.02em] text-[#263649]">
-                  Ranking de servicios utilizados
-                </h2>
-                <div className="mt-7 grid gap-7 sm:grid-cols-[12rem_minmax(0,1fr)] sm:items-center">
-                  <div
-                    className="mx-auto flex h-48 w-48 items-center justify-center rounded-full"
-                    style={{ background: donutBackground }}
-                  >
-                    <div className="flex h-28 w-28 flex-col items-center justify-center rounded-full bg-white shadow-[0_10px_24px_rgba(38,54,73,0.08)]">
-                      <span className="number-display text-2xl text-[#263649]">{selectedCount}</span>
-                      <span className="text-[0.62rem] uppercase tracking-[0.14em] text-slate-400">reservas</span>
-                    </div>
-                  </div>
-                  <div className="space-y-3">
-                    {serviceRanking.map((service) => (
-                      <div key={service.label} className="flex items-center justify-between gap-3 text-xs">
-                        <span className="flex min-w-0 items-center gap-2 text-slate-500">
-                          <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: service.color }} />
-                          <span className="truncate">{service.label}</span>
-                        </span>
-                        <span className="number-display text-[#263649]">
-                          {Math.round(service.value * filterRatio)}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </article>
-
-              <article className="report-card">
-                <p className="label-caps">Distribución</p>
-                <h2 className="mt-1.5 text-xl font-semibold tracking-[-0.02em] text-[#263649]">
-                  Reservas por día de la semana
-                </h2>
-                <WeekdayChart data={scaledWeekdays} />
-              </article>
-            </section>
-
-            <article className="report-card">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-                <div>
-                  <p className="label-caps">Demanda horaria</p>
-                  <h2 className="mt-1.5 text-xl font-semibold tracking-[-0.02em] text-[#263649]">
-                    Reservas por hora del día
-                  </h2>
-                  <p className="mt-2 text-sm text-slate-400">
-                    La mayor concentración ocurre entre 16:00 y 18:00.
-                  </p>
-                </div>
-                <span className="inline-flex items-center gap-2 self-start rounded-full bg-[#f2f7f4] px-3 py-2 text-xs font-semibold text-[#648672] sm:self-auto">
-                  <Clock className="h-4 w-4" />
-                  Pico 17:00 h
-                </span>
-              </div>
-              <HourlyChart data={scaledHours} />
-            </article>
-              </>
-            )}
-          </div>
+          <button
+            className="self-start text-xs font-semibold text-[#8c6d52] underline underline-offset-4 sm:self-end"
+            onClick={() =>
+              toast.info("Guía de reportes", {
+                description: "La guía se habilitará con la integración final.",
+              })
+            }
+            type="button"
+          >
+            Ver guía de esta sección
+          </button>
+        </div>
+        <ReportTabs view={view} />
+        <div>
+          {view === "history" ? (
+            <HistoryReport period={period} setPeriod={setPeriod} />
+          ) : view === "performance" ? (
+            <PerformanceReport period={period} setPeriod={setPeriod} />
+          ) : (
+            <GeneralReport period={period} setPeriod={setPeriod} />
+          )}
         </div>
       </main>
     </div>

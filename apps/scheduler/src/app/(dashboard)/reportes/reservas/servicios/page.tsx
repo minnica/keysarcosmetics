@@ -1,5 +1,5 @@
-import { ReservationReportWorkspace } from "@/components/reports/ReservationReportWorkspace";
+import { redirect } from "next/navigation";
 
 export default function ReservationServicesPage() {
-  return <ReservationReportWorkspace view="services" />;
+  redirect("/reportes/reservas");
 }
