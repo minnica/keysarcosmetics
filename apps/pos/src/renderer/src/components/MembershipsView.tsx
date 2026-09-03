@@ -180,6 +180,7 @@ export function MembershipsView({
   const [branchFilter, setBranchFilter] = useState("ALL");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [followUpOnly, setFollowUpOnly] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedAppointmentId, setSelectedAppointmentId] = useState("");
   const [scheduleNextOpen, setScheduleNextOpen] = useState(false);
@@ -266,9 +267,12 @@ export function MembershipsView({
   );
   const historicalClientSearch =
     !viewer.isMaster && search.trim().length >= 2;
-  const membershipSearchSource = historicalClientSearch
-    ? sellerHistoryMemberships
-    : branchScopedMemberships;
+  const membershipSearchSource =
+    followUpOnly && !viewer.isMaster
+      ? sellerHistoryMemberships
+      : historicalClientSearch
+        ? sellerHistoryMemberships
+        : branchScopedMemberships;
 
   useEffect(() => {
     setPersonalAccessGranted(false);
@@ -279,6 +283,7 @@ export function MembershipsView({
     setMembershipFilter("ALL");
     setDateFrom("");
     setDateTo("");
+    setFollowUpOnly(false);
   }, [viewer.id]);
 
   const authorizePersonalAccess = () => {
@@ -317,6 +322,9 @@ export function MembershipsView({
     return membershipSearchSource.filter((membership) => {
       const purchaseDate = membership.purchaseDateIso.slice(0, 10);
       return (
+        (!followUpOnly ||
+          (membership.status === "ACTIVE" &&
+            remainingSessions(membership) <= 2)) &&
         (!query ||
           [
             membership.clientName,
@@ -335,7 +343,7 @@ export function MembershipsView({
         (!dateTo || purchaseDate <= dateTo)
       );
     });
-  }, [dateFrom, dateTo, membershipFilter, membershipSearchSource, search]);
+  }, [dateFrom, dateTo, followUpOnly, membershipFilter, membershipSearchSource, search]);
 
   const selectedMembership =
     (viewer.isMaster ? branchScopedMemberships : sellerHistoryMemberships).find(
@@ -389,9 +397,28 @@ export function MembershipsView({
   const reportableMemberships = branchScopedMemberships.filter(
     (membership) => membership.status !== "CANCELLED",
   );
-  const lowMemberships = activeMemberships.filter(
-    (membership) => remainingSessions(membership) <= 2,
+  const alertMembershipsSource = viewer.isMaster
+    ? branchScopedMemberships
+    : sellerHistoryMemberships;
+  const lowMemberships = alertMembershipsSource.filter(
+    (membership) =>
+      membership.status === "ACTIVE" && remainingSessions(membership) <= 2,
   );
+  const openLowMembershipFollowUp = () => {
+    setSearch("");
+    setMembershipFilter("ALL");
+    setDateFrom("");
+    setDateTo("");
+    setFollowUpOnly(true);
+    setSelectedId(null);
+    window.requestAnimationFrame(() =>
+      window.requestAnimationFrame(() =>
+        document
+          .getElementById("membership-follow-up-list")
+          ?.scrollIntoView({ behavior: "smooth", block: "start" }),
+      ),
+    );
+  };
   const totalSessions = branchScopedMemberships.reduce(
     (total, membership) => total + membership.totalSessions,
     0,
@@ -812,7 +839,13 @@ export function MembershipsView({
       </section>
 
       {lowMemberships.length > 0 && (
-        <section className="membership-alert-strip" role="alert">
+        <button
+          type="button"
+          className="membership-alert-strip"
+          onClick={openLowMembershipFollowUp}
+          aria-controls="membership-follow-up-list"
+          aria-label={`Ver seguimiento de ${lowMemberships.length} membresías por terminar`}
+        >
           <AlertTriangle size={20} />
           <div>
             <strong>{lowMemberships.length} membresías están por terminar</strong>
@@ -826,18 +859,10 @@ export function MembershipsView({
                 .join(" · ")}
             </span>
           </div>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              setSearch("");
-              setMembershipFilter("ALL");
-            }}
-          >
+          <span className="membership-alert-action">
             Ver seguimiento <ArrowRight size={14} />
-          </Button>
-        </section>
+          </span>
+        </button>
       )}
 
       <section className="membership-metric-grid">
@@ -1010,13 +1035,13 @@ export function MembershipsView({
       <section className="membership-filter-panel">
         <div className="membership-filter-title"><Search size={18} /><span><strong>{viewer.isMaster ? "Buscar membresías" : "Buscar clienta e historial autorizado"}</strong><small>{viewer.isMaster ? "Cliente, vendedor, teléfono, folio o ticket" : "Escribe al menos 2 caracteres del nombre, teléfono, folio o ticket"}</small></span></div>
         <div className="membership-filter-grid">
-          <div className="membership-search-field"><Search size={16} /><Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Cliente, vendedor, teléfono, folio o ticket…" aria-label="Buscar cliente, vendedor o membresía" /></div>
-          <Select value={membershipFilter} onValueChange={setMembershipFilter}><SelectTrigger aria-label="Filtrar membresía"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ALL">Todas las membresías</SelectItem>{membershipNames.map((name) => <SelectItem key={name} value={name}>{name}</SelectItem>)}</SelectContent></Select>
+          <div className="membership-search-field"><Search size={16} /><Input value={search} onChange={(event) => { setSearch(event.target.value); setFollowUpOnly(false); }} placeholder="Cliente, vendedor, teléfono, folio o ticket…" aria-label="Buscar cliente, vendedor o membresía" /></div>
+          <Select value={membershipFilter} onValueChange={(value) => { setMembershipFilter(value); setFollowUpOnly(false); }}><SelectTrigger aria-label="Filtrar membresía"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ALL">Todas las membresías</SelectItem>{membershipNames.map((name) => <SelectItem key={name} value={name}>{name}</SelectItem>)}</SelectContent></Select>
           {viewer.isMaster ? (
             <>
-              <Select value={branchFilter} onValueChange={setBranchFilter}><SelectTrigger aria-label="Filtrar sucursal"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ALL">Todas las sucursales</SelectItem>{branches.map((branch) => <SelectItem key={branch} value={branch}>{branch}</SelectItem>)}</SelectContent></Select>
-              <label><span>Desde</span><Input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} /></label>
-              <label><span>Hasta</span><Input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} /></label>
+              <Select value={branchFilter} onValueChange={(value) => { setBranchFilter(value); setFollowUpOnly(false); }}><SelectTrigger aria-label="Filtrar sucursal"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ALL">Todas las sucursales</SelectItem>{branches.map((branch) => <SelectItem key={branch} value={branch}>{branch}</SelectItem>)}</SelectContent></Select>
+              <label><span>Desde</span><Input type="date" value={dateFrom} onChange={(event) => { setDateFrom(event.target.value); setFollowUpOnly(false); }} /></label>
+              <label><span>Hasta</span><Input type="date" value={dateTo} onChange={(event) => { setDateTo(event.target.value); setFollowUpOnly(false); }} /></label>
             </>
           ) : (
             <div className="membership-fixed-day-scope" role="status">
@@ -1027,8 +1052,8 @@ export function MembershipsView({
         </div>
       </section>
 
-      <section className="membership-list-section">
-        <div className="membership-section-heading"><span><CreditCard size={18} /> {historicalClientSearch ? "HISTORIAL EN EL QUE PARTICIPASTE" : "TARJETONES INDIVIDUALES"}</span><Badge variant="outline">{filteredMemberships.length} registros</Badge></div>
+      <section id="membership-follow-up-list" className="membership-list-section">
+        <div className="membership-section-heading"><span><CreditCard size={18} /> {followUpOnly ? "SEGUIMIENTO · MEMBRESÍAS POR TERMINAR" : historicalClientSearch ? "HISTORIAL EN EL QUE PARTICIPASTE" : "TARJETONES INDIVIDUALES"}</span><Badge variant={followUpOnly ? "destructive" : "outline"}>{filteredMemberships.length} registros</Badge></div>
         <div className="membership-record-list">
           {filteredMemberships.map((membership) => {
             const remaining = remainingSessions(membership);

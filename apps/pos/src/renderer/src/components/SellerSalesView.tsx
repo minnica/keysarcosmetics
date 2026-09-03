@@ -5,6 +5,7 @@ import {
   CalendarRange,
   CircleDollarSign,
   Clock3,
+  Crown,
   Eye,
   KeyRound,
   LogOut,
@@ -23,6 +24,9 @@ import {
   DatePicker,
   Input,
   Label,
+  Popover,
+  PopoverAnchor,
+  PopoverContent,
   Select,
   SelectContent,
   SelectItem,
@@ -36,9 +40,12 @@ import {
   TableRow,
 } from "@cosmetics/ui";
 import { formatCurrency } from "../mock-data";
+import { cardNetworkLabels } from "../bank-catalog";
 import type {
   Appointment,
+  BankCatalogEntry,
   Client,
+  ClientMembership,
   LayawayRecord,
   OwedProductRecord,
   PaymentEntry,
@@ -54,7 +61,9 @@ interface SellerSalesViewProps {
   tickets: Ticket[];
   branches: string[];
   clients: Client[];
+  memberships: ClientMembership[];
   paymentMethods: PaymentMethodOption[];
+  bankCatalog: BankCatalogEntry[];
   layaways: LayawayRecord[];
   appointments: Appointment[];
   owedProducts: OwedProductRecord[];
@@ -100,12 +109,108 @@ const sameClient = (client: Client, ticket: Ticket) => {
   );
 };
 
+function SellerClientMembershipPreview({
+  clientName,
+  memberships,
+}: {
+  clientName: string;
+  memberships: ClientMembership[];
+}) {
+  const [open, setOpen] = useState(false);
+  const activeMemberships = memberships.filter(
+    (membership) => membership.status === "ACTIVE",
+  );
+  if (activeMemberships.length === 0) return null;
+
+  const orderedMemberships = [...memberships].sort((left, right) => {
+    if (left.status === "ACTIVE" && right.status !== "ACTIVE") return -1;
+    if (right.status === "ACTIVE" && left.status !== "ACTIVE") return 1;
+    return right.purchaseDateIso.localeCompare(left.purchaseDateIso);
+  });
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverAnchor asChild>
+        <button
+          type="button"
+          className="seller-ticket-membership-badge"
+          aria-label={`${clientName} tiene ${activeMemberships.length} ${activeMemberships.length === 1 ? "membresía activa" : "membresías activas"}. Mostrar detalle`}
+          aria-expanded={open}
+          onMouseEnter={() => setOpen(true)}
+          onMouseLeave={() => setOpen(false)}
+          onFocus={() => setOpen(true)}
+          onBlur={() => setOpen(false)}
+          onClick={() => setOpen(true)}
+        >
+          <Crown size={11} aria-hidden="true" />
+          {activeMemberships.length}
+        </button>
+      </PopoverAnchor>
+      <PopoverContent
+        side="top"
+        align="center"
+        sideOffset={7}
+        className="customer-membership-popover"
+        onOpenAutoFocus={(event) => event.preventDefault()}
+      >
+        <div className="customer-membership-popover-heading">
+          <Crown size={16} />
+          <span>
+            <strong>Membresías de {clientName}</strong>
+            <small>
+              {activeMemberships.length}{" "}
+              {activeMemberships.length === 1 ? "activa" : "activas"} ·{" "}
+              {memberships.length} compradas
+            </small>
+          </span>
+        </div>
+        <div className="customer-membership-popover-list">
+          {orderedMemberships.map((membership) => {
+            const remaining = Math.max(
+              0,
+              membership.totalSessions - membership.usedSessions,
+            );
+            const statusLabel =
+              membership.status === "ACTIVE"
+                ? "ACTIVA"
+                : membership.status === "EXHAUSTED"
+                  ? "AGOTADA"
+                  : "CANCELADA";
+            return (
+              <article key={membership.id}>
+                <span>
+                  <strong>{membership.membershipName}</strong>
+                  <small>
+                    {membership.folio} · {membership.branch}
+                  </small>
+                </span>
+                <span>
+                  <b
+                    className={`is-${membership.status.toLocaleLowerCase("es-MX")}`}
+                  >
+                    {statusLabel}
+                  </b>
+                  <small>
+                    {remaining}/{membership.totalSessions} sesiones
+                  </small>
+                </span>
+              </article>
+            );
+          })}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 export function SellerSalesView({
   sellers,
   tickets,
   branches,
   clients,
+  memberships,
   paymentMethods,
+  bankCatalog,
   layaways,
   appointments,
   owedProducts,
@@ -140,6 +245,34 @@ export function SellerSalesView({
   const authorizedSeller = activeSellers.find(
     (seller) => seller.id === authorizedSellerId,
   );
+  const sellerVisibleMemberships = useMemo(
+    () =>
+      memberships.filter(
+        (membership) =>
+          Boolean(authorizedSellerId) &&
+          branchMatches(membership.branch) &&
+          (membership.sellerId === authorizedSellerId ||
+            membership.originalSellerId === authorizedSellerId ||
+            membership.sellerChanges.some(
+              (change) =>
+                change.fromSellerId === authorizedSellerId ||
+                change.toSellerId === authorizedSellerId,
+            )),
+      ),
+    [authorizedSellerId, branchFilter, memberships],
+  );
+  const membershipsForTicketClient = (ticket: Ticket) => {
+    const ticketPhone = ticket.clientPhone.replace(/\D/g, "");
+    const ticketName = ticket.clientName.trim().toLocaleLowerCase("es-MX");
+    return sellerVisibleMemberships.filter((membership) => {
+      const membershipPhone = membership.clientPhone.replace(/\D/g, "");
+      return (
+        membership.clientId === ticket.clientId ||
+        (Boolean(ticketPhone) && membershipPhone === ticketPhone) ||
+        membership.clientName.trim().toLocaleLowerCase("es-MX") === ticketName
+      );
+    });
+  };
 
   const sellerTickets = useMemo(() => {
     if (!authorizedSellerId) return [];
@@ -603,6 +736,10 @@ export function SellerSalesView({
                       <TableCell>
                         <div className="seller-ticket-client">
                           <strong>{ticket.clientName}</strong>
+                          <SellerClientMembershipPreview
+                            clientName={ticket.clientName}
+                            memberships={membershipsForTicketClient(ticket)}
+                          />
                           <small>{ticket.clientPhone || "Sin teléfono"}</small>
                         </div>
                       </TableCell>
@@ -938,7 +1075,7 @@ export function SellerSalesView({
                                       }])
                                         .map(
                                           (entry) =>
-                                            `${paymentLabel(entry.methodId)}${entry.cardOrBank ? ` · ${entry.cardOrBank}` : ""}${entry.authorizationCode ? ` · Aut. ${entry.authorizationCode}` : ""} ${formatCurrency(entry.amount)}`,
+                                            `${paymentLabel(entry.methodId)}${entry.cardNetwork ? ` · ${cardNetworkLabels[entry.cardNetwork]}` : ""}${entry.cardOrBank ? ` · ${entry.cardOrBank}` : ""}${entry.authorizationCode ? ` · Aut. ${entry.authorizationCode}` : ""} ${formatCurrency(entry.amount)}`,
                                         )
                                         .join(" + ")}
                                       {typeof payment.balanceAfter === "number" && (
@@ -954,6 +1091,7 @@ export function SellerSalesView({
                                 <LayawayPaymentDialog
                                   layaway={layaway}
                                   paymentMethods={paymentMethods}
+                                  bankCatalog={bankCatalog}
                                   sellerId={authorizedSeller.id}
                                   onRegister={(payments, deliveryIds) =>
                                     onRegisterLayawayPayment(

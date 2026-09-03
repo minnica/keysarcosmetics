@@ -66,8 +66,10 @@ import {
   toast,
 } from "@cosmetics/ui";
 import { formatCurrency, masterUser } from "../mock-data";
+import { cardNetworkLabels } from "../bank-catalog";
 import type {
   Appointment,
+  BankCatalogEntry,
   Client,
   ClientMembership,
   LayawayRecord,
@@ -94,6 +96,7 @@ interface CustomersViewProps {
   owedProducts: OwedProductRecord[];
   layaways: LayawayRecord[];
   paymentMethods: PaymentMethodOption[];
+  bankCatalog: BankCatalogEntry[];
   branches: string[];
   receiptSettings: ReceiptSettings;
   sessionSellerId: string | null;
@@ -300,6 +303,7 @@ export function CustomersView({
   owedProducts,
   layaways,
   paymentMethods,
+  bankCatalog,
   branches,
   receiptSettings,
   sessionSellerId,
@@ -537,6 +541,30 @@ export function CustomersView({
     return owner?.active ? owner.name : "Keysar Cosmetics";
   };
 
+  const getPreviousClientOwner = (client: Client) => {
+    const historyEntry = [...(client.ownershipHistory ?? [])].sort((left, right) =>
+      right.endedAtIso.localeCompare(left.endedAtIso),
+    )[0];
+    if (historyEntry) {
+      const seller = sellers.find(
+        (candidate) => candidate.id === historyEntry.sellerId,
+      );
+      return {
+        name: seller?.name ?? historyEntry.sellerName,
+        active: seller?.active ?? false,
+        endedAtIso: historyEntry.endedAtIso,
+      };
+    }
+    const legacyInactiveSeller = client.ownerId
+      ? sellers.find(
+          (seller) => seller.id === client.ownerId && !seller.active,
+        )
+      : null;
+    return legacyInactiveSeller
+      ? { name: legacyInactiveSeller.name, active: false, endedAtIso: "" }
+      : null;
+  };
+
   const authorizeSeller = () => {
     if (isMasterCode(accessCode)) {
       setMasterAuthorized(true);
@@ -587,6 +615,7 @@ export function CustomersView({
     const customerAppointments = clientAppointments(client);
     const customerVouchers = clientVouchers(client);
     const membershipSummary = clientMembershipSummary(client.id);
+    const previousOwner = getPreviousClientOwner(client);
     const popup = window.open("", "_blank", "width=720,height=860");
     if (!popup) {
       toast.error("El navegador bloqueó la ventana de impresión.");
@@ -607,7 +636,7 @@ export function CustomersView({
     }`;
     popup.document.write(`<!doctype html><html lang="es"><head><title>${escapeHtml(client.registrationFolio)}</title><style>
       body{font-family:Arial,sans-serif;color:#111;margin:32px}header{text-align:center;border-bottom:2px solid #111;padding-bottom:18px}header img{display:block;max-width:${receiptSettings.logoWidth}px;max-height:72px;object-fit:contain;margin:0 auto 10px}h1{font-size:20px;margin:5px 0}h2{font-size:14px;margin-top:24px}.meta{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:18px}.meta div,article{border:1px solid #bbb;padding:9px}small{color:#666}article{margin:7px 0}article strong{display:block}@media print{body{margin:8mm}}
-    </style></head><body><header>${logo}<h1>${escapeHtml(receiptSettings.companyName)}</h1><strong>EXPEDIENTE DE CLIENTE</strong></header><div class="meta"><div><small>FOLIO</small><br><strong>${escapeHtml(client.registrationFolio)}</strong></div><div><small>CLIENTE</small><br><strong>${escapeHtml(`${client.firstName} ${client.lastName}`)}</strong></div><div><small>TELÉFONO</small><br>${escapeHtml(client.phone || "Sin registro")}</div><div><small>VENDEDOR</small><br>${escapeHtml(getClientOwner(client) || "Empresa")}</div><div><small>CUMPLEAÑOS</small><br>${escapeHtml(client.birthday || "Sin registro")}</div><div><small>PROCEDENCIA</small><br>${escapeHtml(client.sourceLabel)}</div><div><small>MEMBRESÍAS</small><br><strong>${membershipSummary.active} activas · ${membershipSummary.total} compradas</strong></div></div><h2>HISTORIAL DE COMPRA</h2>${purchases.length ? purchases.map((ticket) => `<article><strong>${escapeHtml(ticket.id)} · ${escapeHtml(formatCurrency(ticket.total))}</strong><small>${escapeHtml(ticket.createdAt)} · ${escapeHtml(ticket.branchName ?? "Polanco")}</small><br>${escapeHtml(ticket.products.map((product) => `${product.quantity} × ${product.name}`).join(" · "))}</article>`).join("") : "<p>Sin compras registradas.</p>"}<h2>CITAS Y CORTESÍAS</h2>${customerAppointments.length ? customerAppointments.map((appointment) => `<article><strong>${escapeHtml(appointment.service)}</strong><small>${escapeHtml(`${appointment.date} · ${appointment.time} · ${appointment.branch}`)}</small></article>`).join("") : "<p>Sin citas registradas.</p>"}${voucherHistoryHtml}<script>window.onload=()=>window.print();</script></body></html>`);
+    </style></head><body><header>${logo}<h1>${escapeHtml(receiptSettings.companyName)}</h1><strong>EXPEDIENTE DE CLIENTE</strong></header><div class="meta"><div><small>FOLIO</small><br><strong>${escapeHtml(client.registrationFolio)}</strong></div><div><small>CLIENTE</small><br><strong>${escapeHtml(`${client.firstName} ${client.lastName}`)}</strong></div><div><small>TELÉFONO</small><br>${escapeHtml(client.phone || "Sin registro")}</div><div><small>PROPIETARIO ACTUAL</small><br>${escapeHtml(getClientOwner(client) || "Empresa")}</div>${previousOwner ? `<div><small>VENDEDOR ANTERIOR</small><br><strong>${escapeHtml(previousOwner.name)}</strong><br><small>${previousOwner.active ? "Cuenta reactivada · relación anterior" : "Inactivo"}${previousOwner.endedAtIso ? ` · transferencia ${escapeHtml(new Date(previousOwner.endedAtIso).toLocaleDateString("es-MX"))}` : ""}</small></div>` : ""}<div><small>CUMPLEAÑOS</small><br>${escapeHtml(client.birthday || "Sin registro")}</div><div><small>PROCEDENCIA</small><br>${escapeHtml(client.sourceLabel)}</div><div><small>MEMBRESÍAS</small><br><strong>${membershipSummary.active} activas · ${membershipSummary.total} compradas</strong></div></div><h2>HISTORIAL DE COMPRA</h2>${purchases.length ? purchases.map((ticket) => `<article><strong>${escapeHtml(ticket.id)} · ${escapeHtml(formatCurrency(ticket.total))}</strong><small>${escapeHtml(ticket.createdAt)} · ${escapeHtml(ticket.branchName ?? "Polanco")}</small><br>${escapeHtml(ticket.products.map((product) => `${product.quantity} × ${product.name}`).join(" · "))}</article>`).join("") : "<p>Sin compras registradas.</p>"}<h2>CITAS Y CORTESÍAS</h2>${customerAppointments.length ? customerAppointments.map((appointment) => `<article><strong>${escapeHtml(appointment.service)}</strong><small>${escapeHtml(`${appointment.date} · ${appointment.time} · ${appointment.branch}`)}</small></article>`).join("") : "<p>Sin citas registradas.</p>"}${voucherHistoryHtml}<script>window.onload=()=>window.print();</script></body></html>`);
     popup.document.close();
   };
 
@@ -649,6 +678,7 @@ export function CustomersView({
     const rows = visibleClients.map((client) => {
       const purchases = clientTickets(client);
       const membershipSummary = clientMembershipSummary(client.id);
+      const previousOwner = getPreviousClientOwner(client);
       return {
         Folio: client.registrationFolio,
         Nombre: client.firstName,
@@ -660,6 +690,12 @@ export function CustomersView({
         Procedencia: client.sourceLabel,
         Empresa: client.companyName || "Keysar Cosmetics",
         Vendedor: getClientOwner(client),
+        "Vendedor anterior": previousOwner?.name ?? "",
+        "Estado actual vendedor anterior": previousOwner
+          ? previousOwner.active
+            ? "Activo"
+            : "Inactivo"
+          : "",
         "Sucursal de registro": client.registrationBranch ?? "",
         "Membresías activas": membershipSummary.active,
         "Membresías compradas": membershipSummary.total,
@@ -1311,6 +1347,7 @@ export function CustomersView({
                       (ticket) => ticket.balanceDue > 0.01,
                     );
                     const expanded = expandedClientId === client.id;
+                    const previousOwner = getPreviousClientOwner(client);
                     return (
                       <Fragment key={client.id}>
                         <TableRow>
@@ -1459,6 +1496,23 @@ export function CustomersView({
                                       <strong>{getClientOwner(client)}</strong>
                                     </span>
                                   </div>
+                                  {previousOwner && (
+                                    <div>
+                                      <UserRound size={17} />
+                                      <span>
+                                        <small>VENDEDOR ANTERIOR</small>
+                                        <strong>{previousOwner.name}</strong>
+                                        <em>
+                                          {previousOwner.active
+                                            ? "Cuenta reactivada · relación anterior"
+                                            : "Inactivo"}
+                                          {previousOwner.endedAtIso
+                                            ? ` · Cartera transferida ${new Date(previousOwner.endedAtIso).toLocaleDateString("es-MX")}`
+                                            : " · Cartera de empresa"}
+                                        </em>
+                                      </span>
+                                    </div>
+                                  )}
                                   <div>
                                     <CreditCard size={17} />
                                     <span>
@@ -1568,7 +1622,7 @@ export function CustomersView({
                                                     }])
                                                       .map(
                                                         (entry) =>
-                                                          `${paymentLabel(entry.methodId)}${entry.cardOrBank ? ` · ${entry.cardOrBank}` : ""}${entry.authorizationCode ? ` · Aut. ${entry.authorizationCode}` : ""} ${formatCurrency(entry.amount)}`,
+                                                          `${paymentLabel(entry.methodId)}${entry.cardNetwork ? ` · ${cardNetworkLabels[entry.cardNetwork]}` : ""}${entry.cardOrBank ? ` · ${entry.cardOrBank}` : ""}${entry.authorizationCode ? ` · Aut. ${entry.authorizationCode}` : ""} ${formatCurrency(entry.amount)}`,
                                                       )
                                                       .join(" + ")}
                                                     {typeof payment.balanceAfter === "number" && (
@@ -1584,6 +1638,7 @@ export function CustomersView({
                                               <LayawayPaymentDialog
                                                 layaway={layaway}
                                                 paymentMethods={paymentMethods}
+                                                bankCatalog={bankCatalog}
                                                 sellerId={sellerId}
                                                 onRegister={(payments, deliveryIds) =>
                                                   onRegisterLayawayPayment(
@@ -1626,6 +1681,24 @@ export function CustomersView({
                                             )
                                             .join(" · ")}
                                         </p>
+                                        {ticket.payments.length > 0 && (
+                                          <div className="customer-history-payment-summary">
+                                            {ticket.payments.map((payment) => (
+                                              <small key={payment.id}>
+                                                {paymentLabel(payment.methodId)}
+                                                {payment.cardType === "CREDIT"
+                                                  ? payment.installmentMonths &&
+                                                    payment.installmentMonths > 1
+                                                    ? ` · ${payment.installmentMonths} MSI`
+                                                    : " · una exhibición"
+                                                  : payment.cardType === "DEBIT"
+                                                    ? " · débito"
+                                                    : ""}
+                                                {` · ${formatCurrency(payment.amount)}`}
+                                              </small>
+                                            ))}
+                                          </div>
+                                        )}
                                         <footer>
                                           <span>
                                             <Store size={13} />{" "}

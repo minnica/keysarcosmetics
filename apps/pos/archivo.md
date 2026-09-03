@@ -126,6 +126,8 @@ La descripción y al menos un beneficio son obligatorios cuando `Mostrar en cat�
 - Cuando la procedencia sea lead o redes sociales y la cartera esté asignada a la empresa, el cliente permanece ligado a la empresa aunque participen distintos vendedores.
 - Esta condición se almacena como regla de propiedad, no sólo como mensaje informativo.
 - El historial conserva quién atendió o vendió en cada operación sin transferir automáticamente la cartera.
+- En cada ticket de una clienta de cartera empresarial, la empresa figura como participante obligatorio de la división de venta y recibe un importe o porcentaje explícito.
+- La empresa utiliza un identificador comercial propio y estable; no se registra como empleado, no hace Clock In y no utiliza credenciales de vendedor.
 
 ### 5.5 Descuentos
 
@@ -194,7 +196,8 @@ La descripción y al menos un beneficio son obligatorios cuando `Mostrar en cat�
 - `Inventario sucursales` fue sustituido por `Pedido sucursales`.
 - Posteriormente se indicó intercambiar los nombres/posiciones visibles `Almacén matriz` y `Pedido sucursales` respecto de la captura proporcionada.
 - El intercambio no rompe rutas: cada opción abre una ventana independiente y conserva función, permisos y datos correspondientes.
-- Orden de referencia observado después del ajuste: `Inventario`, `Pedido sucursales`, `Almacén matriz`, `Proveedores`, `Catálogo`, `Movimientos`, `Paquetes y promociones`.
+- `Catálogo` pertenece al menú de `Ventas`, conserva su pantalla independiente y deja de mostrarse dentro de Inventory.
+- Orden de Inventory después del ajuste: `Inventario`, `Pedido sucursales`, `Almacén matriz`, `Proveedores`, `Movimientos`, `Paquetes y promociones`.
 
 ### 9.3 Generación de pedidos
 
@@ -894,6 +897,7 @@ La implementación puede adaptar nombres y normalización, pero debe representar
 - Todo destino funcional del POS debe existir como permiso independiente en `module_access`, tanto si aparece como módulo principal como si aparece dentro de los submenús de Ventas o Inventario.
 - El usuario master tiene acceso a todos los destinos. Un usuario operativo sólo puede abrir los módulos incluidos en su rol activo; `My Account` permanece disponible únicamente para su información personal, mientras que ubicaciones, facturación y configuración corporativa conservan la autorización master.
 - El menú principal oculta los módulos no autorizados. Un grupo como Ventas o Inventario se muestra cuando existe al menos un submenú permitido, pero pulsar el encabezado no debe intentar abrir el módulo padre si éste no fue asignado.
+- El encabezado principal `Ventas` funciona únicamente como control desplegable: cada clic abre o contrae sus submenús. Para entrar al módulo de venta se utiliza la opción `Ventas` dentro del propio submenú.
 - Cada submenú se filtra individualmente. Tener acceso al módulo padre no concede automáticamente acceso a Receipts, Customers, Close day, Pedido sucursales, Almacén matriz, Proveedores, Catálogo, Movimientos o Paquetes y promociones.
 - Toda navegación debe pasar por una validación central. La pantalla también valida el permiso antes de renderizar, para impedir el acceso mediante estado guardado, una llamada interna, herramientas de desarrollo o una ruta secundaria.
 - Los accesos internos que abren otro módulo deben respetar el permiso del destino. Por ejemplo, `Competition > Configurar` depende de `settings` y las solicitudes a bodega desde Inventory dependen de `branch-inventory`.
@@ -907,9 +911,9 @@ La implementación puede adaptar nombres y normalización, pero debe representar
 
 | Grupo | Destinos con permiso propio |
 | --- | --- |
-| Operación de venta | Ventas, Mis ventas, Receipts, Customers, Close day, Cash manager y X-Report. |
+| Operación de venta | Ventas, Catálogo, Mis ventas, Receipts, Customers, Close day, Cash manager y X-Report. |
 | Clientes y servicio | Citas, Membresías, Competition y Websites. |
-| Inventario y almacén | Inventory, Pedido sucursales, Almacén matriz, Proveedores, Catálogo, Movimientos y Paquetes y promociones. |
+| Inventario y almacén | Inventory, Pedido sucursales, Almacén matriz, Proveedores, Movimientos y Paquetes y promociones. |
 | Administración y análisis | Dashboard, Reports, Employees y My Account. |
 | Sistema | Settings, Data update y Clock In. |
 
@@ -919,9 +923,310 @@ La implementación puede adaptar nombres y normalización, pero debe representar
 - [ ] Master visualiza y abre todos los módulos y submenús.
 - [ ] Un rol sólo visualiza y abre los destinos incluidos en `module_access`.
 - [ ] Un rol con un único submenú permitido puede desplegar el grupo sin recibir un error por falta de acceso al módulo padre.
+- [ ] Pulsar repetidamente el encabezado `Ventas` alterna entre submenús visibles y contraídos sin cambiar la pantalla activa.
 - [ ] Escribir o forzar un identificador de pantalla no autorizado no renderiza datos protegidos.
 - [ ] Retirar el permiso del módulo activo cierra sus diálogos y redirige a un destino permitido.
 - [ ] Los botones internos hacia otro módulo se ocultan cuando falta el permiso del destino.
 - [ ] Un comprobante puntual abierto desde una venta o membresía no permite navegar el historial de Receipts sin su permiso.
 - [ ] Edición e impresión se rechazan cuando faltan sus permisos específicos, aunque la consulta esté autorizada.
 - [ ] La API devuelve acceso denegado ante la misma solicitud si se omiten o manipulan las restricciones del frontend.
+
+## 35. Salida de sesión sin Close day
+
+- El bloque `Sistema` del menú lateral muestra el botón `Salir · Sin Close day` inmediatamente debajo de `Clock In`, únicamente al usuario master o a un usuario cuyo rol activo incluya el permiso explícito `SESSION_EXIT`. Los controles de este bloque usan una presentación compacta para dejar más espacio disponible a la navegación operativa, sin cambiar permisos ni comportamiento.
+- Este permiso se asigna desde Employees mediante código master. Tener acceso a `Close day`, Settings o edición de otro módulo no concede esta salida automáticamente.
+- Al pulsar el botón se presenta una confirmación que explica que sólo se cerrará la sesión del usuario.
+- Confirmar la salida no cierra la jornada, no crea un corte, no modifica el conteo inicial o final, no cambia ventas, tickets, gastos ni métodos de pago y no registra Clock Out.
+- El registro de asistencia del vendedor permanece `ONLINE`; la salida de asistencia se realiza exclusivamente desde Clock In o mediante el cierre normal del día.
+- Por seguridad, se cierran todos los diálogos y autorizaciones temporales. Si existe un ticket sin finalizar, la confirmación muestra cuántas piezas contiene y al salir descarta únicamente ese carrito no registrado.
+- La jornada abierta permanece en memoria y backend. Cuando otro usuario autorizado ingresa en la misma sucursal, continúa la jornada existente sin solicitar un nuevo conteo inicial ni reemplazar su auditoría de apertura.
+- Si no existe una jornada abierta para la sucursal elegida, el ingreso conserva el flujo normal de conteo inicial y Open Day.
+- El backend debe registrar una auditoría de cierre de sesión con usuario, sucursal y fecha, diferenciada de Close day y Clock Out, sin alterar las entidades del corte.
+
+### 35.1 Criterios de aceptación
+
+- [ ] Master visualiza el botón y puede cerrar únicamente su sesión.
+- [ ] El botón aparece alineado inmediatamente debajo de `Clock In`; al contraer el menú conserva un icono identificable y su descripción accesible.
+- [ ] Un rol con `SESSION_EXIT` visualiza el botón y puede utilizarlo.
+- [ ] Un rol sin `SESSION_EXIT` no visualiza el botón y el backend rechaza un intento forzado.
+- [ ] La confirmación indica claramente que la jornada y los cortes no serán modificados.
+- [ ] Después de salir, `day_session.status` continúa `OPEN` y no se genera un nuevo cierre ni auditoría de inventario.
+- [ ] La asistencia vigente continúa `ONLINE` hasta que se registre la salida correspondiente.
+- [ ] Reingresar en la misma sucursal continúa la jornada existente sin repetir el conteo inicial.
+- [ ] Los tickets finalizados, ventas, gastos, conteos y totales permanecen exactamente iguales antes y después de la salida.
+- [ ] Un carrito pendiente muestra advertencia y sólo se descarta después de confirmar.
+- [ ] Las autorizaciones master temporales no se heredan al siguiente usuario.
+
+## 36. Vendedores disponibles al finalizar un ticket según Clock In
+
+- En el paso `Vendedores` de `Finalizar ticket`, el listado inicial muestra únicamente vendedores activos con un registro de asistencia `ONLINE` en la misma sucursal del ticket. Un Clock In de otra sucursal no cuenta como presencia local.
+- Todos los vendedores presentes se muestran, aunque todavía no participen en la división de la venta. El primer vendedor presente puede utilizarse como selección inicial cuando todavía no existe una asignación válida.
+- Si no existe ningún vendedor con Clock In en la sucursal, el sistema no asigna uno automáticamente y muestra el estado `Sin vendedores con Clock In`.
+- El botón `Añadir más vendedores a la venta` habilita una búsqueda por nombre o alias. Los vendedores activos sin Clock In sólo aparecen después de escribir una consulta coincidente; abrir el buscador vacío no enlista a todo el personal.
+- Un vendedor activo que no esté presente puede añadirse normalmente desde los resultados. Debe quedar identificado visualmente como `Sin Clock In`, sin crear, modificar ni simular un registro de asistencia.
+- Los vendedores presentes se identifican como `Clock In activo`. Los vendedores ya seleccionados permanecen visibles aunque su estado de asistencia cambie mientras el ticket está abierto, para no alterar silenciosamente una división capturada.
+- Si la clienta tiene un vendedor activo asignado, éste se preselecciona siempre en la división aunque no tenga Clock In local. Cuando esté ausente debe mostrarse con la leyenda `Sin Clock In`; la asistencia sirve para priorizar el listado, pero nunca desplaza al propietario vigente.
+- Un Clock Out retira al vendedor del listado inicial de tickets posteriores. El cierre de sesión sin Close day no realiza Clock Out, por lo que conserva al vendedor como presente.
+- Al registrar la venta, el backend debe guardar por cada participante una instantánea auditable con `seller_id`, sucursal del ticket, participación y si tenía un Clock In vigente en el momento de finalizar. La búsqueda de ausentes no modifica la asistencia.
+- El backend debe validar que el registro `ONLINE` no tenga salida, corresponda al vendedor y pertenezca a la sucursal del ticket. La interfaz no sustituye esta validación.
+
+### 36.1 Criterios de aceptación
+
+- [ ] Al abrir Vendedores aparecen todos y sólo los vendedores activos con Clock In vigente en la sucursal del ticket.
+- [ ] Un vendedor con Clock In en otra sucursal no aparece como presente.
+- [ ] Si no hay vendedores presentes no se realiza una asignación automática.
+- [ ] Abrir el buscador sin escribir no enlista vendedores ausentes.
+- [ ] Buscar por nombre o alias encuentra a un vendedor activo sin Clock In y permite añadirlo.
+- [ ] Un vendedor añadido sin presencia se distingue con la leyenda `Sin Clock In`.
+- [ ] Buscar o seleccionar a un ausente no crea ni cambia registros de Clock In/Clock Out.
+- [ ] El vendedor activo asignado a la clienta se preselecciona siempre; si no tiene Clock In local se identifica como `Sin Clock In`.
+- [ ] Después de Clock Out, el vendedor deja de aparecer como presente en tickets nuevos.
+- [ ] El ticket conserva la evidencia de presencia y sucursal de cada vendedor al momento de finalizar.
+
+## 37. Agenda desde el ticket para clientes existentes con membresía
+
+- Cuando se selecciona una clienta existente con una o más membresías `ACTIVE` y sesiones disponibles, el paso `Citas` muestra cada tarjetón elegible con nombre de membresía, folio y sesiones restantes.
+- Sólo se consideran elegibles las membresías de la clienta seleccionada cuyo estado sea activo y donde `used_sessions < total_sessions`. Una membresía agotada o cancelada conserva su historial, pero no puede elegirse para una nueva cita.
+- Elegir una membresía selecciona el servicio correspondiente y liga la reservación con `membership_id`. La cita puede reservarse en cualquier sucursal con un espacio vacío o liberado por cancelación.
+- Reservar una cita no descuenta una sesión. El tarjetón se afecta únicamente cuando Agenda confirma el estado `ATTENDED`; una cancelación o ausencia no consume sesión y mantiene las reglas de seguimiento de inasistencias.
+- Para clientas con al menos una membresía elegible se muestra el botón `¿Regalar facial de cortesía?`. Esta opción se utiliza para atender una queja, registra el servicio `Facial de cortesía por queja` en $0 y no se liga ni descuenta de ningún tarjetón.
+- La cortesía por queja es opcional y mutuamente excluyente con el uso de una sesión de membresía en esa reservación. Elegir una membresía desactiva la cortesía; elegir la cortesía limpia la membresía seleccionada.
+- La cortesía por queja debe persistir con `appointment.kind = COURTESY` y `courtesy_reason = COMPLAINT`, aparecer en el ticket como regalo de $0 y enviarse a Agenda como una cita de cortesía.
+- Las cortesías de alta de clientes nuevos continúan identificándose como `courtesy_reason = WELCOME`; no deben confundirse en reportes con las cortesías originadas por quejas.
+- Si la clienta tiene historial de membresía pero todas sus membresías están agotadas, canceladas o sin sesiones, desaparece por completo la opción de reservar con membresía. En su lugar sólo puede elegir `Facial de cortesía por queja` o `Corporal de cortesía por queja`; no se muestra el selector normal de sesiones o servicios.
+- Si la clienta nunca ha tenido una membresía, conserva el selector normal de servicios y no visualiza las opciones especiales destinadas a clientas con historial de membresía.
+- Para avanzar al cobro después de responder que sí desea agendar, se exige servicio o membresía, fecha, sucursal y espacio disponible. Responder `No por ahora` no genera reservación ni cortesía.
+
+### 37.1 Criterios de aceptación
+
+- [ ] Una clienta con dos membresías activas visualiza ambos tarjetones con sus sesiones restantes correctas.
+- [ ] Una membresía agotada o cancelada no aparece como servicio disponible para agendar.
+- [ ] La cita creada desde un tarjetón conserva el `membership_id` seleccionado.
+- [ ] Reservar la cita no modifica `used_sessions`.
+- [ ] Marcar la cita como asistida desde Agenda descuenta exactamente una sesión del tarjetón ligado.
+- [ ] Cancelar la cita o marcar ausencia no descuenta sesiones.
+- [ ] El botón de cortesía por queja sólo aparece cuando la clienta tiene historial de membresía; con sesiones vigentes ofrece facial y con todas las membresías terminadas ofrece facial o corporal.
+- [ ] La cortesía por queja aparece en el ticket con valor $0, se agenda y no afecta sesiones.
+- [ ] No es posible registrar simultáneamente una sesión de membresía y una cortesía por queja en la misma selección.
+- [ ] Una clienta sin ningún historial de membresía conserva el flujo normal de próxima cita.
+- [ ] Una clienta con membresía terminada no puede reservar con el tarjetón ni mediante manipulación del frontend.
+- [ ] Para una membresía terminada sólo aparecen las cortesías facial y corporal por queja.
+- [ ] La cortesía facial o corporal elegida se registra por $0 y no reactiva ni consume la membresía terminada.
+- [ ] Una clienta que nunca tuvo membresía continúa usando el catálogo normal de servicios.
+
+## 38. Controles adaptables en tarjetas y paginaciones
+
+- Los botones, selectores y controles de paginación deben responder al ancho real de su tarjeta o panel, no únicamente al ancho total de la ventana.
+- En un panel amplio los controles pueden compartir una fila y crecer dentro del espacio disponible. Cuando el panel se reduce, deben contraerse hasta su mínimo legible y después reorganizarse en filas completas antes de provocar un desbordamiento.
+- Ningún botón puede quedar recortado por el borde derecho, oculto detrás de otro panel o fuera del área visible. El texto puede ocupar más de una línea cuando sea necesario, sin reducir el área táctil por debajo de un tamaño utilizable.
+- En `Mis ventas > Clientes`, el filtro superior ocupa todo el ancho cuando la tarjeta sea estrecha. La paginación coloca `Visualizar` y el rango en una primera fila y conserva `Anterior`, número de página y `Siguiente` completos en una segunda fila.
+- En tamaños extremadamente estrechos, el selector, el rango y las acciones pueden ocupar filas independientes. Al ampliar nuevamente la ventana deben regresar automáticamente a la distribución horizontal sin recargar la pantalla ni perder el estado actual.
+
+### 38.1 Criterios de aceptación
+
+- [ ] Reducir la tarjeta de clientes no corta el botón `Sólo con ventas del periodo`.
+- [ ] Los botones `Anterior` y `Siguiente` permanecen completos, visibles y utilizables en todos los anchos soportados.
+- [ ] El selector de registros no invade el rango ni las acciones de página.
+- [ ] Ampliar la ventana recompone los controles en menos filas y utiliza el espacio disponible.
+- [ ] Cambiar de tamaño no reinicia filtros, página, cliente seleccionado ni cantidad de registros.
+- [ ] No aparece desplazamiento horizontal causado por los controles de esta tarjeta.
+
+## 39. Identificación de membresías en Mis ventas
+
+- En `Mis ventas > Ventas autorizadas`, cada ticket cuyo cliente tenga al menos una membresía activa visible para el vendedor muestra una corona pequeña debajo del nombre, acompañada por la cantidad de membresías activas.
+- La corona utiliza las mismas interacciones que los indicadores de Customers y Receipts: abre el resumen al colocar el cursor, recibir foco de teclado o hacer clic; al retirar el cursor o perder el foco se cierra.
+- El resumen muestra nombre y folio de cada membresía, sucursal, estado y relación entre sesiones restantes y sesiones totales. Las membresías activas se ordenan antes que las agotadas o canceladas.
+- La corona sólo aparece cuando existe al menos una membresía `ACTIVE`. El historial emergente puede incluir membresías agotadas o canceladas que el vendedor esté autorizado a conocer.
+- La relación del cliente se resuelve primero por `client_id`; para tickets históricos se permite conciliar por teléfono normalizado y, como último recurso, por nombre completo normalizado.
+- La autenticación de `Mis ventas` limita la información: el vendedor sólo puede visualizar membresías donde sea responsable actual, vendedor original o participante documentado en un cambio de vendedor. El filtro de sucursal también limita las membresías mostradas.
+- La ausencia de permiso o relación comercial no debe inferirse mediante contadores ocultos, respuestas API ni contenido del mensaje emergente. Master conserva el alcance general desde los módulos autorizados correspondientes.
+
+### 39.1 Criterios de aceptación
+
+- [ ] Un ticket de una clienta con membresía activa muestra la corona debajo de su nombre.
+- [ ] El número de la corona coincide con las membresías activas visibles para el vendedor autenticado.
+- [ ] Cursor, clic y teclado abren el mismo resumen; retirar la interacción lo cierra.
+- [ ] El resumen presenta folio, sucursal, estado y sesiones restantes de cada membresía autorizada.
+- [ ] Una clienta que sólo conserva membresías agotadas o canceladas no muestra la corona.
+- [ ] Un vendedor no puede consultar desde Mis ventas membresías sin relación actual, original o histórica con su código.
+- [ ] Cambiar el filtro de sucursal actualiza inmediatamente el indicador y su resumen.
+- [ ] Los tickets históricos sin `client_id` pueden conciliarse por teléfono y no duplican membresías.
+
+## 40. Administración de paquetes y productos de cortesía
+
+- Settings incluye dos catálogos relacionados: `Productos de cortesía` y `Paquetes`. Ambos permiten añadir, editar, activar e inactivar registros cuando el usuario tiene permiso de edición sobre Settings.
+- Un producto de cortesía guarda identificador estable, nombre, tipo `FACIAL` o `BODY`, estado y auditoría. Editar el nombre o tipo no cambia su identificador ni rompe paquetes o registros históricos.
+- Un paquete guarda identificador estable, nombre, estado y entre uno y dos productos de cortesía. Puede repetir el mismo producto dos veces para representar una cortesía doble o combinar un facial y un corporal.
+- Checkout sólo muestra paquetes activos, habilitados y compuestos completamente por productos activos. Nunca se permiten más de dos servicios de regalo por paquete.
+- Inactivar un producto inactiva también los paquetes que lo utilizan para evitar ofertas incompletas. Reactivar el producto no reactiva automáticamente esos paquetes; cada paquete debe revisarse y activarse de forma explícita.
+- Inactivar un paquete lo elimina inmediatamente de nuevas ventas y del selector predeterminado, pero no lo borra de tickets, citas, reportes ni historiales existentes.
+- Si se inactiva el paquete predeterminado, se selecciona el siguiente paquete activo válido. Si ya no existe ninguno, la exigencia de cortesía para clientes nuevos se desactiva hasta que se configure un paquete válido.
+- Activar la captura obligatoria de cortesía exige al menos un paquete activo y válido. El sistema rechaza la activación cuando no hay opciones utilizables.
+- Añadir o editar valida nombre obligatorio, nombres no duplicados, cantidad de servicios y estado activo de los productos incluidos. Los registros se inactivan en lugar de eliminarse físicamente.
+- Toda cita y línea de ticket debe guardar la instantánea del nombre del paquete y de cada servicio usada al momento de la venta, además de sus identificadores, para que una edición posterior no reescriba el histórico.
+- El backend debe validar permisos, relaciones, estados y máximo de servicios, y registrar usuario, fecha, valor anterior y valor nuevo en cada alta, edición, activación o inactivación.
+
+### 40.1 Criterios de aceptación
+
+- [ ] Un usuario con edición de Settings puede añadir un producto facial o corporal de cortesía.
+- [ ] El producto nuevo puede utilizarse al crear o editar un paquete.
+- [ ] Un paquete acepta uno o dos servicios y rechaza cero o más de dos.
+- [ ] Es posible configurar dos unidades del mismo servicio dentro de un paquete doble.
+- [ ] Editar nombres conserva identificadores y no modifica tickets o citas históricos.
+- [ ] Inactivar un producto retira de Checkout los paquetes que dependen de él.
+- [ ] Reactivar un producto no activa paquetes relacionados sin revisión explícita.
+- [ ] Inactivar un paquete lo retira de Checkout sin borrar su historial.
+- [ ] El paquete predeterminado siempre es activo y válido, o queda vacío con la captura obligatoria desactivada.
+- [ ] Un usuario de consulta puede revisar la configuración, pero no añadir, editar, activar ni inactivar.
+- [ ] La API rechaza cualquier modificación sin permiso y conserva auditoría del cambio.
+
+## 41. Propiedad de cartera y baja o reactivación de vendedores
+
+- Al seleccionar una clienta existente con un vendedor activo asignado, Checkout debe incorporar automáticamente a ese vendedor en la división del ticket. Esta regla prevalece sobre la lista de presencia: si no tiene Clock In, permanece seleccionado y se identifica como `Sin Clock In`.
+- Dar de baja a un vendedor transfiere de forma atómica a cartera de empresa todos los clientes cuyo `owner_id` vigente sea el del vendedor. El cliente queda con `owner_id = null`, `company_locked = true` y la empresa configurada como propietaria actual.
+- La transferencia debe crear un registro histórico inmutable por cliente con `seller_id`, nombre del vendedor como instantánea, fecha y hora de finalización de la relación, motivo `SELLER_INACTIVATED` y usuario que autorizó la baja. El identificador del vendedor no se elimina aunque su cuenta esté inactiva.
+- La baja no modifica tickets anteriores, vendedores participantes, porcentajes, montos, comisiones, membresías, citas ni reportes históricos. Cada ticket conserva la instantánea de su división original; únicamente cambia la propiedad vigente de la ficha del cliente.
+- Al consultar el perfil del cliente, se muestra `Empresa` como propietario actual y también el vendedor anterior, incluyendo su estado `Inactivo` y la fecha de transferencia. Esta información permanece disponible en impresión y exportación autorizadas.
+- Reactivar al vendedor no devuelve automáticamente los clientes transferidos ni reescribe relaciones históricas. El vendedor podrá recibir clientes nuevos o nuevas asignaciones realizadas después de su reactivación, aplicando los permisos y autorizaciones vigentes.
+- Si un vendedor reactivado recibe clientes nuevos y vuelve a darse de baja, sólo se transfieren los clientes que tenga asignados en ese momento. Los clientes transferidos en una baja anterior permanecen en cartera de empresa salvo una reasignación explícita y autorizada.
+- El backend debe ejecutar la baja y transferencia dentro de una transacción, bloquear carreras con ventas o reasignaciones concurrentes y conservar auditoría de vendedor, cliente, sucursal, usuario autorizador, fecha, valor anterior y valor nuevo.
+- La API de lectura de clientes debe poder resolver vendedores inactivos para el historial; no debe ocultarlos ni sustituir su nombre histórico por el nombre de la empresa.
+
+### 41.1 Criterios de aceptación
+
+- [ ] La clienta con vendedor activo asignado abre el paso de Vendedores con ese vendedor ya incluido en la división, tenga o no Clock In.
+- [ ] Un vendedor asignado sin Clock In se muestra seleccionado con la leyenda `Sin Clock In`.
+- [ ] Al inactivar un vendedor, todos y sólo sus clientes vigentes pasan a cartera de empresa.
+- [ ] La baja registra para cada cliente el identificador, nombre y fecha del vendedor anterior.
+- [ ] Ningún ticket anterior cambia vendedor, división, importe ni comisión después de la baja.
+- [ ] El perfil del cliente muestra propietario actual `Empresa` y vendedor anterior `Inactivo`.
+- [ ] Reactivar al vendedor no le devuelve clientes transferidos anteriormente.
+- [ ] Los clientes asignados después de la reactivación sí reconocen al vendedor como propietario en tickets nuevos.
+- [ ] Una segunda baja sólo transfiere la cartera vigente de esa nueva etapa.
+- [ ] La operación completa se confirma o revierte como una sola transacción y queda auditada.
+
+## 42. Seguimiento desde la alerta de membresías por terminar
+
+- Toda la franja de alerta `Membresías por terminar`, incluido el botón `Ver seguimiento`, es interactiva mediante clic, teclado y foco visible.
+- Al activarla, el módulo limpia filtros incompatibles, desplaza la vista al listado de seguimiento y muestra únicamente membresías activas con dos sesiones o menos disponibles.
+- El seguimiento conserva cada compra como un tarjetón independiente. Si una clienta tiene varias membresías por terminar, se muestran separadas por membresía y fecha de compra.
+- Un vendedor sólo recibe alertas y puede abrir expedientes de clientas con las que tenga relación autorizada como vendedor actual, vendedor original o participante histórico documentado. La alerta no debe revelar nombres, teléfonos, folios ni conteos ajenos.
+- Para el vendedor, la alerta puede recuperar el historial autorizado de su sucursal aunque la compra no sea del día actual; el código personal sigue siendo obligatorio para entrar al módulo.
+- El usuario master puede visualizar la alerta y abrir todos los historiales dentro del alcance de sucursal seleccionado o de `Todas las sucursales`.
+- Al abrir un registro desde el seguimiento se muestra el tarjetón, sesiones restantes, ticket de compra, sucursal, vendedor e historial de asistencia e incidencias, con las mismas restricciones de edición existentes.
+- Cambiar manualmente la búsqueda, membresía, sucursal o fechas abandona el filtro rápido de seguimiento y aplica el nuevo filtro solicitado por el usuario.
+- El backend debe repetir la autorización por cada consulta y apertura de expediente; no debe confiar en que el registro haya sido ocultado por la interfaz.
+
+### 42.1 Criterios de aceptación
+
+- [ ] Hacer clic en cualquier parte de la alerta abre el listado de seguimiento.
+- [ ] El botón `Ver seguimiento` produce exactamente el mismo resultado que la franja completa.
+- [ ] El listado contiene sólo membresías activas con una o dos sesiones restantes.
+- [ ] Cada registro permite abrir el tarjetón y el historial autorizado del cliente.
+- [ ] Un vendedor no visualiza ni abre clientes sin relación documentada con él.
+- [ ] Master visualiza todos los historiales de las sucursales incluidas en su filtro.
+- [ ] El acceso del vendedor continúa exigiendo su código personal.
+- [ ] Usar otro filtro desactiva el seguimiento rápido sin perder permisos ni alcance.
+
+## 43. Tarjetas de crédito, meses sin intereses y conciliación bancaria
+
+- Todo cobro con el método `Tarjeta` debe indicar obligatoriamente si la operación fue con tarjeta de crédito o débito. La red o banco y los cuatro dígitos de autorización conservan su validación obligatoria.
+- Cuando la tarjeta sea de crédito, el POS debe preguntar el plazo antes de permitir finalizar el cobro. Los valores iniciales permitidos son una exhibición, 3, 6, 9, 12, 18 o 24 meses; el backend debe utilizar un catálogo configurable para futuras opciones.
+- `Una exhibición` se guarda como `installment_months = 1`; una tarjeta de débito o un método que no sea tarjeta guarda el plazo como `null`. No se permite enviar un plazo de MSI en efectivo, transferencia o débito.
+- Cada entrada de pago conserva `method_id`, `amount`, `card_or_bank`, `card_type`, `installment_months`, autorización, folio, ticket, sucursal y fecha. Los pagos mixtos registran estos datos de manera independiente por cada método.
+- La captura aplica tanto al cobro inicial como a abonos o liquidaciones de apartados y a correcciones autorizadas de tickets. Cambiar de tarjeta a otro método limpia tipo de tarjeta y plazo para no contaminar reportes.
+- El ticket impreso, Receipts y el historial del cliente muestran de forma compacta `Crédito · N MSI`, `Crédito · una exhibición` o `Débito`, según corresponda.
+- El Dashboard de jornada muestra crédito cobrado y distribución por plazo para el día vigente. Un usuario de sucursal ve únicamente su tienda; Master puede cambiar entre una sucursal y el consolidado general de todas las sucursales.
+- Reports incorpora el submenú independiente `Conciliación bancaria` dentro de Reportes de ventas. Debe incluir cobros de venta, abonos y liquidaciones sin duplicar el total comercial del ticket original.
+- La conciliación permite filtrar por fecha inicial y final, una o varias sucursales, vendedor, método de pago y búsqueda por ticket, cliente, tarjeta o banco. Cada fila representa un movimiento de pago, no una combinación artificial por ticket.
+- El detalle de conciliación incluye día, ticket, sucursal, cliente, vendedor, método, tipo de tarjeta, tarjeta o banco, meses sin intereses, autorización, monto y estado de cobro.
+- El tablero analítico del reporte muestra importe conciliable, crédito, débito, importe vendido a MSI, método más utilizado, plazo más utilizado, cobros por día y distribución por método y plazo.
+- `Método más utilizado` y `Plazo más utilizado` se determinan primero por cantidad de movimientos y, en empate, por monto cobrado. Los importes siempre se muestran adicionalmente para permitir evaluación financiera.
+- Las descargas Excel y PDF respetan exactamente los filtros visibles e incluyen el resumen ejecutivo y todas las filas del periodo, no sólo la página visible.
+- El backend debe validar tipos y plazos, conservar las instantáneas históricas y autorizar el reporte y sus descargas conforme al permiso de Reports. Una edición posterior no debe reescribir movimientos bancarios ya conciliados sin auditoría.
+
+### 43.1 Criterios de aceptación
+
+- [ ] Elegir tarjeta exige seleccionar crédito o débito.
+- [ ] Elegir crédito exige seleccionar una exhibición o un plazo MSI válido.
+- [ ] Débito, efectivo y transferencia no almacenan meses sin intereses.
+- [ ] Un pago mixto conserva tipo y plazo únicamente en la entrada de tarjeta correspondiente.
+- [ ] El ticket y los historiales del cliente muestran el plazo en texto pequeño.
+- [ ] El Dashboard diario cambia sus importes y plazos al cambiar la sucursal; Master puede consultar el consolidado general.
+- [ ] Conciliación bancaria aparece como submenú independiente de Reports.
+- [ ] Los filtros de fecha, sucursal, vendedor y método afectan métricas, gráficas, tabla y descargas.
+- [ ] La tabla genera una fila por movimiento de pago e incluye compras, abonos y liquidaciones.
+- [ ] Las gráficas identifican el método y el plazo más utilizados por frecuencia y muestran sus importes.
+- [ ] Excel y PDF contienen el periodo completo filtrado y los meses sin intereses.
+- [ ] El backend rechaza plazos inválidos o aplicados a métodos no compatibles y registra auditoría de cambios.
+
+## 44. Catálogo general de redes de tarjeta y bancos
+
+- El flujo de un cobro con tarjeta es secuencial: primero se elige `Crédito` o `Débito`, después la red `Visa` o `Mastercard` y finalmente el banco emisor. No se permite finalizar mientras falte cualquiera de estos datos o los cuatro dígitos de autorización.
+- La red de pago y el banco son conceptos independientes. Un mismo banco puede estar disponible para crédito y débito y para más de una red; el backend no debe guardar `Visa` o `Mastercard` como si fueran bancos.
+- El catálogo base contiene los 54 bancos asociados publicados por la Asociación de Bancos de México y se contrasta con el padrón de instituciones de banca múltiple autorizadas por la CNBV. La fecha de revisión inicial es septiembre de 2026.
+- El catálogo de bancos es general para todo el POS. Lo consumen el cobro inicial, pagos mixtos, abonos y liquidaciones de apartados y la edición autorizada de tickets.
+- Settings permite a un usuario master autorizado añadir un banco faltante, inactivarlo para nuevos cobros o reactivarlo. Un alta manual queda disponible inicialmente en crédito, débito, Visa y Mastercard.
+- Inactivar un banco nunca lo elimina físicamente ni modifica ventas anteriores. Cada movimiento de pago guarda `bank_id` y una instantánea inmutable `bank_name`; de igual manera conserva `card_type` y `card_network` como valores históricos.
+- Los selectores sólo muestran bancos activos y se actualizan inmediatamente en todos los flujos de cobro. Si un banco capturado en un ticket anterior está inactivo, continúa visible al consultar o imprimir ese ticket.
+- Los pagos por transferencia también utilizan el catálogo general de bancos, pero no guardan tipo ni red de tarjeta.
+- Ticket, historial de la clienta, historial de apartados y conciliación bancaria muestran la red y el banco por separado. Excel y PDF de conciliación incluyen columnas independientes `Tipo de tarjeta`, `Red` y `Banco`.
+- La API debe validar que el banco exista y esté activo al crear un movimiento nuevo; también debe conservar el nombre capturado para impedir que futuras altas, bajas o cambios de presentación reescriban el historial.
+- Toda modificación del catálogo registra usuario, fecha, banco, acción, valor anterior y valor nuevo. El backend debe permitir sincronizar una revisión futura del padrón oficial sin borrar bancos históricos ni duplicar nombres normalizados.
+
+### 44.1 Criterios de aceptación
+
+- [ ] Seleccionar tarjeta muestra primero Crédito/Débito, después Visa/Mastercard y por último el banco.
+- [ ] Cambiar Crédito/Débito o Visa/Mastercard limpia un banco incompatible previamente seleccionado.
+- [ ] Tarjeta de débito exige red, banco y autorización, pero nunca solicita meses sin intereses.
+- [ ] Tarjeta de crédito exige red, banco, autorización y plazo.
+- [ ] Añadir un banco desde Settings lo hace visible en todos los nuevos cobros sin recargar la aplicación.
+- [ ] Inactivar un banco lo retira de nuevos cobros, pero no cambia tickets, apartados, reportes o impresiones anteriores.
+- [ ] Reactivar un banco reutiliza su identificador original y no crea un duplicado.
+- [ ] Transferencia permite elegir banco sin mostrar Crédito/Débito ni Visa/Mastercard.
+- [ ] Conciliación y descargas separan tipo de tarjeta, red y banco.
+- [ ] Un intento forzado de usar un banco inactivo en un cobro nuevo es rechazado por la API.
+
+## 45. Empresa como participante de la división de venta
+
+- Si el cliente pertenece a cartera de empresa, la empresa debe aparecer dentro de `División de venta` como un participante real y no únicamente como una leyenda informativa.
+- La participación de empresa es obligatoria mientras el cliente conserve esa propiedad y no puede eliminarse desde checkout ni durante una edición posterior del ticket.
+- El importe de la empresa se captura con las mismas modalidades de la división: cantidad en pesos o porcentaje. La suma de empresa y vendedores humanos debe ser exactamente igual al total del ticket o al 100 % antes de cobrar.
+- La empresa tiene un identificador comercial configurable, inicialmente `EMPRESA-001`. Este número es único, estable e independiente del identificador, código de acceso o Clock In de cualquier empleado.
+- El número de empresa se guarda como instantánea en cada participación del ticket junto con `participant_kind = COMPANY`, nombre comercial e importe. Los vendedores humanos usan `participant_kind = SELLER`.
+- La empresa no forma parte del catálogo de empleados, no puede iniciar turno, autenticar módulos, recibir permisos personales ni aparecer como persona disponible en búsquedas de vendedores.
+- Los vendedores humanos con Clock In continúan apareciendo primero. Si participan en una venta de cartera empresarial, su importe se registra por separado del importe de la empresa.
+- Si no existe un vendedor humano seleccionado, la empresa puede conservar el 100 % de la división únicamente cuando el proceso de alta o autorización aplicable permita continuar; nunca se crea un vendedor ficticio para completar la suma.
+- `sale_seller_ids` del cliente conserva sólo vendedores humanos relacionados. El identificador de empresa no se agrega como vendedor histórico del cliente porque la propiedad empresarial ya se representa con `company_locked` y `company_name`.
+- Tickets, Receipts, historial, dashboards, rankings y reportes deben distinguir el importe de empresa del de cada vendedor. Los indicadores que midan productividad de empleados no deben atribuir la venta empresarial a una persona.
+- Editar productos, cobros o vendedores de un ticket conserva la participación empresarial y su identificador histórico. Cambiar posteriormente el nombre o número comercial no reescribe tickets anteriores.
+- El backend debe validar nuevamente la propiedad de la cartera y la suma de la división; no debe confiar sólo en el renglón bloqueado de la interfaz.
+
+### 45.1 Criterios de aceptación
+
+- [ ] Elegir un cliente de cartera empresarial agrega automáticamente a la empresa en la división.
+- [ ] Elegir una procedencia que bloquea la cartera a empresa produce el mismo comportamiento para un cliente nuevo.
+- [ ] La fila muestra nombre comercial, número de venta y campo editable de importe o porcentaje.
+- [ ] La fila de empresa no puede eliminarse mientras la cartera siga siendo empresarial.
+- [ ] Empresa y vendedores humanos pueden compartir la venta y la suma debe cerrar exactamente.
+- [ ] El ticket guarda tipo, identificador, nombre e importe de cada participante.
+- [ ] El número comercial puede configurarse sin convertir a la empresa en empleado.
+- [ ] La empresa nunca aparece en Clock In, accesos ni búsqueda general de empleados.
+- [ ] Editar un ticket empresarial no elimina ni transforma su participación de empresa.
+- [ ] Cambiar la configuración actual de la empresa no modifica el historial anterior.
+
+## 46. Distribución adaptable de selectores de próxima cita
+
+- Los campos `Servicio`, `Día`, `Sucursal` y `Espacio disponible` se adaptan al ancho real del panel de agenda y no únicamente al ancho total de la pantalla.
+- En un panel amplio pueden mostrarse cuatro campos por fila. Cuando el espacio útil del modal disminuye, pasan automáticamente a dos columnas y, en una ventana angosta, a una sola columna.
+- Cada campo conserva `min-width: 0`, ocupa como máximo el ancho de su columna y recorta con puntos suspensivos únicamente el texto largo; el icono de calendario y la flecha del selector permanecen visibles.
+- El selector de fecha nunca se monta sobre el servicio ni sobre la sucursal. La cuadrícula puede aumentar su altura y desplazarse verticalmente dentro del checkout sin generar desplazamiento horizontal.
+- La misma regla adaptable aplica a la próxima sesión de membresía y a la cita de cortesía de una clienta nueva.
+
+### 46.1 Criterios de aceptación
+
+- [ ] En el ancho normal del checkout los cuatro campos se muestran como una cuadrícula de dos por dos sin superponerse.
+- [ ] Al ampliar suficientemente el panel pueden mostrarse los cuatro campos en una fila.
+- [ ] En una ventana angosta cada campo ocupa una fila completa.
+- [ ] Un nombre largo de membresía se trunca dentro de su selector y no empuja el campo `Día`.
+- [ ] El calendario, los selectores y sus iconos permanecen visibles y utilizables sin desplazamiento horizontal.

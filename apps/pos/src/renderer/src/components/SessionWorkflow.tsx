@@ -596,6 +596,31 @@ export function MasterDashboard({
     label: paymentMethods.find((method) => method.id === methodId)?.label ?? methodId,
     total,
   })).sort((left, right) => right.total - left.total);
+  const installmentTotals = Array.from(
+    scopedTickets
+      .flatMap((ticket) => ticket.payments)
+      .filter((payment) => payment.cardType === "CREDIT")
+      .reduce<Map<number, { months: number; count: number; total: number }>>(
+        (summary, payment) => {
+          const months = payment.installmentMonths ?? 1;
+          const current = summary.get(months) ?? {
+            months,
+            count: 0,
+            total: 0,
+          };
+          current.count += 1;
+          current.total += payment.amount;
+          summary.set(months, current);
+          return summary;
+        },
+        new Map(),
+      )
+      .values(),
+  ).sort((left, right) => right.count - left.count || right.total - left.total);
+  const creditCollected = installmentTotals.reduce(
+    (sum, item) => sum + item.total,
+    0,
+  );
   const courtesyAppointments = scopedAppointments.filter((appointment) => appointment.kind === "COURTESY");
   const nextSessionAppointments = scopedAppointments.filter((appointment) => appointment.kind === "NEXT_SESSION");
   const missingAppointments = scopedAppointments.filter((appointment) => appointment.kind === "NO_APPOINTMENT");
@@ -961,6 +986,7 @@ export function MasterDashboard({
         <Card><CardContent><div className="master-dashboard-panel-heading"><span><Sparkles size={18} /> Servicios vendidos y cortesías</span><Badge variant="outline">{serviceSales.reduce((sum, service) => sum + service.quantity, 0)} SERVICIOS</Badge></div><div className="dashboard-report-kpis"><span><strong>{formatCurrency(serviceSales.reduce((sum, service) => sum + service.total, 0))}</strong><small>Venta de servicios</small></span><span><strong>{courtesyAppointments.length}</strong><small>Cortesías registradas</small></span></div><div className="dashboard-report-list">{serviceSales.map((service) => <div key={service.name}><span><b>{service.name}</b><small>{service.quantity} vendidos</small></span><strong>{formatCurrency(service.total)}</strong></div>)}{serviceSales.length === 0 && <p>Sin servicios vendidos en el alcance seleccionado.</p>}{courtesyAppointments.map((appointment) => <div className="is-courtesy" key={appointment.id}><span><b>{appointment.service}</b><small>{appointment.clientName} · {appointment.branch}</small></span><strong>REGALO</strong></div>)}</div></CardContent></Card>
         <Card><CardContent><div className="master-dashboard-panel-heading"><span><CalendarDays size={18} /> Citas generadas</span><Badge variant="outline">{scopedAppointments.length} REGISTROS</Badge></div><div className="dashboard-appointment-kpis"><span><HeartHandshake size={17} /><b>{courtesyAppointments.length}</b><small>Cortesías</small></span><span><CalendarDays size={17} /><b>{nextSessionAppointments.length}</b><small>Próximas</small></span><span><AlertTriangle size={17} /><b>{missingAppointments.length}</b><small>Sin cita</small></span></div><div className="dashboard-report-list">{appointmentServices.map((service) => <div key={service.name}><span><b>{service.name}</b><small>Agenda y cortesías</small></span><strong>{service.quantity}</strong></div>)}{appointmentServices.length === 0 && <p>Sin citas o cortesías generadas para este alcance.</p>}</div></CardContent></Card>
         <Card><CardContent><div className="master-dashboard-panel-heading"><span><CreditCard size={18} /> Total por método de pago</span><Badge variant="outline">{formatCurrency(paymentTotals.reduce((sum, payment) => sum + payment.total, 0))}</Badge></div><div className="dashboard-payment-list">{paymentTotals.map((payment) => <div key={payment.methodId}><span><CreditCard size={15} /><b>{payment.label}</b></span><strong>{formatCurrency(payment.total)}</strong><i><b style={{ width: `${collected > 0 ? Math.min(100, (payment.total / collected) * 100) : 0}%` }} /></i><small>{collected > 0 ? ((payment.total / collected) * 100).toFixed(1) : "0.0"}% del cobro</small></div>)}{paymentTotals.length === 0 && <p>Sin cobros registrados en el alcance seleccionado.</p>}</div></CardContent></Card>
+        <Card><CardContent><div className="master-dashboard-panel-heading"><span><WalletCards size={18} /> Crédito y meses sin intereses</span><Badge variant="outline">{formatCurrency(creditCollected)}</Badge></div><div className="dashboard-payment-list">{installmentTotals.map((item) => <div key={item.months}><span><CreditCard size={15} /><b>{item.months === 1 ? "Una exhibición" : `${item.months} MSI`}</b></span><strong>{item.count} {item.count === 1 ? "cobro" : "cobros"}</strong><i><b style={{ width: `${Math.max(3, (item.count / Math.max(1, installmentTotals[0]?.count ?? 1)) * 100)}%` }} /></i><small>{formatCurrency(item.total)} · {scopeLabel} · {sessionBusinessDate}</small></div>)}{installmentTotals.length === 0 && <p>Sin compras con tarjeta de crédito en el alcance del día.</p>}</div></CardContent></Card>
       </section>
       {showMembershipReport && (
         <Card className="dashboard-membership-card">

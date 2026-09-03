@@ -44,6 +44,7 @@ import {
   toast,
 } from "@cosmetics/ui";
 import { formatCurrency } from "../mock-data";
+import { cardNetworkLabels } from "../bank-catalog";
 import { getTicketTaxSummary, roundCurrency } from "../tax";
 import { getProductSpare, getTicketSpare } from "../spare";
 import { ReportsCustomerDialog } from "./ReportsCustomerDialog";
@@ -64,6 +65,7 @@ import type {
 
 type ReportKey =
   | "SALES_DETAIL"
+  | "BANK_RECONCILIATION"
   | "CASH_MOVEMENTS"
   | "SOLD_PRODUCTS"
   | "SALES_BY_EMPLOYEE"
@@ -124,6 +126,11 @@ const reportGroups: ReportGroup[] = [
         key: "SALES_DETAIL",
         label: "Detalle de ventas",
         description: "Ingresos, SPARE, impuestos, descuentos, cobros y tickets.",
+      },
+      {
+        key: "BANK_RECONCILIATION",
+        label: "Conciliación bancaria",
+        description: "Cobros por día, ticket, sucursal, vendedor, método y meses sin intereses.",
       },
       {
         key: "SOLD_PRODUCTS",
@@ -408,7 +415,8 @@ export function ReportsView({
     ticket.branchName ?? receiptSettings.branchName;
   const isTicketInScope = (ticket: Ticket, from = dateFrom, to = dateTo) =>
     ticket.status === "COMPLETED" &&
-    ticket.ticketType !== "LAYAWAY_PAYMENT" &&
+    (activeReport === "BANK_RECONCILIATION" ||
+      ticket.ticketType !== "LAYAWAY_PAYMENT") &&
     getBusinessDate(ticket.createdAtIso) >= from &&
     getBusinessDate(ticket.createdAtIso) <= to &&
     selectedBranches.includes(ticketBranch(ticket)) &&
@@ -432,6 +440,7 @@ export function ReportsView({
     [
       dateFrom,
       dateTo,
+      activeReport,
       activeGroup,
       clients,
       customerSource,
@@ -568,6 +577,76 @@ export function ReportsView({
         (paymentMethodId === "ALL" || payment.methodId === paymentMethodId),
     ),
   ).length;
+  const reconciliationPayments = useMemo(
+    () =>
+      filteredTickets.flatMap((ticket) =>
+        ticket.payments
+          .filter(
+            (payment) =>
+              payment.amount > 0 &&
+              (paymentMethodId === "ALL" ||
+                payment.methodId === paymentMethodId),
+          )
+          .map((payment) => ({ ticket, payment })),
+      ),
+    [filteredTickets, paymentMethodId],
+  );
+  const reconciliationTotal = reconciliationPayments.reduce(
+    (sum, item) => sum + item.payment.amount,
+    0,
+  );
+  const paymentUsage = Array.from(
+    reconciliationPayments.reduce<
+      Map<string, { methodId: string; label: string; count: number; total: number }>
+    >((summary, { payment }) => {
+      const current = summary.get(payment.methodId) ?? {
+        methodId: payment.methodId,
+        label:
+          paymentMethods.find((method) => method.id === payment.methodId)
+            ?.label ?? payment.methodId,
+        count: 0,
+        total: 0,
+      };
+      current.count += 1;
+      current.total += payment.amount;
+      summary.set(payment.methodId, current);
+      return summary;
+    }, new Map()).values(),
+  ).sort(
+    (left, right) => right.count - left.count || right.total - left.total,
+  );
+  const installmentUsage = Array.from(
+    reconciliationPayments.reduce<
+      Map<number, { months: number; count: number; total: number }>
+    >((summary, { payment }) => {
+      if (payment.cardType !== "CREDIT") return summary;
+      const months = payment.installmentMonths ?? 1;
+      const current = summary.get(months) ?? {
+        months,
+        count: 0,
+        total: 0,
+      };
+      current.count += 1;
+      current.total += payment.amount;
+      summary.set(months, current);
+      return summary;
+    }, new Map()).values(),
+  ).sort(
+    (left, right) => right.count - left.count || right.total - left.total,
+  );
+  const creditTotal = reconciliationPayments
+    .filter(({ payment }) => payment.cardType === "CREDIT")
+    .reduce((sum, { payment }) => sum + payment.amount, 0);
+  const debitTotal = reconciliationPayments
+    .filter(({ payment }) => payment.cardType === "DEBIT")
+    .reduce((sum, { payment }) => sum + payment.amount, 0);
+  const installmentTotal = reconciliationPayments
+    .filter(
+      ({ payment }) =>
+        payment.cardType === "CREDIT" &&
+        (payment.installmentMonths ?? 1) > 1,
+    )
+    .reduce((sum, { payment }) => sum + payment.amount, 0);
   const discountTotal = filteredTickets.reduce(
     (sum, ticket) => sum + ticket.discountAmount,
     0,
@@ -922,6 +1001,51 @@ export function ReportsView({
   }, [customerSummary]);
 
   const rawMetrics: MetricDefinition[] = (() => {
+    if (activeReport === "BANK_RECONCILIATION") {
+      const leadingMethod = paymentUsage[0];
+      const leadingInstallment = installmentUsage[0];
+      return [
+        {
+          label: "COBROS CONCILIABLES",
+          value: formatCurrency(reconciliationTotal),
+          detail: `${reconciliationPayments.length} movimientos de pago`,
+          tone: "positive",
+        },
+        {
+          label: "CRÉDITO",
+          value: formatCurrency(creditTotal),
+          detail: `${reconciliationPayments.filter(({ payment }) => payment.cardType === "CREDIT").length} cobros`,
+        },
+        {
+          label: "DÉBITO",
+          value: formatCurrency(debitTotal),
+          detail: `${reconciliationPayments.filter(({ payment }) => payment.cardType === "DEBIT").length} cobros`,
+        },
+        {
+          label: "VENTA A MSI",
+          value: formatCurrency(installmentTotal),
+          detail: "Crédito con plazo mayor a una exhibición",
+        },
+        {
+          label: "MÉTODO MÁS UTILIZADO",
+          value: leadingMethod?.label ?? "Sin cobros",
+          detail: leadingMethod
+            ? `${leadingMethod.count} movimientos · ${formatCurrency(leadingMethod.total)}`
+            : "Sin actividad",
+        },
+        {
+          label: "PLAZO MÁS UTILIZADO",
+          value: leadingInstallment
+            ? leadingInstallment.months === 1
+              ? "Una exhibición"
+              : `${leadingInstallment.months} MSI`
+            : "Sin crédito",
+          detail: leadingInstallment
+            ? `${leadingInstallment.count} cobros · ${formatCurrency(leadingInstallment.total)}`
+            : "Sin plazos registrados",
+        },
+      ];
+    }
     if (activeReport === "CASH_MOVEMENTS") {
       return [
         {
@@ -1138,7 +1262,10 @@ export function ReportsView({
       map.set(
         date,
         (map.get(date) ?? 0) +
-          (activeReport === "CASH_MOVEMENTS" ? ticketCollected : ticket.total),
+          (activeReport === "CASH_MOVEMENTS" ||
+          activeReport === "BANK_RECONCILIATION"
+            ? ticketCollected
+            : ticket.total),
       );
     });
     if (activeReport === "CASH_MOVEMENTS") {
@@ -1155,6 +1282,12 @@ export function ReportsView({
   }, [activeExpenses, activeReport, filteredTickets, paymentMethodId]);
 
   const distributionRows = useMemo(() => {
+    if (activeReport === "BANK_RECONCILIATION") {
+      return paymentUsage.map((item) => ({
+        label: `${item.label} · ${item.count} ${item.count === 1 ? "cobro" : "cobros"}`,
+        value: item.total,
+      }));
+    }
     if (activeReport === "CASH_MOVEMENTS") {
       const typeMap = new Map<string, number>();
       activeExpenses.forEach((expense) =>
@@ -1213,9 +1346,52 @@ export function ReportsView({
     movementRemovals,
     movementTransfers,
     paymentMethods,
+    paymentUsage,
   ]);
 
   const rawDetailRows: DetailRow[] = useMemo(() => {
+    if (activeReport === "BANK_RECONCILIATION") {
+      return reconciliationPayments
+        .map(({ ticket, payment }) => ({
+          Fecha: getBusinessDate(ticket.createdAtIso),
+          Ticket: ticket.id,
+          Sucursal: ticketBranch(ticket),
+          Cliente: ticket.clientName,
+          Vendedor: ticket.sellerSummary,
+          "Método de pago":
+            paymentMethods.find((method) => method.id === payment.methodId)
+              ?.label ?? payment.methodId,
+          "Tipo de tarjeta":
+            payment.cardType === "CREDIT"
+              ? "Crédito"
+              : payment.cardType === "DEBIT"
+                ? "Débito"
+                : "No aplica",
+          Red: payment.cardNetwork
+            ? cardNetworkLabels[payment.cardNetwork]
+            : "No aplica",
+          Banco: payment.bankName || payment.cardOrBank || "—",
+          "Meses sin intereses":
+            payment.cardType === "CREDIT"
+              ? payment.installmentMonths && payment.installmentMonths > 1
+                ? payment.installmentMonths
+                : "Una exhibición"
+              : "No aplica",
+          Autorización: payment.authorizationCode || "—",
+          Monto: roundCurrency(payment.amount),
+          Estado:
+            ticket.paymentStatus === "PAID"
+              ? "PAGADO"
+              : ticket.paymentStatus === "LAYAWAY"
+                ? "APARTADO"
+                : "PENDIENTE",
+        }))
+        .sort((left, right) =>
+          `${right.Fecha} ${right.Ticket}`.localeCompare(
+            `${left.Fecha} ${left.Ticket}`,
+          ),
+        );
+    }
     if (activeReport === "CASH_MOVEMENTS") {
       const incomeRows = filteredTickets.flatMap((ticket) =>
         ticket.payments
@@ -1409,6 +1585,7 @@ export function ReportsView({
     productById,
     productSummary,
     products,
+    reconciliationPayments,
     receiptSettings.branchName,
     salesTotal,
     unitsSold,
@@ -1966,7 +2143,7 @@ export function ReportsView({
           <Card className="reports-chart-card">
             <CardContent>
               <div className="reports-card-heading">
-                <div><span>TENDENCIA</span><h3>{activeReport === "CASH_MOVEMENTS" ? "Flujo neto por día" : "Operación por día"}</h3></div>
+                <div><span>TENDENCIA</span><h3>{activeReport === "CASH_MOVEMENTS" ? "Flujo neto por día" : activeReport === "BANK_RECONCILIATION" ? "Cobros conciliables por día" : "Operación por día"}</h3></div>
                 {salesChange >= 0 ? <TrendingUp size={19} /> : <TrendingDown size={19} />}
               </div>
               <div className="reports-column-chart">
@@ -1987,7 +2164,7 @@ export function ReportsView({
               <div className="reports-card-heading">
                 <div>
                   <span>DISTRIBUCIÓN</span>
-                  <h3>{activeReport === "CASH_MOVEMENTS" ? "Gastos por tipo" : activeGroup === "CUSTOMER" ? "Procedencia" : activeGroup === "EMPLOYEE" ? "Venta por vendedor" : activeGroup === "MERCHANDISE" ? "Flujo de inventario" : "Formas de pago"}</h3>
+                  <h3>{activeReport === "CASH_MOVEMENTS" ? "Gastos por tipo" : activeReport === "BANK_RECONCILIATION" ? "Métodos más utilizados" : activeGroup === "CUSTOMER" ? "Procedencia" : activeGroup === "EMPLOYEE" ? "Venta por vendedor" : activeGroup === "MERCHANDISE" ? "Flujo de inventario" : "Formas de pago"}</h3>
                 </div>
                 <BarChart3 size={19} />
               </div>
@@ -2003,6 +2180,41 @@ export function ReportsView({
             </CardContent>
           </Card>
         </div>
+
+        {activeReport === "BANK_RECONCILIATION" && (
+          <Card className="reports-chart-card reports-installment-card">
+            <CardContent>
+              <div className="reports-card-heading">
+                <div>
+                  <span>CRÉDITO</span>
+                  <h3>Meses sin intereses más utilizados</h3>
+                  <p>Frecuencia e importe por plazo dentro del periodo seleccionado.</p>
+                </div>
+                <WalletCards size={19} />
+              </div>
+              <div className="reports-horizontal-chart">
+                {installmentUsage.map((item) => (
+                  <div key={item.months}>
+                    <span>
+                      <b>{item.months === 1 ? "Una exhibición" : `${item.months} MSI`}</b>
+                      <strong>{item.count} {item.count === 1 ? "cobro" : "cobros"} · {formatCurrency(item.total)}</strong>
+                    </span>
+                    <i>
+                      <b
+                        style={{
+                          width: `${Math.max(3, (item.count / Math.max(1, installmentUsage[0]?.count ?? 1)) * 100)}%`,
+                        }}
+                      />
+                    </i>
+                  </div>
+                ))}
+                {installmentUsage.length === 0 && (
+                  <p>Sin compras con tarjeta de crédito en este periodo.</p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {activeGroup === "MERCHANDISE" && (
           <div className="reports-demand-grid">
@@ -2120,7 +2332,9 @@ export function ReportsView({
           <CircleDollarSign size={18} />
           <span>
             <strong>Lectura ejecutiva:</strong>{" "}
-            {activeReport === "CASH_MOVEMENTS"
+            {activeReport === "BANK_RECONCILIATION"
+              ? "cada pago se presenta por ticket, sucursal y vendedor; las compras con crédito conservan el plazo de meses sin intereses capturado al cobrar."
+              : activeReport === "CASH_MOVEMENTS"
               ? "el flujo neto considera cobros recibidos menos gastos vigentes; los folios anulados permanecen en auditoría con impacto $0.00."
               : canViewCosts
                 ? "utilidad estimada con costo MXN registrado y venta sin IVA; cancelaciones y abonos independientes no inflan la venta."

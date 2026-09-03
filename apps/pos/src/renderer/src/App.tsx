@@ -26,6 +26,7 @@ import {
   Eye,
   Filter,
   LockKeyhole,
+  LogOut,
   Menu,
   Minus,
   PackageCheck,
@@ -94,6 +95,7 @@ import {
 import { ClockInView } from "./components/ClockInView";
 import { CompetitionSettings } from "./components/CompetitionSettings";
 import { CompetitionView } from "./components/CompetitionView";
+import { CourtesySettingsManager } from "./components/CourtesySettingsManager";
 import { CustomersView } from "./components/CustomersView";
 import { DataUpdateView } from "./components/DataUpdateView";
 import { DealPickerDialog } from "./components/DealPickerDialog";
@@ -162,6 +164,7 @@ import type {
   AgendaSlot,
   Appointment,
   AttendanceRecord,
+  BankCatalogEntry,
   BillingCard,
   BillingHistoryEntry,
   BillingLocation,
@@ -173,7 +176,6 @@ import type {
   ClientMembership,
   ClientField,
   ClientSourceOption,
-  CourtesyPackage,
   CourtesySettings,
   DiscountMode,
   EmployeeRole,
@@ -231,6 +233,7 @@ import {
   isSellerSelectableAgendaSlot,
   type AgendaAppointmentUpdate,
 } from "./agenda-gateway";
+import { initialBankCatalog } from "./bank-catalog";
 
 const getSaleProductBrand = (product: Product) =>
   product.kind === "SERVICE"
@@ -242,13 +245,32 @@ const getSaleProductBrand = (product: Product) =>
 const formatSaleCount = (count: number, singular: string, plural: string) =>
   `${count} ${count === 1 ? singular : plural}`;
 
-const courtesyPackageOptions: Array<{ id: CourtesyPackage; label: string; detail: string }> = [
-  { id: "FACIAL", label: "Facial", detail: "1 servicio de cortesía" },
-  { id: "BODY", label: "Corporal", detail: "1 servicio de cortesía" },
-  { id: "DOUBLE_FACIAL", label: "Doble facial", detail: "2 servicios de cortesía" },
-  { id: "DOUBLE_BODY", label: "Doble corporal", detail: "2 servicios de cortesía" },
-  { id: "MIXED", label: "Mixto", detail: "Facial + corporal" },
-];
+const initialCourtesySettings: CourtesySettings = {
+  required: true,
+  defaultPackage: "FACIAL",
+  enabledPackages: ["FACIAL", "BODY", "DOUBLE_FACIAL", "DOUBLE_BODY", "MIXED"],
+  products: [
+    {
+      id: "courtesy-facial",
+      name: "Facial de cortesía",
+      category: "FACIAL",
+      active: true,
+    },
+    {
+      id: "courtesy-body",
+      name: "Corporal de cortesía",
+      category: "BODY",
+      active: true,
+    },
+  ],
+  packages: [
+    { id: "FACIAL", name: "Facial", serviceIds: ["courtesy-facial"], active: true },
+    { id: "BODY", name: "Corporal", serviceIds: ["courtesy-body"], active: true },
+    { id: "DOUBLE_FACIAL", name: "Doble facial", serviceIds: ["courtesy-facial", "courtesy-facial"], active: true },
+    { id: "DOUBLE_BODY", name: "Doble corporal", serviceIds: ["courtesy-body", "courtesy-body"], active: true },
+    { id: "MIXED", name: "Mixto", serviceIds: ["courtesy-facial", "courtesy-body"], active: true },
+  ],
+};
 
 const screenMetadata: Record<ScreenId, { title: string; subtitle: string }> = {
   dashboard: {
@@ -954,6 +976,7 @@ function App() {
   const [closeDayAuthorizationUser, setCloseDayAuthorizationUser] = useState("");
   const [closeDayAuthorizationCode, setCloseDayAuthorizationCode] = useState("");
   const [closeDayAuthorizationError, setCloseDayAuthorizationError] = useState("");
+  const [sessionExitOpen, setSessionExitOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [interfaceLanguage] = useState<InterfaceLanguage>("ES");
 
@@ -1169,17 +1192,18 @@ function App() {
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodOption[]>(
     initialPaymentMethods,
   );
+  const [bankCatalog, setBankCatalog] = useState<BankCatalogEntry[]>(
+    initialBankCatalog,
+  );
   const [paymentSettingsOpen, setPaymentSettingsOpen] = useState(false);
   const [paymentSettingsCode, setPaymentSettingsCode] = useState("");
   const [paymentSettingsAuthorized, setPaymentSettingsAuthorized] =
     useState(false);
   const [newPaymentMethodName, setNewPaymentMethodName] = useState("");
+  const [newBankName, setNewBankName] = useState("");
   const [activeSettingsSection, setActiveSettingsSection] = useState("notifications");
-  const [courtesySettings, setCourtesySettings] = useState<CourtesySettings>({
-    required: true,
-    defaultPackage: "FACIAL",
-    enabledPackages: ["FACIAL", "BODY", "DOUBLE_FACIAL", "DOUBLE_BODY", "MIXED"],
-  });
+  const [courtesySettings, setCourtesySettings] =
+    useState<CourtesySettings>(initialCourtesySettings);
   const [voucherTemplates, setVoucherTemplates] = useState<VoucherTemplate[]>([
     {
       id: "voucher-next-10",
@@ -1313,6 +1337,21 @@ function App() {
     [employeeRoles, sessionUser?.roleId],
   );
 
+  const clockedInSellerIds = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          attendanceRecords
+            .filter(
+              (record) =>
+                record.status === "ONLINE" && record.branch === activeBranch,
+            )
+            .map((record) => record.sellerId),
+        ),
+      ),
+    [activeBranch, attendanceRecords],
+  );
+
   const allowedScreens = useMemo<ScreenId[]>(() => {
     if (!sessionUser) return [];
     if (sessionUser.isMaster)
@@ -1334,6 +1373,10 @@ function App() {
 
   const canAccessSettings = Boolean(
     sessionUser && allowedScreens.includes("settings"),
+  );
+  const canExitWithoutCloseDay = Boolean(
+    sessionUser?.isMaster ||
+      sessionEmployeeRole?.configurationAccess.includes("SESSION_EXIT"),
   );
 
   useEffect(() => {
@@ -1507,9 +1550,34 @@ function App() {
           },
     );
     setSessionUser(nextUser);
-    setSessionStage("OPENING_COUNT");
-    setDaySession(null);
-    setActiveScreen("sale");
+    const resumesOpenDay = Boolean(
+      daySession?.status === "OPEN" && daySession.branch === selectedBranch,
+    );
+    if (resumesOpenDay) {
+      const nextAllowedScreens = nextUser.isMaster
+        ? (Object.keys(screenMetadata) as ScreenId[])
+        : Array.from(
+            new Set([
+              ...(employeeRoles.find((role) => role.id === nextUser.roleId && role.active)
+                ?.moduleAccess ?? []),
+              "my-account" as ScreenId,
+            ]),
+          );
+      const nextScreen = nextAllowedScreens.includes("dashboard")
+        ? "dashboard"
+        : nextAllowedScreens.includes("sale")
+          ? "sale"
+          : (nextAllowedScreens[0] ?? "my-account");
+      setSessionStage("OPEN");
+      setActiveScreen(nextScreen);
+      setSaleFocusMode(nextScreen === "sale");
+      setSidebarCollapsed(nextScreen === "sale");
+      toast.success(`Sesión iniciada. La jornada de ${selectedBranch} continúa abierta.`);
+    } else {
+      setSessionStage("OPENING_COUNT");
+      setDaySession(null);
+      setActiveScreen("sale");
+    }
     return null;
   };
 
@@ -2642,6 +2710,9 @@ function App() {
   };
 
   const saveEmployeeSeller = (seller: Seller) => {
+    const previousSeller = sellers.find(
+      (candidate) => candidate.id === seller.id,
+    );
     const name = seller.name.trim();
     const alias = seller.alias.trim().toLocaleLowerCase("es-MX");
     const accessCode = seller.accessCode.trim();
@@ -2702,6 +2773,36 @@ function App() {
       initials: initials || "VE",
       canViewCosts: role?.configurationAccess.includes("REPORTS_COSTS") ?? false,
     };
+    const sellerWasDeactivated = Boolean(
+      previousSeller?.active && !normalizedSeller.active,
+    );
+    if (sellerWasDeactivated && previousSeller) {
+      const transferredAtIso = new Date().toISOString();
+      const companyName =
+        receiptSettings.companyName.trim() || "Keysar Cosmetics";
+      setClients((current) =>
+        current.map((client) => {
+          if (client.ownerId !== previousSeller.id) return client;
+          return {
+            ...client,
+            ownerId: null,
+            companyLocked: true,
+            companyName,
+            ownershipHistory: [
+              ...(client.ownershipHistory ?? []),
+              {
+                id: `client-owner-history-${crypto.randomUUID()}`,
+                sellerId: previousSeller.id,
+                sellerName: previousSeller.name,
+                endedAtIso: transferredAtIso,
+                reason: "SELLER_INACTIVATED" as const,
+                authorizedBy: sessionUser?.name ?? masterUser.name,
+              },
+            ],
+          };
+        }),
+      );
+    }
     setSellers((current) =>
       current.some((candidate) => candidate.id === seller.id)
         ? current.map((candidate) =>
@@ -2709,6 +2810,16 @@ function App() {
           )
         : [...current, normalizedSeller],
     );
+    if (sellerWasDeactivated && previousSeller) {
+      const transferredClients = clients.filter(
+        (client) => client.ownerId === previousSeller.id,
+      ).length;
+      toast.info(
+        transferredClients > 0
+          ? `${transferredClients} ${transferredClients === 1 ? "cliente pasó" : "clientes pasaron"} a cartera de ${receiptSettings.companyName || "Keysar Cosmetics"}. Los tickets anteriores conservaron su vendedor.`
+          : `${previousSeller.name} fue dado de baja. Los tickets anteriores conservaron su vendedor.`,
+      );
+    }
     return true;
   };
 
@@ -3124,6 +3235,45 @@ function App() {
     setCloseDayAuthorizationUser("");
     setCloseDayAuthorizationCode("");
     setCloseDayAuthorizationError("");
+  };
+
+  const exitSessionWithoutCloseDay = () => {
+    if (!sessionUser || !canExitWithoutCloseDay) {
+      toast.error("Tu perfil no tiene permiso para salir sin realizar Close day.");
+      return;
+    }
+    const departingUserName = sessionUser.name;
+    setSessionExitOpen(false);
+    setProductDialogOpen(false);
+    setCheckoutOpen(false);
+    setDealPickerOpen(false);
+    setReceiptPreviewOpen(false);
+    setTicketEditOpen(false);
+    setTicketCancellationOpen(false);
+    setLocationSwitchOpen(false);
+    setDiscountOpen(false);
+    setPaymentSettingsOpen(false);
+    setCompetitionSettingsOpen(false);
+    setMyAccountAuthorized(false);
+    setCostAccessAuthorized(false);
+    setReceiptHistoryAuthorized(false);
+    setXReportAuthorized(false);
+    setPaymentSettingsAuthorized(false);
+    setCompetitionSettingsAuthorized(false);
+    setDealAccessAuthorized(false);
+    setEmployeeAccessAuthorized(false);
+    setCart([]);
+    setDiscountMode("PERCENT");
+    setDiscountValue(0);
+    setSearch("");
+    setSessionUser(null);
+    setSessionStage("LOGIN");
+    setActiveScreen("sale");
+    setSaleFocusMode(true);
+    setSidebarCollapsed(false);
+    toast.success(
+      `${departingUserName} salió del sistema. La jornada y el corte permanecen abiertos sin cambios.`,
+    );
   };
 
   const authorizeCloseDay = () => {
@@ -3625,6 +3775,10 @@ function App() {
   };
 
   const completeTicket = async (result: CheckoutResult) => {
+    const humanSellerSales = result.sellerSales.filter(
+      (sale) => sale.participantKind !== "COMPANY",
+    );
+    const primaryHumanSellerSale = humanSellerSales[0];
     const requestedAgendaSlotIds = result.appointments.flatMap((appointment) =>
       appointment.agendaSlotId ? [appointment.agendaSlotId] : [],
     );
@@ -3657,10 +3811,15 @@ function App() {
           const reservableAppointments = result.appointments.filter(
             (appointment) => appointment.agendaSlotId,
           );
+          const membershipAppointment = reservableAppointments.find(
+            (appointment) => appointment.membershipId,
+          );
           const source = reservableAppointments.some(
             (appointment) => appointment.kind === "COURTESY",
           )
             ? "COURTESY" as const
+            : membershipAppointment
+              ? "MEMBERSHIP" as const
             : "NEXT_SESSION" as const;
           agendaReservation = await agendaGateway.reserve({
             idempotencyKey: `ticket-${ticketId}-agenda`,
@@ -3668,7 +3827,7 @@ function App() {
             externalClientId: agendaClientId,
             clientName: `${result.client.firstName} ${result.client.lastName}`.trim(),
             ticketId,
-            membershipId: null,
+            membershipId: membershipAppointment?.membershipId ?? null,
             services: reservableAppointments.map(
               (appointment) => appointment.service,
             ),
@@ -3829,7 +3988,7 @@ function App() {
       item.product.kind === "MEMBERSHIP"
         ? Array.from({ length: item.quantity }, () => {
             membershipSequence += 1;
-            const seller = result.sellerSales[0];
+            const seller = primaryHumanSellerSale;
             return {
               id: `membership-card-${crypto.randomUUID()}`,
               folio: `MEM-${ticketBranch
@@ -3939,7 +4098,7 @@ function App() {
         clientName,
         clientPhone: synchronizedClient.phone,
         ticketId,
-        sellerIds: result.sellerSales.map((sale) => sale.sellerId),
+        sellerIds: humanSellerSales.map((sale) => sale.sellerId),
         recordedAt: ticket.createdAt,
         recordedAtIso: ticket.createdAtIso,
         status: appointment.kind === "NO_APPOINTMENT" ? "PENDING" : "SCHEDULED",
@@ -4024,8 +4183,8 @@ function App() {
           quantity: shortage,
           deliveredQuantity: 0,
           branch: ticketBranch,
-          sellerIds: result.sellerSales.map((sale) => sale.sellerId),
-          sellerNames: result.sellerSales.map((sale) => sale.sellerName),
+          sellerIds: humanSellerSales.map((sale) => sale.sellerId),
+          sellerNames: humanSellerSales.map((sale) => sale.sellerName),
           inventoryCommitted: true,
           deliveryHistory: [],
           reason: "OUT_OF_STOCK",
@@ -4055,7 +4214,7 @@ function App() {
       detail: `${ticket.clientName} · ${formatCurrency(ticket.total)} · ${ticket.sellerSummary}`,
       moduleLabel: "Ventas",
       branch: ticketBranch,
-      actorId: result.sellerSales[0]?.sellerId ?? masterUser.id,
+        actorId: primaryHumanSellerSale?.sellerId ?? masterUser.id,
       actorName: ticket.sellerSummary,
       reference: ticket.id,
       createdAtIso: ticket.createdAtIso,
@@ -4090,7 +4249,7 @@ function App() {
         clientName,
         clientPhone: synchronizedClient.phone,
         branch: ticketBranch,
-        sellerIds: result.sellerSales.map((sale) => sale.sellerId),
+        sellerIds: humanSellerSales.map((sale) => sale.sellerId),
         total: ticket.total,
         amountPaid: ticket.amountPaid,
         balanceDue: ticket.balanceDue,
@@ -4119,10 +4278,10 @@ function App() {
                 methodId: ticketPayments[0]?.methodId ?? "CASH",
                 payments: ticketPayments,
                 balanceAfter: ticket.balanceDue,
-                ...(result.sellerSales[0]
+                ...(primaryHumanSellerSale
                   ? {
-                      sellerId: result.sellerSales[0].sellerId,
-                      sellerName: result.sellerSales[0].sellerName,
+                      sellerId: primaryHumanSellerSale.sellerId,
+                      sellerName: primaryHumanSellerSale.sellerName,
                     }
                   : {}),
               },
@@ -4218,6 +4377,64 @@ function App() {
     );
     toast.success(
       `${method.label} se retiró de nuevos cobros. Los tickets históricos lo conservan.`,
+    );
+  };
+
+  const addBankToCatalog = () => {
+    if (!paymentSettingsAuthorized) return;
+    const name = newBankName.trim();
+    if (!name) return;
+    const existing = bankCatalog.find(
+      (bank) =>
+        bank.name.toLocaleLowerCase("es-MX") ===
+        name.toLocaleLowerCase("es-MX"),
+    );
+    if (existing?.active) {
+      toast.error("Ese banco ya está disponible.");
+      return;
+    }
+    if (existing) {
+      setBankCatalog((current) =>
+        current.map((bank) =>
+          bank.id === existing.id ? { ...bank, active: true } : bank,
+        ),
+      );
+      setNewBankName("");
+      toast.success(`${existing.name} quedó disponible nuevamente.`);
+      return;
+    }
+    setBankCatalog((current) => [
+      ...current,
+      {
+        id: `CUSTOM-BANK-${Date.now()}`,
+        name,
+        active: true,
+        cardTypes: ["CREDIT", "DEBIT"],
+        cardNetworks: ["VISA", "MASTERCARD"],
+        source: "CUSTOM",
+      },
+    ]);
+    setNewBankName("");
+    toast.success(`${name} se añadió a crédito, débito, Visa y Mastercard.`);
+  };
+
+  const setBankCatalogActive = (bankId: string, active: boolean) => {
+    if (!paymentSettingsAuthorized) return;
+    if (!active && bankCatalog.filter((bank) => bank.active).length <= 1) {
+      toast.error("Debe permanecer al menos un banco activo.");
+      return;
+    }
+    const bank = bankCatalog.find((candidate) => candidate.id === bankId);
+    if (!bank) return;
+    setBankCatalog((current) =>
+      current.map((candidate) =>
+        candidate.id === bankId ? { ...candidate, active } : candidate,
+      ),
+    );
+    toast.success(
+      active
+        ? `${bank.name} quedó disponible para nuevos cobros.`
+        : `${bank.name} se ocultó de nuevos cobros; el historial no cambia.`,
     );
   };
 
@@ -6423,10 +6640,39 @@ function App() {
       (layaway) => layaway.originalTicketId === ticketId,
     );
 
-    const selectedSellers = changes.sellerIds.flatMap((sellerId) => {
+    const selectedSellers = changes.sellerIds.reduce<
+      Array<{
+        id: string;
+        name: string;
+        participantKind: "SELLER" | "COMPANY";
+        participantCode: string;
+      }>
+    >((participants, sellerId) => {
       const seller = sellers.find((candidate) => candidate.id === sellerId);
-      return seller ? [seller] : [];
-    });
+      if (seller) {
+        participants.push({
+          id: seller.id,
+          name: seller.name,
+          participantKind: "SELLER",
+          participantCode: seller.id,
+        });
+        return participants;
+      }
+      const historicalParticipant = ticket.sellerSales.find(
+        (sale) =>
+          sale.sellerId === sellerId && sale.participantKind === "COMPANY",
+      );
+      if (historicalParticipant) {
+        participants.push({
+          id: historicalParticipant.sellerId,
+          name: historicalParticipant.sellerName,
+          participantKind: "COMPANY",
+          participantCode:
+            historicalParticipant.participantCode ?? "EMPRESA-001",
+        });
+      }
+      return participants;
+    }, []);
     if (selectedSellers.length === 0 || changes.products.length === 0) {
       toast.error("El ticket necesita al menos un vendedor y un producto.");
       return false;
@@ -6640,6 +6886,8 @@ function App() {
           sellerId: seller.id,
           sellerName: seller.name,
           amount: 0,
+          participantKind: seller.participantKind,
+          participantCode: seller.participantCode,
         })),
         subtotal: allocated,
         total: allocated,
@@ -6669,6 +6917,8 @@ function App() {
         index === selectedSellers.length - 1
           ? total - baseSellerAmount * index
           : baseSellerAmount,
+      participantKind: seller.participantKind,
+      participantCode: seller.participantCode,
     }));
     const sellerSummary = selectedSellers
       .map((seller) => seller.name)
@@ -6728,7 +6978,12 @@ function App() {
                 lastName,
                 phone: changes.clientPhone,
                 saleSellerIds: Array.from(
-                  new Set([...client.saleSellerIds, ...changes.sellerIds]),
+                  new Set([
+                    ...client.saleSellerIds,
+                    ...changes.sellerIds.filter((sellerId) =>
+                      sellers.some((seller) => seller.id === sellerId),
+                    ),
+                  ]),
                 ),
               }
             : client,
@@ -8549,7 +8804,7 @@ function App() {
                               ? ticket.payments
                                   .map(
                                     (payment) =>
-                                      `${paymentLabel(payment.methodId)} ${formatCurrency(payment.amount)}`,
+                                      `${paymentLabel(payment.methodId)}${payment.cardType === "CREDIT" ? payment.installmentMonths && payment.installmentMonths > 1 ? ` · ${payment.installmentMonths} MSI` : " · una exhibición" : payment.cardType === "DEBIT" ? " · débito" : ""} ${formatCurrency(payment.amount)}`,
                                   )
                                   .join(" + ")
                               : "Sin abono"}
@@ -8728,70 +8983,11 @@ function App() {
         onToggle={toggleCompetition}
         onDelete={deleteCompetition}
       />
-      <Card className="settings-card courtesy-settings-card">
-        <CardContent>
-          <span className="section-kicker">VENTA · CLIENTE NUEVO</span>
-          <h2>Paquetes y productos de cortesía</h2>
-          <p>Define si la cortesía es obligatoria y cuáles opciones podrá ofrecer el vendedor durante Checkout.</p>
-          <button
-            type="button"
-            className={`courtesy-required-toggle ${courtesySettings.required ? "is-active" : ""}`}
-            role="switch"
-            aria-checked={courtesySettings.required}
-            onClick={() => setCourtesySettings((current) => ({ ...current, required: !current.required }))}
-          >
-            <span>
-              <strong>Solicitar cortesía al registrar cliente</strong>
-              <small>{courtesySettings.required ? "Checkout exige paquete, fecha, sucursal y horario." : "La pregunta y el mensaje se omiten; la venta continúa normalmente."}</small>
-            </span>
-            <span className={`mock-switch ${courtesySettings.required ? "is-on" : ""}`}><i /></span>
-          </button>
-          <div className="courtesy-settings-options">
-            {courtesyPackageOptions.map((option) => {
-              const selected = courtesySettings.enabledPackages.includes(option.id);
-              return (
-                <label key={option.id} className={selected ? "is-selected" : ""}>
-                  <input
-                    type="checkbox"
-                    checked={selected}
-                    onChange={() => setCourtesySettings((current) => {
-                      if (selected && current.enabledPackages.length === 1) {
-                        toast.error("Conserva al menos un paquete de cortesía disponible.");
-                        return current;
-                      }
-                      const enabledPackages = selected
-                        ? current.enabledPackages.filter((id) => id !== option.id)
-                        : [...current.enabledPackages, option.id];
-                      return {
-                        ...current,
-                        enabledPackages,
-                        defaultPackage: enabledPackages.includes(current.defaultPackage)
-                          ? current.defaultPackage
-                          : enabledPackages[0] ?? "FACIAL",
-                      };
-                    })}
-                  />
-                  <span><strong>{option.label}</strong><small>{option.detail}</small></span>
-                </label>
-              );
-            })}
-          </div>
-          <div className="field-stack courtesy-default-package">
-            <span>Paquete seleccionado por defecto</span>
-            <Select
-              value={courtesySettings.defaultPackage}
-              onValueChange={(value) => setCourtesySettings((current) => ({ ...current, defaultPackage: value as CourtesyPackage }))}
-            >
-              <SelectTrigger aria-label="Paquete de cortesía por defecto"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {courtesyPackageOptions.filter((option) => courtesySettings.enabledPackages.includes(option.id)).map((option) => (
-                  <SelectItem key={option.id} value={option.id}>{option.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </CardContent>
-      </Card>
+      <CourtesySettingsManager
+        settings={courtesySettings}
+        canManage={canEditActiveModule}
+        onChange={setCourtesySettings}
+      />
       <Card className="settings-card client-required-settings-card">
         <CardContent>
           <span className="section-kicker">CLIENTES</span>
@@ -9041,6 +9237,22 @@ function App() {
               />
             </div>
             <div className="field-stack">
+              <span>Número de empresa para ventas</span>
+              <Input
+                value={receiptSettings.companySalesNumber}
+                onChange={(event) =>
+                  setReceiptSettings((current) => ({
+                    ...current,
+                    companySalesNumber: event.target.value,
+                  }))
+                }
+                placeholder="EMPRESA-001"
+              />
+              <small>
+                Identificador comercial de la empresa en divisiones y reportes.
+              </small>
+            </div>
+            <div className="field-stack">
               <span>Sucursal fija de esta computadora</span>
               <Input
                 value={`Sucursal ${activeBranch}`}
@@ -9173,6 +9385,18 @@ function App() {
               </div>
             ))}
           </div>
+          <div className="bank-catalog-overview">
+            <div>
+              <CreditCard size={18} />
+              <span>
+                <strong>Catálogo general de bancos</strong>
+                <small>
+                  {bankCatalog.filter((bank) => bank.active).length} activos · Crédito y débito · Visa y Mastercard
+                </small>
+              </span>
+            </div>
+            <Badge variant="outline">Fuente base ABM · 2026</Badge>
+          </div>
           {paymentSettingsOpen && !paymentSettingsAuthorized && (
             <div className="master-settings-gate">
               <Input
@@ -9199,7 +9423,7 @@ function App() {
           )}
           {paymentSettingsOpen && paymentSettingsAuthorized && (
             <div className="master-payment-editor">
-              <div>
+              <div className="payment-method-add-row">
                 <Input
                   value={newPaymentMethodName}
                   onChange={(event) =>
@@ -9218,6 +9442,58 @@ function App() {
                 >
                   <Plus size={15} /> Agregar método
                 </Button>
+              </div>
+              <div className="bank-catalog-editor">
+                <header>
+                  <div>
+                    <strong>Bancos disponibles en nuevos cobros</strong>
+                    <small>
+                      Los cambios aplican en todo el POS. Los tickets anteriores conservan el banco capturado.
+                    </small>
+                  </div>
+                  <span>{bankCatalog.length} registrados</span>
+                </header>
+                <div className="bank-catalog-add-row">
+                  <Input
+                    value={newBankName}
+                    onChange={(event) => setNewBankName(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") addBankToCatalog();
+                    }}
+                    placeholder="Nombre del banco faltante"
+                    aria-label="Nombre del banco que se añadirá"
+                  />
+                  <Button
+                    type="button"
+                    onClick={addBankToCatalog}
+                    disabled={!newBankName.trim()}
+                  >
+                    <Plus size={15} /> Añadir banco
+                  </Button>
+                </div>
+                <div className="bank-catalog-list">
+                  {bankCatalog
+                    .slice()
+                    .sort((left, right) => left.name.localeCompare(right.name, "es-MX"))
+                    .map((bank) => (
+                      <div className={bank.active ? "" : "is-inactive"} key={bank.id}>
+                        <span>
+                          <strong>{bank.name}</strong>
+                          <small>
+                            {bank.source === "ABM" ? "Catálogo ABM" : "Añadido manualmente"} · Crédito · Débito · Visa · Mastercard
+                          </small>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setBankCatalogActive(bank.id, !bank.active)}
+                          aria-label={`${bank.active ? "Inactivar" : "Reactivar"} ${bank.name}`}
+                          title={bank.active ? "Inactivar para nuevos cobros" : "Reactivar banco"}
+                        >
+                          {bank.active ? <X size={13} /> : <RotateCcw size={13} />}
+                        </button>
+                      </div>
+                    ))}
+                </div>
               </div>
               <Button
                 type="button"
@@ -10596,7 +10872,9 @@ function App() {
             tickets={activeTickets}
             branches={operationalBranches}
             clients={clients}
+            memberships={clientMemberships}
             paymentMethods={paymentMethods}
+            bankCatalog={bankCatalog}
             layaways={layaways}
             appointments={appointments}
             owedProducts={owedProducts}
@@ -10618,6 +10896,7 @@ function App() {
             owedProducts={owedProducts}
             layaways={layaways}
             paymentMethods={paymentMethods}
+            bankCatalog={bankCatalog}
             branches={operationalBranches}
             receiptSettings={receiptSettings}
             sessionSellerId={sessionUser?.isMaster ? null : sessionUser?.id ?? null}
@@ -11137,8 +11416,10 @@ function App() {
           pinned={sidebarPinned}
           allowedScreens={allowedScreens}
           cartCount={cartCount}
+          canExitWithoutCloseDay={canExitWithoutCloseDay}
           language={interfaceLanguage}
           onNavigate={navigateToScreen}
+          onRequestSessionExit={() => setSessionExitOpen(true)}
           onRequestLocationSwitch={openLocationSwitcher}
           onToggle={toggleSidebar}
           onTogglePin={toggleSidebarPin}
@@ -11235,6 +11516,37 @@ function App() {
         </header>
         <div className="page-content">{renderScreen()}</div>
       </main>
+      <Dialog open={sessionExitOpen} onOpenChange={setSessionExitOpen}>
+        <DialogContent className="session-exit-dialog sm:max-w-[500px]">
+          <DialogHeader className="dialog-header">
+            <div className="terminal-location-dialog-icon">
+              <LogOut size={22} />
+            </div>
+            <DialogTitle>Salir sin cerrar el día</DialogTitle>
+            <DialogDescription>
+              Se cerrará únicamente la sesión de {sessionUser.name}. La jornada,
+              los conteos, tickets, ventas y cortes permanecerán abiertos y sin cambios.
+            </DialogDescription>
+          </DialogHeader>
+          {cart.length > 0 && (
+            <div className="terminal-location-lock-note session-exit-warning">
+              <ShoppingCart size={16} />
+              <span>
+                El ticket en curso contiene {cartCount} {cartCount === 1 ? "pieza" : "piezas"}
+                y se descartará al salir.
+              </span>
+            </div>
+          )}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setSessionExitOpen(false)}>
+              Cancelar
+            </Button>
+            <Button type="button" onClick={exitSessionWithoutCloseDay}>
+              <LogOut size={16} /> Salir de la sesión
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <Dialog
         open={locationSwitchOpen}
         onOpenChange={(open) => {
@@ -11346,13 +11658,18 @@ function App() {
         discountAmount={ticketDiscountAmount}
         cart={cart}
         clients={clients}
+        clientMemberships={clientMemberships}
         sellers={sellers}
+        clockedInSellerIds={clockedInSellerIds}
         paymentMethods={paymentMethods}
+        bankCatalog={bankCatalog}
         branches={operationalBranches}
         agendaSlots={agendaSlots}
         sourceOptions={clientSources}
         requiredFields={requiredFields}
         courtesySettings={courtesySettings}
+        companyName={receiptSettings.companyName}
+        companySalesNumber={receiptSettings.companySalesNumber}
         isMasterCode={isMasterAccessCode}
         onOpenChange={setCheckoutOpen}
         onComplete={completeTicket}
@@ -11395,6 +11712,7 @@ function App() {
         sellers={sellers}
         products={catalogProducts}
         paymentMethods={paymentMethods}
+        bankCatalog={bankCatalog}
         onOpenChange={setTicketEditOpen}
         onSave={saveTicketChanges}
       />

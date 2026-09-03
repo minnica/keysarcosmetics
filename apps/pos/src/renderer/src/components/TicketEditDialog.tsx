@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  Building2,
   CircleDollarSign,
+  LockKeyhole,
   Minus,
   Plus,
   Save,
@@ -25,7 +27,9 @@ import {
   SelectValue,
 } from "@cosmetics/ui";
 import { formatCurrency } from "../mock-data";
+import { paymentReferenceIsValid } from "../bank-catalog";
 import type {
+  BankCatalogEntry,
   Product,
   PaymentEntry,
   PaymentMethodOption,
@@ -35,6 +39,7 @@ import type {
   TicketEditProductInput,
   TicketEditRequest,
 } from "../types";
+import { PaymentReferenceFields } from "./PaymentReferenceFields";
 
 interface EditableLine extends TicketEditProductInput {
   id: string;
@@ -46,9 +51,12 @@ interface TicketEditDialogProps {
   sellers: Seller[];
   products: Product[];
   paymentMethods: PaymentMethodOption[];
+  bankCatalog: BankCatalogEntry[];
   onOpenChange: (open: boolean) => void;
   onSave: (ticketId: string, changes: TicketEditRequest) => boolean;
 }
+
+const installmentOptions = [1, 3, 6, 9, 12, 18, 24];
 
 export function TicketEditDialog({
   open,
@@ -56,6 +64,7 @@ export function TicketEditDialog({
   sellers,
   products,
   paymentMethods,
+  bankCatalog,
   onOpenChange,
   onSave,
 }: TicketEditDialogProps) {
@@ -142,6 +151,26 @@ export function TicketEditDialog({
   const invalidPaid =
     paymentStatus === "PAID" && Math.abs(enteredPaymentTotal - total) > 0.01;
   const needsPaymentMethod = paymentStatus !== "PENDING";
+  const paymentIsCard = (methodId: string) => {
+    const method = paymentMethods.find((candidate) => candidate.id === methodId);
+    const identity = `${methodId} ${method?.label ?? ""}`.toLocaleLowerCase("es-MX");
+    return identity.includes("card") || identity.includes("tarjeta");
+  };
+  const paymentNeedsAuthorization = (methodId: string) => {
+    const method = paymentMethods.find((candidate) => candidate.id === methodId);
+    const identity = `${methodId} ${method?.label ?? ""}`.toLocaleLowerCase("es-MX");
+    return !identity.includes("cash") && !identity.includes("efectivo");
+  };
+  const paymentReferencesAreValid = payments.every(
+    (payment) =>
+      !paymentNeedsAuthorization(payment.methodId) ||
+      paymentReferenceIsValid(
+        payment,
+        paymentIsCard(payment.methodId),
+        installmentOptions,
+      ),
+  );
+  const installmentTermsAreValid = paymentReferencesAreValid;
   const minimumTotal = lines.reduce((sum, line) => {
     const product = productById.get(line.productId);
     return sum + (product?.minPrice ?? 0) * line.quantity;
@@ -302,6 +331,27 @@ export function TicketEditDialog({
               </div>
             </div>
             <div className="ticket-edit-sellers">
+              {ticket.sellerSales
+                .filter(
+                  (sale) =>
+                    sale.participantKind === "COMPANY" &&
+                    sellerIds.includes(sale.sellerId),
+                )
+                .map((sale) => (
+                  <div
+                    key={sale.sellerId}
+                    className="ticket-edit-company-seller is-selected"
+                  >
+                    <span><Building2 size={14} /></span>
+                    <span>
+                      <strong>{sale.sellerName}</strong>
+                      <small>
+                        Empresa · {sale.participantCode ?? "EMPRESA-001"}
+                      </small>
+                    </span>
+                    <LockKeyhole size={12} aria-label="Participación obligatoria" />
+                  </div>
+                ))}
               {sellers
                 .filter(
                   (seller) => seller.active || sellerIds.includes(seller.id),
@@ -331,8 +381,9 @@ export function TicketEditDialog({
                 ))}
             </div>
             <small>
-              El total se dividirá en partes iguales entre los vendedores
-              seleccionados.
+              El total se dividirá en partes iguales entre los participantes.
+              La empresa permanece incluida cuando la clienta pertenece a su
+              cartera.
             </small>
           </section>
 
@@ -491,11 +542,23 @@ export function TicketEditDialog({
                         value={payment.methodId}
                         onValueChange={(methodId) =>
                           setPayments((current) =>
-                            current.map((item) =>
-                              item.id === payment.id
-                                ? { ...item, methodId }
-                                : item,
-                            ),
+                            current.map((item) => {
+                              if (item.id !== payment.id) return item;
+                              const {
+                                cardType: _cardType,
+                                cardNetwork: _cardNetwork,
+                                bankId: _bankId,
+                                bankName: _bankName,
+                                installmentMonths: _installmentMonths,
+                                ...paymentWithoutTerms
+                              } = item;
+                              return {
+                                ...paymentWithoutTerms,
+                                methodId,
+                                cardOrBank: "",
+                                authorizationCode: "",
+                              };
+                            }),
                           )
                         }
                       >
@@ -536,6 +599,22 @@ export function TicketEditDialog({
                         }
                       />
                     </div>
+                    {paymentNeedsAuthorization(payment.methodId) && (
+                      <PaymentReferenceFields
+                        payment={payment}
+                        isCard={paymentIsCard(payment.methodId)}
+                        bankCatalog={bankCatalog}
+                        installmentOptions={installmentOptions}
+                        ariaContext={`del pago editado ${index + 1}`}
+                        onChange={(nextPayment) =>
+                          setPayments((current) =>
+                            current.map((item) =>
+                              item.id === payment.id ? nextPayment : item,
+                            ),
+                          )
+                        }
+                      />
+                    )}
                     <Button
                       type="button"
                       variant="outline"
@@ -581,6 +660,17 @@ export function TicketEditDialog({
             {invalidLayaway && (
               <small className="is-negative">
                 El apartado requiere un abono mayor a $0 y menor al total.
+              </small>
+            )}
+            {!installmentTermsAreValid && (
+              <small className="is-negative">
+                Indica crédito o débito y el plazo de toda tarjeta de crédito.
+              </small>
+            )}
+            {!paymentReferencesAreValid && (
+              <small className="is-negative">
+                Los cobros no efectivos requieren banco y cuatro dígitos de autorización;
+                las tarjetas también requieren crédito/débito y Visa/Mastercard.
               </small>
             )}
           </section>
@@ -652,6 +742,8 @@ export function TicketEditDialog({
               sellerIds.length === 0 ||
               lines.length === 0 ||
               hasInvalidLine ||
+              !installmentTermsAreValid ||
+              !paymentReferencesAreValid ||
               discountAmount < 0 ||
               discountAmount > subtotal ||
               invalidLayaway ||

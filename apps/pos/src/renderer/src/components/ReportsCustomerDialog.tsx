@@ -27,6 +27,7 @@ import {
   TableRow,
 } from "@cosmetics/ui";
 import { formatCurrency } from "../mock-data";
+import { cardNetworkLabels } from "../bank-catalog";
 import type {
   Appointment,
   Client,
@@ -229,7 +230,27 @@ export function ReportsCustomerDialog({
             <div className="reports-customer-section-heading"><span>FORMAS DE PAGO</span></div>
             <div className="reports-customer-payment-list">
               {customerTickets.flatMap((ticket) => ticket.payments.map((payment) => (
-                <div key={`${ticket.id}-${payment.id}`}><span>{ticket.createdAt} · {paymentLabel(payment.methodId)}</span><strong>{formatCurrency(payment.amount)}</strong></div>
+                <div key={`${ticket.id}-${payment.id}`}>
+                  <span>
+                    {ticket.createdAt} · {paymentLabel(payment.methodId)}
+                    <small>
+                      {[
+                        payment.cardType === "CREDIT"
+                          ? payment.installmentMonths && payment.installmentMonths > 1
+                            ? `Crédito · ${payment.installmentMonths} MSI`
+                            : "Crédito · una exhibición"
+                          : payment.cardType === "DEBIT"
+                            ? "Débito"
+                            : "",
+                        payment.cardNetwork
+                          ? cardNetworkLabels[payment.cardNetwork]
+                          : "",
+                        payment.bankName || payment.cardOrBank || "",
+                      ].filter(Boolean).join(" · ") || "Cobro registrado"}
+                    </small>
+                  </span>
+                  <strong>{formatCurrency(payment.amount)}</strong>
+                </div>
               )))}
             </div>
           </aside>

@@ -24,28 +24,21 @@ import {
   SelectValue,
 } from "@cosmetics/ui";
 import { formatCurrency } from "../mock-data";
+import { paymentReferenceIsValid } from "../bank-catalog";
 import type {
+  BankCatalogEntry,
   LayawayRecord,
   PaymentEntry,
   PaymentMethodOption,
 } from "../types";
+import { PaymentReferenceFields } from "./PaymentReferenceFields";
 
-const cardAndBankOptions = [
-  "Visa",
-  "Mastercard",
-  "American Express",
-  "BBVA",
-  "Banamex",
-  "Santander",
-  "Banorte",
-  "HSBC",
-  "Mercado Pago",
-  "Otro banco",
-];
+const installmentOptions = [1, 3, 6, 9, 12, 18, 24];
 
 interface LayawayPaymentDialogProps {
   layaway: LayawayRecord;
   paymentMethods: PaymentMethodOption[];
+  bankCatalog: BankCatalogEntry[];
   sellerId: string;
   onRegister: (
     payments: PaymentEntry[],
@@ -64,6 +57,7 @@ const createPayment = (methodId: string, amount: number): PaymentEntry => ({
 export function LayawayPaymentDialog({
   layaway,
   paymentMethods,
+  bankCatalog,
   sellerId,
   onRegister,
 }: LayawayPaymentDialogProps) {
@@ -81,6 +75,11 @@ export function LayawayPaymentDialog({
     const identity = `${methodId} ${method?.label ?? ""}`.toLocaleLowerCase("es-MX");
     return !identity.includes("cash") && !identity.includes("efectivo");
   };
+  const paymentIsCard = (methodId: string) => {
+    const method = paymentMethods.find((candidate) => candidate.id === methodId);
+    const identity = `${methodId} ${method?.label ?? ""}`.toLocaleLowerCase("es-MX");
+    return identity.includes("card") || identity.includes("tarjeta");
+  };
   const totalPayment = payments.reduce(
     (sum, payment) => sum + Math.max(0, Number(payment.amount) || 0),
     0,
@@ -90,8 +89,11 @@ export function LayawayPaymentDialog({
   const referencesAreValid = payments.every(
     (payment) =>
       !paymentNeedsAuthorization(payment.methodId) ||
-      (/^\d{4}$/.test(payment.authorizationCode ?? "") &&
-        Boolean(payment.cardOrBank?.trim())),
+      paymentReferenceIsValid(
+        payment,
+        paymentIsCard(payment.methodId),
+        installmentOptions,
+      ),
   );
   const pendingProducts = layaway.items.filter(
     (item) =>
@@ -183,14 +185,23 @@ export function LayawayPaymentDialog({
                       onValueChange={(methodId) =>
                         setPayments((current) =>
                           current.map((item) =>
-                            item.id === payment.id
-                              ? {
-                                  ...item,
-                                  methodId,
-                                  cardOrBank: "",
-                                  authorizationCode: "",
-                                }
-                              : item,
+                            {
+                              if (item.id !== payment.id) return item;
+                              const {
+                                cardType: _cardType,
+                                cardNetwork: _cardNetwork,
+                                bankId: _bankId,
+                                bankName: _bankName,
+                                installmentMonths: _installmentMonths,
+                                ...paymentWithoutCardTerms
+                              } = item;
+                              return {
+                                ...paymentWithoutCardTerms,
+                                methodId,
+                                cardOrBank: "",
+                                authorizationCode: "",
+                              };
+                            }
                           ),
                         )
                       }
@@ -228,56 +239,20 @@ export function LayawayPaymentDialog({
                     />
                   </div>
                   {requiresAuthorization && (
-                    <>
-                      <div className="field-stack">
-                        <Label>Tarjeta o banco</Label>
-                        <Select
-                          value={payment.cardOrBank ?? ""}
-                          onValueChange={(cardOrBank) =>
-                            setPayments((current) =>
-                              current.map((item) =>
-                                item.id === payment.id
-                                  ? { ...item, cardOrBank }
-                                  : item,
-                              ),
-                            )
-                          }
-                        >
-                          <SelectTrigger aria-label={`Tarjeta o banco del abono ${index + 1}`}>
-                            <SelectValue placeholder="Selecciona" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {cardAndBankOptions.map((option) => (
-                              <SelectItem key={option} value={option}>
-                                {option}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="field-stack">
-                        <Label>4 dígitos de autorización</Label>
-                        <Input
-                          value={payment.authorizationCode ?? ""}
-                          inputMode="numeric"
-                          maxLength={4}
-                          placeholder="0000"
-                          aria-label={`Autorización del abono ${index + 1}`}
-                          onChange={(event) => {
-                            const authorizationCode = event.target.value
-                              .replace(/\D/g, "")
-                              .slice(0, 4);
-                            setPayments((current) =>
-                              current.map((item) =>
-                                item.id === payment.id
-                                  ? { ...item, authorizationCode }
-                                  : item,
-                              ),
-                            );
-                          }}
-                        />
-                      </div>
-                    </>
+                    <PaymentReferenceFields
+                      payment={payment}
+                      isCard={paymentIsCard(payment.methodId)}
+                      bankCatalog={bankCatalog}
+                      installmentOptions={installmentOptions}
+                      ariaContext={`del abono ${index + 1}`}
+                      onChange={(nextPayment) =>
+                        setPayments((current) =>
+                          current.map((item) =>
+                            item.id === payment.id ? nextPayment : item,
+                          ),
+                        )
+                      }
+                    />
                   )}
                   {payments.length > 1 && (
                     <button
@@ -313,7 +288,8 @@ export function LayawayPaymentDialog({
 
           {!referencesAreValid && (
             <p className="payment-authorization-note">
-              Los pagos no efectivos requieren tarjeta o banco y cuatro dígitos de autorización.
+              Los pagos no efectivos requieren banco y cuatro dígitos de autorización.
+              En tarjeta indica crédito o débito, Visa o Mastercard y, para crédito, el plazo.
             </p>
           )}
           {totalPayment > layaway.balanceDue + 0.01 && (
