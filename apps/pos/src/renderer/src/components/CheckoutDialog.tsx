@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  ArrowRight,
   Banknote,
   Building2,
   CalendarHeart,
@@ -944,37 +945,66 @@ export function CheckoutDialog({
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="field-stack">
-                    <Label htmlFor="client-phone">
-                      Teléfono {requiredFields.phone && <em>*</em>}
-                    </Label>
-                    <Input
-                      id="client-phone"
-                      type="tel"
-                      value={newClient.phone}
-                      onChange={(event) =>
+                  <div className="new-client-contact-copy-row">
+                    <div className="field-stack">
+                      <Label htmlFor="client-phone">
+                        Teléfono {requiredFields.phone && <em>*</em>}
+                      </Label>
+                      <Input
+                        id="client-phone"
+                        type="tel"
+                        value={newClient.phone}
+                        onChange={(event) =>
+                          setNewClient((current) => ({
+                            ...current,
+                            phone: event.target.value,
+                          }))
+                        }
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className={`copy-phone-to-whatsapp ${newClient.phone.trim() !== "" && newClient.phone === newClient.whatsapp ? "is-copied" : ""}`}
+                      disabled={!newClient.phone.trim()}
+                      aria-label="Copiar teléfono a WhatsApp"
+                      title={
+                        newClient.phone.trim() !== "" &&
+                        newClient.phone === newClient.whatsapp
+                          ? "WhatsApp usa el mismo número"
+                          : "Usar el mismo número en WhatsApp"
+                      }
+                      onClick={() =>
                         setNewClient((current) => ({
                           ...current,
-                          phone: event.target.value,
+                          whatsapp: current.phone,
                         }))
                       }
-                    />
-                  </div>
-                  <div className="field-stack">
-                    <Label htmlFor="client-whatsapp">
-                      WhatsApp {requiredFields.whatsapp && <em>*</em>}
-                    </Label>
-                    <Input
-                      id="client-whatsapp"
-                      type="tel"
-                      value={newClient.whatsapp}
-                      onChange={(event) =>
-                        setNewClient((current) => ({
-                          ...current,
-                          whatsapp: event.target.value,
-                        }))
-                      }
-                    />
+                    >
+                      {newClient.phone.trim() !== "" &&
+                      newClient.phone === newClient.whatsapp ? (
+                        <CheckCircle2 size={17} />
+                      ) : (
+                        <ArrowRight size={17} />
+                      )}
+                    </Button>
+                    <div className="field-stack">
+                      <Label htmlFor="client-whatsapp">
+                        WhatsApp {requiredFields.whatsapp && <em>*</em>}
+                      </Label>
+                      <Input
+                        id="client-whatsapp"
+                        type="tel"
+                        value={newClient.whatsapp}
+                        onChange={(event) =>
+                          setNewClient((current) => ({
+                            ...current,
+                            whatsapp: event.target.value,
+                          }))
+                        }
+                      />
+                    </div>
                   </div>
                   <div className="field-stack">
                     <Label htmlFor="client-source">

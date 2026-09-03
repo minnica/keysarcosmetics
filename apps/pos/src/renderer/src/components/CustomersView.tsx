@@ -49,6 +49,9 @@ import {
   DialogTitle,
   Input,
   Label,
+  Popover,
+  PopoverAnchor,
+  PopoverContent,
   Select,
   SelectContent,
   SelectItem,
@@ -66,6 +69,7 @@ import { formatCurrency, masterUser } from "../mock-data";
 import type {
   Appointment,
   Client,
+  ClientMembership,
   LayawayRecord,
   OwedProductRecord,
   PaymentEntry,
@@ -82,6 +86,7 @@ type AccessMode = "search" | "seller";
 
 interface CustomersViewProps {
   clients: Client[];
+  memberships: ClientMembership[];
   sellers: Seller[];
   tickets: Ticket[];
   voucherIssues: VoucherIssue[];
@@ -175,8 +180,119 @@ const loadBirthdayMessages = () => {
   }
 };
 
+interface ClientMembershipSummary {
+  active: number;
+  total: number;
+  memberships: ClientMembership[];
+}
+
+const emptyMembershipSummary: ClientMembershipSummary = {
+  active: 0,
+  total: 0,
+  memberships: [],
+};
+
+function CustomerMembershipPreview({
+  clientName,
+  summary,
+}: {
+  clientName: string;
+  summary: ClientMembershipSummary;
+}) {
+  const [open, setOpen] = useState(false);
+  const orderedMemberships = useMemo(
+    () =>
+      [...summary.memberships].sort((left, right) => {
+        if (left.status === "ACTIVE" && right.status !== "ACTIVE") return -1;
+        if (right.status === "ACTIVE" && left.status !== "ACTIVE") return 1;
+        return right.purchaseDateIso.localeCompare(left.purchaseDateIso);
+      }),
+    [summary.memberships],
+  );
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverAnchor asChild>
+        <button
+          type="button"
+          className={`customer-membership-count ${summary.active > 0 ? "is-active" : ""}`}
+          aria-label={`Ver membresías de ${clientName}: ${summary.active} activas de ${summary.total} compradas`}
+          aria-expanded={open}
+          onMouseEnter={() => setOpen(true)}
+          onMouseLeave={() => setOpen(false)}
+          onFocus={() => setOpen(true)}
+          onBlur={() => setOpen(false)}
+          onClick={() => setOpen(true)}
+        >
+          <CreditCard size={15} />
+          <span>
+            <strong>
+              {summary.active > 0
+                ? `${summary.active} ${summary.active === 1 ? "activa" : "activas"}`
+                : "Sin activas"}
+            </strong>
+            <small>
+              {summary.total} {summary.total === 1 ? "comprada" : "compradas"}
+            </small>
+          </span>
+        </button>
+      </PopoverAnchor>
+      <PopoverContent
+        side="top"
+        align="center"
+        sideOffset={7}
+        className="customer-membership-popover"
+        onOpenAutoFocus={(event) => event.preventDefault()}
+      >
+        <div className="customer-membership-popover-heading">
+          <CreditCard size={16} />
+          <span>
+            <strong>Membresías de {clientName}</strong>
+            <small>{summary.active} activas · {summary.total} compradas</small>
+          </span>
+        </div>
+        {orderedMemberships.length > 0 ? (
+          <div className="customer-membership-popover-list">
+            {orderedMemberships.map((membership) => {
+              const remaining = Math.max(
+                0,
+                membership.totalSessions - membership.usedSessions,
+              );
+              const statusLabel =
+                membership.status === "ACTIVE"
+                  ? "ACTIVA"
+                  : membership.status === "EXHAUSTED"
+                    ? "AGOTADA"
+                    : "CANCELADA";
+              return (
+                <article key={membership.id}>
+                  <span>
+                    <strong>{membership.membershipName}</strong>
+                    <small>{membership.branch} · {membership.purchaseDateIso.slice(0, 10)}</small>
+                  </span>
+                  <span>
+                    <b className={`is-${membership.status.toLocaleLowerCase("es-MX")}`}>
+                      {statusLabel}
+                    </b>
+                    <small>{remaining}/{membership.totalSessions} sesiones</small>
+                  </span>
+                </article>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="customer-membership-popover-empty">
+            Esta clienta todavía no tiene membresías registradas.
+          </div>
+        )}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 export function CustomersView({
   clients,
+  memberships,
   sellers,
   tickets,
   voucherIssues,
@@ -229,6 +345,27 @@ export function CustomersView({
     () => sellers.filter((seller) => seller.active),
     [sellers],
   );
+  const membershipSummaryByClientId = useMemo(
+    () =>
+      memberships.reduce(
+        (summary, membership) => {
+          const current = summary.get(membership.clientId) ?? {
+            active: 0,
+            total: 0,
+            memberships: [],
+          };
+          current.total += 1;
+          if (membership.status === "ACTIVE") current.active += 1;
+          current.memberships.push(membership);
+          summary.set(membership.clientId, current);
+          return summary;
+        },
+        new Map<string, ClientMembershipSummary>(),
+      ),
+    [memberships],
+  );
+  const clientMembershipSummary = (clientId: string) =>
+    membershipSummaryByClientId.get(clientId) ?? emptyMembershipSummary;
 
   useEffect(() => {
     window.sessionStorage.setItem(
@@ -449,6 +586,7 @@ export function CustomersView({
     const purchases = clientTickets(client);
     const customerAppointments = clientAppointments(client);
     const customerVouchers = clientVouchers(client);
+    const membershipSummary = clientMembershipSummary(client.id);
     const popup = window.open("", "_blank", "width=720,height=860");
     if (!popup) {
       toast.error("El navegador bloqueó la ventana de impresión.");
@@ -469,7 +607,7 @@ export function CustomersView({
     }`;
     popup.document.write(`<!doctype html><html lang="es"><head><title>${escapeHtml(client.registrationFolio)}</title><style>
       body{font-family:Arial,sans-serif;color:#111;margin:32px}header{text-align:center;border-bottom:2px solid #111;padding-bottom:18px}header img{display:block;max-width:${receiptSettings.logoWidth}px;max-height:72px;object-fit:contain;margin:0 auto 10px}h1{font-size:20px;margin:5px 0}h2{font-size:14px;margin-top:24px}.meta{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:18px}.meta div,article{border:1px solid #bbb;padding:9px}small{color:#666}article{margin:7px 0}article strong{display:block}@media print{body{margin:8mm}}
-    </style></head><body><header>${logo}<h1>${escapeHtml(receiptSettings.companyName)}</h1><strong>EXPEDIENTE DE CLIENTE</strong></header><div class="meta"><div><small>FOLIO</small><br><strong>${escapeHtml(client.registrationFolio)}</strong></div><div><small>CLIENTE</small><br><strong>${escapeHtml(`${client.firstName} ${client.lastName}`)}</strong></div><div><small>TELÉFONO</small><br>${escapeHtml(client.phone || "Sin registro")}</div><div><small>VENDEDOR</small><br>${escapeHtml(getClientOwner(client) || "Empresa")}</div><div><small>CUMPLEAÑOS</small><br>${escapeHtml(client.birthday || "Sin registro")}</div><div><small>PROCEDENCIA</small><br>${escapeHtml(client.sourceLabel)}</div></div><h2>HISTORIAL DE COMPRA</h2>${purchases.length ? purchases.map((ticket) => `<article><strong>${escapeHtml(ticket.id)} · ${escapeHtml(formatCurrency(ticket.total))}</strong><small>${escapeHtml(ticket.createdAt)} · ${escapeHtml(ticket.branchName ?? "Polanco")}</small><br>${escapeHtml(ticket.products.map((product) => `${product.quantity} × ${product.name}`).join(" · "))}</article>`).join("") : "<p>Sin compras registradas.</p>"}<h2>CITAS Y CORTESÍAS</h2>${customerAppointments.length ? customerAppointments.map((appointment) => `<article><strong>${escapeHtml(appointment.service)}</strong><small>${escapeHtml(`${appointment.date} · ${appointment.time} · ${appointment.branch}`)}</small></article>`).join("") : "<p>Sin citas registradas.</p>"}${voucherHistoryHtml}<script>window.onload=()=>window.print();</script></body></html>`);
+    </style></head><body><header>${logo}<h1>${escapeHtml(receiptSettings.companyName)}</h1><strong>EXPEDIENTE DE CLIENTE</strong></header><div class="meta"><div><small>FOLIO</small><br><strong>${escapeHtml(client.registrationFolio)}</strong></div><div><small>CLIENTE</small><br><strong>${escapeHtml(`${client.firstName} ${client.lastName}`)}</strong></div><div><small>TELÉFONO</small><br>${escapeHtml(client.phone || "Sin registro")}</div><div><small>VENDEDOR</small><br>${escapeHtml(getClientOwner(client) || "Empresa")}</div><div><small>CUMPLEAÑOS</small><br>${escapeHtml(client.birthday || "Sin registro")}</div><div><small>PROCEDENCIA</small><br>${escapeHtml(client.sourceLabel)}</div><div><small>MEMBRESÍAS</small><br><strong>${membershipSummary.active} activas · ${membershipSummary.total} compradas</strong></div></div><h2>HISTORIAL DE COMPRA</h2>${purchases.length ? purchases.map((ticket) => `<article><strong>${escapeHtml(ticket.id)} · ${escapeHtml(formatCurrency(ticket.total))}</strong><small>${escapeHtml(ticket.createdAt)} · ${escapeHtml(ticket.branchName ?? "Polanco")}</small><br>${escapeHtml(ticket.products.map((product) => `${product.quantity} × ${product.name}`).join(" · "))}</article>`).join("") : "<p>Sin compras registradas.</p>"}<h2>CITAS Y CORTESÍAS</h2>${customerAppointments.length ? customerAppointments.map((appointment) => `<article><strong>${escapeHtml(appointment.service)}</strong><small>${escapeHtml(`${appointment.date} · ${appointment.time} · ${appointment.branch}`)}</small></article>`).join("") : "<p>Sin citas registradas.</p>"}${voucherHistoryHtml}<script>window.onload=()=>window.print();</script></body></html>`);
     popup.document.close();
   };
 
@@ -510,6 +648,7 @@ export function CustomersView({
     const XLSX = await import("xlsx");
     const rows = visibleClients.map((client) => {
       const purchases = clientTickets(client);
+      const membershipSummary = clientMembershipSummary(client.id);
       return {
         Folio: client.registrationFolio,
         Nombre: client.firstName,
@@ -522,6 +661,8 @@ export function CustomersView({
         Empresa: client.companyName || "Keysar Cosmetics",
         Vendedor: getClientOwner(client),
         "Sucursal de registro": client.registrationBranch ?? "",
+        "Membresías activas": membershipSummary.active,
+        "Membresías compradas": membershipSummary.total,
         "Compra total": purchases.reduce((sum, ticket) => sum + ticket.total, 0),
       };
     });
@@ -538,6 +679,8 @@ export function CustomersView({
       { wch: 22 },
       { wch: 22 },
       { wch: 19 },
+      { wch: 19 },
+      { wch: 22 },
       { wch: 15 },
     ];
     const workbook = XLSX.utils.book_new();
@@ -1136,6 +1279,7 @@ export function CustomersView({
                     <TableHead>NOMBRE COMPLETO</TableHead>
                     <TableHead>TELÉFONO</TableHead>
                     <TableHead>CUMPLEAÑOS</TableHead>
+                    <TableHead>MEMBRESÍAS</TableHead>
                     <TableHead>COMPRA TOTAL</TableHead>
                     <TableHead className="text-right">ACCIONES</TableHead>
                   </TableRow>
@@ -1143,6 +1287,7 @@ export function CustomersView({
                 <TableBody>
                   {customerPagination.paginatedItems.map((client) => {
                     const purchases = clientTickets(client);
+                    const membershipSummary = clientMembershipSummary(client.id);
                     const customerAppointments = clientAppointments(client);
                     const customerVouchers = clientVouchers(client);
                     const customerProductDebts = owedProducts.filter(
@@ -1191,6 +1336,12 @@ export function CustomersView({
                           <TableCell>{client.phone || "Sin teléfono"}</TableCell>
                           <TableCell>
                             {client.birthday || "Sin registro"}
+                          </TableCell>
+                          <TableCell>
+                            <CustomerMembershipPreview
+                              clientName={`${client.firstName} ${client.lastName}`}
+                              summary={membershipSummary}
+                            />
                           </TableCell>
                           <TableCell>
                             <strong>{formatCurrency(purchaseTotal)}</strong>
@@ -1257,7 +1408,7 @@ export function CustomersView({
                         </TableRow>
                         {expanded && (
                           <TableRow className="customer-history-row">
-                            <TableCell colSpan={6}>
+                            <TableCell colSpan={7}>
                               <div className="customer-history-panel">
                                 {outstandingBalance > 0.01 && (
                                   <div className="customer-debt-alert">
@@ -1306,6 +1457,16 @@ export function CustomersView({
                                     <span>
                                       <small>PERTENECE A</small>
                                       <strong>{getClientOwner(client)}</strong>
+                                    </span>
+                                  </div>
+                                  <div>
+                                    <CreditCard size={17} />
+                                    <span>
+                                      <small>MEMBRESÍAS</small>
+                                      <strong>
+                                        {membershipSummary.active} {membershipSummary.active === 1 ? "activa" : "activas"}
+                                      </strong>
+                                      <em>{membershipSummary.total} compradas</em>
                                     </span>
                                   </div>
                                 </div>

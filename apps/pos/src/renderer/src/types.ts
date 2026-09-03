@@ -125,6 +125,8 @@ export interface MembershipAttendance {
 export interface MembershipSellerChange {
   id: string;
   changedAtIso: string;
+  fromSellerId?: string;
+  toSellerId?: string;
   fromSellerName: string;
   toSellerName: string;
   reason: string;
@@ -152,6 +154,7 @@ export interface ClientMembership {
   branch: string;
   sellerId: string;
   sellerName: string;
+  originalSellerId?: string;
   originalSellerName: string;
   totalSessions: number;
   usedSessions: number;

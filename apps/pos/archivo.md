@@ -761,11 +761,16 @@ La implementación puede adaptar nombres y normalización, pero debe representar
 - Sólo un usuario master puede seleccionar `Todas las sucursales` y consultar el consolidado completo de membresías e historial.
 - El usuario master también puede seleccionar una sola sucursal. Al cambiarla, tarjetones, indicadores, alertas, análisis, rankings, tablas y descargas deben recalcularse para esa ubicación.
 - Un usuario que no es master no recibe el selector `Todas las sucursales` ni puede elegir otra tienda. Su alcance queda fijado a la sucursal activa de la sesión.
-- El usuario de sucursal debe ingresar su código personal y sólo puede ver las membresías propias compradas en esa sucursal durante la fecha operativa actual de México.
+- Cada vendedor debe ingresar su código personal para entrar al módulo. La autorización es secundaria al inicio de sesión y al permiso de módulo; no sustituye ninguna de esas validaciones.
+- Sin una búsqueda histórica activa, el usuario de sucursal sólo ve el resumen y las membresías relacionadas con él que fueron compradas en su sucursal durante la fecha operativa actual de México.
+- Después de validar el código, una búsqueda de por lo menos dos caracteres por nombre de clienta, teléfono, folio o ticket puede consultar fechas anteriores, pero siempre dentro de la sucursal activa y sólo cuando el vendedor participó en esa membresía.
+- Se considera participación cuando el vendedor es el `seller_id` vigente, el `original_seller_id` de la compra o aparece mediante su identificador en el origen o destino de un cambio de vendedor. El nombre es sólo un dato de presentación y una compatibilidad temporal para registros heredados sin identificador; no debe ser la regla de autorización del backend.
+- Si una clienta tiene otras membresías en las que el vendedor nunca participó, esas compras y sus movimientos permanecen ocultos aun cuando coincidan el nombre, teléfono o cliente.
+- El buscador también acepta nombre de membresía y nombre del vendedor sobre el conjunto ya autorizado. Buscar el nombre del usuario no amplía el alcance ni permite descubrir otra cartera.
 - La restricción diaria se aplica antes de calcular indicadores, alertas, análisis, tarjetones y exportaciones. Ocultar registros en la tabla no es suficiente.
 - Para el usuario de sucursal se ocultan los filtros libres de sucursal y rango histórico; la pantalla muestra de forma explícita la sucursal y fecha fija consultadas.
-- PDF y Excel de un usuario de sucursal, cuando su rol tenga permiso de descarga, contienen únicamente sus membresías del día y señalan sucursal, fecha y usuario.
-- El backend valida simultáneamente `seller_id`, `branch_id` y `business_date`. Modificar el frontend o la solicitud no puede permitir consultar historial, otra cartera u otra sucursal.
+- Las descargas PDF y Excel del historial completo quedan reservadas al usuario master. El vendedor consulta su historial autorizado en pantalla sin generar archivos con datos personales de clientas.
+- El backend debe resolver la participación con identificadores y validar simultáneamente el usuario autenticado, su código personal vigente, `branch_id` y la relación con `seller_id`, `original_seller_id` o el historial de cambios. Para el resumen diario también valida `business_date`. Modificar el frontend o la solicitud no puede permitir consultar otra cartera u otra sucursal.
 - La fecha operativa se calcula con la zona horaria `America/Mexico_City`; no se debe usar directamente la fecha UTC del servidor.
 
 ### 27.1 Criterios de aceptación
@@ -773,6 +778,150 @@ La implementación puede adaptar nombres y normalización, pero debe representar
 - [ ] Master puede alternar entre todas las sucursales y una sola sucursal.
 - [ ] Al cambiar la selección master, todos los componentes y descargas muestran el mismo alcance.
 - [ ] Un usuario de sucursal no ve ni puede solicitar `Todas las sucursales`.
-- [ ] Un usuario de sucursal sólo obtiene membresías propias, de su sucursal y del día operativo actual.
-- [ ] Una membresía de ayer, de otro vendedor o de otra sucursal no aparece en indicadores, análisis, tarjetones ni descargas.
+- [ ] En la vista inicial, un usuario de sucursal sólo obtiene el resumen y las membresías relacionadas con él, de su sucursal y del día operativo actual.
+- [ ] Sin ingresar el código personal no se muestran clientas, tarjetones, saldos ni historial al vendedor.
+- [ ] Con dos o más caracteres, el vendedor localiza compras históricas de su sucursal donde sea responsable actual, vendedor original o participante de un cambio.
+- [ ] Una membresía de otra sucursal o en la que el vendedor nunca participó no aparece, aunque pertenezca a una clienta que sí tiene otra membresía autorizada.
+- [ ] Una búsqueda de una clienta no revela sus demás compras no relacionadas con el vendedor autenticado.
+- [ ] El vendedor no recibe botones de descarga PDF o Excel; el master conserva las exportaciones según su alcance.
+- [ ] Escribir el nombre del vendedor autenticado permite localizar sus membresías autorizadas sin mostrar registros de otro vendedor con un nombre parecido.
 - [ ] La pantalla del usuario de sucursal identifica claramente la tienda y fecha bloqueadas.
+
+## 28. Indicador de membresías en Customers
+
+- Cada registro de Customers muestra si la clienta tiene membresías, cuántas permanecen activas y cuántas compras de membresía existen en total.
+- Una membresía `ACTIVE` cuenta como activa; las membresías agotadas o canceladas se conservan únicamente dentro del total histórico.
+- La relación entre clienta y membresía se resuelve mediante `client_id`. No se deben sumar registros sólo por coincidencia de nombre o teléfono.
+- El indicador es informativo y no concede acceso al historial protegido del módulo de Membresías. Para abrir tarjetones y movimientos continúan aplicando el permiso del módulo, el código personal y el alcance del vendedor.
+- Al colocar el cursor sobre el indicador, enfocarlo con teclado o hacer clic, se muestra un resumen emergente con nombre de cada membresía, estado, sucursal, fecha de compra y sesiones restantes. Al retirar el cursor o perder el foco, el mensaje se oculta.
+- El resumen emergente no muestra tickets, cambios de vendedor, asistencias ni otros movimientos protegidos, y nunca debe ampliar el conjunto de clientas autorizado en Customers.
+- El expediente impreso y la descarga Excel de clientes incluyen por separado `Membresías activas` y `Membresías compradas`.
+
+### 28.1 Criterios de aceptación
+
+- [ ] Una clienta sin compras muestra `Sin activas` y `0 compradas`.
+- [ ] Una clienta con dos membresías activas muestra `2 activas` y el total correcto de compras.
+- [ ] Al agotarse o cancelarse una membresía disminuye el número activo sin borrar la compra del total histórico.
+- [ ] Dos clientas con el mismo nombre o teléfono no mezclan sus cantidades; el conteo usa `client_id`.
+- [ ] La tabla, el expediente expandido, la impresión y Excel muestran las mismas cantidades.
+- [ ] El resumen aparece mediante cursor, clic o teclado, y desaparece al retirar el cursor o cambiar el foco.
+- [ ] Si existen muchas membresías, el contenido se desplaza dentro del mensaje sin aumentar el ancho de la ventana.
+
+## 29. Distribución adaptable de filtros de Membresías
+
+- El buscador, los selectores de membresía y sucursal y las fechas deben permanecer dentro del panel sin ampliar horizontalmente la aplicación.
+- En una ventana amplia se muestran en una sola fila. Cuando el ancho disponible disminuye, los filtros pasan primero a tres columnas, después a dos y finalmente a una columna.
+- Todos los controles usan el ancho de su celda, permiten reducir su contenido y conservan una altura uniforme. Ningún texto, calendario o desplegable puede salir del borde del panel.
+
+## 30. Copia de Teléfono a WhatsApp en alta de cliente
+
+- El formulario de nueva clienta incluye un botón con flecha entre los campos `Teléfono` y `WhatsApp`.
+- El botón permanece deshabilitado mientras Teléfono esté vacío. Al activarlo copia exactamente el número capturado, incluido su formato visible, al campo WhatsApp.
+- Si ambos valores coinciden, el botón cambia a una confirmación visual. La clienta puede editar WhatsApp después sin modificar Teléfono.
+- En ventanas pequeñas los campos se presentan verticalmente y la flecha gira para señalar el campo WhatsApp inferior.
+
+## 31. Reporte mensual de procedencia y tipos de cliente
+
+- La ventana `Reports > Reportes de clientes > Comportamiento de clientes` permite elegir un mes completo o conservar un periodo personalizado con fecha inicial y final.
+- Elegir un mes ajusta el periodo desde el primer hasta el último día calendario de ese mes usando la zona horaria operativa `America/Mexico_City`.
+- El filtro `Procedencia` se genera dinámicamente con las procedencias registradas en clientes; incluye la opción `Todas las procedencias` y no depende de una lista escrita directamente en la interfaz.
+- Mes, procedencia, vendedor, sucursal y texto de búsqueda forman un único alcance. Indicadores, tendencia, distribución, estadísticas, tabla, paginación y descargas deben usar exactamente ese mismo conjunto filtrado.
+- Por cada procedencia se muestran como mínimo: clientas únicas, porcentaje del total, venta acumulada, ticket promedio, recurrencia, visitas y citas.
+- `Clientas únicas` cuenta una sola vez cada `client_id`. `Porcentaje del total` divide las clientas de la procedencia entre todas las clientas del alcance. `Ticket promedio` divide la venta entre tickets completados. `Recurrencia` representa las clientas con más de una visita dentro del periodo.
+- Las ventas sólo consideran tickets completados y no incluyen abonos de apartado como una venta nueva. Las citas se cuentan dentro del mismo periodo y sucursales autorizadas.
+- Una clienta nueva sin compra puede contar dentro de las altas y la participación de su procedencia, pero aporta cero a venta, ticket promedio y visitas.
+- Excel agrega una hoja de estadísticas por procedencia además del resumen y detalle. PDF y Excel identifican periodo, sucursales y procedencia elegida; sus totales no se limitan a la página visible.
+- El backend debe agrupar por el identificador estable de procedencia y `client_id`, filtrar antes de agregar y devolver la etiqueta vigente para presentación. Cambiar el texto visible de una procedencia no debe dividir su historial.
+
+### 31.1 Criterios de aceptación
+
+- [ ] Elegir un mes coloca correctamente el primer y último día, incluidos febrero y años bisiestos.
+- [ ] Elegir una procedencia recalcula tarjetas, gráficas, estadísticas, tabla y descargas sin conservar cifras de otra procedencia.
+- [ ] La suma de clientas de todas las procedencias coincide con `Clientes en periodo` y su participación suma 100% salvo redondeo.
+- [ ] Cada tipo muestra venta, ticket promedio, recurrencia, visitas y citas aun cuando alguno de esos valores sea cero.
+- [ ] Una combinación sin resultados muestra un estado vacío y no reutiliza datos del periodo anterior.
+- [ ] El archivo Excel incluye la hoja `Estadísticas procedencia` con el mismo alcance visible.
+- [ ] La selección de sucursal continúa respetando la autorización master y la matriz multi-sucursal descrita en las secciones 25 y 26.
+
+## 32. Membresías compradas dentro de Receipts
+
+- El dashboard de `Receipts` muestra cuántas membresías se compraron, cuántos tickets las incluyen y el total de sesiones adquiridas dentro del alcance vigente.
+- Sin autorización master, el alcance corresponde únicamente al día operativo actual y la sucursal activa. Con autorización master, respeta exactamente los filtros de fecha, sucursal y búsqueda del módulo.
+- Una membresía se relaciona con su venta mediante `purchase_ticket_id`; no se debe inferir por nombre, teléfono, importe o proximidad de fechas.
+- La tabla de tickets incluye una columna `Membresía`. Si un ticket contiene una o varias compras, muestra la cantidad; si no contiene membresías, muestra un guion.
+- Debajo del nombre de toda clienta que conserve al menos una membresía activa aparece una corona pequeña con el número de membresías activas. La marca permite reconocerla rápidamente aun cuando la membresía se haya comprado en otro ticket.
+- La corona se determina por la identidad de la clienta y el estado vigente de sus membresías; no por los productos del ticket mostrado. No aparece para venta de mostrador ni cuando todas las membresías están agotadas o canceladas.
+- Al colocar el cursor, enfocar con teclado o hacer clic sobre el indicador del dashboard o de una fila, aparece un resumen emergente con nombre de membresía, clienta, sucursal, folio del ticket, sesiones adquiridas e importe.
+- Al retirar el cursor o perder el foco, el resumen se oculta. El indicador no sustituye ni bloquea la acción normal para visualizar el ticket.
+- El dashboard contabiliza sólo tickets `COMPLETED` y excluye abonos de apartado. Un ticket cancelado puede conservar su trazabilidad histórica en la tabla autorizada, pero sus membresías no cuentan como venta vigente y deben quedar canceladas mediante el proceso transaccional correspondiente.
+- Cuando el ticket incluya varias membresías, cada compra conserva su propio tarjetón y aparece como un registro independiente dentro del resumen emergente.
+- Los resultados se recalculan al cambiar fecha, sucursal o búsqueda y nunca muestran membresías pertenecientes a tickets fuera del alcance autorizado.
+
+### 32.1 Criterios de aceptación
+
+- [ ] Un ticket sin membresía muestra `—` y no abre un resumen vacío.
+- [ ] Un ticket con una membresía muestra `1 comprada` y el nombre correcto al pasar el cursor.
+- [ ] Un ticket con varias membresías muestra todas individualmente, con sesiones e importe propios.
+- [ ] Una clienta con membresía activa muestra la corona debajo de su nombre y la cantidad correcta sin aumentar excesivamente la altura de la fila.
+- [ ] Una clienta sin membresías activas no muestra la corona, aunque conserve membresías agotadas en su historial.
+- [ ] La suma del dashboard coincide con las membresías ligadas a los tickets completados del alcance visible.
+- [ ] Cambiar de sucursal o fecha elimina inmediatamente del resumen las compras fuera del nuevo alcance.
+- [ ] Un ticket cancelado no incrementa cantidad, venta ni sesiones del dashboard.
+- [ ] El resumen puede abrirse con cursor, clic y teclado, y desaparece al perder interacción.
+
+## 33. Acceso protegido al módulo Settings
+
+- `Settings` sólo puede abrirse cuando la sesión pertenece al usuario master o cuando el rol activo contiene explícitamente el módulo `settings` dentro de `module_access`.
+- El permiso debe aplicarse simultáneamente en el menú, la navegación interna y el renderizado de la pantalla. Ocultar el botón no se considera autorización suficiente.
+- Los accesos secundarios, como `Competition > Configurar`, sólo se muestran cuando el usuario tiene permiso para Settings y deben utilizar la misma función central de navegación autorizada.
+- Si el permiso se retira mientras la persona tiene Settings abierto, el sistema cierra la configuración, cancela cualquier panel secundario y la dirige al primer módulo permitido sin mostrar nuevamente información protegida.
+- Asignar o retirar Settings a un rol exige guardar los permisos con código master. Un usuario no puede concederse el módulo a sí mismo desde su sesión operativa.
+- Tener acceso a Settings no concede automáticamente edición. La edición continúa dependiendo de `module_edit_access` y cada configuración especializada debe validar su permiso granular cuando corresponda.
+- El backend debe validar la sesión master o el permiso `settings` en cada lectura y escritura de configuración. También debe validar permisos granulares y registrar usuario, fecha, cambio anterior y cambio nuevo en la auditoría.
+
+### 33.1 Criterios de aceptación
+
+- [ ] El usuario master ve y abre Settings.
+- [ ] Un rol con `settings` asignado ve y abre el módulo.
+- [ ] Un rol sin `settings` no ve el botón en el menú ni los botones secundarios que conduzcan a configuración.
+- [ ] Intentar abrir Settings mediante navegación interna, estado guardado o manipulación del frontend no renderiza su contenido.
+- [ ] Retirar el permiso durante una sesión abierta expulsa al usuario de Settings.
+- [ ] Un rol con consulta pero sin edición puede revisar únicamente los datos autorizados y no guardar cambios.
+- [ ] La API rechaza lecturas y escrituras cuando la sesión no es master ni tiene el permiso correspondiente.
+
+## 34. Acceso global a módulos, submenús y accesos secundarios
+
+- Todo destino funcional del POS debe existir como permiso independiente en `module_access`, tanto si aparece como módulo principal como si aparece dentro de los submenús de Ventas o Inventario.
+- El usuario master tiene acceso a todos los destinos. Un usuario operativo sólo puede abrir los módulos incluidos en su rol activo; `My Account` permanece disponible únicamente para su información personal, mientras que ubicaciones, facturación y configuración corporativa conservan la autorización master.
+- El menú principal oculta los módulos no autorizados. Un grupo como Ventas o Inventario se muestra cuando existe al menos un submenú permitido, pero pulsar el encabezado no debe intentar abrir el módulo padre si éste no fue asignado.
+- Cada submenú se filtra individualmente. Tener acceso al módulo padre no concede automáticamente acceso a Receipts, Customers, Close day, Pedido sucursales, Almacén matriz, Proveedores, Catálogo, Movimientos o Paquetes y promociones.
+- Toda navegación debe pasar por una validación central. La pantalla también valida el permiso antes de renderizar, para impedir el acceso mediante estado guardado, una llamada interna, herramientas de desarrollo o una ruta secundaria.
+- Los accesos internos que abren otro módulo deben respetar el permiso del destino. Por ejemplo, `Competition > Configurar` depende de `settings` y las solicitudes a bodega desde Inventory dependen de `branch-inventory`.
+- Si se retira un permiso mientras la pantalla está abierta, el sistema cierra ventanas emergentes relacionadas, abandona un conteo de cierre protegido si corresponde y dirige al usuario a Dashboard, Ventas o al primer destino permitido.
+- Terminar una venta o consultar el ticket de una membresía puede mostrar el comprobante emergente dentro del módulo de origen cuando el rol no tiene acceso general a Receipts; esto no habilita la lista, filtros ni historial completo de Receipts.
+- `module_edit_access` y `module_print_access` son permisos adicionales y nunca implican visibilidad por sí solos. Al retirar visibilidad se eliminan también los permisos de edición e impresión de ese destino.
+- Employees y la administración corporativa de My Account conservan su protección master. Guardar cambios de rol requiere código master y el backend debe impedir que un usuario se conceda permisos a sí mismo.
+- El backend debe repetir la validación de `module_access`, edición, impresión, sucursal y alcance de datos en cada endpoint. La autorización del frontend es una barrera de interfaz, no la fuente de seguridad definitiva.
+
+### 34.1 Matriz de destinos controlados
+
+| Grupo | Destinos con permiso propio |
+| --- | --- |
+| Operación de venta | Ventas, Mis ventas, Receipts, Customers, Close day, Cash manager y X-Report. |
+| Clientes y servicio | Citas, Membresías, Competition y Websites. |
+| Inventario y almacén | Inventory, Pedido sucursales, Almacén matriz, Proveedores, Catálogo, Movimientos y Paquetes y promociones. |
+| Administración y análisis | Dashboard, Reports, Employees y My Account. |
+| Sistema | Settings, Data update y Clock In. |
+
+### 34.2 Criterios de aceptación
+
+- [ ] Cada destino de la matriz de roles corresponde a una pantalla real y no existe una pantalla navegable sin permiso asociado.
+- [ ] Master visualiza y abre todos los módulos y submenús.
+- [ ] Un rol sólo visualiza y abre los destinos incluidos en `module_access`.
+- [ ] Un rol con un único submenú permitido puede desplegar el grupo sin recibir un error por falta de acceso al módulo padre.
+- [ ] Escribir o forzar un identificador de pantalla no autorizado no renderiza datos protegidos.
+- [ ] Retirar el permiso del módulo activo cierra sus diálogos y redirige a un destino permitido.
+- [ ] Los botones internos hacia otro módulo se ocultan cuando falta el permiso del destino.
+- [ ] Un comprobante puntual abierto desde una venta o membresía no permite navegar el historial de Receipts sin su permiso.
+- [ ] Edición e impresión se rechazan cuando faltan sus permisos específicos, aunque la consulta esté autorizada.
+- [ ] La API devuelve acceso denegado ante la misma solicitud si se omiten o manipulan las restricciones del frontend.

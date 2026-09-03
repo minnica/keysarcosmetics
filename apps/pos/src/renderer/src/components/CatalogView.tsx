@@ -82,6 +82,7 @@ interface CatalogViewProps {
     authorizationCode: string,
   ) => InventoryBranchOrderResult[] | null;
   onLockCostAccess: () => void;
+  canOpenBranchRequest: boolean;
   onOpenBranchRequest: (requestType: WarehouseRequestType) => void;
 }
 
@@ -152,6 +153,7 @@ export function CatalogView({
   isMasterCode,
   onCreateInventoryOrders,
   onLockCostAccess,
+  canOpenBranchRequest,
   onOpenBranchRequest,
 }: CatalogViewProps) {
   const [search, setSearch] = useState("");
@@ -743,15 +745,19 @@ export function CatalogView({
                 <button type="button" onClick={() => { setOrderMenuOpen(false); setOrderDialogOpen(true); }}>
                   <PackagePlus size={16} /><span><strong>Resurtido por stock</strong><small>Completar existencia máxima por sucursal.</small></span>
                 </button>
-                <button type="button" onClick={() => { setOrderMenuOpen(false); onOpenBranchRequest("PRODUCT"); }}>
-                  <Boxes size={16} /><span><strong>Solicitar productos</strong><small>Pedido de mercancía vendible a bodega.</small></span>
-                </button>
-                <button type="button" onClick={() => { setOrderMenuOpen(false); onOpenBranchRequest("TESTER"); }}>
-                  <FlaskConical size={16} /><span><strong>Solicitar testers</strong><small>Sólo productos autorizados como demo.</small></span>
-                </button>
-                <button type="button" onClick={() => { setOrderMenuOpen(false); onOpenBranchRequest("SUPPLY"); }}>
-                  <ShoppingBasket size={16} /><span><strong>Solicitar insumos</strong><small>Consumibles visibles para sucursales.</small></span>
-                </button>
+                {canOpenBranchRequest && (
+                  <>
+                    <button type="button" onClick={() => { setOrderMenuOpen(false); onOpenBranchRequest("PRODUCT"); }}>
+                      <Boxes size={16} /><span><strong>Solicitar productos</strong><small>Pedido de mercancía vendible a bodega.</small></span>
+                    </button>
+                    <button type="button" onClick={() => { setOrderMenuOpen(false); onOpenBranchRequest("TESTER"); }}>
+                      <FlaskConical size={16} /><span><strong>Solicitar testers</strong><small>Sólo productos autorizados como demo.</small></span>
+                    </button>
+                    <button type="button" onClick={() => { setOrderMenuOpen(false); onOpenBranchRequest("SUPPLY"); }}>
+                      <ShoppingBasket size={16} /><span><strong>Solicitar insumos</strong><small>Consumibles visibles para sucursales.</small></span>
+                    </button>
+                  </>
+                )}
               </div>
             )}
           </div>

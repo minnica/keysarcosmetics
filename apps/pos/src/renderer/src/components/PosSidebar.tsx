@@ -304,7 +304,14 @@ export function PosSidebar({
                   type="button"
                   className={`sidebar-item ${saleIsActive ? "is-active" : ""}`}
                   onClick={() => {
-                    onNavigate("sale");
+                    const canOpenSale = allowedScreens.includes("sale");
+                    if (canOpenSale) onNavigate("sale");
+                    if (!canOpenSale && collapsed) {
+                      setSaleMenuOpen(true);
+                      setInventoryMenuOpen(false);
+                      onToggle();
+                      return;
+                    }
                     if (!collapsed) {
                       const next = !saleMenuOpen;
                       setSaleMenuOpen(next);
@@ -370,7 +377,14 @@ export function PosSidebar({
                   type="button"
                   className={`sidebar-item ${inventoryIsActive ? "is-active" : ""}`}
                   onClick={() => {
-                    onNavigate("inventory");
+                    const canOpenInventory = allowedScreens.includes("inventory");
+                    if (canOpenInventory) onNavigate("inventory");
+                    if (!canOpenInventory && collapsed) {
+                      setInventoryMenuOpen(true);
+                      setSaleMenuOpen(false);
+                      onToggle();
+                      return;
+                    }
                     if (!collapsed) {
                       const next = !inventoryMenuOpen;
                       setInventoryMenuOpen(next);

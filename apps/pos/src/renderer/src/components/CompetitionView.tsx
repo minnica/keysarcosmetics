@@ -38,6 +38,7 @@ interface CompetitionViewProps {
   sellers: Seller[];
   products: Product[];
   branches: string[];
+  canOpenSettings: boolean;
   onOpenSettings: () => void;
 }
 
@@ -94,6 +95,7 @@ export function CompetitionView({
   sellers,
   products,
   branches,
+  canOpenSettings,
   onOpenSettings,
 }: CompetitionViewProps) {
   const activeCompetitions = competitions.filter(
@@ -197,9 +199,11 @@ export function CompetitionView({
           <span className="section-kicker">COMPETICIONES</span>
           <h2>No hay competencias activas</h2>
           <p>Crea o activa una competencia desde Settings para comenzar el conteo.</p>
-          <Button type="button" onClick={onOpenSettings}>
-            <Settings2 size={16} /> Abrir configuración
-          </Button>
+          {canOpenSettings && (
+            <Button type="button" onClick={onOpenSettings}>
+              <Settings2 size={16} /> Abrir configuración
+            </Button>
+          )}
         </CardContent>
       </Card>
     );
@@ -263,9 +267,11 @@ export function CompetitionView({
               ))}
             </SelectContent>
           </Select>
-          <Button type="button" variant="outline" onClick={onOpenSettings}>
-            <Settings2 size={16} /> Configurar
-          </Button>
+          {canOpenSettings && (
+            <Button type="button" variant="outline" onClick={onOpenSettings}>
+              <Settings2 size={16} /> Configurar
+            </Button>
+          )}
         </div>
       </div>
 

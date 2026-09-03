@@ -203,9 +203,24 @@ export function MembershipsView({
       hasMembershipAccess
         ? viewer.isMaster
           ? memberships
-          : memberships.filter((membership) => membership.sellerId === viewer.id)
+          : memberships.filter(
+              (membership) =>
+                membership.sellerId === viewer.id ||
+                membership.originalSellerId === viewer.id ||
+                (!membership.originalSellerId &&
+                  membership.originalSellerName === viewer.name) ||
+                membership.sellerChanges.some(
+                  (change) =>
+                    change.fromSellerId === viewer.id ||
+                    change.toSellerId === viewer.id ||
+                    (!change.fromSellerId &&
+                      change.fromSellerName === viewer.name) ||
+                    (!change.toSellerId &&
+                      change.toSellerName === viewer.name),
+                ),
+            )
         : [],
-    [hasMembershipAccess, memberships, viewer.id, viewer.isMaster],
+    [hasMembershipAccess, memberships, viewer.id, viewer.isMaster, viewer.name],
   );
 
   useEffect(() => {
@@ -240,12 +255,30 @@ export function MembershipsView({
       viewer.isMaster,
     ],
   );
+  const sellerHistoryMemberships = useMemo(
+    () =>
+      viewer.isMaster
+        ? branchScopedMemberships
+        : scopedMemberships.filter(
+            (membership) => membership.branch === viewer.branch,
+          ),
+    [branchScopedMemberships, scopedMemberships, viewer.branch, viewer.isMaster],
+  );
+  const historicalClientSearch =
+    !viewer.isMaster && search.trim().length >= 2;
+  const membershipSearchSource = historicalClientSearch
+    ? sellerHistoryMemberships
+    : branchScopedMemberships;
 
   useEffect(() => {
     setPersonalAccessGranted(false);
     setAccessCode("");
     setAccessError("");
     setSelectedId(null);
+    setSearch("");
+    setMembershipFilter("ALL");
+    setDateFrom("");
+    setDateTo("");
   }, [viewer.id]);
 
   const authorizePersonalAccess = () => {
@@ -267,13 +300,21 @@ export function MembershipsView({
   };
 
   const membershipNames = useMemo(
-    () => Array.from(new Set(branchScopedMemberships.map((item) => item.membershipName))),
-    [branchScopedMemberships],
+    () =>
+      Array.from(
+        new Set(
+          (viewer.isMaster
+            ? branchScopedMemberships
+            : sellerHistoryMemberships
+          ).map((item) => item.membershipName),
+        ),
+      ),
+    [branchScopedMemberships, sellerHistoryMemberships, viewer.isMaster],
   );
 
   const filteredMemberships = useMemo(() => {
     const query = search.trim().toLocaleLowerCase("es-MX");
-    return branchScopedMemberships.filter((membership) => {
+    return membershipSearchSource.filter((membership) => {
       const purchaseDate = membership.purchaseDateIso.slice(0, 10);
       return (
         (!query ||
@@ -283,6 +324,8 @@ export function MembershipsView({
             membership.folio,
             membership.purchaseTicketId,
             membership.membershipName,
+            membership.sellerName,
+            membership.originalSellerName,
           ].some((value) =>
             value.toLocaleLowerCase("es-MX").includes(query),
           )) &&
@@ -292,10 +335,12 @@ export function MembershipsView({
         (!dateTo || purchaseDate <= dateTo)
       );
     });
-  }, [branchScopedMemberships, dateFrom, dateTo, membershipFilter, search]);
+  }, [dateFrom, dateTo, membershipFilter, membershipSearchSource, search]);
 
   const selectedMembership =
-    branchScopedMemberships.find((membership) => membership.id === selectedId) ?? null;
+    (viewer.isMaster ? branchScopedMemberships : sellerHistoryMemberships).find(
+      (membership) => membership.id === selectedId,
+    ) ?? null;
   const agendaIncidentsByMembership = useMemo(
     () =>
       appointments.reduce<Record<string, Appointment[]>>(
@@ -674,8 +719,9 @@ export function MembershipsView({
           <span className="section-kicker">MEMBRESÍAS · ACCESO PERSONAL</span>
           <h2>Consulta tus clientas y tarjetones</h2>
           <p>
-            Ingresa tu código personal. El sistema mostrará únicamente las
-            membresías de tu cartera compradas hoy en {viewer.branch}.
+            Ingresa tu código personal. Verás la operación de hoy en {viewer.branch}{" "}
+            y podrás buscar el historial de clientas cuyas membresías te fueron
+            asignadas o en las que participaste como vendedor.
           </p>
           <div className="seller-sales-code-row">
             <div>
@@ -704,7 +750,7 @@ export function MembershipsView({
             </Button>
           </div>
           {accessError && <span className="seller-sales-error" role="alert">{accessError}</span>}
-          <small>El código no cambia la propiedad de una membresía ni permite consultar otra cartera.</small>
+          <small>El código no cambia la propiedad de una membresía ni permite consultar historiales ajenos.</small>
         </CardContent>
       </Card>
     );
@@ -733,10 +779,12 @@ export function MembershipsView({
           <div>
             <small>{viewer.isMaster ? "ACCESO MASTER · VISTA GLOBAL" : "ACCESO PERSONAL · SUCURSAL Y DÍA ACTUAL"}</small>
             <strong>{viewer.name}</strong>
-            <em>{viewer.isMaster ? "Todas las clientas, sucursales e historiales" : `${viewer.branch} · sólo membresías propias compradas hoy`}</em>
+            <em>{viewer.isMaster ? "Todas las clientas, sucursales e historiales" : `${viewer.branch} · hoy y tu historial autorizado`}</em>
           </div>
         </div>
         <div className="membership-export-actions">
+          {viewer.isMaster && (
+            <>
           <Button
             type="button"
             variant="outline"
@@ -753,6 +801,8 @@ export function MembershipsView({
           >
             <FileDown size={16} /> {exporting === "PDF" ? "Generando…" : "PDF"}
           </Button>
+            </>
+          )}
           {!viewer.isMaster && (
             <Button type="button" variant="ghost" onClick={closePersonalAccess}>
               <LogOut size={15} /> Bloquear
@@ -958,9 +1008,9 @@ export function MembershipsView({
       )}
 
       <section className="membership-filter-panel">
-        <div className="membership-filter-title"><Search size={18} /><span><strong>Buscar membresías</strong><small>Cliente, teléfono, folio o ticket</small></span></div>
+        <div className="membership-filter-title"><Search size={18} /><span><strong>{viewer.isMaster ? "Buscar membresías" : "Buscar clienta e historial autorizado"}</strong><small>{viewer.isMaster ? "Cliente, vendedor, teléfono, folio o ticket" : "Escribe al menos 2 caracteres del nombre, teléfono, folio o ticket"}</small></span></div>
         <div className="membership-filter-grid">
-          <div className="membership-search-field"><Search size={16} /><Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Nombre, teléfono, folio o ticket…" aria-label="Buscar cliente o membresía" /></div>
+          <div className="membership-search-field"><Search size={16} /><Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Cliente, vendedor, teléfono, folio o ticket…" aria-label="Buscar cliente, vendedor o membresía" /></div>
           <Select value={membershipFilter} onValueChange={setMembershipFilter}><SelectTrigger aria-label="Filtrar membresía"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ALL">Todas las membresías</SelectItem>{membershipNames.map((name) => <SelectItem key={name} value={name}>{name}</SelectItem>)}</SelectContent></Select>
           {viewer.isMaster ? (
             <>
@@ -971,14 +1021,14 @@ export function MembershipsView({
           ) : (
             <div className="membership-fixed-day-scope" role="status">
               <Store size={16} />
-              <span><small>ALCANCE FIJO</small><strong>{viewer.branch} · {todayBusinessDate}</strong></span>
+              <span><small>RESUMEN DIARIO · HISTORIAL AL BUSCAR</small><strong>{viewer.branch} · {todayBusinessDate}</strong></span>
             </div>
           )}
         </div>
       </section>
 
       <section className="membership-list-section">
-        <div className="membership-section-heading"><span><CreditCard size={18} /> TARJETONES INDIVIDUALES</span><Badge variant="outline">{filteredMemberships.length} registros</Badge></div>
+        <div className="membership-section-heading"><span><CreditCard size={18} /> {historicalClientSearch ? "HISTORIAL EN EL QUE PARTICIPASTE" : "TARJETONES INDIVIDUALES"}</span><Badge variant="outline">{filteredMemberships.length} registros</Badge></div>
         <div className="membership-record-list">
           {filteredMemberships.map((membership) => {
             const remaining = remainingSessions(membership);

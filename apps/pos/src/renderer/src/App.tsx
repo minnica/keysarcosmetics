@@ -20,6 +20,7 @@ import {
   CircleDollarSign,
   Clock3,
   CreditCard,
+  Crown,
   Download,
   DollarSign,
   Eye,
@@ -63,6 +64,9 @@ import {
   DialogHeader,
   DialogTitle,
   Input,
+  Popover,
+  PopoverAnchor,
+  PopoverContent,
   Select,
   SelectContent,
   SelectItem,
@@ -729,6 +733,7 @@ const initialClientMemberships: ClientMembership[] = [
     branch: "Polanco",
     sellerId: "seller-ana",
     sellerName: "Ana Torres",
+    originalSellerId: "seller-ana",
     originalSellerName: "Ana Torres",
     totalSessions: 8,
     usedSessions: 7,
@@ -763,6 +768,7 @@ const initialClientMemberships: ClientMembership[] = [
     branch: "Polanco",
     sellerId: "seller-ana",
     sellerName: "Ana Torres",
+    originalSellerId: "seller-sofia",
     originalSellerName: "Sofía Méndez",
     totalSessions: 12,
     usedSessions: 2,
@@ -773,7 +779,7 @@ const initialClientMemberships: ClientMembership[] = [
       { id: "attendance-valeria-signature-2", appointmentId: null, attendedAtIso: "2026-08-30T16:00:00-06:00", branch: "Polanco", sellerName: "Ana Torres", signatureStatus: "PENDING" },
     ],
     sellerChanges: [
-      { id: "seller-change-valeria-1", changedAtIso: "2026-08-23T10:15:00-06:00", fromSellerName: "Sofía Méndez", toSellerName: "Ana Torres", reason: "Cambio solicitado por la clienta" },
+      { id: "seller-change-valeria-1", changedAtIso: "2026-08-23T10:15:00-06:00", fromSellerId: "seller-sofia", toSellerId: "seller-ana", fromSellerName: "Sofía Méndez", toSellerName: "Ana Torres", reason: "Cambio solicitado por la clienta" },
     ],
     statusChanges: [],
   },
@@ -791,6 +797,7 @@ const initialClientMemberships: ClientMembership[] = [
     branch: "Satélite",
     sellerId: "seller-sofia",
     sellerName: "Sofía Méndez",
+    originalSellerId: "seller-sofia",
     originalSellerName: "Sofía Méndez",
     totalSessions: 8,
     usedSessions: 6,
@@ -814,6 +821,7 @@ const initialClientMemberships: ClientMembership[] = [
     branch: "Polanco",
     sellerId: "seller-daniela",
     sellerName: "Daniela Ruiz",
+    originalSellerId: "seller-daniela",
     originalSellerName: "Daniela Ruiz",
     totalSessions: 8,
     usedSessions: 1,
@@ -837,6 +845,7 @@ const initialClientMemberships: ClientMembership[] = [
     branch: "Roma Norte",
     sellerId: "seller-daniela",
     sellerName: "Daniela Ruiz",
+    originalSellerId: "seller-daniela",
     originalSellerName: "Daniela Ruiz",
     totalSessions: 12,
     usedSessions: 12,
@@ -1312,6 +1321,37 @@ function App() {
       new Set([...(sessionEmployeeRole?.moduleAccess ?? []), "my-account" as ScreenId]),
     );
   }, [sessionEmployeeRole, sessionUser]);
+
+  const defaultAllowedScreen = useMemo<ScreenId>(
+    () =>
+      allowedScreens.includes("dashboard")
+        ? "dashboard"
+        : allowedScreens.includes("sale")
+          ? "sale"
+          : (allowedScreens[0] ?? "my-account"),
+    [allowedScreens],
+  );
+
+  const canAccessSettings = Boolean(
+    sessionUser && allowedScreens.includes("settings"),
+  );
+
+  useEffect(() => {
+    if (!sessionUser || allowedScreens.includes(activeScreen)) return;
+    setCompetitionSettingsOpen(false);
+    setPaymentSettingsOpen(false);
+    setProductDialogOpen(false);
+    setCheckoutOpen(false);
+    setDealPickerOpen(false);
+    setReceiptPreviewOpen(false);
+    setTicketEditOpen(false);
+    setTicketCancellationOpen(false);
+    if (sessionStage === "CLOSING_COUNT") setSessionStage("OPEN");
+    setActiveScreen(defaultAllowedScreen);
+    toast.error(
+      `${screenMetadata[activeScreen].title} requiere usuario master o permiso asignado al rol.`,
+    );
+  }, [activeScreen, allowedScreens, defaultAllowedScreen, sessionStage, sessionUser]);
 
   const canEditActiveModule = Boolean(
     sessionUser?.isMaster ||
@@ -3809,6 +3849,7 @@ function App() {
               branch: ticketBranch,
               sellerId: seller?.sellerId ?? masterUser.id,
               sellerName: seller?.sellerName ?? masterUser.name,
+              originalSellerId: seller?.sellerId ?? masterUser.id,
               originalSellerName: seller?.sellerName ?? masterUser.name,
               totalSessions: item.product.membershipSessions ?? 1,
               usedSessions: 0,
@@ -4096,7 +4137,7 @@ function App() {
     setDiscountValue(0);
     setDiscountOpen(false);
     setCheckoutOpen(false);
-    setActiveScreen("receipts");
+    if (allowedScreens.includes("receipts")) setActiveScreen("receipts");
     setSelectedReceiptTicket(ticket);
     setReceiptPreviewOpen(true);
     toast.success(
@@ -6305,7 +6346,7 @@ function App() {
       toast.error("No se encontró el ticket histórico de esta membresía.");
       return;
     }
-    setActiveScreen("receipts");
+    if (allowedScreens.includes("receipts")) setActiveScreen("receipts");
     previewTicket(ticket);
   };
 
@@ -8017,6 +8058,20 @@ function App() {
     const filteredSaleTickets = activeFilteredTickets.filter(
       (ticket) => ticket.ticketType !== "LAYAWAY_PAYMENT",
     );
+    const completedReceiptTicketIds = new Set(
+      filteredSaleTickets.map((ticket) => ticket.id),
+    );
+    const receiptMemberships = clientMemberships.filter((membership) =>
+      completedReceiptTicketIds.has(membership.purchaseTicketId),
+    );
+    const receiptMembershipsByTicket = clientMemberships.reduce<
+      Map<string, ClientMembership[]>
+    >((summary, membership) => {
+      const ticketMemberships = summary.get(membership.purchaseTicketId) ?? [];
+      ticketMemberships.push(membership);
+      summary.set(membership.purchaseTicketId, ticketMemberships);
+      return summary;
+    }, new Map());
     const total = filteredSaleTickets.reduce(
       (sum, ticket) => sum + ticket.total,
       0,
@@ -8210,6 +8265,40 @@ function App() {
             tone={ticketCountComparison >= 0 ? "positive" : "negative"}
           />
         </div>
+        <Card className="receipt-membership-dashboard-card">
+          <CardContent>
+            <div className="dashboard-card-heading">
+              <div>
+                <span>MEMBRESÍAS DEL PERIODO</span>
+                <h2>Membresías compradas en Receipts</h2>
+              </div>
+              <CreditCard size={20} />
+            </div>
+            <div className="receipt-membership-dashboard-content">
+              <div>
+                <strong>{receiptMemberships.length}</strong>
+                <span>{receiptMemberships.length === 1 ? "membresía comprada" : "membresías compradas"}</span>
+              </div>
+              <div>
+                <strong>{new Set(receiptMemberships.map((membership) => membership.purchaseTicketId)).size}</strong>
+                <span>{new Set(receiptMemberships.map((membership) => membership.purchaseTicketId)).size === 1 ? "ticket con membresía" : "tickets con membresía"}</span>
+              </div>
+              <div>
+                <strong>{receiptMemberships.reduce((sum, membership) => sum + membership.totalSessions, 0)}</strong>
+                <span>sesiones adquiridas</span>
+              </div>
+              {receiptMemberships.length > 0 ? (
+                <ReceiptMembershipPreview
+                  memberships={receiptMemberships}
+                  label="Ver membresías compradas"
+                  variant="dashboard"
+                />
+              ) : (
+                <span className="receipt-membership-empty">Sin membresías en este alcance.</span>
+              )}
+            </div>
+          </CardContent>
+        </Card>
         <div className="receipts-dashboard-grid">
           <Card className="receipts-dashboard-card sales-chart-card">
             <CardContent>
@@ -8396,6 +8485,7 @@ function App() {
                     <TableHead>TICKET</TableHead>
                     <TableHead>FECHA</TableHead>
                     <TableHead>CLIENTE</TableHead>
+                    <TableHead>MEMBRESÍA</TableHead>
                     <TableHead>VENDEDOR</TableHead>
                     <TableHead>PIEZAS</TableHead>
                     <TableHead>DESCUENTO</TableHead>
@@ -8417,7 +8507,22 @@ function App() {
                         )}
                       </TableCell>
                       <TableCell>{ticket.createdAt}</TableCell>
-                      <TableCell>{ticket.clientName}</TableCell>
+                      <TableCell>
+                        <ReceiptClientMembershipMark
+                          ticket={ticket}
+                          memberships={clientMemberships}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        {(receiptMembershipsByTicket.get(ticket.id)?.length ?? 0) > 0 ? (
+                          <ReceiptMembershipPreview
+                            memberships={receiptMembershipsByTicket.get(ticket.id) ?? []}
+                            label={`${receiptMembershipsByTicket.get(ticket.id)?.length ?? 0} ${receiptMembershipsByTicket.get(ticket.id)?.length === 1 ? "comprada" : "compradas"}`}
+                          />
+                        ) : (
+                          "—"
+                        )}
+                      </TableCell>
                       <TableCell>{ticket.sellerSummary}</TableCell>
                       <TableCell>{ticket.items}</TableCell>
                       <TableCell>
@@ -8499,7 +8604,7 @@ function App() {
                   ))}
                   {filteredTickets.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={10}>
+                      <TableCell colSpan={11}>
                         No se encontraron tickets con esos filtros.
                       </TableCell>
                     </TableRow>
@@ -10431,6 +10536,7 @@ function App() {
   );
 
   const renderScreen = () => {
+    if (!allowedScreens.includes(activeScreen)) return null;
     switch (activeScreen) {
       case "dashboard": {
         const dashboardRole = employeeRoles.find(
@@ -10504,6 +10610,7 @@ function App() {
         return (
           <CustomersView
             clients={clients}
+            memberships={clientMemberships}
             sellers={sellers}
             tickets={activeTickets}
             voucherIssues={voucherIssues}
@@ -10582,6 +10689,7 @@ function App() {
             isMasterCode={isMasterAccessCode}
             onCreateInventoryOrders={createInventoryBranchOrders}
             onLockCostAccess={() => setCostAccessAuthorized(false)}
+            canOpenBranchRequest={canCreateWarehouseRequest}
             onOpenBranchRequest={(requestType) => {
               setBranchRequestEntryType(requestType);
               navigateToScreen("branch-inventory");
@@ -10784,8 +10892,9 @@ function App() {
             sellers={sellers}
             products={catalogProducts}
             branches={sessionUser?.isMaster ? operationalBranches : [activeBranch]}
+            canOpenSettings={canAccessSettings}
             onOpenSettings={() => {
-              setActiveScreen("settings");
+              navigateToScreen("settings");
               setCompetitionSettingsOpen(true);
             }}
           />
@@ -10873,6 +10982,8 @@ function App() {
     );
   }
 
+  if (!allowedScreens.includes(activeScreen)) return null;
+
   if (sessionStage === "CLOSING_COUNT") {
     return (
       <>
@@ -10887,7 +10998,7 @@ function App() {
           language={interfaceLanguage}
           onBack={() => {
             setSessionStage("OPEN");
-            setActiveScreen("sale");
+            setActiveScreen(defaultAllowedScreen);
           }}
           onComplete={completeClosingCount}
         />
@@ -10900,7 +11011,9 @@ function App() {
   if (activeScreen === "close-day") {
     const closeDayReturnScreen: ScreenId = allowedScreens.includes("dashboard")
       ? "dashboard"
-      : "sale";
+      : allowedScreens.includes("sale")
+        ? "sale"
+        : (allowedScreens.find((screen) => screen !== "close-day") ?? "my-account");
     return (
       <div className="close-day-focus-shell">
         <main className="close-day-focus-window">
@@ -10908,7 +11021,7 @@ function App() {
             type="button"
             variant="outline"
             className="close-day-back-button"
-            onClick={() => setActiveScreen(closeDayReturnScreen)}
+            onClick={() => navigateToScreen(closeDayReturnScreen)}
           >
             <ArrowLeft size={16} /> Regresar al menú
           </Button>
@@ -11319,6 +11432,112 @@ function MetricCard({ label, value, icon: Icon, tone }: MetricCardProps) {
         <strong>{value}</strong>
       </CardContent>
     </Card>
+  );
+}
+
+function ReceiptClientMembershipMark({
+  ticket,
+  memberships,
+}: {
+  ticket: Ticket;
+  memberships: ClientMembership[];
+}) {
+  const activeMembershipCount = memberships.filter(
+    (membership) =>
+      membership.status === "ACTIVE" &&
+      ((ticket.clientPhone && membership.clientPhone === ticket.clientPhone) ||
+        membership.clientName === ticket.clientName),
+  ).length;
+  const membershipLabel = `${activeMembershipCount} ${activeMembershipCount === 1 ? "membresía activa" : "membresías activas"}`;
+
+  return (
+    <div className="receipt-client-membership-mark">
+      <span>{ticket.clientName}</span>
+      {activeMembershipCount > 0 && (
+        <span
+          className="receipt-client-membership-badge"
+          title={membershipLabel}
+          aria-label={`${ticket.clientName} tiene ${membershipLabel}`}
+        >
+          <Crown size={11} />
+          {activeMembershipCount}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function ReceiptMembershipPreview({
+  memberships,
+  label,
+  variant = "row",
+}: {
+  memberships: ClientMembership[];
+  label: string;
+  variant?: "row" | "dashboard";
+}) {
+  const [open, setOpen] = useState(false);
+  const orderedMemberships = [...memberships].sort((left, right) =>
+    right.purchaseDateIso.localeCompare(left.purchaseDateIso),
+  );
+  const uniqueClients = new Set(memberships.map((membership) => membership.clientId)).size;
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverAnchor asChild>
+        <button
+          type="button"
+          className={`receipt-membership-preview is-${variant}`}
+          aria-label={`${label}. Mostrar detalle de membresías`}
+          aria-expanded={open}
+          onMouseEnter={() => setOpen(true)}
+          onMouseLeave={() => setOpen(false)}
+          onFocus={() => setOpen(true)}
+          onBlur={() => setOpen(false)}
+          onClick={() => setOpen(true)}
+        >
+          <CreditCard size={15} />
+          <span>
+            <strong>{label}</strong>
+            <small>
+              {variant === "dashboard"
+                ? `${uniqueClients} ${uniqueClients === 1 ? "clienta" : "clientas"}`
+                : memberships.map((membership) => membership.membershipName).join(" · ")}
+            </small>
+          </span>
+        </button>
+      </PopoverAnchor>
+      <PopoverContent
+        side={variant === "dashboard" ? "bottom" : "top"}
+        align={variant === "dashboard" ? "end" : "center"}
+        sideOffset={7}
+        className="receipt-membership-popover"
+        onOpenAutoFocus={(event) => event.preventDefault()}
+      >
+        <div className="receipt-membership-popover-heading">
+          <CreditCard size={16} />
+          <span>
+            <strong>Membresías adquiridas</strong>
+            <small>{memberships.length} {memberships.length === 1 ? "compra" : "compras"}</small>
+          </span>
+        </div>
+        <div className="receipt-membership-popover-list">
+          {orderedMemberships.map((membership) => (
+            <article key={membership.id}>
+              <span>
+                <strong>{membership.membershipName}</strong>
+                <small>{membership.clientName} · {membership.branch}</small>
+                <small>Ticket {membership.purchaseTicketId}</small>
+              </span>
+              <span>
+                <b>{membership.totalSessions} sesiones</b>
+                <strong>{formatCurrency(membership.purchaseAmount)}</strong>
+              </span>
+            </article>
+          ))}
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 
