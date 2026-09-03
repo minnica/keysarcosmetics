@@ -23,6 +23,7 @@
     "db:studio": "prisma studio",
     "db:migrate:dev": "dotenv -e .env.dev -- prisma migrate deploy",
     "db:migrate:deploy": "prisma migrate deploy",
+    "pos:diagnose": "tsx scripts/diagnose-pos-data.ts",
     "prisma:validate": "prisma validate",
     "prisma:schemas": "node scripts/check-prisma-schema-sync.mjs"
   },

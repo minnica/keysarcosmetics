@@ -16,19 +16,113 @@ El POS se implementará como módulos dentro de `backend/api`, usando:
 
 ### Estado verificado y reutilización de datos existentes
 
-| Existente | Decisión |
-|---|---|
-| `Sucursal` | Reutilizar como sucursal canónica; agregar perfil POS para código, dirección, zona horaria y configuración. |
-| `Empleado` | Reutilizar como vendedor/operador; no duplicar empleados. |
-| `Position` | Reutilizar como puesto/rol; agregar permisos POS independientes de Envelope y Payroll. |
-| `Usuario` | Reutilizar para administradores existentes; operadores POS podrán autenticarse mediante credencial vinculada directamente al empleado. |
-| `MetodoPago` | Reutilizar como catálogo base; agregar políticas POS para referencias y validaciones. |
-| `Venta` y `VentaDetalle` | Mantener como proyección compatible para Envelope y Payroll; no usarlas como ticket POS. |
+| Existente                                                   | Decisión                                                                                                                                            |
+| ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Sucursal`                                                  | Reutilizar como sucursal canónica; agregar perfil POS para código, dirección, zona horaria y configuración.                                         |
+| `Empleado`                                                  | Reutilizar como vendedor/operador; no duplicar empleados.                                                                                           |
+| `Position`                                                  | Reutilizar como puesto/rol; agregar permisos POS independientes de Envelope y Payroll.                                                              |
+| `Usuario`                                                   | Reutilizar para administradores existentes; operadores POS podrán autenticarse mediante credencial vinculada directamente al empleado.              |
+| `MetodoPago`                                                | Reutilizar como catálogo base; agregar políticas POS para referencias y validaciones.                                                               |
+| `Venta` y `VentaDetalle`                                    | Mantener como proyección compatible para Envelope y Payroll; no usarlas como ticket POS.                                                            |
 | `CategoriaAtencion`, `SubcategoriaAtencion`, `RegistroCita` | Mantener como catálogo/historial legacy de atención; las citas futuras usarán modelos compartidos nuevos con vínculo opcional al registro atendido. |
-| `Bank` | No reutilizar como catálogo de bancos de cobro: actualmente representa bancos de nómina de empleados. |
-| Tablas Payroll | No modificar salvo por las ventas proyectadas que ya consume Payroll. |
+| `Bank`                                                      | No reutilizar como catálogo de bancos de cobro: actualmente representa bancos de nómina de empleados.                                               |
+| Tablas Payroll                                              | No modificar salvo por las ventas proyectadas que ya consume Payroll.                                                                               |
 
 Los dos esquemas Prisma existentes están sincronizados. No hay credenciales locales para consultar filas reales de Supabase; antes del primer despliegue se ejecutará un inventario de datos de sólo lectura en development y luego, con autorización, en producción.
+
+### Gobierno de fases y responsables
+
+| Fase                                 | Estado                  | Responsable principal                | Criterio de salida                                                                        |
+| ------------------------------------ | ----------------------- | ------------------------------------ | ----------------------------------------------------------------------------------------- |
+| 0. Documento, contratos e inventario | Completada — 2026-09-02 | Backend/API                          | Contratos versionados, diagnóstico sólo lectura ejecutable y cero mutaciones productivas. |
+| 1. Seguridad, terminales y auditoría | Pendiente               | Backend/API + Seguridad              | Credenciales protegidas, permisos efectivos y auditoría verificable.                      |
+| 2. Catálogo, clientes y activos      | Pendiente               | Backend/API + POS                    | Catálogo histórico inmutable y costos redaccionados por servidor.                         |
+| 3. Inventario y bodega               | Pendiente               | Backend/API + Operación de almacén   | Ledger consistente, reintentos idempotentes y doble aprobación distinta.                  |
+| 4. Tickets y proyección financiera   | Pendiente               | Backend/API + POS + Envelope/Payroll | Totales, inventario y proyección legacy conciliados al centavo.                           |
+| 5. Jornada, asistencia y caja        | Pendiente               | Backend/API + Operación de sucursal  | Una jornada por sucursal/fecha y cierre inmutable.                                        |
+| 6. Offline y reconciliación          | Pendiente               | POS/Electron + Backend/API           | Reinicios y reintentos no pierden ni duplican operaciones.                                |
+| 7. Reportes y retiro de mocks        | Pendiente               | Backend/API + POS                    | Módulos operativos consumen API o repositorio offline autorizado.                         |
+| 8. Piloto y despliegue               | Pendiente               | Operación + Backend/API + Producto   | Piloto conciliado, rollback disponible y aprobación operativa.                            |
+
+El responsable principal ejecuta la fase; los equipos indicados como colaboradores revisan sus límites. Ninguna fase posterior inicia mutaciones de datos por el mero hecho de que exista este plan.
+
+### Diseño operativo de referencia
+
+#### Ownership de tablas y datos
+
+| Owner     | Entidades propias futuras                                                                  | Entidades que reutiliza                                     | Regla de integración                                      |
+| --------- | ------------------------------------------------------------------------------------------ | ----------------------------------------------------------- | --------------------------------------------------------- |
+| POS       | `Pos*`, catálogo operacional, inventario, bodega, tickets, jornada, autorizaciones, outbox | `Sucursal`, `Empleado`, `Position`, `Usuario`, `MetodoPago` | POS es la fuente canónica de su operación.                |
+| Envelope  | `Venta`, `VentaDetalle`, historial de atención                                             | Proyección derivada de cobros POS                           | Nunca reconstruye el ticket POS ni altera su snapshot.    |
+| Payroll   | Corridas, snapshots y movimientos de nómina                                                | Proyección de ventas POS                                    | Las corridas aprobadas no se recalculan retroactivamente. |
+| Scheduler | Citas futuras y participantes                                                              | Clientes/citas compartidos de POS                           | `RegistroCita` se mantiene como historial legacy.         |
+
+#### Límites transaccionales
+
+```mermaid
+sequenceDiagram
+  participant T as Terminal POS
+  participant A as API POS
+  participant P as PostgreSQL
+  participant E as Envelope
+  participant N as Payroll
+  T->>A: POST ticket + Idempotency-Key
+  A->>P: validar permisos, precios, jornada e inventario
+  P-->>A: cotización autoritativa
+  A->>P: transacción: ticket, cobro, ledger, snapshots
+  A->>E: misma transacción: Venta/VentaDetalle proyectadas
+  A->>N: misma transacción: PosLegacySaleProjection
+  P-->>A: commit único
+  A-->>T: folio y resultado idempotente
+```
+
+Todo cambio que implique ticket, cobro, inventario o proyección compatible se confirma en una sola transacción PostgreSQL. Un reintento con la misma llave devuelve el resultado previamente confirmado; los ajustes posteriores generan eventos compensatorios, no edición de históricos.
+
+#### Máquinas de estado
+
+```mermaid
+stateDiagram-v2
+  [*] --> REQUESTED
+  REQUESTED --> CREATION_APPROVED
+  CREATION_APPROVED --> SEND_APPROVED
+  SEND_APPROVED --> SHIPPED
+  SHIPPED --> RECEIVED
+  REQUESTED --> CANCELED
+  CREATION_APPROVED --> CANCELED
+  SEND_APPROVED --> REQUESTED: return-to-requested
+  SHIPPED --> REQUESTED: return-to-requested
+```
+
+```mermaid
+stateDiagram-v2
+  [*] --> OPEN
+  OPEN --> CLOSED
+  CLOSED --> [*]
+  note right of CLOSED
+    No se reabre. Devoluciones y ajustes
+    se compensan en la fecha actual.
+  end note
+```
+
+Los tickets y operaciones offline usarán, respectivamente, los estados documentados `COMPLETED/LAYAWAY/CANCELED/REFUNDED` y `PENDING/SYNCING/SYNCED/ERROR/CONFLICT`; los modelos definitivos de cada transición se crean en sus fases, nunca como estados implícitos de frontend.
+
+#### Permisos y exposición de datos
+
+```mermaid
+flowchart TD
+  I[Identidad POS] --> T[Terminal asignada]
+  T --> B[Alcance de sucursal]
+  I --> R[Permisos por puesto]
+  R --> M[Permiso de módulo]
+  R --> C[Permiso de costos]
+  M --> X[Acción solicitada]
+  B --> X
+  C --> Y{Respuesta incluye costo?}
+  Y -->|Sí| Z[DTO con costos autorizado]
+  Y -->|No| W[DTO público sin costos]
+```
+
+La autorización se resuelve en servidor y se aplica antes de consultar/serializar. `INVENTORY_AUDIT` habilita comparativos de conteo; `REPORTS_COSTS` habilita DTOs de costo. Los permisos de POS no reutilizan ni conceden permisos de Envelope o Payroll.
 
 ## 2. Modelo, seguridad e interfaces públicas
 
@@ -101,13 +195,19 @@ Los tipos POS saldrán de `apps/pos` hacia `packages/types/src/pos.ts`; `package
 
 ### Fase 0 — Documento, contratos e inventario real
 
-- [ ] Registrar responsables, estado y criterio de salida por fase en este documento.
-- [ ] Documentar diagramas de transacciones, estados, permisos y ownership de tablas.
-- [ ] Crear script de diagnóstico de sólo lectura para contar sucursales, empleados, puestos, usuarios, métodos de pago y ventas, además de detectar relaciones incompletas.
-- [ ] Definir los esquemas Zod y DTO públicos antes de crear rutas.
-- [ ] Actualizar `CLAUDE.md` con la arquitectura aprobada.
+- [x] Registrar responsables, estado y criterio de salida por fase en este documento.
+- [x] Documentar diagramas de transacciones, estados, permisos y ownership de tablas.
+- [x] Crear script de diagnóstico de sólo lectura para contar sucursales, empleados, puestos, usuarios, métodos de pago y ventas, además de detectar relaciones incompletas.
+- [x] Definir los esquemas Zod y DTO públicos antes de crear rutas.
+- [x] Actualizar `CLAUDE.md` con la arquitectura aprobada.
 
-**Criterio de cierre:** contrato revisado, diagnóstico ejecutable y ninguna mutación productiva.
+**Criterio de cierre: cumplido.** El contrato técnico se revisó mediante schemas y pruebas unitarias; el diagnóstico se ejecuta con `pnpm --filter @cosmetics/api pos:diagnose` y sólo emite `SELECT`/`COUNT`. Esta fase no creó rutas POS, migraciones, seeds ni mutaciones productivas. La ejecución contra una base de datos development queda programada para la Fase 8, cuando exista el ambiente autorizado.
+
+#### Entregables verificables
+
+- DTOs públicos: `packages/types/src/pos.ts`, reexportados por `@cosmetics/types`. Los DTOs de costo extienden explícitamente los públicos para evitar filtraciones accidentales.
+- Validación Zod: `backend/api/src/contracts/pos.contracts.ts`. Valida entrada y respuesta pública de paginación, alias/PIN, terminal, catálogo, búsqueda obligatoria, conteos, cotización, tickets y balances antes de que existan rutas. Las mutaciones reservadas validan desde ahora el header `Idempotency-Key`.
+- Diagnóstico: `backend/api/scripts/diagnose-pos-data.ts`. Cuenta las seis entidades acordadas y separa asignaciones pendientes de referencias huérfanas y ventas legacy sin detalle.
 
 ### Fase 1 — Seguridad, terminales, permisos y auditoría
 

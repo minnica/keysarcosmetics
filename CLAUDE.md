@@ -102,6 +102,11 @@ el diseño y el autocuidado.
 
 ## Estado actual de `apps/pos`
 
+- La Fase 0 de `PLAN_BACKEND_POS.md` quedó completada el 2026-09-02 sin crear rutas POS, migraciones, seeds ni mutaciones de datos. El contrato público vive en `packages/types/src/pos.ts` y los validadores de frontera previos a las rutas viven en `backend/api/src/contracts/pos.contracts.ts`. Todos los importes POS se representan como strings decimales de dos posiciones, fechas como ISO UTC y la fecha operativa como `YYYY-MM-DD`; los DTOs con costo son tipos explícitos y sólo se podrán serializar con permiso de costos en fases posteriores.
+- El inventario previo al despliegue POS se ejecuta con `pnpm --filter @cosmetics/api pos:diagnose`. El script `backend/api/scripts/diagnose-pos-data.ts` usa exclusivamente consultas `SELECT`/`COUNT` y reporta sucursales, empleados, puestos, usuarios, métodos de pago, ventas, asignaciones pendientes, referencias huérfanas y ventas legacy sin detalle. Se ejecutará primero sobre development y sólo sobre producción con autorización explícita; no sustituye las migraciones ni corrige datos.
+- La arquitectura POS aprobada conserva PostgreSQL/Supabase como fuente central, SQLite únicamente dentro del proceso principal de Electron e IndexedDB/Web Crypto en navegador. POS será dueño de sus entidades `Pos*`, catálogo operacional, inventario, bodega, tickets, jornada y outbox; reutiliza `Sucursal`, `Empleado`, `Position`, `Usuario` y `MetodoPago`. `Venta`/`VentaDetalle` permanecen una proyección compatible de cada cobro POS para Envelope/Payroll y nunca la fuente de verdad del ticket.
+- La autorización POS se resolverá del lado servidor por identidad, terminal asignada, sucursal y permisos POS independientes. Los conteos ciegos no exponen esperado/diferencia y los costos sólo pueden aparecer en DTOs autorizados por `REPORTS_COSTS`; `INVENTORY_AUDIT` habilitará los comparativos de inventario. Una jornada se cierra de forma inmutable y todo ajuste posterior se registra como compensación de la fecha actual.
+
 - `Inventory` separa ahora `Almacén matriz` y `Pedido sucursales` como dos ventanas y permisos de módulo independientes. Ambas reutilizan `WarehouseView` con alcance `MATRIX` o `BRANCHES` y comparten exactamente `warehouseMovements`, existencias, callbacks de aprobación y folios: una solicitud creada desde sucursal aparece inmediatamente en matriz y continúa por creación, envío, recepción, cancelación o reversión sin duplicar datos. Matriz muestra sólo stock central, compras a proveedores, entradas, solicitudes recibidas, envíos, listas de precios y reporte; sucursales abre directamente el pedido de productos, testers o insumos elegido desde el menú desplegable `Generar pedido` de Inventario, conservando sus métricas e historiales. La cabecera de matriz tiene una campana con el total en vivo de solicitudes `REQUESTED` y abre directamente su bandeja. Roles y `Employees` pueden otorgar acceso a `branch-inventory` de forma explícita.
 
 - `apps/pos` contiene un frontend mock operativo para venta retail sobre Electron + React + Vite. No consume API, no escribe en backend y no persiste información en base de datos. La operación general vive durante la sesión del renderer; la única excepción es la cola frontend de tickets creados sin internet, que se conserva en `localStorage` para sobrevivir una recarga de la terminal y se retira al simular su sincronización.
@@ -396,19 +401,19 @@ El catálogo de Servicios incluye listados por categoría, búsqueda, estados y 
 
 **Alcance administrativo por módulo:**
 
-| Módulo | Alcance funcional | Estado de definición |
-|---|---|---|
-| Comercios y sucursales | Comercio como entidad principal con estado, horario semanal/24 horas y entidades asociadas; sucursales con ubicación y contacto | Implementado local/mock y sincronizado con Agenda mediante `localStorage` |
-| Profesionales | Asignación múltiple a comercios/sucursales, datos básicos, servicios, horario, descansos, perfil, grupos personalizados y configuración obligatoria de comisiones cuando se activa | Implementado local/mock |
-| Servicios | Servicios, clases, paquetes, adicionales, categorías, precios masivos | Definido por capturas |
-| Comisiones | Por profesional, servicio/producto y valor por defecto; porcentaje o monto | Definido por capturas |
-| Recursos | Recursos generales y recursos con horario, asignación a servicios y locales | Definido por capturas |
-| Encuestas | Encuestas, preguntas de apreciación/comentario, asociación a servicios y preview vivo con estrellas | Parcial; falta flujo de resultados |
-| Consentimientos | Nombre, carga visual de archivo PDF/DOC/DOCX, tabla con búsqueda, edición y eliminación | Catálogo local/mock; falta firma, flujo operativo y persistencia |
-| WhatsApp | Catálogo con 13 mensajes operativos precargados, plantillas prediseñadas, variables agrupadas y preview estilo WhatsApp | Implementado local/mock; falta conexión del canal, envío real y persistencia |
-| Gift Cards | Gift card de servicio o monto, vencimiento, diseño, borrador/activar | Definido por capturas |
-| Colores de status | Paleta por comercio para los estados de reserva, restauración de valores originales y desbloqueo por código | Implementado local/mock; falta autorización real de servidor |
-| Planes | No se implementa en este proyecto | Fuera de alcance |
+| Módulo                 | Alcance funcional                                                                                                                                                                  | Estado de definición                                                         |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| Comercios y sucursales | Comercio como entidad principal con estado, horario semanal/24 horas y entidades asociadas; sucursales con ubicación y contacto                                                    | Implementado local/mock y sincronizado con Agenda mediante `localStorage`    |
+| Profesionales          | Asignación múltiple a comercios/sucursales, datos básicos, servicios, horario, descansos, perfil, grupos personalizados y configuración obligatoria de comisiones cuando se activa | Implementado local/mock                                                      |
+| Servicios              | Servicios, clases, paquetes, adicionales, categorías, precios masivos                                                                                                              | Definido por capturas                                                        |
+| Comisiones             | Por profesional, servicio/producto y valor por defecto; porcentaje o monto                                                                                                         | Definido por capturas                                                        |
+| Recursos               | Recursos generales y recursos con horario, asignación a servicios y locales                                                                                                        | Definido por capturas                                                        |
+| Encuestas              | Encuestas, preguntas de apreciación/comentario, asociación a servicios y preview vivo con estrellas                                                                                | Parcial; falta flujo de resultados                                           |
+| Consentimientos        | Nombre, carga visual de archivo PDF/DOC/DOCX, tabla con búsqueda, edición y eliminación                                                                                            | Catálogo local/mock; falta firma, flujo operativo y persistencia             |
+| WhatsApp               | Catálogo con 13 mensajes operativos precargados, plantillas prediseñadas, variables agrupadas y preview estilo WhatsApp                                                            | Implementado local/mock; falta conexión del canal, envío real y persistencia |
+| Gift Cards             | Gift card de servicio o monto, vencimiento, diseño, borrador/activar                                                                                                               | Definido por capturas                                                        |
+| Colores de status      | Paleta por comercio para los estados de reserva, restauración de valores originales y desbloqueo por código                                                                        | Implementado local/mock; falta autorización real de servidor                 |
+| Planes                 | No se implementa en este proyecto                                                                                                                                                  | Fuera de alcance                                                             |
 
 `Local` y `Profesional` son entidades separadas: las sucursales se administran dentro de Comercios; los profesionales son personas reales y no sustitutos de sucursales.
 
@@ -1209,37 +1214,39 @@ packages/ui/
 
 ## Puntos de entrada frecuentes
 
-| Tarea                      | Archivo                                                        |
-| -------------------------- | -------------------------------------------------------------- |
-| UI compartida (exports)    | `packages/ui/src/index.ts`                                     |
-| Componentes shadcn         | `packages/ui/src/components/ui/`                               |
-| Wrappers custom UI         | `packages/ui/src/components/custom/`                           |
-| Layout envelope            | `apps/envelope/src/components/layout/`                         |
-| Rutas envelope frontend    | `apps/envelope/src/app/(dashboard)/`                           |
-| Hooks envelope             | `apps/envelope/src/hooks/`                                     |
-| API client envelope        | `apps/envelope/src/lib/api.ts`                                 |
-| Sesión/permisos envelope   | `apps/envelope/src/lib/session.tsx`                            |
-| Endpoints envelope backend | `backend/api/src/routes/envelope.routes.ts`                    |
-| Rutas payroll frontend     | `apps/payroll/src/app/(dashboard)/`                            |
-| Estado/API payroll         | `apps/payroll/src/components/payroll/payroll-data-context.tsx` |
-| Sesión payroll             | `apps/payroll/src/lib/session.tsx`                             |
-| Endpoints payroll backend  | `backend/api/src/routes/payroll.routes.ts`                     |
-| Motor payroll              | `backend/api/src/services/payroll-calculation.ts`              |
-| Ciclo/snapshots payroll    | `backend/api/src/services/payroll.service.ts`                  |
-| Guía de despliegue payroll | `apps/payroll/PENDIENTES.md`                                   |
-| Guía operativa payroll     | `apps/payroll/GUIA_PRIMERA_NOMINA.md`                          |
-| Agenda scheduler           | `apps/scheduler/src/app/(dashboard)/page.tsx`                  |
-| Admin scheduler            | `apps/scheduler/src/app/(dashboard)/administracion/page.tsx`   |
-| Configuraciones scheduler  | `apps/scheduler/src/app/(dashboard)/configuraciones/page.tsx`  |
-| Reportes scheduler         | `apps/scheduler/src/app/(dashboard)/reportes/`                 |
-| Workspace scheduler        | `apps/scheduler/src/components/SchedulerWorkspace.tsx`         |
-| Admin workspace scheduler  | `apps/scheduler/src/components/administration/AdministrationWorkspace.tsx` |
-| Settings workspace scheduler | `apps/scheduler/src/components/settings/SettingsWorkspace.tsx` |
-| Mock data scheduler        | `apps/scheduler/src/lib/mock-scheduler-data.ts`                |
-| Prisma schema              | `backend/api/prisma/schema.prisma`                             |
-| Migraciones                | `backend/api/prisma/migrations/`                               |
-| Seed seguro catálogos      | `backend/api/prisma/seed-catalogs.ts`                          |
-| Tipos compartidos          | `packages/types/src/index.ts`                                  |
+| Tarea                        | Archivo                                                                    |
+| ---------------------------- | -------------------------------------------------------------------------- |
+| UI compartida (exports)      | `packages/ui/src/index.ts`                                                 |
+| Componentes shadcn           | `packages/ui/src/components/ui/`                                           |
+| Wrappers custom UI           | `packages/ui/src/components/custom/`                                       |
+| Layout envelope              | `apps/envelope/src/components/layout/`                                     |
+| Rutas envelope frontend      | `apps/envelope/src/app/(dashboard)/`                                       |
+| Hooks envelope               | `apps/envelope/src/hooks/`                                                 |
+| API client envelope          | `apps/envelope/src/lib/api.ts`                                             |
+| Sesión/permisos envelope     | `apps/envelope/src/lib/session.tsx`                                        |
+| Endpoints envelope backend   | `backend/api/src/routes/envelope.routes.ts`                                |
+| Rutas payroll frontend       | `apps/payroll/src/app/(dashboard)/`                                        |
+| Estado/API payroll           | `apps/payroll/src/components/payroll/payroll-data-context.tsx`             |
+| Sesión payroll               | `apps/payroll/src/lib/session.tsx`                                         |
+| Endpoints payroll backend    | `backend/api/src/routes/payroll.routes.ts`                                 |
+| Motor payroll                | `backend/api/src/services/payroll-calculation.ts`                          |
+| Ciclo/snapshots payroll      | `backend/api/src/services/payroll.service.ts`                              |
+| Contratos POS                | `packages/types/src/pos.ts` y `backend/api/src/contracts/`                 |
+| Diagnóstico POS (lectura)    | `backend/api/scripts/diagnose-pos-data.ts`                                 |
+| Guía de despliegue payroll   | `apps/payroll/PENDIENTES.md`                                               |
+| Guía operativa payroll       | `apps/payroll/GUIA_PRIMERA_NOMINA.md`                                      |
+| Agenda scheduler             | `apps/scheduler/src/app/(dashboard)/page.tsx`                              |
+| Admin scheduler              | `apps/scheduler/src/app/(dashboard)/administracion/page.tsx`               |
+| Configuraciones scheduler    | `apps/scheduler/src/app/(dashboard)/configuraciones/page.tsx`              |
+| Reportes scheduler           | `apps/scheduler/src/app/(dashboard)/reportes/`                             |
+| Workspace scheduler          | `apps/scheduler/src/components/SchedulerWorkspace.tsx`                     |
+| Admin workspace scheduler    | `apps/scheduler/src/components/administration/AdministrationWorkspace.tsx` |
+| Settings workspace scheduler | `apps/scheduler/src/components/settings/SettingsWorkspace.tsx`             |
+| Mock data scheduler          | `apps/scheduler/src/lib/mock-scheduler-data.ts`                            |
+| Prisma schema                | `backend/api/prisma/schema.prisma`                                         |
+| Migraciones                  | `backend/api/prisma/migrations/`                                           |
+| Seed seguro catálogos        | `backend/api/prisma/seed-catalogs.ts`                                      |
+| Tipos compartidos            | `packages/types/src/index.ts`                                              |
 
 ---
 
@@ -1286,6 +1293,7 @@ El scheduler usa `.next-dev` para `next dev` y `.next` para `next build`. Esta s
 ```bash
 pnpm --filter @cosmetics/api prisma:schemas
 pnpm --filter @cosmetics/api prisma:validate
+pnpm --filter @cosmetics/api pos:diagnose # sólo lectura; requiere DATABASE_URL
 pnpm migrations:review -- origin/develop
 pnpm test:integration  # requiere RUN_DATABASE_TESTS=true + PostgreSQL desechable
 pnpm test:smoke        # requiere URLs de ambiente o servicios locales activos
