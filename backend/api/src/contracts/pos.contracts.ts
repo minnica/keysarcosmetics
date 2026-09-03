@@ -160,6 +160,98 @@ export const posCatalogItemUpsertSchema = z
     }
   });
 
+const nullableIdSchema = idSchema.nullable().optional().default(null);
+const optionalMoneySchema = moneySchema.nullable().optional().default(null);
+
+export const posTaxonomyUpsertSchema = z.object({
+  name: z.string().trim().min(1).max(160),
+  parentId: nullableIdSchema,
+  active: z.boolean().default(true),
+}).strict();
+
+export const posCatalogItemWriteSchema = z.object({
+  sku: z.string().trim().min(1).max(96),
+  name: z.string().trim().min(1).max(240),
+  kind: z.enum(["PRODUCT", "SERVICE", "SUPPLY", "MACHINE"]),
+  familyId: nullableIdSchema,
+  categoryId: nullableIdSchema,
+  supplierId: nullableIdSchema,
+  description: z.string().trim().max(4_000).nullable().default(null),
+  benefits: z.array(z.string().trim().min(1).max(500)).max(30).default([]),
+  branchIds: z.array(idSchema).max(500).default([]),
+  published: z.boolean().default(false),
+  active: z.boolean().default(true),
+  listPrice: moneySchema,
+  minimumPrice: moneySchema,
+  unitCost: moneySchema,
+  taxRate: moneySchema,
+}).strict().superRefine((item, context) => {
+  if (Number(item.minimumPrice) > Number(item.listPrice)) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "El precio mínimo no puede exceder la lista", path: ["minimumPrice"] });
+  }
+  if (Number(item.taxRate) > 100) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "IVA inválido", path: ["taxRate"] });
+  }
+  if (item.published && (!item.description || item.benefits.length === 0)) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "Un artículo publicado requiere descripción y beneficios", path: ["published"] });
+  }
+});
+
+export const posCustomerWriteSchema = z.object({
+  displayName: z.string().trim().min(2).max(240),
+  phone: z.string().trim().min(7).max(32).nullable().default(null),
+  email: z.string().trim().email().max(320).nullable().default(null),
+  sourceId: nullableIdSchema,
+  notes: z.string().trim().max(4_000).nullable().default(null),
+  active: z.boolean().default(true),
+  branchId: nullableIdSchema,
+  employeeId: nullableIdSchema,
+}).strict();
+
+export const posCustomerSourceWriteSchema = z.object({
+  name: z.string().trim().min(2).max(160), active: z.boolean().default(true),
+}).strict();
+
+export const posSupplierWriteSchema = z.object({
+  folio: z.string().trim().min(2).max(64), businessName: z.string().trim().min(2).max(240),
+  contactName: z.string().trim().max(240).nullable().default(null), rfc: z.string().trim().max(20).nullable().default(null),
+  taxRegime: z.string().trim().max(240).nullable().default(null), businessLine: z.string().trim().max(240).nullable().default(null),
+  phone: z.string().trim().max(32).nullable().default(null), email: z.string().trim().email().max(320).nullable().default(null),
+  address: z.string().trim().max(1_000).nullable().default(null), active: z.boolean().default(true),
+}).strict();
+
+export const posPaymentPolicyWriteSchema = z.object({
+  name: z.string().trim().min(2).max(160), type: z.enum(["EFECTIVO", "TARJETA", "TRANSFERENCIA", "OTRO"]),
+  active: z.boolean().default(true), activeForPos: z.boolean().default(true), requiresReference: z.boolean().default(false),
+  referenceLabel: z.string().trim().max(80).nullable().default(null), minAmount: optionalMoneySchema, maxAmount: optionalMoneySchema,
+}).strict().superRefine((input, context) => {
+  if (input.minAmount && input.maxAmount && Number(input.minAmount) > Number(input.maxAmount)) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "El mínimo excede el máximo", path: ["maxAmount"] });
+  }
+});
+
+export const posTicketConfigurationWriteSchema = z.object({
+  logoAssetId: nullableIdSchema, companyName: z.string().trim().min(2).max(160), address: z.string().trim().max(1_000).nullable().default(null),
+  footerMessage: z.string().trim().max(1_000).nullable().default(null), policies: z.string().trim().max(5_000).nullable().default(null),
+  showClientName: z.boolean().default(true), showClientPhone: z.boolean().default(true), showSellerName: z.boolean().default(true),
+  showVatBreakdown: z.boolean().default(true), showSpareCoverageMessage: z.boolean().default(true),
+}).strict();
+
+export const posVoucherTemplateWriteSchema = z.object({
+  name: z.string().trim().min(2).max(160), kind: z.enum(["NEXT_PURCHASE_DISCOUNT", "COMPANION_FACIAL", "MEMBERSHIP_DISCOUNT"]),
+  value: moneySchema, message: z.string().trim().min(1).max(1_000), active: z.boolean().default(true), visibleToSellers: z.boolean().default(false),
+}).strict();
+
+export const posPackageWriteSchema = z.object({
+  name: z.string().trim().min(2).max(160), sku: z.string().trim().min(2).max(96), description: z.string().trim().max(4_000).nullable().default(null),
+  price: moneySchema, status: z.enum(["DRAFT", "PUBLISHED", "INACTIVE"]).default("DRAFT"), startsAt: isoUtcSchema.nullable().default(null), endsAt: isoUtcSchema.nullable().default(null),
+  lines: z.array(z.object({ itemId: idSchema, quantity: moneySchema }).strict()).min(1).max(100),
+}).strict().superRefine((input, context) => {
+  if (input.startsAt && input.endsAt && new Date(input.endsAt) <= new Date(input.startsAt)) context.addIssue({ code: z.ZodIssueCode.custom, message: "Rango de vigencia inválido", path: ["endsAt"] });
+});
+
+export const posAssetUploadMetadataSchema = z.object({ isPrimary: z.enum(["true", "false"]).optional().transform((value) => value === "true") }).strict();
+
 export const posTaxonomySchema = z
   .object({
     id: idSchema,

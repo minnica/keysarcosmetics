@@ -75,6 +75,10 @@ model Sucursal {
   posProfile                       PosBranchProfile?
   posTerminals                     PosTerminal[]
   posAuditLogs                     AuditLog[]
+  catalogVisibility                CatalogItemBranchVisibility[]
+  customerPortfolios               CustomerPortfolioAssignment[]
+  priceListAssignments             PriceListBranchAssignment[]
+  salesCompetitions                PosSalesCompetition[]
 
   @@index([activa])
 }
@@ -112,13 +116,14 @@ enum MetodoPagoTipo {
 }
 
 model MetodoPago {
-  id            String         @id @default(cuid())
+  id            String                  @id @default(cuid())
   nombre        String
   tipo          MetodoPagoTipo
-  activo        Boolean        @default(true)
+  activo        Boolean                 @default(true)
   detalles      VentaDetalle[]
-  creadoEn      DateTime       @default(now())
-  actualizadoEn DateTime       @updatedAt
+  creadoEn      DateTime                @default(now())
+  actualizadoEn DateTime                @updatedAt
+  posPolicy     PosPaymentMethodPolicy?
 }
 
 model Bank {
@@ -217,6 +222,7 @@ model Empleado {
   payrollRunLines            PayrollRunLine[]
   protectedIdentity          ProtectedEmployeeIdentity?
   posCredentials             PosCredential[]
+  customerPortfolios         CustomerPortfolioAssignment[]
 
   @@index([sucursalId])
 }
@@ -358,6 +364,395 @@ model AuditLog {
   @@index([action, creadoEn])
   @@index([actorCredentialId, creadoEn])
   @@index([terminalId, creadoEn])
+}
+
+// ─── Módulo POS: catálogo, clientes, configuración y activos ─────────────────────
+
+enum CatalogItemKind {
+  PRODUCT
+  SERVICE
+  SUPPLY
+  MACHINE
+}
+
+enum PosAssetStatus {
+  PENDING
+  READY
+  FAILED
+  DELETED
+}
+
+enum PosPriceListStatus {
+  DRAFT
+  ACTIVE
+  INACTIVE
+}
+
+enum PosPackageStatus {
+  DRAFT
+  PUBLISHED
+  INACTIVE
+}
+
+enum PosVoucherKind {
+  NEXT_PURCHASE_DISCOUNT
+  COMPANION_FACIAL
+  MEMBERSHIP_DISCOUNT
+}
+
+enum PosCompetitionType {
+  AMOUNT
+  PRODUCT
+  PACKAGE
+  PERIOD
+}
+
+model CatalogTaxonomy {
+  id                String            @id @default(cuid())
+  name              String            @db.VarChar(160)
+  normalizedName    String            @db.VarChar(180)
+  parentId          String?
+  parent            CatalogTaxonomy?  @relation("CatalogTaxonomyTree", fields: [parentId], references: [id], onDelete: Restrict)
+  children          CatalogTaxonomy[] @relation("CatalogTaxonomyTree")
+  active            Boolean           @default(true)
+  deletedAt         DateTime?
+  creadoEn          DateTime          @default(now())
+  actualizadoEn     DateTime          @updatedAt
+  catalogFamilies   CatalogItem[]     @relation("CatalogItemFamily")
+  catalogCategories CatalogItem[]     @relation("CatalogItemCategory")
+
+  @@unique([parentId, normalizedName])
+  @@index([parentId, active])
+}
+
+model CatalogItem {
+  id               String                        @id @default(cuid())
+  sku              String                        @unique @db.VarChar(96)
+  name             String                        @db.VarChar(240)
+  normalizedName   String                        @db.VarChar(260)
+  kind             CatalogItemKind
+  familyId         String?
+  family           CatalogTaxonomy?              @relation("CatalogItemFamily", fields: [familyId], references: [id], onDelete: Restrict)
+  categoryId       String?
+  category         CatalogTaxonomy?              @relation("CatalogItemCategory", fields: [categoryId], references: [id], onDelete: Restrict)
+  description      String?
+  benefits         CatalogItemBenefit[]
+  published        Boolean                       @default(false)
+  active           Boolean                       @default(true)
+  deletedAt        DateTime?
+  listPrice        Decimal                       @default(0) @db.Decimal(14, 2)
+  minimumPrice     Decimal                       @default(0) @db.Decimal(14, 2)
+  unitCost         Decimal                       @default(0) @db.Decimal(14, 2)
+  taxRate          Decimal                       @default(0) @db.Decimal(8, 2)
+  supplierId       String?
+  supplier         PosSupplier?                  @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  assets           CatalogAsset[]
+  branchVisibility CatalogItemBranchVisibility[]
+  priceHistory     CatalogItemPrice[]
+  priceListLines   PosPriceListLine[]
+  packageLines     PosPackageLine[]
+  creadoEn         DateTime                      @default(now())
+  actualizadoEn    DateTime                      @updatedAt
+
+  @@index([active, published, kind])
+  @@index([familyId, categoryId])
+  @@index([supplierId])
+}
+
+model CatalogItemBenefit {
+  id        String      @id @default(cuid())
+  itemId    String
+  item      CatalogItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  text      String      @db.VarChar(500)
+  sortOrder Int         @default(0)
+  creadoEn  DateTime    @default(now())
+
+  @@unique([itemId, sortOrder])
+}
+
+model CatalogItemBranchVisibility {
+  id            String      @id @default(cuid())
+  itemId        String
+  item          CatalogItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  branchId      String
+  branch        Sucursal    @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  visible       Boolean     @default(true)
+  creadoEn      DateTime    @default(now())
+  actualizadoEn DateTime    @updatedAt
+
+  @@unique([itemId, branchId])
+  @@index([branchId, visible])
+}
+
+// Nunca se sobrescribe: cada cambio de precio/costo crea una fila nueva.
+model CatalogItemPrice {
+  id                    String      @id @default(cuid())
+  itemId                String
+  item                  CatalogItem @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  listPrice             Decimal     @db.Decimal(14, 2)
+  minimumPrice          Decimal     @db.Decimal(14, 2)
+  unitCost              Decimal     @db.Decimal(14, 2)
+  taxRate               Decimal     @db.Decimal(8, 2)
+  effectiveAt           DateTime    @default(now())
+  createdByCredentialId String?
+  creadoEn              DateTime    @default(now())
+
+  @@index([itemId, effectiveAt])
+}
+
+model CatalogAsset {
+  id                    String         @id @default(cuid())
+  itemId                String
+  item                  CatalogItem    @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  storagePath           String         @unique
+  publicUrl             String
+  fileName              String         @db.VarChar(255)
+  mimeType              String         @db.VarChar(100)
+  sizeBytes             Int
+  isPrimary             Boolean        @default(false)
+  status                PosAssetStatus @default(PENDING)
+  createdByCredentialId String?
+  creadoEn              DateTime       @default(now())
+  actualizadoEn         DateTime       @updatedAt
+
+  @@index([itemId, status])
+}
+
+model CustomerSource {
+  id            String     @id @default(cuid())
+  name          String     @unique @db.VarChar(160)
+  active        Boolean    @default(true)
+  deletedAt     DateTime?
+  customers     Customer[]
+  creadoEn      DateTime   @default(now())
+  actualizadoEn DateTime   @updatedAt
+}
+
+model Customer {
+  id                   String                        @id @default(cuid())
+  displayName          String                        @db.VarChar(240)
+  normalizedName       String                        @db.VarChar(260)
+  phone                String?                       @unique @db.VarChar(32)
+  email                String?                       @db.VarChar(320)
+  sourceId             String?
+  source               CustomerSource?               @relation(fields: [sourceId], references: [id], onDelete: Restrict)
+  notes                String?
+  active               Boolean                       @default(true)
+  deletedAt            DateTime?
+  portfolios           CustomerPortfolioAssignment[]
+  priceListAssignments PriceListCustomerAssignment[]
+  creadoEn             DateTime                      @default(now())
+  actualizadoEn        DateTime                      @updatedAt
+
+  @@index([normalizedName, active])
+  @@index([sourceId])
+}
+
+// Versionar la cartera preserva quién atendía al cliente en cualquier fecha.
+model CustomerPortfolioAssignment {
+  id                    String    @id @default(cuid())
+  customerId            String
+  customer              Customer  @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  branchId              String?
+  branch                Sucursal? @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  employeeId            String?
+  employee              Empleado? @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  effectiveFrom         DateTime  @default(now())
+  effectiveTo           DateTime?
+  createdByCredentialId String?
+  creadoEn              DateTime  @default(now())
+
+  @@index([customerId, effectiveFrom, effectiveTo])
+  @@index([branchId, employeeId])
+}
+
+model PosPaymentMethodPolicy {
+  id                String     @id @default(cuid())
+  paymentMethodId   String     @unique
+  paymentMethod     MetodoPago @relation(fields: [paymentMethodId], references: [id], onDelete: Restrict)
+  requiresReference Boolean    @default(false)
+  referenceLabel    String?    @db.VarChar(80)
+  minAmount         Decimal?   @db.Decimal(14, 2)
+  maxAmount         Decimal?   @db.Decimal(14, 2)
+  activeForPos      Boolean    @default(true)
+  creadoEn          DateTime   @default(now())
+  actualizadoEn     DateTime   @updatedAt
+}
+
+model PosTicketConfiguration {
+  id                       String   @id @default(cuid())
+  branchId                 String?  @unique
+  logoAssetId              String?
+  companyName              String   @default("KEYSAR COSMETICS") @db.VarChar(160)
+  address                  String?
+  footerMessage            String?
+  policies                 String?
+  showClientName           Boolean  @default(true)
+  showClientPhone          Boolean  @default(true)
+  showSellerName           Boolean  @default(true)
+  showVatBreakdown         Boolean  @default(true)
+  showSpareCoverageMessage Boolean  @default(true)
+  creadoEn                 DateTime @default(now())
+  actualizadoEn            DateTime @updatedAt
+}
+
+model PosCustomerRequiredField {
+  id            String   @id @default(cuid())
+  key           String   @unique @db.VarChar(80)
+  label         String   @db.VarChar(120)
+  required      Boolean  @default(false)
+  active        Boolean  @default(true)
+  sortOrder     Int      @default(0)
+  creadoEn      DateTime @default(now())
+  actualizadoEn DateTime @updatedAt
+}
+
+model PosCourtesyPolicy {
+  id                    String    @id @default(cuid())
+  name                  String    @unique @db.VarChar(160)
+  description           String?
+  requiresCustomer      Boolean   @default(true)
+  requiresAuthorization Boolean   @default(true)
+  active                Boolean   @default(true)
+  deletedAt             DateTime?
+  creadoEn              DateTime  @default(now())
+  actualizadoEn         DateTime  @updatedAt
+}
+
+model PosVoucherTemplate {
+  id               String         @id @default(cuid())
+  name             String         @unique @db.VarChar(160)
+  kind             PosVoucherKind
+  value            Decimal        @db.Decimal(14, 2)
+  message          String         @db.VarChar(1000)
+  active           Boolean        @default(true)
+  visibleToSellers Boolean        @default(false)
+  deletedAt        DateTime?
+  creadoEn         DateTime       @default(now())
+  actualizadoEn    DateTime       @updatedAt
+}
+
+model PosSupplier {
+  id             String         @id @default(cuid())
+  folio          String         @unique @db.VarChar(64)
+  businessName   String         @db.VarChar(240)
+  normalizedName String         @unique @db.VarChar(260)
+  contactName    String?
+  rfc            String?        @db.VarChar(20)
+  taxRegime      String?
+  businessLine   String?
+  phone          String?
+  email          String?
+  address        String?
+  active         Boolean        @default(true)
+  deletedAt      DateTime?
+  catalogItems   CatalogItem[]
+  priceLists     PosPriceList[]
+  creadoEn       DateTime       @default(now())
+  actualizadoEn  DateTime       @updatedAt
+
+  @@index([active, normalizedName])
+}
+
+model PosPriceList {
+  id                  String                        @id @default(cuid())
+  name                String                        @db.VarChar(160)
+  version             Int                           @default(1)
+  status              PosPriceListStatus            @default(DRAFT)
+  supplierId          String?
+  supplier            PosSupplier?                  @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  effectiveFrom       DateTime?
+  effectiveTo         DateTime?
+  lines               PosPriceListLine[]
+  branchAssignments   PriceListBranchAssignment[]
+  customerAssignments PriceListCustomerAssignment[]
+  deletedAt           DateTime?
+  creadoEn            DateTime                      @default(now())
+  actualizadoEn       DateTime                      @updatedAt
+
+  @@unique([name, version])
+  @@index([status, effectiveFrom, effectiveTo])
+}
+
+model PosPriceListLine {
+  id          String       @id @default(cuid())
+  priceListId String
+  priceList   PosPriceList @relation(fields: [priceListId], references: [id], onDelete: Cascade)
+  itemId      String
+  item        CatalogItem  @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  price       Decimal      @db.Decimal(14, 2)
+  cost        Decimal?     @db.Decimal(14, 2)
+  creadoEn    DateTime     @default(now())
+
+  @@unique([priceListId, itemId])
+}
+
+model PriceListBranchAssignment {
+  id          String       @id @default(cuid())
+  priceListId String
+  priceList   PosPriceList @relation(fields: [priceListId], references: [id], onDelete: Cascade)
+  branchId    String
+  branch      Sucursal     @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@unique([priceListId, branchId])
+}
+
+model PriceListCustomerAssignment {
+  id          String       @id @default(cuid())
+  priceListId String
+  priceList   PosPriceList @relation(fields: [priceListId], references: [id], onDelete: Cascade)
+  customerId  String
+  customer    Customer     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@unique([priceListId, customerId])
+}
+
+model PosPackage {
+  id            String           @id @default(cuid())
+  name          String           @db.VarChar(160)
+  sku           String           @unique @db.VarChar(96)
+  description   String?
+  price         Decimal          @db.Decimal(14, 2)
+  status        PosPackageStatus @default(DRAFT)
+  startsAt      DateTime?
+  endsAt        DateTime?
+  lines         PosPackageLine[]
+  deletedAt     DateTime?
+  creadoEn      DateTime         @default(now())
+  actualizadoEn DateTime         @updatedAt
+
+  @@index([status, startsAt, endsAt])
+}
+
+model PosPackageLine {
+  id        String      @id @default(cuid())
+  packageId String
+  package   PosPackage  @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  itemId    String
+  item      CatalogItem @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  quantity  Decimal     @db.Decimal(14, 2)
+
+  @@unique([packageId, itemId])
+}
+
+model PosSalesCompetition {
+  id             String             @id @default(cuid())
+  name           String             @db.VarChar(160)
+  type           PosCompetitionType
+  active         Boolean            @default(true)
+  dateFrom       DateTime           @db.Date
+  dateTo         DateTime           @db.Date
+  branchId       String?
+  branch         Sucursal?          @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  targetAmount   Decimal?           @db.Decimal(14, 2)
+  itemId         String?
+  packageItemIds Json?
+  deletedAt      DateTime?
+  creadoEn       DateTime           @default(now())
+  actualizadoEn  DateTime           @updatedAt
+
+  @@index([active, dateFrom, dateTo])
+  @@index([branchId])
 }
 
 enum TipoCompraCita {

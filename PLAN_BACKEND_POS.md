@@ -36,7 +36,7 @@ Los dos esquemas Prisma existentes están sincronizados. No hay credenciales loc
 | ------------------------------------ | ----------------------- | ------------------------------------ | ----------------------------------------------------------------------------------------- |
 | 0. Documento, contratos e inventario | Completada — 2026-09-02 | Backend/API                          | Contratos versionados, diagnóstico sólo lectura ejecutable y cero mutaciones productivas. |
 | 1. Seguridad, terminales y auditoría | Completada — 2026-09-03 | Backend/API + Seguridad              | Credenciales protegidas, permisos efectivos y auditoría verificable.                      |
-| 2. Catálogo, clientes y activos      | Pendiente               | Backend/API + POS                    | Catálogo histórico inmutable y costos redaccionados por servidor.                         |
+| 2. Catálogo, clientes y activos      | Completada — 2026-09-03 | Backend/API + POS                    | Catálogo histórico inmutable y costos redaccionados por servidor.                         |
 | 3. Inventario y bodega               | Pendiente               | Backend/API + Operación de almacén   | Ledger consistente, reintentos idempotentes y doble aprobación distinta.                  |
 | 4. Tickets y proyección financiera   | Pendiente               | Backend/API + POS + Envelope/Payroll | Totales, inventario y proyección legacy conciliados al centavo.                           |
 | 5. Jornada, asistencia y caja        | Pendiente               | Backend/API + Operación de sucursal  | Una jornada por sucursal/fecha y cierre inmutable.                                        |
@@ -229,13 +229,22 @@ Los tipos POS saldrán de `apps/pos` hacia `packages/types/src/pos.ts`; `package
 
 ### Fase 2 — Catálogo, clientes, configuración y activos
 
-- [ ] Crear catálogo unificado, taxonomías, beneficios, sucursales visibles, historial de precios, fuentes de cliente y cartera.
-- [ ] Integrar imágenes mediante almacenamiento de objetos y metadatos en PostgreSQL; validar MIME, tamaño y fallback.
-- [ ] Implementar métodos de pago POS, configuración de ticket, campos obligatorios, cortesías, vouchers, proveedores, listas de precios, paquetes y competencias.
-- [ ] Aplicar validaciones de publicación, SKU único, precios, IVA, costos y soft delete.
-- [ ] Conectar Inventario/Catálogo digital, Customers, Suppliers, Deals y Settings.
+- [x] Crear catálogo unificado, taxonomías, beneficios, sucursales visibles, historial de precios, fuentes de cliente y cartera.
+- [x] Integrar imágenes mediante almacenamiento de objetos y metadatos en PostgreSQL; validar MIME, tamaño y fallback.
+- [x] Implementar métodos de pago POS, configuración de ticket, campos obligatorios, cortesías, vouchers, proveedores, listas de precios, paquetes y competencias.
+- [x] Aplicar validaciones de publicación, SKU único, precios, IVA, costos y soft delete.
+- [x] Conectar Inventario/Catálogo digital, Customers, Suppliers, Deals y Settings.
 
-**Criterio de cierre:** tickets históricos no cambian al editar catálogo; costos nunca aparecen sin permiso; búsqueda vacía no devuelve clientes.
+**Criterio de cierre: cumplido en repositorio.** `CatalogItemPrice` conserva cada cambio de precio, costo e IVA como evento nuevo; la Fase 4 será la única que podrá materializar snapshots en tickets. Los DTO públicos no serializan `unitCost` ni los costos de listas, salvo para master o `REPORTS_COSTS`. `GET /customers/search` exige al menos dos caracteres y nunca permite un directorio completo por búsqueda vacía. La migración no se aplicó durante esta fase: primero debe ejecutarse sobre PostgreSQL desechable/development autorizado.
+
+#### Entregables verificables
+
+- Migración aditiva: `backend/api/prisma/migrations/20260903010000_add_pos_catalog_customers_assets/migration.sql`. Crea el catálogo, taxonomías, beneficios, visibilidad por sucursal, historial de precio, activos, clientes, fuentes y cartera; además de políticas POS de pago, configuración de ticket, campos requeridos, cortesías, vouchers, proveedores, listas versionadas, paquetes y competencias. No crea datos demostrativos ni modifica `Venta`/`VentaDetalle`.
+- Seguridad y consistencia: SKU, folio de proveedor, teléfono normalizado y las claves configurables son únicos; los precios, costos e IVA pasan validación Zod y restricciones SQL. Los recursos con efectos históricos se desactivan mediante `deletedAt`, nunca se eliminan físicamente. Publicar un catálogo exige descripción y al menos un beneficio.
+- API: `backend/api/src/routes/pos-catalog.routes.ts` publica recursos protegidos bajo `/api/pos`: catálogo/taxonomías/activos, clientes y fuentes, proveedores, métodos de pago, ticket, campos, cortesías, vouchers, listas de precios, paquetes y competencias. Aplica los grants POS del módulo correspondiente, el alcance de la terminal y la redacción de costos antes de serializar.
+- Activos: `backend/api/src/services/pos-asset-storage.ts` almacena imágenes en el bucket Supabase `POS_ASSET_BUCKET` (por defecto `pos-assets`), acepta sólo JPEG/PNG/WebP/GIF y limita el archivo a 5 MB. El frontend conserva un fallback relativo cuando un artículo no tiene activo listo.
+- Cliente e integración: `packages/api-client` añade operaciones tipadas para catálogo, búsqueda de clientes, fuentes, proveedores, vouchers y configuración de ticket. Al iniciar una sesión API, POS hidrata catálogo, proveedores, vouchers y configuración de impresión conforme a los permisos; `Customers` dispone del cliente de búsqueda paginada y con criterio obligatorio para su sustitución visual incremental.
+- Pruebas: los contratos existentes validan publicación, búsqueda no vacía e importes exactos; la fase se comprobó con `prisma validate`, sincronía de ambos schemas, type-check API/POS y pruebas unitarias. Las pruebas HTTP contra PostgreSQL quedan para el ambiente efímero autorizado de la Fase 8.
 
 ### Fase 3 — Inventario, conteos y bodega matriz
 

@@ -9,6 +9,7 @@ import envelopeRoutes from "./routes/envelope.routes";
 import payrollAccessRoutes from "./routes/payroll-access.routes";
 import payrollRoutes from "./routes/payroll.routes";
 import posRoutes from "./routes/pos.routes";
+import posCatalogRoutes from "./routes/pos-catalog.routes";
 import schedulerRoutes from "./routes/scheduler.routes";
 
 function configuredOrigins(): string[] {
@@ -69,6 +70,7 @@ export function createApp(): Express {
   app.use("/api/crm", crmRoutes);
   app.use("/api/scheduler", schedulerRoutes);
   app.use("/api/pos", posRoutes);
+  app.use("/api/pos", posCatalogRoutes);
 
   app.use((_req, res) => {
     res.status(404).json({

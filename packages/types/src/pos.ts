@@ -222,12 +222,84 @@ export interface PosCatalogItemWithCostsDto extends PosCatalogItemDto {
   unitCost: Money;
 }
 
+export interface PosCatalogAssetDto {
+  id: PosId;
+  publicUrl: string;
+  mimeType: string;
+  isPrimary: boolean;
+  status: "PENDING" | "READY" | "FAILED" | "DELETED";
+}
+
+export interface PosCustomerSourceDto {
+  id: PosId;
+  name: string;
+  active: boolean;
+}
+
 export interface PosCustomerDto {
   id: PosId;
   displayName: string;
   phone: string | null;
   email: string | null;
   active: boolean;
+}
+
+export interface PosSupplierDto {
+  id: PosId;
+  folio: string;
+  businessName: string;
+  contactName: string | null;
+  rfc: string | null;
+  phone: string | null;
+  email: string | null;
+  address: string | null;
+  active: boolean;
+}
+
+export interface PosPaymentMethodDto {
+  id: PosId;
+  name: string;
+  type: "EFECTIVO" | "TARJETA" | "TRANSFERENCIA" | "OTRO";
+  active: boolean;
+  activeForPos: boolean;
+  requiresReference: boolean;
+  referenceLabel: string | null;
+}
+
+export interface PosTicketConfigurationDto {
+  branchId: PosId | null;
+  logoUrl: string | null;
+  companyName: string;
+  address: string | null;
+  footerMessage: string | null;
+  policies: string | null;
+  showClientName: boolean;
+  showClientPhone: boolean;
+  showSellerName: boolean;
+  showVatBreakdown: boolean;
+  showSpareCoverageMessage: boolean;
+}
+
+export interface PosVoucherTemplateDto {
+  id: PosId;
+  name: string;
+  kind: "NEXT_PURCHASE_DISCOUNT" | "COMPANION_FACIAL" | "MEMBERSHIP_DISCOUNT";
+  value: Money;
+  message: string;
+  active: boolean;
+  visibleToSellers: boolean;
+}
+
+export interface PosPackageDto {
+  id: PosId;
+  name: string;
+  sku: string;
+  description: string | null;
+  price: Money;
+  status: "DRAFT" | "PUBLISHED" | "INACTIVE";
+  startsAt: IsoUtcDateTime | null;
+  endsAt: IsoUtcDateTime | null;
+  lines: Array<{ itemId: PosId; quantity: Money }>;
 }
 
 export interface PosInventoryBalanceDto {

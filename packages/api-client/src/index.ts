@@ -4,13 +4,20 @@ import type {
   ApiResponse,
   PosAccessBootstrapDto,
   PosBranchSummaryDto,
+  PosCatalogItemDto,
+  PosCatalogItemWithCostsDto,
   PosCredentialSummaryDto,
+  PosCustomerDto,
+  PosCustomerSourceDto,
   PosLoginRequestDto,
   PosMasterAuthorizationDto,
   PosMasterAuthorizationRequestDto,
   PosPermissionKey,
   PosSessionDto,
+  PosSupplierDto,
   PosTerminalDto,
+  PosTicketConfigurationDto,
+  PosVoucherTemplateDto,
 } from '@cosmetics/types'
 
 /**
@@ -79,6 +86,13 @@ export interface PosApiClient {
     },
   ): Promise<PosCredentialSummaryDto>
   changeTerminalBranch(terminalId: string, branchId: string, authorizationToken: string): Promise<PosTerminalDto>
+  catalogItems(input?: { query?: string; page?: number; pageSize?: number }): Promise<{ items: Array<PosCatalogItemDto | PosCatalogItemWithCostsDto>; page: number; pageSize: number; total: number }>
+  customerSearch(query: string, page?: number, pageSize?: number): Promise<{ items: PosCustomerDto[]; page: number; pageSize: number; total: number }>
+  createCustomer(input: { displayName: string; phone?: string | null; email?: string | null; sourceId?: string | null; notes?: string | null; active?: boolean; branchId?: string | null; employeeId?: string | null }): Promise<PosCustomerDto>
+  customerSources(): Promise<PosCustomerSourceDto[]>
+  suppliers(): Promise<PosSupplierDto[]>
+  ticketConfiguration(): Promise<PosTicketConfigurationDto>
+  voucherTemplates(): Promise<PosVoucherTemplateDto[]>
   clearSession(): void
 }
 
@@ -138,6 +152,13 @@ export function createPosApiClient(baseURL: string, options: PosApiClientOptions
       data<PosCredentialSummaryDto>(client.put(`/access/employees/${employeeId}/credential`, input)),
     changeTerminalBranch: (terminalId, branchId, authorizationToken) =>
       data<PosTerminalDto>(client.post(`/terminals/${terminalId}/branch`, { branchId, authorizationToken })),
+    catalogItems: (input = {}) => data(client.get('/catalog/items', { params: input })),
+    customerSearch: (query, page, pageSize) => data(client.get('/customers/search', { params: { query, page, pageSize } })),
+    createCustomer: (input) => data<PosCustomerDto>(client.post('/customers', input)),
+    customerSources: () => data<PosCustomerSourceDto[]>(client.get('/customers/sources')),
+    suppliers: () => data<PosSupplierDto[]>(client.get('/suppliers')),
+    ticketConfiguration: () => data<PosTicketConfigurationDto>(client.get('/settings/ticket')),
+    voucherTemplates: () => data<PosVoucherTemplateDto[]>(client.get('/settings/vouchers')),
     clearSession: () => setAccessToken(null),
   }
 }

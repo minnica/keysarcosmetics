@@ -235,6 +235,22 @@ const getSaleProductBrand = (product: Product) =>
       ?.replace(" International", "")
       .replace(" México", "") ?? product.family;
 
+/** Adapta el DTO público al componente existente sin reintroducir costos. */
+const productFromPosCatalog = (item: {
+  id: string; sku: string; name: string; kind: string;
+  family: { name: string } | null; category: { name: string } | null;
+  description: string | null; benefits: string[]; imageUrl: string | null;
+  listPrice: string; minimumPrice: string; taxRate: string; unitCost?: string;
+}, branch: string): Product => ({
+  id: item.id, sku: item.sku, name: item.name,
+  family: item.family?.name ?? "Sin familia", category: item.category?.name ?? "Sin categoría",
+  group: item.family?.name ?? "General", kind: item.kind === "SERVICE" ? "SERVICE" : "PRODUCT",
+  image: item.imageUrl ?? "./products/placeholder.png", ...(item.description ? { description: item.description } : {}),
+  benefits: item.benefits, showInDigitalCatalog: true, minPrice: Number(item.minimumPrice), maxPrice: Number(item.listPrice),
+  includesVat: Number(item.taxRate) > 0, costUsd: 0, costMxn: Number(item.unitCost ?? "0.00"),
+  stock: null, stockMin: null, stockMax: null, branches: [branch], active: true,
+});
+
 const formatSaleCount = (count: number, singular: string, plural: string) =>
   `${count} ${count === 1 ? singular : plural}`;
 
@@ -1173,6 +1189,42 @@ function App() {
       const access = accessFromDto(await posApi.accessBootstrap());
       setEmployeeRoles(access.roles);
       setSellers(access.sellers);
+    }
+    // La configuración de impresión pertenece a la fase 2 y se resuelve desde
+    // el backend al abrir una sesión API; no se persiste en el navegador.
+    if (session.actor.isMaster || session.permissions.includes("SETTINGS_MANAGE")) {
+      const ticketConfiguration = await posApi.ticketConfiguration();
+      setReceiptSettings((current) => ({
+        ...current,
+        companyName: ticketConfiguration.companyName,
+        address: ticketConfiguration.address ?? current.address,
+        footerMessage: ticketConfiguration.footerMessage ?? current.footerMessage,
+        policies: ticketConfiguration.policies ?? current.policies,
+        showClientName: ticketConfiguration.showClientName,
+        showClientPhone: ticketConfiguration.showClientPhone,
+        showSellerName: ticketConfiguration.showSellerName,
+        showVatBreakdown: ticketConfiguration.showVatBreakdown,
+        showSpareCoverageMessage: ticketConfiguration.showSpareCoverageMessage,
+        logoUrl: ticketConfiguration.logoUrl ?? current.logoUrl,
+        branchName: `Sucursal ${branchName}`,
+      }));
+    }
+    if (session.actor.isMaster || session.permissions.includes("CATALOG_VIEW")) {
+      const catalog = await posApi.catalogItems({ pageSize: 100 });
+      setCatalogProducts(catalog.items.map((item) => productFromPosCatalog(item, branchName)));
+    }
+    if (session.actor.isMaster || session.permissions.includes("WAREHOUSE_MANAGE")) {
+      const suppliers = await posApi.suppliers();
+      setWarehouseSuppliers(suppliers.map((supplier) => ({
+        id: supplier.id, folio: supplier.folio, businessName: supplier.businessName,
+        contactName: supplier.contactName ?? "", rfc: supplier.rfc ?? "", taxRegime: "", businessLine: "",
+        phone: supplier.phone ?? "", email: supplier.email ?? "", address: supplier.address ?? "",
+        active: supplier.active, createdAtIso: new Date().toISOString(),
+      })));
+    }
+    if (session.actor.isMaster || session.permissions.includes("VOUCHERS_MANAGE")) {
+      const vouchers = await posApi.voucherTemplates();
+      setVoucherTemplates(vouchers.map((voucher) => ({ ...voucher, value: Number(voucher.value) })));
     }
     const nextScreens = session.actor.isMaster
       ? (Object.keys(screenMetadata) as ScreenId[])
