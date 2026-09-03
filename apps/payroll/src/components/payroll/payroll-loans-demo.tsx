@@ -50,12 +50,25 @@ import {
   Textarea,
   toast,
 } from "@cosmetics/ui";
-import { type DemoLoan, usePayrollDemo } from "./payroll-demo-context";
+import {
+  type DemoLoan,
+  type PayrollModule,
+  payrollModuleForCategory,
+  payrollModuleLabels,
+  usePayrollDemo,
+} from "./payroll-demo-context";
 
 const money = new Intl.NumberFormat("es-MX", {
   style: "currency",
   currency: "MXN",
 });
+
+const payrollModules: Exclude<PayrollModule, "CONSOLIDATED">[] = [
+  "FIXED",
+  "SPECIALIST",
+  "COMMISSION",
+  "CONTRACTOR",
+];
 
 function LoanDialog({
   loan,
@@ -70,6 +83,22 @@ function LoanDialog({
   const [employeeId, setEmployeeId] = useState(
     loan?.employeeId ?? state.employees[0]?.id ?? "",
   );
+  const initialEmployee = state.employees.find(
+    (employee) => employee.id === (loan?.employeeId ?? state.employees[0]?.id),
+  );
+  const initialModule = loan?.payrollModule ??
+    (initialEmployee
+      ? payrollModuleForCategory(initialEmployee.category)
+      : "FIXED");
+  const initialRun =
+    state.runs.find((run) => run.id === loan?.payrollRunId) ??
+    state.runs.find((run) => run.module === initialModule);
+  const [payrollModule, setPayrollModule] = useState<
+    Exclude<PayrollModule, "CONSOLIDATED">
+  >(initialModule as Exclude<PayrollModule, "CONSOLIDATED">);
+  const [payrollRunId, setPayrollRunId] = useState(
+    loan?.payrollRunId ?? initialRun?.id ?? "",
+  );
   const [requestedAt, setRequestedAt] = useState(
     loan?.requestedAt ?? new Date().toISOString().slice(0, 10),
   );
@@ -78,12 +107,36 @@ function LoanDialog({
     String(loan?.installments ?? 4),
   );
   const [notes, setNotes] = useState(loan?.notes ?? "");
+  const availableRuns = state.runs.filter(
+    (run) => run.module === payrollModule,
+  );
+  const selectedRun =
+    state.runs.find((run) => run.id === payrollRunId) ?? availableRuns[0];
+  const selectedEmployee = state.employees.find(
+    (employee) => employee.id === employeeId,
+  );
+  const selectedBranch = state.branches.find(
+    (branch) => branch.id === selectedEmployee?.branchId,
+  );
+
+  function selectEmployee(id: string) {
+    const employee = state.employees.find((item) => item.id === id);
+    const nextModule = employee
+      ? payrollModuleForCategory(employee.category)
+      : "FIXED";
+    const normalizedModule = nextModule === "CONSOLIDATED" ? "FIXED" : nextModule;
+    const nextRun = state.runs.find((run) => run.module === normalizedModule);
+    setEmployeeId(id);
+    setPayrollModule(normalizedModule as Exclude<PayrollModule, "CONSOLIDATED">);
+    setPayrollRunId(nextRun?.id ?? "");
+  }
 
   function submit() {
     const parsedAmount = Number(amount);
     const parsedInstallments = Number(installments);
     if (
       !employeeId ||
+      !selectedRun ||
       parsedAmount <= 0 ||
       parsedInstallments < 1 ||
       parsedInstallments > 24
@@ -96,6 +149,9 @@ function LoanDialog({
         requestedAt,
         amount: parsedAmount,
         installments: parsedInstallments,
+        firstPeriod: selectedRun.periodStart,
+        payrollModule,
+        payrollRunId: selectedRun.id,
         notes,
       });
       toast.success(
@@ -107,7 +163,9 @@ function LoanDialog({
         requestedAt,
         amount: parsedAmount,
         installments: parsedInstallments,
-        firstPeriod: currentPeriod.start,
+        firstPeriod: selectedRun.periodStart,
+        payrollModule,
+        payrollRunId: selectedRun.id,
         status: "PENDING",
         notes,
       });
@@ -118,7 +176,7 @@ function LoanDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="max-h-[92vh] max-w-2xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
             {loan ? "Editar préstamo" : "Nueva solicitud"}
@@ -133,7 +191,7 @@ function LoanDialog({
             <Label>Empleado</Label>
             <Select
               value={employeeId}
-              onValueChange={setEmployeeId}
+              onValueChange={selectEmployee}
               disabled={Boolean(loan)}
             >
               <SelectTrigger>
@@ -148,6 +206,67 @@ function LoanDialog({
               </SelectContent>
             </Select>
           </div>
+          <section className="rounded-xl border border-[color:var(--border-color)] bg-[color:var(--accent-hover)]/20 p-4">
+            <div className="mb-3 flex items-center gap-2">
+              <WalletCards className="h-4 w-4 text-[color:var(--text-secondary)]" />
+              <div>
+                <p className="text-sm font-semibold">Nómina afectada</p>
+                <p className="text-xs text-[color:var(--text-muted)]">
+                  Define dónde se pagará y en qué nómina comenzará el descuento.
+                </p>
+              </div>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Tipo de nómina</Label>
+                <Select
+                  value={payrollModule}
+                  onValueChange={(value) => {
+                    const next = value as Exclude<PayrollModule, "CONSOLIDATED">;
+                    const nextRun = state.runs.find((run) => run.module === next);
+                    setPayrollModule(next);
+                    setPayrollRunId(nextRun?.id ?? "");
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="SELECCIONA LA NÓMINA" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {payrollModules.map((module) => (
+                      <SelectItem key={module} value={module}>
+                        {payrollModuleLabels[module]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Corrida / periodo de aplicación</Label>
+                <Select value={selectedRun?.id ?? ""} onValueChange={setPayrollRunId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="SELECCIONA EL PERIODO" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableRuns.map((run) => (
+                      <SelectItem key={run.id} value={run.id}>
+                        {run.periodStart} — {run.periodEnd} · {run.status}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            {selectedRun && (
+              <div className="mt-3 flex flex-col gap-1 rounded-lg border border-[color:var(--border-color)] bg-[color:var(--bg-card)] px-3 py-2 text-xs sm:flex-row sm:items-center sm:justify-between">
+                <span>
+                  <strong>{payrollModuleLabels[selectedRun.module]}</strong> · {selectedRun.periodStart} — {selectedRun.periodEnd}
+                </span>
+                <span className="text-[color:var(--text-muted)]">
+                  Costo en {selectedBranch?.name ?? "sucursal del empleado"}
+                </span>
+              </div>
+            )}
+          </section>
           <div className="grid gap-4 sm:grid-cols-3">
             <div className="space-y-2">
               <Label htmlFor="loan-date">Fecha del préstamo</Label>
@@ -191,7 +310,9 @@ function LoanDialog({
               )}
             </p>
             <p className="mt-1 text-xs text-[color:var(--text-muted)]">
-              Primera aplicación: {currentPeriod.label}
+              Primera aplicación: {selectedRun
+                ? `${selectedRun.periodStart} — ${selectedRun.periodEnd}`
+                : currentPeriod.label}
             </p>
           </div>
           <div className="space-y-2">
@@ -236,6 +357,15 @@ function HistoryDialog({
             Bitácora mock vinculada al empleado y visible en todos los módulos.
           </DialogDescription>
         </DialogHeader>
+        <div className="rounded-xl border border-[color:var(--border-color)] bg-[color:var(--accent-hover)]/30 px-4 py-3">
+          <p className="label-caps">NÓMINA DE APLICACIÓN</p>
+          <p className="mt-1 text-sm font-semibold">
+            {payrollModuleLabels[loan.payrollModule]} · desde {loan.firstPeriod}
+          </p>
+          <p className="mt-1 text-xs text-[color:var(--text-muted)]">
+            Las parcialidades posteriores conservan este tipo de nómina.
+          </p>
+        </div>
         <div className="space-y-3 py-2">
           {loan.history
             .slice()
@@ -282,6 +412,8 @@ export function PayrollLoansDemo() {
             ),
             amount: loan.amount,
             comments: loan.notes,
+            payrollModule: loan.payrollModule,
+            periodStart: loan.firstPeriod,
           })),
         ),
         ...state.adjustments
@@ -304,6 +436,8 @@ export function PayrollLoansDemo() {
             ),
             amount: item.amount,
             comments: item.comments,
+            payrollModule: item.payrollModule,
+            periodStart: item.periodStart,
           })),
       ].sort((a, b) => b.date.localeCompare(a.date)),
     [state.adjustments, state.employees, state.loans],
@@ -460,6 +594,7 @@ export function PayrollLoansDemo() {
                 <TableRow>
                   <TableHead>EMPLEADO</TableHead>
                   <TableHead>FECHA DE SOLICITUD</TableHead>
+                  <TableHead>NÓMINA / APLICACIÓN</TableHead>
                   <TableHead className="text-right">MONTO</TableHead>
                   <TableHead>PARCIALIDADES</TableHead>
                   <TableHead className="text-right">ADEUDO</TableHead>
@@ -489,6 +624,14 @@ export function PayrollLoansDemo() {
                         {loan.requestedAt}
                         <p className="text-xs text-[color:var(--text-muted)]">
                           {loan.notes || "SIN NOTAS"}
+                        </p>
+                      </TableCell>
+                      <TableCell>
+                        <p className="font-semibold">
+                          {payrollModuleLabels[loan.payrollModule]}
+                        </p>
+                        <p className="text-xs text-[color:var(--text-muted)]">
+                          DESDE {loan.firstPeriod}
                         </p>
                       </TableCell>
                       <TableCell className="number-display text-right">
@@ -580,6 +723,9 @@ export function PayrollLoansDemo() {
                     <p className="text-xs text-[color:var(--text-muted)]">
                       {money.format(event.amount)} · {event.by}
                     </p>
+                    <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-[color:var(--text-secondary)]">
+                      {payrollModuleLabels[event.payrollModule]} · aplicación {event.periodStart}
+                    </p>
                     <p className="mt-1 text-xs text-[color:var(--text-muted)]">
                       {event.comments}
                     </p>
@@ -615,7 +761,7 @@ export function PayrollLoansDemo() {
                       {event.employee?.name} · {money.format(event.amount)}
                     </p>
                     <p className="text-xs text-[color:var(--text-muted)]">
-                      {event.by}
+                      {event.by} · {payrollModuleLabels[event.payrollModule]} · desde {event.periodStart}
                     </p>
                   </div>
                   <Badge variant="outline">{event.date}</Badge>

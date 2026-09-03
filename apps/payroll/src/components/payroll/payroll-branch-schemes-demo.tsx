@@ -5,11 +5,14 @@ import {
   BarChart3,
   Building2,
   CalendarDays,
+  Check,
+  ChevronsUpDown,
   Combine,
   History,
   Network,
   Pencil,
   Plus,
+  Search,
   Trash2,
   UserRoundCheck,
 } from "lucide-react";
@@ -37,6 +40,9 @@ import {
   DialogTitle,
   Input,
   Label,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
   Select,
   SelectContent,
   SelectItem,
@@ -73,6 +79,7 @@ function SchemeDialog({
   const [name, setName] = useState(scheme?.name ?? "");
   const [scope, setScope] = useState<BranchCommissionScope>(scheme?.scope ?? "ALL_COMBINED");
   const [branchIds, setBranchIds] = useState(scheme?.branchIds ?? state.branches.map((branch) => branch.id));
+  const [branchSearch, setBranchSearch] = useState("");
   const [managerId, setManagerId] = useState(scheme?.managerId ?? "UNASSIGNED");
   const [effectiveFrom, setEffectiveFrom] = useState(scheme?.effectiveFrom ?? new Date().toISOString().slice(0, 10));
   const [active, setActive] = useState(scheme?.active ?? true);
@@ -90,6 +97,16 @@ function SchemeDialog({
     }
     setBranchIds((current) => current.includes(branchId) ? current.filter((id) => id !== branchId) : [...current, branchId]);
   }
+
+  const normalizedBranchSearch = branchSearch.trim().toLocaleLowerCase("es-MX");
+  const visibleBranches = state.branches.filter((branch) =>
+    !normalizedBranchSearch || `${branch.name} ${branch.city}`.toLocaleLowerCase("es-MX").includes(normalizedBranchSearch),
+  );
+  const selectedBranchLabel = branchIds.length === state.branches.length
+    ? "Todas las sucursales"
+    : branchIds.length === 1
+      ? state.branches.find((branch) => branch.id === branchIds[0])?.name ?? "1 sucursal"
+      : `${branchIds.length} sucursales seleccionadas`;
 
   function submit() {
     setAttempted(true);
@@ -128,11 +145,33 @@ function SchemeDialog({
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2"><Label>Tipo de cálculo</Label><Select value={scope} onValueChange={(value) => { const next = value as BranchCommissionScope; setScope(next); if (next === "ALL_COMBINED") setBranchIds(state.branches.map((branch) => branch.id)); if (next === "SINGLE_BRANCH") setBranchIds((current) => [current[0] ?? state.branches[0]?.id ?? ""].filter(Boolean)); }}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="SINGLE_BRANCH">UNA SOLA SUCURSAL</SelectItem><SelectItem value="SELECTED_BRANCHES">VARIAS SUCURSALES COMBINADAS</SelectItem><SelectItem value="ALL_COMBINED">TODAS LAS SUCURSALES COMBINADAS</SelectItem></SelectContent></Select></div>
-            <div className="space-y-2"><Label>Gerente asociado</Label><Select value={managerId} onValueChange={setManagerId}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="UNASSIGNED">GERENCIA PENDIENTE</SelectItem>{managers.map((manager) => <SelectItem key={manager.id} value={manager.id}>{manager.name} · {manager.position}</SelectItem>)}</SelectContent></Select></div>
+            <div className="space-y-2"><Label>Gerente asociado</Label><Select value={managerId} onValueChange={setManagerId}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="UNASSIGNED">SIN GERENTE</SelectItem>{managers.map((manager) => <SelectItem key={manager.id} value={manager.id}>{manager.name} · {manager.position}</SelectItem>)}</SelectContent></Select><p className="text-[10px] text-[color:var(--text-muted)]">Cada cambio crea una nueva entrada sin reemplazar al gerente anterior.</p></div>
           </div>
           <div className="space-y-2">
             <Label>Puntos de venta incluidos</Label>
-            <div className="grid gap-2 sm:grid-cols-3">{state.branches.map((branch) => { const selected = branchIds.includes(branch.id); return <button key={branch.id} type="button" disabled={scope === "ALL_COMBINED"} onClick={() => toggleBranch(branch.id)} className={`rounded-xl border p-3 text-left transition-colors ${selected ? "border-[color:var(--accent)] bg-[color:var(--accent-hover)]/45" : "border-[color:var(--border-color)]"} disabled:cursor-default disabled:opacity-90`}><span className="flex items-center gap-2 font-semibold"><Building2 className="h-4 w-4" />{branch.name}</span><span className="mt-1 block text-xs text-[color:var(--text-muted)]">{branch.city} · {selected ? "INCLUIDA" : "NO INCLUIDA"}</span></button>; })}</div>
+            <Popover onOpenChange={(isOpen) => { if (!isOpen) setBranchSearch(""); }}>
+              <PopoverTrigger asChild>
+                <button type="button" className="flex h-10 w-full items-center justify-between gap-3 rounded-xl border border-[color:var(--border-color)] bg-[color:var(--bg-card)] px-3 text-left shadow-sm transition-colors hover:border-[color:var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                  <span className="flex min-w-0 items-center gap-2.5"><span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[color:var(--accent-hover)]/50 text-[color:var(--text-secondary)]"><Building2 className="h-3.5 w-3.5" /></span><span className="min-w-0"><span className="block truncate text-xs font-semibold">{selectedBranchLabel}</span><span className="block text-[9px] uppercase tracking-[0.08em] text-[color:var(--text-muted)]">{branchIds.length} de {state.branches.length} puntos seleccionados</span></span></span>
+                  <ChevronsUpDown className="h-4 w-4 shrink-0 text-[color:var(--text-muted)]" />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent align="start" className="w-[min(420px,calc(100vw-48px))] rounded-2xl border-[color:var(--border-color)] p-0 shadow-xl">
+                <div className="border-b border-[color:var(--border-color)] p-3">
+                  <div className="flex items-center justify-between gap-3"><div><p className="text-xs font-semibold">Seleccionar sucursales</p><p className="text-[10px] text-[color:var(--text-muted)]">{scope === "SINGLE_BRANCH" ? "Elige un solo punto de venta." : scope === "ALL_COMBINED" ? "Este esquema incluye automáticamente todos los puntos." : "Marca los puntos que compartirán la escala."}</p></div><Badge variant="outline" className="shrink-0 text-[9px]">{branchIds.length} / {state.branches.length}</Badge></div>
+                  <div className="relative mt-2.5"><Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[color:var(--text-muted)]" /><Input value={branchSearch} onChange={(event) => setBranchSearch(event.target.value)} className="h-8 pl-8 text-[10px]" placeholder="BUSCAR SUCURSAL O CIUDAD" aria-label="Buscar sucursal" /></div>
+                  {scope === "SELECTED_BRANCHES" && <div className="mt-2 flex gap-2"><Button type="button" size="sm" variant="outline" className="h-7 px-2 text-[9px]" onClick={() => setBranchIds(state.branches.map((branch) => branch.id))}>Seleccionar todas</Button><Button type="button" size="sm" variant="ghost" className="h-7 px-2 text-[9px]" onClick={() => setBranchIds([])}>Limpiar</Button></div>}
+                </div>
+                <div className="max-h-64 overflow-y-auto p-1.5">
+                  {visibleBranches.map((branch) => {
+                    const selected = branchIds.includes(branch.id);
+                    const locked = scope === "ALL_COMBINED";
+                    return <button key={branch.id} type="button" disabled={locked} onClick={() => toggleBranch(branch.id)} className={`flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left transition-colors ${selected ? "bg-[color:var(--accent-hover)]/55" : "hover:bg-[color:var(--accent-hover)]/25"} disabled:cursor-default`}><span aria-hidden="true" className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${selected ? "border-[#9a744c] bg-[#9a744c] text-white" : "border-[color:var(--border-color)] bg-[color:var(--bg-card)]"}`}>{selected && <Check className="h-3 w-3" />}</span><span className="min-w-0 flex-1"><span className="block truncate text-[11px] font-semibold">{branch.name}</span><span className="block truncate text-[9px] uppercase tracking-[0.06em] text-[color:var(--text-muted)]">{branch.city}</span></span><span className="text-[8px] font-semibold uppercase tracking-[0.08em] text-[color:var(--text-muted)]">{selected ? "Incluida" : "Disponible"}</span></button>;
+                  })}
+                  {visibleBranches.length === 0 && <div className="px-3 py-8 text-center"><Search className="mx-auto h-4 w-4 text-[color:var(--text-muted)]" /><p className="mt-2 text-xs font-semibold">Sin coincidencias</p></div>}
+                </div>
+              </PopoverContent>
+            </Popover>
             <p className="text-xs text-[color:var(--text-muted)]">{scope === "SINGLE_BRANCH" ? "Selecciona un solo punto: su venta mensual será la base completa del esquema." : scope === "ALL_COMBINED" ? "La venta de todos los puntos se suma antes de buscar el rango de comisión." : "La venta de las sucursales elegidas se combina como una sola base de cálculo."}</p>
           </div>
           <CommissionScaleEditor levels={levels} onChange={setLevels} maxRate={20} description="La venta individual o combinada determina el nivel; la tasa resultante se aplica a los puntos incluidos." />
@@ -171,11 +210,11 @@ export function PayrollBranchSchemesDemo() {
           const manager = state.employees.find((employee) => employee.id === scheme.managerId);
           const branches = state.branches.filter((branch) => scheme.branchIds.includes(branch.id));
           const scopeLabel = scheme.scope === "SINGLE_BRANCH" ? "SUCURSAL INDIVIDUAL" : scheme.scope === "ALL_COMBINED" ? "TODAS COMBINADAS" : "SELECCIÓN COMBINADA";
-          return <TableRow key={scheme.id}><TableCell><p className="font-semibold">{scheme.name}</p><div className="mt-1 flex gap-1"><Badge variant="outline">{scopeLabel}</Badge><Badge variant="outline">{scheme.active ? "ACTIVO" : "INACTIVO"}</Badge></div></TableCell><TableCell><div className="flex max-w-xs flex-wrap gap-1">{branches.map((branch) => <Badge key={branch.id} variant="outline">{branch.name}</Badge>)}</div></TableCell><TableCell><span className="inline-flex items-center gap-2 text-sm"><UserRoundCheck className="h-4 w-4" />{manager?.name ?? "GERENCIA PENDIENTE"}</span></TableCell><TableCell><div className="flex min-w-[360px] flex-wrap gap-1">{scheme.tiers.map((tier) => <Badge key={tier.id} variant="outline" className="bg-[color:var(--accent-hover)]/40">{money.format(tier.from)} — {tier.to === null ? "SIN LÍMITE" : money.format(tier.to)} · {(tier.rate * 100).toFixed(1)}%</Badge>)}</div></TableCell><TableCell><p className="font-semibold">{scheme.effectiveFrom}</p><p className="text-xs text-[color:var(--text-muted)]">HISTORIAL PROTEGIDO</p></TableCell><TableCell><div className="flex justify-end gap-1"><Button size="icon" variant="ghost" aria-label={`Editar ${scheme.name}`} onClick={() => setEditing(scheme)}><Pencil className="h-4 w-4" /></Button><Button size="icon" variant="ghost" aria-label={`Eliminar ${scheme.name}`} onClick={() => setDeleting(scheme)}><Trash2 className="h-4 w-4 text-rose-600" /></Button></div></TableCell></TableRow>;
+          return <TableRow key={scheme.id}><TableCell><p className="font-semibold">{scheme.name}</p><div className="mt-1 flex gap-1"><Badge variant="outline">{scopeLabel}</Badge><Badge variant="outline">{scheme.active ? "ACTIVO" : "INACTIVO"}</Badge></div></TableCell><TableCell><div className="flex max-w-xs items-center gap-1"><Badge variant="outline" className="shrink-0">{branches.length} {branches.length === 1 ? "PUNTO" : "PUNTOS"}</Badge>{branches.slice(0, 2).map((branch) => <span key={branch.id} className="max-w-24 truncate text-[10px] text-[color:var(--text-muted)]">{branch.name}</span>)}{branches.length > 2 && <span className="text-[10px] font-semibold text-[color:var(--text-secondary)]">+{branches.length - 2}</span>}</div></TableCell><TableCell><span className="inline-flex items-center gap-2 text-sm"><UserRoundCheck className="h-4 w-4" />{manager?.name ?? "SIN GERENTE"}</span><p className="mt-1 text-[9px] text-[color:var(--text-muted)]">{scheme.managerHistory.length} {scheme.managerHistory.length === 1 ? "REGISTRO" : "CAMBIOS"}</p></TableCell><TableCell><div className="flex min-w-[360px] flex-wrap gap-1">{scheme.tiers.map((tier) => <Badge key={tier.id} variant="outline" className="bg-[color:var(--accent-hover)]/40">{money.format(tier.from)} — {tier.to === null ? "SIN LÍMITE" : money.format(tier.to)} · {(tier.rate * 100).toFixed(1)}%</Badge>)}</div></TableCell><TableCell><p className="font-semibold">{scheme.effectiveFrom}</p><p className="text-xs text-[color:var(--text-muted)]">HISTORIAL PROTEGIDO</p></TableCell><TableCell><div className="flex justify-end gap-1"><Button size="icon" variant="ghost" aria-label={`Editar ${scheme.name}`} onClick={() => setEditing(scheme)}><Pencil className="h-4 w-4" /></Button><Button size="icon" variant="ghost" aria-label={`Eliminar ${scheme.name}`} onClick={() => setDeleting(scheme)}><Trash2 className="h-4 w-4 text-rose-600" /></Button></div></TableCell></TableRow>;
         })}</TableBody></Table></div></CardContent>
       </Card>
 
-      <Card><CardHeader><CardTitle className="flex items-center gap-2"><History className="h-5 w-5" />Historial de vigencias y cobertura</CardTitle><CardDescription>Cada registro conserva la fecha desde la cual comenzó a afectar el cálculo mensual.</CardDescription></CardHeader><CardContent className="grid gap-3 lg:grid-cols-2">{schemes.map((scheme) => { const manager = state.employees.find((employee) => employee.id === scheme.managerId); return <article key={`history-${scheme.id}`} className="rounded-xl border border-[color:var(--border-color)] p-4"><div className="flex items-start justify-between gap-3"><div><p className="font-semibold">{scheme.name}</p><p className="mt-1 text-xs text-[color:var(--text-muted)]">{scheme.branchIds.length} puntos · {manager?.name ?? "Sin gerente"}</p></div><Badge variant="outline">DESDE {scheme.effectiveFrom}</Badge></div><div className="mt-4 h-2 overflow-hidden rounded-full bg-[color:var(--accent-hover)]"><div className="h-full rounded-full bg-gradient-to-r from-[#c3a583] to-[#648672]" style={{ width: `${scheme.branchIds.length / Math.max(state.branches.length, 1) * 100}%` }} /></div></article>; })}</CardContent></Card>
+      <Card><CardHeader><CardTitle className="flex items-center gap-2"><History className="h-5 w-5" />Historial de gerentes y vigencias</CardTitle><CardDescription>Los nombres quedan guardados como fotografía histórica; cambiar, renombrar o retirar una gerencia agrega un registro nuevo.</CardDescription></CardHeader><CardContent className="grid gap-4 lg:grid-cols-2">{schemes.map((scheme) => <article key={`history-${scheme.id}`} className="overflow-hidden rounded-xl border border-[color:var(--border-color)]"><div className="flex items-start justify-between gap-3 border-b border-[color:var(--border-color)] bg-[color:var(--accent-hover)]/20 px-4 py-3"><div><p className="text-xs font-semibold">{scheme.name}</p><p className="mt-0.5 text-[10px] text-[color:var(--text-muted)]">{scheme.branchIds.length} puntos incluidos</p></div><Badge variant="outline">{scheme.managerHistory.length} {scheme.managerHistory.length === 1 ? "VIGENCIA" : "VIGENCIAS"}</Badge></div><div className="divide-y divide-[color:var(--border-color)]">{[...scheme.managerHistory].sort((a, b) => b.effectiveFrom.localeCompare(a.effectiveFrom) || b.changedAt.localeCompare(a.changedAt)).map((entry, index) => <div key={entry.id} className="grid grid-cols-[30px_minmax(0,1fr)_auto] items-center gap-3 px-4 py-3"><span className={`flex h-7 w-7 items-center justify-center rounded-lg border ${entry.managerId ? "border-[#c3a583]/45 bg-[#c3a583]/10 text-[#987049]" : "border-stone-300 bg-stone-100 text-stone-500 dark:border-stone-700 dark:bg-stone-900"}`}><UserRoundCheck className="h-3.5 w-3.5" /></span><div className="min-w-0"><p className="truncate text-[11px] font-semibold">{entry.managerName}</p><p className="text-[9px] uppercase tracking-[0.08em] text-[color:var(--text-muted)]">VIGENTE DESDE {entry.effectiveFrom}</p></div>{index === 0 && <Badge className="border border-emerald-300 bg-emerald-50 text-[8px] text-emerald-800 dark:bg-emerald-950/25 dark:text-emerald-200">ACTUAL</Badge>}</div>)}</div></article>)}</CardContent></Card>
 
       {editing && <SchemeDialog key={editing === "new" ? "new" : editing.id} scheme={editing === "new" ? null : editing} open onOpenChange={(open) => { if (!open) setEditing(null); }} />}
       <AlertDialog open={Boolean(deleting)} onOpenChange={(open) => { if (!open) setDeleting(null); }}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>¿Eliminar el esquema por sucursal?</AlertDialogTitle><AlertDialogDescription>Se retirará del mock activo. Los reportes anteriores conservan sus importes simulados.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction className="bg-rose-600 text-white hover:bg-rose-700" onClick={() => { if (deleting) { deleteBranchCommissionScheme(deleting.id); toast.success("Esquema eliminado del registro mock."); setDeleting(null); } }}>Eliminar</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>

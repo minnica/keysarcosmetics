@@ -79,7 +79,7 @@ export function PayrollKioskReceiptsDemo() {
   const sale = state.kioskMonthlySales.find((item) => item.branchId === employee?.branchId && item.month === selectedMonth);
   const resolution = resolveBranchCommission({ branchId: employee?.branchId ?? "", month: selectedMonth, schemes: state.branchCommissionSchemes, sales: state.kioskMonthlySales, fallbackTarget: target });
   const isBranchManagement = Boolean(employee?.category === "MANAGEMENT" && employee.position.includes("GERENTE") && role?.permissions.includes("receipts.view"));
-  const isAssociatedManager = !resolution.scheme?.managerId || resolution.managerId === employee?.id;
+  const isAssociatedManager = resolution.managerId === employee?.id;
   const canViewReceipt = isBranchManagement && isAssociatedManager;
   const includedBranchIds = resolution.scheme?.branchIds ?? (employee?.branchId ? [employee.branchId] : []);
   const sales = resolution.combined ? resolution.salesBase : sale?.sales ?? 0;

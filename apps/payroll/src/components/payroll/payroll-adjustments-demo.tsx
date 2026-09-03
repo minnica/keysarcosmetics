@@ -363,7 +363,12 @@ function AdjustmentDialog({
           <section className="rounded-xl border border-[color:var(--border-color)] p-4">
             <div className="mb-4 flex items-center gap-2">
               <WalletCards className="h-4 w-4" />
-              <p className="font-semibold">Nómina que recibirá el movimiento</p>
+              <div>
+                <p className="font-semibold">Nómina afectada</p>
+                <p className="text-xs text-[color:var(--text-muted)]">
+                  Define dónde se cargará, pagará o descontará este movimiento.
+                </p>
+              </div>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">

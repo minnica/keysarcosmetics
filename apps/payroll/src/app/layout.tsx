@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { BaseToaster, Toaster } from "@cosmetics/ui";
+import { PayrollDemoProvider } from "@/components/payroll/payroll-demo-context";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -16,7 +17,7 @@ export default function RootLayout({
   return (
     <html lang="es" suppressHydrationWarning>
       <body className="bg-[var(--bg-primary)] font-sans text-[var(--text-primary)] antialiased">
-        {children}
+        <PayrollDemoProvider>{children}</PayrollDemoProvider>
         <BaseToaster />
         <Toaster
           position="bottom-center"

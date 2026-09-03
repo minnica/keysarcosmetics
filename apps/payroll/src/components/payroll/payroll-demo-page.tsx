@@ -227,6 +227,7 @@ function PayrollTable({ lines, view, periodStart, periodEnd, includeSocialCost, 
     bank: line.employee.bank,
     account: line.employee.account,
     scheme: line.schemeName,
+    workedDays: `${line.workedDays} DE ${line.periodDays}`,
     sales: line.sales,
     salary: line.fixedSalary,
     commission: line.commission,
@@ -252,6 +253,7 @@ function PayrollTable({ lines, view, periodStart, periodEnd, includeSocialCost, 
       { header: "BANCO", accessor: (row: typeof reportRows[number]) => row.bank, width: 15 },
       { header: "CUENTA / CLABE", accessor: (row: typeof reportRows[number]) => row.account, width: 22 },
       { header: "ESQUEMA", accessor: (row: typeof reportRows[number]) => row.scheme, width: 20 },
+      { header: "DÍAS LABORADOS", accessor: (row: typeof reportRows[number]) => row.workedDays, width: 16 },
       { header: "VENTAS", accessor: (row: typeof reportRows[number]) => row.sales, format: "currency" as const, width: 15 },
       { header: "SUELDO", accessor: (row: typeof reportRows[number]) => row.salary, format: "currency" as const, width: 15 },
       { header: "COMISIÓN", accessor: (row: typeof reportRows[number]) => row.commission, format: "currency" as const, width: 15 },
@@ -322,7 +324,7 @@ function PayrollTable({ lines, view, periodStart, periodEnd, includeSocialCost, 
                     <TableCell className="number-display text-right text-rose-700 dark:text-rose-300">{money.format(line.isrRetention)}</TableCell>
                     <TableCell className="number-display text-right text-rose-700 dark:text-rose-300">{money.format(line.ivaRetention)}</TableCell>
                   </> : <>
-                    {(view === "CONSOLIDATED" || view === "FIXED" || view === "SPECIALIST") && <TableCell className="number-display text-right">{money.format(line.fixedSalary)}</TableCell>}
+                    {(view === "CONSOLIDATED" || view === "FIXED" || view === "SPECIALIST") && <TableCell className="text-right"><p className="number-display">{money.format(line.fixedSalary)}</p>{line.workedDays < line.periodDays && <p className="mt-0.5 text-[9px] font-semibold text-amber-700 dark:text-amber-300">PRORRATEO · {line.workedDays}/{line.periodDays} DÍAS</p>}</TableCell>}
                     {(view === "CONSOLIDATED" || view === "COMMISSION") && <TableCell className="number-display text-right text-emerald-700 dark:text-emerald-300">{money.format(line.commission + line.bonuses)}</TableCell>}
                   </>}
                   {view === "CONSOLIDATED" && <TableCell className="number-display text-right text-rose-700 dark:text-rose-300">{money.format(line.fines + line.loanDeduction)}</TableCell>}

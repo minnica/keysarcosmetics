@@ -18,6 +18,11 @@ import {
   DialogTitle,
   Input,
   Label,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
   Table,
   TableBody,
   TableCell,
@@ -27,7 +32,12 @@ import {
   Textarea,
   toast,
 } from "@cosmetics/ui";
-import { payrollModuleForCategory, usePayrollDemo } from "./payroll-demo-context";
+import {
+  type PayrollModule,
+  payrollModuleForCategory,
+  payrollModuleLabels,
+  usePayrollDemo,
+} from "./payroll-demo-context";
 import { resolveBranchCommission } from "./branch-commission-calculator";
 import { EmployeeViaticsPanel } from "./payroll-viatics-demo";
 import { Receipt } from "./payroll-receipts-demo";
@@ -53,6 +63,12 @@ export function EmployeePayrollPortalDemo() {
   const [requestAmount, setRequestAmount] = useState("");
   const [requestInstallments, setRequestInstallments] = useState("4");
   const [requestNotes, setRequestNotes] = useState("");
+  const [requestPayrollModule, setRequestPayrollModule] = useState<
+    Exclude<PayrollModule, "CONSOLIDATED">
+  >((payrollModule ?? "FIXED") as Exclude<PayrollModule, "CONSOLIDATED">);
+  const [requestPayrollRunId, setRequestPayrollRunId] = useState(
+    activeRun?.id ?? "",
+  );
   const [receiptPreview, setReceiptPreview] = useState<"PERSONAL" | "KIOSK" | null>(null);
   const sales = useMemo(() => activeConfig ? state.sales.filter((sale) => sale.employeeId === employee?.id && sale.date >= activeConfig.periodStart && sale.date <= activeConfig.periodEnd).sort((a, b) => b.date.localeCompare(a.date)) : [], [activeConfig, employee?.id, state.sales]);
   const movements = activeConfig ? state.movements.filter((movement) => movement.employeeId === employee?.id && movement.periodStart === activeConfig.periodStart) : [];
@@ -79,6 +95,8 @@ export function EmployeePayrollPortalDemo() {
   const managerAchievement = managerMonthlyTarget > 0 ? managerResolution.salesBase / managerMonthlyTarget : 0;
   const closedMonthLabel = new Intl.DateTimeFormat("es-MX", { month: "long", year: "numeric" }).format(new Date(`${currentMonth}-01T12:00:00`));
   const closedMonthTitle = closedMonthLabel.charAt(0).toLocaleUpperCase("es-MX") + closedMonthLabel.slice(1);
+  const requestRuns = state.runs.filter((run) => run.module === requestPayrollModule);
+  const requestRun = state.runs.find((run) => run.id === requestPayrollRunId) ?? requestRuns[0];
 
   if (!employee) return null;
   if (!canViewPortal) return <div className="space-y-7"><header><div className="mb-2 flex items-center gap-2"><Badge variant="outline"><UserRound className="mr-1.5 h-3.5 w-3.5" />PORTAL PERSONAL</Badge></div><h1 className="page-title">Mi nómina</h1></header><Card className="border-dashed border-rose-300"><CardContent className="flex flex-col items-center px-6 py-16 text-center"><ShieldX className="h-10 w-10 text-rose-600" /><h2 className="mt-4 text-lg font-semibold">Este usuario no tiene acceso al portal personal</h2><p className="mt-2 max-w-lg text-sm text-[color:var(--text-muted)]">Un administrador debe habilitar el permiso “Entrar al portal personal” en Roles y accesos.</p></CardContent></Card></div>;
@@ -107,18 +125,22 @@ export function EmployeePayrollPortalDemo() {
   }
 
   function openFinancialRequest(type: "LOAN" | "ADVANCE") {
+    const ownModule = payrollModule ?? "FIXED";
+    const ownRun = state.runs.find((run) => run.module === ownModule);
     setRequestType(type);
     setRequestAmount("");
     setRequestInstallments(type === "ADVANCE" ? "1" : "4");
     setRequestNotes("");
+    setRequestPayrollModule(ownModule as Exclude<PayrollModule, "CONSOLIDATED">);
+    setRequestPayrollRunId(ownRun?.id ?? "");
   }
 
   function submitFinancialRequest() {
     if (!requestType) return;
     const amount = Number(requestAmount);
     const installments = requestType === "ADVANCE" ? 1 : Number(requestInstallments);
-    if (amount <= 0 || installments < 1 || installments > 24) {
-      toast.error("Captura un monto válido y hasta 24 parcialidades.");
+    if (!requestRun || amount <= 0 || installments < 1 || installments > 24) {
+      toast.error("Selecciona la nómina, el periodo y captura un monto válido.");
       return;
     }
     addLoan({
@@ -127,7 +149,9 @@ export function EmployeePayrollPortalDemo() {
       requestedAt: new Date().toISOString().slice(0, 10),
       amount,
       installments,
-      firstPeriod: activePeriodStart,
+      firstPeriod: requestRun.periodStart,
+      payrollModule: requestPayrollModule,
+      payrollRunId: requestRun.id,
       status: "PENDING",
       notes: `SOLICITUD DESDE MI PERFIL${requestNotes.trim() ? ` · ${requestNotes.trim()}` : ""}`,
     });
@@ -159,7 +183,7 @@ export function EmployeePayrollPortalDemo() {
           <div className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => openFinancialRequest("ADVANCE")}><WalletCards className="mr-2 h-4 w-4" />Solicitar adelanto</Button><Button onClick={() => openFinancialRequest("LOAN")}><HandCoins className="mr-2 h-4 w-4" />Solicitar préstamo</Button></div>
         </CardHeader>
         <CardContent className="p-0">
-          {personalRequests.length ? <Table><TableHeader><TableRow><TableHead>TIPO</TableHead><TableHead>FECHA</TableHead><TableHead className="text-right">MONTO</TableHead><TableHead>PLAZO</TableHead><TableHead>ESTATUS</TableHead></TableRow></TableHeader><TableBody>{personalRequests.slice(0, 5).map((request) => <TableRow key={request.id}><TableCell><Badge variant="outline">{request.requestType === "ADVANCE" ? "ADELANTO" : "PRÉSTAMO"}</Badge></TableCell><TableCell>{request.requestedAt}</TableCell><TableCell className="number-display text-right">{money.format(request.amount)}</TableCell><TableCell>{request.installments} {request.installments === 1 ? "PAGO" : "PARCIALIDADES"}</TableCell><TableCell><Badge variant="outline">{request.status}</Badge></TableCell></TableRow>)}</TableBody></Table> : <p className="p-8 text-center text-sm text-[color:var(--text-muted)]">Todavía no has enviado solicitudes.</p>}
+          {personalRequests.length ? <Table><TableHeader><TableRow><TableHead>TIPO</TableHead><TableHead>FECHA</TableHead><TableHead>NÓMINA / APLICACIÓN</TableHead><TableHead className="text-right">MONTO</TableHead><TableHead>PLAZO</TableHead><TableHead>ESTATUS</TableHead></TableRow></TableHeader><TableBody>{personalRequests.slice(0, 5).map((request) => <TableRow key={request.id}><TableCell><Badge variant="outline">{request.requestType === "ADVANCE" ? "ADELANTO" : "PRÉSTAMO"}</Badge></TableCell><TableCell>{request.requestedAt}</TableCell><TableCell><strong>{payrollModuleLabels[request.payrollModule]}</strong><p className="text-xs text-[color:var(--text-muted)]">DESDE {request.firstPeriod}</p></TableCell><TableCell className="number-display text-right">{money.format(request.amount)}</TableCell><TableCell>{request.installments} {request.installments === 1 ? "PAGO" : "PARCIALIDADES"}</TableCell><TableCell><Badge variant="outline">{request.status}</Badge></TableCell></TableRow>)}</TableBody></Table> : <p className="p-8 text-center text-sm text-[color:var(--text-muted)]">Todavía no has enviado solicitudes.</p>}
         </CardContent>
       </Card>
       <div className="grid gap-6 xl:grid-cols-2">
@@ -171,7 +195,7 @@ export function EmployeePayrollPortalDemo() {
       <Dialog open={receiptPreview === "PERSONAL"} onOpenChange={(open) => { if (!open) setReceiptPreview(null); }}><DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto"><DialogHeader><DialogTitle>Recibo 1 · Nómina personal</DialogTitle><DialogDescription>Documento quincenal independiente de la comisión gerencial.</DialogDescription></DialogHeader><Receipt line={line} periodStart={activeConfig.periodStart} periodEnd={activeConfig.periodEnd} /></DialogContent></Dialog>
       <Dialog open={receiptPreview === "KIOSK"} onOpenChange={(open) => { if (!open) setReceiptPreview(null); }}><DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto"><DialogHeader><DialogTitle>Recibo 2 · Comisión gerencial de kiosco</DialogTitle><DialogDescription>Cierre mensual simulado, separado de la nómina personal.</DialogDescription></DialogHeader><div className="overflow-hidden rounded-2xl border border-[color:var(--border-color)] bg-[color:var(--bg-card)] shadow-xl"><div className="bg-[linear-gradient(135deg,#24211e,#5d4633)] px-6 py-5 text-white"><p className="font-brand text-xl tracking-[0.14em]">KEYSAR COSMETICS</p><p className="mt-1 text-[10px] uppercase tracking-[0.16em] text-white/60">Recibo mensual de comisión de kiosco</p></div><div className="space-y-5 p-6"><div className="flex items-start justify-between gap-4"><div><p className="label-caps">GERENTE RESPONSABLE</p><p className="mt-1 font-semibold">{employee.name}</p><p className="text-xs text-[color:var(--text-muted)]">{employee.position}</p></div><Badge variant="outline">{closedMonthTitle}</Badge></div><div className="grid gap-3 sm:grid-cols-3"><div className="rounded-xl bg-[color:var(--accent-hover)]/40 p-3"><p className="label-caps">META</p><p className="number-display mt-1 text-lg">{money.format(managerMonthlyTarget)}</p></div><div className="rounded-xl bg-[color:var(--accent-hover)]/40 p-3"><p className="label-caps">VENTAS</p><p className="number-display mt-1 text-lg">{money.format(managerResolution.salesBase)}</p></div><div className="rounded-xl bg-[color:var(--accent-hover)]/40 p-3"><p className="label-caps">CUMPLIMIENTO</p><p className="number-display mt-1 text-lg">{(managerAchievement * 100).toFixed(1)}%</p></div></div><div className="space-y-2 text-sm"><div className="flex justify-between gap-4"><span>Esquema</span><strong>{managerResolution.scheme?.name ?? "META INDIVIDUAL"}</strong></div><div className="flex justify-between gap-4"><span>Escala aplicada</span><strong>{(managerResolution.rate * 100).toFixed(1)}%</strong></div><div className="flex justify-between gap-4"><span>Alcance</span><strong>{managerResolution.combined ? `${managerBranchIds.length} SUCURSALES` : "1 SUCURSAL"}</strong></div></div><div className="rounded-xl border border-[#b89468]/45 bg-[color:var(--accent-hover)]/35 p-4 text-right"><p className="label-caps">COMISIÓN EXTRA GERENCIAL</p><p className="number-display mt-1 text-3xl">{money.format(managerCommissionToDate)}</p><p className="mt-1 text-xs text-[color:var(--text-muted)]">Pago separado del recibo personal</p></div><div className="flex justify-end"><Button asChild><a href="/recibos-kiosco">Abrir detalle y autorización</a></Button></div></div></div></DialogContent></Dialog>
       <Dialog open={clarificationOpen} onOpenChange={setClarificationOpen}><DialogContent><DialogHeader><DialogTitle>Solicitar aclaración</DialogTitle><DialogDescription>Describe la venta, bono, multa o cálculo que deseas revisar.</DialogDescription></DialogHeader><div className="space-y-2 py-2"><Label htmlFor="clarification">Detalle</Label><Textarea id="clarification" value={clarification} onChange={(event) => setClarification(event.target.value)} placeholder="EJ. NO IDENTIFICO LA MULTA DEL 21 DE AGOSTO" /></div><DialogFooter><Button variant="outline" onClick={() => setClarificationOpen(false)}>Cancelar</Button><Button onClick={requestClarification}>Enviar solicitud</Button></DialogFooter></DialogContent></Dialog>
-      <Dialog open={Boolean(requestType)} onOpenChange={(open) => { if (!open) setRequestType(null); }}><DialogContent><DialogHeader><DialogTitle>{requestType === "ADVANCE" ? "Solicitar adelanto" : "Solicitar préstamo"}</DialogTitle><DialogDescription>La solicitud llegará pendiente al módulo de Préstamos y adelantos para su autorización.</DialogDescription></DialogHeader><div className="space-y-4 py-2"><div className="space-y-2"><Label htmlFor="financial-request-amount">Monto solicitado</Label><Input id="financial-request-amount" type="number" min="0" step="0.01" value={requestAmount} onChange={(event) => setRequestAmount(event.target.value)} placeholder="0.00" /></div>{requestType === "LOAN" && <div className="space-y-2"><Label htmlFor="financial-request-installments">Parcialidades quincenales</Label><Input id="financial-request-installments" type="number" min="1" max="24" value={requestInstallments} onChange={(event) => setRequestInstallments(event.target.value)} /></div>}<div className="rounded-xl border border-[color:var(--border-color)] bg-[color:var(--accent-hover)]/40 p-4"><p className="label-caps">CUOTA ESTIMADA</p><p className="number-display mt-1 text-xl">{money.format(Number(requestAmount || 0) / Math.max(requestType === "ADVANCE" ? 1 : Number(requestInstallments || 1), 1))}</p><p className="mt-1 text-xs text-[color:var(--text-muted)]">Primera aplicación propuesta: {activeConfig.label}</p></div><div className="space-y-2"><Label htmlFor="financial-request-notes">Motivo o comentario</Label><Textarea id="financial-request-notes" value={requestNotes} onChange={(event) => setRequestNotes(event.target.value)} placeholder="DESCRIBE BREVEMENTE TU SOLICITUD" /></div></div><DialogFooter><Button variant="outline" onClick={() => setRequestType(null)}>Cancelar</Button><Button onClick={submitFinancialRequest}>Enviar a autorización</Button></DialogFooter></DialogContent></Dialog>
+      <Dialog open={Boolean(requestType)} onOpenChange={(open) => { if (!open) setRequestType(null); }}><DialogContent className="max-w-xl"><DialogHeader><DialogTitle>{requestType === "ADVANCE" ? "Solicitar adelanto" : "Solicitar préstamo"}</DialogTitle><DialogDescription>Elige la nómina donde se entregará y comenzará a descontarse. La solicitud llegará pendiente a autorización.</DialogDescription></DialogHeader><div className="space-y-4 py-2"><section className="rounded-xl border border-[color:var(--border-color)] bg-[color:var(--accent-hover)]/25 p-4"><div className="mb-3 flex items-center gap-2"><WalletCards className="h-4 w-4 text-[color:var(--text-secondary)]" /><p className="text-sm font-semibold">Nómina afectada</p></div><div className="grid gap-3 sm:grid-cols-2"><div className="space-y-2"><Label>Tipo de nómina</Label><Select value={requestPayrollModule} onValueChange={(value) => { const next = value as Exclude<PayrollModule, "CONSOLIDATED">; const nextRun = state.runs.find((run) => run.module === next); setRequestPayrollModule(next); setRequestPayrollRunId(nextRun?.id ?? ""); }}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{(["FIXED", "SPECIALIST", "COMMISSION", "CONTRACTOR"] as const).map((module) => <SelectItem key={module} value={module}>{payrollModuleLabels[module]}</SelectItem>)}</SelectContent></Select></div><div className="space-y-2"><Label>Periodo de aplicación</Label><Select value={requestRun?.id ?? ""} onValueChange={setRequestPayrollRunId}><SelectTrigger><SelectValue placeholder="SELECCIONA EL PERIODO" /></SelectTrigger><SelectContent>{requestRuns.map((run) => <SelectItem key={run.id} value={run.id}>{run.periodStart} — {run.periodEnd}</SelectItem>)}</SelectContent></Select></div></div>{requestRun && <p className="mt-3 rounded-lg border border-[color:var(--border-color)] bg-[color:var(--bg-card)] px-3 py-2 text-xs"><strong>{payrollModuleLabels[requestRun.module]}</strong> · el primer cargo se aplicará desde {requestRun.periodStart}</p>}</section><div className="space-y-2"><Label htmlFor="financial-request-amount">Monto solicitado</Label><Input id="financial-request-amount" type="number" min="0" step="0.01" value={requestAmount} onChange={(event) => setRequestAmount(event.target.value)} placeholder="0.00" /></div>{requestType === "LOAN" && <div className="space-y-2"><Label htmlFor="financial-request-installments">Parcialidades quincenales</Label><Input id="financial-request-installments" type="number" min="1" max="24" value={requestInstallments} onChange={(event) => setRequestInstallments(event.target.value)} /></div>}<div className="rounded-xl border border-[color:var(--border-color)] bg-[color:var(--accent-hover)]/40 p-4"><p className="label-caps">CUOTA ESTIMADA</p><p className="number-display mt-1 text-xl">{money.format(Number(requestAmount || 0) / Math.max(requestType === "ADVANCE" ? 1 : Number(requestInstallments || 1), 1))}</p><p className="mt-1 text-xs text-[color:var(--text-muted)]">Primera aplicación: {requestRun ? `${requestRun.periodStart} — ${requestRun.periodEnd}` : "POR DEFINIR"}</p></div><div className="space-y-2"><Label htmlFor="financial-request-notes">Motivo o comentario</Label><Textarea id="financial-request-notes" value={requestNotes} onChange={(event) => setRequestNotes(event.target.value)} placeholder="DESCRIBE BREVEMENTE TU SOLICITUD" /></div></div><DialogFooter><Button variant="outline" onClick={() => setRequestType(null)}>Cancelar</Button><Button onClick={submitFinancialRequest}>Enviar a autorización</Button></DialogFooter></DialogContent></Dialog>
     </div>
   );
 }

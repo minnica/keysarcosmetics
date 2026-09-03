@@ -58,6 +58,9 @@ export function resolveBranchCommission({
     : branchSales;
   const tier = scheme.tiers.find((item) => salesBase >= item.from && (item.to === null || salesBase <= item.to));
   const rate = tier?.rate ?? 0;
+  const historicalManager = scheme.managerHistory
+    .filter((entry) => entry.effectiveFrom <= cutoff)
+    .sort((a, b) => b.effectiveFrom.localeCompare(a.effectiveFrom) || b.changedAt.localeCompare(a.changedAt))[0];
 
   return {
     scheme,
@@ -65,7 +68,7 @@ export function resolveBranchCommission({
     branchSales,
     rate,
     commission: branchSales * rate,
-    managerId: scheme.managerId ?? fallbackTarget?.managerId ?? null,
+    managerId: historicalManager ? historicalManager.managerId : scheme.managerId ?? fallbackTarget?.managerId ?? null,
     combined,
   };
 }

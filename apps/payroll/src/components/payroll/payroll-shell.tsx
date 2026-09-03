@@ -1,14 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { toast } from "@cosmetics/ui";
 import {
   ArrowLeftRight,
   BarChart2,
   Calculator,
-  ChevronRight,
   ChevronDown,
   CircleDollarSign,
   FileText,
@@ -16,11 +16,10 @@ import {
   Layers3,
   LayoutDashboard,
   LogOut,
+  Menu,
   Moon,
   Network,
   PlaneTakeoff,
-  Pin,
-  PinOff,
   ReceiptText,
   ShieldCheck,
   Sparkles,
@@ -29,86 +28,37 @@ import {
   TrendingUp,
   UserCircle2,
   UserRoundCheck,
+  UsersRound,
   WalletCards,
   X,
 } from "lucide-react";
-import {
-  Sidebar,
-  SidebarContent,
-  SidebarFooter,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarGroupLabel,
-  SidebarHeader,
-  SidebarInset,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  SidebarProvider,
-  SidebarRail,
-  SidebarTrigger,
-  useSidebar,
-} from "@cosmetics/ui";
-import { PayrollDemoProvider, usePayrollDemo } from "./payroll-demo-context";
+import { usePayrollDemo } from "./payroll-demo-context";
 
-type SectionId = "payroll" | "operations" | "settings" | "reports";
-type NavItem = {
-  href: string;
-  label: string;
-  icon: React.ElementType;
-};
-type NavSection = {
-  id: SectionId;
-  label: string;
-  items: NavItem[];
-};
+type SectionId = "people" | "payroll" | "operations" | "settings" | "reports";
+type NavItem = { href: string; label: string; icon: React.ElementType };
+type NavSection = { id: SectionId; label: string; items: NavItem[] };
+
+const SESSION_IDLE_LIMIT_MS = 3 * 60 * 1000;
 
 const sections: NavSection[] = [
+  { id: "people", label: "Personal", items: [{ href: "/empleados", label: "Empleados", icon: UsersRound }] },
   {
     id: "payroll",
     label: "Nómina",
     items: [
-      {
-        href: "/",
-        label: "Consolidado",
-        icon: LayoutDashboard,
-      },
-      {
-        href: "/nomina-salario-fijo",
-        label: "Salario fijo",
-        icon: WalletCards,
-      },
-      {
-        href: "/nomina-especialistas",
-        label: "Especialistas",
-        icon: UserRoundCheck,
-      },
-      {
-        href: "/nomina-comisiones",
-        label: "Comisiones",
-        icon: CircleDollarSign,
-      },
-      {
-        href: "/nomina-comision-kiosco",
-        label: "Comisión de kiosco",
-        icon: Store,
-      },
-      {
-        href: "/nomina-honorarios",
-        label: "Honorarios",
-        icon: ReceiptText,
-      },
+      { href: "/", label: "Consolidado", icon: LayoutDashboard },
+      { href: "/nomina-salario-fijo", label: "Salario fijo", icon: WalletCards },
+      { href: "/nomina-especialistas", label: "Especialistas", icon: UserRoundCheck },
+      { href: "/nomina-comisiones", label: "Comisiones", icon: CircleDollarSign },
+      { href: "/nomina-comision-kiosco", label: "Comisión de kiosco", icon: Store },
+      { href: "/nomina-honorarios", label: "Honorarios", icon: ReceiptText },
     ],
   },
   {
     id: "operations",
     label: "Operación",
     items: [
-      {
-        href: "/calculo-comisiones",
-        label: "Cálculo de comisiones",
-        icon: Calculator,
-      },
+      { href: "/calculo-comisiones", label: "Cálculo de comisiones", icon: Calculator },
       { href: "/movimientos", label: "Movimientos", icon: ArrowLeftRight },
       { href: "/prestamos-adelantos", label: "Préstamos", icon: HandCoins },
     ],
@@ -129,410 +79,266 @@ const sections: NavSection[] = [
     id: "reports",
     label: "Reportes",
     items: [
-      {
-        href: "/reportes/desglose-sucursal",
-        label: "Desglose por sucursal",
-        icon: BarChart2,
-      },
+      { href: "/reportes/desglose-sucursal", label: "Desglose por sucursal", icon: BarChart2 },
       { href: "/recibos", label: "Recibos", icon: FileText },
       { href: "/recibos-kiosco", label: "Recibos gerenciales", icon: ReceiptText },
     ],
   },
 ];
 
-const SECTION_LABEL_CLASS_NAME =
-  "text-[10px] font-sans font-semibold uppercase tracking-[0.14em]";
-
-const SECTION_LABEL_STYLE: React.CSSProperties = {
-  color: "var(--text-secondary)",
-  fontFamily: "'Gilroy', 'Inter', sans-serif",
-  fontWeight: 600,
-};
-
 function isRouteActive(pathname: string, href: string): boolean {
   return href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`);
 }
 
 function getActiveSection(pathname: string): SectionId | null {
-  return (
-    sections.find((section) =>
-      section.items.some((item) => isRouteActive(pathname, item.href)),
-    )?.id ?? null
-  );
+  return sections.find((section) => section.items.some((item) => isRouteActive(pathname, item.href)))?.id ?? null;
 }
 
-function PreferenceToggle({
-  label,
-  valueLabel,
-  checked,
-  icon: Icon,
-  onCheckedChange,
-}: {
-  label: string;
-  valueLabel: string;
-  checked: boolean;
-  icon: React.ElementType;
-  onCheckedChange: (checked: boolean) => void;
-}) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      aria-label={`${label}: ${valueLabel}`}
-      className="flex w-full cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 text-left transition-colors duration-200 hover:bg-[var(--accent-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none"
-      onClick={() => onCheckedChange(!checked)}
-    >
-      <Icon
-        className="h-4 w-4 shrink-0 text-[var(--text-muted)]"
-        aria-hidden="true"
-      />
-      <span className="min-w-0 flex-1 text-xs font-medium text-[var(--text-primary)]">
-        {label}
-      </span>
-      <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">
-        {valueLabel}
-      </span>
-      <span
-        aria-hidden="true"
-        className={`relative h-5 w-9 shrink-0 rounded-full border transition-colors duration-200 motion-reduce:transition-none ${
-          checked
-            ? "border-[var(--accent)] bg-[var(--accent)]"
-            : "border-[var(--border-color)] bg-[var(--input-disabled-bg)]"
-        }`}
-      >
-        <span
-          className={`absolute left-0 top-0.5 h-3.5 w-3.5 rounded-full border transition-[transform,background-color,border-color,box-shadow] duration-200 motion-reduce:transition-none ${
-            checked
-              ? "translate-x-[17px] border-white/80 bg-white shadow-sm"
-              : "translate-x-0.5 border-[var(--color-gold)] bg-[var(--bg-card)] shadow-[0_1px_3px_rgba(79,74,68,0.32)]"
-          }`}
-        />
-      </span>
-    </button>
-  );
-}
-
-function ThemeToggle() {
+function TopNavigation() {
+  const pathname = usePathname();
+  const router = useRouter();
+  const { state, endSession } = usePayrollDemo();
+  const navigationRef = useRef<HTMLElement>(null);
+  const [openSection, setOpenSection] = useState<SectionId | null>(null);
+  const [mobileOpen, setMobileOpen] = useState(false);
   const [dark, setDark] = useState(false);
+  const activeSection = getActiveSection(pathname);
+  const activeEmployee = state.employees.find((employee) => employee.id === state.activeEmployeeId);
+  const activeRole = state.roles.find((role) => role.id === activeEmployee?.roleId);
+  const canViewPersonalPortal = activeRole?.permissions.includes("portal.view") ?? false;
+  const canManageViatics = activeRole?.id === "role-admin" && activeRole.permissions.includes("viatics.master");
+  const canViewKioskReceipts = Boolean(activeEmployee?.category === "MANAGEMENT" && activeEmployee.position.includes("GERENTE") && activeRole?.permissions.includes("receipts.view"));
+  const currentPage = sections.flatMap((section) => section.items).find((item) => isRouteActive(pathname, item.href))?.label ?? "Nómina";
+  const visibleSections = sections.map((section) => ({
+    ...section,
+    items: section.items.filter((item) =>
+      (item.href !== "/viaticos" || canManageViatics) &&
+      (item.href !== "/recibos-kiosco" || canViewKioskReceipts),
+    ),
+  }));
+
+  useEffect(() => {
+    setOpenSection(null);
+    setMobileOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    function closeOnOutsideClick(event: MouseEvent) {
+      if (navigationRef.current && !navigationRef.current.contains(event.target as Node)) {
+        setOpenSection(null);
+        setMobileOpen(false);
+      }
+    }
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setOpenSection(null);
+        setMobileOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", closeOnOutsideClick);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("mousedown", closeOnOutsideClick);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, []);
 
   function setTheme(nextDark: boolean) {
     setDark(nextDark);
     document.documentElement.classList.toggle("dark", nextDark);
   }
 
+  function closeSession() {
+    endSession();
+    router.replace("/login");
+  }
+
   return (
-    <PreferenceToggle
-      label="Tema"
-      valueLabel={dark ? "Oscuro" : "Claro"}
-      checked={dark}
-      icon={dark ? Moon : Sun}
-      onCheckedChange={setTheme}
-    />
+    <header ref={navigationRef} className="sticky top-0 z-50 border-b border-[#b98d62]/35 bg-[linear-gradient(105deg,#171411_0%,#211b17_56%,#32251b_100%)] text-[#f6ecdf] shadow-[0_10px_30px_rgba(37,27,20,0.14)]">
+      <div className="flex min-h-[68px] w-full flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2 lg:px-6">
+        <Link href="/" className="group flex shrink-0 items-center gap-2.5 rounded-xl pr-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d4b28c]" aria-label="Ir al consolidado">
+          <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-[#d7b589]/40 bg-white/[0.06] shadow-inner transition-colors group-hover:bg-white/[0.1]">
+            <Image src="/logo.svg" alt="Keysar Cosmetics" width={32} height={28} className="h-7 w-8 object-contain brightness-0 invert" />
+          </span>
+          <span className="hidden leading-none sm:block">
+            <span className="block font-brand text-[15px] uppercase tracking-[0.19em] text-[#f0e4d3]">Keysar</span>
+            <span className="mt-1.5 block text-[7px] font-semibold uppercase tracking-[0.16em] text-[#cda57e]">Cosmetics · Payroll</span>
+          </span>
+        </Link>
+
+        <div className="hidden h-7 w-px shrink-0 bg-white/10" aria-hidden="true" />
+
+        <nav className="order-last hidden h-10 w-full flex-none items-center justify-center gap-1 border-t border-white/10 pt-2 md:flex" aria-label="Navegación principal">
+          {visibleSections.map((section) => {
+            const expanded = openSection === section.id;
+            const selected = activeSection === section.id;
+            return (
+              <div key={section.id} className="relative">
+                <button
+                  type="button"
+                  aria-expanded={expanded}
+                  aria-haspopup="menu"
+                  onClick={() => setOpenSection((current) => current === section.id ? null : section.id)}
+                  className={`flex h-9 items-center gap-1.5 rounded-lg border px-3 text-[10px] font-semibold uppercase tracking-[0.11em] transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d4b28c] ${selected || expanded ? "border-[#caa177]/55 bg-[#c59b70]/16 text-[#f8e4ca] shadow-inner" : "border-transparent text-[#d8c9ba] hover:border-white/10 hover:bg-white/[0.06] hover:text-white"}`}
+                >
+                  {section.label}
+                  <ChevronDown className={`h-3.5 w-3.5 transition-transform ${expanded ? "rotate-180" : ""}`} />
+                </button>
+                {expanded && (
+                  <div role="menu" className="absolute left-0 top-[calc(100%+10px)] w-72 overflow-hidden rounded-2xl border border-[#b98d62]/35 bg-[#1d1916]/[0.98] p-2 shadow-[0_22px_55px_rgba(16,12,9,0.38)] backdrop-blur-xl">
+                    <div className="border-b border-white/10 px-3 pb-2 pt-1">
+                      <p className="text-[9px] font-semibold uppercase tracking-[0.18em] text-[#cba27c]">{section.label}</p>
+                      <p className="mt-0.5 text-[10px] text-[#9e9288]">{section.items.length} accesos disponibles</p>
+                    </div>
+                    <div className="mt-1 space-y-0.5">
+                      {section.items.map((item) => {
+                        const Icon = item.icon;
+                        const active = isRouteActive(pathname, item.href);
+                        return (
+                          <Link key={item.href} href={item.href} role="menuitem" aria-current={active ? "page" : undefined} className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d4b28c] ${active ? "bg-[linear-gradient(90deg,#7b5738,#4b3525)] text-white" : "text-[#e2d8ce] hover:bg-white/[0.07] hover:text-white"}`}>
+                            <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${active ? "border-[#e1bd91]/45 bg-[#e1bd91]/15 text-[#f2d2aa]" : "border-white/10 bg-white/[0.04] text-[#cba27c]"}`}><Icon className="h-4 w-4" /></span>
+                            <span className="font-medium">{item.label}</span>
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </nav>
+
+        <div className="ml-auto hidden items-center gap-1.5 md:flex">
+          <button type="button" onClick={() => setTheme(!dark)} className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] text-[#d7c7b8] transition-colors hover:border-[#caa177]/45 hover:bg-[#caa177]/10 hover:text-white" aria-label={dark ? "Usar tema claro" : "Usar tema oscuro"} title={dark ? "Tema claro" : "Tema oscuro"}>{dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}</button>
+          {canViewPersonalPortal && activeEmployee && (
+            <Link href="/mi-nomina" aria-current={pathname.startsWith("/mi-nomina") ? "page" : undefined} className={`flex h-10 max-w-[190px] items-center gap-2 rounded-xl border px-2.5 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d4b28c] ${pathname.startsWith("/mi-nomina") ? "border-[#ddb88a]/65 bg-[#9d744d]/25" : "border-white/10 bg-white/[0.04] hover:border-[#caa177]/45 hover:bg-white/[0.07]"}`}>
+              <span className="relative flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-[#dcb88b]/30 bg-[#dcb88b]/10"><UserCircle2 className="h-4 w-4 text-[#eccca6]" /><span className="absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full border border-[#211b17] bg-emerald-400" /></span>
+              <span className="min-w-0 leading-tight"><span className="block text-[8px] font-semibold uppercase tracking-[0.14em] text-[#cba27c]">Mi perfil</span><span className="block truncate text-[10px] font-medium text-[#f3e8dc]">{activeEmployee.name}</span></span>
+            </Link>
+          )}
+          <button type="button" onClick={closeSession} className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#e7c9ba]/20 bg-[#b66f63]/10 text-[#e8c5bc] transition-colors hover:border-[#e7c9ba]/45 hover:bg-[#b66f63]/20 hover:text-white" aria-label="Cerrar sesión" title="Cerrar sesión"><LogOut className="h-4 w-4" /></button>
+        </div>
+
+        <div className="ml-auto flex min-w-0 items-center gap-2 md:hidden">
+          <div className="hidden min-w-0 text-right"><p className="text-[8px] font-semibold uppercase tracking-[0.14em] text-[#b99c81]">Sección actual</p><p className="max-w-32 truncate text-[11px] font-semibold text-white">{currentPage}</p></div>
+          <button type="button" onClick={() => setMobileOpen((current) => !current)} aria-expanded={mobileOpen} aria-label={mobileOpen ? "Cerrar menú" : "Abrir menú"} className="flex h-10 w-10 items-center justify-center rounded-xl border border-[#d1aa82]/30 bg-white/[0.06] text-[#f0dcc5] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d4b28c]">{mobileOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}</button>
+        </div>
+      </div>
+
+      {mobileOpen && (
+        <div className="absolute inset-x-0 top-full max-h-[calc(100vh-68px)] overflow-y-auto border-t border-white/10 bg-[#181512]/[0.99] p-3 shadow-2xl md:hidden">
+          <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
+            {visibleSections.map((section) => {
+              const expanded = openSection === section.id || activeSection === section.id;
+              return (
+                <section key={section.id} className="overflow-hidden rounded-xl border border-white/10 bg-white/[0.025]">
+                  <button type="button" aria-expanded={expanded} onClick={() => setOpenSection((current) => current === section.id ? null : section.id)} className={`flex w-full items-center justify-between px-3 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.13em] ${activeSection === section.id ? "text-[#efc99e]" : "text-[#ddd0c3]"}`}><span>{section.label}</span><ChevronDown className={`h-3.5 w-3.5 transition-transform ${expanded ? "rotate-180" : ""}`} /></button>
+                  {expanded && <div className="space-y-0.5 border-t border-white/10 p-1.5">{section.items.map((item) => { const Icon = item.icon; const active = isRouteActive(pathname, item.href); return <Link key={item.href} href={item.href} aria-current={active ? "page" : undefined} className={`flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-xs ${active ? "bg-[#8a6342]/45 text-white" : "text-[#d8cec4] hover:bg-white/[0.06]"}`}><Icon className="h-3.5 w-3.5 text-[#cba27c]" />{item.label}</Link>; })}</div>}
+                </section>
+              );
+            })}
+          </div>
+          <div className="mt-3 flex items-center gap-2 border-t border-white/10 pt-3">
+            {canViewPersonalPortal && activeEmployee && <Link href="/mi-nomina" className="flex min-w-0 flex-1 items-center gap-2 rounded-xl border border-[#caa177]/30 bg-[#caa177]/10 px-3 py-2.5"><UserCircle2 className="h-4 w-4 shrink-0 text-[#e7c395]" /><span className="min-w-0"><span className="block text-[8px] uppercase tracking-[0.13em] text-[#cba27c]">Mi perfil</span><span className="block truncate text-[10px] text-white">{activeEmployee.name}</span></span></Link>}
+            <button type="button" onClick={() => setTheme(!dark)} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 text-[#e2d4c6]" aria-label={dark ? "Usar tema claro" : "Usar tema oscuro"}>{dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}</button>
+            <button type="button" onClick={closeSession} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[#b66f63]/35 text-[#e8bdb3]" aria-label="Cerrar sesión"><LogOut className="h-4 w-4" /></button>
+          </div>
+        </div>
+      )}
+    </header>
   );
 }
 
-function PayrollSidebar({
-  pinned,
-  onPinnedChange,
-}: {
-  pinned: boolean;
-  onPinnedChange: (pinned: boolean) => void;
-}) {
-  const pathname = usePathname();
+function SessionTimeoutGuard() {
   const router = useRouter();
-  const { state } = usePayrollDemo();
-  const activeEmployee = state.employees.find((employee) => employee.id === state.activeEmployeeId);
-  const activeRole = state.roles.find((role) => role.id === activeEmployee?.roleId);
-  const canViewPersonalPortal = activeRole?.permissions.includes("portal.view") ?? false;
-  const canManageViatics = activeRole?.id === "role-admin" && activeRole.permissions.includes("viatics.master");
-  const canViewKioskReceipts = Boolean(activeEmployee?.category === "MANAGEMENT" && activeEmployee.position.includes("GERENTE") && activeRole?.permissions.includes("receipts.view"));
-  const { isMobile, setOpen, setOpenMobile, state: sidebarState } = useSidebar();
-  const activeSection = getActiveSection(pathname);
-  const [expandedSection, setExpandedSection] = useState<SectionId | null>(
-    activeSection,
-  );
+  const { isAuthenticated, endSession } = usePayrollDemo();
+  const lastActivityRef = useRef(Date.now());
+  const expiredRef = useRef(false);
 
   useEffect(() => {
-    setExpandedSection(activeSection);
-  }, [activeSection]);
+    if (!isAuthenticated) {
+      router.replace("/login");
+      return;
+    }
 
-  useEffect(() => {
-    setOpenMobile(false);
-  }, [pathname, setOpenMobile]);
+    let timeoutId: number | null = null;
 
-  function handleLogout() {
-    router.push("/login");
-  }
+    function expireSession() {
+      if (expiredRef.current) return;
+      expiredRef.current = true;
+      if (timeoutId !== null) window.clearTimeout(timeoutId);
+      endSession();
+      router.replace("/login");
+      toast.warning("Sesión cerrada por 3 minutos sin actividad. Vuelve a ingresar.");
+    }
 
-  function handleSectionClick(sectionId: SectionId) {
-    if (!isMobile && sidebarState === "collapsed") setOpen(true);
-    setExpandedSection((current) => current === sectionId ? null : sectionId);
-  }
+    function scheduleExpiration() {
+      if (timeoutId !== null) window.clearTimeout(timeoutId);
+      const elapsed = Date.now() - lastActivityRef.current;
+      const remaining = SESSION_IDLE_LIMIT_MS - elapsed;
+      if (remaining <= 0) {
+        expireSession();
+        return;
+      }
+      timeoutId = window.setTimeout(() => {
+        if (Date.now() - lastActivityRef.current >= SESSION_IDLE_LIMIT_MS) {
+          expireSession();
+        } else {
+          scheduleExpiration();
+        }
+      }, remaining);
+    }
 
-  return (
-    <Sidebar
-      collapsible="offcanvas"
-      onMouseLeave={() => {
-        if (!isMobile && !pinned) setOpen(false);
-      }}
-    >
-      <SidebarHeader
-        className="border-b p-0"
-        style={{ borderColor: "var(--border-color)" }}
-      >
-        <div className="relative flex min-h-[92px] items-center gap-3 px-3.5 py-4">
-          <span className="payroll-brand-mark flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl">
-            <Image
-              src="/logo.svg"
-              alt="Keysar Cosmetics"
-              width={36}
-              height={32}
-              className="h-8 w-9 object-contain"
-            />
-          </span>
-          <span className="min-w-0 pr-14 leading-none">
-            <span className="payroll-brand-name block font-brand text-[17px] uppercase tracking-[0.19em]">Keysar</span>
-            <span className="mt-2 block text-[8px] font-semibold uppercase tracking-[0.15em] text-[#b99473]">Cosmetics · Payroll</span>
-          </span>
-          {isMobile ? (
-            <button
-              type="button"
-              onClick={() => setOpenMobile(false)}
-              aria-label="Cerrar menú"
-              className="absolute right-3 top-1/2 flex h-8 w-8 -translate-y-1/2 cursor-pointer items-center justify-center rounded-lg border border-[#d9b38e]/25 bg-white/[0.06] text-[#d1aa87] transition-colors hover:border-[#e2be9d]/60 hover:bg-[#d5a982]/15 hover:text-[#f5dfca]"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          ) : (
-            <div className="absolute right-2.5 top-1/2 flex -translate-y-1/2 flex-col gap-1.5">
-              <button
-                type="button"
-                aria-pressed={pinned}
-                aria-label={pinned ? "Desfijar menú lateral" : "Fijar menú lateral"}
-                title={pinned ? "Desfijar menú" : "Fijar menú"}
-                onClick={() => onPinnedChange(!pinned)}
-                className={`flex h-8 w-8 items-center justify-center rounded-lg border transition-colors ${
-                  pinned
-                    ? "border-[#8bb79e]/65 bg-[#4c8162]/20 text-[#a8d4bb]"
-                    : "border-[#d9b38e]/25 bg-white/[0.06] text-[#d1aa87] hover:border-[#e2be9d]/60 hover:bg-[#d5a982]/15 hover:text-[#f5dfca]"
-                }`}
-              >
-                {pinned ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}
-              </button>
-              <SidebarTrigger className="h-8 w-8 rounded-lg" />
-            </div>
-          )}
-        </div>
-      </SidebarHeader>
+    function registerActivity() {
+      if (expiredRef.current) return;
+      lastActivityRef.current = Date.now();
+      scheduleExpiration();
+    }
 
-      <SidebarContent className="py-2">
-        {sections.map((section) => {
-          const visibleItems = section.items.filter((item) =>
-            (item.href !== "/viaticos" || canManageViatics) &&
-            (item.href !== "/recibos-kiosco" || canViewKioskReceipts),
-          );
-          const isExpanded = expandedSection === section.id;
-          const showItems =
-            (!isMobile && sidebarState === "collapsed") || isExpanded;
+    function registerPointerMovement() {
+      if (Date.now() - lastActivityRef.current >= 1000) registerActivity();
+    }
 
-          return (
-            <SidebarGroup key={section.id}>
-              <SidebarGroupLabel asChild>
-                <button
-                  type="button"
-                  aria-expanded={isExpanded}
-                  aria-controls={`payroll-sidebar-section-${section.id}`}
-                  onClick={() => handleSectionClick(section.id)}
-                  className={`${SECTION_LABEL_CLASS_NAME} w-full cursor-pointer justify-between transition-colors duration-200 hover:bg-[var(--accent-hover)] focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none`}
-                  style={SECTION_LABEL_STYLE}
-                >
-                  <span className="truncate">{section.label}</span>
-                  <span
-                    className="flex items-center gap-1.5"
-                    aria-hidden="true"
-                  >
-                    <span className="min-w-4 text-center text-[10px] tabular-nums text-[var(--text-muted)]">
-                      {visibleItems.length}
-                    </span>
-                    <ChevronDown
-                      className={`h-3.5 w-3.5 transition-transform duration-200 motion-reduce:transition-none ${
-                        isExpanded ? "rotate-180" : ""
-                      }`}
-                    />
-                  </span>
-                </button>
-              </SidebarGroupLabel>
-              <SidebarGroupContent
-                id={`payroll-sidebar-section-${section.id}`}
-                hidden={!showItems}
-              >
-                <SidebarMenu>
-                  {visibleItems.map((item) => {
-                    const isActive = isRouteActive(pathname, item.href);
-                    const Icon = item.icon;
-                    return (
-                      <SidebarMenuItem key={item.href}>
-                        <SidebarMenuButton
-                          asChild
-                          isActive={isActive}
-                          tooltip={item.label}
-                          className={
-                            isActive
-                              ? "!bg-[var(--sidebar-active-bg)] !text-[var(--sidebar-active-text)] hover:!bg-[var(--sidebar-active-bg)] hover:!text-[var(--sidebar-active-text)]"
-                              : undefined
-                          }
-                        >
-                          <Link
-                            href={item.href}
-                            aria-current={isActive ? "page" : undefined}
-                          >
-                            <Icon />
-                            <span>{item.label}</span>
-                          </Link>
-                        </SidebarMenuButton>
-                      </SidebarMenuItem>
-                    );
-                  })}
-                </SidebarMenu>
-              </SidebarGroupContent>
-            </SidebarGroup>
-          );
-        })}
-        {canViewPersonalPortal && activeEmployee && (
-          <div className="mt-auto px-2 pb-2 pt-3">
-            <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  asChild
-                  size="lg"
-                  isActive={pathname.startsWith("/mi-nomina")}
-                  tooltip="Mi perfil"
-                  className={`group/profile relative !h-[68px] overflow-hidden rounded-2xl border px-2.5 text-white shadow-[0_10px_28px_rgba(24,18,13,0.18)] transition-all duration-300 hover:-translate-y-0.5 hover:text-white hover:shadow-[0_14px_34px_rgba(24,18,13,0.26)] group-data-[collapsible=icon]:!size-10 group-data-[collapsible=icon]:!rounded-xl group-data-[collapsible=icon]:!p-1 ${
-                    pathname.startsWith("/mi-nomina")
-                      ? "border-[#d9b77d] bg-[linear-gradient(135deg,#171513_0%,#30261f_58%,#8b6740_150%)] ring-1 ring-[#d9b77d]/35"
-                      : "border-[#8f7558]/55 bg-[linear-gradient(135deg,#211e1b_0%,#372d25_65%,#6e5237_145%)] hover:border-[#d9b77d]/80"
-                  }`}
-                >
-                  <Link href="/mi-nomina" aria-current={pathname.startsWith("/mi-nomina") ? "page" : undefined} aria-label={`Abrir mi perfil de ${activeEmployee.name}`}>
-                    <span aria-hidden="true" className="pointer-events-none absolute -right-5 -top-7 h-20 w-20 rounded-full bg-[#d9b77d]/10 blur-xl" />
-                    <span className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[#e8cfaa]/35 bg-white/10 shadow-inner group-data-[collapsible=icon]:h-8 group-data-[collapsible=icon]:w-8">
-                      <UserCircle2 className="!h-5 !w-5 text-[#eed8b6]" />
-                      <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-[#29231e] bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.7)]" />
-                    </span>
-                    <span className="profile-copy relative min-w-0 flex-1 leading-tight group-data-[collapsible=icon]:hidden">
-                      <span className="block text-[9px] font-semibold uppercase tracking-[0.18em] text-[#d9b77d]">Acceso personal</span>
-                      <span className="mt-0.5 block font-serif text-[15px] font-semibold tracking-[0.01em] text-white">Mi perfil</span>
-                      <span className="mt-0.5 block truncate text-[10px] text-[#d8cec3]">{activeEmployee.name}</span>
-                    </span>
-                    <span className="profile-arrow relative flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.06] transition-all duration-300 group-hover/profile:translate-x-0.5 group-hover/profile:border-[#d9b77d]/45 group-hover/profile:bg-[#d9b77d]/10 group-data-[collapsible=icon]:hidden">
-                      <ChevronRight className="!h-3.5 !w-3.5 text-[#e8cfaa]" />
-                    </span>
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            </SidebarMenu>
-          </div>
-        )}
-      </SidebarContent>
+    function checkElapsedTime() {
+      if (document.visibilityState !== "visible") return;
+      if (Date.now() - lastActivityRef.current >= SESSION_IDLE_LIMIT_MS) {
+        expireSession();
+      } else {
+        scheduleExpiration();
+      }
+    }
 
-      <SidebarFooter
-        className="border-t p-2"
-        style={{ borderColor: "var(--border-color)" }}
-      >
-        <div className="space-y-0.5 pb-1.5 group-data-[collapsible=icon]:hidden">
-          <ThemeToggle />
-        </div>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              onClick={handleLogout}
-              tooltip="Cerrar sesión"
-              className="cursor-pointer justify-center rounded-lg bg-[#ecd1c8] text-[#1a1a1a] transition-colors hover:opacity-90"
-            >
-              <LogOut className="h-4 w-4 shrink-0" />
-              <span>Cerrar sesión</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
-      </SidebarFooter>
-      <SidebarRail />
-    </Sidebar>
-  );
+    expiredRef.current = false;
+    lastActivityRef.current = Date.now();
+    scheduleExpiration();
+    window.addEventListener("pointerdown", registerActivity, { passive: true });
+    window.addEventListener("mousemove", registerPointerMovement, { passive: true });
+    window.addEventListener("keydown", registerActivity);
+    window.addEventListener("scroll", registerActivity, { passive: true, capture: true });
+    window.addEventListener("touchstart", registerActivity, { passive: true });
+    document.addEventListener("visibilitychange", checkElapsedTime);
+
+    return () => {
+      if (timeoutId !== null) window.clearTimeout(timeoutId);
+      window.removeEventListener("pointerdown", registerActivity);
+      window.removeEventListener("mousemove", registerPointerMovement);
+      window.removeEventListener("keydown", registerActivity);
+      window.removeEventListener("scroll", registerActivity, true);
+      window.removeEventListener("touchstart", registerActivity);
+      document.removeEventListener("visibilitychange", checkElapsedTime);
+    };
+  }, [endSession, isAuthenticated, router]);
+
+  return null;
 }
 
 export function PayrollShell({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname();
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [sidebarPinned, setSidebarPinned] = useState(false);
-  const currentPage = sections
-    .flatMap((section) => section.items)
-    .find((item) => isRouteActive(pathname, item.href))?.label ?? "Nómina";
-
-  useEffect(() => {
-    if (!sidebarPinned) setSidebarOpen(false);
-  }, [pathname, sidebarPinned]);
-
-  function setPinned(pinned: boolean) {
-    setSidebarPinned(pinned);
-    setSidebarOpen(pinned);
-  }
-
   return (
-    <PayrollDemoProvider>
-      <SidebarProvider open={sidebarOpen} onOpenChange={setSidebarOpen}>
-        <button
-          type="button"
-          aria-label="Abrir menú lateral"
-          onMouseEnter={() => {
-            if (!sidebarPinned) setSidebarOpen(true);
-          }}
-          onClick={() => setSidebarOpen(true)}
-          className={`fixed inset-y-0 left-0 z-40 hidden w-3 border-0 bg-transparent p-0 md:block ${sidebarOpen ? "pointer-events-none" : "cursor-e-resize"}`}
-        />
-        <PayrollSidebar pinned={sidebarPinned} onPinnedChange={setPinned} />
-        <SidebarInset className="min-w-0 overflow-x-hidden">
-          <header
-            className="flex h-12 shrink-0 items-center gap-3 border-b px-4 md:px-6"
-            style={{
-              borderColor: "var(--border-color)",
-              backgroundColor: "var(--bg-card)",
-            }}
-          >
-            <SidebarTrigger
-              aria-label={sidebarOpen ? "Ocultar menú principal" : "Mostrar menú principal"}
-              className="h-8 w-8 rounded-lg border border-[color:var(--border-color)] bg-[color:var(--bg-card)] text-[var(--text-muted)] shadow-sm hover:bg-[var(--accent-hover)] hover:text-[var(--text-primary)]"
-            />
-            <button
-              type="button"
-              aria-pressed={sidebarPinned}
-              onClick={() => setPinned(!sidebarPinned)}
-              className={`hidden h-8 items-center gap-1.5 rounded-lg border px-2.5 text-[10px] font-semibold uppercase tracking-[0.08em] transition-colors sm:flex ${
-                sidebarPinned
-                  ? "border-[var(--accent)] bg-[var(--accent-hover)] text-[var(--text-primary)]"
-                  : "border-[var(--border-color)] text-[var(--text-muted)] hover:bg-[var(--accent-hover)]"
-              }`}
-            >
-              {sidebarPinned ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}
-              {sidebarPinned ? "Desfijar" : "Fijar"}
-            </button>
-            <div className="h-5 w-px bg-[color:var(--border-color)]" aria-hidden="true" />
-            <Image
-              src="/logo.svg"
-              alt="Keysar Cosmetics"
-              width={90}
-              height={20}
-              className="h-5 object-contain md:hidden"
-              style={{ maxWidth: "90px" }}
-            />
-            <div className="min-w-0">
-              <p className="truncate text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">Keysar Cosmetics</p>
-              <p className="truncate text-xs font-semibold text-[var(--text-primary)]">{currentPage}</p>
-            </div>
-          </header>
-          <div className="min-w-0 w-full max-w-none p-4 md:p-6 xl:px-8 xl:py-7">{children}</div>
-        </SidebarInset>
-      </SidebarProvider>
-    </PayrollDemoProvider>
+    <div className="min-h-screen min-w-0 overflow-x-hidden">
+      <SessionTimeoutGuard />
+      <TopNavigation />
+      <main className="min-w-0 w-full max-w-none p-4 md:p-6 xl:px-8 xl:py-7">{children}</main>
+    </div>
   );
 }

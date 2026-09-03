@@ -67,6 +67,8 @@ export interface DemoEmployee {
   account: string;
   roleId: string;
   active: boolean;
+  hireDate: string;
+  terminationDate: string | null;
   socialCostRate: number;
   isrCostRate: number;
   ivaRate: number;
@@ -74,6 +76,9 @@ export interface DemoEmployee {
   ivaRetentionRate: number;
   viaticsEnabled?: boolean;
   allowedViaticsConceptIds?: string[];
+  secondaryAccessKey?: string | null;
+  secondaryAccessKeyUpdatedAt?: string | null;
+  secondaryAccessKeyUpdatedBy?: string | null;
 }
 
 export interface CommissionTier {
@@ -84,6 +89,14 @@ export interface CommissionTier {
 }
 
 export type BranchCommissionScope = "SINGLE_BRANCH" | "SELECTED_BRANCHES" | "ALL_COMBINED";
+
+export interface DemoBranchManagerHistory {
+  id: string;
+  managerId: string | null;
+  managerName: string;
+  effectiveFrom: string;
+  changedAt: string;
+}
 
 export interface DemoBranchCommissionScheme {
   id: string;
@@ -96,6 +109,7 @@ export interface DemoBranchCommissionScheme {
   tiers: CommissionTier[];
   createdAt: string;
   updatedAt: string;
+  managerHistory: DemoBranchManagerHistory[];
 }
 
 export interface DemoScheme {
@@ -165,6 +179,8 @@ export interface DemoLoan {
   id: string;
   employeeId: string;
   requestType?: "LOAN" | "ADVANCE";
+  payrollModule: Exclude<PayrollModule, "CONSOLIDATED">;
+  payrollRunId: string;
   requestedAt: string;
   amount: number;
   installments: number;
@@ -277,6 +293,8 @@ export interface PeriodOption {
 
 export interface EmployeePayrollLine {
   employee: DemoEmployee;
+  workedDays: number;
+  periodDays: number;
   sales: number;
   rate: number;
   commission: number;
@@ -314,6 +332,7 @@ export const permissionCatalog = [
   "portal.view",
   "movements.master",
   "viatics.master",
+  "security.second_key.manage",
 ] as const;
 
 function isoDate(date: Date) {
@@ -410,15 +429,15 @@ function createInitialState(): DemoState {
     { id: "branch-interlomas", name: "INTERLOMAS", city: "ESTADO DE MÉXICO" },
   ];
   const employees: DemoEmployee[] = [
-    { id: "emp-ana", name: "ANA SOFÍA MARTÍNEZ", position: "VENDEDORA SENIOR", category: "SELLER", branchId: "branch-polanco", monthlySalary: 0, schemeId: "scheme-elite", bank: "BBVA", account: "•••• 2841", roleId: "role-employee", active: true, socialCostRate: 0.18, isrCostRate: 0.1, ivaRate: 0, isrRetentionRate: 0, ivaRetentionRate: 0, viaticsEnabled: true, allowedViaticsConceptIds: ["viatic-food", "viatic-transport", "viatic-fuel"] },
-    { id: "emp-daniela", name: "DANIELA RUIZ", position: "VENDEDORA", category: "SELLER", branchId: "branch-satelite", monthlySalary: 0, schemeId: "scheme-growth", bank: "SANTANDER", account: "•••• 9130", roleId: "role-employee", active: true, socialCostRate: 0.18, isrCostRate: 0.1, ivaRate: 0, isrRetentionRate: 0, ivaRetentionRate: 0, viaticsEnabled: true, allowedViaticsConceptIds: ["viatic-food", "viatic-transport"] },
-    { id: "emp-carla", name: "CARLA MENDOZA", position: "FACIALISTA", category: "SPECIALIST", branchId: "branch-polanco", monthlySalary: 18000, schemeId: null, bank: "BANORTE", account: "•••• 4472", roleId: "role-employee", active: true, socialCostRate: 0.22, isrCostRate: 0.12, ivaRate: 0, isrRetentionRate: 0, ivaRetentionRate: 0 },
-    { id: "emp-valeria", name: "VALERIA ORTIZ", position: "ESPECIALISTA CORPORAL", category: "SPECIALIST", branchId: "branch-interlomas", monthlySalary: 19500, schemeId: null, bank: "BBVA", account: "•••• 5068", roleId: "role-employee", active: true, socialCostRate: 0.22, isrCostRate: 0.12, ivaRate: 0, isrRetentionRate: 0, ivaRetentionRate: 0 },
-    { id: "emp-monica", name: "MÓNICA SERRANO", position: "GERENTE DE SUCURSAL", category: "MANAGEMENT", branchId: "branch-polanco", monthlySalary: 28000, schemeId: null, bank: "HSBC", account: "•••• 1085", roleId: "role-admin", active: true, socialCostRate: 0.25, isrCostRate: 0.16, ivaRate: 0, isrRetentionRate: 0, ivaRetentionRate: 0 },
-    { id: "emp-ricardo", name: "RICARDO LUNA", position: "GERENTE REGIONAL · VENDEDOR", category: "MANAGEMENT", branchId: "branch-satelite", monthlySalary: 36000, schemeId: "scheme-growth", bank: "BBVA", account: "•••• 7760", roleId: "role-manager", active: true, socialCostRate: 0.25, isrCostRate: 0.18, ivaRate: 0, isrRetentionRate: 0, ivaRetentionRate: 0 },
-    { id: "emp-paola", name: "PAOLA VEGA", position: "CALL CENTER", category: "CALL_CENTER", branchId: "branch-satelite", monthlySalary: 14500, schemeId: null, bank: "BANAMEX", account: "•••• 6219", roleId: "role-employee", active: true, socialCostRate: 0.2, isrCostRate: 0.1, ivaRate: 0, isrRetentionRate: 0, ivaRetentionRate: 0 },
-    { id: "emp-jorge", name: "JORGE SALAS", position: "CALL CENTER", category: "CALL_CENTER", branchId: "branch-interlomas", monthlySalary: 15000, schemeId: null, bank: "BANORTE", account: "•••• 3304", roleId: "role-employee", active: true, socialCostRate: 0.2, isrCostRate: 0.1, ivaRate: 0, isrRetentionRate: 0, ivaRetentionRate: 0 },
-    { id: "emp-lucia", name: "LUCÍA FERNÁNDEZ", position: "VENDEDORA POR HONORARIOS", category: "CONTRACTOR", branchId: "branch-polanco", monthlySalary: 0, schemeId: "scheme-growth", bank: "BBVA", account: "•••• 8892", roleId: "role-employee", active: true, socialCostRate: 0, isrCostRate: 0, ivaRate: 0.16, isrRetentionRate: 0.1, ivaRetentionRate: 0.106667 },
+    { id: "emp-ana", name: "ANA SOFÍA MARTÍNEZ", position: "VENDEDORA SENIOR", category: "SELLER", branchId: "branch-polanco", monthlySalary: 0, schemeId: "scheme-elite", bank: "BBVA", account: "•••• 2841", roleId: "role-employee", active: true, hireDate: "2025-01-06", terminationDate: null, socialCostRate: 0.18, isrCostRate: 0.1, ivaRate: 0, isrRetentionRate: 0, ivaRetentionRate: 0, viaticsEnabled: true, allowedViaticsConceptIds: ["viatic-food", "viatic-transport", "viatic-fuel"] },
+    { id: "emp-daniela", name: "DANIELA RUIZ", position: "VENDEDORA", category: "SELLER", branchId: "branch-satelite", monthlySalary: 0, schemeId: "scheme-growth", bank: "SANTANDER", account: "•••• 9130", roleId: "role-employee", active: true, hireDate: "2025-03-17", terminationDate: null, socialCostRate: 0.18, isrCostRate: 0.1, ivaRate: 0, isrRetentionRate: 0, ivaRetentionRate: 0, viaticsEnabled: true, allowedViaticsConceptIds: ["viatic-food", "viatic-transport"] },
+    { id: "emp-carla", name: "CARLA MENDOZA", position: "FACIALISTA", category: "SPECIALIST", branchId: "branch-polanco", monthlySalary: 18000, schemeId: null, bank: "BANORTE", account: "•••• 4472", roleId: "role-employee", active: true, hireDate: "2024-11-04", terminationDate: null, socialCostRate: 0.22, isrCostRate: 0.12, ivaRate: 0, isrRetentionRate: 0, ivaRetentionRate: 0 },
+    { id: "emp-valeria", name: "VALERIA ORTIZ", position: "ESPECIALISTA CORPORAL", category: "SPECIALIST", branchId: "branch-interlomas", monthlySalary: 19500, schemeId: null, bank: "BBVA", account: "•••• 5068", roleId: "role-employee", active: true, hireDate: "2025-02-01", terminationDate: null, socialCostRate: 0.22, isrCostRate: 0.12, ivaRate: 0, isrRetentionRate: 0, ivaRetentionRate: 0 },
+    { id: "emp-monica", name: "MÓNICA SERRANO", position: "GERENTE DE SUCURSAL", category: "MANAGEMENT", branchId: "branch-polanco", monthlySalary: 28000, schemeId: null, bank: "HSBC", account: "•••• 1085", roleId: "role-admin", active: true, hireDate: "2024-08-19", terminationDate: null, socialCostRate: 0.25, isrCostRate: 0.16, ivaRate: 0, isrRetentionRate: 0, ivaRetentionRate: 0, secondaryAccessKey: "2580", secondaryAccessKeyUpdatedAt: "2026-09-03T09:00:00.000Z", secondaryAccessKeyUpdatedBy: "MÓNICA SERRANO" },
+    { id: "emp-ricardo", name: "RICARDO LUNA", position: "GERENTE REGIONAL · VENDEDOR", category: "MANAGEMENT", branchId: "branch-satelite", monthlySalary: 36000, schemeId: "scheme-growth", bank: "BBVA", account: "•••• 7760", roleId: "role-manager", active: true, hireDate: "2024-06-03", terminationDate: null, socialCostRate: 0.25, isrCostRate: 0.18, ivaRate: 0, isrRetentionRate: 0, ivaRetentionRate: 0 },
+    { id: "emp-paola", name: "PAOLA VEGA", position: "CALL CENTER", category: "CALL_CENTER", branchId: "branch-satelite", monthlySalary: 14500, schemeId: null, bank: "BANAMEX", account: "•••• 6219", roleId: "role-employee", active: true, hireDate: "2025-07-01", terminationDate: null, socialCostRate: 0.2, isrCostRate: 0.1, ivaRate: 0, isrRetentionRate: 0, ivaRetentionRate: 0 },
+    { id: "emp-jorge", name: "JORGE SALAS", position: "CALL CENTER", category: "CALL_CENTER", branchId: "branch-interlomas", monthlySalary: 15000, schemeId: null, bank: "BANORTE", account: "•••• 3304", roleId: "role-employee", active: true, hireDate: "2025-09-16", terminationDate: null, socialCostRate: 0.2, isrCostRate: 0.1, ivaRate: 0, isrRetentionRate: 0, ivaRetentionRate: 0 },
+    { id: "emp-lucia", name: "LUCÍA FERNÁNDEZ", position: "VENDEDORA POR HONORARIOS", category: "CONTRACTOR", branchId: "branch-polanco", monthlySalary: 0, schemeId: "scheme-growth", bank: "BBVA", account: "•••• 8892", roleId: "role-employee", active: true, hireDate: "2025-04-16", terminationDate: null, socialCostRate: 0, isrCostRate: 0, ivaRate: 0.16, isrRetentionRate: 0.1, ivaRetentionRate: 0.106667 },
   ];
   const saleSeeds = [
     ["emp-ana", "branch-polanco", 48500],
@@ -483,6 +502,11 @@ function createInitialState(): DemoState {
         ],
         createdAt: "2026-01-01",
         updatedAt: "2026-01-01",
+        managerHistory: [
+          { id: "manager-history-network-1", managerId: "emp-monica", managerName: "MÓNICA SERRANO", effectiveFrom: "2026-01-01", changedAt: "2026-01-01" },
+          { id: "manager-history-network-2", managerId: null, managerName: "SIN GERENTE", effectiveFrom: "2026-05-01", changedAt: "2026-05-01" },
+          { id: "manager-history-network-3", managerId: "emp-ricardo", managerName: "RICARDO LUNA", effectiveFrom: "2026-06-01", changedAt: "2026-06-01" },
+        ],
       },
     ],
     employees,
@@ -557,6 +581,8 @@ function createInitialState(): DemoState {
       {
         id: "loan-1",
         employeeId: "emp-daniela",
+        payrollModule: "COMMISSION",
+        payrollRunId: "run-commission",
         requestedAt: addDays(period.start, -6),
         amount: 6000,
         installments: 6,
@@ -573,6 +599,8 @@ function createInitialState(): DemoState {
       {
         id: "loan-2",
         employeeId: "emp-paola",
+        payrollModule: "FIXED",
+        payrollRunId: "run-fixed",
         requestedAt: addDays(period.start, 3),
         amount: 4500,
         installments: 3,
@@ -633,9 +661,15 @@ function id(prefix: string) {
 
 interface DemoPayrollContextValue {
   state: DemoState;
+  isAuthenticated: boolean;
   periodOptions: PeriodOption[];
   currentPeriod: PeriodOption;
+  startSession: (employeeId: string) => void;
+  endSession: () => void;
   setActiveEmployee: (employeeId: string) => void;
+  addEmployee: (employee: Omit<DemoEmployee, "id">) => void;
+  updateEmployeeProfile: (employeeId: string, input: Pick<DemoEmployee, "name" | "position" | "category" | "branchId" | "monthlySalary" | "roleId" | "socialCostRate" | "isrCostRate" | "ivaRate" | "isrRetentionRate" | "ivaRetentionRate">) => void;
+  updateEmployeeEmployment: (employeeId: string, hireDate: string, terminationDate: string | null) => void;
   addScheme: (name: string, tiers: Omit<CommissionTier, "id">[], effectiveFrom?: string) => void;
   updateScheme: (schemeId: string, name: string, tiers: Omit<CommissionTier, "id">[], effectiveFrom?: string) => void;
   deleteScheme: (schemeId: string) => void;
@@ -648,7 +682,7 @@ interface DemoPayrollContextValue {
   updatePayrollAdjustment: (adjustmentId: string, patch: Omit<DemoPayrollAdjustment, "id" | "createdAt" | "status">) => void;
   setPayrollAdjustmentStatus: (adjustmentId: string, status: PayrollAdjustmentStatus) => void;
   addLoan: (loan: Omit<DemoLoan, "id" | "history" | "paidInstallments">) => void;
-  updateLoan: (loanId: string, patch: Pick<DemoLoan, "requestedAt" | "amount" | "installments" | "notes">) => void;
+  updateLoan: (loanId: string, patch: Pick<DemoLoan, "requestedAt" | "amount" | "installments" | "firstPeriod" | "payrollModule" | "payrollRunId" | "notes">) => void;
   deleteLoan: (loanId: string) => void;
   setLoanStatus: (loanId: string, status: ApprovalStatus) => void;
   createRun: (module: PayrollModule, periodStart: string, periodEnd: string, mode: DemoPayrollRun["mode"], payDate: string) => void;
@@ -656,8 +690,8 @@ interface DemoPayrollContextValue {
   setCalculationMode: (mode: DemoPayrollRun["mode"]) => void;
   setCommissionModeOverride: (employeeId: string, mode: DemoPayrollRun["mode"] | null) => void;
   updateKioskTarget: (branchId: string, monthlyTarget: number, commissionRate: number, managerId: string | null) => void;
-  addBranchCommissionScheme: (scheme: Omit<DemoBranchCommissionScheme, "id" | "createdAt" | "updatedAt" | "tiers"> & { tiers: Omit<CommissionTier, "id">[] }) => void;
-  updateBranchCommissionScheme: (schemeId: string, scheme: Omit<DemoBranchCommissionScheme, "id" | "createdAt" | "updatedAt" | "tiers"> & { tiers: Omit<CommissionTier, "id">[] }) => void;
+  addBranchCommissionScheme: (scheme: Omit<DemoBranchCommissionScheme, "id" | "createdAt" | "updatedAt" | "tiers" | "managerHistory"> & { tiers: Omit<CommissionTier, "id">[] }) => void;
+  updateBranchCommissionScheme: (schemeId: string, scheme: Omit<DemoBranchCommissionScheme, "id" | "createdAt" | "updatedAt" | "tiers" | "managerHistory"> & { tiers: Omit<CommissionTier, "id">[] }) => void;
   deleteBranchCommissionScheme: (schemeId: string) => void;
   updatePeriodConfig: (module: PayrollModule, input: Omit<DemoPayrollPeriodConfig, "id" | "module" | "updatedAt">) => void;
   updateEmployeeCosts: (employeeId: string, socialCostRate: number, isrCostRate: number) => void;
@@ -672,6 +706,7 @@ interface DemoPayrollContextValue {
   addRole: (name: string) => void;
   togglePermission: (roleId: string, permission: string) => void;
   assignRole: (employeeId: string, roleId: string) => void;
+  setEmployeeSecondaryAccessKey: (employeeId: string, key: string, updatedBy: string) => void;
   setDecision: (employeeId: string, periodStart: string, status: DemoEmployeeDecision["status"], note: string) => void;
   setKioskReceiptDecision: (managerId: string, month: string, status: DemoKioskReceiptDecision["status"], note: string) => void;
   resetDemo: () => void;
@@ -682,6 +717,7 @@ const DemoPayrollContext = createContext<DemoPayrollContextValue | null>(null);
 
 export function PayrollDemoProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<DemoState>(() => createInitialState());
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const periodOptions = useMemo(() => buildPeriodOptions(), []);
   const currentPeriod = periodOptions[0]?.start === periodForDate(new Date()).start
     ? periodOptions[0]
@@ -697,7 +733,12 @@ export function PayrollDemoProvider({ children }: { children: React.ReactNode })
       const startDate = new Date(`${periodStart}T12:00:00`);
       const endDate = new Date(`${configuredEnd}T12:00:00`);
       const periodDays = Math.max(1, Math.round((endDate.getTime() - startDate.getTime()) / 86_400_000) + 1);
-      return state.employees.filter((employee) => employee.active).map((employee) => {
+      return state.employees
+        .filter((employee) => employee.hireDate <= configuredEnd && (!employee.terminationDate || employee.terminationDate >= periodStart))
+        .map((employee) => {
+        const employmentStart = employee.hireDate > periodStart ? employee.hireDate : periodStart;
+        const employmentEnd = employee.terminationDate && employee.terminationDate < configuredEnd ? employee.terminationDate : configuredEnd;
+        const workedDays = Math.max(0, Math.round((new Date(`${employmentEnd}T12:00:00`).getTime() - new Date(`${employmentStart}T12:00:00`).getTime()) / 86_400_000) + 1);
         const grossSales = state.sales
           .filter((sale) => sale.employeeId === employee.id && sale.date >= periodStart && sale.date <= configuredEnd)
           .reduce((sum, sale) => sum + sale.amount, 0);
@@ -720,7 +761,13 @@ export function PayrollDemoProvider({ children }: { children: React.ReactNode })
           .filter((movement) => movement.type === "FINE")
           .reduce((sum, movement) => sum + movement.amount, 0);
         const loanDeduction = state.loans
-          .filter((loan) => loan.employeeId === employee.id && loan.status === "APPROVED" && loan.paidInstallments < loan.installments)
+          .filter((loan) =>
+            loan.employeeId === employee.id &&
+            loan.status === "APPROVED" &&
+            loan.paidInstallments < loan.installments &&
+            loan.firstPeriod <= periodStart &&
+            (payrollModule === "CONSOLIDATED" || loan.payrollModule === payrollModule),
+          )
           .reduce((sum, loan) => sum + loan.amount / loan.installments, 0);
         const payrollAdjustments = state.adjustments.filter((adjustment) =>
           adjustment.status === "APPROVED" &&
@@ -763,14 +810,24 @@ export function PayrollDemoProvider({ children }: { children: React.ReactNode })
           startDate.getMonth() === endDate.getMonth() &&
           startDate.getDate() === 1 &&
           endDate.getDate() === new Date(endDate.getFullYear(), endDate.getMonth() + 1, 0).getDate();
+        const monthEndDay = new Date(endDate.getFullYear(), endDate.getMonth() + 1, 0).getDate();
+        const firstHalfWorkedDays = isFullCalendarMonth
+          ? Math.max(0, Math.round((new Date(`${employmentEnd < `${periodStart.slice(0, 8)}15` ? employmentEnd : `${periodStart.slice(0, 8)}15`}T12:00:00`).getTime() - new Date(`${employmentStart > periodStart ? employmentStart : periodStart}T12:00:00`).getTime()) / 86_400_000) + 1)
+          : 0;
+        const secondHalfStart = `${periodStart.slice(0, 8)}16`;
+        const secondHalfWorkedDays = isFullCalendarMonth
+          ? Math.max(0, Math.round((new Date(`${employmentEnd}T12:00:00`).getTime() - new Date(`${employmentStart > secondHalfStart ? employmentStart : secondHalfStart}T12:00:00`).getTime()) / 86_400_000) + 1)
+          : 0;
         const calculatedFixedSalary = employee.category === "SELLER" || employee.category === "CONTRACTOR"
           ? 0
           : isFullCalendarMonth
-            ? employee.monthlySalary
+            ? (employee.monthlySalary / 2) * (Math.min(firstHalfWorkedDays, 15) / 15) + (employee.monthlySalary / 2) * (Math.min(secondHalfWorkedDays, monthEndDay - 15) / (monthEndDay - 15))
             : isStandardFortnight
-            ? employee.monthlySalary / 2
-            : employee.monthlySalary * (periodDays / 30);
-        const fixedSalary = baseSalaryOverride ?? calculatedFixedSalary;
+              ? (employee.monthlySalary / 2) * (workedDays / periodDays)
+              : 0;
+        const fixedSalary = baseSalaryOverride === null
+          ? calculatedFixedSalary
+          : baseSalaryOverride * (workedDays / periodDays);
         const ordinaryNet = fixedSalary + commission + bonuses + totalExternalAdditions - fines - loanDeduction - totalExternalDeductions;
         const invoiceSubtotal = employee.category === "CONTRACTOR" ? fixedSalary + commission + bonuses + totalExternalAdditions : 0;
         const ivaAmount = invoiceSubtotal * employee.ivaRate;
@@ -784,6 +841,8 @@ export function PayrollDemoProvider({ children }: { children: React.ReactNode })
         const isrCost = Math.max(total, 0) * employee.isrCostRate;
         return {
           employee,
+          workedDays,
+          periodDays,
           sales,
           rate,
           commission,
@@ -815,9 +874,68 @@ export function PayrollDemoProvider({ children }: { children: React.ReactNode })
 
   const value = useMemo<DemoPayrollContextValue>(() => ({
     state,
+    isAuthenticated,
     periodOptions,
     currentPeriod,
+    startSession: (employeeId) => {
+      update((current) => ({ ...current, activeEmployeeId: employeeId }));
+      setIsAuthenticated(true);
+    },
+    endSession: () => setIsAuthenticated(false),
     setActiveEmployee: (employeeId) => update((current) => ({ ...current, activeEmployeeId: employeeId })),
+    addEmployee: (employee) => update((current) => ({
+      ...current,
+      employees: [
+        ...current.employees,
+        {
+          ...employee,
+          id: id("employee"),
+          name: employee.name.toLocaleUpperCase("es-MX"),
+          position: employee.position.toLocaleUpperCase("es-MX"),
+          bank: employee.bank.toLocaleUpperCase("es-MX"),
+        },
+      ],
+    })),
+    updateEmployeeProfile: (employeeId, input) => update((current) => {
+      const previous = current.employees.find((employee) => employee.id === employeeId);
+      if (!previous) return current;
+      const normalizedName = input.name.toLocaleUpperCase("es-MX");
+      const movedOutOfManagement = previous.category === "MANAGEMENT" && input.category !== "MANAGEMENT";
+      const renamedManager = previous.category === "MANAGEMENT" && previous.name !== normalizedName;
+      const effectiveFrom = isoDate(new Date());
+      return {
+        ...current,
+        employees: current.employees.map((employee) => employee.id === employeeId ? {
+          ...employee,
+          ...input,
+          name: normalizedName,
+          position: input.position.toLocaleUpperCase("es-MX"),
+        } : employee),
+        kioskTargets: movedOutOfManagement
+          ? current.kioskTargets.map((target) => target.managerId === employeeId ? { ...target, managerId: null, updatedAt: new Date().toISOString() } : target)
+          : current.kioskTargets,
+        branchCommissionSchemes: current.branchCommissionSchemes.map((scheme) => {
+          if (scheme.managerId !== employeeId || (!movedOutOfManagement && !renamedManager)) return scheme;
+          const managerId = movedOutOfManagement ? null : employeeId;
+          const managerName = movedOutOfManagement ? "SIN GERENTE" : normalizedName;
+          return {
+            ...scheme,
+            managerId,
+            managerHistory: [...scheme.managerHistory, { id: id("manager-history"), managerId, managerName, effectiveFrom, changedAt: new Date().toISOString() }],
+            updatedAt: new Date().toISOString(),
+          };
+        }),
+      };
+    }),
+    updateEmployeeEmployment: (employeeId, hireDate, terminationDate) => update((current) => ({
+      ...current,
+      employees: current.employees.map((employee) => employee.id === employeeId ? {
+        ...employee,
+        hireDate,
+        terminationDate,
+        active: hireDate <= isoDate(new Date()) && (!terminationDate || terminationDate >= isoDate(new Date())),
+      } : employee),
+    })),
     addScheme: (name, tiers, effectiveFrom = currentPeriod.start) => update((current) => ({
       ...current,
       schemes: [...current.schemes, { id: id("scheme"), name: name.toLocaleUpperCase("es-MX"), active: true, effectiveFrom, createdAt: isoDate(new Date()), tiers: tiers.map((tier) => ({ ...tier, id: id("tier") })) }],
@@ -957,18 +1075,39 @@ export function PayrollDemoProvider({ children }: { children: React.ReactNode })
         tiers: scheme.tiers.map((tier) => ({ ...tier, id: id("branch-tier") })),
         createdAt: isoDate(new Date()),
         updatedAt: new Date().toISOString(),
+        managerHistory: [{
+          id: id("manager-history"),
+          managerId: scheme.managerId,
+          managerName: current.employees.find((employee) => employee.id === scheme.managerId)?.name ?? "SIN GERENTE",
+          effectiveFrom: scheme.effectiveFrom,
+          changedAt: new Date().toISOString(),
+        }],
       }],
     })),
     updateBranchCommissionScheme: (schemeId, scheme) => update((current) => ({
       ...current,
-      branchCommissionSchemes: current.branchCommissionSchemes.map((currentScheme) => currentScheme.id === schemeId ? {
-        ...currentScheme,
-        ...scheme,
-        name: scheme.name.toLocaleUpperCase("es-MX"),
-        branchIds: scheme.scope === "ALL_COMBINED" ? current.branches.map((branch) => branch.id) : scheme.branchIds,
-        tiers: scheme.tiers.map((tier) => ({ ...tier, id: id("branch-tier") })),
-        updatedAt: new Date().toISOString(),
-      } : currentScheme),
+      branchCommissionSchemes: current.branchCommissionSchemes.map((currentScheme) => {
+        if (currentScheme.id !== schemeId) return currentScheme;
+        const managerChanged = currentScheme.managerId !== scheme.managerId;
+        const managerHistory = managerChanged
+          ? [...currentScheme.managerHistory, {
+              id: id("manager-history"),
+              managerId: scheme.managerId,
+              managerName: current.employees.find((employee) => employee.id === scheme.managerId)?.name ?? "SIN GERENTE",
+              effectiveFrom: scheme.effectiveFrom,
+              changedAt: new Date().toISOString(),
+            }]
+          : currentScheme.managerHistory;
+        return {
+          ...currentScheme,
+          ...scheme,
+          name: scheme.name.toLocaleUpperCase("es-MX"),
+          branchIds: scheme.scope === "ALL_COMBINED" ? current.branches.map((branch) => branch.id) : scheme.branchIds,
+          tiers: scheme.tiers.map((tier) => ({ ...tier, id: id("branch-tier") })),
+          managerHistory,
+          updatedAt: new Date().toISOString(),
+        };
+      }),
     })),
     deleteBranchCommissionScheme: (schemeId) => update((current) => ({
       ...current,
@@ -1041,7 +1180,9 @@ export function PayrollDemoProvider({ children }: { children: React.ReactNode })
       ...current,
       roles: current.roles.map((role) => role.id === roleId ? {
         ...role,
-        permissions: role.permissions.includes(permission)
+        permissions: role.id === "role-admin" && permission === "security.second_key.manage"
+          ? role.permissions
+          : role.permissions.includes(permission)
           ? role.permissions.filter((item) => item !== permission)
           : [...role.permissions, permission],
       } : role),
@@ -1049,6 +1190,15 @@ export function PayrollDemoProvider({ children }: { children: React.ReactNode })
     assignRole: (employeeId, roleId) => update((current) => ({
       ...current,
       employees: current.employees.map((employee) => employee.id === employeeId ? { ...employee, roleId } : employee),
+    })),
+    setEmployeeSecondaryAccessKey: (employeeId, key, updatedBy) => update((current) => ({
+      ...current,
+      employees: current.employees.map((employee) => employee.id === employeeId ? {
+        ...employee,
+        secondaryAccessKey: key,
+        secondaryAccessKeyUpdatedAt: new Date().toISOString(),
+        secondaryAccessKeyUpdatedBy: updatedBy,
+      } : employee),
     })),
     setDecision: (employeeId, periodStart, status, note) => update((current) => ({
       ...current,
@@ -1068,7 +1218,7 @@ export function PayrollDemoProvider({ children }: { children: React.ReactNode })
       setState(createInitialState());
     },
     payrollLines,
-  }), [currentPeriod, payrollLines, periodOptions, state, update]);
+  }), [currentPeriod, isAuthenticated, payrollLines, periodOptions, state, update]);
 
   return <DemoPayrollContext.Provider value={value}>{children}</DemoPayrollContext.Provider>;
 }
