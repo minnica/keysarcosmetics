@@ -4,6 +4,7 @@ import {
   posCustomerSearchQuerySchema,
   posLoginRequestSchema,
   posMutationHeadersSchema,
+  posTerminalStatusUpdateSchema,
   posTicketQuoteRequestSchema,
 } from "./pos.contracts";
 
@@ -11,13 +12,23 @@ describe("contratos públicos del POS", () => {
   it("normaliza el alias y no acepta campos inesperados en login", () => {
     const parsed = posLoginRequestSchema.parse({
       alias: "  Venta.Polanco  ",
-      pin: "2468",
+      pin: "4826",
       terminalCode: "T-01",
+      terminalSecret: "a".repeat(32),
     });
 
     expect(parsed.alias).toBe("venta.polanco");
     expect(
       posLoginRequestSchema.safeParse({ ...parsed, ignored: true }).success,
+    ).toBe(false);
+  });
+
+  it("sólo permite activar o revocar una terminal provisionada", () => {
+    expect(posTerminalStatusUpdateSchema.parse({ status: "ACTIVE" })).toEqual({
+      status: "ACTIVE",
+    });
+    expect(
+      posTerminalStatusUpdateSchema.safeParse({ status: "PENDING" }).success,
     ).toBe(false);
   });
 

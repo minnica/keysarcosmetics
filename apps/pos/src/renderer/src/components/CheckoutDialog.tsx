@@ -1266,7 +1266,7 @@ export function CheckoutDialog({
                           >
                             Autorizar
                           </Button>
-                          <small>Mock: 2468</small>
+                          <small>Requiere autorización master vigente.</small>
                         </div>
                       ))}
                   </div>

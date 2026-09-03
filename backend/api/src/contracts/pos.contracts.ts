@@ -38,6 +38,18 @@ export const posLoginRequestSchema = z
     alias: aliasSchema,
     pin: z.string().regex(/^\d{4,12}$/, "PIN inválido"),
     terminalCode: z.string().trim().min(1).max(64),
+    terminalSecret: z.string().min(32).max(256),
+  })
+  .strict();
+
+export const posMasterAuthorizationRequestSchema = z
+  .object({
+    alias: aliasSchema,
+    pin: z.string().regex(/^\d{4,12}$/, "PIN inválido"),
+    purpose: z.string().trim().min(1).max(80),
+    entityType: z.string().trim().min(1).max(80).optional(),
+    entityId: idSchema.optional(),
+    scope: z.record(z.unknown()).optional(),
   })
   .strict();
 
@@ -53,6 +65,35 @@ export const posTerminalRegistrationSchema = z
     code: z.string().trim().min(3).max(64),
     name: z.string().trim().min(1).max(120),
     branchId: idSchema,
+  })
+  .strict();
+
+export const posTerminalStatusUpdateSchema = z
+  .object({ status: z.enum(["ACTIVE", "REVOKED"]) })
+  .strict();
+
+export const posTerminalBranchChangeSchema = z
+  .object({
+    branchId: idSchema,
+    authorizationToken: z.string().uuid(),
+  })
+  .strict();
+
+export const posCredentialUpsertSchema = z
+  .object({
+    alias: aliasSchema,
+    pin: z.string().regex(/^\d{4,12}$/, "PIN inválido").optional(),
+    active: z.boolean().default(true),
+    offlineEnabled: z.boolean().default(false),
+    isMaster: z.boolean().default(false),
+    authorizationToken: z.string().uuid().optional(),
+  })
+  .strict();
+
+export const posRolePermissionsSchema = z
+  .object({
+    permissions: z.array(z.enum(POS_PERMISSION_KEYS)).max(POS_PERMISSION_KEYS.length),
+    authorizationToken: z.string().uuid(),
   })
   .strict();
 
@@ -74,6 +115,7 @@ export const posSessionSchema = z
         id: idSchema,
         employeeId: idSchema.nullable(),
         userId: idSchema.nullable(),
+        positionId: idSchema.nullable(),
         displayName: z.string().min(1).max(240),
         alias: aliasSchema,
         isMaster: z.boolean(),

@@ -578,7 +578,7 @@ export const masterUser: MasterUser = {
   name: "Master Keysar",
   initials: "MK",
   active: true,
-  accessCode: "2468",
+  accessCode: "",
   role: "MASTER",
 };
 

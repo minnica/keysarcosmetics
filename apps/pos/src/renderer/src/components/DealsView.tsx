@@ -394,7 +394,7 @@ export function DealsView({
               <LockKeyhole size={15} /> Desbloquear
             </Button>
           </div>
-          <small>Código estático de prueba: 2468</small>
+          <small>La autorización master se valida en el servidor.</small>
         </CardContent>
       </Card>
     );

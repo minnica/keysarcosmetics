@@ -77,6 +77,7 @@ import {
   Toaster,
   toast,
 } from "@cosmetics/ui";
+import type { PosBranchSummaryDto, PosPermissionKey, PosSessionDto } from "@cosmetics/types";
 import {
   CheckoutDialog,
   type CheckoutResult,
@@ -217,6 +218,15 @@ import {
   roundCurrency,
 } from "./tax";
 import { getTicketSpare } from "./spare";
+import {
+  accessFromDto,
+  loginPos,
+  permissionsToScreens,
+  posApi,
+  posApiEnabled,
+  roleToPermissions,
+  sessionUserFromDto,
+} from "./lib/pos-api";
 
 const getSaleProductBrand = (product: Product) =>
   product.kind === "SERVICE"
@@ -710,6 +720,9 @@ function App() {
   const [sidebarPinned, setSidebarPinned] = useState(false);
   const [sidebarActivityTick, setSidebarActivityTick] = useState(0);
   const [sessionUser, setSessionUser] = useState<PosSessionUser | null>(null);
+  const [apiSession, setApiSession] = useState<PosSessionDto | null>(null);
+  const [apiPermissions, setApiPermissions] = useState<PosPermissionKey[]>([]);
+  const [apiBranches, setApiBranches] = useState<PosBranchSummaryDto[]>([]);
   const [sessionStage, setSessionStage] = useState<
     "LOGIN" | "OPENING_COUNT" | "OPEN" | "CLOSING_COUNT"
   >("LOGIN");
@@ -853,6 +866,7 @@ function App() {
   );
   const [locationSwitchOpen, setLocationSwitchOpen] = useState(false);
   const [locationSwitchTarget, setLocationSwitchTarget] = useState("");
+  const [locationSwitchAlias, setLocationSwitchAlias] = useState("");
   const [locationSwitchCode, setLocationSwitchCode] = useState("");
   const [owedProducts, setOwedProducts] = useState<OwedProductRecord[]>([]);
   const [newMovementReason, setNewMovementReason] = useState("");
@@ -986,12 +1000,14 @@ function App() {
     );
   }, [voucherIssues]);
   const operationalBranches = useMemo(() => {
+    if (posApiEnabled && apiBranches.length > 0)
+      return apiBranches.map((branch) => branch.name);
     const branches = Object.keys(branchInventory);
     return [
       ...(branches.includes(activeBranch) ? [activeBranch] : []),
       ...branches.filter((branch) => branch !== activeBranch),
     ];
-  }, [activeBranch, branchInventory]);
+  }, [activeBranch, apiBranches, branchInventory]);
 
   const pushOperationalNotification = (
     notification: Omit<
@@ -1064,10 +1080,14 @@ function App() {
     if (!sessionUser) return [];
     if (sessionUser.isMaster)
       return Object.keys(screenMetadata) as ScreenId[];
+    if (posApiEnabled)
+      return Array.from(
+        new Set([...permissionsToScreens(apiPermissions), "my-account" as ScreenId]),
+      );
     return Array.from(
       new Set([...(sessionEmployeeRole?.moduleAccess ?? []), "my-account" as ScreenId]),
     );
-  }, [sessionEmployeeRole, sessionUser]);
+  }, [apiPermissions, sessionEmployeeRole, sessionUser]);
 
   const canEditActiveModule = Boolean(
     sessionUser?.isMaster ||
@@ -1107,12 +1127,93 @@ function App() {
     [activeBranch, catalogProducts],
   );
 
-  const handleSoftwareLogin = (credentials: {
+  const applyApiSession = async (session: PosSessionDto) => {
+    const nextUser = sessionUserFromDto(session);
+    const branchName = session.terminal.branch.name;
+    setBranchInventory((current) =>
+      current[branchName]
+        ? current
+        : {
+            ...current,
+            [branchName]: Object.fromEntries(
+              catalogProducts
+                .filter((product) => product.kind === "PRODUCT")
+                .map((product) => [product.id, 0]),
+            ),
+          },
+    );
+    setActiveBranch(branchName);
+    setReceiptSettings((current) => ({
+      ...current,
+      branchName: `Sucursal ${branchName}`,
+    }));
+    setApiSession(session);
+    setApiPermissions(session.permissions);
+    const branches = await posApi.branches();
+    setApiBranches(branches);
+    setBranchInventory((current) => ({
+      ...current,
+      ...Object.fromEntries(
+        branches
+          .filter((branch) => !current[branch.name])
+          .map((branch) => [
+            branch.name,
+            Object.fromEntries(
+              catalogProducts
+                .filter((product) => product.kind === "PRODUCT")
+                .map((product) => [product.id, 0]),
+            ),
+          ]),
+      ),
+    }));
+    if (
+      session.actor.isMaster ||
+      session.permissions.includes("EMPLOYEES_VIEW")
+    ) {
+      const access = accessFromDto(await posApi.accessBootstrap());
+      setEmployeeRoles(access.roles);
+      setSellers(access.sellers);
+    }
+    const nextScreens = session.actor.isMaster
+      ? (Object.keys(screenMetadata) as ScreenId[])
+      : permissionsToScreens(session.permissions);
+    setSessionUser(nextUser);
+    setSessionStage("OPEN");
+    setDaySession(null);
+    setActiveScreen(nextScreens[0] ?? "my-account");
+    setSaleFocusMode(nextScreens[0] === "sale");
+  };
+
+  const handleSoftwareLogin = async (credentials: {
     company: string;
     username: string;
     password: string;
     requestedBranch: string;
-  }): string | null => {
+  }): Promise<string | null> => {
+    if (posApiEnabled) {
+      try {
+        const session = await loginPos(credentials.username, credentials.password);
+        await applyApiSession(session);
+        setConnectivityNotice({
+          kind: "ONLINE",
+          title: "Terminal conectada",
+          description: `Sesión protegida iniciada en ${session.terminal.branch.name}.`,
+          pendingCount: 0,
+        });
+        return null;
+      } catch (error) {
+        const response = error as {
+          response?: { data?: { message?: string } };
+          message?: string;
+        };
+        return (
+          response.response?.data?.message ?? response.message ??
+          (navigator.onLine
+            ? "No fue posible iniciar sesión en el POS."
+            : "El login offline se habilitará en la fase de sincronización.")
+        );
+      }
+    }
     if (
       credentials.company.trim().toLocaleLowerCase("es-MX") !==
       receiptSettings.companyName.trim().toLocaleLowerCase("es-MX")
@@ -1228,6 +1329,22 @@ function App() {
     setActiveScreen("sale");
     return null;
   };
+
+  useEffect(() => {
+    if (!posApiEnabled || !window.sessionStorage.getItem("pos_access_token"))
+      return;
+    let active = true;
+    void posApi
+      .me()
+      .then((session) => {
+        if (active) return applyApiSession(session);
+        return undefined;
+      })
+      .catch(() => posApi.clearSession());
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const authorizeCatalogExit = (alias: string, code: string) => {
     const normalizedAlias = alias.trim().toLocaleLowerCase("es-MX");
@@ -2054,11 +2171,46 @@ function App() {
       operationalBranches.find((branch) => branch !== activeBranch) ??
         activeBranch,
     );
+    setLocationSwitchAlias(apiSession?.actor.isMaster ? apiSession.actor.alias : "");
     setLocationSwitchCode("");
     setLocationSwitchOpen(true);
   };
 
-  const confirmLocationSwitch = () => {
+  const confirmLocationSwitch = async () => {
+    if (posApiEnabled) {
+      const target = apiBranches.find((branch) => branch.name === locationSwitchTarget);
+      if (!apiSession || !target) {
+        toast.error("Selecciona una sucursal operativa.");
+        return;
+      }
+      try {
+        const authorization = await posApi.createAuthorization({
+          alias: locationSwitchAlias.trim(),
+          pin: locationSwitchCode,
+          purpose: "TERMINAL_BRANCH_CHANGE",
+          entityType: "PosTerminal",
+          entityId: apiSession.terminal.id,
+        });
+        await posApi.changeTerminalBranch(
+          apiSession.terminal.id,
+          target.id,
+          authorization.authorizationToken,
+        );
+        posApi.clearSession();
+        setApiSession(null);
+        setApiPermissions([]);
+        setSessionUser(null);
+        setSessionStage("LOGIN");
+        setLocationSwitchOpen(false);
+        setLocationSwitchAlias("");
+        setLocationSwitchCode("");
+        toast.success("Sucursal actualizada. Inicia sesión nuevamente en la terminal.");
+      } catch (error) {
+        const response = error as { response?: { data?: { message?: string } } };
+        toast.error(response.response?.data?.message ?? "No se pudo cambiar la sucursal de la terminal.");
+      }
+      return;
+    }
     if (!isMasterAccessCode(locationSwitchCode)) {
       toast.error("Código incorrecto. Sólo el usuario master puede cambiar la ubicación.");
       return;
@@ -2330,13 +2482,60 @@ function App() {
     return authorized;
   };
 
-  const authorizeEmployeeAccess = (code: string) => {
+  const reloadPosAccess = async () => {
+    const access = accessFromDto(await posApi.accessBootstrap());
+    setEmployeeRoles(access.roles);
+    setSellers(access.sellers);
+  };
+
+  const authorizeEmployeeAccess = async (code: string, masterAlias?: string) => {
+    if (posApiEnabled) {
+      if (!apiSession) return false;
+      try {
+        const authorization = await posApi.createAuthorization({
+          alias: masterAlias?.trim() ?? "",
+          pin: code,
+          purpose: "EMPLOYEES_ACCESS",
+        });
+        const authorized = await posApi.verifyAuthorization(
+          authorization.authorizationToken,
+          "EMPLOYEES_ACCESS",
+        );
+        if (authorized) setEmployeeAccessAuthorized(true);
+        return authorized;
+      } catch {
+        return false;
+      }
+    }
     const authorized = isMasterAccessCode(code);
     if (authorized) setEmployeeAccessAuthorized(true);
     return authorized;
   };
 
-  const saveEmployeeRole = (role: EmployeeRole) => {
+  const saveEmployeeRole = async (role: EmployeeRole, masterCode?: string, masterAlias?: string) => {
+    if (posApiEnabled) {
+      if (!apiSession || !masterCode || !masterAlias) return false;
+      try {
+        const authorization = await posApi.createAuthorization({
+          alias: masterAlias,
+          pin: masterCode,
+          purpose: "POSITION_PERMISSIONS_UPDATE",
+          entityType: "Position",
+          entityId: role.id,
+        });
+        await posApi.updateRolePermissions(
+          role.id,
+          roleToPermissions(role),
+          authorization.authorizationToken,
+        );
+        await reloadPosAccess();
+        return true;
+      } catch (error) {
+        const response = error as { response?: { data?: { message?: string } } };
+        toast.error(response.response?.data?.message ?? "No se pudieron actualizar los permisos POS.");
+        return false;
+      }
+    }
     setEmployeeRoles((current) =>
       current.some((candidate) => candidate.id === role.id)
         ? current.map((candidate) =>
@@ -2355,9 +2554,10 @@ function App() {
           : seller,
       ),
     );
+    return true;
   };
 
-  const saveEmployeeSeller = (seller: Seller) => {
+  const saveEmployeeSeller = async (seller: Seller, masterCode?: string, masterAlias?: string) => {
     const name = seller.name.trim();
     const alias = seller.alias.trim().toLocaleLowerCase("es-MX");
     const accessCode = seller.accessCode.trim();
@@ -2368,6 +2568,36 @@ function App() {
     if (!/^[a-z0-9._-]{3,24}$/i.test(alias)) {
       toast.error("El alias debe tener de 3 a 24 caracteres sin espacios.");
       return false;
+    }
+    if (posApiEnabled) {
+      if (!apiSession || !masterCode || !masterAlias) return false;
+      if (accessCode && !/^\d{4,12}$/.test(accessCode)) {
+        toast.error("El código personal debe contener entre 4 y 12 dígitos.");
+        return false;
+      }
+      try {
+        const authorization = await posApi.createAuthorization({
+          alias: masterAlias,
+          pin: masterCode,
+          purpose: "EMPLOYEE_CREDENTIAL_UPDATE",
+          entityType: "Empleado",
+          entityId: seller.id,
+        });
+        await posApi.updateEmployeeCredential(seller.id, {
+          alias,
+          ...(accessCode ? { pin: accessCode } : {}),
+          active: seller.active,
+          offlineEnabled: false,
+          isMaster: Boolean(seller.masterAccessCode),
+          authorizationToken: authorization.authorizationToken,
+        });
+        await reloadPosAccess();
+        return true;
+      } catch (error) {
+        const response = error as { response?: { data?: { message?: string } } };
+        toast.error(response.response?.data?.message ?? "No se pudo actualizar la credencial POS.");
+        return false;
+      }
     }
     if (
       sellers.some(
@@ -2829,6 +3059,9 @@ function App() {
         : current,
     );
     setSessionUser(null);
+    setApiSession(null);
+    setApiPermissions([]);
+    if (posApiEnabled) posApi.clearSession();
     setSessionStage("LOGIN");
     setActiveScreen("sale");
     setSidebarCollapsed(false);
@@ -7907,7 +8140,7 @@ function App() {
           <div className="admin-code-preview">
             <span>CÓDIGO MOCK</span>
             <strong>••••</strong>
-            <small>Demostración: 2468</small>
+            <small>La autorización real se valida en el servidor.</small>
           </div>
           <div className="rule-list">
             <span>
@@ -8159,7 +8392,7 @@ function App() {
               >
                 <ShieldCheck size={15} /> Desbloquear
               </Button>
-              <small>Mock de demostración: 2468.</small>
+              <small>La autorización real se valida en el servidor.</small>
             </div>
           )}
           {paymentSettingsOpen && paymentSettingsAuthorized && (
@@ -8327,7 +8560,7 @@ function App() {
                 <ShieldCheck size={16} /> Desbloquear
               </Button>
             </div>
-            <small>Mock de demostración: 2468.</small>
+            <small>La autorización real se valida en el servidor.</small>
           </CardContent>
         </Card>
       );
@@ -9804,6 +10037,8 @@ function App() {
         return (
           <EmployeesView
             authorized={employeeAccessAuthorized}
+            managedByApi={posApiEnabled}
+            defaultMasterAlias={apiSession?.actor.isMaster ? apiSession.actor.alias : ""}
             roles={employeeRoles}
             sellers={sellers}
             onAuthorize={authorizeEmployeeAccess}
@@ -9883,6 +10118,7 @@ function App() {
           masterUser={masterUser}
           sellers={sellers}
           language={interfaceLanguage}
+          terminalManaged={posApiEnabled}
           onLogin={handleSoftwareLogin}
         />
         {renderConnectivityNotice()}
@@ -10164,7 +10400,10 @@ function App() {
         open={locationSwitchOpen}
         onOpenChange={(open) => {
           setLocationSwitchOpen(open);
-          if (!open) setLocationSwitchCode("");
+          if (!open) {
+            setLocationSwitchAlias("");
+            setLocationSwitchCode("");
+          }
         }}
       >
         <DialogContent className="terminal-location-dialog sm:max-w-[520px]">
@@ -10214,12 +10453,24 @@ function App() {
               </Select>
             </div>
             <div className="field-stack">
+              <span>Alias del usuario master</span>
+              <Input
+                value={locationSwitchAlias}
+                onChange={(event) => setLocationSwitchAlias(event.target.value)}
+                placeholder="Alias master"
+                autoComplete="username"
+              />
+            </div>
+            <div className="field-stack">
               <span>Código de autorización master</span>
               <Input
                 type="password"
                 inputMode="numeric"
+                maxLength={posApiEnabled ? 12 : 4}
                 value={locationSwitchCode}
-                onChange={(event) => setLocationSwitchCode(event.target.value)}
+                onChange={(event) =>
+                  setLocationSwitchCode(event.target.value.replace(/\D/g, ""))
+                }
                 onKeyDown={(event) => {
                   if (event.key === "Enter") confirmLocationSwitch();
                 }}
@@ -10231,8 +10482,9 @@ function App() {
           <div className="terminal-location-lock-note">
             <LockKeyhole size={15} />
             <span>
-              La selección quedará guardada localmente y se conservará al
-              volver a abrir el POS en esta computadora.
+              {posApiEnabled
+                ? "La asignación quedará auditada en el servidor y requerirá iniciar sesión nuevamente."
+                : "La selección quedará guardada localmente y se conservará al volver a abrir el POS en esta computadora."}
             </span>
           </div>
           <DialogFooter>
@@ -10245,8 +10497,12 @@ function App() {
             </Button>
             <Button
               type="button"
-              onClick={confirmLocationSwitch}
-              disabled={!locationSwitchTarget || !locationSwitchCode.trim()}
+                onClick={() => void confirmLocationSwitch()}
+              disabled={
+                !locationSwitchTarget ||
+                (posApiEnabled && !locationSwitchAlias.trim()) ||
+                !locationSwitchCode.trim()
+              }
             >
               <ShieldCheck size={16} /> Autorizar y fijar sucursal
             </Button>

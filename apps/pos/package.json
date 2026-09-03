@@ -11,8 +11,10 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
+    "@cosmetics/api-client": "workspace:*",
     "@cosmetics/types": "workspace:*",
     "@cosmetics/ui": "workspace:*",
+    "dotenv": "^16.4.5",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.8",
     "lucide-react": "^0.400.0",

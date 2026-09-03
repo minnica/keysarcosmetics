@@ -383,7 +383,7 @@ export function MyAccountView({
             </Button>
           </div>
           {accessError && <span className="my-account-error">{accessError}</span>}
-          <small>Usuario de prueba: Master Keysar · código 2468.</small>
+          <small>La autorización master se valida en el servidor.</small>
         </CardContent>
       </Card>
     );

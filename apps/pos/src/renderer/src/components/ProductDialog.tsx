@@ -255,7 +255,7 @@ export function ProductDialog({
                   <span>
                     {priceState.authorized
                       ? "Código autorizado. El ticket bajo piso quedará en el reporte administrativo."
-                      : "Mock de demostración: usa 2468."}
+                      : "Requiere autorización master vigente."}
                   </span>
                 </div>
               </div>

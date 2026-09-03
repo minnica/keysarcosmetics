@@ -3,6 +3,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 
 // API expuesta al renderer bajo window.electronAPI
 contextBridge.exposeInMainWorld('electronAPI', {
-  // Placeholder — agregar métodos IPC conforme se desarrolle
   ping: () => ipcRenderer.invoke('ping'),
+  posLogin: (input: { alias: string; pin: string }) =>
+    ipcRenderer.invoke('pos:login', input),
 })

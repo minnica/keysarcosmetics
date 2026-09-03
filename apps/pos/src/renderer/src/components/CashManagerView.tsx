@@ -550,7 +550,7 @@ export function CashManagerView({
               <UserRoundCheck size={16} /> Ingresar
             </Button>
           </div>
-          <small>Pruebas: ana 1101 · sofia 2202 · daniela 3303 · master 2468.</small>
+          <small>Usa una credencial personal autorizada.</small>
         </CardContent>
       </Card>
     );

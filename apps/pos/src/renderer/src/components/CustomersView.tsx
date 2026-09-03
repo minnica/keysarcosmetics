@@ -971,7 +971,7 @@ export function CustomersView({
                 }
               >
                 {accessError ||
-                  "Master 2468 · Ana 1101 · Sofía 2202 · Daniela 3303."}
+                  "Usa el alias y código personal autorizado."}
               </span>
             </div>
           ) : (

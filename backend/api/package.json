@@ -17,7 +17,7 @@
     "pretest:unit": "pnpm run checks:prepare",
     "test:unit": "vitest run --exclude \"src/**/*.integration.test.ts\"",
     "pretest:integration": "pnpm run checks:prepare",
-    "test:integration": "vitest run src/app.integration.test.ts",
+    "test:integration": "vitest run integration.test.ts",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:studio": "prisma studio",

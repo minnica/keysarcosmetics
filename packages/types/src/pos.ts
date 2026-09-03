@@ -86,6 +86,7 @@ export interface PosSessionDto {
     id: PosId;
     employeeId: PosId | null;
     userId: PosId | null;
+    positionId: PosId | null;
     displayName: string;
     alias: string;
     isMaster: boolean;
@@ -102,6 +103,22 @@ export interface PosLoginRequestDto {
   alias: string;
   pin: string;
   terminalCode: string;
+  terminalSecret: string;
+}
+
+export interface PosMasterAuthorizationRequestDto {
+  alias: string;
+  pin: string;
+  purpose: string;
+  entityType?: string;
+  entityId?: string;
+  scope?: Record<string, unknown>;
+}
+
+export interface PosMasterAuthorizationDto {
+  authorizationToken: string;
+  purpose: string;
+  expiresAt: IsoUtcDateTime;
 }
 
 export interface PosAuthorizationVerifyRequestDto {
@@ -116,6 +133,63 @@ export interface PosTerminalDto {
   status: PosTerminalStatus;
   branch: PosBranchSummaryDto | null;
   lastSeenAt: IsoUtcDateTime | null;
+}
+
+export interface PosTerminalRegistrationRequestDto {
+  code: string;
+  name: string;
+  branchId: PosId;
+}
+
+export interface PosTerminalStatusUpdateDto {
+  status: "ACTIVE" | "REVOKED";
+}
+
+/** El secreto sólo se entrega al registrar o rotar una terminal. */
+export interface PosTerminalRegistrationResultDto {
+  terminal: PosTerminalDto;
+  terminalSecret: string;
+}
+
+export interface PosCredentialSummaryDto {
+  id: PosId;
+  employeeId: PosId | null;
+  userId: PosId | null;
+  alias: string;
+  displayName: string;
+  active: boolean;
+  offlineEnabled: boolean;
+  isMaster: boolean;
+  lockedUntil: IsoUtcDateTime | null;
+}
+
+export interface PosEmployeeAccessDto {
+  id: PosId;
+  displayName: string;
+  active: boolean;
+  positionId: PosId | null;
+  branchId: PosId | null;
+  credential: PosCredentialSummaryDto | null;
+}
+
+export interface PosRoleAccessDto {
+  id: PosId;
+  name: string;
+  active: boolean;
+  permissions: PosPermissionKey[];
+}
+
+export interface PosAccessBootstrapDto {
+  employees: PosEmployeeAccessDto[];
+  roles: PosRoleAccessDto[];
+  permissionTree: Array<{
+    id: PosId;
+    key: string;
+    label: string;
+    parentId: PosId | null;
+    grantable: boolean;
+    sortOrder: number;
+  }>;
 }
 
 export interface PosTaxonomyDto {

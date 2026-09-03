@@ -99,12 +99,13 @@ interface PosLoginScreenProps {
   masterUser: MasterUser;
   sellers: Seller[];
   language: "ES" | "EN";
+  terminalManaged?: boolean;
   onLogin: (credentials: {
     company: string;
     username: string;
     password: string;
     requestedBranch: string;
-  }) => string | null;
+  }) => Promise<string | null> | string | null;
 }
 
 export function PosLoginScreen({
@@ -114,6 +115,7 @@ export function PosLoginScreen({
   masterUser,
   sellers,
   language,
+  terminalManaged = false,
   onLogin,
 }: PosLoginScreenProps) {
   const english = language === "EN";
@@ -123,6 +125,7 @@ export function PosLoginScreen({
   const [password, setPassword] = useState("");
   const [branch, setBranch] = useState(fixedBranch);
   const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
   const normalizedUser = username.trim().toLocaleLowerCase("es-MX");
   const looksMaster =
     normalizedUser === "master" ||
@@ -134,14 +137,20 @@ export function PosLoginScreen({
     return () => window.clearInterval(interval);
   }, []);
 
-  const submit = () => {
-    const result = onLogin({
-      company,
-      username,
-      password,
-      requestedBranch: looksMaster ? branch : fixedBranch,
-    });
-    setError(result ?? "");
+  const submit = async () => {
+    setSubmitting(true);
+    setError("");
+    try {
+      const result = await onLogin({
+        company,
+        username,
+        password,
+        requestedBranch: looksMaster && !terminalManaged ? branch : fixedBranch,
+      });
+      setError(result ?? "");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -179,7 +188,7 @@ export function PosLoginScreen({
             <div className="software-login-input"><KeyRound size={17} /><Input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder={english ? "Access code" : "Código de acceso"} autoComplete="current-password" onKeyDown={(event) => { if (event.key === "Enter") submit(); }} /></div>
           </div>
 
-          {looksMaster ? (
+          {looksMaster && !terminalManaged ? (
             <div className="field-stack">
               <Label>{english ? "Work location · master access" : "Sucursal de trabajo · acceso master"}</Label>
               <Select value={branch} onValueChange={setBranch}>
@@ -198,13 +207,14 @@ export function PosLoginScreen({
           )}
 
           {error && <div className="software-login-error"><AlertTriangle size={16} /> {error}</div>}
-          <Button type="button" className="software-login-submit" onClick={submit} disabled={!company.trim() || !username.trim() || !password.trim()}>
-            {english ? "Sign in" : "Iniciar sesión"} <ArrowRight size={17} />
+          <Button type="button" className="software-login-submit" onClick={() => void submit()} disabled={submitting || !company.trim() || !username.trim() || !password.trim()}>
+            {submitting ? (english ? "Signing in..." : "Iniciando sesión...") : (english ? "Sign in" : "Iniciar sesión")} <ArrowRight size={17} />
           </Button>
-          <small className="software-login-demo">
-            {english ? "Demo" : "Pruebas"}: <b>{masterUser.name}</b> / <b>{masterUser.accessCode}</b>
-            {sellers.filter((seller) => seller.active).slice(0, 1).map((seller) => ` · ${seller.alias} / ${seller.accessCode}`)}
-          </small>
+          {!terminalManaged && (
+            <small className="software-login-demo">
+              {english ? "Demo data mode" : "Modo de datos demostrativos"}
+            </small>
+          )}
         </div>
       </section>
     </main>
