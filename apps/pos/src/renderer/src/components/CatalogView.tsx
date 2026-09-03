@@ -133,6 +133,7 @@ const createDraft = (): Product => ({
   stockMax: 0,
   branches: ["Polanco"],
   active: true,
+  membershipSessions: undefined,
 });
 
 export function CatalogView({
@@ -234,7 +235,7 @@ export function CatalogView({
         case "prices":
           return product.maxPrice;
         case "stock":
-          return product.kind === "SERVICE"
+          return product.kind !== "PRODUCT"
             ? Number.MAX_SAFE_INTEGER
             : selectedStockTotal(product);
         case "branches":
@@ -275,7 +276,12 @@ export function CatalogView({
           .map((branch) => ({
             SKU: product.sku,
             Producto: product.name,
-            Tipo: product.kind === "PRODUCT" ? "Producto" : "Servicio",
+            Tipo:
+              product.kind === "PRODUCT"
+                ? "Producto"
+                : product.kind === "MEMBERSHIP"
+                  ? "Membresía"
+                  : "Servicio",
             Familia: product.family,
             Categoría: product.category,
             Grupo: product.group,
@@ -464,7 +470,12 @@ export function CatalogView({
       .map((word) => word.slice(0, 3))
       .join("")
       .slice(0, 8);
-    const prefix = draft.kind === "SERVICE" ? "SRV" : "KSR";
+    const prefix =
+      draft.kind === "MEMBERSHIP"
+        ? "MEM"
+        : draft.kind === "SERVICE"
+          ? "SRV"
+          : "KSR";
     const base = `${prefix}-${familyCode || "GEN"}`;
     const usedSkus = new Set(
       products
@@ -541,7 +552,7 @@ export function CatalogView({
     setDraft((current) => ({
       ...current,
       [field]:
-        current.kind === "SERVICE" && field.startsWith("stock")
+        current.kind !== "PRODUCT" && field.startsWith("stock")
           ? null
           : Math.max(0, Number(value) || 0),
     }));
@@ -551,9 +562,11 @@ export function CatalogView({
     setDraft((current) => ({
       ...current,
       kind,
-      stock: kind === "SERVICE" ? null : (current.stock ?? 0),
-      stockMin: kind === "SERVICE" ? null : (current.stockMin ?? 0),
-      stockMax: kind === "SERVICE" ? null : (current.stockMax ?? 0),
+      stock: kind === "PRODUCT" ? (current.stock ?? 0) : null,
+      stockMin: kind === "PRODUCT" ? (current.stockMin ?? 0) : null,
+      stockMax: kind === "PRODUCT" ? (current.stockMax ?? 0) : null,
+      membershipSessions:
+        kind === "MEMBERSHIP" ? (current.membershipSessions ?? 1) : undefined,
     }));
   };
 
@@ -617,6 +630,14 @@ export function CatalogView({
     }
     if (draft.branches.length === 0) {
       toast.error("Selecciona al menos una sucursal.");
+      return;
+    }
+    if (
+      draft.kind === "MEMBERSHIP" &&
+      (!Number.isInteger(draft.membershipSessions) ||
+        (draft.membershipSessions ?? 0) < 1)
+    ) {
+      toast.error("Indica cuántas sesiones incluye esta membresía.");
       return;
     }
     if (
@@ -946,7 +967,11 @@ export function CatalogView({
                 </TableCell>
                 <TableCell>
                   {product.stock === null ? (
-                    <Badge variant="outline">SERVICIO</Badge>
+                    <Badge variant="outline">
+                      {product.kind === "MEMBERSHIP"
+                        ? `${product.membershipSessions ?? 0} SESIONES`
+                        : "SERVICIO"}
+                    </Badge>
                   ) : (
                     <div className="catalog-list-stock catalog-branch-stock">
                       <strong
@@ -1037,7 +1062,9 @@ export function CatalogView({
         <DialogContent className="catalog-dialog sm:max-w-[920px]">
           <DialogHeader>
             <DialogTitle>
-              {editingId ? "Editar producto" : "Alta de producto o servicio"}
+              {editingId
+                ? "Editar producto"
+                : "Alta de producto, servicio o membresía"}
             </DialogTitle>
             <DialogDescription>
               Los cambios afectan inmediatamente Ventas e Inventario, pero no los
@@ -1190,9 +1217,38 @@ export function CatalogView({
                   <SelectContent>
                     <SelectItem value="PRODUCT">Producto</SelectItem>
                     <SelectItem value="SERVICE">Servicio</SelectItem>
+                    <SelectItem value="MEMBERSHIP">Membresía</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
+              {draft.kind === "MEMBERSHIP" && (
+                <div className="field-stack catalog-membership-session-field">
+                  <Label htmlFor="catalog-membership-sessions">
+                    Sesiones incluidas
+                  </Label>
+                  <Input
+                    id="catalog-membership-sessions"
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={draft.membershipSessions ?? ""}
+                    onChange={(event) =>
+                      setDraft((current) => ({
+                        ...current,
+                        membershipSessions:
+                          event.target.value === ""
+                            ? undefined
+                            : Math.max(1, Math.trunc(Number(event.target.value))),
+                      }))
+                    }
+                    placeholder="Ej. 8"
+                  />
+                  <small>
+                    Cada unidad vendida generará un tarjetón independiente con
+                    este número de asistencias.
+                  </small>
+                </div>
+              )}
               <div className="field-stack">
                 <Label htmlFor="catalog-family">Familia</Label>
                 <Select

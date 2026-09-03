@@ -40,7 +40,13 @@ import {
   toast,
 } from "@cosmetics/ui";
 import { formatCurrency } from "../mock-data";
+import {
+  availableAgendaSeats,
+  isSellerSelectableAgendaSlot,
+} from "../agenda-gateway";
 import type {
+  AgendaReservationMode,
+  AgendaSlot,
   AppointmentDraft,
   CartItem,
   CourtesyPackage,
@@ -100,6 +106,7 @@ interface CheckoutDialogProps {
   sellers: Seller[];
   paymentMethods: PaymentMethodOption[];
   branches: string[];
+  agendaSlots: AgendaSlot[];
   sourceOptions: ClientSourceOption[];
   requiredFields: RequiredClientFields;
   courtesySettings: CourtesySettings;
@@ -129,12 +136,6 @@ const clientFieldLabels: Record<ClientField, string> = {
   source: "Procedencia",
   companyName: "Empresa asignada",
 };
-
-const appointmentTimeSets = [
-  ["10:00", "11:30", "13:00", "16:00", "18:30"],
-  ["09:30", "12:00", "14:30", "17:00", "19:00"],
-  ["10:30", "12:30", "15:00", "17:30", "19:30"],
-] as const;
 
 const nextSessionServices = [
   "Facial de seguimiento",
@@ -166,6 +167,72 @@ const courtesyPackages: Record<
   },
 };
 
+interface AgendaSelectionOption {
+  key: string;
+  slotIds: string[];
+  mode: AgendaReservationMode;
+  label: string;
+}
+
+const cancelledAvailabilityLabel = (slots: AgendaSlot[]) =>
+  slots.some((slot) => slot.status === "CANCELLED")
+    ? " · liberado por cancelación"
+    : "";
+
+const buildCourtesyAgendaOptions = (
+  slots: AgendaSlot[],
+  serviceCount: number,
+  mode: AgendaReservationMode,
+): AgendaSelectionOption[] => {
+  const selectable = slots.filter(isSellerSelectableAgendaSlot);
+  if (serviceCount <= 1) {
+    return selectable.map((slot) => ({
+      key: slot.id,
+      slotIds: [slot.id],
+      mode: "SINGLE",
+      label: `${slot.startTime}–${slot.endTime} · ${slot.resourceName}${cancelledAvailabilityLabel([slot])}`,
+    }));
+  }
+  if (mode === "SIMULTANEOUS_DOUBLE") {
+    return selectable
+      .filter(
+        (slot) =>
+          slot.resourceType === "DOUBLE" &&
+          availableAgendaSeats(slot) >= serviceCount,
+      )
+      .map((slot) => ({
+        key: `simultaneous-${slot.id}`,
+        slotIds: Array.from({ length: serviceCount }, () => slot.id),
+        mode,
+        label: `${slot.startTime}–${slot.endTime} · ${slot.resourceName} · ${serviceCount} lugares simultáneos${cancelledAvailabilityLabel([slot])}`,
+      }));
+  }
+
+  return selectable
+    .flatMap((first) => {
+      const second = selectable.find(
+        (candidate) =>
+          candidate.resourceId === first.resourceId &&
+          candidate.date === first.date &&
+          candidate.startTime === first.endTime,
+      );
+      return second
+        ? [
+            {
+              key: `consecutive-${first.id}-${second.id}`,
+              slotIds: [first.id, second.id],
+              mode: "CONSECUTIVE" as const,
+              label: `${first.startTime}–${second.endTime} · ${first.resourceName} · 2 horarios consecutivos${cancelledAvailabilityLabel([first, second])}`,
+            },
+          ]
+        : [];
+    })
+    .filter(
+      (option, index, all) =>
+        all.findIndex((candidate) => candidate.key === option.key) === index,
+    );
+};
+
 function createEvenSplit(ids: string[], mode: SplitMode, total: number) {
   if (ids.length === 0) return {};
   const target = mode === "amount" ? total : 100;
@@ -186,6 +253,7 @@ export function CheckoutDialog({
   sellers,
   paymentMethods,
   branches,
+  agendaSlots,
   sourceOptions,
   requiredFields,
   courtesySettings,
@@ -196,16 +264,6 @@ export function CheckoutDialog({
   const activeSellers = useMemo(
     () => sellers.filter((seller) => seller.active),
     [sellers],
-  );
-  const appointmentBranches = useMemo(
-    () =>
-      branches.map((name, index) => ({
-        name,
-        times:
-          appointmentTimeSets[index % appointmentTimeSets.length] ??
-          appointmentTimeSets[0],
-      })),
-    [branches],
   );
   const [clientMode, setClientMode] = useState<ClientMode>("search");
   const [checkoutStep, setCheckoutStep] = useState<CheckoutStep>(1);
@@ -230,6 +288,8 @@ export function CheckoutDialog({
   const [courtesyDate, setCourtesyDate] = useState("");
   const [courtesyBranch, setCourtesyBranch] = useState("");
   const [courtesyTime, setCourtesyTime] = useState("");
+  const [courtesyReservationMode, setCourtesyReservationMode] =
+    useState<AgendaReservationMode>("SIMULTANEOUS_DOUBLE");
   const [nextSessionAnswer, setNextSessionAnswer] =
     useState<AppointmentAnswer>("");
   const [nextSessionService, setNextSessionService] = useState<string>(
@@ -262,6 +322,7 @@ export function CheckoutDialog({
     setCourtesyDate("");
     setCourtesyBranch("");
     setCourtesyTime("");
+    setCourtesyReservationMode("SIMULTANEOUS_DOUBLE");
     setNextSessionAnswer("");
     setNextSessionService("Facial de seguimiento");
     setNextSessionDate("");
@@ -279,6 +340,17 @@ export function CheckoutDialog({
         : [],
     );
   }, [activeSellers, courtesySettings.defaultPackage, open, paymentMethods, total]);
+
+  useEffect(() => {
+    if (courtesyBranch && !branches.includes(courtesyBranch)) {
+      setCourtesyBranch("");
+      setCourtesyTime("");
+    }
+    if (nextSessionBranch && !branches.includes(nextSessionBranch)) {
+      setNextSessionBranch("");
+      setNextSessionTime("");
+    }
+  }, [branches, courtesyBranch, nextSessionBranch]);
 
   const filteredClients = useMemo(() => {
     const query = clientSearch.trim().toLocaleLowerCase("es-MX");
@@ -349,12 +421,38 @@ export function CheckoutDialog({
       )
     : activeSellers.filter((seller) => selectedSellerIds.includes(seller.id));
 
+  const courtesyServiceCount = courtesyPackages[courtesyPackage].services.length;
+  const courtesyAgendaOptions = buildCourtesyAgendaOptions(
+    agendaSlots.filter(
+      (slot) => slot.branch === courtesyBranch && slot.date === courtesyDate,
+    ),
+    courtesyServiceCount,
+    courtesyServiceCount === 1 ? "SINGLE" : courtesyReservationMode,
+  );
+  const selectedCourtesyAgendaOption = courtesyAgendaOptions.find(
+    (option) => option.key === courtesyTime,
+  );
+  const nextSessionAgendaSlots = agendaSlots.filter(
+    (slot) =>
+      slot.branch === nextSessionBranch &&
+      slot.date === nextSessionDate &&
+      isSellerSelectableAgendaSlot(slot),
+  );
+  const selectedNextSessionAgendaSlot = nextSessionAgendaSlots.find(
+    (slot) => slot.id === nextSessionTime,
+  );
+
   const missingNewClientFields = (
     Object.keys(requiredFields) as ClientField[]
   ).filter((field) => requiredFields[field] && !newClient[field].trim());
   const courtesyAppointmentIsValid =
     clientMode !== "new" || !courtesySettings.required ||
-    Boolean(courtesyPackage && courtesyDate && courtesyBranch && courtesyTime);
+    Boolean(
+      courtesyPackage &&
+        courtesyDate &&
+        courtesyBranch &&
+        selectedCourtesyAgendaOption,
+    );
   const clientIsValid =
     clientMode === "search"
       ? Boolean(selectedClient)
@@ -412,7 +510,7 @@ export function CheckoutDialog({
             nextSessionService &&
             nextSessionDate &&
             nextSessionBranch &&
-            nextSessionTime,
+            selectedNextSessionAgendaSlot,
           ));
   const canComplete =
     clientIsValid &&
@@ -420,12 +518,6 @@ export function CheckoutDialog({
     nextSessionIsValid &&
     payments.length > 0 &&
     paymentReferencesAreValid;
-  const courtesyTimes =
-    appointmentBranches.find((branch) => branch.name === courtesyBranch)
-      ?.times ?? [];
-  const nextSessionTimes =
-    appointmentBranches.find((branch) => branch.name === nextSessionBranch)
-      ?.times ?? [];
 
   const selectClient = (client: Client) => {
     setSelectedClientId(client.id);
@@ -534,13 +626,26 @@ export function CheckoutDialog({
       .filter((seller): seller is Seller => Boolean(seller));
     const appointments: AppointmentDraft[] = [
       ...(clientMode === "new" && courtesySettings.required
-        ? courtesyPackages[courtesyPackage].services.map((service) => ({
-            kind: "COURTESY" as const,
-            service,
-            date: courtesyDate,
-            branch: courtesyBranch,
-            time: courtesyTime,
-          }))
+        ? courtesyPackages[courtesyPackage].services.map((service, index) => {
+            const slotId = selectedCourtesyAgendaOption?.slotIds[index];
+            const slot = agendaSlots.find((candidate) => candidate.id === slotId);
+            return {
+              kind: "COURTESY" as const,
+              service,
+              date: slot?.date ?? courtesyDate,
+              branch: slot?.branch ?? courtesyBranch,
+              time: slot?.startTime ?? "",
+              ...(slot
+                ? {
+                    agendaSlotId: slot.id,
+                    externalSlotId: slot.externalSlotId,
+                    agendaResourceName: slot.resourceName,
+                    agendaReservationMode:
+                      selectedCourtesyAgendaOption?.mode ?? "SINGLE",
+                  }
+                : {}),
+            };
+          })
         : []),
       ...(clientMode === "search" && nextSessionAnswer === "YES"
         ? [
@@ -549,7 +654,17 @@ export function CheckoutDialog({
               service: nextSessionService,
               date: nextSessionDate,
               branch: nextSessionBranch,
-              time: nextSessionTime,
+              time: selectedNextSessionAgendaSlot?.startTime ?? "",
+              ...(selectedNextSessionAgendaSlot
+                ? {
+                    agendaSlotId: selectedNextSessionAgendaSlot.id,
+                    externalSlotId:
+                      selectedNextSessionAgendaSlot.externalSlotId,
+                    agendaResourceName:
+                      selectedNextSessionAgendaSlot.resourceName,
+                    agendaReservationMode: "SINGLE" as const,
+                  }
+                : {}),
             },
           ]
         : clientMode === "search" && nextSessionAnswer === "NO"
@@ -801,6 +916,9 @@ export function CheckoutDialog({
                         setNewClient((current) => ({ ...current, birthday }))
                       }
                       placeholder="Selecciona cumpleaños"
+                      quickMonthYearNavigation
+                      fromYear={1920}
+                      toYear={new Date().getFullYear()}
                     />
                   </div>
                   <div className="field-stack">
@@ -958,9 +1076,11 @@ export function CheckoutDialog({
                         </Label>
                         <Select
                           value={courtesyPackage}
-                          onValueChange={(value) =>
-                            setCourtesyPackage(value as CourtesyPackage)
-                          }
+                          onValueChange={(value) => {
+                            setCourtesyPackage(value as CourtesyPackage);
+                            setCourtesyReservationMode("SIMULTANEOUS_DOUBLE");
+                            setCourtesyTime("");
+                          }}
                         >
                           <SelectTrigger id="courtesy-service">
                             <SelectValue />
@@ -983,7 +1103,10 @@ export function CheckoutDialog({
                         <DatePicker
                           id="courtesy-date"
                           value={courtesyDate}
-                          onChange={setCourtesyDate}
+                          onChange={(date) => {
+                            setCourtesyDate(date);
+                            setCourtesyTime("");
+                          }}
                           placeholder="Selecciona fecha"
                         />
                       </div>
@@ -1002,34 +1125,69 @@ export function CheckoutDialog({
                             <SelectValue placeholder="Selecciona sucursal" />
                           </SelectTrigger>
                           <SelectContent>
-                            {appointmentBranches.map((branch) => (
-                              <SelectItem key={branch.name} value={branch.name}>
-                                {branch.name}
+                            {branches.map((branch) => (
+                              <SelectItem key={branch} value={branch}>
+                                {branch}
                               </SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
                       </div>
-                      <div className="field-stack">
+                      {courtesyServiceCount > 1 && (
+                        <div className="field-stack appointment-reservation-mode-field">
+                          <Label htmlFor="courtesy-reservation-mode">
+                            Distribución de los dos servicios <em>*</em>
+                          </Label>
+                          <Select
+                            value={courtesyReservationMode}
+                            onValueChange={(mode) => {
+                              setCourtesyReservationMode(
+                                mode as AgendaReservationMode,
+                              );
+                              setCourtesyTime("");
+                            }}
+                          >
+                            <SelectTrigger id="courtesy-reservation-mode">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="SIMULTANEOUS_DOUBLE">
+                                Misma hora · cabina doble
+                              </SelectItem>
+                              <SelectItem value="CONSECUTIVE">
+                                Dos horarios consecutivos
+                              </SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+                      <div className="field-stack appointment-availability-field">
                         <Label htmlFor="courtesy-time">
-                          Horario disponible <em>*</em>
+                          Espacio disponible <em>*</em>
                         </Label>
                         <Select
                           value={courtesyTime}
                           onValueChange={setCourtesyTime}
-                          disabled={!courtesyBranch}
+                          disabled={!courtesyBranch || !courtesyDate}
                         >
                           <SelectTrigger id="courtesy-time">
-                            <SelectValue placeholder="Selecciona horario" />
+                            <SelectValue placeholder="Horario y cabina" />
                           </SelectTrigger>
                           <SelectContent>
-                            {courtesyTimes.map((time) => (
-                              <SelectItem key={time} value={time}>
-                                {time} h
+                            {courtesyAgendaOptions.map((option) => (
+                              <SelectItem key={option.key} value={option.key}>
+                                {option.label}
                               </SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
+                        {courtesyDate &&
+                          courtesyBranch &&
+                          courtesyAgendaOptions.length === 0 && (
+                            <small className="agenda-no-availability">
+                              No hay cabinas libres para esta configuración.
+                            </small>
+                          )}
                       </div>
                     </div>
                     {!courtesyAppointmentIsValid && (
@@ -1324,7 +1482,9 @@ export function CheckoutDialog({
                     <small>CORTESÍA DE BIENVENIDA</small>
                     <strong>{courtesyPackages[courtesyPackage].label}</strong>
                     <p>
-                      {courtesyDate} · {courtesyBranch} · {courtesyTime} h
+                      {courtesyDate} · {courtesyBranch} ·{
+                        selectedCourtesyAgendaOption?.label ?? "Sin espacio"
+                      }
                     </p>
                   </span>
                   <Badge variant="outline">
@@ -1341,7 +1501,7 @@ export function CheckoutDialog({
                 <div className="next-session-question">
                   <div>
                     <strong>
-                      ¿La clienta ya cuenta con cita para su próxima sesión?
+                      ¿Deseas dejar agendada la próxima sesión de la clienta?
                     </strong>
                     <small>
                       La respuesta es obligatoria antes de continuar al cobro.
@@ -1355,7 +1515,7 @@ export function CheckoutDialog({
                       }
                       onClick={() => setNextSessionAnswer("YES")}
                     >
-                      Sí, agendar ahora
+                      Sí, buscar espacio
                     </button>
                     <button
                       type="button"
@@ -1417,7 +1577,10 @@ export function CheckoutDialog({
                       <DatePicker
                         id="next-session-date"
                         value={nextSessionDate}
-                        onChange={setNextSessionDate}
+                        onChange={(date) => {
+                          setNextSessionDate(date);
+                          setNextSessionTime("");
+                        }}
                         placeholder="Selecciona fecha"
                       />
                     </div>
@@ -1434,9 +1597,9 @@ export function CheckoutDialog({
                           <SelectValue placeholder="Selecciona sucursal" />
                         </SelectTrigger>
                         <SelectContent>
-                          {appointmentBranches.map((branch) => (
-                            <SelectItem key={branch.name} value={branch.name}>
-                              {branch.name}
+                          {branches.map((branch) => (
+                            <SelectItem key={branch} value={branch}>
+                              {branch}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -1444,24 +1607,37 @@ export function CheckoutDialog({
                     </div>
                     <div className="field-stack">
                       <Label htmlFor="next-session-time">
-                        Horario disponible
+                        Espacio disponible
                       </Label>
                       <Select
                         value={nextSessionTime}
                         onValueChange={setNextSessionTime}
-                        disabled={!nextSessionBranch}
+                        disabled={!nextSessionBranch || !nextSessionDate}
                       >
                         <SelectTrigger id="next-session-time">
-                          <SelectValue placeholder="Selecciona horario" />
+                          <SelectValue placeholder="Horario y cabina" />
                         </SelectTrigger>
                         <SelectContent>
-                          {nextSessionTimes.map((time) => (
-                            <SelectItem key={time} value={time}>
-                              {time} h
+                          {nextSessionAgendaSlots.map((slot) => (
+                            <SelectItem key={slot.id} value={slot.id}>
+                              {slot.startTime}–{slot.endTime} · {slot.resourceName}
+                              {slot.resourceType === "DOUBLE"
+                                ? ` · ${availableAgendaSeats(slot)} lugares`
+                                : ""}
+                              {slot.status === "CANCELLED"
+                                ? " · liberado por cancelación"
+                                : ""}
                             </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
+                      {nextSessionDate &&
+                        nextSessionBranch &&
+                        nextSessionAgendaSlots.length === 0 && (
+                          <small className="agenda-no-availability">
+                            Sin espacios vacíos o cancelados disponibles.
+                          </small>
+                        )}
                     </div>
                   </div>
                 </div>

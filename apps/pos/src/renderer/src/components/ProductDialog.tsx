@@ -134,7 +134,11 @@ export function ProductDialog({
             </div>
             <div className="product-dialog-executive-product">
               <Badge className="product-kind-badge">
-                {product.kind === "SERVICE" ? "SERVICIO" : "PRODUCTO"}
+                {product.kind === "MEMBERSHIP"
+                  ? "MEMBRESÍA"
+                  : product.kind === "SERVICE"
+                    ? "SERVICIO"
+                    : "PRODUCTO"}
               </Badge>
               <div className="product-dialog-executive-image-wrap">
                 <img
@@ -155,7 +159,9 @@ export function ProductDialog({
               <small>
                 {product.kind === "PRODUCT"
                   ? `${product.stock ?? 0} piezas disponibles`
-                  : "Servicio disponible"}
+                  : product.kind === "MEMBERSHIP"
+                    ? `${product.membershipSessions ?? 0} sesiones incluidas`
+                    : "Servicio disponible"}
               </small>
             </div>
           </aside>

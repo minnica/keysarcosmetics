@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   Building2,
@@ -11,6 +11,11 @@ import {
   Badge,
   Card,
   CardContent,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
   Table,
   TableBody,
   TableCell,
@@ -24,6 +29,9 @@ import { HistoryPagination, useHistoryPagination } from "./HistoryPagination";
 interface AppointmentsViewProps {
   appointments: Appointment[];
   sellers: Seller[];
+  branches: string[];
+  activeBranch: string;
+  canViewAllBranches: boolean;
 }
 
 type AppointmentFilter = "ALL" | AppointmentKind;
@@ -45,16 +53,39 @@ const appointmentDate = (value: string) =>
 export function AppointmentsView({
   appointments,
   sellers,
+  branches,
+  activeBranch,
+  canViewAllBranches,
 }: AppointmentsViewProps) {
   const [filter, setFilter] = useState<AppointmentFilter>("ALL");
+  const [branchFilter, setBranchFilter] = useState(
+    canViewAllBranches ? "ALL" : activeBranch,
+  );
+  useEffect(() => {
+    if (!canViewAllBranches) {
+      setBranchFilter(activeBranch);
+      return;
+    }
+    if (branchFilter !== "ALL" && !branches.includes(branchFilter))
+      setBranchFilter("ALL");
+  }, [activeBranch, branchFilter, branches, canViewAllBranches]);
+  const scopedAppointments = useMemo(
+    () =>
+      appointments.filter(
+        (appointment) =>
+          branches.includes(appointment.branch) &&
+          (branchFilter === "ALL" || appointment.branch === branchFilter),
+      ),
+    [appointments, branchFilter, branches],
+  );
   const sortedAppointments = useMemo(
     () =>
-      [...appointments].sort(
+      [...scopedAppointments].sort(
         (first, second) =>
           new Date(second.recordedAtIso).getTime() -
           new Date(first.recordedAtIso).getTime(),
       ),
-    [appointments],
+    [scopedAppointments],
   );
   const visibleAppointments = sortedAppointments.filter(
     (appointment) => filter === "ALL" || appointment.kind === filter,
@@ -63,14 +94,19 @@ export function AppointmentsView({
     visibleAppointments,
     filter,
   );
-  const scheduledAppointments = appointments.filter(
+  const scheduledAppointments = scopedAppointments.filter(
     (appointment) => appointment.status === "SCHEDULED",
   );
-  const missingAppointments = appointments.filter(
+  const missingAppointments = scopedAppointments.filter(
     (appointment) => appointment.kind === "NO_APPOINTMENT",
   );
+  const agendaIncidents = scopedAppointments.filter(
+    (appointment) =>
+      appointment.status === "CANCELLED" || appointment.status === "NO_SHOW",
+  );
+  const followUpAppointments = [...missingAppointments, ...agendaIncidents];
   const uniqueClients = new Set(
-    appointments.map((appointment) => appointment.clientId),
+    scopedAppointments.map((appointment) => appointment.clientId),
   ).size;
   const branchTotals = Array.from(
     scheduledAppointments
@@ -88,7 +124,7 @@ export function AppointmentsView({
     .filter((seller) => seller.active)
     .map((seller) => ({
       seller,
-      appointments: missingAppointments.filter((appointment) =>
+      appointments: followUpAppointments.filter((appointment) =>
         appointment.sellerIds.includes(seller.id),
       ),
     }))
@@ -96,12 +132,24 @@ export function AppointmentsView({
 
   return (
     <div className="appointments-view">
+      <div className="module-branch-scope">
+        <span><Building2 size={15} /> ALCANCE DE CITAS</span>
+        {canViewAllBranches ? (
+          <Select value={branchFilter} onValueChange={setBranchFilter}>
+            <SelectTrigger aria-label="Filtrar citas por sucursal"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">Todas las sucursales</SelectItem>
+              {branches.map((branch) => <SelectItem key={branch} value={branch}>{branch}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        ) : <strong>{activeBranch}</strong>}
+      </div>
       <div className="appointment-metric-grid">
         <Card>
           <CardContent>
             <CalendarHeart size={21} />
             <span>TODOS LOS REGISTROS</span>
-            <strong>{appointments.length}</strong>
+            <strong>{scopedAppointments.length}</strong>
           </CardContent>
         </Card>
         <Card>
@@ -114,8 +162,8 @@ export function AppointmentsView({
         <Card>
           <CardContent>
             <AlertTriangle size={21} />
-            <span>SIN FACIAL AGENDADO</span>
-            <strong>{missingAppointments.length}</strong>
+            <span>REQUIEREN SEGUIMIENTO</span>
+            <strong>{followUpAppointments.length}</strong>
           </CardContent>
         </Card>
         <Card>
@@ -261,7 +309,12 @@ export function AppointmentsView({
                             ? "No agendada"
                             : appointmentDate(appointment.date)}
                         </strong>
-                        <small>{appointment.time}</small>
+                        <small>
+                          {appointment.time}
+                          {appointment.agendaResourceName
+                            ? ` · ${appointment.agendaResourceName}`
+                            : ""}
+                        </small>
                       </div>
                     </TableCell>
                     <TableCell>
@@ -286,11 +339,32 @@ export function AppointmentsView({
                       </div>
                     </TableCell>
                     <TableCell>
-                      <Badge variant="outline">
-                        {appointment.status === "SCHEDULED"
-                          ? "AGENDADA"
-                          : "REQUIERE SEGUIMIENTO"}
-                      </Badge>
+                      <div className="appointment-date-cell">
+                        <Badge variant="outline">
+                          {appointment.status === "ATTENDED"
+                            ? "ASISTIÓ · SESIÓN APLICADA"
+                            : appointment.status === "CANCELLED"
+                              ? "CANCELADA"
+                              : appointment.status === "NO_SHOW"
+                                ? "NO LLEGÓ"
+                            : appointment.status === "SCHEDULED"
+                              ? "AGENDADA"
+                              : "REQUIERE SEGUIMIENTO"}
+                        </Badge>
+                        {appointment.agendaSyncStatus && (
+                          <small>
+                            {appointment.agendaSyncStatus === "RESERVED"
+                              ? "Agenda · reservada"
+                              : appointment.agendaSyncStatus === "ATTENDED"
+                                ? "Agenda · asistencia confirmada"
+                                : appointment.agendaSyncStatus === "NO_SHOW"
+                                  ? "Agenda · no llegó"
+                                : appointment.agendaSyncStatus === "PENDING_SYNC"
+                                  ? "Agenda · pendiente de sincronizar"
+                                  : `Agenda · ${appointment.agendaSyncStatus.toLocaleLowerCase("es-MX")}`}
+                          </small>
+                        )}
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}

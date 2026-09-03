@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   Building2,
@@ -52,6 +52,7 @@ import { LayawayPaymentDialog } from "./LayawayPaymentDialog";
 interface SellerSalesViewProps {
   sellers: Seller[];
   tickets: Ticket[];
+  branches: string[];
   clients: Client[];
   paymentMethods: PaymentMethodOption[];
   layaways: LayawayRecord[];
@@ -102,6 +103,7 @@ const sameClient = (client: Client, ticket: Ticket) => {
 export function SellerSalesView({
   sellers,
   tickets,
+  branches,
   clients,
   paymentMethods,
   layaways,
@@ -120,6 +122,16 @@ export function SellerSalesView({
   const [selectedClientId, setSelectedClientId] = useState("");
   const [clientQuickFilter, setClientQuickFilter] =
     useState<ClientQuickFilter>("ALL");
+  const [branchFilter, setBranchFilter] = useState("ALL");
+
+  useEffect(() => {
+    if (branchFilter !== "ALL" && !branches.includes(branchFilter))
+      setBranchFilter("ALL");
+  }, [branchFilter, branches]);
+
+  const ticketBranch = (ticket: Ticket) => ticket.branchName ?? branches[0] ?? "";
+  const branchMatches = (branch: string) =>
+    branchFilter === "ALL" || branch === branchFilter;
 
   const activeSellers = useMemo(
     () => sellers.filter((seller) => seller.active),
@@ -138,16 +150,27 @@ export function SellerSalesView({
       );
       return (
         participates &&
+        branchMatches(ticketBranch(ticket)) &&
         (!dateFrom || date >= dateFrom) &&
         (!dateTo || date <= dateTo)
       );
     });
-  }, [authorizedSellerId, dateFrom, dateTo, tickets]);
+  }, [authorizedSellerId, branchFilter, branches, dateFrom, dateTo, tickets]);
 
   const ownedClients = useMemo(() => {
     if (!authorizedSellerId) return [];
-    return clients.filter((client) => client.ownerId === authorizedSellerId);
-  }, [authorizedSellerId, clients]);
+    return clients.filter(
+      (client) =>
+        client.ownerId === authorizedSellerId &&
+        (branchFilter === "ALL" ||
+          client.registrationBranch === branchFilter ||
+          tickets.some(
+            (ticket) =>
+              sameClient(client, ticket) &&
+              ticketBranch(ticket) === branchFilter,
+          )),
+    );
+  }, [authorizedSellerId, branchFilter, branches, clients, tickets]);
 
   const clientIdsWithDebt = useMemo(
     () =>
@@ -157,11 +180,12 @@ export function SellerSalesView({
             (layaway) =>
               layaway.status === "ACTIVE" &&
               layaway.balanceDue > 0.01 &&
-              layaway.sellerIds.includes(authorizedSellerId),
+              layaway.sellerIds.includes(authorizedSellerId) &&
+              branchMatches(layaway.branch),
           )
           .map((layaway) => layaway.clientId),
       ),
-    [authorizedSellerId, layaways],
+    [authorizedSellerId, branchFilter, layaways],
   );
   const clientIdsWithoutAppointment = useMemo(
     () =>
@@ -171,11 +195,12 @@ export function SellerSalesView({
             (appointment) =>
               appointment.kind === "NO_APPOINTMENT" &&
               appointment.status === "PENDING" &&
-              appointment.sellerIds.includes(authorizedSellerId),
+              appointment.sellerIds.includes(authorizedSellerId) &&
+              branchMatches(appointment.branch),
           )
           .map((appointment) => appointment.clientId),
       ),
-    [appointments, authorizedSellerId],
+    [appointments, authorizedSellerId, branchFilter],
   );
 
   const visibleClients = (showAllClients
@@ -193,7 +218,11 @@ export function SellerSalesView({
     (client) => client.id === selectedClientId,
   );
   const selectedClientTickets = selectedClient
-    ? tickets.filter((ticket) => sameClient(selectedClient, ticket))
+    ? tickets.filter(
+        (ticket) =>
+          sameClient(selectedClient, ticket) &&
+          branchMatches(ticketBranch(ticket)),
+      )
     : [];
   const sellerTicketPagination = useHistoryPagination(
     sellerTickets,
@@ -216,7 +245,7 @@ export function SellerSalesView({
   const overdueThreshold = new Date();
   overdueThreshold.setMonth(overdueThreshold.getMonth() - 4);
   const sellerLayaways = layaways.filter((layaway) =>
-    layaway.sellerIds.includes(authorizedSellerId),
+    layaway.sellerIds.includes(authorizedSellerId) && branchMatches(layaway.branch),
   );
   const overdueLayaways = sellerLayaways.filter(
     (layaway) =>
@@ -227,12 +256,14 @@ export function SellerSalesView({
     (appointment) =>
       appointment.kind === "NO_APPOINTMENT" &&
       appointment.status === "PENDING" &&
-      appointment.sellerIds.includes(authorizedSellerId),
+      appointment.sellerIds.includes(authorizedSellerId) &&
+      branchMatches(appointment.branch),
   );
   const sellerOwedProducts = owedProducts.filter(
     (record) =>
       record.status === "PENDING" &&
-      record.sellerIds.includes(authorizedSellerId),
+      record.sellerIds.includes(authorizedSellerId) &&
+      branchMatches(record.branch),
   );
   const selectedClientLayaways = selectedClient
     ? sellerLayaways.filter((layaway) => layaway.clientId === selectedClient.id)
@@ -286,6 +317,7 @@ export function SellerSalesView({
     setDateFrom("");
     setDateTo("");
     setClientQuickFilter("ALL");
+    setBranchFilter("ALL");
   };
 
   const openClientQuickFilter = (filter: ClientQuickFilter) => {
@@ -357,6 +389,13 @@ export function SellerSalesView({
           </div>
           <div className="seller-period-filter">
             <CalendarRange size={18} />
+            <Select value={branchFilter} onValueChange={setBranchFilter}>
+              <SelectTrigger aria-label="Filtrar mis ventas por sucursal"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">Todas las sucursales</SelectItem>
+                {branches.map((branch) => <SelectItem key={branch} value={branch}>{branch}</SelectItem>)}
+              </SelectContent>
+            </Select>
             <DatePicker
               value={dateFrom}
               onChange={setDateFrom}

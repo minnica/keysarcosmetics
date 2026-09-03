@@ -74,6 +74,7 @@ const moduleOptions: Array<{
   { id: "receipts", label: "Receipts", description: "Consulta e impresión de tickets." },
   { id: "customers", label: "Customers", description: "Directorio y expedientes." },
   { id: "appointments", label: "Citas", description: "Agenda y cortesías." },
+  { id: "memberships", label: "Membresías", description: "Tarjetones, sesiones, asistencia y análisis protegido." },
   { id: "inventory", label: "Inventory", description: "Productos, stock y pedidos." },
   { id: "warehouse", label: "Pedido sucursales", description: "Existencias de bodega, compras, entradas, solicitudes y envíos." },
   { id: "branch-inventory", label: "Almacén matriz", description: "Solicitudes de productos, testers e insumos hacia bodega matriz." },
@@ -117,7 +118,7 @@ const modulePermissionGroups: Array<{
   {
     label: "Clientes y servicio",
     description: "Expedientes, citas, competiciones y accesos web.",
-    moduleIds: ["customers", "appointments", "competition", "websites"],
+    moduleIds: ["customers", "appointments", "memberships", "competition", "websites"],
   },
   {
     label: "Inventario y almacén",
@@ -141,6 +142,7 @@ const printableModuleIds = new Set<ScreenId>([
   "seller-sales",
   "receipts",
   "customers",
+  "memberships",
   "x-report",
   "close-day",
 ]);

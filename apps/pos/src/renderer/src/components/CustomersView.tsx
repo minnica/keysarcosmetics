@@ -236,6 +236,11 @@ export function CustomersView({
       JSON.stringify(birthdayMessages),
     );
   }, [birthdayMessages]);
+  useEffect(() => {
+    setSelectedBranches((current) =>
+      current.filter((branch) => branches.includes(branch)),
+    );
+  }, [branches]);
   const authorizedSeller = activeSellers.find(
     (seller) => seller.id === authorizedSellerId,
   );

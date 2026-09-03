@@ -404,7 +404,7 @@ La implementación puede adaptar nombres y normalización, pero debe representar
 - [ ] El carrito muestra líneas compactas sin imágenes.
 - [ ] Finalizar ticket cabe en la ventana y mantiene acciones visibles.
 - [ ] La búsqueda de cliente inicia vacía y consulta tras ingresar nombre o teléfono.
-- [ ] El selector de cumpleaños permanece dentro del modal.
+- [ ] El selector de cumpleaños permanece dentro del modal y permite elegir directamente el mes y el año sin recorrerlos uno por uno.
 - [ ] Vendedores se buscan mediante filtro/lista desplegable.
 - [ ] El descuento muestra importe y total en modal y sólo se aplica al aceptar.
 - [ ] Desactivar cortesía omite la pregunta y permite continuar normalmente.
@@ -429,3 +429,350 @@ La implementación puede adaptar nombres y normalización, pero debe representar
 - Las notificaciones son eventos persistentes con lectura por usuario.
 - Los permisos determinan tanto lo que se dibuja como lo que la API permite.
 - La paridad final se prueba en Electron con el flujo completo, no únicamente mediante compilación web.
+
+## 20. Clock In y registro de salida
+
+- Clock In funciona como control de asistencia independiente de la sesión del operador del POS.
+- Cada vendedor se identifica mediante su código personal antes de registrar un movimiento de asistencia.
+- Si el vendedor no tiene una entrada activa, se muestra la selección de sucursal y únicamente la acción `Registrar entrada`.
+- Si el vendedor ya registró entrada y continúa ONLINE, después de identificarlo se ocultan la selección de sucursal y la acción de entrada; únicamente se muestra `Registrar salida`.
+- La lista de personal ONLINE es informativa. No debe permitir que otra persona registre la salida de un vendedor sin identificarse con el código correspondiente.
+- Al registrar salida se guardan la hora local e ISO, el vendedor, la sucursal, la entrada relacionada, la duración, el estado OFFLINE y el motivo `MANUAL`.
+- Una entrada sólo puede tener una salida. Los reintentos o dobles clics deben ser idempotentes.
+- Después de una salida correcta, el código se limpia, el vendedor desaparece del listado ONLINE y la bitácora del día muestra entrada, salida, duración, estado y tipo de cierre.
+- Close Day puede cerrar entradas aún activas con motivo `CLOSE_DAY`; ese cierre debe distinguirse de una salida manual.
+- La base de datos debe conservar una relación única entre vendedor y asistencia abierta para impedir dos entradas ONLINE simultáneas.
+- Criterios de aceptación adicionales:
+  - [ ] Un vendedor sin entrada ve `Registrar entrada` y selector de sucursal.
+  - [ ] Un vendedor ONLINE, después de capturar su código, sólo ve `Registrar salida`.
+  - [ ] Ninguna tarjeta pública del listado ONLINE permite cerrar la asistencia de otra persona.
+  - [ ] Registrar salida completa el mismo registro de asistencia y no crea una segunda entrada.
+
+## 21. Membresías, tarjetones y consumo desde Agenda
+
+### 21.1 Configuración del producto
+
+- `Membresía` es un tipo de producto distinto de mercancía y servicio individual.
+- Al crear o editar una membresía se debe capturar obligatoriamente un número entero de sesiones mayor a cero.
+- La membresía no maneja existencias físicas ni genera salidas de inventario.
+- El SKU automático usa prefijo `MEM`; precio mínimo, precio de lista, IVA, visibilidad y sucursales siguen las validaciones del catálogo.
+- Modificar las sesiones del producto sólo afecta ventas futuras. Los tarjetones vendidos conservan la cantidad contratada originalmente.
+
+### 21.2 Generación por venta
+
+- Cada unidad de membresía cobrada genera un tarjetón independiente con folio único.
+- Si una clienta compra dos membresías, incluso iguales o en el mismo ticket, se crean dos registros separados.
+- El tarjetón guarda una fotografía inmutable de cliente, producto, sesiones, importe, ticket, fecha, sucursal, vendedor original y vendedor actual.
+- Una venta pendiente o apartado no debe activar sesiones hasta cumplir la regla financiera que defina el backend; la implementación debe registrar explícitamente el momento de activación.
+- El alta de ticket y de tarjetones debe ejecutarse en una transacción e incluir una clave idempotente para no duplicar membresías al reintentar una venta offline.
+
+### 21.3 Agenda, asistencia y saldo
+
+- Agendar una cita no descuenta una sesión.
+- La sesión se descuenta únicamente al confirmar que la clienta asistió a una cita vinculada.
+- La cita, membresía, consumo y usuario que confirma deben quedar relacionados de forma auditable.
+- Una cita no puede consumir dos veces la misma sesión y el saldo nunca puede quedar negativo.
+- Cuando se consume la última sesión, el estado cambia automáticamente de `ACTIVE` a `EXHAUSTED` y se registra el cambio de estado.
+- Cada asistencia conserva fecha/hora, sucursal, vendedor u operador, cita, terminal y estado de firma.
+- La firma táctil es una etapa futura; desde ahora el modelo reserva estado `PENDING`, `SIGNED` o `NOT_REQUIRED` y deberá admitir evidencia cifrada, consentimiento y trazabilidad.
+
+### 21.4 Módulo protegido de Membresías
+
+- El módulo sólo aparece en el portal cuando el rol tiene permiso de visibilidad; editar perfilamiento, confirmar asistencias e imprimir exige permiso de edición o impresión según la acción.
+- Después de entrar al sistema, un usuario no master debe volver a identificarse en el módulo con su código personal vigente. El código identifica el alcance y nunca permite seleccionar manualmente otra cartera.
+- Cada vendedor sólo puede consultar las membresías cuyo `seller_id` actual le pertenece, incluyendo sus clientas, saldos, tarjetones, incidencias, asistencias, tickets y trazabilidad. Los totales, alertas, rankings, filtros y búsquedas se calculan sobre ese mismo alcance; no basta con ocultar filas en la interfaz.
+- El usuario master, autenticado con su cuenta y código master, puede consultar todas las membresías, clientas, vendedores, sucursales e historiales sin quedar limitado a una cartera.
+- El backend debe aplicar el alcance desde la consulta usando la identidad autenticada. Nunca debe aceptar un `seller_id` enviado por el navegador como autorización suficiente ni devolver registros de otra cartera para filtrarlos en el renderer.
+- Al bloquear el acceso, cerrar sesión, cambiar de usuario o perder la autorización, se descartan el código capturado, la selección abierta y los datos sensibles visibles.
+- El módulo ofrece descargas en Excel y PDF. Ambas respetan la cartera autorizada y los filtros activos; el nombre del archivo y el encabezado identifican si el alcance es global master o personal.
+- Excel incluye una hoja de membresías, otra de asistencias y otra de trazabilidad. PDF entrega un resumen operativo con folio, clienta, membresía, compra, sucursal, vendedor, saldo, incidencias, perfil, estado e importe.
+- Cada descarga debe registrar usuario solicitante, fecha, filtros y alcance. Ningún vendedor puede obtener información global o de otro vendedor manipulando parámetros de exportación.
+- El dashboard muestra membresías activas, sesiones disponibles, porcentaje utilizado, venta acumulada, alertas próximas a terminar, mejores clientas y membresía con menor venta.
+- El Dashboard general incluye un reporte ejecutivo compacto de membresías con venta acumulada, tarjetas activas, sesiones disponibles, alertas de renovación, sucursal líder, vendedor líder y podio del último mes cerrado.
+- El reporte del Dashboard general respeta el alcance seleccionado (`todas las sucursales` o una sucursal específica) y sólo aparece si el usuario tiene acceso al módulo de Membresías.
+- El análisis comercial permite consultar por mes y por año la sucursal con más ventas de membresías, el vendedor con más membresías y el importe vendido.
+- La venta se acredita al vendedor original del ticket. Un cambio posterior de vendedor para seguimiento no modifica el historial ni el ranking comercial.
+- El historial mensual muestra ventas, importe y vendedor líder de cada mes; el historial anual muestra los mismos indicadores acumulados por año.
+- Al cerrar cada mes se genera automáticamente el podio de los tres mejores vendedores de membresías. El orden usa primero cantidad de membresías y, en caso de empate, mayor importe vendido.
+- Las membresías canceladas o anuladas no suman a ventas ni rankings. Cualquier ajuste posterior al cierre debe conservar auditoría y generar una nueva versión del resultado, sin sobrescribir silenciosamente el cierre original.
+- Los filtros incluyen cliente/teléfono/folio/ticket, tipo de membresía, rango de fechas y sucursal.
+- Los registros se muestran por compra y por fecha; no se fusionan aunque pertenezcan a la misma clienta.
+- Al abrir un registro se muestra el tarjetón personalizado, saldo, casillas de asistencia, ticket de compra, sucursal, vendedor, perfilamiento e historiales.
+- `Ir al ticket` abre el ticket histórico en el día y sucursal de la venta sin alterar sus datos.
+- El perfilamiento comercial es editable y contempla al menos `POTENTIAL`, `LOYAL`, `VIP` y `RECOVERY`.
+- Los cambios de vendedor y de estado se guardan como eventos con valor anterior, valor nuevo, motivo, fecha y usuario responsable.
+- La alerta de renovación se activa cuando quedan dos sesiones o menos; el umbral debe ser configurable en backend.
+
+### 21.5 Persistencia recomendada
+
+- `membership_products`: producto, versión de condiciones, sesiones configuradas y vigencia.
+- `client_memberships`: folio, cliente, ticket, línea de ticket, producto, sesiones contratadas/usadas, importe, sucursal, vendedor original/actual, perfil y estado.
+- `membership_attendance`: membresía, número de sesión, cita, fecha, sucursal, operador, terminal y estado/evidencia de firma.
+- `membership_seller_changes` y `membership_status_changes`: bitácoras inmutables de transición.
+- `membership_sales_closures`: periodo, fecha de cierre, alcance por sucursal/empresa, totales y versión del cálculo.
+- `membership_seller_rankings`: cierre, posición, vendedor original, cantidad, importe y reglas de desempate aplicadas.
+- Restricciones mínimas: folio único; una membresía por unidad vendida; consumo único por cita; `used_sessions <= total_sessions`; actualización de saldo con bloqueo transaccional.
+
+### 21.6 Criterios de aceptación
+
+- [ ] El alta de una membresía no se guarda sin sesiones enteras mayores a cero.
+- [ ] Cada unidad vendida crea su propio tarjetón y conserva las condiciones originales.
+- [ ] Varias compras de una clienta aparecen separadas por membresía y fecha.
+- [ ] Confirmar asistencia desde una cita reduce exactamente una sesión.
+- [ ] Agendar, reprogramar o cancelar una cita sin asistencia no reduce saldo.
+- [ ] Con dos sesiones o menos aparece una alerta de renovación.
+- [ ] El saldo cero cambia la membresía a agotada y registra el evento.
+- [ ] El botón de ticket abre la compra histórica correspondiente.
+- [ ] Vendedor original, cambios de vendedor y cambios de estado son visibles y auditables.
+- [ ] Un rol sin permiso no ve el módulo ni puede consultar sus APIs.
+- [ ] Un vendedor con permiso debe ingresar su propio código personal antes de visualizar información.
+- [ ] El código de otro vendedor no abre ni cambia la cartera de la sesión actual.
+- [ ] Un vendedor sólo ve y descarga clientas, tarjetones, indicadores e historial asociados a su `seller_id`.
+- [ ] El usuario master ve y descarga el consolidado completo de todas las carteras.
+- [ ] PDF y Excel respetan los filtros activos y el mismo alcance aplicado en pantalla.
+- [ ] El análisis mensual identifica la sucursal y el vendedor con más membresías vendidas en el mes seleccionado.
+- [ ] El análisis anual acumula ventas e importes sin perder el detalle mensual.
+- [ ] Cambiar al vendedor de seguimiento no altera quién recibió el crédito de la venta histórica.
+- [ ] Al terminar el mes se muestran los tres mejores vendedores, ordenados por cantidad y después por importe.
+- [ ] Una membresía cancelada no suma a los indicadores ni al podio.
+- [ ] El reporte de Membresías del Dashboard general se recalcula al cambiar el alcance de empresa a sucursal.
+- [ ] Un usuario sin permiso de Membresías no ve el reporte ejecutivo ni obtiene sus datos desde la API.
+
+## 22. Integración con Agenda, próxima cita y cabinas
+
+### 22.1 Contrato de disponibilidad
+
+- El POS consume la disponibilidad del CRM de Agenda mediante identificadores externos estables de calendario, espacio y horario.
+- Cada espacio debe informar como mínimo: sucursal, fecha, inicio, fin, cabina, tipo de cabina (`INDIVIDUAL` o `DOUBLE`), capacidad, lugares ocupados y estado.
+- El vendedor sólo puede ver y elegir horarios `AVAILABLE` o `CANCELLED` que todavía tengan capacidad. Los horarios `BOOKED` o `BLOCKED` nunca se muestran como seleccionables.
+- Un horario cancelado se considera nuevamente disponible, pero la cancelación original permanece en el historial. La nueva cita crea una reservación distinta y no sobrescribe el evento cancelado.
+- La disponibilidad mostrada es informativa. Al confirmar, el backend debe volver a validar el horario y reservarlo de forma atómica para evitar sobreventa por operaciones simultáneas.
+- La reservación usa clave idempotente. Un reintento no puede crear dos citas ni consumir dos lugares.
+- Si otro usuario ocupa el último lugar antes de confirmar, el POS informa el conflicto, actualiza la disponibilidad y no finaliza silenciosamente con un horario inválido.
+
+### 22.2 Próxima cita de una clienta con membresía
+
+- Confirmar la asistencia descuenta exactamente una sesión y, en ese momento, abre la opción para agendar la próxima sesión.
+- La clienta puede elegir cualquier fecha futura, sucursal y horario que el CRM reporte como disponible; no se limita al día, hora o sucursal de la cita atendida.
+- La nueva cita se liga al cliente, al tarjetón de membresía y al identificador externo del espacio elegido.
+- Agendar la próxima cita no descuenta otra sesión. El siguiente descuento ocurre únicamente al confirmar la asistencia de esa nueva cita.
+- Si la clienta no desea agendar en ese momento, el flujo permite cerrar sin cita y conserva el saldo correcto.
+- Cuando la membresía quede agotada después de la asistencia, no se debe crear una nueva cita cubierta por esa membresía sin una renovación o autorización expresa.
+
+### 22.3 Cortesía de dos servicios
+
+- Cuando el paquete de cortesía incluye dos servicios, el vendedor debe elegir uno de dos modos:
+  - `Misma hora · cabina doble`: crea dos citas en el mismo horario y cabina `DOUBLE`; la cabina debe tener al menos dos lugares libres y la confirmación reserva ambos de forma atómica.
+  - `Dos horarios consecutivos`: crea dos citas contiguas en la misma fecha, sucursal y cabina; el fin del primer horario debe coincidir con el inicio del segundo.
+- En modo simultáneo no se ofrecen cabinas individuales aunque existan dos cabinas distintas libres. La intención es atender los dos servicios juntos en una cabina doble.
+- En modo consecutivo se permiten cabinas individuales o dobles siempre que ambos horarios consecutivos estén disponibles en la misma cabina.
+- El ticket y el historial conservan el modo elegido, los dos identificadores de horario, la cabina y la sucursal.
+- Si falla cualquiera de las dos reservas, se rechaza toda la operación; nunca debe quedar una cortesía doble reservada parcialmente.
+
+### 22.4 Persistencia e integración recomendada
+
+- `agenda_resources`: identificador externo, sucursal, nombre, tipo de cabina, capacidad y estado.
+- `agenda_slots`: identificador externo, recurso, inicio, fin, capacidad, ocupación, estado, versión y fecha de sincronización.
+- `agenda_reservations`: cita local, cita externa, cliente, membresía o cortesía, modo de reservación, estado y clave idempotente.
+- `agenda_sync_events`: operación, sistema origen, versión, payload normalizado, resultado, conflicto y fecha para conciliación.
+- La API de disponibilidad debe permitir filtrar por sucursal y rango de fechas. La API de reserva debe aceptar uno o varios espacios como una sola unidad transaccional.
+- El CRM es la fuente operativa de disponibilidad; el POS conserva los identificadores y una fotografía de la selección para auditoría y funcionamiento controlado ante intermitencia.
+
+### 22.5 Criterios de aceptación
+
+- [ ] Después de confirmar una asistencia de membresía aparece la opción de agendar la próxima sesión.
+- [ ] La próxima sesión puede elegirse en cualquier fecha, sucursal y horario disponible.
+- [ ] Agendar la próxima sesión no consume saldo hasta confirmar su asistencia.
+- [ ] Sólo se muestran horarios disponibles o liberados por cancelación con capacidad vigente.
+- [ ] Una cancelación conserva su historial y una nueva cita recibe un identificador distinto.
+- [ ] La cortesía doble simultánea sólo muestra cabinas dobles con dos lugares libres.
+- [ ] La cortesía consecutiva sólo muestra pares contiguos dentro de la misma cabina.
+- [ ] Reservar una cortesía doble ocupa dos lugares o dos horarios en una sola operación atómica.
+- [ ] Un conflicto de capacidad impide terminar la reservación y solicita elegir otro espacio.
+
+## 23. Dashboard general: conteos de inventario por sucursal
+
+- El alcance superior del `Dashboard de jornada` es la fuente de verdad para todos sus indicadores y reportes, incluido `Conteo y trazabilidad de inventario`.
+- Al elegir una sucursal, el reporte usa exclusivamente el conteo de apertura, movimientos, existencia real y conteo final de esa tienda. Nunca sustituye datos faltantes con información de Polanco u otra sucursal.
+- Al elegir `General · todas las sucursales`, el reporte conserva los totales generales y habilita un selector interno para revisar una tienda a la vez; las líneas de inventario no se suman entre tiendas porque cada existencia pertenece a una ubicación distinta.
+- El selector interno sólo está disponible para usuarios con alcance multi-sucursal autorizado. Un usuario limitado permanece fijado a su sucursal.
+- Si una tienda no tiene conteo de apertura o final en la jornada seleccionada, la interfaz lo indica explícitamente y no inventa, copia ni infiere un conteo.
+- El resumen general muestra cuántas sucursales registraron apertura, cuántas registraron conteo final y cuántos productos tienen diferencias en todas las tiendas con información disponible.
+- `Excel errores` y `PDF errores` descargan los errores de la tienda visible. En alcance general, `Excel general` y `PDF general` generan el consolidado de errores de todas las sucursales.
+- Cada renglón exportado incluye sucursal, producto, SKU, conteo y diferencia de apertura, movimientos, existencia esperada, existencia real, conteo final y diferencia final/actual.
+- Costos e impacto monetario sólo se agregan a la pantalla y a las descargas cuando la autorización master de costos está vigente; ocultarlos en la interfaz no sustituye el filtrado de la API.
+- Los reportes generales sólo incluyen sucursales que el usuario puede consultar. El backend debe volver a validar alcance y permiso al consultar o descargar.
+- La descarga no modifica conteos: genera un documento de revisión/reconteo y conserva fecha, alcance, usuario solicitante y filtros para auditoría.
+
+### 23.1 Criterios de aceptación
+
+- [ ] Cambiar el alcance superior a una tienda recalcula la tabla con datos de esa misma tienda.
+- [ ] En alcance general aparece el selector interno y permite alternar sucursales sin mezclar existencias.
+- [ ] Una sucursal sin apertura muestra estado vacío y nunca enseña las líneas de Polanco.
+- [ ] El estado distingue apertura registrada, conteo final registrado y conteo final pendiente.
+- [ ] Excel y PDF por tienda contienen sólo errores de la sucursal seleccionada e identifican su nombre.
+- [ ] Excel y PDF generales contienen los errores de todas las sucursales autorizadas e identifican la sucursal en cada renglón.
+- [ ] Un usuario sin autorización de diferencias o costos no obtiene esos campos mediante UI, API ni descarga.
+
+## 24. Identidad única de cliente y sincronización completa con Agenda
+
+- El cliente es la entidad raíz para cualquier cita, facial de cortesía, membresía, asistencia o próxima sesión. Todas las relaciones usan `client_id`; el nombre o teléfono sólo son datos descriptivos y nunca sustituyen el identificador.
+- Al registrar una clienta nueva con horario seleccionado, el POS crea o actualiza primero su ficha en Agenda y recibe `external_client_id`. Después reserva el horario y conserva `external_reservation_id` y `external_appointment_id` antes de confirmar el ticket.
+- La cita llega a Agenda con nombre completo, teléfono, sucursal, servicio, recurso/cabina, fecha, horario, ticket, vendedores, origen (`COURTESY`, `NEXT_SESSION` o `MEMBERSHIP`) y clave idempotente.
+- Si Agenda rechaza el horario o no puede registrar a la clienta mientras hay conexión, el ticket no se crea y ninguna sesión se descuenta. La interfaz conserva los datos para que el usuario elija otro horario o reintente.
+- En modo sin conexión, cliente, cita y membresía se guardan con estado `PENDING_SYNC`. La cola debe sincronizar en orden: cliente, membresía, reservación y movimientos; un reintento reutiliza las mismas claves idempotentes.
+- Una membresía comprada conserva `client_id`, `external_client_id`, `external_membership_id`, ticket, sucursal y vendedor. Cada cita de membresía incluye además el identificador del tarjetón.
+- Confirmar asistencia informa primero a Agenda cuando existe conexión y sólo después descuenta una sesión. El consumo guarda `external_appointment_id`; si Agenda falla, el saldo permanece intacto.
+- Cancelar un ticket cancela las reservaciones relacionadas en Agenda, libera la capacidad y conserva las citas locales como `CANCELLED`; no se eliminan del historial.
+- Editar nombre o teléfono de una clienta vinculada actualiza la ficha raíz de Agenda y propaga la presentación local a citas, membresías, apartados y adeudos, sin cambiar sus identificadores históricos.
+- Las cortesías dobles conservan una sola reservación transaccional y dos citas externas. Cancelar o confirmar debe tratar todos sus lugares como una unidad para evitar movimientos parciales.
+- La integración real reemplazará el adaptador de demostración por un adaptador HTTP autenticado sin cambiar el contrato del dominio del POS.
+
+### 24.1 Eventos y conciliación esperados
+
+- Eventos salientes mínimos: `CLIENT_UPSERTED`, `APPOINTMENT_RESERVED`, `APPOINTMENT_CANCELLED`, `APPOINTMENT_ATTENDED`, `MEMBERSHIP_LINKED`, `MEMBERSHIP_SESSION_CONSUMED` y `MEMBERSHIP_STATUS_CHANGED`.
+- Cada evento guarda identificador local y externo, clienta, fecha ISO, sucursal, usuario, terminal, versión, intento, resultado y error.
+- Webhooks de Agenda deben conciliar reprogramaciones, cancelaciones, asistencia y cambios de cabina sin sobrescribir la bitácora original.
+- Si Agenda y POS difieren, el registro entra a una cola visible de conciliación; no se corrige silenciosamente ni se duplica la cita.
+- Datos personales y credenciales de Agenda se protegen en backend. El renderer de Electron nunca conserva tokens del CRM.
+
+### 24.2 Criterios de aceptación
+
+- [ ] Crear clienta con cita genera una ficha única en Agenda y deja el horario como reservado con su nombre.
+- [ ] La cita local conserva identificadores de clienta, reservación y cita externa.
+- [ ] Una cortesía está ligada al cliente, ticket y reservación de Agenda.
+- [ ] Cada tarjetón de membresía conserva el vínculo con la ficha de Agenda de la clienta.
+- [ ] Una próxima sesión creada desde Membresías aparece reservada en Agenda y ligada al tarjetón correcto.
+- [ ] Confirmar asistencia actualiza Agenda y descuenta exactamente una sesión; ante error no descuenta.
+- [ ] Cancelar el ticket libera la capacidad, cancela Agenda y conserva el registro histórico como cancelado.
+- [ ] Editar nombre o teléfono actualiza la ficha vinculada sin crear otra clienta.
+- [ ] Los reintentos online u offline no duplican clientas, citas, cortesías ni membresías.
+
+### 24.3 Resultado de la cita y avance del tarjetón
+
+- Agenda es la fuente del resultado operativo de una cita vinculada y envía `ATTENDED`, `CANCELLED` o `NO_SHOW` con `external_appointment_id`, fecha de actualización y versión.
+- Sólo `ATTENDED` consume exactamente una sesión y marca una casilla del tarjetón. El consumo es idempotente: recibir dos veces el mismo resultado no descuenta dos sesiones.
+- Una cita de cortesía nunca consume una membresía. Para descontar saldo, la cita debe incluir explícitamente el `membership_id` del tarjetón correspondiente.
+- `CANCELLED` y `NO_SHOW` no consumen sesiones, no marcan casillas y no cambian `used_sessions`; se conservan como incidencias en el historial de Agenda.
+- Las incidencias se contabilizan por tarjetón. Desde la segunda cancelación o inasistencia, el tarjetón cambia a un tono de advertencia y muestra un contador pequeño para detectar que la clienta no está avanzando.
+- El detalle separa el número de cancelaciones y de inasistencias y explica expresamente que no afectaron el saldo.
+- Una cancelación libera la capacidad de la agenda. Una inasistencia conserva el resultado histórico del horario y genera seguimiento comercial.
+- Un estado `ATTENDED` ya aplicado no puede cambiarse automáticamente a cancelación o inasistencia. Una corrección posterior requiere autorización, motivo y un movimiento compensatorio auditable de la sesión.
+- El POS consulta resultados nuevos de Agenda periódicamente. Si la consulta falla, no modifica saldos y vuelve a intentar en la siguiente sincronización.
+
+### 24.4 Criterios de aceptación del resultado
+
+- [ ] Agenda marca `ATTENDED` y el tarjetón descuenta una sola sesión.
+- [ ] Repetir el mismo evento `ATTENDED` no vuelve a descontar.
+- [ ] Agenda marca `CANCELLED` y el saldo y las casillas permanecen iguales.
+- [ ] Agenda marca `NO_SHOW` y el saldo y las casillas permanecen iguales.
+- [ ] Una cortesía sin `membership_id` no aparece como sesión consumible del tarjetón.
+- [ ] Dos o más incidencias activan tono de advertencia y contador visible.
+- [ ] El detalle muestra por separado cancelaciones e inasistencias.
+- [ ] Corregir una asistencia ya consumida exige autorización y conserva la bitácora.
+
+## 25. Escalabilidad multi-sucursal: de 1 a 30 ubicaciones
+
+- Todo el POS debe funcionar con una sola sucursal o con 10, 20 y 30 sucursales activas sin cambios de código, listas estáticas ni máximos visuales implícitos.
+- La colección de sucursales autorizadas que entrega el backend es la fuente de verdad. Ninguna pantalla puede asumir que siempre existen Polanco, Satélite o Roma Norte.
+- Los selectores compactos usan una lista desplegable con desplazamiento vertical. Los grupos visibles de sucursales, tarjetas y métricas crean tantas filas como sean necesarias y hacen crecer la página hacia abajo.
+- Ventanas, paneles y reportes conservan desplazamiento vertical hasta el último registro y sus acciones. Ningún botón, filtro, subtotal, pie de reporte o mensaje puede quedar recortado por una altura fija.
+- Una tabla ancha puede tener desplazamiento horizontal propio, pero el reporte completo siempre crece verticalmente y permanece dentro del ancho de su contenedor.
+- `Todas las sucursales` incluye todas las ubicaciones activas que el usuario tiene autorizadas; no equivale a las primeras tres ni a un subconjunto precargado.
+- Un usuario limitado sólo recibe sus sucursales autorizadas desde la API. Ocultar una sucursal en la interfaz no sustituye el filtro y la validación del backend.
+- Dashboard, ventas, inventario, conteos, almacén, caja, asistencia, membresías, clientes, citas y reportes deben recalcular sus datos al cambiar de sucursal o elegir el alcance general.
+- Las descargas PDF y Excel respetan el mismo alcance visible. En modo general incluyen todas las sucursales autorizadas e identifican la sucursal en cada renglón, hoja o sección.
+- La paginación puede aplicarse a los registros de cada reporte, pero nunca debe truncar silenciosamente el conjunto de sucursales. Los totales y agregados se calculan en backend sobre el alcance completo, no sólo sobre la página visible.
+- Al agregar o activar una ubicación, ésta aparece en todos los módulos dependientes sin reinstalar el POS. Al desactivarla se conserva el historial y deja de aceptar movimientos nuevos.
+- La empresa debe conservar por lo menos una sucursal operativa. Altas, activaciones y desactivaciones guardan usuario, fecha, motivo y autorización para auditoría.
+- La demostración local admite `?branchDemo=30` para validar la presentación con 30 sucursales sin alterar los datos normales ni habilitar esa generación en producción.
+
+### 25.1 Criterios de aceptación multi-sucursal
+
+- [ ] Con 1, 10, 20 y 30 sucursales no existen controles, nombres, filtros ni botones cortados o superpuestos.
+- [ ] Los grupos de sucursales envuelven a nuevas filas y aumentan la altura de la vista; no obligan a recorrer una tira horizontal.
+- [ ] Los desplegables permiten llegar a la última sucursal mediante desplazamiento y teclado.
+- [ ] Los paneles y diálogos permiten desplazarse verticalmente hasta su última acción.
+- [ ] El dashboard general cuenta exactamente todas las sucursales autorizadas y permite abrir la información de cada una.
+- [ ] Los reportes generales incluyen las 30 sucursales cuando las 30 están autorizadas, sin topes ni sustitución por datos de otra ubicación.
+- [ ] PDF y Excel conservan filtros, totales e identificación de sucursal para todo el alcance solicitado.
+- [ ] Dar de alta la sucursal número 30 la incorpora a catálogo, inventario, pedidos, agenda, clientes, membresías, caja y reportes.
+
+## 26. Matriz obligatoria de alcance por sucursal
+
+### 26.1 Regla transversal
+
+- Todo selector obtiene sus opciones de las sucursales activas y autorizadas que entrega el backend; no se aceptan catálogos de tiendas escritos directamente en el frontend.
+- `Todas las sucursales` significa la unión exacta de las ubicaciones autorizadas para el usuario. No debe incluir sucursales inactivas, ajenas, históricas o descubiertas accidentalmente dentro de tickets y movimientos.
+- Cambiar el alcance recalcula en una sola operación indicadores, gráficas, tablas, contadores, estados vacíos, paginación y descargas. Una pantalla no puede mostrar el indicador de una tienda y el detalle de otra.
+- Si la sucursal seleccionada se desactiva o deja de estar autorizada, el selector vuelve a `Todas` cuando existe alcance multi-sucursal o a la sucursal fija de la sesión; nunca conserva un valor invisible.
+- Los registros históricos de una sucursal desactivada se conservan, pero sólo se consultan mediante un permiso histórico explícito. No vuelven a aparecer como opción operativa ni aceptan movimientos nuevos.
+- El frontend evita cruces accidentales, pero cada consulta y descarga del backend debe recibir y validar `authorized_branch_ids`, `branch_id` o `all_authorized`; nunca debe confiar únicamente en el valor enviado por el navegador.
+
+### 26.2 Comportamiento por módulo y submenú
+
+| Módulo o submenú | Alcance esperado |
+| --- | --- |
+| Dashboard de jornada | Master: `Todas` o una sucursal. Usuario operativo: sucursal fija. El alcance gobierna ventas, cobros, gastos, vendedores, servicios, citas, membresías, movimientos y conteos. |
+| Sale / catálogo de venta | Usa la sucursal activa de la terminal para disponibilidad, existencias, ticket y descuento de inventario. Cambiar ubicación exige el flujo autorizado de cambio de sucursal. |
+| Mis ventas | Muestra únicamente la cartera y ventas del vendedor autenticado; el filtro permite todas sus sucursales autorizadas o una de ellas. |
+| Receipts | Usuario operativo: sólo tickets de la sucursal activa. Master autorizado: `Todas` o una sucursal. Comparativos, detalle, cancelaciones e impresión conservan el alcance. |
+| Customers | Los filtros de sucursal se generan dinámicamente y se cruzan con la sucursal de registro o de compra. La cartera del vendedor continúa limitada a su identidad. |
+| Citas | Master: todas o una sucursal; usuario operativo: sucursal fija. KPIs, estados, servicios y lista usan el mismo conjunto filtrado. |
+| Membresías | El filtro de sucursal afecta tarjetas, saldos, alertas, KPIs, análisis mensual/anual, podio y PDF/Excel. Master ve el consolidado; vendedor autorizado sólo sus clientas. |
+| Inventory · Catálogo | Permite una, varias o todas las sucursales autorizadas. Existencias, mínimos, máximos, totales y exportaciones se calculan sólo para esa selección. |
+| Inventory · Pedido sucursales / almacén | Destinos y filtros provienen de sucursales autorizadas. Una sucursal no puede consultar ni generar pedidos para otra sin permiso. El almacén central se identifica como alcance propio, no como tienda ficticia. |
+| Inventory · Catálogo visual | Sólo ofrece productos activos disponibles en la sucursal actual de la terminal. |
+| Inventory · Movimientos | `Todas` o una sucursal filtra historial, entradas, salidas, transferencias, análisis mensual, dashboard comercial y PDF/Excel. Una transferencia aparece al filtrar su origen o su destino. |
+| Suppliers | Catálogo corporativo global; si posteriormente se asignan proveedores por sucursal, la API deberá declarar ese alcance de forma explícita. |
+| Deals | Cada promoción conserva una o varias sucursales dinámicas. Sólo se ofrece y aplica donde coincida la sucursal del ticket. |
+| Settings | Configuración corporativa global, salvo apartados que declaren sucursales asignadas como competiciones, ubicaciones, listas de precio o notificaciones. |
+| X-Report | Master autorizado selecciona todas o una sucursal. Ventas, movimientos y exportación excluyen cualquier ubicación fuera del alcance autorizado. |
+| Reports y sus submenús | Los reportes de ventas, mercancía, empleados y clientes usan una selección dinámica de una, varias o todas las sucursales. Cada ventana independiente conserva el mismo alcance para métricas, filas y descargas. |
+| Cash manager | Usuario operativo: caja de su sucursal. Master autorizado: todas o una sucursal. Gastos, saldo, anulaciones, comparativos y exportaciones respetan el filtro. |
+| Clock In | El registro se guarda en la sucursal elegida/autorizada. Master consulta todas o una; vendedor consulta la sucursal activa. Un filtro de reporte nunca impide registrar la salida de una entrada vigente. |
+| Competition | La competencia se configura para una sucursal o todas las autorizadas. Las ventas de tiendas fuera del alcance no participan aunque exista información histórica. |
+| Close day | Siempre corresponde a la sucursal y jornada activa; no mezcla cierres de otras terminales. El consolidado multi-sucursal pertenece al Dashboard o a Reports. |
+| Employees, My Account y Data update | Configuración corporativa o personal. Las asignaciones de sucursales y permisos deben seguir el catálogo dinámico y validarse en backend. |
+
+### 26.3 Descargas y consistencia
+
+- PDF, Excel y cualquier impresión de reporte deben incluir periodo, usuario solicitante y etiqueta de alcance (`Todas las sucursales` o nombre de tienda).
+- El nombre del archivo debe identificar el periodo y la sucursal cuando la descarga sea individual.
+- Una descarga usa el mismo conjunto filtrado que la pantalla, pero el backend genera los totales sobre todos los registros del alcance, no sólo sobre la página visible.
+- Las filas consolidadas incluyen `branch_id` y nombre de sucursal para permitir conciliación. Los movimientos entre sucursales conservan origen y destino.
+- Un estado vacío debe decir que no existen registros para la sucursal elegida; jamás debe rellenarse con datos de Polanco u otra tienda como sustitución.
+
+### 26.4 Criterios de aceptación de alcance
+
+- [ ] Cada selector contiene exactamente las sucursales activas autorizadas y llega hasta la ubicación número 30.
+- [ ] Elegir una sucursal recalcula todos los indicadores, gráficas, filas, totales y descargas de la vista.
+- [ ] Elegir `Todas` produce la unión/suma del conjunto autorizado sin duplicar transferencias ni tickets.
+- [ ] Desactivar la sucursal seleccionada corrige el selector y no deja datos de un valor oculto.
+- [ ] Un usuario operativo no obtiene datos de otra tienda modificando parámetros, almacenamiento local o solicitudes de red.
+- [ ] Una transferencia se localiza desde origen y destino, pero no se duplica en el total consolidado.
+- [ ] PDF y Excel coinciden con la pantalla y señalan claramente su alcance.
+- [ ] Una tienda sin información muestra un estado vacío propio y no datos de otra ubicación.
+- [ ] Los submenús independientes de Reports conservan y aplican el filtro actual al abrirse.
+- [ ] La prueba con 1, 10, 20 y 30 sucursales termina sin desbordes horizontales globales ni acciones inaccesibles.
+
+## 27. Alcance diario del módulo de Membresías
+
+- Sólo un usuario master puede seleccionar `Todas las sucursales` y consultar el consolidado completo de membresías e historial.
+- El usuario master también puede seleccionar una sola sucursal. Al cambiarla, tarjetones, indicadores, alertas, análisis, rankings, tablas y descargas deben recalcularse para esa ubicación.
+- Un usuario que no es master no recibe el selector `Todas las sucursales` ni puede elegir otra tienda. Su alcance queda fijado a la sucursal activa de la sesión.
+- El usuario de sucursal debe ingresar su código personal y sólo puede ver las membresías propias compradas en esa sucursal durante la fecha operativa actual de México.
+- La restricción diaria se aplica antes de calcular indicadores, alertas, análisis, tarjetones y exportaciones. Ocultar registros en la tabla no es suficiente.
+- Para el usuario de sucursal se ocultan los filtros libres de sucursal y rango histórico; la pantalla muestra de forma explícita la sucursal y fecha fija consultadas.
+- PDF y Excel de un usuario de sucursal, cuando su rol tenga permiso de descarga, contienen únicamente sus membresías del día y señalan sucursal, fecha y usuario.
+- El backend valida simultáneamente `seller_id`, `branch_id` y `business_date`. Modificar el frontend o la solicitud no puede permitir consultar historial, otra cartera u otra sucursal.
+- La fecha operativa se calcula con la zona horaria `America/Mexico_City`; no se debe usar directamente la fecha UTC del servidor.
+
+### 27.1 Criterios de aceptación
+
+- [ ] Master puede alternar entre todas las sucursales y una sola sucursal.
+- [ ] Al cambiar la selección master, todos los componentes y descargas muestran el mismo alcance.
+- [ ] Un usuario de sucursal no ve ni puede solicitar `Todas las sucursales`.
+- [ ] Un usuario de sucursal sólo obtiene membresías propias, de su sucursal y del día operativo actual.
+- [ ] Una membresía de ayer, de otro vendedor o de otra sucursal no aparece en indicadores, análisis, tarjetones ni descargas.
+- [ ] La pantalla del usuario de sucursal identifica claramente la tienda y fecha bloqueadas.

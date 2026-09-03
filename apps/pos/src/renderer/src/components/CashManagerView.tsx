@@ -196,10 +196,21 @@ export function CashManagerView({
     };
   }, [activeBranch, masterAuthorized, today]);
 
+  useEffect(() => {
+    if (branchFilter !== "ALL" && !branches.includes(branchFilter))
+      setBranchFilter(masterAuthorized ? "ALL" : activeBranch);
+    setForm((current) =>
+      current.branch && !branches.includes(current.branch)
+        ? { ...current, branch: activeBranch }
+        : current,
+    );
+  }, [activeBranch, branchFilter, branches, masterAuthorized]);
+
   const visibleExpenses = useMemo(() => {
     const minimum = amountFrom ? Number(amountFrom) : null;
     const maximum = amountTo ? Number(amountTo) : null;
     return expenses
+      .filter((expense) => branches.includes(expense.branch))
       .filter(
         (expense) =>
           masterAuthorized ||
@@ -228,6 +239,7 @@ export function CashManagerView({
     amountTo,
     activeBranch,
     branchFilter,
+    branches,
     dateFilter,
     expenses,
     masterAuthorized,

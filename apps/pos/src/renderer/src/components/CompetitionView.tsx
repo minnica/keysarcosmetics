@@ -37,6 +37,7 @@ interface CompetitionViewProps {
   tickets: Ticket[];
   sellers: Seller[];
   products: Product[];
+  branches: string[];
   onOpenSettings: () => void;
 }
 
@@ -92,9 +93,14 @@ export function CompetitionView({
   tickets,
   sellers,
   products,
+  branches,
   onOpenSettings,
 }: CompetitionViewProps) {
-  const activeCompetitions = competitions.filter((competition) => competition.active);
+  const activeCompetitions = competitions.filter(
+    (competition) =>
+      competition.active &&
+      (competition.branch === "ALL" || branches.includes(competition.branch)),
+  );
   const [selectedId, setSelectedId] = useState(activeCompetitions[0]?.id ?? "");
 
   useEffect(() => {
@@ -111,16 +117,18 @@ export function CompetitionView({
     if (!selectedCompetition) return [];
     return tickets.filter((ticket) => {
       const businessDate = getBusinessDate(ticket.createdAtIso);
+      const ticketBranch = ticket.branchName ?? branches[0] ?? "";
       return (
         ticket.status === "COMPLETED" &&
         ticket.ticketType !== "LAYAWAY_PAYMENT" &&
+        branches.includes(ticketBranch) &&
         businessDate >= selectedCompetition.dateFrom &&
         businessDate <= selectedCompetition.dateTo &&
         (selectedCompetition.branch === "ALL" ||
-          ticket.branchName === selectedCompetition.branch)
+          ticketBranch === selectedCompetition.branch)
       );
     });
-  }, [selectedCompetition, tickets]);
+  }, [branches, selectedCompetition, tickets]);
 
   const ranking = useMemo<SellerRanking[]>(() => {
     if (!selectedCompetition) return [];

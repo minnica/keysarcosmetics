@@ -10,6 +10,7 @@ import {
   CheckCircle2,
   Clock3,
   CreditCard,
+  Crown,
   FileDown,
   FileSpreadsheet,
   FlaskConical,
@@ -28,6 +29,7 @@ import {
   Sparkles,
   Store,
   TrendingUp,
+  Trophy,
   UserRound,
   UsersRound,
   WalletCards,
@@ -57,6 +59,7 @@ import type {
   Appointment,
   BranchInventory,
   CashExpense,
+  ClientMembership,
   InventoryAuditLine,
   InventoryCountAudit,
   InventoryMovement,
@@ -133,6 +136,10 @@ export function PosLoginScreen({
     const interval = window.setInterval(() => setNow(new Date()), 1_000);
     return () => window.clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    if (!branches.includes(branch)) setBranch(branches[0] ?? fixedBranch);
+  }, [branch, branches, fixedBranch]);
 
   const submit = () => {
     const result = onLogin({
@@ -469,14 +476,17 @@ interface MasterDashboardProps {
   products: Product[];
   branchInventory: BranchInventory;
   movements: InventoryMovement[];
+  inventoryAudits: InventoryCountAudit[];
   tickets: Ticket[];
   expenses: CashExpense[];
   appointments: Appointment[];
+  memberships: ClientMembership[];
   paymentMethods: PaymentMethodOption[];
   availableBranches: string[];
   canViewAllBranches: boolean;
   showInventoryDifferences: boolean;
   showCosts: boolean;
+  showMembershipReport: boolean;
 }
 
 export function MasterDashboard({
@@ -486,20 +496,39 @@ export function MasterDashboard({
   products,
   branchInventory,
   movements,
+  inventoryAudits,
   tickets,
   expenses,
   appointments,
+  memberships,
   paymentMethods,
   availableBranches,
   canViewAllBranches,
   showInventoryDifferences,
   showCosts,
+  showMembershipReport,
 }: MasterDashboardProps) {
   const [dashboardBranch, setDashboardBranch] = useState(canViewAllBranches ? "ALL" : session.branch);
+  const [inventoryReportBranch, setInventoryReportBranch] = useState(session.branch);
   useEffect(() => {
-    if (!canViewAllBranches) setDashboardBranch(session.branch);
-  }, [canViewAllBranches, session.branch]);
+    if (!canViewAllBranches) {
+      setDashboardBranch(session.branch);
+      return;
+    }
+    if (dashboardBranch !== "ALL" && !availableBranches.includes(dashboardBranch)) {
+      setDashboardBranch("ALL");
+    }
+  }, [availableBranches, canViewAllBranches, dashboardBranch, session.branch]);
   const scopedBranch = canViewAllBranches ? dashboardBranch : session.branch;
+  useEffect(() => {
+    if (scopedBranch !== "ALL") {
+      setInventoryReportBranch(scopedBranch);
+      return;
+    }
+    if (!availableBranches.includes(inventoryReportBranch)) {
+      setInventoryReportBranch(session.branch);
+    }
+  }, [availableBranches, inventoryReportBranch, scopedBranch, session.branch]);
   const scopeLabel = scopedBranch === "ALL" ? "Todas las sucursales" : scopedBranch;
   const businessDate = (iso: string) => new Intl.DateTimeFormat("en-CA", {
     timeZone: "America/Mexico_City",
@@ -508,7 +537,13 @@ export function MasterDashboard({
     day: "2-digit",
   }).format(new Date(iso));
   const sessionBusinessDate = businessDate(session.openedAtIso);
-  const matchesScope = (branch: string | null | undefined) => scopedBranch === "ALL" || (branch ?? session.branch) === scopedBranch;
+  const matchesScope = (branch: string | null | undefined) => {
+    const recordBranch = branch ?? session.branch;
+    return (
+      availableBranches.includes(recordBranch) &&
+      (scopedBranch === "ALL" || recordBranch === scopedBranch)
+    );
+  };
   const scopedTickets = tickets.filter(
     (ticket) =>
       ticket.status === "COMPLETED" &&
@@ -518,6 +553,9 @@ export function MasterDashboard({
   const scopedMovements = movements.filter(
     (movement) =>
       businessDate(movement.createdAtIso) === sessionBusinessDate &&
+      (availableBranches.includes(movement.sourceBranch) ||
+        (movement.destinationBranch != null &&
+          availableBranches.includes(movement.destinationBranch))) &&
       (scopedBranch === "ALL" || movement.sourceBranch === scopedBranch || movement.destinationBranch === scopedBranch),
   );
   const scopedExpenses = expenses.filter(
@@ -565,78 +603,268 @@ export function MasterDashboard({
     summary.set(appointment.service, (summary.get(appointment.service) ?? 0) + 1);
     return summary;
   }, new Map()), ([name, quantity]) => ({ name, quantity })).sort((left, right) => right.quantity - left.quantity);
-  const inventoryRows = openingAudit.lines.map((line) => {
-    const productMovements = scopedMovements.filter((movement) => movement.productId === line.productId);
-    const movementNet = productMovements.reduce((net, movement) => {
-      if (movement.direction === "ADD" && movement.sourceBranch === session.branch) return net + movement.quantity;
-      if (movement.direction === "REMOVE" && movement.sourceBranch === session.branch) return net - movement.quantity;
-      if (movement.direction === "TRANSFER") {
-        if (movement.sourceBranch === session.branch) net -= movement.quantity;
-        if (movement.destinationBranch === session.branch) net += movement.quantity;
-      }
-      return net;
-    }, 0);
-    const operation = productMovements.reduce((summary, movement) => {
+  const scopedMemberships = memberships.filter(
+    (membership) =>
+      membership.status !== "CANCELLED" && matchesScope(membership.branch),
+  );
+  const activeMembershipCards = scopedMemberships.filter(
+    (membership) => membership.status === "ACTIVE",
+  );
+  const membershipRevenue = scopedMemberships.reduce(
+    (total, membership) => total + membership.purchaseAmount,
+    0,
+  );
+  const membershipSessionsAvailable = activeMembershipCards.reduce(
+    (total, membership) =>
+      total + Math.max(0, membership.totalSessions - membership.usedSessions),
+    0,
+  );
+  const membershipRenewalAlerts = activeMembershipCards.filter(
+    (membership) =>
+      Math.max(0, membership.totalSessions - membership.usedSessions) <= 2,
+  ).length;
+  const rankMemberships = (
+    source: ClientMembership[],
+    getName: (membership: ClientMembership) => string,
+  ) =>
+    Array.from(
+      source.reduce<
+        Map<string, { name: string; sales: number; revenue: number }>
+      >((ranking, membership) => {
+        const name = getName(membership);
+        const current = ranking.get(name) ?? { name, sales: 0, revenue: 0 };
+        current.sales += 1;
+        current.revenue += membership.purchaseAmount;
+        ranking.set(name, current);
+        return ranking;
+      }, new Map()),
+    )
+      .map(([, value]) => value)
+      .sort(
+        (left, right) =>
+          right.sales - left.sales || right.revenue - left.revenue,
+      );
+  const membershipSellerRanking = rankMemberships(
+    scopedMemberships,
+    (membership) => membership.originalSellerName,
+  );
+  const membershipBranchRanking = rankMemberships(
+    scopedMemberships,
+    (membership) => membership.branch,
+  );
+  const [sessionYear = "", sessionMonth = "01"] = sessionBusinessDate.split("-");
+  const lastClosedMonthDate = new Date(
+    Number(sessionYear),
+    Number(sessionMonth) - 2,
+    1,
+  );
+  const lastClosedMonthKey = `${lastClosedMonthDate.getFullYear()}-${String(lastClosedMonthDate.getMonth() + 1).padStart(2, "0")}`;
+  const lastClosedMonthLabel = new Intl.DateTimeFormat("es-MX", {
+    month: "long",
+    year: "numeric",
+  }).format(lastClosedMonthDate);
+  const closedMonthMemberships = scopedMemberships.filter((membership) =>
+    membership.purchaseDateIso.startsWith(lastClosedMonthKey),
+  );
+  const closedMonthSellerRanking = rankMemberships(
+    closedMonthMemberships,
+    (membership) => membership.originalSellerName,
+  ).slice(0, 3);
+  const getLatestBranchAudit = (
+    branch: string,
+    type: "OPENING" | "CLOSING",
+  ) =>
+    inventoryAudits
+      .filter(
+        (audit) =>
+          audit.branch === branch &&
+          audit.type === type &&
+          businessDate(audit.createdAtIso) === sessionBusinessDate,
+      )
+      .sort((left, right) =>
+        right.createdAtIso.localeCompare(left.createdAtIso),
+      )[0] ?? null;
+  const selectedInventoryBranch =
+    scopedBranch === "ALL" ? inventoryReportBranch : scopedBranch;
+  const selectedOpeningAudit =
+    getLatestBranchAudit(selectedInventoryBranch, "OPENING") ??
+    (selectedInventoryBranch === session.branch ? openingAudit : null);
+  const selectedClosingAudit =
+    getLatestBranchAudit(selectedInventoryBranch, "CLOSING") ??
+    (selectedInventoryBranch === session.branch ? closingAudit : null);
+  const buildInventoryRowsForBranch = (branch: string) => {
+    const branchOpeningAudit =
+      getLatestBranchAudit(branch, "OPENING") ??
+      (branch === session.branch ? openingAudit : null);
+    if (!branchOpeningAudit) return [];
+    const branchClosingAudit =
+      getLatestBranchAudit(branch, "CLOSING") ??
+      (branch === session.branch ? closingAudit : null);
+    const branchMovements = movements.filter(
+      (movement) =>
+        businessDate(movement.createdAtIso) === sessionBusinessDate &&
+        (movement.sourceBranch === branch ||
+          movement.destinationBranch === branch),
+    );
+    return branchOpeningAudit.lines.map((line) => {
+      const productMovements = branchMovements.filter(
+        (movement) => movement.productId === line.productId,
+      );
+      const movementNet = productMovements.reduce((net, movement) => {
+        if (movement.direction === "ADD" && movement.sourceBranch === branch)
+          return net + movement.quantity;
+        if (
+          movement.direction === "REMOVE" &&
+          movement.sourceBranch === branch
+        )
+          return net - movement.quantity;
+        if (movement.direction === "TRANSFER") {
+          if (movement.sourceBranch === branch) net -= movement.quantity;
+          if (movement.destinationBranch === branch) net += movement.quantity;
+        }
+        return net;
+      }, 0);
+      const operation = productMovements.reduce(
+        (summary, movement) => {
+          const reason = `${movement.reason} ${movement.comment}`.toLocaleLowerCase("es-MX");
+          if (movement.direction === "ADD") summary.entries += movement.quantity;
+          else if (movement.direction === "TRANSFER") {
+            if (movement.sourceBranch === branch)
+              summary.transferOut += movement.quantity;
+            if (movement.destinationBranch === branch)
+              summary.transferIn += movement.quantity;
+          } else if (
+            movement.category === "SALE" ||
+            reason.includes("venta")
+          )
+            summary.sales += movement.quantity;
+          else if (
+            movement.category === "DEMO" ||
+            reason.includes("tester") ||
+            reason.includes("demo")
+          )
+            summary.demos += movement.quantity;
+          else if (reason.includes("lost") || reason.includes("perd"))
+            summary.lost += movement.quantity;
+          else if (reason.includes("damage") || reason.includes("dañ"))
+            summary.damage += movement.quantity;
+          else if (
+            reason.includes("gift") ||
+            reason.includes("regalo") ||
+            reason.includes("cortesía")
+          )
+            summary.gifts += movement.quantity;
+          else summary.writeOffs += movement.quantity;
+          return summary;
+        },
+        {
+          entries: 0,
+          sales: 0,
+          demos: 0,
+          writeOffs: 0,
+          lost: 0,
+          damage: 0,
+          gifts: 0,
+          transferIn: 0,
+          transferOut: 0,
+        },
+      );
+      const expectedCurrent = line.actualStock + movementNet;
+      const realCurrent = branchInventory[branch]?.[line.productId] ?? 0;
+      const closingLine = branchClosingAudit?.lines.find(
+        (item) => item.productId === line.productId,
+      );
+      const auditDifference = closingLine
+        ? closingLine.difference
+        : line.difference !== 0
+          ? line.difference
+          : realCurrent - expectedCurrent;
+      const hasError = line.difference !== 0 || auditDifference !== 0;
+      const product = products.find(
+        (candidate) => candidate.id === line.productId,
+      );
+      return {
+        ...line,
+        reportBranch: branch,
+        movementNet,
+        expectedCurrent,
+        realCurrent,
+        closingLine,
+        auditDifference,
+        hasError,
+        operation,
+        unitCostMxn: product?.costMxn ?? 0,
+        unitCostUsd: product?.costUsd ?? 0,
+      };
+    });
+  };
+  const inventoryRows = buildInventoryRowsForBranch(selectedInventoryBranch);
+  const allInventoryRows = availableBranches.flatMap((branch) =>
+    buildInventoryRowsForBranch(branch),
+  );
+  const errorRows = showInventoryDifferences
+    ? inventoryRows.filter((row) => row.hasError)
+    : [];
+  const generalErrorRows = showInventoryDifferences
+    ? allInventoryRows.filter((row) => row.hasError)
+    : [];
+  const openingAuditBranchCount = availableBranches.filter(
+    (branch) => Boolean(getLatestBranchAudit(branch, "OPENING")) || branch === session.branch,
+  ).length;
+  const closingAuditBranchCount = availableBranches.filter(
+    (branch) => Boolean(getLatestBranchAudit(branch, "CLOSING")),
+  ).length;
+  const maxSeller = Math.max(1, ...sellerRanking.map((seller) => seller.total));
+  const movementTotals = scopedMovements.reduce(
+    (summary, movement) => {
       const reason = `${movement.reason} ${movement.comment}`.toLocaleLowerCase("es-MX");
       if (movement.direction === "ADD") summary.entries += movement.quantity;
-      else if (movement.direction === "TRANSFER") {
-        if (scopedBranch === "ALL") summary.transferOut += movement.quantity;
-        else {
-          if (movement.sourceBranch === scopedBranch) summary.transferOut += movement.quantity;
-          if (movement.destinationBranch === scopedBranch) summary.transferIn += movement.quantity;
-        }
-      } else if (movement.category === "SALE" || reason.includes("venta")) summary.sales += movement.quantity;
-      else if (movement.category === "DEMO" || reason.includes("tester") || reason.includes("demo")) summary.demos += movement.quantity;
-      else if (reason.includes("lost") || reason.includes("perd")) summary.lost += movement.quantity;
-      else if (reason.includes("damage") || reason.includes("dañ")) summary.damage += movement.quantity;
-      else if (reason.includes("gift") || reason.includes("regalo") || reason.includes("cortesía")) summary.gifts += movement.quantity;
+      else if (movement.direction === "TRANSFER")
+        summary.transfers += movement.quantity;
+      else if (movement.category === "SALE" || reason.includes("venta"))
+        summary.sales += movement.quantity;
+      else if (
+        movement.category === "DEMO" ||
+        reason.includes("tester") ||
+        reason.includes("demo")
+      )
+        summary.demos += movement.quantity;
+      else if (reason.includes("lost") || reason.includes("perd"))
+        summary.lost += movement.quantity;
+      else if (reason.includes("damage") || reason.includes("dañ"))
+        summary.damage += movement.quantity;
+      else if (
+        reason.includes("gift") ||
+        reason.includes("regalo") ||
+        reason.includes("cortesía")
+      )
+        summary.gifts += movement.quantity;
       else summary.writeOffs += movement.quantity;
       return summary;
-    }, { entries: 0, sales: 0, demos: 0, writeOffs: 0, lost: 0, damage: 0, gifts: 0, transferIn: 0, transferOut: 0 });
-    const expectedCurrent = line.actualStock + movementNet;
-    const realCurrent = branchInventory[session.branch]?.[line.productId] ?? 0;
-    const closingLine = closingAudit?.lines.find((item) => item.productId === line.productId);
-    const auditDifference = closingLine
-      ? closingLine.difference
-      : line.difference !== 0
-        ? line.difference
-        : realCurrent - expectedCurrent;
-    const hasError = line.difference !== 0 || auditDifference !== 0;
-    const product = products.find((candidate) => candidate.id === line.productId);
-    return {
-      ...line,
-      movementNet,
-      expectedCurrent,
-      realCurrent,
-      closingLine,
-      auditDifference,
-      hasError,
-      operation,
-      unitCostMxn: product?.costMxn ?? 0,
-      unitCostUsd: product?.costUsd ?? 0,
-    };
-  });
-  const errorRows = showInventoryDifferences ? inventoryRows.filter((row) => row.hasError) : [];
-  const maxSeller = Math.max(1, ...sellerRanking.map((seller) => seller.total));
-  const movementTotals = inventoryRows.reduce((summary, row) => ({
-    entries: summary.entries + row.operation.entries,
-    sales: summary.sales + row.operation.sales,
-    demos: summary.demos + row.operation.demos,
-    writeOffs: summary.writeOffs + row.operation.writeOffs,
-    lost: summary.lost + row.operation.lost,
-    damage: summary.damage + row.operation.damage,
-    gifts: summary.gifts + row.operation.gifts,
-    transfers: summary.transfers + row.operation.transferIn + row.operation.transferOut,
-  }), { entries: 0, sales: 0, demos: 0, writeOffs: 0, lost: 0, damage: 0, gifts: 0, transfers: 0 });
+    },
+    {
+      entries: 0,
+      sales: 0,
+      demos: 0,
+      writeOffs: 0,
+      lost: 0,
+      damage: 0,
+      gifts: 0,
+      transfers: 0,
+    },
+  );
 
-  const buildErrorExportRows = () => errorRows.map((row) => ({
-    Sucursal: session.branch,
+  const buildErrorExportRows = (rows: typeof inventoryRows) => rows.map((row) => ({
+    Sucursal: row.reportBranch,
     Producto: row.productName,
     SKU: row.sku,
+    "Sistema de apertura": row.expectedStock,
     "Conteo de apertura": row.actualStock,
+    "Diferencia de apertura": row.difference,
     "Esperado actual": row.expectedCurrent,
     "Existencia real": row.realCurrent,
-    "Diferencia": row.auditDifference,
+    "Conteo final": row.closingLine?.actualStock ?? "Sin conteo",
+    "Diferencia final/actual": row.auditDifference,
     Ventas: row.operation.sales,
     Demos: row.operation.demos,
     Bajas: row.operation.writeOffs,
@@ -653,18 +881,25 @@ export function MasterDashboard({
     } : {}),
   }));
 
-  const exportErrorsExcel = async () => {
-    if (errorRows.length === 0) return;
+  const exportErrorsExcel = async (
+    rows: typeof inventoryRows = errorRows,
+    scope = selectedInventoryBranch,
+  ) => {
+    if (rows.length === 0) return;
     const XLSX = await import("xlsx");
     const workbook = XLSX.utils.book_new();
-    const worksheet = XLSX.utils.json_to_sheet(buildErrorExportRows());
-    worksheet["!cols"] = Object.keys(buildErrorExportRows()[0] ?? {}).map((header) => ({ wch: Math.max(14, Math.min(34, header.length + 4)) }));
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Solicitud de reconteo");
-    XLSX.writeFile(workbook, `reconteo-${session.branch.toLocaleLowerCase("es-MX").replace(/\s+/g, "-")}.xlsx`);
+    const exportRows = buildErrorExportRows(rows);
+    const worksheet = XLSX.utils.json_to_sheet(exportRows);
+    worksheet["!cols"] = Object.keys(exportRows[0] ?? {}).map((header) => ({ wch: Math.max(14, Math.min(34, header.length + 4)) }));
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Errores de conteo");
+    XLSX.writeFile(workbook, `reconteo-${scope.toLocaleLowerCase("es-MX").replace(/\s+/g, "-")}.xlsx`);
   };
 
-  const exportErrorsPdf = async () => {
-    if (errorRows.length === 0) return;
+  const exportErrorsPdf = async (
+    rows: typeof inventoryRows = errorRows,
+    scope = selectedInventoryBranch,
+  ) => {
+    if (rows.length === 0) return;
     const [{ jsPDF }, { autoTable }] = await Promise.all([import("jspdf"), import("jspdf-autotable")]);
     const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
     doc.setFont("helvetica", "bold");
@@ -672,16 +907,20 @@ export function MasterDashboard({
     doc.text("SOLICITUD DE RECONTEO DE INVENTARIO", 36, 40);
     doc.setFont("helvetica", "normal");
     doc.setFontSize(9);
-    doc.text(`Sucursal: ${session.branch} · Productos con diferencia: ${errorRows.length} · Documento para validación física`, 36, 57);
-    const headers = ["Producto / SKU", "Apertura", "Esperado", "Real", "Diferencia", "Ventas", "Demos", "Bajas", "Lost", "Damage", "Gift", ...(showCosts ? ["Costo MXN", "Impacto MXN"] : [])];
+    doc.text(`Alcance: ${scope} · Productos con diferencia: ${rows.length} · Apertura y cierre para validación física`, 36, 57);
+    const headers = ["Sucursal", "Producto / SKU", "Sistema apertura", "Conteo apertura", "Dif. apertura", "Esperado", "Real", "Cierre", "Dif. final", "Ventas", "Demos", "Bajas", "Lost", "Damage", "Gift", ...(showCosts ? ["Costo MXN", "Impacto MXN"] : [])];
     autoTable(doc, {
       startY: 73,
       head: [headers],
-      body: errorRows.map((row) => [
+      body: rows.map((row) => [
+        row.reportBranch,
         `${row.productName}\n${row.sku}`,
+        row.expectedStock,
         row.actualStock,
+        row.difference,
         row.expectedCurrent,
         row.realCurrent,
+        row.closingLine?.actualStock ?? "Sin conteo",
         row.auditDifference,
         row.operation.sales,
         row.operation.demos,
@@ -695,7 +934,7 @@ export function MasterDashboard({
       headStyles: { fillColor: [111, 79, 55] },
       alternateRowStyles: { fillColor: [249, 245, 241] },
     });
-    doc.save(`reconteo-${session.branch.toLocaleLowerCase("es-MX").replace(/\s+/g, "-")}.pdf`);
+    doc.save(`reconteo-${scope.toLocaleLowerCase("es-MX").replace(/\s+/g, "-")}.pdf`);
   };
 
   return (
@@ -723,24 +962,79 @@ export function MasterDashboard({
         <Card><CardContent><div className="master-dashboard-panel-heading"><span><CalendarDays size={18} /> Citas generadas</span><Badge variant="outline">{scopedAppointments.length} REGISTROS</Badge></div><div className="dashboard-appointment-kpis"><span><HeartHandshake size={17} /><b>{courtesyAppointments.length}</b><small>Cortesías</small></span><span><CalendarDays size={17} /><b>{nextSessionAppointments.length}</b><small>Próximas</small></span><span><AlertTriangle size={17} /><b>{missingAppointments.length}</b><small>Sin cita</small></span></div><div className="dashboard-report-list">{appointmentServices.map((service) => <div key={service.name}><span><b>{service.name}</b><small>Agenda y cortesías</small></span><strong>{service.quantity}</strong></div>)}{appointmentServices.length === 0 && <p>Sin citas o cortesías generadas para este alcance.</p>}</div></CardContent></Card>
         <Card><CardContent><div className="master-dashboard-panel-heading"><span><CreditCard size={18} /> Total por método de pago</span><Badge variant="outline">{formatCurrency(paymentTotals.reduce((sum, payment) => sum + payment.total, 0))}</Badge></div><div className="dashboard-payment-list">{paymentTotals.map((payment) => <div key={payment.methodId}><span><CreditCard size={15} /><b>{payment.label}</b></span><strong>{formatCurrency(payment.total)}</strong><i><b style={{ width: `${collected > 0 ? Math.min(100, (payment.total / collected) * 100) : 0}%` }} /></i><small>{collected > 0 ? ((payment.total / collected) * 100).toFixed(1) : "0.0"}% del cobro</small></div>)}{paymentTotals.length === 0 && <p>Sin cobros registrados en el alcance seleccionado.</p>}</div></CardContent></Card>
       </section>
+      {showMembershipReport && (
+        <Card className="dashboard-membership-card">
+          <CardContent>
+            <div className="master-dashboard-panel-heading">
+              <span><Crown size={19} /> Reporte ejecutivo de membresías</span>
+              <Badge variant="outline">{scopeLabel} · ACUMULADO</Badge>
+            </div>
+            <div className="dashboard-membership-layout">
+              <div className="dashboard-membership-kpis">
+                <span><strong>{formatCurrency(membershipRevenue)}</strong><small>Venta acumulada</small></span>
+                <span><strong>{activeMembershipCards.length}</strong><small>Membresías activas</small></span>
+                <span><strong>{membershipSessionsAvailable}</strong><small>Sesiones disponibles</small></span>
+                <span className={membershipRenewalAlerts > 0 ? "is-alert" : ""}><strong>{membershipRenewalAlerts}</strong><small>Por terminar</small></span>
+              </div>
+              <div className="dashboard-membership-leaders">
+                <div><Store size={17} /><span><small>SUCURSAL LÍDER</small><strong>{membershipBranchRanking[0]?.name ?? "Sin ventas"}</strong></span><b>{membershipBranchRanking[0] ? `${membershipBranchRanking[0].sales} ${membershipBranchRanking[0].sales === 1 ? "venta" : "ventas"}` : "—"}</b></div>
+                <div><Trophy size={17} /><span><small>VENDEDOR LÍDER</small><strong>{membershipSellerRanking[0]?.name ?? "Sin ventas"}</strong></span><b>{membershipSellerRanking[0] ? `${membershipSellerRanking[0].sales} ${membershipSellerRanking[0].sales === 1 ? "membresía" : "membresías"}` : "—"}</b></div>
+              </div>
+              <div className="dashboard-membership-podium">
+                <header><span><Trophy size={16} /> TOP 3 DEL ÚLTIMO MES CERRADO</span><Badge variant="outline" className="dashboard-membership-period-badge">{lastClosedMonthLabel}</Badge></header>
+                {closedMonthSellerRanking.map((seller, index) => (
+                  <div key={seller.name}>
+                    <i>{index + 1}</i>
+                    <span><strong>{seller.name}</strong><small>{seller.sales} membresía{seller.sales === 1 ? "" : "s"}</small></span>
+                    <b>{formatCurrency(seller.revenue)}</b>
+                  </div>
+                ))}
+                {closedMonthSellerRanking.length === 0 && <p>Sin ventas de membresías en el último mes cerrado.</p>}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
       <Card className="master-inventory-audit-card"><CardContent>
         <div className="master-dashboard-panel-heading master-audit-heading">
           <span><ScanLine size={19} /> Conteo y trazabilidad de inventario</span>
-          <div>
+          <div className="master-audit-actions">
+            {canViewAllBranches && scopedBranch === "ALL" && (
+              <Select value={inventoryReportBranch} onValueChange={setInventoryReportBranch}>
+                <SelectTrigger className="master-audit-branch-select" aria-label="Sucursal del reporte de conteo"><Store size={14} /><SelectValue /></SelectTrigger>
+                <SelectContent>{availableBranches.map((branch) => <SelectItem value={branch} key={branch}>{branch}</SelectItem>)}</SelectContent>
+              </Select>
+            )}
+            <Badge variant="outline"><Store size={12} /> {selectedInventoryBranch}</Badge>
             {showInventoryDifferences ? <Badge variant="outline" className={errorRows.length > 0 ? "is-error" : ""}>{errorRows.length} CON ERROR</Badge> : <Badge variant="outline"><LockKeyhole size={12} /> INVENTARIO REAL PROTEGIDO</Badge>}
             {showInventoryDifferences && <Button type="button" size="sm" variant="outline" disabled={errorRows.length === 0} onClick={() => void exportErrorsExcel()}><FileSpreadsheet size={15} /> Excel errores</Button>}
             {showInventoryDifferences && <Button type="button" size="sm" variant="outline" disabled={errorRows.length === 0} onClick={() => void exportErrorsPdf()}><FileDown size={15} /> PDF errores</Button>}
+            {showInventoryDifferences && scopedBranch === "ALL" && <Button type="button" size="sm" variant="outline" disabled={generalErrorRows.length === 0} onClick={() => void exportErrorsExcel(generalErrorRows, "todas-las-sucursales")}><FileSpreadsheet size={15} /> Excel general</Button>}
+            {showInventoryDifferences && scopedBranch === "ALL" && <Button type="button" size="sm" variant="outline" disabled={generalErrorRows.length === 0} onClick={() => void exportErrorsPdf(generalErrorRows, "todas-las-sucursales")}><FileDown size={15} /> PDF general</Button>}
           </div>
         </div>
-        <p className="master-audit-copy">{showInventoryDifferences ? "Vista autorizada: compara conteo físico, existencia real y diferencias. Las descargas generan una solicitud de reconteo para la sucursal." : "Vista operativa: muestra exclusivamente conteos registrados y movimientos generados en tiempo real. La existencia física, diferencias y costos permanecen protegidos."}</p>
-        {showInventoryDifferences && errorRows.length > 0 && <div className="master-recount-share"><Mail size={17} /><span><strong>Archivo listo para compartir con {session.branch}</strong><small>Descarga únicamente los productos con error para solicitar por correo un nuevo conteo y validar la existencia física.</small></span></div>}
-        <div className={`master-audit-table ${showInventoryDifferences ? "is-authorized" : "is-operational"}`}>
+        <p className="master-audit-copy">{showInventoryDifferences ? `Vista autorizada de ${selectedInventoryBranch}: compara su conteo físico, existencia real y diferencias. Las descargas por tienda y el consolidado general incluyen sólo productos con error.` : `Vista operativa de ${selectedInventoryBranch}: muestra exclusivamente conteos registrados y movimientos generados en tiempo real. La existencia física, diferencias y costos permanecen protegidos.`}</p>
+        <div className="master-audit-status">
+          <Badge variant="outline" className={selectedOpeningAudit ? "is-ready" : "is-pending"}>{selectedOpeningAudit ? "APERTURA REGISTRADA" : "SIN APERTURA"}</Badge>
+          <Badge variant="outline" className={selectedClosingAudit ? "is-ready" : "is-pending"}>{selectedClosingAudit ? "CONTEO FINAL REGISTRADO" : "CONTEO FINAL PENDIENTE"}</Badge>
+        </div>
+        {scopedBranch === "ALL" && (
+          <div className="master-audit-summary">
+            <span><small>APERTURAS REGISTRADAS</small><strong>{openingAuditBranchCount}/{availableBranches.length}</strong></span>
+            <span><small>CONTEOS FINALES</small><strong>{closingAuditBranchCount}/{availableBranches.length}</strong></span>
+            <span className={generalErrorRows.length > 0 ? "is-error" : ""}><small>ERRORES GENERALES</small><strong>{showInventoryDifferences ? generalErrorRows.length : "Protegido"}</strong></span>
+          </div>
+        )}
+        {showInventoryDifferences && errorRows.length > 0 && <div className="master-recount-share"><Mail size={17} /><span><strong>Archivo listo para compartir con {selectedInventoryBranch}</strong><small>Descarga únicamente los productos con error para solicitar por correo un nuevo conteo y validar la existencia física.</small></span></div>}
+        {!selectedOpeningAudit ? (
+          <div className="master-audit-empty"><ScanLine size={22} /><span><strong>Sin conteo de apertura para {selectedInventoryBranch}</strong><small>Esta tienda no tiene un conteo registrado en la jornada actual. No se muestran existencias de otra sucursal como sustituto.</small></span></div>
+        ) : <div className={`master-audit-table ${showInventoryDifferences ? "is-authorized" : "is-operational"}`}>
           {showInventoryDifferences ? (
             <table><thead><tr><th>Producto</th><th>Sistema apertura</th><th>Conteo apertura</th><th>Movimientos</th><th>Esperado actual</th><th>Existencia real</th><th>Cierre contado</th><th>Diferencia</th>{showCosts && <><th>Costo MXN</th><th>Impacto diferencia</th></>}</tr></thead><tbody>{inventoryRows.map((row) => <tr className={row.hasError ? "is-error" : "is-match"} key={row.productId}><td><img src={products.find((product) => product.id === row.productId)?.image ?? row.image} alt="" /><span><b>{row.productName}</b><small>{row.sku}</small></span></td><td>{row.expectedStock}</td><td>{row.actualStock}</td><td>{row.movementNet > 0 ? "+" : ""}{row.movementNet}</td><td>{row.expectedCurrent}</td><td><strong>{row.realCurrent}</strong></td><td>{row.closingLine?.actualStock ?? "—"}</td><td><b>{row.auditDifference > 0 ? "+" : ""}{row.auditDifference}</b></td>{showCosts && <><td>{formatCurrency(row.unitCostMxn)}</td><td>{formatCurrency(row.auditDifference * row.unitCostMxn)}</td></>}</tr>)}</tbody></table>
           ) : (
-            <table><thead><tr><th>Producto</th><th>Conteo</th><th>Ventas</th><th>Demos</th><th>Bajas</th><th>Lost</th><th>Damage</th><th>Gift</th><th>Entradas</th><th>Transferencias</th><th>Movimiento neto</th></tr></thead><tbody>{inventoryRows.map((row) => <tr className="is-protected" key={row.productId}><td><img src={products.find((product) => product.id === row.productId)?.image ?? row.image} alt="" /><span><b>{row.productName}</b><small>{row.sku}</small></span></td><td><Badge variant="outline">{openingAudit.skipped ? "Omitido por master" : "Registrado"}</Badge></td><td>{row.operation.sales}</td><td>{row.operation.demos}</td><td>{row.operation.writeOffs}</td><td>{row.operation.lost}</td><td>{row.operation.damage}</td><td>{row.operation.gifts}</td><td>+{row.operation.entries}</td><td>{row.operation.transferIn + row.operation.transferOut}</td><td>{row.movementNet > 0 ? "+" : ""}{row.movementNet}</td></tr>)}</tbody></table>
+            <table><thead><tr><th>Producto</th><th>Conteo</th><th>Ventas</th><th>Demos</th><th>Bajas</th><th>Lost</th><th>Damage</th><th>Gift</th><th>Entradas</th><th>Transferencias</th><th>Movimiento neto</th></tr></thead><tbody>{inventoryRows.map((row) => <tr className="is-protected" key={row.productId}><td><img src={products.find((product) => product.id === row.productId)?.image ?? row.image} alt="" /><span><b>{row.productName}</b><small>{row.sku}</small></span></td><td><Badge variant="outline">{selectedOpeningAudit.skipped ? "Omitido por master" : "Registrado"}</Badge></td><td>{row.operation.sales}</td><td>{row.operation.demos}</td><td>{row.operation.writeOffs}</td><td>{row.operation.lost}</td><td>{row.operation.damage}</td><td>{row.operation.gifts}</td><td>+{row.operation.entries}</td><td>{row.operation.transferIn + row.operation.transferOut}</td><td>{row.movementNet > 0 ? "+" : ""}{row.movementNet}</td></tr>)}</tbody></table>
           )}
-        </div>
+        </div>}
       </CardContent></Card>
     </div>
   );

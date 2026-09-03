@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Download,
   FileSpreadsheet,
@@ -83,27 +83,19 @@ export function XReportExecutiveExport({
   const [exporting, setExporting] = useState<"EXCEL" | "PDF" | null>(null);
 
   const branchOptions = useMemo(
-    () =>
-      Array.from(
-        new Set([
-          ...branches,
-          receiptSettings.branchName,
-          ...tickets.flatMap((ticket) =>
-            ticket.branchName ? [ticket.branchName] : [],
-          ),
-          ...movements.flatMap((movement) => [
-            movement.sourceBranch,
-            ...(movement.destinationBranch
-              ? [movement.destinationBranch]
-              : []),
-          ]),
-        ]),
-      ).sort((left, right) => left.localeCompare(right, "es-MX")),
-    [branches, movements, receiptSettings.branchName, tickets],
+    () => [...new Set(branches)].sort((left, right) => left.localeCompare(right, "es-MX")),
+    [branches],
   );
+  useEffect(() => {
+    if (selectedBranch !== "ALL" && !branchOptions.includes(selectedBranch))
+      setSelectedBranch("ALL");
+  }, [branchOptions, selectedBranch]);
   const validPeriod = Boolean(dateFrom && dateTo && dateFrom <= dateTo);
   const ticketBranch = (ticket: Ticket) =>
-    ticket.branchName ?? receiptSettings.branchName;
+    ticket.branchName ??
+    (branchOptions.includes(receiptSettings.branchName)
+      ? receiptSettings.branchName
+      : branchOptions[0] ?? "");
   const inSelectedBranch = (branch: string) =>
     selectedBranch === "ALL" || branch === selectedBranch;
   const inPeriod = (createdAtIso: string) => {
@@ -117,12 +109,13 @@ export function XReportExecutiveExport({
         ? tickets.filter(
             (ticket) =>
               inPeriod(ticket.createdAtIso) &&
+              branchOptions.includes(ticketBranch(ticket)) &&
               inSelectedBranch(ticketBranch(ticket)),
           )
         : [],
     // The helpers intentionally derive from the current period and branch.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [dateFrom, dateTo, receiptSettings.branchName, selectedBranch, tickets],
+    [branchOptions, dateFrom, dateTo, receiptSettings.branchName, selectedBranch, tickets],
   );
   const activePeriodTickets = periodTickets.filter(
     (ticket) => ticket.status === "COMPLETED",
@@ -141,6 +134,8 @@ export function XReportExecutiveExport({
         ? movements.filter(
             (movement) =>
               inPeriod(movement.createdAtIso) &&
+              (branchOptions.includes(movement.sourceBranch) ||
+                Boolean(movement.destinationBranch && branchOptions.includes(movement.destinationBranch))) &&
               (selectedBranch === "ALL" ||
                 movement.sourceBranch === selectedBranch ||
                 movement.destinationBranch === selectedBranch),
@@ -148,7 +143,7 @@ export function XReportExecutiveExport({
         : [],
     // The helpers intentionally derive from the current period and branch.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [dateFrom, dateTo, movements, selectedBranch],
+    [branchOptions, dateFrom, dateTo, movements, selectedBranch],
   );
 
   const totalSales = saleTickets.reduce(

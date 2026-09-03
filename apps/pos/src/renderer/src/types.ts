@@ -5,6 +5,7 @@ export type ScreenId =
   | "receipts"
   | "customers"
   | "appointments"
+  | "memberships"
   | "inventory"
   | "warehouse"
   | "branch-inventory"
@@ -71,7 +72,7 @@ export interface PosDaySession {
   closedByName: string | null;
 }
 
-export type ProductKind = "PRODUCT" | "SERVICE";
+export type ProductKind = "PRODUCT" | "SERVICE" | "MEMBERSHIP";
 
 export interface Product {
   id: string;
@@ -101,6 +102,68 @@ export interface Product {
   stockMax: number | null;
   branches: string[];
   active: boolean;
+  membershipSessions?: number | undefined;
+}
+
+export type MembershipClientProfile =
+  | "POTENTIAL"
+  | "LOYAL"
+  | "VIP"
+  | "RECOVERY";
+
+export interface MembershipAttendance {
+  id: string;
+  appointmentId: string | null;
+  attendedAtIso: string;
+  branch: string;
+  sellerName: string;
+  signatureStatus: "NOT_REQUIRED" | "PENDING" | "SIGNED";
+  externalAppointmentId?: string;
+  agendaSyncStatus?: "SYNCED" | "PENDING_SYNC" | "ERROR";
+}
+
+export interface MembershipSellerChange {
+  id: string;
+  changedAtIso: string;
+  fromSellerName: string;
+  toSellerName: string;
+  reason: string;
+}
+
+export interface MembershipStatusChange {
+  id: string;
+  changedAtIso: string;
+  fromStatus: "ACTIVE" | "EXHAUSTED" | "CANCELLED";
+  toStatus: "ACTIVE" | "EXHAUSTED" | "CANCELLED";
+  reason: string;
+}
+
+export interface ClientMembership {
+  id: string;
+  folio: string;
+  clientId: string;
+  clientName: string;
+  clientPhone: string;
+  productId: string;
+  membershipName: string;
+  purchaseTicketId: string;
+  purchaseDateIso: string;
+  purchaseAmount: number;
+  branch: string;
+  sellerId: string;
+  sellerName: string;
+  originalSellerName: string;
+  totalSessions: number;
+  usedSessions: number;
+  profile: MembershipClientProfile;
+  status: "ACTIVE" | "EXHAUSTED" | "CANCELLED";
+  attendance: MembershipAttendance[];
+  sellerChanges: MembershipSellerChange[];
+  statusChanges: MembershipStatusChange[];
+  agendaClientId?: string;
+  externalMembershipId?: string;
+  agendaSyncStatus?: "SYNCED" | "PENDING_SYNC" | "ERROR";
+  agendaSyncedAtIso?: string;
 }
 
 export interface CartItem {
@@ -133,6 +196,9 @@ export interface Client {
   ownerId: string | null;
   saleSellerIds: string[];
   registrationBranch?: string;
+  agendaClientId?: string;
+  agendaSyncStatus?: "SYNCED" | "PENDING_SYNC" | "ERROR";
+  agendaSyncedAtIso?: string;
 }
 
 export type ClientSource = string;
@@ -776,6 +842,35 @@ export interface TicketSellerSale {
   amount: number;
 }
 
+export type AgendaSlotStatus =
+  | "AVAILABLE"
+  | "CANCELLED"
+  | "BOOKED"
+  | "BLOCKED";
+
+export interface AgendaSlot {
+  id: string;
+  externalSystem: string;
+  externalCalendarId: string;
+  externalSlotId: string;
+  branch: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  resourceId: string;
+  resourceName: string;
+  resourceType: "INDIVIDUAL" | "DOUBLE";
+  capacity: number;
+  reservedCount: number;
+  status: AgendaSlotStatus;
+  updatedAtIso: string;
+}
+
+export type AgendaReservationMode =
+  | "SINGLE"
+  | "SIMULTANEOUS_DOUBLE"
+  | "CONSECUTIVE";
+
 export type AppointmentKind = "COURTESY" | "NEXT_SESSION" | "NO_APPOINTMENT";
 
 export interface AppointmentDraft {
@@ -784,6 +879,10 @@ export interface AppointmentDraft {
   date: string;
   branch: string;
   time: string;
+  agendaSlotId?: string;
+  externalSlotId?: string;
+  agendaResourceName?: string;
+  agendaReservationMode?: AgendaReservationMode;
 }
 
 export interface Appointment extends AppointmentDraft {
@@ -795,7 +894,19 @@ export interface Appointment extends AppointmentDraft {
   sellerIds: string[];
   recordedAt: string;
   recordedAtIso: string;
-  status: "SCHEDULED" | "PENDING";
+  status:
+    | "SCHEDULED"
+    | "PENDING"
+    | "ATTENDED"
+    | "CANCELLED"
+    | "NO_SHOW";
+  membershipId?: string;
+  membershipSessionConsumedAtIso?: string;
+  agendaClientId?: string;
+  agendaReservationId?: string;
+  externalAppointmentId?: string;
+  agendaSyncStatus?: "RESERVED" | "ATTENDED" | "PENDING_SYNC" | "CONFLICT" | "CANCELLED" | "NO_SHOW";
+  agendaSyncedAtIso?: string;
 }
 
 export type PaymentStatus = "PAID" | "LAYAWAY" | "PENDING";

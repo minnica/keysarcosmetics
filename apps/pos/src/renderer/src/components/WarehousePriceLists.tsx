@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { BadgeDollarSign, Building2, Pencil, Plus, Power, PowerOff, Trash2, Users } from "lucide-react";
 import {
   Badge,
@@ -70,6 +70,19 @@ export function WarehousePriceLists({
   ], [products, supplies]);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [draft, setDraft] = useState<WarehousePriceList | null>(null);
+
+  useEffect(() => {
+    setDraft((current) =>
+      current
+        ? {
+            ...current,
+            branchNames: current.branchNames.filter((branch) =>
+              branches.includes(branch),
+            ),
+          }
+        : current,
+    );
+  }, [branches]);
 
   const openNew = () => {
     setDraft({

@@ -105,6 +105,7 @@ import { WarehouseSettings } from "./components/WarehouseSettings";
 import { SuppliersView } from "./components/SuppliersView";
 import { HistoryPagination } from "./components/HistoryPagination";
 import { InventoryCatalogSettings } from "./components/InventoryCatalogSettings";
+import { MembershipsView } from "./components/MembershipsView";
 import { MyAccountView } from "./components/MyAccountView";
 import {
   createDefaultNotificationPreferences,
@@ -154,6 +155,7 @@ import {
   sellers as initialSellers,
 } from "./mock-data";
 import type {
+  AgendaSlot,
   Appointment,
   AttendanceRecord,
   BillingCard,
@@ -164,6 +166,7 @@ import type {
   CashExpense,
   CartItem,
   Client,
+  ClientMembership,
   ClientField,
   ClientSourceOption,
   CourtesyPackage,
@@ -179,6 +182,7 @@ import type {
   InventoryMovementReason,
   InventoryAuditLine,
   InventoryCountAudit,
+  MembershipClientProfile,
   WarehouseMovement,
   WarehouseMovementCategory,
   WarehouseMovementLine,
@@ -217,6 +221,12 @@ import {
   roundCurrency,
 } from "./tax";
 import { getTicketSpare } from "./spare";
+import {
+  createMockExternalAgendaGateway,
+  createMockAgendaSlots,
+  isSellerSelectableAgendaSlot,
+  type AgendaAppointmentUpdate,
+} from "./agenda-gateway";
 
 const getSaleProductBrand = (product: Product) =>
   product.kind === "SERVICE"
@@ -257,6 +267,10 @@ const screenMetadata: Record<ScreenId, { title: string; subtitle: string }> = {
   appointments: {
     title: "Citas",
     subtitle: "Cortesías y próximas sesiones",
+  },
+  memberships: {
+    title: "Membresías",
+    subtitle: "Tarjetones, sesiones, asistencia y análisis comercial",
   },
   inventory: {
     title: "Inventory",
@@ -335,6 +349,7 @@ const screenMetadataEnglish: Record<ScreenId, { title: string; subtitle: string 
   receipts: { title: "Receipts", subtitle: "Tickets, payments and discounts" },
   customers: { title: "Customers", subtitle: "Customer directory and ownership" },
   appointments: { title: "Appointments", subtitle: "Courtesy services and upcoming sessions" },
+  memberships: { title: "Memberships", subtitle: "Cards, sessions, attendance and commercial analysis" },
   inventory: { title: "Inventory", subtitle: "Products, stock, orders and locations" },
   warehouse: { title: "Central warehouse", subtitle: "Central stock, purchases, requests and shipments" },
   "branch-inventory": { title: "Branch inventory", subtitle: "Product, tester and supply requests to the central warehouse" },
@@ -699,6 +714,215 @@ const initialWarehouseMovements: WarehouseMovement[] = (() => {
   ];
 })();
 
+const initialClientMemberships: ClientMembership[] = [
+  {
+    id: "membership-card-valeria-glow-1",
+    folio: "MEM-POL-0001",
+    clientId: "client-1",
+    clientName: "Valeria Campos",
+    clientPhone: "55 1087 2254",
+    productId: "membership-ritual-glow",
+    membershipName: "Membresía Ritual Glow",
+    purchaseTicketId: "KSR-1048",
+    purchaseDateIso: "2026-05-18T13:20:00-06:00",
+    purchaseAmount: 7200,
+    branch: "Polanco",
+    sellerId: "seller-ana",
+    sellerName: "Ana Torres",
+    originalSellerName: "Ana Torres",
+    totalSessions: 8,
+    usedSessions: 7,
+    profile: "VIP",
+    status: "ACTIVE",
+    attendance: Array.from({ length: 7 }, (_, index) => ({
+      id: `attendance-valeria-${index + 1}`,
+      appointmentId: null,
+      attendedAtIso: `2026-${String(5 + Math.floor(index / 2)).padStart(2, "0")}-${String(20 + (index % 2) * 7).padStart(2, "0")}T12:00:00-06:00`,
+      branch: "Polanco",
+      sellerName: "Ana Torres",
+      signatureStatus: index > 4 ? "PENDING" : "SIGNED",
+    })),
+    sellerChanges: [],
+    statusChanges: [],
+    agendaClientId: "crm-client-client-1",
+    externalMembershipId: "crm-membership-membership-card-valeria-glow-1",
+    agendaSyncStatus: "SYNCED",
+    agendaSyncedAtIso: "2026-08-17T12:05:00-06:00",
+  },
+  {
+    id: "membership-card-valeria-signature-2",
+    folio: "MEM-POL-0008",
+    clientId: "client-1",
+    clientName: "Valeria Campos",
+    clientPhone: "55 1087 2254",
+    productId: "membership-signature-12",
+    membershipName: "Membresía Signature 12",
+    purchaseTicketId: "KSR-1048",
+    purchaseDateIso: "2026-08-22T12:24:00-06:00",
+    purchaseAmount: 10200,
+    branch: "Polanco",
+    sellerId: "seller-ana",
+    sellerName: "Ana Torres",
+    originalSellerName: "Sofía Méndez",
+    totalSessions: 12,
+    usedSessions: 2,
+    profile: "VIP",
+    status: "ACTIVE",
+    attendance: [
+      { id: "attendance-valeria-signature-1", appointmentId: null, attendedAtIso: "2026-08-24T11:30:00-06:00", branch: "Polanco", sellerName: "Ana Torres", signatureStatus: "SIGNED" },
+      { id: "attendance-valeria-signature-2", appointmentId: null, attendedAtIso: "2026-08-30T16:00:00-06:00", branch: "Polanco", sellerName: "Ana Torres", signatureStatus: "PENDING" },
+    ],
+    sellerChanges: [
+      { id: "seller-change-valeria-1", changedAtIso: "2026-08-23T10:15:00-06:00", fromSellerName: "Sofía Méndez", toSellerName: "Ana Torres", reason: "Cambio solicitado por la clienta" },
+    ],
+    statusChanges: [],
+  },
+  {
+    id: "membership-card-mariana-glow",
+    folio: "MEM-SAT-0004",
+    clientId: "client-2",
+    clientName: "Mariana López",
+    clientPhone: "55 6712 9041",
+    productId: "membership-ritual-glow",
+    membershipName: "Membresía Ritual Glow",
+    purchaseTicketId: "KSR-1047",
+    purchaseDateIso: "2026-07-04T17:10:00-06:00",
+    purchaseAmount: 6900,
+    branch: "Satélite",
+    sellerId: "seller-sofia",
+    sellerName: "Sofía Méndez",
+    originalSellerName: "Sofía Méndez",
+    totalSessions: 8,
+    usedSessions: 6,
+    profile: "LOYAL",
+    status: "ACTIVE",
+    attendance: Array.from({ length: 6 }, (_, index) => ({ id: `attendance-mariana-${index + 1}`, appointmentId: null, attendedAtIso: `2026-0${7 + Math.floor(index / 4)}-${String(6 + index * 4).padStart(2, "0")}T17:00:00-06:00`, branch: "Satélite", sellerName: "Sofía Méndez", signatureStatus: "NOT_REQUIRED" })),
+    sellerChanges: [],
+    statusChanges: [],
+  },
+  {
+    id: "membership-card-renata-glow",
+    folio: "MEM-POL-0006",
+    clientId: "client-3",
+    clientName: "Renata Silva",
+    clientPhone: "55 9920 4418",
+    productId: "membership-ritual-glow",
+    membershipName: "Membresía Ritual Glow",
+    purchaseTicketId: "KSR-1045",
+    purchaseDateIso: "2026-08-01T18:40:00-06:00",
+    purchaseAmount: 6800,
+    branch: "Polanco",
+    sellerId: "seller-daniela",
+    sellerName: "Daniela Ruiz",
+    originalSellerName: "Daniela Ruiz",
+    totalSessions: 8,
+    usedSessions: 1,
+    profile: "POTENTIAL",
+    status: "ACTIVE",
+    attendance: [{ id: "attendance-renata-1", appointmentId: null, attendedAtIso: "2026-08-12T18:00:00-06:00", branch: "Polanco", sellerName: "Daniela Ruiz", signatureStatus: "NOT_REQUIRED" }],
+    sellerChanges: [],
+    statusChanges: [],
+  },
+  {
+    id: "membership-card-mariana-signature",
+    folio: "MEM-ROM-0002",
+    clientId: "client-2",
+    clientName: "Mariana López",
+    clientPhone: "55 6712 9041",
+    productId: "membership-signature-12",
+    membershipName: "Membresía Signature 12",
+    purchaseTicketId: "KSR-1047",
+    purchaseDateIso: "2026-03-11T12:00:00-06:00",
+    purchaseAmount: 9600,
+    branch: "Roma Norte",
+    sellerId: "seller-daniela",
+    sellerName: "Daniela Ruiz",
+    originalSellerName: "Daniela Ruiz",
+    totalSessions: 12,
+    usedSessions: 12,
+    profile: "LOYAL",
+    status: "EXHAUSTED",
+    attendance: Array.from({ length: 12 }, (_, index) => ({ id: `attendance-mariana-old-${index + 1}`, appointmentId: null, attendedAtIso: `2026-${String(3 + Math.floor(index / 3)).padStart(2, "0")}-${String(12 + (index % 3) * 7).padStart(2, "0")}T12:00:00-06:00`, branch: "Roma Norte", sellerName: "Daniela Ruiz", signatureStatus: "SIGNED" })),
+    sellerChanges: [],
+    statusChanges: [{ id: "status-mariana-old-1", changedAtIso: "2026-06-30T12:00:00-06:00", fromStatus: "ACTIVE", toStatus: "EXHAUSTED", reason: "Se consumió la última sesión" }],
+  },
+];
+
+const buildCatalogVisualDemo = (source: Product[], size: number): Product[] => {
+  if (source.length === 0 || size <= 0) return source;
+
+  return Array.from({ length: size }, (_, index) => {
+    const baseProduct = source[index % source.length]!;
+    if (index < source.length) return baseProduct;
+
+    const displayNumber = index + 1;
+    return {
+      ...baseProduct,
+      id: `catalog-visual-demo-${displayNumber}`,
+      name: `${baseProduct.name} ${String(displayNumber).padStart(2, "0")}`,
+      sku: `DEMO-${String(displayNumber).padStart(3, "0")}`,
+      stock:
+        baseProduct.stock === null
+          ? null
+          : Math.max(1, (baseProduct.stock ?? 1) + (index % 9)),
+    };
+  });
+};
+
+const getInitialCatalogProducts = () => {
+  const requestedDemoSize = Number(
+    new URLSearchParams(window.location.search).get("catalogDemo"),
+  );
+  const isLocalPreview = ["127.0.0.1", "localhost"].includes(
+    window.location.hostname,
+  );
+  const catalog = isLocalPreview && requestedDemoSize === 50
+    ? buildCatalogVisualDemo(initialProducts, 50)
+    : initialProducts;
+  const isBranchScalePreview =
+    isLocalPreview &&
+    Number(new URLSearchParams(window.location.search).get("branchDemo")) === 30;
+  return isBranchScalePreview
+    ? catalog.map((product) => ({
+        ...product,
+        branches: Object.keys(sessionInitialBranchInventory),
+      }))
+    : catalog;
+};
+
+const buildBranchScaleDemo = (
+  source: BranchInventory,
+  size: number,
+): BranchInventory => {
+  const sourceEntries = Object.entries(source);
+  if (sourceEntries.length === 0 || size <= sourceEntries.length) return source;
+
+  const scaledInventory: BranchInventory = Object.fromEntries(
+    sourceEntries.map(([branch, stock]) => [branch, { ...stock }]),
+  );
+  for (let index = sourceEntries.length; index < size; index += 1) {
+    const [, sourceStock] = sourceEntries[index % sourceEntries.length]!;
+    scaledInventory[`Sucursal ${String(index + 1).padStart(2, "0")}`] = {
+      ...sourceStock,
+    };
+  }
+  return scaledInventory;
+};
+
+const getInitialBranchInventory = () => {
+  const requestedDemoSize = Number(
+    new URLSearchParams(window.location.search).get("branchDemo"),
+  );
+  const isLocalPreview = ["127.0.0.1", "localhost"].includes(
+    window.location.hostname,
+  );
+  return isLocalPreview && requestedDemoSize === 30
+    ? buildBranchScaleDemo(initialBranchInventory, 30)
+    : initialBranchInventory;
+};
+
+const sessionInitialBranchInventory = getInitialBranchInventory();
+
 function App() {
   const [isOnline, setIsOnline] = useState(() => navigator.onLine);
   const [connectivityNotice, setConnectivityNotice] =
@@ -771,7 +995,9 @@ function App() {
   const [productDialogOpen, setProductDialogOpen] = useState(false);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [cart, setCart] = useState<CartItem[]>([]);
-  const [catalogProducts, setCatalogProducts] = useState(initialProducts);
+  const [catalogProducts, setCatalogProducts] = useState<Product[]>(
+    getInitialCatalogProducts,
+  );
   const [sellers, setSellers] = useState(initialSellers);
   const isMasterAccessCode = (code: string) =>
     code.trim() === administratorCode ||
@@ -840,16 +1066,22 @@ function App() {
     InventoryAdjustmentBatch[]
   >([]);
   const [branchInventory, setBranchInventory] = useState<BranchInventory>(
-    initialBranchInventory,
+    sessionInitialBranchInventory,
   );
   const [activeBranch, setActiveBranch] = useState(() => {
     const storedBranch = window.localStorage.getItem(terminalLocationStorageKey);
-    return storedBranch && initialBranchInventory[storedBranch]
+    return storedBranch && sessionInitialBranchInventory[storedBranch]
       ? storedBranch
-      : "Polanco";
+      : Object.keys(sessionInitialBranchInventory)[0] ?? "Polanco";
   });
   const [branchAddresses, setBranchAddresses] = useState<Record<string, string>>(
-    initialBranchAddresses,
+    () =>
+      Object.fromEntries(
+        Object.keys(sessionInitialBranchInventory).map((branch) => [
+          branch,
+          initialBranchAddresses[branch] ?? "Dirección pendiente de configurar",
+        ]),
+      ),
   );
   const [locationSwitchOpen, setLocationSwitchOpen] = useState(false);
   const [locationSwitchTarget, setLocationSwitchTarget] = useState("");
@@ -869,6 +1101,13 @@ function App() {
   const [layaways, setLayaways] = useState<LayawayRecord[]>(initialLayaways);
   const [appointments, setAppointments] =
     useState<Appointment[]>(initialAppointments);
+  const [agendaSlots, setAgendaSlots] = useState<AgendaSlot[]>(() =>
+    createMockAgendaSlots(Object.keys(sessionInitialBranchInventory)),
+  );
+  const agendaGateway = useMemo(() => createMockExternalAgendaGateway(), []);
+  const [clientMemberships, setClientMemberships] = useState<
+    ClientMembership[]
+  >(initialClientMemberships);
   const [receiptSettings, setReceiptSettings] = useState<ReceiptSettings>(() => ({
     ...initialReceiptSettings,
     branchName: `Sucursal ${activeBranch}`,
@@ -992,6 +1231,11 @@ function App() {
       ...branches.filter((branch) => branch !== activeBranch),
     ];
   }, [activeBranch, branchInventory]);
+
+  useEffect(() => {
+    if (receiptBranch !== "ALL" && !operationalBranches.includes(receiptBranch))
+      setReceiptBranch("ALL");
+  }, [operationalBranches, receiptBranch]);
 
   const pushOperationalNotification = (
     notification: Omit<
@@ -2702,12 +2946,15 @@ function App() {
     return true;
   };
 
-  const clockOutSeller = (recordId: string) => {
+  const clockOutSeller = (recordId: string): boolean => {
     const record = attendanceRecords.find(
       (candidate) =>
         candidate.id === recordId && candidate.status === "ONLINE",
     );
-    if (!record) return;
+    if (!record) {
+      toast.error("La entrada activa ya no está disponible.");
+      return false;
+    }
     const clockOutDate = new Date();
     setAttendanceRecords((current) =>
       current.map((candidate) =>
@@ -2723,6 +2970,7 @@ function App() {
       ),
     );
     toast.success(`${record.sellerName} registró su salida.`);
+    return true;
   };
 
   const completeCloseDay = (authorizedBy: { id: string; name: string }) => {
@@ -2866,19 +3114,43 @@ function App() {
     completeCloseDay({ id: seller.id, name: seller.name });
   };
 
-  const updateClientRecord = (updatedClient: Client) => {
+  const updateClientRecord = async (updatedClient: Client) => {
     const previousClient = clients.find((client) => client.id === updatedClient.id);
     if (!previousClient) return;
     const previousName = `${previousClient.firstName} ${previousClient.lastName}`;
     const updatedName = `${updatedClient.firstName.trim()} ${updatedClient.lastName.trim()}`.trim();
+    let synchronizedClient: Client = {
+      ...updatedClient,
+      firstName: updatedClient.firstName.trim(),
+      lastName: updatedClient.lastName.trim(),
+    };
+    if (previousClient.agendaClientId) {
+      if (isOnline) {
+        try {
+          const link = await agendaGateway.upsertClient(synchronizedClient);
+          synchronizedClient = {
+            ...synchronizedClient,
+            agendaClientId: link.externalClientId,
+            agendaSyncStatus: "SYNCED",
+            agendaSyncedAtIso: link.syncedAtIso,
+          };
+        } catch {
+          toast.error(
+            "Agenda no pudo actualizar la ficha. Los cambios no fueron guardados.",
+          );
+          return;
+        }
+      } else {
+        synchronizedClient = {
+          ...synchronizedClient,
+          agendaSyncStatus: "PENDING_SYNC",
+        };
+      }
+    }
     setClients((current) =>
       current.map((client) =>
         client.id === updatedClient.id
-          ? {
-              ...updatedClient,
-              firstName: updatedClient.firstName.trim(),
-              lastName: updatedClient.lastName.trim(),
-            }
+          ? synchronizedClient
           : client,
       ),
     );
@@ -2894,6 +3166,23 @@ function App() {
         appointment.clientId === updatedClient.id
           ? { ...appointment, clientName: updatedName, clientPhone: updatedClient.phone }
           : appointment,
+      ),
+    );
+    setClientMemberships((current) =>
+      current.map((membership) =>
+        membership.clientId === updatedClient.id
+          ? {
+              ...membership,
+              clientName: updatedName,
+              clientPhone: synchronizedClient.phone,
+              ...(synchronizedClient.agendaSyncStatus
+                ? { agendaSyncStatus: synchronizedClient.agendaSyncStatus }
+                : {}),
+              ...(synchronizedClient.agendaSyncedAtIso
+                ? { agendaSyncedAtIso: synchronizedClient.agendaSyncedAtIso }
+                : {}),
+            }
+          : membership,
       ),
     );
     setLayaways((current) =>
@@ -3258,17 +3547,123 @@ function App() {
     setCheckoutOpen(true);
   };
 
-  const completeTicket = (result: CheckoutResult) => {
-    const ticketBranch = activeBranch;
-    setClients((current) =>
-      result.createdClient
-        ? [result.client, ...current]
-        : current.map((client) =>
-            client.id === result.client.id ? result.client : client,
-          ),
+  const reserveAgendaSlotIds = (slotIds: string[]) => {
+    if (slotIds.length === 0) return true;
+    const requestedSeats = slotIds.reduce<Map<string, number>>((summary, id) => {
+      summary.set(id, (summary.get(id) ?? 0) + 1);
+      return summary;
+    }, new Map());
+    const hasConflict = Array.from(requestedSeats).some(([slotId, seats]) => {
+      const slot = agendaSlots.find((candidate) => candidate.id === slotId);
+      return (
+        !slot ||
+        !isSellerSelectableAgendaSlot(slot) ||
+        slot.capacity - slot.reservedCount < seats
+      );
+    });
+    if (hasConflict) {
+      toast.error(
+        "Ese espacio acaba de ocuparse en la agenda. Actualiza y elige otro horario.",
+      );
+      return false;
+    }
+    const reservedAtIso = new Date().toISOString();
+    setAgendaSlots((current) =>
+      current.map((slot) => {
+        const seats = requestedSeats.get(slot.id) ?? 0;
+        if (seats === 0) return slot;
+        const reservedCount = slot.reservedCount + seats;
+        return {
+          ...slot,
+          reservedCount,
+          status: reservedCount >= slot.capacity ? "BOOKED" : "AVAILABLE",
+          updatedAtIso: reservedAtIso,
+        };
+      }),
     );
+    return true;
+  };
+
+  const completeTicket = async (result: CheckoutResult) => {
+    const requestedAgendaSlotIds = result.appointments.flatMap((appointment) =>
+      appointment.agendaSlotId ? [appointment.agendaSlotId] : [],
+    );
+    const ticketBranch = activeBranch;
     const createdAt = new Date();
     const ticketId = createUniqueFolio(tickets);
+    const hasMembershipPurchase = cart.some(
+      (item) => item.product.kind === "MEMBERSHIP",
+    );
+    const shouldLinkClientWithAgenda =
+      requestedAgendaSlotIds.length > 0 || hasMembershipPurchase;
+    let agendaClientId = result.client.agendaClientId;
+    let agendaClientSyncedAtIso = result.client.agendaSyncedAtIso;
+    let agendaReservation: Awaited<
+      ReturnType<typeof agendaGateway.reserve>
+    > | null = null;
+
+    if (isOnline && shouldLinkClientWithAgenda) {
+      try {
+        const clientLink = await agendaGateway.upsertClient(result.client);
+        agendaClientId = clientLink.externalClientId;
+        agendaClientSyncedAtIso = clientLink.syncedAtIso;
+        if (requestedAgendaSlotIds.length > 0) {
+          const requestedSeats = Array.from(
+            requestedAgendaSlotIds.reduce<Map<string, number>>((summary, id) => {
+              summary.set(id, (summary.get(id) ?? 0) + 1);
+              return summary;
+            }, new Map()),
+          );
+          const reservableAppointments = result.appointments.filter(
+            (appointment) => appointment.agendaSlotId,
+          );
+          const source = reservableAppointments.some(
+            (appointment) => appointment.kind === "COURTESY",
+          )
+            ? "COURTESY" as const
+            : "NEXT_SESSION" as const;
+          agendaReservation = await agendaGateway.reserve({
+            idempotencyKey: `ticket-${ticketId}-agenda`,
+            clientId: result.client.id,
+            externalClientId: agendaClientId,
+            clientName: `${result.client.firstName} ${result.client.lastName}`.trim(),
+            ticketId,
+            membershipId: null,
+            services: reservableAppointments.map(
+              (appointment) => appointment.service,
+            ),
+            slots: requestedSeats.map(([slotId, seats]) => ({
+              externalSlotId:
+                agendaSlots.find((slot) => slot.id === slotId)?.externalSlotId ??
+                slotId,
+              seats,
+            })),
+            source,
+          });
+          if (agendaReservation.status === "CONFLICT") {
+            toast.error(
+              agendaReservation.conflictReason ??
+                "La agenda rechazó la reservación. Elige otro horario.",
+            );
+            return;
+          }
+        }
+      } catch {
+        toast.error(
+          "No fue posible registrar la clienta y su cita en Agenda. El ticket no se creó; vuelve a intentarlo.",
+        );
+        return;
+      }
+    }
+
+    const synchronizedClient: Client = shouldLinkClientWithAgenda
+      ? {
+          ...result.client,
+          ...(agendaClientId ? { agendaClientId } : {}),
+          agendaSyncStatus: isOnline ? "SYNCED" : "PENDING_SYNC",
+          ...(agendaClientSyncedAtIso ? { agendaSyncedAtIso: agendaClientSyncedAtIso } : {}),
+        }
+      : result.client;
     const initialPaymentFolio =
       result.paymentStatus === "LAYAWAY"
         ? `APT-${Date.now().toString(36).toUpperCase()}-${crypto.randomUUID().slice(0, 6).toUpperCase()}`
@@ -3336,9 +3731,9 @@ function App() {
       id: ticketId,
       createdAt: createdAtLabel,
       createdAtIso: createdAt.toISOString(),
-      clientId: result.client.id,
-      clientName: `${result.client.firstName} ${result.client.lastName}`,
-      clientPhone: result.client.phone,
+      clientId: synchronizedClient.id,
+      clientName: `${synchronizedClient.firstName} ${synchronizedClient.lastName}`,
+      clientPhone: synchronizedClient.phone,
       branchName: ticketBranch,
       branchAddress: branchAddresses[ticketBranch] ?? receiptSettings.address,
       sellerSummary: result.sellerSummary,
@@ -3388,20 +3783,140 @@ function App() {
       createdOffline: !isOnline,
       syncedAtIso: isOnline ? createdAt.toISOString() : null,
     };
-    const clientName = `${result.client.firstName} ${result.client.lastName}`;
+    const clientName = `${synchronizedClient.firstName} ${synchronizedClient.lastName}`;
+    let membershipSequence = clientMemberships.length;
+    const purchasedMemberships = cart.flatMap((item) =>
+      item.product.kind === "MEMBERSHIP"
+        ? Array.from({ length: item.quantity }, () => {
+            membershipSequence += 1;
+            const seller = result.sellerSales[0];
+            return {
+              id: `membership-card-${crypto.randomUUID()}`,
+              folio: `MEM-${ticketBranch
+                .normalize("NFD")
+                .replace(/[\u0300-\u036f]/g, "")
+                .replace(/[^A-Za-z0-9]/g, "")
+                .slice(0, 3)
+                .toUpperCase()}-${String(membershipSequence).padStart(4, "0")}`,
+              clientId: synchronizedClient.id,
+              clientName,
+              clientPhone: synchronizedClient.phone,
+              productId: item.product.id,
+              membershipName: item.product.name,
+              purchaseTicketId: ticketId,
+              purchaseDateIso: ticket.createdAtIso,
+              purchaseAmount: item.unitPrice,
+              branch: ticketBranch,
+              sellerId: seller?.sellerId ?? masterUser.id,
+              sellerName: seller?.sellerName ?? masterUser.name,
+              originalSellerName: seller?.sellerName ?? masterUser.name,
+              totalSessions: item.product.membershipSessions ?? 1,
+              usedSessions: 0,
+              profile: "POTENTIAL" as const,
+              status: "ACTIVE" as const,
+              attendance: [],
+              sellerChanges: [],
+              statusChanges: [],
+            } satisfies ClientMembership;
+          })
+        : [],
+    );
+    let agendaLinkedMemberships = purchasedMemberships.map((membership) => ({
+      ...membership,
+      ...(agendaClientId ? { agendaClientId } : {}),
+      agendaSyncStatus: isOnline ? "SYNCED" as const : "PENDING_SYNC" as const,
+      ...(agendaClientSyncedAtIso ? { agendaSyncedAtIso: agendaClientSyncedAtIso } : {}),
+    }));
+    if (isOnline && agendaClientId && purchasedMemberships.length > 0) {
+      try {
+        agendaLinkedMemberships = await Promise.all(
+          purchasedMemberships.map(async (membership) => {
+            const link = await agendaGateway.linkMembership({
+              idempotencyKey: `membership-${membership.id}-agenda`,
+              externalClientId: agendaClientId,
+              membershipId: membership.id,
+              membershipName: membership.membershipName,
+              ticketId,
+              branch: membership.branch,
+              totalSessions: membership.totalSessions,
+            });
+            return {
+              ...membership,
+              agendaClientId,
+              externalMembershipId: link.externalMembershipId,
+              agendaSyncStatus: "SYNCED" as const,
+              agendaSyncedAtIso: link.syncedAtIso,
+            };
+          }),
+        );
+      } catch {
+        if (agendaReservation) {
+          await agendaGateway.cancel(
+            agendaReservation.reservationId,
+            "No fue posible vincular la membresía",
+          );
+        }
+        toast.error(
+          "Agenda no pudo vincular la membresía con la clienta. El ticket no se creó.",
+        );
+        return;
+      }
+    }
+    if (!reserveAgendaSlotIds(requestedAgendaSlotIds)) {
+      if (agendaReservation) {
+        await agendaGateway.cancel(
+          agendaReservation.reservationId,
+          "Conflicto local de capacidad",
+        );
+      }
+      return;
+    }
+    setClients((current) =>
+      result.createdClient
+        ? [synchronizedClient, ...current]
+        : current.map((client) =>
+            client.id === synchronizedClient.id ? synchronizedClient : client,
+          ),
+    );
+    if (agendaLinkedMemberships.length > 0) {
+      setClientMemberships((current) => [
+        ...agendaLinkedMemberships,
+        ...current,
+      ]);
+    }
+    let externalAppointmentIndex = 0;
     const createdAppointments: Appointment[] = result.appointments.map(
-      (appointment, index) => ({
+      (appointment, index) => {
+        const isAgendaReservation = Boolean(appointment.agendaSlotId);
+        const externalAppointmentId = isAgendaReservation
+          ? agendaReservation?.externalAppointmentIds[externalAppointmentIndex++]
+          : undefined;
+        return {
         ...appointment,
         id: `appointment-${Date.now()}-${index}`,
-        clientId: result.client.id,
+        clientId: synchronizedClient.id,
         clientName,
-        clientPhone: result.client.phone,
+        clientPhone: synchronizedClient.phone,
         ticketId,
         sellerIds: result.sellerSales.map((sale) => sale.sellerId),
         recordedAt: ticket.createdAt,
         recordedAtIso: ticket.createdAtIso,
         status: appointment.kind === "NO_APPOINTMENT" ? "PENDING" : "SCHEDULED",
-      }),
+        ...(isAgendaReservation
+          ? {
+              ...(agendaClientId ? { agendaClientId } : {}),
+              ...(agendaReservation
+                ? { agendaReservationId: agendaReservation.reservationId }
+                : {}),
+              ...(externalAppointmentId ? { externalAppointmentId } : {}),
+              agendaSyncStatus: isOnline ? "RESERVED" as const : "PENDING_SYNC" as const,
+              ...(agendaClientSyncedAtIso
+                ? { agendaSyncedAtIso: agendaClientSyncedAtIso }
+                : {}),
+            }
+          : {}),
+        };
+      },
     );
     setAppointments((current) => [...createdAppointments, ...current]);
     const requestedDeliveryIds = new Set(
@@ -3460,9 +3975,9 @@ function App() {
           ticketId,
           layawayId:
             result.paymentStatus === "LAYAWAY" ? `layaway-${ticketId}` : null,
-          clientId: result.client.id,
+          clientId: synchronizedClient.id,
           clientName,
-          clientPhone: result.client.phone,
+          clientPhone: synchronizedClient.phone,
           productId: item.product.id,
           productName: item.product.name,
           quantity: shortage,
@@ -3530,9 +4045,9 @@ function App() {
         originalTicketId: ticketId,
         createdAt: ticket.createdAt,
         createdAtIso: ticket.createdAtIso,
-        clientId: result.client.id,
+        clientId: synchronizedClient.id,
         clientName,
-        clientPhone: result.client.phone,
+        clientPhone: synchronizedClient.phone,
         branch: ticketBranch,
         sellerIds: result.sellerSales.map((sale) => sale.sellerId),
         total: ticket.total,
@@ -3545,7 +4060,7 @@ function App() {
           kind: item.product.kind,
           quantity: item.quantity,
           deliveredQuantity:
-            item.product.kind === "SERVICE"
+            item.product.kind !== "PRODUCT"
               ? item.quantity
               : (deliveredByCartItem.get(item.id) ?? 0),
         })),
@@ -3989,7 +4504,13 @@ function App() {
     if (!exists) {
       pushOperationalNotification({
         type: "PRODUCT_CREATED",
-        title: `Alta de ${product.kind === "SERVICE" ? "servicio" : "producto"}`,
+        title: `Alta de ${
+          product.kind === "MEMBERSHIP"
+            ? "membresía"
+            : product.kind === "SERVICE"
+              ? "servicio"
+              : "producto"
+        }`,
         detail: `${product.name} · ${product.sku} · ${formatCurrency(product.maxPrice)}.`,
         moduleLabel: "Inventory · Catálogo",
         branch:
@@ -5453,6 +5974,341 @@ function App() {
     setReceiptPreviewOpen(true);
   };
 
+  const updateMembershipProfile = (
+    membershipId: string,
+    profile: MembershipClientProfile,
+  ) => {
+    if (!canEditActiveModule) return;
+    setClientMemberships((current) =>
+      current.map((membership) =>
+        membership.id === membershipId ? { ...membership, profile } : membership,
+      ),
+    );
+    toast.success("Perfilamiento de la clienta actualizado.");
+  };
+
+  const consumeMembershipSession = async (
+    membershipId: string,
+    appointmentId: string,
+    skipAgendaConfirmation = false,
+  ) => {
+    if (!canEditActiveModule) return false;
+    const membership = clientMemberships.find(
+      (candidate) => candidate.id === membershipId,
+    );
+    const appointment = appointments.find(
+      (candidate) => candidate.id === appointmentId,
+    );
+    if (!membership || !appointment || appointment.status !== "SCHEDULED") {
+      toast.error("La cita ya no está disponible para registrar asistencia.");
+      return false;
+    }
+    if (membership.usedSessions >= membership.totalSessions) {
+      toast.error("Esta membresía ya no tiene sesiones disponibles.");
+      return false;
+    }
+    if (
+      isOnline &&
+      appointment.externalAppointmentId &&
+      !skipAgendaConfirmation
+    ) {
+      try {
+        await agendaGateway.markAttended(
+          appointment.externalAppointmentId,
+          membershipId,
+        );
+      } catch {
+        toast.error(
+          "Agenda no confirmó la asistencia. No se descontó ninguna sesión.",
+        );
+        return false;
+      }
+    }
+    const attendedAtIso = new Date().toISOString();
+    setClientMemberships((current) =>
+      current.map((candidate) => {
+        if (candidate.id !== membershipId) return candidate;
+        const nextUsedSessions = candidate.usedSessions + 1;
+        const exhaustedNow = nextUsedSessions >= candidate.totalSessions;
+        return {
+          ...candidate,
+          usedSessions: nextUsedSessions,
+          status: exhaustedNow ? "EXHAUSTED" : "ACTIVE",
+          attendance: [
+            ...candidate.attendance,
+            {
+              id: `membership-attendance-${crypto.randomUUID()}`,
+              appointmentId,
+              attendedAtIso,
+              branch: appointment.branch,
+              sellerName: sessionUser?.name ?? masterUser.name,
+              signatureStatus: "PENDING",
+              ...(appointment.externalAppointmentId
+                ? { externalAppointmentId: appointment.externalAppointmentId }
+                : {}),
+              agendaSyncStatus:
+                isOnline && appointment.externalAppointmentId
+                  ? "SYNCED"
+                  : "PENDING_SYNC",
+            },
+          ],
+          statusChanges:
+            exhaustedNow && candidate.status !== "EXHAUSTED"
+              ? [
+                  ...candidate.statusChanges,
+                  {
+                    id: `membership-status-${crypto.randomUUID()}`,
+                    changedAtIso: attendedAtIso,
+                    fromStatus: candidate.status,
+                    toStatus: "EXHAUSTED",
+                    reason: "Se consumió la última sesión",
+                  },
+                ]
+              : candidate.statusChanges,
+        };
+      }),
+    );
+    setAppointments((current) =>
+      current.map((candidate) =>
+        candidate.id === appointmentId
+          ? {
+              ...candidate,
+              status: "ATTENDED",
+              membershipId,
+              membershipSessionConsumedAtIso: attendedAtIso,
+              agendaSyncStatus:
+                isOnline && candidate.externalAppointmentId
+                  ? "ATTENDED"
+                  : "PENDING_SYNC",
+              ...(isOnline ? { agendaSyncedAtIso: attendedAtIso } : {}),
+            }
+          : candidate,
+      ),
+    );
+    toast.success(
+      `Asistencia confirmada. Quedan ${Math.max(0, membership.totalSessions - membership.usedSessions - 1)} sesiones.`,
+    );
+    return true;
+  };
+
+  const reconcileAgendaAppointmentUpdate = async (
+    update: AgendaAppointmentUpdate,
+  ) => {
+    const appointment = appointments.find(
+      (candidate) =>
+        candidate.externalAppointmentId === update.externalAppointmentId,
+    );
+    if (!appointment) return;
+    if (update.status === "ATTENDED") {
+      if (appointment.status === "ATTENDED") return;
+      if (appointment.membershipId) {
+        await consumeMembershipSession(
+          appointment.membershipId,
+          appointment.id,
+          true,
+        );
+        return;
+      }
+      setAppointments((current) =>
+        current.map((candidate) =>
+          candidate.id === appointment.id
+            ? {
+                ...candidate,
+                status: "ATTENDED",
+                agendaSyncStatus: "ATTENDED",
+                agendaSyncedAtIso: update.updatedAtIso,
+              }
+            : candidate,
+        ),
+      );
+      return;
+    }
+    if (
+      appointment.status === "ATTENDED" ||
+      appointment.status === update.status
+    )
+      return;
+    if (update.status === "CANCELLED" && appointment.agendaSlotId) {
+      setAgendaSlots((current) =>
+        current.map((slot) =>
+          slot.id === appointment.agendaSlotId
+            ? {
+                ...slot,
+                reservedCount: Math.max(0, slot.reservedCount - 1),
+                status: "AVAILABLE",
+                updatedAtIso: update.updatedAtIso,
+              }
+            : slot,
+        ),
+      );
+    }
+    setAppointments((current) =>
+      current.map((candidate) =>
+        candidate.id === appointment.id
+          ? {
+              ...candidate,
+              status: update.status,
+              agendaSyncStatus: update.status,
+              agendaSyncedAtIso: update.updatedAtIso,
+            }
+          : candidate,
+      ),
+    );
+  };
+
+  useEffect(() => {
+    if (!isOnline) return;
+    let disposed = false;
+    const synchronizeAgendaOutcomes = async () => {
+      try {
+        const updates = await agendaGateway.listAppointmentUpdates();
+        if (disposed) return;
+        for (const update of updates) {
+          await reconcileAgendaAppointmentUpdate(update);
+        }
+      } catch {
+        // The next refresh retries; local balances are never changed on failure.
+      }
+    };
+    void synchronizeAgendaOutcomes();
+    const intervalId = window.setInterval(
+      () => void synchronizeAgendaOutcomes(),
+      60_000,
+    );
+    return () => {
+      disposed = true;
+      window.clearInterval(intervalId);
+    };
+  }, [agendaGateway, appointments, isOnline]);
+
+  const scheduleMembershipNextAppointment = async (
+    membershipId: string,
+    agendaSlotId: string,
+  ) => {
+    if (!canEditActiveModule) return false;
+    const membership = clientMemberships.find(
+      (candidate) => candidate.id === membershipId,
+    );
+    const slot = agendaSlots.find((candidate) => candidate.id === agendaSlotId);
+    if (!membership || !slot) {
+      return false;
+    }
+    const recordedAtIso = new Date().toISOString();
+    let agendaClientId = membership.agendaClientId;
+    let reservation: Awaited<ReturnType<typeof agendaGateway.reserve>> | null =
+      null;
+    if (isOnline) {
+      try {
+        if (!agendaClientId) {
+          const client = clients.find(
+            (candidate) => candidate.id === membership.clientId,
+          );
+          if (!client) {
+            toast.error("No se encontró la ficha de la clienta para Agenda.");
+            return false;
+          }
+          const clientLink = await agendaGateway.upsertClient(client);
+          agendaClientId = clientLink.externalClientId;
+        }
+        reservation = await agendaGateway.reserve({
+          idempotencyKey: `membership-${membershipId}-${slot.externalSlotId}`,
+          clientId: membership.clientId,
+          externalClientId: agendaClientId,
+          clientName: membership.clientName,
+          ticketId: membership.purchaseTicketId,
+          membershipId,
+          services: [membership.membershipName],
+          slots: [{ externalSlotId: slot.externalSlotId, seats: 1 }],
+          source: "MEMBERSHIP",
+        });
+        if (reservation.status === "CONFLICT") {
+          toast.error(
+            reservation.conflictReason ??
+              "La agenda rechazó el horario seleccionado.",
+          );
+          return false;
+        }
+      } catch {
+        toast.error("No fue posible reservar la próxima cita en Agenda.");
+        return false;
+      }
+    }
+    if (!reserveAgendaSlotIds([agendaSlotId])) {
+      if (reservation) {
+        await agendaGateway.cancel(
+          reservation.reservationId,
+          "Conflicto local de capacidad",
+        );
+      }
+      return false;
+    }
+    const appointment: Appointment = {
+      id: `appointment-membership-${crypto.randomUUID()}`,
+      kind: "NEXT_SESSION",
+      service: membership.membershipName,
+      date: slot.date,
+      branch: slot.branch,
+      time: slot.startTime,
+      agendaSlotId: slot.id,
+      externalSlotId: slot.externalSlotId,
+      agendaResourceName: slot.resourceName,
+      agendaReservationMode: "SINGLE",
+      clientId: membership.clientId,
+      clientName: membership.clientName,
+      clientPhone: membership.clientPhone,
+      ticketId: membership.purchaseTicketId,
+      sellerIds: [membership.sellerId],
+      recordedAt: new Intl.DateTimeFormat("es-MX", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      }).format(new Date(recordedAtIso)),
+      recordedAtIso,
+      status: "SCHEDULED",
+      membershipId,
+      ...(agendaClientId ? { agendaClientId } : {}),
+      ...(reservation
+        ? {
+            agendaReservationId: reservation.reservationId,
+            externalAppointmentId: reservation.externalAppointmentIds[0],
+          }
+        : {}),
+      agendaSyncStatus: isOnline ? "RESERVED" : "PENDING_SYNC",
+      ...(isOnline ? { agendaSyncedAtIso: recordedAtIso } : {}),
+    };
+    setAppointments((current) => [appointment, ...current]);
+    if (agendaClientId && membership.agendaClientId !== agendaClientId) {
+      setClientMemberships((current) =>
+        current.map((candidate) =>
+          candidate.id === membershipId
+            ? {
+                ...candidate,
+                agendaClientId,
+                agendaSyncStatus: isOnline ? "SYNCED" : "PENDING_SYNC",
+                ...(isOnline ? { agendaSyncedAtIso: recordedAtIso } : {}),
+              }
+            : candidate,
+        ),
+      );
+    }
+    toast.success(
+      `Próxima cita reservada: ${slot.date} · ${slot.startTime} · ${slot.resourceName}.`,
+    );
+    return true;
+  };
+
+  const openMembershipTicket = (ticketId: string) => {
+    const ticket = tickets.find((candidate) => candidate.id === ticketId);
+    if (!ticket) {
+      toast.error("No se encontró el ticket histórico de esta membresía.");
+      return;
+    }
+    setActiveScreen("receipts");
+    previewTicket(ticket);
+  };
+
   const issueVoucher = (ticket: Ticket, voucherId: string): VoucherIssue | null => {
     const template = voucherTemplates.find(
       (candidate) =>
@@ -6306,9 +7162,38 @@ function App() {
     setTicketCancellationOpen(true);
   };
 
-  const cancelTicket = (request: TicketCancellationRequest) => {
+  const cancelTicket = async (request: TicketCancellationRequest) => {
     const ticket = cancellingTicket;
     if (!ticket || ticket.status === "REFUNDED") return;
+    const ticketAppointments = appointments.filter(
+      (appointment) => appointment.ticketId === ticket.id,
+    );
+    const agendaReservationIds = Array.from(
+      new Set(
+        ticketAppointments.flatMap((appointment) =>
+          appointment.agendaReservationId
+            ? [appointment.agendaReservationId]
+            : [],
+        ),
+      ),
+    );
+    if (isOnline && agendaReservationIds.length > 0) {
+      try {
+        await Promise.all(
+          agendaReservationIds.map((reservationId) =>
+            agendaGateway.cancel(
+              reservationId,
+              `Cancelación del ticket ${ticket.id}`,
+            ),
+          ),
+        );
+      } catch {
+        toast.error(
+          "Agenda no confirmó la cancelación. El ticket conserva sus citas para evitar inconsistencias.",
+        );
+        return;
+      }
+    }
     const cancelledAt = new Date();
     const cancelledAtLabel = new Intl.DateTimeFormat("es-MX", {
       day: "2-digit",
@@ -6503,8 +7388,49 @@ function App() {
         return item;
       }),
     );
+    const releasedAgendaSeats = ticketAppointments.reduce<Map<string, number>>(
+      (summary, appointment) => {
+        if (!appointment.agendaSlotId || appointment.status === "CANCELLED")
+          return summary;
+        summary.set(
+          appointment.agendaSlotId,
+          (summary.get(appointment.agendaSlotId) ?? 0) + 1,
+        );
+        return summary;
+      },
+      new Map(),
+    );
+    setAgendaSlots((current) =>
+      current.map((slot) => {
+        const seats = releasedAgendaSeats.get(slot.id) ?? 0;
+        if (seats === 0) return slot;
+        return {
+          ...slot,
+          reservedCount: Math.max(0, slot.reservedCount - seats),
+          status: "AVAILABLE",
+          updatedAtIso: cancelledAt.toISOString(),
+        };
+      }),
+    );
     setAppointments((current) =>
-      current.filter((appointment) => appointment.ticketId !== ticket.id),
+      current.map((appointment) =>
+        appointment.ticketId === ticket.id
+          ? {
+              ...appointment,
+              status: "CANCELLED",
+              ...(appointment.agendaReservationId
+                ? {
+                    agendaSyncStatus: isOnline
+                      ? "CANCELLED" as const
+                      : "PENDING_SYNC" as const,
+                  }
+                : {}),
+              ...(isOnline && appointment.agendaReservationId
+                ? { agendaSyncedAtIso: cancelledAt.toISOString() }
+                : {}),
+            }
+          : appointment,
+      ),
     );
     setOwedProducts((current) =>
       current.map((record) =>
@@ -6696,9 +7622,11 @@ function App() {
                 <div className="product-image-wrap">
                   <img src={product.image} alt={product.name} />
                   <Badge className="product-card-kind">
-                    {product.kind === "SERVICE"
-                      ? "SERVICIO"
-                      : product.category.toUpperCase()}
+                    {product.kind === "MEMBERSHIP"
+                      ? "MEMBRESÍA"
+                      : product.kind === "SERVICE"
+                        ? "SERVICIO"
+                        : product.category.toUpperCase()}
                   </Badge>
                 </div>
                 <div className="product-card-body">
@@ -6722,8 +7650,10 @@ function App() {
                           : ""
                       }
                     >
-                      {product.stock === null
-                        ? "Agenda abierta"
+                      {product.kind === "MEMBERSHIP"
+                        ? `${product.membershipSessions ?? 0} sesiones`
+                        : product.stock === null
+                          ? "Agenda abierta"
                         : product.stock < 0
                           ? `${product.stock} piezas · pendiente entregar`
                           : `${product.stock} piezas`}
@@ -7044,14 +7974,12 @@ function App() {
       timeZone: "America/Mexico_City",
     }).format(new Date());
     const normalizedSearch = receiptSearch.trim().toLocaleLowerCase("es-MX");
-    const receiptBranches = Array.from(
-      new Set([
-        ...Object.keys(branchInventory),
-        ...tickets
-          .map((ticket) => ticket.branchName)
-          .filter((branch): branch is string => Boolean(branch)),
-      ]),
-    ).sort((left, right) => left.localeCompare(right, "es-MX"));
+    const receiptBranches = [...operationalBranches].sort((left, right) =>
+      left.localeCompare(right, "es-MX"),
+    );
+    const effectiveReceiptBranch = receiptHistoryAuthorized
+      ? receiptBranch
+      : activeBranch;
     const filteredTickets = tickets.filter((ticket) => {
       const ticketDate = new Intl.DateTimeFormat("en-CA", {
         timeZone: "America/Mexico_City",
@@ -7059,10 +7987,10 @@ function App() {
       const matchesDate = receiptHistoryAuthorized
         ? !receiptDate || ticketDate === receiptDate
         : ticketDate === businessToday;
+      const ticketBranch = ticket.branchName ?? receiptSettings.branchName;
       const matchesBranch =
-        !receiptHistoryAuthorized ||
-        receiptBranch === "ALL" ||
-        ticket.branchName === receiptBranch;
+        effectiveReceiptBranch === "ALL" ||
+        ticketBranch === effectiveReceiptBranch;
       const matchesSearch =
         !normalizedSearch ||
         ticket.clientName
@@ -7152,7 +8080,8 @@ function App() {
       (ticket) =>
         ticket.status === "COMPLETED" &&
         ticket.ticketType !== "LAYAWAY_PAYMENT" &&
-        (receiptBranch === "ALL" || ticket.branchName === receiptBranch),
+        (effectiveReceiptBranch === "ALL" ||
+          (ticket.branchName ?? receiptSettings.branchName) === effectiveReceiptBranch),
     );
     const currentMonthTicketCount = reportScopeTickets.filter(
       (ticket) =>
@@ -7408,7 +8337,7 @@ function App() {
                 <CalendarDays size={17} />
                 <span>
                   <small>DÍA VIGENTE</small>
-                  <strong>{businessToday}</strong>
+                  <strong>{businessToday} · {activeBranch}</strong>
                 </span>
               </div>
             )}
@@ -7600,7 +8529,8 @@ function App() {
       products={catalogProducts.filter(
         (product) =>
           catalogFamilyStatus[product.family] !== false &&
-          catalogCategoryStatus[product.category] !== false,
+          catalogCategoryStatus[product.category] !== false &&
+          product.branches.includes(activeBranch),
       )}
       companyName={receiptSettings.companyName}
       logoUrl={receiptSettings.logoUrl}
@@ -9532,14 +10462,20 @@ function App() {
             products={catalogProducts}
             branchInventory={branchInventory}
             movements={inventoryMovements}
+            inventoryAudits={inventoryCountAudits}
             tickets={tickets}
             expenses={cashExpenses}
             appointments={appointments}
+            memberships={clientMemberships}
             paymentMethods={paymentMethods}
             availableBranches={operationalBranches}
             canViewAllBranches={Boolean(sessionUser?.isMaster)}
             showInventoryDifferences={canViewInventoryAudit}
             showCosts={canViewDashboardCosts}
+            showMembershipReport={Boolean(
+              sessionUser?.isMaster ||
+                dashboardRole?.moduleAccess.includes("memberships"),
+            )}
           />
         ) : (
           renderGenericModule()
@@ -9552,6 +10488,7 @@ function App() {
           <SellerSalesView
             sellers={sellers}
             tickets={activeTickets}
+            branches={operationalBranches}
             clients={clients}
             paymentMethods={paymentMethods}
             layaways={layaways}
@@ -9587,7 +10524,29 @@ function App() {
         );
       case "appointments":
         return (
-          <AppointmentsView appointments={appointments} sellers={sellers} />
+          <AppointmentsView
+            appointments={appointments}
+            sellers={sellers}
+            branches={sessionUser?.isMaster ? operationalBranches : [activeBranch]}
+            activeBranch={activeBranch}
+            canViewAllBranches={Boolean(sessionUser?.isMaster)}
+          />
+        );
+      case "memberships":
+        return (
+          <MembershipsView
+            memberships={clientMemberships}
+            appointments={appointments}
+            agendaSlots={agendaSlots}
+            branches={operationalBranches}
+            viewer={sessionUser!}
+            sellers={sellers}
+            canEdit={canEditActiveModule}
+            onUpdateProfile={updateMembershipProfile}
+            onConsumeSession={consumeMembershipSession}
+            onScheduleNextAppointment={scheduleMembershipNextAppointment}
+            onOpenTicket={openMembershipTicket}
+          />
         );
       case "inventory":
         return (
@@ -9794,7 +10753,9 @@ function App() {
         return (
           <ClockInView
             sellers={sellers}
-            branches={operationalBranches}
+            branches={sessionUser?.isMaster ? operationalBranches : [activeBranch]}
+            activeBranch={activeBranch}
+            canViewAllBranches={Boolean(sessionUser?.isMaster)}
             records={attendanceRecords}
             onClockIn={clockInSeller}
             onClockOut={clockOutSeller}
@@ -9822,6 +10783,7 @@ function App() {
             tickets={activeTickets}
             sellers={sellers}
             products={catalogProducts}
+            branches={sessionUser?.isMaster ? operationalBranches : [activeBranch]}
             onOpenSettings={() => {
               setActiveScreen("settings");
               setCompetitionSettingsOpen(true);
@@ -10274,6 +11236,7 @@ function App() {
         sellers={sellers}
         paymentMethods={paymentMethods}
         branches={operationalBranches}
+        agendaSlots={agendaSlots}
         sourceOptions={clientSources}
         requiredFields={requiredFields}
         courtesySettings={courtesySettings}
