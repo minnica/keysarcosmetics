@@ -1,4 +1,4 @@
-import { Router, type Request, type Router as ExpressRouter } from "express";
+import { Router, type NextFunction, type Request, type Response, type Router as ExpressRouter } from "express";
 import multer from "multer";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
@@ -31,6 +31,10 @@ const decimal = (value: string) => new Prisma.Decimal(value);
 const pages = (req: Request) => posPageQuerySchema.parse(req.query);
 const costsAllowed = (req: Request) => Boolean(req.posUser?.isMaster || req.posUser?.permissions.includes("REPORTS_COSTS"));
 const assetUrl = (assets: Array<{ publicUrl: string; isPrimary: boolean; status: string }>) => assets.find((asset) => asset.isPrimary && asset.status === "READY")?.publicUrl ?? assets.find((asset) => asset.status === "READY")?.publicUrl ?? null;
+const requireCatalogRead = (req: Request, res: Response, next: NextFunction) => {
+  if (req.posUser?.isMaster || req.posUser?.permissions.some((permission) => ["CATALOG_VIEW", "INVENTORY_VIEW", "INVENTORY_ADJUST", "WAREHOUSE_MANAGE", "WAREHOUSE_BRANCH_REQUEST"].includes(permission))) return next();
+  return res.status(403).json({ success: false, message: "Permiso POS insuficiente", data: null });
+};
 
 function catalogDto(item: {
   id: string; sku: string; name: string; kind: "PRODUCT" | "SERVICE" | "SUPPLY" | "MACHINE"; description: string | null; published: boolean; active: boolean;
@@ -60,7 +64,7 @@ async function verifyReferences(input: z.infer<typeof posCatalogItemWriteSchema>
 
 router.use(posAuthMiddleware);
 
-router.get("/catalog/items", requirePosPermission("CATALOG_VIEW"), async (req, res) => {
+router.get("/catalog/items", requireCatalogRead, async (req, res) => {
   const parsed = z.object({ query: z.string().trim().max(120).optional(), kind: z.enum(["PRODUCT", "SERVICE", "SUPPLY", "MACHINE"]).optional(), active: z.enum(["true", "false"]).optional(), page: z.coerce.number().int().min(1).default(1), pageSize: z.coerce.number().int().min(1).max(100).default(20) }).parse(req.query);
   const branchId = req.posUser!.branchId;
   const where: Prisma.CatalogItemWhereInput = {
@@ -188,6 +192,6 @@ const competitionSchema = z.object({ name: z.string().trim().min(2).max(160), ty
 router.get("/competitions", requirePosPermission("REPORTS_VIEW"), async (_req, res) => { const items = await db.posSalesCompetition.findMany({ where: { deletedAt: null }, orderBy: { dateFrom: "desc" } }); res.json({ success: true, message: "OK", data: items.map((item) => ({ ...item, dateFrom: item.dateFrom.toISOString().slice(0, 10), dateTo: item.dateTo.toISOString().slice(0, 10), targetAmount: MONEY(item.targetAmount) })) }); });
 router.post("/competitions", requirePosPermission("REPORTS_VIEW"), async (req, res) => { const parsed = competitionSchema.safeParse(req.body); if (!parsed.success || parsed.data.dateTo < parsed.data.dateFrom) return res.status(400).json({ success: false, message: "Competencia inválida", data: parsed.success ? null : parsed.error.flatten().fieldErrors }); const input = parsed.data; if ((input.type === "AMOUNT" && !input.targetAmount) || (input.type === "PRODUCT" && !input.itemId) || (input.type === "PACKAGE" && input.packageItemIds.length === 0)) return res.status(400).json({ success: false, message: "Meta de competencia incompleta", data: null }); const item = await db.posSalesCompetition.create({ data: { name: input.name, type: input.type, active: input.active, dateFrom: new Date(`${input.dateFrom}T00:00:00.000Z`), dateTo: new Date(`${input.dateTo}T00:00:00.000Z`), branchId: input.branchId, targetAmount: input.targetAmount ? decimal(input.targetAmount) : null, itemId: input.itemId, packageItemIds: input.packageItemIds } }); res.status(201).json({ success: true, message: "Competencia creada", data: { ...item, targetAmount: MONEY(item.targetAmount) } }); });
 
-router.use((error: unknown, _req: Request, res: any, next: any) => { if (error instanceof multer.MulterError) return res.status(400).json({ success: false, message: "Archivo demasiado grande o inválido", data: null }); next(error); });
+router.use((error: unknown, _req: Request, res: Response, next: NextFunction) => { if (error instanceof multer.MulterError) return res.status(400).json({ success: false, message: "Archivo demasiado grande o inválido", data: null }); next(error); });
 
 export default router;

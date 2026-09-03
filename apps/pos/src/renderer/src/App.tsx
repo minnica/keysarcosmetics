@@ -77,7 +77,7 @@ import {
   Toaster,
   toast,
 } from "@cosmetics/ui";
-import type { PosBranchSummaryDto, PosPermissionKey, PosSessionDto } from "@cosmetics/types";
+import type { PosBranchSummaryDto, PosInventoryLocationDto, PosPermissionKey, PosSessionDto } from "@cosmetics/types";
 import {
   CheckoutDialog,
   type CheckoutResult,
@@ -227,6 +227,11 @@ import {
   roleToPermissions,
   sessionUserFromDto,
 } from "./lib/pos-api";
+import {
+  adjustmentBatchFromDto,
+  inventoryMovementsFromDto,
+  warehouseMovementFromDto,
+} from "./lib/pos-inventory-api";
 
 const getSaleProductBrand = (product: Product) =>
   product.kind === "SERVICE"
@@ -248,7 +253,7 @@ const productFromPosCatalog = (item: {
   image: item.imageUrl ?? "./products/placeholder.png", ...(item.description ? { description: item.description } : {}),
   benefits: item.benefits, showInDigitalCatalog: true, minPrice: Number(item.minimumPrice), maxPrice: Number(item.listPrice),
   includesVat: Number(item.taxRate) > 0, costUsd: 0, costMxn: Number(item.unitCost ?? "0.00"),
-  stock: null, stockMin: null, stockMax: null, branches: [branch], active: true,
+  stock: item.kind === "SERVICE" ? null : 0, stockMin: null, stockMax: null, branches: [branch], active: true,
 });
 
 const formatSaleCount = (count: number, singular: string, plural: string) =>
@@ -739,6 +744,7 @@ function App() {
   const [apiSession, setApiSession] = useState<PosSessionDto | null>(null);
   const [apiPermissions, setApiPermissions] = useState<PosPermissionKey[]>([]);
   const [apiBranches, setApiBranches] = useState<PosBranchSummaryDto[]>([]);
+  const [apiInventoryLocations, setApiInventoryLocations] = useState<PosInventoryLocationDto[]>([]);
   const [sessionStage, setSessionStage] = useState<
     "LOGIN" | "OPENING_COUNT" | "OPEN" | "CLOSING_COUNT"
   >("LOGIN");
@@ -1054,6 +1060,7 @@ function App() {
     notificationId: string,
     userId: string,
   ) => {
+    if (posApiEnabled) void posApi.markNotificationRead(notificationId).catch(() => undefined);
     setOperationalNotifications((current) =>
       current.map((notification) =>
         notification.id === notificationId &&
@@ -1069,6 +1076,11 @@ function App() {
   };
 
   const markAllOperationalNotificationsRead = (userId: string) => {
+    if (posApiEnabled) {
+      operationalNotifications
+        .filter((notification) => !notification.readByUserIds.includes(userId))
+        .forEach((notification) => { void posApi.markNotificationRead(notification.id).catch(() => undefined); });
+    }
     setOperationalNotifications((current) =>
       current.map((notification) =>
         operationalBusinessDate(notification.createdAtIso) ===
@@ -1146,6 +1158,7 @@ function App() {
   const applyApiSession = async (session: PosSessionDto) => {
     const nextUser = sessionUserFromDto(session);
     const branchName = session.terminal.branch.name;
+    let needsOpeningCount = false;
     setBranchInventory((current) =>
       current[branchName]
         ? current
@@ -1209,10 +1222,88 @@ function App() {
         branchName: `Sucursal ${branchName}`,
       }));
     }
-    if (session.actor.isMaster || session.permissions.includes("CATALOG_VIEW")) {
+    let loadedCatalog: Awaited<ReturnType<typeof posApi.catalogItems>>["items"] = [];
+    if (session.actor.isMaster || session.permissions.some((permission) => ["CATALOG_VIEW", "INVENTORY_VIEW", "INVENTORY_ADJUST", "WAREHOUSE_MANAGE", "WAREHOUSE_BRANCH_REQUEST"].includes(permission))) {
       const catalog = await posApi.catalogItems({ pageSize: 100 });
-      setCatalogProducts(catalog.items.map((item) => productFromPosCatalog(item, branchName)));
+      loadedCatalog = catalog.items;
+      setCatalogProducts(catalog.items.filter((item) => item.kind !== "SUPPLY").map((item) => productFromPosCatalog(item, branchName)));
     }
+    if (session.actor.isMaster || session.permissions.some((permission) => ["INVENTORY_VIEW", "INVENTORY_ADJUST", "WAREHOUSE_MANAGE"].includes(permission))) {
+      const [locations, balances, movements] = await Promise.all([
+        posApi.inventoryLocations(),
+        posApi.inventoryBalances(),
+        posApi.inventoryMovements({ pageSize: 100 }),
+      ]);
+      setApiInventoryLocations(locations);
+      if (session.actor.isMaster || session.permissions.includes("INVENTORY_VIEW")) {
+        const currentLocation = locations.find((location) => location.branchId === session.terminal.branch.id);
+        if (currentLocation) {
+          const currentBusinessDate = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Mexico_City", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+          const openingCounts = await posApi.inventoryCounts({ locationId: currentLocation.id, businessDate: currentBusinessDate, kind: "OPENING" });
+          needsOpeningCount = openingCounts.length === 0;
+        }
+      }
+      const locationById = new Map(locations.map((location) => [location.id, location]));
+      const nextBranchInventory: BranchInventory = {};
+      for (const location of locations.filter((candidate) => candidate.type === "BRANCH" && candidate.branchName)) {
+        nextBranchInventory[location.branchName!] = Object.fromEntries(
+          loadedCatalog.filter((item) => item.kind === "PRODUCT").map((item) => [item.id, 0]),
+        );
+      }
+      const nextWarehouseStock: WarehouseStock = {};
+      for (const balance of balances) {
+        const location = locationById.get(balance.locationId);
+        if (location?.type === "WAREHOUSE") nextWarehouseStock[balance.itemId] = Number(balance.availableQuantity);
+        else if (location?.branchName) {
+          nextBranchInventory[location.branchName] ??= {};
+          nextBranchInventory[location.branchName]![balance.itemId] = Number(balance.availableQuantity);
+        }
+      }
+      setBranchInventory(nextBranchInventory);
+      setWarehouseStock(nextWarehouseStock);
+      setCatalogProducts((current) => current.map((product) => ({
+        ...product,
+        stock: product.kind === "PRODUCT" ? nextBranchInventory[branchName]?.[product.id] ?? 0 : null,
+        branches: locations.filter((location) => location.type === "BRANCH" && location.branchName).map((location) => location.branchName!),
+      })));
+      setInventoryMovements(inventoryMovementsFromDto(movements.items));
+      if (session.actor.isMaster || session.permissions.includes("INVENTORY_ADJUST")) {
+        const batches = await posApi.inventoryAdjustmentBatches();
+        setInventoryAdjustmentBatches(batches.map((batch) => adjustmentBatchFromDto(batch, locations)));
+      } else setInventoryAdjustmentBatches([]);
+      setWarehouseSupplies(loadedCatalog.filter((item) => item.kind === "SUPPLY").map((item) => ({
+        id: item.id, name: item.name, sku: item.sku, unit: "pieza", image: item.imageUrl ?? "./products/placeholder.png",
+        costUsd: 0, costMxn: Number("unitCost" in item ? item.unitCost : "0.00"), partnerCost: 0, retailPrice: Number(item.listPrice),
+        family: item.family?.name ?? "Insumos", category: item.category?.name ?? "General", stockMin: 0, stockMax: 0,
+        presentation: "Pieza", unitsPerPackage: 1, supplierId: null, supplierName: null, active: item.active,
+        branchVisible: true,
+      })));
+    } else {
+      setInventoryMovements([]);
+      setInventoryAdjustmentBatches([]);
+      setWarehouseStock({});
+    }
+    if (session.actor.isMaster || session.permissions.some((permission) => ["WAREHOUSE_MANAGE", "WAREHOUSE_BRANCH_REQUEST"].includes(permission))) {
+      const [requests, notifications] = await Promise.all([
+        posApi.warehouseRequests({ pageSize: 100 }),
+        posApi.notifications({ pageSize: 100 }),
+      ]);
+      setWarehouseMovements(requests.items.map(warehouseMovementFromDto));
+      setOperationalNotifications(notifications.items.map((notification) => ({
+        id: notification.id,
+        type: "INVENTORY_TRANSFER",
+        title: notification.title,
+        detail: notification.message,
+        moduleLabel: "Almacén",
+        branch: branches.find((branch) => branch.id === notification.branchId)?.name ?? branchName,
+        actorId: notification.warehouseRequestId ?? "pos",
+        actorName: "Sistema POS",
+        reference: notification.warehouseRequestId ?? notification.id,
+        createdAtIso: notification.createdAt,
+        recipientUserIds: [nextUser.id],
+        readByUserIds: notification.read ? [nextUser.id] : [],
+      })));
+    } else setWarehouseMovements([]);
     if (session.actor.isMaster || session.permissions.includes("WAREHOUSE_MANAGE")) {
       const suppliers = await posApi.suppliers();
       setWarehouseSuppliers(suppliers.map((supplier) => ({
@@ -1230,7 +1321,7 @@ function App() {
       ? (Object.keys(screenMetadata) as ScreenId[])
       : permissionsToScreens(session.permissions);
     setSessionUser(nextUser);
-    setSessionStage("OPEN");
+    setSessionStage(needsOpeningCount ? "OPENING_COUNT" : "OPEN");
     setDaySession(null);
     setActiveScreen(nextScreens[0] ?? "my-account");
     setSaleFocusMode(nextScreens[0] === "sale");
@@ -1443,8 +1534,24 @@ function App() {
     lines: InventoryAuditLine[],
     skipped: boolean,
     comment: string,
+    persisted = false,
   ) => {
     if (!sessionUser) return;
+    if (posApiEnabled && !persisted && !skipped) {
+      const location = apiInventoryLocations.find((candidate) => candidate.branchName === sessionUser.branch);
+      if (!location) {
+        toast.error("La sucursal no tiene una ubicación de inventario configurada.");
+        return;
+      }
+      void posApi.createInventoryCount({
+        kind: "OPENING",
+        businessDate: new Intl.DateTimeFormat("en-CA", { timeZone: "America/Mexico_City", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date()),
+        locationId: location.id,
+        notes: comment,
+        lines: lines.map((line) => ({ itemId: line.productId, countedQuantity: line.actualStock.toFixed(2) })),
+      }).then(() => completeOpeningCount(lines, skipped, comment, true)).catch((error: unknown) => toast.error(error instanceof Error ? error.message : "No se pudo guardar el conteo."));
+      return;
+    }
     const createdAtIso = new Date().toISOString();
     const audit: InventoryCountAudit = {
       id: `audit-open-${crypto.randomUUID()}`,
@@ -1498,8 +1605,24 @@ function App() {
     lines: InventoryAuditLine[],
     skipped: boolean,
     comment: string,
+    persisted = false,
   ) => {
     if (!sessionUser || !daySession) return;
+    if (posApiEnabled && !persisted && !skipped) {
+      const location = apiInventoryLocations.find((candidate) => candidate.branchName === sessionUser.branch);
+      if (!location) {
+        toast.error("La sucursal no tiene una ubicación de inventario configurada.");
+        return;
+      }
+      void posApi.createInventoryCount({
+        kind: "CLOSING",
+        businessDate: new Intl.DateTimeFormat("en-CA", { timeZone: "America/Mexico_City", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date()),
+        locationId: location.id,
+        notes: comment,
+        lines: lines.map((line) => ({ itemId: line.productId, countedQuantity: line.actualStock.toFixed(2) })),
+      }).then(() => completeClosingCount(lines, skipped, comment, true)).catch((error: unknown) => toast.error(error instanceof Error ? error.message : "No se pudo guardar el conteo."));
+      return;
+    }
     const auditLines = skipped
       ? lines.map((line) => ({
           ...line,
@@ -1579,11 +1702,23 @@ function App() {
     return seller ? { id: seller.id, name: seller.name } : null;
   };
 
+  const refreshApiWarehouse = async () => {
+    const requests = await posApi.warehouseRequests({ pageSize: 100 });
+    setWarehouseMovements(requests.items.map(warehouseMovementFromDto));
+    await refreshApiInventory();
+  };
+
   const createWarehouseEntry = (
     lines: WarehouseMovementLine[],
     comment: string,
     code: string,
   ) => {
+    if (posApiEnabled) {
+      const matrix = apiInventoryLocations.find((location) => location.type === "WAREHOUSE");
+      if (!matrix) { toast.error("No existe la ubicación de bodega matriz."); return false; }
+      void posApi.createInventoryAdjustmentBatch({ notes: comment, lines: lines.map((line) => ({ itemId: line.productId, type: "ADD", fromLocationId: null, toLocationId: matrix.id, quantity: line.quantity.toFixed(2), reason: "INGRESO_BODEGA", notes: comment || null })) }).then((batch) => posApi.approveInventoryAdjustmentBatch(batch.id)).then(async () => { await refreshApiInventory(); toast.success("Ingreso confirmado en el ledger de bodega."); }).catch((error: unknown) => toast.error(error instanceof Error ? error.message : "No se pudo registrar el ingreso."));
+      return true;
+    }
     const actor = warehouseAuthorizationActor(code);
     if (!actor) {
       toast.error("Código sin permiso para ingresos de almacén.");
@@ -1635,6 +1770,15 @@ function App() {
     comment: string,
     pricing: WarehousePricingSelection,
   ) => {
+    if (posApiEnabled) {
+      const branchId = apiBranches.find((candidate) => candidate.name === branch)?.id;
+      if (!branchId) { toast.error("La sucursal seleccionada no está disponible para esta terminal."); return false; }
+      void posApi.createWarehouseRequest({ source: "BRANCH", requestType, branchId, priceListId: pricing.priceListId, customerId: pricing.customerId, notes: comment, lines: lines.map((line) => ({ itemId: line.productId, quantity: line.quantity.toFixed(2) })) }).then(async (request) => {
+        setWarehouseMovements((current) => [warehouseMovementFromDto(request), ...current]);
+        toast.success(`${request.folio} creado; no se modificaron existencias.`);
+      }).catch((error: unknown) => toast.error(error instanceof Error ? error.message : "No se pudo crear la solicitud."));
+      return true;
+    }
     const category = warehouseCategories.find((candidate) => candidate.id === categoryId && candidate.active);
     const authorizedToCreate = kind === "BRANCH_REQUEST" ? canCreateWarehouseRequest : canManageWarehouse;
     const priceList = pricing.priceListId
@@ -1688,6 +1832,18 @@ function App() {
     orders: InventoryBranchOrderDraft[],
     authorizationCode: string,
   ): InventoryBranchOrderResult[] | null => {
+    if (posApiEnabled) {
+      if (!canCreateWarehouseRequest || orders.length === 0) return null;
+      void Promise.all(orders.map((order) => {
+        const branchId = apiBranches.find((branch) => branch.name === order.branch)?.id;
+        if (!branchId) throw new Error(`Sucursal no disponible: ${order.branch}`);
+        return posApi.createWarehouseRequest({ source: "BRANCH", requestType: "PRODUCT", branchId, notes: "Pedido generado desde Inventory para completar stock máximo.", lines: order.lines.map((line) => ({ itemId: line.productId, quantity: line.quantity.toFixed(2) })) });
+      })).then(async (requests) => {
+        await refreshApiWarehouse();
+        toast.success(`${requests.length} ${requests.length === 1 ? "folio enviado" : "folios enviados"} a bodega matriz.`);
+      }).catch((error: unknown) => toast.error(error instanceof Error ? error.message : "No se pudieron generar los pedidos."));
+      return orders.map((order) => ({ branch: order.branch, folio: "Generando folio…" }));
+    }
     if (!isMasterAccessCode(authorizationCode) || !canCreateWarehouseRequest) {
       toast.error("Se requiere autorización master para generar los pedidos.");
       return null;
@@ -1787,6 +1943,10 @@ function App() {
     comment: string,
     pricing: WarehousePricingSelection,
   ) => {
+    if (posApiEnabled) {
+      toast.info("La solicitud real conserva su snapshot; cancélala y crea una nueva para cambiar sus partidas.");
+      return false;
+    }
     if (!canManageWarehouse) return false;
     const movement = warehouseMovements.find((candidate) => candidate.id === id);
     const category = warehouseCategories.find((candidate) => candidate.id === categoryId && candidate.active);
@@ -1827,6 +1987,13 @@ function App() {
     lines: WarehouseMovementLine[],
     comment: string,
   ) => {
+    if (posApiEnabled) {
+      void posApi.createWarehouseRequest({ source: "SUPPLIER", requestType: "PRODUCT", supplierId, notes: comment, lines: lines.map((line) => ({ itemId: line.productId, quantity: line.quantity.toFixed(2) })) }).then((request) => {
+        setWarehouseMovements((current) => [warehouseMovementFromDto(request), ...current]);
+        toast.success(`${request.folio} generado; requiere dos aprobaciones distintas.`);
+      }).catch((error: unknown) => toast.error(error instanceof Error ? error.message : "No se pudo crear el resurtido."));
+      return true;
+    }
     const supplier = warehouseSuppliers.find((candidate) => candidate.id === supplierId && candidate.active);
     if (!canManageWarehouse || !supplier || lines.length === 0 || lines.some((line) => line.supplierId !== supplier.id)) {
       toast.error("Selecciona un proveedor activo y productos vinculados a él.");
@@ -1861,6 +2028,10 @@ function App() {
   };
 
   const approveWarehouseCreation = (id: string, code: string) => {
+    if (posApiEnabled) {
+      void posApi.warehouseRequestAction(id, "approve-creation").then(async () => { await refreshApiWarehouse(); toast.success("Primera aprobación registrada con la identidad de la sesión."); }).catch((error: unknown) => toast.error(error instanceof Error ? error.message : "No se pudo aprobar."));
+      return true;
+    }
     const actor = warehouseAuthorizationActor(code);
     const movement = warehouseMovements.find((candidate) => candidate.id === id);
     if (!actor || !movement || !["DRAFT", "REQUESTED"].includes(movement.status)) {
@@ -1878,6 +2049,10 @@ function App() {
   };
 
   const approveWarehouseSend = (id: string, code: string) => {
+    if (posApiEnabled) {
+      void posApi.warehouseRequestAction(id, "approve-send").then(async () => { await refreshApiWarehouse(); toast.success("Segunda aprobación y envío confirmados."); }).catch((error: unknown) => toast.error(error instanceof Error ? error.message : "La segunda aprobación debe realizarla otro usuario."));
+      return true;
+    }
     const actor = warehouseAuthorizationActor(code);
     const movement = warehouseMovements.find((candidate) => candidate.id === id);
     if (!actor || !movement || movement.status !== "CREATION_APPROVED") {
@@ -1904,6 +2079,10 @@ function App() {
   };
 
   const receiveWarehouseMovement = (id: string, code: string) => {
+    if (posApiEnabled) {
+      void posApi.warehouseRequestAction(id, "receive").then(async () => { await refreshApiWarehouse(); toast.success("Recepción confirmada atómicamente."); }).catch((error: unknown) => toast.error(error instanceof Error ? error.message : "No se pudo recibir el pedido."));
+      return true;
+    }
     const actor = warehouseAuthorizationActor(code);
     if (!canManageWarehouse || !actor) {
       toast.error("Código sin autorización para cargar mercancía.");
@@ -2037,6 +2216,12 @@ function App() {
   };
 
   const cancelWarehouseMovement = (id: string, code: string) => {
+    if (posApiEnabled) {
+      const movement = warehouseMovements.find((candidate) => candidate.id === id);
+      const action = movement?.status === "SENT" ? "return-to-requested" : "cancel";
+      void posApi.warehouseRequestAction(id, action).then(async () => { await refreshApiWarehouse(); toast.success(action === "cancel" ? "Solicitud cancelada." : "Envío regresado a pedidos y existencias restauradas."); }).catch((error: unknown) => toast.error(error instanceof Error ? error.message : "No se pudo actualizar la solicitud."));
+      return true;
+    }
     const actor = warehouseAuthorizationActor(code);
     const movement = warehouseMovements.find((candidate) => candidate.id === id);
     if (!actor || !movement || movement.status === "CANCELLED") {
@@ -2076,6 +2261,7 @@ function App() {
   };
 
   const deleteWarehouseMovement = (id: string, code: string) => {
+    if (posApiEnabled) return cancelWarehouseMovement(id, code);
     const actor = warehouseAuthorizationActor(code);
     const movement = warehouseMovements.find((candidate) => candidate.id === id);
     if (!actor || !movement) {
@@ -4793,8 +4979,48 @@ function App() {
     );
   };
 
+  const refreshApiInventory = async () => {
+    const [locations, balances, movements] = await Promise.all([
+      posApi.inventoryLocations(), posApi.inventoryBalances(), posApi.inventoryMovements({ pageSize: 100 }),
+    ]);
+    setApiInventoryLocations(locations);
+    const nextBranches: BranchInventory = {};
+    for (const location of locations.filter((candidate) => candidate.type === "BRANCH" && candidate.branchName)) nextBranches[location.branchName!] = {};
+    const nextWarehouse: WarehouseStock = {};
+    for (const balance of balances) {
+      const location = locations.find((candidate) => candidate.id === balance.locationId);
+      if (location?.type === "WAREHOUSE") nextWarehouse[balance.itemId] = Number(balance.availableQuantity);
+      else if (location?.branchName) {
+        nextBranches[location.branchName] ??= {};
+        nextBranches[location.branchName]![balance.itemId] = Number(balance.availableQuantity);
+      }
+    }
+    setBranchInventory(nextBranches);
+    setWarehouseStock(nextWarehouse);
+    setInventoryMovements(inventoryMovementsFromDto(movements.items));
+    if (apiSession?.actor.isMaster || apiPermissions.includes("INVENTORY_ADJUST")) {
+      const batches = await posApi.inventoryAdjustmentBatches();
+      setInventoryAdjustmentBatches(batches.map((batch) => adjustmentBatchFromDto(batch, locations)));
+    }
+  };
+
+  const apiAdjustmentLines = (adjustments: InventoryMovementDraft[]) => adjustments.map((adjustment) => {
+    const fromLocationId = adjustment.sourceBranch ? apiInventoryLocations.find((location) => (location.branchName ?? location.name) === adjustment.sourceBranch)?.id ?? null : null;
+    const toLocationId = adjustment.destinationBranch ? apiInventoryLocations.find((location) => (location.branchName ?? location.name) === adjustment.destinationBranch)?.id ?? null : null;
+    const reason = adjustment.reason.toLocaleLowerCase("es-MX");
+    const type = adjustment.direction === "ADD" ? "ADD" : adjustment.direction === "TRANSFER" ? "TRANSFER" : reason.includes("tester") || reason.includes("demo") ? "DEMO" : reason.includes("dañ") || reason.includes("damage") || reason.includes("lost") ? "WRITE_OFF" : "REMOVE";
+    return { itemId: adjustment.productId, type: type as "ADD" | "REMOVE" | "TRANSFER" | "DEMO" | "WRITE_OFF", fromLocationId, toLocationId, quantity: adjustment.quantity.toFixed(2), reason: adjustment.reason, notes: adjustment.comment || null };
+  });
+
   const requestInventoryBatch = (adjustments: InventoryMovementDraft[]) => {
     if (adjustments.length === 0) return;
+    if (posApiEnabled) {
+      void posApi.createInventoryAdjustmentBatch({ lines: apiAdjustmentLines(adjustments) }).then(async (created) => {
+        setInventoryAdjustmentBatches((current) => [adjustmentBatchFromDto(created, apiInventoryLocations), ...current]);
+        toast.info(`${created.folio} quedó en espera de aprobación. El inventario no cambió.`);
+      }).catch((error: unknown) => toast.error(error instanceof Error ? error.message : "No se pudo crear el lote."));
+      return;
+    }
     const createdAt = new Date();
     const batch: InventoryAdjustmentBatch = {
       id: crypto.randomUUID(),
@@ -4822,6 +5048,13 @@ function App() {
       (candidate) => candidate.id === batchId,
     );
     if (!batch || batch.status !== "PENDING") return;
+    if (posApiEnabled) {
+      void posApi.approveInventoryAdjustmentBatch(batchId).then(async () => {
+        await refreshApiInventory();
+        toast.success(`${batch.folio} aplicado al inventario.`);
+      }).catch((error: unknown) => toast.error(error instanceof Error ? error.message : "No se pudo aprobar el lote."));
+      return;
+    }
     registerInventoryMovements(batch.adjustments, batch.id);
     setInventoryAdjustmentBatches((current) =>
       current.map((candidate) =>
@@ -4854,6 +5087,13 @@ function App() {
       cancelInventoryBatch(batchId);
       return;
     }
+    if (posApiEnabled) {
+      void posApi.updateInventoryAdjustmentBatch(batchId, { lines: apiAdjustmentLines(adjustments) }).then((updated) => {
+        setInventoryAdjustmentBatches((current) => current.map((candidate) => candidate.id === updated.id ? adjustmentBatchFromDto(updated, apiInventoryLocations) : candidate));
+        toast.info(`${updated.folio} actualizado antes de su aprobación.`);
+      }).catch((error: unknown) => toast.error(error instanceof Error ? error.message : "No se pudo actualizar el lote."));
+      return;
+    }
     setInventoryAdjustmentBatches((current) =>
       current.map((candidate) =>
         candidate.id === batchId
@@ -4873,6 +5113,13 @@ function App() {
       (batch.status !== "PENDING" && batch.status !== "APPROVED")
     )
       return;
+    if (posApiEnabled) {
+      void posApi.cancelInventoryAdjustmentBatch(batchId).then(async (updated) => {
+        await refreshApiInventory();
+        toast.success(updated.status === "CANCELED" ? `${updated.folio} cancelado sin impacto.` : `${updated.folio} revertido con un movimiento compensatorio.`);
+      }).catch((error: unknown) => toast.error(error instanceof Error ? error.message : "No se pudo cancelar el lote."));
+      return;
+    }
     const resolvedAt = new Intl.DateTimeFormat("es-MX", {
       day: "2-digit",
       month: "short",

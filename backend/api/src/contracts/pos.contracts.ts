@@ -12,6 +12,10 @@ const isoUtcSchema = z.string().datetime({ offset: true });
 const businessDateSchema = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha operativa inválida");
+const positiveQuantitySchema = moneySchema.refine(
+  (value) => Number(value) > 0,
+  "La cantidad debe ser mayor a cero",
+);
 const aliasSchema = z
   .string()
   .trim()
@@ -314,6 +318,86 @@ export const posInventoryCountRequestSchema = z
     notes: z.string().trim().max(500).optional(),
     lines: z.array(posInventoryCountLineSchema).min(1).max(10_000),
     authorizationToken: z.string().uuid().optional(),
+  })
+  .strict();
+
+export const posInventoryQuerySchema = z
+  .object({
+    locationId: idSchema.optional(),
+    businessDate: businessDateSchema.optional(),
+    page: z.coerce.number().int().min(1).default(1),
+    pageSize: z.coerce.number().int().min(1).max(100).default(20),
+  })
+  .strict();
+
+export const posInventoryAdjustmentLineSchema = z
+  .object({
+    itemId: idSchema,
+    type: z.enum(["ADD", "REMOVE", "TRANSFER", "RETURN", "DEMO", "WRITE_OFF"]),
+    fromLocationId: idSchema.nullable().optional().default(null),
+    toLocationId: idSchema.nullable().optional().default(null),
+    quantity: positiveQuantitySchema,
+    reason: z.string().trim().min(1).max(240).nullable().optional().default(null),
+    notes: z.string().trim().max(1_000).nullable().optional().default(null),
+  })
+  .strict()
+  .superRefine((line, context) => {
+    const sourceOnly = ["REMOVE", "DEMO", "WRITE_OFF"].includes(line.type);
+    const both = ["TRANSFER", "RETURN"].includes(line.type);
+    if (line.type === "ADD" && (line.fromLocationId || !line.toLocationId)) {
+      context.addIssue({ code: z.ZodIssueCode.custom, message: "Una suma requiere sólo destino", path: ["toLocationId"] });
+    }
+    if (sourceOnly && (!line.fromLocationId || line.toLocationId)) {
+      context.addIssue({ code: z.ZodIssueCode.custom, message: "La baja requiere sólo origen", path: ["fromLocationId"] });
+    }
+    if (both && (!line.fromLocationId || !line.toLocationId || line.fromLocationId === line.toLocationId)) {
+      context.addIssue({ code: z.ZodIssueCode.custom, message: "La transferencia requiere ubicaciones distintas", path: ["toLocationId"] });
+    }
+  });
+
+export const posInventoryAdjustmentBatchWriteSchema = z
+  .object({
+    notes: z.string().trim().max(1_000).nullable().optional().default(null),
+    lines: z.array(posInventoryAdjustmentLineSchema).min(1).max(500),
+  })
+  .strict();
+
+export const posWarehouseRequestWriteSchema = z
+  .object({
+    source: z.enum(["BRANCH", "SUPPLIER"]),
+    requestType: z.enum(["PRODUCT", "TESTER", "SUPPLY"]),
+    branchId: idSchema.nullable().optional().default(null),
+    supplierId: idSchema.nullable().optional().default(null),
+    priceListId: idSchema.nullable().optional().default(null),
+    customerId: idSchema.nullable().optional().default(null),
+    notes: z.string().trim().max(1_000).nullable().optional().default(null),
+    lines: z
+      .array(z.object({ itemId: idSchema, quantity: positiveQuantitySchema }).strict())
+      .min(1)
+      .max(1_000),
+  })
+  .strict()
+  .superRefine((request, context) => {
+    if (new Set(request.lines.map((line) => line.itemId)).size !== request.lines.length) {
+      context.addIssue({ code: z.ZodIssueCode.custom, message: "No se permiten artículos duplicados", path: ["lines"] });
+    }
+    if (request.source === "BRANCH" && (!request.branchId || request.supplierId)) {
+      context.addIssue({ code: z.ZodIssueCode.custom, message: "Una solicitud de sucursal requiere sucursal", path: ["branchId"] });
+    }
+    if (request.source === "SUPPLIER" && (!request.supplierId || request.branchId)) {
+      context.addIssue({ code: z.ZodIssueCode.custom, message: "Un resurtido requiere proveedor", path: ["supplierId"] });
+    }
+  });
+
+export const posWarehouseActionSchema = z
+  .object({ notes: z.string().trim().max(1_000).nullable().optional().default(null) })
+  .strict();
+
+export const posNotificationQuerySchema = z
+  .object({
+    unreadOnly: z.enum(["true", "false"]).optional().default("false"),
+    page: z.coerce.number().int().min(1).default(1),
+    pageSize: z.coerce.number().int().min(1).max(100).default(20),
   })
   .strict();
 

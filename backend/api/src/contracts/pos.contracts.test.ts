@@ -5,6 +5,8 @@ import {
   posCatalogItemWriteSchema,
   posLoginRequestSchema,
   posMutationHeadersSchema,
+  posInventoryAdjustmentBatchWriteSchema,
+  posWarehouseRequestWriteSchema,
   posTerminalStatusUpdateSchema,
   posTicketQuoteRequestSchema,
 } from "./pos.contracts";
@@ -95,5 +97,18 @@ describe("contratos públicos del POS", () => {
       posMutationHeadersSchema.safeParse({ "idempotency-key": "invalid" })
         .success,
     ).toBe(false);
+  });
+
+  it("valida rutas de inventario y cantidades positivas", () => {
+    const base = { itemId: "item-1", quantity: "1.00", reason: "Ajuste" };
+    expect(posInventoryAdjustmentBatchWriteSchema.safeParse({ lines: [{ ...base, type: "ADD", toLocationId: "loc-1" }] }).success).toBe(true);
+    expect(posInventoryAdjustmentBatchWriteSchema.safeParse({ lines: [{ ...base, type: "TRANSFER", fromLocationId: "loc-1", toLocationId: "loc-1" }] }).success).toBe(false);
+    expect(posInventoryAdjustmentBatchWriteSchema.safeParse({ lines: [{ ...base, type: "REMOVE", fromLocationId: "loc-1", quantity: "0.00" }] }).success).toBe(false);
+  });
+
+  it("separa solicitudes de sucursal y resurtidos de proveedor", () => {
+    expect(posWarehouseRequestWriteSchema.safeParse({ source: "BRANCH", requestType: "PRODUCT", branchId: "branch-1", lines: [{ itemId: "item-1", quantity: "2.00" }] }).success).toBe(true);
+    expect(posWarehouseRequestWriteSchema.safeParse({ source: "SUPPLIER", requestType: "SUPPLY", branchId: "branch-1", lines: [{ itemId: "item-1", quantity: "2.00" }] }).success).toBe(false);
+    expect(posWarehouseRequestWriteSchema.safeParse({ source: "BRANCH", requestType: "TESTER", branchId: "branch-1", lines: [{ itemId: "item-1", quantity: "1.00" }, { itemId: "item-1", quantity: "1.00" }] }).success).toBe(false);
   });
 });

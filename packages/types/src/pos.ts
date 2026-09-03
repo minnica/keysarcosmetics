@@ -311,6 +311,188 @@ export interface PosInventoryBalanceDto {
   updatedAt: IsoUtcDateTime;
 }
 
+export type PosInventoryLocationType = "BRANCH" | "WAREHOUSE";
+export type PosInventoryMovementType =
+  | "ADD"
+  | "REMOVE"
+  | "TRANSFER"
+  | "RETURN"
+  | "DEMO"
+  | "WRITE_OFF"
+  | "REVERSAL"
+  | "COUNT_ADJUSTMENT"
+  | "WAREHOUSE_SHIPMENT"
+  | "WAREHOUSE_RECEIPT"
+  | "SUPPLIER_RECEIPT";
+
+export interface PosInventoryLocationDto {
+  id: PosId;
+  code: string;
+  name: string;
+  type: PosInventoryLocationType;
+  branchId: PosId | null;
+  branchName: string | null;
+  active: boolean;
+}
+
+export interface PosInventoryMovementLineDto {
+  id: PosId;
+  itemId: PosId;
+  itemName: string;
+  sku: string;
+  fromLocation: PosInventoryLocationDto | null;
+  toLocation: PosInventoryLocationDto | null;
+  quantity: Money;
+  fromQuantityBefore: Money | null;
+  fromQuantityAfter: Money | null;
+  toQuantityBefore: Money | null;
+  toQuantityAfter: Money | null;
+}
+
+export interface PosInventoryMovementLineWithCostsDto
+  extends PosInventoryMovementLineDto {
+  unitCostSnapshot: Money | null;
+}
+
+export interface PosInventoryMovementDto {
+  id: PosId;
+  folio: string;
+  type: PosInventoryMovementType;
+  status: "APPLIED" | "REVERSED";
+  reason: string | null;
+  notes: string | null;
+  businessDate: BusinessDate;
+  adjustmentBatchId: PosId | null;
+  warehouseRequestId: PosId | null;
+  reversalOfId: PosId | null;
+  createdAt: IsoUtcDateTime;
+  lines: Array<PosInventoryMovementLineDto | PosInventoryMovementLineWithCostsDto>;
+}
+
+export interface PosInventoryAdjustmentLineInputDto {
+  itemId: PosId;
+  type: "ADD" | "REMOVE" | "TRANSFER" | "RETURN" | "DEMO" | "WRITE_OFF";
+  fromLocationId?: PosId | null;
+  toLocationId?: PosId | null;
+  quantity: Money;
+  reason?: string | null;
+  notes?: string | null;
+}
+
+export interface PosInventoryAdjustmentBatchDto {
+  id: PosId;
+  folio: string;
+  status: "PENDING" | "APPLIED" | "CANCELED" | "REVERSED";
+  notes: string | null;
+  createdAt: IsoUtcDateTime;
+  resolvedAt: IsoUtcDateTime | null;
+  lines: PosInventoryAdjustmentLineInputDto[];
+  movementId: PosId | null;
+}
+
+export interface PosInventoryCountDto {
+  id: PosId;
+  kind: PosCountKind;
+  businessDate: BusinessDate;
+  locationId: PosId;
+  createdAt: IsoUtcDateTime;
+  lines: PosBlindCountLineDto[];
+}
+
+export interface PosAuditedInventoryCountDto
+  extends Omit<PosInventoryCountDto, "lines"> {
+  notes: string | null;
+  lines: PosAuditedCountLineDto[];
+}
+
+export type PosWarehouseRequestStatus =
+  | "REQUESTED"
+  | "CREATION_APPROVED"
+  | "SEND_APPROVED"
+  | "SHIPPED"
+  | "RECEIVED"
+  | "CANCELED";
+
+export interface PosWarehouseRequestLineDto {
+  id: PosId;
+  itemId: PosId;
+  itemName: string;
+  sku: string;
+  quantity: Money;
+  priceSnapshot: Money | null;
+  priceListNameSnapshot: string | null;
+  customerNameSnapshot: string | null;
+}
+
+export interface PosWarehouseRequestLineWithCostsDto
+  extends PosWarehouseRequestLineDto {
+  unitCostSnapshot: Money | null;
+}
+
+export interface PosWarehouseRequestEventDto {
+  id: PosId;
+  fromStatus: PosWarehouseRequestStatus | null;
+  toStatus: PosWarehouseRequestStatus;
+  action: string;
+  actorCredentialId: PosId;
+  notes: string | null;
+  createdAt: IsoUtcDateTime;
+}
+
+export interface PosWarehouseRequestDto {
+  id: PosId;
+  folio: string;
+  source: "BRANCH" | "SUPPLIER";
+  requestType: "PRODUCT" | "TESTER" | "SUPPLY";
+  status: PosWarehouseRequestStatus;
+  branchId: PosId | null;
+  branchName: string | null;
+  supplierId: PosId | null;
+  supplierName: string | null;
+  priceListId: PosId | null;
+  customerId: PosId | null;
+  sourceLocationId: PosId | null;
+  destinationLocationId: PosId;
+  notes: string | null;
+  createdAt: IsoUtcDateTime;
+  creationApprovedAt: IsoUtcDateTime | null;
+  sendApprovedAt: IsoUtcDateTime | null;
+  shippedAt: IsoUtcDateTime | null;
+  receivedAt: IsoUtcDateTime | null;
+  canceledAt: IsoUtcDateTime | null;
+  lines: Array<PosWarehouseRequestLineDto | PosWarehouseRequestLineWithCostsDto>;
+  events: PosWarehouseRequestEventDto[];
+}
+
+export interface PosWarehouseRequestCreateDto {
+  source: "BRANCH" | "SUPPLIER";
+  requestType: "PRODUCT" | "TESTER" | "SUPPLY";
+  branchId?: PosId | null;
+  supplierId?: PosId | null;
+  priceListId?: PosId | null;
+  customerId?: PosId | null;
+  notes?: string | null;
+  lines: Array<{ itemId: PosId; quantity: Money }>;
+}
+
+export interface PosNotificationDto {
+  id: PosId;
+  kind:
+    | "WAREHOUSE_REQUESTED"
+    | "WAREHOUSE_CREATION_APPROVED"
+    | "WAREHOUSE_SHIPPED"
+    | "WAREHOUSE_RECEIVED"
+    | "WAREHOUSE_RETURNED"
+    | "WAREHOUSE_CANCELED";
+  title: string;
+  message: string;
+  branchId: PosId | null;
+  warehouseRequestId: PosId | null;
+  read: boolean;
+  readAt: IsoUtcDateTime | null;
+  createdAt: IsoUtcDateTime;
+}
+
 export interface PosBlindCountLineDto {
   itemId: PosId;
   countedQuantity: Money;

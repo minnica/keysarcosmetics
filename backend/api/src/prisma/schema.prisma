@@ -79,6 +79,9 @@ model Sucursal {
   customerPortfolios               CustomerPortfolioAssignment[]
   priceListAssignments             PriceListBranchAssignment[]
   salesCompetitions                PosSalesCompetition[]
+  inventoryLocations               InventoryLocation[]
+  warehouseRequests                WarehouseRequest[]
+  posNotifications                 PosNotification[]
 
   @@index([activa])
 }
@@ -230,25 +233,37 @@ model Empleado {
 // ─── Módulo POS: identidad, terminales y autorización ───────────────────────────────
 
 model PosCredential {
-  id                   String                @id @default(cuid())
-  employeeId           String?               @unique
-  employee             Empleado?             @relation(fields: [employeeId], references: [id], onDelete: Restrict)
-  userId               String?               @unique
-  user                 Usuario?              @relation(fields: [userId], references: [id], onDelete: Restrict)
-  alias                String
-  aliasNormalized      String                @unique
-  pinHash              String
-  pinFingerprint       String                @unique @db.VarChar(64)
-  failedAttempts       Int                   @default(0)
-  lockedUntil          DateTime?
-  version              Int                   @default(1)
-  offlineEnabled       Boolean               @default(false)
-  active               Boolean               @default(true)
-  creadoEn             DateTime              @default(now())
-  actualizadoEn        DateTime              @updatedAt
-  masterProfile        PosMasterCredential?
-  masterAuthorizations MasterAuthorization[]
-  auditLogs            AuditLog[]
+  id                                String                     @id @default(cuid())
+  employeeId                        String?                    @unique
+  employee                          Empleado?                  @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  userId                            String?                    @unique
+  user                              Usuario?                   @relation(fields: [userId], references: [id], onDelete: Restrict)
+  alias                             String
+  aliasNormalized                   String                     @unique
+  pinHash                           String
+  pinFingerprint                    String                     @unique @db.VarChar(64)
+  failedAttempts                    Int                        @default(0)
+  lockedUntil                       DateTime?
+  version                           Int                        @default(1)
+  offlineEnabled                    Boolean                    @default(false)
+  active                            Boolean                    @default(true)
+  creadoEn                          DateTime                   @default(now())
+  actualizadoEn                     DateTime                   @updatedAt
+  masterProfile                     PosMasterCredential?
+  masterAuthorizations              MasterAuthorization[]
+  auditLogs                         AuditLog[]
+  inventoryBatchesCreated           InventoryAdjustmentBatch[] @relation("InventoryBatchCreated")
+  inventoryBatchesResolved          InventoryAdjustmentBatch[] @relation("InventoryBatchResolved")
+  inventoryCounts                   InventoryCount[]
+  inventoryMovements                InventoryMovement[]
+  warehouseRequestsCreated          WarehouseRequest[]         @relation("WarehouseRequestCreated")
+  warehouseRequestsCreationApproved WarehouseRequest[]         @relation("WarehouseRequestCreationApproved")
+  warehouseRequestsSendApproved     WarehouseRequest[]         @relation("WarehouseRequestSendApproved")
+  warehouseRequestsReceived         WarehouseRequest[]         @relation("WarehouseRequestReceived")
+  warehouseRequestsCanceled         WarehouseRequest[]         @relation("WarehouseRequestCanceled")
+  warehouseRequestEvents            WarehouseRequestEvent[]
+  posNotificationsCreated           PosNotification[]
+  posNotificationReads              PosNotificationRead[]
 
   @@index([active, aliasNormalized])
 }
@@ -289,6 +304,8 @@ model PosTerminal {
   actualizadoEn        DateTime              @updatedAt
   auditLogs            AuditLog[]
   masterAuthorizations MasterAuthorization[]
+  inventoryCounts      InventoryCount[]
+  inventoryMovements   InventoryMovement[]
 
   @@index([branchId, status])
 }
@@ -426,33 +443,38 @@ model CatalogTaxonomy {
 }
 
 model CatalogItem {
-  id               String                        @id @default(cuid())
-  sku              String                        @unique @db.VarChar(96)
-  name             String                        @db.VarChar(240)
-  normalizedName   String                        @db.VarChar(260)
-  kind             CatalogItemKind
-  familyId         String?
-  family           CatalogTaxonomy?              @relation("CatalogItemFamily", fields: [familyId], references: [id], onDelete: Restrict)
-  categoryId       String?
-  category         CatalogTaxonomy?              @relation("CatalogItemCategory", fields: [categoryId], references: [id], onDelete: Restrict)
-  description      String?
-  benefits         CatalogItemBenefit[]
-  published        Boolean                       @default(false)
-  active           Boolean                       @default(true)
-  deletedAt        DateTime?
-  listPrice        Decimal                       @default(0) @db.Decimal(14, 2)
-  minimumPrice     Decimal                       @default(0) @db.Decimal(14, 2)
-  unitCost         Decimal                       @default(0) @db.Decimal(14, 2)
-  taxRate          Decimal                       @default(0) @db.Decimal(8, 2)
-  supplierId       String?
-  supplier         PosSupplier?                  @relation(fields: [supplierId], references: [id], onDelete: Restrict)
-  assets           CatalogAsset[]
-  branchVisibility CatalogItemBranchVisibility[]
-  priceHistory     CatalogItemPrice[]
-  priceListLines   PosPriceListLine[]
-  packageLines     PosPackageLine[]
-  creadoEn         DateTime                      @default(now())
-  actualizadoEn    DateTime                      @updatedAt
+  id                       String                         @id @default(cuid())
+  sku                      String                         @unique @db.VarChar(96)
+  name                     String                         @db.VarChar(240)
+  normalizedName           String                         @db.VarChar(260)
+  kind                     CatalogItemKind
+  familyId                 String?
+  family                   CatalogTaxonomy?               @relation("CatalogItemFamily", fields: [familyId], references: [id], onDelete: Restrict)
+  categoryId               String?
+  category                 CatalogTaxonomy?               @relation("CatalogItemCategory", fields: [categoryId], references: [id], onDelete: Restrict)
+  description              String?
+  benefits                 CatalogItemBenefit[]
+  published                Boolean                        @default(false)
+  active                   Boolean                        @default(true)
+  deletedAt                DateTime?
+  listPrice                Decimal                        @default(0) @db.Decimal(14, 2)
+  minimumPrice             Decimal                        @default(0) @db.Decimal(14, 2)
+  unitCost                 Decimal                        @default(0) @db.Decimal(14, 2)
+  taxRate                  Decimal                        @default(0) @db.Decimal(8, 2)
+  supplierId               String?
+  supplier                 PosSupplier?                   @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  assets                   CatalogAsset[]
+  branchVisibility         CatalogItemBranchVisibility[]
+  priceHistory             CatalogItemPrice[]
+  priceListLines           PosPriceListLine[]
+  packageLines             PosPackageLine[]
+  inventoryBalances        InventoryBalance[]
+  inventoryMovementLines   InventoryMovementLine[]
+  inventoryAdjustmentLines InventoryAdjustmentBatchLine[]
+  inventoryCountLines      InventoryCountLine[]
+  warehouseRequestLines    WarehouseRequestLine[]
+  creadoEn                 DateTime                       @default(now())
+  actualizadoEn            DateTime                       @updatedAt
 
   @@index([active, published, kind])
   @@index([familyId, categoryId])
@@ -541,6 +563,7 @@ model Customer {
   deletedAt            DateTime?
   portfolios           CustomerPortfolioAssignment[]
   priceListAssignments PriceListCustomerAssignment[]
+  warehouseRequests    WarehouseRequest[]
   creadoEn             DateTime                      @default(now())
   actualizadoEn        DateTime                      @updatedAt
 
@@ -633,23 +656,24 @@ model PosVoucherTemplate {
 }
 
 model PosSupplier {
-  id             String         @id @default(cuid())
-  folio          String         @unique @db.VarChar(64)
-  businessName   String         @db.VarChar(240)
-  normalizedName String         @unique @db.VarChar(260)
-  contactName    String?
-  rfc            String?        @db.VarChar(20)
-  taxRegime      String?
-  businessLine   String?
-  phone          String?
-  email          String?
-  address        String?
-  active         Boolean        @default(true)
-  deletedAt      DateTime?
-  catalogItems   CatalogItem[]
-  priceLists     PosPriceList[]
-  creadoEn       DateTime       @default(now())
-  actualizadoEn  DateTime       @updatedAt
+  id                String             @id @default(cuid())
+  folio             String             @unique @db.VarChar(64)
+  businessName      String             @db.VarChar(240)
+  normalizedName    String             @unique @db.VarChar(260)
+  contactName       String?
+  rfc               String?            @db.VarChar(20)
+  taxRegime         String?
+  businessLine      String?
+  phone             String?
+  email             String?
+  address           String?
+  active            Boolean            @default(true)
+  deletedAt         DateTime?
+  catalogItems      CatalogItem[]
+  priceLists        PosPriceList[]
+  warehouseRequests WarehouseRequest[]
+  creadoEn          DateTime           @default(now())
+  actualizadoEn     DateTime           @updatedAt
 
   @@index([active, normalizedName])
 }
@@ -666,6 +690,7 @@ model PosPriceList {
   lines               PosPriceListLine[]
   branchAssignments   PriceListBranchAssignment[]
   customerAssignments PriceListCustomerAssignment[]
+  warehouseRequests   WarehouseRequest[]
   deletedAt           DateTime?
   creadoEn            DateTime                      @default(now())
   actualizadoEn       DateTime                      @updatedAt
@@ -753,6 +778,356 @@ model PosSalesCompetition {
 
   @@index([active, dateFrom, dateTo])
   @@index([branchId])
+}
+
+// ─── Módulo POS: inventario, conteos y bodega matriz ──────────────────
+
+enum InventoryLocationType {
+  BRANCH
+  WAREHOUSE
+}
+
+enum InventoryMovementType {
+  ADD
+  REMOVE
+  TRANSFER
+  RETURN
+  DEMO
+  WRITE_OFF
+  REVERSAL
+  COUNT_ADJUSTMENT
+  WAREHOUSE_SHIPMENT
+  WAREHOUSE_RECEIPT
+  SUPPLIER_RECEIPT
+}
+
+enum InventoryMovementStatus {
+  APPLIED
+  REVERSED
+}
+
+enum InventoryAdjustmentBatchStatus {
+  PENDING
+  APPLIED
+  CANCELED
+  REVERSED
+}
+
+enum InventoryCountKind {
+  OPENING
+  CLOSING
+}
+
+enum WarehouseRequestType {
+  PRODUCT
+  TESTER
+  SUPPLY
+}
+
+enum WarehouseRequestSource {
+  BRANCH
+  SUPPLIER
+}
+
+enum WarehouseRequestStatus {
+  REQUESTED
+  CREATION_APPROVED
+  SEND_APPROVED
+  SHIPPED
+  RECEIVED
+  CANCELED
+}
+
+enum PosNotificationKind {
+  WAREHOUSE_REQUESTED
+  WAREHOUSE_CREATION_APPROVED
+  WAREHOUSE_SHIPPED
+  WAREHOUSE_RECEIVED
+  WAREHOUSE_RETURNED
+  WAREHOUSE_CANCELED
+}
+
+model PosIdempotencyRecord {
+  id                String   @id @default(cuid())
+  key               String   @unique @db.Uuid
+  actorCredentialId String
+  operation         String   @db.VarChar(120)
+  requestHash       String   @db.VarChar(64)
+  responseStatus    Int
+  responseBody      Json
+  creadoEn          DateTime @default(now())
+
+  @@index([actorCredentialId, creadoEn])
+}
+
+model InventoryLocation {
+  id                    String                         @id @default(cuid())
+  code                  String                         @unique @db.VarChar(64)
+  name                  String                         @db.VarChar(160)
+  type                  InventoryLocationType
+  branchId              String?                        @unique
+  branch                Sucursal?                      @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  active                Boolean                        @default(true)
+  balances              InventoryBalance[]
+  movementsFrom         InventoryMovementLine[]        @relation("InventoryMovementFrom")
+  movementsTo           InventoryMovementLine[]        @relation("InventoryMovementTo")
+  adjustmentFrom        InventoryAdjustmentBatchLine[] @relation("InventoryAdjustmentFrom")
+  adjustmentTo          InventoryAdjustmentBatchLine[] @relation("InventoryAdjustmentTo")
+  counts                InventoryCount[]
+  warehouseSources      WarehouseRequest[]             @relation("WarehouseRequestSourceLocation")
+  warehouseDestinations WarehouseRequest[]             @relation("WarehouseRequestDestinationLocation")
+  creadoEn              DateTime                       @default(now())
+  actualizadoEn         DateTime                       @updatedAt
+
+  @@index([type, active])
+}
+
+model InventoryBalance {
+  id                String            @id @default(cuid())
+  locationId        String
+  location          InventoryLocation @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  itemId            String
+  item              CatalogItem       @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  availableQuantity Decimal           @default(0) @db.Decimal(14, 2)
+  reservedQuantity  Decimal           @default(0) @db.Decimal(14, 2)
+  version           Int               @default(0)
+  actualizadoEn     DateTime          @updatedAt
+
+  @@unique([locationId, itemId])
+  @@index([itemId])
+}
+
+model InventoryMovement {
+  id                 String                    @id @default(cuid())
+  folio              String                    @unique @db.VarChar(64)
+  type               InventoryMovementType
+  status             InventoryMovementStatus   @default(APPLIED)
+  reason             String?                   @db.VarChar(240)
+  notes              String?                   @db.VarChar(1000)
+  businessDate       DateTime                  @db.Date
+  actorCredentialId  String
+  actorCredential    PosCredential             @relation(fields: [actorCredentialId], references: [id], onDelete: Restrict)
+  terminalId         String
+  terminal           PosTerminal               @relation(fields: [terminalId], references: [id], onDelete: Restrict)
+  adjustmentBatchId  String?                   @unique
+  adjustmentBatch    InventoryAdjustmentBatch? @relation(fields: [adjustmentBatchId], references: [id], onDelete: Restrict)
+  warehouseRequestId String?
+  warehouseRequest   WarehouseRequest?         @relation(fields: [warehouseRequestId], references: [id], onDelete: Restrict)
+  countId            String?                   @unique
+  count              InventoryCount?           @relation(fields: [countId], references: [id], onDelete: Restrict)
+  reversalOfId       String?                   @unique
+  reversalOf         InventoryMovement?        @relation("InventoryMovementReversal", fields: [reversalOfId], references: [id], onDelete: Restrict)
+  reversedBy         InventoryMovement?        @relation("InventoryMovementReversal")
+  lines              InventoryMovementLine[]
+  creadoEn           DateTime                  @default(now())
+
+  @@index([businessDate, creadoEn])
+  @@index([adjustmentBatchId])
+  @@index([warehouseRequestId])
+}
+
+model InventoryMovementLine {
+  id                 String             @id @default(cuid())
+  movementId         String
+  movement           InventoryMovement  @relation(fields: [movementId], references: [id], onDelete: Restrict)
+  itemId             String
+  item               CatalogItem        @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  fromLocationId     String?
+  fromLocation       InventoryLocation? @relation("InventoryMovementFrom", fields: [fromLocationId], references: [id], onDelete: Restrict)
+  toLocationId       String?
+  toLocation         InventoryLocation? @relation("InventoryMovementTo", fields: [toLocationId], references: [id], onDelete: Restrict)
+  quantity           Decimal            @db.Decimal(14, 2)
+  fromQuantityBefore Decimal?           @db.Decimal(14, 2)
+  fromQuantityAfter  Decimal?           @db.Decimal(14, 2)
+  toQuantityBefore   Decimal?           @db.Decimal(14, 2)
+  toQuantityAfter    Decimal?           @db.Decimal(14, 2)
+  unitCostSnapshot   Decimal?           @db.Decimal(14, 2)
+  metadata           Json?
+  creadoEn           DateTime           @default(now())
+
+  @@index([itemId, creadoEn])
+  @@index([fromLocationId, creadoEn])
+  @@index([toLocationId, creadoEn])
+}
+
+model InventoryAdjustmentBatch {
+  id                     String                         @id @default(cuid())
+  folio                  String                         @unique @db.VarChar(64)
+  status                 InventoryAdjustmentBatchStatus @default(PENDING)
+  notes                  String?                        @db.VarChar(1000)
+  createdByCredentialId  String
+  createdByCredential    PosCredential                  @relation("InventoryBatchCreated", fields: [createdByCredentialId], references: [id], onDelete: Restrict)
+  resolvedByCredentialId String?
+  resolvedByCredential   PosCredential?                 @relation("InventoryBatchResolved", fields: [resolvedByCredentialId], references: [id], onDelete: Restrict)
+  resolvedAt             DateTime?
+  lines                  InventoryAdjustmentBatchLine[]
+  movement               InventoryMovement?
+  creadoEn               DateTime                       @default(now())
+  actualizadoEn          DateTime                       @updatedAt
+
+  @@index([status, creadoEn])
+}
+
+model InventoryAdjustmentBatchLine {
+  id             String                   @id @default(cuid())
+  batchId        String
+  batch          InventoryAdjustmentBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  itemId         String
+  item           CatalogItem              @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  type           InventoryMovementType
+  fromLocationId String?
+  fromLocation   InventoryLocation?       @relation("InventoryAdjustmentFrom", fields: [fromLocationId], references: [id], onDelete: Restrict)
+  toLocationId   String?
+  toLocation     InventoryLocation?       @relation("InventoryAdjustmentTo", fields: [toLocationId], references: [id], onDelete: Restrict)
+  quantity       Decimal                  @db.Decimal(14, 2)
+  reason         String?                  @db.VarChar(240)
+  notes          String?                  @db.VarChar(1000)
+  creadoEn       DateTime                 @default(now())
+
+  @@index([batchId])
+}
+
+model InventoryCount {
+  id                    String               @id @default(cuid())
+  kind                  InventoryCountKind
+  businessDate          DateTime             @db.Date
+  locationId            String
+  location              InventoryLocation    @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  notes                 String?              @db.VarChar(500)
+  createdByCredentialId String
+  createdByCredential   PosCredential        @relation(fields: [createdByCredentialId], references: [id], onDelete: Restrict)
+  terminalId            String
+  terminal              PosTerminal          @relation(fields: [terminalId], references: [id], onDelete: Restrict)
+  lines                 InventoryCountLine[]
+  movement              InventoryMovement?
+  creadoEn              DateTime             @default(now())
+
+  @@unique([locationId, businessDate, kind])
+  @@index([businessDate, kind])
+}
+
+model InventoryCountLine {
+  id                 String         @id @default(cuid())
+  countId            String
+  count              InventoryCount @relation(fields: [countId], references: [id], onDelete: Restrict)
+  itemId             String
+  item               CatalogItem    @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  countedQuantity    Decimal        @db.Decimal(14, 2)
+  expectedQuantity   Decimal        @db.Decimal(14, 2)
+  differenceQuantity Decimal        @db.Decimal(14, 2)
+  unitCostSnapshot   Decimal?       @db.Decimal(14, 2)
+  matchesExpected    Boolean
+
+  @@unique([countId, itemId])
+}
+
+model WarehouseRequest {
+  id                             String                  @id @default(cuid())
+  folio                          String                  @unique @db.VarChar(64)
+  source                         WarehouseRequestSource
+  requestType                    WarehouseRequestType
+  status                         WarehouseRequestStatus  @default(REQUESTED)
+  branchId                       String?
+  branch                         Sucursal?               @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  supplierId                     String?
+  supplier                       PosSupplier?            @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  priceListId                    String?
+  priceList                      PosPriceList?           @relation(fields: [priceListId], references: [id], onDelete: Restrict)
+  customerId                     String?
+  customer                       Customer?               @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  sourceLocationId               String?
+  sourceLocation                 InventoryLocation?      @relation("WarehouseRequestSourceLocation", fields: [sourceLocationId], references: [id], onDelete: Restrict)
+  destinationLocationId          String
+  destinationLocation            InventoryLocation       @relation("WarehouseRequestDestinationLocation", fields: [destinationLocationId], references: [id], onDelete: Restrict)
+  notes                          String?                 @db.VarChar(1000)
+  createdByCredentialId          String
+  createdByCredential            PosCredential           @relation("WarehouseRequestCreated", fields: [createdByCredentialId], references: [id], onDelete: Restrict)
+  creationApprovedByCredentialId String?
+  creationApprovedByCredential   PosCredential?          @relation("WarehouseRequestCreationApproved", fields: [creationApprovedByCredentialId], references: [id], onDelete: Restrict)
+  creationApprovedAt             DateTime?
+  sendApprovedByCredentialId     String?
+  sendApprovedByCredential       PosCredential?          @relation("WarehouseRequestSendApproved", fields: [sendApprovedByCredentialId], references: [id], onDelete: Restrict)
+  sendApprovedAt                 DateTime?
+  shippedAt                      DateTime?
+  receivedByCredentialId         String?
+  receivedByCredential           PosCredential?          @relation("WarehouseRequestReceived", fields: [receivedByCredentialId], references: [id], onDelete: Restrict)
+  receivedAt                     DateTime?
+  canceledByCredentialId         String?
+  canceledByCredential           PosCredential?          @relation("WarehouseRequestCanceled", fields: [canceledByCredentialId], references: [id], onDelete: Restrict)
+  canceledAt                     DateTime?
+  lines                          WarehouseRequestLine[]
+  events                         WarehouseRequestEvent[]
+  movements                      InventoryMovement[]
+  notifications                  PosNotification[]
+  creadoEn                       DateTime                @default(now())
+  actualizadoEn                  DateTime                @updatedAt
+
+  @@index([status, creadoEn])
+  @@index([branchId, status])
+  @@index([supplierId, status])
+}
+
+model WarehouseRequestLine {
+  id                    String           @id @default(cuid())
+  requestId             String
+  request               WarehouseRequest @relation(fields: [requestId], references: [id], onDelete: Restrict)
+  itemId                String
+  item                  CatalogItem      @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  quantity              Decimal          @db.Decimal(14, 2)
+  itemNameSnapshot      String           @db.VarChar(240)
+  skuSnapshot           String           @db.VarChar(96)
+  unitCostSnapshot      Decimal?         @db.Decimal(14, 2)
+  priceSnapshot         Decimal?         @db.Decimal(14, 2)
+  priceListNameSnapshot String?          @db.VarChar(160)
+  customerNameSnapshot  String?          @db.VarChar(240)
+
+  @@unique([requestId, itemId])
+}
+
+model WarehouseRequestEvent {
+  id                String                  @id @default(cuid())
+  requestId         String
+  request           WarehouseRequest        @relation(fields: [requestId], references: [id], onDelete: Restrict)
+  fromStatus        WarehouseRequestStatus?
+  toStatus          WarehouseRequestStatus
+  action            String                  @db.VarChar(80)
+  actorCredentialId String
+  actorCredential   PosCredential           @relation(fields: [actorCredentialId], references: [id], onDelete: Restrict)
+  notes             String?                 @db.VarChar(1000)
+  creadoEn          DateTime                @default(now())
+
+  @@index([requestId, creadoEn])
+}
+
+model PosNotification {
+  id                    String                @id @default(cuid())
+  kind                  PosNotificationKind
+  title                 String                @db.VarChar(240)
+  message               String                @db.VarChar(1000)
+  branchId              String?
+  branch                Sucursal?             @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  audiencePermission    String?               @db.VarChar(80)
+  warehouseRequestId    String?
+  warehouseRequest      WarehouseRequest?     @relation(fields: [warehouseRequestId], references: [id], onDelete: SetNull)
+  createdByCredentialId String?
+  createdByCredential   PosCredential?        @relation(fields: [createdByCredentialId], references: [id], onDelete: SetNull)
+  reads                 PosNotificationRead[]
+  creadoEn              DateTime              @default(now())
+
+  @@index([branchId, creadoEn])
+  @@index([audiencePermission, creadoEn])
+}
+
+model PosNotificationRead {
+  id             String          @id @default(cuid())
+  notificationId String
+  notification   PosNotification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  credentialId   String
+  credential     PosCredential   @relation(fields: [credentialId], references: [id], onDelete: Restrict)
+  readAt         DateTime        @default(now())
+
+  @@unique([notificationId, credentialId])
+  @@index([credentialId, readAt])
 }
 
 enum TipoCompraCita {

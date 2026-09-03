@@ -10,6 +10,13 @@ import type {
   PosCustomerDto,
   PosCustomerSourceDto,
   PosLoginRequestDto,
+  PosInventoryAdjustmentBatchDto,
+  PosInventoryAdjustmentLineInputDto,
+  PosInventoryBalanceDto,
+  PosInventoryCountDto,
+  PosInventoryLocationDto,
+  PosInventoryMovementDto,
+  PosAuditedInventoryCountDto,
   PosMasterAuthorizationDto,
   PosMasterAuthorizationRequestDto,
   PosPermissionKey,
@@ -18,6 +25,9 @@ import type {
   PosTerminalDto,
   PosTicketConfigurationDto,
   PosVoucherTemplateDto,
+  PosWarehouseRequestCreateDto,
+  PosWarehouseRequestDto,
+  PosNotificationDto,
 } from '@cosmetics/types'
 
 /**
@@ -93,6 +103,21 @@ export interface PosApiClient {
   suppliers(): Promise<PosSupplierDto[]>
   ticketConfiguration(): Promise<PosTicketConfigurationDto>
   voucherTemplates(): Promise<PosVoucherTemplateDto[]>
+  inventoryLocations(): Promise<PosInventoryLocationDto[]>
+  inventoryBalances(locationId?: string): Promise<PosInventoryBalanceDto[]>
+  inventoryMovements(input?: { locationId?: string; businessDate?: string; page?: number; pageSize?: number }): Promise<{ items: PosInventoryMovementDto[]; page: number; pageSize: number; total: number }>
+  inventoryAdjustmentBatches(): Promise<PosInventoryAdjustmentBatchDto[]>
+  createInventoryAdjustmentBatch(input: { notes?: string | null; lines: PosInventoryAdjustmentLineInputDto[] }, idempotencyKey?: string): Promise<PosInventoryAdjustmentBatchDto>
+  updateInventoryAdjustmentBatch(id: string, input: { notes?: string | null; lines: PosInventoryAdjustmentLineInputDto[] }, idempotencyKey?: string): Promise<PosInventoryAdjustmentBatchDto>
+  approveInventoryAdjustmentBatch(id: string, idempotencyKey?: string): Promise<PosInventoryAdjustmentBatchDto>
+  cancelInventoryAdjustmentBatch(id: string, idempotencyKey?: string): Promise<PosInventoryAdjustmentBatchDto>
+  createInventoryCount(input: { kind: "OPENING" | "CLOSING"; businessDate: string; locationId: string; notes?: string; lines: Array<{ itemId: string; countedQuantity: string }> }, idempotencyKey?: string): Promise<PosInventoryCountDto | PosAuditedInventoryCountDto>
+  inventoryCounts(input: { locationId: string; businessDate: string; kind?: "OPENING" | "CLOSING" }): Promise<Array<PosInventoryCountDto | PosAuditedInventoryCountDto>>
+  warehouseRequests(input?: { page?: number; pageSize?: number }): Promise<{ items: PosWarehouseRequestDto[]; page: number; pageSize: number; total: number }>
+  createWarehouseRequest(input: PosWarehouseRequestCreateDto, idempotencyKey?: string): Promise<PosWarehouseRequestDto>
+  warehouseRequestAction(id: string, action: "approve-creation" | "approve-send" | "receive" | "return-to-requested" | "cancel", notes?: string | null, idempotencyKey?: string): Promise<PosWarehouseRequestDto>
+  notifications(input?: { unreadOnly?: boolean; page?: number; pageSize?: number }): Promise<{ items: PosNotificationDto[]; page: number; pageSize: number; total: number }>
+  markNotificationRead(id: string): Promise<{ notificationId: string; readAt: string }>
   clearSession(): void
 }
 
@@ -127,6 +152,7 @@ export function createPosApiClient(baseURL: string, options: PosApiClientOptions
 
   const data = async <T>(request: Promise<{ data: ApiResponse<T> }>): Promise<T> =>
     (await request).data.data
+  const mutationHeaders = (key: string = globalThis.crypto.randomUUID()) => ({ 'Idempotency-Key': key })
 
   return {
     async login(input) {
@@ -159,6 +185,21 @@ export function createPosApiClient(baseURL: string, options: PosApiClientOptions
     suppliers: () => data<PosSupplierDto[]>(client.get('/suppliers')),
     ticketConfiguration: () => data<PosTicketConfigurationDto>(client.get('/settings/ticket')),
     voucherTemplates: () => data<PosVoucherTemplateDto[]>(client.get('/settings/vouchers')),
+    inventoryLocations: () => data<PosInventoryLocationDto[]>(client.get('/inventory/locations')),
+    inventoryBalances: (locationId) => data<PosInventoryBalanceDto[]>(client.get('/inventory/balances', { params: { locationId } })),
+    inventoryMovements: (input = {}) => data(client.get('/inventory/movements', { params: input })),
+    inventoryAdjustmentBatches: () => data<PosInventoryAdjustmentBatchDto[]>(client.get('/inventory/adjustment-batches', { params: { pageSize: 100 } })),
+    createInventoryAdjustmentBatch: (input, key) => data<PosInventoryAdjustmentBatchDto>(client.post('/inventory/adjustment-batches', input, { headers: mutationHeaders(key) })),
+    updateInventoryAdjustmentBatch: (id, input, key) => data<PosInventoryAdjustmentBatchDto>(client.put(`/inventory/adjustment-batches/${id}`, input, { headers: mutationHeaders(key) })),
+    approveInventoryAdjustmentBatch: (id, key) => data<PosInventoryAdjustmentBatchDto>(client.post(`/inventory/adjustment-batches/${id}/approve`, {}, { headers: mutationHeaders(key) })),
+    cancelInventoryAdjustmentBatch: (id, key) => data<PosInventoryAdjustmentBatchDto>(client.post(`/inventory/adjustment-batches/${id}/cancel`, {}, { headers: mutationHeaders(key) })),
+    createInventoryCount: (input, key) => data(client.post('/inventory/counts', input, { headers: mutationHeaders(key) })),
+    inventoryCounts: (input) => data(client.get('/inventory/counts', { params: input })),
+    warehouseRequests: (input = {}) => data(client.get('/warehouse/requests', { params: input })),
+    createWarehouseRequest: (input, key) => data<PosWarehouseRequestDto>(client.post('/warehouse/requests', input, { headers: mutationHeaders(key) })),
+    warehouseRequestAction: (id, action, notes = null, key) => data<PosWarehouseRequestDto>(client.post(`/warehouse/requests/${id}/${action}`, { notes }, { headers: mutationHeaders(key) })),
+    notifications: (input = {}) => data(client.get('/notifications', { params: { ...input, unreadOnly: input.unreadOnly ? 'true' : 'false' } })),
+    markNotificationRead: (id) => data(client.put(`/notifications/${id}/read`)),
     clearSession: () => setAccessToken(null),
   }
 }

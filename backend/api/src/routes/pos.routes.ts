@@ -405,21 +405,29 @@ router.put("/provision/branches/:id/profile", authMiddleware, requireSuperAdmin,
       res.status(404).json({ success: false, message: "Sucursal no encontrada", data: null });
       return;
     }
-    const profile = await db.posBranchProfile.upsert({
-      where: { branchId },
-      create: {
-        branchId,
-        code: normalizeTerminalCode(parsed.data.code),
-        address: parsed.data.address,
-        timezone: parsed.data.timezone,
-        activo: parsed.data.active,
-      },
-      update: {
-        code: normalizeTerminalCode(parsed.data.code),
-        address: parsed.data.address,
-        timezone: parsed.data.timezone,
-        activo: parsed.data.active,
-      },
+    const profile = await db.$transaction(async (tx) => {
+      const saved = await tx.posBranchProfile.upsert({
+        where: { branchId },
+        create: {
+          branchId,
+          code: normalizeTerminalCode(parsed.data.code),
+          address: parsed.data.address,
+          timezone: parsed.data.timezone,
+          activo: parsed.data.active,
+        },
+        update: {
+          code: normalizeTerminalCode(parsed.data.code),
+          address: parsed.data.address,
+          timezone: parsed.data.timezone,
+          activo: parsed.data.active,
+        },
+      });
+      await tx.inventoryLocation.upsert({
+        where: { branchId },
+        create: { branchId, code: `BR-${normalizeTerminalCode(parsed.data.code)}`.slice(0, 64), name: branch.nombre, type: "BRANCH", active: branch.activa && parsed.data.active },
+        update: { name: branch.nombre, active: branch.activa && parsed.data.active },
+      });
+      return saved;
     });
     await audit(req, {
       action: "POS_BRANCH_PROFILE_UPDATED",
