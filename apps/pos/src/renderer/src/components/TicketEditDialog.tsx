@@ -47,7 +47,9 @@ interface TicketEditDialogProps {
   products: Product[];
   paymentMethods: PaymentMethodOption[];
   onOpenChange: (open: boolean) => void;
-  onSave: (ticketId: string, changes: TicketEditRequest) => boolean;
+  backendMode?: boolean;
+  defaultAuthorizationAlias?: string;
+  onSave: (ticketId: string, changes: TicketEditRequest) => boolean | Promise<boolean>;
 }
 
 export function TicketEditDialog({
@@ -58,6 +60,8 @@ export function TicketEditDialog({
   paymentMethods,
   onOpenChange,
   onSave,
+  backendMode = false,
+  defaultAuthorizationAlias = "",
 }: TicketEditDialogProps) {
   const [clientName, setClientName] = useState("");
   const [clientPhone, setClientPhone] = useState("");
@@ -67,6 +71,8 @@ export function TicketEditDialog({
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>("PAID");
   const [payments, setPayments] = useState<PaymentEntry[]>([]);
   const [authorizationCode, setAuthorizationCode] = useState("");
+  const [authorizationAlias, setAuthorizationAlias] = useState("");
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!ticket || !open) return;
@@ -95,6 +101,7 @@ export function TicketEditDialog({
           : [],
     );
     setAuthorizationCode("");
+    setAuthorizationAlias(defaultAuthorizationAlias);
     const recordedProductTotal = ticket.products.reduce(
       (sum, line) => sum + line.total,
       0,
@@ -114,7 +121,7 @@ export function TicketEditDialog({
             : 0,
       })),
     );
-  }, [open, paymentMethods, ticket]);
+  }, [defaultAuthorizationAlias, open, paymentMethods, ticket]);
 
   const productById = useMemo(
     () => new Map(products.map((product) => [product.id, product])),
@@ -616,15 +623,22 @@ export function TicketEditDialog({
               Cobrado: {formatCurrency(normalizedAmountPaid)}
             </Badge>
           </section>
-          {requiresAuthorization && (
+          {(backendMode || requiresAuthorization) && (
             <section className="ticket-edit-authorization">
               <div>
                 <strong>Autorización administrativa requerida</strong>
                 <small>
-                  La nueva venta profundiza el importe autorizado bajo el
-                  mínimo combinado.
+                  {requiresAuthorization
+                    ? "La nueva venta profundiza el importe autorizado bajo el mínimo combinado."
+                    : "Las revisiones del ticket requieren autorización master y conservan el original."}
                 </small>
               </div>
+              <Input
+                value={authorizationAlias}
+                onChange={(event) => setAuthorizationAlias(event.target.value)}
+                placeholder="Alias master"
+                aria-label="Alias master para revisar ticket"
+              />
               <Input
                 type="password"
                 inputMode="numeric"
@@ -660,10 +674,13 @@ export function TicketEditDialog({
                 (payments.length === 0 ||
                   payments.some(
                     (payment) => !payment.methodId || payment.amount <= 0,
-                  )))
+                  ))) ||
+              saving ||
+              (backendMode && (!authorizationAlias.trim() || !authorizationCode))
             }
             onClick={() => {
-              const saved = onSave(ticket.id, {
+              setSaving(true);
+              void Promise.resolve(onSave(ticket.id, {
                 clientName: clientName.trim(),
                 clientPhone: clientPhone.trim(),
                 sellerIds,
@@ -678,8 +695,10 @@ export function TicketEditDialog({
                 paymentMethodId: payments[0]?.methodId ?? "",
                 payments: payments.map((payment) => ({ ...payment })),
                 authorizationCode,
-              });
-              if (saved) onOpenChange(false);
+                authorizationAlias: authorizationAlias.trim(),
+              })).then((saved) => {
+                if (saved) onOpenChange(false);
+              }).finally(() => setSaving(false));
             }}
           >
             <Save size={16} /> Guardar y actualizar registros

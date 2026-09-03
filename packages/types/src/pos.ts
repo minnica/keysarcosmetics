@@ -511,6 +511,8 @@ export interface PosTicketLineInputDto {
   quantity: Money;
   unitPrice: Money;
   notes?: string;
+  packageId?: PosId;
+  delivered?: boolean;
 }
 
 export interface PosTicketSellerInputDto {
@@ -520,9 +522,46 @@ export interface PosTicketSellerInputDto {
 
 export interface PosTicketPaymentInputDto {
   methodId: PosId;
-  methodType: PosPaymentMethodType;
+  methodType?: PosPaymentMethodType;
   amount: Money;
   reference?: string;
+  institution?: string;
+  authorizationLastFour?: string;
+}
+
+export interface PosTicketDiscountInputDto {
+  kind: "PERCENT" | "FIXED";
+  value: Money;
+}
+
+export interface PosTicketAppointmentInputDto {
+  kind: "COURTESY" | "NEXT_SESSION" | "NO_APPOINTMENT";
+  serviceItemId?: PosId;
+  serviceName: string;
+  branchId: PosId;
+  sellerId?: PosId;
+  scheduledAt?: IsoUtcDateTime;
+}
+
+export interface PosTicketCourtesyInputDto {
+  serviceItemId?: PosId;
+  serviceName: string;
+  appointmentIndex?: number;
+  policyId?: PosId;
+  policyName: string;
+  authorizationToken?: string;
+}
+
+export interface PosTicketCustomerInputDto {
+  id?: PosId;
+  create?: {
+    displayName: string;
+    phone?: string | null;
+    email?: string | null;
+    sourceId?: PosId | null;
+    notes?: string | null;
+    ownerEmployeeId?: PosId | null;
+  };
 }
 
 export interface PosTicketQuoteRequestDto {
@@ -530,7 +569,8 @@ export interface PosTicketQuoteRequestDto {
   customerId?: PosId;
   lines: PosTicketLineInputDto[];
   sellers: PosTicketSellerInputDto[];
-  payments: PosTicketPaymentInputDto[];
+  payments?: PosTicketPaymentInputDto[];
+  discount?: PosTicketDiscountInputDto;
   authorizationToken?: string;
 }
 
@@ -541,15 +581,160 @@ export interface PosTicketQuoteDto {
   total: Money;
   amountReceived: Money;
   pendingAmount: Money;
+  minimumTotal: Money;
+  spareTotal: Money;
   requiresAuthorization: boolean;
+  authorizationPurpose: "SALE_BELOW_MINIMUM" | null;
+  lines: Array<{
+    itemId: PosId;
+    itemName: string;
+    sku: string;
+    quantity: Money;
+    unitPrice: Money;
+    unitMinimumPrice: Money;
+    subtotal: Money;
+    discountTotal: Money;
+    taxTotal: Money;
+    total: Money;
+    packageId: PosId | null;
+  }>;
 }
 
-export interface PosTicketDto extends PosTicketQuoteDto {
+export interface PosTicketCreateRequestDto extends PosTicketQuoteRequestDto {
+  customer: PosTicketCustomerInputDto;
+  payments: PosTicketPaymentInputDto[];
+  appointments?: PosTicketAppointmentInputDto[];
+  courtesies?: PosTicketCourtesyInputDto[];
+}
+
+export interface PosTicketPaymentDto {
+  id: PosId;
+  methodId: PosId;
+  methodName: string;
+  methodType: "EFECTIVO" | "TARJETA" | "TRANSFERENCIA" | "OTRO";
+  amount: Money;
+  reference: string | null;
+  institution: string | null;
+  authorizationLastFour: string | null;
+}
+
+export interface PosPaymentOperationDto {
+  id: PosId;
+  folio: string;
+  kind: "SALE" | "LAYAWAY_PAYMENT" | "REFUND" | "REVISION";
+  amount: Money;
+  businessDate: BusinessDate;
+  createdAt: IsoUtcDateTime;
+  payments: PosTicketPaymentDto[];
+}
+
+export interface PosTicketLineDto {
+  id: PosId;
+  kind: "SALE" | "GIFT";
+  itemId: PosId | null;
+  itemName: string;
+  sku: string;
+  quantity: Money;
+  unitPrice: Money;
+  unitListPrice: Money;
+  unitMinimumPrice: Money;
+  subtotal: Money;
+  discountTotal: Money;
+  taxTotal: Money;
+  total: Money;
+  packageId: PosId | null;
+  packageName: string | null;
+  notes: string | null;
+}
+
+export interface PosTicketSellerDto {
+  employeeId: PosId;
+  name: string;
+  shareAmount: Money;
+  sharePercent: Money;
+}
+
+export interface PosOwedProductDto {
+  id: PosId;
+  ticketLineId: PosId;
+  itemId: PosId;
+  itemName: string;
+  quantity: Money;
+  deliveredQuantity: Money;
+  pendingQuantity: Money;
+  inventoryCommitted: boolean;
+  status: "PENDING" | "DELIVERED" | "CANCELED";
+}
+
+export interface PosAppointmentDto {
+  id: PosId;
+  kind: "COURTESY" | "NEXT_SESSION" | "NO_APPOINTMENT";
+  status: "PENDING" | "SCHEDULED" | "CANCELED" | "COMPLETED";
+  serviceItemId: PosId | null;
+  serviceName: string;
+  branchId: PosId;
+  branchName: string;
+  sellerId: PosId | null;
+  scheduledAt: IsoUtcDateTime | null;
+}
+
+export interface PosTicketDto extends Omit<PosTicketQuoteDto, "lines"> {
   id: PosId;
   folio: string;
   status: PosTicketStatus;
   businessDate: BusinessDate;
   createdAt: IsoUtcDateTime;
+  settlementStatus: "PAID" | "LAYAWAY" | "PENDING";
+  branchId: PosId;
+  branchName: string;
+  customerId: PosId | null;
+  customerName: string | null;
+  customerPhone: string | null;
+  lines: PosTicketLineDto[];
+  sellers: PosTicketSellerDto[];
+  paymentOperations: PosPaymentOperationDto[];
+  owedProducts: PosOwedProductDto[];
+  appointments: PosAppointmentDto[];
+}
+
+export interface PosLayawayPaymentRequestDto {
+  payments: PosTicketPaymentInputDto[];
+  deliveredTicketLineIds?: PosId[];
+}
+
+export interface PosOwedProductDeliveryRequestDto {
+  quantity: Money;
+}
+
+export interface PosTicketEventRequestDto {
+  reason: string;
+  refundAmount?: Money;
+  returnedLines?: Array<{ ticketLineId: PosId; quantity: Money }>;
+  revision?: Record<string, unknown>;
+  authorizationToken: string;
+}
+
+export interface PosTicketEventDto {
+  id: PosId;
+  type: "REVISION" | "CANCELLATION" | "RETURN";
+  amount: Money;
+  reason: string;
+  createdAt: IsoUtcDateTime;
+}
+
+export interface PosVoucherIssueDto {
+  id: PosId;
+  folio: string;
+  templateId: PosId;
+  templateName: string;
+  kind: "NEXT_PURCHASE_DISCOUNT" | "COMPANION_FACIAL" | "MEMBERSHIP_DISCOUNT";
+  value: Money;
+  message: string;
+  ticketId: PosId;
+  customerId: PosId | null;
+  status: "ISSUED" | "REDEEMED" | "CANCELED";
+  printCount: number;
+  issuedAt: IsoUtcDateTime;
 }
 
 export interface PosSyncOperationDto {

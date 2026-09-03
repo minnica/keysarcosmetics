@@ -34,7 +34,8 @@ interface ReceiptTicketDialogProps {
   paymentMethods: PaymentMethodOption[];
   voucherTemplates: VoucherTemplate[];
   allowPrint: boolean;
-  onIssueVoucher: (ticket: Ticket, voucherId: string) => VoucherIssue | null;
+  onIssueVoucher: (ticket: Ticket, voucherId: string) => Promise<VoucherIssue | null>;
+  onPrintVoucher: (issue: VoucherIssue) => Promise<void>;
   onOpenChange: (open: boolean) => void;
 }
 
@@ -48,10 +49,12 @@ export function ReceiptTicketDialog({
   voucherTemplates,
   allowPrint,
   onIssueVoucher,
+  onPrintVoucher,
   onOpenChange,
 }: ReceiptTicketDialogProps) {
   const [selectedVoucherId, setSelectedVoucherId] = useState("");
   const [issuedVoucher, setIssuedVoucher] = useState<VoucherIssue | null>(null);
+  const [issuingVoucher, setIssuingVoucher] = useState(false);
 
   useEffect(() => {
     setSelectedVoucherId("");
@@ -60,16 +63,20 @@ export function ReceiptTicketDialog({
 
   if (!ticket) return null;
 
-  const printTicketSequence = () => {
+  const printTicketSequence = async () => {
     if (!issuedVoucher && selectedVoucherId) {
-      const nextVoucher = onIssueVoucher(ticket, selectedVoucherId);
+      setIssuingVoucher(true);
+      const nextVoucher = await onIssueVoucher(ticket, selectedVoucherId);
+      setIssuingVoucher(false);
       if (!nextVoucher) return;
       setIssuedVoucher(nextVoucher);
+      await onPrintVoucher(nextVoucher);
       window.requestAnimationFrame(() =>
         window.requestAnimationFrame(() => window.print()),
       );
       return;
     }
+    if (issuedVoucher) await onPrintVoucher(issuedVoucher);
     window.print();
   };
 
@@ -333,10 +340,13 @@ export function ReceiptTicketDialog({
                 <Button
                   type="button"
                   variant="outline"
-                  disabled={!selectedVoucherId}
-                  onClick={() => setIssuedVoucher(onIssueVoucher(ticket, selectedVoucherId))}
+                  disabled={!selectedVoucherId || issuingVoucher}
+                  onClick={() => {
+                    setIssuingVoucher(true);
+                    void onIssueVoucher(ticket, selectedVoucherId).then(setIssuedVoucher).finally(() => setIssuingVoucher(false));
+                  }}
                 >
-                  <Gift size={15} /> Generar
+                  <Gift size={15} /> {issuingVoucher ? "Generando..." : "Generar"}
                 </Button>
               </div>
             ) : (

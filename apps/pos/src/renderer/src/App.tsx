@@ -77,7 +77,7 @@ import {
   Toaster,
   toast,
 } from "@cosmetics/ui";
-import type { PosBranchSummaryDto, PosInventoryLocationDto, PosPermissionKey, PosSessionDto } from "@cosmetics/types";
+import type { PosBranchSummaryDto, PosInventoryLocationDto, PosPermissionKey, PosSessionDto, PosTicketQuoteDto } from "@cosmetics/types";
 import {
   CheckoutDialog,
   type CheckoutResult,
@@ -232,6 +232,11 @@ import {
   inventoryMovementsFromDto,
   warehouseMovementFromDto,
 } from "./lib/pos-inventory-api";
+import {
+  layawayFromDto,
+  owedProductsFromDto,
+  ticketFromDto,
+} from "./lib/pos-ticket-api";
 
 const getSaleProductBrand = (product: Product) =>
   product.kind === "SERVICE"
@@ -239,6 +244,27 @@ const getSaleProductBrand = (product: Product) =>
     : product.supplierName
       ?.replace(" International", "")
       .replace(" México", "") ?? product.family;
+
+const clientFromPosCustomer = (customer: { id: string; displayName: string; phone: string | null }): Client => {
+  const [firstName = customer.displayName, ...lastNameParts] = customer.displayName.trim().split(/\s+/);
+  return {
+    id: customer.id,
+    registrationFolio: customer.id,
+    registeredAtIso: "",
+    firstName,
+    lastName: lastNameParts.join(" "),
+    birthday: "",
+    gender: "",
+    phone: customer.phone ?? "",
+    whatsapp: customer.phone ?? "",
+    source: "",
+    sourceLabel: "Directorio central",
+    companyName: "",
+    companyLocked: false,
+    ownerId: null,
+    saleSellerIds: [],
+  };
+};
 
 /** Adapta el DTO público al componente existente sin reintroducir costos. */
 const productFromPosCatalog = (item: {
@@ -805,6 +831,11 @@ function App() {
   const [editingCartItem, setEditingCartItem] = useState<CartItem | null>(null);
   const [productDialogOpen, setProductDialogOpen] = useState(false);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const [authoritativeQuote, setAuthoritativeQuote] = useState<PosTicketQuoteDto | null>(null);
+  const [saleAuthorizationOpen, setSaleAuthorizationOpen] = useState(false);
+  const [saleAuthorizationAlias, setSaleAuthorizationAlias] = useState("");
+  const [saleAuthorizationCode, setSaleAuthorizationCode] = useState("");
+  const [saleAuthorizationToken, setSaleAuthorizationToken] = useState<string | null>(null);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [catalogProducts, setCatalogProducts] = useState(initialProducts);
   const [sellers, setSellers] = useState(initialSellers);
@@ -1016,6 +1047,7 @@ function App() {
   }));
 
   useEffect(() => {
+    if (posApiEnabled) return;
     window.localStorage.setItem(
       voucherIssuesStorageKey,
       JSON.stringify(voucherIssues),
@@ -1223,7 +1255,7 @@ function App() {
       }));
     }
     let loadedCatalog: Awaited<ReturnType<typeof posApi.catalogItems>>["items"] = [];
-    if (session.actor.isMaster || session.permissions.some((permission) => ["CATALOG_VIEW", "INVENTORY_VIEW", "INVENTORY_ADJUST", "WAREHOUSE_MANAGE", "WAREHOUSE_BRANCH_REQUEST"].includes(permission))) {
+    if (session.actor.isMaster || session.permissions.some((permission) => ["CATALOG_VIEW", "SALE_CREATE", "INVENTORY_VIEW", "INVENTORY_ADJUST", "WAREHOUSE_MANAGE", "WAREHOUSE_BRANCH_REQUEST"].includes(permission))) {
       const catalog = await posApi.catalogItems({ pageSize: 100 });
       loadedCatalog = catalog.items;
       setCatalogProducts(catalog.items.filter((item) => item.kind !== "SUPPLY").map((item) => productFromPosCatalog(item, branchName)));
@@ -1314,8 +1346,122 @@ function App() {
       })));
     }
     if (session.actor.isMaster || session.permissions.includes("VOUCHERS_MANAGE")) {
-      const vouchers = await posApi.voucherTemplates();
+      const [vouchers, issues] = await Promise.all([
+        posApi.voucherTemplates(),
+        posApi.vouchers({ pageSize: 100 }),
+      ]);
       setVoucherTemplates(vouchers.map((voucher) => ({ ...voucher, value: Number(voucher.value) })));
+      setVoucherIssues(issues.items.map((issue) => ({
+        id: issue.id,
+        folio: issue.folio,
+        voucherId: issue.templateId,
+        voucherName: issue.templateName,
+        voucherKind: issue.kind,
+        value: Number(issue.value),
+        message: issue.message,
+        ticketId: issue.ticketId,
+        clientId: issue.customerId,
+        clientName: "Cliente POS",
+        clientPhone: "",
+        branch: branchName,
+        issuedAtIso: issue.issuedAt,
+        status: issue.status === "CANCELED" ? "CANCELLED" : issue.status,
+      })));
+    }
+    if (!session.actor.isMaster && !session.permissions.includes("EMPLOYEES_VIEW") && session.permissions.includes("SALE_CREATE")) {
+      const saleSellers = await posApi.saleSellers();
+      setSellers(saleSellers.map((seller) => ({
+        id: seller.id,
+        name: seller.displayName,
+        alias: "",
+        initials: seller.displayName.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toLocaleUpperCase("es-MX") ?? "").join(""),
+        active: true,
+        accessCode: "",
+        masterAccessCode: null,
+        canViewCosts: false,
+        roleId: seller.positionId ?? "",
+      })));
+    }
+    if (session.actor.isMaster || session.permissions.some((permission) => permission === "CATALOG_VIEW" || permission === "SALE_CREATE")) {
+      const packages = await posApi.packages();
+      setDeals(packages.map((item) => ({
+        id: item.id,
+        name: item.name,
+        sku: item.sku,
+        description: item.description ?? "",
+        price: Number(item.price),
+        lines: item.lines.map((line) => ({ productId: line.itemId, quantity: Number(line.quantity) })),
+        branches: branches.map((branch) => branch.name),
+        startDate: item.startsAt?.slice(0, 10) ?? "",
+        endDate: item.endsAt?.slice(0, 10) ?? "",
+        status: item.status,
+        createdAtIso: item.startsAt ?? "",
+        publishedAtIso: item.status === "PUBLISHED" ? item.startsAt ?? "" : null,
+        authorizedBy: null,
+      })));
+    }
+    if (session.actor.isMaster || session.permissions.includes("SALE_CREATE")) {
+      const [methods, sources] = await Promise.all([
+        posApi.paymentMethods(),
+        posApi.customerSources(),
+      ]);
+      setPaymentMethods(methods.filter((method) => method.activeForPos).map((method) => ({ id: method.id, label: method.name, active: method.active })));
+      setClientSources(sources.map((source) => ({ id: source.id, label: source.name, active: source.active, locksCompany: false })));
+    }
+    if (session.actor.isMaster || session.permissions.some((permission) => permission === "SALE_VIEW_OWN" || permission === "SALE_VIEW_ALL" || permission === "CUSTOMERS_VIEW")) {
+      const ticketPage = await posApi.tickets({ pageSize: 100 });
+      const realTickets = ticketPage.items.map(ticketFromDto);
+      setTickets(realTickets);
+      setLayaways(ticketPage.items.flatMap((ticket) => {
+        const layaway = layawayFromDto(ticket);
+        return layaway ? [layaway] : [];
+      }));
+      setOwedProducts(ticketPage.items.flatMap(owedProductsFromDto));
+      setAppointments(ticketPage.items.flatMap((ticket) => ticket.appointments
+        .filter((appointment) => appointment.status === "SCHEDULED" || appointment.status === "PENDING")
+        .map((appointment) => {
+          const scheduled = appointment.scheduledAt ? new Date(appointment.scheduledAt) : null;
+          return {
+            id: appointment.id,
+            kind: appointment.kind,
+            service: appointment.serviceName,
+            date: scheduled ? appointment.scheduledAt!.slice(0, 10) : "",
+            branch: appointment.branchName,
+            time: scheduled ? appointment.scheduledAt!.slice(11, 16) : "",
+            clientId: ticket.customerId ?? "",
+            clientName: ticket.customerName ?? "Público general",
+            clientPhone: ticket.customerPhone ?? "",
+            ticketId: ticket.folio,
+            sellerIds: appointment.sellerId ? [appointment.sellerId] : ticket.sellers.map((seller) => seller.employeeId),
+            recordedAt: new Intl.DateTimeFormat("es-MX", { day: "2-digit", month: "short", year: "numeric" }).format(new Date(ticket.createdAt)),
+            recordedAtIso: ticket.createdAt,
+            status: appointment.status === "SCHEDULED" ? "SCHEDULED" as const : "PENDING" as const,
+          };
+        })));
+      const knownClients = new Map<string, Client>();
+      for (const ticket of ticketPage.items) {
+        if (!ticket.customerId || knownClients.has(ticket.customerId)) continue;
+        const [firstName, ...lastName] = (ticket.customerName ?? "Cliente").split(/\s+/);
+        knownClients.set(ticket.customerId, {
+          id: ticket.customerId,
+          registrationFolio: ticket.customerId,
+          registeredAtIso: ticket.createdAt,
+          firstName: firstName ?? "Cliente",
+          lastName: lastName.join(" "),
+          birthday: "",
+          gender: "",
+          phone: ticket.customerPhone ?? "",
+          whatsapp: ticket.customerPhone ?? "",
+          source: "",
+          sourceLabel: "POS",
+          companyName: "",
+          companyLocked: false,
+          ownerId: ticket.sellers[0]?.employeeId ?? null,
+          saleSellerIds: ticket.sellers.map((seller) => seller.employeeId),
+          registrationBranch: ticket.branchName,
+        });
+      }
+      setClients([...knownClients.values()]);
     }
     const nextScreens = session.actor.isMaster
       ? (Object.keys(screenMetadata) as ScreenId[])
@@ -3467,18 +3613,28 @@ function App() {
       const product = catalogProducts.find(
         (candidate) => candidate.id === line.productId,
       );
+      const owed = owedProducts.find((record) =>
+        record.ticketId === cancellingTicket.id &&
+        record.backendTicketLineId === line.backendLineId,
+      );
+      const deliveredQuantity = Math.max(
+        0,
+        line.quantity - (owed?.quantity ?? 0) + (owed?.deliveredQuantity ?? 0),
+      );
       return product?.kind === "PRODUCT"
+        && deliveredQuantity > 0
         ? [
             {
+              ...(line.backendLineId ? { backendLineId: line.backendLineId } : {}),
               productId: line.productId,
               productName: line.name,
-              quantity: line.quantity,
+              quantity: deliveredQuantity,
               branch: cancellingTicket.branchName ?? activeBranch,
             },
           ]
         : [];
     });
-  }, [activeBranch, cancellingTicket, catalogProducts]);
+  }, [activeBranch, cancellingTicket, catalogProducts, owedProducts]);
 
   const saleProducts = useMemo(
     () =>
@@ -3719,17 +3875,166 @@ function App() {
     setCart(nextCart);
   };
 
-  const openCheckout = () => {
-    if (!isCartFloorCoveredOrAuthorized(cart)) {
+  const openCheckout = async () => {
+    if (!posApiEnabled && !isCartFloorCoveredOrAuthorized(cart)) {
       toast.error(
         "El total del ticket no cubre el mínimo combinado y requiere autorización administrativa.",
       );
       return;
     }
-    setCheckoutOpen(true);
+    if (!posApiEnabled) {
+      setCheckoutOpen(true);
+      return;
+    }
+    if (!apiSession || cart.length === 0) return;
+    try {
+      const quote = await posApi.quoteTicket({
+        branchId: apiSession.terminal.branch.id,
+        lines: cart.map((item) => ({
+          itemId: item.product.id,
+          quantity: item.quantity.toFixed(2),
+          unitPrice: item.unitPrice.toFixed(2),
+          ...(item.comment ? { notes: item.comment } : {}),
+          ...(item.dealId ? { packageId: item.dealId } : {}),
+        })),
+        sellers: [{ employeeId: sellers.find((seller) => seller.active)?.id ?? apiSession.actor.id, share: ticketTotal.toFixed(2) }],
+        ...(ticketDiscountAmount > 0 ? { discount: { kind: "FIXED" as const, value: ticketDiscountAmount.toFixed(2) } } : {}),
+      });
+      setAuthoritativeQuote(quote);
+      setSaleAuthorizationToken(null);
+      if (quote.requiresAuthorization) {
+        setSaleAuthorizationAlias(apiSession.actor.isMaster ? apiSession.actor.alias : "");
+        setSaleAuthorizationCode("");
+        setSaleAuthorizationOpen(true);
+        return;
+      }
+      setCheckoutOpen(true);
+    } catch (error) {
+      toast.error((error as { response?: { data?: { message?: string } } }).response?.data?.message ?? "No se pudo validar el total del ticket.");
+    }
   };
 
-  const completeTicket = (result: CheckoutResult) => {
+  const confirmSaleAuthorization = async () => {
+    if (!apiSession || !authoritativeQuote) return;
+    try {
+      const authorization = await posApi.createAuthorization({
+        alias: saleAuthorizationAlias.trim(),
+        pin: saleAuthorizationCode,
+        purpose: "SALE_BELOW_MINIMUM",
+      });
+      setSaleAuthorizationToken(authorization.authorizationToken);
+      setSaleAuthorizationOpen(false);
+      setCheckoutOpen(true);
+    } catch (error) {
+      toast.error((error as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Autorización master inválida.");
+    }
+  };
+
+  const completeTicket = async (result: CheckoutResult) => {
+    if (posApiEnabled) {
+      if (!apiSession) {
+        toast.error("La sesión POS no está disponible.");
+        return;
+      }
+      try {
+        const sellerShares = result.sellerSales.map((sale) => Math.round(sale.amount * 100));
+        const expectedCents = Math.round(Number(authoritativeQuote?.total ?? ticketTotal) * 100);
+        const authoritativeDiscount = Number(authoritativeQuote?.discountTotal ?? ticketDiscountAmount);
+        const assignedCents = sellerShares.reduce((sum, share) => sum + share, 0);
+        if (sellerShares.length > 0) sellerShares[sellerShares.length - 1]! += expectedCents - assignedCents;
+        const appointments = result.appointments.map((appointment) => {
+          const branchId = apiBranches.find((branch) => branch.name === appointment.branch)?.id ?? apiSession.terminal.branch.id;
+          const scheduledAt = appointment.kind === "NO_APPOINTMENT"
+            ? undefined
+            : new Date(`${appointment.date}T${appointment.time}:00`).toISOString();
+          return {
+            kind: appointment.kind,
+            serviceName: appointment.service,
+            branchId,
+            ...(result.sellerSales[0]?.sellerId ? { sellerId: result.sellerSales[0].sellerId } : {}),
+            ...(scheduledAt ? { scheduledAt } : {}),
+          };
+        });
+        const courtesyIndexes = result.appointments.flatMap((appointment, index) => appointment.kind === "COURTESY" ? [index] : []);
+        const dto = await posApi.createTicket({
+          branchId: apiSession.terminal.branch.id,
+          ...(!result.createdClient ? { customerId: result.client.id } : {}),
+          customer: result.createdClient ? { create: {
+            displayName: `${result.client.firstName} ${result.client.lastName}`.trim(),
+            phone: result.client.phone || null,
+            sourceId: clientSources.some((source) => source.id === result.client.source) ? result.client.source : null,
+            notes: result.client.whatsapp ? `WhatsApp: ${result.client.whatsapp}` : null,
+            ownerEmployeeId: result.client.ownerId,
+          } } : { id: result.client.id },
+          lines: cart.map((item) => ({
+            itemId: item.product.id,
+            quantity: item.quantity.toFixed(2),
+            unitPrice: item.unitPrice.toFixed(2),
+            ...(item.comment ? { notes: item.comment } : {}),
+            ...(item.dealId ? { packageId: item.dealId } : {}),
+            delivered: result.paymentStatus === "PAID" || result.deliveredCartItemIds.includes(item.id),
+          })),
+          sellers: result.sellerSales.map((sale, index) => ({ employeeId: sale.sellerId, share: ((sellerShares[index] ?? 0) / 100).toFixed(2) })),
+          payments: result.payments.map((payment) => ({
+            methodId: payment.methodId,
+            amount: payment.amount.toFixed(2),
+            ...(payment.authorizationCode ? { reference: payment.authorizationCode, authorizationLastFour: payment.authorizationCode } : {}),
+            ...(payment.cardOrBank ? { institution: payment.cardOrBank } : {}),
+          })),
+          ...(authoritativeDiscount > 0 ? { discount: { kind: "FIXED" as const, value: authoritativeDiscount.toFixed(2) } } : {}),
+          appointments,
+          courtesies: courtesyIndexes.map((appointmentIndex) => ({
+            serviceName: result.appointments[appointmentIndex]!.service,
+            appointmentIndex,
+            policyName: "Cortesía de bienvenida",
+          })),
+          ...(saleAuthorizationToken ? { authorizationToken: saleAuthorizationToken } : {}),
+        });
+        const ticket = ticketFromDto(dto);
+        const client = { ...result.client, id: dto.customerId ?? result.client.id, registrationFolio: dto.customerId ?? result.client.registrationFolio };
+        setClients((current) => result.createdClient ? [client, ...current] : current.map((item) => item.id === client.id ? client : item));
+        setTickets((current) => [ticket, ...current.filter((item) => item.id !== ticket.id)]);
+        const layaway = layawayFromDto(dto);
+        if (layaway) setLayaways((current) => [layaway, ...current.filter((item) => item.id !== layaway.id)]);
+        setOwedProducts((current) => [...owedProductsFromDto(dto), ...current]);
+        const clientName = `${client.firstName} ${client.lastName}`.trim();
+        setAppointments((current) => [...result.appointments.map((appointment, index) => ({
+          ...appointment,
+          id: `api-appointment-${dto.id}-${index}`,
+          clientId: client.id,
+          clientName,
+          clientPhone: client.phone,
+          ticketId: ticket.id,
+          sellerIds: result.sellerSales.map((sale) => sale.sellerId),
+          recordedAt: ticket.createdAt,
+          recordedAtIso: ticket.createdAtIso,
+          status: appointment.kind === "NO_APPOINTMENT" ? "PENDING" as const : "SCHEDULED" as const,
+        })), ...current]);
+        setBranchInventory((current) => {
+          const branch = { ...(current[activeBranch] ?? {}) };
+          for (const item of cart.filter((entry) =>
+            entry.product.kind === "PRODUCT" &&
+            (result.paymentStatus === "PAID" || result.deliveredCartItemIds.includes(entry.id)),
+          )) branch[item.product.id] = (branch[item.product.id] ?? 0) - item.quantity;
+          return { ...current, [activeBranch]: branch };
+        });
+        setCart([]);
+        setDiscountMode("PERCENT");
+        setDiscountValue(0);
+        setDiscountOpen(false);
+        setCheckoutOpen(false);
+        setAuthoritativeQuote(null);
+        setSaleAuthorizationToken(null);
+        setActiveScreen("receipts");
+        setSelectedReceiptTicket(ticket);
+        setReceiptPreviewOpen(true);
+        toast.success(`Ticket ${ticket.id} registrado y conciliado.`);
+      } catch (error) {
+        const message = (error as { response?: { data?: { message?: string } }; message?: string }).response?.data?.message ?? (error instanceof Error ? error.message : "No se pudo registrar el ticket");
+        toast.error(message);
+      }
+      return;
+    }
     const ticketBranch = activeBranch;
     setClients((current) =>
       result.createdClient
@@ -5386,6 +5691,30 @@ function App() {
       );
       return;
     }
+    if (posApiEnabled) {
+      void posApi.deliverOwedProduct(record.id, deliveredNow.toFixed(2)).then((delivery) => {
+        setOwedProducts((current) => current.map((item) => item.id !== owedProductId ? item : {
+          ...item,
+          deliveredQuantity: item.deliveredQuantity + deliveredNow,
+          status: item.deliveredQuantity + deliveredNow >= item.quantity ? "FULFILLED" : "PENDING",
+          deliveryHistory: [...item.deliveryHistory, {
+            id: delivery.id,
+            quantity: deliveredNow,
+            deliveredAt: new Intl.DateTimeFormat("es-MX", {
+              day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit",
+            }).format(new Date(delivery.createdAt)),
+            deliveredAtIso: delivery.createdAt,
+            branch: item.branch,
+            movementId: delivery.id,
+          }],
+        }));
+        toast.success(`${deliveredNow} ${record.productName} quedó entregado a ${record.clientName}.`);
+      }).catch((error: unknown) => toast.error(
+        (error as { response?: { data?: { message?: string } } }).response?.data?.message
+          ?? "No se pudo registrar la entrega.",
+      ));
+      return;
+    }
     const createdAt = new Date();
     const createdAtLabel = new Intl.DateTimeFormat("es-MX", {
       day: "2-digit",
@@ -5534,6 +5863,28 @@ function App() {
     const layaway = layaways.find((item) => item.id === layawayId);
     const seller = sellers.find((item) => item.id === sellerId);
     if (!layaway || layaway.status === "PAID" || !seller) return;
+    if (posApiEnabled) {
+      void posApi.addLayawayPayment(layaway.id, requestedPayments.map((payment) => ({
+        methodId: payment.methodId,
+        amount: payment.amount.toFixed(2),
+        ...(payment.authorizationCode ? { reference: payment.authorizationCode, authorizationLastFour: payment.authorizationCode } : {}),
+        ...(payment.cardOrBank ? { institution: payment.cardOrBank } : {}),
+      })), deliveredCartItemIds).then((dto) => {
+        const updatedTicket = ticketFromDto(dto);
+        const updatedLayaway = layawayFromDto(dto);
+        setTickets((current) => current.map((ticket) => ticket.backendId === dto.id ? updatedTicket : ticket));
+        setLayaways((current) => updatedLayaway
+          ? current.map((item) => item.id === updatedLayaway.id ? updatedLayaway : item)
+          : current.map((item) => item.id === dto.id ? { ...item, amountPaid: Number(dto.amountReceived), balanceDue: 0, status: "PAID" } : item));
+        const updatedOwed = owedProductsFromDto(dto);
+        setOwedProducts((current) => [
+          ...updatedOwed,
+          ...current.filter((item) => item.layawayId !== dto.id),
+        ]);
+        toast.success(`Abono registrado. Saldo ${formatCurrency(Number(dto.pendingAmount))}.`);
+      }).catch((error: unknown) => toast.error((error as { response?: { data?: { message?: string } } }).response?.data?.message ?? "No se pudo registrar el abono."));
+      return;
+    }
     let remainingPaymentCapacity = layaway.balanceDue;
     const appliedPayments = requestedPayments
       .map((payment) => {
@@ -5985,7 +6336,7 @@ function App() {
     setReceiptPreviewOpen(true);
   };
 
-  const issueVoucher = (ticket: Ticket, voucherId: string): VoucherIssue | null => {
+  const issueVoucher = async (ticket: Ticket, voucherId: string): Promise<VoucherIssue | null> => {
     const template = voucherTemplates.find(
       (candidate) =>
         candidate.id === voucherId &&
@@ -5993,6 +6344,37 @@ function App() {
         candidate.visibleToSellers,
     );
     if (!template) return null;
+    if (posApiEnabled) {
+      if (!ticket.backendId) {
+        toast.error("El ticket no tiene una referencia de backend válida.");
+        return null;
+      }
+      try {
+        const dto = await posApi.issueVoucher(ticket.backendId, voucherId);
+        const issue: VoucherIssue = {
+          id: dto.id,
+          folio: dto.folio,
+          voucherId: dto.templateId,
+          voucherName: dto.templateName,
+          voucherKind: dto.kind,
+          value: Number(dto.value),
+          message: dto.message,
+          ticketId: ticket.id,
+          clientId: dto.customerId,
+          clientName: ticket.clientName,
+          clientPhone: ticket.clientPhone,
+          branch: ticket.branchName ?? activeBranch,
+          issuedAtIso: dto.issuedAt,
+          status: dto.status === "CANCELED" ? "CANCELLED" : dto.status,
+        };
+        setVoucherIssues((current) => [issue, ...current.filter((candidate) => candidate.id !== issue.id)]);
+        toast.success(`Voucher ${issue.folio} generado para ${ticket.clientName}.`);
+        return issue;
+      } catch (error) {
+        toast.error((error as { response?: { data?: { message?: string } } }).response?.data?.message ?? "No se pudo emitir el voucher.");
+        return null;
+      }
+    }
     const branch = ticket.branchName ?? activeBranch;
     const branchCode = branch
       .normalize("NFD")
@@ -6043,15 +6425,25 @@ function App() {
     return issue;
   };
 
+  const printVoucher = async (issue: VoucherIssue) => {
+    if (!posApiEnabled) return;
+    try {
+      await posApi.printVoucher(issue.id);
+    } catch (error) {
+      toast.error((error as { response?: { data?: { message?: string } } }).response?.data?.message ?? "No se pudo registrar la impresión del voucher.");
+      throw error;
+    }
+  };
+
   const editTicket = (ticket: Ticket) => {
     setEditingTicket(ticket);
     setTicketEditOpen(true);
   };
 
-  const saveTicketChanges = (
+  const saveTicketChanges = async (
     ticketId: string,
     changes: TicketEditRequest,
-  ): boolean => {
+  ): Promise<boolean> => {
     const ticket = tickets.find((item) => item.id === ticketId);
     if (!ticket || ticket.status === "REFUNDED") return false;
     const currentLayaway = layaways.find(
@@ -6065,6 +6457,40 @@ function App() {
     if (selectedSellers.length === 0 || changes.products.length === 0) {
       toast.error("El ticket necesita al menos un vendedor y un producto.");
       return false;
+    }
+    if (posApiEnabled) {
+      if (!ticket.backendId) {
+        toast.error("El ticket no tiene una referencia válida en el servidor.");
+        return false;
+      }
+      try {
+        const authorization = await posApi.createAuthorization({
+          alias: changes.authorizationAlias,
+          pin: changes.authorizationCode,
+          purpose: "TICKET_REVISION",
+          entityType: "PosTicket",
+          entityId: ticket.backendId,
+        });
+        await posApi.reviseTicket(ticket.backendId, {
+          reason: `Corrección solicitada para ${ticket.id}`,
+          authorizationToken: authorization.authorizationToken,
+          revision: {
+            clientName: changes.clientName,
+            clientPhone: changes.clientPhone,
+            sellerIds: changes.sellerIds,
+            products: changes.products,
+            discountAmount: changes.discountAmount,
+            paymentStatus: changes.paymentStatus,
+            amountPaid: changes.amountPaid,
+            payments: changes.payments,
+          },
+        });
+        toast.success(`Revisión de ${ticket.id} registrada sin alterar el ticket original.`);
+        return true;
+      } catch (error) {
+        toast.error((error as { response?: { data?: { message?: string } } }).response?.data?.message ?? "No se pudo registrar la revisión.");
+        return false;
+      }
     }
 
     const nextProducts = changes.products.flatMap((line, index) => {
@@ -6838,9 +7264,61 @@ function App() {
     setTicketCancellationOpen(true);
   };
 
-  const cancelTicket = (request: TicketCancellationRequest) => {
+  const cancelTicket = async (request: TicketCancellationRequest) => {
     const ticket = cancellingTicket;
     if (!ticket || ticket.status === "REFUNDED") return;
+    if (posApiEnabled) {
+      if (!ticket.backendId) {
+        toast.error("El ticket no tiene una referencia válida en el servidor.");
+        return;
+      }
+      const returnedLines = request.returnedProducts.flatMap((returned) => {
+        const line = ticket.products.find((candidate) => candidate.productId === returned.productId && candidate.backendLineId);
+        return line?.backendLineId
+          ? [{ ticketLineId: line.backendLineId, quantity: returned.quantity.toFixed(2) }]
+          : [];
+      });
+      if (returnedLines.length !== request.returnedProducts.length) {
+        toast.error("No fue posible identificar todas las líneas devueltas del ticket.");
+        return;
+      }
+      try {
+        const authorization = await posApi.createAuthorization({
+          alias: request.authorizationAlias,
+          pin: request.authorizationCode,
+          purpose: "TICKET_CANCELLATION",
+          entityType: "PosTicket",
+          entityId: ticket.backendId,
+        });
+        await posApi.cancelTicket(ticket.backendId, {
+          reason: request.reason,
+          refundAmount: request.refundAmount.toFixed(2),
+          returnedLines,
+          revision: { nonReturnedProducts: request.nonReturnedProducts },
+          authorizationToken: authorization.authorizationToken,
+        });
+        setTickets((current) => current.map((item) => item.id === ticket.id ? {
+          ...item,
+          status: "REFUNDED",
+          refundAmount: request.refundAmount,
+          returnedProducts: request.returnedProducts,
+          nonReturnedProducts: request.nonReturnedProducts,
+        } : item));
+        setAppointments((current) => current.filter((appointment) => appointment.ticketId !== ticket.id));
+        setOwedProducts((current) => current.map((record) => record.ticketId === ticket.id && record.status === "PENDING"
+          ? { ...record, status: "CANCELLED" }
+          : record));
+        setLayaways((current) => current.filter((layaway) => layaway.originalTicketId !== ticket.id));
+        setTicketCancellationOpen(false);
+        setCancellingTicket(null);
+        setReceiptPreviewOpen(false);
+        setTicketEditOpen(false);
+        toast.success(`Cancelación de ${ticket.id} registrada con compensaciones append-only.`);
+      } catch (error) {
+        toast.error((error as { response?: { data?: { message?: string } } }).response?.data?.message ?? "No se pudo cancelar el ticket.");
+      }
+      return;
+    }
     const cancelledAt = new Date();
     const cancelledAtLabel = new Intl.DateTimeFormat("es-MX", {
       day: "2-digit",
@@ -10822,8 +11300,8 @@ function App() {
       />
       <CheckoutDialog
         open={checkoutOpen}
-        total={ticketTotal}
-        discountAmount={ticketDiscountAmount}
+        total={Number(authoritativeQuote?.total ?? ticketTotal)}
+        discountAmount={Number(authoritativeQuote?.discountTotal ?? ticketDiscountAmount)}
         cart={cart}
         clients={clients}
         sellers={sellers}
@@ -10833,9 +11311,39 @@ function App() {
         requiredFields={requiredFields}
         courtesySettings={courtesySettings}
         isMasterCode={isMasterAccessCode}
+        {...(posApiEnabled ? { onSearchClients: async (query: string) => {
+          const response = await posApi.customerSearch(query, 1, 20);
+          return response.items.map(clientFromPosCustomer);
+        } } : {})}
         onOpenChange={setCheckoutOpen}
         onComplete={completeTicket}
       />
+      <Dialog open={saleAuthorizationOpen} onOpenChange={setSaleAuthorizationOpen}>
+        <DialogContent className="sm:max-w-[480px]">
+          <DialogHeader>
+            <DialogTitle>Autorizar venta bajo mínimo</DialogTitle>
+            <DialogDescription>
+              El total autoritativo es {formatCurrency(Number(authoritativeQuote?.total ?? 0))} y el mínimo combinado es {formatCurrency(Number(authoritativeQuote?.minimumTotal ?? 0))}.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="form-grid two-columns">
+            <div className="field-stack">
+              <span>Alias master</span>
+              <Input value={saleAuthorizationAlias} onChange={(event) => setSaleAuthorizationAlias(event.target.value)} autoComplete="username" />
+            </div>
+            <div className="field-stack">
+              <span>PIN master</span>
+              <Input type="password" value={saleAuthorizationCode} onChange={(event) => setSaleAuthorizationCode(event.target.value)} autoComplete="off" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setSaleAuthorizationOpen(false)}>Cancelar</Button>
+            <Button type="button" disabled={!saleAuthorizationAlias.trim() || !saleAuthorizationCode} onClick={() => void confirmSaleAuthorization()}>
+              <ShieldCheck size={16} /> Autorizar y continuar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <DealPickerDialog
         open={dealPickerOpen}
         deals={deals}
@@ -10866,6 +11374,7 @@ function App() {
         )}
         allowPrint={canPrintActiveModule}
         onIssueVoucher={issueVoucher}
+        onPrintVoucher={printVoucher}
         onOpenChange={setReceiptPreviewOpen}
       />
       <TicketEditDialog
@@ -10874,6 +11383,8 @@ function App() {
         sellers={sellers}
         products={catalogProducts}
         paymentMethods={paymentMethods}
+        backendMode={posApiEnabled}
+        defaultAuthorizationAlias={apiSession?.actor.isMaster ? apiSession.actor.alias : ""}
         onOpenChange={setTicketEditOpen}
         onSave={saveTicketChanges}
       />
@@ -10881,6 +11392,8 @@ function App() {
         open={ticketCancellationOpen}
         ticket={cancellingTicket}
         returnableProducts={cancellationReturnableProducts}
+        authorizationRequired={posApiEnabled}
+        defaultAuthorizationAlias={apiSession?.actor.isMaster ? apiSession.actor.alias : ""}
         onOpenChange={(open) => {
           setTicketCancellationOpen(open);
           if (!open) setCancellingTicket(null);

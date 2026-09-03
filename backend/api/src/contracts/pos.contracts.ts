@@ -404,38 +404,114 @@ export const posNotificationQuerySchema = z
 export const posTicketLineInputSchema = z
   .object({
     itemId: idSchema,
-    quantity: moneySchema,
+    quantity: positiveQuantitySchema,
     unitPrice: moneySchema,
     notes: z.string().trim().max(500).optional(),
+    packageId: idSchema.optional(),
+    delivered: z.boolean().optional().default(true),
   })
   .strict();
 
 export const posTicketSellerInputSchema = z
   .object({
     employeeId: idSchema,
-    share: moneySchema,
+    share: positiveQuantitySchema,
   })
   .strict();
 
 export const posTicketPaymentInputSchema = z
   .object({
     methodId: idSchema,
-    methodType: z.enum(["CASH", "CARD", "TRANSFER", "OTHER"]),
-    amount: moneySchema,
+    methodType: z.enum(["CASH", "CARD", "TRANSFER", "OTHER"]).optional(),
+    amount: positiveQuantitySchema,
     reference: z.string().trim().min(1).max(160).optional(),
+    institution: z.string().trim().min(1).max(160).optional(),
+    authorizationLastFour: z.string().regex(/^\d{4}$/).optional(),
   })
   .strict();
 
-export const posTicketQuoteRequestSchema = z
+export const posTicketDiscountInputSchema = z.object({
+  kind: z.enum(["PERCENT", "FIXED"]),
+  value: moneySchema,
+}).strict().superRefine((discount, context) => {
+  if (discount.kind === "PERCENT" && Number(discount.value) > 100) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "Porcentaje inválido", path: ["value"] });
+  }
+});
+
+const posTicketQuoteRequestObjectSchema = z
   .object({
     branchId: idSchema,
     customerId: idSchema.optional(),
     lines: z.array(posTicketLineInputSchema).min(1).max(500),
     sellers: z.array(posTicketSellerInputSchema).min(1).max(50),
-    payments: z.array(posTicketPaymentInputSchema).min(1).max(20),
+    payments: z.array(posTicketPaymentInputSchema).max(20).optional(),
+    discount: posTicketDiscountInputSchema.optional(),
     authorizationToken: z.string().uuid().optional(),
   })
   .strict();
+
+const validateTicketCollections = (
+  input: z.infer<typeof posTicketQuoteRequestObjectSchema>,
+  context: z.RefinementCtx,
+) => {
+    if (new Set(input.lines.map((line) => `${line.itemId}:${line.packageId ?? ""}`)).size !== input.lines.length) {
+      context.addIssue({ code: z.ZodIssueCode.custom, message: "No se permiten líneas duplicadas", path: ["lines"] });
+    }
+    if (new Set(input.sellers.map((seller) => seller.employeeId)).size !== input.sellers.length) {
+      context.addIssue({ code: z.ZodIssueCode.custom, message: "No se permiten vendedores duplicados", path: ["sellers"] });
+    }
+  };
+
+export const posTicketQuoteRequestSchema = posTicketQuoteRequestObjectSchema.superRefine(validateTicketCollections);
+
+const posTicketCustomerSchema = z.object({
+  id: idSchema.optional(),
+  create: z.object({
+    displayName: z.string().trim().min(2).max(240),
+    phone: z.string().trim().min(7).max(32).nullable().optional().default(null),
+    email: z.string().trim().email().max(320).nullable().optional().default(null),
+    sourceId: nullableIdSchema,
+    notes: z.string().trim().max(4_000).nullable().optional().default(null),
+    ownerEmployeeId: nullableIdSchema,
+  }).strict().optional(),
+}).strict().superRefine((customer, context) => {
+  if (Boolean(customer.id) === Boolean(customer.create)) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "Indica un cliente existente o uno nuevo" });
+  }
+});
+
+export const posTicketAppointmentInputSchema = z.object({
+  kind: z.enum(["COURTESY", "NEXT_SESSION", "NO_APPOINTMENT"]),
+  serviceItemId: idSchema.optional(),
+  serviceName: z.string().trim().min(1).max(240),
+  branchId: idSchema,
+  sellerId: idSchema.optional(),
+  scheduledAt: isoUtcSchema.optional(),
+}).strict().superRefine((appointment, context) => {
+  if (appointment.kind === "NO_APPOINTMENT" && appointment.scheduledAt) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "Sin cita no admite horario", path: ["scheduledAt"] });
+  }
+  if (appointment.kind !== "NO_APPOINTMENT" && !appointment.scheduledAt) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "La cita requiere horario", path: ["scheduledAt"] });
+  }
+});
+
+export const posTicketCourtesyInputSchema = z.object({
+  serviceItemId: idSchema.optional(),
+  serviceName: z.string().trim().min(1).max(240),
+  appointmentIndex: z.number().int().min(0).optional(),
+  policyId: idSchema.optional(),
+  policyName: z.string().trim().min(1).max(160),
+  authorizationToken: z.string().uuid().optional(),
+}).strict();
+
+export const posTicketCreateRequestSchema = posTicketQuoteRequestObjectSchema.extend({
+  customer: posTicketCustomerSchema,
+  payments: z.array(posTicketPaymentInputSchema).max(20),
+  appointments: z.array(posTicketAppointmentInputSchema).max(10).optional().default([]),
+  courtesies: z.array(posTicketCourtesyInputSchema).max(2).optional().default([]),
+}).strict().superRefine(validateTicketCollections);
 
 export const posTicketQuoteSchema = z
   .object({
@@ -445,7 +521,16 @@ export const posTicketQuoteSchema = z
     total: moneySchema,
     amountReceived: moneySchema,
     pendingAmount: moneySchema,
+    minimumTotal: moneySchema,
+    spareTotal: moneySchema,
     requiresAuthorization: z.boolean(),
+    authorizationPurpose: z.enum(["SALE_BELOW_MINIMUM"]).nullable(),
+    lines: z.array(z.object({
+      itemId: idSchema, itemName: z.string(), sku: z.string(), quantity: moneySchema,
+      unitPrice: moneySchema, unitMinimumPrice: moneySchema, subtotal: moneySchema,
+      discountTotal: moneySchema, taxTotal: moneySchema, total: moneySchema,
+      packageId: idSchema.nullable(),
+    }).strict()),
   })
   .strict();
 
@@ -456,6 +541,30 @@ export const posTicketSchema = posTicketQuoteSchema.extend({
   businessDate: businessDateSchema,
   createdAt: isoUtcSchema,
 });
+
+export const posTicketListQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(20),
+  businessDate: businessDateSchema.optional(),
+  customerId: idSchema.optional(),
+}).strict();
+
+export const posLayawayPaymentRequestSchema = z.object({
+  payments: z.array(posTicketPaymentInputSchema).min(1).max(20),
+  deliveredTicketLineIds: z.array(idSchema).max(500).optional().default([]),
+}).strict();
+
+export const posOwedProductDeliveryRequestSchema = z.object({ quantity: positiveQuantitySchema }).strict();
+
+export const posTicketEventRequestSchema = z.object({
+  reason: z.string().trim().min(3).max(1_000),
+  refundAmount: moneySchema.optional(),
+  returnedLines: z.array(z.object({ ticketLineId: idSchema, quantity: positiveQuantitySchema }).strict()).max(500).optional().default([]),
+  revision: z.record(z.string(), z.unknown()).optional(),
+  authorizationToken: z.string().uuid(),
+}).strict();
+
+export const posVoucherIssueRequestSchema = z.object({ templateId: idSchema }).strict();
 
 export const posInventoryBalanceSchema = z
   .object({
@@ -473,3 +582,4 @@ export type PosTerminalRegistration = z.infer<
   typeof posTerminalRegistrationSchema
 >;
 export type PosTicketQuoteRequest = z.infer<typeof posTicketQuoteRequestSchema>;
+export type PosTicketCreateRequest = z.infer<typeof posTicketCreateRequestSchema>;

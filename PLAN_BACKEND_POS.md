@@ -38,7 +38,7 @@ Los dos esquemas Prisma existentes están sincronizados. No hay credenciales loc
 | 1. Seguridad, terminales y auditoría | Completada — 2026-09-03 | Backend/API + Seguridad              | Credenciales protegidas, permisos efectivos y auditoría verificable.                      |
 | 2. Catálogo, clientes y activos      | Completada — 2026-09-03 | Backend/API + POS                    | Catálogo histórico inmutable y costos redaccionados por servidor.                         |
 | 3. Inventario y bodega               | Completada — 2026-09-03 | Backend/API + Operación de almacén   | Ledger consistente, reintentos idempotentes y doble aprobación distinta.                  |
-| 4. Tickets y proyección financiera   | Pendiente               | Backend/API + POS + Envelope/Payroll | Totales, inventario y proyección legacy conciliados al centavo.                           |
+| 4. Tickets y proyección financiera   | Completada — 2026-09-03 | Backend/API + POS + Envelope/Payroll | Totales, inventario y proyección legacy conciliados al centavo.                           |
 | 5. Jornada, asistencia y caja        | Pendiente               | Backend/API + Operación de sucursal  | Una jornada por sucursal/fecha y cierre inmutable.                                        |
 | 6. Offline y reconciliación          | Pendiente               | POS/Electron + Backend/API           | Reinicios y reintentos no pierden ni duplican operaciones.                                |
 | 7. Reportes y retiro de mocks        | Pendiente               | Backend/API + POS                    | Módulos operativos consumen API o repositorio offline autorizado.                         |
@@ -268,14 +268,24 @@ Los tipos POS saldrán de `apps/pos` hacia `packages/types/src/pos.ts`; `package
 
 ### Fase 4 — Tickets, checkout y proyección financiera
 
-- [ ] Implementar cotización autoritativa del carrito: mínimo combinado, SPARE, descuentos, paquetes, IVA y autorización master.
-- [ ] Crear ticket, cliente, vendedores, citas, cortesías, pagos, inventario y proyección legacy en una sola transacción.
-- [ ] Implementar múltiples métodos de pago, pendiente, apartado, abonos, productos adeudados y entregas.
-- [ ] Implementar vouchers posteriores al ticket, impresión y reimpresión sin duplicación.
-- [ ] Implementar revisiones, cancelaciones y devoluciones como historial append-only.
-- [ ] Conectar Sale, Checkout, Receipts, Mis ventas y expedientes de cliente.
+- [x] Implementar cotización autoritativa del carrito: mínimo combinado, SPARE, descuentos, paquetes, IVA y autorización master.
+- [x] Crear ticket, cliente, vendedores, citas, cortesías, pagos, inventario y proyección legacy en una sola transacción.
+- [x] Implementar múltiples métodos de pago, pendiente, apartado, abonos, productos adeudados y entregas.
+- [x] Implementar vouchers posteriores al ticket, impresión y reimpresión sin duplicación.
+- [x] Implementar revisiones, cancelaciones y devoluciones como historial append-only.
+- [x] Conectar Sale, Checkout, Receipts, Mis ventas y expedientes de cliente.
 
-**Criterio de cierre:** total visible, guardado, impreso, inventario y `Venta/VentaDetalle` coinciden al centavo.
+**Criterio de cierre: cumplido en repositorio.** La cotización autoritativa fija en centavos el total que Checkout muestra y que el ticket conserva para impresión. El mismo commit `Serializable` crea el ticket, snapshots, cliente/cartera cuando corresponde, vendedores, citas, cortesías, cobros, apartado, movimiento de inventario, adeudos y proyecciones `Venta/VentaDetalle`; los abonos y reembolsos generan proyecciones adicionales exactamente por el dinero recibido o compensado. Toda mutación financiera exige `Idempotency-Key` UUID. La migración y las pruebas HTTP/transaccionales no se ejecutaron contra una base real durante esta fase: permanecen como puerta obligatoria de la Fase 8 sobre PostgreSQL efímero/development autorizado.
+
+#### Entregables verificables
+
+- Migración aditiva: `backend/api/prisma/migrations/20260903030000_add_pos_tickets_checkout_projection/migration.sql`. Crea tickets y líneas con snapshots, vendedores, operaciones/pagos, apartados, adeudos/entregas, citas/cortesías, eventos, vouchers e impresión, además de secuencias de folio y `PosLegacySaleProjection`. Los históricos financieros y las ventas legacy proyectadas se protegen con triggers append-only; no se insertan tickets, pagos ni datos mock.
+- Motor financiero: `backend/api/src/services/pos-tickets.ts` trabaja en centavos, reparte residuos determinísticamente, calcula IVA incluido, limita el descuento al SPARE y valida paquetes completos contra precio y vigencia publicados. Una venta bajo el mínimo combinado requiere autorización master de un solo uso; un paquete publicado usa su precio autorizado como piso y no admite descuento adicional bajo ese importe.
+- Atomicidad y compatibilidad: crear ticket usa el ledger real de la Fase 3 y proyecta cada cobro entre vendedores y métodos en `Venta/VentaDetalle` dentro de la misma transacción. Los productos entregados sin existencia permiten saldo negativo y generan adeudo ya comprometido; los artículos de apartado aún no entregados conservan el compromiso sin descontar y lo hacen una sola vez al entregarse. Cancelaciones y devoluciones suman inventario y crean cobros/proyecciones negativos sin editar originales.
+- API y seguridad: `backend/api/src/routes/pos-ticket.routes.ts` publica cotización, tickets paginados, vendedores de venta, abonos, entregas, revisiones, cancelaciones, vouchers e impresión/reimpresión. Las rutas aplican sesión, permiso y sucursal de terminal en servidor; revisiones y cancelaciones consumen autorización master ligada al ticket.
+- Contratos e integración: `packages/types/src/pos.ts` y `packages/api-client/src/index.ts` incluyen los DTO y métodos tipados de la fase. En `VITE_POS_DATA_MODE=api`, `apps/pos` carga catálogo, paquetes, vendedores, formas de pago, tickets, citas, apartados, adeudos, clientes y vouchers; Checkout busca clientes paginados, usa el total cotizado por servidor y envía la operación real. Receipts, Mis ventas y expedientes se derivan de los tickets canónicos devueltos por la API.
+- Vouchers e historial: la emisión conserva snapshots y la restricción ticket/plantilla evita duplicarla; cada impresión o reimpresión agrega un evento con número de copia. Las revisiones conservan el cambio solicitado como snapshot append-only y las cancelaciones/devoluciones agregan sus compensaciones y decisiones de producto sin borrar el ticket.
+- Verificación local: ambos schemas Prisma están sincronizados y son válidos; type-check de types/API/client/POS, lint del API, 39 pruebas unitarias, build del API y build Vite/Electron del POS terminaron correctamente. La validación mostró únicamente los avisos preexistentes de configuración Prisma deprecada y tamaño de bundle Vite.
 
 ### Fase 5 — Jornada, asistencia, caja y operación ejecutiva
 

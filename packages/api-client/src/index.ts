@@ -28,6 +28,16 @@ import type {
   PosWarehouseRequestCreateDto,
   PosWarehouseRequestDto,
   PosNotificationDto,
+  PosPaymentMethodDto,
+  PosPackageDto,
+  PosTicketCreateRequestDto,
+  PosTicketDto,
+  PosTicketEventDto,
+  PosTicketEventRequestDto,
+  PosTicketQuoteDto,
+  PosTicketQuoteRequestDto,
+  PosTicketPaymentInputDto,
+  PosVoucherIssueDto,
 } from '@cosmetics/types'
 
 /**
@@ -103,6 +113,9 @@ export interface PosApiClient {
   suppliers(): Promise<PosSupplierDto[]>
   ticketConfiguration(): Promise<PosTicketConfigurationDto>
   voucherTemplates(): Promise<PosVoucherTemplateDto[]>
+  paymentMethods(): Promise<PosPaymentMethodDto[]>
+  packages(): Promise<PosPackageDto[]>
+  saleSellers(): Promise<Array<{ id: string; displayName: string; positionId: string | null }>>
   inventoryLocations(): Promise<PosInventoryLocationDto[]>
   inventoryBalances(locationId?: string): Promise<PosInventoryBalanceDto[]>
   inventoryMovements(input?: { locationId?: string; businessDate?: string; page?: number; pageSize?: number }): Promise<{ items: PosInventoryMovementDto[]; page: number; pageSize: number; total: number }>
@@ -118,6 +131,17 @@ export interface PosApiClient {
   warehouseRequestAction(id: string, action: "approve-creation" | "approve-send" | "receive" | "return-to-requested" | "cancel", notes?: string | null, idempotencyKey?: string): Promise<PosWarehouseRequestDto>
   notifications(input?: { unreadOnly?: boolean; page?: number; pageSize?: number }): Promise<{ items: PosNotificationDto[]; page: number; pageSize: number; total: number }>
   markNotificationRead(id: string): Promise<{ notificationId: string; readAt: string }>
+  quoteTicket(input: PosTicketQuoteRequestDto): Promise<PosTicketQuoteDto>
+  createTicket(input: PosTicketCreateRequestDto, idempotencyKey?: string): Promise<PosTicketDto>
+  tickets(input?: { businessDate?: string; customerId?: string; page?: number; pageSize?: number }): Promise<{ items: PosTicketDto[]; page: number; pageSize: number; total: number }>
+  ticket(id: string): Promise<PosTicketDto>
+  addLayawayPayment(id: string, payments: PosTicketPaymentInputDto[], deliveredTicketLineIds?: string[], idempotencyKey?: string): Promise<PosTicketDto>
+  deliverOwedProduct(id: string, quantity: string, idempotencyKey?: string): Promise<{ id: string; folio: string; businessDate: string; createdAt: string }>
+  reviseTicket(id: string, input: PosTicketEventRequestDto, idempotencyKey?: string): Promise<PosTicketEventDto>
+  cancelTicket(id: string, input: PosTicketEventRequestDto, idempotencyKey?: string): Promise<PosTicketEventDto>
+  vouchers(input?: { page?: number; pageSize?: number }): Promise<{ items: PosVoucherIssueDto[]; page: number; pageSize: number; total: number }>
+  issueVoucher(ticketId: string, templateId: string, idempotencyKey?: string): Promise<PosVoucherIssueDto>
+  printVoucher(issueId: string, idempotencyKey?: string): Promise<{ issueId: string; copyNumber: number; printedAt: string }>
   clearSession(): void
 }
 
@@ -185,6 +209,9 @@ export function createPosApiClient(baseURL: string, options: PosApiClientOptions
     suppliers: () => data<PosSupplierDto[]>(client.get('/suppliers')),
     ticketConfiguration: () => data<PosTicketConfigurationDto>(client.get('/settings/ticket')),
     voucherTemplates: () => data<PosVoucherTemplateDto[]>(client.get('/settings/vouchers')),
+    paymentMethods: () => data<PosPaymentMethodDto[]>(client.get('/settings/payment-methods')),
+    packages: () => data<PosPackageDto[]>(client.get('/packages')),
+    saleSellers: () => data<Array<{ id: string; displayName: string; positionId: string | null }>>(client.get('/sale/sellers')),
     inventoryLocations: () => data<PosInventoryLocationDto[]>(client.get('/inventory/locations')),
     inventoryBalances: (locationId) => data<PosInventoryBalanceDto[]>(client.get('/inventory/balances', { params: { locationId } })),
     inventoryMovements: (input = {}) => data(client.get('/inventory/movements', { params: input })),
@@ -200,6 +227,17 @@ export function createPosApiClient(baseURL: string, options: PosApiClientOptions
     warehouseRequestAction: (id, action, notes = null, key) => data<PosWarehouseRequestDto>(client.post(`/warehouse/requests/${id}/${action}`, { notes }, { headers: mutationHeaders(key) })),
     notifications: (input = {}) => data(client.get('/notifications', { params: { ...input, unreadOnly: input.unreadOnly ? 'true' : 'false' } })),
     markNotificationRead: (id) => data(client.put(`/notifications/${id}/read`)),
+    quoteTicket: (input) => data<PosTicketQuoteDto>(client.post('/tickets/quote', input)),
+    createTicket: (input, key) => data<PosTicketDto>(client.post('/tickets', input, { headers: mutationHeaders(key) })),
+    tickets: (input = {}) => data(client.get('/tickets', { params: input })),
+    ticket: (id) => data<PosTicketDto>(client.get(`/tickets/${id}`)),
+    addLayawayPayment: (id, payments, deliveredTicketLineIds = [], key) => data<PosTicketDto>(client.post(`/layaways/${id}/payments`, { payments, deliveredTicketLineIds }, { headers: mutationHeaders(key) })),
+    deliverOwedProduct: (id, quantity, key) => data(client.post(`/owed-products/${id}/deliveries`, { quantity }, { headers: mutationHeaders(key) })),
+    reviseTicket: (id, input, key) => data<PosTicketEventDto>(client.post(`/tickets/${id}/revisions`, input, { headers: mutationHeaders(key) })),
+    cancelTicket: (id, input, key) => data<PosTicketEventDto>(client.post(`/tickets/${id}/cancellations`, input, { headers: mutationHeaders(key) })),
+    vouchers: (input = {}) => data(client.get('/vouchers', { params: input })),
+    issueVoucher: (ticketId, templateId, key) => data<PosVoucherIssueDto>(client.post(`/tickets/${ticketId}/vouchers`, { templateId }, { headers: mutationHeaders(key) })),
+    printVoucher: (issueId, key) => data(client.post(`/vouchers/${issueId}/print`, {}, { headers: mutationHeaders(key) })),
     clearSession: () => setAccessToken(null),
   }
 }

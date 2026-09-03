@@ -11,6 +11,7 @@ import payrollRoutes from "./routes/payroll.routes";
 import posRoutes from "./routes/pos.routes";
 import posCatalogRoutes from "./routes/pos-catalog.routes";
 import posInventoryRoutes from "./routes/pos-inventory.routes";
+import posTicketRoutes from "./routes/pos-ticket.routes";
 import schedulerRoutes from "./routes/scheduler.routes";
 
 function configuredOrigins(): string[] {
@@ -73,6 +74,7 @@ export function createApp(): Express {
   app.use("/api/pos", posRoutes);
   app.use("/api/pos", posCatalogRoutes);
   app.use("/api/pos", posInventoryRoutes);
+  app.use("/api/pos", posTicketRoutes);
 
   app.use((_req, res) => {
     res.status(404).json({

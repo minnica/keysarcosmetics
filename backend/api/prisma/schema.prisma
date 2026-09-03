@@ -82,6 +82,8 @@ model Sucursal {
   inventoryLocations               InventoryLocation[]
   warehouseRequests                WarehouseRequest[]
   posNotifications                 PosNotification[]
+  posTickets                       PosTicket[]
+  posAppointments                  PosAppointment[]
 
   @@index([activa])
 }
@@ -127,6 +129,7 @@ model MetodoPago {
   creadoEn      DateTime                @default(now())
   actualizadoEn DateTime                @updatedAt
   posPolicy     PosPaymentMethodPolicy?
+  posPayments   PosPayment[]
 }
 
 model Bank {
@@ -226,6 +229,9 @@ model Empleado {
   protectedIdentity          ProtectedEmployeeIdentity?
   posCredentials             PosCredential[]
   customerPortfolios         CustomerPortfolioAssignment[]
+  posTicketSellers           PosTicketSeller[]
+  posAppointments            PosAppointment[]
+  posLegacyProjections       PosLegacySaleProjection[]
 
   @@index([sucursalId])
 }
@@ -264,6 +270,13 @@ model PosCredential {
   warehouseRequestEvents            WarehouseRequestEvent[]
   posNotificationsCreated           PosNotification[]
   posNotificationReads              PosNotificationRead[]
+  posTicketsCreated                 PosTicket[]
+  posPaymentOperations              PosPaymentOperation[]
+  posTicketEvents                   PosTicketEvent[]
+  posDeliveries                     PosOwedProductDelivery[]
+  posAppointments                   PosAppointment[]
+  posVoucherIssues                  PosVoucherIssue[]
+  posVoucherPrints                  PosVoucherPrintEvent[]
 
   @@index([active, aliasNormalized])
 }
@@ -290,22 +303,26 @@ model PosBranchProfile {
 }
 
 model PosTerminal {
-  id                   String                @id @default(cuid())
-  code                 String                @unique @db.VarChar(64)
-  name                 String                @db.VarChar(120)
-  status               PosTerminalStatus     @default(ACTIVE)
+  id                   String                   @id @default(cuid())
+  code                 String                   @unique @db.VarChar(64)
+  name                 String                   @db.VarChar(120)
+  status               PosTerminalStatus        @default(ACTIVE)
   branchId             String
-  branch               Sucursal              @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  branch               Sucursal                 @relation(fields: [branchId], references: [id], onDelete: Restrict)
   secretHash           String
-  secretFingerprint    String                @unique @db.VarChar(64)
+  secretFingerprint    String                   @unique @db.VarChar(64)
   lastSeenAt           DateTime?
   registeredByUserId   String?
-  creadoEn             DateTime              @default(now())
-  actualizadoEn        DateTime              @updatedAt
+  creadoEn             DateTime                 @default(now())
+  actualizadoEn        DateTime                 @updatedAt
   auditLogs            AuditLog[]
   masterAuthorizations MasterAuthorization[]
   inventoryCounts      InventoryCount[]
   inventoryMovements   InventoryMovement[]
+  posTickets           PosTicket[]
+  posPaymentOperations PosPaymentOperation[]
+  posDeliveries        PosOwedProductDelivery[]
+  posVoucherPrints     PosVoucherPrintEvent[]
 
   @@index([branchId, status])
 }
@@ -473,6 +490,10 @@ model CatalogItem {
   inventoryAdjustmentLines InventoryAdjustmentBatchLine[]
   inventoryCountLines      InventoryCountLine[]
   warehouseRequestLines    WarehouseRequestLine[]
+  posTicketLines           PosTicketLine[]
+  posAppointments          PosAppointment[]
+  posOwedProducts          PosOwedProduct[]
+  posDeliveryLines         PosOwedProductDeliveryLine[]
   creadoEn                 DateTime                       @default(now())
   actualizadoEn            DateTime                       @updatedAt
 
@@ -564,6 +585,9 @@ model Customer {
   portfolios           CustomerPortfolioAssignment[]
   priceListAssignments PriceListCustomerAssignment[]
   warehouseRequests    WarehouseRequest[]
+  posTickets           PosTicket[]
+  posAppointments      PosAppointment[]
+  posVoucherIssues     PosVoucherIssue[]
   creadoEn             DateTime                      @default(now())
   actualizadoEn        DateTime                      @updatedAt
 
@@ -643,16 +667,17 @@ model PosCourtesyPolicy {
 }
 
 model PosVoucherTemplate {
-  id               String         @id @default(cuid())
-  name             String         @unique @db.VarChar(160)
+  id               String            @id @default(cuid())
+  name             String            @unique @db.VarChar(160)
   kind             PosVoucherKind
-  value            Decimal        @db.Decimal(14, 2)
-  message          String         @db.VarChar(1000)
-  active           Boolean        @default(true)
-  visibleToSellers Boolean        @default(false)
+  value            Decimal           @db.Decimal(14, 2)
+  message          String            @db.VarChar(1000)
+  active           Boolean           @default(true)
+  visibleToSellers Boolean           @default(false)
   deletedAt        DateTime?
-  creadoEn         DateTime       @default(now())
-  actualizadoEn    DateTime       @updatedAt
+  creadoEn         DateTime          @default(now())
+  actualizadoEn    DateTime          @updatedAt
+  issues           PosVoucherIssue[]
 }
 
 model PosSupplier {
@@ -745,6 +770,7 @@ model PosPackage {
   deletedAt     DateTime?
   creadoEn      DateTime         @default(now())
   actualizadoEn DateTime         @updatedAt
+  ticketLines   PosTicketLine[]
 
   @@index([status, startsAt, endsAt])
 }
@@ -920,6 +946,9 @@ model InventoryMovement {
   reversedBy         InventoryMovement?        @relation("InventoryMovementReversal")
   lines              InventoryMovementLine[]
   creadoEn           DateTime                  @default(now())
+  ticket             PosTicket?
+  delivery           PosOwedProductDelivery?
+  ticketEvent        PosTicketEvent?
 
   @@index([businessDate, creadoEn])
   @@index([adjustmentBatchId])
@@ -1130,6 +1159,378 @@ model PosNotificationRead {
   @@index([credentialId, readAt])
 }
 
+// ─── Módulo POS: tickets, checkout y proyección financiera ──────────────
+
+enum PosTicketStatus {
+  COMPLETED
+  LAYAWAY
+  CANCELED
+  REFUNDED
+}
+
+enum PosSettlementStatus {
+  PAID
+  LAYAWAY
+  PENDING
+}
+
+enum PosTicketLineKind {
+  SALE
+  GIFT
+}
+
+enum PosPaymentOperationKind {
+  SALE
+  LAYAWAY_PAYMENT
+  REFUND
+  REVISION
+}
+
+enum PosTicketEventType {
+  REVISION
+  CANCELLATION
+  RETURN
+}
+
+enum PosAppointmentKind {
+  COURTESY
+  NEXT_SESSION
+  NO_APPOINTMENT
+}
+
+enum PosAppointmentStatus {
+  PENDING
+  SCHEDULED
+  CANCELED
+  COMPLETED
+}
+
+enum PosOwedProductStatus {
+  PENDING
+  DELIVERED
+  CANCELED
+}
+
+enum PosVoucherIssueStatus {
+  ISSUED
+  REDEEMED
+  CANCELED
+}
+
+model PosTicket {
+  id                    String                @id @default(uuid()) @db.Uuid
+  folio                 String                @unique @db.VarChar(80)
+  terminalSequence      BigInt
+  status                PosTicketStatus
+  settlementStatus      PosSettlementStatus
+  businessDate          DateTime              @db.Date
+  branchId              String
+  branch                Sucursal              @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  terminalId            String
+  terminal              PosTerminal           @relation(fields: [terminalId], references: [id], onDelete: Restrict)
+  createdByCredentialId String
+  createdByCredential   PosCredential         @relation(fields: [createdByCredentialId], references: [id], onDelete: Restrict)
+  customerId            String?
+  customer              Customer?             @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  customerNameSnapshot  String?               @db.VarChar(240)
+  customerPhoneSnapshot String?               @db.VarChar(32)
+  subtotal              Decimal               @db.Decimal(14, 2)
+  minimumTotal          Decimal               @db.Decimal(14, 2)
+  spareTotal            Decimal               @db.Decimal(14, 2)
+  discountTotal         Decimal               @db.Decimal(14, 2)
+  taxTotal              Decimal               @db.Decimal(14, 2)
+  total                 Decimal               @db.Decimal(14, 2)
+  amountPaid            Decimal               @db.Decimal(14, 2)
+  pendingAmount         Decimal               @db.Decimal(14, 2)
+  authorizationId       String?
+  inventoryMovementId   String?               @unique
+  inventoryMovement     InventoryMovement?    @relation(fields: [inventoryMovementId], references: [id], onDelete: Restrict)
+  version               Int                   @default(1)
+  lines                 PosTicketLine[]
+  sellers               PosTicketSeller[]
+  paymentOperations     PosPaymentOperation[]
+  events                PosTicketEvent[]
+  appointments          PosAppointment[]
+  courtesies            PosCourtesy[]
+  layaway               PosLayaway?
+  owedProducts          PosOwedProduct[]
+  voucherIssues         PosVoucherIssue[]
+  creadoEn              DateTime              @default(now())
+
+  @@unique([terminalId, terminalSequence])
+  @@index([branchId, businessDate, creadoEn])
+  @@index([customerId, creadoEn])
+  @@index([createdByCredentialId, creadoEn])
+}
+
+model PosTicketLine {
+  id                     String            @id @default(cuid())
+  ticketId               String            @db.Uuid
+  ticket                 PosTicket         @relation(fields: [ticketId], references: [id], onDelete: Restrict)
+  kind                   PosTicketLineKind @default(SALE)
+  itemId                 String?
+  item                   CatalogItem?      @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  packageId              String?
+  package                PosPackage?       @relation(fields: [packageId], references: [id], onDelete: Restrict)
+  packageVersionSnapshot Int?
+  packageNameSnapshot    String?           @db.VarChar(160)
+  itemNameSnapshot       String            @db.VarChar(240)
+  skuSnapshot            String            @db.VarChar(96)
+  familySnapshot         String?           @db.VarChar(160)
+  categorySnapshot       String?           @db.VarChar(160)
+  quantity               Decimal           @db.Decimal(14, 2)
+  unitListPrice          Decimal           @db.Decimal(14, 2)
+  unitMinimumPrice       Decimal           @db.Decimal(14, 2)
+  unitPrice              Decimal           @db.Decimal(14, 2)
+  unitCostSnapshot       Decimal           @db.Decimal(14, 2)
+  taxRateSnapshot        Decimal           @db.Decimal(8, 2)
+  subtotal               Decimal           @db.Decimal(14, 2)
+  minimumTotal           Decimal           @db.Decimal(14, 2)
+  discountTotal          Decimal           @db.Decimal(14, 2)
+  taxTotal               Decimal           @db.Decimal(14, 2)
+  total                  Decimal           @db.Decimal(14, 2)
+  notes                  String?           @db.VarChar(500)
+  owedProducts           PosOwedProduct[]
+  courtesy               PosCourtesy?
+  creadoEn               DateTime          @default(now())
+
+  @@index([ticketId])
+  @@index([itemId])
+  @@index([packageId])
+}
+
+model PosTicketSeller {
+  id                 String    @id @default(cuid())
+  ticketId           String    @db.Uuid
+  ticket             PosTicket @relation(fields: [ticketId], references: [id], onDelete: Restrict)
+  employeeId         String
+  employee           Empleado  @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  sellerNameSnapshot String    @db.VarChar(240)
+  shareAmount        Decimal   @db.Decimal(14, 2)
+  sharePercent       Decimal   @db.Decimal(8, 4)
+  creadoEn           DateTime  @default(now())
+
+  @@unique([ticketId, employeeId])
+  @@index([employeeId, creadoEn])
+}
+
+model PosPaymentOperation {
+  id                String                    @id @default(uuid()) @db.Uuid
+  ticketId          String                    @db.Uuid
+  ticket            PosTicket                 @relation(fields: [ticketId], references: [id], onDelete: Restrict)
+  folio             String                    @unique @db.VarChar(80)
+  kind              PosPaymentOperationKind
+  amount            Decimal                   @db.Decimal(14, 2)
+  businessDate      DateTime                  @db.Date
+  actorCredentialId String
+  actorCredential   PosCredential             @relation(fields: [actorCredentialId], references: [id], onDelete: Restrict)
+  terminalId        String
+  terminal          PosTerminal               @relation(fields: [terminalId], references: [id], onDelete: Restrict)
+  reversalOfId      String?                   @unique @db.Uuid
+  reversalOf        PosPaymentOperation?      @relation("PosPaymentOperationReversal", fields: [reversalOfId], references: [id], onDelete: Restrict)
+  reversedBy        PosPaymentOperation?      @relation("PosPaymentOperationReversal")
+  payments          PosPayment[]
+  legacyProjections PosLegacySaleProjection[]
+  creadoEn          DateTime                  @default(now())
+
+  @@index([ticketId, creadoEn])
+  @@index([businessDate, creadoEn])
+}
+
+model PosPayment {
+  id                    String              @id @default(cuid())
+  operationId           String              @db.Uuid
+  operation             PosPaymentOperation @relation(fields: [operationId], references: [id], onDelete: Restrict)
+  paymentMethodId       String
+  paymentMethod         MetodoPago          @relation(fields: [paymentMethodId], references: [id], onDelete: Restrict)
+  methodNameSnapshot    String              @db.VarChar(160)
+  methodTypeSnapshot    MetodoPagoTipo
+  amount                Decimal             @db.Decimal(14, 2)
+  reference             String?             @db.VarChar(160)
+  institution           String?             @db.VarChar(160)
+  authorizationLastFour String?             @db.VarChar(4)
+  creadoEn              DateTime            @default(now())
+
+  @@index([operationId])
+  @@index([paymentMethodId, creadoEn])
+}
+
+model PosLayaway {
+  id            String    @id @default(uuid()) @db.Uuid
+  ticketId      String    @unique @db.Uuid
+  ticket        PosTicket @relation(fields: [ticketId], references: [id], onDelete: Restrict)
+  amountPaid    Decimal   @db.Decimal(14, 2)
+  pendingAmount Decimal   @db.Decimal(14, 2)
+  paidAt        DateTime?
+  creadoEn      DateTime  @default(now())
+  actualizadoEn DateTime  @updatedAt
+
+  @@index([pendingAmount])
+}
+
+model PosOwedProduct {
+  id                String                       @id @default(uuid()) @db.Uuid
+  ticketId          String                       @db.Uuid
+  ticket            PosTicket                    @relation(fields: [ticketId], references: [id], onDelete: Restrict)
+  ticketLineId      String
+  ticketLine        PosTicketLine                @relation(fields: [ticketLineId], references: [id], onDelete: Restrict)
+  itemId            String
+  item              CatalogItem                  @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  quantity          Decimal                      @db.Decimal(14, 2)
+  deliveredQuantity Decimal                      @default(0) @db.Decimal(14, 2)
+  inventoryCommitted Boolean                     @default(true)
+  status            PosOwedProductStatus         @default(PENDING)
+  deliveryLines     PosOwedProductDeliveryLine[]
+  creadoEn          DateTime                     @default(now())
+  actualizadoEn     DateTime                     @updatedAt
+
+  @@index([ticketId, status])
+  @@index([itemId, status])
+}
+
+model PosOwedProductDelivery {
+  id                  String                       @id @default(uuid()) @db.Uuid
+  folio               String                       @unique @db.VarChar(80)
+  businessDate        DateTime                     @db.Date
+  actorCredentialId   String
+  actorCredential     PosCredential                @relation(fields: [actorCredentialId], references: [id], onDelete: Restrict)
+  terminalId          String
+  terminal            PosTerminal                  @relation(fields: [terminalId], references: [id], onDelete: Restrict)
+  inventoryMovementId String                       @unique
+  inventoryMovement   InventoryMovement            @relation(fields: [inventoryMovementId], references: [id], onDelete: Restrict)
+  lines               PosOwedProductDeliveryLine[]
+  creadoEn            DateTime                     @default(now())
+
+  @@index([businessDate, creadoEn])
+}
+
+model PosOwedProductDeliveryLine {
+  id            String                 @id @default(cuid())
+  deliveryId    String                 @db.Uuid
+  delivery      PosOwedProductDelivery @relation(fields: [deliveryId], references: [id], onDelete: Restrict)
+  owedProductId String                 @db.Uuid
+  owedProduct   PosOwedProduct         @relation(fields: [owedProductId], references: [id], onDelete: Restrict)
+  itemId        String
+  item          CatalogItem            @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  quantity      Decimal                @db.Decimal(14, 2)
+
+  @@unique([deliveryId, owedProductId])
+  @@index([owedProductId])
+}
+
+model PosAppointment {
+  id                    String               @id @default(uuid()) @db.Uuid
+  ticketId              String               @db.Uuid
+  ticket                PosTicket            @relation(fields: [ticketId], references: [id], onDelete: Restrict)
+  customerId            String
+  customer              Customer             @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  kind                  PosAppointmentKind
+  status                PosAppointmentStatus
+  serviceItemId         String?
+  serviceItem           CatalogItem?         @relation(fields: [serviceItemId], references: [id], onDelete: Restrict)
+  serviceNameSnapshot   String               @db.VarChar(240)
+  branchId              String
+  branch                Sucursal             @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  sellerId              String?
+  seller                Empleado?            @relation(fields: [sellerId], references: [id], onDelete: Restrict)
+  scheduledAt           DateTime?
+  createdByCredentialId String
+  createdByCredential   PosCredential        @relation(fields: [createdByCredentialId], references: [id], onDelete: Restrict)
+  courtesy              PosCourtesy?
+  creadoEn              DateTime             @default(now())
+
+  @@index([customerId, scheduledAt])
+  @@index([branchId, scheduledAt])
+}
+
+model PosCourtesy {
+  id                 String          @id @default(uuid()) @db.Uuid
+  ticketId           String          @db.Uuid
+  ticket             PosTicket       @relation(fields: [ticketId], references: [id], onDelete: Restrict)
+  ticketLineId       String          @unique
+  ticketLine         PosTicketLine   @relation(fields: [ticketLineId], references: [id], onDelete: Restrict)
+  appointmentId      String?         @unique @db.Uuid
+  appointment        PosAppointment? @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
+  policyId           String?
+  policyNameSnapshot String          @db.VarChar(160)
+  authorizationId    String?
+  creadoEn           DateTime        @default(now())
+
+  @@index([ticketId])
+}
+
+model PosTicketEvent {
+  id                  String             @id @default(uuid()) @db.Uuid
+  ticketId            String             @db.Uuid
+  ticket              PosTicket          @relation(fields: [ticketId], references: [id], onDelete: Restrict)
+  type                PosTicketEventType
+  amount              Decimal            @default(0) @db.Decimal(14, 2)
+  reason              String             @db.VarChar(1000)
+  snapshot            Json
+  actorCredentialId   String
+  actorCredential     PosCredential      @relation(fields: [actorCredentialId], references: [id], onDelete: Restrict)
+  authorizationId     String?
+  inventoryMovementId String?            @unique
+  inventoryMovement   InventoryMovement? @relation(fields: [inventoryMovementId], references: [id], onDelete: Restrict)
+  creadoEn            DateTime           @default(now())
+
+  @@index([ticketId, creadoEn])
+}
+
+model PosLegacySaleProjection {
+  id          String              @id @default(cuid())
+  operationId String              @db.Uuid
+  operation   PosPaymentOperation @relation(fields: [operationId], references: [id], onDelete: Restrict)
+  employeeId  String
+  employee    Empleado            @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  ventaId     String              @unique
+  venta       Venta               @relation(fields: [ventaId], references: [id], onDelete: Restrict)
+  amount      Decimal             @db.Decimal(14, 2)
+  creadoEn    DateTime            @default(now())
+
+  @@unique([operationId, employeeId])
+  @@index([operationId])
+}
+
+model PosVoucherIssue {
+  id                   String                 @id @default(uuid()) @db.Uuid
+  folio                String                 @unique @db.VarChar(80)
+  templateId           String
+  template             PosVoucherTemplate     @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  ticketId             String                 @db.Uuid
+  ticket               PosTicket              @relation(fields: [ticketId], references: [id], onDelete: Restrict)
+  customerId           String?
+  customer             Customer?              @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  templateNameSnapshot String                 @db.VarChar(160)
+  kindSnapshot         PosVoucherKind
+  valueSnapshot        Decimal                @db.Decimal(14, 2)
+  messageSnapshot      String                 @db.VarChar(1000)
+  status               PosVoucherIssueStatus  @default(ISSUED)
+  issuedByCredentialId String
+  issuedByCredential   PosCredential          @relation(fields: [issuedByCredentialId], references: [id], onDelete: Restrict)
+  redeemedAt           DateTime?
+  printEvents          PosVoucherPrintEvent[]
+  creadoEn             DateTime               @default(now())
+
+  @@unique([ticketId, templateId])
+  @@index([customerId, status])
+}
+
+model PosVoucherPrintEvent {
+  id                String          @id @default(uuid()) @db.Uuid
+  issueId           String          @db.Uuid
+  issue             PosVoucherIssue @relation(fields: [issueId], references: [id], onDelete: Restrict)
+  copyNumber        Int
+  actorCredentialId String
+  actorCredential   PosCredential   @relation(fields: [actorCredentialId], references: [id], onDelete: Restrict)
+  terminalId        String
+  terminal          PosTerminal     @relation(fields: [terminalId], references: [id], onDelete: Restrict)
+  creadoEn          DateTime        @default(now())
+
+  @@unique([issueId, copyNumber])
+  @@index([issueId, creadoEn])
+}
+
 enum TipoCompraCita {
   PAGO_NETO
   COMPRA_CON_APARTADO
@@ -1178,18 +1579,19 @@ model RegistroCita {
 
 // Agrupa todas las ventas de un vendedor en un día
 model Venta {
-  id            String         @id @default(cuid())
+  id            String                   @id @default(cuid())
   fecha         DateTime
   notas         String?
   // Vincula registros guardados juntos (mismo voucher multi-vendedor); nullable = venta individual
   sesionId      String?
   sucursalId    String
-  sucursal      Sucursal       @relation(fields: [sucursalId], references: [id])
+  sucursal      Sucursal                 @relation(fields: [sucursalId], references: [id])
   vendedorId    String
-  vendedor      Empleado       @relation(fields: [vendedorId], references: [id])
+  vendedor      Empleado                 @relation(fields: [vendedorId], references: [id])
   detalles      VentaDetalle[]
-  creadoEn      DateTime       @default(now())
-  actualizadoEn DateTime       @updatedAt
+  creadoEn      DateTime                 @default(now())
+  actualizadoEn DateTime                 @updatedAt
+  posProjection PosLegacySaleProjection?
 
   @@index([fecha])
   @@index([sucursalId, fecha])

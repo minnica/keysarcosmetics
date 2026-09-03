@@ -323,6 +323,7 @@ export interface SellerSplit {
 
 export interface Ticket {
   id: string;
+  backendId?: string;
   createdAt: string;
   createdAtIso: string;
   clientId?: string;
@@ -361,6 +362,7 @@ export interface Ticket {
 }
 
 export interface TicketInventoryLine {
+  backendLineId?: string;
   productId: string;
   productName: string;
   quantity: number;
@@ -375,6 +377,9 @@ export interface TicketCancellationRequest {
   refundAmount: number;
   returnedProducts: TicketInventoryLine[];
   nonReturnedProducts: TicketNonReturnLine[];
+  reason: string;
+  authorizationAlias: string;
+  authorizationCode: string;
 }
 
 export interface TicketEditProductInput {
@@ -394,6 +399,7 @@ export interface TicketEditRequest {
   paymentMethodId: PaymentMethod;
   payments: PaymentEntry[];
   authorizationCode: string;
+  authorizationAlias: string;
 }
 
 export type VoucherKind =
@@ -707,6 +713,7 @@ export interface OwedProductDelivery {
 
 export interface OwedProductRecord {
   id: string;
+  backendTicketLineId?: string;
   ticketId: string;
   layawayId: string | null;
   clientId: string;
@@ -748,6 +755,7 @@ export interface PaymentEntry {
 }
 
 export interface TicketProductLine {
+  backendLineId?: string;
   productId: string;
   name: string;
   quantity: number;

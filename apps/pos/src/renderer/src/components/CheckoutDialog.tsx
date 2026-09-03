@@ -104,6 +104,7 @@ interface CheckoutDialogProps {
   requiredFields: RequiredClientFields;
   courtesySettings: CourtesySettings;
   isMasterCode: (code: string) => boolean;
+  onSearchClients?: (query: string) => Promise<Client[]>;
   onOpenChange: (open: boolean) => void;
   onComplete: (result: CheckoutResult) => void;
 }
@@ -190,6 +191,7 @@ export function CheckoutDialog({
   requiredFields,
   courtesySettings,
   isMasterCode,
+  onSearchClients,
   onOpenChange,
   onComplete,
 }: CheckoutDialogProps) {
@@ -210,6 +212,7 @@ export function CheckoutDialog({
   const [clientMode, setClientMode] = useState<ClientMode>("search");
   const [checkoutStep, setCheckoutStep] = useState<CheckoutStep>(1);
   const [clientSearch, setClientSearch] = useState("");
+  const [remoteClients, setRemoteClients] = useState<Client[]>([]);
   const [selectedClientId, setSelectedClientId] = useState("");
   const [newClient, setNewClient] = useState<NewClientDraft>(emptyClient);
   const [splitMode, setSplitMode] = useState<SplitMode>("amount");
@@ -246,6 +249,7 @@ export function CheckoutDialog({
     setClientMode("search");
     setCheckoutStep(1);
     setClientSearch("");
+    setRemoteClients([]);
     setSelectedClientId("");
     setNewClient(emptyClient);
     setSplitMode("amount");
@@ -280,10 +284,36 @@ export function CheckoutDialog({
     );
   }, [activeSellers, courtesySettings.defaultPackage, open, paymentMethods, total]);
 
+  useEffect(() => {
+    const query = clientSearch.trim();
+    if (!open || clientMode !== "search" || !onSearchClients || query.length < 2) {
+      setRemoteClients([]);
+      return;
+    }
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => {
+      void onSearchClients(query).then((items) => {
+        if (!controller.signal.aborted) setRemoteClients(items);
+      }).catch(() => {
+        if (!controller.signal.aborted) setRemoteClients([]);
+      });
+    }, 250);
+    return () => {
+      controller.abort();
+      window.clearTimeout(timeout);
+    };
+  }, [clientMode, clientSearch, onSearchClients, open]);
+
+  const availableClients = useMemo(() => {
+    const byId = new Map(clients.map((client) => [client.id, client]));
+    for (const client of remoteClients) byId.set(client.id, client);
+    return [...byId.values()];
+  }, [clients, remoteClients]);
+
   const filteredClients = useMemo(() => {
     const query = clientSearch.trim().toLocaleLowerCase("es-MX");
     if (!query) return [];
-    return clients.filter((client) => {
+    return availableClients.filter((client) => {
       const fullName =
         `${client.firstName} ${client.lastName}`.toLocaleLowerCase("es-MX");
       return (
@@ -291,10 +321,10 @@ export function CheckoutDialog({
         client.phone.replaceAll(" ", "").includes(query.replaceAll(" ", ""))
       );
     });
-  }, [clientSearch, clients]);
+  }, [availableClients, clientSearch]);
   const hasClientSearch = clientSearch.trim().length > 0;
 
-  const selectedClient = clients.find(
+  const selectedClient = availableClients.find(
     (client) => client.id === selectedClientId,
   );
   const splitTarget = splitMode === "amount" ? total : 100;
