@@ -1,5 +1,7 @@
 // Tipos compartidos del sistema de cosméticos
 
+export * from "./pos";
+
 export type Rol = "SUPER_ADMIN" | "GERENTE" | "CAPTURISTA";
 
 export const SCREEN_KEYS = [

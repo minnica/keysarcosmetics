@@ -1,6 +1,10 @@
 import "dotenv/config";
 import cors from "cors";
-import express, { type ErrorRequestHandler, type Express } from "express";
+import express, {
+  type ErrorRequestHandler,
+  type Express,
+  type Request,
+} from "express";
 import { prisma } from "./prisma/client";
 import accessRoutes from "./routes/access.routes";
 import authRoutes from "./routes/auth.routes";
@@ -9,6 +13,15 @@ import envelopeRoutes from "./routes/envelope.routes";
 import payrollAccessRoutes from "./routes/payroll-access.routes";
 import payrollRoutes from "./routes/payroll.routes";
 import posRoutes from "./routes/pos.routes";
+import posCatalogRoutes from "./routes/pos-catalog.routes";
+import posInventoryRoutes from "./routes/pos-inventory.routes";
+import posTicketRoutes from "./routes/pos-ticket.routes";
+import posOperationRoutes from "./routes/pos-operation.routes";
+import posReportRoutes from "./routes/pos-report.routes";
+import posSyncRoutes from "./routes/pos-sync.routes";
+import posMembershipRoutes from "./routes/pos-membership.routes";
+import posAgendaRoutes from "./routes/pos-agenda.routes";
+import posCommercialRoutes from "./routes/pos-commercial.routes";
 import schedulerRoutes from "./routes/scheduler.routes";
 
 function configuredOrigins(): string[] {
@@ -37,7 +50,14 @@ export function createApp(): Express {
       credentials: true,
     }),
   );
-  app.use(express.json({ limit: "1mb" }));
+  app.use(
+    express.json({
+      limit: "1mb",
+      verify: (req, _res, buffer) => {
+        (req as Request).rawBody = Buffer.from(buffer);
+      },
+    }),
+  );
   app.use(express.urlencoded({ extended: true, limit: "1mb" }));
 
   app.get("/health", (_req, res) => {
@@ -68,7 +88,17 @@ export function createApp(): Express {
   app.use("/api/payroll", payrollRoutes);
   app.use("/api/crm", crmRoutes);
   app.use("/api/scheduler", schedulerRoutes);
+  // El webhook firmado de Agenda vive antes de los routers que exigen JWT POS.
+  app.use("/api/pos", posAgendaRoutes);
   app.use("/api/pos", posRoutes);
+  app.use("/api/pos", posCatalogRoutes);
+  app.use("/api/pos", posInventoryRoutes);
+  app.use("/api/pos", posTicketRoutes);
+  app.use("/api/pos", posOperationRoutes);
+  app.use("/api/pos", posReportRoutes);
+  app.use("/api/pos", posSyncRoutes);
+  app.use("/api/pos", posMembershipRoutes);
+  app.use("/api/pos", posCommercialRoutes);
 
   app.use((_req, res) => {
     res.status(404).json({
