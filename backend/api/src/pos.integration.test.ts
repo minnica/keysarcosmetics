@@ -113,62 +113,8 @@ integrationDescribe("seguridad y terminales POS", () => {
     await new Promise<void>((resolve, reject) =>
       server.close((error) => (error ? reject(error) : resolve())),
     );
-    const credentials = await prisma.posCredential.findMany({
-      where: { OR: [{ employeeId }, { userId }] },
-      select: { id: true },
-    });
-    const credentialIds = credentials.map((credential) => credential.id);
-    await prisma.posNotificationRead.deleteMany({
-      where: { notification: { branchId: { in: [branchId, secondBranchId] } } },
-    });
-    await prisma.posNotificationOutbox.deleteMany({
-      where: { notification: { branchId: { in: [branchId, secondBranchId] } } },
-    });
-    await prisma.posNotification.deleteMany({
-      where: { branchId: { in: [branchId, secondBranchId] } },
-    });
-    await prisma.posAttendance.deleteMany({
-      where: { branchId: { in: [branchId, secondBranchId] } },
-    });
-    await prisma.posBusinessDay.deleteMany({
-      where: { branchId: { in: [branchId, secondBranchId] } },
-    });
-    await prisma.posIdempotencyRecord.deleteMany({
-      where: { actorCredentialId: { in: credentialIds } },
-    });
-    await prisma.auditLog.deleteMany({
-      where: {
-        OR: [
-          { terminalId },
-          { targetId: { in: [employeeId, userId, positionId, terminalId] } },
-        ],
-      },
-    });
-    await prisma.posPersonalAuthorization.deleteMany({
-      where: { credentialId: { in: credentialIds } },
-    });
-    await prisma.masterAuthorization.deleteMany({ where: { terminalId } });
-    await prisma.posSession.deleteMany({ where: { terminalId } });
-    await prisma.posPositionBranchAssignment.deleteMany({
-      where: { positionId },
-    });
-    await prisma.posCredentialBranchAssignment.deleteMany({
-      where: { credentialId: { in: credentialIds } },
-    });
-    await prisma.positionPosPermission.deleteMany({ where: { positionId } });
-    await prisma.posMasterCredential.deleteMany({
-      where: { credential: { OR: [{ employeeId }, { userId }] } },
-    });
-    await prisma.posCredential.deleteMany({
-      where: { OR: [{ employeeId }, { userId }] },
-    });
-    await prisma.posTerminal.deleteMany({ where: { id: terminalId } });
-    await prisma.usuario.deleteMany({ where: { id: userId } });
-    await prisma.empleado.deleteMany({ where: { id: employeeId } });
-    await prisma.position.deleteMany({ where: { id: positionId } });
-    await prisma.sucursal.deleteMany({
-      where: { id: { in: [branchId, secondBranchId] } },
-    });
+    // Esta suite corre contra una base de datos efímera. La asistencia cerrada es
+    // inmutable por diseño, así que sus fixtures se conservan hasta destruirla.
     await prisma.$disconnect();
   });
 

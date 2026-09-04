@@ -238,6 +238,7 @@ integrationDescribe("membresías POS con PostgreSQL", () => {
         customerId: customer.id,
         kind: "NEXT_SESSION",
         status: "SCHEDULED",
+        scheduledAt: new Date("2026-09-05T18:00:00.000Z"),
         serviceNameSnapshot: "Sesión de membresía",
         branchId: branch.id,
         sellerId: employee.id,
