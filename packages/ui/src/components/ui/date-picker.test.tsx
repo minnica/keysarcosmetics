@@ -56,6 +56,21 @@ describe('DatePicker', () => {
     expect(screen.queryByRole('grid')).not.toBeInTheDocument()
   })
 
+  it('limita el popover al viewport para usarlo dentro de diálogos', async () => {
+    const { user } = renderWithUser(
+      <div role="dialog" aria-label="Editar venta">
+        <DatePicker value="2025-08-10" onChange={vi.fn()} />
+      </div>,
+    )
+
+    await user.click(screen.getByRole('button', { name: /10\/08\/2025/ }))
+
+    expect(document.querySelector('.date-picker-popover')).toHaveClass(
+      '!w-auto',
+      'max-w-[calc(100vw-24px)]',
+    )
+  })
+
   it('actualiza el valor cuando se usa como componente controlado', async () => {
     const { user } = renderWithUser(
       <ControlledDatePicker initialValue="2025-08-10" />,

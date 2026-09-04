@@ -1,0 +1,1613 @@
+import { useEffect, useMemo, useState } from "react";
+import {
+  BadgeCheck,
+  BriefcaseBusiness,
+  Check,
+  Eye,
+  FolderTree,
+  KeyRound,
+  LockKeyhole,
+  PencilLine,
+  Plus,
+  Power,
+  Printer,
+  ShieldAlert,
+  ShieldCheck,
+  SlidersHorizontal,
+  UserCog,
+  UsersRound,
+} from "lucide-react";
+import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  Input,
+  Label,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  toast,
+} from "@cosmetics/ui";
+import type {
+  EmployeeConfigurationPermission,
+  EmployeeRole,
+  ScreenId,
+  Seller,
+} from "../types";
+
+interface EmployeesViewProps {
+  authorized: boolean;
+  managedByApi?: boolean;
+  defaultMasterAlias?: string;
+  roles: EmployeeRole[];
+  sellers: Seller[];
+  onAuthorize: (
+    code: string,
+    masterAlias?: string,
+  ) => Promise<boolean> | boolean;
+  onLock: () => void;
+  onSaveRole: (
+    role: EmployeeRole,
+    masterCode?: string,
+    masterAlias?: string,
+  ) => Promise<boolean> | boolean;
+  onSaveSeller: (
+    seller: Seller,
+    masterCode?: string,
+    masterAlias?: string,
+  ) => Promise<boolean> | boolean;
+  onToggleRole: (roleId: string) => void;
+  onAssignRole: (sellerId: string, roleId: string) => void;
+  onSetMasterAccess: (sellerIds: string[], code: string | null) => boolean;
+}
+
+const moduleOptions: Array<{
+  id: ScreenId;
+  label: string;
+  description: string;
+  masterOnly?: boolean;
+}> = [
+  {
+    id: "dashboard",
+    label: "Dashboard",
+    description: "Control ejecutivo y auditoría diaria de inventario.",
+  },
+  { id: "sale", label: "Ventas", description: "Captura y cobro de ventas." },
+  {
+    id: "seller-sales",
+    label: "Mis ventas",
+    description: "Ventas y cartera propia.",
+  },
+  {
+    id: "receipts",
+    label: "Receipts",
+    description: "Consulta e impresión de tickets.",
+  },
+  {
+    id: "customers",
+    label: "Customers",
+    description: "Directorio y expedientes.",
+  },
+  { id: "appointments", label: "Citas", description: "Agenda y cortesías." },
+  {
+    id: "memberships",
+    label: "Membresías",
+    description: "Tarjetones, sesiones, asistencia y análisis protegido.",
+  },
+  {
+    id: "inventory",
+    label: "Inventory",
+    description: "Productos, stock y pedidos.",
+  },
+  {
+    id: "warehouse",
+    label: "Pedido sucursales",
+    description:
+      "Existencias de bodega, compras, entradas, solicitudes y envíos.",
+  },
+  {
+    id: "branch-inventory",
+    label: "Almacén matriz",
+    description:
+      "Solicitudes de productos, testers e insumos hacia bodega matriz.",
+  },
+  {
+    id: "suppliers",
+    label: "Proveedores",
+    description: "Datos fiscales, productos y compras con costos protegidos.",
+  },
+  {
+    id: "catalog",
+    label: "Catálogo",
+    description: "Consulta compacta del catálogo.",
+  },
+  {
+    id: "inventory-movements",
+    label: "Movimientos",
+    description: "Altas, bajas y transferencias.",
+  },
+  {
+    id: "deals",
+    label: "Paquetes y promociones",
+    description: "Paquetes y promociones autorizadas.",
+  },
+  {
+    id: "settings",
+    label: "Settings",
+    description: "Configuraciones permitidas para el rol.",
+  },
+  {
+    id: "x-report",
+    label: "X-Report",
+    description: "Corte y operación del día.",
+  },
+  {
+    id: "reports",
+    label: "Reports",
+    description: "Centro de reportes ejecutivos.",
+  },
+  {
+    id: "cash-manager",
+    label: "Cash manager",
+    description: "Operación de caja.",
+  },
+  { id: "clock-in", label: "Clock In", description: "Registro de asistencia." },
+  {
+    id: "close-day",
+    label: "Close day",
+    description: "Cierre operativo diario.",
+  },
+  {
+    id: "competition",
+    label: "Competition",
+    description: "Ranking y competiciones.",
+  },
+  {
+    id: "websites",
+    label: "Websites",
+    description: "Accesos web configurados.",
+  },
+  {
+    id: "data-update",
+    label: "Data update",
+    description: "Sincronización de módulos.",
+  },
+  {
+    id: "employees",
+    label: "Employees",
+    description: "Siempre exige código master.",
+    masterOnly: true,
+  },
+  {
+    id: "my-account",
+    label: "My Account",
+    description: "Siempre exige código master.",
+    masterOnly: true,
+  },
+];
+
+const modulePermissionGroups: Array<{
+  label: string;
+  description: string;
+  moduleIds: ScreenId[];
+}> = [
+  {
+    label: "Operación de venta",
+    description: "Venta, catálogo, tickets, caja y cierre diario.",
+    moduleIds: [
+      "sale",
+      "catalog",
+      "seller-sales",
+      "receipts",
+      "cash-manager",
+      "x-report",
+      "close-day",
+    ],
+  },
+  {
+    label: "Clientes y servicio",
+    description: "Expedientes, citas, competiciones y accesos web.",
+    moduleIds: [
+      "customers",
+      "appointments",
+      "memberships",
+      "competition",
+      "websites",
+    ],
+  },
+  {
+    label: "Inventario y almacén",
+    description: "Existencias, movimientos, proveedores y paquetes.",
+    moduleIds: [
+      "inventory",
+      "inventory-movements",
+      "warehouse",
+      "branch-inventory",
+      "suppliers",
+      "deals",
+    ],
+  },
+  {
+    label: "Administración y análisis",
+    description: "Dashboard, reportes, usuarios y cuenta maestra.",
+    moduleIds: ["dashboard", "reports", "employees", "my-account"],
+  },
+  {
+    label: "Sistema",
+    description: "Configuración, sincronización y asistencia.",
+    moduleIds: ["settings", "data-update", "clock-in"],
+  },
+];
+
+const printableModuleIds = new Set<ScreenId>([
+  "seller-sales",
+  "receipts",
+  "customers",
+  "appointments",
+  "memberships",
+  "inventory",
+  "inventory-movements",
+  "warehouse",
+  "branch-inventory",
+  "suppliers",
+  "deals",
+  "cash-manager",
+  "x-report",
+  "reports",
+]);
+
+const configurationOptions: Array<{
+  id: EmployeeConfigurationPermission;
+  label: string;
+  description: string;
+}> = [
+  {
+    id: "TICKET",
+    label: "Ticket e impresión",
+    description: "Logo, dirección, textos e IVA.",
+  },
+  {
+    id: "INVENTORY_CATALOG",
+    label: "Catálogo de inventario",
+    description: "Familias, categorías y productos.",
+  },
+  {
+    id: "INVENTORY_AUDIT",
+    label: "Conteo real de inventario",
+    description:
+      "Existencias físicas, diferencias, errores y exportación de reconteos.",
+  },
+  {
+    id: "INVENTORY_MOVEMENTS",
+    label: "Movimientos de inventario",
+    description: "Motivos, lotes y aprobaciones.",
+  },
+  {
+    id: "WAREHOUSE_MOVEMENTS",
+    label: "Movimientos de almacén",
+    description:
+      "Crear, aprobar, recibir, editar y cancelar movimientos de bodega.",
+  },
+  {
+    id: "PAYMENT_METHODS",
+    label: "Métodos de pago",
+    description: "Alta, baja y edición de métodos.",
+  },
+  {
+    id: "CUSTOMER_FIELDS",
+    label: "Configuración de clientes",
+    description: "Campos obligatorios y procedencias.",
+  },
+  {
+    id: "DEALS",
+    label: "Paquetes y promociones",
+    description: "Configuración y publicación de paquetes.",
+  },
+  {
+    id: "COMPETITIONS",
+    label: "Competiciones",
+    description: "Tipos, periodos y objetivos.",
+  },
+  {
+    id: "REPORTS_COSTS",
+    label: "Reportes y costos",
+    description: "Costos, utilidad y reportes administrativos.",
+  },
+  {
+    id: "BRANCHES",
+    label: "Sucursales",
+    description: "Alta, activación e inactivación.",
+  },
+  {
+    id: "SESSION_EXIT",
+    label: "Salir sin Close day",
+    description:
+      "Cerrar únicamente la sesión del usuario sin generar ni modificar el corte.",
+  },
+  {
+    id: "USERS_ROLES",
+    label: "Usuarios y roles",
+    description: "Asignaciones y permisos del personal.",
+  },
+];
+
+const cloneRole = (role: EmployeeRole): EmployeeRole => ({
+  ...role,
+  moduleAccess: [...role.moduleAccess],
+  moduleEditAccess: [...role.moduleEditAccess],
+  modulePrintAccess: [...role.modulePrintAccess],
+  configurationAccess: [...role.configurationAccess],
+});
+
+export function EmployeesView({
+  authorized,
+  managedByApi = false,
+  defaultMasterAlias = "",
+  roles,
+  sellers,
+  onAuthorize,
+  onLock,
+  onSaveRole,
+  onSaveSeller,
+  onToggleRole,
+  onAssignRole,
+  onSetMasterAccess,
+}: EmployeesViewProps) {
+  const [accessAlias, setAccessAlias] = useState(defaultMasterAlias);
+  const [accessCode, setAccessCode] = useState("");
+  const [accessError, setAccessError] = useState("");
+  const [selectedRoleId, setSelectedRoleId] = useState(
+    roles.find((role) => !role.system)?.id ?? roles[0]?.id ?? "",
+  );
+  const selectedRole =
+    roles.find((role) => role.id === selectedRoleId) ?? roles[0];
+  const [roleDraft, setRoleDraft] = useState<EmployeeRole | null>(
+    selectedRole ? cloneRole(selectedRole) : null,
+  );
+  const [newRoleOpen, setNewRoleOpen] = useState(false);
+  const [newRoleName, setNewRoleName] = useState("");
+  const [newRoleDescription, setNewRoleDescription] = useState("");
+  const [selectedMasterSellerIds, setSelectedMasterSellerIds] = useState<
+    string[]
+  >([]);
+  const [newMasterCode, setNewMasterCode] = useState("");
+  const [sellerDraft, setSellerDraft] = useState<Seller | null>(null);
+  const [roleSaveAlias, setRoleSaveAlias] = useState(defaultMasterAlias);
+  const [roleSaveCode, setRoleSaveCode] = useState("");
+  const [sellerSaveAlias, setSellerSaveAlias] = useState(defaultMasterAlias);
+  const [sellerSaveCode, setSellerSaveCode] = useState("");
+
+  useEffect(() => {
+    if (selectedRole) setRoleDraft(cloneRole(selectedRole));
+  }, [selectedRole]);
+
+  const activeRoles = roles.filter((role) => role.active);
+  const activeSellers = sellers.filter((seller) => seller.active);
+  const masterSellers = activeSellers.filter(
+    (seller) => seller.masterAccessCode,
+  );
+  const sellersWithoutPermissions = activeSellers.filter((seller) => {
+    const role = roles.find(
+      (candidate) => candidate.id === seller.roleId && candidate.active,
+    );
+    return (
+      !role ||
+      (role.moduleAccess.length === 0 && role.configurationAccess.length === 0)
+    );
+  });
+  const assignedByRole = useMemo(
+    () =>
+      sellers.reduce<Record<string, number>>((summary, seller) => {
+        summary[seller.roleId] = (summary[seller.roleId] ?? 0) + 1;
+        return summary;
+      }, {}),
+    [sellers],
+  );
+
+  const authorize = async () => {
+    if (managedByApi && !accessAlias.trim()) {
+      setAccessError("Captura el alias del usuario master.");
+      return;
+    }
+    if (!(await onAuthorize(accessCode.trim(), accessAlias.trim()))) {
+      setAccessError("Alias o código master incorrecto.");
+      return;
+    }
+    setAccessCode("");
+    setAccessError("");
+    toast.success("Employees desbloqueado para Master Keysar.");
+  };
+
+  const toggleMasterSeller = (sellerId: string) => {
+    setSelectedMasterSellerIds((current) =>
+      current.includes(sellerId)
+        ? current.filter((id) => id !== sellerId)
+        : [...current, sellerId],
+    );
+  };
+
+  const assignMasterCode = () => {
+    if (selectedMasterSellerIds.length === 0) {
+      toast.error("Selecciona por lo menos un empleado activo.");
+      return;
+    }
+    if (newMasterCode.length !== 4) {
+      toast.error("El código master debe contener exactamente 4 dígitos.");
+      return;
+    }
+    if (!onSetMasterAccess(selectedMasterSellerIds, newMasterCode)) return;
+    toast.success(
+      `Código master asignado a ${selectedMasterSellerIds.length} empleado${selectedMasterSellerIds.length === 1 ? "" : "s"}.`,
+    );
+    setNewMasterCode("");
+    setSelectedMasterSellerIds([]);
+  };
+
+  const revokeMasterCode = () => {
+    if (selectedMasterSellerIds.length === 0) {
+      toast.error("Selecciona los empleados cuyo acceso deseas revocar.");
+      return;
+    }
+    if (!onSetMasterAccess(selectedMasterSellerIds, null)) return;
+    toast.success("Acceso master revocado para la selección.");
+    setSelectedMasterSellerIds([]);
+    setNewMasterCode("");
+  };
+
+  if (!authorized) {
+    return (
+      <Card className="my-account-gate employee-access-gate">
+        <CardContent>
+          <div className="my-account-gate-icon">
+            <UsersRound size={27} />
+          </div>
+          <span className="section-kicker">ACCESO MASTER EXCLUSIVO</span>
+          <h2>Employees</h2>
+          <p>
+            El personal, los puestos y los permisos por módulo sólo pueden ser
+            administrados por el usuario master.
+          </p>
+          <div className="my-account-code-row">
+            {managedByApi && (
+              <Input
+                value={accessAlias}
+                onChange={(event) => setAccessAlias(event.target.value)}
+                placeholder="Alias master"
+                aria-label="Alias master para Employees"
+                autoComplete="username"
+              />
+            )}
+            <Input
+              type="password"
+              inputMode="numeric"
+              maxLength={managedByApi ? 12 : 4}
+              value={accessCode}
+              onChange={(event) =>
+                setAccessCode(event.target.value.replace(/\D/g, ""))
+              }
+              onKeyDown={(event) => {
+                if (event.key === "Enter") void authorize();
+              }}
+              placeholder="Código master"
+              aria-label="Código master para Employees"
+            />
+            <Button
+              type="button"
+              onClick={() => void authorize()}
+              disabled={
+                (managedByApi && !accessAlias.trim()) ||
+                (managedByApi ? accessCode.length < 4 : accessCode.length !== 4)
+              }
+            >
+              <ShieldCheck size={16} /> Acceder
+            </Button>
+          </div>
+          {accessError && (
+            <span className="my-account-error">{accessError}</span>
+          )}
+          {!managedByApi && <small>Modo demostrativo local.</small>}
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const toggleModule = (screen: ScreenId) => {
+    if (!roleDraft || roleDraft.system) return;
+    setRoleDraft((current) => {
+      if (!current) return current;
+      const selected = current.moduleAccess.includes(screen);
+      return {
+        ...current,
+        moduleAccess: selected
+          ? current.moduleAccess.filter((item) => item !== screen)
+          : [...current.moduleAccess, screen],
+        moduleEditAccess: selected
+          ? current.moduleEditAccess.filter((item) => item !== screen)
+          : current.moduleEditAccess,
+        modulePrintAccess: selected
+          ? current.modulePrintAccess.filter((item) => item !== screen)
+          : current.modulePrintAccess,
+      };
+    });
+  };
+
+  const toggleModulePrint = (screen: ScreenId) => {
+    if (!roleDraft || roleDraft.system || !printableModuleIds.has(screen))
+      return;
+    setRoleDraft((current) => {
+      if (!current) return current;
+      const selected = current.modulePrintAccess.includes(screen);
+      return {
+        ...current,
+        moduleAccess:
+          !selected && !current.moduleAccess.includes(screen)
+            ? [...current.moduleAccess, screen]
+            : current.moduleAccess,
+        modulePrintAccess: selected
+          ? current.modulePrintAccess.filter((item) => item !== screen)
+          : [...current.modulePrintAccess, screen],
+      };
+    });
+  };
+
+  const toggleModuleGroup = (moduleIds: ScreenId[]) => {
+    if (!roleDraft || roleDraft.system) return;
+    const editableIds = moduleIds.filter(
+      (id) => !moduleOptions.find((module) => module.id === id)?.masterOnly,
+    );
+    const allSelected = editableIds.every((id) =>
+      roleDraft.moduleAccess.includes(id),
+    );
+    setRoleDraft((current) => {
+      if (!current) return current;
+      const nextAccess = allSelected
+        ? current.moduleAccess.filter((id) => !editableIds.includes(id))
+        : Array.from(new Set([...current.moduleAccess, ...editableIds]));
+      return {
+        ...current,
+        moduleAccess: nextAccess,
+        moduleEditAccess: current.moduleEditAccess.filter((id) =>
+          nextAccess.includes(id),
+        ),
+        modulePrintAccess: current.modulePrintAccess.filter((id) =>
+          nextAccess.includes(id),
+        ),
+      };
+    });
+  };
+
+  const toggleModuleEdit = (screen: ScreenId) => {
+    if (!roleDraft || roleDraft.system) return;
+    setRoleDraft((current) => {
+      if (!current) return current;
+      const selected = current.moduleEditAccess.includes(screen);
+      return {
+        ...current,
+        moduleAccess:
+          !selected && !current.moduleAccess.includes(screen)
+            ? [...current.moduleAccess, screen]
+            : current.moduleAccess,
+        moduleEditAccess: selected
+          ? current.moduleEditAccess.filter((item) => item !== screen)
+          : [...current.moduleEditAccess, screen],
+      };
+    });
+  };
+
+  const toggleConfiguration = (permission: EmployeeConfigurationPermission) => {
+    if (!roleDraft || roleDraft.system) return;
+    setRoleDraft((current) => {
+      if (!current) return current;
+      const selected = current.configurationAccess.includes(permission);
+      return {
+        ...current,
+        moduleAccess:
+          permission !== "SESSION_EXIT" &&
+          !selected &&
+          !current.moduleAccess.includes("settings")
+            ? [...current.moduleAccess, "settings"]
+            : current.moduleAccess,
+        configurationAccess: selected
+          ? current.configurationAccess.filter((item) => item !== permission)
+          : [...current.configurationAccess, permission],
+      };
+    });
+  };
+
+  const saveRole = async () => {
+    if (!roleDraft) return;
+    if (!roleDraft.name.trim()) {
+      toast.error("Captura el nombre del puesto o rol.");
+      return;
+    }
+    if (!managedByApi && roleDraft.moduleAccess.length === 0) {
+      toast.error("El rol debe conservar acceso por lo menos a un módulo.");
+      return;
+    }
+    if (managedByApi && !roleSaveAlias.trim()) {
+      toast.error("Ingresa el alias del usuario Master.");
+      return;
+    }
+    if (roleSaveCode.length < 4) {
+      toast.error("Ingresa un código Master válido para guardar los permisos.");
+      return;
+    }
+    const hasSettingsConfiguration = roleDraft.configurationAccess.some(
+      (permission) => permission !== "SESSION_EXIT",
+    );
+    const normalizedModuleAccess =
+      hasSettingsConfiguration && !roleDraft.moduleAccess.includes("settings")
+        ? [...roleDraft.moduleAccess, "settings" as const]
+        : roleDraft.moduleAccess;
+    const normalizedModuleEditAccess = roleDraft.moduleEditAccess.filter(
+      (screen) => normalizedModuleAccess.includes(screen),
+    );
+    const normalizedModulePrintAccess = roleDraft.modulePrintAccess.filter(
+      (screen) =>
+        normalizedModuleAccess.includes(screen) &&
+        printableModuleIds.has(screen),
+    );
+    const saved = await onSaveRole(
+      {
+        ...roleDraft,
+        name: roleDraft.name.trim(),
+        description: roleDraft.description.trim(),
+        moduleAccess: normalizedModuleAccess,
+        moduleEditAccess: normalizedModuleEditAccess,
+        modulePrintAccess: normalizedModulePrintAccess,
+      },
+      roleSaveCode,
+      roleSaveAlias.trim(),
+    );
+    if (!saved) return;
+    setRoleSaveCode("");
+    toast.success(`Permisos de ${roleDraft.name} actualizados.`);
+  };
+
+  const createRole = () => {
+    const name = newRoleName.trim();
+    if (!name) {
+      toast.error("Captura el nombre del nuevo rol.");
+      return;
+    }
+    if (
+      roles.some(
+        (role) =>
+          role.name.toLocaleLowerCase("es-MX") ===
+          name.toLocaleLowerCase("es-MX"),
+      )
+    ) {
+      toast.error("Ya existe un rol con ese nombre.");
+      return;
+    }
+    const role: EmployeeRole = {
+      id: `role-${crypto.randomUUID()}`,
+      name,
+      description:
+        newRoleDescription.trim() || "Rol personalizado de la empresa.",
+      active: true,
+      system: false,
+      moduleAccess: [],
+      moduleEditAccess: [],
+      modulePrintAccess: [],
+      configurationAccess: [],
+    };
+    void onSaveRole(role);
+    setSelectedRoleId(role.id);
+    setNewRoleName("");
+    setNewRoleDescription("");
+    setNewRoleOpen(false);
+    toast.success(`${name} registrado. Configura ahora sus accesos.`);
+  };
+
+  const openNewSeller = () => {
+    setSellerDraft({
+      id: `seller-${crypto.randomUUID()}`,
+      name: "",
+      alias: "",
+      initials: "",
+      active: true,
+      accessCode: "",
+      masterAccessCode: null,
+      canViewCosts: false,
+      roleId: "",
+    });
+  };
+
+  const saveSeller = async () => {
+    if (!sellerDraft) return;
+    const editing = sellers.some((seller) => seller.id === sellerDraft.id);
+    if (
+      managedByApi &&
+      (!sellerSaveAlias.trim() || sellerSaveCode.length < 4)
+    ) {
+      toast.error("Ingresa alias y código Master para guardar la credencial.");
+      return;
+    }
+    if (
+      !(await onSaveSeller(sellerDraft, sellerSaveCode, sellerSaveAlias.trim()))
+    )
+      return;
+    toast.success(
+      editing
+        ? `${sellerDraft.name.trim()} actualizado.`
+        : `${sellerDraft.name.trim()} registrado sin permisos automáticos. Asigna un rol antes de permitir su operación.`,
+    );
+    setSellerDraft(null);
+    setSellerSaveCode("");
+  };
+
+  return (
+    <div className="employees-admin-view view-stack">
+      <div className="employees-admin-heading">
+        <div>
+          <span className="section-kicker">CONTROL DE ACCESO · MASTER</span>
+          <h2>Empleados, puestos y permisos</h2>
+          <p>Define exactamente qué puede consultar o configurar cada rol.</p>
+        </div>
+        <div>
+          <Button type="button" variant="outline" onClick={onLock}>
+            <LockKeyhole size={15} /> Bloquear módulo
+          </Button>
+          {!managedByApi && (
+            <Button type="button" variant="outline" onClick={openNewSeller}>
+              <Plus size={15} /> Registrar vendedor
+            </Button>
+          )}
+          {!managedByApi && (
+            <Button type="button" onClick={() => setNewRoleOpen(true)}>
+              <Plus size={15} /> Registrar rol
+            </Button>
+          )}
+        </div>
+      </div>
+
+      <div className="employee-role-metrics">
+        <Card>
+          <CardContent>
+            <BriefcaseBusiness size={19} />
+            <span>ROLES ACTIVOS</span>
+            <strong>{activeRoles.length}</strong>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent>
+            <UsersRound size={19} />
+            <span>EMPLEADOS</span>
+            <strong>{sellers.length}</strong>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent>
+            <BadgeCheck size={19} />
+            <span>PERSONAL ACTIVO</span>
+            <strong>{sellers.filter((seller) => seller.active).length}</strong>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent>
+            <SlidersHorizontal size={19} />
+            <span>PERMISOS CONFIGURABLES</span>
+            <strong>{configurationOptions.length}</strong>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent>
+            <ShieldCheck size={19} />
+            <span>ACCESOS MASTER</span>
+            <strong>{masterSellers.length}</strong>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="employee-role-layout">
+        <Card className="employee-role-list-card">
+          <CardContent>
+            <div className="employee-role-section-heading">
+              <span>ROLES Y PUESTOS</span>
+              <Badge variant="outline">{roles.length}</Badge>
+            </div>
+            <div className="employee-role-list">
+              {roles.map((role) => (
+                <button
+                  type="button"
+                  key={role.id}
+                  className={selectedRole?.id === role.id ? "is-selected" : ""}
+                  onClick={() => setSelectedRoleId(role.id)}
+                >
+                  <span>
+                    <UserCog size={17} />
+                  </span>
+                  <span>
+                    <strong>{role.name}</strong>
+                    <small>
+                      {assignedByRole[role.id] ?? 0} empleados ·{" "}
+                      {role.moduleAccess.length} módulos
+                    </small>
+                  </span>
+                  <Badge variant={role.active ? "default" : "outline"}>
+                    {role.active ? "ACTIVO" : "INACTIVO"}
+                  </Badge>
+                </button>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="employee-role-editor-card">
+          <CardContent>
+            {roleDraft && (
+              <>
+                <div className="employee-role-editor-heading">
+                  <div>
+                    <span>
+                      {roleDraft.system
+                        ? "ROL DE SISTEMA"
+                        : "ROL PERSONALIZABLE"}
+                    </span>
+                    <h2>{roleDraft.name}</h2>
+                    <p>{roleDraft.description}</p>
+                  </div>
+                  <div>
+                    {!roleDraft.system && !managedByApi && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => onToggleRole(roleDraft.id)}
+                      >
+                        <Power size={15} />{" "}
+                        {roleDraft.active ? "Inactivar" : "Activar"}
+                      </Button>
+                    )}
+                    {!roleDraft.system && (
+                      <>
+                        {managedByApi && (
+                          <Input
+                            className="employee-role-save-code"
+                            value={roleSaveAlias}
+                            onChange={(event) =>
+                              setRoleSaveAlias(event.target.value)
+                            }
+                            placeholder="Alias Master"
+                            aria-label="Alias Master para guardar permisos"
+                            autoComplete="username"
+                          />
+                        )}
+                        <Input
+                          className="employee-role-save-code"
+                          type="password"
+                          inputMode="numeric"
+                          maxLength={12}
+                          value={roleSaveCode}
+                          onChange={(event) =>
+                            setRoleSaveCode(
+                              event.target.value
+                                .replace(/\D/g, "")
+                                .slice(0, 12),
+                            )
+                          }
+                          placeholder="Código Master"
+                          aria-label="Código Master para guardar permisos"
+                          autoComplete="current-password"
+                        />
+                      </>
+                    )}
+                    <Button
+                      type="button"
+                      onClick={() => void saveRole()}
+                      disabled={roleDraft.system}
+                    >
+                      <Check size={15} /> Guardar permisos
+                    </Button>
+                  </div>
+                </div>
+
+                {!roleDraft.system && !managedByApi && (
+                  <div className="employee-role-name-fields">
+                    <div className="field-stack">
+                      <Label>Nombre del puesto o rol</Label>
+                      <Input
+                        value={roleDraft.name}
+                        onChange={(event) =>
+                          setRoleDraft((current) =>
+                            current
+                              ? { ...current, name: event.target.value }
+                              : current,
+                          )
+                        }
+                      />
+                    </div>
+                    <div className="field-stack">
+                      <Label>Descripción</Label>
+                      <Input
+                        value={roleDraft.description}
+                        onChange={(event) =>
+                          setRoleDraft((current) =>
+                            current
+                              ? { ...current, description: event.target.value }
+                              : current,
+                          )
+                        }
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <div className="employee-permission-section">
+                  <div>
+                    <span>ACCESO A MÓDULOS</span>
+                    <strong>
+                      {roleDraft.moduleAccess.length} seleccionados
+                    </strong>
+                  </div>
+                  <div className="employee-permission-tree">
+                    {modulePermissionGroups.map((group) => (
+                      <section
+                        className="employee-permission-group"
+                        key={group.label}
+                      >
+                        <header>
+                          <FolderTree size={17} />
+                          <span>
+                            <strong>{group.label}</strong>
+                            <small>{group.description}</small>
+                          </span>
+                          <label className="employee-tree-group-check">
+                            <input
+                              type="checkbox"
+                              checked={group.moduleIds
+                                .filter(
+                                  (id) =>
+                                    !moduleOptions.find(
+                                      (module) => module.id === id,
+                                    )?.masterOnly,
+                                )
+                                .every((id) =>
+                                  roleDraft.moduleAccess.includes(id),
+                                )}
+                              disabled={roleDraft.system}
+                              onChange={() =>
+                                toggleModuleGroup(group.moduleIds)
+                              }
+                            />
+                            <span>Todo el grupo</span>
+                          </label>
+                        </header>
+                        <div className="employee-permission-grid">
+                          {moduleOptions
+                            .filter((module) =>
+                              group.moduleIds.includes(module.id),
+                            )
+                            .map((module) => {
+                              const selected = roleDraft.moduleAccess.includes(
+                                module.id,
+                              );
+                              const canEdit =
+                                roleDraft.moduleEditAccess.includes(module.id);
+                              const canPrint =
+                                roleDraft.modulePrintAccess.includes(module.id);
+                              const locked =
+                                Boolean(module.masterOnly) && !roleDraft.system;
+                              return (
+                                <article
+                                  key={module.id}
+                                  className={`employee-module-permission ${selected ? "is-selected" : ""}`}
+                                >
+                                  <div className="employee-module-access">
+                                    <span>
+                                      {selected ? (
+                                        <Check size={14} />
+                                      ) : (
+                                        <KeyRound size={14} />
+                                      )}
+                                    </span>
+                                    <span>
+                                      <strong>{module.label}</strong>
+                                      <small>{module.description}</small>
+                                    </span>
+                                    {locked && <LockKeyhole size={13} />}
+                                  </div>
+                                  <div className="employee-module-permission-checks">
+                                    <label
+                                      className={selected ? "is-checked" : ""}
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        checked={selected}
+                                        disabled={roleDraft.system || locked}
+                                        onChange={() => toggleModule(module.id)}
+                                      />
+                                      <Eye size={13} /> Visibilidad
+                                    </label>
+                                    <label
+                                      className={canEdit ? "is-checked" : ""}
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        checked={canEdit}
+                                        disabled={
+                                          roleDraft.system ||
+                                          locked ||
+                                          !selected
+                                        }
+                                        onChange={() =>
+                                          toggleModuleEdit(module.id)
+                                        }
+                                      />
+                                      <PencilLine size={13} /> Edición
+                                    </label>
+                                    {printableModuleIds.has(module.id) && (
+                                      <label
+                                        className={canPrint ? "is-checked" : ""}
+                                      >
+                                        <input
+                                          type="checkbox"
+                                          checked={canPrint}
+                                          disabled={
+                                            roleDraft.system ||
+                                            locked ||
+                                            !selected
+                                          }
+                                          onChange={() =>
+                                            toggleModulePrint(module.id)
+                                          }
+                                        />
+                                        <Printer size={13} /> Imprimir ticket
+                                      </label>
+                                    )}
+                                  </div>
+                                </article>
+                              );
+                            })}
+                        </div>
+                      </section>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="employee-permission-section is-configuration">
+                  <div>
+                    <span>PERMISOS DE CONFIGURACIÓN</span>
+                    <strong>
+                      {roleDraft.configurationAccess.length} seleccionados
+                    </strong>
+                  </div>
+                  <button
+                    type="button"
+                    className={`employee-cost-permission ${roleDraft.configurationAccess.includes("REPORTS_COSTS") ? "is-selected" : ""}`}
+                    role="switch"
+                    aria-checked={roleDraft.configurationAccess.includes(
+                      "REPORTS_COSTS",
+                    )}
+                    disabled={roleDraft.system}
+                    onClick={() => toggleConfiguration("REPORTS_COSTS")}
+                  >
+                    <span>
+                      <Eye size={19} />
+                    </span>
+                    <span>
+                      <strong>Visualizar costos de productos</strong>
+                      <small>
+                        Habilita la función protegida; cada consulta todavía
+                        exige un código Master.
+                      </small>
+                    </span>
+                    <Badge
+                      variant={
+                        roleDraft.configurationAccess.includes("REPORTS_COSTS")
+                          ? "default"
+                          : "outline"
+                      }
+                    >
+                      {roleDraft.system
+                        ? "MASTER"
+                        : roleDraft.configurationAccess.includes(
+                              "REPORTS_COSTS",
+                            )
+                          ? "AUTORIZADO"
+                          : "OCULTO"}
+                    </Badge>
+                    <span
+                      className={`mock-switch ${roleDraft.configurationAccess.includes("REPORTS_COSTS") ? "is-on" : ""}`}
+                    >
+                      <i />
+                    </span>
+                  </button>
+                  <div className="employee-permission-grid">
+                    {configurationOptions
+                      .filter((permission) => permission.id !== "REPORTS_COSTS")
+                      .map((permission) => {
+                        const selected = roleDraft.configurationAccess.includes(
+                          permission.id,
+                        );
+                        return (
+                          <button
+                            type="button"
+                            key={permission.id}
+                            className={selected ? "is-selected" : ""}
+                            disabled={roleDraft.system}
+                            onClick={() => toggleConfiguration(permission.id)}
+                          >
+                            <span>
+                              {selected ? (
+                                <Check size={14} />
+                              ) : (
+                                <PencilLine size={14} />
+                              )}
+                            </span>
+                            <span>
+                              <strong>{permission.label}</strong>
+                              <small>{permission.description}</small>
+                            </span>
+                          </button>
+                        );
+                      })}
+                  </div>
+                </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {!managedByApi && (
+        <Card className="employee-master-access-card">
+          <CardContent>
+            <div className="employee-role-editor-heading">
+              <div>
+                <span>CÓDIGOS MASTER DELEGADOS</span>
+                <h2>Asignar acceso master</h2>
+                <p>
+                  Selecciona uno o varios empleados. El código asignado autoriza
+                  los módulos y acciones protegidas durante esta sesión.
+                </p>
+              </div>
+              <Badge variant="outline">
+                <KeyRound size={13} /> {masterSellers.length} AUTORIZADOS
+              </Badge>
+            </div>
+
+            <div className="employee-master-selector">
+              <div className="employee-master-toolbar">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() =>
+                    setSelectedMasterSellerIds(
+                      selectedMasterSellerIds.length === activeSellers.length
+                        ? []
+                        : activeSellers.map((seller) => seller.id),
+                    )
+                  }
+                >
+                  <UsersRound size={15} />
+                  {selectedMasterSellerIds.length === activeSellers.length
+                    ? "Limpiar selección"
+                    : "Seleccionar todos"}
+                </Button>
+                <span>{selectedMasterSellerIds.length} seleccionados</span>
+              </div>
+              <div className="employee-master-people">
+                {sellers.map((seller) => {
+                  const selected = selectedMasterSellerIds.includes(seller.id);
+                  const hasMasterAccess = Boolean(seller.masterAccessCode);
+                  return (
+                    <button
+                      type="button"
+                      key={seller.id}
+                      className={`${selected ? "is-selected" : ""} ${hasMasterAccess ? "has-master" : ""}`}
+                      disabled={!seller.active}
+                      onClick={() => toggleMasterSeller(seller.id)}
+                    >
+                      <span>
+                        {selected ? <Check size={14} /> : seller.initials}
+                      </span>
+                      <span>
+                        <strong>{seller.name}</strong>
+                        <small>
+                          {seller.active
+                            ? hasMasterAccess
+                              ? "Código master asignado"
+                              : "Sin acceso master"
+                            : "Empleado de baja"}
+                        </small>
+                      </span>
+                      {hasMasterAccess && <Badge>MASTER</Badge>}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="employee-master-code-row">
+              <div className="field-stack">
+                <Label htmlFor="employee-master-code">
+                  Nuevo código master
+                </Label>
+                <Input
+                  id="employee-master-code"
+                  type="password"
+                  inputMode="numeric"
+                  maxLength={4}
+                  value={newMasterCode}
+                  onChange={(event) =>
+                    setNewMasterCode(event.target.value.replace(/\D/g, ""))
+                  }
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") assignMasterCode();
+                  }}
+                  placeholder="4 dígitos"
+                />
+                <small>
+                  El código queda oculto y puede compartirse con todos los
+                  empleados seleccionados.
+                </small>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={revokeMasterCode}
+                disabled={selectedMasterSellerIds.length === 0}
+              >
+                <LockKeyhole size={15} /> Revocar seleccionados
+              </Button>
+              <Button
+                type="button"
+                onClick={assignMasterCode}
+                disabled={
+                  selectedMasterSellerIds.length === 0 ||
+                  newMasterCode.length !== 4
+                }
+              >
+                <ShieldCheck size={15} /> Asignar código master
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <Card className="employee-assignment-card">
+        <CardContent>
+          <div className="employee-role-editor-heading">
+            <div>
+              <span>ASIGNACIÓN DEL PERSONAL</span>
+              <h2>Rol vigente por empleado</h2>
+              <p>
+                Cambiar un puesto actualiza inmediatamente los permisos de ese
+                empleado.
+              </p>
+            </div>
+            <Badge>
+              <ShieldCheck size={13} /> MASTER KEYSAR
+            </Badge>
+          </div>
+          {sellersWithoutPermissions.length > 0 && (
+            <div className="employee-unassigned-permission-alert" role="alert">
+              <ShieldAlert size={18} />
+              <span>
+                <strong>Empleados sin permisos asignados</strong>
+                <small>
+                  {sellersWithoutPermissions
+                    .map((seller) => seller.name)
+                    .join(" · ")}
+                </small>
+              </span>
+              <Badge variant="outline">
+                {sellersWithoutPermissions.length} SIN PERMISOS
+              </Badge>
+            </div>
+          )}
+          <div className="employee-assignment-list">
+            {sellers.map((seller) => {
+              const assignedRole = roles.find(
+                (role) => role.id === seller.roleId,
+              );
+              const hasPermissions = Boolean(
+                assignedRole &&
+                (assignedRole.moduleAccess.length > 0 ||
+                  assignedRole.configurationAccess.length > 0),
+              );
+              return (
+                <article
+                  key={seller.id}
+                  className={`${!seller.active ? "is-inactive" : ""} ${seller.active && !hasPermissions ? "has-no-permissions" : ""}`}
+                >
+                  <span className="employee-assignment-avatar">
+                    {seller.initials}
+                  </span>
+                  <span>
+                    <strong>{seller.name}</strong>
+                    <small>
+                      Alias: {seller.alias} · Código personal •••• ·{" "}
+                      {seller.active ? "Activo" : "Baja"}
+                    </small>
+                  </span>
+                  <Select
+                    value={seller.roleId}
+                    onValueChange={(roleId) => onAssignRole(seller.id, roleId)}
+                    disabled={!seller.active || managedByApi}
+                  >
+                    <SelectTrigger aria-label={`Rol de ${seller.name}`}>
+                      <SelectValue placeholder="Selecciona rol" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {roles
+                        .filter((role) => role.active && !role.system)
+                        .map((role) => (
+                          <SelectItem key={role.id} value={role.id}>
+                            {role.name}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                  <Badge variant={hasPermissions ? "outline" : "destructive"}>
+                    {hasPermissions
+                      ? `${assignedRole?.moduleAccess.length ?? 0} MÓDULOS`
+                      : "SIN PERMISOS"}
+                  </Badge>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="employee-edit-button"
+                    aria-label={`Editar ${seller.name}`}
+                    onClick={() => setSellerDraft({ ...seller })}
+                  >
+                    <PencilLine size={15} />
+                  </Button>
+                </article>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Dialog
+        open={Boolean(sellerDraft)}
+        onOpenChange={(open) => !open && setSellerDraft(null)}
+      >
+        <DialogContent className="sm:max-w-[620px]">
+          <DialogHeader>
+            <DialogTitle>
+              {sellerDraft &&
+              sellers.some((seller) => seller.id === sellerDraft.id)
+                ? "Editar vendedor"
+                : "Registrar nuevo vendedor"}
+            </DialogTitle>
+            <DialogDescription>
+              El nombre se mostrará en tickets, ventas y reportes. El alias será
+              el usuario corto para ingresar al sistema.
+            </DialogDescription>
+          </DialogHeader>
+          {sellerDraft && (
+            <div className="employee-new-seller-fields">
+              <div className="field-stack">
+                <Label htmlFor="employee-ticket-name">Nombre para ticket</Label>
+                <Input
+                  id="employee-ticket-name"
+                  value={sellerDraft.name}
+                  onChange={(event) =>
+                    setSellerDraft((current) =>
+                      current
+                        ? { ...current, name: event.target.value }
+                        : current,
+                    )
+                  }
+                  placeholder="Ej. Ana Torres"
+                  autoComplete="name"
+                />
+                <small>
+                  Este nombre será visible para el cliente y en todos los
+                  reportes.
+                </small>
+              </div>
+              <div className="field-stack">
+                <Label htmlFor="employee-login-alias">Alias de acceso</Label>
+                <Input
+                  id="employee-login-alias"
+                  value={sellerDraft.alias}
+                  onChange={(event) =>
+                    setSellerDraft((current) =>
+                      current
+                        ? {
+                            ...current,
+                            alias: event.target.value
+                              .toLocaleLowerCase("es-MX")
+                              .replace(/\s+/g, ""),
+                          }
+                        : current,
+                    )
+                  }
+                  placeholder="Ej. ana"
+                  autoComplete="username"
+                />
+                <small>Único, de 3 a 24 caracteres y sin espacios.</small>
+              </div>
+              <div className="field-stack">
+                <Label htmlFor="employee-personal-code">Código personal</Label>
+                <Input
+                  id="employee-personal-code"
+                  type="password"
+                  inputMode="numeric"
+                  maxLength={12}
+                  value={sellerDraft.accessCode}
+                  onChange={(event) =>
+                    setSellerDraft((current) =>
+                      current
+                        ? {
+                            ...current,
+                            accessCode: event.target.value.replace(/\D/g, ""),
+                          }
+                        : current,
+                    )
+                  }
+                  placeholder={
+                    managedByApi ? "Dejar vacío para conservar" : "4 dígitos"
+                  }
+                  autoComplete="new-password"
+                />
+              </div>
+              {managedByApi && (
+                <div className="field-stack">
+                  <Label htmlFor="employee-master-alias">
+                    Alias Master de autorización
+                  </Label>
+                  <Input
+                    id="employee-master-alias"
+                    value={sellerSaveAlias}
+                    onChange={(event) => setSellerSaveAlias(event.target.value)}
+                    placeholder="Alias del usuario master"
+                    autoComplete="username"
+                  />
+                  <Label htmlFor="employee-master-approval">
+                    Código Master de autorización
+                  </Label>
+                  <Input
+                    id="employee-master-approval"
+                    type="password"
+                    inputMode="numeric"
+                    maxLength={12}
+                    value={sellerSaveCode}
+                    onChange={(event) =>
+                      setSellerSaveCode(event.target.value.replace(/\D/g, ""))
+                    }
+                    placeholder="Código del usuario master"
+                    autoComplete="current-password"
+                  />
+                </div>
+              )}
+              <div className="field-stack">
+                <Label>Rol o puesto · opcional</Label>
+                <Select
+                  value={sellerDraft.roleId}
+                  onValueChange={(roleId) =>
+                    setSellerDraft((current) =>
+                      current ? { ...current, roleId } : current,
+                    )
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Sin permisos asignados" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {roles
+                      .filter((role) => role.active && !role.system)
+                      .map((role) => (
+                        <SelectItem key={role.id} value={role.id}>
+                          {role.name}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+                {!sellerDraft.roleId && (
+                  <small className="employee-no-permissions-note">
+                    Se registrará sin acceso a módulos ni configuraciones.
+                  </small>
+                )}
+              </div>
+              <div className="field-stack">
+                <Label>Estado del vendedor</Label>
+                <Select
+                  value={sellerDraft.active ? "ACTIVE" : "INACTIVE"}
+                  onValueChange={(value) =>
+                    setSellerDraft((current) =>
+                      current
+                        ? { ...current, active: value === "ACTIVE" }
+                        : current,
+                    )
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ACTIVE">Activo</SelectItem>
+                    <SelectItem value="INACTIVE">Baja / inactivo</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setSellerDraft(null)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              onClick={() => void saveSeller()}
+              disabled={
+                !sellerDraft ||
+                !sellerDraft.name.trim() ||
+                !sellerDraft.alias.trim() ||
+                (!managedByApi && sellerDraft.accessCode.length !== 4) ||
+                (managedByApi &&
+                  (!sellerSaveAlias.trim() || sellerSaveCode.length < 4))
+              }
+            >
+              <Check size={15} />{" "}
+              {managedByApi ? "Guardar credencial" : "Guardar vendedor"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={newRoleOpen} onOpenChange={setNewRoleOpen}>
+        <DialogContent className="sm:max-w-[520px]">
+          <DialogHeader>
+            <DialogTitle>Registrar nuevo rol o puesto</DialogTitle>
+            <DialogDescription>
+              El rol se registrará sin permisos. Después podrás asignar módulos,
+              elegir si sólo visualiza o también edita y habilitar
+              configuraciones.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="employee-new-role-fields">
+            <div className="field-stack">
+              <Label htmlFor="employee-role-name">Nombre del rol</Label>
+              <Input
+                id="employee-role-name"
+                value={newRoleName}
+                onChange={(event) => setNewRoleName(event.target.value)}
+                placeholder="Ej. Facialista"
+              />
+            </div>
+            <div className="field-stack">
+              <Label htmlFor="employee-role-description">Descripción</Label>
+              <Input
+                id="employee-role-description"
+                value={newRoleDescription}
+                onChange={(event) => setNewRoleDescription(event.target.value)}
+                placeholder="Responsabilidades principales"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setNewRoleOpen(false)}
+            >
+              Cancelar
+            </Button>
+            <Button type="button" onClick={createRole}>
+              <Plus size={15} /> Registrar rol
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}

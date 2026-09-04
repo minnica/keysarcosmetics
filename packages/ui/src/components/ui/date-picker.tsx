@@ -30,12 +30,17 @@ export function DatePicker({
   disabled,
 }: DatePickerProps) {
   const [open, setOpen] = React.useState(false)
+  const triggerRef = React.useRef<HTMLButtonElement>(null)
   const selected = value ? parseISO(value) : undefined
+  const dialogBoundary = open
+    ? (triggerRef.current?.closest<HTMLElement>('[role="dialog"]') ?? null)
+    : null
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
+          ref={triggerRef}
           id={id}
           type="button"
           variant="outline"
@@ -52,7 +57,15 @@ export function DatePicker({
           </span>
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-auto p-0" align="start">
+      <PopoverContent
+        className="date-picker-popover !w-auto max-w-[calc(100vw-24px)] p-0"
+        align="start"
+        side="bottom"
+        avoidCollisions
+        collisionPadding={12}
+        sticky="always"
+        {...(dialogBoundary ? { collisionBoundary: dialogBoundary } : {})}
+      >
         <Calendar
           mode="single"
           selected={selected}

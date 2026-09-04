@@ -1,0 +1,213 @@
+name: POS pilot gate
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_sha:
+        description: SHA completo desplegado en API development
+        required: true
+        type: string
+      branch_id:
+        description: ID de la sucursal piloto en Supabase development
+        required: true
+        type: string
+      additional_branch_ids:
+        description: IDs adicionales separados por coma para la segunda pasada multi-sucursal
+        required: false
+        default: ""
+        type: string
+      business_date:
+        description: Fecha operativa conciliada (AAAA-MM-DD)
+        required: true
+        type: string
+      minimum_tickets:
+        description: Mínimo de tickets reales esperado en el piloto
+        required: true
+        default: "1"
+        type: string
+      require_offline_sync:
+        description: Exigir al menos una operación offline recuperada
+        required: true
+        default: true
+        type: boolean
+      operational_confirmation:
+        description: Escribe PILOTO_CONCILIADO tras conciliar la operación
+        required: true
+        type: string
+      cross_team_confirmation:
+        description: Escribe AGENDA_FINANZAS_OPERACION_PRODUCTO tras las cuatro aprobaciones
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pos-pilot-development
+  cancel-in-progress: false
+
+jobs:
+  ephemeral-postgres:
+    name: POS migrations and integration on PostgreSQL 16
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: cosmetics_pos_pilot
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d cosmetics_pos_pilot"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/cosmetics_pos_pilot?schema=public
+      DIRECT_URL: postgresql://postgres:postgres@127.0.0.1:5432/cosmetics_pos_pilot?schema=public
+      RUN_DATABASE_TESTS: true
+      JWT_SECRET: integration-test-secret-with-adequate-length
+    steps:
+      - name: Validate release identity
+        env:
+          RELEASE_SHA: ${{ inputs.release_sha }}
+        run: '[[ "$RELEASE_SHA" =~ ^[0-9a-fA-F]{40}$ ]]'
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.release_sha }}
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 10.0.0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22.23.2
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @cosmetics/api prisma:schemas
+      - run: pnpm --filter @cosmetics/api prisma:validate
+      - run: pnpm --filter @cosmetics/api db:migrate:deploy
+      - run: pnpm test:integration
+      - run: pnpm --filter @cosmetics/api build
+      - run: pnpm --filter @cosmetics/pos type-check
+      - name: Build POS renderer, main and preload
+        run: pnpm --filter @cosmetics/pos exec vite build
+
+  development-reconciliation:
+    name: Read-only reconciliation in Supabase development
+    needs: ephemeral-postgres
+    runs-on: ubuntu-latest
+    environment: development
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DIRECT_URL: ${{ secrets.DIRECT_URL }}
+      API_BASE_URL: ${{ vars.API_BASE_URL }}
+      EXPECTED_API_SHA: ${{ inputs.release_sha }}
+      POS_PILOT_BRANCH_ID: ${{ inputs.branch_id }}
+      POS_PILOT_ADDITIONAL_BRANCH_IDS: ${{ inputs.additional_branch_ids }}
+      POS_PILOT_BUSINESS_DATE: ${{ inputs.business_date }}
+      POS_PILOT_MIN_TICKETS: ${{ inputs.minimum_tickets }}
+      POS_PILOT_REQUIRE_CLOSED_DAY: true
+      POS_PILOT_REQUIRE_COVERAGE: true
+      POS_PILOT_REQUIRE_OFFLINE_SYNC: ${{ inputs.require_offline_sync }}
+      OPERATIONAL_CONFIRMATION: ${{ inputs.operational_confirmation }}
+      CROSS_TEAM_CONFIRMATION: ${{ inputs.cross_team_confirmation }}
+    steps:
+      - name: Validate development scope and operational approval
+        run: |
+          [[ "$EXPECTED_API_SHA" =~ ^[0-9a-fA-F]{40}$ ]]
+          [[ "$POS_PILOT_BUSINESS_DATE" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]
+          [[ "$POS_PILOT_MIN_TICKETS" =~ ^[0-9]+$ ]]
+          test -n "$POS_PILOT_BRANCH_ID"
+          test -n "$DATABASE_URL"
+          test -n "$DIRECT_URL"
+          test -n "$API_BASE_URL"
+          test "$OPERATIONAL_CONFIRMATION" = "PILOTO_CONCILIADO"
+          test "$CROSS_TEAM_CONFIRMATION" = "AGENDA_FINANZAS_OPERACION_PRODUCTO"
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.release_sha }}
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 10.0.0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22.23.2
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Verify deployed API identity and readiness
+        run: |
+          health_file=$(mktemp)
+          curl --fail --silent --show-error --retry 6 --retry-delay 5 --retry-all-errors "$API_BASE_URL/health" > "$health_file"
+          node -e '
+            const fs = require("node:fs");
+            const health = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+            if (health.release !== process.env.EXPECTED_API_SHA) {
+              throw new Error(`API SHA mismatch: expected ${process.env.EXPECTED_API_SHA}, received ${health.release}`);
+            }
+          ' "$health_file"
+          curl --fail --silent --show-error --retry 6 --retry-delay 5 --retry-all-errors "$API_BASE_URL/ready" > /dev/null
+      - name: Verify migration status in development
+        working-directory: backend/api
+        run: pnpm exec prisma migrate status
+      - name: Run read-only data diagnosis
+        run: pnpm --filter @cosmetics/api pos:diagnose > pos-pilot-diagnosis.json
+      - name: Reconcile the completed pilot
+        run: pnpm --filter @cosmetics/api pos:reconcile > pos-pilot-report.json
+      - name: Reconcile the multi-branch expansion
+        if: ${{ inputs.additional_branch_ids != '' }}
+        run: |
+          index=0
+          old_ifs="$IFS"
+          IFS=','
+          for branch_id in $POS_PILOT_ADDITIONAL_BRANCH_IDS; do
+            IFS="$old_ifs"
+            branch_id="$(printf '%s' "$branch_id" | tr -d '[:space:]')"
+            test -n "$branch_id"
+            index=$((index + 1))
+            POS_PILOT_BRANCH_ID="$branch_id" \
+              pnpm --filter @cosmetics/api pos:reconcile \
+              > "pos-pilot-report-branch-${index}.json"
+            IFS=','
+          done
+          IFS="$old_ifs"
+      - name: Publish non-sensitive reconciliation summary
+        if: always()
+        run: |
+          if [ ! -f pos-pilot-report.json ]; then
+            exit 0
+          fi
+          node -e '
+            const fs = require("node:fs");
+            const report = JSON.parse(fs.readFileSync("pos-pilot-report.json", "utf8"));
+            const lines = [
+              "### POS pilot gate",
+              "",
+              "| Métrica | Valor |",
+              "| --- | --- |",
+              `| Fecha operativa | ${report.scope.businessDate} |`,
+              `| Resultado | ${report.status} |`,
+              `| Tickets | ${report.coverage.tickets} |`,
+              `| Jornada | ${report.coverage.businessDayStatus} |`,
+              `| Operaciones offline conciliadas | ${report.coverage.offlineOperationsSynced} |`,
+              `| Membresías/asistencias | ${report.coverage.memberships}/${report.coverage.membershipAttendances} |`,
+              `| Citas Agenda | ${report.coverage.agendaAppointments} |`,
+              `| Cobros MSI | ${report.coverage.installmentPayments} |`,
+              `| Participantes empresa | ${report.coverage.companyParticipants} |`,
+              `| Diferencias | ${report.discrepancies.length} |`,
+              `| Intento del workflow | ${process.env.GITHUB_RUN_ATTEMPT} |`,
+            ];
+            fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${lines.join("\n")}\n`);
+          '
+      - name: Upload read-only pilot evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: pos-pilot-evidence-${{ inputs.business_date }}
+          path: |
+            pos-pilot-diagnosis.json
+            pos-pilot-report.json
+            pos-pilot-report-branch-*.json
+          if-no-files-found: ignore
+          retention-days: 30

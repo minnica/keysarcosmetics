@@ -73,6 +73,12 @@ El E2E autenticado sí inicia sesiones dedicadas, pero continúa siendo de solo 
 
 ## 4. Release a producción
 
+Antes de la primera habilitación productiva del POS, completar el recorrido y
+obtener un resultado `PASS` del workflow protegido **POS pilot gate** según
+`docs/POS_PILOT_RUNBOOK.md`. Las promociones ordinarias de Envelope/Payroll no
+quedan bloqueadas por esta puerta, pero ninguna terminal POS debe cambiar a
+`VITE_POS_DATA_MODE=api` sin esa evidencia y aprobación operativa.
+
 1. Abrir PR `develop → master`, confirmar que GitHub indique que no hay conflictos y esperar los cinco checks requeridos del PR. Los fallos opcionales de proveedores externos por cuota, como `Deployment rate limited` de Vercel, no sustituyen ni invalidan esos checks; el frontend debe verificarse por separado antes de promoverlo.
 2. Confirmar en Supabase que existe un backup recuperable o PITR vigente.
 3. Hacer merge commit hacia `master`.
@@ -108,6 +114,7 @@ pnpm test:e2e:development # solo contra development, requiere variables y cuenta
 pnpm test:e2e:production  # solo diagnóstico administrado; validar antes los SHA con test:smoke
 pnpm --filter @cosmetics/api prisma:schemas
 pnpm --filter @cosmetics/api prisma:validate
+pnpm --filter @cosmetics/api pos:reconcile # requiere alcance explícito; ver POS_PILOT_RUNBOOK.md
 ```
 
 Para integración se necesita PostgreSQL desechable, nunca producción:

@@ -1,0 +1,233 @@
+import { describe, expect, it } from "vitest";
+import {
+  posCatalogItemUpsertSchema,
+  posCustomerSearchQuerySchema,
+  posCatalogItemWriteSchema,
+  posLoginRequestSchema,
+  posMutationHeadersSchema,
+  posInventoryAdjustmentBatchWriteSchema,
+  posWarehouseRequestWriteSchema,
+  posTerminalStatusUpdateSchema,
+  posTicketQuoteRequestSchema,
+  posTicketAppointmentInputSchema,
+  posBusinessDayCloseSchema,
+  posBusinessDayCountInputSchema,
+  posCashExpenseCorrectionSchema,
+  posOfflinePushSchema,
+} from "./pos.contracts";
+
+describe("contratos públicos del POS", () => {
+  it("normaliza el alias y no acepta campos inesperados en login", () => {
+    const parsed = posLoginRequestSchema.parse({
+      alias: "  Venta.Polanco  ",
+      pin: "4826",
+      terminalCode: "T-01",
+      terminalSecret: "a".repeat(32),
+    });
+
+    expect(parsed.alias).toBe("venta.polanco");
+    expect(
+      posLoginRequestSchema.safeParse({ ...parsed, ignored: true }).success,
+    ).toBe(false);
+  });
+
+  it("sólo permite activar o revocar una terminal provisionada", () => {
+    expect(posTerminalStatusUpdateSchema.parse({ status: "ACTIVE" })).toEqual({
+      status: "ACTIVE",
+    });
+    expect(
+      posTerminalStatusUpdateSchema.safeParse({ status: "PENDING" }).success,
+    ).toBe(false);
+  });
+
+  it("protege las reglas de publicación del catálogo", () => {
+    const result = posCatalogItemUpsertSchema.safeParse({
+      id: "item-1",
+      sku: "KSR-001",
+      name: "SERUM",
+      kind: "PRODUCT",
+      familyId: null,
+      categoryId: null,
+      description: null,
+      benefits: [],
+      imageUrl: null,
+      published: true,
+      active: true,
+      listPrice: "100.00",
+      minimumPrice: "90.00",
+      taxRate: "16.00",
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it("no acepta precio mínimo mayor a lista ni IVA fuera de rango", () => {
+    const base = {
+      sku: "KSR-001",
+      name: "SERUM",
+      kind: "PRODUCT" as const,
+      familyId: null,
+      categoryId: null,
+      supplierId: null,
+      description: "Tratamiento facial",
+      benefits: ["Hidratación"],
+      branchIds: [],
+      published: true,
+      active: true,
+      listPrice: "100.00",
+      minimumPrice: "90.00",
+      unitCost: "40.00",
+      taxRate: "16.00",
+    };
+    expect(posCatalogItemWriteSchema.safeParse({ ...base, minimumPrice: "101.00" }).success).toBe(false);
+    expect(posCatalogItemWriteSchema.safeParse({ ...base, taxRate: "101.00" }).success).toBe(false);
+    expect(posCatalogItemWriteSchema.safeParse(base).success).toBe(true);
+  });
+
+  it("exige sesiones enteras y umbral válido para membresías", () => {
+    const membership = {
+      sku: "IGNORADO-POR-SERVIDOR",
+      name: "MEMBRESÍA FACIAL",
+      kind: "MEMBERSHIP" as const,
+      familyId: null,
+      categoryId: null,
+      supplierId: null,
+      description: "Diez sesiones faciales",
+      benefits: ["Seguimiento personalizado"],
+      branchIds: [],
+      published: true,
+      active: true,
+      listPrice: "1000.00",
+      minimumPrice: "900.00",
+      unitCost: "0.00",
+      taxRate: "16.00",
+      membershipSessions: 10,
+      membershipRenewalThreshold: 2,
+      membershipConditions: { cadence: "monthly" },
+    };
+    expect(posCatalogItemWriteSchema.safeParse(membership).success).toBe(true);
+    expect(
+      posCatalogItemWriteSchema.safeParse({
+        ...membership,
+        membershipSessions: 1.5,
+      }).success,
+    ).toBe(false);
+    expect(
+      posCatalogItemWriteSchema.safeParse({
+        ...membership,
+        membershipRenewalThreshold: 11,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("exige criterio de búsqueda y decimales exactos para una cotización", () => {
+    expect(posCustomerSearchQuerySchema.safeParse({ query: " " }).success).toBe(
+      false,
+    );
+    expect(
+      posTicketQuoteRequestSchema.safeParse({
+        branchId: "branch-1",
+        lines: [{ itemId: "item-1", quantity: "1", unitPrice: "100.00" }],
+        sellers: [{ employeeId: "employee-1", share: "100.00" }],
+        payments: [
+          { methodId: "payment-1", methodType: "CASH", amount: "100.00" },
+        ],
+      }).success,
+    ).toBe(false);
+    expect(
+      posMutationHeadersSchema.safeParse({ "idempotency-key": "invalid" })
+        .success,
+    ).toBe(false);
+  });
+
+  it("exige slot y motivo tipado para cortesías de Agenda", () => {
+    const base = {
+      kind: "COURTESY" as const,
+      serviceName: "Facial de bienvenida",
+      branchId: "branch-1",
+      scheduledAt: "2026-09-05T16:00:00.000Z",
+      agendaSlotId: "slot-1",
+    };
+    expect(posTicketAppointmentInputSchema.safeParse(base).success).toBe(false);
+    expect(
+      posTicketAppointmentInputSchema.safeParse({
+        ...base,
+        courtesyReason: "WELCOME",
+      }).success,
+    ).toBe(true);
+  });
+
+  it("valida rutas de inventario y cantidades positivas", () => {
+    const base = { itemId: "item-1", quantity: "1.00", reason: "Ajuste" };
+    expect(posInventoryAdjustmentBatchWriteSchema.safeParse({ lines: [{ ...base, type: "ADD", toLocationId: "loc-1" }] }).success).toBe(true);
+    expect(posInventoryAdjustmentBatchWriteSchema.safeParse({ lines: [{ ...base, type: "TRANSFER", fromLocationId: "loc-1", toLocationId: "loc-1" }] }).success).toBe(false);
+    expect(posInventoryAdjustmentBatchWriteSchema.safeParse({ lines: [{ ...base, type: "REMOVE", fromLocationId: "loc-1", quantity: "0.00" }] }).success).toBe(false);
+  });
+
+  it("separa solicitudes de sucursal y resurtidos de proveedor", () => {
+    expect(posWarehouseRequestWriteSchema.safeParse({ source: "BRANCH", requestType: "PRODUCT", branchId: "branch-1", lines: [{ itemId: "item-1", quantity: "2.00" }] }).success).toBe(true);
+    expect(posWarehouseRequestWriteSchema.safeParse({ source: "SUPPLIER", requestType: "SUPPLY", branchId: "branch-1", lines: [{ itemId: "item-1", quantity: "2.00" }] }).success).toBe(false);
+    expect(posWarehouseRequestWriteSchema.safeParse({ source: "BRANCH", requestType: "TESTER", branchId: "branch-1", lines: [{ itemId: "item-1", quantity: "1.00" }, { itemId: "item-1", quantity: "1.00" }] }).success).toBe(false);
+  });
+
+  it("requiere conteo o autorización master para abrir/cerrar una jornada", () => {
+    expect(posBusinessDayCountInputSchema.safeParse({ skipped: true }).success).toBe(false);
+    expect(posBusinessDayCountInputSchema.safeParse({ locationId: "loc-1", lines: [{ itemId: "item-1", countedQuantity: "1.00" }] }).success).toBe(true);
+    expect(posBusinessDayCountInputSchema.safeParse({ skipped: true, authorizationToken: "6a96e671-c899-43ce-a104-06b1c204927e" }).success).toBe(true);
+    expect(posBusinessDayCloseSchema.safeParse({ authorizationToken: "not-a-token" }).success).toBe(false);
+  });
+
+  it("exige compensación autorizada para editar un gasto histórico", () => {
+    const base = {
+      expenseTypeId: "expense-type-1",
+      amount: "125.00",
+      concept: "Compra de insumos",
+      authorizationToken: "6a96e671-c899-43ce-a104-06b1c204927e",
+      reason: "Corrección de importe",
+    };
+    expect(posCashExpenseCorrectionSchema.safeParse(base).success).toBe(true);
+    expect(posCashExpenseCorrectionSchema.safeParse({ ...base, reason: "" }).success).toBe(false);
+    expect(posCashExpenseCorrectionSchema.safeParse({ ...base, amount: "125" }).success).toBe(false);
+  });
+
+  it("acepta sólo lotes offline contiguos y con UUID idempotente", () => {
+    const operation = {
+      id: "6a96e671-c899-43ce-a104-06b1c204927e",
+      sequence: 7,
+      kind: "TICKET_CREATE" as const,
+      entityId: null,
+      idempotencyKey: "7922a172-16ed-4fd6-9214-0f9bf575fef2",
+      createdAt: "2026-09-03T18:00:00.000Z",
+      payload: { branchId: "branch-1" },
+    };
+    expect(posOfflinePushSchema.safeParse({ operations: [operation, { ...operation, id: "ce58c055-a1ac-4f05-b788-b92c47664f61", idempotencyKey: "1abc8505-73f1-40d9-b6b5-8f75d72daee1", sequence: 8 }] }).success).toBe(true);
+    expect(posOfflinePushSchema.safeParse({ operations: [operation, { ...operation, id: "ce58c055-a1ac-4f05-b788-b92c47664f61", idempotencyKey: "1abc8505-73f1-40d9-b6b5-8f75d72daee1", sequence: 9 }] }).success).toBe(false);
+    expect(posOfflinePushSchema.safeParse({ operations: [{ ...operation, idempotencyKey: "invalid" }] }).success).toBe(false);
+  });
+
+  it("ordena las dependencias offline y rechaza ciclos locales", () => {
+    const firstId = "6a96e671-c899-43ce-a104-06b1c204927e";
+    const secondId = "ce58c055-a1ac-4f05-b788-b92c47664f61";
+    const base = {
+      id: firstId,
+      sequence: 1,
+      kind: "AGENDA_MEMBERSHIP_RESERVATION" as const,
+      entityId: "8103ea61-9861-40e3-a945-dbd71abe3746",
+      dependsOn: [],
+      idempotencyKey: "7922a172-16ed-4fd6-9214-0f9bf575fef2",
+      createdAt: "2026-09-04T18:00:00.000Z",
+      payload: {},
+    };
+    const attendance = {
+      ...base,
+      id: secondId,
+      sequence: 2,
+      kind: "MEMBERSHIP_ATTENDANCE" as const,
+      dependsOn: [firstId],
+      idempotencyKey: "1abc8505-73f1-40d9-b6b5-8f75d72daee1",
+    };
+    expect(posOfflinePushSchema.safeParse({ operations: [base, attendance] }).success).toBe(true);
+    expect(posOfflinePushSchema.safeParse({ operations: [{ ...base, dependsOn: [secondId] }, attendance] }).success).toBe(false);
+    expect(posOfflinePushSchema.safeParse({ operations: [{ ...base, dependsOn: [firstId] }] }).success).toBe(false);
+  });
+});
