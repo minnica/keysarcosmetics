@@ -397,6 +397,7 @@ export interface PosCustomerDto {
   phone: string | null;
   email: string | null;
   active: boolean;
+  agendaLinked: boolean;
 }
 
 export interface PosSupplierDto {
@@ -774,6 +775,85 @@ export interface PosTicketAppointmentInputDto {
   branchId: PosId;
   sellerId?: PosId;
   scheduledAt?: IsoUtcDateTime;
+  agendaSlotId?: PosId;
+  agendaReservationMode?: PosAgendaReservationMode;
+  membershipId?: PosId;
+  courtesyReason?: "WELCOME" | "COMPLAINT";
+}
+
+export type PosAgendaReservationMode =
+  | "SINGLE"
+  | "SIMULTANEOUS_DOUBLE"
+  | "CONSECUTIVE";
+
+export type PosAgendaSlotStatus =
+  | "AVAILABLE"
+  | "CANCELED"
+  | "BOOKED"
+  | "BLOCKED";
+
+export interface PosAgendaSlotDto {
+  id: PosId;
+  externalSystem: "AGENDA_CRM";
+  externalCalendarId: string | null;
+  externalSlotId: string;
+  branchId: PosId;
+  branchName: string;
+  date: BusinessDate;
+  startsAt: IsoUtcDateTime;
+  endsAt: IsoUtcDateTime;
+  startTime: string;
+  endTime: string;
+  resourceId: PosId;
+  resourceName: string;
+  resourceType: "INDIVIDUAL" | "DOUBLE";
+  capacity: number;
+  reservedCount: number;
+  availableSeats: number;
+  status: PosAgendaSlotStatus;
+  version: number;
+  updatedAt: IsoUtcDateTime;
+}
+
+export interface PosAgendaAvailabilityRequestDto {
+  branchId: PosId;
+  from: IsoUtcDateTime;
+  to: IsoUtcDateTime;
+  serviceItemId?: PosId;
+  seats?: number;
+}
+
+export interface PosAgendaMembershipReservationRequestDto {
+  membershipId: PosId;
+  agendaSlotId: PosId;
+  sellerId?: PosId;
+}
+
+export interface PosAgendaConflictDto {
+  id: PosId;
+  type:
+    | "CLIENT_UPSERT"
+    | "CLIENT_UPDATE"
+    | "RESERVATION_CREATE"
+    | "RESERVATION_CANCEL"
+    | "ATTENDED"
+    | "CANCELED"
+    | "NO_SHOW"
+    | "ATTENDANCE_CORRECTION";
+  status: "PENDING" | "FAILED" | "CONFLICT";
+  reservationId: PosId | null;
+  appointmentId: PosId | null;
+  customerId: PosId | null;
+  errorCode: string | null;
+  errorMessage: string | null;
+  retryCount: number;
+  createdAt: IsoUtcDateTime;
+}
+
+export interface PosAgendaWebhookDto {
+  accepted: boolean;
+  duplicate: boolean;
+  outcome: "APPLIED" | "IGNORED" | "CONFLICT";
 }
 
 export interface PosTicketCourtesyInputDto {
@@ -916,13 +996,21 @@ export interface PosOwedProductDto {
 export interface PosAppointmentDto {
   id: PosId;
   kind: "COURTESY" | "NEXT_SESSION" | "NO_APPOINTMENT";
-  status: "PENDING" | "SCHEDULED" | "CANCELED" | "COMPLETED";
+  status: "PENDING" | "SCHEDULED" | "CANCELED" | "COMPLETED" | "NO_SHOW";
   serviceItemId: PosId | null;
   serviceName: string;
   branchId: PosId;
   branchName: string;
   sellerId: PosId | null;
   scheduledAt: IsoUtcDateTime | null;
+  agendaSlotId: PosId | null;
+  agendaReservationId: PosId | null;
+  externalReservationId: string | null;
+  externalAppointmentId: string | null;
+  agendaResourceName: string | null;
+  agendaVersion: number | null;
+  membershipId: PosId | null;
+  courtesyReason: "WELCOME" | "COMPLAINT" | null;
 }
 
 export interface PosTicketDto extends Omit<PosTicketQuoteDto, "lines"> {

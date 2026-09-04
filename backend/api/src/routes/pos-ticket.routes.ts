@@ -23,7 +23,11 @@ import {
 } from "../middlewares/pos-auth.middleware";
 import { prisma } from "../prisma/client";
 import { resolveRequestedBranchIds } from "../services/pos-scope";
-import { executePosIdempotent } from "../services/pos-inventory";
+import {
+  executePosIdempotent,
+  findPosIdempotentReplay,
+  PosInventoryError,
+} from "../services/pos-inventory";
 import {
   PosTicketError,
   addLayawayPayment,
@@ -39,6 +43,12 @@ import {
   ticketDto,
   voucherDto,
 } from "../services/pos-tickets";
+import {
+  compensatePreparedAgendaTicket,
+  enqueueAgendaTicketCancellation,
+  prepareAgendaTicketSaga,
+  PosAgendaError,
+} from "../services/pos-agenda";
 
 const router: ExpressRouter = Router();
 const asyncRoute =
@@ -281,22 +291,49 @@ router.post(
         message: "Ticket inválido",
         data: parsed.error.flatten().fieldErrors,
       });
-    await respondIdempotent(
-      res,
-      executePosIdempotent({
-        key,
-        actorCredentialId: req.posUser!.credentialId,
-        operation: "POS_TICKET_CREATE",
-        payload: parsed.data,
-        execute: async (tx) => ({
-          status: 201,
-          message: "Ticket creado",
-          data: ticketDto(
-            await createTicket(tx, parsed.data, saleContext(req)),
-          ),
+    const replay = await findPosIdempotentReplay({
+      key,
+      actorCredentialId: req.posUser!.credentialId,
+      operation: "POS_TICKET_CREATE",
+      payload: parsed.data,
+    });
+    if (replay)
+      return res.status(replay.status).json({
+        success: true,
+        message: replay.message,
+        data: replay.data,
+        replayed: true,
+      });
+    const agenda = await prepareAgendaTicketSaga({
+      operationKey: key,
+      ticket: parsed.data,
+      authorizedBranchIds: req.posUser!.authorizedBranchIds,
+    });
+    try {
+      await respondIdempotent(
+        res,
+        executePosIdempotent({
+          key,
+          actorCredentialId: req.posUser!.credentialId,
+          operation: "POS_TICKET_CREATE",
+          payload: parsed.data,
+          execute: async (tx) => ({
+            status: 201,
+            message: "Ticket y cita confirmados",
+            data: ticketDto(
+              await createTicket(tx, parsed.data, saleContext(req), agenda),
+            ),
+          }),
         }),
-      }),
-    );
+      );
+    } catch (error) {
+      if (agenda)
+        await compensatePreparedAgendaTicket(
+          key,
+          "Falló la confirmación local del ticket",
+        );
+      throw error;
+    }
   }),
 );
 
@@ -354,7 +391,10 @@ router.get(
             orderBy: { creadoEn: "asc" },
           },
           appointments: {
-            include: { branch: { select: { nombre: true } } },
+            include: {
+              branch: { select: { nombre: true } },
+              agendaResource: { select: { nameSnapshot: true } },
+            },
             orderBy: { creadoEn: "asc" },
           },
         },
@@ -528,27 +568,30 @@ router.post(
         message: "Cancelación inválida",
         data: parsed.error.flatten().fieldErrors,
       });
-    await respondIdempotent(
-      res,
-      executePosIdempotent({
-        key,
-        actorCredentialId: req.posUser!.credentialId,
-        operation: `POS_TICKET_CANCELLATION:${req.params["id"]}`,
-        payload: parsed.data,
-        execute: async (tx) => ({
-          status: 201,
-          message: "Compensación registrada",
-          data: await cancelOrReturnTicket(
-            tx,
-            {
-              ticketId: req.params["id"]!,
-              ...parsed.data,
-            },
-            saleContext(req),
-          ),
-        }),
-      }),
-    );
+    const result = await executePosIdempotent({
+      key,
+      actorCredentialId: req.posUser!.credentialId,
+      operation: `POS_TICKET_CANCELLATION:${req.params["id"]}`,
+      payload: parsed.data,
+      execute: async (tx) => {
+        const data = await cancelOrReturnTicket(
+          tx,
+          {
+            ticketId: req.params["id"]!,
+            ...parsed.data,
+          },
+          saleContext(req),
+        );
+        await enqueueAgendaTicketCancellation(tx, req.params["id"]!);
+        return { status: 201, message: "Compensación registrada", data };
+      },
+    });
+    return res.status(result.status).json({
+      success: true,
+      message: result.message,
+      data: result.data,
+      replayed: result.replayed,
+    });
   }),
 );
 
@@ -669,6 +712,14 @@ router.post(
 router.use(
   (error: unknown, _req: Request, res: Response, next: NextFunction) => {
     if (error instanceof PosTicketError)
+      return res
+        .status(error.status)
+        .json({ success: false, message: error.message, data: null });
+    if (error instanceof PosAgendaError)
+      return res
+        .status(error.status)
+        .json({ success: false, message: error.message, data: { code: error.code } });
+    if (error instanceof PosInventoryError)
       return res
         .status(error.status)
         .json({ success: false, message: error.message, data: null });

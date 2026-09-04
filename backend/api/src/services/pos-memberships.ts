@@ -140,7 +140,9 @@ export function membershipDto(
       attendedAt: attendance.attendedAt.toISOString(),
       branchId: attendance.branchId,
       branchName: attendance.branch.nombre,
-      recordedByName: credentialName(attendance.recordedByCredential),
+      recordedByName: attendance.recordedByCredential
+        ? credentialName(attendance.recordedByCredential)
+        : "Agenda CRM",
       signatureStatus: attendance.signatureStatus,
     })),
     sellerChanges: membership.sellerChanges.map((change) => ({

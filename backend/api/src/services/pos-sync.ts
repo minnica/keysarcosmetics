@@ -389,7 +389,10 @@ export async function createOfflineBootstrap(
           orderBy: { creadoEn: "asc" },
         },
         appointments: {
-          include: { branch: { select: { nombre: true } } },
+          include: {
+            branch: { select: { nombre: true } },
+            agendaResource: { select: { nameSnapshot: true } },
+          },
           orderBy: { creadoEn: "asc" },
         },
       },

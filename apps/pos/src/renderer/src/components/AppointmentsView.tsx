@@ -22,7 +22,9 @@ import {
   TableHead,
   TableHeader,
   TableRow,
+  Button,
 } from "@cosmetics/ui";
+import type { PosAgendaConflictDto } from "@cosmetics/types";
 import type { Appointment, AppointmentKind, Seller } from "../types";
 import { HistoryPagination, useHistoryPagination } from "./HistoryPagination";
 
@@ -32,6 +34,8 @@ interface AppointmentsViewProps {
   branches: string[];
   activeBranch: string;
   canViewAllBranches: boolean;
+  agendaConflicts?: PosAgendaConflictDto[];
+  onRetryAgendaConflict?: (eventId: string) => void;
 }
 
 type AppointmentFilter = "ALL" | AppointmentKind;
@@ -56,6 +60,8 @@ export function AppointmentsView({
   branches,
   activeBranch,
   canViewAllBranches,
+  agendaConflicts = [],
+  onRetryAgendaConflict,
 }: AppointmentsViewProps) {
   const [filter, setFilter] = useState<AppointmentFilter>("ALL");
   const [branchFilter, setBranchFilter] = useState(
@@ -174,6 +180,47 @@ export function AppointmentsView({
           </CardContent>
         </Card>
       </div>
+
+      {agendaConflicts.length > 0 && (
+        <Card className="data-card appointment-record-card">
+          <CardContent>
+            <div className="data-card-heading">
+              <div>
+                <span>CONCILIACIÓN DE AGENDA</span>
+                <h2>Operaciones que requieren revisión</h2>
+              </div>
+              <Badge variant="outline">{agendaConflicts.length} PENDIENTES</Badge>
+            </div>
+            <div className="appointment-seller-alerts">
+              {agendaConflicts.map((conflict) => (
+                <div key={conflict.id}>
+                  <AlertTriangle size={18} />
+                  <span>
+                    <strong>{conflict.type.replaceAll("_", " ")}</strong>
+                    <small>
+                      {conflict.errorMessage ?? "Pendiente de sincronizar"}
+                    </small>
+                  </span>
+                  {conflict.status !== "CONFLICT" &&
+                    ["CLIENT_UPDATE", "RESERVATION_CANCEL"].includes(
+                      conflict.type,
+                    ) &&
+                    onRetryAgendaConflict && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => onRetryAgendaConflict(conflict.id)}
+                    >
+                      Reintentar
+                    </Button>
+                    )}
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="appointments-dashboard-grid">
         <Card className="appointments-dashboard-card">

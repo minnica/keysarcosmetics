@@ -7,6 +7,7 @@ declare global {
     interface Request {
       user?: JwtPayload;
       posUser?: PosRequestUser;
+      rawBody?: Buffer;
     }
   }
 }

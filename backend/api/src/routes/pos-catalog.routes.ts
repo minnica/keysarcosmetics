@@ -33,6 +33,10 @@ import {
   uploadCatalogImage,
   validateCatalogImage,
 } from "../services/pos-asset-storage";
+import {
+  enqueueAgendaCustomerUpdate,
+  processAgendaSyncEvents,
+} from "../services/pos-agenda";
 import { enqueuePosNotification } from "../services/pos-notifications";
 import {
   assertBranchAuthorized,
@@ -795,6 +799,7 @@ router.get("/customers/search", requireCustomerReadOrSale, async (req, res) => {
         phone: item.phone,
         email: item.email,
         active: item.active,
+        agendaLinked: Boolean(item.externalClientId),
       })),
       page: parsed.data.page,
       pageSize: parsed.data.pageSize,
@@ -850,6 +855,7 @@ router.post(
           phone: customer.phone,
           email: customer.email,
           active: customer.active,
+          agendaLinked: Boolean(customer.externalClientId),
         },
       });
     } catch {
@@ -875,18 +881,28 @@ router.put(
       });
     const input = parsed.data;
     try {
-      const customer = await db.customer.update({
-        where: { id: req.params["id"]! },
-        data: {
-          displayName: input.displayName,
-          normalizedName: normalize(input.displayName),
-          phone: normalizePhone(input.phone),
-          email: input.email?.toLocaleLowerCase("en-US") ?? null,
-          sourceId: input.sourceId,
-          notes: input.notes,
-          active: input.active,
-        },
+      const { customer, agendaEventId } = await db.$transaction(async (tx) => {
+        const updated = await tx.customer.update({
+          where: { id: req.params["id"]! },
+          data: {
+            displayName: input.displayName,
+            normalizedName: normalize(input.displayName),
+            phone: normalizePhone(input.phone),
+            email: input.email?.toLocaleLowerCase("en-US") ?? null,
+            sourceId: input.sourceId,
+            notes: input.notes,
+            active: input.active,
+          },
+        });
+        const event = updated.externalClientId
+          ? await enqueueAgendaCustomerUpdate(tx, updated.id)
+          : null;
+        return { customer: updated, agendaEventId: event?.id ?? null };
       });
+      if (agendaEventId)
+        await processAgendaSyncEvents({ eventId: agendaEventId, limit: 1 }).catch(
+          () => undefined,
+        );
       res.json({
         success: true,
         message: "Cliente actualizado",
@@ -896,6 +912,7 @@ router.put(
           phone: customer.phone,
           email: customer.email,
           active: customer.active,
+          agendaLinked: Boolean(customer.externalClientId),
         },
       });
     } catch {

@@ -758,6 +758,12 @@ export const posTicketAppointmentInputSchema = z
     branchId: idSchema,
     sellerId: idSchema.optional(),
     scheduledAt: isoUtcSchema.optional(),
+    agendaSlotId: idSchema.optional(),
+    agendaReservationMode: z
+      .enum(["SINGLE", "SIMULTANEOUS_DOUBLE", "CONSECUTIVE"])
+      .optional(),
+    membershipId: idSchema.optional(),
+    courtesyReason: z.enum(["WELCOME", "COMPLAINT"]).optional(),
   })
   .strict()
   .superRefine((appointment, context) => {
@@ -775,7 +781,112 @@ export const posTicketAppointmentInputSchema = z
         path: ["scheduledAt"],
       });
     }
+    if (appointment.kind !== "NO_APPOINTMENT" && !appointment.agendaSlotId) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "La cita requiere un slot vigente de Agenda",
+        path: ["agendaSlotId"],
+      });
+    }
+    if (
+      appointment.kind === "NO_APPOINTMENT" &&
+      (appointment.agendaSlotId ||
+        appointment.agendaReservationMode ||
+        appointment.membershipId ||
+        appointment.courtesyReason)
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Sin cita no admite referencias de Agenda",
+      });
+    }
+    if (appointment.membershipId && appointment.kind !== "NEXT_SESSION") {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Una membresía sólo puede usarse para la próxima sesión",
+        path: ["membershipId"],
+      });
+    }
+    if (appointment.courtesyReason && appointment.kind !== "COURTESY") {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "El motivo de cortesía sólo aplica a cortesías",
+        path: ["courtesyReason"],
+      });
+    }
+    if (appointment.kind === "COURTESY" && !appointment.courtesyReason) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "La cortesía requiere motivo WELCOME o COMPLAINT",
+        path: ["courtesyReason"],
+      });
+    }
+    if (
+      appointment.agendaReservationMode &&
+      appointment.agendaReservationMode !== "SINGLE" &&
+      appointment.kind !== "COURTESY"
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "La reservación doble sólo aplica a cortesías",
+        path: ["agendaReservationMode"],
+      });
+    }
   });
+
+export const posAgendaAvailabilityQuerySchema = z
+  .object({
+    branchId: idSchema,
+    from: isoUtcSchema,
+    to: isoUtcSchema,
+    serviceItemId: idSchema.optional(),
+    seats: z.coerce.number().int().min(1).max(2).default(1),
+  })
+  .strict()
+  .refine((input) => new Date(input.to) > new Date(input.from), {
+    message: "El fin del rango debe ser posterior al inicio",
+    path: ["to"],
+  })
+  .refine(
+    (input) =>
+      new Date(input.to).getTime() - new Date(input.from).getTime() <=
+      31 * 24 * 60 * 60 * 1000,
+    { message: "La disponibilidad admite como máximo 31 días", path: ["to"] },
+  );
+
+export const posAgendaMembershipReservationSchema = z
+  .object({
+    membershipId: idSchema,
+    agendaSlotId: idSchema,
+    sellerId: idSchema.optional(),
+  })
+  .strict();
+
+export const posAgendaConflictQuerySchema = posPageQuerySchema.extend({
+  status: z.enum(["PENDING", "FAILED", "CONFLICT"]).optional(),
+});
+
+export const posAgendaRetrySchema = z
+  .object({ eventId: z.string().uuid().optional() })
+  .strict();
+
+export const posAgendaCorrectionSchema = z
+  .object({
+    eventId: z.string().uuid(),
+    authorizationToken: z.string().uuid(),
+    reason: z.string().trim().min(3).max(1_000),
+  })
+  .strict();
+
+export const agendaWebhookSchema = z
+  .object({
+    eventId: z.string().trim().min(1).max(200),
+    type: z.enum(["ATTENDED", "CANCELED", "NO_SHOW"]),
+    externalAppointmentId: z.string().trim().min(1).max(160),
+    version: z.number().int().positive(),
+    occurredAt: isoUtcSchema,
+  })
+  .strict();
 
 export const posTicketCourtesyInputSchema = z
   .object({

@@ -451,18 +451,29 @@ Todo requisito de las secciones 20–46 queda así asignado. La presencia de una
 
 ### Fase 11 — Integración transaccional con Agenda CRM
 
-- [ ] Definir un adaptador backend de Agenda; URL, token y secretos viven sólo en servidor. El renderer nunca llama directamente al CRM ni recibe sus credenciales.
-- [ ] Mapear `Customer` a `externalClientId` estable y conservar `externalReservationId`, `externalAppointmentId`, recurso, slot, versión, capacidad y snapshot horario en la cita local.
-- [ ] Consultar disponibilidad por sucursal/rango y aceptar únicamente slots elegibles con capacidad. La confirmación revalida en Agenda y usa una clave idempotente estable derivada de la operación local.
-- [ ] Reservar una cortesía doble como unidad: dos lugares del mismo slot/cabina `DOUBLE` o dos slots consecutivos de la misma cabina. Si Agenda no ofrece atomicidad múltiple, el adaptador aplica saga y cancela la primera reserva cuando falla la segunda.
-- [ ] Para una venta online con cita: persistir primero la intención de saga, ejecutar `upsert` de cliente y reserva en Agenda, y después confirmar la transacción local del ticket. Si Agenda falla no se crea el ticket; si el commit local falla, la intención durable permite cancelar la reserva mediante un worker. No afirmar atomicidad ACID entre dos sistemas.
-- [ ] Procesar webhooks firmados e idempotentes de `ATTENDED`, `CANCELED` y `NO_SHOW`. Sólo `ATTENDED` llama al consumo de la Fase 10; una corrección posterior genera eventos compensatorios y requiere autorización.
-- [ ] Sincronizar edición de cliente y cancelación de ticket, conservar una cola visible de conflictos y permitir reintentos seguros. No resolver identidad por nombre o teléfono cuando ya existe `client_id`/`externalClientId`.
-- [ ] Habilitar próxima sesión desde membresía y cortesías `WELCOME`/`COMPLAINT`, respetando membresía vigente, cualquier sucursal autorizada y la exclusión mutua entre cortesía y consumo.
+- [x] Definir un adaptador backend de Agenda; URL, token y secretos viven sólo en servidor. El renderer nunca llama directamente al CRM ni recibe sus credenciales.
+- [x] Mapear `Customer` a `externalClientId` estable y conservar `externalReservationId`, `externalAppointmentId`, recurso, slot, versión, capacidad y snapshot horario en la cita local.
+- [x] Consultar disponibilidad por sucursal/rango y aceptar únicamente slots elegibles con capacidad. La confirmación revalida en Agenda y usa una clave idempotente estable derivada de la operación local.
+- [x] Reservar una cortesía doble como unidad: dos lugares del mismo slot/cabina `DOUBLE` o dos slots consecutivos de la misma cabina. Si Agenda no ofrece atomicidad múltiple, el adaptador aplica saga y cancela la primera reserva cuando falla la segunda.
+- [x] Para una venta online con cita: persistir primero la intención de saga, ejecutar `upsert` de cliente y reserva en Agenda, y después confirmar la transacción local del ticket. Si Agenda falla no se crea el ticket; si el commit local falla, la intención durable permite cancelar la reserva mediante un worker. No afirmar atomicidad ACID entre dos sistemas.
+- [x] Procesar webhooks firmados e idempotentes de `ATTENDED`, `CANCELED` y `NO_SHOW`. Sólo `ATTENDED` llama al consumo de la Fase 10; una corrección posterior genera eventos compensatorios y requiere autorización.
+- [x] Sincronizar edición de cliente y cancelación de ticket, conservar una cola visible de conflictos y permitir reintentos seguros. No resolver identidad por nombre o teléfono cuando ya existe `client_id`/`externalClientId`.
+- [x] Habilitar próxima sesión desde membresía y cortesías `WELCOME`/`COMPLAINT`, respetando membresía vigente, cualquier sucursal autorizada y la exclusión mutua entre cortesía y consumo.
 
 **Persistencia prevista:** `AgendaResource`, `AgendaSlot`, `AgendaReservation`, `AgendaSyncEvent` y el mapeo de identidad externa de cliente. Eventos y payloads normalizados se cifran o redactan cuando contienen datos personales.
 
 **Puerta de salida:** pruebas de contrato contra sandbox de Agenda cubren último lugar concurrente, slot cancelado reutilizado, webhook duplicado/fuera de orden, dos reservas parciales, falla local posterior a reserva y corrección de asistencia.
+
+**Criterio de cierre en repositorio: cumplido el 2026-09-04.** La migración aditiva `20260904020000_add_pos_agenda_integration` agrega identidad externa, recursos, slots, reservas, eventos y compensaciones sin seeds ni datos operativos. La migración no se aplicó a development ni producción. La activación sigue bloqueada por la puerta operativa de contratos contra sandbox y PostgreSQL efímero, que requiere credenciales/servicios no disponibles en este workspace.
+
+#### Entregables verificables
+
+- Adaptador y seguridad: `agenda-adapter.ts` concentra el contrato HTTP autenticado, timeout, validación estricta e idempotencia; los webhooks usan HMAC SHA-256 sobre el body crudo, ventana antirreplay de cinco minutos y `eventId` único.
+- Saga: `pos-agenda.ts` persiste intención antes de efectos externos, rechaza slots cancelados/omitidos y cambios de identidad externa, revalida slot/versión/capacidad, compensa reservas parciales o commits locales fallidos y mantiene una cola durable con reclamo/reintento procesable mediante `pnpm pos:agenda:worker`.
+- Datos: `Customer.externalClientId` es estable/único; `PosAppointment` conserva IDs externos, recurso, slot, versión, capacidad y horario. `AgendaResource`, `AgendaSlot`, `AgendaReservation`, `AgendaSyncEvent` y `PosMembershipAttendanceCorrection` preservan trazabilidad.
+- API/POS: `/api/pos/agenda/*` ofrece disponibilidad, próxima sesión de membresía, conflictos, reintento y corrección. Checkout envía slots reales al backend; Citas muestra la cola redactada. El gateway mock queda aislado a `VITE_POS_DATA_MODE=mock`.
+- Asistencia: `ATTENDED` consume una vez bajo bloqueo; eventos duplicados/viejos no repiten efectos. Una contradicción queda en conflicto y sólo una autorización `AGENDA_ATTENDANCE_CORRECTION` puede agregar compensaciones append-only `-1/+1`, incluidas correcciones sucesivas.
+- Operación: variables, contrato remoto, endpoints, worker, activación y límites están documentados en `docs/POS_AGENDA_INTEGRATION.md`.
 
 ### Fase 12 — Pagos, cortesías, cartera y participantes de venta
 

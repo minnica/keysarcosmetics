@@ -97,6 +97,7 @@ import type {
   PosSessionDto,
   PosSalesCompetitionDto,
   PosTicketQuoteDto,
+  PosAgendaConflictDto,
 } from "@cosmetics/types";
 import {
   CheckoutDialog,
@@ -1943,6 +1944,9 @@ function App() {
       ? []
       : createMockAgendaSlots(Object.keys(sessionInitialBranchInventory)),
   );
+  const [agendaConflicts, setAgendaConflicts] = useState<
+    PosAgendaConflictDto[]
+  >([]);
   const agendaGateway = useMemo(() => createMockExternalAgendaGateway(), []);
   const [clientMemberships, setClientMemberships] = useState<
     ClientMembership[]
@@ -3432,6 +3436,110 @@ function App() {
       window.clearInterval(intervalId);
     };
   }, [apiSession?.actor.id, isOnline, operatingOffline]);
+
+  useEffect(() => {
+    if (
+      !posApiEnabled ||
+      operatingOffline ||
+      !apiSession ||
+      !isOnline ||
+      apiBranches.length === 0
+    )
+      return;
+    let disposed = false;
+    const refreshAvailability = async () => {
+      const from = new Date();
+      const to = new Date(from);
+      to.setDate(to.getDate() + 21);
+      try {
+        const results = await Promise.all(
+          apiBranches.map((branch) =>
+            posApi.agendaAvailability({
+              branchId: branch.id,
+              from: from.toISOString(),
+              to: to.toISOString(),
+              seats: 1,
+            }),
+          ),
+        );
+        if (disposed) return;
+        setAgendaSlots(
+          results.flat().map((slot) => ({
+            id: slot.id,
+            externalSystem: slot.externalSystem,
+            externalCalendarId: slot.externalCalendarId ?? "",
+            externalSlotId: slot.externalSlotId,
+            branch: slot.branchName,
+            date: slot.date,
+            startTime: slot.startTime,
+            endTime: slot.endTime,
+            resourceId: slot.resourceId,
+            resourceName: slot.resourceName,
+            resourceType: slot.resourceType,
+            capacity: slot.capacity,
+            reservedCount: slot.reservedCount,
+            status: slot.status === "CANCELED" ? "CANCELLED" : slot.status,
+            updatedAtIso: slot.updatedAt,
+          })),
+        );
+      } catch {
+        if (!disposed) setAgendaSlots([]);
+      }
+    };
+    void refreshAvailability();
+    return () => {
+      disposed = true;
+    };
+  }, [apiBranches, apiSession?.actor.id, isOnline, operatingOffline]);
+
+  useEffect(() => {
+    if (
+      !posApiEnabled ||
+      operatingOffline ||
+      !apiSession ||
+      !isOnline ||
+      !apiPermissions.includes("APPOINTMENTS_MANAGE")
+    ) {
+      setAgendaConflicts([]);
+      return;
+    }
+    let disposed = false;
+    const refreshAgendaConflicts = () =>
+      void posApi
+        .agendaConflicts({ pageSize: 50 })
+        .then((result) => {
+          if (!disposed) setAgendaConflicts(result.items);
+        })
+        .catch(() => undefined);
+    refreshAgendaConflicts();
+    const intervalId = window.setInterval(refreshAgendaConflicts, 15_000);
+    return () => {
+      disposed = true;
+      window.clearInterval(intervalId);
+    };
+  }, [apiPermissions, apiSession?.actor.id, isOnline, operatingOffline]);
+
+  const retryAgendaConflict = (eventId: string) => {
+    void posApi
+      .retryAgendaConflicts(eventId)
+      .then(async (retry) => ({
+        retry,
+        conflicts: await posApi.agendaConflicts({ pageSize: 50 }),
+      }))
+      .then(({ retry, conflicts }) => {
+        setAgendaConflicts(conflicts.items);
+        if (retry.failed > 0)
+          toast.error("Agenda aún no confirmó la operación; seguirá en cola.");
+        else toast.success("Reintento de Agenda procesado.");
+      })
+      .catch((error: unknown) =>
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "No se pudo reintentar la operación de Agenda.",
+        ),
+      );
+  };
 
   const authorizeCatalogExit = (alias: string, code: string) => {
     const normalizedAlias = alias.trim().toLocaleLowerCase("es-MX");
@@ -7262,6 +7370,19 @@ function App() {
                 ).toISOString(),
               }
             : {}),
+          ...(appointment.agendaSlotId
+            ? {
+                agendaSlotId: appointment.agendaSlotId,
+                agendaReservationMode:
+                  appointment.agendaReservationMode ?? "SINGLE",
+              }
+            : {}),
+          ...(appointment.membershipId
+            ? { membershipId: appointment.membershipId }
+            : {}),
+          ...(appointment.courtesyReason
+            ? { courtesyReason: appointment.courtesyReason }
+            : {}),
         }));
         const courtesyIndexes = result.appointments.flatMap(
           (appointment, index) =>
@@ -7382,6 +7503,19 @@ function App() {
               ? { sellerId: primaryHumanSellerSale.sellerId }
               : {}),
             ...(scheduledAt ? { scheduledAt } : {}),
+            ...(appointment.agendaSlotId
+              ? {
+                  agendaSlotId: appointment.agendaSlotId,
+                  agendaReservationMode:
+                    appointment.agendaReservationMode ?? "SINGLE",
+                }
+              : {}),
+            ...(appointment.membershipId
+              ? { membershipId: appointment.membershipId }
+              : {}),
+            ...(appointment.courtesyReason
+              ? { courtesyReason: appointment.courtesyReason }
+              : {}),
           };
         });
         const courtesyIndexes = result.appointments.flatMap(
@@ -7478,7 +7612,7 @@ function App() {
         setAppointments((current) => [
           ...result.appointments.map((appointment, index) => ({
             ...appointment,
-            id: `api-appointment-${dto.id}-${index}`,
+            id: dto.appointments[index]?.id ?? `api-appointment-${dto.id}-${index}`,
             clientId: client.id,
             clientName,
             clientPhone: client.phone,
@@ -7487,9 +7621,30 @@ function App() {
             recordedAt: ticket.createdAt,
             recordedAtIso: ticket.createdAtIso,
             status:
-              appointment.kind === "NO_APPOINTMENT"
-                ? ("PENDING" as const)
-                : ("SCHEDULED" as const),
+              dto.appointments[index]?.status === "COMPLETED"
+                ? ("ATTENDED" as const)
+                : dto.appointments[index]?.status === "CANCELED"
+                  ? ("CANCELLED" as const)
+                  : dto.appointments[index]?.status === "NO_SHOW"
+                    ? ("NO_SHOW" as const)
+                    : appointment.kind === "NO_APPOINTMENT"
+                      ? ("PENDING" as const)
+                      : ("SCHEDULED" as const),
+            ...(dto.appointments[index]?.externalReservationId
+              ? {
+                  agendaReservationId:
+                    dto.appointments[index]!.externalReservationId!,
+                }
+              : {}),
+            ...(dto.appointments[index]?.externalAppointmentId
+              ? {
+                  externalAppointmentId:
+                    dto.appointments[index]!.externalAppointmentId!,
+                }
+              : {}),
+            ...(dto.appointments[index]?.externalAppointmentId
+              ? { agendaSyncStatus: "RESERVED" as const }
+              : {}),
           })),
           ...current,
         ]);
@@ -10676,7 +10831,7 @@ function App() {
   };
 
   useEffect(() => {
-    if (!isOnline) return;
+    if (!isOnline || posApiEnabled) return;
     let disposed = false;
     const synchronizeAgendaOutcomes = async () => {
       try {
@@ -10706,10 +10861,86 @@ function App() {
   ) => {
     if (!canEditActiveModule) return false;
     if (posApiEnabled) {
-      toast.info(
-        "La reservación transaccional con Agenda se habilitará en la Fase 11.",
+      if (!membershipAuthorizationToken) {
+        toast.error("Vuelve a autorizar el acceso a membresías.");
+        return false;
+      }
+      const membership = clientMemberships.find(
+        (candidate) => candidate.id === membershipId,
       );
-      return false;
+      const slot = agendaSlots.find(
+        (candidate) => candidate.id === agendaSlotId,
+      );
+      if (!membership || !slot) return false;
+      try {
+        const created = await posApi.reserveMembershipAppointment(
+          { membershipId, agendaSlotId, sellerId: membership.sellerId },
+          membershipAuthorizationToken,
+        );
+        const recordedAtIso = new Date().toISOString();
+        setAppointments((current) => [
+          {
+            id: created.id,
+            kind: "NEXT_SESSION",
+            service: created.serviceName,
+            date: slot.date,
+            branch: created.branchName,
+            time: slot.startTime,
+            agendaSlotId: created.agendaSlotId ?? slot.id,
+            externalSlotId: slot.externalSlotId,
+            agendaResourceName: created.agendaResourceName ?? slot.resourceName,
+            agendaReservationMode: "SINGLE",
+            clientId: membership.clientId,
+            clientName: membership.clientName,
+            clientPhone: membership.clientPhone,
+            ticketId: membership.purchaseTicketId,
+            sellerIds: [membership.sellerId],
+            recordedAt: new Intl.DateTimeFormat("es-MX", {
+              day: "2-digit",
+              month: "short",
+              year: "numeric",
+              hour: "2-digit",
+              minute: "2-digit",
+            }).format(new Date(recordedAtIso)),
+            recordedAtIso,
+            status: "SCHEDULED",
+            membershipId,
+            ...(created.externalReservationId
+              ? { agendaReservationId: created.externalReservationId }
+              : {}),
+            ...(created.externalAppointmentId
+              ? { externalAppointmentId: created.externalAppointmentId }
+              : {}),
+            agendaSyncStatus: "RESERVED",
+            agendaSyncedAtIso: recordedAtIso,
+          },
+          ...current,
+        ]);
+        setAgendaSlots((current) =>
+          current.map((candidate) =>
+            candidate.id === agendaSlotId
+              ? {
+                  ...candidate,
+                  reservedCount: candidate.reservedCount + 1,
+                  status:
+                    candidate.reservedCount + 1 >= candidate.capacity
+                      ? "BOOKED"
+                      : "AVAILABLE",
+                  updatedAtIso: recordedAtIso,
+                }
+              : candidate,
+          ),
+        );
+        toast.success("Próxima sesión confirmada por Agenda.");
+        return true;
+      } catch (error) {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "No fue posible reservar la próxima sesión.",
+        );
+        return false;
+      }
     }
     const membership = clientMemberships.find(
       (candidate) => candidate.id === membershipId,
@@ -15762,6 +15993,8 @@ function App() {
             }
             activeBranch={activeBranch}
             canViewAllBranches={Boolean(sessionUser?.isMaster)}
+            agendaConflicts={agendaConflicts}
+            onRetryAgendaConflict={retryAgendaConflict}
           />
         );
       case "memberships":

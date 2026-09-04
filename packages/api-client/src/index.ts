@@ -66,6 +66,10 @@ import type {
   PosMembershipSalesClosureDto,
   PosMembershipSellerChangeRequestDto,
   PosMembershipStatusChangeRequestDto,
+  PosAgendaAvailabilityRequestDto,
+  PosAgendaConflictDto,
+  PosAgendaMembershipReservationRequestDto,
+  PosAgendaSlotDto,
 } from "@cosmetics/types";
 
 /**
@@ -324,6 +328,34 @@ export interface PosApiClient {
     input: PosTicketCreateRequestDto,
     idempotencyKey?: string,
   ): Promise<PosTicketDto>;
+  agendaAvailability(
+    input: PosAgendaAvailabilityRequestDto,
+  ): Promise<PosAgendaSlotDto[]>;
+  reserveMembershipAppointment(
+    input: PosAgendaMembershipReservationRequestDto,
+    personalAuthorizationToken: string,
+    idempotencyKey?: string,
+  ): Promise<PosTicketDto["appointments"][number]>;
+  agendaConflicts(input?: {
+    status?: "PENDING" | "FAILED" | "CONFLICT";
+    page?: number;
+    pageSize?: number;
+  }): Promise<{
+    items: PosAgendaConflictDto[];
+    page: number;
+    pageSize: number;
+    total: number;
+  }>;
+  retryAgendaConflicts(eventId?: string): Promise<{
+    processed: number;
+    succeeded: number;
+    failed: number;
+  }>;
+  resolveAgendaAttendanceCorrection(input: {
+    eventId: string;
+    authorizationToken: string;
+    reason: string;
+  }): Promise<{ eventId: string; appointmentId: string; corrected: boolean }>;
   tickets(input?: {
     businessDate?: string;
     customerId?: string;
@@ -785,6 +817,23 @@ export function createPosApiClient(
       data<PosTicketDto>(
         client.post("/tickets", input, { headers: mutationHeaders(key) }),
       ),
+    agendaAvailability: (input) =>
+      data<PosAgendaSlotDto[]>(client.get("/agenda/availability", { params: input })),
+    reserveMembershipAppointment: (input, personalAuthorizationToken, key) =>
+      data<PosTicketDto["appointments"][number]>(
+        client.post("/agenda/membership-reservations", input, {
+          headers: {
+            ...mutationHeaders(key),
+            "X-POS-Personal-Authorization": personalAuthorizationToken,
+          },
+        }),
+      ),
+    agendaConflicts: (input = {}) =>
+      data(client.get("/agenda/conflicts", { params: input })),
+    retryAgendaConflicts: (eventId) =>
+      data(client.post("/agenda/conflicts/retry", { ...(eventId ? { eventId } : {}) })),
+    resolveAgendaAttendanceCorrection: (input) =>
+      data(client.post("/agenda/attendance-corrections", input)),
     tickets: (input = {}) =>
       data(
         client.get("/tickets", {

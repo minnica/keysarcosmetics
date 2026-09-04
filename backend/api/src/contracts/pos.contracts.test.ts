@@ -9,6 +9,7 @@ import {
   posWarehouseRequestWriteSchema,
   posTerminalStatusUpdateSchema,
   posTicketQuoteRequestSchema,
+  posTicketAppointmentInputSchema,
   posBusinessDayCloseSchema,
   posBusinessDayCountInputSchema,
   posCashExpenseCorrectionSchema,
@@ -137,6 +138,23 @@ describe("contratos públicos del POS", () => {
       posMutationHeadersSchema.safeParse({ "idempotency-key": "invalid" })
         .success,
     ).toBe(false);
+  });
+
+  it("exige slot y motivo tipado para cortesías de Agenda", () => {
+    const base = {
+      kind: "COURTESY" as const,
+      serviceName: "Facial de bienvenida",
+      branchId: "branch-1",
+      scheduledAt: "2026-09-05T16:00:00.000Z",
+      agendaSlotId: "slot-1",
+    };
+    expect(posTicketAppointmentInputSchema.safeParse(base).success).toBe(false);
+    expect(
+      posTicketAppointmentInputSchema.safeParse({
+        ...base,
+        courtesyReason: "WELCOME",
+      }).success,
+    ).toBe(true);
   });
 
   it("valida rutas de inventario y cantidades positivas", () => {

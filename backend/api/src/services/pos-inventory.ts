@@ -28,6 +28,31 @@ const stableValue = (value: unknown): unknown => {
 const requestHash = (value: unknown) =>
   createHash("sha256").update(JSON.stringify(stableValue(value))).digest("hex");
 
+export async function findPosIdempotentReplay<T>(input: {
+  key: string;
+  actorCredentialId: string;
+  operation: string;
+  payload: unknown;
+}): Promise<(IdempotentResponse<T> & { replayed: true }) | null> {
+  const hash = requestHash(input.payload);
+  const existing = await import("../prisma/client").then(({ prisma }) =>
+    prisma.posIdempotencyRecord.findUnique({ where: { key: input.key } }),
+  );
+  if (!existing) return null;
+  if (
+    existing.actorCredentialId !== input.actorCredentialId ||
+    existing.operation !== input.operation ||
+    existing.requestHash !== hash
+  ) {
+    throw new PosInventoryError(
+      "La llave de idempotencia ya se usó con otra operación",
+      409,
+    );
+  }
+  const stored = existing.responseBody as unknown as IdempotentResponse<T>;
+  return { ...stored, replayed: true };
+}
+
 export async function executePosIdempotent<T>(input: {
   key: string;
   actorCredentialId: string;
@@ -36,21 +61,7 @@ export async function executePosIdempotent<T>(input: {
   execute: (tx: Transaction) => Promise<IdempotentResponse<T>>;
 }): Promise<IdempotentResponse<T> & { replayed: boolean }> {
   const hash = requestHash(input.payload);
-  const replay = async () => {
-    const existing = await import("../prisma/client").then(({ prisma }) =>
-      prisma.posIdempotencyRecord.findUnique({ where: { key: input.key } }),
-    );
-    if (!existing) return null;
-    if (
-      existing.actorCredentialId !== input.actorCredentialId ||
-      existing.operation !== input.operation ||
-      existing.requestHash !== hash
-    ) {
-      throw new PosInventoryError("La llave de idempotencia ya se usó con otra operación", 409);
-    }
-    const stored = existing.responseBody as unknown as IdempotentResponse<T>;
-    return { ...stored, replayed: true };
-  };
+  const replay = () => findPosIdempotentReplay<T>(input);
 
   const existing = await replay();
   if (existing) return existing;

@@ -18,6 +18,7 @@ import {
   cancelMembershipsForTicket,
   createMembershipsForTicket,
 } from "./pos-memberships";
+import type { PreparedAgendaTicket } from "./pos-agenda";
 
 export class PosTicketError extends Error {
   constructor(
@@ -643,7 +644,10 @@ const ticketInclude = {
     orderBy: { creadoEn: "asc" as const },
   },
   appointments: {
-    include: { branch: { select: { nombre: true } } },
+    include: {
+      branch: { select: { nombre: true } },
+      agendaResource: { select: { nameSnapshot: true } },
+    },
     orderBy: { creadoEn: "asc" as const },
   },
 } satisfies Prisma.PosTicketInclude;
@@ -745,6 +749,18 @@ export function ticketDto(ticket: TicketPayload): PosTicketDto {
       branchName: appointment.branch.nombre,
       sellerId: appointment.sellerId,
       scheduledAt: appointment.scheduledAt?.toISOString() ?? null,
+      agendaSlotId: appointment.agendaSlotId,
+      agendaReservationId: appointment.agendaReservationId,
+      externalReservationId: appointment.externalReservationId,
+      externalAppointmentId: appointment.externalAppointmentId,
+      agendaResourceName: appointment.agendaResource?.nameSnapshot ?? null,
+      agendaVersion: appointment.agendaVersion,
+      membershipId: appointment.membershipId,
+      courtesyReason:
+        appointment.courtesyReason === "WELCOME" ||
+        appointment.courtesyReason === "COMPLAINT"
+          ? appointment.courtesyReason
+          : null,
     })),
   };
 }
@@ -789,6 +805,7 @@ export async function createTicket(
     isMaster: boolean;
     sessionId?: string;
   },
+  agenda: PreparedAgendaTicket | null = null,
 ) {
   if (input.branchId !== context.branchId)
     throw new PosTicketError("La sucursal no coincide con la terminal", 403);
@@ -847,6 +864,7 @@ export async function createTicket(
             normalizedName: normalize(input.customer.create.displayName),
             phone: normalizePhone(input.customer.create.phone),
             email: input.customer.create.email ?? null,
+            externalClientId: agenda?.externalClientId ?? null,
             sourceId: input.customer.create.sourceId ?? null,
             notes: input.customer.create.notes ?? null,
             portfolios: input.customer.create.ownerEmployeeId
@@ -862,6 +880,22 @@ export async function createTicket(
         })
       : null;
   if (!customer) throw new PosTicketError("Cliente no encontrado");
+  if (agenda) {
+    if (
+      customer.externalClientId &&
+      customer.externalClientId !== agenda.externalClientId
+    )
+      throw new PosTicketError("La identidad externa del cliente cambió durante la venta", 409);
+    if (!customer.externalClientId)
+      await tx.customer.update({
+        where: { id: customer.id },
+        data: { externalClientId: agenda.externalClientId },
+      });
+    await tx.agendaSyncEvent.update({
+      where: { id: agenda.clientSyncEventId },
+      data: { customerId: customer.id },
+    });
+  }
   const sequence = await nextSequence(tx, "PosTicketFolioSeq");
   const terminal = await tx.posTerminal.findUnique({
     where: { id: context.terminalId },
@@ -1089,7 +1123,7 @@ export async function createTicket(
   }
   if (owedData.length) await tx.posOwedProduct.createMany({ data: owedData });
 
-  const createdAppointments = [];
+  const createdAppointments: Array<{ id: string }> = [];
   const appointmentBranchIds = [
     ...new Set(
       (input.appointments ?? []).map((appointment) => appointment.branchId),
@@ -1106,6 +1140,24 @@ export async function createTicket(
     );
   }
   for (const appointment of input.appointments ?? []) {
+    const appointmentIndex: number = createdAppointments.length;
+    const prepared: PreparedAgendaTicket["appointments"][number] | undefined =
+      agenda?.appointments.find(
+      (candidate) => candidate.index === appointmentIndex,
+      );
+    if (appointment.kind !== "NO_APPOINTMENT" && !prepared)
+      throw new PosTicketError("La cita no fue confirmada por Agenda", 409);
+    if (appointment.membershipId) {
+      const membership = await tx.posClientMembership.findFirst({
+        where: {
+          id: appointment.membershipId,
+          customerId: customer.id,
+          status: "ACTIVE",
+        },
+      });
+      if (!membership || membership.usedSessions >= membership.totalSessions)
+        throw new PosTicketError("La membresía no es vigente para esta cita", 409);
+    }
     createdAppointments.push(
       await tx.posAppointment.create({
         data: {
@@ -1121,10 +1173,36 @@ export async function createTicket(
           scheduledAt: appointment.scheduledAt
             ? new Date(appointment.scheduledAt)
             : null,
+          externalReservationId: prepared?.externalReservationId ?? null,
+          externalAppointmentId: prepared?.externalAppointmentId ?? null,
+          agendaResourceId: prepared?.resourceId ?? null,
+          agendaSlotId: prepared?.slotId ?? null,
+          agendaReservationId: prepared?.reservationId ?? null,
+          agendaVersion: prepared?.version ?? null,
+          capacitySnapshot: prepared?.capacity ?? null,
+          startsAtSnapshot: prepared?.startsAt ?? null,
+          endsAtSnapshot: prepared?.endsAt ?? null,
+          membershipId: appointment.membershipId ?? null,
+          courtesyReason: appointment.courtesyReason ?? null,
           createdByCredentialId: context.credentialId,
         },
       }),
     );
+  }
+  if (agenda) {
+    await tx.agendaReservation.updateMany({
+      where: {
+        id: {
+          in: [...new Set(agenda.appointments.map((item) => item.reservationId))],
+        },
+        status: "REMOTE_RESERVED",
+      },
+      data: {
+        status: "CONFIRMED",
+        ticketId: ticket.id,
+        customerId: customer.id,
+      },
+    });
   }
   const giftLines = ticket.lines.filter((line) => line.kind === "GIFT");
   for (const [index, courtesy] of (input.courtesies ?? []).entries()) {
