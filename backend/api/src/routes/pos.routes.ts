@@ -72,6 +72,16 @@ function requireSuperAdmin(req: Request, res: Response, next: NextFunction): voi
   next();
 }
 
+function requireEmployeeDirectoryAccess(req: Request, res: Response, next: NextFunction): void {
+  if (req.posUser?.isMaster || req.posUser?.permissions.some((permission) =>
+    permission === "EMPLOYEES_VIEW" || permission === "SETTINGS_MANAGE"
+  )) {
+    next();
+    return;
+  }
+  res.status(403).json({ success: false, message: "Permiso POS insuficiente", data: null });
+}
+
 function requestAuditData(req: Request) {
   return {
     ipAddress: req.ip?.slice(0, 64) ?? null,
@@ -757,7 +767,7 @@ router.post("/terminals/:id/branch", posAuthMiddleware, requirePosPermission("TE
   }
 });
 
-router.get("/access/bootstrap", posAuthMiddleware, requirePosPermission("EMPLOYEES_VIEW"), async (_req, res) => {
+router.get("/access/bootstrap", posAuthMiddleware, requireEmployeeDirectoryAccess, async (_req, res) => {
   const [employees, roles, permissionTree] = await Promise.all([
     db.empleado.findMany({
       orderBy: [{ activo: "desc" }, { nombreCompleto: "asc" }],

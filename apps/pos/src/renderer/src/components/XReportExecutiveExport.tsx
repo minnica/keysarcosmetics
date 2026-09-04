@@ -37,6 +37,14 @@ interface XReportExecutiveExportProps {
   paymentMethods: PaymentMethodOption[];
   branches: string[];
   receiptSettings: ReceiptSettings;
+  loadAuthorizedRows?: ((input: {
+    dateFrom: string;
+    dateTo: string;
+    branch: string | null;
+  }) => Promise<{
+    tickets: Array<Record<string, string | number>>;
+    movements: Array<Record<string, string | number>>;
+  }>) | undefined;
 }
 
 const getBusinessToday = () =>
@@ -76,6 +84,7 @@ export function XReportExecutiveExport({
   paymentMethods,
   branches,
   receiptSettings,
+  loadAuthorizedRows,
 }: XReportExecutiveExportProps) {
   const [dateFrom, setDateFrom] = useState(getBusinessToday);
   const [dateTo, setDateTo] = useState(getBusinessToday);
@@ -449,6 +458,9 @@ export function XReportExecutiveExport({
     }
     setExporting("EXCEL");
     try {
+      const authorizedRows = loadAuthorizedRows
+        ? await loadAuthorizedRows({ dateFrom, dateTo, branch: selectedBranch === "ALL" ? null : selectedBranch })
+        : { tickets: ticketRows, movements: movementRows };
       const XLSX = await import("xlsx");
       const workbook = XLSX.utils.book_new();
       const appendSheet = (
@@ -465,11 +477,11 @@ export function XReportExecutiveExport({
       };
       appendSheet("Resumen ejecutivo", summaryRows);
       appendSheet("Sucursales", branchRows);
-      appendSheet("Tickets", ticketRows);
+      appendSheet("Tickets", authorizedRows.tickets);
       appendSheet("Vendedores", sellerRows);
       appendSheet("Productos", productRows);
       appendSheet("Métodos de pago", paymentRows);
-      appendSheet("Inventario", movementRows);
+      appendSheet("Inventario", authorizedRows.movements);
       XLSX.writeFile(workbook, `${filename}.xlsx`, { compression: true });
       toast.success("Reporte ejecutivo descargado en Excel.");
     } catch {
@@ -486,6 +498,11 @@ export function XReportExecutiveExport({
     }
     setExporting("PDF");
     try {
+      // En modo API esta lectura es la frontera de autorización del dataset,
+      // incluso cuando el PDF presenta los agregados visuales del X-Report.
+      if (loadAuthorizedRows) {
+        await loadAuthorizedRows({ dateFrom, dateTo, branch: selectedBranch === "ALL" ? null : selectedBranch });
+      }
       const [{ jsPDF }, { autoTable }] = await Promise.all([
         import("jspdf"),
         import("jspdf-autotable"),

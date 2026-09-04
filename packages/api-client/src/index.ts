@@ -8,6 +8,7 @@ import type {
   PosCatalogItemWithCostsDto,
   PosCredentialSummaryDto,
   PosCustomerDto,
+  PosCustomerRequiredFieldDto,
   PosCustomerSourceDto,
   PosLoginRequestDto,
   PosInventoryAdjustmentBatchDto,
@@ -21,6 +22,7 @@ import type {
   PosMasterAuthorizationRequestDto,
   PosPermissionKey,
   PosSessionDto,
+  PosSalesCompetitionDto,
   PosSupplierDto,
   PosTerminalDto,
   PosTicketConfigurationDto,
@@ -28,6 +30,7 @@ import type {
   PosWarehouseRequestCreateDto,
   PosWarehouseRequestDto,
   PosNotificationDto,
+  PosNotificationPreferenceDto,
   PosPaymentMethodDto,
   PosPackageDto,
   PosTicketCreateRequestDto,
@@ -50,6 +53,8 @@ import type {
   PosOfflineBootstrapDto,
   PosOfflineOperationDto,
   PosOfflinePushResultDto,
+  PosReportDatasetDto,
+  PosReportKey,
 } from '@cosmetics/types'
 
 /**
@@ -124,9 +129,15 @@ export interface PosApiClient {
   customerSources(): Promise<PosCustomerSourceDto[]>
   suppliers(): Promise<PosSupplierDto[]>
   ticketConfiguration(): Promise<PosTicketConfigurationDto>
+  customerRequiredFields(): Promise<PosCustomerRequiredFieldDto[]>
+  updateCustomerRequiredField(key: string, input: { label: string; required: boolean; active: boolean; sortOrder: number }): Promise<PosCustomerRequiredFieldDto>
   voucherTemplates(): Promise<PosVoucherTemplateDto[]>
   paymentMethods(): Promise<PosPaymentMethodDto[]>
   packages(): Promise<PosPackageDto[]>
+  competitions(): Promise<PosSalesCompetitionDto[]>
+  createCompetition(input: Omit<PosSalesCompetitionDto, 'id' | 'creadoEn'>): Promise<PosSalesCompetitionDto>
+  updateCompetition(id: string, input: Omit<PosSalesCompetitionDto, 'id' | 'creadoEn'>): Promise<PosSalesCompetitionDto>
+  deleteCompetition(id: string): Promise<{ id: string }>
   saleSellers(): Promise<Array<{ id: string; displayName: string; positionId: string | null }>>
   inventoryLocations(): Promise<PosInventoryLocationDto[]>
   inventoryBalances(locationId?: string): Promise<PosInventoryBalanceDto[]>
@@ -143,6 +154,9 @@ export interface PosApiClient {
   warehouseRequestAction(id: string, action: "approve-creation" | "approve-send" | "receive" | "return-to-requested" | "cancel", notes?: string | null, idempotencyKey?: string): Promise<PosWarehouseRequestDto>
   notifications(input?: { unreadOnly?: boolean; page?: number; pageSize?: number }): Promise<{ items: PosNotificationDto[]; page: number; pageSize: number; total: number }>
   markNotificationRead(id: string): Promise<{ notificationId: string; readAt: string }>
+  markAllNotificationsRead(): Promise<{ count: number }>
+  notificationPreferences(): Promise<PosNotificationPreferenceDto[]>
+  updateNotificationPreferences(preferences: Array<{ kind: PosNotificationDto['kind']; recipients: Array<{ actorId: string; access: 'VIEW' | 'EDIT' }> }>): Promise<{ updated: boolean }>
   quoteTicket(input: PosTicketQuoteRequestDto): Promise<PosTicketQuoteDto>
   createTicket(input: PosTicketCreateRequestDto, idempotencyKey?: string): Promise<PosTicketDto>
   tickets(input?: { businessDate?: string; customerId?: string; page?: number; pageSize?: number }): Promise<{ items: PosTicketDto[]; page: number; pageSize: number; total: number }>
@@ -171,6 +185,8 @@ export interface PosApiClient {
   voidExpense(id: string, input: PosCashExpenseVoidDto, idempotencyKey?: string): Promise<PosCashExpenseDto>
   dashboard(input?: { businessDate?: string; branchId?: string }): Promise<PosOperationalSummaryDto>
   xReport(input?: { businessDate?: string; branchId?: string }): Promise<PosOperationalSummaryDto>
+  reportDataset(key: PosReportKey, input: { dateFrom: string; dateTo: string; branchIds?: string[]; sellerId?: string; paymentMethodId?: string; search?: string; page?: number; pageSize?: number }): Promise<PosReportDatasetDto>
+  exportDataset(key: PosReportKey, input: { dateFrom: string; dateTo: string; branchIds?: string[]; sellerId?: string; paymentMethodId?: string; search?: string; page?: number; pageSize?: number }): Promise<PosReportDatasetDto>
   offlineBootstrap(): Promise<PosOfflineBootstrapDto>
   pushOfflineOperations(grantToken: string, operations: PosOfflineOperationDto[]): Promise<PosOfflinePushResultDto>
   clearSession(): void
@@ -239,9 +255,15 @@ export function createPosApiClient(baseURL: string, options: PosApiClientOptions
     customerSources: () => data<PosCustomerSourceDto[]>(client.get('/customers/sources')),
     suppliers: () => data<PosSupplierDto[]>(client.get('/suppliers')),
     ticketConfiguration: () => data<PosTicketConfigurationDto>(client.get('/settings/ticket')),
+    customerRequiredFields: () => data<PosCustomerRequiredFieldDto[]>(client.get('/settings/customer-fields')),
+    updateCustomerRequiredField: (key, input) => data<PosCustomerRequiredFieldDto>(client.put(`/settings/customer-fields/${encodeURIComponent(key)}`, input)),
     voucherTemplates: () => data<PosVoucherTemplateDto[]>(client.get('/settings/vouchers')),
     paymentMethods: () => data<PosPaymentMethodDto[]>(client.get('/settings/payment-methods')),
     packages: () => data<PosPackageDto[]>(client.get('/packages')),
+    competitions: () => data<PosSalesCompetitionDto[]>(client.get('/competitions')),
+    createCompetition: (input) => data<PosSalesCompetitionDto>(client.post('/competitions', input)),
+    updateCompetition: (id, input) => data<PosSalesCompetitionDto>(client.put(`/competitions/${id}`, input)),
+    deleteCompetition: (id) => data<{ id: string }>(client.delete(`/competitions/${id}`)),
     saleSellers: () => data<Array<{ id: string; displayName: string; positionId: string | null }>>(client.get('/sale/sellers')),
     inventoryLocations: () => data<PosInventoryLocationDto[]>(client.get('/inventory/locations')),
     inventoryBalances: (locationId) => data<PosInventoryBalanceDto[]>(client.get('/inventory/balances', { params: { locationId } })),
@@ -258,6 +280,9 @@ export function createPosApiClient(baseURL: string, options: PosApiClientOptions
     warehouseRequestAction: (id, action, notes = null, key) => data<PosWarehouseRequestDto>(client.post(`/warehouse/requests/${id}/${action}`, { notes }, { headers: mutationHeaders(key) })),
     notifications: (input = {}) => data(client.get('/notifications', { params: { ...input, unreadOnly: input.unreadOnly ? 'true' : 'false' } })),
     markNotificationRead: (id) => data(client.put(`/notifications/${id}/read`)),
+    markAllNotificationsRead: () => data(client.put('/notifications/read-all')),
+    notificationPreferences: () => data<PosNotificationPreferenceDto[]>(client.get('/notifications/preferences')),
+    updateNotificationPreferences: (preferences) => data(client.put('/notifications/preferences', { preferences })),
     quoteTicket: (input) => data<PosTicketQuoteDto>(client.post('/tickets/quote', input)),
     createTicket: (input, key) => data<PosTicketDto>(client.post('/tickets', input, { headers: mutationHeaders(key) })),
     tickets: (input = {}) => data(client.get('/tickets', { params: input })),
@@ -286,6 +311,8 @@ export function createPosApiClient(baseURL: string, options: PosApiClientOptions
     voidExpense: (id, input, key) => data<PosCashExpenseDto>(client.post(`/expenses/${id}/void`, input, { headers: mutationHeaders(key) })),
     dashboard: (input = {}) => data<PosOperationalSummaryDto>(client.get('/dashboard', { params: input })),
     xReport: (input = {}) => data<PosOperationalSummaryDto>(client.get('/reports/x-report', { params: input })),
+    reportDataset: (key, input) => data<PosReportDatasetDto>(client.get(`/reports/${key}`, { params: { ...input, branchIds: input.branchIds?.join(',') } })),
+    exportDataset: (key, input) => data<PosReportDatasetDto>(client.get(`/exports/${key}`, { params: { ...input, branchIds: input.branchIds?.join(',') } })),
     offlineBootstrap: () => data<PosOfflineBootstrapDto>(client.get('/sync/bootstrap')),
     pushOfflineOperations: (grantToken, operations) =>
       data<PosOfflinePushResultDto>(client.post('/sync/push', { operations }, {

@@ -1,5 +1,5 @@
 import { Router, type NextFunction, type Request, type Response, type Router as ExpressRouter } from "express";
-import { Prisma, type InventoryMovementType, type WarehouseRequestStatus } from "@prisma/client";
+import { Prisma, type InventoryMovementType, type PosNotificationKind, type WarehouseRequestStatus } from "@prisma/client";
 import { z } from "zod";
 import {
   posInventoryAdjustmentBatchWriteSchema,
@@ -27,6 +27,7 @@ import {
   warehouseRequestDto,
   warehouseRequestInclude,
 } from "../services/pos-inventory";
+import { enqueuePosNotification, POS_NOTIFICATION_KINDS } from "../services/pos-notifications";
 
 const router: ExpressRouter = Router();
 const db = prisma;
@@ -131,6 +132,22 @@ async function applyAdjustmentBatch(tx: Prisma.TransactionClient, req: Request, 
       unitCostSnapshot: costs.get(line.itemId) ?? null,
       metadata: { requestedType: line.type, reason: line.reason, notes: line.notes },
     })),
+  });
+  const requestedTypes = new Set(batch.lines.map((line) => line.type));
+  const notificationKind = requestedTypes.has("TRANSFER")
+    ? "INVENTORY_TRANSFER"
+    : requestedTypes.has("ADD") || requestedTypes.has("RETURN")
+      ? "INVENTORY_ADD"
+      : "INVENTORY_REMOVE";
+  await enqueuePosNotification(tx, {
+    kind: notificationKind,
+    title: `Movimiento aplicado · ${movement.folio}`,
+    message: `${batch.lines.length} partida${batch.lines.length === 1 ? "" : "s"} confirmada${batch.lines.length === 1 ? "" : "s"}`,
+    branchId: req.posUser!.branchId,
+    audiencePermission: "INVENTORY_VIEW",
+    createdByCredentialId: req.posUser!.credentialId,
+    sourceType: "InventoryMovement",
+    sourceId: movement.id,
   });
   return tx.inventoryAdjustmentBatch.update({
     where: { id: batch.id },
@@ -342,11 +359,17 @@ async function warehouseNotification(tx: Prisma.TransactionClient, input: {
   kind: "WAREHOUSE_REQUESTED" | "WAREHOUSE_CREATION_APPROVED" | "WAREHOUSE_SHIPPED" | "WAREHOUSE_RECEIVED" | "WAREHOUSE_RETURNED" | "WAREHOUSE_CANCELED";
   requestId: string; folio: string; message: string; branchId: string | null; audiencePermission: "WAREHOUSE_MANAGE" | "WAREHOUSE_BRANCH_REQUEST"; actorCredentialId: string;
 }) {
-  await tx.posNotification.create({ data: {
-    kind: input.kind, title: `${input.folio} · ${input.message}`, message: input.message,
-    branchId: input.branchId, audiencePermission: input.audiencePermission,
-    warehouseRequestId: input.requestId, createdByCredentialId: input.actorCredentialId,
-  } });
+  await enqueuePosNotification(tx, {
+    kind: input.kind,
+    title: `${input.folio} · ${input.message}`,
+    message: input.message,
+    branchId: input.branchId,
+    audiencePermission: input.audiencePermission,
+    warehouseRequestId: input.requestId,
+    createdByCredentialId: input.actorCredentialId,
+    sourceType: "WarehouseRequest",
+    sourceId: input.requestId,
+  });
 }
 
 router.get("/warehouse/requests", requireWarehouseAccess, asyncRoute(async (req, res) => {
@@ -484,15 +507,34 @@ router.get("/notifications", asyncRoute(async (req, res) => {
   const where: Prisma.PosNotificationWhereInput = {
     AND: [
       { OR: [{ branchId: null }, { branchId: req.posUser!.branchId }] },
-      ...(allowedPermissions ? [{ OR: [{ audiencePermission: null }, { audiencePermission: { in: allowedPermissions } }] }] : []),
+      {
+        OR: [
+          { outbox: { some: { credentialId: req.posUser!.credentialId } } },
+          {
+            AND: [
+              { outbox: { none: {} } },
+              ...(allowedPermissions
+                ? [{ OR: [{ audiencePermission: null }, { audiencePermission: { in: allowedPermissions } }] }]
+                : []),
+            ],
+          },
+        ],
+      },
       ...(parsed.data.unreadOnly === "true" ? [{ reads: { none: { credentialId: req.posUser!.credentialId } } }] : []),
     ],
   };
   const [items, total] = await Promise.all([
-    db.posNotification.findMany({ where, include: { reads: { where: { credentialId: req.posUser!.credentialId } } }, orderBy: { creadoEn: "desc" }, skip: (parsed.data.page - 1) * parsed.data.pageSize, take: parsed.data.pageSize }),
+    db.posNotification.findMany({ where, include: { reads: { where: { credentialId: req.posUser!.credentialId } }, outbox: { where: { credentialId: req.posUser!.credentialId } } }, orderBy: { creadoEn: "desc" }, skip: (parsed.data.page - 1) * parsed.data.pageSize, take: parsed.data.pageSize }),
     db.posNotification.count({ where }),
   ]);
-  res.json({ success: true, message: "OK", data: { items: items.map((item) => ({ id: item.id, kind: item.kind, title: item.title, message: item.message, branchId: item.branchId, warehouseRequestId: item.warehouseRequestId, read: item.reads.length > 0, readAt: item.reads[0]?.readAt.toISOString() ?? null, createdAt: item.creadoEn.toISOString() })), page: parsed.data.page, pageSize: parsed.data.pageSize, total } });
+  const outboxIds = items.flatMap((item) => item.outbox.map((entry) => entry.id));
+  if (outboxIds.length > 0) {
+    await db.posNotificationOutbox.updateMany({
+      where: { id: { in: outboxIds }, deliveredAt: null },
+      data: { deliveredAt: new Date() },
+    });
+  }
+  res.json({ success: true, message: "OK", data: { items: items.map((item) => ({ id: item.id, kind: item.kind, title: item.title, message: item.message, branchId: item.branchId, warehouseRequestId: item.warehouseRequestId, sourceType: item.sourceType, sourceId: item.sourceId, access: item.outbox[0]?.access ?? "VIEW", deliveredAt: item.outbox[0]?.deliveredAt?.toISOString() ?? null, read: item.reads.length > 0, readAt: item.reads[0]?.readAt.toISOString() ?? null, createdAt: item.creadoEn.toISOString() })), page: parsed.data.page, pageSize: parsed.data.pageSize, total } });
 }));
 
 router.put("/notifications/:id/read", asyncRoute(async (req, res) => {
@@ -500,12 +542,135 @@ router.put("/notifications/:id/read", asyncRoute(async (req, res) => {
     id: req.params["id"]!,
     AND: [
       { OR: [{ branchId: null }, { branchId: req.posUser!.branchId }] },
-      ...(req.posUser!.isMaster ? [] : [{ OR: [{ audiencePermission: null }, { audiencePermission: { in: req.posUser!.permissions } }] }]),
+      { OR: [
+        { outbox: { some: { credentialId: req.posUser!.credentialId } } },
+        { AND: [
+          { outbox: { none: {} } },
+          ...(req.posUser!.isMaster ? [] : [{ OR: [{ audiencePermission: null }, { audiencePermission: { in: req.posUser!.permissions } }] }]),
+        ] },
+      ] },
     ],
   } });
   if (!notification) return res.status(404).json({ success: false, message: "Notificación no encontrada", data: null });
   const read = await db.posNotificationRead.upsert({ where: { notificationId_credentialId: { notificationId: notification.id, credentialId: req.posUser!.credentialId } }, create: { notificationId: notification.id, credentialId: req.posUser!.credentialId }, update: {} });
   res.json({ success: true, message: "Notificación leída", data: { notificationId: notification.id, readAt: read.readAt.toISOString() } });
+}));
+
+router.put("/notifications/read-all", asyncRoute(async (req, res) => {
+  const allowedPermissions = req.posUser!.isMaster ? undefined : req.posUser!.permissions;
+  const visibility: Prisma.PosNotificationWhereInput = {
+    AND: [
+      { OR: [{ branchId: null }, { branchId: req.posUser!.branchId }] },
+      { OR: [
+        { outbox: { some: { credentialId: req.posUser!.credentialId } } },
+        { AND: [
+          { outbox: { none: {} } },
+          ...(allowedPermissions ? [{ OR: [{ audiencePermission: null }, { audiencePermission: { in: allowedPermissions } }] }] : []),
+        ] },
+      ] },
+      { reads: { none: { credentialId: req.posUser!.credentialId } } },
+    ],
+  };
+  let count = 0;
+  while (true) {
+    const notifications = await db.posNotification.findMany({
+      where: visibility,
+      select: { id: true },
+      take: 500,
+    });
+    if (notifications.length === 0) break;
+    const inserted = await db.posNotificationRead.createMany({
+      data: notifications.map((notification) => ({
+        notificationId: notification.id,
+        credentialId: req.posUser!.credentialId,
+      })),
+      skipDuplicates: true,
+    });
+    count += inserted.count;
+    if (inserted.count === 0) break;
+  }
+  res.json({ success: true, message: "Notificaciones marcadas como leídas", data: { count } });
+}));
+
+const notificationPreferencesSchema = z.object({
+  preferences: z.array(z.object({
+    kind: z.enum(POS_NOTIFICATION_KINDS as [PosNotificationKind, ...PosNotificationKind[]]),
+    recipients: z.array(z.object({
+      actorId: z.string().min(1),
+      access: z.enum(["VIEW", "EDIT"]),
+    }).strict()).max(250),
+  }).strict()).max(POS_NOTIFICATION_KINDS.length),
+}).strict();
+
+router.get("/notifications/preferences", requirePosPermission("SETTINGS_MANAGE"), asyncRoute(async (_req, res) => {
+  const preferences = await db.posNotificationPreference.findMany({
+    where: { active: true },
+    include: {
+      credential: {
+        include: {
+          employee: { select: { id: true, nombreCompleto: true } },
+          user: { select: { id: true, nombre: true } },
+        },
+      },
+    },
+    orderBy: [{ kind: "asc" }, { creadoEn: "asc" }],
+  });
+  res.json({
+    success: true,
+    message: "OK",
+    data: POS_NOTIFICATION_KINDS.map((kind) => ({
+      kind,
+      recipients: preferences.filter((preference) => preference.kind === kind).map((preference) => ({
+        actorId: preference.credential.employeeId ?? preference.credential.userId ?? preference.credentialId,
+        displayName: preference.credential.employee?.nombreCompleto ?? preference.credential.user?.nombre ?? preference.credential.alias,
+        access: preference.access,
+      })),
+    })),
+  });
+}));
+
+router.put("/notifications/preferences", requirePosPermission("SETTINGS_MANAGE"), asyncRoute(async (req, res) => {
+  const parsed = notificationPreferencesSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ success: false, message: "Preferencias inválidas", data: parsed.error.flatten().fieldErrors });
+  const actorIds = [...new Set(parsed.data.preferences.flatMap((preference) => preference.recipients.map((recipient) => recipient.actorId)))];
+  const credentials = actorIds.length > 0 ? await db.posCredential.findMany({
+    where: { active: true, OR: [{ id: { in: actorIds } }, { employeeId: { in: actorIds } }, { userId: { in: actorIds } }] },
+    select: { id: true, employeeId: true, userId: true },
+  }) : [];
+  const credentialByActor = new Map<string, string>();
+  for (const credential of credentials) {
+    credentialByActor.set(credential.id, credential.id);
+    if (credential.employeeId) credentialByActor.set(credential.employeeId, credential.id);
+    if (credential.userId) credentialByActor.set(credential.userId, credential.id);
+  }
+  if (actorIds.some((actorId) => !credentialByActor.has(actorId))) {
+    return res.status(400).json({ success: false, message: "Una persona destinataria no tiene credencial POS activa", data: null });
+  }
+  await db.$transaction(async (tx) => {
+    await tx.posNotificationPreference.updateMany({ data: { active: false } });
+    for (const preference of parsed.data.preferences) {
+      for (const recipient of preference.recipients) {
+        const credentialId = credentialByActor.get(recipient.actorId)!;
+        await tx.posNotificationPreference.upsert({
+          where: { kind_credentialId: { kind: preference.kind, credentialId } },
+          create: { kind: preference.kind, credentialId, access: recipient.access, active: true },
+          update: { access: recipient.access, active: true },
+        });
+      }
+    }
+    await tx.auditLog.create({
+      data: {
+        action: "POS_NOTIFICATION_PREFERENCES_UPDATE",
+        outcome: "SUCCESS",
+        actorCredentialId: req.posUser!.credentialId,
+        terminalId: req.posUser!.terminalId,
+        branchId: req.posUser!.branchId,
+        targetType: "PosNotificationPreference",
+        metadata: { kinds: parsed.data.preferences.length, recipients: actorIds.length },
+      },
+    });
+  });
+  res.json({ success: true, message: "Preferencias actualizadas", data: { updated: true } });
 }));
 
 router.use((error: unknown, _req: Request, res: Response, next: NextFunction) => {

@@ -41,7 +41,7 @@ Los dos esquemas Prisma existentes están sincronizados. No hay credenciales loc
 | 4. Tickets y proyección financiera   | Completada — 2026-09-03 | Backend/API + POS + Envelope/Payroll | Totales, inventario y proyección legacy conciliados al centavo.                           |
 | 5. Jornada, asistencia y caja        | Completada — 2026-09-03 | Backend/API + Operación de sucursal  | Una jornada por sucursal/fecha y cierre inmutable.                                        |
 | 6. Offline y reconciliación          | Completada — 2026-09-03 | POS/Electron + Backend/API           | Reinicios y reintentos no pierden ni duplican operaciones.                                |
-| 7. Reportes y retiro de mocks        | Pendiente               | Backend/API + POS                    | Módulos operativos consumen API o repositorio offline autorizado.                         |
+| 7. Reportes y retiro de mocks        | Completada — 2026-09-03 | Backend/API + POS                    | Módulos operativos consumen API o repositorio offline autorizado.                         |
 | 8. Piloto y despliegue               | Pendiente               | Operación + Backend/API + Producto   | Piloto conciliado, rollback disponible y aprobación operativa.                            |
 
 El responsable principal ejecuta la fase; los equipos indicados como colaboradores revisan sus límites. Ninguna fase posterior inicia mutaciones de datos por el mero hecho de que exista este plan.
@@ -334,14 +334,23 @@ Los tipos POS saldrán de `apps/pos` hacia `packages/types/src/pos.ts`; `package
 
 ### Fase 7 — Notificaciones, reportes, exportaciones y retiro de mocks
 
-- [ ] Implementar preferencias, outbox y lectura por usuario.
-- [ ] Construir Dashboard, Receipts, X-Report y reportes desde consultas paginadas con alcance de sucursal.
-- [ ] Obtener datasets autorizados del backend para exportaciones; el frontend podrá generar XLSX/PDF con las librerías actuales.
-- [ ] Aplicar protección de costos en consultas, detalles, notificaciones y exportaciones.
-- [ ] Sustituir los últimos estados mock y conservar `mock-data.ts` únicamente como fixture de pruebas.
-- [ ] No migrar datos demostrativos a ninguna BD operativa.
+- [x] Implementar preferencias, outbox y lectura por usuario.
+- [x] Construir Dashboard, Receipts, X-Report y reportes desde consultas paginadas con alcance de sucursal.
+- [x] Obtener datasets autorizados del backend para exportaciones; el frontend podrá generar XLSX/PDF con las librerías actuales.
+- [x] Aplicar protección de costos en consultas, detalles, notificaciones y exportaciones.
+- [x] Sustituir los últimos estados mock y conservar `mock-data.ts` únicamente como fixture de pruebas.
+- [x] No migrar datos demostrativos a ninguna BD operativa.
 
-**Criterio de cierre:** todos los módulos operativos consumen API o repositorio offline y el modo API no depende de `localStorage`.
+**Criterio de cierre:** cumplido en repositorio el 2026-09-03. Todos los módulos operativos consumen API o el repositorio offline autorizado y el modo API no lee ni escribe estado operativo en `localStorage`; `VITE_POS_DATA_MODE=mock` conserva temporalmente la fixture reversible para el piloto de la Fase 8.
+
+**Entregables verificados:**
+
+- La migración aditiva `20260903060000_add_pos_notifications_reports` amplía los tipos de evento y agrega `PosNotificationPreference` y `PosNotificationOutbox`, con identidad append-only y sin seeds, tickets, productos, clientes ni movimientos demostrativos.
+- Las ventas, gastos, altas de catálogo, ajustes/transferencias de inventario, cierres y entradas de asistencia generan la notificación y su outbox dentro de la misma transacción operativa. La API pagina la bandeja, registra entrega, lectura individual/masiva y preferencias `VIEW`/`EDIT` por credencial.
+- `/api/pos/reports/:key` y `/api/pos/exports/:key` entregan datasets paginados y autorizados para ventas, caja, productos, personal, mercancía y clientes. Un usuario no master permanece en la sucursal de su terminal aunque solicite otra; sólo master puede ampliar a sucursales activas.
+- `REPORTS_COSTS` o master son necesarios para costo, utilidad, margen o valor de inventario. La redacción se aplica antes de responder y las notificaciones no serializan importes de costo.
+- Dashboard y X-Report consultan agregados del servidor; Receipts, inventario, bodega, notificaciones, gastos, asistencia y sus historiales recorren todas las páginas permitidas. Excel/PDF consumen primero el dataset autorizado y sólo renderizan el archivo en frontend.
+- La validación local terminó con schemas Prisma sincronizados y válidos, type-check de tipos/API client/API/POS, lint y build del API, build Vite de renderer/main/preload y 45 pruebas unitarias. No se aplicó la migración ni se ejecutaron pruebas PostgreSQL/HTTP contra una base real; esas comprobaciones permanecen como puerta explícita de la Fase 8.
 
 ### Fase 8 — Migración, piloto y despliegue
 

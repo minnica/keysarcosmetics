@@ -1,6 +1,6 @@
 import { Router, type NextFunction, type Request, type Response, type Router as ExpressRouter } from "express";
 import multer from "multer";
-import { Prisma } from "@prisma/client";
+import { Prisma, type PosSalesCompetition } from "@prisma/client";
 import { z } from "zod";
 import {
   posAssetUploadMetadataSchema,
@@ -19,6 +19,7 @@ import {
 import { posAuthMiddleware, requirePosPermission } from "../middlewares/pos-auth.middleware";
 import { prisma } from "../prisma/client";
 import { removeCatalogImage, uploadCatalogImage, validateCatalogImage } from "../services/pos-asset-storage";
+import { enqueuePosNotification } from "../services/pos-notifications";
 
 const router: ExpressRouter = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024, files: 1 } });
@@ -100,6 +101,15 @@ router.post("/catalog/items", requirePosPermission("CATALOG_MANAGE"), async (req
     const item = await db.$transaction(async (tx) => {
       const created = await tx.catalogItem.create({ data: { sku: normalizeSku(input.sku), name: input.name, normalizedName: normalize(input.name), kind: input.kind, familyId: input.familyId, categoryId: input.categoryId, supplierId: input.supplierId, description: input.description, published: input.published, active: input.active, listPrice: decimal(input.listPrice), minimumPrice: decimal(input.minimumPrice), unitCost: decimal(input.unitCost), taxRate: decimal(input.taxRate), benefits: { create: input.benefits.map((text, sortOrder) => ({ text, sortOrder })) }, branchVisibility: { create: input.branchIds.map((branchId) => ({ branchId, visible: true })) } }, include: { family: true, category: true, benefits: true, assets: true } });
       await tx.catalogItemPrice.create({ data: { itemId: created.id, listPrice: created.listPrice, minimumPrice: created.minimumPrice, unitCost: created.unitCost, taxRate: created.taxRate, createdByCredentialId: req.posUser!.credentialId } });
+      await enqueuePosNotification(tx, {
+        kind: "PRODUCT_CREATED",
+        title: `Alta de ${created.kind === "SERVICE" ? "servicio" : "producto"}`,
+        message: `${created.name} · ${created.sku}`,
+        audiencePermission: "CATALOG_VIEW",
+        createdByCredentialId: req.posUser!.credentialId,
+        sourceType: "CatalogItem",
+        sourceId: created.id,
+      });
       return created;
     });
     res.status(201).json({ success: true, message: "Artículo creado", data: catalogDto(item, costsAllowed(req)) });
@@ -179,7 +189,7 @@ router.put("/suppliers/:id", requirePosPermission("WAREHOUSE_MANAGE"), async (re
 router.get("/settings/payment-methods", requirePaymentReadOrSale, async (_req, res) => { const items = await db.metodoPago.findMany({ orderBy: { nombre: "asc" }, include: { posPolicy: true } }); res.json({ success: true, message: "OK", data: items.map((item) => ({ id: item.id, name: item.nombre, type: item.tipo, active: item.activo, activeForPos: item.posPolicy?.activeForPos ?? false, requiresReference: item.posPolicy?.requiresReference ?? false, referenceLabel: item.posPolicy?.referenceLabel ?? null })) }); });
 router.put("/settings/payment-methods/:id", requirePosPermission("PAYMENTS_MANAGE"), async (req, res) => { const parsed = posPaymentPolicyWriteSchema.safeParse(req.body); if (!parsed.success) return res.status(400).json({ success: false, message: "Método inválido", data: parsed.error.flatten().fieldErrors }); const input = parsed.data; try { const item = await db.metodoPago.update({ where: { id: req.params["id"]! }, data: { nombre: input.name, tipo: input.type, activo: input.active, posPolicy: { upsert: { create: { activeForPos: input.activeForPos, requiresReference: input.requiresReference, referenceLabel: input.referenceLabel, minAmount: input.minAmount ? decimal(input.minAmount) : null, maxAmount: input.maxAmount ? decimal(input.maxAmount) : null }, update: { activeForPos: input.activeForPos, requiresReference: input.requiresReference, referenceLabel: input.referenceLabel, minAmount: input.minAmount ? decimal(input.minAmount) : null, maxAmount: input.maxAmount ? decimal(input.maxAmount) : null } } } }, include: { posPolicy: true } }); res.json({ success: true, message: "Método POS actualizado", data: { id: item.id, name: item.nombre, type: item.tipo, active: item.activo, activeForPos: item.posPolicy!.activeForPos, requiresReference: item.posPolicy!.requiresReference, referenceLabel: item.posPolicy!.referenceLabel } }); } catch { res.status(404).json({ success: false, message: "Método de pago no encontrado", data: null }); } });
 
-router.get("/settings/ticket", requirePosPermission("SETTINGS_MANAGE"), async (req, res) => { const config = await db.posTicketConfiguration.findFirst({ where: { branchId: req.posUser!.branchId } }); res.json({ success: true, message: "OK", data: { branchId: req.posUser!.branchId, logoUrl: null, companyName: config?.companyName ?? "KEYSAR COSMETICS", address: config?.address ?? null, footerMessage: config?.footerMessage ?? null, policies: config?.policies ?? null, showClientName: config?.showClientName ?? true, showClientPhone: config?.showClientPhone ?? true, showSellerName: config?.showSellerName ?? true, showVatBreakdown: config?.showVatBreakdown ?? true, showSpareCoverageMessage: config?.showSpareCoverageMessage ?? true } }); });
+router.get("/settings/ticket", async (req, res) => { const config = await db.posTicketConfiguration.findFirst({ where: { branchId: req.posUser!.branchId } }); res.json({ success: true, message: "OK", data: { branchId: req.posUser!.branchId, logoUrl: null, companyName: config?.companyName ?? "KEYSAR COSMETICS", address: config?.address ?? null, footerMessage: config?.footerMessage ?? null, policies: config?.policies ?? null, showClientName: config?.showClientName ?? true, showClientPhone: config?.showClientPhone ?? true, showSellerName: config?.showSellerName ?? true, showVatBreakdown: config?.showVatBreakdown ?? true, showSpareCoverageMessage: config?.showSpareCoverageMessage ?? true } }); });
 router.put("/settings/ticket", requirePosPermission("SETTINGS_MANAGE"), async (req, res) => { const parsed = posTicketConfigurationWriteSchema.safeParse(req.body); if (!parsed.success) return res.status(400).json({ success: false, message: "Configuración inválida", data: parsed.error.flatten().fieldErrors }); const config = await db.posTicketConfiguration.upsert({ where: { branchId: req.posUser!.branchId }, create: { branchId: req.posUser!.branchId, ...parsed.data }, update: parsed.data }); res.json({ success: true, message: "Configuración actualizada", data: { ...config, logoUrl: null } }); });
 
 router.get("/settings/vouchers", requirePosPermission("VOUCHERS_MANAGE"), async (_req, res) => { const items = await db.posVoucherTemplate.findMany({ where: { deletedAt: null }, orderBy: { name: "asc" } }); res.json({ success: true, message: "OK", data: items.map((item) => ({ id: item.id, name: item.name, kind: item.kind, value: MONEY(item.value), message: item.message, active: item.active, visibleToSellers: item.visibleToSellers })) }); });
@@ -193,7 +203,7 @@ router.get("/price-lists", requirePosPermission("WAREHOUSE_MANAGE"), async (req,
 router.post("/price-lists", requirePosPermission("WAREHOUSE_MANAGE"), async (req, res) => { const parsed = priceListSchema.safeParse(req.body); if (!parsed.success) return res.status(400).json({ success: false, message: "Lista de precios inválida", data: parsed.error.flatten().fieldErrors }); const input = parsed.data; if (input.effectiveFrom && input.effectiveTo && new Date(input.effectiveTo) <= new Date(input.effectiveFrom)) return res.status(400).json({ success: false, message: "Vigencia inválida", data: null }); const itemIds = new Set(input.lines.map((line) => line.itemId)); if (itemIds.size !== input.lines.length || await db.catalogItem.count({ where: { id: { in: [...itemIds] }, deletedAt: null, active: true } }) !== itemIds.size) return res.status(400).json({ success: false, message: "La lista contiene artículos inválidos", data: null }); try { const latest = await db.posPriceList.aggregate({ where: { name: input.name }, _max: { version: true } }); const list = await db.posPriceList.create({ data: { name: input.name, version: (latest._max.version ?? 0) + 1, supplierId: input.supplierId, status: input.status, effectiveFrom: input.effectiveFrom ? new Date(input.effectiveFrom) : null, effectiveTo: input.effectiveTo ? new Date(input.effectiveTo) : null, lines: { create: input.lines.map((line) => ({ itemId: line.itemId, price: decimal(line.price), cost: line.cost ? decimal(line.cost) : null })) }, branchAssignments: { create: [...new Set(input.branchIds)].map((branchId) => ({ branchId })) }, customerAssignments: { create: [...new Set(input.customerIds)].map((customerId) => ({ customerId })) } }, include: { lines: true } }); res.status(201).json({ success: true, message: "Lista de precios versionada", data: { id: list.id, name: list.name, version: list.version, status: list.status, lines: list.lines.map((line) => ({ itemId: line.itemId, price: MONEY(line.price), ...(costsAllowed(req) ? { cost: MONEY(line.cost) } : {}) })) } }); } catch { res.status(400).json({ success: false, message: "No se pudo crear la lista de precios", data: null }); } });
 
 const customerFieldSchema = z.object({ key: z.string().trim().regex(/^[A-Z0-9_]+$/).max(80), label: z.string().trim().min(2).max(120), required: z.boolean().default(false), active: z.boolean().default(true), sortOrder: z.number().int().min(0).max(10_000).default(0) }).strict();
-router.get("/settings/customer-fields", requirePosPermission("CUSTOMERS_MANAGE"), async (_req, res) => { const items = await db.posCustomerRequiredField.findMany({ orderBy: [{ sortOrder: "asc" }, { label: "asc" }] }); res.json({ success: true, message: "OK", data: items }); });
+router.get("/settings/customer-fields", async (_req, res) => { const items = await db.posCustomerRequiredField.findMany({ orderBy: [{ sortOrder: "asc" }, { label: "asc" }] }); res.json({ success: true, message: "OK", data: items }); });
 router.put("/settings/customer-fields/:key", requirePosPermission("CUSTOMERS_MANAGE"), async (req, res) => { const parsed = customerFieldSchema.safeParse({ ...req.body, key: req.params["key"] }); if (!parsed.success) return res.status(400).json({ success: false, message: "Campo de cliente inválido", data: parsed.error.flatten().fieldErrors }); const field = await db.posCustomerRequiredField.upsert({ where: { key: parsed.data.key }, create: parsed.data, update: parsed.data }); res.json({ success: true, message: "Campo de cliente actualizado", data: field }); });
 
 const courtesySchema = z.object({ name: z.string().trim().min(2).max(160), description: z.string().trim().max(1_000).nullable().default(null), requiresCustomer: z.boolean().default(true), requiresAuthorization: z.boolean().default(true), active: z.boolean().default(true) }).strict();
@@ -201,8 +211,33 @@ router.get("/settings/courtesies", requirePosPermission("VOUCHERS_MANAGE"), asyn
 router.post("/settings/courtesies", requirePosPermission("VOUCHERS_MANAGE"), async (req, res) => { const parsed = courtesySchema.safeParse(req.body); if (!parsed.success) return res.status(400).json({ success: false, message: "Cortesía inválida", data: parsed.error.flatten().fieldErrors }); try { const item = await db.posCourtesyPolicy.create({ data: parsed.data }); res.status(201).json({ success: true, message: "Cortesía creada", data: item }); } catch { res.status(409).json({ success: false, message: "Nombre de cortesía duplicado", data: null }); } });
 
 const competitionSchema = z.object({ name: z.string().trim().min(2).max(160), type: z.enum(["AMOUNT", "PRODUCT", "PACKAGE", "PERIOD"]), active: z.boolean().default(true), dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), branchId: z.string().trim().min(1).nullable().default(null), targetAmount: z.string().regex(/^(?:0|[1-9]\d*)\.\d{2}$/).nullable().default(null), itemId: z.string().trim().min(1).nullable().default(null), packageItemIds: z.array(z.string().trim().min(1)).max(100).default([]) }).strict();
-router.get("/competitions", requirePosPermission("REPORTS_VIEW"), async (_req, res) => { const items = await db.posSalesCompetition.findMany({ where: { deletedAt: null }, orderBy: { dateFrom: "desc" } }); res.json({ success: true, message: "OK", data: items.map((item) => ({ ...item, dateFrom: item.dateFrom.toISOString().slice(0, 10), dateTo: item.dateTo.toISOString().slice(0, 10), targetAmount: MONEY(item.targetAmount) })) }); });
-router.post("/competitions", requirePosPermission("REPORTS_VIEW"), async (req, res) => { const parsed = competitionSchema.safeParse(req.body); if (!parsed.success || parsed.data.dateTo < parsed.data.dateFrom) return res.status(400).json({ success: false, message: "Competencia inválida", data: parsed.success ? null : parsed.error.flatten().fieldErrors }); const input = parsed.data; if ((input.type === "AMOUNT" && !input.targetAmount) || (input.type === "PRODUCT" && !input.itemId) || (input.type === "PACKAGE" && input.packageItemIds.length === 0)) return res.status(400).json({ success: false, message: "Meta de competencia incompleta", data: null }); const item = await db.posSalesCompetition.create({ data: { name: input.name, type: input.type, active: input.active, dateFrom: new Date(`${input.dateFrom}T00:00:00.000Z`), dateTo: new Date(`${input.dateTo}T00:00:00.000Z`), branchId: input.branchId, targetAmount: input.targetAmount ? decimal(input.targetAmount) : null, itemId: input.itemId, packageItemIds: input.packageItemIds } }); res.status(201).json({ success: true, message: "Competencia creada", data: { ...item, targetAmount: MONEY(item.targetAmount) } }); });
+const competitionDto = (item: PosSalesCompetition) => ({
+  ...item,
+  dateFrom: item.dateFrom.toISOString().slice(0, 10),
+  dateTo: item.dateTo.toISOString().slice(0, 10),
+  targetAmount: MONEY(item.targetAmount),
+  creadoEn: item.creadoEn.toISOString(),
+});
+const validCompetition = (input: z.infer<typeof competitionSchema>) =>
+  input.dateTo >= input.dateFrom &&
+  !((input.type === "AMOUNT" && !input.targetAmount) ||
+    (input.type === "PRODUCT" && !input.itemId) ||
+    (input.type === "PACKAGE" && input.packageItemIds.length === 0));
+const competitionData = (input: z.infer<typeof competitionSchema>) => ({
+  name: input.name,
+  type: input.type,
+  active: input.active,
+  dateFrom: new Date(`${input.dateFrom}T00:00:00.000Z`),
+  dateTo: new Date(`${input.dateTo}T00:00:00.000Z`),
+  branchId: input.branchId,
+  targetAmount: input.targetAmount ? decimal(input.targetAmount) : null,
+  itemId: input.itemId,
+  packageItemIds: input.packageItemIds,
+});
+router.get("/competitions", requirePosPermission("REPORTS_VIEW"), async (_req, res) => { const items = await db.posSalesCompetition.findMany({ where: { deletedAt: null }, orderBy: { dateFrom: "desc" } }); res.json({ success: true, message: "OK", data: items.map(competitionDto) }); });
+router.post("/competitions", requirePosPermission("REPORTS_VIEW"), async (req, res) => { const parsed = competitionSchema.safeParse(req.body); if (!parsed.success || !validCompetition(parsed.data)) return res.status(400).json({ success: false, message: "Competencia inválida o incompleta", data: parsed.success ? null : parsed.error.flatten().fieldErrors }); const item = await db.posSalesCompetition.create({ data: competitionData(parsed.data) }); res.status(201).json({ success: true, message: "Competencia creada", data: competitionDto(item) }); });
+router.put("/competitions/:id", requirePosPermission("REPORTS_VIEW"), async (req, res) => { const parsed = competitionSchema.safeParse(req.body); if (!parsed.success || !validCompetition(parsed.data)) return res.status(400).json({ success: false, message: "Competencia inválida o incompleta", data: parsed.success ? null : parsed.error.flatten().fieldErrors }); const updated = await db.posSalesCompetition.updateMany({ where: { id: req.params["id"]!, deletedAt: null }, data: competitionData(parsed.data) }); if (!updated.count) return res.status(404).json({ success: false, message: "Competencia no encontrada", data: null }); const item = await db.posSalesCompetition.findUniqueOrThrow({ where: { id: req.params["id"]! } }); res.json({ success: true, message: "Competencia actualizada", data: competitionDto(item) }); });
+router.delete("/competitions/:id", requirePosPermission("REPORTS_VIEW"), async (req, res) => { const result = await db.posSalesCompetition.updateMany({ where: { id: req.params["id"]!, deletedAt: null }, data: { active: false, deletedAt: new Date() } }); res.status(result.count ? 200 : 404).json({ success: Boolean(result.count), message: result.count ? "Competencia inactivada" : "Competencia no encontrada", data: result.count ? { id: req.params["id"]! } : null }); });
 
 router.use((error: unknown, _req: Request, res: Response, next: NextFunction) => { if (error instanceof multer.MulterError) return res.status(400).json({ success: false, message: "Archivo demasiado grande o inválido", data: null }); next(error); });
 

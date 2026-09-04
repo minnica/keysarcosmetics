@@ -548,14 +548,88 @@ export interface PosNotificationDto {
     | "WAREHOUSE_SHIPPED"
     | "WAREHOUSE_RECEIVED"
     | "WAREHOUSE_RETURNED"
-    | "WAREHOUSE_CANCELED";
+    | "WAREHOUSE_CANCELED"
+    | "SALE_COMPLETED"
+    | "CASH_EXPENSE"
+    | "PRODUCT_CREATED"
+    | "INVENTORY_ADD"
+    | "INVENTORY_REMOVE"
+    | "INVENTORY_TRANSFER"
+    | "CLOSE_DAY"
+    | "CLOCK_IN";
   title: string;
   message: string;
   branchId: PosId | null;
   warehouseRequestId: PosId | null;
+  sourceType: string | null;
+  sourceId: string | null;
+  access: "VIEW" | "EDIT";
+  deliveredAt: IsoUtcDateTime | null;
   read: boolean;
   readAt: IsoUtcDateTime | null;
   createdAt: IsoUtcDateTime;
+}
+
+export interface PosNotificationPreferenceDto {
+  kind: PosNotificationDto["kind"];
+  recipients: Array<{
+    actorId: PosId;
+    displayName: string;
+    access: "VIEW" | "EDIT";
+  }>;
+}
+
+export interface PosCustomerRequiredFieldDto {
+  id: PosId;
+  key: string;
+  label: string;
+  required: boolean;
+  active: boolean;
+  sortOrder: number;
+}
+
+export interface PosSalesCompetitionDto {
+  id: PosId;
+  name: string;
+  type: "AMOUNT" | "PRODUCT" | "PACKAGE" | "PERIOD";
+  active: boolean;
+  dateFrom: BusinessDate;
+  dateTo: BusinessDate;
+  branchId: PosId | null;
+  targetAmount: Money | null;
+  itemId: PosId | null;
+  packageItemIds: PosId[];
+  creadoEn: IsoUtcDateTime;
+}
+
+export const POS_REPORT_KEYS = [
+  "SALES_DETAIL",
+  "CASH_MOVEMENTS",
+  "SOLD_PRODUCTS",
+  "SALES_BY_EMPLOYEE",
+  "MERCHANDISE_OVERVIEW",
+  "MERCHANDISE_MOVEMENTS",
+  "MERCHANDISE_PROFITABILITY",
+  "EMPLOYEE_PERFORMANCE",
+  "EMPLOYEE_DAILY",
+  "CUSTOMER_OVERVIEW",
+] as const;
+
+export type PosReportKey = (typeof POS_REPORT_KEYS)[number];
+export type PosReportCell = string | number | boolean | null;
+
+export interface PosReportDatasetDto {
+  key: PosReportKey;
+  dateFrom: BusinessDate;
+  dateTo: BusinessDate;
+  branchIds: PosId[];
+  includesCosts: boolean;
+  generatedAt: IsoUtcDateTime;
+  columns: string[];
+  rows: Array<Record<string, PosReportCell>>;
+  page: number;
+  pageSize: number;
+  total: number;
 }
 
 export interface PosBlindCountLineDto {

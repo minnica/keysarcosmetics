@@ -244,37 +244,39 @@ model Empleado {
 // ─── Módulo POS: identidad, terminales y autorización ───────────────────────────────
 
 model PosCredential {
-  id                                String                     @id @default(cuid())
-  employeeId                        String?                    @unique
-  employee                          Empleado?                  @relation(fields: [employeeId], references: [id], onDelete: Restrict)
-  userId                            String?                    @unique
-  user                              Usuario?                   @relation(fields: [userId], references: [id], onDelete: Restrict)
+  id                                String                      @id @default(cuid())
+  employeeId                        String?                     @unique
+  employee                          Empleado?                   @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  userId                            String?                     @unique
+  user                              Usuario?                    @relation(fields: [userId], references: [id], onDelete: Restrict)
   alias                             String
-  aliasNormalized                   String                     @unique
+  aliasNormalized                   String                      @unique
   pinHash                           String
-  pinFingerprint                    String                     @unique @db.VarChar(64)
-  failedAttempts                    Int                        @default(0)
+  pinFingerprint                    String                      @unique @db.VarChar(64)
+  failedAttempts                    Int                         @default(0)
   lockedUntil                       DateTime?
-  version                           Int                        @default(1)
-  offlineEnabled                    Boolean                    @default(false)
-  active                            Boolean                    @default(true)
-  creadoEn                          DateTime                   @default(now())
-  actualizadoEn                     DateTime                   @updatedAt
+  version                           Int                         @default(1)
+  offlineEnabled                    Boolean                     @default(false)
+  active                            Boolean                     @default(true)
+  creadoEn                          DateTime                    @default(now())
+  actualizadoEn                     DateTime                    @updatedAt
   masterProfile                     PosMasterCredential?
   masterAuthorizations              MasterAuthorization[]
   auditLogs                         AuditLog[]
-  inventoryBatchesCreated           InventoryAdjustmentBatch[] @relation("InventoryBatchCreated")
-  inventoryBatchesResolved          InventoryAdjustmentBatch[] @relation("InventoryBatchResolved")
+  inventoryBatchesCreated           InventoryAdjustmentBatch[]  @relation("InventoryBatchCreated")
+  inventoryBatchesResolved          InventoryAdjustmentBatch[]  @relation("InventoryBatchResolved")
   inventoryCounts                   InventoryCount[]
   inventoryMovements                InventoryMovement[]
-  warehouseRequestsCreated          WarehouseRequest[]         @relation("WarehouseRequestCreated")
-  warehouseRequestsCreationApproved WarehouseRequest[]         @relation("WarehouseRequestCreationApproved")
-  warehouseRequestsSendApproved     WarehouseRequest[]         @relation("WarehouseRequestSendApproved")
-  warehouseRequestsReceived         WarehouseRequest[]         @relation("WarehouseRequestReceived")
-  warehouseRequestsCanceled         WarehouseRequest[]         @relation("WarehouseRequestCanceled")
+  warehouseRequestsCreated          WarehouseRequest[]          @relation("WarehouseRequestCreated")
+  warehouseRequestsCreationApproved WarehouseRequest[]          @relation("WarehouseRequestCreationApproved")
+  warehouseRequestsSendApproved     WarehouseRequest[]          @relation("WarehouseRequestSendApproved")
+  warehouseRequestsReceived         WarehouseRequest[]          @relation("WarehouseRequestReceived")
+  warehouseRequestsCanceled         WarehouseRequest[]          @relation("WarehouseRequestCanceled")
   warehouseRequestEvents            WarehouseRequestEvent[]
   posNotificationsCreated           PosNotification[]
   posNotificationReads              PosNotificationRead[]
+  posNotificationPreferences        PosNotificationPreference[]
+  posNotificationOutbox             PosNotificationOutbox[]
   posTicketsCreated                 PosTicket[]
   posPaymentOperations              PosPaymentOperation[]
   posTicketEvents                   PosTicketEvent[]
@@ -282,13 +284,13 @@ model PosCredential {
   posAppointments                   PosAppointment[]
   posVoucherIssues                  PosVoucherIssue[]
   posVoucherPrints                  PosVoucherPrintEvent[]
-  posBusinessDaysOpened             PosBusinessDay[]        @relation("PosBusinessDayOpenedBy")
-  posBusinessDaysClosed             PosBusinessDay[]        @relation("PosBusinessDayClosedBy")
-  posAttendances                    PosAttendance[]          @relation("PosAttendanceCredential")
-  posAttendancesClosed              PosAttendance[]          @relation("PosAttendanceClosedBy")
+  posBusinessDaysOpened             PosBusinessDay[]            @relation("PosBusinessDayOpenedBy")
+  posBusinessDaysClosed             PosBusinessDay[]            @relation("PosBusinessDayClosedBy")
+  posAttendances                    PosAttendance[]             @relation("PosAttendanceCredential")
+  posAttendancesClosed              PosAttendance[]             @relation("PosAttendanceClosedBy")
   posExpenseTypesCreated            PosExpenseType[]
-  posCashExpensesCreated            PosCashExpense[]         @relation("PosCashExpenseCreatedBy")
-  posCashExpensesVoided             PosCashExpense[]         @relation("PosCashExpenseVoidedBy")
+  posCashExpensesCreated            PosCashExpense[]            @relation("PosCashExpenseCreatedBy")
+  posCashExpensesVoided             PosCashExpense[]            @relation("PosCashExpenseVoidedBy")
   posCashMovements                  PosCashMovement[]
   posSyncOperations                 PosSyncOperation[]
 
@@ -317,32 +319,32 @@ model PosBranchProfile {
 }
 
 model PosTerminal {
-  id                   String                   @id @default(cuid())
-  code                 String                   @unique @db.VarChar(64)
-  name                 String                   @db.VarChar(120)
-  status               PosTerminalStatus        @default(ACTIVE)
-  branchId             String
-  branch               Sucursal                 @relation(fields: [branchId], references: [id], onDelete: Restrict)
-  secretHash           String
-  secretFingerprint    String                   @unique @db.VarChar(64)
-  lastSeenAt           DateTime?
-  registeredByUserId   String?
-  creadoEn             DateTime                 @default(now())
-  actualizadoEn        DateTime                 @updatedAt
-  auditLogs            AuditLog[]
-  masterAuthorizations MasterAuthorization[]
-  inventoryCounts      InventoryCount[]
-  inventoryMovements   InventoryMovement[]
-  posTickets           PosTicket[]
-  posPaymentOperations PosPaymentOperation[]
-  posDeliveries        PosOwedProductDelivery[]
-  posVoucherPrints     PosVoucherPrintEvent[]
-  posBusinessDaysOpened PosBusinessDay[] @relation("PosBusinessDayOpenedTerminal")
-  posBusinessDaysClosed PosBusinessDay[] @relation("PosBusinessDayClosedTerminal")
+  id                    String                   @id @default(cuid())
+  code                  String                   @unique @db.VarChar(64)
+  name                  String                   @db.VarChar(120)
+  status                PosTerminalStatus        @default(ACTIVE)
+  branchId              String
+  branch                Sucursal                 @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  secretHash            String
+  secretFingerprint     String                   @unique @db.VarChar(64)
+  lastSeenAt            DateTime?
+  registeredByUserId    String?
+  creadoEn              DateTime                 @default(now())
+  actualizadoEn         DateTime                 @updatedAt
+  auditLogs             AuditLog[]
+  masterAuthorizations  MasterAuthorization[]
+  inventoryCounts       InventoryCount[]
+  inventoryMovements    InventoryMovement[]
+  posTickets            PosTicket[]
+  posPaymentOperations  PosPaymentOperation[]
+  posDeliveries         PosOwedProductDelivery[]
+  posVoucherPrints      PosVoucherPrintEvent[]
+  posBusinessDaysOpened PosBusinessDay[]         @relation("PosBusinessDayOpenedTerminal")
+  posBusinessDaysClosed PosBusinessDay[]         @relation("PosBusinessDayClosedTerminal")
   posAttendances        PosAttendance[]
   posCashExpenses       PosCashExpense[]
-  posSyncCursor          PosSyncCursor?
-  posSyncOperations      PosSyncOperation[]
+  posSyncCursor         PosSyncCursor?
+  posSyncOperations     PosSyncOperation[]
 
   @@index([branchId, status])
 }
@@ -380,24 +382,24 @@ model PositionPosPermission {
 }
 
 model MasterAuthorization {
-  id                String        @id @default(cuid())
-  tokenHash         String        @unique @db.VarChar(64)
-  purpose           String        @db.VarChar(80)
-  entityType        String?       @db.VarChar(80)
-  entityId          String?
-  scope             Json?
-  actorCredentialId String
-  actorCredential   PosCredential @relation(fields: [actorCredentialId], references: [id], onDelete: Restrict)
-  terminalId        String
-  terminal          PosTerminal   @relation(fields: [terminalId], references: [id], onDelete: Restrict)
-  expiresAt         DateTime
-  usedAt            DateTime?
-  creadoEn          DateTime      @default(now())
-  businessDayOpening PosBusinessDay? @relation("PosBusinessDayOpeningAuthorization")
-  businessDayClosing PosBusinessDay? @relation("PosBusinessDayClosingAuthorization")
-  businessDayCloseApproval PosBusinessDay? @relation("PosBusinessDayCloseApproval")
-  cashExpensesVoided PosCashExpense[]
-  cashMovements      PosCashMovement[]
+  id                       String            @id @default(cuid())
+  tokenHash                String            @unique @db.VarChar(64)
+  purpose                  String            @db.VarChar(80)
+  entityType               String?           @db.VarChar(80)
+  entityId                 String?
+  scope                    Json?
+  actorCredentialId        String
+  actorCredential          PosCredential     @relation(fields: [actorCredentialId], references: [id], onDelete: Restrict)
+  terminalId               String
+  terminal                 PosTerminal       @relation(fields: [terminalId], references: [id], onDelete: Restrict)
+  expiresAt                DateTime
+  usedAt                   DateTime?
+  creadoEn                 DateTime          @default(now())
+  businessDayOpening       PosBusinessDay?   @relation("PosBusinessDayOpeningAuthorization")
+  businessDayClosing       PosBusinessDay?   @relation("PosBusinessDayClosingAuthorization")
+  businessDayCloseApproval PosBusinessDay?   @relation("PosBusinessDayCloseApproval")
+  cashExpensesVoided       PosCashExpense[]
+  cashMovements            PosCashMovement[]
 
   @@index([actorCredentialId, purpose, expiresAt])
   @@index([terminalId, expiresAt])
@@ -896,6 +898,19 @@ enum PosNotificationKind {
   WAREHOUSE_RECEIVED
   WAREHOUSE_RETURNED
   WAREHOUSE_CANCELED
+  SALE_COMPLETED
+  CASH_EXPENSE
+  PRODUCT_CREATED
+  INVENTORY_ADD
+  INVENTORY_REMOVE
+  INVENTORY_TRANSFER
+  CLOSE_DAY
+  CLOCK_IN
+}
+
+enum PosNotificationAccess {
+  VIEW
+  EDIT
 }
 
 model PosIdempotencyRecord {
@@ -1055,8 +1070,8 @@ model InventoryCount {
   lines                 InventoryCountLine[]
   movement              InventoryMovement?
   creadoEn              DateTime             @default(now())
-  openingBusinessDay    PosBusinessDay?       @relation("PosBusinessDayOpeningCount")
-  closingBusinessDay    PosBusinessDay?       @relation("PosBusinessDayClosingCount")
+  openingBusinessDay    PosBusinessDay?      @relation("PosBusinessDayOpeningCount")
+  closingBusinessDay    PosBusinessDay?      @relation("PosBusinessDayClosingCount")
 
   @@unique([locationId, businessDate, kind])
   @@index([businessDate, kind])
@@ -1156,22 +1171,55 @@ model WarehouseRequestEvent {
 }
 
 model PosNotification {
-  id                    String                @id @default(cuid())
+  id                    String                  @id @default(cuid())
   kind                  PosNotificationKind
-  title                 String                @db.VarChar(240)
-  message               String                @db.VarChar(1000)
+  title                 String                  @db.VarChar(240)
+  message               String                  @db.VarChar(1000)
   branchId              String?
-  branch                Sucursal?             @relation(fields: [branchId], references: [id], onDelete: SetNull)
-  audiencePermission    String?               @db.VarChar(80)
+  branch                Sucursal?               @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  audiencePermission    String?                 @db.VarChar(80)
   warehouseRequestId    String?
-  warehouseRequest      WarehouseRequest?     @relation(fields: [warehouseRequestId], references: [id], onDelete: SetNull)
+  warehouseRequest      WarehouseRequest?       @relation(fields: [warehouseRequestId], references: [id], onDelete: SetNull)
   createdByCredentialId String?
-  createdByCredential   PosCredential?        @relation(fields: [createdByCredentialId], references: [id], onDelete: SetNull)
+  createdByCredential   PosCredential?          @relation(fields: [createdByCredentialId], references: [id], onDelete: SetNull)
+  sourceType            String?                 @db.VarChar(80)
+  sourceId              String?                 @db.VarChar(120)
+  outbox                PosNotificationOutbox[]
   reads                 PosNotificationRead[]
-  creadoEn              DateTime              @default(now())
+  creadoEn              DateTime                @default(now())
 
   @@index([branchId, creadoEn])
   @@index([audiencePermission, creadoEn])
+  @@index([sourceType, sourceId])
+  @@unique([kind, sourceType, sourceId])
+}
+
+model PosNotificationPreference {
+  id            String                @id @default(cuid())
+  kind          PosNotificationKind
+  credentialId  String
+  credential    PosCredential         @relation(fields: [credentialId], references: [id], onDelete: Restrict)
+  access        PosNotificationAccess @default(VIEW)
+  active        Boolean               @default(true)
+  creadoEn      DateTime              @default(now())
+  actualizadoEn DateTime              @updatedAt
+
+  @@unique([kind, credentialId])
+  @@index([credentialId, active])
+}
+
+model PosNotificationOutbox {
+  id             String                @id @default(cuid())
+  notificationId String
+  notification   PosNotification       @relation(fields: [notificationId], references: [id], onDelete: Restrict)
+  credentialId   String
+  credential     PosCredential         @relation(fields: [credentialId], references: [id], onDelete: Restrict)
+  access         PosNotificationAccess @default(VIEW)
+  deliveredAt    DateTime?
+  creadoEn       DateTime              @default(now())
+
+  @@unique([notificationId, credentialId])
+  @@index([credentialId, deliveredAt, creadoEn])
 }
 
 model PosNotificationRead {
@@ -1396,20 +1444,20 @@ model PosLayaway {
 }
 
 model PosOwedProduct {
-  id                String                       @id @default(uuid()) @db.Uuid
-  ticketId          String                       @db.Uuid
-  ticket            PosTicket                    @relation(fields: [ticketId], references: [id], onDelete: Restrict)
-  ticketLineId      String
-  ticketLine        PosTicketLine                @relation(fields: [ticketLineId], references: [id], onDelete: Restrict)
-  itemId            String
-  item              CatalogItem                  @relation(fields: [itemId], references: [id], onDelete: Restrict)
-  quantity          Decimal                      @db.Decimal(14, 2)
-  deliveredQuantity Decimal                      @default(0) @db.Decimal(14, 2)
-  inventoryCommitted Boolean                     @default(true)
-  status            PosOwedProductStatus         @default(PENDING)
-  deliveryLines     PosOwedProductDeliveryLine[]
-  creadoEn          DateTime                     @default(now())
-  actualizadoEn     DateTime                     @updatedAt
+  id                 String                       @id @default(uuid()) @db.Uuid
+  ticketId           String                       @db.Uuid
+  ticket             PosTicket                    @relation(fields: [ticketId], references: [id], onDelete: Restrict)
+  ticketLineId       String
+  ticketLine         PosTicketLine                @relation(fields: [ticketLineId], references: [id], onDelete: Restrict)
+  itemId             String
+  item               CatalogItem                  @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  quantity           Decimal                      @db.Decimal(14, 2)
+  deliveredQuantity  Decimal                      @default(0) @db.Decimal(14, 2)
+  inventoryCommitted Boolean                      @default(true)
+  status             PosOwedProductStatus         @default(PENDING)
+  deliveryLines      PosOwedProductDeliveryLine[]
+  creadoEn           DateTime                     @default(now())
+  actualizadoEn      DateTime                     @updatedAt
 
   @@index([ticketId, status])
   @@index([itemId, status])
@@ -1625,25 +1673,25 @@ model PosBusinessDay {
 }
 
 model PosAttendance {
-  id                   String                   @id @default(uuid()) @db.Uuid
-  businessDayId        String                   @db.Uuid
-  businessDay          PosBusinessDay           @relation(fields: [businessDayId], references: [id], onDelete: Restrict)
+  id                   String                    @id @default(uuid()) @db.Uuid
+  businessDayId        String                    @db.Uuid
+  businessDay          PosBusinessDay            @relation(fields: [businessDayId], references: [id], onDelete: Restrict)
   employeeId           String
-  employee             Empleado                 @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  employee             Empleado                  @relation(fields: [employeeId], references: [id], onDelete: Restrict)
   branchId             String
-  branch               Sucursal                 @relation(fields: [branchId], references: [id], onDelete: Restrict)
-  businessDate         DateTime                 @db.Date
+  branch               Sucursal                  @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  businessDate         DateTime                  @db.Date
   credentialId         String
-  credential           PosCredential            @relation("PosAttendanceCredential", fields: [credentialId], references: [id], onDelete: Restrict)
+  credential           PosCredential             @relation("PosAttendanceCredential", fields: [credentialId], references: [id], onDelete: Restrict)
   terminalId           String
-  terminal             PosTerminal              @relation(fields: [terminalId], references: [id], onDelete: Restrict)
-  clockInAt            DateTime                 @default(now())
+  terminal             PosTerminal               @relation(fields: [terminalId], references: [id], onDelete: Restrict)
+  clockInAt            DateTime                  @default(now())
   clockOutAt           DateTime?
-  status               PosAttendanceStatus      @default(OPEN)
+  status               PosAttendanceStatus       @default(OPEN)
   closeReason          PosAttendanceCloseReason?
   closedByCredentialId String?
-  closedByCredential   PosCredential?           @relation("PosAttendanceClosedBy", fields: [closedByCredentialId], references: [id], onDelete: Restrict)
-  creadoEn             DateTime                 @default(now())
+  closedByCredential   PosCredential?            @relation("PosAttendanceClosedBy", fields: [closedByCredentialId], references: [id], onDelete: Restrict)
+  creadoEn             DateTime                  @default(now())
 
   @@index([branchId, businessDate, status])
   @@index([employeeId, businessDate])
@@ -1675,17 +1723,17 @@ model PosCashExpense {
   terminal              PosTerminal          @relation(fields: [terminalId], references: [id], onDelete: Restrict)
   employeeId            String?
   employee              Empleado?            @relation(fields: [employeeId], references: [id], onDelete: Restrict)
-  employeeNameSnapshot  String                @db.VarChar(240)
+  employeeNameSnapshot  String               @db.VarChar(240)
   expenseTypeId         String
   expenseType           PosExpenseType       @relation(fields: [expenseTypeId], references: [id], onDelete: Restrict)
-  expenseTypeSnapshot   String                @db.VarChar(160)
+  expenseTypeSnapshot   String               @db.VarChar(160)
   amount                Decimal              @db.Decimal(14, 2)
   concept               String               @db.VarChar(500)
   comment               String?              @db.VarChar(1000)
   status                PosCashExpenseStatus @default(ACTIVE)
   correctsExpenseId     String?              @db.Uuid
-  correctsExpense       PosCashExpense?       @relation("PosCashExpenseCorrections", fields: [correctsExpenseId], references: [id], onDelete: Restrict)
-  corrections           PosCashExpense[]      @relation("PosCashExpenseCorrections")
+  correctsExpense       PosCashExpense?      @relation("PosCashExpenseCorrections", fields: [correctsExpenseId], references: [id], onDelete: Restrict)
+  corrections           PosCashExpense[]     @relation("PosCashExpenseCorrections")
   createdByCredentialId String
   createdByCredential   PosCredential        @relation("PosCashExpenseCreatedBy", fields: [createdByCredentialId], references: [id], onDelete: Restrict)
   voidedAt              DateTime?
@@ -1702,19 +1750,19 @@ model PosCashExpense {
 }
 
 model PosCashMovement {
-  id                    String               @id @default(uuid()) @db.Uuid
-  expenseId             String               @db.Uuid
-  expense               PosCashExpense       @relation(fields: [expenseId], references: [id], onDelete: Restrict)
-  kind                  PosCashMovementKind
-  amount                Decimal              @db.Decimal(14, 2)
-  businessDate          DateTime             @db.Date
-  actorCredentialId     String
-  actorCredential       PosCredential        @relation(fields: [actorCredentialId], references: [id], onDelete: Restrict)
-  authorizationId       String?
-  authorization         MasterAuthorization? @relation(fields: [authorizationId], references: [id], onDelete: Restrict)
-  reason                String?              @db.VarChar(1000)
-  snapshot              Json
-  creadoEn              DateTime             @default(now())
+  id                String               @id @default(uuid()) @db.Uuid
+  expenseId         String               @db.Uuid
+  expense           PosCashExpense       @relation(fields: [expenseId], references: [id], onDelete: Restrict)
+  kind              PosCashMovementKind
+  amount            Decimal              @db.Decimal(14, 2)
+  businessDate      DateTime             @db.Date
+  actorCredentialId String
+  actorCredential   PosCredential        @relation(fields: [actorCredentialId], references: [id], onDelete: Restrict)
+  authorizationId   String?
+  authorization     MasterAuthorization? @relation(fields: [authorizationId], references: [id], onDelete: Restrict)
+  reason            String?              @db.VarChar(1000)
+  snapshot          Json
+  creadoEn          DateTime             @default(now())
 
   @@index([businessDate, creadoEn])
   @@index([expenseId, creadoEn])
@@ -1750,26 +1798,26 @@ model PosSyncCursor {
 }
 
 model PosSyncOperation {
-  id                String                 @id @default(cuid())
-  clientOperationId String                 @unique @db.Uuid
+  id                String                  @id @default(cuid())
+  clientOperationId String                  @unique @db.Uuid
   terminalId        String
-  terminal          PosTerminal            @relation(fields: [terminalId], references: [id], onDelete: Restrict)
+  terminal          PosTerminal             @relation(fields: [terminalId], references: [id], onDelete: Restrict)
   terminalSequence  BigInt
   credentialId      String
-  credential        PosCredential          @relation(fields: [credentialId], references: [id], onDelete: Restrict)
+  credential        PosCredential           @relation(fields: [credentialId], references: [id], onDelete: Restrict)
   kind              PosOfflineOperationKind
-  idempotencyKey    String                 @unique @db.Uuid
+  idempotencyKey    String                  @unique @db.Uuid
   entityId          String?
-  payloadHash       String                 @db.VarChar(64)
+  payloadHash       String                  @db.VarChar(64)
   status            PosSyncOperationStatus
   serverEntityId    String?
   response          Json?
-  errorCode         String?                @db.VarChar(80)
-  errorMessage      String?                @db.VarChar(1000)
+  errorCode         String?                 @db.VarChar(80)
+  errorMessage      String?                 @db.VarChar(1000)
   clientCreatedAt   DateTime
   syncedAt          DateTime?
-  creadoEn          DateTime               @default(now())
-  actualizadoEn     DateTime               @updatedAt
+  creadoEn          DateTime                @default(now())
+  actualizadoEn     DateTime                @updatedAt
 
   @@unique([terminalId, terminalSequence])
   @@index([terminalId, status, terminalSequence])

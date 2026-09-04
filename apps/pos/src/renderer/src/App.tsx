@@ -84,10 +84,12 @@ import type {
   PosCashExpenseDto,
   PosExpenseTypeDto,
   PosInventoryLocationDto,
+  PosNotificationDto,
   PosOperationalSummaryDto,
   PosOfflineBootstrapDto,
   PosPermissionKey,
   PosSessionDto,
+  PosSalesCompetitionDto,
   PosTicketQuoteDto,
 } from "@cosmetics/types";
 import {
@@ -300,8 +302,34 @@ const productFromPosCatalog = (item: {
   stock: item.kind === "SERVICE" ? null : 0, stockMin: null, stockMax: null, branches: [branch], active: true,
 });
 
+const notificationTypeFromApi = (
+  kind: string,
+): OperationalNotificationType => {
+  if (kind === "SALE_COMPLETED" || kind === "CASH_EXPENSE" || kind === "PRODUCT_CREATED" ||
+      kind === "INVENTORY_ADD" || kind === "INVENTORY_REMOVE" || kind === "INVENTORY_TRANSFER" ||
+      kind === "CLOSE_DAY" || kind === "CLOCK_IN") return kind;
+  return "INVENTORY_TRANSFER";
+};
+
 const formatSaleCount = (count: number, singular: string, plural: string) =>
   `${count} ${count === 1 ? singular : plural}`;
+
+async function loadAllApiPages<T>(
+  load: (page: number, pageSize: number) => Promise<{ items: T[]; total: number }>,
+): Promise<T[]> {
+  const pageSize = 100;
+  const items: T[] = [];
+  let page = 1;
+  let total = 0;
+  do {
+    const result = await load(page, pageSize);
+    items.push(...result.items);
+    total = result.total;
+    if (result.items.length === 0) break;
+    page += 1;
+  } while (items.length < total);
+  return items;
+}
 
 const courtesyPackageOptions: Array<{ id: CourtesyPackage; label: string; detail: string }> = [
   { id: "FACIAL", label: "Facial", detail: "1 servicio de cortesía" },
@@ -445,6 +473,7 @@ interface ConnectivityNotice {
 }
 
 const loadOfflineTicketQueue = (): Ticket[] => {
+  if (posApiEnabled) return [];
   try {
     const storedQueue = window.localStorage.getItem(
       offlineTicketQueueStorageKey,
@@ -458,6 +487,7 @@ const loadOfflineTicketQueue = (): Ticket[] => {
 };
 
 const loadVoucherIssues = (): VoucherIssue[] => {
+  if (posApiEnabled) return [];
   try {
     const storedIssues = window.localStorage.getItem(voucherIssuesStorageKey);
     if (!storedIssues) return [];
@@ -491,6 +521,17 @@ const clientFieldLabels: Record<ClientField, string> = {
   whatsapp: "WhatsApp",
   source: "Procedencia",
   companyName: "Empresa asignada",
+};
+
+const clientFieldApiKeys: Record<ClientField, string> = {
+  firstName: "FIRST_NAME",
+  lastName: "LAST_NAME",
+  birthday: "BIRTHDAY",
+  gender: "GENDER",
+  phone: "PHONE",
+  whatsapp: "WHATSAPP",
+  source: "SOURCE",
+  companyName: "COMPANY_NAME",
 };
 
 const paymentStatusLabels: Record<Ticket["paymentStatus"], string> = {
@@ -682,6 +723,19 @@ const initialWarehouseCategories: WarehouseMovementCategory[] = [
   { id: "warehouse-furniture", name: "Envíos de mobiliario", active: true, createdAtIso: "2026-08-01T14:03:00.000Z" },
 ];
 
+const apiWarehouseCategories: WarehouseMovementCategory[] = [
+  { id: "warehouse-products", name: "Envíos de producto", active: true, createdAtIso: "" },
+  { id: "warehouse-testers", name: "Envíos de tester", active: true, createdAtIso: "" },
+  { id: "warehouse-supplies", name: "Envíos de insumos", active: true, createdAtIso: "" },
+];
+
+const apiInventoryMovementReasons: InventoryMovementReason[] = [
+  { id: "TESTER", name: "Tester", active: true },
+  { id: "DAMAGE", name: "Damage", active: true },
+  { id: "LOST", name: "Lost", active: true },
+  { id: "GIFT", name: "Gift", active: true },
+];
+
 const initialWarehouseSuppliers: WarehouseSupplier[] = [
   { id: "supplier-keysar-labs", folio: "PROV-0001", businessName: "Keysar Labs International", contactName: "Laura Ortega", rfc: "KLI240101K91", taxRegime: "601 · General de Ley", businessLine: "Cosmética y dermocosmética", phone: "55 9001 2210", email: "pedidos@keysarlabs.example", address: "Naucalpan, Estado de México", active: true, createdAtIso: "2026-08-01T12:00:00.000Z" },
   { id: "supplier-solaris", folio: "PROV-0002", businessName: "Solaris Dermal México", contactName: "Arturo Medina", rfc: "SDM2304158P2", taxRegime: "601 · General de Ley", businessLine: "Protección solar profesional", phone: "55 8110 4472", email: "ventas@solarisdermal.example", address: "Benito Juárez, Ciudad de México", active: true, createdAtIso: "2026-08-02T12:00:00.000Z" },
@@ -839,6 +893,7 @@ function App() {
     useState<ConnectivityNotice | null>(null);
   const previousOnlineState = useRef(navigator.onLine);
   const offlineSyncingRef = useRef(false);
+  const notificationPreferencesWriteRef = useRef<Promise<void>>(Promise.resolve());
   const [activeScreen, setActiveScreen] = useState<ScreenId>("sale");
   const [saleFocusMode, setSaleFocusMode] = useState(true);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -870,8 +925,10 @@ function App() {
   useEffect(() => {
     document.body.classList.add("executive-ledger-theme");
     document.body.classList.remove("executive-dark-mode");
-    window.localStorage.removeItem("keysar-pos-color-mode");
-    window.localStorage.removeItem("keysar-pos-language");
+    if (!posApiEnabled) {
+      window.localStorage.removeItem("keysar-pos-color-mode");
+      window.localStorage.removeItem("keysar-pos-language");
+    }
     return () => {
       document.body.classList.remove(
         "executive-ledger-theme",
@@ -919,85 +976,102 @@ function App() {
   const [saleAuthorizationCode, setSaleAuthorizationCode] = useState("");
   const [saleAuthorizationToken, setSaleAuthorizationToken] = useState<string | null>(null);
   const [cart, setCart] = useState<CartItem[]>([]);
-  const [catalogProducts, setCatalogProducts] = useState(initialProducts);
-  const [sellers, setSellers] = useState(initialSellers);
+  const [catalogProducts, setCatalogProducts] = useState<Product[]>(
+    posApiEnabled ? [] : initialProducts,
+  );
+  const [sellers, setSellers] = useState<Seller[]>(
+    posApiEnabled ? [] : initialSellers,
+  );
   const isMasterAccessCode = (code: string) =>
-    code.trim() === administratorCode ||
-    sellers.some(
-      (seller) =>
-        seller.active &&
-        Boolean(seller.masterAccessCode) &&
-        seller.masterAccessCode === code.trim(),
-    );
+    posApiEnabled
+      ? Boolean(apiSession?.actor.isMaster && code.trim())
+      : code.trim() === administratorCode ||
+        sellers.some(
+          (seller) =>
+            seller.active &&
+            Boolean(seller.masterAccessCode) &&
+            seller.masterAccessCode === code.trim(),
+        );
   const [employeeRoles, setEmployeeRoles] = useState<EmployeeRole[]>(
-    initialEmployeeRoles,
+    posApiEnabled ? [] : initialEmployeeRoles,
   );
   const [employeeAccessAuthorized, setEmployeeAccessAuthorized] =
     useState(false);
   const [catalogFamilies, setCatalogFamilies] = useState(() =>
-    Array.from(new Set(initialProducts.map((product) => product.family))),
+    posApiEnabled
+      ? []
+      : Array.from(new Set(initialProducts.map((product) => product.family))),
   );
   const [catalogFamilyStatus, setCatalogFamilyStatus] = useState<
     Record<string, boolean>
-  >(() =>
-    Object.fromEntries(
+  >(() => posApiEnabled
+    ? {}
+    : Object.fromEntries(
       Array.from(new Set(initialProducts.map((product) => product.family))).map(
         (family) => [family, true],
       ),
     ),
   );
   const [catalogCategories, setCatalogCategories] = useState(() =>
-    Array.from(new Set(initialProducts.map((product) => product.category))),
+    posApiEnabled
+      ? []
+      : Array.from(new Set(initialProducts.map((product) => product.category))),
   );
   const [catalogCategoryStatus, setCatalogCategoryStatus] = useState<
     Record<string, boolean>
-  >(() =>
-    Object.fromEntries(
+  >(() => posApiEnabled
+    ? {}
+    : Object.fromEntries(
       Array.from(
         new Set(initialProducts.map((product) => product.category)),
       ).map((category) => [category, true]),
     ),
   );
   const [catalogGroups, setCatalogGroups] = useState(() =>
-    Array.from(new Set(initialProducts.map((product) => product.group))),
+    posApiEnabled
+      ? []
+      : Array.from(new Set(initialProducts.map((product) => product.group))),
   );
   const [inventoryMovementReasons, setInventoryMovementReasons] = useState<
     InventoryMovementReason[]
-  >(initialInventoryMovementReasons);
-  const [inventoryMovements, setInventoryMovements] = useState<
-    InventoryMovement[]
-  >(initialInventoryMovements);
-  const [warehouseCategories, setWarehouseCategories] = useState<WarehouseMovementCategory[]>(initialWarehouseCategories);
-  const [warehouseSupplies, setWarehouseSupplies] = useState<WarehouseSupplyItem[]>(initialWarehouseSupplies);
-  const [warehouseSuppliers, setWarehouseSuppliers] = useState<WarehouseSupplier[]>(initialWarehouseSuppliers);
-  const [warehousePriceLists, setWarehousePriceLists] = useState<WarehousePriceList[]>(initialWarehousePriceLists);
-  const [warehouseStock, setWarehouseStock] = useState<WarehouseStock>(initialWarehouseStock);
-  const [warehouseMovements, setWarehouseMovements] = useState<WarehouseMovement[]>(initialWarehouseMovements);
+  >(posApiEnabled ? apiInventoryMovementReasons : initialInventoryMovementReasons);
+  const [inventoryMovements, setInventoryMovements] = useState<InventoryMovement[]>(
+    posApiEnabled ? [] : initialInventoryMovements,
+  );
+  const [warehouseCategories, setWarehouseCategories] = useState<WarehouseMovementCategory[]>(
+    posApiEnabled ? apiWarehouseCategories : initialWarehouseCategories,
+  );
+  const [warehouseSupplies, setWarehouseSupplies] = useState<WarehouseSupplyItem[]>(posApiEnabled ? [] : initialWarehouseSupplies);
+  const [warehouseSuppliers, setWarehouseSuppliers] = useState<WarehouseSupplier[]>(posApiEnabled ? [] : initialWarehouseSuppliers);
+  const [warehousePriceLists, setWarehousePriceLists] = useState<WarehousePriceList[]>(posApiEnabled ? [] : initialWarehousePriceLists);
+  const [warehouseStock, setWarehouseStock] = useState<WarehouseStock>(posApiEnabled ? {} : initialWarehouseStock);
+  const [warehouseMovements, setWarehouseMovements] = useState<WarehouseMovement[]>(posApiEnabled ? [] : initialWarehouseMovements);
   const [branchRequestEntryType, setBranchRequestEntryType] = useState<WarehouseRequestType>("PRODUCT");
   const [expenseTypes, setExpenseTypes] =
-    useState<ExpenseType[]>(initialExpenseTypes);
+    useState<ExpenseType[]>(posApiEnabled ? [] : initialExpenseTypes);
   const [cashExpenses, setCashExpenses] =
-    useState<CashExpense[]>(initialCashExpenses);
+    useState<CashExpense[]>(posApiEnabled ? [] : initialCashExpenses);
   const [notificationPreferences, setNotificationPreferences] = useState<
     OperationalNotificationPreference[]
-  >(() => createDefaultNotificationPreferences(masterUser.id));
+  >(() => posApiEnabled ? [] : createDefaultNotificationPreferences(masterUser.id));
   const [operationalNotifications, setOperationalNotifications] = useState<
     OperationalNotification[]
-  >(createInitialOperationalNotifications);
+  >(posApiEnabled ? [] : createInitialOperationalNotifications);
   const [inventoryAdjustmentBatches, setInventoryAdjustmentBatches] = useState<
     InventoryAdjustmentBatch[]
   >([]);
   const [branchInventory, setBranchInventory] = useState<BranchInventory>(
-    initialBranchInventory,
+    posApiEnabled ? {} : initialBranchInventory,
   );
   const [activeBranch, setActiveBranch] = useState(() => {
+    if (posApiEnabled) return "";
     const storedBranch = window.localStorage.getItem(terminalLocationStorageKey);
     return storedBranch && initialBranchInventory[storedBranch]
       ? storedBranch
       : "Polanco";
   });
   const [branchAddresses, setBranchAddresses] = useState<Record<string, string>>(
-    initialBranchAddresses,
+    posApiEnabled ? {} : initialBranchAddresses,
   );
   const [locationSwitchOpen, setLocationSwitchOpen] = useState(false);
   const [locationSwitchTarget, setLocationSwitchTarget] = useState("");
@@ -1011,13 +1085,13 @@ function App() {
   const [discountDraftMode, setDiscountDraftMode] =
     useState<DiscountMode>("PERCENT");
   const [discountDraftValue, setDiscountDraftValue] = useState(0);
-  const [clients, setClients] = useState(initialClients);
+  const [clients, setClients] = useState<Client[]>(posApiEnabled ? [] : initialClients);
   const [tickets, setTickets] = useState<Ticket[]>(() =>
-    mergeOfflineTicketQueue(initialTickets),
+    posApiEnabled ? [] : mergeOfflineTicketQueue(initialTickets),
   );
-  const [layaways, setLayaways] = useState<LayawayRecord[]>(initialLayaways);
+  const [layaways, setLayaways] = useState<LayawayRecord[]>(posApiEnabled ? [] : initialLayaways);
   const [appointments, setAppointments] =
-    useState<Appointment[]>(initialAppointments);
+    useState<Appointment[]>(posApiEnabled ? [] : initialAppointments);
   const [receiptSettings, setReceiptSettings] = useState<ReceiptSettings>(() => ({
     ...initialReceiptSettings,
     branchName: `Sucursal ${activeBranch}`,
@@ -1059,16 +1133,16 @@ function App() {
     AttendanceRecord[]
   >([]);
   const [competitions, setCompetitions] = useState<SalesCompetition[]>(
-    initialCompetitions,
+    posApiEnabled ? [] : initialCompetitions,
   );
-  const [deals, setDeals] = useState<RetailDeal[]>(initialDeals);
+  const [deals, setDeals] = useState<RetailDeal[]>(posApiEnabled ? [] : initialDeals);
   const [dealPickerOpen, setDealPickerOpen] = useState(false);
   const [dealAccessAuthorized, setDealAccessAuthorized] = useState(false);
   const [competitionSettingsOpen, setCompetitionSettingsOpen] = useState(false);
   const [competitionSettingsAuthorized, setCompetitionSettingsAuthorized] =
     useState(false);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodOption[]>(
-    initialPaymentMethods,
+    posApiEnabled ? [] : initialPaymentMethods,
   );
   const [paymentSettingsOpen, setPaymentSettingsOpen] = useState(false);
   const [paymentSettingsCode, setPaymentSettingsCode] = useState("");
@@ -1081,7 +1155,7 @@ function App() {
     defaultPackage: "FACIAL",
     enabledPackages: ["FACIAL", "BODY", "DOUBLE_FACIAL", "DOUBLE_BODY", "MIXED"],
   });
-  const [voucherTemplates, setVoucherTemplates] = useState<VoucherTemplate[]>([
+  const [voucherTemplates, setVoucherTemplates] = useState<VoucherTemplate[]>(posApiEnabled ? [] : [
     {
       id: "voucher-next-10",
       name: "10% en próxima compra",
@@ -1113,12 +1187,23 @@ function App() {
   const [voucherIssues, setVoucherIssues] =
     useState<VoucherIssue[]>(loadVoucherIssues);
   const [clientSources, setClientSources] = useState<ClientSourceOption[]>(
-    initialClientSources,
+    posApiEnabled ? [] : initialClientSources,
   );
   const [clientSourceName, setClientSourceName] = useState("");
   const [editingClientSourceId, setEditingClientSourceId] = useState("");
   const [requiredFields, setRequiredFields] = useState<RequiredClientFields>(
-    initialRequiredClientFields,
+    posApiEnabled
+      ? {
+          firstName: false,
+          lastName: false,
+          birthday: false,
+          gender: false,
+          phone: false,
+          whatsapp: false,
+          source: false,
+          companyName: false,
+        }
+      : initialRequiredClientFields,
   );
   const [syncClock, setSyncClock] = useState(() => Date.now());
   const [sessionDataSync, setSessionDataSync] = useState(() => ({
@@ -1151,6 +1236,28 @@ function App() {
       "id" | "recipientUserIds" | "readByUserIds"
     >,
   ) => {
+    if (posApiEnabled) {
+      void loadAllApiPages((page, pageSize) =>
+        posApi.notifications({ page, pageSize }),
+      ).then((items) => {
+        if (!sessionUser) return;
+        setOperationalNotifications(items.map((item) => ({
+          id: item.id,
+          type: notificationTypeFromApi(item.kind),
+          title: item.title,
+          detail: item.message,
+          moduleLabel: item.sourceType ?? "Sistema POS",
+          branch: apiBranches.find((branch) => branch.id === item.branchId)?.name ?? activeBranch,
+          actorId: item.sourceId ?? "pos",
+          actorName: "Sistema POS",
+          reference: item.sourceId ?? item.warehouseRequestId ?? item.id,
+          createdAtIso: item.createdAt,
+          recipientUserIds: [sessionUser.id],
+          readByUserIds: item.read ? [sessionUser.id] : [],
+        })));
+      }).catch(() => undefined);
+      return;
+    }
     const preference = notificationPreferences.find(
       (item) => item.type === notification.type,
     );
@@ -1174,8 +1281,7 @@ function App() {
     notificationId: string,
     userId: string,
   ) => {
-    if (posApiEnabled) void posApi.markNotificationRead(notificationId).catch(() => undefined);
-    setOperationalNotifications((current) =>
+    const applyRead = () => setOperationalNotifications((current) =>
       current.map((notification) =>
         notification.id === notificationId &&
         (userId === masterUser.id || notification.recipientUserIds.includes(userId)) &&
@@ -1187,15 +1293,21 @@ function App() {
           : notification,
       ),
     );
+    if (!posApiEnabled) {
+      applyRead();
+      return;
+    }
+    if (operatingOffline) {
+      toast.info("Vuelve a estar en línea para registrar la lectura.");
+      return;
+    }
+    void posApi.markNotificationRead(notificationId).then(applyRead).catch((error: unknown) => {
+      toast.error(error instanceof Error ? error.message : "No se pudo registrar la lectura.");
+    });
   };
 
   const markAllOperationalNotificationsRead = (userId: string) => {
-    if (posApiEnabled && !operatingOffline) {
-      operationalNotifications
-        .filter((notification) => !notification.readByUserIds.includes(userId))
-        .forEach((notification) => { void posApi.markNotificationRead(notification.id).catch(() => undefined); });
-    }
-    setOperationalNotifications((current) =>
+    const applyRead = () => setOperationalNotifications((current) =>
       current.map((notification) =>
         operationalBusinessDate(notification.createdAtIso) ===
           operationalBusinessDate(new Date().toISOString()) &&
@@ -1208,6 +1320,76 @@ function App() {
           : notification,
       ),
     );
+    if (!posApiEnabled) {
+      applyRead();
+      return;
+    }
+    if (operatingOffline) {
+      toast.info("Vuelve a estar en línea para registrar las lecturas.");
+      return;
+    }
+    void posApi.markAllNotificationsRead().then(applyRead).catch((error: unknown) => {
+      toast.error(error instanceof Error ? error.message : "No se pudieron registrar las lecturas.");
+    });
+  };
+
+  const saveNotificationPreferences = (
+    next: OperationalNotificationPreference[],
+  ) => {
+    setNotificationPreferences(next);
+    if (!posApiEnabled) return;
+    const warehouseKinds: PosNotificationDto["kind"][] = [
+      "INVENTORY_TRANSFER",
+      "WAREHOUSE_REQUESTED",
+      "WAREHOUSE_CREATION_APPROVED",
+      "WAREHOUSE_SHIPPED",
+      "WAREHOUSE_RECEIVED",
+      "WAREHOUSE_RETURNED",
+      "WAREHOUSE_CANCELED",
+    ];
+    const preferences = next.flatMap((preference) => {
+      const kinds: PosNotificationDto["kind"][] = preference.type === "INVENTORY_TRANSFER"
+        ? warehouseKinds
+        : [preference.type];
+      const recipients = preference.enabled
+        ? preference.recipientUserIds.map((actorId) => ({
+            actorId,
+            access: preference.recipientAccess?.[actorId] ?? "VIEW" as const,
+          }))
+        : [];
+      return kinds.map((kind) => ({ kind, recipients }));
+    });
+    notificationPreferencesWriteRef.current = notificationPreferencesWriteRef.current
+      .catch(() => undefined)
+      .then(async () => {
+        await posApi.updateNotificationPreferences(preferences);
+        toast.success("Preferencias de notificación guardadas en el servidor.");
+      })
+      .catch((error: unknown) => {
+        toast.error(error instanceof Error ? error.message : "No se pudieron guardar las preferencias.");
+      });
+  };
+
+  const toggleRequiredClientField = (field: ClientField) => {
+    const required = !requiredFields[field];
+    if (!posApiEnabled) {
+      setRequiredFields((current) => ({ ...current, [field]: required }));
+      return;
+    }
+    const sortOrder = (Object.keys(clientFieldApiKeys) as ClientField[]).indexOf(field);
+    void posApi.updateCustomerRequiredField(clientFieldApiKeys[field], {
+      label: clientFieldLabels[field],
+      required,
+      active: true,
+      sortOrder,
+    }).then((saved) => {
+      setRequiredFields((current) => ({
+        ...current,
+        [field]: saved.active && saved.required,
+      }));
+    }).catch((error: unknown) => {
+      toast.error(error instanceof Error ? error.message : "No se pudo actualizar el campo obligatorio.");
+    });
   };
 
   const sessionEmployeeRole = useMemo(
@@ -1440,7 +1622,8 @@ function App() {
     }));
     if (
       session.actor.isMaster ||
-      session.permissions.includes("EMPLOYEES_VIEW")
+      session.permissions.includes("EMPLOYEES_VIEW") ||
+      session.permissions.includes("SETTINGS_MANAGE")
     ) {
       const access = accessFromDto(await posApi.accessBootstrap());
       setEmployeeRoles(access.roles);
@@ -1448,34 +1631,55 @@ function App() {
     }
     // La configuración de impresión pertenece a la fase 2 y se resuelve desde
     // el backend al abrir una sesión API; no se persiste en el navegador.
-    if (session.actor.isMaster || session.permissions.includes("SETTINGS_MANAGE")) {
-      const ticketConfiguration = await posApi.ticketConfiguration();
-      setReceiptSettings((current) => ({
-        ...current,
-        companyName: ticketConfiguration.companyName,
-        address: ticketConfiguration.address ?? current.address,
-        footerMessage: ticketConfiguration.footerMessage ?? current.footerMessage,
-        policies: ticketConfiguration.policies ?? current.policies,
-        showClientName: ticketConfiguration.showClientName,
-        showClientPhone: ticketConfiguration.showClientPhone,
-        showSellerName: ticketConfiguration.showSellerName,
-        showVatBreakdown: ticketConfiguration.showVatBreakdown,
-        showSpareCoverageMessage: ticketConfiguration.showSpareCoverageMessage,
-        logoUrl: ticketConfiguration.logoUrl ?? current.logoUrl,
-        branchName: `Sucursal ${branchName}`,
-      }));
-    }
+    const [ticketConfiguration, customerRequiredFields] = await Promise.all([
+      posApi.ticketConfiguration(),
+      posApi.customerRequiredFields(),
+    ]);
+    setReceiptSettings((current) => ({
+      ...current,
+      companyName: ticketConfiguration.companyName,
+      address: ticketConfiguration.address ?? "",
+      footerMessage: ticketConfiguration.footerMessage ?? "",
+      policies: ticketConfiguration.policies ?? "",
+      showClientName: ticketConfiguration.showClientName,
+      showClientPhone: ticketConfiguration.showClientPhone,
+      showSellerName: ticketConfiguration.showSellerName,
+      showVatBreakdown: ticketConfiguration.showVatBreakdown,
+      showSpareCoverageMessage: ticketConfiguration.showSpareCoverageMessage,
+      logoUrl: ticketConfiguration.logoUrl ?? "./logo.svg",
+      branchName: `Sucursal ${branchName}`,
+    }));
+    const fieldByKey = new Map(
+      customerRequiredFields.map((field) => [field.key, field]),
+    );
+    setRequiredFields(Object.fromEntries(
+      (Object.keys(clientFieldApiKeys) as ClientField[]).map((field) => {
+        const configured = fieldByKey.get(clientFieldApiKeys[field]);
+        return [field, Boolean(configured?.active && configured.required)];
+      }),
+    ) as RequiredClientFields);
     let loadedCatalog: Awaited<ReturnType<typeof posApi.catalogItems>>["items"] = [];
     if (session.actor.isMaster || session.permissions.some((permission) => ["CATALOG_VIEW", "SALE_CREATE", "INVENTORY_VIEW", "INVENTORY_ADJUST", "WAREHOUSE_MANAGE", "WAREHOUSE_BRANCH_REQUEST"].includes(permission))) {
-      const catalog = await posApi.catalogItems({ pageSize: 100 });
-      loadedCatalog = catalog.items;
-      setCatalogProducts(catalog.items.filter((item) => item.kind !== "SUPPLY").map((item) => productFromPosCatalog(item, branchName)));
+      loadedCatalog = await loadAllApiPages((page, pageSize) =>
+        posApi.catalogItems({ page, pageSize }),
+      );
+      const products = loadedCatalog
+        .filter((item) => item.kind !== "SUPPLY")
+        .map((item) => productFromPosCatalog(item, branchName));
+      setCatalogProducts(products);
+      const families = Array.from(new Set(products.map((product) => product.family)));
+      const categories = Array.from(new Set(products.map((product) => product.category)));
+      setCatalogFamilies(families);
+      setCatalogFamilyStatus(Object.fromEntries(families.map((family) => [family, true])));
+      setCatalogCategories(categories);
+      setCatalogCategoryStatus(Object.fromEntries(categories.map((category) => [category, true])));
+      setCatalogGroups(Array.from(new Set(products.map((product) => product.group))));
     }
     if (session.actor.isMaster || session.permissions.some((permission) => ["INVENTORY_VIEW", "INVENTORY_ADJUST", "WAREHOUSE_MANAGE"].includes(permission))) {
       const [locations, balances, movements] = await Promise.all([
         posApi.inventoryLocations(),
         posApi.inventoryBalances(),
-        posApi.inventoryMovements({ pageSize: 100 }),
+        loadAllApiPages((page, pageSize) => posApi.inventoryMovements({ page, pageSize })),
       ]);
       setApiInventoryLocations(locations);
       const locationById = new Map(locations.map((location) => [location.id, location]));
@@ -1501,7 +1705,7 @@ function App() {
         stock: product.kind === "PRODUCT" ? nextBranchInventory[branchName]?.[product.id] ?? 0 : null,
         branches: locations.filter((location) => location.type === "BRANCH" && location.branchName).map((location) => location.branchName!),
       })));
-      setInventoryMovements(inventoryMovementsFromDto(movements.items));
+      setInventoryMovements(inventoryMovementsFromDto(movements));
       if (session.actor.isMaster || session.permissions.includes("INVENTORY_ADJUST")) {
         const batches = await posApi.inventoryAdjustmentBatches();
         setInventoryAdjustmentBatches(batches.map((batch) => adjustmentBatchFromDto(batch, locations)));
@@ -1519,26 +1723,39 @@ function App() {
       setWarehouseStock({});
     }
     if (session.actor.isMaster || session.permissions.some((permission) => ["WAREHOUSE_MANAGE", "WAREHOUSE_BRANCH_REQUEST"].includes(permission))) {
-      const [requests, notifications] = await Promise.all([
-        posApi.warehouseRequests({ pageSize: 100 }),
-        posApi.notifications({ pageSize: 100 }),
-      ]);
-      setWarehouseMovements(requests.items.map(warehouseMovementFromDto));
-      setOperationalNotifications(notifications.items.map((notification) => ({
+      const requests = await loadAllApiPages((page, pageSize) => posApi.warehouseRequests({ page, pageSize }));
+      setWarehouseMovements(requests.map(warehouseMovementFromDto));
+    } else setWarehouseMovements([]);
+    const notifications = await loadAllApiPages((page, pageSize) => posApi.notifications({ page, pageSize }));
+    setOperationalNotifications(notifications.map((notification) => ({
         id: notification.id,
-        type: "INVENTORY_TRANSFER",
+        type: notificationTypeFromApi(notification.kind),
         title: notification.title,
         detail: notification.message,
-        moduleLabel: "Almacén",
+        moduleLabel: notification.sourceType ?? "Sistema POS",
         branch: branches.find((branch) => branch.id === notification.branchId)?.name ?? branchName,
-        actorId: notification.warehouseRequestId ?? "pos",
+        actorId: notification.sourceId ?? "pos",
         actorName: "Sistema POS",
-        reference: notification.warehouseRequestId ?? notification.id,
+        reference: notification.sourceId ?? notification.warehouseRequestId ?? notification.id,
         createdAtIso: notification.createdAt,
         recipientUserIds: [nextUser.id],
         readByUserIds: notification.read ? [nextUser.id] : [],
       })));
-    } else setWarehouseMovements([]);
+    if (session.actor.isMaster || session.permissions.includes("SETTINGS_MANAGE")) {
+      const preferences = await posApi.notificationPreferences();
+      const grouped = new Map<OperationalNotificationType, OperationalNotificationPreference>();
+      for (const preference of preferences) {
+        const type = notificationTypeFromApi(preference.kind);
+        const current = grouped.get(type) ?? { type, enabled: false, recipientUserIds: [], recipientAccess: {} };
+        for (const recipient of preference.recipients) {
+          if (!current.recipientUserIds.includes(recipient.actorId)) current.recipientUserIds.push(recipient.actorId);
+          current.recipientAccess = { ...current.recipientAccess, [recipient.actorId]: recipient.access };
+        }
+        current.enabled = current.recipientUserIds.length > 0;
+        grouped.set(type, current);
+      }
+      setNotificationPreferences(createDefaultNotificationPreferences(nextUser.id).map((preference) => grouped.get(preference.type) ?? { ...preference, enabled: false, recipientUserIds: [], recipientAccess: {} }));
+    }
     if (session.actor.isMaster || session.permissions.includes("WAREHOUSE_MANAGE")) {
       const suppliers = await posApi.suppliers();
       setWarehouseSuppliers(suppliers.map((supplier) => ({
@@ -1612,15 +1829,15 @@ function App() {
       setClientSources(sources.map((source) => ({ id: source.id, label: source.name, active: source.active, locksCompany: false })));
     }
     if (session.actor.isMaster || session.permissions.some((permission) => permission === "SALE_VIEW_OWN" || permission === "SALE_VIEW_ALL" || permission === "CUSTOMERS_VIEW")) {
-      const ticketPage = await posApi.tickets({ pageSize: 100 });
-      const realTickets = ticketPage.items.map(ticketFromDto);
+      const ticketItems = await loadAllApiPages((page, pageSize) => posApi.tickets({ page, pageSize }));
+      const realTickets = ticketItems.map(ticketFromDto);
       setTickets(realTickets);
-      setLayaways(ticketPage.items.flatMap((ticket) => {
+      setLayaways(ticketItems.flatMap((ticket) => {
         const layaway = layawayFromDto(ticket);
         return layaway ? [layaway] : [];
       }));
-      setOwedProducts(ticketPage.items.flatMap(owedProductsFromDto));
-      setAppointments(ticketPage.items.flatMap((ticket) => ticket.appointments
+      setOwedProducts(ticketItems.flatMap(owedProductsFromDto));
+      setAppointments(ticketItems.flatMap((ticket) => ticket.appointments
         .filter((appointment) => appointment.status === "SCHEDULED" || appointment.status === "PENDING")
         .map((appointment) => {
           const scheduled = appointment.scheduledAt ? new Date(appointment.scheduledAt) : null;
@@ -1642,7 +1859,7 @@ function App() {
           };
         })));
       const knownClients = new Map<string, Client>();
-      for (const ticket of ticketPage.items) {
+      for (const ticket of ticketItems) {
         if (!ticket.customerId || knownClients.has(ticket.customerId)) continue;
         const [firstName, ...lastName] = (ticket.customerName ?? "Cliente").split(/\s+/);
         knownClients.set(ticket.customerId, {
@@ -1667,28 +1884,44 @@ function App() {
       setClients([...knownClients.values()]);
     }
     if (session.actor.isMaster || session.permissions.includes("BUSINESS_DAY_OPEN")) {
-      const attendance = await posApi.attendance({ pageSize: 100 });
-      setAttendanceRecords(attendance.items.map(attendanceFromDto));
+      const attendance = await loadAllApiPages((page, pageSize) => posApi.attendance({ page, pageSize }));
+      setAttendanceRecords(attendance.map(attendanceFromDto));
     } else {
       setAttendanceRecords([]);
     }
     if (session.actor.isMaster || session.permissions.includes("CASH_MANAGE")) {
       const [types, expenses] = await Promise.all([
         posApi.expenseTypes(),
-        posApi.expenses({ pageSize: 100 }),
+        loadAllApiPages((page, pageSize) => posApi.expenses({ page, pageSize })),
       ]);
       setExpenseTypes(types.map(expenseTypeFromDto));
-      setCashExpenses(expenses.items.map(expenseFromDto));
+      setCashExpenses(expenses.map(expenseFromDto));
     } else {
       setCashExpenses([]);
     }
     if (session.actor.isMaster || session.permissions.some((permission) => permission === "DASHBOARD_VIEW" || permission === "REPORTS_VIEW")) {
-      const summary = session.actor.isMaster || session.permissions.includes("REPORTS_VIEW")
-        ? await posApi.xReport()
-        : await posApi.dashboard();
+      const canViewReports = session.actor.isMaster || session.permissions.includes("REPORTS_VIEW");
+      const [summary, loadedCompetitions] = await Promise.all([
+        canViewReports ? posApi.xReport() : posApi.dashboard(),
+        canViewReports ? posApi.competitions() : Promise.resolve([]),
+      ]);
       setApiOperationalSummary(summary);
+      setCompetitions(loadedCompetitions.map((competition) => ({
+        id: competition.id,
+        name: competition.name,
+        type: competition.type,
+        active: competition.active,
+        dateFrom: competition.dateFrom,
+        dateTo: competition.dateTo,
+        branch: branches.find((branch) => branch.id === competition.branchId)?.name ?? "Todas",
+        targetAmount: competition.targetAmount === null ? null : Number(competition.targetAmount),
+        productId: competition.itemId,
+        packageProductIds: competition.packageItemIds,
+        createdAtIso: competition.creadoEn,
+      })));
     } else {
       setApiOperationalSummary(null);
+      setCompetitions([]);
     }
     const nextScreens = session.actor.isMaster
       ? (Object.keys(screenMetadata) as ScreenId[])
@@ -2881,7 +3114,7 @@ function App() {
       address:
         branchAddresses[branch] ?? "Dirección pendiente de configurar",
     }));
-    window.localStorage.setItem(terminalLocationStorageKey, branch);
+    if (!posApiEnabled) window.localStorage.setItem(terminalLocationStorageKey, branch);
     return true;
   };
 
@@ -3624,7 +3857,48 @@ function App() {
     return authorized;
   };
 
+  const competitionFromApi = (competition: PosSalesCompetitionDto): SalesCompetition => ({
+    id: competition.id,
+    name: competition.name,
+    type: competition.type,
+    active: competition.active,
+    dateFrom: competition.dateFrom,
+    dateTo: competition.dateTo,
+    branch: apiBranches.find((branch) => branch.id === competition.branchId)?.name ?? "Todas",
+    targetAmount: competition.targetAmount === null ? null : Number(competition.targetAmount),
+    productId: competition.itemId,
+    packageProductIds: competition.packageItemIds,
+    createdAtIso: competition.creadoEn,
+  });
+
+  const competitionToApi = (competition: SalesCompetition) => ({
+    name: competition.name,
+    type: competition.type,
+    active: competition.active,
+    dateFrom: competition.dateFrom,
+    dateTo: competition.dateTo,
+    branchId: apiBranches.find((branch) => branch.name === competition.branch)?.id ?? null,
+    targetAmount: competition.targetAmount === null ? null : competition.targetAmount.toFixed(2),
+    itemId: competition.productId,
+    packageItemIds: competition.packageProductIds,
+  });
+
   const saveCompetition = (competition: SalesCompetition) => {
+    if (posApiEnabled) {
+      const request = competitions.some((candidate) => candidate.id === competition.id)
+        ? posApi.updateCompetition(competition.id, competitionToApi(competition))
+        : posApi.createCompetition(competitionToApi(competition));
+      void request.then((saved) => {
+        const normalized = competitionFromApi(saved);
+        setCompetitions((current) => current.some((candidate) => candidate.id === competition.id)
+          ? current.map((candidate) => candidate.id === competition.id ? normalized : candidate)
+          : [normalized, ...current]);
+        toast.success("Competencia guardada en el servidor.");
+      }).catch((error: unknown) => {
+        toast.error(error instanceof Error ? error.message : "No se pudo guardar la competencia.");
+      });
+      return;
+    }
     setCompetitions((current) =>
       current.some((candidate) => candidate.id === competition.id)
         ? current.map((candidate) =>
@@ -3635,6 +3909,18 @@ function App() {
   };
 
   const toggleCompetition = (competitionId: string) => {
+    if (posApiEnabled) {
+      const competition = competitions.find((candidate) => candidate.id === competitionId);
+      if (!competition) return;
+      const next = { ...competition, active: !competition.active };
+      void posApi.updateCompetition(competitionId, competitionToApi(next)).then((saved) => {
+        const normalized = competitionFromApi(saved);
+        setCompetitions((current) => current.map((candidate) => candidate.id === competitionId ? normalized : candidate));
+      }).catch((error: unknown) => {
+        toast.error(error instanceof Error ? error.message : "No se pudo actualizar la competencia.");
+      });
+      return;
+    }
     setCompetitions((current) =>
       current.map((competition) =>
         competition.id === competitionId
@@ -3645,6 +3931,15 @@ function App() {
   };
 
   const deleteCompetition = (competitionId: string) => {
+    if (posApiEnabled) {
+      void posApi.deleteCompetition(competitionId).then(() => {
+        setCompetitions((current) => current.filter((competition) => competition.id !== competitionId));
+        toast.success("Competencia inactivada en el servidor.");
+      }).catch((error: unknown) => {
+        toast.error(error instanceof Error ? error.message : "No se pudo inactivar la competencia.");
+      });
+      return;
+    }
     setCompetitions((current) =>
       current.filter((competition) => competition.id !== competitionId),
     );
@@ -6865,6 +7160,20 @@ function App() {
   };
 
   const saveExpenseType = (type: ExpenseType) => {
+    if (posApiEnabled) {
+      const existing = expenseTypes.some((item) => item.id === type.id);
+      const request = existing
+        ? posApi.updateExpenseType(type.id, { name: type.name, active: type.active })
+        : posApi.createExpenseType({ name: type.name, active: type.active });
+      void request.then((saved) => {
+        const mapped = expenseTypeFromDto(saved);
+        setExpenseTypes((current) => existing
+          ? current.map((item) => item.id === mapped.id ? mapped : item)
+          : [...current, mapped]);
+        toast.success(existing ? "Tipo de gasto actualizado." : "Tipo de gasto creado.");
+      }).catch((error: unknown) => toast.error(error instanceof Error ? error.message : "No se pudo guardar el tipo de gasto."));
+      return;
+    }
     setExpenseTypes((current) =>
       current.some((item) => item.id === type.id)
         ? current.map((item) => (item.id === type.id ? type : item))
@@ -6873,6 +7182,14 @@ function App() {
   };
 
   const toggleExpenseType = (typeId: string) => {
+    if (posApiEnabled) {
+      const target = expenseTypes.find((type) => type.id === typeId);
+      if (!target) return;
+      void posApi.updateExpenseType(typeId, { name: target.name, active: !target.active }).then((saved) => {
+        setExpenseTypes((current) => current.map((type) => type.id === typeId ? expenseTypeFromDto(saved) : type));
+      }).catch((error: unknown) => toast.error(error instanceof Error ? error.message : "No se pudo cambiar el tipo de gasto."));
+      return;
+    }
     setExpenseTypes((current) => {
       const target = current.find((type) => type.id === typeId);
       const activeCount = current.filter((type) => type.active).length;
@@ -6887,6 +7204,13 @@ function App() {
   };
 
   const deleteExpenseType = (typeId: string) => {
+    if (posApiEnabled) {
+      void posApi.deleteExpenseType(typeId).then(() => {
+        setExpenseTypes((current) => current.filter((type) => type.id !== typeId));
+        toast.success("Tipo de gasto retirado; el historial permanece en el servidor.");
+      }).catch((error: unknown) => toast.error(error instanceof Error ? error.message : "No se pudo retirar el tipo de gasto."));
+      return;
+    }
     const type = expenseTypes.find((item) => item.id === typeId);
     if (!type) return;
     if (cashExpenses.some((expense) => expense.typeId === typeId)) {
@@ -9260,9 +9584,10 @@ function App() {
       <NotificationSettings
         preferences={notificationPreferences}
         sellers={sellers}
-        masterUser={masterUser}
+        masterUser={posApiEnabled && sessionUser ? { ...masterUser, id: sessionUser.id, name: sessionUser.name, initials: sessionUser.initials } : masterUser}
         isMasterCode={isMasterAccessCode}
-        onChange={setNotificationPreferences}
+        onChange={saveNotificationPreferences}
+        apiMode={posApiEnabled}
       />
       <InventoryCatalogSettings
         families={catalogFamilies}
@@ -9408,12 +9733,7 @@ function App() {
                 key={field}
                 type="button"
                 className="setting-row"
-                onClick={() =>
-                  setRequiredFields((current) => ({
-                    ...current,
-                    [field]: !current[field],
-                  }))
-                }
+                onClick={() => toggleRequiredClientField(field)}
                 role="switch"
                 aria-checked={requiredFields[field]}
               >
@@ -10221,6 +10541,32 @@ function App() {
           paymentMethods={paymentMethods}
           branches={operationalBranches}
           receiptSettings={receiptSettings}
+          loadAuthorizedRows={posApiEnabled ? async ({ dateFrom, dateTo, branch }) => {
+            const branchIds = branch
+              ? apiBranches.filter((candidate) => candidate.name === branch).map((candidate) => candidate.id)
+              : apiBranches.map((candidate) => candidate.id);
+            const load = async (key: "SALES_DETAIL" | "MERCHANDISE_MOVEMENTS") => {
+              const rows: Array<Record<string, string | number>> = [];
+              let page = 1;
+              let total = 0;
+              do {
+                const dataset = await posApi.exportDataset(key, { dateFrom, dateTo, branchIds, page, pageSize: 500 });
+                total = dataset.total;
+                rows.push(...dataset.rows.map((row) => Object.fromEntries(Object.entries(row).map(([column, value]) => [
+                  column,
+                  value === null ? "" : typeof value === "boolean" ? String(value) : value,
+                ]))));
+                if (dataset.rows.length === 0) break;
+                page += 1;
+              } while (rows.length < total);
+              return rows;
+            };
+            const [ticketRows, movementRows] = await Promise.all([
+              load("SALES_DETAIL"),
+              load("MERCHANDISE_MOVEMENTS"),
+            ]);
+            return { tickets: ticketRows, movements: movementRows };
+          } : undefined}
         />
 
         <div className="metric-grid x-report-metric-grid">
@@ -11355,6 +11701,37 @@ function App() {
             expenses={cashExpenses}
             expenseTypes={expenseTypes}
             canViewCosts={canViewProductCosts}
+            loadAuthorizedDataset={posApiEnabled ? async (input) => {
+              const branchIds = input.branches.flatMap((name) => {
+                const branch = apiBranches.find((candidate) => candidate.name === name);
+                return branch ? [branch.id] : [];
+              });
+              const rows: Array<Record<string, string | number>> = [];
+              let page = 1;
+              let total = 0;
+              do {
+                const dataset = await posApi.exportDataset(input.key, {
+                  dateFrom: input.dateFrom,
+                  dateTo: input.dateTo,
+                  branchIds,
+                  ...(input.sellerId ? { sellerId: input.sellerId } : {}),
+                  ...(input.paymentMethodId ? { paymentMethodId: input.paymentMethodId } : {}),
+                  ...(input.search ? { search: input.search } : {}),
+                  page,
+                  pageSize: 500,
+                });
+                total = dataset.total;
+                rows.push(...dataset.rows.map((row) => Object.fromEntries(
+                  Object.entries(row).map(([column, value]) => [
+                    column,
+                    value === null ? "" : typeof value === "boolean" ? String(value) : value,
+                  ]),
+                )));
+                if (dataset.rows.length === 0) break;
+                page += 1;
+              } while (rows.length < total);
+              return rows;
+            } : undefined}
           />
         );
       case "cash-manager":
@@ -11797,11 +12174,12 @@ function App() {
             <NotificationBell
               notifications={operationalNotifications}
               preferences={notificationPreferences}
-              masterUser={masterUser}
+              masterUser={posApiEnabled ? { ...masterUser, id: sessionUser.id, name: sessionUser.name, initials: sessionUser.initials } : masterUser}
               sellers={sellers}
               isMasterCode={isMasterAccessCode}
               onMarkRead={markOperationalNotificationRead}
               onMarkAllRead={markAllOperationalNotificationsRead}
+              apiMode={posApiEnabled}
             />
             <div className="header-status">
               <div

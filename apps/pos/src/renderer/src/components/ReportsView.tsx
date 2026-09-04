@@ -112,6 +112,15 @@ interface ReportsViewProps {
   expenses: CashExpense[];
   expenseTypes: ExpenseType[];
   canViewCosts: boolean;
+  loadAuthorizedDataset?: ((input: {
+    key: ReportKey;
+    dateFrom: string;
+    dateTo: string;
+    branches: string[];
+    sellerId?: string;
+    paymentMethodId?: string;
+    search?: string;
+  }) => Promise<DetailRow[]>) | undefined;
 }
 
 const reportGroups: ReportGroup[] = [
@@ -283,6 +292,7 @@ export function ReportsView({
   expenses,
   expenseTypes,
   canViewCosts,
+  loadAuthorizedDataset,
 }: ReportsViewProps) {
   const [activeReport, setActiveReport] =
     useState<ReportKey>("SALES_DETAIL");
@@ -1395,24 +1405,42 @@ export function ReportsView({
 
   const exportFilename = `reporte-${slugify(activeDefinition.label)}-${dateFrom}-${dateTo}`;
 
+  const resolveExportRows = async () => loadAuthorizedDataset
+    ? loadAuthorizedDataset({
+        key: activeReport,
+        dateFrom,
+        dateTo,
+        branches: selectedBranches,
+        ...(sellerId !== "ALL" ? { sellerId } : {}),
+        ...(paymentMethodId !== "ALL" ? { paymentMethodId } : {}),
+        ...(search.trim() ? { search: search.trim() } : {}),
+      })
+    : searchedDetailRows;
+
   const exportExcel = async () => {
     if (!validPeriod) return;
     setExporting("EXCEL");
     try {
+      const exportRows = await resolveExportRows();
+      const exportSummaryRows = summaryExportRows.map((row) =>
+        row.Concepto === "Registros detallados" ? { ...row, Valor: exportRows.length } : row,
+      );
       const XLSX = await import("xlsx");
       const workbook = XLSX.utils.book_new();
-      const summarySheet = XLSX.utils.json_to_sheet(summaryExportRows);
+      const summarySheet = XLSX.utils.json_to_sheet(exportSummaryRows);
       const detailSheet = XLSX.utils.json_to_sheet(
-        searchedDetailRows.length > 0
-          ? searchedDetailRows
+        exportRows.length > 0
+          ? exportRows
           : [{ Resultado: "Sin operaciones para los filtros seleccionados" }],
       );
       if (detailSheet["!ref"])
         detailSheet["!autofilter"] = { ref: detailSheet["!ref"] };
       summarySheet["!cols"] = [{ wch: 26 }, { wch: 36 }];
       detailSheet["!cols"] = detailColumns.map(() => ({ wch: 21 }));
-      detailColumns.forEach((column, columnIndex) => {
-        searchedDetailRows.forEach((_, rowIndex) => {
+      const exportColumns = Object.keys(exportRows[0] ?? {});
+      detailSheet["!cols"] = exportColumns.map(() => ({ wch: 21 }));
+      exportColumns.forEach((column, columnIndex) => {
+        exportRows.forEach((_, rowIndex) => {
           const address = XLSX.utils.encode_cell({
             r: rowIndex + 1,
             c: columnIndex,
@@ -1423,7 +1451,7 @@ export function ReportsView({
           }
         });
       });
-      summaryExportRows.forEach((row, rowIndex) => {
+      exportSummaryRows.forEach((row, rowIndex) => {
         const address = XLSX.utils.encode_cell({ r: rowIndex + 1, c: 1 });
         const cell = summarySheet[address];
         const concept = String(row.Concepto ?? "");
@@ -1449,6 +1477,8 @@ export function ReportsView({
     if (!validPeriod) return;
     setExporting("PDF");
     try {
+      const exportRows = await resolveExportRows();
+      const exportColumns = Object.keys(exportRows[0] ?? {});
       const [{ jsPDF }, { autoTable }] = await Promise.all([
         import("jspdf"),
         import("jspdf-autotable"),
@@ -1482,7 +1512,7 @@ export function ReportsView({
               formatCurrency(averageExpense),
               filteredExpenses.filter((expense) => expense.status === "VOIDED").length,
               formatCurrency(pendingTotal),
-              searchedDetailRows.length,
+              exportRows.length,
             ]
           : [
               formatCurrency(salesTotal),
@@ -1490,7 +1520,7 @@ export function ReportsView({
               formatCurrency(vatTotal),
               ...(canViewCosts ? [formatCurrency(costOfGoods), formatCurrency(grossProfit), percentage(marginRate)] : []),
               formatCurrency(totalSpare),
-              searchedDetailRows.length,
+              exportRows.length,
             ];
       autoTable(doc, {
         startY: 98,
@@ -1503,11 +1533,11 @@ export function ReportsView({
       const tableDoc = doc as typeof doc & { lastAutoTable?: { finalY: number } };
       autoTable(doc, {
         startY: (tableDoc.lastAutoTable?.finalY ?? 135) + 20,
-        head: [detailColumns.length > 0 ? detailColumns : ["Resultado"]],
+        head: [exportColumns.length > 0 ? exportColumns : ["Resultado"]],
         body:
-          searchedDetailRows.length > 0
-            ? searchedDetailRows.map((row) =>
-                detailColumns.map((column) => {
+          exportRows.length > 0
+            ? exportRows.map((row) =>
+                exportColumns.map((column) => {
                   const value = row[column];
                   return typeof value === "number" && isCurrencyColumn(column)
                     ? formatCurrency(value)
@@ -1517,7 +1547,7 @@ export function ReportsView({
             : [["Sin operaciones para los filtros seleccionados"]],
         theme: "grid",
         styles: {
-          fontSize: detailColumns.length > 10 ? 5.2 : 6.3,
+          fontSize: exportColumns.length > 10 ? 5.2 : 6.3,
           cellPadding: 2.8,
           textColor: [42, 36, 31],
           lineColor: [214, 201, 190],
@@ -1596,8 +1626,8 @@ export function ReportsView({
         <div className="reports-catalog-note">
           <ReceiptText size={16} />
           <span>
-            <strong>Reporte mock en tiempo real</strong>
-            <small>Usa los registros vigentes de esta sesión.</small>
+            <strong>{loadAuthorizedDataset ? "Reporte autorizado por servidor" : "Reporte mock en tiempo real"}</strong>
+            <small>{loadAuthorizedDataset ? "Exporta únicamente el alcance y columnas permitidos." : "Usa los registros vigentes de esta sesión."}</small>
           </span>
         </div>
       </aside>

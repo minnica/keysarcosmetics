@@ -12,6 +12,7 @@ import {
   createInventoryLedgerMovement,
   money,
 } from "./pos-inventory";
+import { enqueuePosNotification } from "./pos-notifications";
 
 export class PosTicketError extends Error {
   constructor(
@@ -1140,6 +1141,16 @@ export async function createTicket(
     });
   }
   ticket = (await findTicket(tx, ticket.id))!;
+  await enqueuePosNotification(tx, {
+    kind: "SALE_COMPLETED",
+    title: `Venta finalizada · ${ticket.folio}`,
+    message: `${ticket.customerNameSnapshot ?? "Público general"} · ${ticket.total.toFixed(2)} MXN`,
+    branchId: ticket.branchId,
+    audiencePermission: "SALE_VIEW_ALL",
+    createdByCredentialId: context.credentialId,
+    sourceType: "PosTicket",
+    sourceId: ticket.id,
+  });
   return ticket;
 }
 

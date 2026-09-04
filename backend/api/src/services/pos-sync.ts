@@ -24,6 +24,7 @@ import {
   verifyPosOfflineGrant,
 } from "./pos-auth";
 import { executePosIdempotent } from "./pos-inventory";
+import { enqueuePosNotification } from "./pos-notifications";
 import {
   businessDayDto,
   businessDayInclude,
@@ -600,7 +601,7 @@ async function executeBusinessDayOperation(
           },
           include: businessDayInclude,
         });
-        await registerAttendanceIfMissing(tx, {
+        const attendance = await registerAttendanceIfMissing(tx, {
           businessDayId: day.id,
           businessDate: context.businessDate,
           branchId: context.branchId,
@@ -608,6 +609,18 @@ async function executeBusinessDayOperation(
           credentialId: context.credentialId,
           terminalId: context.terminalId,
         });
+        if (attendance) {
+          await enqueuePosNotification(tx, {
+            kind: "CLOCK_IN",
+            title: `Clock In · ${actor.grant.displayName}`,
+            message: `Entrada conciliada en ${context.businessDate}`,
+            branchId: context.branchId,
+            audiencePermission: "BUSINESS_DAY_OPEN",
+            createdByCredentialId: context.credentialId,
+            sourceType: "PosAttendance",
+            sourceId: attendance.id,
+          });
+        }
         return { status: 201, message: "Jornada offline conciliada", data: businessDayDto(day) };
       }
       if (!operation.entityId) throw new PosSyncError("La operación no indica jornada");
@@ -704,6 +717,16 @@ async function executeBusinessDayOperation(
           targetId: day.id,
           metadata: closeSummary,
         },
+      });
+      await enqueuePosNotification(tx, {
+        kind: "CLOSE_DAY",
+        title: `Cierre de día · ${day.businessDate.toISOString().slice(0, 10)}`,
+        message: `${closeSummary.ticketCount} tickets · cobrado ${closeSummary.collectedTotal} MXN · gastos ${closeSummary.expenseTotal} MXN`,
+        branchId: day.branchId,
+        audiencePermission: "BUSINESS_DAY_CLOSE",
+        createdByCredentialId: context.credentialId,
+        sourceType: "PosBusinessDay",
+        sourceId: day.id,
       });
       return { status: 200, message: "Jornada offline conciliada y cerrada", data: businessDayDto(updated) };
     },

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Bell,
   BellRing,
@@ -149,6 +149,7 @@ interface NotificationBellProps {
   isMasterCode: (code: string) => boolean;
   onMarkRead: (notificationId: string, userId: string) => void;
   onMarkAllRead: (userId: string) => void;
+  apiMode?: boolean;
 }
 
 export function NotificationBell({
@@ -159,6 +160,7 @@ export function NotificationBell({
   isMasterCode,
   onMarkRead,
   onMarkAllRead,
+  apiMode = false,
 }: NotificationBellProps) {
   const [open, setOpen] = useState(false);
   const [authorizedUserId, setAuthorizedUserId] = useState<string | null>(null);
@@ -169,6 +171,9 @@ export function NotificationBell({
     masterUser,
     ...sellers.filter((seller) => seller.active),
   ];
+  useEffect(() => {
+    if (apiMode) setAuthorizedUserId(masterUser.id);
+  }, [apiMode, masterUser.id]);
   const authorizedUser = users.find((user) => user.id === authorizedUserId) ?? null;
   const masterViewer = authorizedUserId === masterUser.id;
   const permittedSellerIds = new Set(
@@ -203,6 +208,7 @@ export function NotificationBell({
   ).length : 0;
 
   const authorizeViewer = () => {
+    if (apiMode) return;
     const code = accessCode.trim();
     if (isMasterCode(code)) {
       setAuthorizedUserId(masterUser.id);
@@ -231,7 +237,7 @@ export function NotificationBell({
   };
 
   const lockViewer = () => {
-    setAuthorizedUserId(null);
+    if (!apiMode) setAuthorizedUserId(null);
     setAccessCode("");
     setOpen(false);
     setModuleFilter("ALL");
@@ -398,6 +404,7 @@ interface NotificationSettingsProps {
   masterUser: NotificationUser;
   isMasterCode: (code: string) => boolean;
   onChange: (preferences: OperationalNotificationPreference[]) => void;
+  apiMode?: boolean;
 }
 
 export function NotificationSettings({
@@ -406,8 +413,10 @@ export function NotificationSettings({
   masterUser,
   isMasterCode,
   onChange,
+  apiMode = false,
 }: NotificationSettingsProps) {
   const [authorized, setAuthorized] = useState(false);
+  const canEdit = apiMode || authorized;
   const [accessCode, setAccessCode] = useState("");
   const [recipientDrafts, setRecipientDrafts] = useState<
     Partial<Record<OperationalNotificationType, string>>
@@ -501,7 +510,7 @@ export function NotificationSettings({
           <BellRing size={24} />
         </div>
 
-        {!authorized ? (
+        {!canEdit ? (
           <div className="notification-settings-lock">
             <span><LockKeyhole size={19} /></span>
             <div>

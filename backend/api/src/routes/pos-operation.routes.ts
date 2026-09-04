@@ -45,6 +45,7 @@ import {
   nextCashExpenseFolio,
   registerAttendanceIfMissing,
 } from "../services/pos-operations";
+import { enqueuePosNotification } from "../services/pos-notifications";
 
 const router: ExpressRouter = Router();
 const decimal = (value: string | number | Prisma.Decimal) => new Prisma.Decimal(value);
@@ -356,6 +357,16 @@ router.post(
             metadata: closeSummary,
           },
         });
+        await enqueuePosNotification(tx, {
+          kind: "CLOSE_DAY",
+          title: `Cierre de día · ${day.businessDate.toISOString().slice(0, 10)}`,
+          message: `${closeSummary.ticketCount} tickets · cobrado ${closeSummary.collectedTotal} MXN · gastos ${closeSummary.expenseTotal} MXN`,
+          branchId: day.branchId,
+          audiencePermission: "BUSINESS_DAY_CLOSE",
+          createdByCredentialId: req.posUser!.credentialId,
+          sourceType: "PosBusinessDay",
+          sourceId: day.id,
+        });
         return { status: 200, message: "Jornada cerrada de forma inmutable", data: businessDayDto(updated) };
       },
     }));
@@ -407,6 +418,16 @@ router.post("/attendance/clock-in", requirePosPermission("BUSINESS_DAY_OPEN"), a
         terminalId: req.posUser!.terminalId,
       });
       if (!attendance) throw new PosOperationError("La credencial no pertenece a un vendedor", 409);
+      await enqueuePosNotification(tx, {
+        kind: "CLOCK_IN",
+        title: `Clock In · ${credential.employee.nombreCompleto}`,
+        message: `Entrada registrada en ${date}`,
+        branchId: req.posUser!.branchId,
+        audiencePermission: "BUSINESS_DAY_OPEN",
+        createdByCredentialId: credential.id,
+        sourceType: "PosAttendance",
+        sourceId: attendance.id,
+      });
       return { status: 201, message: "Entrada registrada", data: attendanceDto(attendance) };
     },
   }));
@@ -524,6 +545,16 @@ router.post("/expenses", requirePosPermission("CASH_MANAGE"), asyncRoute(async (
           snapshot: expenseSnapshot(expense),
         },
       });
+      await enqueuePosNotification(tx, {
+        kind: "CASH_EXPENSE",
+        title: `Gasto registrado · ${expense.folio}`,
+        message: `${expense.expenseTypeSnapshot} · ${expense.amount.toFixed(2)} MXN`,
+        branchId: expense.branchId,
+        audiencePermission: "CASH_MANAGE",
+        createdByCredentialId: req.posUser!.credentialId,
+        sourceType: "PosCashExpense",
+        sourceId: expense.id,
+      });
       return { status: 201, message: "Gasto registrado", data: cashExpenseDto(expense) };
     },
   }));
@@ -595,8 +626,9 @@ router.post("/expenses/:id/void", requirePosPermission("CASH_MANAGE"), asyncRout
 async function operationalSummary(req: Request) {
   const parsed = z.object({ businessDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), branchId: z.string().min(1).optional() }).strict().parse(req.query);
   const date = parsed.businessDate ?? currentBusinessDate();
-  const isExecutive = req.posUser!.isMaster || req.posUser!.permissions.includes("REPORTS_VIEW");
-  const branchId = isExecutive ? parsed.branchId ?? null : req.posUser!.branchId;
+  // REPORTS_VIEW autoriza el módulo, pero sólo una identidad master puede
+  // ampliar el alcance más allá de la sucursal fija de la terminal.
+  const branchId = req.posUser!.isMaster ? parsed.branchId ?? null : req.posUser!.branchId;
   const dateValue = new Date(`${date}T00:00:00.000Z`);
   const branchWhere = branchId ? { branchId } : {};
   const [days, tickets, operations, movements, cashMovements, attendances] = await Promise.all([
