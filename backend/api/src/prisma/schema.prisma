@@ -64,6 +64,10 @@ model Usuario {
   schedulerBlocksCreated                  SchedulerScheduleBlock[]           @relation("SchedulerBlockCreatedBy")
   schedulerBlocksCanceled                 SchedulerScheduleBlock[]           @relation("SchedulerBlockCanceledBy")
   schedulerIdempotencyKeys                SchedulerIdempotencyKey[]
+  schedulerCommissionVersionsCreated      SchedulerCommissionPolicyVersion[] @relation("SchedulerCommissionVersionCreatedBy")
+  schedulerSettings                       SchedulerSetting[]                 @relation("SchedulerSettingUserScope")
+  schedulerSettingsUpdated                SchedulerSetting[]                 @relation("SchedulerSettingUpdatedBy")
+  schedulerSettingVersionsCreated         SchedulerSettingVersion[]          @relation("SchedulerSettingVersionCreatedBy")
 }
 
 model Sucursal {
@@ -659,6 +663,12 @@ model SchedulerCommerce {
   specialties              SchedulerSpecialty[]
   groups                   SchedulerProfessionalGroup[]
   customerFieldDefinitions SchedulerCustomerFieldDefinition[]
+  packageProfiles          SchedulerPackageProfile[]
+  addonProfiles            SchedulerAddonProfile[]
+  commissionPolicies       SchedulerCommissionPolicy[]
+  giftCardTemplates        SchedulerGiftCardTemplate[]
+  statusColors             SchedulerStatusColor[]
+  settings                 SchedulerSetting[]
   creadoEn                 DateTime                           @default(now())
   actualizadoEn            DateTime                           @updatedAt
 
@@ -687,6 +697,9 @@ model SchedulerBranchProfile {
   availabilityExceptions  SchedulerAvailabilityException[]
   appointments            SchedulerAppointment[]
   scheduleBlocks          SchedulerScheduleBlock[]
+  packageAssignments      SchedulerPackageBranchAssignment[]
+  classSchedules          SchedulerClassSchedule[]
+  settings                SchedulerSetting[]
   creadoEn                DateTime                                 @default(now())
   actualizadoEn           DateTime                                 @updatedAt
 
@@ -713,6 +726,8 @@ model SchedulerProfessionalProfile {
   availabilityExceptions  SchedulerAvailabilityException[]
   appointmentParticipants SchedulerAppointmentParticipant[]
   scheduleBlocks          SchedulerScheduleBlock[]
+  classSchedules          SchedulerClassSchedule[]
+  commissionPolicies      SchedulerCommissionPolicy[]
   creadoEn                DateTime                                 @default(now())
   actualizadoEn           DateTime                                 @updatedAt
 
@@ -755,6 +770,10 @@ model SchedulerServiceProfile {
   professionalAssignments SchedulerProfessionalServiceAssignment[]
   resourceRequirements    SchedulerServiceResourceRequirement[]
   appointmentServices     SchedulerAppointmentService[]
+  packageLines            SchedulerPackageServiceLine[]
+  addonAssignments        SchedulerServiceAddonAssignment[]
+  classSchedules          SchedulerClassSchedule[]
+  giftCardServices        SchedulerGiftCardService[]
   creadoEn                DateTime                                 @default(now())
   actualizadoEn           DateTime                                 @updatedAt
 
@@ -1283,6 +1302,303 @@ model SchedulerCustomerMergeEvent {
   @@index([actorUserId, creadoEn])
 }
 
+// ─── Scheduler: administración y configuración persistente ──────────────────────────
+
+enum SchedulerCommissionTargetType {
+  DEFAULT
+  PROFESSIONAL
+  CATALOG_ITEM
+}
+
+enum SchedulerCommissionMode {
+  APPOINTMENT
+  ATTENDED_APPOINTMENT
+  SALES_PERCENTAGE
+  BRANCH_SALES_TIER
+}
+
+enum SchedulerCommissionPeriod {
+  DAY
+  WEEK
+  FORTNIGHT
+  MONTH
+}
+
+enum SchedulerGiftCardType {
+  SERVICE
+  AMOUNT
+}
+
+enum SchedulerGiftCardStatus {
+  DRAFT
+  ACTIVE
+  INACTIVE
+}
+
+enum SchedulerSettingScope {
+  COMMERCE
+  BRANCH
+  USER
+}
+
+model SchedulerPackageProfile {
+  id                String                             @id @default(cuid())
+  posPackageId      String                             @unique
+  posPackage        PosPackage                         @relation(fields: [posPackageId], references: [id], onDelete: Restrict)
+  commerceId        String
+  commerce          SchedulerCommerce                  @relation(fields: [commerceId], references: [id], onDelete: Restrict)
+  acceptsOnline     Boolean                            @default(false)
+  simultaneous      Boolean                            @default(false)
+  sessions          Int                                @default(1)
+  active            Boolean                            @default(true)
+  effectiveFrom     DateTime                           @default(now())
+  effectiveTo       DateTime?
+  deactivatedAt     DateTime?
+  version           Int                                @default(1)
+  branchAssignments SchedulerPackageBranchAssignment[]
+  serviceLines      SchedulerPackageServiceLine[]
+  creadoEn          DateTime                           @default(now())
+  actualizadoEn     DateTime                           @updatedAt
+
+  @@index([commerceId, active])
+}
+
+model SchedulerPackageBranchAssignment {
+  id               String                  @id @default(cuid())
+  packageProfileId String
+  packageProfile   SchedulerPackageProfile @relation(fields: [packageProfileId], references: [id], onDelete: Cascade)
+  branchProfileId  String
+  branchProfile    SchedulerBranchProfile  @relation(fields: [branchProfileId], references: [id], onDelete: Restrict)
+  creadoEn         DateTime                @default(now())
+
+  @@unique([packageProfileId, branchProfileId])
+  @@index([branchProfileId])
+}
+
+model SchedulerPackageServiceLine {
+  id               String                  @id @default(cuid())
+  packageProfileId String
+  packageProfile   SchedulerPackageProfile @relation(fields: [packageProfileId], references: [id], onDelete: Cascade)
+  serviceProfileId String
+  serviceProfile   SchedulerServiceProfile @relation(fields: [serviceProfileId], references: [id], onDelete: Restrict)
+  quantity         Int                     @default(1)
+  priceOverride    Decimal?                @db.Decimal(14, 2)
+  sortOrder        Int                     @default(0)
+  creadoEn         DateTime                @default(now())
+
+  @@unique([packageProfileId, serviceProfileId])
+  @@index([serviceProfileId])
+}
+
+model SchedulerAddonProfile {
+  id                 String                            @id @default(cuid())
+  catalogItemId      String                            @unique
+  catalogItem        CatalogItem                       @relation(fields: [catalogItemId], references: [id], onDelete: Restrict)
+  commerceId         String
+  commerce           SchedulerCommerce                 @relation(fields: [commerceId], references: [id], onDelete: Restrict)
+  durationMinutes    Int                               @default(0)
+  active             Boolean                           @default(true)
+  effectiveFrom      DateTime                          @default(now())
+  effectiveTo        DateTime?
+  deactivatedAt      DateTime?
+  version            Int                               @default(1)
+  serviceAssignments SchedulerServiceAddonAssignment[]
+  creadoEn           DateTime                          @default(now())
+  actualizadoEn      DateTime                          @updatedAt
+
+  @@index([commerceId, active])
+}
+
+model SchedulerServiceAddonAssignment {
+  id               String                  @id @default(cuid())
+  serviceProfileId String
+  serviceProfile   SchedulerServiceProfile @relation(fields: [serviceProfileId], references: [id], onDelete: Restrict)
+  addonProfileId   String
+  addonProfile     SchedulerAddonProfile   @relation(fields: [addonProfileId], references: [id], onDelete: Cascade)
+  active           Boolean                 @default(true)
+  sortOrder        Int                     @default(0)
+  creadoEn         DateTime                @default(now())
+  actualizadoEn    DateTime                @updatedAt
+
+  @@unique([serviceProfileId, addonProfileId])
+  @@index([addonProfileId, active])
+}
+
+model SchedulerClassSchedule {
+  id                    String                       @id @default(cuid())
+  serviceProfileId      String
+  serviceProfile        SchedulerServiceProfile      @relation(fields: [serviceProfileId], references: [id], onDelete: Restrict)
+  branchProfileId       String
+  branchProfile         SchedulerBranchProfile       @relation(fields: [branchProfileId], references: [id], onDelete: Restrict)
+  professionalProfileId String
+  professionalProfile   SchedulerProfessionalProfile @relation(fields: [professionalProfileId], references: [id], onDelete: Restrict)
+  weekday               SchedulerWeekday
+  startMinute           Int
+  endMinute             Int
+  capacity              Int
+  active                Boolean                      @default(true)
+  effectiveFrom         DateTime                     @default(now())
+  effectiveTo           DateTime?
+  deactivatedAt         DateTime?
+  creadoEn              DateTime                     @default(now())
+  actualizadoEn         DateTime                     @updatedAt
+
+  @@index([serviceProfileId, branchProfileId, weekday, active])
+  @@index([professionalProfileId, weekday, active])
+}
+
+model SchedulerCommissionPolicy {
+  id                    String                             @id @default(cuid())
+  commerceId            String
+  commerce              SchedulerCommerce                  @relation(fields: [commerceId], references: [id], onDelete: Restrict)
+  identityKey           String                             @unique @db.VarChar(240)
+  targetType            SchedulerCommissionTargetType
+  professionalProfileId String?
+  professionalProfile   SchedulerProfessionalProfile?      @relation(fields: [professionalProfileId], references: [id], onDelete: Restrict)
+  catalogItemId         String?
+  catalogItem           CatalogItem?                       @relation(fields: [catalogItemId], references: [id], onDelete: Restrict)
+  active                Boolean                            @default(true)
+  currentVersion        Int                                @default(1)
+  versions              SchedulerCommissionPolicyVersion[]
+  creadoEn              DateTime                           @default(now())
+  actualizadoEn         DateTime                           @updatedAt
+
+  @@index([commerceId, active])
+  @@index([professionalProfileId])
+  @@index([catalogItemId])
+}
+
+model SchedulerCommissionPolicyVersion {
+  id              String                    @id @default(uuid()) @db.Uuid
+  policyId        String
+  policy          SchedulerCommissionPolicy @relation(fields: [policyId], references: [id], onDelete: Restrict)
+  version         Int
+  period          SchedulerCommissionPeriod
+  active          Boolean                   @default(true)
+  effectiveFrom   DateTime                  @default(now())
+  effectiveTo     DateTime?
+  createdByUserId String
+  createdByUser   Usuario                   @relation("SchedulerCommissionVersionCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  rules           SchedulerCommissionRule[]
+  creadoEn        DateTime                  @default(now())
+
+  @@unique([policyId, version])
+  @@index([policyId, effectiveFrom, effectiveTo])
+}
+
+model SchedulerCommissionRule {
+  id              String                           @id @default(uuid()) @db.Uuid
+  policyVersionId String                           @db.Uuid
+  policyVersion   SchedulerCommissionPolicyVersion @relation(fields: [policyVersionId], references: [id], onDelete: Cascade)
+  mode            SchedulerCommissionMode
+  amount          Decimal?                         @db.Decimal(14, 2)
+  percentage      Decimal?                         @db.Decimal(7, 4)
+  sortOrder       Int                              @default(0)
+  tiers           SchedulerCommissionTier[]
+  creadoEn        DateTime                         @default(now())
+
+  @@unique([policyVersionId, mode])
+}
+
+model SchedulerCommissionTier {
+  id               String                  @id @default(uuid()) @db.Uuid
+  commissionRuleId String                  @db.Uuid
+  commissionRule   SchedulerCommissionRule @relation(fields: [commissionRuleId], references: [id], onDelete: Cascade)
+  fromAmount       Decimal                 @db.Decimal(14, 2)
+  toAmount         Decimal?                @db.Decimal(14, 2)
+  percentage       Decimal                 @db.Decimal(7, 4)
+  sortOrder        Int
+  creadoEn         DateTime                @default(now())
+
+  @@unique([commissionRuleId, sortOrder])
+}
+
+model SchedulerGiftCardTemplate {
+  id             String                     @id @default(cuid())
+  commerceId     String
+  commerce       SchedulerCommerce          @relation(fields: [commerceId], references: [id], onDelete: Restrict)
+  name           String                     @db.VarChar(160)
+  normalizedName String                     @db.VarChar(180)
+  type           SchedulerGiftCardType
+  amount         Decimal?                   @db.Decimal(14, 2)
+  salePrice      Decimal                    @db.Decimal(14, 2)
+  validityDays   Int
+  description    String?
+  designKey      String                     @db.VarChar(120)
+  status         SchedulerGiftCardStatus    @default(DRAFT)
+  version        Int                        @default(1)
+  services       SchedulerGiftCardService[]
+  creadoEn       DateTime                   @default(now())
+  actualizadoEn  DateTime                   @updatedAt
+
+  @@unique([commerceId, normalizedName])
+  @@index([commerceId, status])
+}
+
+model SchedulerGiftCardService {
+  id               String                    @id @default(cuid())
+  giftCardId       String
+  giftCard         SchedulerGiftCardTemplate @relation(fields: [giftCardId], references: [id], onDelete: Cascade)
+  serviceProfileId String
+  serviceProfile   SchedulerServiceProfile   @relation(fields: [serviceProfileId], references: [id], onDelete: Restrict)
+  creadoEn         DateTime                  @default(now())
+
+  @@unique([giftCardId, serviceProfileId])
+  @@index([serviceProfileId])
+}
+
+model SchedulerStatusColor {
+  id            String                     @id @default(cuid())
+  commerceId    String
+  commerce      SchedulerCommerce          @relation(fields: [commerceId], references: [id], onDelete: Restrict)
+  status        SchedulerAppointmentStatus
+  color         String                     @db.VarChar(7)
+  version       Int                        @default(1)
+  creadoEn      DateTime                   @default(now())
+  actualizadoEn DateTime                   @updatedAt
+
+  @@unique([commerceId, status])
+}
+
+model SchedulerSetting {
+  id               String                    @id @default(cuid())
+  scope            SchedulerSettingScope
+  scopeReferenceId String                    @db.VarChar(191)
+  commerceId       String?
+  commerce         SchedulerCommerce?        @relation(fields: [commerceId], references: [id], onDelete: Restrict)
+  branchProfileId  String?
+  branchProfile    SchedulerBranchProfile?   @relation(fields: [branchProfileId], references: [id], onDelete: Restrict)
+  userId           String?
+  user             Usuario?                  @relation("SchedulerSettingUserScope", fields: [userId], references: [id], onDelete: Cascade)
+  section          String                    @db.VarChar(80)
+  document         Json
+  version          Int                       @default(1)
+  updatedByUserId  String
+  updatedByUser    Usuario                   @relation("SchedulerSettingUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: Restrict)
+  versions         SchedulerSettingVersion[]
+  creadoEn         DateTime                  @default(now())
+  actualizadoEn    DateTime                  @updatedAt
+
+  @@unique([scope, scopeReferenceId, section])
+  @@index([commerceId, section])
+  @@index([branchProfileId, section])
+  @@index([userId, section])
+}
+
+model SchedulerSettingVersion {
+  id              String           @id @default(uuid()) @db.Uuid
+  settingId       String
+  setting         SchedulerSetting @relation(fields: [settingId], references: [id], onDelete: Restrict)
+  version         Int
+  document        Json
+  createdByUserId String
+  createdByUser   Usuario          @relation("SchedulerSettingVersionCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  creadoEn        DateTime         @default(now())
+
+  @@unique([settingId, version])
+  @@index([settingId, creadoEn])
+}
+
 // ─── Módulo POS: catálogo, clientes, configuración y activos ─────────────────────
 
 enum CatalogItemKind {
@@ -1386,45 +1702,47 @@ model CatalogTaxonomy {
 }
 
 model CatalogItem {
-  id                       String                         @id @default(cuid())
-  sku                      String                         @unique @db.VarChar(96)
-  name                     String                         @db.VarChar(240)
-  normalizedName           String                         @db.VarChar(260)
-  kind                     CatalogItemKind
-  familyId                 String?
-  family                   CatalogTaxonomy?               @relation("CatalogItemFamily", fields: [familyId], references: [id], onDelete: Restrict)
-  categoryId               String?
-  category                 CatalogTaxonomy?               @relation("CatalogItemCategory", fields: [categoryId], references: [id], onDelete: Restrict)
-  description              String?
-  benefits                 CatalogItemBenefit[]
-  published                Boolean                        @default(false)
-  active                   Boolean                        @default(true)
-  deletedAt                DateTime?
-  listPrice                Decimal                        @default(0) @db.Decimal(14, 2)
-  minimumPrice             Decimal                        @default(0) @db.Decimal(14, 2)
-  unitCost                 Decimal                        @default(0) @db.Decimal(14, 2)
-  taxRate                  Decimal                        @default(0) @db.Decimal(8, 2)
-  supplierId               String?
-  supplier                 PosSupplier?                   @relation(fields: [supplierId], references: [id], onDelete: Restrict)
-  assets                   CatalogAsset[]
-  branchVisibility         CatalogItemBranchVisibility[]
-  priceHistory             CatalogItemPrice[]
-  priceListLines           PosPriceListLine[]
-  packageLines             PosPackageLine[]
-  inventoryBalances        InventoryBalance[]
-  inventoryMovementLines   InventoryMovementLine[]
-  inventoryAdjustmentLines InventoryAdjustmentBatchLine[]
-  inventoryCountLines      InventoryCountLine[]
-  warehouseRequestLines    WarehouseRequestLine[]
-  posTicketLines           PosTicketLine[]
-  posAppointments          PosAppointment[]
-  posOwedProducts          PosOwedProduct[]
-  posDeliveryLines         PosOwedProductDeliveryLine[]
-  membershipTerms          PosMembershipTerms[]
-  clientMemberships        PosClientMembership[]
-  schedulerServiceProfile  SchedulerServiceProfile?
-  creadoEn                 DateTime                       @default(now())
-  actualizadoEn            DateTime                       @updatedAt
+  id                          String                         @id @default(cuid())
+  sku                         String                         @unique @db.VarChar(96)
+  name                        String                         @db.VarChar(240)
+  normalizedName              String                         @db.VarChar(260)
+  kind                        CatalogItemKind
+  familyId                    String?
+  family                      CatalogTaxonomy?               @relation("CatalogItemFamily", fields: [familyId], references: [id], onDelete: Restrict)
+  categoryId                  String?
+  category                    CatalogTaxonomy?               @relation("CatalogItemCategory", fields: [categoryId], references: [id], onDelete: Restrict)
+  description                 String?
+  benefits                    CatalogItemBenefit[]
+  published                   Boolean                        @default(false)
+  active                      Boolean                        @default(true)
+  deletedAt                   DateTime?
+  listPrice                   Decimal                        @default(0) @db.Decimal(14, 2)
+  minimumPrice                Decimal                        @default(0) @db.Decimal(14, 2)
+  unitCost                    Decimal                        @default(0) @db.Decimal(14, 2)
+  taxRate                     Decimal                        @default(0) @db.Decimal(8, 2)
+  supplierId                  String?
+  supplier                    PosSupplier?                   @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  assets                      CatalogAsset[]
+  branchVisibility            CatalogItemBranchVisibility[]
+  priceHistory                CatalogItemPrice[]
+  priceListLines              PosPriceListLine[]
+  packageLines                PosPackageLine[]
+  inventoryBalances           InventoryBalance[]
+  inventoryMovementLines      InventoryMovementLine[]
+  inventoryAdjustmentLines    InventoryAdjustmentBatchLine[]
+  inventoryCountLines         InventoryCountLine[]
+  warehouseRequestLines       WarehouseRequestLine[]
+  posTicketLines              PosTicketLine[]
+  posAppointments             PosAppointment[]
+  posOwedProducts             PosOwedProduct[]
+  posDeliveryLines            PosOwedProductDeliveryLine[]
+  membershipTerms             PosMembershipTerms[]
+  clientMemberships           PosClientMembership[]
+  schedulerServiceProfile     SchedulerServiceProfile?
+  schedulerAddonProfile       SchedulerAddonProfile?
+  schedulerCommissionPolicies SchedulerCommissionPolicy[]
+  creadoEn                    DateTime                       @default(now())
+  actualizadoEn               DateTime                       @updatedAt
 
   @@index([active, published, kind])
   @@index([familyId, categoryId])
@@ -1919,19 +2237,20 @@ model PriceListCustomerAssignment {
 }
 
 model PosPackage {
-  id            String           @id @default(cuid())
-  name          String           @db.VarChar(160)
-  sku           String           @unique @db.VarChar(96)
-  description   String?
-  price         Decimal          @db.Decimal(14, 2)
-  status        PosPackageStatus @default(DRAFT)
-  startsAt      DateTime?
-  endsAt        DateTime?
-  lines         PosPackageLine[]
-  deletedAt     DateTime?
-  creadoEn      DateTime         @default(now())
-  actualizadoEn DateTime         @updatedAt
-  ticketLines   PosTicketLine[]
+  id               String                   @id @default(cuid())
+  name             String                   @db.VarChar(160)
+  sku              String                   @unique @db.VarChar(96)
+  description      String?
+  price            Decimal                  @db.Decimal(14, 2)
+  status           PosPackageStatus         @default(DRAFT)
+  startsAt         DateTime?
+  endsAt           DateTime?
+  lines            PosPackageLine[]
+  deletedAt        DateTime?
+  creadoEn         DateTime                 @default(now())
+  actualizadoEn    DateTime                 @updatedAt
+  ticketLines      PosTicketLine[]
+  schedulerProfile SchedulerPackageProfile?
 
   @@index([status, startsAt, endsAt])
 }

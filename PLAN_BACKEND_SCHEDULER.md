@@ -50,7 +50,7 @@ El desarrollo debe cubrir la aplicación completa, no solamente un MVP. La ejecu
 - El esquema canónico está en `backend/api/prisma/schema.prisma`.
 - Existe una copia en `backend/api/src/prisma/schema.prisma`; ambas eran idénticas durante este análisis.
 - Prisma validó correctamente.
-- El análisis inicial encontró 36 directorios; después de las Fases 1 a 4 el repositorio contiene 40 migraciones versionadas.
+- El análisis inicial encontró 36 directorios; después de las Fases 1 a 4 y la Fase 6 el repositorio contiene 41 migraciones versionadas. La Fase 5 no requirió migración.
 - El type-check y el build del API pasaron.
 - Las 84 pruebas unitarias encontradas para el API pasaron.
 - El type-check, las pruebas actuales y el build de Scheduler pasaron. El build mostró advertencias no bloqueantes relacionadas con imágenes y dependencias de hooks.
@@ -409,6 +409,8 @@ Evidencia disponible:
 
 ### Fase 6 — Administración completa y configuraciones
 
+**Estado de implementación (4 de septiembre de 2026):** completada en repositorio; migración, provisión y pruebas HTTP/PostgreSQL 16 pendientes de los gates de Fase 0. La conexión de todos los paneles administrativos y de configuración continúa en Fase 9.
+
 Objetivo: persistir los módulos administrativos que hoy están simulados en Scheduler.
 
 Entregables:
@@ -422,6 +424,17 @@ Entregables:
 - Preferencias puramente visuales, como altura de fila, pueden permanecer locales si no afectan reglas de negocio.
 
 Criterio de salida: la administración completa sobrevive recargas, respeta permisos y no almacena secretos en el cliente.
+
+Evidencia disponible:
+
+- `20260904100000_add_scheduler_administration` es exclusivamente aditiva y agrega perfiles de paquetes POS, complementos, horarios de clases, políticas/versiones/reglas de comisión, plantillas de gift card, colores de estado y configuraciones versionadas. No importa mocks, no crea seeds ni modifica datos operativos; ambos schemas Prisma permanecen sincronizados.
+- Paquetes reutilizan `PosPackage`; complementos reutilizan `CatalogItem`. `/api/scheduler/administration/pos-references` expone métodos de pago, políticas y configuración de tickets de POS en sólo lectura, sin duplicar autoridad comercial.
+- `/api/scheduler/administration/catalog`, `/packages*`, `/addons*`, `/classes/*/schedules`, `/commission-policies`, `/gift-cards*`, `/status-colors*` y `/settings*` aplican permisos por pantalla, sucursales materializadas, auditoría y control optimista. Las mutaciones globales exigen acceso a todo el comercio para no sobrescribir sucursales ajenas.
+- Las clases sólo pueden reservarse en horarios persistidos para el servicio/profesional/sucursal; la capacidad efectiva respeta el límite del horario y una franja no configurada produce `CLASS_NOT_SCHEDULED`.
+- Cada cambio de comisión crea una versión con reglas inmutables y niveles continuos; Scheduler no crea pagos ni movimientos y declara a Nómina como autoridad final.
+- La configuración efectiva mezcla `COMMERCE → BRANCH → USER` dentro del comercio y devuelve las capas/versiones aplicadas. El backend limita cada documento a 64 KiB y rechaza en cualquier profundidad claves que parezcan secretos, tokens, contraseñas, credenciales o llaves privadas; la altura visual de slots permanece local.
+- Los colores requieren autorización secundaria `STATUS_COLORS_CHANGE` ligada al comercio y se consumen dentro de la transacción. Las gift cards son plantillas administrativas: emisión, saldo y redención financiera no se simulan ni adelantan.
+- El cierre local valida schemas, contratos compartidos, lint/type-check/build del API, 121 pruebas unitarias en 23 archivos y lint/type-check/build de Scheduler. Las advertencias ya conocidas de imágenes/hooks permanecen no bloqueantes. La reconstrucción, integración HTTP y concurrencia real sobre PostgreSQL desechable continúan como puertas obligatorias antes de desplegar. Runbook: `docs/SCHEDULER_PHASE_6_ADMINISTRATION.md`.
 
 ### Fase 7 — Mensajería, documentos, expediente médico y encuestas
 

@@ -70,6 +70,21 @@ const EXPECTED_TABLES = [
   "SchedulerAppointmentStateHistory",
   "SchedulerScheduleBlock",
   "SchedulerIdempotencyKey",
+  "SchedulerPackageProfile",
+  "SchedulerPackageBranchAssignment",
+  "SchedulerPackageServiceLine",
+  "SchedulerAddonProfile",
+  "SchedulerServiceAddonAssignment",
+  "SchedulerClassSchedule",
+  "SchedulerCommissionPolicy",
+  "SchedulerCommissionPolicyVersion",
+  "SchedulerCommissionRule",
+  "SchedulerCommissionTier",
+  "SchedulerGiftCardTemplate",
+  "SchedulerGiftCardService",
+  "SchedulerStatusColor",
+  "SchedulerSetting",
+  "SchedulerSettingVersion",
 ] as const;
 
 type ExpectedTable = (typeof EXPECTED_TABLES)[number];

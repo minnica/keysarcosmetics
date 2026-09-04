@@ -33,8 +33,9 @@ export class SchedulerAppointmentError extends Error {
   constructor(
     message: string,
     readonly status = 400,
-    readonly code: SchedulerAvailabilityConflictCode | string =
-      "INVALID_APPOINTMENT",
+    readonly code:
+      | SchedulerAvailabilityConflictCode
+      | string = "INVALID_APPOINTMENT",
     readonly details?: Record<string, unknown>,
   ) {
     super(message);
@@ -56,6 +57,46 @@ export interface AvailabilityExceptionLike {
   date: string;
   startMinute: number | null;
   endMinute: number | null;
+}
+
+export interface SchedulerClassScheduleLike {
+  serviceProfileId: string;
+  professionalProfileId: string;
+  weekday: SchedulerWeekday;
+  startMinute: number;
+  endMinute: number;
+  capacity: number;
+  effectiveFrom: Date;
+  effectiveTo: Date | null;
+}
+
+export function schedulerClassCapacity(input: {
+  schedules: SchedulerClassScheduleLike[];
+  serviceProfileId: string;
+  professionalProfileIds: string[];
+  weekday: SchedulerWeekday;
+  startMinute: number;
+  endMinute: number;
+  defaultCapacity: number;
+  at: Date;
+}): number | null {
+  const matches = input.professionalProfileIds.map((professionalProfileId) =>
+    input.schedules.find(
+      (schedule) =>
+        schedule.serviceProfileId === input.serviceProfileId &&
+        schedule.professionalProfileId === professionalProfileId &&
+        schedule.weekday === input.weekday &&
+        schedule.startMinute === input.startMinute &&
+        schedule.endMinute === input.endMinute &&
+        schedule.effectiveFrom <= input.at &&
+        (!schedule.effectiveTo || schedule.effectiveTo > input.at),
+    ),
+  );
+  if (matches.length === 0 || matches.some((match) => !match)) return null;
+  return Math.min(
+    input.defaultCapacity,
+    ...matches.map((match) => match!.capacity),
+  );
 }
 
 export function schedulerIntervalsOverlap(
@@ -168,7 +209,9 @@ export function schedulerLocalMinuteToUtc(
   timezone: string,
 ): Date {
   if (!Number.isInteger(minute) || minute < 0 || minute > 1440) {
-    throw new SchedulerAppointmentError("El minuto local debe estar entre 0 y 1440");
+    throw new SchedulerAppointmentError(
+      "El minuto local debe estar entre 0 y 1440",
+    );
   }
   schedulerWeekday(date);
   const base = new Date(`${date}T00:00:00.000Z`);
@@ -295,7 +338,8 @@ export function intersectSchedulerWindows(
     for (const second of right) {
       const startMinute = Math.max(first.startMinute, second.startMinute);
       const endMinute = Math.min(first.endMinute, second.endMinute);
-      if (startMinute < endMinute) intersections.push({ startMinute, endMinute });
+      if (startMinute < endMinute)
+        intersections.push({ startMinute, endMinute });
     }
   }
   return mergeIntervals(intersections);
@@ -315,7 +359,8 @@ export function resolveSchedulerDailyWindows(input: {
   const breaks = dailyRules
     .filter((rule) => rule.kind === "BREAK")
     .map(({ startMinute, endMinute }) => ({ startMinute, endMinute }));
-  let windows = working.length > 0 ? mergeIntervals(working) : [...(input.inherited ?? [])];
+  let windows =
+    working.length > 0 ? mergeIntervals(working) : [...(input.inherited ?? [])];
   windows = subtractIntervals(windows, breaks);
 
   const dailyExceptions = input.exceptions.filter(
@@ -333,7 +378,8 @@ export function resolveSchedulerDailyWindows(input: {
       startMinute: exception.startMinute ?? 0,
       endMinute: exception.endMinute ?? 1440,
     }));
-  if (available.length > 0) windows = mergeIntervals([...windows, ...available]);
+  if (available.length > 0)
+    windows = mergeIntervals([...windows, ...available]);
   return subtractIntervals(windows, unavailable);
 }
 
@@ -353,7 +399,11 @@ export function schedulerMembershipAllowsService(
   serviceProfileId: string,
   catalogItemId: string,
 ): boolean {
-  if (!conditions || typeof conditions !== "object" || Array.isArray(conditions)) {
+  if (
+    !conditions ||
+    typeof conditions !== "object" ||
+    Array.isArray(conditions)
+  ) {
     return true;
   }
   const record = conditions as Record<string, unknown>;

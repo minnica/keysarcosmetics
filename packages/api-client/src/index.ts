@@ -125,6 +125,18 @@ import type {
   SchedulerAvailabilityRequestDto,
   SchedulerScheduleBlockDto,
   SchedulerScheduleBlockWriteDto,
+  SchedulerAdministrationCatalogDto,
+  SchedulerAddonProfileWriteDto,
+  SchedulerClassSchedulesWriteDto,
+  SchedulerCommissionPolicyWriteDto,
+  SchedulerGiftCardTemplateWriteDto,
+  SchedulerPackageProfileWriteDto,
+  SchedulerPosReferencesDto,
+  SchedulerResolvedSettingDto,
+  SchedulerSettingSection,
+  SchedulerSettingWriteDto,
+  SchedulerStatusColorDto,
+  SchedulerStatusColorsWriteDto,
 } from "@cosmetics/types";
 
 /**
@@ -331,6 +343,42 @@ export interface SchedulerApiClient {
     id: string,
     input: { expectedVersion: number; reason: string },
   ): Promise<SchedulerScheduleBlockDto>;
+  administrationCatalog(): Promise<SchedulerAdministrationCatalogDto>;
+  updatePackageProfile(
+    posPackageId: string,
+    input: SchedulerPackageProfileWriteDto,
+  ): Promise<{ id: string; version: number }>;
+  updateAddonProfile(
+    catalogItemId: string,
+    input: SchedulerAddonProfileWriteDto,
+  ): Promise<{ id: string; version: number }>;
+  replaceClassSchedules(
+    serviceProfileId: string,
+    input: SchedulerClassSchedulesWriteDto,
+  ): Promise<{ ids: string[] }>;
+  updateCommissionPolicy(
+    input: SchedulerCommissionPolicyWriteDto,
+  ): Promise<{ id: string; version: number }>;
+  createGiftCard(
+    input: SchedulerGiftCardTemplateWriteDto,
+  ): Promise<{ id: string; version: number }>;
+  updateGiftCard(
+    id: string,
+    input: SchedulerGiftCardTemplateWriteDto,
+  ): Promise<{ id: string; version: number }>;
+  updateStatusColors(
+    commerceId: string,
+    input: SchedulerStatusColorsWriteDto,
+  ): Promise<SchedulerStatusColorDto[]>;
+  resolvedSetting(
+    section: SchedulerSettingSection,
+    input: { commerceId: string; branchProfileId?: string },
+  ): Promise<SchedulerResolvedSettingDto>;
+  updateSetting(
+    section: SchedulerSettingSection,
+    input: SchedulerSettingWriteDto,
+  ): Promise<{ id: string; version: number }>;
+  posReferences(branchId?: string): Promise<SchedulerPosReferencesDto>;
   logout(): void;
 }
 
@@ -568,6 +616,69 @@ export function createSchedulerApiClient(
     cancelScheduleBlock: (id, input) =>
       data<SchedulerScheduleBlockDto>(
         client.post(`/api/scheduler/blocks/${id}/cancel`, input),
+      ),
+    administrationCatalog: () =>
+      data<SchedulerAdministrationCatalogDto>(
+        client.get("/api/scheduler/administration/catalog"),
+      ),
+    updatePackageProfile: (posPackageId, input) =>
+      data<{ id: string; version: number }>(
+        client.put(
+          `/api/scheduler/administration/packages/${posPackageId}`,
+          input,
+        ),
+      ),
+    updateAddonProfile: (catalogItemId, input) =>
+      data<{ id: string; version: number }>(
+        client.put(
+          `/api/scheduler/administration/addons/${catalogItemId}`,
+          input,
+        ),
+      ),
+    replaceClassSchedules: (serviceProfileId, input) =>
+      data<{ ids: string[] }>(
+        client.put(
+          `/api/scheduler/administration/classes/${serviceProfileId}/schedules`,
+          input,
+        ),
+      ),
+    updateCommissionPolicy: (input) =>
+      data<{ id: string; version: number }>(
+        client.put("/api/scheduler/administration/commission-policies", input),
+      ),
+    createGiftCard: (input) =>
+      data<{ id: string; version: number }>(
+        client.post("/api/scheduler/administration/gift-cards", input),
+      ),
+    updateGiftCard: (id, input) =>
+      data<{ id: string; version: number }>(
+        client.put(`/api/scheduler/administration/gift-cards/${id}`, input),
+      ),
+    updateStatusColors: (commerceId, input) =>
+      data<SchedulerStatusColorDto[]>(
+        client.put(
+          `/api/scheduler/administration/status-colors/${commerceId}`,
+          input,
+        ),
+      ),
+    resolvedSetting: (section, input) =>
+      data<SchedulerResolvedSettingDto>(
+        client.get(
+          `/api/scheduler/administration/settings/${section}/resolved`,
+          {
+            params: input,
+          },
+        ),
+      ),
+    updateSetting: (section, input) =>
+      data<{ id: string; version: number }>(
+        client.put(`/api/scheduler/administration/settings/${section}`, input),
+      ),
+    posReferences: (branchId) =>
+      data<SchedulerPosReferencesDto>(
+        client.get("/api/scheduler/administration/pos-references", {
+          params: branchId ? { branchId } : undefined,
+        }),
       ),
     logout: () => setAccessToken(null),
   };

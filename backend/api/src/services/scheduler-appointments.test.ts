@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   assertSchedulerStatusTransition,
   resolveSchedulerDailyWindows,
+  schedulerClassCapacity,
   schedulerIntervalsOverlap,
   schedulerLocalDateKey,
   schedulerLocalMinuteToUtc,
@@ -11,6 +12,45 @@ import {
 } from "./scheduler-appointments";
 
 describe("Scheduler appointment engine", () => {
+  it("only offers classes at a persisted schedule and applies its capacity", () => {
+    const schedules = [
+      {
+        serviceProfileId: "class-1",
+        professionalProfileId: "professional-1",
+        weekday: "MONDAY" as const,
+        startMinute: 600,
+        endMinute: 660,
+        capacity: 6,
+        effectiveFrom: new Date("2026-01-01T00:00:00.000Z"),
+        effectiveTo: null,
+      },
+    ];
+    expect(
+      schedulerClassCapacity({
+        schedules,
+        serviceProfileId: "class-1",
+        professionalProfileIds: ["professional-1"],
+        weekday: "MONDAY",
+        startMinute: 600,
+        endMinute: 660,
+        defaultCapacity: 10,
+        at: new Date("2026-09-07T16:00:00.000Z"),
+      }),
+    ).toBe(6);
+    expect(
+      schedulerClassCapacity({
+        schedules,
+        serviceProfileId: "class-1",
+        professionalProfileIds: ["professional-1"],
+        weekday: "MONDAY",
+        startMinute: 615,
+        endMinute: 675,
+        defaultCapacity: 10,
+        at: new Date("2026-09-07T16:15:00.000Z"),
+      }),
+    ).toBeNull();
+  });
+
   it("keeps local dates and minutes stable in the configured IANA timezone", () => {
     const instant = schedulerLocalMinuteToUtc(
       "2026-09-04",
@@ -22,11 +62,7 @@ describe("Scheduler appointment engine", () => {
       "2026-09-04",
     );
     expect(() =>
-      schedulerLocalMinuteToUtc(
-        "2026-03-08",
-        2 * 60 + 30,
-        "America/New_York",
-      ),
+      schedulerLocalMinuteToUtc("2026-03-08", 2 * 60 + 30, "America/New_York"),
     ).toThrow("no existe");
   });
 

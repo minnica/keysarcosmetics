@@ -25,11 +25,13 @@ import {
   parseSchedulerInstant,
   resolveSchedulerDailyWindows,
   schedulerIntervalsOverlap,
+  schedulerClassCapacity,
   schedulerLocalDateKey,
   schedulerLocalDateRangeUtc,
   schedulerLocalMinute,
   schedulerLocalMinuteToUtc,
   schedulerMembershipAllowsService,
+  schedulerWeekday,
   schedulerWindowContains,
   SchedulerAppointmentError,
   SCHEDULER_OCCUPYING_STATUSES,
@@ -97,7 +99,8 @@ const cancelSchema = z
     reason: z.string().trim().min(3).max(500),
   })
   .strict();
-const blockBaseSchema = z.object({
+const blockBaseSchema = z
+  .object({
     branchId: identifier,
     professionalProfileId: identifier.nullable().optional(),
     resourceId: identifier.nullable().optional(),
@@ -105,21 +108,24 @@ const blockBaseSchema = z.object({
     endsAt: instant,
     reason: z.string().trim().min(3).max(500),
     expectedVersion: z.number().int().positive().optional(),
-  }).strict();
+  })
+  .strict();
 const validateBlockOwners = (
   value: z.infer<typeof blockBaseSchema>,
   context: z.RefinementCtx,
 ) => {
-    if (value.professionalProfileId && value.resourceId) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Un bloqueo sólo puede pertenecer a un profesional o recurso",
-      });
-    }
-  };
+  if (value.professionalProfileId && value.resourceId) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Un bloqueo sólo puede pertenecer a un profesional o recurso",
+    });
+  }
+};
 
 const appointmentInclude = {
-  branchProfile: { include: { branch: { select: { id: true, nombre: true } } } },
+  branchProfile: {
+    include: { branch: { select: { id: true, nombre: true } } },
+  },
   customer: { select: { id: true, displayName: true } },
   services: {
     orderBy: { sequence: "asc" as const },
@@ -235,7 +241,11 @@ function activeAt(
   row: { active: boolean; effectiveFrom: Date; effectiveTo: Date | null },
   at: Date,
 ): boolean {
-  return row.active && row.effectiveFrom <= at && (!row.effectiveTo || row.effectiveTo > at);
+  return (
+    row.active &&
+    row.effectiveFrom <= at &&
+    (!row.effectiveTo || row.effectiveTo > at)
+  );
 }
 
 function uniqueIds(values: string[]): string[] {
@@ -336,19 +346,29 @@ export async function materializeServices(input: {
   services: SchedulerAppointmentServiceWriteDto[];
   selfProfessionalEmployeeId: string | null;
 }): Promise<MaterializedService[]> {
-  const serviceIds = uniqueIds(input.services.map((service) => service.serviceProfileId));
+  const serviceIds = uniqueIds(
+    input.services.map((service) => service.serviceProfileId),
+  );
   if (serviceIds.length !== input.services.length) {
-    throw new SchedulerAppointmentError("Cada servicio sólo puede aparecer una vez por cita");
+    throw new SchedulerAppointmentError(
+      "Cada servicio sólo puede aparecer una vez por cita",
+    );
   }
   const profiles = await input.tx.schedulerServiceProfile.findMany({
     where: { id: { in: serviceIds } },
     include: {
-      catalogItem: { select: { id: true, name: true, active: true, kind: true } },
+      catalogItem: {
+        select: { id: true, name: true, active: true, kind: true },
+      },
       branchAssignments: true,
       professionalAssignments: {
         include: {
           professionalProfile: {
-            include: { employee: { select: { id: true, nombreCompleto: true, activo: true } } },
+            include: {
+              employee: {
+                select: { id: true, nombreCompleto: true, activo: true },
+              },
+            },
           },
         },
       },
@@ -370,7 +390,8 @@ export async function materializeServices(input: {
       !activeAt(profile, startsAt) ||
       !profile.branchAssignments.some(
         (assignment) =>
-          assignment.branchProfileId === input.branchProfileId && activeAt(assignment, startsAt),
+          assignment.branchProfileId === input.branchProfileId &&
+          activeAt(assignment, startsAt),
       )
     ) {
       throw new SchedulerAppointmentError(
@@ -382,7 +403,9 @@ export async function materializeServices(input: {
     }
     const professionalIds = uniqueIds(requested.professionalProfileIds);
     if (professionalIds.length !== requested.professionalProfileIds.length) {
-      throw new SchedulerAppointmentError("Un especialista no puede repetirse dentro del servicio");
+      throw new SchedulerAppointmentError(
+        "Un especialista no puede repetirse dentro del servicio",
+      );
     }
     const professionals = professionalIds.map((professionalId) => {
       const assignment = profile.professionalAssignments.find(
@@ -403,9 +426,13 @@ export async function materializeServices(input: {
       }
       if (
         input.selfProfessionalEmployeeId &&
-        assignment.professionalProfile.employeeId !== input.selfProfessionalEmployeeId
+        assignment.professionalProfile.employeeId !==
+          input.selfProfessionalEmployeeId
       ) {
-        throw new SchedulerAppointmentError("La sesión sólo puede operar la agenda profesional propia", 403);
+        throw new SchedulerAppointmentError(
+          "La sesión sólo puede operar la agenda profesional propia",
+          403,
+        );
       }
       return {
         id: assignment.professionalProfileId,
@@ -416,12 +443,16 @@ export async function materializeServices(input: {
     const activeRequirements = profile.resourceRequirements.filter(
       (requirement) => activeAt(requirement, startsAt),
     );
-    const requiredResourceIds = activeRequirements.map((requirement) => requirement.resourceId).sort();
+    const requiredResourceIds = activeRequirements
+      .map((requirement) => requirement.resourceId)
+      .sort();
     if (requested.resourceIds) {
       const supplied = uniqueIds(requested.resourceIds).sort();
       if (
         supplied.length !== requiredResourceIds.length ||
-        supplied.some((resourceId, index) => resourceId !== requiredResourceIds[index])
+        supplied.some(
+          (resourceId, index) => resourceId !== requiredResourceIds[index],
+        )
       ) {
         throw new SchedulerAppointmentError(
           "Los recursos se derivan de la configuración vigente del servicio",
@@ -454,14 +485,26 @@ export async function materializeServices(input: {
     });
     const capacityUnits = requested.capacityUnits ?? 1;
     if (profile.mode === "INDIVIDUAL" && capacityUnits !== 1) {
-      throw new SchedulerAppointmentError("Un servicio individual ocupa exactamente un lugar");
+      throw new SchedulerAppointmentError(
+        "Un servicio individual ocupa exactamente un lugar",
+      );
     }
     if (capacityUnits > profile.capacity) {
-      throw new SchedulerAppointmentError("La capacidad solicitada excede la del servicio", 409, "SERVICE_CAPACITY_EXHAUSTED");
+      throw new SchedulerAppointmentError(
+        "La capacidad solicitada excede la del servicio",
+        409,
+        "SERVICE_CAPACITY_EXHAUSTED",
+      );
     }
-    const endsAt = new Date(startsAt.getTime() + profile.durationMinutes * 60_000);
-    const occupiesFrom = new Date(startsAt.getTime() - profile.preparationMinutes * 60_000);
-    const occupiesUntil = new Date(endsAt.getTime() + profile.cleanupMinutes * 60_000);
+    const endsAt = new Date(
+      startsAt.getTime() + profile.durationMinutes * 60_000,
+    );
+    const occupiesFrom = new Date(
+      startsAt.getTime() - profile.preparationMinutes * 60_000,
+    );
+    const occupiesUntil = new Date(
+      endsAt.getTime() + profile.cleanupMinutes * 60_000,
+    );
     result.push({
       serviceProfileId: profile.id,
       serviceName: profile.catalogItem.name,
@@ -506,7 +549,9 @@ export async function assertMemberships(
   excludeAppointmentId?: string,
 ) {
   const grouped = new Map<string, MaterializedService[]>();
-  for (const service of services.filter((candidate) => candidate.membershipId)) {
+  for (const service of services.filter(
+    (candidate) => candidate.membershipId,
+  )) {
     const membershipId = service.membershipId!;
     grouped.set(membershipId, [...(grouped.get(membershipId) ?? []), service]);
   }
@@ -523,7 +568,11 @@ export async function assertMemberships(
         membershipId,
         status: { in: ["RESERVED", "CONSUMED"] },
         ...(excludeAppointmentId
-          ? { appointmentService: { appointmentId: { not: excludeAppointmentId } } }
+          ? {
+              appointmentService: {
+                appointmentId: { not: excludeAppointmentId },
+              },
+            }
           : {}),
       },
     });
@@ -557,6 +606,16 @@ export async function assertMemberships(
 
 interface ScheduleConstraints {
   localDate: string;
+  classSchedules: Array<{
+    serviceProfileId: string;
+    professionalProfileId: string;
+    weekday: AvailabilityRuleLike["weekday"];
+    startMinute: number;
+    endMinute: number;
+    capacity: number;
+    effectiveFrom: Date;
+    effectiveTo: Date | null;
+  }>;
   rules: Array<{
     professionalProfileId: string | null;
     resourceId: string | null;
@@ -604,72 +663,100 @@ async function loadScheduleConstraints(input: {
   latest: Date;
   professionalIds: string[];
   resourceIds: string[];
+  serviceIds: string[];
   excludeAppointmentId?: string;
 }): Promise<ScheduleConstraints> {
-  const [rules, exceptions, blocks, existing] = await Promise.all([
-    input.tx.schedulerAvailabilityRule.findMany({
-      where: {
-        branchProfileId: input.branchProfileId,
-        active: true,
-        effectiveFrom: { lte: input.latest },
-        AND: [
-          {
-            OR: [
-              { effectiveTo: null },
-              { effectiveTo: { gt: input.earliest } },
-            ],
-          },
-          {
-            OR: [
-              { professionalProfileId: null, resourceId: null },
-              { professionalProfileId: { in: input.professionalIds } },
-              { resourceId: { in: input.resourceIds } },
-            ],
-          },
-        ],
-      },
-    }),
-    input.tx.schedulerAvailabilityException.findMany({
-      where: {
-        branchProfileId: input.branchProfileId,
-        active: true,
-        date: new Date(`${input.localDate}T00:00:00.000Z`),
-        effectiveFrom: { lte: input.latest },
-        OR: [
-          { effectiveTo: null },
-          { effectiveTo: { gt: input.earliest } },
-        ],
-      },
-    }),
-    input.tx.schedulerScheduleBlock.findMany({
-      where: {
-        branchProfileId: input.branchProfileId,
-        status: "ACTIVE",
-        startsAt: { lt: input.latest },
-        endsAt: { gt: input.earliest },
-      },
-      select: {
-        id: true,
-        professionalProfileId: true,
-        resourceId: true,
-        startsAt: true,
-        endsAt: true,
-      },
-    }),
-    input.tx.schedulerAppointmentService.findMany({
-      where: {
-        occupiesFrom: { lt: input.latest },
-        occupiesUntil: { gt: input.earliest },
-        appointment: {
+  const [rules, exceptions, blocks, existing, classSchedules] =
+    await Promise.all([
+      input.tx.schedulerAvailabilityRule.findMany({
+        where: {
           branchProfileId: input.branchProfileId,
-          status: { in: SCHEDULER_OCCUPYING_STATUSES },
-          ...(input.excludeAppointmentId ? { id: { not: input.excludeAppointmentId } } : {}),
+          active: true,
+          effectiveFrom: { lte: input.latest },
+          AND: [
+            {
+              OR: [
+                { effectiveTo: null },
+                { effectiveTo: { gt: input.earliest } },
+              ],
+            },
+            {
+              OR: [
+                { professionalProfileId: null, resourceId: null },
+                { professionalProfileId: { in: input.professionalIds } },
+                { resourceId: { in: input.resourceIds } },
+              ],
+            },
+          ],
         },
-      },
-      include: { participants: true, resources: true },
-    }),
-  ]);
-  return { localDate: input.localDate, rules, exceptions, blocks, existing };
+      }),
+      input.tx.schedulerAvailabilityException.findMany({
+        where: {
+          branchProfileId: input.branchProfileId,
+          active: true,
+          date: new Date(`${input.localDate}T00:00:00.000Z`),
+          effectiveFrom: { lte: input.latest },
+          OR: [{ effectiveTo: null }, { effectiveTo: { gt: input.earliest } }],
+        },
+      }),
+      input.tx.schedulerScheduleBlock.findMany({
+        where: {
+          branchProfileId: input.branchProfileId,
+          status: "ACTIVE",
+          startsAt: { lt: input.latest },
+          endsAt: { gt: input.earliest },
+        },
+        select: {
+          id: true,
+          professionalProfileId: true,
+          resourceId: true,
+          startsAt: true,
+          endsAt: true,
+        },
+      }),
+      input.tx.schedulerAppointmentService.findMany({
+        where: {
+          occupiesFrom: { lt: input.latest },
+          occupiesUntil: { gt: input.earliest },
+          appointment: {
+            branchProfileId: input.branchProfileId,
+            status: { in: SCHEDULER_OCCUPYING_STATUSES },
+            ...(input.excludeAppointmentId
+              ? { id: { not: input.excludeAppointmentId } }
+              : {}),
+          },
+        },
+        include: { participants: true, resources: true },
+      }),
+      input.tx.schedulerClassSchedule.findMany({
+        where: {
+          branchProfileId: input.branchProfileId,
+          serviceProfileId: { in: input.serviceIds },
+          professionalProfileId: { in: input.professionalIds },
+          active: true,
+          effectiveFrom: { lte: input.latest },
+          OR: [{ effectiveTo: null }, { effectiveTo: { gt: input.earliest } }],
+        },
+        select: {
+          serviceProfileId: true,
+          professionalProfileId: true,
+          weekday: true,
+          startMinute: true,
+          endMinute: true,
+          capacity: true,
+          effectiveFrom: true,
+          effectiveTo: true,
+        },
+      }),
+    ]);
+  return {
+    localDate: input.localDate,
+    rules,
+    exceptions,
+    blocks,
+    existing,
+    classSchedules,
+  };
 }
 
 function assertScheduleWithConstraints(input: {
@@ -678,7 +765,8 @@ function assertScheduleWithConstraints(input: {
   constraints: ScheduleConstraints;
   allowOverride: boolean;
 }) {
-  const { localDate, rules, exceptions, blocks, existing } = input.constraints;
+  const { localDate, rules, exceptions, blocks, existing, classSchedules } =
+    input.constraints;
   const occupiedServices = [...existing];
   const ownerRules = (
     professionalProfileId: string | null,
@@ -719,16 +807,62 @@ function assertScheduleWithConstraints(input: {
   });
 
   for (const service of input.services) {
-    const startMinute = schedulerLocalMinute(service.occupiesFrom, input.timezone);
+    if (service.mode === "CLASS") {
+      const classStartMinute = schedulerLocalMinute(
+        service.startsAt,
+        input.timezone,
+      );
+      const classEndMinute =
+        schedulerLocalDateKey(service.endsAt, input.timezone) === localDate
+          ? schedulerLocalMinute(service.endsAt, input.timezone)
+          : 1440;
+      const weekday = schedulerWeekday(localDate);
+      const configuredCapacity = schedulerClassCapacity({
+        schedules: classSchedules,
+        serviceProfileId: service.serviceProfileId,
+        professionalProfileIds: service.professionals.map(
+          (professional) => professional.id,
+        ),
+        weekday,
+        startMinute: classStartMinute,
+        endMinute: classEndMinute,
+        defaultCapacity: service.serviceCapacity,
+        at: service.startsAt,
+      });
+      if (configuredCapacity == null) {
+        if (!input.allowOverride) {
+          throw new SchedulerAppointmentError(
+            "La clase no está programada con ese profesional y horario",
+            409,
+            "CLASS_NOT_SCHEDULED",
+            { serviceProfileId: service.serviceProfileId },
+          );
+        }
+      } else {
+        service.serviceCapacity = configuredCapacity;
+      }
+    }
+    const startMinute = schedulerLocalMinute(
+      service.occupiesFrom,
+      input.timezone,
+    );
     const endMinute =
       schedulerLocalDateKey(service.occupiesUntil, input.timezone) === localDate
         ? schedulerLocalMinute(service.occupiesUntil, input.timezone)
         : 1440;
-    const fail = (message: string, code: string, details?: Record<string, unknown>) => {
-      if (!input.allowOverride) throw new SchedulerAppointmentError(message, 409, code, details);
+    const fail = (
+      message: string,
+      code: string,
+      details?: Record<string, unknown>,
+    ) => {
+      if (!input.allowOverride)
+        throw new SchedulerAppointmentError(message, 409, code, details);
     };
     if (!schedulerWindowContains(branchWindows, startMinute, endMinute)) {
-      fail("El horario solicitado queda fuera de la jornada de la sucursal", "BRANCH_CLOSED");
+      fail(
+        "El horario solicitado queda fuera de la jornada de la sucursal",
+        "BRANCH_CLOSED",
+      );
     }
     for (const professional of service.professionals) {
       const windows = resolveSchedulerDailyWindows({
@@ -738,9 +872,13 @@ function assertScheduleWithConstraints(input: {
         inherited: branchWindows,
       });
       if (!schedulerWindowContains(windows, startMinute, endMinute)) {
-        fail("El especialista no está disponible en ese horario", "PROFESSIONAL_UNAVAILABLE", {
-          professionalProfileId: professional.id,
-        });
+        fail(
+          "El especialista no está disponible en ese horario",
+          "PROFESSIONAL_UNAVAILABLE",
+          {
+            professionalProfileId: professional.id,
+          },
+        );
       }
     }
     for (const resource of service.resources) {
@@ -751,29 +889,54 @@ function assertScheduleWithConstraints(input: {
         inherited: branchWindows,
       });
       if (!schedulerWindowContains(windows, startMinute, endMinute)) {
-        fail("Un recurso requerido no está disponible en ese horario", "RESOURCE_UNAVAILABLE", {
-          resourceId: resource.id,
-        });
+        fail(
+          "Un recurso requerido no está disponible en ese horario",
+          "RESOURCE_UNAVAILABLE",
+          {
+            resourceId: resource.id,
+          },
+        );
       }
     }
     const matchingBlocks = blocks.filter(
       (block) =>
-        schedulerIntervalsOverlap(service.occupiesFrom, service.occupiesUntil, block.startsAt, block.endsAt) &&
+        schedulerIntervalsOverlap(
+          service.occupiesFrom,
+          service.occupiesUntil,
+          block.startsAt,
+          block.endsAt,
+        ) &&
         ((!block.professionalProfileId && !block.resourceId) ||
-          (block.professionalProfileId && service.professionals.some((item) => item.id === block.professionalProfileId)) ||
-          (block.resourceId && service.resources.some((item) => item.id === block.resourceId))),
+          (block.professionalProfileId &&
+            service.professionals.some(
+              (item) => item.id === block.professionalProfileId,
+            )) ||
+          (block.resourceId &&
+            service.resources.some((item) => item.id === block.resourceId))),
     );
     if (matchingBlocks.length > 0) {
-      fail("El horario solicitado contiene un bloqueo administrativo", "SCHEDULE_BLOCKED", {
-        blockIds: matchingBlocks.map((block) => block.id),
-      });
+      fail(
+        "El horario solicitado contiene un bloqueo administrativo",
+        "SCHEDULE_BLOCKED",
+        {
+          blockIds: matchingBlocks.map((block) => block.id),
+        },
+      );
     }
     const overlaps = occupiedServices.filter((candidate) =>
-      schedulerIntervalsOverlap(service.occupiesFrom, service.occupiesUntil, candidate.occupiesFrom, candidate.occupiesUntil),
+      schedulerIntervalsOverlap(
+        service.occupiesFrom,
+        service.occupiesUntil,
+        candidate.occupiesFrom,
+        candidate.occupiesUntil,
+      ),
     );
     for (const professional of service.professionals) {
       const professionalConflicts = overlaps.filter((candidate) =>
-        candidate.participants.some((participant) => participant.professionalProfileId === professional.id),
+        candidate.participants.some(
+          (participant) =>
+            participant.professionalProfileId === professional.id,
+        ),
       );
       const compatibleClass = professionalConflicts.every(
         (candidate) =>
@@ -782,13 +945,19 @@ function assertScheduleWithConstraints(input: {
           candidate.startsAt.getTime() === service.startsAt.getTime() &&
           candidate.endsAt.getTime() === service.endsAt.getTime(),
       );
-      const usedCapacity = professionalConflicts.reduce((total, candidate) => total + candidate.capacityUnits, 0);
+      const usedCapacity = professionalConflicts.reduce(
+        (total, candidate) => total + candidate.capacityUnits,
+        0,
+      );
       if (
         professionalConflicts.length > 0 &&
-        (!compatibleClass || usedCapacity + service.capacityUnits > service.serviceCapacity)
+        (!compatibleClass ||
+          usedCapacity + service.capacityUnits > service.serviceCapacity)
       ) {
         fail(
-          compatibleClass ? "Se agotó la capacidad simultánea del servicio" : "El especialista ya tiene una cita en ese horario",
+          compatibleClass
+            ? "Se agotó la capacidad simultánea del servicio"
+            : "El especialista ya tiene una cita en ese horario",
           compatibleClass ? "SERVICE_CAPACITY_EXHAUSTED" : "PROFESSIONAL_BUSY",
           { professionalProfileId: professional.id },
         );
@@ -796,14 +965,23 @@ function assertScheduleWithConstraints(input: {
     }
     for (const resource of service.resources) {
       const allocations = overlaps.flatMap((candidate) =>
-        candidate.resources.filter((allocation) => allocation.resourceId === resource.id),
+        candidate.resources.filter(
+          (allocation) => allocation.resourceId === resource.id,
+        ),
       );
-      const units = allocations.reduce((total, allocation) => total + allocation.units, 0);
+      const units = allocations.reduce(
+        (total, allocation) => total + allocation.units,
+        0,
+      );
       if (
         allocations.length > 0 &&
-        (resource.exclusive || allocations.some((allocation) => allocation.exclusiveSnapshot) || units + resource.units > resource.capacity)
+        (resource.exclusive ||
+          allocations.some((allocation) => allocation.exclusiveSnapshot) ||
+          units + resource.units > resource.capacity)
       ) {
-        fail("Se agotó la capacidad del recurso requerido", "RESOURCE_BUSY", { resourceId: resource.id });
+        fail("Se agotó la capacidad del recurso requerido", "RESOURCE_BUSY", {
+          resourceId: resource.id,
+        });
       }
     }
     occupiedServices.push({
@@ -834,10 +1012,14 @@ export async function assertScheduleAvailable(input: {
   allowOverride: boolean;
 }) {
   const earliest = new Date(
-    Math.min(...input.services.map((service) => service.occupiesFrom.getTime())),
+    Math.min(
+      ...input.services.map((service) => service.occupiesFrom.getTime()),
+    ),
   );
   const latest = new Date(
-    Math.max(...input.services.map((service) => service.occupiesUntil.getTime())),
+    Math.max(
+      ...input.services.map((service) => service.occupiesUntil.getTime()),
+    ),
   );
   const localDates = uniqueIds(
     input.services.flatMap((service) => [
@@ -871,6 +1053,9 @@ export async function assertScheduleAvailable(input: {
         service.resources.map((resource) => resource.id),
       ),
     ),
+    serviceIds: uniqueIds(
+      input.services.map((service) => service.serviceProfileId),
+    ),
     excludeAppointmentId: input.excludeAppointmentId,
   });
   assertScheduleWithConstraints({
@@ -881,7 +1066,11 @@ export async function assertScheduleAvailable(input: {
   });
 }
 
-export async function lockSchedule(tx: Tx, branchProfileId: string, services: MaterializedService[]) {
+export async function lockSchedule(
+  tx: Tx,
+  branchProfileId: string,
+  services: MaterializedService[],
+) {
   const keys = uniqueIds(
     services.flatMap((service) => {
       const dateBuckets = uniqueIds([
@@ -921,22 +1110,38 @@ async function consumeOverride(
     tx,
   });
   if (!authorization) {
-    throw new SchedulerAppointmentError("La autorización de excepción es inválida o venció", 403, "INVALID_OVERRIDE_AUTHORIZATION");
+    throw new SchedulerAppointmentError(
+      "La autorización de excepción es inválida o venció",
+      403,
+      "INVALID_OVERRIDE_AUTHORIZATION",
+    );
   }
   // La autorización se consume antes del commit de la cita por diseño; un intento fallido no puede reutilizarla.
 }
 
-export async function replaceAppointmentServices(tx: Tx, appointmentId: string, services: MaterializedService[]) {
+export async function replaceAppointmentServices(
+  tx: Tx,
+  appointmentId: string,
+  services: MaterializedService[],
+) {
   const existingServices = await tx.schedulerAppointmentService.findMany({
     where: { appointmentId },
     select: { id: true },
   });
   const existingIds = existingServices.map((service) => service.id);
   if (existingIds.length > 0) {
-    await tx.schedulerAppointmentMembershipBenefit.deleteMany({ where: { appointmentServiceId: { in: existingIds } } });
-    await tx.schedulerAppointmentResource.deleteMany({ where: { appointmentServiceId: { in: existingIds } } });
-    await tx.schedulerAppointmentParticipant.deleteMany({ where: { appointmentServiceId: { in: existingIds } } });
-    await tx.schedulerAppointmentService.deleteMany({ where: { id: { in: existingIds } } });
+    await tx.schedulerAppointmentMembershipBenefit.deleteMany({
+      where: { appointmentServiceId: { in: existingIds } },
+    });
+    await tx.schedulerAppointmentResource.deleteMany({
+      where: { appointmentServiceId: { in: existingIds } },
+    });
+    await tx.schedulerAppointmentParticipant.deleteMany({
+      where: { appointmentServiceId: { in: existingIds } },
+    });
+    await tx.schedulerAppointmentService.deleteMany({
+      where: { id: { in: existingIds } },
+    });
   }
   for (const [sequence, service] of services.entries()) {
     await tx.schedulerAppointmentService.create({
@@ -984,7 +1189,9 @@ export async function replaceAppointmentServices(tx: Tx, appointmentId: string, 
   }
 }
 
-async function withSerializableRetry<T>(operation: () => Promise<T>): Promise<T> {
+async function withSerializableRetry<T>(
+  operation: () => Promise<T>,
+): Promise<T> {
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
       return await operation();
@@ -993,11 +1200,16 @@ async function withSerializableRetry<T>(operation: () => Promise<T>): Promise<T>
         attempt < 2 &&
         error instanceof Prisma.PrismaClientKnownRequestError &&
         error.code === "P2034"
-      ) continue;
+      )
+        continue;
       throw error;
     }
   }
-  throw new SchedulerAppointmentError("No fue posible confirmar la operación concurrente", 409, "CONCURRENT_WRITE");
+  throw new SchedulerAppointmentError(
+    "No fue posible confirmar la operación concurrente",
+    409,
+    "CONCURRENT_WRITE",
+  );
 }
 
 function sendError(res: Response, error: unknown) {
@@ -1009,17 +1221,35 @@ function sendError(res: Response, error: unknown) {
     });
     return;
   }
-  if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
-    res.status(409).json({ success: false, message: "La operación ya fue registrada", data: { code: "CONFLICT" } });
+  if (
+    error instanceof Prisma.PrismaClientKnownRequestError &&
+    error.code === "P2002"
+  ) {
+    res
+      .status(409)
+      .json({
+        success: false,
+        message: "La operación ya fue registrada",
+        data: { code: "CONFLICT" },
+      });
     return;
   }
   console.error("[scheduler.appointments]", error);
-  res.status(500).json({ success: false, message: "No fue posible completar la operación de agenda", data: null });
+  res
+    .status(500)
+    .json({
+      success: false,
+      message: "No fue posible completar la operación de agenda",
+      data: null,
+    });
 }
 
 function requireBranch(req: Request, branchId: string) {
   if (!hasSchedulerBranchAccess(req.schedulerAccess!, branchId)) {
-    throw new SchedulerAppointmentError("La sucursal no está dentro del alcance de la sesión", 403);
+    throw new SchedulerAppointmentError(
+      "La sucursal no está dentro del alcance de la sesión",
+      403,
+    );
   }
 }
 
@@ -1032,13 +1262,14 @@ async function validateBlockOwner(input: {
   at: Date;
 }) {
   if (input.professionalProfileId) {
-    const assignment = await input.tx.schedulerProfessionalBranchAssignment.findFirst({
-      where: {
-        branchProfileId: input.branchProfileId,
-        professionalProfileId: input.professionalProfileId,
-      },
-      include: { professionalProfile: true },
-    });
+    const assignment =
+      await input.tx.schedulerProfessionalBranchAssignment.findFirst({
+        where: {
+          branchProfileId: input.branchProfileId,
+          professionalProfileId: input.professionalProfileId,
+        },
+        include: { professionalProfile: true },
+      });
     if (
       !assignment ||
       !activeAt(assignment, input.at) ||
@@ -1098,7 +1329,13 @@ router.get(
       })
       .safeParse(req.query);
     if (!parsed.success) {
-      res.status(400).json({ success: false, message: "Filtros de disponibilidad inválidos", data: parsed.error.flatten().fieldErrors });
+      res
+        .status(400)
+        .json({
+          success: false,
+          message: "Filtros de disponibilidad inválidos",
+          data: parsed.error.flatten().fieldErrors,
+        });
       return;
     }
     try {
@@ -1117,14 +1354,20 @@ router.get(
           },
         },
       });
-      if (!serviceProfile) throw new SchedulerAppointmentError("Servicio no encontrado", 404);
+      if (!serviceProfile)
+        throw new SchedulerAppointmentError("Servicio no encontrado", 404);
       let candidates = serviceProfile.professionalAssignments;
       if (parsed.data.professionalProfileId) {
-        candidates = candidates.filter((item) => item.professionalProfileId === parsed.data.professionalProfileId);
+        candidates = candidates.filter(
+          (item) =>
+            item.professionalProfileId === parsed.data.professionalProfileId,
+        );
       }
       if (req.schedulerAccess!.selfProfessionalOnly) {
         candidates = candidates.filter(
-          (item) => item.professionalProfile.employeeId === req.schedulerAccess!.professionalEmployeeId,
+          (item) =>
+            item.professionalProfile.employeeId ===
+            req.schedulerAccess!.professionalEmployeeId,
         );
       }
       const templateStart = schedulerLocalMinuteToUtc(
@@ -1180,11 +1423,18 @@ router.get(
             service.resources.map((resource) => resource.id),
           ),
         ),
+        serviceIds: uniqueIds(
+          templates.map(({ service }) => service.serviceProfileId),
+        ),
       });
       const slots: SchedulerAvailabilityDto["slots"] = [];
       for (const { assignment, service: template } of templates) {
         for (let minute = 0; minute < 1440; minute += SCHEDULER_SLOT_MINUTES) {
-          const startsAt = schedulerLocalMinuteToUtc(parsed.data.date, minute, profile.timezone);
+          const startsAt = schedulerLocalMinuteToUtc(
+            parsed.data.date,
+            minute,
+            profile.timezone,
+          );
           if (startsAt < range.start || startsAt >= range.end) continue;
           try {
             const delta = startsAt.getTime() - template.startsAt.getTime();
@@ -1213,10 +1463,7 @@ router.get(
                       assignment.professionalProfileId,
                   ),
               )
-              .reduce(
-                (total, existing) => total + existing.capacityUnits,
-                0,
-              );
+              .reduce((total, existing) => total + existing.capacityUnits, 0);
             const resourceCapacity = service.resources.map((resource) => {
               const allocations = constraints.existing
                 .filter((existing) =>
@@ -1234,9 +1481,7 @@ router.get(
                 );
               if (
                 resource.exclusive ||
-                allocations.some(
-                  (allocation) => allocation.exclusiveSnapshot,
-                )
+                allocations.some((allocation) => allocation.exclusiveSnapshot)
               ) {
                 return allocations.length === 0 ? 1 : 0;
               }
@@ -1252,7 +1497,8 @@ router.get(
               startsAt: service.startsAt.toISOString(),
               endsAt: service.endsAt.toISOString(),
               professionalProfileId: assignment.professionalProfileId,
-              professionalName: assignment.professionalProfile.employee.nombreCompleto,
+              professionalName:
+                assignment.professionalProfile.employee.nombreCompleto,
               resourceIds: service.resources.map((resource) => resource.id),
               remainingCapacity: Math.min(
                 service.serviceCapacity - usedCapacity,
@@ -1285,24 +1531,33 @@ router.get(
   "/appointments",
   requireSchedulerCapability("scheduler/agenda", "READ"),
   async (req, res) => {
-    const parsed = z.object({
-      branchId: identifier.optional(),
-      from: instant,
-      to: instant,
-      professionalProfileId: identifier.optional(),
-      customerId: identifier.optional(),
-      status: z.enum(SCHEDULER_APPOINTMENT_STATUSES).optional(),
-      page: z.coerce.number().int().min(1).default(1),
-      pageSize: z.coerce.number().int().min(1).max(100).default(50),
-    }).safeParse(req.query);
+    const parsed = z
+      .object({
+        branchId: identifier.optional(),
+        from: instant,
+        to: instant,
+        professionalProfileId: identifier.optional(),
+        customerId: identifier.optional(),
+        status: z.enum(SCHEDULER_APPOINTMENT_STATUSES).optional(),
+        page: z.coerce.number().int().min(1).default(1),
+        pageSize: z.coerce.number().int().min(1).max(100).default(50),
+      })
+      .safeParse(req.query);
     if (!parsed.success) {
-      res.status(400).json({ success: false, message: "Filtros de citas inválidos", data: parsed.error.flatten().fieldErrors });
+      res
+        .status(400)
+        .json({
+          success: false,
+          message: "Filtros de citas inválidos",
+          data: parsed.error.flatten().fieldErrors,
+        });
       return;
     }
     try {
       const from = parseSchedulerInstant(parsed.data.from, "from");
       const to = parseSchedulerInstant(parsed.data.to, "to");
-      if (to <= from) throw new SchedulerAppointmentError("El rango de consulta es inválido");
+      if (to <= from)
+        throw new SchedulerAppointmentError("El rango de consulta es inválido");
       if (parsed.data.branchId) requireBranch(req, parsed.data.branchId);
       const branchIds = parsed.data.branchId
         ? [parsed.data.branchId]
@@ -1311,17 +1566,35 @@ router.get(
         branchProfile: { branchId: { in: branchIds } },
         startsAt: { lt: to },
         endsAt: { gt: from },
-        ...(parsed.data.customerId ? { customerId: parsed.data.customerId } : {}),
+        ...(parsed.data.customerId
+          ? { customerId: parsed.data.customerId }
+          : {}),
         ...(parsed.data.status ? { status: parsed.data.status } : {}),
         ...(parsed.data.professionalProfileId
-          ? { services: { some: { participants: { some: { professionalProfileId: parsed.data.professionalProfileId } } } } }
+          ? {
+              services: {
+                some: {
+                  participants: {
+                    some: {
+                      professionalProfileId: parsed.data.professionalProfileId,
+                    },
+                  },
+                },
+              },
+            }
           : {}),
         ...(req.schedulerAccess!.selfProfessionalOnly
           ? {
               services: {
                 some: {
                   participants: {
-                    some: { professionalProfile: { employeeId: req.schedulerAccess!.professionalEmployeeId ?? "__none__" } },
+                    some: {
+                      professionalProfile: {
+                        employeeId:
+                          req.schedulerAccess!.professionalEmployeeId ??
+                          "__none__",
+                      },
+                    },
                   },
                 },
               },
@@ -1341,7 +1614,12 @@ router.get(
       res.json({
         success: true,
         message: "OK",
-        data: { items: items.map(appointmentDto), page: parsed.data.page, pageSize: parsed.data.pageSize, total },
+        data: {
+          items: items.map(appointmentDto),
+          page: parsed.data.page,
+          pageSize: parsed.data.pageSize,
+          total,
+        },
       });
     } catch (error) {
       sendError(res, error);
@@ -1357,9 +1635,29 @@ router.get(
       const row = await prisma.schedulerAppointment.findFirst({
         where: {
           id: req.params["id"],
-          branchProfile: { branchId: { in: req.schedulerAccess!.authorizedBranches.map((branch) => branch.id) } },
+          branchProfile: {
+            branchId: {
+              in: req.schedulerAccess!.authorizedBranches.map(
+                (branch) => branch.id,
+              ),
+            },
+          },
           ...(req.schedulerAccess!.selfProfessionalOnly
-            ? { services: { some: { participants: { some: { professionalProfile: { employeeId: req.schedulerAccess!.professionalEmployeeId ?? "__none__" } } } } } }
+            ? {
+                services: {
+                  some: {
+                    participants: {
+                      some: {
+                        professionalProfile: {
+                          employeeId:
+                            req.schedulerAccess!.professionalEmployeeId ??
+                            "__none__",
+                        },
+                      },
+                    },
+                  },
+                },
+              }
             : {}),
         },
         include: appointmentInclude,
@@ -1395,98 +1693,175 @@ router.post(
       const hash = stableSchedulerRequestHash(parsed.data);
       const operation = "CREATE_APPOINTMENT";
       const existingKey = await prisma.schedulerIdempotencyKey.findUnique({
-        where: { actorUserId_operation_idempotencyKey: { actorUserId: req.schedulerAccess!.userId, operation, idempotencyKey: keyParsed.data } },
+        where: {
+          actorUserId_operation_idempotencyKey: {
+            actorUserId: req.schedulerAccess!.userId,
+            operation,
+            idempotencyKey: keyParsed.data,
+          },
+        },
       });
       if (existingKey) {
-        if (existingKey.requestHash !== hash) throw new SchedulerAppointmentError("El Idempotency-Key ya se usó con otra solicitud", 409, "IDEMPOTENCY_CONFLICT");
-        res.status(200).json({ success: true, message: "Cita ya registrada", data: existingKey.response });
+        if (existingKey.requestHash !== hash)
+          throw new SchedulerAppointmentError(
+            "El Idempotency-Key ya se usó con otra solicitud",
+            409,
+            "IDEMPOTENCY_CONFLICT",
+          );
+        res
+          .status(200)
+          .json({
+            success: true,
+            message: "Cita ya registrada",
+            data: existingKey.response,
+          });
         return;
       }
       const data = await withSerializableRetry(() =>
-        prisma.$transaction(async (tx) => {
-          await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`scheduler-idempotency:${req.schedulerAccess!.userId}:${operation}:${keyParsed.data}`}, 0))`;
-          const concurrentReplay = await tx.schedulerIdempotencyKey.findUnique({
-            where: {
-              actorUserId_operation_idempotencyKey: {
+        prisma.$transaction(
+          async (tx) => {
+            await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`scheduler-idempotency:${req.schedulerAccess!.userId}:${operation}:${keyParsed.data}`}, 0))`;
+            const concurrentReplay =
+              await tx.schedulerIdempotencyKey.findUnique({
+                where: {
+                  actorUserId_operation_idempotencyKey: {
+                    actorUserId: req.schedulerAccess!.userId,
+                    operation,
+                    idempotencyKey: keyParsed.data,
+                  },
+                },
+              });
+            if (concurrentReplay) {
+              if (concurrentReplay.requestHash !== hash) {
+                throw new SchedulerAppointmentError(
+                  "El Idempotency-Key ya se usó con otra solicitud",
+                  409,
+                  "IDEMPOTENCY_CONFLICT",
+                );
+              }
+              return concurrentReplay.response as unknown as SchedulerAppointmentDto;
+            }
+            if (parsed.data.override) {
+              await consumeOverride(
+                req,
+                {
+                  branchId: parsed.data.branchId,
+                  token: parsed.data.override.authorizationToken,
+                },
+                tx,
+              );
+            }
+            const startsAt = parseSchedulerInstant(
+              parsed.data.startsAt,
+              "startsAt",
+            );
+            const branch = await resolveBranchProfile(
+              tx,
+              parsed.data.branchId,
+              startsAt,
+            );
+            const customer = await tx.customer.findFirst({
+              where: {
+                id: parsed.data.customerId,
+                active: true,
+                deletedAt: null,
+              },
+            });
+            if (!customer)
+              throw new SchedulerAppointmentError(
+                "Cliente no encontrado o inactivo",
+                404,
+              );
+            const services = await materializeServices({
+              tx,
+              branchProfileId: branch.id,
+              appointmentStartsAt: startsAt,
+              services: parsed.data.services,
+              selfProfessionalEmployeeId: req.schedulerAccess!
+                .selfProfessionalOnly
+                ? req.schedulerAccess!.professionalEmployeeId
+                : null,
+            });
+            await lockSchedule(tx, branch.id, services);
+            await assertMemberships(tx, customer.id, services);
+            await assertScheduleAvailable({
+              tx,
+              branchProfileId: branch.id,
+              timezone: branch.timezone,
+              services,
+              allowOverride: Boolean(parsed.data.override),
+            });
+            const appointmentStartsAt = new Date(
+              Math.min(
+                ...services.map((service) => service.startsAt.getTime()),
+              ),
+            );
+            const appointmentEndsAt = new Date(
+              Math.max(...services.map((service) => service.endsAt.getTime())),
+            );
+            const row = await tx.schedulerAppointment.create({
+              data: {
+                branchProfileId: branch.id,
+                customerId: customer.id,
+                status: parsed.data.status ?? "RESERVED",
+                timezone: branch.timezone,
+                startsAt: appointmentStartsAt,
+                endsAt: appointmentEndsAt,
+                notes: parsed.data.notes ?? null,
+                createdByUserId: req.schedulerAccess!.userId,
+                updatedByUserId: req.schedulerAccess!.userId,
+              },
+            });
+            await replaceAppointmentServices(tx, row.id, services);
+            await tx.schedulerAppointmentStateHistory.create({
+              data: {
+                appointmentId: row.id,
+                fromStatus: null,
+                toStatus: row.status,
+                version: 1,
+                actorUserId: req.schedulerAccess!.userId,
+              },
+            });
+            const created = await tx.schedulerAppointment.findUniqueOrThrow({
+              where: { id: row.id },
+              include: appointmentInclude,
+            });
+            const response = appointmentDto(created);
+            await tx.schedulerIdempotencyKey.create({
+              data: {
                 actorUserId: req.schedulerAccess!.userId,
                 operation,
                 idempotencyKey: keyParsed.data,
+                requestHash: hash,
+                appointmentId: row.id,
+                response: response as unknown as Prisma.InputJsonValue,
               },
-            },
-          });
-          if (concurrentReplay) {
-            if (concurrentReplay.requestHash !== hash) {
-              throw new SchedulerAppointmentError(
-                "El Idempotency-Key ya se usó con otra solicitud",
-                409,
-                "IDEMPOTENCY_CONFLICT",
-              );
-            }
-            return concurrentReplay.response as unknown as SchedulerAppointmentDto;
-          }
-          if (parsed.data.override) {
-            await consumeOverride(
-              req,
-              {
+            });
+            await tx.auditLog.create({
+              data: {
+                application: "SCHEDULER",
+                action: parsed.data.override
+                  ? "SCHEDULER_APPOINTMENT_CREATED_WITH_OVERRIDE"
+                  : "SCHEDULER_APPOINTMENT_CREATED",
+                outcome: "SUCCESS",
+                actorUserId: req.schedulerAccess!.userId,
                 branchId: parsed.data.branchId,
-                token: parsed.data.override.authorizationToken,
+                targetType: "SchedulerAppointment",
+                targetId: row.id,
+                metadata: {
+                  version: 1,
+                  serviceCount: services.length,
+                  ...(parsed.data.override
+                    ? { overrideReason: parsed.data.override.reason }
+                    : {}),
+                },
+                ...schedulerRequestAuditContext(req),
               },
-              tx,
-            );
-          }
-          const startsAt = parseSchedulerInstant(parsed.data.startsAt, "startsAt");
-          const branch = await resolveBranchProfile(tx, parsed.data.branchId, startsAt);
-          const customer = await tx.customer.findFirst({ where: { id: parsed.data.customerId, active: true, deletedAt: null } });
-          if (!customer) throw new SchedulerAppointmentError("Cliente no encontrado o inactivo", 404);
-          const services = await materializeServices({
-            tx,
-            branchProfileId: branch.id,
-            appointmentStartsAt: startsAt,
-            services: parsed.data.services,
-            selfProfessionalEmployeeId: req.schedulerAccess!.selfProfessionalOnly ? req.schedulerAccess!.professionalEmployeeId : null,
-          });
-          await lockSchedule(tx, branch.id, services);
-          await assertMemberships(tx, customer.id, services);
-          await assertScheduleAvailable({ tx, branchProfileId: branch.id, timezone: branch.timezone, services, allowOverride: Boolean(parsed.data.override) });
-          const appointmentStartsAt = new Date(Math.min(...services.map((service) => service.startsAt.getTime())));
-          const appointmentEndsAt = new Date(Math.max(...services.map((service) => service.endsAt.getTime())));
-          const row = await tx.schedulerAppointment.create({
-            data: {
-              branchProfileId: branch.id,
-              customerId: customer.id,
-              status: parsed.data.status ?? "RESERVED",
-              timezone: branch.timezone,
-              startsAt: appointmentStartsAt,
-              endsAt: appointmentEndsAt,
-              notes: parsed.data.notes ?? null,
-              createdByUserId: req.schedulerAccess!.userId,
-              updatedByUserId: req.schedulerAccess!.userId,
-            },
-          });
-          await replaceAppointmentServices(tx, row.id, services);
-          await tx.schedulerAppointmentStateHistory.create({
-            data: { appointmentId: row.id, fromStatus: null, toStatus: row.status, version: 1, actorUserId: req.schedulerAccess!.userId },
-          });
-          const created = await tx.schedulerAppointment.findUniqueOrThrow({ where: { id: row.id }, include: appointmentInclude });
-          const response = appointmentDto(created);
-          await tx.schedulerIdempotencyKey.create({
-            data: { actorUserId: req.schedulerAccess!.userId, operation, idempotencyKey: keyParsed.data, requestHash: hash, appointmentId: row.id, response: response as unknown as Prisma.InputJsonValue },
-          });
-          await tx.auditLog.create({
-            data: {
-              application: "SCHEDULER",
-              action: parsed.data.override ? "SCHEDULER_APPOINTMENT_CREATED_WITH_OVERRIDE" : "SCHEDULER_APPOINTMENT_CREATED",
-              outcome: "SUCCESS",
-              actorUserId: req.schedulerAccess!.userId,
-              branchId: parsed.data.branchId,
-              targetType: "SchedulerAppointment",
-              targetId: row.id,
-              metadata: { version: 1, serviceCount: services.length, ...(parsed.data.override ? { overrideReason: parsed.data.override.reason } : {}) },
-              ...schedulerRequestAuditContext(req),
-            },
-          });
-          return response;
-        }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }),
+            });
+            return response;
+          },
+          { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+        ),
       );
       res.status(201).json({ success: true, message: "Cita creada", data });
     } catch (error) {
@@ -1495,112 +1870,168 @@ router.post(
   },
 );
 
-async function updateSchedule(req: Request, appointmentId: string, body: z.infer<typeof updateSchema>) {
+async function updateSchedule(
+  req: Request,
+  appointmentId: string,
+  body: z.infer<typeof updateSchema>,
+) {
   requireBranch(req, body.branchId);
   return withSerializableRetry(() =>
-    prisma.$transaction(async (tx) => {
-      const current = await tx.schedulerAppointment.findFirst({
-        where: {
-          id: appointmentId,
-          ...(req.schedulerAccess!.selfProfessionalOnly
-            ? {
-                services: {
-                  some: {
-                    participants: {
-                      some: {
-                        professionalProfile: {
-                          employeeId:
-                            req.schedulerAccess!.professionalEmployeeId ??
-                            "__none__",
+    prisma.$transaction(
+      async (tx) => {
+        const current = await tx.schedulerAppointment.findFirst({
+          where: {
+            id: appointmentId,
+            ...(req.schedulerAccess!.selfProfessionalOnly
+              ? {
+                  services: {
+                    some: {
+                      participants: {
+                        some: {
+                          professionalProfile: {
+                            employeeId:
+                              req.schedulerAccess!.professionalEmployeeId ??
+                              "__none__",
+                          },
                         },
                       },
                     },
                   },
-                },
-              }
-            : {}),
-        },
-        include: appointmentInclude,
-      });
-      if (!current || !hasSchedulerBranchAccess(req.schedulerAccess!, current.branchProfile.branchId)) {
-        throw new SchedulerAppointmentError("Cita no encontrada", 404);
-      }
-      if (current.version !== body.expectedVersion) {
-        throw new SchedulerAppointmentError("La cita cambió; vuelve a cargarla", 409, "VERSION_CONFLICT", { currentVersion: current.version });
-      }
-      if (
-        !["PENDING", "RESERVED", "CONFIRMED"].includes(current.status)
-      ) {
-        throw new SchedulerAppointmentError(
-          "Sólo una cita pendiente, reservada o confirmada puede reprogramarse",
-          409,
-          "INVALID_STATUS_TRANSITION",
-        );
-      }
-      if (body.override) {
-        await consumeOverride(
-          req,
-          {
-            branchId: body.branchId,
-            token: body.override.authorizationToken,
+                }
+              : {}),
           },
-          tx,
-        );
-      }
-      const startsAt = parseSchedulerInstant(body.startsAt, "startsAt");
-      const branch = await resolveBranchProfile(tx, body.branchId, startsAt);
-      const customer = await tx.customer.findFirst({ where: { id: body.customerId, active: true, deletedAt: null } });
-      if (!customer) throw new SchedulerAppointmentError("Cliente no encontrado o inactivo", 404);
-      const services = await materializeServices({
-        tx,
-        branchProfileId: branch.id,
-        appointmentStartsAt: startsAt,
-        services: body.services,
-        selfProfessionalEmployeeId: req.schedulerAccess!.selfProfessionalOnly ? req.schedulerAccess!.professionalEmployeeId : null,
-      });
-      await lockSchedule(tx, branch.id, services);
-      await assertMemberships(tx, customer.id, services, current.id);
-      await assertScheduleAvailable({ tx, branchProfileId: branch.id, timezone: branch.timezone, services, excludeAppointmentId: current.id, allowOverride: Boolean(body.override) });
-      const nextVersion = current.version + 1;
-      const nextStatus = body.status ?? current.status;
-      if (nextStatus !== current.status) {
-        assertSchedulerStatusTransition(current.status, nextStatus);
-      }
-      await tx.schedulerAppointment.update({
-        where: { id: current.id },
-        data: {
-          branchProfileId: branch.id,
-          customerId: customer.id,
-          status: nextStatus,
-          timezone: branch.timezone,
-          startsAt: new Date(Math.min(...services.map((service) => service.startsAt.getTime()))),
-          endsAt: new Date(Math.max(...services.map((service) => service.endsAt.getTime()))),
-          notes: body.notes ?? null,
-          version: nextVersion,
-          updatedByUserId: req.schedulerAccess!.userId,
-        },
-      });
-      await replaceAppointmentServices(tx, current.id, services);
-      if (nextStatus !== current.status) {
-        await tx.schedulerAppointmentStateHistory.create({
-          data: { appointmentId: current.id, fromStatus: current.status, toStatus: nextStatus, version: nextVersion, actorUserId: req.schedulerAccess!.userId },
+          include: appointmentInclude,
         });
-      }
-      await tx.auditLog.create({
-        data: {
-          application: "SCHEDULER",
-          action: body.override ? "SCHEDULER_APPOINTMENT_UPDATED_WITH_OVERRIDE" : "SCHEDULER_APPOINTMENT_UPDATED",
-          outcome: "SUCCESS",
-          actorUserId: req.schedulerAccess!.userId,
-          branchId: body.branchId,
-          targetType: "SchedulerAppointment",
-          targetId: current.id,
-          metadata: { previousVersion: current.version, version: nextVersion, ...(body.override ? { overrideReason: body.override.reason } : {}) },
-          ...schedulerRequestAuditContext(req),
-        },
-      });
-      return appointmentDto(await tx.schedulerAppointment.findUniqueOrThrow({ where: { id: current.id }, include: appointmentInclude }));
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }),
+        if (
+          !current ||
+          !hasSchedulerBranchAccess(
+            req.schedulerAccess!,
+            current.branchProfile.branchId,
+          )
+        ) {
+          throw new SchedulerAppointmentError("Cita no encontrada", 404);
+        }
+        if (current.version !== body.expectedVersion) {
+          throw new SchedulerAppointmentError(
+            "La cita cambió; vuelve a cargarla",
+            409,
+            "VERSION_CONFLICT",
+            { currentVersion: current.version },
+          );
+        }
+        if (!["PENDING", "RESERVED", "CONFIRMED"].includes(current.status)) {
+          throw new SchedulerAppointmentError(
+            "Sólo una cita pendiente, reservada o confirmada puede reprogramarse",
+            409,
+            "INVALID_STATUS_TRANSITION",
+          );
+        }
+        if (body.override) {
+          await consumeOverride(
+            req,
+            {
+              branchId: body.branchId,
+              token: body.override.authorizationToken,
+            },
+            tx,
+          );
+        }
+        const startsAt = parseSchedulerInstant(body.startsAt, "startsAt");
+        const branch = await resolveBranchProfile(tx, body.branchId, startsAt);
+        const customer = await tx.customer.findFirst({
+          where: { id: body.customerId, active: true, deletedAt: null },
+        });
+        if (!customer)
+          throw new SchedulerAppointmentError(
+            "Cliente no encontrado o inactivo",
+            404,
+          );
+        const services = await materializeServices({
+          tx,
+          branchProfileId: branch.id,
+          appointmentStartsAt: startsAt,
+          services: body.services,
+          selfProfessionalEmployeeId: req.schedulerAccess!.selfProfessionalOnly
+            ? req.schedulerAccess!.professionalEmployeeId
+            : null,
+        });
+        await lockSchedule(tx, branch.id, services);
+        await assertMemberships(tx, customer.id, services, current.id);
+        await assertScheduleAvailable({
+          tx,
+          branchProfileId: branch.id,
+          timezone: branch.timezone,
+          services,
+          excludeAppointmentId: current.id,
+          allowOverride: Boolean(body.override),
+        });
+        const nextVersion = current.version + 1;
+        const nextStatus = body.status ?? current.status;
+        if (nextStatus !== current.status) {
+          assertSchedulerStatusTransition(current.status, nextStatus);
+        }
+        await tx.schedulerAppointment.update({
+          where: { id: current.id },
+          data: {
+            branchProfileId: branch.id,
+            customerId: customer.id,
+            status: nextStatus,
+            timezone: branch.timezone,
+            startsAt: new Date(
+              Math.min(
+                ...services.map((service) => service.startsAt.getTime()),
+              ),
+            ),
+            endsAt: new Date(
+              Math.max(...services.map((service) => service.endsAt.getTime())),
+            ),
+            notes: body.notes ?? null,
+            version: nextVersion,
+            updatedByUserId: req.schedulerAccess!.userId,
+          },
+        });
+        await replaceAppointmentServices(tx, current.id, services);
+        if (nextStatus !== current.status) {
+          await tx.schedulerAppointmentStateHistory.create({
+            data: {
+              appointmentId: current.id,
+              fromStatus: current.status,
+              toStatus: nextStatus,
+              version: nextVersion,
+              actorUserId: req.schedulerAccess!.userId,
+            },
+          });
+        }
+        await tx.auditLog.create({
+          data: {
+            application: "SCHEDULER",
+            action: body.override
+              ? "SCHEDULER_APPOINTMENT_UPDATED_WITH_OVERRIDE"
+              : "SCHEDULER_APPOINTMENT_UPDATED",
+            outcome: "SUCCESS",
+            actorUserId: req.schedulerAccess!.userId,
+            branchId: body.branchId,
+            targetType: "SchedulerAppointment",
+            targetId: current.id,
+            metadata: {
+              previousVersion: current.version,
+              version: nextVersion,
+              ...(body.override
+                ? { overrideReason: body.override.reason }
+                : {}),
+            },
+            ...schedulerRequestAuditContext(req),
+          },
+        });
+        return appointmentDto(
+          await tx.schedulerAppointment.findUniqueOrThrow({
+            where: { id: current.id },
+            include: appointmentInclude,
+          }),
+        );
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    ),
   );
 }
 
@@ -1610,7 +2041,13 @@ router.put(
   async (req, res) => {
     const parsed = updateSchema.safeParse(req.body);
     if (!parsed.success) {
-      res.status(400).json({ success: false, message: "Datos de cita inválidos", data: parsed.error.flatten().fieldErrors });
+      res
+        .status(400)
+        .json({
+          success: false,
+          message: "Datos de cita inválidos",
+          data: parsed.error.flatten().fieldErrors,
+        });
       return;
     }
     try {
@@ -1628,21 +2065,38 @@ router.post(
   async (req, res) => {
     const parsed = moveSchema.safeParse(req.body);
     if (!parsed.success) {
-      res.status(400).json({ success: false, message: "Datos de movimiento inválidos", data: parsed.error.flatten().fieldErrors });
+      res
+        .status(400)
+        .json({
+          success: false,
+          message: "Datos de movimiento inválidos",
+          data: parsed.error.flatten().fieldErrors,
+        });
       return;
     }
     try {
-      const current = await prisma.schedulerAppointment.findUnique({ where: { id: req.params["id"] }, include: appointmentInclude });
-      if (!current) throw new SchedulerAppointmentError("Cita no encontrada", 404);
+      const current = await prisma.schedulerAppointment.findUnique({
+        where: { id: req.params["id"] },
+        include: appointmentInclude,
+      });
+      if (!current)
+        throw new SchedulerAppointmentError("Cita no encontrada", 404);
       const originalStart = current.startsAt.getTime();
-      const services: SchedulerAppointmentServiceWriteDto[] = parsed.data.services ?? current.services.map((service) => ({
-        serviceProfileId: service.serviceProfileId,
-        professionalProfileIds: service.participants.map((participant) => participant.professionalProfileId),
-        resourceIds: service.resources.map((resource) => resource.resourceId),
-        startsAt: new Date(parseSchedulerInstant(parsed.data.startsAt, "startsAt").getTime() + (service.startsAt.getTime() - originalStart)).toISOString(),
-        capacityUnits: service.capacityUnits,
-        membershipId: service.membershipBenefit?.membershipId ?? null,
-      }));
+      const services: SchedulerAppointmentServiceWriteDto[] =
+        parsed.data.services ??
+        current.services.map((service) => ({
+          serviceProfileId: service.serviceProfileId,
+          professionalProfileIds: service.participants.map(
+            (participant) => participant.professionalProfileId,
+          ),
+          resourceIds: service.resources.map((resource) => resource.resourceId),
+          startsAt: new Date(
+            parseSchedulerInstant(parsed.data.startsAt, "startsAt").getTime() +
+              (service.startsAt.getTime() - originalStart),
+          ).toISOString(),
+          capacityUnits: service.capacityUnits,
+          membershipId: service.membershipBenefit?.membershipId ?? null,
+        }));
       const data = await updateSchedule(req, current.id, {
         branchId: current.branchProfile.branch.id,
         customerId: current.customerId,
@@ -1662,84 +2116,140 @@ router.post(
   },
 );
 
-async function changeStatus(req: Request, appointmentId: string, nextStatus: SchedulerAppointmentStatus, expectedVersion: number, reason?: string | null) {
-  return withSerializableRetry(() => prisma.$transaction(async (tx) => {
-    const current = await tx.schedulerAppointment.findFirst({
-      where: {
-        id: appointmentId,
-        ...(req.schedulerAccess!.selfProfessionalOnly
-          ? {
-              services: {
-                some: {
-                  participants: {
+async function changeStatus(
+  req: Request,
+  appointmentId: string,
+  nextStatus: SchedulerAppointmentStatus,
+  expectedVersion: number,
+  reason?: string | null,
+) {
+  return withSerializableRetry(() =>
+    prisma.$transaction(
+      async (tx) => {
+        const current = await tx.schedulerAppointment.findFirst({
+          where: {
+            id: appointmentId,
+            ...(req.schedulerAccess!.selfProfessionalOnly
+              ? {
+                  services: {
                     some: {
-                      professionalProfile: {
-                        employeeId:
-                          req.schedulerAccess!.professionalEmployeeId ??
-                          "__none__",
+                      participants: {
+                        some: {
+                          professionalProfile: {
+                            employeeId:
+                              req.schedulerAccess!.professionalEmployeeId ??
+                              "__none__",
+                          },
+                        },
                       },
                     },
                   },
-                },
-              },
-            }
-          : {}),
+                }
+              : {}),
+          },
+          include: {
+            branchProfile: true,
+            services: { include: { membershipBenefit: true } },
+          },
+        });
+        if (
+          !current ||
+          !hasSchedulerBranchAccess(
+            req.schedulerAccess!,
+            current.branchProfile.branchId,
+          )
+        )
+          throw new SchedulerAppointmentError("Cita no encontrada", 404);
+        if (current.version !== expectedVersion)
+          throw new SchedulerAppointmentError(
+            "La cita cambió; vuelve a cargarla",
+            409,
+            "VERSION_CONFLICT",
+            { currentVersion: current.version },
+          );
+        assertSchedulerStatusTransition(current.status, nextStatus);
+        if (current.status === nextStatus)
+          return appointmentDto(
+            await tx.schedulerAppointment.findUniqueOrThrow({
+              where: { id: current.id },
+              include: appointmentInclude,
+            }),
+          );
+        if (nextStatus === "CANCELED" && (!reason || reason.trim().length < 3))
+          throw new SchedulerAppointmentError("Cancelar requiere un motivo");
+        const nextVersion = current.version + 1;
+        await tx.schedulerAppointment.update({
+          where: { id: current.id },
+          data: {
+            status: nextStatus,
+            cancellationReason: nextStatus === "CANCELED" ? reason : null,
+            version: nextVersion,
+            updatedByUserId: req.schedulerAccess!.userId,
+          },
+        });
+        if (nextStatus === "CANCELED") {
+          await tx.schedulerAppointmentMembershipBenefit.updateMany({
+            where: {
+              appointmentService: { appointmentId: current.id },
+              status: "RESERVED",
+            },
+            data: { status: "RELEASED", releasedAt: new Date() },
+          });
+        }
+        if (nextStatus === "ATTENDED") {
+          await tx.schedulerAppointmentMembershipBenefit.updateMany({
+            where: {
+              appointmentService: { appointmentId: current.id },
+              status: "RESERVED",
+            },
+            data: { status: "CONSUMED", consumedAt: new Date() },
+          });
+        }
+        await tx.schedulerAppointmentStateHistory.create({
+          data: {
+            appointmentId: current.id,
+            fromStatus: current.status,
+            toStatus: nextStatus,
+            reason: reason ?? null,
+            version: nextVersion,
+            actorUserId: req.schedulerAccess!.userId,
+          },
+        });
+        await propagateSchedulerAppointmentStatusToPos(tx, {
+          schedulerAppointmentId: current.id,
+          status: nextStatus,
+          version: nextVersion,
+        });
+        await tx.auditLog.create({
+          data: {
+            application: "SCHEDULER",
+            action:
+              nextStatus === "CANCELED"
+                ? "SCHEDULER_APPOINTMENT_CANCELED"
+                : "SCHEDULER_APPOINTMENT_STATUS_CHANGED",
+            outcome: "SUCCESS",
+            actorUserId: req.schedulerAccess!.userId,
+            branchId: current.branchProfile.branchId,
+            targetType: "SchedulerAppointment",
+            targetId: current.id,
+            metadata: {
+              fromStatus: current.status,
+              toStatus: nextStatus,
+              version: nextVersion,
+            },
+            ...schedulerRequestAuditContext(req),
+          },
+        });
+        return appointmentDto(
+          await tx.schedulerAppointment.findUniqueOrThrow({
+            where: { id: current.id },
+            include: appointmentInclude,
+          }),
+        );
       },
-      include: {
-        branchProfile: true,
-        services: { include: { membershipBenefit: true } },
-      },
-    });
-    if (!current || !hasSchedulerBranchAccess(req.schedulerAccess!, current.branchProfile.branchId)) throw new SchedulerAppointmentError("Cita no encontrada", 404);
-    if (current.version !== expectedVersion) throw new SchedulerAppointmentError("La cita cambió; vuelve a cargarla", 409, "VERSION_CONFLICT", { currentVersion: current.version });
-    assertSchedulerStatusTransition(current.status, nextStatus);
-    if (current.status === nextStatus) return appointmentDto(await tx.schedulerAppointment.findUniqueOrThrow({ where: { id: current.id }, include: appointmentInclude }));
-    if (nextStatus === "CANCELED" && (!reason || reason.trim().length < 3)) throw new SchedulerAppointmentError("Cancelar requiere un motivo");
-    const nextVersion = current.version + 1;
-    await tx.schedulerAppointment.update({
-      where: { id: current.id },
-      data: {
-        status: nextStatus,
-        cancellationReason: nextStatus === "CANCELED" ? reason : null,
-        version: nextVersion,
-        updatedByUserId: req.schedulerAccess!.userId,
-      },
-    });
-    if (nextStatus === "CANCELED") {
-      await tx.schedulerAppointmentMembershipBenefit.updateMany({
-        where: { appointmentService: { appointmentId: current.id }, status: "RESERVED" },
-        data: { status: "RELEASED", releasedAt: new Date() },
-      });
-    }
-    if (nextStatus === "ATTENDED") {
-      await tx.schedulerAppointmentMembershipBenefit.updateMany({
-        where: { appointmentService: { appointmentId: current.id }, status: "RESERVED" },
-        data: { status: "CONSUMED", consumedAt: new Date() },
-      });
-    }
-    await tx.schedulerAppointmentStateHistory.create({
-      data: { appointmentId: current.id, fromStatus: current.status, toStatus: nextStatus, reason: reason ?? null, version: nextVersion, actorUserId: req.schedulerAccess!.userId },
-    });
-    await propagateSchedulerAppointmentStatusToPos(tx, {
-      schedulerAppointmentId: current.id,
-      status: nextStatus,
-      version: nextVersion,
-    });
-    await tx.auditLog.create({
-      data: {
-        application: "SCHEDULER",
-        action: nextStatus === "CANCELED" ? "SCHEDULER_APPOINTMENT_CANCELED" : "SCHEDULER_APPOINTMENT_STATUS_CHANGED",
-        outcome: "SUCCESS",
-        actorUserId: req.schedulerAccess!.userId,
-        branchId: current.branchProfile.branchId,
-        targetType: "SchedulerAppointment",
-        targetId: current.id,
-        metadata: { fromStatus: current.status, toStatus: nextStatus, version: nextVersion },
-        ...schedulerRequestAuditContext(req),
-      },
-    });
-    return appointmentDto(await tx.schedulerAppointment.findUniqueOrThrow({ where: { id: current.id }, include: appointmentInclude }));
-  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }));
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    ),
+  );
 }
 
 router.post(
@@ -1748,13 +2258,27 @@ router.post(
   async (req, res) => {
     const parsed = statusSchema.safeParse(req.body);
     if (!parsed.success) {
-      res.status(400).json({ success: false, message: "Cambio de estado inválido", data: parsed.error.flatten().fieldErrors });
+      res
+        .status(400)
+        .json({
+          success: false,
+          message: "Cambio de estado inválido",
+          data: parsed.error.flatten().fieldErrors,
+        });
       return;
     }
     try {
-      const data = await changeStatus(req, req.params["id"]!, parsed.data.status, parsed.data.expectedVersion, parsed.data.reason);
+      const data = await changeStatus(
+        req,
+        req.params["id"]!,
+        parsed.data.status,
+        parsed.data.expectedVersion,
+        parsed.data.reason,
+      );
       res.json({ success: true, message: "Estado actualizado", data });
-    } catch (error) { sendError(res, error); }
+    } catch (error) {
+      sendError(res, error);
+    }
   },
 );
 
@@ -1764,13 +2288,27 @@ router.post(
   async (req, res) => {
     const parsed = cancelSchema.safeParse(req.body);
     if (!parsed.success) {
-      res.status(400).json({ success: false, message: "La cancelación requiere versión y motivo", data: parsed.error.flatten().fieldErrors });
+      res
+        .status(400)
+        .json({
+          success: false,
+          message: "La cancelación requiere versión y motivo",
+          data: parsed.error.flatten().fieldErrors,
+        });
       return;
     }
     try {
-      const data = await changeStatus(req, req.params["id"]!, "CANCELED", parsed.data.expectedVersion, parsed.data.reason);
+      const data = await changeStatus(
+        req,
+        req.params["id"]!,
+        "CANCELED",
+        parsed.data.expectedVersion,
+        parsed.data.reason,
+      );
       res.json({ success: true, message: "Cita cancelada", data });
-    } catch (error) { sendError(res, error); }
+    } catch (error) {
+      sendError(res, error);
+    }
   },
 );
 
@@ -1778,9 +2316,17 @@ router.get(
   "/blocks",
   requireSchedulerCapability("scheduler/agenda", "READ"),
   async (req, res) => {
-    const parsed = z.object({ branchId: identifier, from: instant, to: instant }).safeParse(req.query);
+    const parsed = z
+      .object({ branchId: identifier, from: instant, to: instant })
+      .safeParse(req.query);
     if (!parsed.success) {
-      res.status(400).json({ success: false, message: "Filtros de bloqueos inválidos", data: parsed.error.flatten().fieldErrors });
+      res
+        .status(400)
+        .json({
+          success: false,
+          message: "Filtros de bloqueos inválidos",
+          data: parsed.error.flatten().fieldErrors,
+        });
       return;
     }
     try {
@@ -1809,7 +2355,9 @@ router.get(
         orderBy: { startsAt: "asc" },
       });
       res.json({ success: true, message: "OK", data: rows.map(blockDto) });
-    } catch (error) { sendError(res, error); }
+    } catch (error) {
+      sendError(res, error);
+    }
   },
 );
 
@@ -1822,15 +2370,28 @@ router.post(
       .superRefine(validateBlockOwners)
       .safeParse(req.body);
     if (!parsed.success) {
-      res.status(400).json({ success: false, message: "Datos de bloqueo inválidos", data: parsed.error.flatten().fieldErrors });
+      res
+        .status(400)
+        .json({
+          success: false,
+          message: "Datos de bloqueo inválidos",
+          data: parsed.error.flatten().fieldErrors,
+        });
       return;
     }
     try {
       requireBranch(req, parsed.data.branchId);
       const startsAt = parseSchedulerInstant(parsed.data.startsAt, "startsAt");
       const endsAt = parseSchedulerInstant(parsed.data.endsAt, "endsAt");
-      if (endsAt <= startsAt) throw new SchedulerAppointmentError("El fin del bloqueo debe ser posterior al inicio");
-      const branch = await resolveBranchProfile(prisma, parsed.data.branchId, startsAt);
+      if (endsAt <= startsAt)
+        throw new SchedulerAppointmentError(
+          "El fin del bloqueo debe ser posterior al inicio",
+        );
+      const branch = await resolveBranchProfile(
+        prisma,
+        parsed.data.branchId,
+        startsAt,
+      );
       await validateBlockOwner({
         tx: prisma,
         req,
@@ -1843,8 +2404,7 @@ router.post(
         const created = await tx.schedulerScheduleBlock.create({
           data: {
             branchProfileId: branch.id,
-            professionalProfileId:
-              parsed.data.professionalProfileId ?? null,
+            professionalProfileId: parsed.data.professionalProfileId ?? null,
             resourceId: parsed.data.resourceId ?? null,
             startsAt,
             endsAt,
@@ -1864,8 +2424,7 @@ router.post(
             targetType: "SchedulerScheduleBlock",
             targetId: created.id,
             metadata: {
-              professionalProfileId:
-                parsed.data.professionalProfileId ?? null,
+              professionalProfileId: parsed.data.professionalProfileId ?? null,
               resourceId: parsed.data.resourceId ?? null,
             },
             ...schedulerRequestAuditContext(req),
@@ -1873,8 +2432,16 @@ router.post(
         });
         return created;
       });
-      res.status(201).json({ success: true, message: "Bloqueo creado", data: blockDto(row) });
-    } catch (error) { sendError(res, error); }
+      res
+        .status(201)
+        .json({
+          success: true,
+          message: "Bloqueo creado",
+          data: blockDto(row),
+        });
+    } catch (error) {
+      sendError(res, error);
+    }
   },
 );
 
@@ -1887,7 +2454,13 @@ router.put(
       .superRefine(validateBlockOwners)
       .safeParse(req.body);
     if (!parsed.success) {
-      res.status(400).json({ success: false, message: "Datos de bloqueo inválidos", data: parsed.error.flatten().fieldErrors });
+      res
+        .status(400)
+        .json({
+          success: false,
+          message: "Datos de bloqueo inválidos",
+          data: parsed.error.flatten().fieldErrors,
+        });
       return;
     }
     try {
@@ -1907,8 +2480,18 @@ router.put(
             req.schedulerAccess!.professionalEmployeeId)
       )
         throw new SchedulerAppointmentError("Bloqueo no encontrado", 404);
-      if (current.status !== "ACTIVE") throw new SchedulerAppointmentError("Un bloqueo cancelado no puede editarse", 409);
-      if (current.version !== parsed.data.expectedVersion) throw new SchedulerAppointmentError("El bloqueo cambió; vuelve a cargarlo", 409, "VERSION_CONFLICT", { currentVersion: current.version });
+      if (current.status !== "ACTIVE")
+        throw new SchedulerAppointmentError(
+          "Un bloqueo cancelado no puede editarse",
+          409,
+        );
+      if (current.version !== parsed.data.expectedVersion)
+        throw new SchedulerAppointmentError(
+          "El bloqueo cambió; vuelve a cargarlo",
+          409,
+          "VERSION_CONFLICT",
+          { currentVersion: current.version },
+        );
       const startsAt = parseSchedulerInstant(parsed.data.startsAt, "startsAt");
       const endsAt = parseSchedulerInstant(parsed.data.endsAt, "endsAt");
       if (endsAt <= startsAt)
@@ -1937,8 +2520,7 @@ router.put(
           },
           data: {
             branchProfileId: branch.id,
-            professionalProfileId:
-              parsed.data.professionalProfileId ?? null,
+            professionalProfileId: parsed.data.professionalProfileId ?? null,
             resourceId: parsed.data.resourceId ?? null,
             startsAt,
             endsAt,
@@ -1976,8 +2558,14 @@ router.put(
         });
         return saved;
       });
-      res.json({ success: true, message: "Bloqueo actualizado", data: blockDto(row) });
-    } catch (error) { sendError(res, error); }
+      res.json({
+        success: true,
+        message: "Bloqueo actualizado",
+        data: blockDto(row),
+      });
+    } catch (error) {
+      sendError(res, error);
+    }
   },
 );
 
@@ -1987,7 +2575,13 @@ router.post(
   async (req, res) => {
     const parsed = cancelSchema.safeParse(req.body);
     if (!parsed.success) {
-      res.status(400).json({ success: false, message: "Cancelación de bloqueo inválida", data: parsed.error.flatten().fieldErrors });
+      res
+        .status(400)
+        .json({
+          success: false,
+          message: "Cancelación de bloqueo inválida",
+          data: parsed.error.flatten().fieldErrors,
+        });
       return;
     }
     try {
@@ -2063,8 +2657,14 @@ router.post(
         });
         return saved;
       });
-      res.json({ success: true, message: "Bloqueo cancelado", data: blockDto(row) });
-    } catch (error) { sendError(res, error); }
+      res.json({
+        success: true,
+        message: "Bloqueo cancelado",
+        data: blockDto(row),
+      });
+    } catch (error) {
+      sendError(res, error);
+    }
   },
 );
 

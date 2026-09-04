@@ -499,6 +499,7 @@ export type SchedulerAvailabilityConflictCode =
   | "MEMBERSHIP_NOT_ELIGIBLE"
   | "VERSION_CONFLICT"
   | "SERVICE_NOT_AVAILABLE"
+  | "CLASS_NOT_SCHEDULED"
   | "INVALID_STATUS_TRANSITION"
   | "LOCAL_TIME_GAP"
   | "INVALID_OVERRIDE_AUTHORIZATION"
@@ -527,8 +528,7 @@ export interface SchedulerAppointmentCreateDto {
   };
 }
 
-export interface SchedulerAppointmentUpdateDto
-  extends SchedulerAppointmentCreateDto {
+export interface SchedulerAppointmentUpdateDto extends SchedulerAppointmentCreateDto {
   expectedVersion: number;
 }
 
@@ -681,6 +681,302 @@ export interface SchedulerScheduleBlockDto {
   version: number;
   createdAt: string;
   canceledAt: string | null;
+}
+
+export const SCHEDULER_COMMISSION_TARGET_TYPES = [
+  "DEFAULT",
+  "PROFESSIONAL",
+  "CATALOG_ITEM",
+] as const;
+export type SchedulerCommissionTargetType =
+  (typeof SCHEDULER_COMMISSION_TARGET_TYPES)[number];
+
+export const SCHEDULER_COMMISSION_MODES = [
+  "APPOINTMENT",
+  "ATTENDED_APPOINTMENT",
+  "SALES_PERCENTAGE",
+  "BRANCH_SALES_TIER",
+] as const;
+export type SchedulerCommissionMode =
+  (typeof SCHEDULER_COMMISSION_MODES)[number];
+
+export const SCHEDULER_COMMISSION_PERIODS = [
+  "DAY",
+  "WEEK",
+  "FORTNIGHT",
+  "MONTH",
+] as const;
+export type SchedulerCommissionPeriod =
+  (typeof SCHEDULER_COMMISSION_PERIODS)[number];
+
+export const SCHEDULER_GIFT_CARD_STATUSES = [
+  "DRAFT",
+  "ACTIVE",
+  "INACTIVE",
+] as const;
+export type SchedulerGiftCardStatus =
+  (typeof SCHEDULER_GIFT_CARD_STATUSES)[number];
+export type SchedulerGiftCardType = "SERVICE" | "AMOUNT";
+export type SchedulerSettingScope = "COMMERCE" | "BRANCH" | "USER";
+
+export const SCHEDULER_SETTING_SECTIONS = [
+  "company",
+  "website",
+  "agenda",
+  "payments",
+  "reminders",
+  "records",
+  "emails",
+  "integrations",
+  "notifications",
+  "clients",
+  "surveys",
+] as const;
+export type SchedulerSettingSection =
+  (typeof SCHEDULER_SETTING_SECTIONS)[number];
+
+export interface SchedulerPackageProfileDto {
+  id: string;
+  posPackageId: string;
+  commerceId: string;
+  name: string;
+  sku: string;
+  price: string;
+  posStatus: "DRAFT" | "PUBLISHED" | "INACTIVE";
+  acceptsOnline: boolean;
+  simultaneous: boolean;
+  sessions: number;
+  active: boolean;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  version: number;
+  branchProfileIds: string[];
+  serviceLines: Array<{
+    serviceProfileId: string;
+    serviceName: string;
+    quantity: number;
+    priceOverride: string | null;
+    sortOrder: number;
+  }>;
+}
+
+export interface SchedulerPackageProfileWriteDto {
+  commerceId: string;
+  acceptsOnline: boolean;
+  simultaneous: boolean;
+  sessions: number;
+  active: boolean;
+  effectiveFrom?: string;
+  effectiveTo?: string | null;
+  expectedVersion?: number;
+  branchProfileIds: string[];
+  serviceLines: Array<{
+    serviceProfileId: string;
+    quantity: number;
+    priceOverride?: string | null;
+    sortOrder: number;
+  }>;
+}
+
+export interface SchedulerAddonProfileDto {
+  id: string;
+  catalogItemId: string;
+  commerceId: string;
+  name: string;
+  sku: string;
+  listPrice: string;
+  durationMinutes: number;
+  active: boolean;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  version: number;
+  serviceProfileIds: string[];
+}
+
+export interface SchedulerAddonProfileWriteDto {
+  commerceId: string;
+  durationMinutes: number;
+  active: boolean;
+  effectiveFrom?: string;
+  effectiveTo?: string | null;
+  expectedVersion?: number;
+  serviceProfileIds: string[];
+}
+
+export interface SchedulerClassScheduleDto {
+  id: string;
+  serviceProfileId: string;
+  branchProfileId: string;
+  professionalProfileId: string;
+  weekday: SchedulerWeekday;
+  startMinute: number;
+  endMinute: number;
+  capacity: number;
+  active: boolean;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+}
+
+export interface SchedulerClassSchedulesWriteDto {
+  effectiveFrom?: string;
+  schedules: Array<{
+    branchProfileId: string;
+    professionalProfileId: string;
+    weekday: SchedulerWeekday;
+    startMinute: number;
+    endMinute: number;
+    capacity: number;
+  }>;
+}
+
+export interface SchedulerCommissionRuleWriteDto {
+  mode: SchedulerCommissionMode;
+  amount?: string | null;
+  percentage?: string | null;
+  tiers?: Array<{
+    fromAmount: string;
+    toAmount: string | null;
+    percentage: string;
+  }>;
+}
+
+export interface SchedulerCommissionPolicyWriteDto {
+  commerceId: string;
+  targetType: SchedulerCommissionTargetType;
+  targetId?: string | null;
+  period: SchedulerCommissionPeriod;
+  active: boolean;
+  effectiveFrom?: string;
+  effectiveTo?: string | null;
+  expectedVersion?: number;
+  rules: SchedulerCommissionRuleWriteDto[];
+}
+
+export interface SchedulerCommissionPolicyDto {
+  id: string;
+  commerceId: string;
+  targetType: SchedulerCommissionTargetType;
+  targetId: string | null;
+  targetName: string;
+  active: boolean;
+  currentVersion: number;
+  period: SchedulerCommissionPeriod;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  payrollAuthority: "PAYROLL";
+  rules: Array<{
+    mode: SchedulerCommissionMode;
+    amount: string | null;
+    percentage: string | null;
+    tiers: Array<{
+      fromAmount: string;
+      toAmount: string | null;
+      percentage: string;
+    }>;
+  }>;
+}
+
+export interface SchedulerGiftCardTemplateWriteDto {
+  commerceId: string;
+  name: string;
+  type: SchedulerGiftCardType;
+  amount?: string | null;
+  salePrice: string;
+  validityDays: number;
+  description?: string | null;
+  designKey: string;
+  status: SchedulerGiftCardStatus;
+  serviceProfileIds: string[];
+  expectedVersion?: number;
+}
+
+export interface SchedulerGiftCardTemplateDto extends Omit<
+  SchedulerGiftCardTemplateWriteDto,
+  "expectedVersion"
+> {
+  id: string;
+  amount: string | null;
+  description: string | null;
+  version: number;
+}
+
+export interface SchedulerStatusColorDto {
+  status: SchedulerAppointmentStatus;
+  color: string;
+  version: number;
+}
+
+export interface SchedulerStatusColorsWriteDto {
+  authorizationToken: string;
+  expectedVersions: Partial<Record<SchedulerAppointmentStatus, number>>;
+  colors: Array<{ status: SchedulerAppointmentStatus; color: string }>;
+}
+
+export interface SchedulerSettingWriteDto {
+  scope: SchedulerSettingScope;
+  commerceId: string;
+  branchProfileId?: string | null;
+  document: Record<string, unknown>;
+  expectedVersion?: number;
+}
+
+export interface SchedulerResolvedSettingDto {
+  section: SchedulerSettingSection;
+  precedence: readonly ["COMMERCE", "BRANCH", "USER"];
+  document: Record<string, unknown>;
+  layers: Array<{
+    scope: SchedulerSettingScope;
+    scopeReferenceId: string;
+    version: number;
+  }>;
+}
+
+export interface SchedulerPosReferencesDto {
+  source: "POS";
+  readOnly: true;
+  paymentMethods: Array<{
+    id: string;
+    name: string;
+    type: "EFECTIVO" | "TARJETA" | "TRANSFERENCIA" | "OTRO";
+    requiresReference: boolean;
+    referenceLabel: string | null;
+    minAmount: string | null;
+    maxAmount: string | null;
+  }>;
+  ticketConfigurations: Array<{
+    id: string;
+    branchId: string | null;
+    companyName: string;
+    policies: string | null;
+    footerMessage: string | null;
+    showVatBreakdown: boolean;
+  }>;
+  policies: Array<{
+    id: string;
+    name: string;
+    description: string | null;
+    requiresCustomer: boolean;
+    requiresAuthorization: boolean;
+  }>;
+  packages: Array<{
+    id: string;
+    name: string;
+    sku: string;
+    price: string;
+    status: "DRAFT" | "PUBLISHED" | "INACTIVE";
+  }>;
+}
+
+export interface SchedulerAdministrationCatalogDto {
+  packages: SchedulerPackageProfileDto[];
+  addons: SchedulerAddonProfileDto[];
+  classSchedules: SchedulerClassScheduleDto[];
+  commissionPolicies: SchedulerCommissionPolicyDto[];
+  giftCards: SchedulerGiftCardTemplateDto[];
+  statusColors: Array<{
+    commerceId: string;
+    colors: SchedulerStatusColorDto[];
+  }>;
 }
 
 export const SCHEDULER_CUSTOMER_CONTACT_PREFERENCES = [

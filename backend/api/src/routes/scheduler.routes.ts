@@ -28,6 +28,7 @@ import {
 import schedulerOperationsRoutes from "./scheduler-operations.routes";
 import schedulerCustomersRoutes from "./scheduler-customers.routes";
 import schedulerAppointmentsRoutes from "./scheduler-appointments.routes";
+import schedulerAdministrationRoutes from "./scheduler-administration.routes";
 
 const router: ExpressRouter = Router();
 const screenKeys = new Set<string>(SCHEDULER_SCREEN_KEYS);
@@ -100,6 +101,7 @@ const authorizationConsumeSchema = authorizationSchema
 router.use(authMiddleware);
 router.use("/operations", schedulerOperationsRoutes);
 router.use("/clients", schedulerCustomersRoutes);
+router.use("/administration", schedulerAdministrationRoutes);
 router.use(schedulerAppointmentsRoutes);
 
 router.get("/bootstrap", async (req, res) => {
