@@ -32,17 +32,17 @@ Los dos esquemas Prisma existentes están sincronizados. No hay credenciales loc
 
 ### Gobierno de fases y responsables
 
-| Fase                                 | Estado                  | Responsable principal                | Criterio de salida                                                                        |
-| ------------------------------------ | ----------------------- | ------------------------------------ | ----------------------------------------------------------------------------------------- |
-| 0. Documento, contratos e inventario | Completada — 2026-09-02 | Backend/API                          | Contratos versionados, diagnóstico sólo lectura ejecutable y cero mutaciones productivas. |
-| 1. Seguridad, terminales y auditoría | Completada — 2026-09-03 | Backend/API + Seguridad              | Credenciales protegidas, permisos efectivos y auditoría verificable.                      |
-| 2. Catálogo, clientes y activos      | Completada — 2026-09-03 | Backend/API + POS                    | Catálogo histórico inmutable y costos redaccionados por servidor.                         |
-| 3. Inventario y bodega               | Completada — 2026-09-03 | Backend/API + Operación de almacén   | Ledger consistente, reintentos idempotentes y doble aprobación distinta.                  |
-| 4. Tickets y proyección financiera   | Completada — 2026-09-03 | Backend/API + POS + Envelope/Payroll | Totales, inventario y proyección legacy conciliados al centavo.                           |
-| 5. Jornada, asistencia y caja        | Completada — 2026-09-03 | Backend/API + Operación de sucursal  | Una jornada por sucursal/fecha y cierre inmutable.                                        |
-| 6. Offline y reconciliación          | Completada — 2026-09-03 | POS/Electron + Backend/API           | Reinicios y reintentos no pierden ni duplican operaciones.                                |
-| 7. Reportes y retiro de mocks        | Completada — 2026-09-03 | Backend/API + POS                    | Módulos operativos consumen API o repositorio offline autorizado.                         |
-| 8. Piloto y despliegue               | Pendiente               | Operación + Backend/API + Producto   | Piloto conciliado, rollback disponible y aprobación operativa.                            |
+| Fase                                 | Estado                                             | Responsable principal                | Criterio de salida                                                                        |
+| ------------------------------------ | -------------------------------------------------- | ------------------------------------ | ----------------------------------------------------------------------------------------- |
+| 0. Documento, contratos e inventario | Completada — 2026-09-02                            | Backend/API                          | Contratos versionados, diagnóstico sólo lectura ejecutable y cero mutaciones productivas. |
+| 1. Seguridad, terminales y auditoría | Completada — 2026-09-03                            | Backend/API + Seguridad              | Credenciales protegidas, permisos efectivos y auditoría verificable.                      |
+| 2. Catálogo, clientes y activos      | Completada — 2026-09-03                            | Backend/API + POS                    | Catálogo histórico inmutable y costos redaccionados por servidor.                         |
+| 3. Inventario y bodega               | Completada — 2026-09-03                            | Backend/API + Operación de almacén   | Ledger consistente, reintentos idempotentes y doble aprobación distinta.                  |
+| 4. Tickets y proyección financiera   | Completada — 2026-09-03                            | Backend/API + POS + Envelope/Payroll | Totales, inventario y proyección legacy conciliados al centavo.                           |
+| 5. Jornada, asistencia y caja        | Completada — 2026-09-03                            | Backend/API + Operación de sucursal  | Una jornada por sucursal/fecha y cierre inmutable.                                        |
+| 6. Offline y reconciliación          | Completada — 2026-09-03                            | POS/Electron + Backend/API           | Reinicios y reintentos no pierden ni duplican operaciones.                                |
+| 7. Reportes y retiro de mocks        | Completada — 2026-09-03                            | Backend/API + POS                    | Módulos operativos consumen API o repositorio offline autorizado.                         |
+| 8. Piloto y despliegue               | Implementada en repositorio — activación pendiente | Operación + Backend/API + Producto   | Piloto conciliado, rollback disponible y aprobación operativa.                            |
 
 El responsable principal ejecuta la fase; los equipos indicados como colaboradores revisan sus límites. Ninguna fase posterior inicia mutaciones de datos por el mero hecho de que exista este plan.
 
@@ -354,14 +354,24 @@ Los tipos POS saldrán de `apps/pos` hacia `packages/types/src/pos.ts`; `package
 
 ### Fase 8 — Migración, piloto y despliegue
 
-- [ ] Validar cada migración sobre PostgreSQL desechable y después en Supabase development.
-- [ ] Ejecutar diagnóstico de datos existentes, crear perfiles faltantes de sucursal y configurar explícitamente master, permisos y terminal piloto.
-- [ ] Ejecutar operación paralela en una sucursal: aperturas, ventas, apartados, cancelaciones, inventario, cierre, Envelope y preview Payroll.
-- [ ] Comparar totales y movimientos antes de habilitar más terminales.
-- [ ] Promover backend mediante el workflow protegido; respaldar/PITR antes de migrar producción.
-- [ ] Mantener rollback por feature flag `VITE_POS_DATA_MODE=mock|api` hasta aprobar el piloto, sin intentar convertir datos mock.
+- [x] Automatizar la reconstrucción de todas las migraciones y la integración HTTP sobre PostgreSQL 16 desechable, más la verificación del estado de migraciones en Supabase development.
+- [x] Incorporar diagnóstico de datos y un procedimiento explícito, sin seeds, para crear perfiles, master, permisos y terminal piloto.
+- [x] Definir el recorrido paralelo de una sucursal: apertura, ventas, apartados/abonos, cancelaciones/devoluciones, inventario, recuperación offline, cierre, Envelope y preview Payroll.
+- [x] Implementar conciliación de sólo lectura para totales, pagos por método, proyección legacy, movimientos, cierre, notificaciones y secuencia offline antes de ampliar terminales.
+- [x] Integrar la puerta con el workflow protegido de backend y documentar respaldo/PITR, promoción gradual, observabilidad y rollback.
+- [x] Conservar rollback por build flag `VITE_POS_DATA_MODE=mock|api`, sin convertir ni eliminar datos mock.
 
-**Criterio de cierre:** conciliación sin diferencias, sincronización offline recuperable, observabilidad estable y aprobación operativa.
+**Criterio de cierre en repositorio: cumplido el 2026-09-03.** `backend/api/scripts/reconcile-pos-pilot.ts` abre una transacción PostgreSQL `READ ONLY` y falla ante cualquier diferencia financiera, de inventario, cierre, notificaciones o sincronización. `.github/workflows/pos-pilot.yml` reconstruye todas las migraciones en PostgreSQL 16, ejecuta la integración HTTP, verifica SHA/readiness y estado de migraciones en development, corre el diagnóstico y conserva evidencia sin secretos. `docs/POS_PILOT_RUNBOOK.md` fija el provisionamiento, el recorrido paralelo, la comparación con Envelope/Payroll, la promoción gradual y el rollback compatible hacia adelante.
+
+**Activación operativa pendiente:** todavía deben ejecutarse el workflow contra Supabase development, el piloto físico en una sucursal, la recuperación offline con un binario instalado y la aprobación de Operación/Producto. Producción no fue consultada ni modificada durante esta implementación. La fase sólo queda cerrada operativamente cuando el reporte sea `PASS`, no existan diferencias ni operaciones offline sin resolver y se conserve la aprobación humana.
+
+#### Entregables verificables
+
+- Conciliador: `backend/api/src/services/pos-pilot-reconciliation.ts` valida preparación de sucursal, tickets/líneas/vendedores, cobros, apartados, compensaciones, `Venta/VentaDetalle`, métodos de pago, ledger de inventario, notificaciones, snapshot de cierre y cursores offline. No escribe correcciones ni serializa clientes o secretos.
+- Comando: `pnpm --filter @cosmetics/api pos:reconcile`, configurado con `POS_PILOT_BRANCH_ID`, `POS_PILOT_BUSINESS_DATE`, `POS_PILOT_MIN_TICKETS`, `POS_PILOT_REQUIRE_CLOSED_DAY`, `POS_PILOT_REQUIRE_COVERAGE` y `POS_PILOT_REQUIRE_OFFLINE_SYNC`.
+- Gate: **POS pilot gate** exige SHA desplegado, sucursal, fecha, mínimo de tickets y confirmación `PILOTO_CONCILIADO`. El primer job usa PostgreSQL efímero; el segundo está limitado al environment protegido `development` y sólo realiza lecturas sobre su base.
+- Runbook: `docs/POS_PILOT_RUNBOOK.md` prohíbe seeds/mocks en bases operativas, enumera el flujo real, explica que la feature flag es de build y ordena rollback de código compatible sin revertir migraciones.
+- Verificación local: sincronía/validación Prisma, type-check, lint, 48 pruebas unitarias y build del API deben quedar verdes. PostgreSQL/Supabase y el binario instalado se validan al ejecutar el workflow y el piloto externo descritos arriba.
 
 ## 4. Pruebas y criterios de aceptación
 

@@ -102,6 +102,9 @@ el diseño y el autocuidado.
 
 ## Estado actual de `apps/pos`
 
+- La Fase 8 de `PLAN_BACKEND_POS.md` quedó implementada en repositorio el 2026-09-03; su activación operativa permanece pendiente. `backend/api/scripts/reconcile-pos-pilot.ts` ejecuta en una transacción PostgreSQL `READ ONLY` la conciliación por sucursal/fecha de tickets, pagos, proyección `Venta/VentaDetalle`, métodos, inventario, notificaciones, snapshot de cierre y secuencias offline. Falla si falta la preparación mínima, la cobertura acordada o la fecha piloto conserva operaciones `PENDING`, `SYNCING`, `ERROR` o `CONFLICT`; los conflictos históricos permanecen auditables sin bloquear por sí solos otra fecha.
+- `.github/workflows/pos-pilot.yml` agrega la puerta manual protegida **POS pilot gate**: reconstruye todas las migraciones e integración HTTP sobre PostgreSQL 16 efímero, verifica SHA/readiness y estado de migraciones en Supabase development, ejecuta `pos:diagnose` y `pos:reconcile`, y conserva evidencia sin clientes ni secretos. Exige la confirmación humana `PILOTO_CONCILIADO`; no crea perfiles, credenciales o terminales automáticamente.
+- `docs/POS_PILOT_RUNBOOK.md` define provisionamiento explícito sin seeds, operación paralela, interrupción/reinicio offline con binario instalado, comparación con Envelope/Payroll, promoción gradual, observabilidad y rollback. `VITE_POS_DATA_MODE` es una bandera de build: volver a `mock` requiere redistribuir un build sano y nunca convierte ni elimina datos. Durante la implementación no se consultó ni modificó Supabase development o producción; el cierre real requiere un reporte `PASS` y aprobación de Operación/Producto.
 - La Fase 7 de `PLAN_BACKEND_POS.md` quedó completada en repositorio el 2026-09-03 mediante la migración aditiva `20260903060000_add_pos_notifications_reports`. Amplía `PosNotificationKind` y agrega preferencias y outbox por credencial con acceso `VIEW`/`EDIT`, entrega y contenido histórico append-only. No contiene seeds ni datos demostrativos y no se aplicó a development o producción durante la implementación.
 - Las ventas, gastos, altas de catálogo, movimientos de inventario/bodega, cierres y Clock In crean notificaciones y destinatarios en el mismo commit del evento. `/api/pos/notifications` pagina por la sucursal de la terminal y por credencial o permiso legacy, registra `deliveredAt`, lectura individual/masiva y preferencias administrables. Ningún mensaje incluye costos.
 - `backend/api/src/routes/pos-report.routes.ts` publica `/api/pos/reports/:key` y `/api/pos/exports/:key` para ventas, caja, productos, mercancía, empleados y clientes. Los datasets exigen `REPORTS_VIEW`, aplican rango, filtros y paginación; un operador no master siempre queda limitado a la sucursal de su terminal y sólo master puede seleccionar otras sucursales activas. Costo, utilidad, margen y valor de inventario se redactan salvo para master o `REPORTS_COSTS`.
@@ -1039,6 +1042,7 @@ La migración en Supabase dev, el backend `cosmetics-api-dev`, el login `SUPER_A
 - `.github/workflows/deploy-api.yml` solo se ejecuta manualmente. Fija el SHA de la rama `develop` o `master` antes de la aprobación, usa el environment `development` o `production`, aplica `prisma migrate deploy`, despliega exactamente ese commit y espera `/ready`. Producción exige escribir `PRODUCCION_RESPALDADA`; esta confirmación no sustituye verificar backup/PITR ni la aprobación del environment.
 - `.github/workflows/staging-smoke.yml` exige los SHA completos servidos y ejecuta cinco smoke tests Playwright públicos de solo lectura contra API, Envelope y Payroll en el environment elegido. En producción encadena además `Authenticated production smoke`, con tres recorridos por app, cuentas de monitoreo, cero retries y sin artefactos sensibles. Los previews protegidos usan `ENVELOPE_VERCEL_BYPASS_SECRET` y `PAYROLL_VERCEL_BYPASS_SECRET`, generados por separado en cada proyecto Vercel; todas las suites de ambiente desactivan traces, screenshots y video.
 - `.github/workflows/development-e2e.yml` ejecuta manualmente 16 recorridos autenticados de solo lectura (8 Envelope + 8 Payroll) únicamente en el environment `development`. Requiere las cuatro credenciales `E2E_*`, los bypass de Vercel y los SHA completos de frontend/API; compara la identidad desplegada antes de probar y elimina los `storageState` antes de adjuntar el reporte seguro.
+- `.github/workflows/pos-pilot.yml` implementa la puerta manual **POS pilot gate** sobre el environment `development`. Primero reconstruye todas las migraciones y ejecuta integración HTTP en PostgreSQL 16 efímero; después verifica el SHA/readiness desplegado, `prisma migrate status`, diagnóstico y conciliación `READ ONLY` de una sucursal/fecha. La confirmación `PILOTO_CONCILIADO` representa la aprobación humana y no se usa para crear datos ni credenciales.
 - El API separa `src/app.ts` (Express importable) de `src/index.ts` (listener y cierre ordenado). `/health` verifica el proceso y `/ready` verifica conectividad PostgreSQL; Fly enruta mediante el segundo.
 - Las migraciones Prisma dejaron de estar ignoradas por Git. `scripts/check-migration-safety.mjs` bloquea SQL nuevo potencialmente destructivo salvo revisión explícita documentada con `-- migration-safety: reviewed`.
 - `db:push` y el alias directo `db:migrate:prod` fueron retirados de los scripts. Los despliegues usan `db:migrate:deploy` dentro del environment protegido.
@@ -1200,6 +1204,7 @@ backend/api/
     ├── services/
     │   ├── payroll-calculation.ts → motor puro de cálculo
     │   ├── payroll.service.ts     → corridas, reservas y snapshots
+    │   ├── pos-pilot-reconciliation.ts → conciliación de sólo lectura para el piloto POS
     │   └── payroll-storage.ts     → comprobantes en bucket privado
     ├── types/
     │   ├── express.d.ts           → extensión de tipos de Express
@@ -1221,6 +1226,7 @@ apps/e2e/
 ├── ci.yml                        → gates obligatorios de PR
 ├── deploy-api.yml                → migración + deploy manual protegido
 ├── development-e2e.yml           → E2E autenticado por SHA, solo development
+├── pos-pilot.yml                 → migraciones efímeras + conciliación protegida del piloto POS
 └── staging-smoke.yml             → smoke tests manuales development/production
 ```
 
@@ -1332,6 +1338,7 @@ El scheduler usa `.next-dev` para `next dev` y `.next` para `next build`. Esta s
 pnpm --filter @cosmetics/api prisma:schemas
 pnpm --filter @cosmetics/api prisma:validate
 pnpm --filter @cosmetics/api pos:diagnose # sólo lectura; requiere DATABASE_URL
+pnpm --filter @cosmetics/api pos:reconcile # sólo lectura; requiere alcance del piloto
 pnpm migrations:review -- origin/develop
 pnpm test:integration  # requiere RUN_DATABASE_TESTS=true + PostgreSQL desechable
 pnpm test:smoke        # requiere URLs de ambiente o servicios locales activos
@@ -1344,7 +1351,9 @@ pnpm test:e2e:production  # diagnóstico administrado; solo cuentas de monitoreo
 Ejecutar manualmente el workflow de GitHub Actions `Deploy API` y elegir el
 environment `development` o `production`. Producción requiere aprobación del
 environment y escribir `PRODUCCION_RESPALDADA`; no desplegar directamente con
-Fly desde una terminal local. Ver `docs/RELEASE_RUNBOOK.md`.
+Fly desde una terminal local. La primera habilitación POS requiere antes un
+resultado verde de `POS pilot gate`; ver `docs/POS_PILOT_RUNBOOK.md` y
+`docs/RELEASE_RUNBOOK.md`.
 
 ### Prisma (ejecutar desde `backend/api/`)
 
