@@ -438,6 +438,8 @@ Evidencia disponible:
 
 ### Fase 7 — Mensajería, documentos, expediente médico y encuestas
 
+**Estado de implementación (4 de septiembre de 2026):** completada en repositorio; migración, bucket privado, llaves, sandbox de proveedor y pruebas HTTP/PostgreSQL 16 pendientes de los gates de Fase 0. La conexión visual continúa en Fase 9 y el proveedor permanece deshabilitado por defecto.
+
 Objetivo: habilitar funciones sensibles mediante procesos seguros, auditables e idempotentes.
 
 Entregables:
@@ -453,6 +455,15 @@ Entregables:
 - Adaptadores de proveedor probados en sandbox antes de activar producción.
 
 Criterio de salida: los envíos no se duplican, los documentos no son públicos y toda consulta sensible queda trazable.
+
+Evidencia disponible:
+
+- `20260904110000_add_scheduler_engagement` es exclusivamente aditiva: agrega plantillas/versiones, preferencias, outbox/eventos, consentimientos/documentos, expediente cifrado, encuestas/tokens/respuestas y triggers append-only. No importa mocks, no crea datos operativos ni se aplicó a un ambiente; ambos schemas permanecen sincronizados.
+- El outbox exige `Idempotency-Key` con hash de solicitud, cifra destinos con AES-256-GCM, reclama lotes con `SKIP LOCKED`, aplica backoff acotado y falla terminalmente al octavo intento. Mover/cambiar una cita cancela y, cuando corresponde, regenera recordatorios dentro del mismo commit.
+- El webhook público verifica HMAC sobre body crudo con ventana de cinco minutos, deduplica eventos y evita regresiones de estado. El adaptador HTTP permanece `disabled` por default y production exige declarar que el sandbox fue verificado.
+- Documentos y consentimientos usan bucket privado, límite de 5 MB y URLs firmadas por 300 segundos; expediente y descargas consumen autorizaciones secundarias ligadas al objetivo y auditan cada lectura sensible.
+- Los expedientes se guardan como ciphertext/IV/auth tag con versión de llave. Los tokens de encuesta persisten sólo SHA-256, caducan, se consumen bajo lock y crean respuestas/answers append-only en una transacción serializable.
+- `@cosmetics/types` y `@cosmetics/api-client` exponen el contrato. El cierre local valida schemas, lint/type-check/build del API, 127 pruebas unitarias en 24 archivos y lint/type-check/build de Scheduler; permanecen sólo sus advertencias preexistentes de imágenes/hooks. PostgreSQL desechable, integración HTTP, storage privado y sandbox real siguen siendo gates obligatorios. Runbook: `docs/SCHEDULER_PHASE_7_ENGAGEMENT.md`.
 
 ### Fase 8 — Reportes y exportaciones
 
@@ -655,16 +666,16 @@ Opciones consideradas:
 
 ## 12. Punto recomendado para retomar
 
-La siguiente sesión operativa debe cerrar la **evidencia de la Fase 0** y activar de forma controlada las Fases 1, 2 y 3 antes de iniciar citas:
+La siguiente sesión operativa debe cerrar la **evidencia de la Fase 0** y activar de forma controlada las Fases 1 a 7 antes de conectar el frontend o habilitar proveedores:
 
 1. Confirmar que se dispone de acceso seguro a la base de desarrollo.
-2. Comparar migraciones aplicadas contra las 40 existentes en el repositorio.
+2. Comparar migraciones aplicadas contra el inventario vigente del repositorio, sin depender de un conteo histórico fijo.
 3. Ejecutar `scheduler:diagnose` y conservar el JSON agregado como evidencia segura.
 4. Revisar conteos, duplicados y candidatos de mapeo reales.
-5. Reconstruir todas las migraciones, incluidas `20260904060000_add_scheduler_security`, `20260904070000_add_scheduler_operational_catalogs`, `20260904080000_add_scheduler_customers` y `20260904090000_add_scheduler_appointments`, sobre PostgreSQL 16 desechable.
-6. Ejecutar pruebas HTTP de `401/403`, alcance, autorización de un solo uso, candidatos, perfiles, clientes, normalización, fusiones, horarios, bloqueos, idempotencia y conflictos `409`; probar además dos altas concurrentes con el mismo teléfono y dos reservas por el último espacio.
-7. Aprobar la estrategia de backfill; aplicar las cuatro migraciones en development y provisionar grants/catálogos explícitos sin seeds operativos.
+5. Reconstruir todas las migraciones, incluidas las de Scheduler `20260904060000` a `20260904110000`, sobre PostgreSQL 16 desechable.
+6. Ejecutar pruebas HTTP de `401/403`, alcance, autorización de un solo uso, candidatos, perfiles, clientes, normalización, fusiones, horarios, bloqueos, idempotencia y conflictos `409`; probar además concurrencia de clientes/citas, outbox, webhooks, URLs privadas y doble envío de encuesta.
+7. Aprobar la estrategia de backfill; aplicar las migraciones de Scheduler en development y provisionar grants, bucket, llaves y catálogos explícitos sin seeds operativos. Mantener el proveedor de mensajería deshabilitado hasta completar sandbox.
 8. Ejecutar `scheduler:customers:normalize` en `DRY_RUN`, materializar sólo después de revisar el agregado y resolver manualmente duplicados antes de diseñar la migración del índice único parcial.
-9. Con esa evidencia, conectar gradualmente Administración, Clientes y Agenda según la Fase 9; después activar de forma controlada el proveedor `internal` ya implementado en Fase 5 y validar POS/Scheduler antes de retirar el rollback HTTP.
+9. Con esa evidencia, conectar gradualmente Administración, Clientes, Agenda, Comunicaciones y Documentos según la Fase 9; después activar de forma controlada el proveedor `internal` ya implementado en Fase 5, validar POS/Scheduler y habilitar mensajería sólo tras aprobar sandbox.
 
 No debe iniciarse la migración canónica de citas hasta conocer el contenido real de `PosAppointment`, `RegistroCita` y las tablas `Agenda*` en el ambiente objetivo.

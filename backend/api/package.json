@@ -26,6 +26,7 @@
     "pos:diagnose": "tsx scripts/diagnose-pos-data.ts",
     "scheduler:diagnose": "node --import tsx scripts/diagnose-scheduler-data.ts",
     "scheduler:customers:normalize": "node --import tsx scripts/normalize-scheduler-customers.ts",
+    "scheduler:messages:worker": "node --import tsx scripts/process-scheduler-messages.ts",
     "pos:reconcile": "tsx scripts/reconcile-pos-pilot.ts",
     "pos:agenda:worker": "tsx scripts/process-agenda-sync.ts",
     "prisma:validate": "prisma validate",

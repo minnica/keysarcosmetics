@@ -73,6 +73,22 @@ export const schedulerAuthorizationRequirements: Record<
     screenKey: "scheduler/clients",
     capability: "EXPORT",
   },
+  MEDICAL_RECORD_VIEW: {
+    screenKey: "scheduler/settings/records",
+    capability: "READ",
+  },
+  MEDICAL_RECORD_EDIT: {
+    screenKey: "scheduler/settings/records",
+    capability: "WRITE",
+  },
+  PRIVATE_DOCUMENT_DOWNLOAD: {
+    screenKey: "scheduler/administration/consents",
+    capability: "READ",
+  },
+  MEDICAL_DOCUMENT_DOWNLOAD: {
+    screenKey: "scheduler/settings/records",
+    capability: "READ",
+  },
 };
 
 function permissionCapabilities(permission: {

@@ -137,6 +137,19 @@ import type {
   SchedulerSettingWriteDto,
   SchedulerStatusColorDto,
   SchedulerStatusColorsWriteDto,
+  SchedulerContactChannelDto,
+  SchedulerContactChannelStatus,
+  SchedulerConsentRecordDto,
+  SchedulerConsentTemplateDto,
+  SchedulerDocumentDto,
+  SchedulerMedicalRecordDto,
+  SchedulerMessageChannel,
+  SchedulerMessageOutboxDto,
+  SchedulerMessageTemplateDto,
+  SchedulerMessageTemplateWriteDto,
+  SchedulerSurveyDto,
+  SchedulerSurveyPublicDto,
+  SchedulerSurveyWriteDto,
 } from "@cosmetics/types";
 
 /**
@@ -379,6 +392,101 @@ export interface SchedulerApiClient {
     input: SchedulerSettingWriteDto,
   ): Promise<{ id: string; version: number }>;
   posReferences(branchId?: string): Promise<SchedulerPosReferencesDto>;
+  messageTemplates(): Promise<SchedulerMessageTemplateDto[]>;
+  createMessageTemplate(
+    input: SchedulerMessageTemplateWriteDto,
+  ): Promise<{ id: string; version: number }>;
+  updateMessageTemplate(
+    id: string,
+    input: SchedulerMessageTemplateWriteDto,
+  ): Promise<{ id: string; version: number }>;
+  contactChannels(customerId: string): Promise<SchedulerContactChannelDto[]>;
+  updateContactChannel(
+    customerId: string,
+    input: {
+      channel: SchedulerMessageChannel;
+      status: SchedulerContactChannelStatus;
+      source?: string | null;
+      expectedVersion?: number;
+    },
+  ): Promise<{ version: number }>;
+  enqueueMessage(
+    input: {
+      templateId: string;
+      customerId: string;
+      branchId: string;
+      appointmentId?: string | null;
+      scheduledAt: string;
+      variables: Record<string, string>;
+    },
+    idempotencyKey: string,
+  ): Promise<{ id: string; status: SchedulerMessageOutboxDto["status"] }>;
+  messageOutbox(): Promise<SchedulerMessageOutboxDto[]>;
+  retryMessage(id: string): Promise<{ id: string }>;
+  consentTemplates(): Promise<SchedulerConsentTemplateDto[]>;
+  uploadConsentTemplate(
+    form: FormData,
+    id?: string,
+  ): Promise<{ id: string; documentId: string; version: number }>;
+  assignConsent(input: {
+    templateVersionId: string;
+    customerId: string;
+    branchId: string;
+    appointmentId?: string | null;
+  }): Promise<SchedulerConsentRecordDto>;
+  consentRecords(input: {
+    customerId: string;
+    branchId: string;
+  }): Promise<SchedulerConsentRecordDto[]>;
+  updateConsentStatus(
+    id: string,
+    form: FormData,
+  ): Promise<SchedulerConsentRecordDto>;
+  uploadCustomerDocument(
+    customerId: string,
+    form: FormData,
+  ): Promise<{ id: string; sha256: string }>;
+  customerDocuments(
+    customerId: string,
+    branchId: string,
+    authorizationToken: string,
+  ): Promise<SchedulerDocumentDto[]>;
+  privateDocumentUrl(
+    kind: "consent" | "signed-consent" | "customer",
+    id: string,
+    authorizationToken: string,
+  ): Promise<{ url: string; expiresInSeconds: number }>;
+  medicalRecord(
+    customerId: string,
+    commerceId: string,
+    authorizationToken: string,
+  ): Promise<SchedulerMedicalRecordDto>;
+  updateMedicalRecord(
+    customerId: string,
+    input: {
+      commerceId: string;
+      fields: Record<string, unknown>;
+      expectedVersion?: number;
+      authorizationToken: string;
+    },
+  ): Promise<{ version: number; updatedAt: string }>;
+  surveys(): Promise<SchedulerSurveyDto[]>;
+  createSurvey(
+    input: SchedulerSurveyWriteDto,
+  ): Promise<{ id: string; version: number; versionId: string }>;
+  updateSurvey(
+    id: string,
+    input: SchedulerSurveyWriteDto,
+  ): Promise<{ id: string; version: number; versionId: string }>;
+  issueSurveyToken(
+    id: string,
+    input: { customerId: string; appointmentId?: string | null; expiresAt: string },
+  ): Promise<{ token: string; expiresAt: string }>;
+  publicSurvey(token: string): Promise<SchedulerSurveyPublicDto>;
+  submitSurvey(
+    token: string,
+    answers: Array<{ questionId: string; value: unknown }>,
+  ): Promise<{ id: string }>;
   logout(): void;
 }
 
@@ -679,6 +787,127 @@ export function createSchedulerApiClient(
         client.get("/api/scheduler/administration/pos-references", {
           params: branchId ? { branchId } : undefined,
         }),
+      ),
+    messageTemplates: () =>
+      data<SchedulerMessageTemplateDto[]>(
+        client.get("/api/scheduler/communications/templates"),
+      ),
+    createMessageTemplate: (input) =>
+      data<{ id: string; version: number }>(
+        client.post("/api/scheduler/communications/templates", input),
+      ),
+    updateMessageTemplate: (id, input) =>
+      data<{ id: string; version: number }>(
+        client.put(`/api/scheduler/communications/templates/${id}`, input),
+      ),
+    contactChannels: (customerId) =>
+      data<SchedulerContactChannelDto[]>(
+        client.get(
+          `/api/scheduler/communications/customers/${customerId}/contact-channels`,
+        ),
+      ),
+    updateContactChannel: (customerId, input) =>
+      data<{ version: number }>(
+        client.put(
+          `/api/scheduler/communications/customers/${customerId}/contact-channels`,
+          input,
+        ),
+      ),
+    enqueueMessage: (input, idempotencyKey) =>
+      data<{ id: string; status: SchedulerMessageOutboxDto["status"] }>(
+        client.post("/api/scheduler/communications/outbox", input, {
+          headers: { "Idempotency-Key": idempotencyKey },
+        }),
+      ),
+    messageOutbox: () =>
+      data<SchedulerMessageOutboxDto[]>(
+        client.get("/api/scheduler/communications/outbox"),
+      ),
+    retryMessage: (id) =>
+      data<{ id: string }>(
+        client.post(`/api/scheduler/communications/outbox/${id}/retry`),
+      ),
+    consentTemplates: () =>
+      data<SchedulerConsentTemplateDto[]>(
+        client.get("/api/scheduler/documents/consent-templates"),
+      ),
+    uploadConsentTemplate: (form, id) =>
+      data<{ id: string; documentId: string; version: number }>(
+        client.post(
+          `/api/scheduler/documents/consent-templates${id ? `/${id}` : ""}`,
+          form,
+          { headers: { "Content-Type": "multipart/form-data" } },
+        ),
+      ),
+    assignConsent: (input) =>
+      data<SchedulerConsentRecordDto>(
+        client.post("/api/scheduler/documents/consent-records", input),
+      ),
+    consentRecords: (input) =>
+      data<SchedulerConsentRecordDto[]>(
+        client.get("/api/scheduler/documents/consent-records", {
+          params: input,
+        }),
+      ),
+    updateConsentStatus: (id, form) =>
+      data<SchedulerConsentRecordDto>(
+        client.post(
+          `/api/scheduler/documents/consent-records/${id}/status`,
+          form,
+          { headers: { "Content-Type": "multipart/form-data" } },
+        ),
+      ),
+    uploadCustomerDocument: (customerId, form) =>
+      data<{ id: string; sha256: string }>(
+        client.post(`/api/scheduler/documents/customers/${customerId}`, form, {
+          headers: { "Content-Type": "multipart/form-data" },
+        }),
+      ),
+    customerDocuments: (customerId, branchId, authorizationToken) =>
+      data<SchedulerDocumentDto[]>(
+        client.get(`/api/scheduler/documents/customers/${customerId}`, {
+          params: { branchId },
+          headers: { "x-scheduler-authorization": authorizationToken },
+        }),
+      ),
+    privateDocumentUrl: (kind, id, authorizationToken) =>
+      data<{ url: string; expiresInSeconds: number }>(
+        client.post(`/api/scheduler/documents/${kind}/${id}/signed-url`, {
+          authorizationToken,
+        }),
+      ),
+    medicalRecord: (customerId, commerceId, authorizationToken) =>
+      data<SchedulerMedicalRecordDto>(
+        client.get(`/api/scheduler/medical-records/${customerId}`, {
+          params: { commerceId },
+          headers: { "x-scheduler-authorization": authorizationToken },
+        }),
+      ),
+    updateMedicalRecord: (customerId, input) =>
+      data<{ version: number; updatedAt: string }>(
+        client.put(`/api/scheduler/medical-records/${customerId}`, input),
+      ),
+    surveys: () =>
+      data<SchedulerSurveyDto[]>(client.get("/api/scheduler/surveys")),
+    createSurvey: (input) =>
+      data<{ id: string; version: number; versionId: string }>(
+        client.post("/api/scheduler/surveys", input),
+      ),
+    updateSurvey: (id, input) =>
+      data<{ id: string; version: number; versionId: string }>(
+        client.put(`/api/scheduler/surveys/${id}`, input),
+      ),
+    issueSurveyToken: (id, input) =>
+      data<{ token: string; expiresAt: string }>(
+        client.post(`/api/scheduler/surveys/${id}/tokens`, input),
+      ),
+    publicSurvey: (token) =>
+      data<SchedulerSurveyPublicDto>(
+        client.get(`/api/scheduler/surveys/respond/${token}`),
+      ),
+    submitSurvey: (token, answers) =>
+      data<{ id: string }>(
+        client.post(`/api/scheduler/surveys/respond/${token}`, { answers }),
       ),
     logout: () => setAccessToken(null),
   };

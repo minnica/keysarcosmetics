@@ -23,6 +23,7 @@ import posMembershipRoutes from "./routes/pos-membership.routes";
 import posAgendaRoutes from "./routes/pos-agenda.routes";
 import posCommercialRoutes from "./routes/pos-commercial.routes";
 import schedulerRoutes from "./routes/scheduler.routes";
+import schedulerPublicRoutes from "./routes/scheduler-public.routes";
 
 function configuredOrigins(): string[] {
   const rawOrigins = process.env["CORS_ORIGINS"] ?? "";
@@ -87,6 +88,8 @@ export function createApp(): Express {
   app.use("/api/payroll/access", payrollAccessRoutes);
   app.use("/api/payroll", payrollRoutes);
   app.use("/api/crm", crmRoutes);
+  // Webhooks firmados y respuestas por token deben montarse antes del router JWT.
+  app.use("/api/scheduler", schedulerPublicRoutes);
   app.use("/api/scheduler", schedulerRoutes);
   // El webhook firmado de Agenda vive antes de los routers que exigen JWT POS.
   app.use("/api/pos", posAgendaRoutes);

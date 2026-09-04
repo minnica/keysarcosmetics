@@ -442,7 +442,13 @@ Datos:
 
 ## Estado actual de apps/scheduler
 
-`apps/scheduler` es la app de agenda y administración de reservas. Las Fases 1 a 6 ya implementaron login, bootstrap, permisos, alcance, autorizaciones secundarias, catálogos base, clientes compartidos, el motor canónico de disponibilidad/citas, la sustitución del proveedor Agenda usado por POS y la persistencia backend de la administración/configuración avanzada. La UI de Clientes, citas, configuraciones operativas, reportes y paneles administrativos avanzados continúa local/mock hasta la conexión controlada de Fase 9. Los módulos mock sólo se renderizan con `NODE_ENV=development` y `SCHEDULER_ALLOW_MOCKS=true`; fuera de ese modo se abren exclusivamente las superficies ya persistentes y las demás se mantienen cerradas.
+`apps/scheduler` es la app de agenda y administración de reservas. Las Fases 1 a 7 ya implementaron login, bootstrap, permisos, alcance, autorizaciones secundarias, catálogos base, clientes compartidos, el motor canónico de disponibilidad/citas, la sustitución del proveedor Agenda usado por POS, la administración/configuración avanzada y el backend de comunicaciones, documentos, expediente médico y encuestas. La UI de Clientes, citas, comunicaciones, documentos, configuraciones operativas, reportes y paneles administrativos avanzados continúa local/mock hasta la conexión controlada de Fase 9. Los módulos mock sólo se renderizan con `NODE_ENV=development` y `SCHEDULER_ALLOW_MOCKS=true`; fuera de ese modo se abren exclusivamente las superficies ya persistentes y las demás se mantienen cerradas.
+
+- La Fase 7 quedó implementada en repositorio el 4 de septiembre de 2026 mediante la migración exclusivamente aditiva `20260904110000_add_scheduler_engagement`; no se aplicó a development ni production, no importa mocks/seeds ni crea mensajes, documentos, expedientes o encuestas. Ambos schemas Prisma permanecen sincronizados. Agrega plantillas/versiones, preferencias por canal, outbox/eventos, consentimientos/documentos, expedientes cifrados, encuestas/tokens/respuestas y protecciones append-only.
+- `/api/scheduler/communications*`, `/documents*`, `/medical-records*` y `/surveys*` aplican permisos, sucursales materializadas, alcance profesional propio, control optimista y auditoría. Los webhooks HMAC y la respuesta de encuesta por token son las únicas rutas públicas; se montan antes del router JWT y no exponen PII, rutas de storage, hashes o ciphertext.
+- El outbox exige `Idempotency-Key`, conserva hash de solicitud, cifra destinos con AES-256-GCM, usa `FOR UPDATE SKIP LOCKED`, recupera locks y reintenta con backoff hasta ocho intentos. `SCHEDULER_MESSAGING_PROVIDER=disabled` es el default; `http` requiere secretos sólo de servidor y en production exige `SCHEDULER_MESSAGING_SANDBOX_VERIFIED=true`. El worker se ejecuta con `pnpm --filter @cosmetics/api scheduler:messages:worker`.
+- Cambiar o mover una cita cancela sus recordatorios pendientes dentro del mismo commit y crea intenciones nuevas sólo si la cita continúa vigente. Documentos viven en `SCHEDULER_PRIVATE_STORAGE_BUCKET` privado y se abren con URLs firmadas de 300 segundos después de autorización secundaria; el expediente se guarda cifrado y toda lectura/cambio sensible se audita.
+- Tokens de encuesta contienen 32 bytes aleatorios y sólo persisten como SHA-256. Caducan, se consumen bajo lock una vez y escriben respuesta/answers inmutables en una transacción serializable. El cierre local valida schemas, contratos, lint/type-check/build del API, 127 pruebas unitarias en 24 archivos y lint/type-check/build de Scheduler; permanecen sólo sus advertencias preexistentes de imágenes/hooks. PostgreSQL 16, storage privado, integración HTTP y sandbox real siguen pendientes. Runbook: `docs/SCHEDULER_PHASE_7_ENGAGEMENT.md`.
 
 - La Fase 6 quedó implementada en repositorio el 4 de septiembre de 2026 mediante la migración exclusivamente aditiva `20260904100000_add_scheduler_administration`; no se aplicó a development ni production, no importa mocks/seeds ni modifica datos operativos y ambos schemas Prisma permanecen sincronizados. Agrega perfiles Scheduler sobre `PosPackage` y `CatalogItem`, horarios de clases, comisiones versionadas, plantillas de gift card, colores de estado y configuraciones versionadas por comercio, sucursal y usuario.
 - `/api/scheduler/administration/*` publica el catálogo materializado y mutaciones de paquetes, complementos, clases, comisiones, gift cards, colores y settings. Todas aplican permisos por pantalla, alcance materializado, auditoría y control optimista; una mutación global requiere alcance completo del comercio. `@cosmetics/api-client` expone el contrato tipado.
@@ -1259,7 +1265,8 @@ backend/api/
 │   │   ├── 20260904070000_add_scheduler_operational_catalogs/ → perfiles, recursos y horarios de Scheduler
 │   │   ├── 20260904080000_add_scheduler_customers/ → clientes compartidos, metadatos y fusiones de Scheduler
 │   │   ├── 20260904090000_add_scheduler_appointments/ → disponibilidad, citas, bloqueos e idempotencia
-│   │   └── 20260904100000_add_scheduler_administration/ → paquetes, clases, comisiones, gift cards y settings
+│   │   ├── 20260904100000_add_scheduler_administration/ → paquetes, clases, comisiones, gift cards y settings
+│   │   └── 20260904110000_add_scheduler_engagement/ → mensajes, documentos, expediente y encuestas
 │   ├── seed.ts                    → seed general/demo, usar con cuidado
 │   └── seed-catalogs.ts           → seed seguro para Bank/Position
 └── src/
@@ -1283,7 +1290,9 @@ backend/api/
     │   ├── scheduler-operations.routes.ts → candidatos y catálogos operativos de Scheduler
     │   ├── scheduler-customers.routes.ts → clientes compartidos, expedientes, históricos y fusiones
     │   ├── scheduler-appointments.routes.ts → disponibilidad, citas, estados y bloqueos canónicos
-    │   └── scheduler-administration.routes.ts → administración avanzada, referencias POS y configuración
+    │   ├── scheduler-administration.routes.ts → administración avanzada, referencias POS y configuración
+    │   ├── scheduler-engagement.routes.ts → comunicaciones, documentos, expediente y encuestas autenticadas
+    │   └── scheduler-public.routes.ts → webhooks HMAC y respuesta pública por token
     ├── services/
     │   ├── payroll-calculation.ts → motor puro de cálculo
     │   ├── payroll.service.ts     → corridas, reservas y snapshots
@@ -1293,6 +1302,9 @@ backend/api/
     │   ├── scheduler-customers.ts → normalización, alcance y reglas de identidad/fusión
     │   ├── scheduler-appointments.ts → zonas IANA, intervalos, clases, estados, membresías e idempotencia
     │   ├── scheduler-administration.ts → validación de comisiones, clases, secretos y precedencia
+    │   ├── scheduler-engagement.ts → cifrado, plantillas, webhooks, recordatorios y encuestas
+    │   ├── scheduler-messaging.ts → adaptador y worker idempotente del outbox
+    │   ├── scheduler-private-storage.ts → documentos privados y URLs firmadas
     │   ├── internal-agenda-adapter.ts → disponibilidad Scheduler compatible con el contrato Agenda de POS
     │   ├── scheduler-pos-events.ts → propagación idempotente de estados Scheduler hacia citas/membresías POS
     │   └── payroll-storage.ts     → comprobantes en bucket privado
@@ -1432,6 +1444,7 @@ pnpm --filter @cosmetics/api prisma:validate
 pnpm --filter @cosmetics/api pos:diagnose # sólo lectura; requiere DATABASE_URL
 SCHEDULER_DIAGNOSE_ENVIRONMENT=development pnpm --filter @cosmetics/api scheduler:diagnose # sólo lectura
 SCHEDULER_DIAGNOSE_ENVIRONMENT=development SCHEDULER_CUSTOMER_NORMALIZATION_MODE=DRY_RUN pnpm --filter @cosmetics/api scheduler:customers:normalize
+pnpm --filter @cosmetics/api scheduler:messages:worker # outbox; proveedor disabled por default
 pnpm --filter @cosmetics/api pos:reconcile # sólo lectura; requiere alcance del piloto
 pnpm migrations:review -- origin/develop
 pnpm test:integration  # requiere RUN_DATABASE_TESTS=true + PostgreSQL desechable

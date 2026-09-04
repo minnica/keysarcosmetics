@@ -49,6 +49,10 @@ export const SCHEDULER_AUTHORIZATION_PURPOSES = [
   "STATUS_COLORS_CHANGE",
   "AVAILABILITY_OVERRIDE",
   "SENSITIVE_EXPORT",
+  "MEDICAL_RECORD_VIEW",
+  "MEDICAL_RECORD_EDIT",
+  "PRIVATE_DOCUMENT_DOWNLOAD",
+  "MEDICAL_DOCUMENT_DOWNLOAD",
 ] as const;
 
 export type SchedulerAuthorizationPurpose =
@@ -1178,4 +1182,165 @@ export interface SchedulerCustomerFieldDefinitionWriteDto {
   required?: boolean;
   active?: boolean;
   expectedVersion?: number;
+}
+
+export const SCHEDULER_MESSAGE_CHANNELS = [
+  "WHATSAPP",
+  "EMAIL",
+  "SMS",
+] as const;
+export type SchedulerMessageChannel = (typeof SCHEDULER_MESSAGE_CHANNELS)[number];
+
+export const SCHEDULER_CONTACT_CHANNEL_STATUSES = [
+  "UNVERIFIED",
+  "OPTED_IN",
+  "OPTED_OUT",
+] as const;
+export type SchedulerContactChannelStatus =
+  (typeof SCHEDULER_CONTACT_CHANNEL_STATUSES)[number];
+
+export interface SchedulerMessageTemplateDto {
+  id: string;
+  commerceId: string;
+  name: string;
+  channel: SchedulerMessageChannel;
+  active: boolean;
+  currentVersion: number;
+  subject: string | null;
+  body: string;
+  variables: string[];
+  updatedAt: string;
+}
+
+export interface SchedulerMessageTemplateWriteDto {
+  commerceId: string;
+  name: string;
+  channel: SchedulerMessageChannel;
+  active?: boolean;
+  subject?: string | null;
+  body: string;
+  variables: string[];
+  expectedVersion?: number;
+}
+
+export interface SchedulerContactChannelDto {
+  customerId: string;
+  channel: SchedulerMessageChannel;
+  status: SchedulerContactChannelStatus;
+  available: boolean;
+  verifiedAt: string | null;
+  consentedAt: string | null;
+  optedOutAt: string | null;
+  source: string | null;
+  version: number;
+}
+
+export interface SchedulerMessageOutboxDto {
+  id: string;
+  idempotencyKey: string;
+  appointmentId: string | null;
+  customerId: string;
+  branchId: string;
+  templateVersionId: string;
+  channel: SchedulerMessageChannel;
+  status:
+    | "PENDING"
+    | "PROCESSING"
+    | "RETRY"
+    | "SENT"
+    | "DELIVERED"
+    | "READ"
+    | "FAILED"
+    | "CANCELED";
+  scheduledAt: string;
+  attempts: number;
+  lastErrorCode: string | null;
+  createdAt: string;
+}
+
+export interface SchedulerDocumentDto {
+  id: string;
+  customerId?: string;
+  branchId?: string;
+  name?: string;
+  kind?: "CONSENT_SUPPORT" | "MEDICAL_SUPPORT" | "OTHER";
+  version?: number;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  sha256: string;
+  createdAt: string;
+}
+
+export interface SchedulerConsentTemplateDto {
+  id: string;
+  commerceId: string;
+  name: string;
+  active: boolean;
+  currentVersion: number;
+  document: (SchedulerDocumentDto & { version: number }) | null;
+}
+
+export interface SchedulerConsentRecordDto {
+  id: string;
+  status: "PENDING" | "SIGNED" | "DECLINED" | "REVOKED";
+  templateName?: string;
+  templateVersion?: number;
+  appointmentId?: string | null;
+  signedAt?: string | null;
+  declinedAt?: string | null;
+  revokedAt?: string | null;
+  hasSignedDocument?: boolean;
+  createdAt?: string;
+}
+
+export interface SchedulerMedicalRecordDto {
+  customerId: string;
+  commerceId: string;
+  fields: Record<string, unknown>;
+  version: number;
+  updatedAt: string;
+}
+
+export interface SchedulerSurveyQuestionWriteDto {
+  type: "RATING" | "COMMENT";
+  prompt: string;
+  required: boolean;
+}
+
+export interface SchedulerSurveyDto {
+  id: string;
+  commerceId: string;
+  name: string;
+  status: "DRAFT" | "ACTIVE" | "INACTIVE";
+  currentVersion: number;
+  title: string;
+  introduction: string | null;
+  questions: Array<
+    SchedulerSurveyQuestionWriteDto & { id: string; sortOrder: number }
+  >;
+  serviceProfileIds: string[];
+}
+
+export interface SchedulerSurveyWriteDto {
+  commerceId: string;
+  name: string;
+  status: "DRAFT" | "ACTIVE" | "INACTIVE";
+  title: string;
+  introduction?: string | null;
+  questions: SchedulerSurveyQuestionWriteDto[];
+  serviceProfileIds: string[];
+  expectedVersion?: number;
+}
+
+export interface SchedulerSurveyPublicDto {
+  title: string;
+  introduction: string | null;
+  expiresAt: string;
+  questions: Array<{
+    id: string;
+    type: "RATING" | "COMMENT";
+    prompt: string;
+    required: boolean;
+  }>;
 }

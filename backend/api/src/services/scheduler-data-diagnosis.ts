@@ -85,6 +85,23 @@ const EXPECTED_TABLES = [
   "SchedulerStatusColor",
   "SchedulerSetting",
   "SchedulerSettingVersion",
+  "SchedulerMessageTemplate",
+  "SchedulerMessageTemplateVersion",
+  "SchedulerCustomerContactChannel",
+  "SchedulerMessageOutbox",
+  "SchedulerMessageDeliveryEvent",
+  "SchedulerConsentTemplate",
+  "SchedulerConsentTemplateVersion",
+  "SchedulerConsentRecord",
+  "SchedulerCustomerDocument",
+  "SchedulerMedicalRecord",
+  "SchedulerSurvey",
+  "SchedulerSurveyVersion",
+  "SchedulerSurveyQuestion",
+  "SchedulerSurveyService",
+  "SchedulerSurveyToken",
+  "SchedulerSurveyResponse",
+  "SchedulerSurveyAnswer",
 ] as const;
 
 type ExpectedTable = (typeof EXPECTED_TABLES)[number];

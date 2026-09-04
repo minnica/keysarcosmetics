@@ -68,6 +68,12 @@ model Usuario {
   schedulerSettings                       SchedulerSetting[]                 @relation("SchedulerSettingUserScope")
   schedulerSettingsUpdated                SchedulerSetting[]                 @relation("SchedulerSettingUpdatedBy")
   schedulerSettingVersionsCreated         SchedulerSettingVersion[]          @relation("SchedulerSettingVersionCreatedBy")
+  schedulerMessageTemplateVersionsCreated SchedulerMessageTemplateVersion[]  @relation("SchedulerMessageTemplateVersionCreatedBy")
+  schedulerMessagesCreated                SchedulerMessageOutbox[]           @relation("SchedulerMessageCreatedBy")
+  schedulerConsentVersionsCreated         SchedulerConsentTemplateVersion[]  @relation("SchedulerConsentVersionCreatedBy")
+  schedulerDocumentsCreated               SchedulerCustomerDocument[]        @relation("SchedulerDocumentCreatedBy")
+  schedulerMedicalRecordsUpdated          SchedulerMedicalRecord[]           @relation("SchedulerMedicalRecordUpdatedBy")
+  schedulerSurveyVersionsCreated          SchedulerSurveyVersion[]           @relation("SchedulerSurveyVersionCreatedBy")
 }
 
 model Sucursal {
@@ -669,6 +675,10 @@ model SchedulerCommerce {
   giftCardTemplates        SchedulerGiftCardTemplate[]
   statusColors             SchedulerStatusColor[]
   settings                 SchedulerSetting[]
+  messageTemplates         SchedulerMessageTemplate[]
+  consentTemplates         SchedulerConsentTemplate[]
+  medicalRecords           SchedulerMedicalRecord[]
+  surveys                  SchedulerSurvey[]
   creadoEn                 DateTime                           @default(now())
   actualizadoEn            DateTime                           @updatedAt
 
@@ -700,6 +710,9 @@ model SchedulerBranchProfile {
   packageAssignments      SchedulerPackageBranchAssignment[]
   classSchedules          SchedulerClassSchedule[]
   settings                SchedulerSetting[]
+  messageOutbox           SchedulerMessageOutbox[]
+  consentRecords          SchedulerConsentRecord[]
+  customerDocuments       SchedulerCustomerDocument[]
   creadoEn                DateTime                                 @default(now())
   actualizadoEn           DateTime                                 @updatedAt
 
@@ -774,6 +787,7 @@ model SchedulerServiceProfile {
   addonAssignments        SchedulerServiceAddonAssignment[]
   classSchedules          SchedulerClassSchedule[]
   giftCardServices        SchedulerGiftCardService[]
+  surveyAssignments       SchedulerSurveyService[]
   creadoEn                DateTime                                 @default(now())
   actualizadoEn           DateTime                                 @updatedAt
 
@@ -1036,6 +1050,10 @@ model SchedulerAppointment {
   stateHistory       SchedulerAppointmentStateHistory[]
   idempotencyKeys    SchedulerIdempotencyKey[]
   posAppointments    PosAppointment[]
+  messageOutbox      SchedulerMessageOutbox[]
+  consentRecords     SchedulerConsentRecord[]
+  surveyTokens       SchedulerSurveyToken[]
+  surveyResponses    SchedulerSurveyResponse[]
   creadoEn           DateTime                           @default(now())
   actualizadoEn      DateTime                           @updatedAt
 
@@ -1599,6 +1617,373 @@ model SchedulerSettingVersion {
   @@index([settingId, creadoEn])
 }
 
+// ─── Scheduler: comunicaciones, documentos, expediente y encuestas ─────────
+
+enum SchedulerMessageChannel {
+  WHATSAPP
+  EMAIL
+  SMS
+}
+
+enum SchedulerMessageOutboxStatus {
+  PENDING
+  PROCESSING
+  RETRY
+  SENT
+  DELIVERED
+  READ
+  FAILED
+  CANCELED
+}
+
+enum SchedulerContactChannelStatus {
+  UNVERIFIED
+  OPTED_IN
+  OPTED_OUT
+}
+
+enum SchedulerConsentStatus {
+  PENDING
+  SIGNED
+  DECLINED
+  REVOKED
+}
+
+enum SchedulerDocumentKind {
+  CONSENT_SUPPORT
+  MEDICAL_SUPPORT
+  OTHER
+}
+
+enum SchedulerSurveyStatus {
+  DRAFT
+  ACTIVE
+  INACTIVE
+}
+
+enum SchedulerSurveyQuestionType {
+  RATING
+  COMMENT
+}
+
+model SchedulerMessageTemplate {
+  id             String                            @id @default(cuid())
+  commerceId     String
+  commerce       SchedulerCommerce                 @relation(fields: [commerceId], references: [id], onDelete: Restrict)
+  name           String                            @db.VarChar(160)
+  normalizedName String                            @db.VarChar(180)
+  channel        SchedulerMessageChannel
+  active         Boolean                           @default(true)
+  currentVersion Int                               @default(1)
+  versions       SchedulerMessageTemplateVersion[]
+  creadoEn       DateTime                          @default(now())
+  actualizadoEn  DateTime                          @updatedAt
+
+  @@unique([commerceId, normalizedName, channel])
+  @@index([commerceId, channel, active])
+}
+
+model SchedulerMessageTemplateVersion {
+  id              String                   @id @default(uuid()) @db.Uuid
+  templateId      String
+  template        SchedulerMessageTemplate @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  version         Int
+  subject         String?                  @db.VarChar(240)
+  body            String
+  variables       Json
+  createdByUserId String
+  createdByUser   Usuario                  @relation("SchedulerMessageTemplateVersionCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  outbox          SchedulerMessageOutbox[]
+  creadoEn        DateTime                 @default(now())
+
+  @@unique([templateId, version])
+  @@index([templateId, creadoEn])
+}
+
+model SchedulerCustomerContactChannel {
+  id              String                        @id @default(cuid())
+  customerId      String
+  customer        Customer                      @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  channel         SchedulerMessageChannel
+  status          SchedulerContactChannelStatus @default(UNVERIFIED)
+  destinationHash String?                       @db.VarChar(64)
+  verifiedAt      DateTime?
+  consentedAt     DateTime?
+  optedOutAt      DateTime?
+  source          String?                       @db.VarChar(120)
+  version         Int                           @default(1)
+  creadoEn        DateTime                      @default(now())
+  actualizadoEn   DateTime                      @updatedAt
+
+  @@unique([customerId, channel])
+  @@index([channel, status])
+}
+
+model SchedulerMessageOutbox {
+  id                    String                          @id @default(uuid()) @db.Uuid
+  idempotencyKey        String                          @unique @db.VarChar(191)
+  requestHash           String                          @db.VarChar(64)
+  appointmentId         String?                         @db.Uuid
+  appointment           SchedulerAppointment?           @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
+  customerId            String
+  customer              Customer                        @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  branchProfileId       String
+  branchProfile         SchedulerBranchProfile          @relation(fields: [branchProfileId], references: [id], onDelete: Restrict)
+  templateVersionId     String                          @db.Uuid
+  templateVersion       SchedulerMessageTemplateVersion @relation(fields: [templateVersionId], references: [id], onDelete: Restrict)
+  channel               SchedulerMessageChannel
+  destinationCiphertext String
+  destinationIv         String                          @db.VarChar(32)
+  destinationAuthTag    String                          @db.VarChar(32)
+  encryptionKeyVersion  String                          @db.VarChar(40)
+  variablesSnapshot     Json
+  status                SchedulerMessageOutboxStatus    @default(PENDING)
+  scheduledAt           DateTime
+  nextAttemptAt         DateTime
+  attempts              Int                             @default(0)
+  lockedAt              DateTime?
+  lockOwner             String?                         @db.VarChar(120)
+  providerMessageId     String?                         @unique @db.VarChar(191)
+  sentAt                DateTime?
+  deliveredAt           DateTime?
+  readAt                DateTime?
+  failedAt              DateTime?
+  canceledAt            DateTime?
+  cancelReason          String?                         @db.VarChar(240)
+  lastErrorCode         String?                         @db.VarChar(120)
+  createdByUserId       String
+  createdByUser         Usuario                         @relation("SchedulerMessageCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  deliveryEvents        SchedulerMessageDeliveryEvent[]
+  creadoEn              DateTime                        @default(now())
+  actualizadoEn         DateTime                        @updatedAt
+
+  @@index([status, nextAttemptAt])
+  @@index([appointmentId, status])
+  @@index([customerId, creadoEn])
+  @@index([branchProfileId, creadoEn])
+}
+
+model SchedulerMessageDeliveryEvent {
+  id              String                 @id @default(uuid()) @db.Uuid
+  outboxId        String                 @db.Uuid
+  outbox          SchedulerMessageOutbox @relation(fields: [outboxId], references: [id], onDelete: Restrict)
+  providerEventId String                 @unique @db.VarChar(191)
+  providerStatus  String                 @db.VarChar(80)
+  payloadHash     String                 @db.VarChar(64)
+  occurredAt      DateTime
+  creadoEn        DateTime               @default(now())
+
+  @@index([outboxId, occurredAt])
+}
+
+model SchedulerConsentTemplate {
+  id             String                            @id @default(cuid())
+  commerceId     String
+  commerce       SchedulerCommerce                 @relation(fields: [commerceId], references: [id], onDelete: Restrict)
+  name           String                            @db.VarChar(160)
+  normalizedName String                            @db.VarChar(180)
+  active         Boolean                           @default(true)
+  currentVersion Int                               @default(1)
+  versions       SchedulerConsentTemplateVersion[]
+  creadoEn       DateTime                          @default(now())
+  actualizadoEn  DateTime                          @updatedAt
+
+  @@unique([commerceId, normalizedName])
+  @@index([commerceId, active])
+}
+
+model SchedulerConsentTemplateVersion {
+  id              String                   @id @default(uuid()) @db.Uuid
+  templateId      String
+  template        SchedulerConsentTemplate @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  version         Int
+  storagePath     String                   @unique
+  storageBucket   String                   @db.VarChar(120)
+  fileName        String                   @db.VarChar(255)
+  mimeType        String                   @db.VarChar(120)
+  sizeBytes       Int
+  sha256          String                   @db.VarChar(64)
+  createdByUserId String
+  createdByUser   Usuario                  @relation("SchedulerConsentVersionCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  records         SchedulerConsentRecord[]
+  creadoEn        DateTime                 @default(now())
+
+  @@unique([templateId, version])
+  @@index([templateId, creadoEn])
+}
+
+model SchedulerConsentRecord {
+  id                    String                          @id @default(uuid()) @db.Uuid
+  templateVersionId     String                          @db.Uuid
+  templateVersion       SchedulerConsentTemplateVersion @relation(fields: [templateVersionId], references: [id], onDelete: Restrict)
+  customerId            String
+  customer              Customer                        @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  appointmentId         String?                         @db.Uuid
+  appointment           SchedulerAppointment?           @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
+  branchProfileId       String
+  branchProfile         SchedulerBranchProfile          @relation(fields: [branchProfileId], references: [id], onDelete: Restrict)
+  status                SchedulerConsentStatus          @default(PENDING)
+  signatureEvidenceHash String?                         @db.VarChar(64)
+  signedStoragePath     String?                         @unique
+  signedAt              DateTime?
+  declinedAt            DateTime?
+  revokedAt             DateTime?
+  creadoEn              DateTime                        @default(now())
+  actualizadoEn         DateTime                        @updatedAt
+
+  @@index([customerId, creadoEn])
+  @@index([appointmentId, status])
+  @@index([branchProfileId, creadoEn])
+}
+
+model SchedulerCustomerDocument {
+  id              String                 @id @default(uuid()) @db.Uuid
+  customerId      String
+  customer        Customer               @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  branchProfileId String
+  branchProfile   SchedulerBranchProfile @relation(fields: [branchProfileId], references: [id], onDelete: Restrict)
+  kind            SchedulerDocumentKind
+  storagePath     String                 @unique
+  storageBucket   String                 @db.VarChar(120)
+  fileName        String                 @db.VarChar(255)
+  mimeType        String                 @db.VarChar(120)
+  sizeBytes       Int
+  sha256          String                 @db.VarChar(64)
+  createdByUserId String
+  createdByUser   Usuario                @relation("SchedulerDocumentCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  creadoEn        DateTime               @default(now())
+
+  @@index([customerId, creadoEn])
+  @@index([branchProfileId, creadoEn])
+}
+
+model SchedulerMedicalRecord {
+  id                   String            @id @default(uuid()) @db.Uuid
+  commerceId           String
+  commerce             SchedulerCommerce @relation(fields: [commerceId], references: [id], onDelete: Restrict)
+  customerId           String
+  customer             Customer          @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  ciphertext           String
+  iv                   String            @db.VarChar(32)
+  authTag              String            @db.VarChar(32)
+  encryptionKeyVersion String            @db.VarChar(40)
+  version              Int               @default(1)
+  updatedByUserId      String
+  updatedByUser        Usuario           @relation("SchedulerMedicalRecordUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: Restrict)
+  creadoEn             DateTime          @default(now())
+  actualizadoEn        DateTime          @updatedAt
+
+  @@unique([commerceId, customerId])
+  @@index([customerId])
+}
+
+model SchedulerSurvey {
+  id             String                   @id @default(cuid())
+  commerceId     String
+  commerce       SchedulerCommerce        @relation(fields: [commerceId], references: [id], onDelete: Restrict)
+  name           String                   @db.VarChar(160)
+  normalizedName String                   @db.VarChar(180)
+  status         SchedulerSurveyStatus    @default(DRAFT)
+  currentVersion Int                      @default(1)
+  versions       SchedulerSurveyVersion[]
+  services       SchedulerSurveyService[]
+  creadoEn       DateTime                 @default(now())
+  actualizadoEn  DateTime                 @updatedAt
+
+  @@unique([commerceId, normalizedName])
+  @@index([commerceId, status])
+}
+
+model SchedulerSurveyVersion {
+  id              String                    @id @default(uuid()) @db.Uuid
+  surveyId        String
+  survey          SchedulerSurvey           @relation(fields: [surveyId], references: [id], onDelete: Restrict)
+  version         Int
+  title           String                    @db.VarChar(240)
+  introduction    String?                   @db.VarChar(2000)
+  createdByUserId String
+  createdByUser   Usuario                   @relation("SchedulerSurveyVersionCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  questions       SchedulerSurveyQuestion[]
+  tokens          SchedulerSurveyToken[]
+  creadoEn        DateTime                  @default(now())
+
+  @@unique([surveyId, version])
+  @@index([surveyId, creadoEn])
+}
+
+model SchedulerSurveyQuestion {
+  id              String                      @id @default(uuid()) @db.Uuid
+  surveyVersionId String                      @db.Uuid
+  surveyVersion   SchedulerSurveyVersion      @relation(fields: [surveyVersionId], references: [id], onDelete: Restrict)
+  type            SchedulerSurveyQuestionType
+  prompt          String                      @db.VarChar(500)
+  required        Boolean                     @default(true)
+  sortOrder       Int
+  answers         SchedulerSurveyAnswer[]
+
+  @@unique([surveyVersionId, sortOrder])
+}
+
+model SchedulerSurveyService {
+  id               String                  @id @default(cuid())
+  surveyId         String
+  survey           SchedulerSurvey         @relation(fields: [surveyId], references: [id], onDelete: Restrict)
+  serviceProfileId String
+  serviceProfile   SchedulerServiceProfile @relation(fields: [serviceProfileId], references: [id], onDelete: Restrict)
+  creadoEn         DateTime                @default(now())
+
+  @@unique([surveyId, serviceProfileId])
+  @@index([serviceProfileId])
+}
+
+model SchedulerSurveyToken {
+  id              String                   @id @default(uuid()) @db.Uuid
+  tokenHash       String                   @unique @db.VarChar(64)
+  surveyVersionId String                   @db.Uuid
+  surveyVersion   SchedulerSurveyVersion   @relation(fields: [surveyVersionId], references: [id], onDelete: Restrict)
+  customerId      String
+  customer        Customer                 @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  appointmentId   String?                  @db.Uuid
+  appointment     SchedulerAppointment?    @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
+  expiresAt       DateTime
+  usedAt          DateTime?
+  revokedAt       DateTime?
+  response        SchedulerSurveyResponse?
+  creadoEn        DateTime                 @default(now())
+
+  @@index([customerId, expiresAt])
+  @@index([appointmentId, expiresAt])
+}
+
+model SchedulerSurveyResponse {
+  id            String                  @id @default(uuid()) @db.Uuid
+  tokenId       String                  @unique @db.Uuid
+  token         SchedulerSurveyToken    @relation(fields: [tokenId], references: [id], onDelete: Restrict)
+  customerId    String
+  customer      Customer                @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  appointmentId String?                 @db.Uuid
+  appointment   SchedulerAppointment?   @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
+  answers       SchedulerSurveyAnswer[]
+  submittedAt   DateTime                @default(now())
+
+  @@index([customerId, submittedAt])
+  @@index([appointmentId, submittedAt])
+}
+
+model SchedulerSurveyAnswer {
+  id             String                      @id @default(uuid()) @db.Uuid
+  responseId     String                      @db.Uuid
+  response       SchedulerSurveyResponse     @relation(fields: [responseId], references: [id], onDelete: Restrict)
+  questionId     String                      @db.Uuid
+  question       SchedulerSurveyQuestion     @relation(fields: [questionId], references: [id], onDelete: Restrict)
+  promptSnapshot String                      @db.VarChar(500)
+  typeSnapshot   SchedulerSurveyQuestionType
+  value          Json
+  creadoEn       DateTime                    @default(now())
+
+  @@unique([responseId, questionId])
+}
+
 // ─── Módulo POS: catálogo, clientes, configuración y activos ─────────────────────
 
 enum CatalogItemKind {
@@ -1820,38 +2205,45 @@ model CustomerSource {
 }
 
 model Customer {
-  id                      String                        @id @default(cuid())
-  displayName             String                        @db.VarChar(240)
-  normalizedName          String                        @db.VarChar(260)
-  phone                   String?                       @unique @db.VarChar(32)
-  phoneNormalized         String?                       @db.VarChar(32)
-  email                   String?                       @db.VarChar(320)
-  externalClientId        String?                       @unique @db.VarChar(160)
-  sourceId                String?
-  source                  CustomerSource?               @relation(fields: [sourceId], references: [id], onDelete: Restrict)
-  notes                   String?
-  active                  Boolean                       @default(true)
-  deletedAt               DateTime?
-  version                 Int                           @default(1)
-  portfolios              CustomerPortfolioAssignment[]
-  priceListAssignments    PriceListCustomerAssignment[]
-  warehouseRequests       WarehouseRequest[]
-  posTickets              PosTicket[]
-  posAppointments         PosAppointment[]
-  posVoucherIssues        PosVoucherIssue[]
-  posMemberships          PosClientMembership[]
-  agendaReservations      AgendaReservation[]
-  agendaSyncEvents        AgendaSyncEvent[]
-  portfolioTransfers      PosPortfolioTransferEvent[]
-  schedulerProfile        SchedulerCustomerProfile?
-  schedulerAliases        SchedulerCustomerAlias[]
-  schedulerEmails         SchedulerCustomerEmail[]
-  schedulerFieldValues    SchedulerCustomerFieldValue[]
-  schedulerMergesAsSource SchedulerCustomerMergeEvent[] @relation("SchedulerCustomerMergeSource")
-  schedulerMergesAsTarget SchedulerCustomerMergeEvent[] @relation("SchedulerCustomerMergeTarget")
-  schedulerAppointments   SchedulerAppointment[]
-  creadoEn                DateTime                      @default(now())
-  actualizadoEn           DateTime                      @updatedAt
+  id                       String                            @id @default(cuid())
+  displayName              String                            @db.VarChar(240)
+  normalizedName           String                            @db.VarChar(260)
+  phone                    String?                           @unique @db.VarChar(32)
+  phoneNormalized          String?                           @db.VarChar(32)
+  email                    String?                           @db.VarChar(320)
+  externalClientId         String?                           @unique @db.VarChar(160)
+  sourceId                 String?
+  source                   CustomerSource?                   @relation(fields: [sourceId], references: [id], onDelete: Restrict)
+  notes                    String?
+  active                   Boolean                           @default(true)
+  deletedAt                DateTime?
+  version                  Int                               @default(1)
+  portfolios               CustomerPortfolioAssignment[]
+  priceListAssignments     PriceListCustomerAssignment[]
+  warehouseRequests        WarehouseRequest[]
+  posTickets               PosTicket[]
+  posAppointments          PosAppointment[]
+  posVoucherIssues         PosVoucherIssue[]
+  posMemberships           PosClientMembership[]
+  agendaReservations       AgendaReservation[]
+  agendaSyncEvents         AgendaSyncEvent[]
+  portfolioTransfers       PosPortfolioTransferEvent[]
+  schedulerProfile         SchedulerCustomerProfile?
+  schedulerAliases         SchedulerCustomerAlias[]
+  schedulerEmails          SchedulerCustomerEmail[]
+  schedulerFieldValues     SchedulerCustomerFieldValue[]
+  schedulerMergesAsSource  SchedulerCustomerMergeEvent[]     @relation("SchedulerCustomerMergeSource")
+  schedulerMergesAsTarget  SchedulerCustomerMergeEvent[]     @relation("SchedulerCustomerMergeTarget")
+  schedulerAppointments    SchedulerAppointment[]
+  schedulerContactChannels SchedulerCustomerContactChannel[]
+  schedulerMessageOutbox   SchedulerMessageOutbox[]
+  schedulerConsentRecords  SchedulerConsentRecord[]
+  schedulerDocuments       SchedulerCustomerDocument[]
+  schedulerMedicalRecords  SchedulerMedicalRecord[]
+  schedulerSurveyTokens    SchedulerSurveyToken[]
+  schedulerSurveyResponses SchedulerSurveyResponse[]
+  creadoEn                 DateTime                          @default(now())
+  actualizadoEn            DateTime                          @updatedAt
 
   @@index([normalizedName, active])
   @@index([phoneNormalized, active])

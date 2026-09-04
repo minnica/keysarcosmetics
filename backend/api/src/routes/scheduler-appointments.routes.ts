@@ -42,6 +42,7 @@ import {
   type MinuteInterval,
 } from "../services/scheduler-appointments";
 import { propagateSchedulerAppointmentStatusToPos } from "../services/scheduler-pos-events";
+import { refreshSchedulerAppointmentReminders } from "../services/scheduler-engagement";
 
 const router: ExpressRouter = Router();
 const identifier = z.string().trim().min(1).max(191);
@@ -1967,6 +1968,9 @@ async function updateSchedule(
         });
         const nextVersion = current.version + 1;
         const nextStatus = body.status ?? current.status;
+        const nextAppointmentStartsAt = new Date(
+          Math.min(...services.map((service) => service.startsAt.getTime())),
+        );
         if (nextStatus !== current.status) {
           assertSchedulerStatusTransition(current.status, nextStatus);
         }
@@ -1977,11 +1981,7 @@ async function updateSchedule(
             customerId: customer.id,
             status: nextStatus,
             timezone: branch.timezone,
-            startsAt: new Date(
-              Math.min(
-                ...services.map((service) => service.startsAt.getTime()),
-              ),
-            ),
+            startsAt: nextAppointmentStartsAt,
             endsAt: new Date(
               Math.max(...services.map((service) => service.endsAt.getTime())),
             ),
@@ -1991,6 +1991,13 @@ async function updateSchedule(
           },
         });
         await replaceAppointmentServices(tx, current.id, services);
+        await refreshSchedulerAppointmentReminders(tx, {
+          appointmentId: current.id,
+          previousStartsAt: current.startsAt,
+          nextStartsAt: nextAppointmentStartsAt,
+          nextAppointmentVersion: nextVersion,
+          canceled: ["CANCELED", "ATTENDED", "NO_SHOW"].includes(nextStatus),
+        });
         if (nextStatus !== current.status) {
           await tx.schedulerAppointmentStateHistory.create({
             data: {
@@ -2214,6 +2221,13 @@ async function changeStatus(
             version: nextVersion,
             actorUserId: req.schedulerAccess!.userId,
           },
+        });
+        await refreshSchedulerAppointmentReminders(tx, {
+          appointmentId: current.id,
+          previousStartsAt: current.startsAt,
+          nextStartsAt: current.startsAt,
+          nextAppointmentVersion: nextVersion,
+          canceled: ["CANCELED", "ATTENDED", "NO_SHOW"].includes(nextStatus),
         });
         await propagateSchedulerAppointmentStatusToPos(tx, {
           schedulerAppointmentId: current.id,
