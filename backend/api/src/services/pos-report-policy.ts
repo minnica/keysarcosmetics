@@ -1,4 +1,5 @@
 import type { PosReportCell } from "@cosmetics/types";
+import { resolveRequestedBranchIds } from "./pos-scope";
 
 export type PosReportRow = Record<string, PosReportCell>;
 
@@ -15,18 +16,10 @@ export function redactPosReportCosts(
   );
 }
 
-/** REPORTS_VIEW no amplía por sí solo la sucursal fija de la terminal. */
+/** El reporte usa la unión exacta ya resuelta por la política central. */
 export function resolvePosReportBranchScope(input: {
-  isMaster: boolean;
-  terminalBranchId: string;
+  authorizedBranchIds: string[];
   requestedBranchIds: string[];
-  activeBranchIds: string[];
 }): string[] {
-  if (!input.isMaster) return [input.terminalBranchId];
-  if (input.requestedBranchIds.length === 0) return input.activeBranchIds;
-  const active = new Set(input.activeBranchIds);
-  if (input.requestedBranchIds.some((branchId) => !active.has(branchId))) {
-    throw new Error("La consulta incluye sucursales inválidas");
-  }
-  return [...new Set(input.requestedBranchIds)];
+  return resolveRequestedBranchIds(input);
 }

@@ -12,7 +12,9 @@ export const POS_JWT_AUDIENCE = "keysar-pos";
 export const POS_JWT_ISSUER = "keysar-api";
 export const POS_OFFLINE_AUDIENCE = "keysar-pos-offline";
 
-type CredentialWithIdentity = Awaited<ReturnType<typeof findCredentialForSession>>;
+type CredentialWithIdentity = Awaited<
+  ReturnType<typeof findCredentialForSession>
+>;
 
 export async function findCredentialForSession(credentialId: string) {
   return prisma.posCredential.findUnique({
@@ -46,13 +48,18 @@ export async function findCredentialForSession(credentialId: string) {
   });
 }
 
-export function credentialIdentity(credential: NonNullable<CredentialWithIdentity>) {
+export function credentialIdentity(
+  credential: NonNullable<CredentialWithIdentity>,
+) {
   const employee = credential.employee ?? credential.user?.empleado ?? null;
   const displayName =
     employee?.nombreCompleto ?? credential.user?.nombre ?? credential.alias;
   const identityActive = credential.employee
     ? credential.employee.activo
-    : Boolean(credential.user?.activo && (!credential.user.empleado || credential.user.empleado.activo));
+    : Boolean(
+        credential.user?.activo &&
+        (!credential.user.empleado || credential.user.empleado.activo),
+      );
 
   return {
     actorId: credential.employeeId ?? credential.userId ?? credential.id,
@@ -89,19 +96,20 @@ export async function resolvePosPermissions(
 export function signPosToken(
   payload: Omit<PosJwtPayload, "tokenType" | "iat" | "exp">,
 ): { token: string; expiresAt: string } {
-  const expiresIn = (process.env["POS_JWT_EXPIRES_IN"] ?? "8h") as SignOptions["expiresIn"];
-  const token = jwt.sign(
-    { ...payload, tokenType: "pos" },
-    getPosJwtSecret(),
-    {
-      expiresIn,
-      audience: POS_JWT_AUDIENCE,
-      issuer: POS_JWT_ISSUER,
-      subject: payload.credentialId,
-    },
-  );
+  const expiresIn = (process.env["POS_JWT_EXPIRES_IN"] ??
+    "8h") as SignOptions["expiresIn"];
+  const token = jwt.sign({ ...payload, tokenType: "pos" }, getPosJwtSecret(), {
+    expiresIn,
+    audience: POS_JWT_AUDIENCE,
+    issuer: POS_JWT_ISSUER,
+    subject: payload.credentialId,
+  });
   const decoded = jwt.decode(token);
-  if (!decoded || typeof decoded === "string" || typeof decoded.exp !== "number") {
+  if (
+    !decoded ||
+    typeof decoded === "string" ||
+    typeof decoded.exp !== "number"
+  ) {
     throw new Error("No se pudo calcular la vigencia del JWT POS");
   }
   return { token, expiresAt: new Date(decoded.exp * 1000).toISOString() };
@@ -123,7 +131,11 @@ export function signPosOfflineGrant(
     },
   );
   const decoded = jwt.decode(token);
-  if (!decoded || typeof decoded === "string" || typeof decoded.exp !== "number") {
+  if (
+    !decoded ||
+    typeof decoded === "string" ||
+    typeof decoded.exp !== "number"
+  ) {
     throw new Error("No se pudo calcular la vigencia del grant offline");
   }
   return { token, expiresAt: new Date(decoded.exp * 1000).toISOString() };
@@ -147,7 +159,16 @@ export function toPosSession(
   terminal: {
     id: string;
     code: string;
-    branch: { id: string; nombre: string; activa: boolean; posProfile: { code: string } | null };
+    branch: {
+      id: string;
+      nombre: string;
+      activa: boolean;
+      posProfile: { code: string } | null;
+    };
+  },
+  branchScope: {
+    mode: "SESSION_BRANCH" | "ASSIGNED" | "ALL_ACTIVE";
+    branches: PosSessionDto["authorizedBranches"];
   },
 ): PosSessionDto {
   return {
@@ -173,5 +194,7 @@ export function toPosSession(
       },
     },
     permissions: payload.permissions,
+    authorizedBranches: branchScope.branches,
+    branchScope: branchScope.mode,
   };
 }

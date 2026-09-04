@@ -40,10 +40,17 @@ interface ClockInViewProps {
   canViewAllBranches: boolean;
   records: AttendanceRecord[];
   onClockIn: (accessCode: string, branch: string) => boolean | Promise<boolean>;
-  onClockOut: (recordId: string) => boolean | Promise<boolean>;
+  onClockOut: (
+    recordId: string,
+    accessCode: string,
+  ) => boolean | Promise<boolean>;
 }
 
-const formatDuration = (startIso: string, endIso: string | null, now: number) => {
+const formatDuration = (
+  startIso: string,
+  endIso: string | null,
+  now: number,
+) => {
   const start = new Date(startIso).getTime();
   const end = endIso ? new Date(endIso).getTime() : now;
   const totalMinutes = Math.max(0, Math.floor((end - start) / 60_000));
@@ -59,7 +66,9 @@ const isToday = (createdAtIso: string) => {
     month: "2-digit",
     day: "2-digit",
   });
-  return formatter.format(new Date(createdAtIso)) === formatter.format(new Date());
+  return (
+    formatter.format(new Date(createdAtIso)) === formatter.format(new Date())
+  );
 };
 
 export function ClockInView({
@@ -123,11 +132,13 @@ export function ClockInView({
   const activeSellers = sellers.filter((seller) => seller.active);
   const identifiedSeller =
     accessCode.length === 4
-      ? activeSellers.find((seller) => seller.accessCode === accessCode) ?? null
+      ? (activeSellers.find((seller) => seller.accessCode === accessCode) ??
+        null)
       : null;
   const identifiedOnlineRecord = identifiedSeller
-    ? allOnlineRecords.find((record) => record.sellerId === identifiedSeller.id) ??
-      null
+    ? (allOnlineRecords.find(
+        (record) => record.sellerId === identifiedSeller.id,
+      ) ?? null)
     : null;
 
   const submitClockIn = async () => {
@@ -138,7 +149,8 @@ export function ClockInView({
 
   const submitAttendance = async () => {
     if (identifiedOnlineRecord) {
-      if (await onClockOut(identifiedOnlineRecord.id)) setAccessCode("");
+      if (await onClockOut(identifiedOnlineRecord.id, accessCode.trim()))
+        setAccessCode("");
       return;
     }
     await submitClockIn();
@@ -218,8 +230,7 @@ export function ClockInView({
               className={identifiedOnlineRecord ? "clock-out-button" : ""}
               onClick={() => void submitAttendance()}
               disabled={
-                accessCode.length !== 4 ||
-                (!identifiedOnlineRecord && !branch)
+                accessCode.length !== 4 || (!identifiedOnlineRecord && !branch)
               }
             >
               {identifiedOnlineRecord ? (
@@ -244,16 +255,26 @@ export function ClockInView({
       </Card>
 
       <div className="module-branch-scope">
-        <span><Building2 size={15} /> ALCANCE DE ASISTENCIA</span>
+        <span>
+          <Building2 size={15} /> ALCANCE DE ASISTENCIA
+        </span>
         {canViewAllBranches ? (
           <Select value={reportBranch} onValueChange={setReportBranch}>
-            <SelectTrigger aria-label="Filtrar asistencia por sucursal"><SelectValue /></SelectTrigger>
+            <SelectTrigger aria-label="Filtrar asistencia por sucursal">
+              <SelectValue />
+            </SelectTrigger>
             <SelectContent>
               <SelectItem value="ALL">Todas las sucursales</SelectItem>
-              {branches.map((option) => <SelectItem key={option} value={option}>{option}</SelectItem>)}
+              {branches.map((option) => (
+                <SelectItem key={option} value={option}>
+                  {option}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
-        ) : <strong>{activeBranch}</strong>}
+        ) : (
+          <strong>{activeBranch}</strong>
+        )}
       </div>
 
       <div className="clock-in-metrics">
@@ -288,7 +309,8 @@ export function ClockInView({
               <h2>Personal en sucursal</h2>
             </div>
             <Badge variant="outline">
-              <span className="clock-in-live-dot" /> {onlineRecords.length} ONLINE
+              <span className="clock-in-live-dot" /> {onlineRecords.length}{" "}
+              ONLINE
             </Badge>
           </div>
           <div className="clock-in-online-grid">

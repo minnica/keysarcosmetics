@@ -13,29 +13,72 @@ export type BusinessDate = string;
 
 export const POS_PERMISSION_KEYS = [
   "DASHBOARD_VIEW",
+  "SALE_VIEW",
   "SALE_CREATE",
   "SALE_VIEW_OWN",
   "SALE_VIEW_ALL",
   "SALE_OVERRIDE_MINIMUM",
+  "SELLER_SALES_VIEW",
+  "SELLER_SALES_PRINT",
+  "RECEIPTS_VIEW",
+  "RECEIPTS_PRINT",
   "CUSTOMERS_VIEW",
   "CUSTOMERS_MANAGE",
+  "CUSTOMERS_PRINT",
+  "APPOINTMENTS_VIEW",
+  "APPOINTMENTS_MANAGE",
+  "APPOINTMENTS_PRINT",
+  "MEMBERSHIPS_VIEW",
+  "MEMBERSHIPS_MANAGE",
+  "MEMBERSHIPS_PRINT",
+  "COMPETITIONS_VIEW",
+  "COMPETITIONS_MANAGE",
+  "WEBSITES_VIEW",
   "CATALOG_VIEW",
   "CATALOG_MANAGE",
   "INVENTORY_VIEW",
   "INVENTORY_AUDIT",
   "INVENTORY_ADJUST",
+  "INVENTORY_MANAGE",
+  "INVENTORY_PRINT",
+  "INVENTORY_MOVEMENTS_VIEW",
+  "INVENTORY_MOVEMENTS_MANAGE",
+  "INVENTORY_MOVEMENTS_PRINT",
   "WAREHOUSE_BRANCH_REQUEST",
+  "WAREHOUSE_BRANCH_VIEW",
+  "WAREHOUSE_BRANCH_PRINT",
   "WAREHOUSE_MANAGE",
+  "WAREHOUSE_VIEW",
+  "WAREHOUSE_PRINT",
+  "SUPPLIERS_VIEW",
+  "SUPPLIERS_MANAGE",
+  "SUPPLIERS_PRINT",
+  "DEALS_VIEW",
+  "DEALS_MANAGE",
+  "DEALS_PRINT",
   "PAYMENTS_MANAGE",
   "VOUCHERS_MANAGE",
   "BUSINESS_DAY_OPEN",
   "BUSINESS_DAY_CLOSE",
   "CASH_MANAGE",
+  "CASH_VIEW",
+  "CASH_PRINT",
+  "X_REPORT_VIEW",
+  "X_REPORT_PRINT",
   "REPORTS_VIEW",
+  "REPORTS_PRINT",
   "REPORTS_COSTS",
   "EMPLOYEES_VIEW",
   "EMPLOYEES_MANAGE",
   "SETTINGS_MANAGE",
+  "SETTINGS_VIEW",
+  "MY_ACCOUNT_VIEW",
+  "DATA_UPDATE_VIEW",
+  "DATA_UPDATE_MANAGE",
+  "CLOCK_IN_VIEW",
+  "SESSION_EXIT",
+  "BANK_RECONCILIATION_VIEW",
+  "BANK_RECONCILIATION_PRINT",
   "TERMINALS_MANAGE",
   "AUTHORIZATIONS_CREATE",
 ] as const;
@@ -162,6 +205,8 @@ export interface PosSessionDto {
     branch: PosBranchSummaryDto;
   };
   permissions: PosPermissionKey[];
+  authorizedBranches: PosBranchSummaryDto[];
+  branchScope: "SESSION_BRANCH" | "ASSIGNED" | "ALL_ACTIVE";
 }
 
 export interface PosLoginRequestDto {
@@ -181,6 +226,18 @@ export interface PosMasterAuthorizationRequestDto {
 }
 
 export interface PosMasterAuthorizationDto {
+  authorizationToken: string;
+  purpose: string;
+  expiresAt: IsoUtcDateTime;
+}
+
+export interface PosPersonalAuthorizationRequestDto {
+  pin: string;
+  purpose: string;
+  scope?: Record<string, unknown>;
+}
+
+export interface PosPersonalAuthorizationDto {
   authorizationToken: string;
   purpose: string;
   expiresAt: IsoUtcDateTime;
@@ -234,6 +291,7 @@ export interface PosEmployeeAccessDto {
   active: boolean;
   positionId: PosId | null;
   branchId: PosId | null;
+  assignedBranchIds: PosId[];
   credential: PosCredentialSummaryDto | null;
 }
 
@@ -242,6 +300,7 @@ export interface PosRoleAccessDto {
   name: string;
   active: boolean;
   permissions: PosPermissionKey[];
+  assignedBranchIds: PosId[];
 }
 
 export interface PosAccessBootstrapDto {
@@ -254,6 +313,7 @@ export interface PosAccessBootstrapDto {
     parentId: PosId | null;
     grantable: boolean;
     sortOrder: number;
+    version: number;
   }>;
 }
 
@@ -414,8 +474,7 @@ export interface PosInventoryMovementLineDto {
   toQuantityAfter: Money | null;
 }
 
-export interface PosInventoryMovementLineWithCostsDto
-  extends PosInventoryMovementLineDto {
+export interface PosInventoryMovementLineWithCostsDto extends PosInventoryMovementLineDto {
   unitCostSnapshot: Money | null;
 }
 
@@ -431,7 +490,9 @@ export interface PosInventoryMovementDto {
   warehouseRequestId: PosId | null;
   reversalOfId: PosId | null;
   createdAt: IsoUtcDateTime;
-  lines: Array<PosInventoryMovementLineDto | PosInventoryMovementLineWithCostsDto>;
+  lines: Array<
+    PosInventoryMovementLineDto | PosInventoryMovementLineWithCostsDto
+  >;
 }
 
 export interface PosInventoryAdjustmentLineInputDto {
@@ -464,8 +525,10 @@ export interface PosInventoryCountDto {
   lines: PosBlindCountLineDto[];
 }
 
-export interface PosAuditedInventoryCountDto
-  extends Omit<PosInventoryCountDto, "lines"> {
+export interface PosAuditedInventoryCountDto extends Omit<
+  PosInventoryCountDto,
+  "lines"
+> {
   notes: string | null;
   lines: PosAuditedCountLineDto[];
 }
@@ -489,8 +552,7 @@ export interface PosWarehouseRequestLineDto {
   customerNameSnapshot: string | null;
 }
 
-export interface PosWarehouseRequestLineWithCostsDto
-  extends PosWarehouseRequestLineDto {
+export interface PosWarehouseRequestLineWithCostsDto extends PosWarehouseRequestLineDto {
   unitCostSnapshot: Money | null;
 }
 
@@ -525,7 +587,9 @@ export interface PosWarehouseRequestDto {
   shippedAt: IsoUtcDateTime | null;
   receivedAt: IsoUtcDateTime | null;
   canceledAt: IsoUtcDateTime | null;
-  lines: Array<PosWarehouseRequestLineDto | PosWarehouseRequestLineWithCostsDto>;
+  lines: Array<
+    PosWarehouseRequestLineDto | PosWarehouseRequestLineWithCostsDto
+  >;
   events: PosWarehouseRequestEventDto[];
 }
 
@@ -791,6 +855,20 @@ export interface PosTicketSellerDto {
   name: string;
   shareAmount: Money;
   sharePercent: Money;
+  clockedIn: boolean;
+  presenceBranchId: PosId | null;
+  attendanceId: PosId | null;
+}
+
+export interface PosSaleSellerDto {
+  id: PosId;
+  displayName: string;
+  alias: string | null;
+  positionId: PosId | null;
+  clockedIn: boolean;
+  attendanceId: PosId | null;
+  attendanceBranchId: PosId | null;
+  portfolioOwner: boolean;
 }
 
 export interface PosOwedProductDto {
@@ -978,7 +1056,12 @@ export interface PosOperationalSummaryDto {
   attendanceOpenCount: number;
   paymentMethods: Array<{ methodId: PosId; name: string; amount: Money }>;
   sellers: Array<{ employeeId: PosId; name: string; amount: Money }>;
-  products: Array<{ itemId: PosId | null; name: string; quantity: Money; amount: Money }>;
+  products: Array<{
+    itemId: PosId | null;
+    name: string;
+    quantity: Money;
+    amount: Money;
+  }>;
   inventoryAudit?: {
     opening: PosInventoryCountDto | PosAuditedInventoryCountDto | null;
     closing: PosInventoryCountDto | PosAuditedInventoryCountDto | null;

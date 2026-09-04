@@ -9,6 +9,7 @@ export interface PosJwtPayload {
   positionId: string | null;
   displayName: string;
   alias: string;
+  sessionId: string;
   terminalId: string;
   branchId: string;
   credentialVersion: number;
@@ -18,7 +19,14 @@ export interface PosJwtPayload {
   exp?: number;
 }
 
-export interface PosOfflineGrantPayload
-  extends Omit<PosJwtPayload, "tokenType"> {
+export interface PosRequestUser extends PosJwtPayload {
+  authorizedBranchIds: string[];
+  branchScope: "SESSION_BRANCH" | "ASSIGNED" | "ALL_ACTIVE";
+}
+
+export interface PosOfflineGrantPayload extends Omit<
+  PosJwtPayload,
+  "tokenType"
+> {
   tokenType: "pos-offline";
 }

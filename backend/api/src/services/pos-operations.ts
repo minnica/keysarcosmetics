@@ -9,7 +9,10 @@ import {
 type Transaction = Prisma.TransactionClient;
 
 export class PosOperationError extends Error {
-  constructor(message: string, readonly status = 400) {
+  constructor(
+    message: string,
+    readonly status = 400,
+  ) {
     super(message);
   }
 }
@@ -31,6 +34,7 @@ export async function consumeOperationAuthorization(
     token: string;
     purpose: string;
     terminalId: string;
+    sessionId?: string;
     entityType?: string;
     entityId?: string;
   },
@@ -40,16 +44,21 @@ export async function consumeOperationAuthorization(
   });
   const valid = Boolean(
     authorization &&
-      authorization.purpose === input.purpose &&
-      authorization.terminalId === input.terminalId &&
-      authorization.usedAt === null &&
-      authorization.expiresAt > new Date() &&
-      (input.entityType === undefined ||
-        (authorization.entityType === input.entityType &&
-          authorization.entityId === input.entityId)),
+    authorization.purpose === input.purpose &&
+    authorization.terminalId === input.terminalId &&
+    (input.sessionId === undefined ||
+      authorization.sessionId === input.sessionId) &&
+    authorization.usedAt === null &&
+    authorization.expiresAt > new Date() &&
+    (input.entityType === undefined ||
+      (authorization.entityType === input.entityType &&
+        authorization.entityId === input.entityId)),
   );
   if (!authorization || !valid) {
-    throw new PosOperationError("Autorización master vencida, usada o inválida", 403);
+    throw new PosOperationError(
+      "Autorización master vencida, usada o inválida",
+      403,
+    );
   }
   const consumed = await tx.masterAuthorization.updateMany({
     where: { id: authorization.id, usedAt: null },
@@ -106,13 +115,19 @@ export async function createBusinessDayCount(
   const location = await tx.inventoryLocation.findFirst({
     where: { id: input.locationId, branchId: input.branchId, active: true },
   });
-  if (!location) throw new PosOperationError("La ubicación no pertenece a la sucursal", 403);
+  if (!location)
+    throw new PosOperationError("La ubicación no pertenece a la sucursal", 403);
   const itemIds = input.lines.map((line) => line.itemId);
   if (new Set(itemIds).size !== itemIds.length) {
     throw new PosOperationError("El conteo contiene productos duplicados");
   }
   const items = await tx.catalogItem.findMany({
-    where: { id: { in: itemIds }, kind: "PRODUCT", active: true, deletedAt: null },
+    where: {
+      id: { in: itemIds },
+      kind: "PRODUCT",
+      active: true,
+      deletedAt: null,
+    },
     select: { id: true, unitCost: true },
   });
   if (items.length !== itemIds.length) {
@@ -122,7 +137,9 @@ export async function createBusinessDayCount(
   const balances = await tx.inventoryBalance.findMany({
     where: { locationId: input.locationId, itemId: { in: itemIds } },
   });
-  const expected = new Map(balances.map((balance) => [balance.itemId, balance.availableQuantity]));
+  const expected = new Map(
+    balances.map((balance) => [balance.itemId, balance.availableQuantity]),
+  );
   const count = await tx.inventoryCount.create({
     data: {
       kind: input.kind,
@@ -133,7 +150,8 @@ export async function createBusinessDayCount(
       terminalId: input.terminalId,
       lines: {
         create: input.lines.map((line) => {
-          const expectedQuantity = expected.get(line.itemId) ?? new Prisma.Decimal(0);
+          const expectedQuantity =
+            expected.get(line.itemId) ?? new Prisma.Decimal(0);
           const countedQuantity = new Prisma.Decimal(line.countedQuantity);
           const differenceQuantity = countedQuantity.minus(expectedQuantity);
           return {
@@ -161,8 +179,12 @@ export async function createBusinessDayCount(
       countId: count.id,
       lines: differences.map((line) => ({
         itemId: line.itemId,
-        fromLocationId: line.differenceQuantity.isNegative() ? input.locationId : null,
-        toLocationId: line.differenceQuantity.isPositive() ? input.locationId : null,
+        fromLocationId: line.differenceQuantity.isNegative()
+          ? input.locationId
+          : null,
+        toLocationId: line.differenceQuantity.isPositive()
+          ? input.locationId
+          : null,
         quantity: line.differenceQuantity.abs(),
         unitCostSnapshot: line.unitCostSnapshot,
       })),
@@ -187,11 +209,17 @@ export const businessDayInclude = {
   },
 } as const;
 
-const credentialName = (credential: {
-  alias: string;
-  employee: { nombreCompleto: string } | null;
-  user: { nombre: string } | null;
-} | null) => credential?.employee?.nombreCompleto ?? credential?.user?.nombre ?? credential?.alias ?? null;
+const credentialName = (
+  credential: {
+    alias: string;
+    employee: { nombreCompleto: string } | null;
+    user: { nombre: string } | null;
+  } | null,
+) =>
+  credential?.employee?.nombreCompleto ??
+  credential?.user?.nombre ??
+  credential?.alias ??
+  null;
 
 export function businessDayDto(
   day: Prisma.PosBusinessDayGetPayload<{ include: typeof businessDayInclude }>,
@@ -219,7 +247,9 @@ export const attendanceInclude = {
 } as const;
 
 export function attendanceDto(
-  attendance: Prisma.PosAttendanceGetPayload<{ include: typeof attendanceInclude }>,
+  attendance: Prisma.PosAttendanceGetPayload<{
+    include: typeof attendanceInclude;
+  }>,
 ) {
   return {
     id: attendance.id,
@@ -254,7 +284,10 @@ export async function registerAttendanceIfMissing(
   });
   if (existing) {
     if (existing.businessDayId === input.businessDayId) return existing;
-    throw new PosOperationError("El empleado ya tiene una asistencia abierta en otra jornada", 409);
+    throw new PosOperationError(
+      "El empleado ya tiene una asistencia abierta en otra jornada",
+      409,
+    );
   }
   return tx.posAttendance.create({
     data: {
@@ -274,7 +307,9 @@ export const cashExpenseInclude = {
 } as const;
 
 export function cashExpenseDto(
-  expense: Prisma.PosCashExpenseGetPayload<{ include: typeof cashExpenseInclude }>,
+  expense: Prisma.PosCashExpenseGetPayload<{
+    include: typeof cashExpenseInclude;
+  }>,
 ) {
   return {
     id: expense.id,

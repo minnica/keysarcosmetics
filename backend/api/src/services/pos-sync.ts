@@ -83,11 +83,13 @@ function stableJson(value: unknown): string {
 
 function payloadHash(operation: PosOfflineOperationDto): string {
   return createHash("sha256")
-    .update(stableJson({
-      kind: operation.kind,
-      entityId: operation.entityId,
-      payload: operation.payload,
-    }))
+    .update(
+      stableJson({
+        kind: operation.kind,
+        entityId: operation.entityId,
+        payload: operation.payload,
+      }),
+    )
     .digest("hex");
 }
 
@@ -100,7 +102,10 @@ function businessDateAt(value: string): string {
   }).format(new Date(value));
 }
 
-function assertPermission(actor: PosOfflineActor, kind: PosOfflineOperationKind) {
+function assertPermission(
+  actor: PosOfflineActor,
+  kind: PosOfflineOperationKind,
+) {
   const required = operationPermission[kind];
   if (!actor.isMaster && !actor.permissions.includes(required)) {
     throw new PosSyncError(
@@ -111,7 +116,9 @@ function assertPermission(actor: PosOfflineActor, kind: PosOfflineOperationKind)
   }
 }
 
-export async function resolveOfflineActor(token: string): Promise<PosOfflineActor> {
+export async function resolveOfflineActor(
+  token: string,
+): Promise<PosOfflineActor> {
   let grant: PosOfflineGrantPayload;
   try {
     grant = verifyPosOfflineGrant(token);
@@ -126,7 +133,11 @@ export async function resolveOfflineActor(token: string): Promise<PosOfflineActo
     findCredentialForSession(grant.credentialId),
     prisma.posTerminal.findUnique({
       where: { id: grant.terminalId },
-      select: { status: true, branchId: true, branch: { select: { activa: true } } },
+      select: {
+        status: true,
+        branchId: true,
+        branch: { select: { activa: true } },
+      },
     }),
   ]);
   if (
@@ -145,7 +156,11 @@ export async function resolveOfflineActor(token: string): Promise<PosOfflineActo
   }
   const identity = credentialIdentity(credential);
   if (!identity.identityActive) {
-    throw new PosSyncError("La identidad POS ya no está activa", 401, "IDENTITY_REVOKED");
+    throw new PosSyncError(
+      "La identidad POS ya no está activa",
+      401,
+      "IDENTITY_REVOKED",
+    );
   }
   const currentPermissions = await resolvePosPermissions(
     identity.positionId,
@@ -155,7 +170,9 @@ export async function resolveOfflineActor(token: string): Promise<PosOfflineActo
   const isMaster = grant.isMaster && identity.isMaster;
   return {
     grant: { ...grant, ...identity, isMaster },
-    permissions: grant.permissions.filter((permission) => currentPermissionSet.has(permission)),
+    permissions: grant.permissions.filter((permission) =>
+      currentPermissionSet.has(permission),
+    ),
     isMaster,
   };
 }
@@ -171,8 +188,18 @@ function catalogDto(item: {
   listPrice: Prisma.Decimal;
   minimumPrice: Prisma.Decimal;
   taxRate: Prisma.Decimal;
-  family: { id: string; name: string; active: boolean; parentId: string | null } | null;
-  category: { id: string; name: string; active: boolean; parentId: string | null } | null;
+  family: {
+    id: string;
+    name: string;
+    active: boolean;
+    parentId: string | null;
+  } | null;
+  category: {
+    id: string;
+    name: string;
+    active: boolean;
+    parentId: string | null;
+  } | null;
   benefits: Array<{ text: string }>;
   assets: Array<{ publicUrl: string; isPrimary: boolean; status: string }>;
   inventoryBalances: Array<{ availableQuantity: Prisma.Decimal }>;
@@ -206,119 +233,142 @@ export async function createOfflineBootstrap(
 ): Promise<PosOfflineBootstrapDto> {
   const now = new Date();
   const businessDate = businessDateAt(now.toISOString());
-  const [terminal, credential, cursor, catalog, packages, paymentMethods, vouchers, customerSources, ticketConfiguration, sellers, locations, balances, day, tickets] =
-    await Promise.all([
-      prisma.posTerminal.findUniqueOrThrow({
-        where: { id: actor.grant.terminalId },
-        include: { branch: { include: { posProfile: { select: { code: true } } } } },
-      }),
-      findCredentialForSession(actor.grant.credentialId),
-      prisma.posSyncCursor.upsert({
-        where: { terminalId: actor.grant.terminalId },
-        create: { terminalId: actor.grant.terminalId },
-        update: {},
-      }),
-      prisma.catalogItem.findMany({
-        where: {
-          deletedAt: null,
-          active: true,
-          published: true,
-          OR: [
-            { branchVisibility: { none: {} } },
-            { branchVisibility: { some: { branchId: actor.grant.branchId, visible: true } } },
-          ],
-        },
-        orderBy: { name: "asc" },
-        include: {
-          family: true,
-          category: true,
-          benefits: { orderBy: { sortOrder: "asc" } },
-          assets: { where: { status: "READY" }, orderBy: [{ isPrimary: "desc" }, { creadoEn: "asc" }] },
-          inventoryBalances: {
-            where: { location: { branchId: actor.grant.branchId } },
-            select: { availableQuantity: true },
-            take: 1,
+  const [
+    terminal,
+    credential,
+    cursor,
+    catalog,
+    packages,
+    paymentMethods,
+    vouchers,
+    customerSources,
+    ticketConfiguration,
+    sellers,
+    locations,
+    balances,
+    day,
+    tickets,
+  ] = await Promise.all([
+    prisma.posTerminal.findUniqueOrThrow({
+      where: { id: actor.grant.terminalId },
+      include: {
+        branch: { include: { posProfile: { select: { code: true } } } },
+      },
+    }),
+    findCredentialForSession(actor.grant.credentialId),
+    prisma.posSyncCursor.upsert({
+      where: { terminalId: actor.grant.terminalId },
+      create: { terminalId: actor.grant.terminalId },
+      update: {},
+    }),
+    prisma.catalogItem.findMany({
+      where: {
+        deletedAt: null,
+        active: true,
+        published: true,
+        OR: [
+          { branchVisibility: { none: {} } },
+          {
+            branchVisibility: {
+              some: { branchId: actor.grant.branchId, visible: true },
+            },
           },
+        ],
+      },
+      orderBy: { name: "asc" },
+      include: {
+        family: true,
+        category: true,
+        benefits: { orderBy: { sortOrder: "asc" } },
+        assets: {
+          where: { status: "READY" },
+          orderBy: [{ isPrimary: "desc" }, { creadoEn: "asc" }],
         },
-      }),
-      prisma.posPackage.findMany({
-        where: {
-          deletedAt: null,
-          status: "PUBLISHED",
-          OR: [{ startsAt: null }, { startsAt: { lte: now } }],
-          AND: [{ OR: [{ endsAt: null }, { endsAt: { gte: now } }] }],
+        inventoryBalances: {
+          where: { location: { branchId: actor.grant.branchId } },
+          select: { availableQuantity: true },
+          take: 1,
         },
-        include: { lines: true },
-        orderBy: { name: "asc" },
-      }),
-      prisma.metodoPago.findMany({
-        where: { activo: true, posPolicy: { activeForPos: true } },
-        include: { posPolicy: true },
-        orderBy: { nombre: "asc" },
-      }),
-      prisma.posVoucherTemplate.findMany({
-        where: { deletedAt: null, active: true, visibleToSellers: true },
-        orderBy: { name: "asc" },
-      }),
-      prisma.customerSource.findMany({
-        where: { deletedAt: null, active: true },
-        orderBy: { name: "asc" },
-      }),
-      prisma.posTicketConfiguration.findFirst({
-        where: { OR: [{ branchId: actor.grant.branchId }, { branchId: null }] },
-        orderBy: { branchId: "desc" },
-      }),
-      prisma.empleado.findMany({
-        where: { activo: true },
-        select: { id: true, nombreCompleto: true, positionId: true },
-        orderBy: { nombreCompleto: "asc" },
-      }),
-      prisma.inventoryLocation.findMany({
-        where: { active: true, branchId: actor.grant.branchId },
-        include: { branch: { select: { nombre: true } } },
-        orderBy: { name: "asc" },
-      }),
-      prisma.inventoryBalance.findMany({
-        where: { location: { branchId: actor.grant.branchId } },
-        orderBy: { itemId: "asc" },
-      }),
-      prisma.posBusinessDay.findUnique({
-        where: {
-          branchId_businessDate: {
-            branchId: actor.grant.branchId,
-            businessDate: new Date(`${businessDate}T00:00:00.000Z`),
-          },
-        },
-        include: businessDayInclude,
-      }),
-      prisma.posTicket.findMany({
-        where: {
+      },
+    }),
+    prisma.posPackage.findMany({
+      where: {
+        deletedAt: null,
+        status: "PUBLISHED",
+        OR: [{ startsAt: null }, { startsAt: { lte: now } }],
+        AND: [{ OR: [{ endsAt: null }, { endsAt: { gte: now } }] }],
+      },
+      include: { lines: true },
+      orderBy: { name: "asc" },
+    }),
+    prisma.metodoPago.findMany({
+      where: { activo: true, posPolicy: { activeForPos: true } },
+      include: { posPolicy: true },
+      orderBy: { nombre: "asc" },
+    }),
+    prisma.posVoucherTemplate.findMany({
+      where: { deletedAt: null, active: true, visibleToSellers: true },
+      orderBy: { name: "asc" },
+    }),
+    prisma.customerSource.findMany({
+      where: { deletedAt: null, active: true },
+      orderBy: { name: "asc" },
+    }),
+    prisma.posTicketConfiguration.findFirst({
+      where: { OR: [{ branchId: actor.grant.branchId }, { branchId: null }] },
+      orderBy: { branchId: "desc" },
+    }),
+    prisma.empleado.findMany({
+      where: { activo: true },
+      select: { id: true, nombreCompleto: true, positionId: true },
+      orderBy: { nombreCompleto: "asc" },
+    }),
+    prisma.inventoryLocation.findMany({
+      where: { active: true, branchId: actor.grant.branchId },
+      include: { branch: { select: { nombre: true } } },
+      orderBy: { name: "asc" },
+    }),
+    prisma.inventoryBalance.findMany({
+      where: { location: { branchId: actor.grant.branchId } },
+      orderBy: { itemId: "asc" },
+    }),
+    prisma.posBusinessDay.findUnique({
+      where: {
+        branchId_businessDate: {
           branchId: actor.grant.branchId,
-          status: { in: ["COMPLETED", "LAYAWAY"] },
+          businessDate: new Date(`${businessDate}T00:00:00.000Z`),
         },
-        include: {
-          branch: { select: { nombre: true } },
-          customer: { select: { id: true } },
-          lines: { orderBy: { creadoEn: "asc" } },
-          sellers: { orderBy: { creadoEn: "asc" } },
-          paymentOperations: {
-            include: { payments: true },
-            orderBy: { creadoEn: "asc" },
-          },
-          layaway: true,
-          owedProducts: {
-            include: { item: { select: { name: true } } },
-            orderBy: { creadoEn: "asc" },
-          },
-          appointments: {
-            include: { branch: { select: { nombre: true } } },
-            orderBy: { creadoEn: "asc" },
-          },
+      },
+      include: businessDayInclude,
+    }),
+    prisma.posTicket.findMany({
+      where: {
+        branchId: actor.grant.branchId,
+        status: { in: ["COMPLETED", "LAYAWAY"] },
+      },
+      include: {
+        branch: { select: { nombre: true } },
+        customer: { select: { id: true } },
+        lines: { orderBy: { creadoEn: "asc" } },
+        sellers: { orderBy: { creadoEn: "asc" } },
+        paymentOperations: {
+          include: { payments: true },
+          orderBy: { creadoEn: "asc" },
         },
-        orderBy: { creadoEn: "desc" },
-        take: 200,
-      }),
-    ]);
+        layaway: true,
+        owedProducts: {
+          include: { item: { select: { name: true } } },
+          orderBy: { creadoEn: "asc" },
+        },
+        appointments: {
+          include: { branch: { select: { nombre: true } } },
+          orderBy: { creadoEn: "asc" },
+        },
+      },
+      orderBy: { creadoEn: "desc" },
+      take: 200,
+    }),
+  ]);
   if (!credential) throw new PosSyncError("Credencial POS no encontrada", 401);
   if (!credential.offlineEnabled) {
     throw new PosSyncError(
@@ -336,6 +386,7 @@ export async function createOfflineBootstrap(
     positionId: identity.positionId,
     displayName: identity.displayName,
     alias: credential.aliasNormalized,
+    sessionId: actor.grant.sessionId,
     terminalId: terminal.id,
     branchId: terminal.branchId,
     credentialVersion: credential.version,
@@ -369,6 +420,15 @@ export async function createOfflineBootstrap(
         },
       },
       permissions: actor.permissions,
+      authorizedBranches: [
+        {
+          id: terminal.branch.id,
+          name: terminal.branch.nombre,
+          code: terminal.branch.posProfile?.code ?? null,
+          active: terminal.branch.activa,
+        },
+      ],
+      branchScope: "SESSION_BRANCH",
     },
     catalog: catalog.map(catalogDto),
     packages: packages.map((item) => ({
@@ -380,7 +440,10 @@ export async function createOfflineBootstrap(
       status: item.status,
       startsAt: item.startsAt?.toISOString() ?? null,
       endsAt: item.endsAt?.toISOString() ?? null,
-      lines: item.lines.map((line) => ({ itemId: line.itemId, quantity: money(line.quantity) })),
+      lines: item.lines.map((line) => ({
+        itemId: line.itemId,
+        quantity: money(line.quantity),
+      })),
     })),
     paymentMethods: paymentMethods.map((item) => ({
       id: item.id,
@@ -417,7 +480,8 @@ export async function createOfflineBootstrap(
           showClientPhone: ticketConfiguration.showClientPhone,
           showSellerName: ticketConfiguration.showSellerName,
           showVatBreakdown: ticketConfiguration.showVatBreakdown,
-          showSpareCoverageMessage: ticketConfiguration.showSpareCoverageMessage,
+          showSpareCoverageMessage:
+            ticketConfiguration.showSpareCoverageMessage,
         }
       : null,
     sellers: sellers.map((seller) => ({
@@ -461,8 +525,13 @@ async function executeOperation(
   if (localReference && localReference.terminalId !== actor.grant.terminalId) {
     throw new PosSyncError("La referencia local pertenece a otra terminal");
   }
-  if (localReference && (localReference.status !== "SYNCED" || !localReference.serverEntityId)) {
-    throw new PosSyncError("La operación depende de una referencia local todavía no conciliada");
+  if (
+    localReference &&
+    (localReference.status !== "SYNCED" || !localReference.serverEntityId)
+  ) {
+    throw new PosSyncError(
+      "La operación depende de una referencia local todavía no conciliada",
+    );
   }
   const resolvedOperation = localReference
     ? { ...operation, entityId: localReference.serverEntityId }
@@ -473,6 +542,7 @@ async function executeOperation(
     branchId: actor.grant.branchId,
     businessDate: businessDateAt(operation.createdAt),
     isMaster: actor.isMaster,
+    sessionId: actor.grant.sessionId,
   };
   if (resolvedOperation.kind === "TICKET_CREATE") {
     const input = posTicketCreateRequestSchema.parse(resolvedOperation.payload);
@@ -490,8 +560,11 @@ async function executeOperation(
     return result;
   }
   if (resolvedOperation.kind === "LAYAWAY_PAYMENT") {
-    if (!resolvedOperation.entityId) throw new PosSyncError("El abono no indica apartado");
-    const input = posLayawayPaymentRequestSchema.parse(resolvedOperation.payload);
+    if (!resolvedOperation.entityId)
+      throw new PosSyncError("El abono no indica apartado");
+    const input = posLayawayPaymentRequestSchema.parse(
+      resolvedOperation.payload,
+    );
     const result = await executePosIdempotent({
       key: operation.idempotencyKey,
       actorCredentialId: context.credentialId,
@@ -500,17 +573,24 @@ async function executeOperation(
       execute: async (tx) => ({
         status: 201,
         message: "Abono offline conciliado",
-        data: ticketDto(await addLayawayPayment(tx, {
-          ticketId: resolvedOperation.entityId!,
-          payments: input.payments,
-          deliveredTicketLineIds: input.deliveredTicketLineIds,
-        }, context)),
+        data: ticketDto(
+          await addLayawayPayment(
+            tx,
+            {
+              ticketId: resolvedOperation.entityId!,
+              payments: input.payments,
+              deliveredTicketLineIds: input.deliveredTicketLineIds,
+            },
+            context,
+          ),
+        ),
       }),
     });
     return result;
   }
   if (resolvedOperation.kind === "VOUCHER_ISSUE") {
-    if (!resolvedOperation.entityId) throw new PosSyncError("El voucher no indica ticket");
+    if (!resolvedOperation.entityId)
+      throw new PosSyncError("El voucher no indica ticket");
     const input = posVoucherIssueRequestSchema.parse(resolvedOperation.payload);
     const result = await executePosIdempotent({
       key: operation.idempotencyKey,
@@ -520,16 +600,23 @@ async function executeOperation(
       execute: async (tx) => ({
         status: 201,
         message: "Voucher offline conciliado",
-        data: voucherDto(await issueVoucher(tx, {
-          ticketId: resolvedOperation.entityId!,
-          templateId: input.templateId,
-        }, context)),
+        data: voucherDto(
+          await issueVoucher(
+            tx,
+            {
+              ticketId: resolvedOperation.entityId!,
+              templateId: input.templateId,
+            },
+            context,
+          ),
+        ),
       }),
     });
     return result;
   }
   if (resolvedOperation.kind === "VOUCHER_PRINT") {
-    if (!resolvedOperation.entityId) throw new PosSyncError("La impresión no indica voucher");
+    if (!resolvedOperation.entityId)
+      throw new PosSyncError("La impresión no indica voucher");
     const result = await executePosIdempotent({
       key: operation.idempotencyKey,
       actorCredentialId: context.credentialId,
@@ -571,16 +658,29 @@ async function executeBusinessDayOperation(
           credentialId: context.credentialId,
           terminalId: context.terminalId,
         });
-        return { status: 201, message: "Conteo offline conciliado", data: { id: count.id } };
+        return {
+          status: 201,
+          message: "Conteo offline conciliado",
+          data: { id: count.id },
+        };
       }
       if (operation.kind === "BUSINESS_DAY_OPEN") {
         const input = posBusinessDayCountInputSchema.parse(operation.payload);
-        if (input.skipped) throw new PosSyncError("La omisión de apertura requiere autorización online");
+        if (input.skipped)
+          throw new PosSyncError(
+            "La omisión de apertura requiere autorización online",
+          );
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`pos-day:${context.branchId}:${context.businessDate}`}))`;
         const existing = await tx.posBusinessDay.findUnique({
-          where: { branchId_businessDate: { branchId: context.branchId, businessDate: new Date(`${context.businessDate}T00:00:00.000Z`) } },
+          where: {
+            branchId_businessDate: {
+              branchId: context.branchId,
+              businessDate: new Date(`${context.businessDate}T00:00:00.000Z`),
+            },
+          },
         });
-        if (existing) throw new PosSyncError("La jornada ya fue abierta por otra terminal");
+        if (existing)
+          throw new PosSyncError("La jornada ya fue abierta por otra terminal");
         const count = await createBusinessDayCount(tx, {
           kind: "OPENING",
           businessDate: context.businessDate,
@@ -621,16 +721,29 @@ async function executeBusinessDayOperation(
             sourceId: attendance.id,
           });
         }
-        return { status: 201, message: "Jornada offline conciliada", data: businessDayDto(day) };
+        return {
+          status: 201,
+          message: "Jornada offline conciliada",
+          data: businessDayDto(day),
+        };
       }
-      if (!operation.entityId) throw new PosSyncError("La operación no indica jornada");
-      const day = await tx.posBusinessDay.findUnique({ where: { id: operation.entityId } });
-      if (!day || day.branchId !== context.branchId) throw new PosSyncError("Jornada no encontrada", 404);
+      if (!operation.entityId)
+        throw new PosSyncError("La operación no indica jornada");
+      const day = await tx.posBusinessDay.findUnique({
+        where: { id: operation.entityId },
+      });
+      if (!day || day.branchId !== context.branchId)
+        throw new PosSyncError("Jornada no encontrada", 404);
       if (operation.kind === "BUSINESS_DAY_CLOSING_COUNT") {
         const input = posBusinessDayCountInputSchema.parse(operation.payload);
-        if (input.skipped) throw new PosSyncError("La omisión del conteo final requiere autorización online");
+        if (input.skipped)
+          throw new PosSyncError(
+            "La omisión del conteo final requiere autorización online",
+          );
         if (day.status !== "OPEN" || day.closingCountId || day.closingSkipped) {
-          throw new PosSyncError("La jornada ya tiene conteo final o está cerrada");
+          throw new PosSyncError(
+            "La jornada ya tiene conteo final o está cerrada",
+          );
         }
         const count = await createBusinessDayCount(tx, {
           kind: "CLOSING",
@@ -647,25 +760,42 @@ async function executeBusinessDayOperation(
           data: { closingCountId: count.id },
           include: businessDayInclude,
         });
-        return { status: 201, message: "Conteo final offline conciliado", data: businessDayDto(updated) };
+        return {
+          status: 201,
+          message: "Conteo final offline conciliado",
+          data: businessDayDto(updated),
+        };
       }
       if (operation.kind !== "BUSINESS_DAY_CLOSE") {
         throw new PosSyncError("Tipo de operación offline no soportado", 422);
       }
       if (!actor.isMaster) {
-        throw new PosSyncError("El cierre offline requiere una credencial master vigente", 403);
+        throw new PosSyncError(
+          "El cierre offline requiere una credencial master vigente",
+          403,
+        );
       }
-      if (day.status !== "OPEN") throw new PosSyncError("La jornada ya fue cerrada");
+      if (day.status !== "OPEN")
+        throw new PosSyncError("La jornada ya fue cerrada");
       if (!day.closingCountId && !day.closingSkipped) {
-        throw new PosSyncError("El conteo final es obligatorio antes del cierre");
+        throw new PosSyncError(
+          "El conteo final es obligatorio antes del cierre",
+        );
       }
       const [tickets, cashMovements] = await Promise.all([
         tx.posTicket.findMany({
-          where: { branchId: day.branchId, businessDate: day.businessDate, status: { in: ["COMPLETED", "LAYAWAY"] } },
+          where: {
+            branchId: day.branchId,
+            businessDate: day.businessDate,
+            status: { in: ["COMPLETED", "LAYAWAY"] },
+          },
           select: { total: true, amountPaid: true, discountTotal: true },
         }),
         tx.posCashMovement.findMany({
-          where: { businessDate: day.businessDate, expense: { branchId: day.branchId } },
+          where: {
+            businessDate: day.businessDate,
+            expense: { branchId: day.branchId },
+          },
           select: { amount: true },
         }),
       ]);
@@ -673,8 +803,12 @@ async function executeBusinessDayOperation(
         values.reduce((sum, value) => sum.plus(value), new Prisma.Decimal(0));
       const salesTotal = total(tickets.map((ticket) => ticket.total));
       const collectedTotal = total(tickets.map((ticket) => ticket.amountPaid));
-      const discountTotal = total(tickets.map((ticket) => ticket.discountTotal));
-      const expenseTotal = total(cashMovements.map((movement) => movement.amount));
+      const discountTotal = total(
+        tickets.map((ticket) => ticket.discountTotal),
+      );
+      const expenseTotal = total(
+        cashMovements.map((movement) => movement.amount),
+      );
       const closedAt = new Date();
       const closeSummary = {
         ticketCount: tickets.length,
@@ -728,7 +862,11 @@ async function executeBusinessDayOperation(
         sourceType: "PosBusinessDay",
         sourceId: day.id,
       });
-      return { status: 200, message: "Jornada offline conciliada y cerrada", data: businessDayDto(updated) };
+      return {
+        status: 200,
+        message: "Jornada offline conciliada y cerrada",
+        data: businessDayDto(updated),
+      };
     },
   });
   return result;
@@ -757,7 +895,9 @@ export async function pushOfflineOperations(
   actor: PosOfflineActor,
   operations: PosOfflineOperationDto[],
 ): Promise<{ results: PosOfflineOperationResultDto[]; nextSequence: number }> {
-  const ordered = [...operations].sort((left, right) => left.sequence - right.sequence);
+  const ordered = [...operations].sort(
+    (left, right) => left.sequence - right.sequence,
+  );
   const results: PosOfflineOperationResultDto[] = [];
   for (const operation of ordered) {
     const hash = payloadHash(operation);
@@ -773,16 +913,25 @@ export async function pushOfflineOperations(
         existing.idempotencyKey !== operation.idempotencyKey ||
         existing.kind !== operation.kind ||
         existing.entityId !== operation.entityId ||
-        existing.clientCreatedAt.getTime() !== new Date(operation.createdAt).getTime()
+        existing.clientCreatedAt.getTime() !==
+          new Date(operation.createdAt).getTime()
       ) {
-        throw new PosSyncError("La operación local fue reutilizada con otro contenido", 409, "OPERATION_REUSED");
+        throw new PosSyncError(
+          "La operación local fue reutilizada con otro contenido",
+          409,
+          "OPERATION_REUSED",
+        );
       }
       if (existing.status === "SYNCED" || existing.status === "CONFLICT") {
         results.push({
           id: operation.id,
           sequence: operation.sequence,
           status: existing.status,
-          message: existing.errorMessage ?? (existing.status === "SYNCED" ? "Operación ya conciliada" : "Operación en conflicto"),
+          message:
+            existing.errorMessage ??
+            (existing.status === "SYNCED"
+              ? "Operación ya conciliada"
+              : "Operación en conflicto"),
           serverEntityId: existing.serverEntityId,
           data: existing.response,
         });
@@ -824,7 +973,9 @@ export async function pushOfflineOperations(
     try {
       const executed = await executeOperation(operation, actor);
       const serverEntityId =
-        executed.data && typeof executed.data === "object" && "id" in executed.data
+        executed.data &&
+        typeof executed.data === "object" &&
+        "id" in executed.data
           ? String((executed.data as { id: unknown }).id)
           : null;
       await prisma.$transaction(async (tx) => {
@@ -855,10 +1006,15 @@ export async function pushOfflineOperations(
     } catch (error) {
       const conflict =
         error instanceof PosSyncError ||
-        (error instanceof Error && "status" in error && Number((error as { status?: number }).status) < 500) ||
+        (error instanceof Error &&
+          "status" in error &&
+          Number((error as { status?: number }).status) < 500) ||
         error instanceof Prisma.PrismaClientKnownRequestError;
       const status = conflict ? "CONFLICT" : "ERROR";
-      const message = error instanceof Error ? error.message : "No se pudo conciliar la operación";
+      const message =
+        error instanceof Error
+          ? error.message
+          : "No se pudo conciliar la operación";
       await prisma.$transaction(async (tx) => {
         await tx.posSyncOperation.update({
           where: { clientOperationId: operation.id },

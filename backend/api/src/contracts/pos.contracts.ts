@@ -60,6 +60,14 @@ export const posMasterAuthorizationRequestSchema = z
   })
   .strict();
 
+export const posPersonalAuthorizationRequestSchema = z
+  .object({
+    pin: z.string().regex(/^\d{4,12}$/, "PIN inválido"),
+    purpose: z.string().trim().min(1).max(80),
+    scope: z.record(z.unknown()).optional(),
+  })
+  .strict();
+
 export const posAuthorizationVerifyRequestSchema = z
   .object({
     authorizationToken: z.string().uuid(),
@@ -89,7 +97,10 @@ export const posTerminalBranchChangeSchema = z
 export const posCredentialUpsertSchema = z
   .object({
     alias: aliasSchema,
-    pin: z.string().regex(/^\d{4,12}$/, "PIN inválido").optional(),
+    pin: z
+      .string()
+      .regex(/^\d{4,12}$/, "PIN inválido")
+      .optional(),
     active: z.boolean().default(true),
     offlineEnabled: z.boolean().default(false),
     isMaster: z.boolean().default(false),
@@ -99,7 +110,16 @@ export const posCredentialUpsertSchema = z
 
 export const posRolePermissionsSchema = z
   .object({
-    permissions: z.array(z.enum(POS_PERMISSION_KEYS)).max(POS_PERMISSION_KEYS.length),
+    permissions: z
+      .array(z.enum(POS_PERMISSION_KEYS))
+      .max(POS_PERMISSION_KEYS.length),
+    authorizationToken: z.string().uuid(),
+  })
+  .strict();
+
+export const posBranchAssignmentsSchema = z
+  .object({
+    branchIds: z.array(idSchema).max(500),
     authorizationToken: z.string().uuid(),
   })
   .strict();
@@ -136,6 +156,8 @@ export const posSessionSchema = z
       })
       .strict(),
     permissions: z.array(z.enum(POS_PERMISSION_KEYS)),
+    authorizedBranches: z.array(posBranchSummarySchema),
+    branchScope: z.enum(["SESSION_BRANCH", "ASSIGNED", "ALL_ACTIVE"]),
   })
   .strict();
 
@@ -170,94 +192,184 @@ export const posCatalogItemUpsertSchema = z
 const nullableIdSchema = idSchema.nullable().optional().default(null);
 const optionalMoneySchema = moneySchema.nullable().optional().default(null);
 
-export const posTaxonomyUpsertSchema = z.object({
-  name: z.string().trim().min(1).max(160),
-  parentId: nullableIdSchema,
-  active: z.boolean().default(true),
-}).strict();
+export const posTaxonomyUpsertSchema = z
+  .object({
+    name: z.string().trim().min(1).max(160),
+    parentId: nullableIdSchema,
+    active: z.boolean().default(true),
+  })
+  .strict();
 
-export const posCatalogItemWriteSchema = z.object({
-  sku: z.string().trim().min(1).max(96),
-  name: z.string().trim().min(1).max(240),
-  kind: z.enum(["PRODUCT", "SERVICE", "SUPPLY", "MACHINE"]),
-  familyId: nullableIdSchema,
-  categoryId: nullableIdSchema,
-  supplierId: nullableIdSchema,
-  description: z.string().trim().max(4_000).nullable().default(null),
-  benefits: z.array(z.string().trim().min(1).max(500)).max(30).default([]),
-  branchIds: z.array(idSchema).max(500).default([]),
-  published: z.boolean().default(false),
-  active: z.boolean().default(true),
-  listPrice: moneySchema,
-  minimumPrice: moneySchema,
-  unitCost: moneySchema,
-  taxRate: moneySchema,
-}).strict().superRefine((item, context) => {
-  if (Number(item.minimumPrice) > Number(item.listPrice)) {
-    context.addIssue({ code: z.ZodIssueCode.custom, message: "El precio mínimo no puede exceder la lista", path: ["minimumPrice"] });
-  }
-  if (Number(item.taxRate) > 100) {
-    context.addIssue({ code: z.ZodIssueCode.custom, message: "IVA inválido", path: ["taxRate"] });
-  }
-  if (item.published && (!item.description || item.benefits.length === 0)) {
-    context.addIssue({ code: z.ZodIssueCode.custom, message: "Un artículo publicado requiere descripción y beneficios", path: ["published"] });
-  }
-});
+export const posCatalogItemWriteSchema = z
+  .object({
+    sku: z.string().trim().min(1).max(96),
+    name: z.string().trim().min(1).max(240),
+    kind: z.enum(["PRODUCT", "SERVICE", "SUPPLY", "MACHINE"]),
+    familyId: nullableIdSchema,
+    categoryId: nullableIdSchema,
+    supplierId: nullableIdSchema,
+    description: z.string().trim().max(4_000).nullable().default(null),
+    benefits: z.array(z.string().trim().min(1).max(500)).max(30).default([]),
+    branchIds: z.array(idSchema).max(500).default([]),
+    published: z.boolean().default(false),
+    active: z.boolean().default(true),
+    listPrice: moneySchema,
+    minimumPrice: moneySchema,
+    unitCost: moneySchema,
+    taxRate: moneySchema,
+  })
+  .strict()
+  .superRefine((item, context) => {
+    if (Number(item.minimumPrice) > Number(item.listPrice)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "El precio mínimo no puede exceder la lista",
+        path: ["minimumPrice"],
+      });
+    }
+    if (Number(item.taxRate) > 100) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "IVA inválido",
+        path: ["taxRate"],
+      });
+    }
+    if (item.published && (!item.description || item.benefits.length === 0)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Un artículo publicado requiere descripción y beneficios",
+        path: ["published"],
+      });
+    }
+  });
 
-export const posCustomerWriteSchema = z.object({
-  displayName: z.string().trim().min(2).max(240),
-  phone: z.string().trim().min(7).max(32).nullable().default(null),
-  email: z.string().trim().email().max(320).nullable().default(null),
-  sourceId: nullableIdSchema,
-  notes: z.string().trim().max(4_000).nullable().default(null),
-  active: z.boolean().default(true),
-  branchId: nullableIdSchema,
-  employeeId: nullableIdSchema,
-}).strict();
+export const posCustomerWriteSchema = z
+  .object({
+    displayName: z.string().trim().min(2).max(240),
+    phone: z.string().trim().min(7).max(32).nullable().default(null),
+    email: z.string().trim().email().max(320).nullable().default(null),
+    sourceId: nullableIdSchema,
+    notes: z.string().trim().max(4_000).nullable().default(null),
+    active: z.boolean().default(true),
+    branchId: nullableIdSchema,
+    employeeId: nullableIdSchema,
+  })
+  .strict();
 
-export const posCustomerSourceWriteSchema = z.object({
-  name: z.string().trim().min(2).max(160), active: z.boolean().default(true),
-}).strict();
+export const posCustomerSourceWriteSchema = z
+  .object({
+    name: z.string().trim().min(2).max(160),
+    active: z.boolean().default(true),
+  })
+  .strict();
 
-export const posSupplierWriteSchema = z.object({
-  folio: z.string().trim().min(2).max(64), businessName: z.string().trim().min(2).max(240),
-  contactName: z.string().trim().max(240).nullable().default(null), rfc: z.string().trim().max(20).nullable().default(null),
-  taxRegime: z.string().trim().max(240).nullable().default(null), businessLine: z.string().trim().max(240).nullable().default(null),
-  phone: z.string().trim().max(32).nullable().default(null), email: z.string().trim().email().max(320).nullable().default(null),
-  address: z.string().trim().max(1_000).nullable().default(null), active: z.boolean().default(true),
-}).strict();
+export const posSupplierWriteSchema = z
+  .object({
+    folio: z.string().trim().min(2).max(64),
+    businessName: z.string().trim().min(2).max(240),
+    contactName: z.string().trim().max(240).nullable().default(null),
+    rfc: z.string().trim().max(20).nullable().default(null),
+    taxRegime: z.string().trim().max(240).nullable().default(null),
+    businessLine: z.string().trim().max(240).nullable().default(null),
+    phone: z.string().trim().max(32).nullable().default(null),
+    email: z.string().trim().email().max(320).nullable().default(null),
+    address: z.string().trim().max(1_000).nullable().default(null),
+    active: z.boolean().default(true),
+  })
+  .strict();
 
-export const posPaymentPolicyWriteSchema = z.object({
-  name: z.string().trim().min(2).max(160), type: z.enum(["EFECTIVO", "TARJETA", "TRANSFERENCIA", "OTRO"]),
-  active: z.boolean().default(true), activeForPos: z.boolean().default(true), requiresReference: z.boolean().default(false),
-  referenceLabel: z.string().trim().max(80).nullable().default(null), minAmount: optionalMoneySchema, maxAmount: optionalMoneySchema,
-}).strict().superRefine((input, context) => {
-  if (input.minAmount && input.maxAmount && Number(input.minAmount) > Number(input.maxAmount)) {
-    context.addIssue({ code: z.ZodIssueCode.custom, message: "El mínimo excede el máximo", path: ["maxAmount"] });
-  }
-});
+export const posPaymentPolicyWriteSchema = z
+  .object({
+    name: z.string().trim().min(2).max(160),
+    type: z.enum(["EFECTIVO", "TARJETA", "TRANSFERENCIA", "OTRO"]),
+    active: z.boolean().default(true),
+    activeForPos: z.boolean().default(true),
+    requiresReference: z.boolean().default(false),
+    referenceLabel: z.string().trim().max(80).nullable().default(null),
+    minAmount: optionalMoneySchema,
+    maxAmount: optionalMoneySchema,
+  })
+  .strict()
+  .superRefine((input, context) => {
+    if (
+      input.minAmount &&
+      input.maxAmount &&
+      Number(input.minAmount) > Number(input.maxAmount)
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "El mínimo excede el máximo",
+        path: ["maxAmount"],
+      });
+    }
+  });
 
-export const posTicketConfigurationWriteSchema = z.object({
-  logoAssetId: nullableIdSchema, companyName: z.string().trim().min(2).max(160), address: z.string().trim().max(1_000).nullable().default(null),
-  footerMessage: z.string().trim().max(1_000).nullable().default(null), policies: z.string().trim().max(5_000).nullable().default(null),
-  showClientName: z.boolean().default(true), showClientPhone: z.boolean().default(true), showSellerName: z.boolean().default(true),
-  showVatBreakdown: z.boolean().default(true), showSpareCoverageMessage: z.boolean().default(true),
-}).strict();
+export const posTicketConfigurationWriteSchema = z
+  .object({
+    logoAssetId: nullableIdSchema,
+    companyName: z.string().trim().min(2).max(160),
+    address: z.string().trim().max(1_000).nullable().default(null),
+    footerMessage: z.string().trim().max(1_000).nullable().default(null),
+    policies: z.string().trim().max(5_000).nullable().default(null),
+    showClientName: z.boolean().default(true),
+    showClientPhone: z.boolean().default(true),
+    showSellerName: z.boolean().default(true),
+    showVatBreakdown: z.boolean().default(true),
+    showSpareCoverageMessage: z.boolean().default(true),
+  })
+  .strict();
 
-export const posVoucherTemplateWriteSchema = z.object({
-  name: z.string().trim().min(2).max(160), kind: z.enum(["NEXT_PURCHASE_DISCOUNT", "COMPANION_FACIAL", "MEMBERSHIP_DISCOUNT"]),
-  value: moneySchema, message: z.string().trim().min(1).max(1_000), active: z.boolean().default(true), visibleToSellers: z.boolean().default(false),
-}).strict();
+export const posVoucherTemplateWriteSchema = z
+  .object({
+    name: z.string().trim().min(2).max(160),
+    kind: z.enum([
+      "NEXT_PURCHASE_DISCOUNT",
+      "COMPANION_FACIAL",
+      "MEMBERSHIP_DISCOUNT",
+    ]),
+    value: moneySchema,
+    message: z.string().trim().min(1).max(1_000),
+    active: z.boolean().default(true),
+    visibleToSellers: z.boolean().default(false),
+  })
+  .strict();
 
-export const posPackageWriteSchema = z.object({
-  name: z.string().trim().min(2).max(160), sku: z.string().trim().min(2).max(96), description: z.string().trim().max(4_000).nullable().default(null),
-  price: moneySchema, status: z.enum(["DRAFT", "PUBLISHED", "INACTIVE"]).default("DRAFT"), startsAt: isoUtcSchema.nullable().default(null), endsAt: isoUtcSchema.nullable().default(null),
-  lines: z.array(z.object({ itemId: idSchema, quantity: moneySchema }).strict()).min(1).max(100),
-}).strict().superRefine((input, context) => {
-  if (input.startsAt && input.endsAt && new Date(input.endsAt) <= new Date(input.startsAt)) context.addIssue({ code: z.ZodIssueCode.custom, message: "Rango de vigencia inválido", path: ["endsAt"] });
-});
+export const posPackageWriteSchema = z
+  .object({
+    name: z.string().trim().min(2).max(160),
+    sku: z.string().trim().min(2).max(96),
+    description: z.string().trim().max(4_000).nullable().default(null),
+    price: moneySchema,
+    status: z.enum(["DRAFT", "PUBLISHED", "INACTIVE"]).default("DRAFT"),
+    startsAt: isoUtcSchema.nullable().default(null),
+    endsAt: isoUtcSchema.nullable().default(null),
+    lines: z
+      .array(z.object({ itemId: idSchema, quantity: moneySchema }).strict())
+      .min(1)
+      .max(100),
+  })
+  .strict()
+  .superRefine((input, context) => {
+    if (
+      input.startsAt &&
+      input.endsAt &&
+      new Date(input.endsAt) <= new Date(input.startsAt)
+    )
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Rango de vigencia inválido",
+        path: ["endsAt"],
+      });
+  });
 
-export const posAssetUploadMetadataSchema = z.object({ isPrimary: z.enum(["true", "false"]).optional().transform((value) => value === "true") }).strict();
+export const posAssetUploadMetadataSchema = z
+  .object({
+    isPrimary: z
+      .enum(["true", "false"])
+      .optional()
+      .transform((value) => value === "true"),
+  })
+  .strict();
 
 export const posTaxonomySchema = z
   .object({
@@ -340,7 +452,14 @@ export const posInventoryAdjustmentLineSchema = z
     fromLocationId: idSchema.nullable().optional().default(null),
     toLocationId: idSchema.nullable().optional().default(null),
     quantity: positiveQuantitySchema,
-    reason: z.string().trim().min(1).max(240).nullable().optional().default(null),
+    reason: z
+      .string()
+      .trim()
+      .min(1)
+      .max(240)
+      .nullable()
+      .optional()
+      .default(null),
     notes: z.string().trim().max(1_000).nullable().optional().default(null),
   })
   .strict()
@@ -348,13 +467,30 @@ export const posInventoryAdjustmentLineSchema = z
     const sourceOnly = ["REMOVE", "DEMO", "WRITE_OFF"].includes(line.type);
     const both = ["TRANSFER", "RETURN"].includes(line.type);
     if (line.type === "ADD" && (line.fromLocationId || !line.toLocationId)) {
-      context.addIssue({ code: z.ZodIssueCode.custom, message: "Una suma requiere sólo destino", path: ["toLocationId"] });
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Una suma requiere sólo destino",
+        path: ["toLocationId"],
+      });
     }
     if (sourceOnly && (!line.fromLocationId || line.toLocationId)) {
-      context.addIssue({ code: z.ZodIssueCode.custom, message: "La baja requiere sólo origen", path: ["fromLocationId"] });
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "La baja requiere sólo origen",
+        path: ["fromLocationId"],
+      });
     }
-    if (both && (!line.fromLocationId || !line.toLocationId || line.fromLocationId === line.toLocationId)) {
-      context.addIssue({ code: z.ZodIssueCode.custom, message: "La transferencia requiere ubicaciones distintas", path: ["toLocationId"] });
+    if (
+      both &&
+      (!line.fromLocationId ||
+        !line.toLocationId ||
+        line.fromLocationId === line.toLocationId)
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "La transferencia requiere ubicaciones distintas",
+        path: ["toLocationId"],
+      });
     }
   });
 
@@ -375,25 +511,52 @@ export const posWarehouseRequestWriteSchema = z
     customerId: idSchema.nullable().optional().default(null),
     notes: z.string().trim().max(1_000).nullable().optional().default(null),
     lines: z
-      .array(z.object({ itemId: idSchema, quantity: positiveQuantitySchema }).strict())
+      .array(
+        z
+          .object({ itemId: idSchema, quantity: positiveQuantitySchema })
+          .strict(),
+      )
       .min(1)
       .max(1_000),
   })
   .strict()
   .superRefine((request, context) => {
-    if (new Set(request.lines.map((line) => line.itemId)).size !== request.lines.length) {
-      context.addIssue({ code: z.ZodIssueCode.custom, message: "No se permiten artículos duplicados", path: ["lines"] });
+    if (
+      new Set(request.lines.map((line) => line.itemId)).size !==
+      request.lines.length
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "No se permiten artículos duplicados",
+        path: ["lines"],
+      });
     }
-    if (request.source === "BRANCH" && (!request.branchId || request.supplierId)) {
-      context.addIssue({ code: z.ZodIssueCode.custom, message: "Una solicitud de sucursal requiere sucursal", path: ["branchId"] });
+    if (
+      request.source === "BRANCH" &&
+      (!request.branchId || request.supplierId)
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Una solicitud de sucursal requiere sucursal",
+        path: ["branchId"],
+      });
     }
-    if (request.source === "SUPPLIER" && (!request.supplierId || request.branchId)) {
-      context.addIssue({ code: z.ZodIssueCode.custom, message: "Un resurtido requiere proveedor", path: ["supplierId"] });
+    if (
+      request.source === "SUPPLIER" &&
+      (!request.supplierId || request.branchId)
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Un resurtido requiere proveedor",
+        path: ["supplierId"],
+      });
     }
   });
 
 export const posWarehouseActionSchema = z
-  .object({ notes: z.string().trim().max(1_000).nullable().optional().default(null) })
+  .object({
+    notes: z.string().trim().max(1_000).nullable().optional().default(null),
+  })
   .strict();
 
 export const posNotificationQuerySchema = z
@@ -429,18 +592,28 @@ export const posTicketPaymentInputSchema = z
     amount: positiveQuantitySchema,
     reference: z.string().trim().min(1).max(160).optional(),
     institution: z.string().trim().min(1).max(160).optional(),
-    authorizationLastFour: z.string().regex(/^\d{4}$/).optional(),
+    authorizationLastFour: z
+      .string()
+      .regex(/^\d{4}$/)
+      .optional(),
   })
   .strict();
 
-export const posTicketDiscountInputSchema = z.object({
-  kind: z.enum(["PERCENT", "FIXED"]),
-  value: moneySchema,
-}).strict().superRefine((discount, context) => {
-  if (discount.kind === "PERCENT" && Number(discount.value) > 100) {
-    context.addIssue({ code: z.ZodIssueCode.custom, message: "Porcentaje inválido", path: ["value"] });
-  }
-});
+export const posTicketDiscountInputSchema = z
+  .object({
+    kind: z.enum(["PERCENT", "FIXED"]),
+    value: moneySchema,
+  })
+  .strict()
+  .superRefine((discount, context) => {
+    if (discount.kind === "PERCENT" && Number(discount.value) > 100) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Porcentaje inválido",
+        path: ["value"],
+      });
+    }
+  });
 
 const posTicketQuoteRequestObjectSchema = z
   .object({
@@ -458,63 +631,125 @@ const validateTicketCollections = (
   input: z.infer<typeof posTicketQuoteRequestObjectSchema>,
   context: z.RefinementCtx,
 ) => {
-    if (new Set(input.lines.map((line) => `${line.itemId}:${line.packageId ?? ""}`)).size !== input.lines.length) {
-      context.addIssue({ code: z.ZodIssueCode.custom, message: "No se permiten líneas duplicadas", path: ["lines"] });
+  if (
+    new Set(input.lines.map((line) => `${line.itemId}:${line.packageId ?? ""}`))
+      .size !== input.lines.length
+  ) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "No se permiten líneas duplicadas",
+      path: ["lines"],
+    });
+  }
+  if (
+    new Set(input.sellers.map((seller) => seller.employeeId)).size !==
+    input.sellers.length
+  ) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "No se permiten vendedores duplicados",
+      path: ["sellers"],
+    });
+  }
+};
+
+export const posTicketQuoteRequestSchema =
+  posTicketQuoteRequestObjectSchema.superRefine(validateTicketCollections);
+
+const posTicketCustomerSchema = z
+  .object({
+    id: idSchema.optional(),
+    create: z
+      .object({
+        displayName: z.string().trim().min(2).max(240),
+        phone: z
+          .string()
+          .trim()
+          .min(7)
+          .max(32)
+          .nullable()
+          .optional()
+          .default(null),
+        email: z
+          .string()
+          .trim()
+          .email()
+          .max(320)
+          .nullable()
+          .optional()
+          .default(null),
+        sourceId: nullableIdSchema,
+        notes: z.string().trim().max(4_000).nullable().optional().default(null),
+        ownerEmployeeId: nullableIdSchema,
+      })
+      .strict()
+      .optional(),
+  })
+  .strict()
+  .superRefine((customer, context) => {
+    if (Boolean(customer.id) === Boolean(customer.create)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Indica un cliente existente o uno nuevo",
+      });
     }
-    if (new Set(input.sellers.map((seller) => seller.employeeId)).size !== input.sellers.length) {
-      context.addIssue({ code: z.ZodIssueCode.custom, message: "No se permiten vendedores duplicados", path: ["sellers"] });
+  });
+
+export const posTicketAppointmentInputSchema = z
+  .object({
+    kind: z.enum(["COURTESY", "NEXT_SESSION", "NO_APPOINTMENT"]),
+    serviceItemId: idSchema.optional(),
+    serviceName: z.string().trim().min(1).max(240),
+    branchId: idSchema,
+    sellerId: idSchema.optional(),
+    scheduledAt: isoUtcSchema.optional(),
+  })
+  .strict()
+  .superRefine((appointment, context) => {
+    if (appointment.kind === "NO_APPOINTMENT" && appointment.scheduledAt) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Sin cita no admite horario",
+        path: ["scheduledAt"],
+      });
     }
-  };
+    if (appointment.kind !== "NO_APPOINTMENT" && !appointment.scheduledAt) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "La cita requiere horario",
+        path: ["scheduledAt"],
+      });
+    }
+  });
 
-export const posTicketQuoteRequestSchema = posTicketQuoteRequestObjectSchema.superRefine(validateTicketCollections);
+export const posTicketCourtesyInputSchema = z
+  .object({
+    serviceItemId: idSchema.optional(),
+    serviceName: z.string().trim().min(1).max(240),
+    appointmentIndex: z.number().int().min(0).optional(),
+    policyId: idSchema.optional(),
+    policyName: z.string().trim().min(1).max(160),
+    authorizationToken: z.string().uuid().optional(),
+  })
+  .strict();
 
-const posTicketCustomerSchema = z.object({
-  id: idSchema.optional(),
-  create: z.object({
-    displayName: z.string().trim().min(2).max(240),
-    phone: z.string().trim().min(7).max(32).nullable().optional().default(null),
-    email: z.string().trim().email().max(320).nullable().optional().default(null),
-    sourceId: nullableIdSchema,
-    notes: z.string().trim().max(4_000).nullable().optional().default(null),
-    ownerEmployeeId: nullableIdSchema,
-  }).strict().optional(),
-}).strict().superRefine((customer, context) => {
-  if (Boolean(customer.id) === Boolean(customer.create)) {
-    context.addIssue({ code: z.ZodIssueCode.custom, message: "Indica un cliente existente o uno nuevo" });
-  }
-});
-
-export const posTicketAppointmentInputSchema = z.object({
-  kind: z.enum(["COURTESY", "NEXT_SESSION", "NO_APPOINTMENT"]),
-  serviceItemId: idSchema.optional(),
-  serviceName: z.string().trim().min(1).max(240),
-  branchId: idSchema,
-  sellerId: idSchema.optional(),
-  scheduledAt: isoUtcSchema.optional(),
-}).strict().superRefine((appointment, context) => {
-  if (appointment.kind === "NO_APPOINTMENT" && appointment.scheduledAt) {
-    context.addIssue({ code: z.ZodIssueCode.custom, message: "Sin cita no admite horario", path: ["scheduledAt"] });
-  }
-  if (appointment.kind !== "NO_APPOINTMENT" && !appointment.scheduledAt) {
-    context.addIssue({ code: z.ZodIssueCode.custom, message: "La cita requiere horario", path: ["scheduledAt"] });
-  }
-});
-
-export const posTicketCourtesyInputSchema = z.object({
-  serviceItemId: idSchema.optional(),
-  serviceName: z.string().trim().min(1).max(240),
-  appointmentIndex: z.number().int().min(0).optional(),
-  policyId: idSchema.optional(),
-  policyName: z.string().trim().min(1).max(160),
-  authorizationToken: z.string().uuid().optional(),
-}).strict();
-
-export const posTicketCreateRequestSchema = posTicketQuoteRequestObjectSchema.extend({
-  customer: posTicketCustomerSchema,
-  payments: z.array(posTicketPaymentInputSchema).max(20),
-  appointments: z.array(posTicketAppointmentInputSchema).max(10).optional().default([]),
-  courtesies: z.array(posTicketCourtesyInputSchema).max(2).optional().default([]),
-}).strict().superRefine(validateTicketCollections);
+export const posTicketCreateRequestSchema = posTicketQuoteRequestObjectSchema
+  .extend({
+    customer: posTicketCustomerSchema,
+    payments: z.array(posTicketPaymentInputSchema).max(20),
+    appointments: z
+      .array(posTicketAppointmentInputSchema)
+      .max(10)
+      .optional()
+      .default([]),
+    courtesies: z
+      .array(posTicketCourtesyInputSchema)
+      .max(2)
+      .optional()
+      .default([]),
+  })
+  .strict()
+  .superRefine(validateTicketCollections);
 
 export const posTicketQuoteSchema = z
   .object({
@@ -528,12 +763,23 @@ export const posTicketQuoteSchema = z
     spareTotal: moneySchema,
     requiresAuthorization: z.boolean(),
     authorizationPurpose: z.enum(["SALE_BELOW_MINIMUM"]).nullable(),
-    lines: z.array(z.object({
-      itemId: idSchema, itemName: z.string(), sku: z.string(), quantity: moneySchema,
-      unitPrice: moneySchema, unitMinimumPrice: moneySchema, subtotal: moneySchema,
-      discountTotal: moneySchema, taxTotal: moneySchema, total: moneySchema,
-      packageId: idSchema.nullable(),
-    }).strict()),
+    lines: z.array(
+      z
+        .object({
+          itemId: idSchema,
+          itemName: z.string(),
+          sku: z.string(),
+          quantity: moneySchema,
+          unitPrice: moneySchema,
+          unitMinimumPrice: moneySchema,
+          subtotal: moneySchema,
+          discountTotal: moneySchema,
+          taxTotal: moneySchema,
+          total: moneySchema,
+          packageId: idSchema.nullable(),
+        })
+        .strict(),
+    ),
   })
   .strict();
 
@@ -545,29 +791,55 @@ export const posTicketSchema = posTicketQuoteSchema.extend({
   createdAt: isoUtcSchema,
 });
 
-export const posTicketListQuerySchema = z.object({
-  page: z.coerce.number().int().min(1).default(1),
-  pageSize: z.coerce.number().int().min(1).max(100).default(20),
-  businessDate: businessDateSchema.optional(),
-  customerId: idSchema.optional(),
-}).strict();
+export const posTicketListQuerySchema = z
+  .object({
+    page: z.coerce.number().int().min(1).default(1),
+    pageSize: z.coerce.number().int().min(1).max(100).default(20),
+    businessDate: businessDateSchema.optional(),
+    customerId: idSchema.optional(),
+    branchIds: z.string().optional(),
+  })
+  .strict();
 
-export const posLayawayPaymentRequestSchema = z.object({
-  payments: z.array(posTicketPaymentInputSchema).min(1).max(20),
-  deliveredTicketLineIds: z.array(idSchema).max(500).optional().default([]),
-}).strict();
+export const posSaleSellerQuerySchema = z
+  .object({
+    query: z.string().trim().min(2).max(120).optional(),
+    customerId: idSchema.optional(),
+  })
+  .strict();
 
-export const posOwedProductDeliveryRequestSchema = z.object({ quantity: positiveQuantitySchema }).strict();
+export const posLayawayPaymentRequestSchema = z
+  .object({
+    payments: z.array(posTicketPaymentInputSchema).min(1).max(20),
+    deliveredTicketLineIds: z.array(idSchema).max(500).optional().default([]),
+  })
+  .strict();
 
-export const posTicketEventRequestSchema = z.object({
-  reason: z.string().trim().min(3).max(1_000),
-  refundAmount: moneySchema.optional(),
-  returnedLines: z.array(z.object({ ticketLineId: idSchema, quantity: positiveQuantitySchema }).strict()).max(500).optional().default([]),
-  revision: z.record(z.string(), z.unknown()).optional(),
-  authorizationToken: z.string().uuid(),
-}).strict();
+export const posOwedProductDeliveryRequestSchema = z
+  .object({ quantity: positiveQuantitySchema })
+  .strict();
 
-export const posVoucherIssueRequestSchema = z.object({ templateId: idSchema }).strict();
+export const posTicketEventRequestSchema = z
+  .object({
+    reason: z.string().trim().min(3).max(1_000),
+    refundAmount: moneySchema.optional(),
+    returnedLines: z
+      .array(
+        z
+          .object({ ticketLineId: idSchema, quantity: positiveQuantitySchema })
+          .strict(),
+      )
+      .max(500)
+      .optional()
+      .default([]),
+    revision: z.record(z.string(), z.unknown()).optional(),
+    authorizationToken: z.string().uuid(),
+  })
+  .strict();
+
+export const posVoucherIssueRequestSchema = z
+  .object({ templateId: idSchema })
+  .strict();
 
 export const posBusinessDayCountInputSchema = z
   .object({
@@ -580,13 +852,29 @@ export const posBusinessDayCountInputSchema = z
   .strict()
   .superRefine((input, context) => {
     if (input.skipped && !input.authorizationToken) {
-      context.addIssue({ code: z.ZodIssueCode.custom, message: "Omitir el conteo requiere autorización master", path: ["authorizationToken"] });
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Omitir el conteo requiere autorización master",
+        path: ["authorizationToken"],
+      });
     }
     if (!input.skipped && (!input.locationId || !input.lines?.length)) {
-      context.addIssue({ code: z.ZodIssueCode.custom, message: "El conteo requiere ubicación y partidas", path: ["lines"] });
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "El conteo requiere ubicación y partidas",
+        path: ["lines"],
+      });
     }
-    if (input.lines && new Set(input.lines.map((line) => line.itemId)).size !== input.lines.length) {
-      context.addIssue({ code: z.ZodIssueCode.custom, message: "No se permiten productos duplicados", path: ["lines"] });
+    if (
+      input.lines &&
+      new Set(input.lines.map((line) => line.itemId)).size !==
+        input.lines.length
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "No se permiten productos duplicados",
+        path: ["lines"],
+      });
     }
   });
 
@@ -595,6 +883,13 @@ export const posBusinessDayCloseSchema = z
   .strict();
 
 export const posAttendanceClockInSchema = z
+  .object({
+    pin: z.string().regex(/^\d{4,12}$/, "PIN inválido"),
+    branchId: idSchema.optional(),
+  })
+  .strict();
+
+export const posAttendanceClockOutSchema = z
   .object({ pin: z.string().regex(/^\d{4,12}$/, "PIN inválido") })
   .strict();
 
@@ -608,10 +903,12 @@ export const posCashExpenseWriteSchema = z
   })
   .strict();
 
-export const posCashExpenseCorrectionSchema = posCashExpenseWriteSchema.extend({
-  authorizationToken: z.string().uuid(),
-  reason: z.string().trim().min(3).max(1_000),
-}).strict();
+export const posCashExpenseCorrectionSchema = posCashExpenseWriteSchema
+  .extend({
+    authorizationToken: z.string().uuid(),
+    reason: z.string().trim().min(3).max(1_000),
+  })
+  .strict();
 
 export const posCashExpenseVoidSchema = z
   .object({
@@ -621,7 +918,10 @@ export const posCashExpenseVoidSchema = z
   .strict();
 
 export const posExpenseTypeWriteSchema = z
-  .object({ name: z.string().trim().min(2).max(160), active: z.boolean().optional().default(true) })
+  .object({
+    name: z.string().trim().min(2).max(160),
+    active: z.boolean().optional().default(true),
+  })
   .strict();
 
 export const posOperationQuerySchema = z
@@ -685,4 +985,6 @@ export type PosTerminalRegistration = z.infer<
   typeof posTerminalRegistrationSchema
 >;
 export type PosTicketQuoteRequest = z.infer<typeof posTicketQuoteRequestSchema>;
-export type PosTicketCreateRequest = z.infer<typeof posTicketCreateRequestSchema>;
+export type PosTicketCreateRequest = z.infer<
+  typeof posTicketCreateRequestSchema
+>;

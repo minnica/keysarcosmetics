@@ -32,23 +32,23 @@ Los dos esquemas Prisma existentes están sincronizados. No hay credenciales loc
 
 ### Gobierno de fases y responsables
 
-| Fase                                 | Estado                                             | Responsable principal                | Criterio de salida                                                                        |
-| ------------------------------------ | -------------------------------------------------- | ------------------------------------ | ----------------------------------------------------------------------------------------- |
-| 0. Documento, contratos e inventario | Completada — 2026-09-02                            | Backend/API                          | Contratos versionados, diagnóstico sólo lectura ejecutable y cero mutaciones productivas. |
-| 1. Seguridad, terminales y auditoría | Completada — 2026-09-03                            | Backend/API + Seguridad              | Credenciales protegidas, permisos efectivos y auditoría verificable.                      |
-| 2. Catálogo, clientes y activos      | Completada — 2026-09-03                            | Backend/API + POS                    | Catálogo histórico inmutable y costos redaccionados por servidor.                         |
-| 3. Inventario y bodega               | Completada — 2026-09-03                            | Backend/API + Operación de almacén   | Ledger consistente, reintentos idempotentes y doble aprobación distinta.                  |
-| 4. Tickets y proyección financiera   | Completada — 2026-09-03                            | Backend/API + POS + Envelope/Payroll | Totales, inventario y proyección legacy conciliados al centavo.                           |
-| 5. Jornada, asistencia y caja        | Completada — 2026-09-03                            | Backend/API + Operación de sucursal  | Una jornada por sucursal/fecha y cierre inmutable.                                        |
-| 6. Offline y reconciliación          | Completada — 2026-09-03                            | POS/Electron + Backend/API           | Reinicios y reintentos no pierden ni duplican operaciones.                                |
-| 7. Reportes y retiro de mocks        | Completada — 2026-09-03                            | Backend/API + POS                    | Módulos operativos consumen API o repositorio offline autorizado.                         |
-| 8. Piloto y despliegue               | Implementada en repositorio — activación pendiente | Operación + Backend/API + Producto   | Piloto conciliado, rollback disponible y aprobación operativa.                            |
-| 9. Autorización y alcance ampliados  | Pendiente                                          | Backend/API + Seguridad + POS        | Cada destino, sucursal y acción nueva se autoriza en servidor y queda auditada.            |
-| 10. Membresías                       | Pendiente                                          | Backend/API + POS + Producto         | Tarjetones, saldos y cierres comerciales son transaccionales, idempotentes y conciliables. |
-| 11. Agenda CRM                       | Pendiente                                          | Backend/API + Agenda + POS           | Cliente y reservación tienen IDs externos; conflictos y webhooks se reconcilian.           |
-| 12. Reglas comerciales ampliadas     | Pendiente                                          | Backend/API + POS + Finanzas         | Pagos, cortesías, cartera y participantes conservan validación y snapshots históricos.     |
-| 13. Consultas y reportes ampliados   | Pendiente                                          | Backend/API + POS                    | Indicadores, filtros y exportaciones coinciden para todo el alcance autorizado.            |
-| 14. Offline y segundo piloto         | Pendiente                                          | POS/Electron + Backend/API + Operación | Las capacidades nuevas sobreviven reintentos y pasan conciliación integral.              |
+| Fase                                 | Estado                                             | Responsable principal                  | Criterio de salida                                                                         |
+| ------------------------------------ | -------------------------------------------------- | -------------------------------------- | ------------------------------------------------------------------------------------------ |
+| 0. Documento, contratos e inventario | Completada — 2026-09-02                            | Backend/API                            | Contratos versionados, diagnóstico sólo lectura ejecutable y cero mutaciones productivas.  |
+| 1. Seguridad, terminales y auditoría | Completada — 2026-09-03                            | Backend/API + Seguridad                | Credenciales protegidas, permisos efectivos y auditoría verificable.                       |
+| 2. Catálogo, clientes y activos      | Completada — 2026-09-03                            | Backend/API + POS                      | Catálogo histórico inmutable y costos redaccionados por servidor.                          |
+| 3. Inventario y bodega               | Completada — 2026-09-03                            | Backend/API + Operación de almacén     | Ledger consistente, reintentos idempotentes y doble aprobación distinta.                   |
+| 4. Tickets y proyección financiera   | Completada — 2026-09-03                            | Backend/API + POS + Envelope/Payroll   | Totales, inventario y proyección legacy conciliados al centavo.                            |
+| 5. Jornada, asistencia y caja        | Completada — 2026-09-03                            | Backend/API + Operación de sucursal    | Una jornada por sucursal/fecha y cierre inmutable.                                         |
+| 6. Offline y reconciliación          | Completada — 2026-09-03                            | POS/Electron + Backend/API             | Reinicios y reintentos no pierden ni duplican operaciones.                                 |
+| 7. Reportes y retiro de mocks        | Completada — 2026-09-03                            | Backend/API + POS                      | Módulos operativos consumen API o repositorio offline autorizado.                          |
+| 8. Piloto y despliegue               | Implementada en repositorio — activación pendiente | Operación + Backend/API + Producto     | Piloto conciliado, rollback disponible y aprobación operativa.                             |
+| 9. Autorización y alcance ampliados  | Completada — 2026-09-03                            | Backend/API + Seguridad + POS          | Cada destino, sucursal y acción nueva se autoriza en servidor y queda auditada.            |
+| 10. Membresías                       | Pendiente                                          | Backend/API + POS + Producto           | Tarjetones, saldos y cierres comerciales son transaccionales, idempotentes y conciliables. |
+| 11. Agenda CRM                       | Pendiente                                          | Backend/API + Agenda + POS             | Cliente y reservación tienen IDs externos; conflictos y webhooks se reconcilian.           |
+| 12. Reglas comerciales ampliadas     | Pendiente                                          | Backend/API + POS + Finanzas           | Pagos, cortesías, cartera y participantes conservan validación y snapshots históricos.     |
+| 13. Consultas y reportes ampliados   | Pendiente                                          | Backend/API + POS                      | Indicadores, filtros y exportaciones coinciden para todo el alcance autorizado.            |
+| 14. Offline y segundo piloto         | Pendiente                                          | POS/Electron + Backend/API + Operación | Las capacidades nuevas sobreviven reintentos y pasan conciliación integral.                |
 
 El responsable principal ejecuta la fase; los equipos indicados como colaboradores revisan sus límites. Ninguna fase posterior inicia mutaciones de datos por el mero hecho de que exista este plan.
 
@@ -386,31 +386,41 @@ El cambio integrado en `feature/pos-frontend-clean` el 3 de septiembre de 2026 a
 
 #### Matriz de trazabilidad del alcance nuevo
 
-| Secciones de `apps/pos/archivo.md` | Evaluación frente al plan original | Fase que completa el backend |
-| --- | --- | --- |
-| 20, 33–36 | Había autenticación, permisos, asistencia y jornada, pero faltan reautorización personal por acción, permisos para todos los destinos, salida sin Close day y selección basada en presencia. | 9 |
-| 21, 27, 42 | Dominio nuevo: producto membresía, tarjetón, consumo, cartera protegida, cierres, ranking y seguimiento. | 10 |
-| 22, 24, 37 | Las citas locales ya existían, pero no el contrato real con Agenda, capacidad de cabinas, IDs externos, webhooks ni conciliación. | 11 |
-| 40, 41, 43–45 | Los paquetes, pagos, cartera y vendedores base existen; faltan administración completa de cortesías, baja de cartera, catálogo bancario/MSI y empresa como participante. | 12 |
-| 23, 25–26, 28, 31–32, 39 | Los reportes base ya filtran por sucursal; faltan agregados y proyecciones específicas, múltiples sucursales autorizadas y los indicadores cruzados de membresías. | 13 |
-| 29–30, 38, 46, traslado visual de Catálogo y selector de cumpleaños | Son requisitos de interfaz; no agregan persistencia central. Se verifican junto con la integración final para asegurar que no alteren filtros ni payloads. | 14 (E2E de POS) |
+| Secciones de `apps/pos/archivo.md`                                  | Evaluación frente al plan original                                                                                                                                                           | Fase que completa el backend |
+| ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
+| 20, 33–36                                                           | Había autenticación, permisos, asistencia y jornada, pero faltan reautorización personal por acción, permisos para todos los destinos, salida sin Close day y selección basada en presencia. | 9                            |
+| 21, 27, 42                                                          | Dominio nuevo: producto membresía, tarjetón, consumo, cartera protegida, cierres, ranking y seguimiento.                                                                                     | 10                           |
+| 22, 24, 37                                                          | Las citas locales ya existían, pero no el contrato real con Agenda, capacidad de cabinas, IDs externos, webhooks ni conciliación.                                                            | 11                           |
+| 40, 41, 43–45                                                       | Los paquetes, pagos, cartera y vendedores base existen; faltan administración completa de cortesías, baja de cartera, catálogo bancario/MSI y empresa como participante.                     | 12                           |
+| 23, 25–26, 28, 31–32, 39                                            | Los reportes base ya filtran por sucursal; faltan agregados y proyecciones específicas, múltiples sucursales autorizadas y los indicadores cruzados de membresías.                           | 13                           |
+| 29–30, 38, 46, traslado visual de Catálogo y selector de cumpleaños | Son requisitos de interfaz; no agregan persistencia central. Se verifican junto con la integración final para asegurar que no alteren filtros ni payloads.                                   | 14 (E2E de POS)              |
 
 Todo requisito de las secciones 20–46 queda así asignado. La presencia de una representación mock o de estado local en el renderer no cuenta como implementación de backend.
 
 ### Fase 9 — Autorización secundaria, destinos y alcance por sucursal
 
-- [ ] Versionar el árbol de permisos para que cada módulo y submenú de la sección 34 tenga un nodo propio; agregar como mínimo `MEMBERSHIPS`, `SETTINGS`, `SESSION_EXIT`, `BANK_RECONCILIATION` y permisos separados de consulta, edición e impresión donde apliquen.
-- [ ] Implementar una autorización secundaria de vendedor, corta y ligada a identidad, terminal, propósito y sesión. El endpoint verifica el PIN de la misma persona autenticada y nunca acepta un `seller_id` del renderer como sustituto.
-- [ ] Resolver centralmente `authorizedBranchIds`: master puede recibir todas las sucursales activas y un rol multi-sucursal sólo las asignadas; un operador ordinario permanece limitado a la sucursal de la sesión. Agregar asignaciones explícitas por puesto/credencial sin inferir alcance de tickets históricos.
-- [ ] Aplicar el alcance antes de consultar o agregar en todos los endpoints y exportaciones. `all_authorized` es la unión exacta de IDs autorizados, nunca un booleano que omite el filtro.
-- [ ] Implementar `Salir · Sin Close day` como revocación de sesión auditada. No modifica `PosBusinessDay`, `PosAttendance`, conteos ni caja; invalida autorizaciones temporales y deja la asistencia abierta.
-- [ ] Endurecer Clock In/Out: código personal obligatorio, una sola asistencia abierta por empleado, salida manual idempotente sobre el mismo registro y cierre por jornada distinguible mediante `MANUAL`/`CLOSE_DAY`.
-- [ ] Exponer vendedores de Checkout desde asistencias abiertas de la sucursal; permitir buscar activos ausentes sólo con criterio y conservar en el ticket una instantánea de si tenían Clock In. El propietario vigente del cliente se preselecciona aunque esté ausente.
-- [ ] Invalidar permisos y alcance sin reiniciar la aplicación: retirar el destino activo cierra datos y diálogos protegidos, y desactivar una sucursal impide nuevas operaciones sin borrar históricos.
+- [x] Versionar el árbol de permisos para que cada módulo y submenú de la sección 34 tenga un nodo propio; agregar como mínimo `MEMBERSHIPS`, `SETTINGS`, `SESSION_EXIT`, `BANK_RECONCILIATION` y permisos separados de consulta, edición e impresión donde apliquen.
+- [x] Implementar una autorización secundaria de vendedor, corta y ligada a identidad, terminal, propósito y sesión. El endpoint verifica el PIN de la misma persona autenticada y nunca acepta un `seller_id` del renderer como sustituto.
+- [x] Resolver centralmente `authorizedBranchIds`: master puede recibir todas las sucursales activas y un rol multi-sucursal sólo las asignadas; un operador ordinario permanece limitado a la sucursal de la sesión. Agregar asignaciones explícitas por puesto/credencial sin inferir alcance de tickets históricos.
+- [x] Aplicar el alcance antes de consultar o agregar en todos los endpoints y exportaciones. `all_authorized` es la unión exacta de IDs autorizados, nunca un booleano que omite el filtro.
+- [x] Implementar `Salir · Sin Close day` como revocación de sesión auditada. No modifica `PosBusinessDay`, `PosAttendance`, conteos ni caja; invalida autorizaciones temporales y deja la asistencia abierta.
+- [x] Endurecer Clock In/Out: código personal obligatorio, una sola asistencia abierta por empleado, salida manual idempotente sobre el mismo registro y cierre por jornada distinguible mediante `MANUAL`/`CLOSE_DAY`.
+- [x] Exponer vendedores de Checkout desde asistencias abiertas de la sucursal; permitir buscar activos ausentes sólo con criterio y conservar en el ticket una instantánea de si tenían Clock In. El propietario vigente del cliente se preselecciona aunque esté ausente.
+- [x] Invalidar permisos y alcance sin reiniciar la aplicación: retirar el destino activo cierra datos y diálogos protegidos, y desactivar una sucursal impide nuevas operaciones sin borrar históricos.
 
 **Persistencia prevista:** ampliar `PosPermissionNode`, crear asignaciones de sucursal y autorizaciones secundarias con caducidad/consumo, agregar auditoría de salida de sesión y snapshot de presencia al participante del ticket. Todas las migraciones son aditivas y posteriores a `20260903060000_add_pos_notifications_reports`.
 
 **Puerta de salida:** pruebas HTTP fuerzan IDs de vendedor/sucursal, retiro de permisos en sesión, doble Clock Out y salida sin cierre; ninguna solicitud amplía alcance ni altera la jornada.
+
+**Criterio de cierre en repositorio: cumplido el 2026-09-03.** La migración `20260903070000_add_pos_authorization_scope` es aditiva, no contiene grants ni asignaciones operativas y mantiene los dos schemas Prisma sincronizados. Sesiones, autorizaciones personales/master, permisos y alcance se revalidan en caliente; las consultas con sucursal usan el conjunto materializado por `resolveRequestedBranchIds` antes de llegar a Prisma.
+
+#### Entregables verificables
+
+- Seguridad y alcance: `backend/api/src/middlewares/pos-auth.middleware.ts`, `backend/api/src/services/pos-scope.ts` y las rutas POS resuelven sesión revocable, permisos actuales y sucursales explícitas en cada request. Los endpoints de asignación requieren autorización master ligada a sesión y no infieren accesos desde históricos.
+- Operación: autorización personal, salida sin Close day, Clock In/Out personal e idempotente, vendedores por presencia/cartera y snapshots de asistencia en tickets quedaron expuestos mediante contratos y `@cosmetics/api-client`.
+- POS: los destinos usan claves de consulta/edición/impresión de mínimo privilegio, Clock In envía el ID autorizado de sucursal, Clock Out reenvía el mismo código personal y la sesión online refresca permisos/alcance cada 15 segundos.
+- Pruebas: `pos-scope.test.ts`, `pos-report-policy.test.ts` y `pos.integration.test.ts` cubren unión exacta, sucursal e identidad forzadas, invalidación de permisos, doble Clock Out y salida sin alteración de jornada. La integración está preparada para PostgreSQL 16 efímero mediante `RUN_DATABASE_TESTS=true`.
+- Verificación local: schemas sincronizados y válidos, revisión de migraciones, type-check y lint del API, type-check del POS, 51 pruebas unitarias, build del API y build Vite de renderer/main/preload en verde. El workspace no dispone de PostgreSQL/OCI ejecutable, por lo que la migración desde cero y la suite HTTP quedan como gate obligatorio del workflow efímero; no se consultó ni modificó development o producción.
 
 ### Fase 10 — Membresías, tarjetones y cierres comerciales
 

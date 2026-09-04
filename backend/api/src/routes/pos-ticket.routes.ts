@@ -14,6 +14,7 @@ import {
   posTicketEventRequestSchema,
   posTicketListQuerySchema,
   posTicketQuoteRequestSchema,
+  posSaleSellerQuerySchema,
   posVoucherIssueRequestSchema,
 } from "../contracts/pos.contracts";
 import {
@@ -21,6 +22,7 @@ import {
   requirePosPermission,
 } from "../middlewares/pos-auth.middleware";
 import { prisma } from "../prisma/client";
+import { resolveRequestedBranchIds } from "../services/pos-scope";
 import { executePosIdempotent } from "../services/pos-inventory";
 import {
   PosTicketError,
@@ -56,7 +58,9 @@ const canViewAll = (req: Request) =>
     req.posUser?.isMaster ||
     req.posUser?.permissions.some(
       (permission) =>
-        permission === "SALE_VIEW_ALL" || permission === "VOUCHERS_MANAGE",
+        permission === "SALE_VIEW_ALL" ||
+        permission === "VOUCHERS_MANAGE" ||
+        permission === "RECEIPTS_VIEW",
     ),
   );
 const canViewSales = (req: Request, res: Response, next: NextFunction) => {
@@ -65,7 +69,10 @@ const canViewSales = (req: Request, res: Response, next: NextFunction) => {
     req.posUser?.permissions.some(
       (permission) =>
         permission === "SALE_VIEW_ALL" ||
+        permission === "SALE_VIEW" ||
         permission === "SALE_VIEW_OWN" ||
+        permission === "SELLER_SALES_VIEW" ||
+        permission === "RECEIPTS_VIEW" ||
         permission === "CUSTOMERS_VIEW" ||
         permission === "VOUCHERS_MANAGE",
     )
@@ -111,6 +118,7 @@ function saleContext(req: Request) {
     branchId: req.posUser!.branchId,
     businessDate: businessDateNow(),
     isMaster: req.posUser!.isMaster,
+    sessionId: req.posUser!.sessionId,
   };
 }
 
@@ -119,10 +127,95 @@ router.use(posAuthMiddleware);
 router.get(
   "/sale/sellers",
   requirePosPermission("SALE_CREATE"),
-  asyncRoute(async (_req, res) => {
+  asyncRoute(async (req, res) => {
+    const parsed = posSaleSellerQuerySchema.safeParse(req.query);
+    if (!parsed.success)
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message: "Búsqueda de vendedores inválida",
+          data: parsed.error.flatten().fieldErrors,
+        });
+    const [openAttendances, owner] = await Promise.all([
+      prisma.posAttendance.findMany({
+        where: {
+          branchId: req.posUser!.branchId,
+          status: "OPEN",
+          clockOutAt: null,
+          employee: { activo: true },
+        },
+        select: { id: true, employeeId: true, branchId: true },
+      }),
+      parsed.data.customerId
+        ? prisma.customerPortfolioAssignment.findFirst({
+            where: {
+              customerId: parsed.data.customerId,
+              effectiveTo: null,
+              employee: { activo: true },
+            },
+            orderBy: { effectiveFrom: "desc" },
+            select: { employeeId: true },
+          })
+        : null,
+    ]);
+    const attendanceByEmployee = new Map(
+      openAttendances.map((attendance) => [attendance.employeeId, attendance]),
+    );
+    const initiallyVisibleIds = [
+      ...new Set([
+        ...openAttendances.map((attendance) => attendance.employeeId),
+        ...(owner?.employeeId ? [owner.employeeId] : []),
+      ]),
+    ];
     const sellers = await prisma.empleado.findMany({
-      where: { activo: true },
-      select: { id: true, nombreCompleto: true, positionId: true },
+      where: {
+        activo: true,
+        ...(parsed.data.query
+          ? {
+              AND: [
+                {
+                  OR: [
+                    { todasSucursales: true },
+                    { sucursalId: req.posUser!.branchId },
+                    ...(owner?.employeeId ? [{ id: owner.employeeId }] : []),
+                  ],
+                },
+                {
+                  OR: [
+                    {
+                      nombreCompleto: {
+                        contains: parsed.data.query,
+                        mode: "insensitive" as const,
+                      },
+                    },
+                    {
+                      posCredentials: {
+                        some: {
+                          aliasNormalized: {
+                            contains:
+                              parsed.data.query.toLocaleLowerCase("es-MX"),
+                          },
+                          active: true,
+                        },
+                      },
+                    },
+                  ],
+                },
+              ],
+            }
+          : { id: { in: initiallyVisibleIds } }),
+      },
+      select: {
+        id: true,
+        nombreCompleto: true,
+        positionId: true,
+        posCredentials: {
+          where: { active: true },
+          select: { aliasNormalized: true },
+          take: 1,
+        },
+      },
       orderBy: { nombreCompleto: "asc" },
     });
     res.json({
@@ -131,7 +224,13 @@ router.get(
       data: sellers.map((seller) => ({
         id: seller.id,
         displayName: seller.nombreCompleto,
+        alias: seller.posCredentials[0]?.aliasNormalized ?? null,
         positionId: seller.positionId,
+        clockedIn: attendanceByEmployee.has(seller.id),
+        attendanceId: attendanceByEmployee.get(seller.id)?.id ?? null,
+        attendanceBranchId:
+          attendanceByEmployee.get(seller.id)?.branchId ?? null,
+        portfolioOwner: owner?.employeeId === seller.id,
       })),
     });
   }),
@@ -213,7 +312,15 @@ router.get(
         data: parsed.error.flatten().fieldErrors,
       });
     const where: Prisma.PosTicketWhereInput = {
-      branchId: req.posUser!.branchId,
+      branchId: {
+        in: resolveRequestedBranchIds({
+          authorizedBranchIds: req.posUser!.authorizedBranchIds,
+          requestedBranchIds: parsed.data.branchIds
+            ?.split(",")
+            .map((id) => id.trim())
+            .filter(Boolean),
+        }),
+      },
       ...(parsed.data.businessDate
         ? {
             businessDate: new Date(`${parsed.data.businessDate}T00:00:00.000Z`),
@@ -279,7 +386,7 @@ router.get(
     );
     if (
       !ticket ||
-      ticket.branchId !== req.posUser!.branchId ||
+      !req.posUser!.authorizedBranchIds.includes(ticket.branchId) ||
       (!canViewAll(req) && !own)
     )
       return res
@@ -455,7 +562,15 @@ router.get(
       });
     const where: Prisma.PosVoucherIssueWhereInput = {
       ticket: {
-        branchId: req.posUser!.branchId,
+        branchId: {
+          in: resolveRequestedBranchIds({
+            authorizedBranchIds: req.posUser!.authorizedBranchIds,
+            requestedBranchIds: parsed.data.branchIds
+              ?.split(",")
+              .map((id) => id.trim())
+              .filter(Boolean),
+          }),
+        },
         ...(!canViewAll(req)
           ? req.posUser!.employeeId
             ? { sellers: { some: { employeeId: req.posUser!.employeeId } } }

@@ -380,6 +380,7 @@ export async function consumeTicketAuthorization(
   purpose: string,
   terminalId: string,
   target?: { entityType: string; entityId: string },
+  sessionId?: string,
 ) {
   if (!token) return null;
   const authorization = await tx.masterAuthorization.findUnique({
@@ -389,6 +390,7 @@ export async function consumeTicketAuthorization(
     authorization &&
     authorization.purpose === purpose &&
     authorization.terminalId === terminalId &&
+    (sessionId === undefined || authorization.sessionId === sessionId) &&
     authorization.usedAt === null &&
     authorization.expiresAt > new Date() &&
     (!target ||
@@ -406,11 +408,26 @@ async function validateSellers(
   tx: Transaction,
   sellers: PosTicketCreateRequestDto["sellers"],
   totalCents: number,
+  branchId: string,
+  customerId: string | null,
 ) {
   const employees = await tx.empleado.findMany({
     where: {
       id: { in: sellers.map((seller) => seller.employeeId) },
       activo: true,
+      OR: [
+        { todasSucursales: true },
+        { sucursalId: branchId },
+        ...(customerId
+          ? [
+              {
+                customerPortfolios: {
+                  some: { customerId, effectiveTo: null },
+                },
+              },
+            ]
+          : []),
+      ],
     },
     select: { id: true, nombreCompleto: true },
   });
@@ -668,6 +685,9 @@ export function ticketDto(ticket: TicketPayload): PosTicketDto {
       name: seller.sellerNameSnapshot,
       shareAmount: money(seller.shareAmount)!,
       sharePercent: money(seller.sharePercent)!,
+      clockedIn: seller.clockedInSnapshot,
+      presenceBranchId: seller.presenceBranchIdSnapshot,
+      attendanceId: seller.attendanceIdSnapshot,
     })),
     paymentOperations: ticket.paymentOperations.map((operation) => ({
       id: operation.id,
@@ -750,6 +770,7 @@ export async function createTicket(
     branchId: string;
     businessDate: string;
     isMaster: boolean;
+    sessionId?: string;
   },
 ) {
   if (input.branchId !== context.branchId)
@@ -762,6 +783,8 @@ export async function createTicket(
         input.authorizationToken,
         "SALE_BELOW_MINIMUM",
         context.terminalId,
+        undefined,
+        context.sessionId,
       )
     : null;
   if (quote.requiresAuthorization && !authorization) {
@@ -774,6 +797,20 @@ export async function createTicket(
     tx,
     input.sellers,
     quote.totalCents,
+    context.branchId,
+    input.customer.id ?? null,
+  );
+  const openAttendances = await tx.posAttendance.findMany({
+    where: {
+      employeeId: { in: input.sellers.map((seller) => seller.employeeId) },
+      branchId: context.branchId,
+      status: "OPEN",
+      clockOutAt: null,
+    },
+    select: { id: true, employeeId: true, branchId: true },
+  });
+  const attendanceByEmployee = new Map(
+    openAttendances.map((attendance) => [attendance.employeeId, attendance]),
   );
   const payments = await validatePayments(tx, input.payments);
   if (
@@ -904,6 +941,11 @@ export async function createTicket(
               ? ((shares[index]! * 100) / quote.totalCents).toFixed(4)
               : "0",
           ),
+          clockedInSnapshot: attendanceByEmployee.has(seller.employeeId),
+          presenceBranchIdSnapshot:
+            attendanceByEmployee.get(seller.employeeId)?.branchId ?? null,
+          attendanceIdSnapshot:
+            attendanceByEmployee.get(seller.employeeId)?.id ?? null,
         })),
       },
       layaway:
@@ -1361,6 +1403,7 @@ export async function appendTicketRevision(
     branchId: string;
     businessDate: string;
     isMaster: boolean;
+    sessionId?: string;
   },
 ) {
   await requireOpenBusinessDay(tx, context.branchId, context.businessDate);
@@ -1373,6 +1416,7 @@ export async function appendTicketRevision(
     "TICKET_REVISION",
     context.terminalId,
     { entityType: "PosTicket", entityId: ticket.id },
+    context.sessionId,
   );
   if (!authorization)
     throw new PosTicketError("La revisión requiere autorización master", 403);
@@ -1415,6 +1459,7 @@ export async function cancelOrReturnTicket(
     branchId: string;
     businessDate: string;
     isMaster: boolean;
+    sessionId?: string;
   },
 ) {
   await requireOpenBusinessDay(tx, context.branchId, context.businessDate);
@@ -1433,6 +1478,7 @@ export async function cancelOrReturnTicket(
     "TICKET_CANCELLATION",
     context.terminalId,
     { entityType: "PosTicket", entityId: ticket.id },
+    context.sessionId,
   );
   if (!authorization)
     throw new PosTicketError(
