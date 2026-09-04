@@ -159,6 +159,18 @@ model PositionPayrollScreenPermission {
   @@unique([positionId, screenKey])
 }
 
+enum ProtectedEmployeeKey {
+  KEYSAR_HOME
+}
+
+model ProtectedEmployeeIdentity {
+  key            ProtectedEmployeeKey @id
+  employeeId     String                 @unique
+  employee       Empleado               @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  creadoEn       DateTime               @default(now())
+  actualizadoEn  DateTime               @updatedAt
+}
+
 model Empleado {
   id                         String                         @id @default(cuid())
   nombres                    String
@@ -192,6 +204,7 @@ model Empleado {
   payrollMovementAllocations PayrollMovementAllocation[]
   payrollLoans               LoanAdvance[]
   payrollRunLines            PayrollRunLine[]
+  protectedIdentity          ProtectedEmployeeIdentity?
 
   @@index([sucursalId])
 }

@@ -96,6 +96,13 @@ type EditingSale = {
 const toCents = (value: number) => Math.round(value * 100);
 const fromCents = (value: number) => value / 100;
 
+function isLegacyKeysarHomeEmployeeName(value: string): boolean {
+  return (
+    value.toLocaleUpperCase("es-MX").replace(/[^A-Z0-9]+/g, "") ===
+    "KEYSARHOME"
+  );
+}
+
 /** Reparte centavos sin perder el total por redondeo. */
 function splitEvenly(
   totalCents: number,
@@ -247,13 +254,17 @@ export default function VentasPage() {
           record.fecha >= saleRange.from &&
           record.fecha <= saleRange.to &&
           (canViewKeysarHomeData ||
-            (record.vendedorNombre ??
-              empleados.find((employee) => employee.id === record.vendedorId)
-                ?.nombreCompleto ??
-              "")
-              .trim()
-              .toLocaleUpperCase("es-MX") !==
-              "KEYSAR HOME"),
+            (record.vendedorIdentidadProtegida !== "KEYSAR_HOME" &&
+              !(
+                record.vendedorIdentidadProtegida === undefined &&
+                isLegacyKeysarHomeEmployeeName(
+                  record.vendedorNombre ??
+                    empleados.find(
+                      (employee) => employee.id === record.vendedorId,
+                    )?.nombreCompleto ??
+                    "",
+                )
+              ))),
       ),
     [canViewKeysarHomeData, empleados, registros, saleRange],
   );
