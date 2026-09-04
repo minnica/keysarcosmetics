@@ -13,6 +13,11 @@ import {
   money,
 } from "./pos-inventory";
 import { enqueuePosNotification } from "./pos-notifications";
+import {
+  activateMembershipsForTicket,
+  cancelMembershipsForTicket,
+  createMembershipsForTicket,
+} from "./pos-memberships";
 
 export class PosTicketError extends Error {
   constructor(
@@ -73,7 +78,7 @@ interface CatalogSnapshot {
   id: string;
   name: string;
   sku: string;
-  kind: "PRODUCT" | "SERVICE" | "SUPPLY" | "MACHINE";
+  kind: "PRODUCT" | "SERVICE" | "SUPPLY" | "MACHINE" | "MEMBERSHIP";
   listPriceCents: number;
   minimumPriceCents: number;
   unitCostCents: number;
@@ -296,6 +301,15 @@ async function catalogSnapshots(
   }
   return input.lines.map((line) => {
     const item = itemMap.get(line.itemId)!;
+    if (
+      item.kind === "MEMBERSHIP" &&
+      (!new Prisma.Decimal(line.quantity).isInteger() ||
+        new Prisma.Decimal(line.quantity).lessThanOrEqualTo(0))
+    ) {
+      throw new PosTicketError(
+        "Las membresías sólo se venden en unidades enteras mayores a cero",
+      );
+    }
     const packageItem = line.packageId ? packageMap.get(line.packageId) : null;
     if (
       packageItem &&
@@ -614,7 +628,10 @@ async function projectPaymentOperation(
 const ticketInclude = {
   branch: { select: { nombre: true } },
   customer: { select: { id: true } },
-  lines: { orderBy: { creadoEn: "asc" as const } },
+  lines: {
+    include: { item: { select: { kind: true } } },
+    orderBy: { creadoEn: "asc" as const },
+  },
   sellers: { orderBy: { creadoEn: "asc" as const } },
   paymentOperations: {
     include: { payments: true },
@@ -961,17 +978,25 @@ export async function createTicket(
     include: ticketInclude,
   });
 
-  const branchLocation = await tx.inventoryLocation.findUnique({
-    where: { branchId: context.branchId },
+  await createMembershipsForTicket(tx, {
+    ticketId: ticket.id,
+    credentialId: context.credentialId,
+    activate: status === "COMPLETED",
   });
-  if (!branchLocation)
+
+  const productLines = quote.lines.filter(
+    (line) => line.item.kind === "PRODUCT",
+  );
+  const branchLocation = productLines.length
+    ? await tx.inventoryLocation.findUnique({
+        where: { branchId: context.branchId },
+      })
+    : null;
+  if (productLines.length > 0 && !branchLocation)
     throw new PosTicketError(
       "La sucursal no tiene ubicación de inventario",
       409,
     );
-  const productLines = quote.lines.filter(
-    (line) => line.item.kind === "PRODUCT",
-  );
   const deliveredProductLines = productLines.filter((line) => line.delivered);
   const ticketLineByKey = new Map(
     ticket.lines
@@ -1017,7 +1042,7 @@ export async function createTicket(
       terminalId: context.terminalId,
       lines: [...inventoryByItem.values()].map(({ item, quantity }) => ({
         itemId: item.id,
-        fromLocationId: branchLocation.id,
+        fromLocationId: branchLocation!.id,
         toLocationId: null,
         quantity,
         unitCostSnapshot: decimalFromCents(item.unitCostCents),
@@ -1283,6 +1308,14 @@ export async function addLayawayPayment(
       amountCents: toCents(payment.amount),
     })),
   });
+  if (nextPending === 0) {
+    await activateMembershipsForTicket(
+      tx,
+      ticket.id,
+      context.credentialId,
+      operation.id,
+    );
+  }
   const deliveredLineIds = new Set(input.deliveredTicketLineIds ?? []);
   for (const owed of ticket.owedProducts.filter(
     (candidate) =>
@@ -1500,6 +1533,9 @@ export async function cancelOrReturnTicket(
       throw new PosTicketError("La devolución contiene una cantidad inválida");
     return { line, quantity: new Prisma.Decimal(requested.quantity) };
   });
+  const physicalReturned = returned.filter(
+    ({ line }) => line.item?.kind === "PRODUCT",
+  );
   const pendingCommittedReturns = ticket.owedProducts
     .filter((owed) => owed.status === "PENDING" && owed.inventoryCommitted)
     .map((owed) => ({
@@ -1508,7 +1544,7 @@ export async function cancelOrReturnTicket(
     }))
     .filter(({ quantity }) => quantity.greaterThan(0));
   let inventoryMovementId: string | null = null;
-  if (returned.length > 0 || pendingCommittedReturns.length > 0) {
+  if (physicalReturned.length > 0 || pendingCommittedReturns.length > 0) {
     const location = await tx.inventoryLocation.findUnique({
       where: { branchId: context.branchId },
     });
@@ -1525,7 +1561,7 @@ export async function cancelOrReturnTicket(
       actorCredentialId: context.credentialId,
       terminalId: context.terminalId,
       lines: [
-        ...returned.map(({ line, quantity }) => ({
+        ...physicalReturned.map(({ line, quantity }) => ({
           itemId: line.itemId!,
           fromLocationId: null,
           toLocationId: location.id,
@@ -1647,6 +1683,23 @@ export async function cancelOrReturnTicket(
       inventoryMovementId,
     },
   });
+  const fullyReturnedMembershipLineIds = returned
+    .filter(
+      ({ line, quantity }) =>
+        line.item?.kind === "MEMBERSHIP" && quantity.equals(line.quantity),
+    )
+    .map(({ line }) => line.id);
+  if (fullCancellation || fullyReturnedMembershipLineIds.length > 0) {
+    await cancelMembershipsForTicket(tx, {
+      ticketId: ticket.id,
+      credentialId: context.credentialId,
+      sourceId: event.id,
+      reason: input.reason,
+      ...(fullCancellation
+        ? {}
+        : { ticketLineIds: fullyReturnedMembershipLineIds }),
+    });
+  }
   await tx.posTicket.update({
     where: { id: ticket.id },
     data: {

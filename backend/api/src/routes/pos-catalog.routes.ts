@@ -150,7 +150,7 @@ function catalogDto(
     id: string;
     sku: string;
     name: string;
-    kind: "PRODUCT" | "SERVICE" | "SUPPLY" | "MACHINE";
+    kind: "PRODUCT" | "SERVICE" | "SUPPLY" | "MACHINE" | "MEMBERSHIP";
     description: string | null;
     published: boolean;
     active: boolean;
@@ -172,6 +172,14 @@ function catalogDto(
     } | null;
     benefits: Array<{ text: string }>;
     assets: Array<{ publicUrl: string; isPrimary: boolean; status: string }>;
+    membershipTerms: Array<{
+      id: string;
+      version: number;
+      totalSessions: number;
+      renewalThreshold: number;
+      conditions: Prisma.JsonValue;
+      effectiveAt: Date;
+    }>;
   },
   includeCosts: boolean,
 ) {
@@ -191,10 +199,35 @@ function catalogDto(
     minimumPrice: MONEY(item.minimumPrice)!,
     taxRate: MONEY(item.taxRate)!,
     availableQuantity: null,
+    membershipTerms: item.membershipTerms[0]
+      ? {
+          id: item.membershipTerms[0].id,
+          version: item.membershipTerms[0].version,
+          totalSessions: item.membershipTerms[0].totalSessions,
+          renewalThreshold: item.membershipTerms[0].renewalThreshold,
+          conditions: item.membershipTerms[0].conditions as Record<
+            string,
+            unknown
+          > | null,
+          effectiveAt: item.membershipTerms[0].effectiveAt.toISOString(),
+        }
+      : null,
   };
   return includeCosts
     ? { ...publicItem, unitCost: MONEY(item.unitCost)! }
     : publicItem;
+}
+
+const membershipTermsInclude = {
+  orderBy: { version: "desc" as const },
+  take: 1,
+};
+
+async function nextMembershipSku(tx: Prisma.TransactionClient) {
+  const rows = await tx.$queryRaw<Array<{ value: bigint }>>(
+    Prisma.sql`SELECT nextval('"PosMembershipSkuSeq"') AS value`,
+  );
+  return `MEM-${rows[0]!.value.toString().padStart(6, "0")}`;
 }
 
 async function verifyReferences(
@@ -251,7 +284,9 @@ router.get("/catalog/items", requireCatalogRead, async (req, res) => {
   const parsed = z
     .object({
       query: z.string().trim().max(120).optional(),
-      kind: z.enum(["PRODUCT", "SERVICE", "SUPPLY", "MACHINE"]).optional(),
+      kind: z
+        .enum(["PRODUCT", "SERVICE", "SUPPLY", "MACHINE", "MEMBERSHIP"])
+        .optional(),
       active: z.enum(["true", "false"]).optional(),
       page: z.coerce.number().int().min(1).default(1),
       pageSize: z.coerce.number().int().min(1).max(100).default(20),
@@ -305,6 +340,7 @@ router.get("/catalog/items", requireCatalogRead, async (req, res) => {
           where: { status: "READY" },
           orderBy: [{ isPrimary: "desc" }, { creadoEn: "asc" }],
         },
+        membershipTerms: membershipTermsInclude,
       },
     }),
     db.catalogItem.count({ where }),
@@ -338,9 +374,13 @@ router.post(
     const input = parsed.data;
     try {
       const item = await db.$transaction(async (tx) => {
+        const sku =
+          input.kind === "MEMBERSHIP"
+            ? await nextMembershipSku(tx)
+            : normalizeSku(input.sku);
         const created = await tx.catalogItem.create({
           data: {
-            sku: normalizeSku(input.sku),
+            sku,
             name: input.name,
             normalizedName: normalize(input.name),
             kind: input.kind,
@@ -366,12 +406,27 @@ router.post(
                 visible: true,
               })),
             },
+            membershipTerms:
+              input.kind === "MEMBERSHIP" && input.membershipSessions
+                ? {
+                    create: {
+                      version: 1,
+                      totalSessions: input.membershipSessions,
+                      renewalThreshold: input.membershipRenewalThreshold,
+                      conditions:
+                        (input.membershipConditions as Prisma.InputJsonValue | null) ??
+                        undefined,
+                      createdByCredentialId: req.posUser!.credentialId,
+                    },
+                  }
+                : undefined,
           },
           include: {
             family: true,
             category: true,
             benefits: true,
             assets: true,
+            membershipTerms: membershipTermsInclude,
           },
         });
         await tx.catalogItemPrice.create({
@@ -428,8 +483,14 @@ router.put(
       const item = await db.$transaction(async (tx) => {
         const existing = await tx.catalogItem.findFirst({
           where: { id, deletedAt: null },
+          include: { membershipTerms: membershipTermsInclude },
         });
         if (!existing) return null;
+        if (
+          existing.kind !== input.kind &&
+          (existing.kind === "MEMBERSHIP" || input.kind === "MEMBERSHIP")
+        )
+          throw new Error("MEMBERSHIP_KIND_IMMUTABLE");
         const changedPrice =
           !existing.listPrice.equals(input.listPrice) ||
           !existing.minimumPrice.equals(input.minimumPrice) ||
@@ -438,7 +499,12 @@ router.put(
         const updated = await tx.catalogItem.update({
           where: { id },
           data: {
-            sku: normalizeSku(input.sku),
+            sku:
+              input.kind === "MEMBERSHIP"
+                ? existing.kind === "MEMBERSHIP"
+                  ? existing.sku
+                  : await nextMembershipSku(tx)
+                : normalizeSku(input.sku),
             name: input.name,
             normalizedName: normalize(input.name),
             kind: input.kind,
@@ -472,6 +538,7 @@ router.put(
             category: true,
             benefits: { orderBy: { sortOrder: "asc" } },
             assets: true,
+            membershipTerms: membershipTermsInclude,
           },
         });
         if (changedPrice)
@@ -485,6 +552,41 @@ router.put(
               createdByCredentialId: req.posUser!.credentialId,
             },
           });
+        if (input.kind === "MEMBERSHIP" && input.membershipSessions) {
+          const latest = existing.membershipTerms[0];
+          const conditionsChanged =
+            JSON.stringify(latest?.conditions ?? null) !==
+            JSON.stringify(input.membershipConditions ?? null);
+          if (
+            !latest ||
+            latest.totalSessions !== input.membershipSessions ||
+            latest.renewalThreshold !== input.membershipRenewalThreshold ||
+            conditionsChanged
+          ) {
+            await tx.posMembershipTerms.create({
+              data: {
+                itemId: id,
+                version: (latest?.version ?? 0) + 1,
+                totalSessions: input.membershipSessions,
+                renewalThreshold: input.membershipRenewalThreshold,
+                conditions:
+                  (input.membershipConditions as Prisma.InputJsonValue | null) ??
+                  undefined,
+                createdByCredentialId: req.posUser!.credentialId,
+              },
+            });
+            return tx.catalogItem.findUniqueOrThrow({
+              where: { id },
+              include: {
+                family: true,
+                category: true,
+                benefits: { orderBy: { sortOrder: "asc" } },
+                assets: true,
+                membershipTerms: membershipTermsInclude,
+              },
+            });
+          }
+        }
         return updated;
       });
       if (!item)
@@ -499,7 +601,17 @@ router.put(
           "Artículo actualizado; el historial de precios permanece inmutable",
         data: catalogDto(item, costsAllowed(req)),
       });
-    } catch {
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message === "MEMBERSHIP_KIND_IMMUTABLE"
+      )
+        return res.status(409).json({
+          success: false,
+          message:
+            "Una membresía no puede convertirse desde o hacia un artículo físico existente",
+          data: null,
+        });
       res
         .status(409)
         .json({ success: false, message: "SKU ya registrado", data: null });

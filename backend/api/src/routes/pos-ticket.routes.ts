@@ -339,7 +339,10 @@ router.get(
         include: {
           branch: { select: { nombre: true } },
           customer: { select: { id: true } },
-          lines: { orderBy: { creadoEn: "asc" } },
+          lines: {
+            include: { item: { select: { kind: true } } },
+            orderBy: { creadoEn: "asc" },
+          },
           sellers: { orderBy: { creadoEn: "asc" } },
           paymentOperations: {
             include: { payments: true },

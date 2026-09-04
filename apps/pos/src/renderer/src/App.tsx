@@ -89,6 +89,7 @@ import type {
   PosCashExpenseDto,
   PosExpenseTypeDto,
   PosInventoryLocationDto,
+  PosClientMembershipDto,
   PosNotificationDto,
   PosOperationalSummaryDto,
   PosOfflineBootstrapDto,
@@ -323,6 +324,7 @@ const productFromPosCatalog = (
     minimumPrice: string;
     taxRate: string;
     unitCost?: string;
+    membershipTerms?: { totalSessions: number } | null;
   },
   branch: string,
 ): Product => ({
@@ -332,7 +334,12 @@ const productFromPosCatalog = (
   family: item.family?.name ?? "Sin familia",
   category: item.category?.name ?? "Sin categoría",
   group: item.family?.name ?? "General",
-  kind: item.kind === "SERVICE" ? "SERVICE" : "PRODUCT",
+  kind:
+    item.kind === "SERVICE"
+      ? "SERVICE"
+      : item.kind === "MEMBERSHIP"
+        ? "MEMBERSHIP"
+        : "PRODUCT",
   image: item.imageUrl ?? "./products/placeholder.png",
   ...(item.description ? { description: item.description } : {}),
   benefits: item.benefits,
@@ -342,11 +349,65 @@ const productFromPosCatalog = (
   includesVat: Number(item.taxRate) > 0,
   costUsd: 0,
   costMxn: Number(item.unitCost ?? "0.00"),
-  stock: item.kind === "SERVICE" ? null : 0,
+  stock: item.kind === "SERVICE" || item.kind === "MEMBERSHIP" ? null : 0,
   stockMin: null,
   stockMax: null,
   branches: [branch],
   active: true,
+  ...(item.membershipTerms
+    ? { membershipSessions: item.membershipTerms.totalSessions }
+    : {}),
+});
+
+const membershipStatusFromDto = (
+  status: PosClientMembershipDto["status"],
+): ClientMembership["status"] => (status === "CANCELED" ? "CANCELLED" : status);
+
+const membershipFromDto = (dto: PosClientMembershipDto): ClientMembership => ({
+  id: dto.id,
+  folio: dto.folio,
+  clientId: dto.customerId,
+  clientName: dto.customerName,
+  clientPhone: dto.customerPhone ?? "",
+  productId: dto.membershipItemId,
+  membershipName: dto.membershipName,
+  purchaseTicketId: dto.ticketFolio,
+  purchaseDateIso: dto.purchasedAt,
+  purchaseAmount: Number(dto.purchaseAmount),
+  branch: dto.purchaseBranchName,
+  sellerId: dto.currentSellerId ?? dto.originalSellerId ?? "",
+  sellerName: dto.currentSellerName,
+  ...(dto.originalSellerId ? { originalSellerId: dto.originalSellerId } : {}),
+  originalSellerName: dto.originalSellerName,
+  totalSessions: dto.totalSessions,
+  usedSessions: dto.usedSessions,
+  renewalThreshold: dto.renewalThreshold,
+  profile: dto.profile,
+  status: membershipStatusFromDto(dto.status),
+  attendance: dto.attendance.map((attendance) => ({
+    id: attendance.id,
+    appointmentId: attendance.appointmentId,
+    attendedAtIso: attendance.attendedAt,
+    branch: attendance.branchName,
+    sellerName: attendance.recordedByName,
+    signatureStatus: attendance.signatureStatus,
+  })),
+  sellerChanges: dto.sellerChanges.map((change) => ({
+    id: change.id,
+    changedAtIso: change.changedAt,
+    ...(change.fromSellerId ? { fromSellerId: change.fromSellerId } : {}),
+    toSellerId: change.toSellerId,
+    fromSellerName: change.fromSellerName,
+    toSellerName: change.toSellerName,
+    reason: change.reason,
+  })),
+  statusChanges: dto.statusChanges.map((change) => ({
+    id: change.id,
+    changedAtIso: change.changedAt,
+    fromStatus: membershipStatusFromDto(change.fromStatus),
+    toStatus: membershipStatusFromDto(change.toStatus),
+    reason: change.reason,
+  })),
 });
 
 const notificationTypeFromApi = (kind: string): OperationalNotificationType => {
@@ -1886,6 +1947,8 @@ function App() {
   const [clientMemberships, setClientMemberships] = useState<
     ClientMembership[]
   >(posApiEnabled ? [] : initialClientMemberships);
+  const [membershipAuthorizationToken, setMembershipAuthorizationToken] =
+    useState<string | null>(null);
   const [receiptSettings, setReceiptSettings] = useState<ReceiptSettings>(
     () => ({
       ...initialReceiptSettings,
@@ -2339,25 +2402,25 @@ function App() {
 
   const canEditActiveModule = Boolean(
     sessionUser?.isMaster ||
-      activeScreen === "my-account" ||
-      (posApiEnabled
-        ? canEditScreen(apiPermissions, activeScreen)
-        : sessionEmployeeRole?.moduleEditAccess.includes(activeScreen)),
+    activeScreen === "my-account" ||
+    (posApiEnabled
+      ? canEditScreen(apiPermissions, activeScreen)
+      : sessionEmployeeRole?.moduleEditAccess.includes(activeScreen)),
   );
   const canPrintActiveModule = Boolean(
     sessionUser?.isMaster ||
-      (posApiEnabled
-        ? canPrintScreen(apiPermissions, activeScreen)
-        : sessionEmployeeRole?.modulePrintAccess.includes(activeScreen)),
+    (posApiEnabled
+      ? canPrintScreen(apiPermissions, activeScreen)
+      : sessionEmployeeRole?.modulePrintAccess.includes(activeScreen)),
   );
 
   const canManageWarehouse = Boolean(
     sessionUser?.isMaster ||
-      (posApiEnabled
-        ? apiPermissions.includes("WAREHOUSE_MANAGE")
-        : employeeRoles
-            .find((role) => role.id === sessionUser?.roleId && role.active)
-            ?.configurationAccess.includes("WAREHOUSE_MOVEMENTS")),
+    (posApiEnabled
+      ? apiPermissions.includes("WAREHOUSE_MANAGE")
+      : employeeRoles
+          .find((role) => role.id === sessionUser?.roleId && role.active)
+          ?.configurationAccess.includes("WAREHOUSE_MOVEMENTS")),
   );
   const canViewProductCosts = Boolean(
     sessionUser?.isMaster || costAccessAuthorized,
@@ -2365,16 +2428,16 @@ function App() {
   const canCreateWarehouseRequest = posApiEnabled
     ? Boolean(
         sessionUser?.isMaster ||
-          apiPermissions.includes("WAREHOUSE_BRANCH_REQUEST"),
+        apiPermissions.includes("WAREHOUSE_BRANCH_REQUEST"),
       )
     : allowedScreens.includes("branch-inventory");
   const canViewInventoryCountDifferences = Boolean(
     sessionUser?.isMaster ||
-      (posApiEnabled
-        ? apiPermissions.includes("INVENTORY_AUDIT")
-        : employeeRoles
-            .find((role) => role.id === sessionUser?.roleId && role.active)
-            ?.configurationAccess.includes("INVENTORY_AUDIT")),
+    (posApiEnabled
+      ? apiPermissions.includes("INVENTORY_AUDIT")
+      : employeeRoles
+          .find((role) => role.id === sessionUser?.roleId && role.active)
+          ?.configurationAccess.includes("INVENTORY_AUDIT")),
   );
 
   const countableProducts = useMemo(
@@ -10318,11 +10381,75 @@ function App() {
     setReceiptPreviewOpen(true);
   };
 
+  const authorizeMembershipAccess = async (pin: string) => {
+    if (!posApiEnabled) return false;
+    try {
+      const authorization = await posApi.createPersonalAuthorization({
+        pin,
+        purpose: "MEMBERSHIPS_ACCESS",
+      });
+      const memberships = await loadAllApiPages((page, pageSize) =>
+        posApi.memberships({
+          personalAuthorizationToken: authorization.authorizationToken,
+          branchIds: apiBranches.map((branch) => branch.id),
+          page,
+          pageSize,
+        }),
+      );
+      setMembershipAuthorizationToken(authorization.authorizationToken);
+      setClientMemberships(memberships.map(membershipFromDto));
+      return true;
+    } catch (error) {
+      setMembershipAuthorizationToken(null);
+      setClientMemberships([]);
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "No fue posible autorizar la consulta de membresías.",
+      );
+      return false;
+    }
+  };
+
+  const replaceMembershipFromApi = (dto: PosClientMembershipDto) => {
+    const mapped = membershipFromDto(dto);
+    setClientMemberships((current) =>
+      current.some((membership) => membership.id === mapped.id)
+        ? current.map((membership) =>
+            membership.id === mapped.id ? mapped : membership,
+          )
+        : [mapped, ...current],
+    );
+  };
+
   const updateMembershipProfile = (
     membershipId: string,
     profile: MembershipClientProfile,
   ) => {
     if (!canEditActiveModule) return;
+    if (posApiEnabled) {
+      if (!membershipAuthorizationToken) {
+        toast.error("Vuelve a autorizar el acceso a membresías.");
+        return;
+      }
+      void posApi
+        .updateMembershipProfile(membershipId, {
+          profile,
+          personalAuthorizationToken: membershipAuthorizationToken,
+        })
+        .then((membership) => {
+          replaceMembershipFromApi(membership);
+          toast.success("Perfilamiento de la clienta actualizado.");
+        })
+        .catch((error: unknown) => {
+          toast.error(
+            error instanceof Error
+              ? error.message
+              : "No se pudo actualizar el perfil.",
+          );
+        });
+      return;
+    }
     setClientMemberships((current) =>
       current.map((membership) =>
         membership.id === membershipId
@@ -10348,6 +10475,52 @@ function App() {
     if (!membership || !appointment || appointment.status !== "SCHEDULED") {
       toast.error("La cita ya no está disponible para registrar asistencia.");
       return false;
+    }
+    if (posApiEnabled) {
+      if (!membershipAuthorizationToken) {
+        toast.error("Vuelve a autorizar el acceso a membresías.");
+        return false;
+      }
+      const branch = apiBranches.find(
+        (candidate) => candidate.name === appointment.branch,
+      );
+      if (!branch) {
+        toast.error("La cita no pertenece a una sucursal autorizada.");
+        return false;
+      }
+      try {
+        const updated = await posApi.recordMembershipAttendance(membershipId, {
+          appointmentId,
+          event: "ATTENDED",
+          branchId: branch.id,
+          signatureStatus: "PENDING",
+          personalAuthorizationToken: membershipAuthorizationToken,
+        });
+        replaceMembershipFromApi(updated);
+        setAppointments((current) =>
+          current.map((candidate) =>
+            candidate.id === appointmentId
+              ? {
+                  ...candidate,
+                  status: "ATTENDED",
+                  membershipId,
+                  membershipSessionConsumedAtIso: new Date().toISOString(),
+                }
+              : candidate,
+          ),
+        );
+        toast.success(
+          `Asistencia confirmada. Quedan ${updated.remainingSessions} sesiones.`,
+        );
+        return true;
+      } catch (error) {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "No se pudo conciliar la asistencia.",
+        );
+        return false;
+      }
     }
     if (membership.usedSessions >= membership.totalSessions) {
       toast.error("Esta membresía ya no tiene sesiones disponibles.");
@@ -10532,6 +10705,12 @@ function App() {
     agendaSlotId: string,
   ) => {
     if (!canEditActiveModule) return false;
+    if (posApiEnabled) {
+      toast.info(
+        "La reservación transaccional con Agenda se habilitará en la Fase 11.",
+      );
+      return false;
+    }
     const membership = clientMemberships.find(
       (candidate) => candidate.id === membershipId,
     );
@@ -15599,6 +15778,14 @@ function App() {
             onConsumeSession={consumeMembershipSession}
             onScheduleNextAppointment={scheduleMembershipNextAppointment}
             onOpenTicket={openMembershipTicket}
+            requirePersonalAuthorization={posApiEnabled}
+            {...(posApiEnabled
+              ? { onAuthorizePersonalAccess: authorizeMembershipAccess }
+              : {})}
+            onClosePersonalAccess={() => {
+              setMembershipAuthorizationToken(null);
+              if (posApiEnabled) setClientMemberships([]);
+            }}
           />
         );
       case "inventory":

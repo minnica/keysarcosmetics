@@ -81,8 +81,10 @@ interface MembershipsViewProps {
     agendaSlotId: string,
   ) => Promise<boolean>;
   onOpenTicket: (ticketId: string) => void;
+  requirePersonalAuthorization?: boolean;
+  onAuthorizePersonalAccess?: (pin: string) => Promise<boolean>;
+  onClosePersonalAccess?: () => void;
 }
-
 const profileLabels: Record<MembershipClientProfile, string> = {
   POTENTIAL: "Potencial",
   LOYAL: "Leal",
@@ -99,6 +101,10 @@ const formatDate = (value: string) =>
 
 const remainingSessions = (membership: ClientMembership) =>
   Math.max(0, membership.totalSessions - membership.usedSessions);
+
+const requiresRenewalFollowUp = (membership: ClientMembership) =>
+  membership.status === "ACTIVE" &&
+  remainingSessions(membership) <= (membership.renewalThreshold ?? 2);
 
 const membershipBusinessDate = (value: string) => {
   if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
@@ -170,10 +176,14 @@ export function MembershipsView({
   onConsumeSession,
   onScheduleNextAppointment,
   onOpenTicket,
+  requirePersonalAuthorization = false,
+  onAuthorizePersonalAccess,
+  onClosePersonalAccess,
 }: MembershipsViewProps) {
   const [accessCode, setAccessCode] = useState("");
   const [personalAccessGranted, setPersonalAccessGranted] = useState(false);
   const [accessError, setAccessError] = useState("");
+  const [authorizing, setAuthorizing] = useState(false);
   const [exporting, setExporting] = useState<"EXCEL" | "PDF" | null>(null);
   const [search, setSearch] = useState("");
   const [membershipFilter, setMembershipFilter] = useState("ALL");
@@ -198,7 +208,9 @@ export function MembershipsView({
     (seller) => seller.id === viewer.id && seller.active,
   );
   const todayBusinessDate = membershipBusinessDate(new Date().toISOString());
-  const hasMembershipAccess = viewer.isMaster || personalAccessGranted;
+  const hasMembershipAccess = requirePersonalAuthorization
+    ? personalAccessGranted
+    : viewer.isMaster || personalAccessGranted;
   const scopedMemberships = useMemo(
     () =>
       hasMembershipAccess
@@ -286,7 +298,20 @@ export function MembershipsView({
     setFollowUpOnly(false);
   }, [viewer.id]);
 
-  const authorizePersonalAccess = () => {
+  const authorizePersonalAccess = async () => {
+    if (onAuthorizePersonalAccess) {
+      setAuthorizing(true);
+      setAccessError("");
+      try {
+        const granted = await onAuthorizePersonalAccess(accessCode.trim());
+        setPersonalAccessGranted(granted);
+        if (granted) setAccessCode("");
+        else setAccessError("Código personal incorrecto o autorización vencida.");
+      } finally {
+        setAuthorizing(false);
+      }
+      return;
+    }
     if (!viewerSeller || viewerSeller.accessCode !== accessCode.trim()) {
       setPersonalAccessGranted(false);
       setAccessError("Código personal incorrecto.");
@@ -302,6 +327,7 @@ export function MembershipsView({
     setAccessCode("");
     setAccessError("");
     setSelectedId(null);
+    onClosePersonalAccess?.();
   };
 
   const membershipNames = useMemo(
@@ -322,9 +348,7 @@ export function MembershipsView({
     return membershipSearchSource.filter((membership) => {
       const purchaseDate = membership.purchaseDateIso.slice(0, 10);
       return (
-        (!followUpOnly ||
-          (membership.status === "ACTIVE" &&
-            remainingSessions(membership) <= 2)) &&
+        (!followUpOnly || requiresRenewalFollowUp(membership)) &&
         (!query ||
           [
             membership.clientName,
@@ -400,10 +424,7 @@ export function MembershipsView({
   const alertMembershipsSource = viewer.isMaster
     ? branchScopedMemberships
     : sellerHistoryMemberships;
-  const lowMemberships = alertMembershipsSource.filter(
-    (membership) =>
-      membership.status === "ACTIVE" && remainingSessions(membership) <= 2,
-  );
+  const lowMemberships = alertMembershipsSource.filter(requiresRenewalFollowUp);
   const openLowMembershipFollowUp = () => {
     setSearch("");
     setMembershipFilter("ALL");
@@ -762,7 +783,8 @@ export function MembershipsView({
                   setAccessCode(event.target.value.replace(/\D/g, ""))
                 }
                 onKeyDown={(event) => {
-                  if (event.key === "Enter") authorizePersonalAccess();
+                  if (event.key === "Enter")
+                    void authorizePersonalAccess();
                 }}
                 placeholder="Código de 4 dígitos"
                 aria-label="Código personal para consultar membresías"
@@ -770,10 +792,10 @@ export function MembershipsView({
             </div>
             <Button
               type="button"
-              onClick={authorizePersonalAccess}
-              disabled={accessCode.length !== 4}
+              onClick={() => void authorizePersonalAccess()}
+              disabled={accessCode.length !== 4 || authorizing}
             >
-              Consultar
+              {authorizing ? "Validando…" : "Consultar"}
             </Button>
           </div>
           {accessError && <span className="seller-sales-error" role="alert">{accessError}</span>}
@@ -1057,7 +1079,7 @@ export function MembershipsView({
         <div className="membership-record-list">
           {filteredMemberships.map((membership) => {
             const remaining = remainingSessions(membership);
-            const isLow = membership.status === "ACTIVE" && remaining <= 2;
+            const isLow = requiresRenewalFollowUp(membership);
             const agendaIncidents =
               agendaIncidentsByMembership[membership.id] ?? [];
             const hasRepeatedAgendaIncidents = agendaIncidents.length >= 2;
@@ -1069,7 +1091,7 @@ export function MembershipsView({
                   <span><small>MEMBRESÍA</small><strong>{membership.membershipName}</strong><em>{membership.folio}</em></span>
                   <span><small>COMPRA</small><strong>{formatDate(membership.purchaseDateIso)}</strong><em>{membership.branch} · {membership.sellerName}</em></span>
                   <span className="membership-session-balance"><small>SALDO</small><strong>{remaining}<i>/{membership.totalSessions}</i></strong><em>sesiones</em></span>
-                  <span className="membership-record-status"><Badge variant={isLow ? "destructive" : "outline"}>{membership.status === "EXHAUSTED" ? "AGOTADA" : isLow ? "POR TERMINAR" : "ACTIVA"}</Badge><small>Ver tarjetón <ArrowRight size={13} /></small></span>
+                  <span className="membership-record-status"><Badge variant={isLow || membership.status === "CANCELLED" ? "destructive" : "outline"}>{membership.status === "PENDING" ? "PENDIENTE" : membership.status === "EXHAUSTED" ? "AGOTADA" : membership.status === "CANCELLED" ? "CANCELADA" : isLow ? "POR TERMINAR" : "ACTIVA"}</Badge><small>Ver tarjetón <ArrowRight size={13} /></small></span>
                 </button>
               </article>
             );

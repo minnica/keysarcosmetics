@@ -83,6 +83,42 @@ describe("contratos públicos del POS", () => {
     expect(posCatalogItemWriteSchema.safeParse(base).success).toBe(true);
   });
 
+  it("exige sesiones enteras y umbral válido para membresías", () => {
+    const membership = {
+      sku: "IGNORADO-POR-SERVIDOR",
+      name: "MEMBRESÍA FACIAL",
+      kind: "MEMBERSHIP" as const,
+      familyId: null,
+      categoryId: null,
+      supplierId: null,
+      description: "Diez sesiones faciales",
+      benefits: ["Seguimiento personalizado"],
+      branchIds: [],
+      published: true,
+      active: true,
+      listPrice: "1000.00",
+      minimumPrice: "900.00",
+      unitCost: "0.00",
+      taxRate: "16.00",
+      membershipSessions: 10,
+      membershipRenewalThreshold: 2,
+      membershipConditions: { cadence: "monthly" },
+    };
+    expect(posCatalogItemWriteSchema.safeParse(membership).success).toBe(true);
+    expect(
+      posCatalogItemWriteSchema.safeParse({
+        ...membership,
+        membershipSessions: 1.5,
+      }).success,
+    ).toBe(false);
+    expect(
+      posCatalogItemWriteSchema.safeParse({
+        ...membership,
+        membershipRenewalThreshold: 11,
+      }).success,
+    ).toBe(false);
+  });
+
   it("exige criterio de búsqueda y decimales exactos para una cotización", () => {
     expect(posCustomerSearchQuerySchema.safeParse({ query: " " }).success).toBe(
       false,

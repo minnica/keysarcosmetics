@@ -85,7 +85,12 @@ export const POS_PERMISSION_KEYS = [
 
 export type PosPermissionKey = (typeof POS_PERMISSION_KEYS)[number];
 
-export type PosCatalogItemKind = "PRODUCT" | "SERVICE" | "SUPPLY" | "MACHINE";
+export type PosCatalogItemKind =
+  | "PRODUCT"
+  | "SERVICE"
+  | "SUPPLY"
+  | "MACHINE"
+  | "MEMBERSHIP";
 export type PosTerminalStatus = "PENDING" | "ACTIVE" | "REVOKED";
 export type PosBusinessDayStatus = "OPEN" | "CLOSED";
 export type PosCountKind = "OPENING" | "CLOSING";
@@ -97,6 +102,21 @@ export type PosSyncStatus =
   | "SYNCED"
   | "ERROR"
   | "CONFLICT";
+
+export type PosMembershipStatus =
+  | "PENDING"
+  | "ACTIVE"
+  | "EXHAUSTED"
+  | "CANCELED";
+export type PosMembershipClientProfile =
+  | "POTENTIAL"
+  | "LOYAL"
+  | "VIP"
+  | "RECOVERY";
+export type PosMembershipSignatureStatus =
+  | "PENDING"
+  | "SIGNED"
+  | "NOT_REQUIRED";
 
 export const POS_OFFLINE_OPERATION_KINDS = [
   "BUSINESS_DAY_OPEN",
@@ -340,11 +360,21 @@ export interface PosCatalogItemDto {
   minimumPrice: Money;
   taxRate: Money;
   availableQuantity: Money | null;
+  membershipTerms: PosMembershipTermsDto | null;
 }
 
 /** Sólo para respuestas autorizadas por REPORTS_COSTS o un grant master. */
 export interface PosCatalogItemWithCostsDto extends PosCatalogItemDto {
   unitCost: Money;
+}
+
+export interface PosMembershipTermsDto {
+  id: PosId;
+  version: number;
+  totalSessions: number;
+  renewalThreshold: number;
+  conditions: Record<string, unknown> | null;
+  effectiveAt: IsoUtcDateTime;
 }
 
 export interface PosCatalogAssetDto {
@@ -952,6 +982,134 @@ export interface PosVoucherIssueDto {
   status: "ISSUED" | "REDEEMED" | "CANCELED";
   printCount: number;
   issuedAt: IsoUtcDateTime;
+}
+
+export interface PosMembershipAttendanceDto {
+  id: PosId;
+  appointmentId: PosId;
+  sessionNumber: number;
+  attendedAt: IsoUtcDateTime;
+  branchId: PosId;
+  branchName: string;
+  recordedByName: string;
+  signatureStatus: PosMembershipSignatureStatus;
+}
+
+export interface PosMembershipSellerChangeDto {
+  id: PosId;
+  fromSellerId: PosId | null;
+  fromSellerName: string;
+  toSellerId: PosId;
+  toSellerName: string;
+  reason: string;
+  changedAt: IsoUtcDateTime;
+}
+
+export interface PosMembershipStatusChangeDto {
+  id: PosId;
+  fromStatus: PosMembershipStatus;
+  toStatus: PosMembershipStatus;
+  reason: string;
+  changedAt: IsoUtcDateTime;
+}
+
+export interface PosClientMembershipDto {
+  id: PosId;
+  folio: string;
+  ticketId: PosId;
+  ticketFolio: string;
+  ticketLineId: PosId;
+  unitOrdinal: number;
+  customerId: PosId;
+  customerName: string;
+  customerPhone: string | null;
+  membershipItemId: PosId;
+  membershipName: string;
+  membershipSku: string;
+  termsId: PosId;
+  termsVersion: number;
+  totalSessions: number;
+  usedSessions: number;
+  remainingSessions: number;
+  renewalThreshold: number;
+  purchaseAmount: Money;
+  purchaseBranchId: PosId;
+  purchaseBranchName: string;
+  originalSellerId: PosId | null;
+  originalSellerName: string;
+  currentSellerId: PosId | null;
+  currentSellerName: string;
+  profile: PosMembershipClientProfile;
+  status: PosMembershipStatus;
+  activatedAt: IsoUtcDateTime | null;
+  exhaustedAt: IsoUtcDateTime | null;
+  canceledAt: IsoUtcDateTime | null;
+  purchasedAt: IsoUtcDateTime;
+  attendance: PosMembershipAttendanceDto[];
+  sellerChanges: PosMembershipSellerChangeDto[];
+  statusChanges: PosMembershipStatusChangeDto[];
+}
+
+export interface PosMembershipListRequest extends PosPageRequest {
+  branchIds?: PosId[];
+  query?: string;
+  status?: PosMembershipStatus;
+  profile?: PosMembershipClientProfile;
+  followUpOnly?: boolean;
+  purchasedFrom?: BusinessDate;
+  purchasedTo?: BusinessDate;
+  personalAuthorizationToken: string;
+}
+
+export interface PosMembershipAttendanceRequestDto {
+  appointmentId: PosId;
+  event: "ATTENDED" | "CANCELED" | "NO_SHOW" | "RESCHEDULED";
+  branchId: PosId;
+  signatureStatus?: PosMembershipSignatureStatus;
+  personalAuthorizationToken: string;
+}
+
+export interface PosMembershipProfileRequestDto {
+  profile: PosMembershipClientProfile;
+  personalAuthorizationToken: string;
+}
+
+export interface PosMembershipSellerChangeRequestDto {
+  sellerId: PosId;
+  reason: string;
+  personalAuthorizationToken: string;
+}
+
+export interface PosMembershipStatusChangeRequestDto {
+  status: "ACTIVE" | "CANCELED";
+  reason: string;
+  personalAuthorizationToken: string;
+}
+
+export interface PosMembershipSellerRankingDto {
+  rank: number;
+  sellerId: PosId | null;
+  sellerName: string;
+  quantity: number;
+  amount: Money;
+}
+
+export interface PosMembershipSalesClosureDto {
+  id: PosId;
+  month: string;
+  version: number;
+  branchIds: PosId[];
+  membershipCount: number;
+  totalAmount: Money;
+  createdAt: IsoUtcDateTime;
+  createdByName: string;
+  rankings: PosMembershipSellerRankingDto[];
+}
+
+export interface PosMembershipClosureRequestDto {
+  month: string;
+  branchIds: PosId[];
+  personalAuthorizationToken: string;
 }
 
 export interface PosBusinessDayDto {

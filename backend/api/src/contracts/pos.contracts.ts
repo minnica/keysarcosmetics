@@ -166,7 +166,7 @@ export const posCatalogItemUpsertSchema = z
     id: idSchema,
     sku: z.string().min(1).max(96),
     name: z.string().min(1).max(240),
-    kind: z.enum(["PRODUCT", "SERVICE", "SUPPLY", "MACHINE"]),
+    kind: z.enum(["PRODUCT", "SERVICE", "SUPPLY", "MACHINE", "MEMBERSHIP"]),
     familyId: idSchema.nullable(),
     categoryId: idSchema.nullable(),
     description: z.string().max(4_000).nullable(),
@@ -177,6 +177,17 @@ export const posCatalogItemUpsertSchema = z
     listPrice: moneySchema,
     minimumPrice: moneySchema,
     taxRate: moneySchema,
+    membershipTerms: z
+      .object({
+        id: idSchema,
+        version: z.number().int().min(1),
+        totalSessions: z.number().int().min(1),
+        renewalThreshold: z.number().int().min(0),
+        conditions: z.record(z.unknown()).nullable(),
+        effectiveAt: isoUtcSchema,
+      })
+      .strict()
+      .nullable(),
   })
   .strict()
   .superRefine((item, context) => {
@@ -204,7 +215,7 @@ export const posCatalogItemWriteSchema = z
   .object({
     sku: z.string().trim().min(1).max(96),
     name: z.string().trim().min(1).max(240),
-    kind: z.enum(["PRODUCT", "SERVICE", "SUPPLY", "MACHINE"]),
+    kind: z.enum(["PRODUCT", "SERVICE", "SUPPLY", "MACHINE", "MEMBERSHIP"]),
     familyId: nullableIdSchema,
     categoryId: nullableIdSchema,
     supplierId: nullableIdSchema,
@@ -217,6 +228,15 @@ export const posCatalogItemWriteSchema = z
     minimumPrice: moneySchema,
     unitCost: moneySchema,
     taxRate: moneySchema,
+    membershipSessions: z
+      .number()
+      .int()
+      .min(1)
+      .max(10_000)
+      .nullable()
+      .default(null),
+    membershipRenewalThreshold: z.number().int().min(0).max(10_000).default(2),
+    membershipConditions: z.record(z.unknown()).nullable().default(null),
   })
   .strict()
   .superRefine((item, context) => {
@@ -239,6 +259,30 @@ export const posCatalogItemWriteSchema = z
         code: z.ZodIssueCode.custom,
         message: "Un artículo publicado requiere descripción y beneficios",
         path: ["published"],
+      });
+    }
+    if (item.kind === "MEMBERSHIP" && item.membershipSessions === null) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Una membresía requiere sesiones enteras mayores a cero",
+        path: ["membershipSessions"],
+      });
+    }
+    if (item.kind !== "MEMBERSHIP" && item.membershipSessions !== null) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Sólo una membresía puede definir sesiones",
+        path: ["membershipSessions"],
+      });
+    }
+    if (
+      item.membershipSessions !== null &&
+      item.membershipRenewalThreshold > item.membershipSessions
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "El umbral de renovación no puede exceder las sesiones",
+        path: ["membershipRenewalThreshold"],
       });
     }
   });
@@ -385,7 +429,7 @@ export const posCatalogItemResponseSchema = z
     id: idSchema,
     sku: z.string().min(1).max(96),
     name: z.string().min(1).max(240),
-    kind: z.enum(["PRODUCT", "SERVICE", "SUPPLY", "MACHINE"]),
+    kind: z.enum(["PRODUCT", "SERVICE", "SUPPLY", "MACHINE", "MEMBERSHIP"]),
     family: posTaxonomySchema.nullable(),
     category: posTaxonomySchema.nullable(),
     description: z.string().max(4_000).nullable(),
@@ -397,6 +441,17 @@ export const posCatalogItemResponseSchema = z
     minimumPrice: moneySchema,
     taxRate: moneySchema,
     availableQuantity: signedMoneySchema.nullable(),
+    membershipTerms: z
+      .object({
+        id: idSchema,
+        version: z.number().int().min(1),
+        totalSessions: z.number().int().min(1),
+        renewalThreshold: z.number().int().min(0),
+        conditions: z.record(z.unknown()).nullable(),
+        effectiveAt: isoUtcSchema,
+      })
+      .strict()
+      .nullable(),
   })
   .strict();
 
@@ -834,6 +889,81 @@ export const posTicketEventRequestSchema = z
       .default([]),
     revision: z.record(z.string(), z.unknown()).optional(),
     authorizationToken: z.string().uuid(),
+  })
+  .strict();
+
+const posMembershipStatusSchema = z.enum([
+  "PENDING",
+  "ACTIVE",
+  "EXHAUSTED",
+  "CANCELED",
+]);
+const posMembershipProfileSchema = z.enum([
+  "POTENTIAL",
+  "LOYAL",
+  "VIP",
+  "RECOVERY",
+]);
+const personalAuthorizationTokenSchema = z.string().min(32).max(256);
+
+export const posMembershipListQuerySchema = z
+  .object({
+    branchIds: z.string().max(10_000).optional(),
+    query: z.string().trim().max(120).optional(),
+    status: posMembershipStatusSchema.optional(),
+    profile: posMembershipProfileSchema.optional(),
+    followUpOnly: z.enum(["true", "false"]).optional(),
+    purchasedFrom: businessDateSchema.optional(),
+    purchasedTo: businessDateSchema.optional(),
+    page: z.coerce.number().int().min(1).default(1),
+    pageSize: z.coerce.number().int().min(1).max(100).default(20),
+  })
+  .strict();
+
+export const posMembershipAuthorizationSchema = z
+  .object({ personalAuthorizationToken: personalAuthorizationTokenSchema })
+  .strict();
+
+export const posMembershipProfileRequestSchema = z
+  .object({
+    profile: posMembershipProfileSchema,
+    personalAuthorizationToken: personalAuthorizationTokenSchema,
+  })
+  .strict();
+
+export const posMembershipSellerChangeRequestSchema = z
+  .object({
+    sellerId: idSchema,
+    reason: z.string().trim().min(2).max(1_000),
+    personalAuthorizationToken: personalAuthorizationTokenSchema,
+  })
+  .strict();
+
+export const posMembershipStatusChangeRequestSchema = z
+  .object({
+    status: z.enum(["ACTIVE", "CANCELED"]),
+    reason: z.string().trim().min(2).max(1_000),
+    personalAuthorizationToken: personalAuthorizationTokenSchema,
+  })
+  .strict();
+
+export const posMembershipAttendanceRequestSchema = z
+  .object({
+    appointmentId: idSchema,
+    event: z.enum(["ATTENDED", "CANCELED", "NO_SHOW", "RESCHEDULED"]),
+    branchId: idSchema,
+    signatureStatus: z
+      .enum(["PENDING", "SIGNED", "NOT_REQUIRED"])
+      .default("PENDING"),
+    personalAuthorizationToken: personalAuthorizationTokenSchema,
+  })
+  .strict();
+
+export const posMembershipClosureRequestSchema = z
+  .object({
+    month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),
+    branchIds: z.array(idSchema).min(1).max(500),
+    personalAuthorizationToken: personalAuthorizationTokenSchema,
   })
   .strict();
 

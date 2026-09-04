@@ -44,7 +44,7 @@ Los dos esquemas Prisma existentes están sincronizados. No hay credenciales loc
 | 7. Reportes y retiro de mocks        | Completada — 2026-09-03                            | Backend/API + POS                      | Módulos operativos consumen API o repositorio offline autorizado.                          |
 | 8. Piloto y despliegue               | Implementada en repositorio — activación pendiente | Operación + Backend/API + Producto     | Piloto conciliado, rollback disponible y aprobación operativa.                             |
 | 9. Autorización y alcance ampliados  | Completada — 2026-09-03                            | Backend/API + Seguridad + POS          | Cada destino, sucursal y acción nueva se autoriza en servidor y queda auditada.            |
-| 10. Membresías                       | Pendiente                                          | Backend/API + POS + Producto           | Tarjetones, saldos y cierres comerciales son transaccionales, idempotentes y conciliables. |
+| 10. Membresías                       | Completada — 2026-09-04                            | Backend/API + POS + Producto           | Tarjetones, saldos y cierres comerciales son transaccionales, idempotentes y conciliables. |
 | 11. Agenda CRM                       | Pendiente                                          | Backend/API + Agenda + POS             | Cliente y reservación tienen IDs externos; conflictos y webhooks se reconcilian.           |
 | 12. Reglas comerciales ampliadas     | Pendiente                                          | Backend/API + POS + Finanzas           | Pagos, cortesías, cartera y participantes conservan validación y snapshots históricos.     |
 | 13. Consultas y reportes ampliados   | Pendiente                                          | Backend/API + POS                      | Indicadores, filtros y exportaciones coinciden para todo el alcance autorizado.            |
@@ -424,18 +424,30 @@ Todo requisito de las secciones 20–46 queda así asignado. La presencia de una
 
 ### Fase 10 — Membresías, tarjetones y cierres comerciales
 
-- [ ] Extender `CatalogItemKind` con `MEMBERSHIP` y crear condiciones versionadas con sesiones enteras mayores a cero. Generar SKU `MEM`, conservar precio/IVA/visibilidad existentes y excluir el producto de balances y movimientos físicos.
-- [ ] Crear `PosClientMembership` por cada unidad vendida, no sólo por línea. La unicidad `(ticketLineId, unitOrdinal)` y la idempotencia del ticket impiden tarjetones duplicados; cada registro guarda snapshots de cliente, condiciones, importe, sucursal y vendedor original/actual.
-- [ ] Fijar la regla financiera de activación: un ticket `COMPLETED` activa en su commit; un `LAYAWAY` activa sólo cuando `pendingAmount` llega a cero; un ticket pendiente no activa. Cancelación o devolución total cambia a `CANCELED` mediante evento compensatorio y nunca elimina el tarjetón.
-- [ ] Modelar estados `PENDING`, `ACTIVE`, `EXHAUSTED` y `CANCELED`, perfil `POTENTIAL/LOYAL/VIP/RECOVERY`, cambios de vendedor y estado append-only, y umbral de renovación configurable con valor inicial de dos sesiones.
-- [ ] Crear `PosMembershipAttendance` con unicidad por cita y número de sesión. Consumir bajo bloqueo transaccional sólo al procesar `ATTENDED`; `CANCELED`, `NO_SHOW`, reserva o reprogramación no consumen, y `usedSessions` nunca supera `totalSessions`.
-- [ ] Reservar desde ahora el estado de firma `PENDING/SIGNED/NOT_REQUIRED`; cualquier evidencia futura se almacenará cifrada fuera del payload público, con consentimiento, hash y metadatos auditables.
-- [ ] Implementar APIs paginadas de catálogo, tarjetones, detalle, asistencia, cambio de vendedor/estado, seguimiento y exportación. Todas requieren permiso, autorización secundaria y alcance de cartera/sucursal; master usa el alcance explícito de la consulta.
-- [ ] Crear cierres mensuales versionados y rankings por vendedor original, ordenados por cantidad y luego importe. Cancelaciones se excluyen y una corrección posterior agrega versión, no sobrescribe el cierre.
+- [x] Extender `CatalogItemKind` con `MEMBERSHIP` y crear condiciones versionadas con sesiones enteras mayores a cero. Generar SKU `MEM`, conservar precio/IVA/visibilidad existentes y excluir el producto de balances y movimientos físicos.
+- [x] Crear `PosClientMembership` por cada unidad vendida, no sólo por línea. La unicidad `(ticketLineId, unitOrdinal)` y la idempotencia del ticket impiden tarjetones duplicados; cada registro guarda snapshots de cliente, condiciones, importe, sucursal y vendedor original/actual.
+- [x] Fijar la regla financiera de activación: un ticket `COMPLETED` activa en su commit; un `LAYAWAY` activa sólo cuando `pendingAmount` llega a cero; un ticket pendiente no activa. Cancelación o devolución total cambia a `CANCELED` mediante evento compensatorio y nunca elimina el tarjetón.
+- [x] Modelar estados `PENDING`, `ACTIVE`, `EXHAUSTED` y `CANCELED`, perfil `POTENTIAL/LOYAL/VIP/RECOVERY`, cambios de vendedor y estado append-only, y umbral de renovación configurable con valor inicial de dos sesiones.
+- [x] Crear `PosMembershipAttendance` con unicidad por cita y número de sesión. Consumir bajo bloqueo transaccional sólo al procesar `ATTENDED`; `CANCELED`, `NO_SHOW`, reserva o reprogramación no consumen, y `usedSessions` nunca supera `totalSessions`.
+- [x] Reservar desde ahora el estado de firma `PENDING/SIGNED/NOT_REQUIRED`; cualquier evidencia futura se almacenará cifrada fuera del payload público, con consentimiento, hash y metadatos auditables.
+- [x] Implementar APIs paginadas de catálogo, tarjetones, detalle, asistencia, cambio de vendedor/estado, seguimiento y exportación. Todas requieren permiso, autorización secundaria y alcance de cartera/sucursal; master usa el alcance explícito de la consulta.
+- [x] Crear cierres mensuales versionados y rankings por vendedor original, ordenados por cantidad y luego importe. Cancelaciones se excluyen y una corrección posterior agrega versión, no sobrescribe el cierre.
 
 **Persistencia prevista:** `PosMembershipTerms`, `PosClientMembership`, `PosMembershipAttendance`, `PosMembershipSellerChange`, `PosMembershipStatusChange`, `PosMembershipSalesClosure` y `PosMembershipSellerRanking`, con folio único, checks de saldo y triggers append-only.
 
 **Puerta de salida:** dos unidades crean dos folios; reintentar online/offline no duplica; liquidar un apartado activa una sola vez; dos confirmaciones concurrentes de asistencia consumen una sola sesión; consultas, alertas, cierres y descargas no revelan otra cartera.
+
+**Criterio de cierre en repositorio: cumplido el 2026-09-04.** La migración aditiva `20260904010000_add_pos_memberships` agrega el dominio sin seeds ni datos operativos, conserva ambos schemas Prisma sincronizados y protege términos, asistencias, cambios y cierres con restricciones y triggers. La migración no se aplicó a development ni producción durante la implementación.
+
+#### Entregables verificables
+
+- Catálogo y venta: `MEMBERSHIP` usa SKU secuencial `MEM-######`, términos versionados, sesiones enteras, precio/IVA/visibilidad existentes y cero movimientos físicos. Cada unidad del ticket genera un folio independiente con snapshots y reparto exacto de centavos.
+- Ciclo de vida: tickets liquidados activan en el commit; apartados permanecen `PENDING` hasta saldo cero; reintentos de liquidación sólo activan pendientes. Cancelaciones y devoluciones totales agregan transición `CANCELED` y conservan el tarjetón.
+- Asistencia y firma: el consumo bloquea el tarjetón, deduplica por cita y número de sesión y sólo acepta `ATTENDED`. El payload público expone únicamente el estado de firma; la evidencia reservada exige consentimiento, referencia y hash y no se serializa.
+- Seguridad y consultas: `/api/pos/memberships*` exige permisos de consulta/edición/impresión, autorización personal `MEMBERSHIPS_ACCESS`, cartera vigente y sucursales materializadas. Master declara sucursales en listados, exportaciones y cierres.
+- Cierres: cada ejecución mensual agrega una versión inmutable y su ranking por vendedor original, cantidad e importe; no incluye tarjetones cancelados.
+- POS y contratos: `@cosmetics/types`, `@cosmetics/api-client` y el renderer consumen catálogo/tarjetones reales, autorización personal, perfilamiento, asistencia y umbral de seguimiento. La agenda externa y sus webhooks continúan en la Fase 11.
+- Pruebas: `pos-memberships.test.ts` cubre importes por unidad, cartera, alcance master y seguimiento; `pos-memberships.integration.test.ts` cubre el gate transaccional completo sobre PostgreSQL efímero con `RUN_DATABASE_TESTS=true`. La guía operativa y de API está en `docs/POS_MEMBERSHIPS.md`.
 
 ### Fase 11 — Integración transaccional con Agenda CRM
 

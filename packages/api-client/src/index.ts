@@ -58,6 +58,14 @@ import type {
   PosReportDatasetDto,
   PosReportKey,
   PosSaleSellerDto,
+  PosClientMembershipDto,
+  PosMembershipAttendanceRequestDto,
+  PosMembershipClosureRequestDto,
+  PosMembershipListRequest,
+  PosMembershipProfileRequestDto,
+  PosMembershipSalesClosureDto,
+  PosMembershipSellerChangeRequestDto,
+  PosMembershipStatusChangeRequestDto,
 } from "@cosmetics/types";
 
 /**
@@ -159,6 +167,7 @@ export interface PosApiClient {
   ): Promise<PosTerminalDto>;
   catalogItems(input?: {
     query?: string;
+    kind?: "PRODUCT" | "SERVICE" | "SUPPLY" | "MACHINE" | "MEMBERSHIP";
     page?: number;
     pageSize?: number;
   }): Promise<{
@@ -268,10 +277,7 @@ export interface PosApiClient {
     businessDate: string;
     kind?: "OPENING" | "CLOSING";
   }): Promise<Array<PosInventoryCountDto | PosAuditedInventoryCountDto>>;
-  warehouseRequests(input?: {
-    page?: number;
-    pageSize?: number;
-  }): Promise<{
+  warehouseRequests(input?: { page?: number; pageSize?: number }): Promise<{
     items: PosWarehouseRequestDto[];
     page: number;
     pageSize: number;
@@ -357,10 +363,7 @@ export interface PosApiClient {
     input: PosTicketEventRequestDto,
     idempotencyKey?: string,
   ): Promise<PosTicketEventDto>;
-  vouchers(input?: {
-    page?: number;
-    pageSize?: number;
-  }): Promise<{
+  vouchers(input?: { page?: number; pageSize?: number }): Promise<{
     items: PosVoucherIssueDto[];
     page: number;
     pageSize: number;
@@ -375,6 +378,51 @@ export interface PosApiClient {
     issueId: string,
     idempotencyKey?: string,
   ): Promise<{ issueId: string; copyNumber: number; printedAt: string }>;
+  memberships(input: PosMembershipListRequest): Promise<{
+    items: PosClientMembershipDto[];
+    page: number;
+    pageSize: number;
+    total: number;
+  }>;
+  membership(
+    id: string,
+    personalAuthorizationToken: string,
+  ): Promise<PosClientMembershipDto>;
+  updateMembershipProfile(
+    id: string,
+    input: PosMembershipProfileRequestDto,
+    idempotencyKey?: string,
+  ): Promise<PosClientMembershipDto>;
+  changeMembershipSeller(
+    id: string,
+    input: PosMembershipSellerChangeRequestDto,
+    idempotencyKey?: string,
+  ): Promise<PosClientMembershipDto>;
+  changeMembershipStatus(
+    id: string,
+    input: PosMembershipStatusChangeRequestDto,
+    idempotencyKey?: string,
+  ): Promise<PosClientMembershipDto>;
+  recordMembershipAttendance(
+    id: string,
+    input: PosMembershipAttendanceRequestDto,
+    idempotencyKey?: string,
+  ): Promise<PosClientMembershipDto>;
+  exportMemberships(
+    input: Omit<
+      PosMembershipListRequest,
+      "branchIds" | "page" | "pageSize" | "followUpOnly"
+    > & { branchIds: string[] },
+  ): Promise<{ generatedAt: string; items: PosClientMembershipDto[] }>;
+  createMembershipClosure(
+    input: PosMembershipClosureRequestDto,
+    idempotencyKey?: string,
+  ): Promise<PosMembershipSalesClosureDto>;
+  membershipClosures(input: {
+    branchIds: string[];
+    personalAuthorizationToken: string;
+    month?: string;
+  }): Promise<PosMembershipSalesClosureDto[]>;
   currentBusinessDay(): Promise<PosBusinessDayDto | null>;
   openBusinessDay(
     input: PosBusinessDayCountInputDto,
@@ -788,6 +836,67 @@ export function createPosApiClient(
           {},
           { headers: mutationHeaders(key) },
         ),
+      ),
+    memberships: ({ personalAuthorizationToken, ...input }) =>
+      data(
+        client.get("/memberships", {
+          params: { ...input, branchIds: input.branchIds?.join(",") },
+          headers: {
+            "X-POS-Personal-Authorization": personalAuthorizationToken,
+          },
+        }),
+      ),
+    membership: (id, personalAuthorizationToken) =>
+      data<PosClientMembershipDto>(
+        client.get(`/memberships/${id}`, {
+          headers: {
+            "X-POS-Personal-Authorization": personalAuthorizationToken,
+          },
+        }),
+      ),
+    updateMembershipProfile: (id, input, key) =>
+      data<PosClientMembershipDto>(
+        client.post(`/memberships/${id}/profile`, input, {
+          headers: mutationHeaders(key),
+        }),
+      ),
+    changeMembershipSeller: (id, input, key) =>
+      data<PosClientMembershipDto>(
+        client.post(`/memberships/${id}/seller`, input, {
+          headers: mutationHeaders(key),
+        }),
+      ),
+    changeMembershipStatus: (id, input, key) =>
+      data<PosClientMembershipDto>(
+        client.post(`/memberships/${id}/status`, input, {
+          headers: mutationHeaders(key),
+        }),
+      ),
+    recordMembershipAttendance: (id, input, key) =>
+      data<PosClientMembershipDto>(
+        client.post(`/memberships/${id}/attendance`, input, {
+          headers: mutationHeaders(key),
+        }),
+      ),
+    exportMemberships: (input) =>
+      data(client.post("/memberships/export", input)),
+    createMembershipClosure: (input, key) =>
+      data<PosMembershipSalesClosureDto>(
+        client.post("/memberships/closures", input, {
+          headers: mutationHeaders(key),
+        }),
+      ),
+    membershipClosures: ({ personalAuthorizationToken, branchIds, month }) =>
+      data<PosMembershipSalesClosureDto[]>(
+        client.get("/memberships/closures/history", {
+          params: {
+            branchIds: branchIds.join(","),
+            ...(month ? { month } : {}),
+          },
+          headers: {
+            "X-POS-Personal-Authorization": personalAuthorizationToken,
+          },
+        }),
       ),
     currentBusinessDay: () =>
       data<PosBusinessDayDto | null>(client.get("/business-days/current")),

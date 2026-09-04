@@ -34,7 +34,6 @@ export interface PosSessionUser {
   branch: string;
   loggedInAtIso: string;
 }
-
 export type InventoryAuditType = "OPENING" | "CLOSING";
 
 export interface InventoryAuditLine {
@@ -135,8 +134,8 @@ export interface MembershipSellerChange {
 export interface MembershipStatusChange {
   id: string;
   changedAtIso: string;
-  fromStatus: "ACTIVE" | "EXHAUSTED" | "CANCELLED";
-  toStatus: "ACTIVE" | "EXHAUSTED" | "CANCELLED";
+  fromStatus: "PENDING" | "ACTIVE" | "EXHAUSTED" | "CANCELLED";
+  toStatus: "PENDING" | "ACTIVE" | "EXHAUSTED" | "CANCELLED";
   reason: string;
 }
 
@@ -158,8 +157,9 @@ export interface ClientMembership {
   originalSellerName: string;
   totalSessions: number;
   usedSessions: number;
+  renewalThreshold?: number;
   profile: MembershipClientProfile;
-  status: "ACTIVE" | "EXHAUSTED" | "CANCELLED";
+  status: "PENDING" | "ACTIVE" | "EXHAUSTED" | "CANCELLED";
   attendance: MembershipAttendance[];
   sellerChanges: MembershipSellerChange[];
   statusChanges: MembershipStatusChange[];

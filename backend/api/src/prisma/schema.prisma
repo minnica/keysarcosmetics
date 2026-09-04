@@ -90,6 +90,8 @@ model Sucursal {
   posSessions                      PosSession[]
   posPositionBranchAssignments     PosPositionBranchAssignment[]
   posCredentialBranchAssignments   PosCredentialBranchAssignment[]
+  posMembershipPurchases           PosClientMembership[]
+  posMembershipAttendances         PosMembershipAttendance[]
 
   @@index([activa])
 }
@@ -201,46 +203,51 @@ model ProtectedEmployeeIdentity {
 }
 
 model Empleado {
-  id                         String                         @id @default(cuid())
-  nombres                    String
-  apellidoPaterno            String
-  apellidoMaterno            String
-  nombreCompleto             String
+  id                             String                         @id @default(cuid())
+  nombres                        String
+  apellidoPaterno                String
+  apellidoMaterno                String
+  nombreCompleto                 String
   // Campos legacy — se eliminan en Fase 4 tras backfill completo en producción
-  banco                      String
-  numeroCuenta               String
-  puesto                     String
-  sueldo                     Decimal?                       @db.Decimal(10, 2)
-  fechaNacimiento            DateTime?
-  numeroTelefono             String?
+  banco                          String
+  numeroCuenta                   String
+  puesto                         String
+  sueldo                         Decimal?                       @db.Decimal(10, 2)
+  fechaNacimiento                DateTime?
+  numeroTelefono                 String?
   // FK a catálogos dinámicos — nullable durante transición
-  bankId                     String?
-  bank                       Bank?                          @relation(fields: [bankId], references: [id])
-  positionId                 String?
-  position                   Position?                      @relation(fields: [positionId], references: [id])
-  sucursalId                 String?
-  sucursal                   Sucursal?                      @relation(fields: [sucursalId], references: [id], onDelete: SetNull)
-  todasSucursales            Boolean                        @default(false)
-  usuario                    Usuario?
-  metaIndividual             Decimal                        @db.Decimal(10, 2)
-  activo                     Boolean                        @default(true)
-  ventas                     Venta[]
-  citasComoVendedor          RegistroCita[]                 @relation("RegistroCitaVendedor")
-  citasComoFacialista        RegistroCita[]                 @relation("RegistroCitaFacialista")
-  creadoEn                   DateTime                       @default(now())
-  actualizadoEn              DateTime                       @updatedAt
-  payrollAssignments         EmployeeCommissionAssignment[]
-  payrollMovementAllocations PayrollMovementAllocation[]
-  payrollLoans               LoanAdvance[]
-  payrollRunLines            PayrollRunLine[]
-  protectedIdentity          ProtectedEmployeeIdentity?
-  posCredentials             PosCredential[]
-  customerPortfolios         CustomerPortfolioAssignment[]
-  posTicketSellers           PosTicketSeller[]
-  posAppointments            PosAppointment[]
-  posLegacyProjections       PosLegacySaleProjection[]
-  posAttendances             PosAttendance[]
-  posCashExpenses            PosCashExpense[]
+  bankId                         String?
+  bank                           Bank?                          @relation(fields: [bankId], references: [id])
+  positionId                     String?
+  position                       Position?                      @relation(fields: [positionId], references: [id])
+  sucursalId                     String?
+  sucursal                       Sucursal?                      @relation(fields: [sucursalId], references: [id], onDelete: SetNull)
+  todasSucursales                Boolean                        @default(false)
+  usuario                        Usuario?
+  metaIndividual                 Decimal                        @db.Decimal(10, 2)
+  activo                         Boolean                        @default(true)
+  ventas                         Venta[]
+  citasComoVendedor              RegistroCita[]                 @relation("RegistroCitaVendedor")
+  citasComoFacialista            RegistroCita[]                 @relation("RegistroCitaFacialista")
+  creadoEn                       DateTime                       @default(now())
+  actualizadoEn                  DateTime                       @updatedAt
+  payrollAssignments             EmployeeCommissionAssignment[]
+  payrollMovementAllocations     PayrollMovementAllocation[]
+  payrollLoans                   LoanAdvance[]
+  payrollRunLines                PayrollRunLine[]
+  protectedIdentity              ProtectedEmployeeIdentity?
+  posCredentials                 PosCredential[]
+  customerPortfolios             CustomerPortfolioAssignment[]
+  posTicketSellers               PosTicketSeller[]
+  posAppointments                PosAppointment[]
+  posLegacyProjections           PosLegacySaleProjection[]
+  posAttendances                 PosAttendance[]
+  posCashExpenses                PosCashExpense[]
+  posMembershipsOriginal         PosClientMembership[]          @relation("PosMembershipOriginalSeller")
+  posMembershipsCurrent          PosClientMembership[]          @relation("PosMembershipCurrentSeller")
+  posMembershipSellerChangesFrom PosMembershipSellerChange[]    @relation("PosMembershipSellerChangeFrom")
+  posMembershipSellerChangesTo   PosMembershipSellerChange[]    @relation("PosMembershipSellerChangeTo")
+  posMembershipRankings          PosMembershipSellerRanking[]
 
   @@index([sucursalId])
 }
@@ -300,6 +307,11 @@ model PosCredential {
   posSessions                       PosSession[]
   posPersonalAuthorizations         PosPersonalAuthorization[]
   posBranchAssignments              PosCredentialBranchAssignment[]
+  posMembershipTermsCreated         PosMembershipTerms[]
+  posMembershipAttendancesRecorded  PosMembershipAttendance[]
+  posMembershipSellerChanges        PosMembershipSellerChange[]
+  posMembershipStatusChanges        PosMembershipStatusChange[]
+  posMembershipClosures             PosMembershipSalesClosure[]
 
   @@index([active, aliasNormalized])
 }
@@ -510,6 +522,27 @@ enum CatalogItemKind {
   SERVICE
   SUPPLY
   MACHINE
+  MEMBERSHIP
+}
+
+enum PosMembershipStatus {
+  PENDING
+  ACTIVE
+  EXHAUSTED
+  CANCELED
+}
+
+enum PosMembershipClientProfile {
+  POTENTIAL
+  LOYAL
+  VIP
+  RECOVERY
+}
+
+enum PosMembershipSignatureStatus {
+  PENDING
+  SIGNED
+  NOT_REQUIRED
 }
 
 enum PosAssetStatus {
@@ -597,6 +630,8 @@ model CatalogItem {
   posAppointments          PosAppointment[]
   posOwedProducts          PosOwedProduct[]
   posDeliveryLines         PosOwedProductDeliveryLine[]
+  membershipTerms          PosMembershipTerms[]
+  clientMemberships        PosClientMembership[]
   creadoEn                 DateTime                       @default(now())
   actualizadoEn            DateTime                       @updatedAt
 
@@ -691,6 +726,7 @@ model Customer {
   posTickets           PosTicket[]
   posAppointments      PosAppointment[]
   posVoucherIssues     PosVoucherIssue[]
+  posMemberships       PosClientMembership[]
   creadoEn             DateTime                      @default(now())
   actualizadoEn        DateTime                      @updatedAt
 
@@ -1406,6 +1442,7 @@ model PosTicket {
   layaway               PosLayaway?
   owedProducts          PosOwedProduct[]
   voucherIssues         PosVoucherIssue[]
+  clientMemberships     PosClientMembership[]
   creadoEn              DateTime              @default(now())
 
   @@unique([terminalId, terminalSequence])
@@ -1415,35 +1452,36 @@ model PosTicket {
 }
 
 model PosTicketLine {
-  id                     String            @id @default(cuid())
-  ticketId               String            @db.Uuid
-  ticket                 PosTicket         @relation(fields: [ticketId], references: [id], onDelete: Restrict)
-  kind                   PosTicketLineKind @default(SALE)
+  id                     String                @id @default(cuid())
+  ticketId               String                @db.Uuid
+  ticket                 PosTicket             @relation(fields: [ticketId], references: [id], onDelete: Restrict)
+  kind                   PosTicketLineKind     @default(SALE)
   itemId                 String?
-  item                   CatalogItem?      @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  item                   CatalogItem?          @relation(fields: [itemId], references: [id], onDelete: Restrict)
   packageId              String?
-  package                PosPackage?       @relation(fields: [packageId], references: [id], onDelete: Restrict)
+  package                PosPackage?           @relation(fields: [packageId], references: [id], onDelete: Restrict)
   packageVersionSnapshot Int?
-  packageNameSnapshot    String?           @db.VarChar(160)
-  itemNameSnapshot       String            @db.VarChar(240)
-  skuSnapshot            String            @db.VarChar(96)
-  familySnapshot         String?           @db.VarChar(160)
-  categorySnapshot       String?           @db.VarChar(160)
-  quantity               Decimal           @db.Decimal(14, 2)
-  unitListPrice          Decimal           @db.Decimal(14, 2)
-  unitMinimumPrice       Decimal           @db.Decimal(14, 2)
-  unitPrice              Decimal           @db.Decimal(14, 2)
-  unitCostSnapshot       Decimal           @db.Decimal(14, 2)
-  taxRateSnapshot        Decimal           @db.Decimal(8, 2)
-  subtotal               Decimal           @db.Decimal(14, 2)
-  minimumTotal           Decimal           @db.Decimal(14, 2)
-  discountTotal          Decimal           @db.Decimal(14, 2)
-  taxTotal               Decimal           @db.Decimal(14, 2)
-  total                  Decimal           @db.Decimal(14, 2)
-  notes                  String?           @db.VarChar(500)
+  packageNameSnapshot    String?               @db.VarChar(160)
+  itemNameSnapshot       String                @db.VarChar(240)
+  skuSnapshot            String                @db.VarChar(96)
+  familySnapshot         String?               @db.VarChar(160)
+  categorySnapshot       String?               @db.VarChar(160)
+  quantity               Decimal               @db.Decimal(14, 2)
+  unitListPrice          Decimal               @db.Decimal(14, 2)
+  unitMinimumPrice       Decimal               @db.Decimal(14, 2)
+  unitPrice              Decimal               @db.Decimal(14, 2)
+  unitCostSnapshot       Decimal               @db.Decimal(14, 2)
+  taxRateSnapshot        Decimal               @db.Decimal(8, 2)
+  subtotal               Decimal               @db.Decimal(14, 2)
+  minimumTotal           Decimal               @db.Decimal(14, 2)
+  discountTotal          Decimal               @db.Decimal(14, 2)
+  taxTotal               Decimal               @db.Decimal(14, 2)
+  total                  Decimal               @db.Decimal(14, 2)
+  notes                  String?               @db.VarChar(500)
   owedProducts           PosOwedProduct[]
   courtesy               PosCourtesy?
-  creadoEn               DateTime          @default(now())
+  clientMemberships      PosClientMembership[]
+  creadoEn               DateTime              @default(now())
 
   @@index([ticketId])
   @@index([itemId])
@@ -1573,25 +1611,26 @@ model PosOwedProductDeliveryLine {
 }
 
 model PosAppointment {
-  id                    String               @id @default(uuid()) @db.Uuid
-  ticketId              String               @db.Uuid
-  ticket                PosTicket            @relation(fields: [ticketId], references: [id], onDelete: Restrict)
+  id                    String                   @id @default(uuid()) @db.Uuid
+  ticketId              String                   @db.Uuid
+  ticket                PosTicket                @relation(fields: [ticketId], references: [id], onDelete: Restrict)
   customerId            String
-  customer              Customer             @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  customer              Customer                 @relation(fields: [customerId], references: [id], onDelete: Restrict)
   kind                  PosAppointmentKind
   status                PosAppointmentStatus
   serviceItemId         String?
-  serviceItem           CatalogItem?         @relation(fields: [serviceItemId], references: [id], onDelete: Restrict)
-  serviceNameSnapshot   String               @db.VarChar(240)
+  serviceItem           CatalogItem?             @relation(fields: [serviceItemId], references: [id], onDelete: Restrict)
+  serviceNameSnapshot   String                   @db.VarChar(240)
   branchId              String
-  branch                Sucursal             @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  branch                Sucursal                 @relation(fields: [branchId], references: [id], onDelete: Restrict)
   sellerId              String?
-  seller                Empleado?            @relation(fields: [sellerId], references: [id], onDelete: Restrict)
+  seller                Empleado?                @relation(fields: [sellerId], references: [id], onDelete: Restrict)
   scheduledAt           DateTime?
   createdByCredentialId String
-  createdByCredential   PosCredential        @relation(fields: [createdByCredentialId], references: [id], onDelete: Restrict)
+  createdByCredential   PosCredential            @relation(fields: [createdByCredentialId], references: [id], onDelete: Restrict)
   courtesy              PosCourtesy?
-  creadoEn              DateTime             @default(now())
+  membershipAttendance  PosMembershipAttendance?
+  creadoEn              DateTime                 @default(now())
 
   @@index([customerId, scheduledAt])
   @@index([branchId, scheduledAt])
@@ -1629,6 +1668,167 @@ model PosTicketEvent {
   creadoEn            DateTime           @default(now())
 
   @@index([ticketId, creadoEn])
+}
+
+// ─── Módulo POS: membresías y tarjetones ────────────────────────────────
+
+model PosMembershipTerms {
+  id                    String                @id @default(cuid())
+  itemId                String
+  item                  CatalogItem           @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  version               Int
+  totalSessions         Int
+  renewalThreshold      Int                   @default(2)
+  conditions            Json?
+  effectiveAt           DateTime              @default(now())
+  createdByCredentialId String?
+  createdByCredential   PosCredential?        @relation(fields: [createdByCredentialId], references: [id], onDelete: Restrict)
+  memberships           PosClientMembership[]
+  creadoEn              DateTime              @default(now())
+
+  @@unique([itemId, version])
+  @@index([itemId, effectiveAt])
+}
+
+model PosClientMembership {
+  id                         String                      @id @default(uuid()) @db.Uuid
+  folio                      String                      @unique @db.VarChar(80)
+  ticketId                   String                      @db.Uuid
+  ticket                     PosTicket                   @relation(fields: [ticketId], references: [id], onDelete: Restrict)
+  ticketLineId               String
+  ticketLine                 PosTicketLine               @relation(fields: [ticketLineId], references: [id], onDelete: Restrict)
+  unitOrdinal                Int
+  customerId                 String
+  customer                   Customer                    @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  customerNameSnapshot       String                      @db.VarChar(240)
+  customerPhoneSnapshot      String?                     @db.VarChar(32)
+  membershipItemId           String
+  membershipItem             CatalogItem                 @relation(fields: [membershipItemId], references: [id], onDelete: Restrict)
+  membershipNameSnapshot     String                      @db.VarChar(240)
+  membershipSkuSnapshot      String                      @db.VarChar(96)
+  termsId                    String
+  terms                      PosMembershipTerms          @relation(fields: [termsId], references: [id], onDelete: Restrict)
+  termsVersionSnapshot       Int
+  totalSessions              Int
+  usedSessions               Int                         @default(0)
+  renewalThreshold           Int                         @default(2)
+  purchaseAmount             Decimal                     @db.Decimal(14, 2)
+  purchaseBranchId           String
+  purchaseBranch             Sucursal                    @relation(fields: [purchaseBranchId], references: [id], onDelete: Restrict)
+  purchaseBranchNameSnapshot String                      @db.VarChar(160)
+  originalSellerId           String?
+  originalSeller             Empleado?                   @relation("PosMembershipOriginalSeller", fields: [originalSellerId], references: [id], onDelete: Restrict)
+  originalSellerNameSnapshot String                      @db.VarChar(240)
+  currentSellerId            String?
+  currentSeller              Empleado?                   @relation("PosMembershipCurrentSeller", fields: [currentSellerId], references: [id], onDelete: Restrict)
+  currentSellerNameSnapshot  String                      @db.VarChar(240)
+  profile                    PosMembershipClientProfile  @default(POTENTIAL)
+  status                     PosMembershipStatus         @default(PENDING)
+  activatedAt                DateTime?
+  exhaustedAt                DateTime?
+  canceledAt                 DateTime?
+  purchasedAt                DateTime                    @default(now())
+  attendance                 PosMembershipAttendance[]
+  sellerChanges              PosMembershipSellerChange[]
+  statusChanges              PosMembershipStatusChange[]
+  creadoEn                   DateTime                    @default(now())
+  actualizadoEn              DateTime                    @updatedAt
+
+  @@unique([ticketLineId, unitOrdinal])
+  @@index([customerId, status, purchasedAt])
+  @@index([purchaseBranchId, status, purchasedAt])
+  @@index([currentSellerId, status, purchasedAt])
+  @@index([originalSellerId, purchasedAt])
+}
+
+model PosMembershipAttendance {
+  id                        String                       @id @default(uuid()) @db.Uuid
+  membershipId              String                       @db.Uuid
+  membership                PosClientMembership          @relation(fields: [membershipId], references: [id], onDelete: Restrict)
+  appointmentId             String                       @unique @db.Uuid
+  appointment               PosAppointment               @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
+  sessionNumber             Int
+  attendedAt                DateTime                     @default(now())
+  branchId                  String
+  branch                    Sucursal                     @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  recordedByCredentialId    String
+  recordedByCredential      PosCredential                @relation(fields: [recordedByCredentialId], references: [id], onDelete: Restrict)
+  signatureStatus           PosMembershipSignatureStatus @default(PENDING)
+  signatureConsentAt        DateTime?
+  signatureEvidenceRef      String?
+  signatureEvidenceHash     String?                      @db.VarChar(64)
+  signatureEvidenceMetadata Json?
+  creadoEn                  DateTime                     @default(now())
+
+  @@unique([membershipId, sessionNumber])
+  @@index([branchId, attendedAt])
+}
+
+model PosMembershipSellerChange {
+  id                     String              @id @default(uuid()) @db.Uuid
+  membershipId           String              @db.Uuid
+  membership             PosClientMembership @relation(fields: [membershipId], references: [id], onDelete: Restrict)
+  fromSellerId           String?
+  fromSeller             Empleado?           @relation("PosMembershipSellerChangeFrom", fields: [fromSellerId], references: [id], onDelete: Restrict)
+  fromSellerNameSnapshot String              @db.VarChar(240)
+  toSellerId             String
+  toSeller               Empleado            @relation("PosMembershipSellerChangeTo", fields: [toSellerId], references: [id], onDelete: Restrict)
+  toSellerNameSnapshot   String              @db.VarChar(240)
+  reason                 String              @db.VarChar(1000)
+  actorCredentialId      String
+  actorCredential        PosCredential       @relation(fields: [actorCredentialId], references: [id], onDelete: Restrict)
+  cambiadoEn             DateTime            @default(now())
+
+  @@index([membershipId, cambiadoEn])
+  @@index([toSellerId, cambiadoEn])
+}
+
+model PosMembershipStatusChange {
+  id                String              @id @default(uuid()) @db.Uuid
+  membershipId      String              @db.Uuid
+  membership        PosClientMembership @relation(fields: [membershipId], references: [id], onDelete: Restrict)
+  fromStatus        PosMembershipStatus
+  toStatus          PosMembershipStatus
+  reason            String              @db.VarChar(1000)
+  actorCredentialId String
+  actorCredential   PosCredential       @relation(fields: [actorCredentialId], references: [id], onDelete: Restrict)
+  sourceType        String?             @db.VarChar(80)
+  sourceId          String?
+  cambiadoEn        DateTime            @default(now())
+
+  @@index([membershipId, cambiadoEn])
+}
+
+model PosMembershipSalesClosure {
+  id                    String                       @id @default(uuid()) @db.Uuid
+  month                 DateTime                     @db.Date
+  scopeHash             String                       @db.VarChar(64)
+  branchIds             Json
+  version               Int
+  membershipCount       Int
+  totalAmount           Decimal                      @db.Decimal(14, 2)
+  createdByCredentialId String
+  createdByCredential   PosCredential                @relation(fields: [createdByCredentialId], references: [id], onDelete: Restrict)
+  rankings              PosMembershipSellerRanking[]
+  creadoEn              DateTime                     @default(now())
+
+  @@unique([month, scopeHash, version])
+  @@index([month, creadoEn])
+}
+
+model PosMembershipSellerRanking {
+  id                 String                    @id @default(cuid())
+  closureId          String                    @db.Uuid
+  closure            PosMembershipSalesClosure @relation(fields: [closureId], references: [id], onDelete: Restrict)
+  rank               Int
+  originalSellerId   String?
+  originalSeller     Empleado?                 @relation(fields: [originalSellerId], references: [id], onDelete: Restrict)
+  sellerNameSnapshot String                    @db.VarChar(240)
+  quantity           Int
+  amount             Decimal                   @db.Decimal(14, 2)
+
+  @@unique([closureId, rank])
+  @@index([originalSellerId, closureId])
 }
 
 model PosLegacySaleProjection {

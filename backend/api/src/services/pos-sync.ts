@@ -181,7 +181,7 @@ function catalogDto(item: {
   id: string;
   sku: string;
   name: string;
-  kind: "PRODUCT" | "SERVICE" | "SUPPLY" | "MACHINE";
+  kind: "PRODUCT" | "SERVICE" | "SUPPLY" | "MACHINE" | "MEMBERSHIP";
   description: string | null;
   published: boolean;
   active: boolean;
@@ -203,6 +203,14 @@ function catalogDto(item: {
   benefits: Array<{ text: string }>;
   assets: Array<{ publicUrl: string; isPrimary: boolean; status: string }>;
   inventoryBalances: Array<{ availableQuantity: Prisma.Decimal }>;
+  membershipTerms: Array<{
+    id: string;
+    version: number;
+    totalSessions: number;
+    renewalThreshold: number;
+    conditions: Prisma.JsonValue;
+    effectiveAt: Date;
+  }>;
 }): PosCatalogItemDto {
   const image =
     item.assets.find((asset) => asset.isPrimary && asset.status === "READY") ??
@@ -224,6 +232,19 @@ function catalogDto(item: {
     taxRate: money(item.taxRate),
     availableQuantity: item.inventoryBalances[0]
       ? money(item.inventoryBalances[0].availableQuantity)
+      : null,
+    membershipTerms: item.membershipTerms[0]
+      ? {
+          id: item.membershipTerms[0].id,
+          version: item.membershipTerms[0].version,
+          totalSessions: item.membershipTerms[0].totalSessions,
+          renewalThreshold: item.membershipTerms[0].renewalThreshold,
+          conditions: item.membershipTerms[0].conditions as Record<
+            string,
+            unknown
+          > | null,
+          effectiveAt: item.membershipTerms[0].effectiveAt.toISOString(),
+        }
       : null,
   };
 }
@@ -289,6 +310,10 @@ export async function createOfflineBootstrap(
           select: { availableQuantity: true },
           take: 1,
         },
+        membershipTerms: {
+          orderBy: { version: "desc" },
+          take: 1,
+        },
       },
     }),
     prisma.posPackage.findMany({
@@ -349,7 +374,10 @@ export async function createOfflineBootstrap(
       include: {
         branch: { select: { nombre: true } },
         customer: { select: { id: true } },
-        lines: { orderBy: { creadoEn: "asc" } },
+        lines: {
+          include: { item: { select: { kind: true } } },
+          orderBy: { creadoEn: "asc" },
+        },
         sellers: { orderBy: { creadoEn: "asc" } },
         paymentOperations: {
           include: { payments: true },
