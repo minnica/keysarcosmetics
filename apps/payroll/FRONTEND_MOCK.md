@@ -57,10 +57,16 @@ Las rutas históricas `/bonos` y `/multas` montan el nuevo módulo independiente
 - Honorarios calcula subtotal de servicio, IVA 16%, retención ISR 10%, retención IVA 10.6667% y neto a pagar con datos mock.
 - Especialistas, gerencia y call center usan sueldo mensual dividido entre dos.
 - Todas las nóminas muestran nómina, costo social, ISR y costo total; las tasas se configuran por empleado.
+- Cada empleado conserva una sucursal principal y una distribución independiente de centros de costo. Desde el alta, la edición o Roles y accesos se puede elegir una, varias o todas las sucursales; la nómina, costo social e ISR se reparten en partes iguales entre las seleccionadas sin alterar el total consolidado.
+- Los mocks de gerencia demuestran los dos casos especiales: un gerente distribuido entre todas las sucursales y un gerente regional distribuido entre dos puntos de venta.
 - Cada submenu de nómina termina con métricas, gráfica de dispersión y detalle automático de costo por sucursal.
+- Dashboard por sucursal permite analizar un mes completo, un trimestre o un año disponible; acumula cada mes sin recalcular las comisiones como un único rango y actualiza ventas, costo integral, costo/venta, promedio por empleado, composición fiscal, tendencia mensual y ranking de rendimiento.
+- Antes de crear una nómina de vendedores se detectan quienes vendieron en más de una sucursal. El usuario puede repartir su nómina en partes iguales o según la participación real de venta; la elección actualiza el consolidado y los reportes por sucursal sin persistencia externa.
+- Dispersión de nómina se habilita solo para corridas autorizadas o pagadas y genera un formato independiente para salario fijo, especialistas, comisiones y honorarios. Ordena por apellidos y nombre, muestra CLABE ficticia completa, pago, ISR, costo social y total, y permite imprimir o exportar a PDF y Excel.
 - Bonos aprobados suman; multas y cuotas de préstamos aprobados descuentan.
 - Los movimientos externos admiten ajuste de más, ajuste de menos, multa, bono, préstamo, pago de préstamo y sueldo base; pasan de borrador a solicitud y aprobación.
 - Cada movimiento externo elige tipo de nómina, corrida/periodo destino, sucursal responsable y los reportes que afectará.
+- El periodo activo permanece bloqueado al crear o editar movimientos; un código máster válido habilita las demás quincenas disponibles y permite mover el registro, que vuelve a borrador antes de afectar cálculos y reportes.
 - Las multas compartidas dividen el importe entre todos los participantes seleccionados y conservan la sucursal donde se originaron.
 - Editar devuelve el movimiento a borrador; cancelar un movimiento aprobado retira su efecto de todos los cálculos en tiempo real.
 - Un préstamo autorizado arrastra su cuota a cada periodo hasta completar sus pagos.
@@ -68,9 +74,12 @@ Las rutas históricas `/bonos` y `/multas` montan el nuevo módulo independiente
 - El adeudo aparece en el perfil personal y el módulo de préstamos permite consultar actividad por día, mes y empleado.
 - Autorizar o editar movimientos y préstamos actualiza consolidado, portal, recibos y distribución por sucursal.
 - Las metas, ventas históricas y recibos de comisión de kiosco son mocks locales; cada gerente solo puede consultar el recibo mensual de su punto de venta.
+- Los meses cerrados de comisión de kiosco también generan un formato de dispersión propio, agrupado por gerente y sin duplicar el pago cuando un esquema reúne varias sucursales.
+- Cerrar una corrida bloquea su recálculo y los ajustes, préstamos o viáticos asociados. La reapertura requiere una segunda clave con permiso maestro y devuelve la corrida a borrador, retirándola de Dispersión hasta un nuevo cierre.
 - El portal personal aparece como acceso ejecutivo en el extremo derecho del encabezado y solo si el rol del usuario activo incluye `portal.view`.
 - La identidad del portal se elige desde Roles y accesos; dentro del portal no existe un selector para consultar información de otro empleado.
 - Roles y accesos permite asignar o reemplazar segundas claves sin revelar su valor guardado. El permiso `security.second_key.manage` pertenece siempre al master y puede delegarse explícitamente a otros roles.
+- Acceso por empleado se presenta como un listado compacto de dos columnas, con búsqueda, selector de 20, 40 o 60 registros y navegación Anterior/Siguiente.
 - Toda sesión del prototipo se cierra automáticamente después de 3 minutos sin clics, teclas, desplazamiento, toque o movimiento del puntero; las vistas y diálogos se desmontan y el usuario debe completar nuevamente los dos pasos del acceso.
 - Esquemas de comisión mantiene un catálogo de tipos/rangos y un registro de vendedores y prestadores por honorarios asignados.
 - Cada asignación de esquema registra `vigente desde`; cambiar un vendedor crea una nueva vigencia y el cálculo recupera el esquema correspondiente a cada periodo sin reescribir nóminas anteriores.

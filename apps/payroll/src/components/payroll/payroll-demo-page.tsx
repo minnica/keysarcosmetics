@@ -11,6 +11,7 @@ import {
   CircleDollarSign,
   Clock3,
   FileCheck2,
+  KeyRound,
   ListChecks,
   LockKeyhole,
   Plus,
@@ -55,12 +56,14 @@ import {
   type EmployeeCategory,
   type EmployeePayrollLine,
   type PayrollModule,
+  type PayrollCostAllocationMode,
   type DemoPayrollPeriodConfig,
   type PayrollStatus,
   payrollModuleLabels,
   usePayrollDemo,
 } from "./payroll-demo-context";
 import { PayrollModuleAnalytics } from "./payroll-module-analytics";
+import { employeeCostAllocationShares, employeeCostBranchIds, payrollCostAllocationMode } from "./payroll-cost-branch-selector";
 import { ReportExportButtons } from "./report-export-buttons";
 
 type PayrollView = PayrollModule;
@@ -152,25 +155,95 @@ function Metric({ icon: Icon, label, value, detail }: { icon: React.ElementType;
   );
 }
 
-function CostToggle({ label, checked, onCheckedChange }: { label: string; checked: boolean; onCheckedChange: (checked: boolean) => void }) {
-  return <button type="button" role="switch" aria-checked={checked} onClick={() => onCheckedChange(!checked)} className={`flex h-9 items-center gap-2 rounded-lg border px-3 text-left text-xs font-semibold transition-colors ${checked ? "border-emerald-300 bg-emerald-50 text-emerald-900 dark:bg-emerald-950/25 dark:text-emerald-100" : "border-[color:var(--border-color)] bg-[color:var(--input-disabled-bg)] text-[color:var(--text-muted)]"}`}><span aria-hidden="true" className={`relative h-4 w-8 rounded-full ${checked ? "bg-emerald-600" : "bg-stone-300 dark:bg-stone-700"}`}><span className={`absolute top-0.5 h-3 w-3 rounded-full bg-white shadow-sm transition-transform ${checked ? "translate-x-[17px]" : "translate-x-0.5"}`} /></span>{label}</button>;
+function CostToggle({ label, checked, disabled = false, onCheckedChange }: { label: string; checked: boolean; disabled?: boolean; onCheckedChange: (checked: boolean) => void }) {
+  return <button type="button" role="switch" aria-checked={checked} disabled={disabled} onClick={() => onCheckedChange(!checked)} className={`flex h-9 items-center gap-2 rounded-lg border px-3 text-left text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${checked ? "border-emerald-300 bg-emerald-50 text-emerald-900 dark:bg-emerald-950/25 dark:text-emerald-100" : "border-[color:var(--border-color)] bg-[color:var(--input-disabled-bg)] text-[color:var(--text-muted)]"}`}><span aria-hidden="true" className={`relative h-4 w-8 rounded-full ${checked ? "bg-emerald-600" : "bg-stone-300 dark:bg-stone-700"}`}><span className={`absolute top-0.5 h-3 w-3 rounded-full bg-white shadow-sm transition-transform ${checked ? "translate-x-[17px]" : "translate-x-0.5"}`} /></span>{label}</button>;
+}
+
+function MasterReopenDialog({ runId }: { runId: string }) {
+  const { state, setRunStatus } = usePayrollDemo();
+  const [open, setOpen] = useState(false);
+  const [code, setCode] = useState("");
+  const authorizedCodes = state.employees.flatMap((employee) => {
+    const role = state.roles.find((item) => item.id === employee.roleId);
+    return employee.active && employee.secondaryAccessKey && role?.permissions.includes("security.second_key.manage")
+      ? [employee.secondaryAccessKey]
+      : [];
+  });
+
+  function close() {
+    setOpen(false);
+    setCode("");
+  }
+
+  function reopen() {
+    if (!authorizedCodes.includes(code)) {
+      toast.error("Código maestro incorrecto o sin permiso para reabrir nóminas.");
+      setCode("");
+      return;
+    }
+    setRunStatus(runId, "DRAFT");
+    close();
+    toast.success("Nómina reabierta. La corrida volvió a borrador y salió de Dispersión.");
+  }
+
+  return <>
+    <Button size="sm" variant="outline" onClick={() => setOpen(true)}><KeyRound className="mr-2 h-4 w-4" />Modificar con código máster</Button>
+    <Dialog open={open} onOpenChange={(next) => next ? setOpen(true) : close()}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Reabrir nómina protegida</DialogTitle>
+          <DialogDescription>El cierre bloquea importes, cargas y movimientos. Ingresa la segunda clave de un usuario autorizado para devolver la corrida a borrador.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
+          <div className="rounded-2xl border border-[color:var(--border-color)] bg-[color:var(--accent-hover)]/35 p-4 text-center">
+            <p className="label-caps">CÓDIGO MAESTRO</p>
+            <div className="mt-3 flex justify-center gap-3" aria-label={`${code.length} de 4 dígitos capturados`}>{Array.from({ length: 4 }, (_, index) => <span key={index} className={`h-3 w-3 rounded-full border ${index < code.length ? "border-[#9a704d] bg-[#9a704d]" : "border-[color:var(--border-color)] bg-[color:var(--bg-card)]"}`} />)}</div>
+          </div>
+          <div className="grid grid-cols-3 gap-2">{[1, 2, 3, 4, 5, 6, 7, 8, 9].map((digit) => <Button key={digit} type="button" variant="outline" className="h-10" onClick={() => setCode((current) => current.length < 4 ? `${current}${digit}` : current)}>{digit}</Button>)}<Button type="button" variant="ghost" className="h-10 text-xs" onClick={() => setCode("")}>Limpiar</Button><Button type="button" variant="outline" className="h-10" onClick={() => setCode((current) => current.length < 4 ? `${current}0` : current)}>0</Button><Button type="button" variant="ghost" className="h-10 text-xs" onClick={() => setCode((current) => current.slice(0, -1))}>Borrar</Button></div>
+          <div className="flex items-start gap-2 rounded-xl border border-amber-300/70 bg-amber-50/70 p-3 text-xs text-amber-950 dark:bg-amber-950/20 dark:text-amber-100"><LockKeyhole className="mt-0.5 h-4 w-4 shrink-0" /><p>La reapertura queda simulada en memoria. En producción deberá registrar usuario, fecha, motivo y versión anterior.</p></div>
+        </div>
+        <DialogFooter><Button variant="outline" onClick={close}>Cancelar</Button><Button onClick={reopen} disabled={code.length !== 4}>Autorizar reapertura</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
+  </>;
 }
 
 function RunDialog({ open, onOpenChange, module, config, mode, onModeChange }: { open: boolean; onOpenChange: (open: boolean) => void; module: PayrollModule; config: DemoPayrollPeriodConfig; mode: "WITH_VAT" | "WITHOUT_VAT"; onModeChange: (mode: "WITH_VAT" | "WITHOUT_VAT") => void }) {
-  const { createRun } = usePayrollDemo();
+  const { state, createRun, setPayrollCostAllocationModes } = usePayrollDemo();
   const defaultPayDate = new Date(`${config.periodEnd}T12:00:00`);
   defaultPayDate.setDate(defaultPayDate.getDate() + 3);
   const [payDate, setPayDate] = useState(defaultPayDate.toISOString().slice(0, 10));
+  const allocationCandidates = useMemo(() => {
+    if (module !== "COMMISSION") return [];
+    return state.employees
+      .filter((employee) => employee.category === "SELLER" && employee.hireDate <= config.periodEnd && (!employee.terminationDate || employee.terminationDate >= config.periodStart))
+      .map((employee) => {
+        const salesByBranch = state.sales
+          .filter((sale) => sale.employeeId === employee.id && sale.date >= config.periodStart && sale.date <= config.periodEnd)
+          .reduce<Record<string, number>>((totals, sale) => ({ ...totals, [sale.branchId]: (totals[sale.branchId] ?? 0) + sale.amount }), {});
+        const branches = Object.entries(salesByBranch)
+          .filter(([branchId, amount]) => amount > 0 && state.branches.some((branch) => branch.id === branchId))
+          .map(([branchId, amount]) => ({ branch: state.branches.find((branch) => branch.id === branchId)!, amount }))
+          .sort((left, right) => right.amount - left.amount);
+        const total = branches.reduce((sum, item) => sum + item.amount, 0);
+        return { employee, branches, total, topShare: total > 0 ? (branches[0]?.amount ?? 0) / total : 0 };
+      })
+      .filter((candidate) => candidate.branches.length > 1);
+  }, [config.periodEnd, config.periodStart, module, state.branches, state.employees, state.sales]);
+  const [allocationModes, setAllocationModes] = useState<Record<string, PayrollCostAllocationMode>>(() => Object.fromEntries(
+    allocationCandidates.map((candidate) => [candidate.employee.id, state.payrollCostAllocationModes[`${config.periodStart}:${candidate.employee.id}`] ?? (candidate.topShare >= 0.55 ? "SALES_SHARE" : "EQUAL")]),
+  ));
 
   function submit() {
+    if (module === "COMMISSION" && allocationCandidates.length > 0) setPayrollCostAllocationModes(config.periodStart, allocationModes);
     createRun(module, config.periodStart, config.periodEnd, mode, payDate);
-    toast.success("Nómina preparada con datos mock.");
+    toast.success(module === "COMMISSION" && allocationCandidates.length > 0 ? "Nómina preparada con la distribución elegida por sucursal." : "Nómina preparada con datos mock.");
     onOpenChange(false);
   }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className={module === "COMMISSION" && allocationCandidates.length > 0 ? "max-h-[92vh] max-w-4xl overflow-y-auto" : "max-w-lg"}>
         <DialogHeader>
           <DialogTitle>Crear nueva nómina</DialogTitle>
           <DialogDescription>Usará exclusivamente el periodo y corte definidos para este módulo.</DialogDescription>
@@ -184,6 +257,21 @@ function RunDialog({ open, onOpenChange, module, config, mode, onModeChange }: {
             </div>
             <p className="text-xs text-[color:var(--text-muted)]">Este periodo solo se modifica desde Configuración.</p>
           </div>
+          {module === "COMMISSION" && allocationCandidates.length > 0 && <section className="overflow-hidden rounded-2xl border border-amber-300/70 bg-amber-50/60 dark:bg-amber-950/20">
+            <div className="flex items-start gap-3 border-b border-amber-300/60 px-4 py-3">
+              <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200"><AlertTriangle className="h-4 w-4" /></span>
+              <div><p className="text-sm font-semibold text-amber-950 dark:text-amber-100">Revisión de vendedores con venta en varias sucursales</p><p className="mt-1 text-[11px] leading-5 text-amber-900/75 dark:text-amber-100/70">Antes de crear la nómina elige si cada costo se reparte por partes iguales o según el porcentaje real de venta.</p></div>
+            </div>
+            <div className="divide-y divide-amber-300/45">{allocationCandidates.map((candidate) => {
+              const selectedMode = allocationModes[candidate.employee.id] ?? "SALES_SHARE";
+              const leadingBranch = candidate.branches[0];
+              return <article key={candidate.employee.id} className="grid gap-3 px-4 py-3 lg:grid-cols-[minmax(190px,.8fr)_minmax(260px,1.35fr)_220px] lg:items-center">
+                <div className="min-w-0"><p className="truncate text-xs font-semibold">{candidate.employee.name}</p><p className="mt-0.5 text-[9px] uppercase tracking-[0.08em] text-[color:var(--text-muted)]">{candidate.employee.position} · {candidate.branches.length} sucursales</p>{leadingBranch && candidate.topShare >= 0.55 && <p className="mt-1.5 text-[10px] font-medium text-amber-800 dark:text-amber-200">Mayor venta en {leadingBranch.branch.name}: {(candidate.topShare * 100).toFixed(1)}%</p>}</div>
+                <div className="grid gap-1.5">{candidate.branches.map(({ branch, amount }) => { const share = candidate.total > 0 ? amount / candidate.total : 0; return <div key={branch.id} className="grid grid-cols-[88px_minmax(70px,1fr)_68px_42px] items-center gap-2 text-[10px]"><span className="truncate font-semibold">{branch.name}</span><span className="h-1.5 overflow-hidden rounded-full bg-amber-100 dark:bg-white/10"><span className="block h-full rounded-full bg-[color:var(--accent)]" style={{ width: `${share * 100}%` }} /></span><span className="number-display text-right">{money.format(amount)}</span><span className="text-right font-semibold text-[color:var(--text-muted)]">{(share * 100).toFixed(0)}%</span></div>; })}</div>
+                <div className="rounded-xl border border-[color:var(--border-color)] bg-[color:var(--bg-card)] p-1"><div className="grid grid-cols-2 gap-1" role="group" aria-label={`Distribución de ${candidate.employee.name}`}><Button type="button" size="sm" variant={selectedMode === "EQUAL" ? "default" : "ghost"} className="h-8 px-2 text-[9px]" onClick={() => setAllocationModes((current) => ({ ...current, [candidate.employee.id]: "EQUAL" }))}><ListChecks className="mr-1.5 h-3.5 w-3.5" />Parejo</Button><Button type="button" size="sm" variant={selectedMode === "SALES_SHARE" ? "default" : "ghost"} className="h-8 px-2 text-[9px]" onClick={() => setAllocationModes((current) => ({ ...current, [candidate.employee.id]: "SALES_SHARE" }))}><TrendingUp className="mr-1.5 h-3.5 w-3.5" />Por venta</Button></div><p className="px-2 pb-1 pt-1.5 text-center text-[8px] font-semibold uppercase tracking-[0.06em] text-[color:var(--text-muted)]">{selectedMode === "SALES_SHARE" ? "RECOMENDADO · PARTICIPACIÓN REAL" : `${(100 / candidate.branches.length).toFixed(0)}% PARA CADA SUCURSAL`}</p></div>
+              </article>;
+            })}</div>
+          </section>}
           <div className={`grid gap-4 ${module === "COMMISSION" ? "sm:grid-cols-2" : ""}`}>
             {module === "COMMISSION" && <div className="space-y-2">
               <Label htmlFor="run-mode">Base de comisión</Label>
@@ -362,28 +450,34 @@ function ConsolidatedDashboard({ config, lines, includeSocialCost, includeIsr }:
   const totalPayroll = payrollBase + socialCost + isrCost;
   const totalVariable = lines.reduce((sum, line) => sum + line.commission + line.bonuses, 0);
   const authorized = state.decisions.filter((decision) => decision.periodStart === config.periodStart && decision.status === "AUTHORIZED").length;
+  const costAllocations = lines.flatMap((line) => {
+    const allocationMode = payrollCostAllocationMode(state.payrollCostAllocationModes, line.employee.id, config.periodStart, config.periodEnd);
+    return employeeCostAllocationShares({ employee: line.employee, branches: state.branches, sales: state.sales, periodStart: config.periodStart, periodEnd: config.periodEnd, mode: allocationMode })
+      .map(({ branchId, share }) => ({ line, branchId, share, allocationMode }));
+  });
   const branchCosts = state.branches.map((branch) => {
-    const branchLines = lines.filter((line) => line.employee.branchId === branch.id);
-    const payroll = branchLines.reduce((sum, line) => sum + line.total, 0);
-    const social = includeSocialCost ? branchLines.reduce((sum, line) => sum + line.socialCost, 0) : 0;
-    const isr = includeIsr ? branchLines.reduce((sum, line) => sum + line.isrCost, 0) : 0;
-    const movements = branchLines.reduce((sum, line) => sum + line.externalAdditions - line.externalDeductions - line.fines - line.loanDeduction, 0);
-    return { ...branch, payroll, social, isr, movements, total: payroll + social + isr, employees: branchLines.length };
+    const branchAllocations = costAllocations.filter((allocation) => allocation.branchId === branch.id);
+    const payroll = branchAllocations.reduce((sum, { line, share }) => sum + line.total * share, 0);
+    const social = includeSocialCost ? branchAllocations.reduce((sum, { line, share }) => sum + line.socialCost * share, 0) : 0;
+    const isr = includeIsr ? branchAllocations.reduce((sum, { line, share }) => sum + line.isrCost * share, 0) : 0;
+    const movements = branchAllocations.reduce((sum, { line, share }) => sum + (line.externalAdditions - line.externalDeductions - line.fines - line.loanDeduction) * share, 0);
+    return { ...branch, payroll, social, isr, movements, total: payroll + social + isr, employees: new Set(branchAllocations.map(({ line }) => line.employee.id)).size };
   }).filter((branch) => branch.employees > 0);
   const positionCostMap = new Map<string, { branchId: string; branch: string; position: string; payrollType: string; employees: Set<string>; payroll: number; social: number; isr: number; total: number }>();
-  lines.forEach((line) => {
-    const branch = state.branches.find((item) => item.id === line.employee.branchId);
+  costAllocations.forEach(({ line, branchId, share }) => {
+    const branch = state.branches.find((item) => item.id === branchId);
     const branchName = branch?.name ?? "SIN SUCURSAL";
     const payrollType = payrollTypeForCategory(line.employee.category);
-    const key = `${line.employee.branchId}|${line.employee.position}|${payrollType}`;
-    const row = positionCostMap.get(key) ?? { branchId: line.employee.branchId, branch: branchName, position: line.employee.position, payrollType, employees: new Set<string>(), payroll: 0, social: 0, isr: 0, total: 0 };
-    const social = includeSocialCost ? line.socialCost : 0;
-    const isr = includeIsr ? line.isrCost : 0;
+    const key = `${branchId}|${line.employee.position}|${payrollType}`;
+    const row = positionCostMap.get(key) ?? { branchId, branch: branchName, position: line.employee.position, payrollType, employees: new Set<string>(), payroll: 0, social: 0, isr: 0, total: 0 };
+    const payroll = line.total * share;
+    const social = includeSocialCost ? line.socialCost * share : 0;
+    const isr = includeIsr ? line.isrCost * share : 0;
     row.employees.add(line.employee.id);
-    row.payroll += line.total;
+    row.payroll += payroll;
     row.social += social;
     row.isr += isr;
-    row.total += line.total + social + isr;
+    row.total += payroll + social + isr;
     positionCostMap.set(key, row);
   });
   const positionCosts = Array.from(positionCostMap.values()).sort((a, b) => a.branch.localeCompare(b.branch, "es-MX") || a.payrollType.localeCompare(b.payrollType, "es-MX") || a.position.localeCompare(b.position, "es-MX"));
@@ -397,9 +491,9 @@ function ConsolidatedDashboard({ config, lines, includeSocialCost, includeIsr }:
   const periodMovements = state.movements.filter((movement) => movement.status === "APPROVED" && movement.periodStart >= config.periodStart && movement.periodStart <= config.periodEnd);
   const periodViatics = state.viaticsEntries.filter((entry) => entry.status === "APPROVED" && entry.periodStart !== null && entry.periodStart >= config.periodStart && entry.periodStart <= config.periodEnd);
   const reconciliationIssues = [
-    ...lines.filter((line) => !state.branches.some((branch) => branch.id === line.employee.branchId)).map((line) => ({ id: `employee-${line.employee.id}`, source: "NÓMINA", concept: line.employee.name, detail: `Empleado sin punto de venta válido · ${line.employee.position}` })),
+    ...lines.filter((line) => employeeCostBranchIds(line.employee, state.branches).length === 0).map((line) => ({ id: `employee-${line.employee.id}`, source: "NÓMINA", concept: line.employee.name, detail: `Empleado sin centro de costo válido · ${line.employee.position}` })),
     ...periodAdjustments.filter((adjustment) => !state.branches.some((branch) => branch.id === adjustment.branchId)).map((adjustment) => ({ id: `adjustment-${adjustment.id}`, source: "MOVIMIENTOS DE NÓMINA", concept: adjustment.concept, detail: `${adjustment.payrollDate} · ${payrollModuleLabels[adjustment.payrollModule]} · sin sucursal válida` })),
-    ...periodMovements.filter((movement) => { const employee = state.employees.find((item) => item.id === movement.employeeId); return !employee || !state.branches.some((branch) => branch.id === employee.branchId); }).map((movement) => ({ id: `movement-${movement.id}`, source: "BONOS Y MULTAS", concept: movement.concept, detail: `${movement.createdAt} · empleado o sucursal sin asignar` })),
+    ...periodMovements.filter((movement) => { const employee = state.employees.find((item) => item.id === movement.employeeId); return !employee || employeeCostBranchIds(employee, state.branches).length === 0; }).map((movement) => ({ id: `movement-${movement.id}`, source: "BONOS Y MULTAS", concept: movement.concept, detail: `${movement.createdAt} · empleado o centro de costo sin asignar` })),
     ...periodViatics.filter((entry) => !state.branches.some((branch) => branch.id === entry.branchId)).map((entry) => ({ id: `viatic-${entry.id}`, source: "VIÁTICOS", concept: state.viaticsConcepts.find((concept) => concept.id === entry.conceptId)?.name ?? entry.id, detail: `${entry.requestedAt} · comprobante ${entry.receiptName} · sin sucursal válida` })),
   ];
   const reconciliationSuccessful = comparisonDelta < 0.01 && reconciliationIssues.length === 0;
@@ -496,7 +590,7 @@ function ConsolidatedDashboard({ config, lines, includeSocialCost, includeIsr }:
 }
 
 export function PayrollDemoPage({ view }: { view: PayrollView }) {
-  const { state, payrollLines, periodOptions, setCalculationMode } = usePayrollDemo();
+  const { state, payrollLines, periodOptions, setCalculationMode, setRunStatus } = usePayrollDemo();
   const config = state.periodConfigs.find((item) => item.module === view) ?? state.periodConfigs[0]!;
   const [periodDisplay, setPeriodDisplay] = useState<PeriodDisplay>(view === "CONSOLIDATED" ? "MONTHLY" : "FORTNIGHT");
   const [includeSocialCost, setIncludeSocialCost] = useState(true);
@@ -526,6 +620,12 @@ export function PayrollDemoPage({ view }: { view: PayrollView }) {
     if (view === "CONTRACTOR") return allLines.filter((line) => line.employee.category === "CONTRACTOR");
     return allLines;
   }, [allLines, view]);
+  const selectedRun = state.runs.find((run) => run.module === view && run.periodStart === selectedPeriod.start && run.periodEnd === selectedPeriod.end);
+  const payrollLocked = Boolean(selectedRun && selectedRun.status !== "DRAFT");
+  const allocatedBranchCount = new Set(lines.flatMap((line) => {
+    const allocationMode = payrollCostAllocationMode(state.payrollCostAllocationModes, line.employee.id, selectedPeriod.start, selectedPeriod.end);
+    return employeeCostAllocationShares({ employee: line.employee, branches: state.branches, sales: state.sales, periodStart: selectedPeriod.start, periodEnd: selectedPeriod.end, mode: allocationMode }).map((allocation) => allocation.branchId);
+  })).size;
 
   const titles = {
     CONSOLIDATED: ["Consolidado de nómina", "Visualiza, autoriza y prepara el pago de todos los esquemas en un solo lugar."],
@@ -545,7 +645,7 @@ export function PayrollDemoPage({ view }: { view: PayrollView }) {
         </div>
         {view !== "CONSOLIDATED" && <div className="flex flex-wrap gap-2">
           <Button asChild variant="outline"><Link href="/configuracion"><Settings2 className="mr-2 h-4 w-4" />Configuración</Link></Button>
-          <Button onClick={() => setRunDialog(true)}><Plus className="mr-2 h-4 w-4" />Nueva nómina</Button>
+          <Button onClick={() => setRunDialog(true)} disabled={payrollLocked}><Plus className="mr-2 h-4 w-4" />Nueva nómina</Button>
         </div>}
       </header>
 
@@ -581,8 +681,8 @@ export function PayrollDemoPage({ view }: { view: PayrollView }) {
               <div className="min-w-0 space-y-2 lg:w-[310px]"><Label htmlFor={`period-selector-${view}`}>Periodo a calcular</Label>{periodDisplay === "FORTNIGHT" ? <Select value={selectedFortnight} onValueChange={setSelectedFortnight}><SelectTrigger id={`period-selector-${view}`}><SelectValue /></SelectTrigger><SelectContent>{periodOptions.map((item) => <SelectItem key={item.start} value={item.start}>{fortnightLabel(item.start)}</SelectItem>)}</SelectContent></Select> : <Select value={selectedMonth} onValueChange={setSelectedMonth}><SelectTrigger id={`period-selector-${view}`}><SelectValue /></SelectTrigger><SelectContent>{monthOptions.map((month) => <SelectItem key={month} value={month}>{monthlyPeriod(month).label}</SelectItem>)}</SelectContent></Select>}</div>
             </div>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-              <div className="space-y-2"><Label>Cargas incluidas en el cálculo</Label><div className="flex flex-wrap gap-2"><CostToggle label="Costo social" checked={includeSocialCost} onCheckedChange={setIncludeSocialCost} /><CostToggle label="ISR" checked={includeIsr} onCheckedChange={setIncludeIsr} /></div></div>
-              {view === "COMMISSION" ? <div className="space-y-2"><Label>Base de comisión global</Label><div className="inline-flex w-full rounded-lg border border-[color:var(--border-color)] p-1 sm:w-auto" role="group" aria-label="Base de comisión"><Button type="button" size="sm" variant={mode === "WITH_VAT" ? "default" : "ghost"} aria-pressed={mode === "WITH_VAT"} onClick={() => { setCalculationMode("WITH_VAT"); toast.success("Cálculo con IVA aplicado a todos los módulos relacionados."); }}>Con IVA</Button><Button type="button" size="sm" variant={mode === "WITHOUT_VAT" ? "default" : "ghost"} aria-pressed={mode === "WITHOUT_VAT"} onClick={() => { setCalculationMode("WITHOUT_VAT"); toast.success("Cálculo sin IVA aplicado a todos los módulos relacionados."); }}>Sin IVA</Button></div></div> : (view === "CONTRACTOR" ? <div className="rounded-xl border border-[color:var(--border-color)] px-4 py-2.5 text-sm"><p className="text-[10px] uppercase tracking-wider text-[color:var(--text-muted)]">Base sincronizada</p><p className="font-semibold">{mode === "WITH_VAT" ? "CON IVA" : "SIN IVA"} · desde Comisiones</p></div> : null)}
+              <div className="space-y-2"><Label>Cargas incluidas en el cálculo</Label><div className="flex flex-wrap gap-2"><CostToggle label="Costo social" checked={includeSocialCost} disabled={payrollLocked} onCheckedChange={setIncludeSocialCost} /><CostToggle label="ISR" checked={includeIsr} disabled={payrollLocked} onCheckedChange={setIncludeIsr} /></div></div>
+              {view === "COMMISSION" ? <div className="space-y-2"><Label>Base de comisión global</Label><div className="inline-flex w-full rounded-lg border border-[color:var(--border-color)] p-1 sm:w-auto" role="group" aria-label="Base de comisión"><Button type="button" size="sm" variant={mode === "WITH_VAT" ? "default" : "ghost"} aria-pressed={mode === "WITH_VAT"} disabled={payrollLocked} onClick={() => { setCalculationMode("WITH_VAT"); toast.success("Cálculo con IVA aplicado a todos los módulos relacionados."); }}>Con IVA</Button><Button type="button" size="sm" variant={mode === "WITHOUT_VAT" ? "default" : "ghost"} aria-pressed={mode === "WITHOUT_VAT"} disabled={payrollLocked} onClick={() => { setCalculationMode("WITHOUT_VAT"); toast.success("Cálculo sin IVA aplicado a todos los módulos relacionados."); }}>Sin IVA</Button></div></div> : (view === "CONTRACTOR" ? <div className="rounded-xl border border-[color:var(--border-color)] px-4 py-2.5 text-sm"><p className="text-[10px] uppercase tracking-wider text-[color:var(--text-muted)]">Base sincronizada</p><p className="font-semibold">{mode === "WITH_VAT" ? "CON IVA" : "SIN IVA"} · desde Comisiones</p></div> : null)}
             </div>
           </CardContent>
         </Card>
@@ -591,9 +691,10 @@ export function PayrollDemoPage({ view }: { view: PayrollView }) {
         <>
           <div className="grid gap-4 sm:grid-cols-3">
             <Metric icon={UsersRound} label="EMPLEADOS" value={String(lines.length)} detail="Incluidos en esta nómina" />
-            <Metric icon={Building2} label="SUCURSALES" value={String(new Set(lines.map((line) => line.employee.branchId)).size)} detail="Centros de costo involucrados" />
+            <Metric icon={Building2} label="SUCURSALES" value={String(allocatedBranchCount)} detail="Centros de costo involucrados" />
             <Metric icon={Clock3} label="COSTO TOTAL" value={money.format(lines.reduce((sum, line) => sum + line.total + (includeSocialCost ? line.socialCost : 0) + (includeIsr ? line.isrCost : 0), 0))} detail={`Nómina${includeSocialCost ? " + costo social" : ""}${includeIsr ? " + ISR" : ""}`} />
           </div>
+          {selectedRun && <Card className={`border-[color:var(--border-color)] ${payrollLocked ? "bg-[linear-gradient(110deg,var(--bg-card),rgba(53,79,61,.12))]" : "bg-[linear-gradient(110deg,var(--bg-card),var(--accent-hover))]"}`}><CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between"><div className="flex items-start gap-3"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[color:var(--border-color)] bg-[color:var(--bg-card)]">{payrollLocked ? <LockKeyhole className="h-4 w-4 text-emerald-700 dark:text-emerald-300" /> : <FileCheck2 className="h-4 w-4 text-[color:var(--text-secondary)]" />}</span><div><div className="flex flex-wrap items-center gap-2"><p className="text-sm font-semibold">{payrollLocked ? "Nómina protegida contra modificaciones" : "Cierre de la corrida"}</p><StatusBadge status={selectedRun.status} /></div><p className="mt-0.5 text-xs text-[color:var(--text-muted)]">{payrollLocked ? "Importes, cargas y movimientos están bloqueados. Solo un código maestro autorizado puede reabrir esta corrida." : "Al cerrar, la corrida se bloquea y se habilita en Dispersión."}</p></div></div><div className="flex flex-wrap gap-2">{selectedRun.status === "DRAFT" ? <Button size="sm" onClick={() => { setRunStatus(selectedRun.id, "APPROVED"); toast.success("Nómina cerrada, protegida y disponible en Dispersión."); }}><CheckCircle2 className="mr-2 h-4 w-4" />Cerrar para pago</Button> : <><Button asChild size="sm"><Link href="/dispersion-nomina"><CircleDollarSign className="mr-2 h-4 w-4" />Ver dispersión</Link></Button><MasterReopenDialog runId={selectedRun.id} /></>}</div></CardContent></Card>}
           <PayrollTable lines={lines} view={view} periodStart={selectedPeriod.start} periodEnd={selectedPeriod.end} includeSocialCost={includeSocialCost} includeIsr={includeIsr} />
           <PayrollModuleAnalytics lines={lines} periodStart={selectedPeriod.start} periodEnd={selectedPeriod.end} title={titles[0] ?? "Nómina"} />
         </>

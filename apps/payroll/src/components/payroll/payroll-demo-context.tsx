@@ -31,6 +31,7 @@ export type PayrollAdjustmentStatus = "DRAFT" | "PENDING" | "APPROVED" | "CANCEL
 export type PayrollReportTarget = "PAYROLL" | "CONSOLIDATED" | "BRANCH_COST" | "RECEIPT" | "PERSONAL_PORTAL";
 export type ViaticsEffect = "ADD" | "DEDUCT";
 export type ViaticsStatus = "PENDING" | "APPROVED" | "REJECTED";
+export type PayrollCostAllocationMode = "EQUAL" | "SALES_SHARE";
 
 export interface DemoBranch {
   id: string;
@@ -58,13 +59,18 @@ export interface DemoKioskMonthlySale {
 export interface DemoEmployee {
   id: string;
   name: string;
+  firstName?: string;
+  paternalSurname?: string;
+  maternalSurname?: string;
   position: string;
   category: EmployeeCategory;
   branchId: string;
+  costBranchIds: string[];
   monthlySalary: number;
   schemeId: string | null;
   bank: string;
   account: string;
+  clabe?: string;
   roleId: string;
   active: boolean;
   hireDate: string;
@@ -281,6 +287,7 @@ export interface DemoState {
   viaticsEntries: DemoViaticsEntry[];
   calculationMode: DemoPayrollRun["mode"];
   commissionModeOverrides: Record<string, DemoPayrollRun["mode"]>;
+  payrollCostAllocationModes: Record<string, PayrollCostAllocationMode>;
   activeEmployeeId: string;
 }
 
@@ -429,15 +436,15 @@ function createInitialState(): DemoState {
     { id: "branch-interlomas", name: "INTERLOMAS", city: "ESTADO DE MÉXICO" },
   ];
   const employees: DemoEmployee[] = [
-    { id: "emp-ana", name: "ANA SOFÍA MARTÍNEZ", position: "VENDEDORA SENIOR", category: "SELLER", branchId: "branch-polanco", monthlySalary: 0, schemeId: "scheme-elite", bank: "BBVA", account: "•••• 2841", roleId: "role-employee", active: true, hireDate: "2025-01-06", terminationDate: null, socialCostRate: 0.18, isrCostRate: 0.1, ivaRate: 0, isrRetentionRate: 0, ivaRetentionRate: 0, viaticsEnabled: true, allowedViaticsConceptIds: ["viatic-food", "viatic-transport", "viatic-fuel"] },
-    { id: "emp-daniela", name: "DANIELA RUIZ", position: "VENDEDORA", category: "SELLER", branchId: "branch-satelite", monthlySalary: 0, schemeId: "scheme-growth", bank: "SANTANDER", account: "•••• 9130", roleId: "role-employee", active: true, hireDate: "2025-03-17", terminationDate: null, socialCostRate: 0.18, isrCostRate: 0.1, ivaRate: 0, isrRetentionRate: 0, ivaRetentionRate: 0, viaticsEnabled: true, allowedViaticsConceptIds: ["viatic-food", "viatic-transport"] },
-    { id: "emp-carla", name: "CARLA MENDOZA", position: "FACIALISTA", category: "SPECIALIST", branchId: "branch-polanco", monthlySalary: 18000, schemeId: null, bank: "BANORTE", account: "•••• 4472", roleId: "role-employee", active: true, hireDate: "2024-11-04", terminationDate: null, socialCostRate: 0.22, isrCostRate: 0.12, ivaRate: 0, isrRetentionRate: 0, ivaRetentionRate: 0 },
-    { id: "emp-valeria", name: "VALERIA ORTIZ", position: "ESPECIALISTA CORPORAL", category: "SPECIALIST", branchId: "branch-interlomas", monthlySalary: 19500, schemeId: null, bank: "BBVA", account: "•••• 5068", roleId: "role-employee", active: true, hireDate: "2025-02-01", terminationDate: null, socialCostRate: 0.22, isrCostRate: 0.12, ivaRate: 0, isrRetentionRate: 0, ivaRetentionRate: 0 },
-    { id: "emp-monica", name: "MÓNICA SERRANO", position: "GERENTE DE SUCURSAL", category: "MANAGEMENT", branchId: "branch-polanco", monthlySalary: 28000, schemeId: null, bank: "HSBC", account: "•••• 1085", roleId: "role-admin", active: true, hireDate: "2024-08-19", terminationDate: null, socialCostRate: 0.25, isrCostRate: 0.16, ivaRate: 0, isrRetentionRate: 0, ivaRetentionRate: 0, secondaryAccessKey: "2580", secondaryAccessKeyUpdatedAt: "2026-09-03T09:00:00.000Z", secondaryAccessKeyUpdatedBy: "MÓNICA SERRANO" },
-    { id: "emp-ricardo", name: "RICARDO LUNA", position: "GERENTE REGIONAL · VENDEDOR", category: "MANAGEMENT", branchId: "branch-satelite", monthlySalary: 36000, schemeId: "scheme-growth", bank: "BBVA", account: "•••• 7760", roleId: "role-manager", active: true, hireDate: "2024-06-03", terminationDate: null, socialCostRate: 0.25, isrCostRate: 0.18, ivaRate: 0, isrRetentionRate: 0, ivaRetentionRate: 0 },
-    { id: "emp-paola", name: "PAOLA VEGA", position: "CALL CENTER", category: "CALL_CENTER", branchId: "branch-satelite", monthlySalary: 14500, schemeId: null, bank: "BANAMEX", account: "•••• 6219", roleId: "role-employee", active: true, hireDate: "2025-07-01", terminationDate: null, socialCostRate: 0.2, isrCostRate: 0.1, ivaRate: 0, isrRetentionRate: 0, ivaRetentionRate: 0 },
-    { id: "emp-jorge", name: "JORGE SALAS", position: "CALL CENTER", category: "CALL_CENTER", branchId: "branch-interlomas", monthlySalary: 15000, schemeId: null, bank: "BANORTE", account: "•••• 3304", roleId: "role-employee", active: true, hireDate: "2025-09-16", terminationDate: null, socialCostRate: 0.2, isrCostRate: 0.1, ivaRate: 0, isrRetentionRate: 0, ivaRetentionRate: 0 },
-    { id: "emp-lucia", name: "LUCÍA FERNÁNDEZ", position: "VENDEDORA POR HONORARIOS", category: "CONTRACTOR", branchId: "branch-polanco", monthlySalary: 0, schemeId: "scheme-growth", bank: "BBVA", account: "•••• 8892", roleId: "role-employee", active: true, hireDate: "2025-04-16", terminationDate: null, socialCostRate: 0, isrCostRate: 0, ivaRate: 0.16, isrRetentionRate: 0.1, ivaRetentionRate: 0.106667 },
+    { id: "emp-ana", name: "ANA SOFÍA MARTÍNEZ", firstName: "ANA SOFÍA", paternalSurname: "MARTÍNEZ", maternalSurname: "CASTILLO", position: "VENDEDORA SENIOR", category: "SELLER", branchId: "branch-polanco", costBranchIds: ["branch-polanco"], monthlySalary: 0, schemeId: "scheme-elite", bank: "BBVA", account: "•••• 2841", clabe: "000000000000002841", roleId: "role-employee", active: true, hireDate: "2025-01-06", terminationDate: null, socialCostRate: 0.18, isrCostRate: 0.1, ivaRate: 0, isrRetentionRate: 0, ivaRetentionRate: 0, viaticsEnabled: true, allowedViaticsConceptIds: ["viatic-food", "viatic-transport", "viatic-fuel"] },
+    { id: "emp-daniela", name: "DANIELA RUIZ", firstName: "DANIELA", paternalSurname: "RUIZ", maternalSurname: "MORALES", position: "VENDEDORA", category: "SELLER", branchId: "branch-satelite", costBranchIds: ["branch-satelite"], monthlySalary: 0, schemeId: "scheme-growth", bank: "SANTANDER", account: "•••• 9130", clabe: "000000000000009130", roleId: "role-employee", active: true, hireDate: "2025-03-17", terminationDate: null, socialCostRate: 0.18, isrCostRate: 0.1, ivaRate: 0, isrRetentionRate: 0, ivaRetentionRate: 0, viaticsEnabled: true, allowedViaticsConceptIds: ["viatic-food", "viatic-transport"] },
+    { id: "emp-carla", name: "CARLA MENDOZA", firstName: "CARLA", paternalSurname: "MENDOZA", maternalSurname: "ROJAS", position: "FACIALISTA", category: "SPECIALIST", branchId: "branch-polanco", costBranchIds: ["branch-polanco"], monthlySalary: 18000, schemeId: null, bank: "BANORTE", account: "•••• 4472", clabe: "000000000000004472", roleId: "role-employee", active: true, hireDate: "2024-11-04", terminationDate: null, socialCostRate: 0.22, isrCostRate: 0.12, ivaRate: 0, isrRetentionRate: 0, ivaRetentionRate: 0 },
+    { id: "emp-valeria", name: "VALERIA ORTIZ", firstName: "VALERIA", paternalSurname: "ORTIZ", maternalSurname: "NAVARRO", position: "ESPECIALISTA CORPORAL", category: "SPECIALIST", branchId: "branch-interlomas", costBranchIds: ["branch-interlomas"], monthlySalary: 19500, schemeId: null, bank: "BBVA", account: "•••• 5068", clabe: "000000000000005068", roleId: "role-employee", active: true, hireDate: "2025-02-01", terminationDate: null, socialCostRate: 0.22, isrCostRate: 0.12, ivaRate: 0, isrRetentionRate: 0, ivaRetentionRate: 0 },
+    { id: "emp-monica", name: "MÓNICA SERRANO", firstName: "MÓNICA", paternalSurname: "SERRANO", maternalSurname: "DÍAZ", position: "GERENTE DE SUCURSAL", category: "MANAGEMENT", branchId: "branch-polanco", costBranchIds: ["branch-polanco", "branch-satelite", "branch-interlomas"], monthlySalary: 28000, schemeId: null, bank: "HSBC", account: "•••• 1085", clabe: "000000000000001085", roleId: "role-admin", active: true, hireDate: "2024-08-19", terminationDate: null, socialCostRate: 0.25, isrCostRate: 0.16, ivaRate: 0, isrRetentionRate: 0, ivaRetentionRate: 0, secondaryAccessKey: "2580", secondaryAccessKeyUpdatedAt: "2026-09-03T09:00:00.000Z", secondaryAccessKeyUpdatedBy: "MÓNICA SERRANO" },
+    { id: "emp-ricardo", name: "RICARDO LUNA", firstName: "RICARDO", paternalSurname: "LUNA", maternalSurname: "CASTRO", position: "GERENTE REGIONAL · VENDEDOR", category: "MANAGEMENT", branchId: "branch-satelite", costBranchIds: ["branch-satelite", "branch-interlomas"], monthlySalary: 36000, schemeId: "scheme-growth", bank: "BBVA", account: "•••• 7760", clabe: "000000000000007760", roleId: "role-manager", active: true, hireDate: "2024-06-03", terminationDate: null, socialCostRate: 0.25, isrCostRate: 0.18, ivaRate: 0, isrRetentionRate: 0, ivaRetentionRate: 0 },
+    { id: "emp-paola", name: "PAOLA VEGA", firstName: "PAOLA", paternalSurname: "VEGA", maternalSurname: "SOLÍS", position: "CALL CENTER", category: "CALL_CENTER", branchId: "branch-satelite", costBranchIds: ["branch-satelite"], monthlySalary: 14500, schemeId: null, bank: "BANAMEX", account: "•••• 6219", clabe: "000000000000006219", roleId: "role-employee", active: true, hireDate: "2025-07-01", terminationDate: null, socialCostRate: 0.2, isrCostRate: 0.1, ivaRate: 0, isrRetentionRate: 0, ivaRetentionRate: 0 },
+    { id: "emp-jorge", name: "JORGE SALAS", firstName: "JORGE", paternalSurname: "SALAS", maternalSurname: "MÉNDEZ", position: "CALL CENTER", category: "CALL_CENTER", branchId: "branch-interlomas", costBranchIds: ["branch-interlomas"], monthlySalary: 15000, schemeId: null, bank: "BANORTE", account: "•••• 3304", clabe: "000000000000003304", roleId: "role-employee", active: true, hireDate: "2025-09-16", terminationDate: null, socialCostRate: 0.2, isrCostRate: 0.1, ivaRate: 0, isrRetentionRate: 0, ivaRetentionRate: 0 },
+    { id: "emp-lucia", name: "LUCÍA FERNÁNDEZ", firstName: "LUCÍA", paternalSurname: "FERNÁNDEZ", maternalSurname: "CORTÉS", position: "VENDEDORA POR HONORARIOS", category: "CONTRACTOR", branchId: "branch-polanco", costBranchIds: ["branch-polanco"], monthlySalary: 0, schemeId: "scheme-growth", bank: "BBVA", account: "•••• 8892", clabe: "000000000000008892", roleId: "role-employee", active: true, hireDate: "2025-04-16", terminationDate: null, socialCostRate: 0, isrCostRate: 0, ivaRate: 0.16, isrRetentionRate: 0.1, ivaRetentionRate: 0.106667 },
   ];
   const saleSeeds = [
     ["emp-ana", "branch-polanco", 48500],
@@ -449,7 +456,7 @@ function createInitialState(): DemoState {
     ["emp-lucia", "branch-polanco", 43200],
     ["emp-ricardo", "branch-satelite", 58600],
   ] as const;
-  const sales: DemoSale[] = saleSeeds.flatMap(([employeeId, branchId, total], index) =>
+  const currentSales: DemoSale[] = saleSeeds.flatMap(([employeeId, branchId, total], index) =>
     [0.42, 0.33, 0.25].map((share, dayIndex) => ({
       id: `sale-${index}-${dayIndex}`,
       employeeId,
@@ -458,6 +465,22 @@ function createInitialState(): DemoState {
       amount: Math.round(total * share),
     })),
   );
+  const historicalFactors = [0.78, 0.86, 0.92, 0.81, 1.04, 0.96, 1.11, 0.89, 1.07, 1.16, 0.98];
+  const historicalSales: DemoSale[] = Array.from({ length: 11 }, (_, offset) => {
+    const monthDate = new Date(new Date().getFullYear(), new Date().getMonth() - offset - 1, 1);
+    const month = `${monthDate.getFullYear()}-${String(monthDate.getMonth() + 1).padStart(2, "0")}`;
+    const factor = historicalFactors[offset] ?? 1;
+    return saleSeeds.flatMap(([employeeId, branchId, total], index) =>
+      [0.54, 0.46].map((share, halfIndex) => ({
+        id: `sale-history-${month}-${index}-${halfIndex}`,
+        employeeId,
+        branchId,
+        date: `${month}-${halfIndex === 0 ? String(5 + (index % 8)).padStart(2, "0") : String(18 + (index % 9)).padStart(2, "0")}`,
+        amount: Math.round(total * factor * share),
+      })),
+    );
+  }).flat();
+  const sales = [...currentSales, ...historicalSales];
 
   const kioskTargets: DemoKioskTarget[] = [
     { branchId: "branch-polanco", managerId: "emp-monica", monthlyTarget: 350000, commissionRate: 0.012, updatedAt: isoDate(new Date()) },
@@ -651,6 +674,7 @@ function createInitialState(): DemoState {
     kioskReceiptDecisions: [],
     calculationMode: "WITH_VAT",
     commissionModeOverrides: {},
+    payrollCostAllocationModes: {},
     activeEmployeeId: "emp-ana",
   };
 }
@@ -668,7 +692,7 @@ interface DemoPayrollContextValue {
   endSession: () => void;
   setActiveEmployee: (employeeId: string) => void;
   addEmployee: (employee: Omit<DemoEmployee, "id">) => void;
-  updateEmployeeProfile: (employeeId: string, input: Pick<DemoEmployee, "name" | "position" | "category" | "branchId" | "monthlySalary" | "roleId" | "socialCostRate" | "isrCostRate" | "ivaRate" | "isrRetentionRate" | "ivaRetentionRate">) => void;
+  updateEmployeeProfile: (employeeId: string, input: Pick<DemoEmployee, "name" | "position" | "category" | "branchId" | "costBranchIds" | "monthlySalary" | "roleId" | "socialCostRate" | "isrCostRate" | "ivaRate" | "isrRetentionRate" | "ivaRetentionRate">) => void;
   updateEmployeeEmployment: (employeeId: string, hireDate: string, terminationDate: string | null) => void;
   addScheme: (name: string, tiers: Omit<CommissionTier, "id">[], effectiveFrom?: string) => void;
   updateScheme: (schemeId: string, name: string, tiers: Omit<CommissionTier, "id">[], effectiveFrom?: string) => void;
@@ -689,6 +713,7 @@ interface DemoPayrollContextValue {
   setRunStatus: (runId: string, status: PayrollStatus) => void;
   setCalculationMode: (mode: DemoPayrollRun["mode"]) => void;
   setCommissionModeOverride: (employeeId: string, mode: DemoPayrollRun["mode"] | null) => void;
+  setPayrollCostAllocationModes: (periodStart: string, modes: Record<string, PayrollCostAllocationMode>) => void;
   updateKioskTarget: (branchId: string, monthlyTarget: number, commissionRate: number, managerId: string | null) => void;
   addBranchCommissionScheme: (scheme: Omit<DemoBranchCommissionScheme, "id" | "createdAt" | "updatedAt" | "tiers" | "managerHistory"> & { tiers: Omit<CommissionTier, "id">[] }) => void;
   updateBranchCommissionScheme: (schemeId: string, scheme: Omit<DemoBranchCommissionScheme, "id" | "createdAt" | "updatedAt" | "tiers" | "managerHistory"> & { tiers: Omit<CommissionTier, "id">[] }) => void;
@@ -706,6 +731,7 @@ interface DemoPayrollContextValue {
   addRole: (name: string) => void;
   togglePermission: (roleId: string, permission: string) => void;
   assignRole: (employeeId: string, roleId: string) => void;
+  setEmployeeCostBranches: (employeeId: string, branchIds: string[]) => void;
   setEmployeeSecondaryAccessKey: (employeeId: string, key: string, updatedBy: string) => void;
   setDecision: (employeeId: string, periodStart: string, status: DemoEmployeeDecision["status"], note: string) => void;
   setKioskReceiptDecision: (managerId: string, month: string, status: DemoKioskReceiptDecision["status"], note: string) => void;
@@ -893,6 +919,7 @@ export function PayrollDemoProvider({ children }: { children: React.ReactNode })
           name: employee.name.toLocaleUpperCase("es-MX"),
           position: employee.position.toLocaleUpperCase("es-MX"),
           bank: employee.bank.toLocaleUpperCase("es-MX"),
+          costBranchIds: employee.costBranchIds.filter((branchId) => current.branches.some((branch) => branch.id === branchId)),
         },
       ],
     })),
@@ -971,23 +998,33 @@ export function PayrollDemoProvider({ children }: { children: React.ReactNode })
       ...current,
       movements: current.movements.map((movement) => movement.id === movementId ? { ...movement, status } : movement),
     })),
-    addPayrollAdjustment: (adjustment) => update((current) => ({
-      ...current,
-      adjustments: [...current.adjustments, { ...adjustment, id: id("adjustment"), createdAt: isoDate(new Date()) }],
-    })),
-    updatePayrollAdjustment: (adjustmentId, patch) => update((current) => ({
-      ...current,
-      adjustments: current.adjustments.map((adjustment) => adjustment.id === adjustmentId ? {
-        ...adjustment,
-        ...patch,
-        status: "DRAFT",
-      } : adjustment),
-    })),
-    setPayrollAdjustmentStatus: (adjustmentId, status) => update((current) => ({
-      ...current,
-      adjustments: current.adjustments.map((adjustment) => adjustment.id === adjustmentId ? { ...adjustment, status } : adjustment),
-    })),
+    addPayrollAdjustment: (adjustment) => update((current) => {
+      const run = current.runs.find((item) => item.id === adjustment.payrollRunId);
+      if (run && run.status !== "DRAFT") return current;
+      return { ...current, adjustments: [...current.adjustments, { ...adjustment, id: id("adjustment"), createdAt: isoDate(new Date()) }] };
+    }),
+    updatePayrollAdjustment: (adjustmentId, patch) => update((current) => {
+      const adjustment = current.adjustments.find((item) => item.id === adjustmentId);
+      const run = adjustment ? current.runs.find((item) => item.id === adjustment.payrollRunId) : undefined;
+      if (run && run.status !== "DRAFT") return current;
+      return {
+        ...current,
+        adjustments: current.adjustments.map((item) => item.id === adjustmentId ? {
+          ...item,
+          ...patch,
+          status: "DRAFT",
+        } : item),
+      };
+    }),
+    setPayrollAdjustmentStatus: (adjustmentId, status) => update((current) => {
+      const adjustment = current.adjustments.find((item) => item.id === adjustmentId);
+      const run = adjustment ? current.runs.find((item) => item.id === adjustment.payrollRunId) : undefined;
+      if (run && run.status !== "DRAFT") return current;
+      return { ...current, adjustments: current.adjustments.map((item) => item.id === adjustmentId ? { ...item, status } : item) };
+    }),
     addLoan: (loan) => update((current) => {
+      const run = current.runs.find((item) => item.id === loan.payrollRunId);
+      if (run && run.status !== "DRAFT") return current;
       const requester = loan.notes.startsWith("SOLICITUD DESDE MI PERFIL")
         ? current.employees.find((employee) => employee.id === loan.employeeId)?.name ?? "PORTAL PERSONAL"
         : "ADMINISTRACIÓN";
@@ -1006,25 +1043,34 @@ export function PayrollDemoProvider({ children }: { children: React.ReactNode })
         }],
       };
     }),
-    updateLoan: (loanId, patch) => update((current) => ({
-      ...current,
-      loans: current.loans.map((loan) => loan.id === loanId ? {
+    updateLoan: (loanId, patch) => update((current) => {
+      const selected = current.loans.find((loan) => loan.id === loanId);
+      const run = selected ? current.runs.find((item) => item.id === selected.payrollRunId) : undefined;
+      if (run && run.status !== "DRAFT") return current;
+      return { ...current, loans: current.loans.map((loan) => loan.id === loanId ? {
         ...loan,
         ...patch,
         history: [...loan.history, { id: id("history"), date: isoDate(new Date()), action: "SOLICITUD EDITADA", by: "ADMINISTRACIÓN" }],
-      } : loan),
-    })),
-    deleteLoan: (loanId) => update((current) => ({ ...current, loans: current.loans.filter((loan) => loan.id !== loanId) })),
-    setLoanStatus: (loanId, status) => update((current) => ({
-      ...current,
-      loans: current.loans.map((loan) => loan.id === loanId ? {
+      } : loan) };
+    }),
+    deleteLoan: (loanId) => update((current) => {
+      const selected = current.loans.find((loan) => loan.id === loanId);
+      const run = selected ? current.runs.find((item) => item.id === selected.payrollRunId) : undefined;
+      return run && run.status !== "DRAFT" ? current : { ...current, loans: current.loans.filter((loan) => loan.id !== loanId) };
+    }),
+    setLoanStatus: (loanId, status) => update((current) => {
+      const selected = current.loans.find((loan) => loan.id === loanId);
+      const run = selected ? current.runs.find((item) => item.id === selected.payrollRunId) : undefined;
+      if (run && run.status !== "DRAFT") return current;
+      return { ...current, loans: current.loans.map((loan) => loan.id === loanId ? {
         ...loan,
         status,
         history: [...loan.history, { id: id("history"), date: isoDate(new Date()), action: status === "APPROVED" ? "PRÉSTAMO AUTORIZADO" : status === "REJECTED" ? "SOLICITUD RECHAZADA" : "SOLICITUD REABIERTA", by: "ADMINISTRACIÓN" }],
-      } : loan),
-    })),
+      } : loan) };
+    }),
     createRun: (module, periodStart, periodEnd, mode, payDate) => update((current) => {
       const existing = current.runs.find((run) => run.module === module && run.periodStart === periodStart);
+      if (existing && existing.status !== "DRAFT") return current;
       if (existing) return {
         ...current,
         runs: current.runs.map((run) => run.id === existing.id ? { ...run, periodEnd, mode, payDate } : run),
@@ -1043,7 +1089,7 @@ export function PayrollDemoProvider({ children }: { children: React.ReactNode })
       calculationMode: mode,
       runs: current.runs.map((run) => {
         const activeConfig = current.periodConfigs.find((config) => config.module === run.module);
-        return activeConfig && run.periodStart === activeConfig.periodStart && run.periodEnd === activeConfig.periodEnd
+        return run.status === "DRAFT" && activeConfig && run.periodStart === activeConfig.periodStart && run.periodEnd === activeConfig.periodEnd
           ? { ...run, mode }
           : run;
       }),
@@ -1053,6 +1099,15 @@ export function PayrollDemoProvider({ children }: { children: React.ReactNode })
       if (mode) commissionModeOverrides[employeeId] = mode;
       else delete commissionModeOverrides[employeeId];
       return { ...current, commissionModeOverrides };
+    }),
+    setPayrollCostAllocationModes: (periodStart, modes) => update((current) => {
+      const locked = current.runs.some((run) => run.module === "COMMISSION" && run.periodStart === periodStart && run.status !== "DRAFT");
+      if (locked) return current;
+      return { ...current, payrollCostAllocationModes: Object.entries(modes).reduce((next, [employeeId, allocationMode]) => ({
+        ...next,
+        [`${periodStart}:${employeeId}`]: allocationMode,
+      }), { ...current.payrollCostAllocationModes }),
+      };
     }),
     updateKioskTarget: (branchId, monthlyTarget, commissionRate, managerId) => update((current) => ({
       ...current,
@@ -1154,13 +1209,22 @@ export function PayrollDemoProvider({ children }: { children: React.ReactNode })
       ...current,
       viaticsEntries: [...current.viaticsEntries, { ...entry, id: id("viatics"), status: "PENDING", payrollRunId: null, payrollModule: null, periodStart: null, createdAt: isoDate(new Date()) }],
     })),
-    updateViaticsEntry: (entryId, patch) => update((current) => ({
-      ...current,
-      viaticsEntries: current.viaticsEntries.map((entry) => entry.id === entryId ? { ...entry, ...patch, status: "PENDING", payrollRunId: null, payrollModule: null, periodStart: null } : entry),
-    })),
-    deleteViaticsEntry: (entryId) => update((current) => ({ ...current, viaticsEntries: current.viaticsEntries.filter((entry) => entry.id !== entryId) })),
+    updateViaticsEntry: (entryId, patch) => update((current) => {
+      const selected = current.viaticsEntries.find((entry) => entry.id === entryId);
+      const run = selected?.payrollRunId ? current.runs.find((item) => item.id === selected.payrollRunId) : undefined;
+      if (run && run.status !== "DRAFT") return current;
+      return { ...current, viaticsEntries: current.viaticsEntries.map((entry) => entry.id === entryId ? { ...entry, ...patch, status: "PENDING", payrollRunId: null, payrollModule: null, periodStart: null } : entry) };
+    }),
+    deleteViaticsEntry: (entryId) => update((current) => {
+      const selected = current.viaticsEntries.find((entry) => entry.id === entryId);
+      const run = selected?.payrollRunId ? current.runs.find((item) => item.id === selected.payrollRunId) : undefined;
+      return run && run.status !== "DRAFT" ? current : { ...current, viaticsEntries: current.viaticsEntries.filter((entry) => entry.id !== entryId) };
+    }),
     setViaticsEntryStatus: (entryId, status, payrollRunId) => update((current) => {
       const run = payrollRunId ? current.runs.find((item) => item.id === payrollRunId) : undefined;
+      const selected = current.viaticsEntries.find((entry) => entry.id === entryId);
+      const currentRun = selected?.payrollRunId ? current.runs.find((item) => item.id === selected.payrollRunId) : undefined;
+      if ((run && run.status !== "DRAFT") || (currentRun && currentRun.status !== "DRAFT")) return current;
       return {
         ...current,
         viaticsEntries: current.viaticsEntries.map((entry) => entry.id === entryId ? {
@@ -1191,6 +1255,14 @@ export function PayrollDemoProvider({ children }: { children: React.ReactNode })
       ...current,
       employees: current.employees.map((employee) => employee.id === employeeId ? { ...employee, roleId } : employee),
     })),
+    setEmployeeCostBranches: (employeeId, branchIds) => update((current) => {
+      const validBranchIds = Array.from(new Set(branchIds)).filter((branchId) => current.branches.some((branch) => branch.id === branchId));
+      if (validBranchIds.length === 0) return current;
+      return {
+        ...current,
+        employees: current.employees.map((employee) => employee.id === employeeId ? { ...employee, costBranchIds: validBranchIds } : employee),
+      };
+    }),
     setEmployeeSecondaryAccessKey: (employeeId, key, updatedBy) => update((current) => ({
       ...current,
       employees: current.employees.map((employee) => employee.id === employeeId ? {

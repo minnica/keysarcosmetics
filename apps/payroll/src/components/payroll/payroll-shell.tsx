@@ -13,6 +13,7 @@ import {
   CircleDollarSign,
   FileText,
   HandCoins,
+  Landmark,
   Layers3,
   LayoutDashboard,
   LogOut,
@@ -52,6 +53,7 @@ const sections: NavSection[] = [
       { href: "/nomina-comisiones", label: "Comisiones", icon: CircleDollarSign },
       { href: "/nomina-comision-kiosco", label: "Comisión de kiosco", icon: Store },
       { href: "/nomina-honorarios", label: "Honorarios", icon: ReceiptText },
+      { href: "/dispersion-nomina", label: "Dispersión de nómina", icon: Landmark },
     ],
   },
   {

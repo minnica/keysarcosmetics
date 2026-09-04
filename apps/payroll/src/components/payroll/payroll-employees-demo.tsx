@@ -45,6 +45,7 @@ import {
   type EmployeeCategory,
   usePayrollDemo,
 } from "./payroll-demo-context";
+import { CostBranchSelector, employeeCostBranchIds } from "./payroll-cost-branch-selector";
 
 const categoryLabels: Record<EmployeeCategory, string> = {
   SELLER: "Ventas / comisión",
@@ -83,6 +84,7 @@ function EmployeeDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (
   const [position, setPosition] = useState("");
   const [category, setCategory] = useState<EmployeeCategory>("SELLER");
   const [branchId, setBranchId] = useState(state.branches[0]?.id ?? "");
+  const [costBranchIds, setCostBranchIds] = useState<string[]>([state.branches[0]?.id ?? ""].filter(Boolean));
   const [roleId, setRoleId] = useState("role-employee");
   const [monthlySalary, setMonthlySalary] = useState("0");
   const [bank, setBank] = useState("");
@@ -95,6 +97,7 @@ function EmployeeDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (
     setPosition("");
     setCategory("SELLER");
     setBranchId(state.branches[0]?.id ?? "");
+    setCostBranchIds([state.branches[0]?.id ?? ""].filter(Boolean));
     setRoleId("role-employee");
     setMonthlySalary("0");
     setBank("");
@@ -108,7 +111,7 @@ function EmployeeDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (
     setAttempted(true);
     const salary = Number(monthlySalary);
     const lastFour = account.replace(/\D/g, "").slice(-4);
-    if (!name.trim() || !position.trim() || !branchId || !roleId || !hireDate || !bank.trim() || lastFour.length !== 4 || !Number.isFinite(salary) || salary < 0) {
+    if (!name.trim() || !position.trim() || !branchId || !costBranchIds.length || !roleId || !hireDate || !bank.trim() || lastFour.length !== 4 || !Number.isFinite(salary) || salary < 0) {
       toast.error("Completa los datos requeridos y captura cuatro dígitos de cuenta.");
       return;
     }
@@ -118,6 +121,7 @@ function EmployeeDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (
       position: position.trim(),
       category,
       branchId,
+      costBranchIds,
       monthlySalary: salary,
       schemeId: null,
       bank: bank.trim(),
@@ -162,7 +166,7 @@ function EmployeeDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (
             </div>
             <div className="space-y-2">
               <Label htmlFor="employee-branch">Sucursal</Label>
-              <Select value={branchId} onValueChange={setBranchId}>
+              <Select value={branchId} onValueChange={(nextBranchId) => { setBranchId(nextBranchId); if (costBranchIds.length <= 1) setCostBranchIds([nextBranchId]); }}>
                 <SelectTrigger id="employee-branch"><SelectValue /></SelectTrigger>
                 <SelectContent>{state.branches.map((branch) => <SelectItem key={branch.id} value={branch.id}>{branch.name}</SelectItem>)}</SelectContent>
               </Select>
@@ -173,6 +177,11 @@ function EmployeeDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (
                 <SelectTrigger id="employee-role"><SelectValue /></SelectTrigger>
                 <SelectContent>{state.roles.map((role) => <SelectItem key={role.id} value={role.id}>{role.name}</SelectItem>)}</SelectContent>
               </Select>
+            </div>
+            <div className="space-y-2 sm:col-span-2">
+              <Label>Distribución del costo</Label>
+              <CostBranchSelector branches={state.branches} selectedIds={costBranchIds} onChange={setCostBranchIds} />
+              <p className="text-[10px] leading-4 text-[color:var(--text-muted)]">Elige una, varias o todas. El sueldo base, costo social e ISR se reparten por igual entre los puntos seleccionados.</p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="employee-salary">Sueldo mensual</Label>
@@ -246,6 +255,7 @@ function EmployeeProfileDialog({ employee, onOpenChange }: { employee: DemoEmplo
   const [position, setPosition] = useState(employee?.position ?? "");
   const [category, setCategory] = useState<EmployeeCategory>(employee?.category ?? "SELLER");
   const [branchId, setBranchId] = useState(employee?.branchId ?? state.branches[0]?.id ?? "");
+  const [costBranchIds, setCostBranchIds] = useState<string[]>(employee ? employeeCostBranchIds(employee, state.branches) : [state.branches[0]?.id ?? ""].filter(Boolean));
   const [roleId, setRoleId] = useState(employee?.roleId ?? "role-employee");
   const [monthlySalary, setMonthlySalary] = useState(String(employee?.monthlySalary ?? 0));
 
@@ -259,7 +269,7 @@ function EmployeeProfileDialog({ employee, onOpenChange }: { employee: DemoEmplo
 
   function save() {
     const salary = Number(monthlySalary);
-    if (!name.trim() || !position.trim() || !branchId || !roleId || !Number.isFinite(salary) || salary < 0) {
+    if (!name.trim() || !position.trim() || !branchId || !costBranchIds.length || !roleId || !Number.isFinite(salary) || salary < 0) {
       toast.error("Completa el perfil y captura un sueldo válido.");
       return;
     }
@@ -268,6 +278,7 @@ function EmployeeProfileDialog({ employee, onOpenChange }: { employee: DemoEmplo
       position: position.trim(),
       category,
       branchId,
+      costBranchIds,
       roleId,
       monthlySalary: salary,
       ...categoryDefaults[category],
@@ -284,9 +295,10 @@ function EmployeeProfileDialog({ employee, onOpenChange }: { employee: DemoEmplo
           <div className="space-y-2 sm:col-span-2"><Label htmlFor="profile-name">Nombre</Label><Input id="profile-name" value={name} onChange={(event) => setName(event.target.value)} /></div>
           <div className="space-y-2"><Label htmlFor="profile-position">Puesto</Label><Input id="profile-position" value={position} onChange={(event) => setPosition(event.target.value)} /></div>
           <div className="space-y-2"><Label htmlFor="profile-category">Área de nómina</Label><Select value={category} onValueChange={(value) => changeCategory(value as EmployeeCategory)}><SelectTrigger id="profile-category"><SelectValue /></SelectTrigger><SelectContent>{Object.entries(categoryLabels).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select></div>
-          <div className="space-y-2"><Label htmlFor="profile-branch">Sucursal</Label><Select value={branchId} onValueChange={setBranchId}><SelectTrigger id="profile-branch"><SelectValue /></SelectTrigger><SelectContent>{state.branches.map((branch) => <SelectItem key={branch.id} value={branch.id}>{branch.name}</SelectItem>)}</SelectContent></Select></div>
+          <div className="space-y-2"><Label htmlFor="profile-branch">Sucursal principal</Label><Select value={branchId} onValueChange={(nextBranchId) => { setBranchId(nextBranchId); if (costBranchIds.length <= 1) setCostBranchIds([nextBranchId]); }}><SelectTrigger id="profile-branch"><SelectValue /></SelectTrigger><SelectContent>{state.branches.map((branch) => <SelectItem key={branch.id} value={branch.id}>{branch.name}</SelectItem>)}</SelectContent></Select></div>
           <div className="space-y-2"><Label htmlFor="profile-role">Rol de acceso</Label><Select value={roleId} onValueChange={setRoleId}><SelectTrigger id="profile-role"><SelectValue /></SelectTrigger><SelectContent>{state.roles.map((role) => <SelectItem key={role.id} value={role.id}>{role.name}</SelectItem>)}</SelectContent></Select></div>
           <div className="space-y-2 sm:col-span-2"><Label htmlFor="profile-salary">Sueldo mensual</Label><Input id="profile-salary" type="number" min="0" step="100" value={monthlySalary} onChange={(event) => setMonthlySalary(event.target.value)} /></div>
+          <div className="space-y-2 sm:col-span-2"><Label>Distribución del costo</Label><CostBranchSelector branches={state.branches} selectedIds={costBranchIds} onChange={setCostBranchIds} /><p className="text-[10px] leading-4 text-[color:var(--text-muted)]">Una sucursal absorbe 100%; varias comparten sueldo, costo social e ISR en partes iguales.</p></div>
           <div className="flex gap-3 rounded-xl border border-[#c3a583]/35 bg-[#c3a583]/10 p-3 sm:col-span-2"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-[#987049]" /><div><p className="text-xs font-semibold">Permisos sincronizados</p><p className="mt-1 text-[10px] leading-4 text-[color:var(--text-muted)]">Si una gerencia pasa a Ventas, deja de ver recibos gerenciales y adopta el rol seleccionado. Su historial como gerente permanece en los esquemas de sucursal.</p></div></div>
         </div>
         <DialogFooter><Button size="sm" variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button><Button size="sm" onClick={save}><UserCog className="mr-1.5 h-3.5 w-3.5" />Guardar perfil</Button></DialogFooter>
@@ -342,11 +354,13 @@ export function PayrollEmployeesDemo() {
           <div className="divide-y divide-[color:var(--border-color)]">
             {filteredEmployees.map((employee) => {
               const branch = state.branches.find((item) => item.id === employee.branchId);
+              const costBranches = employeeCostBranchIds(employee, state.branches);
+              const costBranchLabel = costBranches.length === state.branches.length ? `TODAS · ${costBranches.length}` : costBranches.length === 1 ? state.branches.find((item) => item.id === costBranches[0])?.name ?? "SIN COSTO" : `${costBranches.length} SUCURSALES`;
               const role = state.roles.find((item) => item.id === employee.roleId);
               const today = localDate();
               const status = employee.terminationDate && employee.terminationDate < today ? "BAJA" : employee.terminationDate ? "BAJA PROGRAMADA" : employee.hireDate > today ? "ALTA PROGRAMADA" : "ACTIVO";
               return <div key={employee.id} className="grid grid-cols-2 gap-x-3 gap-y-2 px-4 py-2 transition-colors hover:bg-[color:var(--accent-hover)]/20 md:grid-cols-[minmax(180px,1.4fr)_minmax(130px,1fr)_minmax(135px,1fr)_minmax(145px,1fr)_72px] md:items-center">
-                <div className="col-span-2 flex min-w-0 items-center gap-2.5 md:col-span-1"><span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-[#c3a583]/45 bg-[#342b23] text-[9px] font-bold text-[#f0d9b8]">{initials(employee.name)}</span><div className="min-w-0 flex-1"><div className="flex items-center justify-between gap-2"><p className="truncate text-[11px] font-semibold">{employee.name}</p><Badge variant="outline" className={`shrink-0 px-1.5 py-0 text-[8px] md:hidden ${employee.active ? "border-emerald-300 text-emerald-700 dark:text-emerald-300" : "border-stone-300 text-stone-500"}`}>{employee.active ? "ACTIVO" : "INACTIVO"}</Badge></div><p className="truncate text-[9px] uppercase tracking-[0.05em] text-[color:var(--text-muted)]">{employee.position} · {branch?.name ?? "SIN SUCURSAL"}</p></div></div>
+                <div className="col-span-2 flex min-w-0 items-center gap-2.5 md:col-span-1"><span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-[#c3a583]/45 bg-[#342b23] text-[9px] font-bold text-[#f0d9b8]">{initials(employee.name)}</span><div className="min-w-0 flex-1"><div className="flex items-center justify-between gap-2"><p className="truncate text-[11px] font-semibold">{employee.name}</p><Badge variant="outline" className={`shrink-0 px-1.5 py-0 text-[8px] md:hidden ${employee.active ? "border-emerald-300 text-emerald-700 dark:text-emerald-300" : "border-stone-300 text-stone-500"}`}>{employee.active ? "ACTIVO" : "INACTIVO"}</Badge></div><p className="truncate text-[9px] uppercase tracking-[0.05em] text-[color:var(--text-muted)]">{employee.position} · {branch?.name ?? "SIN SUCURSAL"}</p><p className="mt-0.5 truncate text-[8px] font-semibold uppercase tracking-[0.06em] text-[#987049]">Costo: {costBranchLabel}</p></div></div>
                 <div className="min-w-0"><p className="text-[8px] uppercase tracking-[0.08em] text-[color:var(--text-muted)] md:hidden">Nómina / acceso</p><p className="truncate text-[10px] font-semibold">{categoryLabels[employee.category]}</p><div className="mt-0.5 flex items-center gap-1"><ShieldCheck className="h-3 w-3 shrink-0 text-[#987049]" /><p className="truncate text-[9px] text-[color:var(--text-muted)]">{role?.name ?? "SIN ROL"}</p></div></div>
                 <div className="min-w-0"><p className="text-[8px] uppercase tracking-[0.08em] text-[color:var(--text-muted)] md:hidden">Pago / cuenta</p><p className="number-display truncate text-[11px]">{money.format(employee.monthlySalary)}</p><p className="mt-0.5 truncate text-[9px] text-[color:var(--text-muted)]">{employee.bank} · {employee.account}</p></div>
                 <div className="min-w-0"><p className="text-[8px] uppercase tracking-[0.08em] text-[color:var(--text-muted)] md:hidden">Vigencia</p><div className="flex items-center gap-1.5"><Badge variant="outline" className={`shrink-0 px-1.5 py-0 text-[8px] ${status === "ACTIVO" ? "border-emerald-300 text-emerald-700 dark:text-emerald-300" : "border-amber-300 text-amber-700 dark:text-amber-300"}`}>{status === "ACTIVO" ? <BadgeCheck className="mr-1 h-2.5 w-2.5" /> : null}{status}</Badge></div><p className="mt-0.5 truncate text-[9px] text-[color:var(--text-muted)]">{employee.hireDate} → {employee.terminationDate ?? "VIGENTE"}</p></div>

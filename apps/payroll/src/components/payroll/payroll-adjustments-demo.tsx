@@ -12,6 +12,7 @@ import {
   Edit3,
   Gavel,
   HandCoins,
+  LockKeyhole,
   Plus,
   ReceiptText,
   FileBarChart,
@@ -135,7 +136,7 @@ function AdjustmentDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const { state, addPayrollAdjustment, updatePayrollAdjustment } =
+  const { state, periodOptions, addPayrollAdjustment, updatePayrollAdjustment } =
     usePayrollDemo();
   const initialEmployeeId =
     adjustment?.employeeId ?? state.employees[0]?.id ?? "";
@@ -165,9 +166,11 @@ function AdjustmentDialog({
   );
   const [payrollModule, setPayrollModule] =
     useState<Exclude<PayrollModule, "CONSOLIDATED">>(initialModule);
-  const [payrollRunId, setPayrollRunId] = useState(
-    adjustment?.payrollRunId ?? initialRun?.id ?? "",
+  const [selectedPeriodStart, setSelectedPeriodStart] = useState(
+    adjustment?.periodStart ?? initialRun?.periodStart ?? periodOptions[0]?.start ?? "",
   );
+  const [masterCode, setMasterCode] = useState("");
+  const [periodUnlocked, setPeriodUnlocked] = useState(false);
   const [payrollDate, setPayrollDate] = useState(
     adjustment?.payrollDate ??
       initialRun?.periodEnd ??
@@ -188,11 +191,15 @@ function AdjustmentDialog({
   const [sharedFine, setSharedFine] = useState(
     (adjustment?.participantIds.length ?? 1) > 1,
   );
-  const availableRuns = state.runs.filter(
-    (run) => run.module === payrollModule,
+  const selectedPeriod = periodOptions.find(
+    (period) => period.start === selectedPeriodStart,
   );
-  const selectedRun =
-    state.runs.find((run) => run.id === payrollRunId) ?? availableRuns[0];
+  const selectedRun = state.runs.find(
+    (run) => run.module === payrollModule && run.periodStart === selectedPeriodStart,
+  );
+  const masterEmployee = state.employees.find(
+    (employee) => employee.roleId === "role-admin" && employee.secondaryAccessKey,
+  );
 
   function selectEmployee(id: string) {
     const employee = state.employees.find((item) => item.id === id);
@@ -210,9 +217,22 @@ function AdjustmentDialog({
       normalizedModule as Exclude<PayrollModule, "CONSOLIDATED">,
     );
     if (nextRun) {
-      setPayrollRunId(nextRun.id);
+      setSelectedPeriodStart(nextRun.periodStart);
       setPayrollDate(nextRun.periodEnd);
     }
+    setMasterCode("");
+    setPeriodUnlocked(false);
+  }
+
+  function unlockPeriods() {
+    if (!masterEmployee?.secondaryAccessKey || masterCode !== masterEmployee.secondaryAccessKey) {
+      toast.error("Código máster incorrecto.");
+      setMasterCode("");
+      return;
+    }
+    setPeriodUnlocked(true);
+    setMasterCode("");
+    toast.success("Otros periodos habilitados para este movimiento.");
   }
 
   function toggleParticipant(id: string) {
@@ -237,7 +257,7 @@ function AdjustmentDialog({
     if (
       !employeeId ||
       !branchId ||
-      !selectedRun ||
+      !selectedPeriod ||
       !concept.trim() ||
       parsedAmount <= 0 ||
       !comments.trim() ||
@@ -249,11 +269,11 @@ function AdjustmentDialog({
       return;
     }
     if (
-      payrollDate < selectedRun.periodStart ||
-      payrollDate > selectedRun.periodEnd
+      payrollDate < selectedPeriod.start ||
+      payrollDate > selectedPeriod.end
     ) {
       toast.error(
-        `La fecha debe quedar dentro de ${selectedRun.periodStart} — ${selectedRun.periodEnd}.`,
+        `La fecha debe quedar dentro de ${selectedPeriod.start} — ${selectedPeriod.end}.`,
       );
       return;
     }
@@ -264,9 +284,10 @@ function AdjustmentDialog({
         type === "FINE" && sharedFine ? participantIds : [employeeId],
       branchId,
       payrollModule,
-      payrollRunId: selectedRun.id,
+      payrollRunId:
+        selectedRun?.id ?? `master-${payrollModule}-${selectedPeriod.start}`,
       payrollDate,
-      periodStart: selectedRun.periodStart,
+      periodStart: selectedPeriod.start,
       reportTargets,
       concept: concept.trim().toLocaleUpperCase("es-MX"),
       amount: parsedAmount,
@@ -306,8 +327,8 @@ function AdjustmentDialog({
               <Input
                 id="adjustment-date"
                 type="date"
-                min={selectedRun?.periodStart}
-                max={selectedRun?.periodEnd}
+                min={selectedPeriod?.start}
+                max={selectedPeriod?.end}
                 value={payrollDate}
                 onChange={(event) => setPayrollDate(event.target.value)}
               />
@@ -385,9 +406,11 @@ function AdjustmentDialog({
                     );
                     setPayrollModule(next);
                     if (nextRun) {
-                      setPayrollRunId(nextRun.id);
+                      setSelectedPeriodStart(nextRun.periodStart);
                       setPayrollDate(nextRun.periodEnd);
                     }
+                    setMasterCode("");
+                    setPeriodUnlocked(false);
                   }}
                 >
                   <SelectTrigger>
@@ -403,34 +426,70 @@ function AdjustmentDialog({
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>Corrida / periodo destino</Label>
+                <Label>Periodo donde se aplicará</Label>
                 <Select
-                  value={selectedRun?.id ?? ""}
-                  onValueChange={(id) => {
-                    const run = state.runs.find((item) => item.id === id);
-                    setPayrollRunId(id);
-                    if (run) setPayrollDate(run.periodEnd);
+                  value={selectedPeriodStart}
+                  disabled={!periodUnlocked}
+                  onValueChange={(periodStart) => {
+                    const period = periodOptions.find((item) => item.start === periodStart);
+                    setSelectedPeriodStart(periodStart);
+                    if (period) setPayrollDate(period.end);
                   }}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="SELECCIONA UNA NÓMINA" />
+                    <SelectValue placeholder="SELECCIONA EL PERIODO" />
                   </SelectTrigger>
                   <SelectContent>
-                    {availableRuns.map((run) => (
-                      <SelectItem key={run.id} value={run.id}>
-                        {run.periodStart} — {run.periodEnd} · {run.status}
+                    {periodOptions.map((period) => (
+                      <SelectItem key={period.value} value={period.start}>
+                        {period.label}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
             </div>
-            {selectedRun && (
-              <div className="mt-4 rounded-lg bg-[color:var(--accent-hover)]/40 px-4 py-3 text-sm">
-                <strong>{payrollModuleLabels[selectedRun.module]}</strong>
+            {!periodUnlocked ? (
+              <div className="mt-4 grid gap-3 rounded-xl border border-[color:var(--border-color)] bg-[color:var(--accent-hover)]/25 p-3 sm:grid-cols-[1fr_auto] sm:items-end">
+                <div className="space-y-2">
+                  <Label htmlFor="movement-master-code" className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.08em]">
+                    <LockKeyhole className="h-3.5 w-3.5" /> Código máster para mover a otro periodo
+                  </Label>
+                  <Input
+                    id="movement-master-code"
+                    type="password"
+                    inputMode="numeric"
+                    maxLength={4}
+                    autoComplete="new-password"
+                    data-1p-ignore="true"
+                    data-lpignore="true"
+                    value={masterCode}
+                    onChange={(event) => setMasterCode(event.target.value.replace(/\D/g, "").slice(0, 4))}
+                    placeholder="••••"
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        unlockPeriods();
+                      }
+                    }}
+                  />
+                </div>
+                <Button type="button" size="sm" variant="outline" onClick={unlockPeriods} disabled={masterCode.length !== 4}>
+                  <LockKeyhole className="mr-1.5 h-3.5 w-3.5" /> Autorizar periodo
+                </Button>
+              </div>
+            ) : (
+              <div className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-emerald-300 bg-emerald-50/70 px-3 py-2 text-xs text-emerald-900 dark:bg-emerald-950/25 dark:text-emerald-100">
+                <span><Check className="mr-1.5 inline h-3.5 w-3.5" />Cambio de periodo autorizado</span>
+                <Button type="button" size="sm" variant="ghost" className="h-7 px-2 text-[10px]" onClick={() => { const currentRun = state.runs.find((run) => run.module === payrollModule); setSelectedPeriodStart(currentRun?.periodStart ?? periodOptions[0]?.start ?? ""); if (currentRun) setPayrollDate(currentRun.periodEnd); setPeriodUnlocked(false); }}>Bloquear</Button>
+              </div>
+            )}
+            {selectedPeriod && (
+              <div className="mt-3 rounded-lg bg-[color:var(--accent-hover)]/40 px-4 py-3 text-sm">
+                <strong>{payrollModuleLabels[payrollModule]}</strong>
                 <span className="ml-2 text-[color:var(--text-muted)]">
-                  Se sumará a la corrida {selectedRun.periodStart} —{" "}
-                  {selectedRun.periodEnd}
+                  Se aplicará en {selectedPeriod.start} — {selectedPeriod.end}
+                  {selectedRun ? ` · ${selectedRun.status}` : " · AUTORIZACIÓN MÁSTER"}
                 </span>
               </div>
             )}

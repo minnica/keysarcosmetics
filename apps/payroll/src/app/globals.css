@@ -666,3 +666,40 @@ main tbody tr:hover {
     animation-iteration-count: 1 !important;
   }
 }
+
+@media print {
+  body.payroll-dispersion-print {
+    background: #fff !important;
+  }
+
+  body.payroll-dispersion-print header.sticky,
+  body.payroll-dispersion-print .payroll-dispersion-page > header,
+  body.payroll-dispersion-print .payroll-dispersion-controls {
+    display: none !important;
+  }
+
+  body.payroll-dispersion-print main,
+  body.payroll-dispersion-print main > *,
+  body.payroll-dispersion-print .payroll-dispersion-page,
+  body.payroll-dispersion-print #payroll-dispersion-report {
+    display: block !important;
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+    box-shadow: none !important;
+  }
+
+  body.payroll-dispersion-print #payroll-dispersion-report .xl\:block {
+    display: block !important;
+  }
+
+  body.payroll-dispersion-print #payroll-dispersion-report .xl\:hidden {
+    display: none !important;
+  }
+
+  body.payroll-dispersion-print #payroll-dispersion-report table {
+    font-size: 8pt;
+  }
+}

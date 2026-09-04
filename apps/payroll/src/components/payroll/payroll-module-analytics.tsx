@@ -17,6 +17,7 @@ import {
   TableRow,
 } from "@cosmetics/ui";
 import { type EmployeePayrollLine, usePayrollDemo } from "./payroll-demo-context";
+import { employeeCostAllocationShares, payrollCostAllocationMode } from "./payroll-cost-branch-selector";
 
 const money = new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" });
 
@@ -57,12 +58,14 @@ export function PayrollModuleAnalytics({
       const employeeSales = state.sales.filter((sale) => sale.employeeId === line.employee.id && sale.date >= periodStart && sale.date <= periodEnd);
       const totalEmployeeSales = employeeSales.reduce((sum, sale) => sum + sale.amount, 0);
       const employeeBranchSales = employeeSales.filter((sale) => sale.branchId === branch.id).reduce((sum, sale) => sum + sale.amount, 0);
-      const share = totalEmployeeSales > 0 ? employeeBranchSales / totalEmployeeSales : line.employee.branchId === branch.id ? 1 : 0;
-      if (share > 0) employees.add(line.employee.id);
-      sales += line.sales * share;
-      payroll += line.total * share;
-      socialCost += line.socialCost * share;
-      isr += line.isrCost * share;
+      const salesShare = totalEmployeeSales > 0 ? employeeBranchSales / totalEmployeeSales : 0;
+      const allocationMode = payrollCostAllocationMode(state.payrollCostAllocationModes, line.employee.id, periodStart, periodEnd);
+      const costShare = employeeCostAllocationShares({ employee: line.employee, branches: state.branches, sales: state.sales, periodStart, periodEnd, mode: allocationMode }).find((allocation) => allocation.branchId === branch.id)?.share ?? 0;
+      if (costShare > 0) employees.add(line.employee.id);
+      sales += line.sales * salesShare;
+      payroll += line.total * costShare;
+      socialCost += line.socialCost * costShare;
+      isr += line.isrCost * costShare;
     });
     return { id: branch.id, name: branch.name, employees: employees.size, sales, payroll, socialCost, isr, totalCost: payroll + socialCost + isr };
   });
