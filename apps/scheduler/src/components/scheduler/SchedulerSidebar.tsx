@@ -71,7 +71,7 @@ export function SchedulerSidebar({
   onCollapse,
 }: SchedulerSidebarProps) {
   return (
-    <div className="bg-[linear-gradient(180deg,rgba(255,251,247,0.96)_0%,rgba(245,239,232,0.92)_100%)] backdrop-blur">
+    <div className="min-h-full bg-[linear-gradient(180deg,rgba(255,251,247,0.96)_0%,rgba(245,239,232,0.92)_100%)] backdrop-blur">
       <div className="flex min-h-full flex-col px-4 pb-5 pt-4">
         <div className="mb-4">
           <p className="label-caps">Vista y recursos</p>
@@ -176,7 +176,7 @@ export function SchedulerSidebar({
                 />
               </div>
 
-              <div className="max-h-[360px] space-y-2.5 overflow-y-auto pr-1">
+              <div className="space-y-2.5">
                 {professionals.map((professional) => {
                   const isSelected = selectedProfessionalIds.includes(professional.id)
 
@@ -251,8 +251,8 @@ export function SchedulerSidebar({
             </div>
           </div>
 
-          <Card className="mt-auto rounded-[30px] border-white/80 bg-white/85 shadow-[0_22px_48px_rgba(15,23,42,0.09)]">
-            <CardContent className="p-4">
+          <Card className="mt-auto min-w-0 overflow-hidden rounded-[30px] border-white/80 bg-white/85 shadow-[0_22px_48px_rgba(15,23,42,0.09)]">
+            <CardContent className="min-w-0 p-4">
               <div className="mb-3">
                 <p className="scheduler-label !mb-0">Ir a una fecha</p>
                 <p className="mt-1 text-xs leading-5 text-slate-400">Selecciona un día para abrir una nueva cita.</p>
@@ -280,12 +280,18 @@ export function SchedulerSidebar({
                 </button>
               </div>
               <Calendar
-                className="mx-auto w-full max-w-full"
+                className="mx-auto !w-full max-w-full !p-0"
                 classNames={{
                   caption: 'hidden',
                   nav: 'hidden',
+                  months: 'w-full',
                   month: 'w-full',
-                  table: 'w-full table-fixed',
+                  table: 'w-full border-collapse',
+                  head_row: 'grid w-full grid-cols-7',
+                  head_cell: 'w-full text-center text-[0.72rem] font-normal text-muted-foreground',
+                  row: 'mt-1 grid w-full grid-cols-7',
+                  cell: 'relative h-8 w-full p-0 text-center text-sm focus-within:relative focus-within:z-20',
+                  day: 'mx-auto inline-flex h-8 w-8 items-center justify-center rounded-md p-0 font-normal transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring aria-selected:opacity-100',
                 }}
                 locale={es}
                 mode="single"

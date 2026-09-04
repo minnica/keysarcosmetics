@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, type CSSProperties } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { Badge, Card, CardContent, Dialog, DialogContent, DialogTrigger, Popover, PopoverContent, PopoverTrigger, cn } from '@cosmetics/ui'
 import { Ban, CalendarDays, Plus } from 'lucide-react'
 import { format, isSameDay } from 'date-fns'
@@ -29,6 +29,11 @@ import {
   getMinutesFromTime,
   getSchedulerCardTop,
   getSingleCellAppointmentStyle,
+  schedulerComfortableLayout,
+  schedulerCompactLayout,
+  schedulerDenseLayout,
+  schedulerUltraDenseLayout,
+  type SchedulerAgendaLayoutMetrics,
   type EmptySlotAction,
 } from './scheduler-utils'
 import {
@@ -92,6 +97,65 @@ interface SlotActionOverlay {
   style: CSSProperties
 }
 
+const compactAgendaMediaQuery = [
+  '(min-width: 1024px) and (max-height: 900px)',
+  '(min-width: 1024px) and (any-pointer: coarse) and (max-height: 1100px)',
+].join(', ')
+const denseAgendaMediaQuery = '(min-width: 1024px) and (max-height: 780px)'
+const ultraDenseAgendaMediaQuery = '(min-width: 1024px) and (max-height: 680px)'
+const maxFittedTimeSlots = 13
+
+function useAgendaLayoutMetrics(): SchedulerAgendaLayoutMetrics {
+  const [layout, setLayout] = useState<SchedulerAgendaLayoutMetrics>(schedulerComfortableLayout)
+
+  useEffect(() => {
+    const compactQuery = window.matchMedia(compactAgendaMediaQuery)
+    const denseQuery = window.matchMedia(denseAgendaMediaQuery)
+    const ultraDenseQuery = window.matchMedia(ultraDenseAgendaMediaQuery)
+    const updateLayout = () => {
+      setLayout(
+        ultraDenseQuery.matches
+          ? schedulerUltraDenseLayout
+          : denseQuery.matches
+            ? schedulerDenseLayout
+          : compactQuery.matches
+            ? schedulerCompactLayout
+            : schedulerComfortableLayout,
+      )
+    }
+
+    updateLayout()
+    compactQuery.addEventListener('change', updateLayout)
+    denseQuery.addEventListener('change', updateLayout)
+    ultraDenseQuery.addEventListener('change', updateLayout)
+
+    return () => {
+      compactQuery.removeEventListener('change', updateLayout)
+      denseQuery.removeEventListener('change', updateLayout)
+      ultraDenseQuery.removeEventListener('change', updateLayout)
+    }
+  }, [])
+
+  return layout
+}
+
+function getOverlayHorizontalStyle(
+  columnIndex: number,
+  columnCount: number,
+  layout: SchedulerAgendaLayoutMetrics,
+  horizontalInset = layout.cardHorizontalInset,
+): Pick<CSSProperties, 'left' | 'width'> {
+  const columnFraction = columnIndex / columnCount
+  const columnPercent = 100 / columnCount
+  const leftTimeOffset = layout.timeColumnWidth * (1 - columnFraction)
+  const widthOffset = layout.timeColumnWidth / columnCount + horizontalInset * 2
+
+  return {
+    left: `calc(${columnFraction * 100}% + ${leftTimeOffset + horizontalInset}px)`,
+    width: `calc(${columnPercent}% - ${widthOffset}px)`,
+  }
+}
+
 export function SchedulerAgendaGrid({
   currentView,
   slotMinutes,
@@ -123,6 +187,9 @@ export function SchedulerAgendaGrid({
   onUpdatePaymentHistory,
   onDeletePaymentHistory,
 }: SchedulerAgendaGridProps) {
+  const baseAgendaLayout = useAgendaLayoutMetrics()
+  const gridViewportRef = useRef<HTMLDivElement>(null)
+  const [gridViewportHeight, setGridViewportHeight] = useState(0)
   const dayCalendarRange = useMemo(
     () => getCommerceCalendarRange(commerceOperatingHours, [selectedDate], slotMinutes),
     [commerceOperatingHours, selectedDate, slotMinutes],
@@ -133,30 +200,65 @@ export function SchedulerAgendaGrid({
   )
   const dayBaseMinutes = dayCalendarRange?.startMinutes ?? 0
   const dayClosingMinutes = dayCalendarRange?.endMinutes ?? 0
-  const dayTimeSlots = dayCalendarRange?.slots ?? []
+  const dayTimeSlots = useMemo(() => dayCalendarRange?.slots ?? [], [dayCalendarRange])
   const weekBaseMinutes = weekCalendarRange?.startMinutes ?? 0
   const weekClosingMinutes = weekCalendarRange?.endMinutes ?? 0
-  const weekTimeSlots = weekCalendarRange?.slots ?? []
+  const weekTimeSlots = useMemo(() => weekCalendarRange?.slots ?? [], [weekCalendarRange])
   const activeCalendarRange = currentView === 'day' ? dayCalendarRange : weekCalendarRange
+  const activeTimeSlotCount = currentView === 'day' ? dayTimeSlots.length : weekTimeSlots.length
+  const calendarNeedsVerticalScroll = activeTimeSlotCount > maxFittedTimeSlots
+  const agendaLayout = useMemo(() => {
+    if (gridViewportHeight <= 0 || activeTimeSlotCount <= 0) return baseAgendaLayout
+
+    const availableRowsHeight = gridViewportHeight - baseAgendaLayout.headerOffset
+    const fittedSlotCount = Math.min(activeTimeSlotCount, maxFittedTimeSlots)
+    const fittedRowHeight = Math.floor(availableRowsHeight / fittedSlotCount)
+
+    return {
+      ...baseAgendaLayout,
+      rowHeight: Math.min(
+        baseAgendaLayout.maxRowHeight,
+        Math.max(baseAgendaLayout.minRowHeight, fittedRowHeight),
+      ),
+    }
+  }, [activeTimeSlotCount, baseAgendaLayout, gridViewportHeight])
+
+  useEffect(() => {
+    const viewport = gridViewportRef.current
+    if (!viewport || typeof ResizeObserver === 'undefined') return
+
+    const updateHeight = () => {
+      const nextHeight = Math.floor(viewport.getBoundingClientRect().height)
+      setGridViewportHeight((currentHeight) =>
+        currentHeight === nextHeight ? currentHeight : nextHeight,
+      )
+    }
+    const observer = new ResizeObserver(updateHeight)
+
+    updateHeight()
+    observer.observe(viewport)
+
+    return () => observer.disconnect()
+  }, [activeCalendarRange, currentView])
   const professionalCount = Math.max(visibleProfessionals.length, 1)
-  const dayColumnWidth =
-    professionalCount <= 2
-      ? 330
-      : professionalCount === 3
-        ? 270
-      : professionalCount === 4
-          ? 230
-          : professionalCount === 5
-            ? 205
-            : professionalCount === 6
-              ? 184
-              : 172
-  const dayGridMinWidth = 96 + professionalCount * dayColumnWidth
-  const dayGridStyle: CSSProperties & Record<'--scheduler-column-width', string> = {
-    gridTemplateColumns: `96px repeat(${professionalCount}, var(--scheduler-column-width))`,
+  const dayGridMinWidth = agendaLayout.timeColumnWidth + professionalCount * agendaLayout.minColumnWidth
+  const dayGridStyle: CSSProperties & Record<string, string> = {
+    gridTemplateColumns: `${agendaLayout.timeColumnWidth}px repeat(${professionalCount}, minmax(${agendaLayout.minColumnWidth}px, 1fr))`,
     minWidth: `${dayGridMinWidth}px`,
     width: '100%',
-    '--scheduler-column-width': `${dayColumnWidth}px`,
+    '--scheduler-grid-header-height': `${agendaLayout.headerOffset}px`,
+    '--scheduler-grid-row-height': `${agendaLayout.rowHeight}px`,
+    '--scheduler-time-column-width': `${agendaLayout.timeColumnWidth}px`,
+    '--scheduler-column-width': `${agendaLayout.minColumnWidth}px`,
+  }
+  const weekGridStyle: CSSProperties & Record<string, string> = {
+    gridTemplateColumns: `${agendaLayout.timeColumnWidth}px repeat(7, minmax(${agendaLayout.minColumnWidth}px, 1fr))`,
+    minWidth: `${agendaLayout.timeColumnWidth + 7 * agendaLayout.minColumnWidth}px`,
+    width: '100%',
+    '--scheduler-grid-header-height': `${agendaLayout.headerOffset}px`,
+    '--scheduler-grid-row-height': `${agendaLayout.rowHeight}px`,
+    '--scheduler-time-column-width': `${agendaLayout.timeColumnWidth}px`,
+    '--scheduler-column-width': `${agendaLayout.minColumnWidth}px`,
   }
 
   const professionalIndexMap = useMemo(() => {
@@ -171,9 +273,6 @@ export function SchedulerAgendaGrid({
         ) return null
         const columnIndex = professionalIndexMap.get(booking.professionalId)
         if (columnIndex == null) return null
-        const left = 96 + columnIndex * dayColumnWidth + 12
-        const width = dayColumnWidth - 24
-
         return {
           booking,
           style: {
@@ -183,15 +282,15 @@ export function SchedulerAgendaGrid({
               dayBaseMinutes,
               dayClosingMinutes,
               slotMinutes,
+              agendaLayout,
             ),
-            left: `${left}px`,
-            width: `${width}px`,
+            ...getOverlayHorizontalStyle(columnIndex, professionalCount, agendaLayout),
           },
         }
       })
 
     return overlays.filter((value): value is DayOverlayBooking => value !== null)
-  }, [dayBaseMinutes, dayClosingMinutes, dayColumnWidth, professionalIndexMap, slotMinutes, visibleBookings])
+  }, [agendaLayout, dayBaseMinutes, dayClosingMinutes, professionalCount, professionalIndexMap, slotMinutes, visibleBookings])
 
   const dayBlocks = useMemo(() => {
     const overlays: Array<DayOverlayBlock | null> = visibleBlocks.map((block) => {
@@ -201,9 +300,6 @@ export function SchedulerAgendaGrid({
         ) return null
         const columnIndex = professionalIndexMap.get(block.professionalId)
         if (columnIndex == null) return null
-        const left = 96 + columnIndex * dayColumnWidth + 12
-        const width = dayColumnWidth - 24
-
         return {
           block,
           style: {
@@ -213,15 +309,15 @@ export function SchedulerAgendaGrid({
               dayBaseMinutes,
               dayClosingMinutes,
               slotMinutes,
+              agendaLayout,
             ),
-            left: `${left}px`,
-            width: `${width}px`,
+            ...getOverlayHorizontalStyle(columnIndex, professionalCount, agendaLayout),
           },
         }
       })
 
     return overlays.filter((value): value is DayOverlayBlock => value !== null)
-  }, [dayBaseMinutes, dayClosingMinutes, dayColumnWidth, professionalIndexMap, slotMinutes, visibleBlocks])
+  }, [agendaLayout, dayBaseMinutes, dayClosingMinutes, professionalCount, professionalIndexMap, slotMinutes, visibleBlocks])
 
   const occupiedDaySlots = useMemo(() => {
     const occupied = new Set<string>()
@@ -264,18 +360,23 @@ export function SchedulerAgendaGrid({
       0,
       Math.floor((startMinutes - dayBaseMinutes) / slotMinutes),
     )
-    const top = getSchedulerCardTop(startCellIndex)
+    const top = getSchedulerCardTop(startCellIndex, agendaLayout)
+    const horizontalStyle = getOverlayHorizontalStyle(
+      columnIndex,
+      professionalCount,
+      agendaLayout,
+    )
 
     return {
       professionalId: emptySlotAction.professionalId,
       startTime: emptySlotAction.startTime,
       style: {
         top: `${top}px`,
-        left: `${96 + columnIndex * dayColumnWidth + 8}px`,
-        width: `${Math.min(dayColumnWidth - 16, 260)}px`,
+        left: horizontalStyle.left,
+        width: `min(${horizontalStyle.width}, 260px)`,
       },
     } satisfies SlotActionOverlay
-  }, [dayBaseMinutes, dayColumnWidth, emptySlotAction, professionalIndexMap, slotMinutes])
+  }, [agendaLayout, dayBaseMinutes, emptySlotAction, professionalCount, professionalIndexMap, slotMinutes])
 
   const now = new Date()
   const currentTimeLabel = `${now.getHours().toString().padStart(2, '0')}:${now
@@ -290,8 +391,8 @@ export function SchedulerAgendaGrid({
     currentTimeMinutes <= dayClosingMinutes
 
   return (
-    <Card className="overflow-hidden rounded-[34px] border-white/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.86)_0%,rgba(255,255,255,0.76)_100%)] shadow-[0_30px_80px_rgba(15,23,42,0.1)] backdrop-blur">
-      <CardContent className="p-0">
+    <Card className="scheduler-agenda-card flex h-full min-h-0 flex-col overflow-hidden rounded-[34px] border-white/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.86)_0%,rgba(255,255,255,0.76)_100%)] shadow-[0_30px_80px_rgba(15,23,42,0.1)] backdrop-blur">
+      <CardContent className="flex min-h-0 flex-1 flex-col p-0">
         {!activeCalendarRange ? (
           <div className="flex min-h-[320px] flex-col items-center justify-center gap-3 px-6 text-center">
             <CalendarDays className="h-9 w-9 text-slate-300" />
@@ -303,7 +404,13 @@ export function SchedulerAgendaGrid({
             </div>
           </div>
         ) : currentView === 'day' ? (
-          <div className="scheduler-grid-wrapper scheduler-grid-wrapper-day overflow-x-auto">
+          <div
+            ref={gridViewportRef}
+            className={cn(
+              'scheduler-grid-wrapper scheduler-grid-wrapper-day overflow-x-auto',
+              calendarNeedsVerticalScroll && 'scheduler-grid-wrapper-scrollable-y',
+            )}
+          >
             <div className="scheduler-grid scheduler-grid-day" style={dayGridStyle}>
               <div className="scheduler-grid-corner" />
               {visibleProfessionals.map((professional) => (
@@ -316,8 +423,8 @@ export function SchedulerAgendaGrid({
                     size="header"
                   />
                   <div className="min-w-0">
-                    <p className="truncate text-[0.88rem] font-semibold tracking-[-0.02em] text-slate-800">{professional.name}</p>
-                    <p className="text-[0.66rem] uppercase tracking-[0.16em] text-slate-400">Cabina lista</p>
+                    <p className="scheduler-professional-name truncate text-[0.88rem] font-semibold tracking-[-0.02em] text-slate-800">{professional.name}</p>
+                    <p className="scheduler-professional-status text-[0.66rem] uppercase tracking-[0.16em] text-slate-400">Cabina lista</p>
                   </div>
                 </div>
               ))}
@@ -366,8 +473,8 @@ export function SchedulerAgendaGrid({
                   type="button"
                   onClick={() => onEditBlock(block)}
                 >
-                  <p className="truncate text-[0.9rem] font-semibold">{block.label}</p>
-                  <p className="text-[0.72rem] uppercase tracking-[0.16em]">
+                  <p className="scheduler-appointment-title truncate text-[0.9rem] font-semibold">{block.label}</p>
+                  <p className="scheduler-appointment-detail text-[0.72rem] uppercase tracking-[0.16em]">
                     {block.start} - {block.end}
                   </p>
                 </button>
@@ -387,7 +494,7 @@ export function SchedulerAgendaGrid({
                         }}
                         type="button"
                       >
-                        <div className="mb-1 flex items-center gap-2">
+                        <div className="scheduler-appointment-meta mb-1 flex items-center gap-2">
                           <span
                             className="h-2.5 w-2.5 rounded-full"
                             style={{ backgroundColor: statusColors[booking.status] }}
@@ -396,10 +503,10 @@ export function SchedulerAgendaGrid({
                             {booking.start}
                           </span>
                         </div>
-                        <p className="line-clamp-2 text-[0.96rem] font-semibold tracking-[-0.02em]">
+                        <p className="scheduler-appointment-title line-clamp-2 text-[0.96rem] font-semibold tracking-[-0.02em]">
                           {booking.customerName}
                         </p>
-                        <p className="mt-1 truncate text-[0.74rem] uppercase tracking-[0.12em] opacity-75">
+                        <p className="scheduler-appointment-detail mt-1 truncate text-[0.74rem] uppercase tracking-[0.12em] opacity-75">
                           {booking.serviceName}
                         </p>
                       </button>
@@ -490,7 +597,7 @@ export function SchedulerAgendaGrid({
               {showCurrentTimeLine ? (
                 <div
                   className="scheduler-current-time-line"
-                  style={getCurrentTimeLineStyle(currentTimeLabel, dayBaseMinutes, slotMinutes)}
+                  style={getCurrentTimeLineStyle(currentTimeLabel, dayBaseMinutes, slotMinutes, agendaLayout)}
                 >
                   <span className="scheduler-current-time-pill">{currentTimeLabel}</span>
                 </div>
@@ -498,14 +605,16 @@ export function SchedulerAgendaGrid({
             </div>
           </div>
         ) : (
-          <div className="scheduler-grid-wrapper overflow-x-auto">
+          <div
+            ref={gridViewportRef}
+            className={cn(
+              'scheduler-grid-wrapper scheduler-grid-wrapper-calendar overflow-x-auto',
+              calendarNeedsVerticalScroll && 'scheduler-grid-wrapper-scrollable-y',
+            )}
+          >
             <div
               className="scheduler-grid"
-              style={{
-                gridTemplateColumns: '96px repeat(7, var(--scheduler-column-width))',
-                minWidth: '1776px',
-                width: '100%',
-              }}
+              style={weekGridStyle}
             >
               <div className="scheduler-grid-corner flex items-center justify-center">
                 <Badge className="rounded-full bg-slate-100 px-4 py-1 text-slate-500">
@@ -558,6 +667,12 @@ export function SchedulerAgendaGrid({
                   weekBaseMinutes,
                   weekClosingMinutes,
                   slotMinutes,
+                  agendaLayout,
+                )
+                const horizontalStyle = getOverlayHorizontalStyle(
+                  booking.dayOffset,
+                  7,
+                  agendaLayout,
                 )
 
                 return (
@@ -566,8 +681,7 @@ export function SchedulerAgendaGrid({
                     className="scheduler-appointment scheduler-appointment-blocked text-left"
                     style={{
                       ...style,
-                      left: `calc(96px + ${booking.dayOffset} * var(--scheduler-column-width) + 10px)`,
-                      width: 'calc(var(--scheduler-column-width) - 20px)',
+                      ...horizontalStyle,
                     }}
                   >
                     <p className="truncate text-sm font-semibold">{booking.customerName}</p>

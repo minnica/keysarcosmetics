@@ -41,14 +41,82 @@ export const minuteOptions = ['00', '15', '30', '45']
 export const schedulerHeaderOffset = 124
 export const schedulerRowHeight = 78
 export const schedulerSlotMinutes = 60
-export const schedulerCardTopInset = 12
-export const schedulerCardBottomInset = 12
+export const schedulerCardTopInset = 4
+export const schedulerCardBottomInset = 4
 export const schedulerCardHeight = schedulerRowHeight - schedulerCardTopInset - schedulerCardBottomInset
 export const schedulerBaseMinutes = schedulerOpeningHour * 60
 export const schedulerClosingMinutes = schedulerClosingHour * 60
 
-export function getSchedulerCardTop(startCellIndex: number): number {
-  return schedulerHeaderOffset + startCellIndex * schedulerRowHeight + schedulerCardTopInset
+export interface SchedulerAgendaLayoutMetrics {
+  headerOffset: number
+  rowHeight: number
+  minRowHeight: number
+  maxRowHeight: number
+  cardTopInset: number
+  cardBottomInset: number
+  cardHorizontalInset: number
+  minCardHeight: number
+  timeColumnWidth: number
+  minColumnWidth: number
+}
+
+export const schedulerComfortableLayout: SchedulerAgendaLayoutMetrics = {
+  headerOffset: schedulerHeaderOffset,
+  rowHeight: schedulerRowHeight,
+  minRowHeight: 44,
+  maxRowHeight: 78,
+  cardTopInset: schedulerCardTopInset,
+  cardBottomInset: schedulerCardBottomInset,
+  cardHorizontalInset: 12,
+  minCardHeight: 34,
+  timeColumnWidth: 96,
+  minColumnWidth: 172,
+}
+
+export const schedulerCompactLayout: SchedulerAgendaLayoutMetrics = {
+  headerOffset: 76,
+  rowHeight: 44,
+  minRowHeight: 36,
+  maxRowHeight: 56,
+  cardTopInset: 4,
+  cardBottomInset: 4,
+  cardHorizontalInset: 5,
+  minCardHeight: 32,
+  timeColumnWidth: 64,
+  minColumnWidth: 150,
+}
+
+export const schedulerDenseLayout: SchedulerAgendaLayoutMetrics = {
+  headerOffset: 68,
+  rowHeight: 38,
+  minRowHeight: 32,
+  maxRowHeight: 48,
+  cardTopInset: 3,
+  cardBottomInset: 3,
+  cardHorizontalInset: 4,
+  minCardHeight: 30,
+  timeColumnWidth: 60,
+  minColumnWidth: 130,
+}
+
+export const schedulerUltraDenseLayout: SchedulerAgendaLayoutMetrics = {
+  headerOffset: 60,
+  rowHeight: 32,
+  minRowHeight: 28,
+  maxRowHeight: 40,
+  cardTopInset: 2,
+  cardBottomInset: 2,
+  cardHorizontalInset: 3,
+  minCardHeight: 26,
+  timeColumnWidth: 54,
+  minColumnWidth: 124,
+}
+
+export function getSchedulerCardTop(
+  startCellIndex: number,
+  layout: SchedulerAgendaLayoutMetrics = schedulerComfortableLayout,
+): number {
+  return layout.headerOffset + startCellIndex * layout.rowHeight + layout.cardTopInset
 }
 
 export interface BookingDraft {
@@ -111,6 +179,7 @@ export function getAppointmentStyle(
   baseMinutes = schedulerBaseMinutes,
   closingMinutes = schedulerClosingMinutes,
   slotMinutes = schedulerSlotMinutes,
+  layout: SchedulerAgendaLayoutMetrics = schedulerComfortableLayout,
 ): { top: string; height: string } {
   const startMinutes = getMinutesFromTime(start)
   const endMinutes = getMinutesFromTime(end)
@@ -120,8 +189,8 @@ export function getAppointmentStyle(
   const durationInSlots = (clampedEnd - clampedStart) / slotMinutes
 
   return {
-    top: `${schedulerHeaderOffset + startOffset * schedulerRowHeight + schedulerCardTopInset}px`,
-    height: `${Math.max(durationInSlots * schedulerRowHeight - schedulerCardTopInset - schedulerCardBottomInset, 34)}px`,
+    top: `${layout.headerOffset + startOffset * layout.rowHeight + layout.cardTopInset}px`,
+    height: `${Math.max(durationInSlots * layout.rowHeight - layout.cardTopInset - layout.cardBottomInset, layout.minCardHeight)}px`,
   }
 }
 
@@ -130,14 +199,15 @@ export function getSingleCellAppointmentStyle(
   baseMinutes = schedulerBaseMinutes,
   closingMinutes = schedulerClosingMinutes,
   slotMinutes = schedulerSlotMinutes,
+  layout: SchedulerAgendaLayoutMetrics = schedulerComfortableLayout,
 ): { top: string; height: string } {
   const startMinutes = getMinutesFromTime(start)
   const clampedStart = Math.max(baseMinutes, Math.min(startMinutes, closingMinutes))
   const startOffset = (clampedStart - baseMinutes) / slotMinutes
 
   return {
-    top: `${schedulerHeaderOffset + startOffset * schedulerRowHeight + schedulerCardTopInset}px`,
-    height: `${schedulerCardHeight}px`,
+    top: `${layout.headerOffset + startOffset * layout.rowHeight + layout.cardTopInset}px`,
+    height: `${Math.max(layout.rowHeight - layout.cardTopInset - layout.cardBottomInset, layout.minCardHeight)}px`,
   }
 }
 
@@ -145,12 +215,13 @@ export function getCurrentTimeLineStyle(
   value: string,
   baseMinutes = schedulerBaseMinutes,
   slotMinutes = schedulerSlotMinutes,
+  layout: SchedulerAgendaLayoutMetrics = schedulerComfortableLayout,
 ): { top: string } {
   const currentMinutes = getMinutesFromTime(value)
-  const pixelsPerMinute = schedulerRowHeight / slotMinutes
+  const pixelsPerMinute = layout.rowHeight / slotMinutes
 
   return {
-    top: `${schedulerHeaderOffset + (currentMinutes - baseMinutes) * pixelsPerMinute}px`,
+    top: `${layout.headerOffset + (currentMinutes - baseMinutes) * pixelsPerMinute}px`,
   }
 }
 

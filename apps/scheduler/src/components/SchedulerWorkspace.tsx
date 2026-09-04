@@ -1054,7 +1054,7 @@ export function SchedulerWorkspace() {
 
     if (startMinutes < schedulerBaseMinutes || endMinutes > schedulerClosingMinutes) {
       toast.error('El bloqueo esta fuera del horario permitido', {
-        description: 'La agenda solo admite horarios entre 09:00 y 21:00.',
+        description: 'La hora de inicio y fin debe pertenecer al mismo día.',
       })
       return
     }
@@ -1366,7 +1366,7 @@ export function SchedulerWorkspace() {
     : undefined
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(195,165,131,0.14),transparent_16%),linear-gradient(180deg,#f3f0e9_0%,#f7f3ed_100%)]">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(195,165,131,0.14),transparent_16%),linear-gradient(180deg,#f3f0e9_0%,#f7f3ed_100%)]">
       <SchedulerHeader
         currentView={currentView}
         onViewChange={setCurrentView}
@@ -1430,9 +1430,9 @@ export function SchedulerWorkspace() {
         </SheetContent>
       </Sheet>
 
-      <main className="flex min-h-[calc(100vh-84px)] min-w-0 items-start">
+      <main className="flex min-h-0 min-w-0 flex-1 items-stretch overflow-hidden">
         {resourcePanelOpen ? (
-          <aside className="sticky top-0 hidden h-screen w-[340px] shrink-0 overflow-y-auto border-r border-[rgba(236,209,200,0.82)] xl:block">
+          <aside className="hidden h-full min-h-0 w-[304px] shrink-0 overflow-y-auto overscroll-contain border-r border-[rgba(236,209,200,0.82)] xl:block">
             <SchedulerSidebar
               commerces={allowedCommerces}
               selectedCommerce={selectedCommerce}
@@ -1463,7 +1463,7 @@ export function SchedulerWorkspace() {
           </aside>
         ) : null}
 
-        <section className="flex min-w-0 flex-1 flex-col px-4 py-5 sm:px-6 xl:px-8">
+        <section className="scheduler-agenda-content flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden px-4 py-5 sm:px-6 xl:px-8">
           {!resourcePanelOpen ? (
             <button
               className="mb-4 hidden h-11 w-fit items-center gap-2 rounded-2xl border border-[rgba(236,209,200,0.82)] bg-white px-4 text-sm font-semibold text-slate-600 shadow-sm transition hover:border-[var(--scheduler-accent)] hover:bg-[var(--scheduler-accent-soft)] xl:flex"
