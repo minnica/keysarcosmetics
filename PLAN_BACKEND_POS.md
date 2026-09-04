@@ -47,7 +47,7 @@ Los dos esquemas Prisma existentes están sincronizados. No hay credenciales loc
 | 10. Membresías                       | Completada — 2026-09-04                            | Backend/API + POS + Producto           | Tarjetones, saldos y cierres comerciales son transaccionales, idempotentes y conciliables. |
 | 11. Agenda CRM                       | Completada — 2026-09-04                            | Backend/API + Agenda + POS             | Cliente y reservación tienen IDs externos; conflictos y webhooks se reconcilian.           |
 | 12. Reglas comerciales ampliadas     | Completada — 2026-09-04                            | Backend/API + POS + Finanzas           | Pagos, cortesías, cartera y participantes conservan validación y snapshots históricos.     |
-| 13. Consultas y reportes ampliados   | Pendiente                                          | Backend/API + POS                      | Indicadores, filtros y exportaciones coinciden para todo el alcance autorizado.            |
+| 13. Consultas y reportes ampliados   | Completada en repositorio — 2026-09-04             | Backend/API + POS                      | Indicadores, filtros y exportaciones coinciden para todo el alcance autorizado.            |
 | 14. Offline y segundo piloto         | Pendiente                                          | POS/Electron + Backend/API + Operación | Las capacidades nuevas sobreviven reintentos y pasan conciliación integral.                |
 
 El responsable principal ejecuta la fase; los equipos indicados como colaboradores revisan sus límites. Ninguna fase posterior inicia mutaciones de datos por el mero hecho de que exista este plan.
@@ -502,17 +502,28 @@ Todo requisito de las secciones 20–46 queda así asignado. La presencia de una
 
 ### Fase 13 — Agregados, indicadores, exportaciones y escala de sucursales
 
-- [ ] Construir consultas específicas para membresías en Dashboard, Customers, Receipts y Mis ventas usando `client_id`, `purchaseTicketId` y autorización de cartera; cualquier conciliación legacy por teléfono/nombre queda explícita, medible y fuera de la regla normal.
-- [ ] Agregar reporte mensual de procedencia por `CustomerSource.id` y cliente único: participación, venta completada, ticket promedio, recurrencia, visitas y citas. Mes y periodos usan `America/Mexico_City`.
-- [ ] Agregar conciliación bancaria por movimiento `PosPayment`, no por ticket: ventas, abonos, liquidaciones y compensaciones; métricas, tabla, PDF y Excel comparten filtros y no duplican la venta comercial.
-- [ ] Completar el reporte de conteos por sucursal y consolidado: apertura, movimientos, existencia y cierre permanecen separados por ubicación; faltantes se muestran vacíos y costos requieren `REPORTS_COSTS`.
-- [ ] Unificar un objeto de alcance para Dashboard, Receipts, Customers, Citas, Membresías, Inventory, Cash Manager, X-Report y Reports. Totales y exportaciones se calculan sobre el dataset completo autorizado, no sobre la página actual.
-- [ ] Probar catálogos y selectores con 1, 10, 20 y 30 sucursales, altas/bajas en caliente e históricos de sucursal inactiva con permiso explícito. Ningún endpoint usa nombres, límites o fallback de Polanco codificados.
-- [ ] Auditar cada exportación con usuario, periodo, filtros y sucursales; PDF/XLSX incluyen alcance y `branch_id` por fila consolidada cuando corresponda.
+- [x] Construir consultas específicas para membresías en Dashboard, Customers, Receipts y Mis ventas usando `client_id`, `purchaseTicketId` y autorización de cartera; cualquier conciliación legacy por teléfono/nombre queda explícita, medible y fuera de la regla normal.
+- [x] Agregar reporte mensual de procedencia por `CustomerSource.id` y cliente único: participación, venta completada, ticket promedio, recurrencia, visitas y citas. Mes y periodos usan `America/Mexico_City`.
+- [x] Agregar conciliación bancaria por movimiento `PosPayment`, no por ticket: ventas, abonos, liquidaciones y compensaciones; métricas, tabla, PDF y Excel comparten filtros y no duplican la venta comercial.
+- [x] Completar el reporte de conteos por sucursal y consolidado: apertura, movimientos, existencia y cierre permanecen separados por ubicación; faltantes se muestran vacíos y costos requieren `REPORTS_COSTS`.
+- [x] Unificar un objeto de alcance para Dashboard, Receipts, Customers, Citas, Membresías, Inventory, Cash Manager, X-Report y Reports. Totales y exportaciones se calculan sobre el dataset completo autorizado, no sobre la página actual.
+- [x] Probar catálogos y selectores con 1, 10, 20 y 30 sucursales, altas/bajas en caliente e históricos de sucursal inactiva con permiso explícito. Ningún endpoint usa nombres, límites o fallback de Polanco codificados.
+- [x] Auditar cada exportación con usuario, periodo, filtros y sucursales; PDF/XLSX incluyen alcance y `branch_id` por fila consolidada cuando corresponda.
 
 **Persistencia prevista:** vistas/consultas agregadas e índices sobre cliente, fuente, membresía, pago, fecha operativa y sucursal. Sólo se crean snapshots materializados cuando el cierre comercial exige versionado; los reportes ordinarios siguen derivados de datos canónicos.
 
 **Puerta de salida:** pruebas de igualdad pantalla/exportación, aislamiento de sucursales y cartera, paginación sobre totales completos, 30 sucursales, sucursal inactiva, transferencias sin doble conteo y costos redactados.
+
+**Criterio de cierre en repositorio: cumplido el 2026-09-04.** La migración aditiva `20260904040000_add_pos_reporting_indexes` incorpora únicamente índices para membresía, pago, cita y periodo; no crea ni modifica datos operativos y no se aplicó a development o producción. Los endpoints de reporte y exportación comparten la misma consulta canónica, el export ignora la página visual y registra auditoría. La reconstrucción de migraciones, igualdad HTTP y pruebas de volumen sobre PostgreSQL 16 efímero siguen siendo una puerta operativa previa al despliegue porque este workspace no dispone de una base desechable.
+
+#### Entregables verificables
+
+- Identidad y membresías: tickets incluyen vínculos mínimos obtenidos por `customerId`/`ticketId`; los listados aceptan filtros exactos `customerId` y `purchaseTicketId`, conservan cartera vigente y declaran `CANONICAL_IDS` con cero coincidencias legacy.
+- Reportes: `CUSTOMER_SOURCE_MONTHLY`, `BANK_RECONCILIATION` e `INVENTORY_COUNTS` están disponibles tanto en `/reports/:key` como en `/exports/:key`; periodo, filtros, alcance, resumen y filas salen del mismo constructor.
+- Escala: `PosDataScope` materializa IDs, nombres, actividad, zona horaria y cartera. Las operaciones usan sólo sucursales activas; una asignación explícita separada habilita históricos de una sucursal inactiva sin habilitar nuevas mutaciones allí.
+- Exportación: devuelve el conjunto completo autorizado, conserva `branch_id` en filas de sucursal, agrega alcance a PDF/XLSX y crea `AuditLog` con actor, terminal, periodo, filtros redactados, sucursales, costos y cantidad de filas.
+- Contratos e índices: tipos compartidos y cliente HTTP incluyen los tres reportes y filtros bancarios; ambos schemas Prisma permanecen sincronizados. La guía técnica y operativa está en `docs/POS_REPORTING_SCALE.md`.
+- Verificación local: schemas Prisma sincronizados/válidos, lint y type-check de types/API client/API/POS, build del API, build Vite de renderer/main/preload y 83 pruebas unitarias en verde. La prueba HTTP/transaccional sobre PostgreSQL efímero queda pendiente antes de desplegar.
 
 ### Fase 14 — Extensión offline, integración del POS y segundo piloto
 

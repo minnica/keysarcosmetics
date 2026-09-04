@@ -22,7 +22,11 @@ import {
   requirePosPermission,
 } from "../middlewares/pos-auth.middleware";
 import { prisma } from "../prisma/client";
-import { resolveRequestedBranchIds } from "../services/pos-scope";
+import {
+  hydratePosDataScope,
+  resolvePosDataScope,
+  resolveRequestedBranchIds,
+} from "../services/pos-scope";
 import {
   executePosIdempotent,
   findPosIdempotentReplay,
@@ -346,16 +350,19 @@ router.get(
         message: "Consulta inválida",
         data: parsed.error.flatten().fieldErrors,
       });
+    const scope = await hydratePosDataScope(
+      resolvePosDataScope({
+        authorizedBranchIds: req.posUser!.authorizedHistoricalBranchIds,
+        requestedBranchIds: parsed.data.branchIds
+          ?.split(",")
+          .map((id) => id.trim())
+          .filter(Boolean),
+        employeeId: req.posUser!.employeeId,
+        canViewAllPortfolio: canViewAll(req),
+      }),
+    );
     const where: Prisma.PosTicketWhereInput = {
-      branchId: {
-        in: resolveRequestedBranchIds({
-          authorizedBranchIds: req.posUser!.authorizedBranchIds,
-          requestedBranchIds: parsed.data.branchIds
-            ?.split(",")
-            .map((id) => id.trim())
-            .filter(Boolean),
-        }),
-      },
+      branchId: { in: scope.branchIds },
       ...(parsed.data.businessDate
         ? {
             businessDate: new Date(`${parsed.data.businessDate}T00:00:00.000Z`),
@@ -396,6 +403,18 @@ router.get(
             },
             orderBy: { creadoEn: "asc" },
           },
+          clientMemberships: {
+            select: {
+              id: true,
+              folio: true,
+              customerId: true,
+              ticketId: true,
+              membershipItemId: true,
+              membershipNameSnapshot: true,
+              status: true,
+            },
+            orderBy: { unitOrdinal: "asc" },
+          },
         },
         orderBy: { creadoEn: "desc" },
         skip: (parsed.data.page - 1) * parsed.data.pageSize,
@@ -407,6 +426,11 @@ router.get(
       success: true,
       message: "OK",
       data: {
+        scope,
+        identityResolution: {
+          strategy: "CANONICAL_IDS",
+          legacyFallbackMatches: 0,
+        },
         items: items.map(ticketDto),
         page: parsed.data.page,
         pageSize: parsed.data.pageSize,
@@ -428,7 +452,7 @@ router.get(
     );
     if (
       !ticket ||
-      !req.posUser!.authorizedBranchIds.includes(ticket.branchId) ||
+      !req.posUser!.authorizedHistoricalBranchIds.includes(ticket.branchId) ||
       (!canViewAll(req) && !own)
     )
       return res
@@ -609,7 +633,7 @@ router.get(
       ticket: {
         branchId: {
           in: resolveRequestedBranchIds({
-            authorizedBranchIds: req.posUser!.authorizedBranchIds,
+            authorizedBranchIds: req.posUser!.authorizedHistoricalBranchIds,
             requestedBranchIds: parsed.data.branchIds
               ?.split(",")
               .map((id) => id.trim())

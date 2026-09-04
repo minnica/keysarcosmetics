@@ -1075,6 +1075,8 @@ const personalAuthorizationTokenSchema = z.string().min(32).max(256);
 export const posMembershipListQuerySchema = z
   .object({
     branchIds: z.string().max(10_000).optional(),
+    customerId: idSchema.optional(),
+    purchaseTicketId: z.string().uuid().optional(),
     query: z.string().trim().max(120).optional(),
     status: posMembershipStatusSchema.optional(),
     profile: posMembershipProfileSchema.optional(),

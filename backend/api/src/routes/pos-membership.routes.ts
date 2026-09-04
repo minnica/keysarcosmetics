@@ -44,8 +44,11 @@ import {
 } from "../services/pos-memberships";
 import {
   PosScopeError,
+  hydratePosDataScope,
+  resolvePosDataScope,
   resolveRequestedBranchIds,
 } from "../services/pos-scope";
+import { exportFilterMetadata } from "../services/pos-reporting";
 
 const router: ExpressRouter = Router();
 const asyncRoute =
@@ -61,6 +64,7 @@ const context = (req: Request): PosMembershipContext => ({
   employeeId: req.posUser!.employeeId,
   isMaster: req.posUser!.isMaster,
   authorizedBranchIds: req.posUser!.authorizedBranchIds,
+  historicalBranchIds: req.posUser!.authorizedHistoricalBranchIds,
 });
 
 const branchIds = (value?: string) =>
@@ -137,11 +141,21 @@ router.get(
       return;
     }
     const requestedBranchIds = branchIds(parsed.data.branchIds);
+    const scope = await hydratePosDataScope(
+      resolvePosDataScope({
+        authorizedBranchIds: req.posUser!.authorizedHistoricalBranchIds,
+        requestedBranchIds,
+        employeeId: req.posUser!.employeeId,
+        canViewAllPortfolio: req.posUser!.isMaster,
+      }),
+    );
     const result = await prisma.$transaction(async (tx) => {
       await requireMembershipAuthorization(tx, token, context(req));
       const where = membershipListWhere({
         context: context(req),
         branchIds: requestedBranchIds,
+        customerId: parsed.data.customerId,
+        purchaseTicketId: parsed.data.purchaseTicketId,
         query: parsed.data.query,
         status: parsed.data.status,
         profile: parsed.data.profile,
@@ -187,6 +201,11 @@ router.get(
       success: true,
       message: "OK",
       data: {
+        scope,
+        identityResolution: {
+          strategy: "CANONICAL_IDS",
+          legacyFallbackMatches: 0,
+        },
         items: result.items,
         page: parsed.data.page,
         pageSize: parsed.data.pageSize,
@@ -433,6 +452,8 @@ router.post(
 const exportSchema = z
   .object({
     branchIds: z.array(z.string().min(1)).min(1).max(500),
+    customerId: z.string().min(1).optional(),
+    purchaseTicketId: z.string().uuid().optional(),
     query: z.string().trim().max(120).optional(),
     status: z.enum(["PENDING", "ACTIVE", "EXHAUSTED", "CANCELED"]).optional(),
     profile: z.enum(["POTENTIAL", "LOYAL", "VIP", "RECOVERY"]).optional(),
@@ -459,23 +480,62 @@ router.post(
         message: "Exportación de membresías inválida",
         data: parsed.error.flatten().fieldErrors,
       });
+    const scope = await hydratePosDataScope(
+      resolvePosDataScope({
+        authorizedBranchIds: req.posUser!.authorizedHistoricalBranchIds,
+        requestedBranchIds: parsed.data.branchIds,
+        employeeId: req.posUser!.employeeId,
+        canViewAllPortfolio: req.posUser!.isMaster,
+      }),
+    );
     const items = await prisma.$transaction(async (tx) => {
       await requireMembershipAuthorization(
         tx,
         parsed.data.personalAuthorizationToken,
         context(req),
       );
-      return tx.posClientMembership.findMany({
+      const memberships = await tx.posClientMembership.findMany({
         where: membershipListWhere({ context: context(req), ...parsed.data }),
         include: membershipInclude,
         orderBy: { purchasedAt: "desc" },
       });
+      await tx.auditLog.create({
+        data: {
+          action: "POS_MEMBERSHIP_EXPORT",
+          outcome: "SUCCESS",
+          actorCredentialId: req.posUser!.credentialId,
+          terminalId: req.posUser!.terminalId,
+          branchId: scope.branchIds.length === 1 ? scope.branchIds[0] : null,
+          targetType: "PosClientMembership",
+          targetId: "AUTHORIZED_DATASET",
+          ipAddress: req.ip,
+          userAgent: req.get("user-agent")?.slice(0, 512),
+          metadata: {
+            dateFrom: parsed.data.purchasedFrom ?? null,
+            dateTo: parsed.data.purchasedTo ?? null,
+            timeZone: scope.timeZone,
+            branchIds: scope.branchIds,
+            branchCount: scope.branchIds.length,
+            rowCount: memberships.length,
+            portfolio: scope.portfolio,
+            filters: exportFilterMetadata({
+              search: parsed.data.query,
+            }),
+          },
+        },
+      });
+      return memberships;
     });
     res.json({
       success: true,
       message: "Dataset autorizado",
       data: {
         generatedAt: new Date().toISOString(),
+        scope,
+        identityResolution: {
+          strategy: "CANONICAL_IDS",
+          legacyFallbackMatches: 0,
+        },
         items: items.map(membershipDto),
       },
     });

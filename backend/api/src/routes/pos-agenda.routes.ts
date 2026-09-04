@@ -41,6 +41,7 @@ import {
   type PosMembershipContext,
 } from "../services/pos-memberships";
 import { PosOperationError } from "../services/pos-operations";
+import { resolvePosDataScope } from "../services/pos-scope";
 
 const router: ExpressRouter = Router();
 const asyncRoute =
@@ -56,6 +57,7 @@ const membershipContext = (req: Request): PosMembershipContext => ({
   employeeId: req.posUser!.employeeId,
   isMaster: req.posUser!.isMaster,
   authorizedBranchIds: req.posUser!.authorizedBranchIds,
+  historicalBranchIds: req.posUser!.authorizedHistoricalBranchIds,
 });
 
 router.post(
@@ -210,7 +212,11 @@ router.get(
       return res
         .status(400)
         .json({ success: false, message: "Consulta inválida", data: null });
-    const branchScope = req.posUser!.authorizedBranchIds;
+    const branchScope = resolvePosDataScope({
+      authorizedBranchIds: req.posUser!.authorizedHistoricalBranchIds,
+      employeeId: req.posUser!.employeeId,
+      canViewAllPortfolio: req.posUser!.isMaster,
+    }).branchIds;
     const where: Prisma.AgendaSyncEventWhereInput = {
       status: parsed.data.status ?? { in: ["PENDING", "FAILED", "CONFLICT"] },
       ...(!req.posUser!.isMaster

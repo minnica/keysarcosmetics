@@ -15058,17 +15058,26 @@ function App() {
                         pageSize: 500,
                       });
                       total = dataset.total;
+                      const scopeLabel = dataset.scope.branches
+                        .map(
+                          (scopeBranch) =>
+                            `${scopeBranch.name} (${scopeBranch.id})`,
+                        )
+                        .join(" / ");
                       rows.push(
                         ...dataset.rows.map((row) =>
                           Object.fromEntries(
-                            Object.entries(row).map(([column, value]) => [
-                              column,
-                              value === null
-                                ? ""
-                                : typeof value === "boolean"
-                                  ? String(value)
-                                  : value,
-                            ]),
+                            [
+                              ["Alcance autorizado", scopeLabel],
+                              ...Object.entries(row).map(([column, value]) => [
+                                column,
+                                value === null
+                                  ? ""
+                                  : typeof value === "boolean"
+                                    ? String(value)
+                                    : value,
+                              ]),
+                            ],
                           ),
                         ),
                       );
@@ -16305,7 +16314,6 @@ function App() {
             loadAuthorizedDataset={
               posApiEnabled
                 ? async (input) => {
-                    if (input.key === "BANK_RECONCILIATION") return [];
                     const branchIds = input.branches.flatMap((name) => {
                       const branch = apiBranches.find(
                         (candidate) => candidate.name === name,
@@ -16329,17 +16337,26 @@ function App() {
                         pageSize: 500,
                       });
                       total = dataset.total;
+                      const scopeLabel = dataset.scope.branches
+                        .map(
+                          (scopeBranch) =>
+                            `${scopeBranch.name} (${scopeBranch.id})`,
+                        )
+                        .join(" / ");
                       rows.push(
                         ...dataset.rows.map((row) =>
                           Object.fromEntries(
-                            Object.entries(row).map(([column, value]) => [
-                              column,
-                              value === null
-                                ? ""
-                                : typeof value === "boolean"
-                                  ? String(value)
-                                  : value,
-                            ]),
+                            [
+                              ["Alcance autorizado", scopeLabel],
+                              ...Object.entries(row).map(([column, value]) => [
+                                column,
+                                value === null
+                                  ? ""
+                                  : typeof value === "boolean"
+                                    ? String(value)
+                                    : value,
+                              ]),
+                            ],
                           ),
                         ),
                       );

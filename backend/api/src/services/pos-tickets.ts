@@ -915,6 +915,18 @@ const ticketInclude = {
     },
     orderBy: { creadoEn: "asc" as const },
   },
+  clientMemberships: {
+    select: {
+      id: true,
+      folio: true,
+      customerId: true,
+      ticketId: true,
+      membershipItemId: true,
+      membershipNameSnapshot: true,
+      status: true,
+    },
+    orderBy: { unitOrdinal: "asc" as const },
+  },
 } satisfies Prisma.PosTicketInclude;
 
 type TicketPayload = Prisma.PosTicketGetPayload<{
@@ -1045,6 +1057,15 @@ export function ticketDto(ticket: TicketPayload): PosTicketDto {
         appointment.courtesyReason === "COMPLAINT"
           ? appointment.courtesyReason
           : null,
+    })),
+    memberships: ticket.clientMemberships.map((membership) => ({
+      id: membership.id,
+      folio: membership.folio,
+      customerId: membership.customerId,
+      purchaseTicketId: membership.ticketId,
+      membershipItemId: membership.membershipItemId,
+      membershipName: membership.membershipNameSnapshot,
+      status: membership.status,
     })),
   };
 }

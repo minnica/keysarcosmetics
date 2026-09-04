@@ -50,7 +50,8 @@ import {
 import { enqueuePosNotification } from "../services/pos-notifications";
 import {
   assertBranchAuthorized,
-  resolveRequestedBranchIds,
+  hydratePosDataScope,
+  resolvePosDataScope,
 } from "../services/pos-scope";
 
 const router: ExpressRouter = Router();
@@ -534,12 +535,14 @@ router.get(
           data: parsed.error.flatten().fieldErrors,
         });
     const date = parsed.data.businessDate ?? currentBusinessDate();
-    const branchIds = resolveRequestedBranchIds({
-      authorizedBranchIds: req.posUser!.authorizedBranchIds,
+    const branchIds = resolvePosDataScope({
+      authorizedBranchIds: req.posUser!.authorizedHistoricalBranchIds,
       requestedBranchIds: parsed.data.branchId
         ? [parsed.data.branchId]
         : undefined,
-    });
+      employeeId: req.posUser!.employeeId,
+      canViewAllPortfolio: true,
+    }).branchIds;
     const where = {
       branchId: { in: branchIds },
       businessDate: new Date(`${date}T00:00:00.000Z`),
@@ -876,12 +879,14 @@ router.get(
           message: "Consulta inválida",
           data: parsed.error.flatten().fieldErrors,
         });
-    const branchIds = resolveRequestedBranchIds({
-      authorizedBranchIds: req.posUser!.authorizedBranchIds,
+    const branchIds = resolvePosDataScope({
+      authorizedBranchIds: req.posUser!.authorizedHistoricalBranchIds,
       requestedBranchIds: parsed.data.branchId
         ? [parsed.data.branchId]
         : undefined,
-    });
+      employeeId: req.posUser!.employeeId,
+      canViewAllPortfolio: true,
+    }).branchIds;
     const where: Prisma.PosCashExpenseWhereInput = {
       branchId: { in: branchIds },
       businessDate: new Date(
@@ -1227,14 +1232,27 @@ async function operationalSummary(req: Request) {
     .strict()
     .parse(req.query);
   const date = parsed.businessDate ?? currentBusinessDate();
-  const branchIds = resolveRequestedBranchIds({
-    authorizedBranchIds: req.posUser!.authorizedBranchIds,
-    requestedBranchIds: parsed.branchId ? [parsed.branchId] : undefined,
-  });
+  const scope = await hydratePosDataScope(
+    resolvePosDataScope({
+      authorizedBranchIds: req.posUser!.authorizedHistoricalBranchIds,
+      requestedBranchIds: parsed.branchId ? [parsed.branchId] : undefined,
+      employeeId: req.posUser!.employeeId,
+      canViewAllPortfolio: true,
+    }),
+  );
+  const branchIds = scope.branchIds;
   const branchId = branchIds.length === 1 ? branchIds[0]! : null;
   const dateValue = new Date(`${date}T00:00:00.000Z`);
   const branchWhere = { branchId: { in: branchIds } };
-  const [days, tickets, operations, movements, cashMovements, attendances] =
+  const [
+    days,
+    tickets,
+    operations,
+    movements,
+    cashMovements,
+    attendances,
+    memberships,
+  ] =
     await Promise.all([
       prisma.posBusinessDay.findMany({
         where: { ...branchWhere, businessDate: dateValue },
@@ -1275,6 +1293,22 @@ async function operationalSummary(req: Request) {
       }),
       prisma.posAttendance.count({
         where: { ...branchWhere, businessDate: dateValue, status: "OPEN" },
+      }),
+      prisma.posClientMembership.findMany({
+        where: {
+          // Relación canónica: nunca se reconcilia por nombre o teléfono.
+          ticket: {
+            ...branchWhere,
+            businessDate: dateValue,
+            status: { in: ["COMPLETED", "LAYAWAY"] },
+          },
+        },
+        select: {
+          id: true,
+          customerId: true,
+          ticketId: true,
+          purchaseAmount: true,
+        },
       }),
     ]);
   const salesTotal = tickets.reduce(
@@ -1350,6 +1384,7 @@ async function operationalSummary(req: Request) {
       ? "CLOSED"
       : "NOT_OPENED";
   return {
+    scope,
     businessDate: date,
     branchId,
     branchName: branchId
@@ -1368,6 +1403,13 @@ async function operationalSummary(req: Request) {
       .toFixed(2),
     inventoryMovementCount: movements,
     attendanceOpenCount: attendances,
+    membershipCount: memberships.length,
+    membershipSalesTotal: memberships
+      .reduce(
+        (sum, membership) => sum.plus(membership.purchaseAmount),
+        decimal(0),
+      )
+      .toFixed(2),
     paymentMethods: [...paymentMap]
       .map(([methodId, value]) => ({
         methodId,

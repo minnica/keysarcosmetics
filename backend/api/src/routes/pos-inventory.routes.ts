@@ -46,6 +46,7 @@ import {
   enqueuePosNotification,
   POS_NOTIFICATION_KINDS,
 } from "../services/pos-notifications";
+import { resolvePosDataScope } from "../services/pos-scope";
 
 const router: ExpressRouter = Router();
 const db = prisma;
@@ -166,7 +167,11 @@ async function respondIdempotent<T>(
   });
 }
 
-async function findLocationForScope(req: Request, locationId: string) {
+async function findLocationForScope(
+  req: Request,
+  locationId: string,
+  includeHistoricalBranches = false,
+) {
   const location = await db.inventoryLocation.findFirst({
     where: { id: locationId, active: true },
     include: locationInclude,
@@ -174,7 +179,10 @@ async function findLocationForScope(req: Request, locationId: string) {
   if (!location) throw new PosInventoryError("Ubicación no encontrada", 404);
   if (
     location.branchId &&
-    !req.posUser!.authorizedBranchIds.includes(location.branchId)
+    !(includeHistoricalBranches
+      ? req.posUser!.authorizedHistoricalBranchIds
+      : req.posUser!.authorizedBranchIds
+    ).includes(location.branchId)
   ) {
     throw new PosInventoryError(
       "La ubicación está fuera del alcance de la terminal",
@@ -389,12 +397,17 @@ router.get(
   "/inventory/locations",
   requireInventoryAccess,
   asyncRoute(async (req, res) => {
+    const scope = resolvePosDataScope({
+      authorizedBranchIds: req.posUser!.authorizedHistoricalBranchIds,
+      employeeId: req.posUser!.employeeId,
+      canViewAllPortfolio: true,
+    });
     const locations = await db.inventoryLocation.findMany({
       where: {
         active: true,
         OR: [
           { branchId: null },
-          { branchId: { in: req.posUser!.authorizedBranchIds } },
+          { branchId: { in: scope.branchIds } },
         ],
       },
       include: locationInclude,
@@ -422,13 +435,18 @@ router.get(
         message: "Consulta inválida",
         data: parsed.error.flatten().fieldErrors,
       });
+    const scope = resolvePosDataScope({
+      authorizedBranchIds: req.posUser!.authorizedHistoricalBranchIds,
+      employeeId: req.posUser!.employeeId,
+      canViewAllPortfolio: true,
+    });
     const locations = await db.inventoryLocation.findMany({
       where: {
         active: true,
         ...(parsed.data.locationId ? { id: parsed.data.locationId } : {}),
         OR: [
           { branchId: null },
-          { branchId: { in: req.posUser!.authorizedBranchIds } },
+          { branchId: { in: scope.branchIds } },
         ],
       },
       include: locationInclude,
@@ -470,7 +488,12 @@ router.get(
         data: parsed.error.flatten().fieldErrors,
       });
     if (parsed.data.locationId)
-      await findLocationForScope(req, parsed.data.locationId);
+      await findLocationForScope(req, parsed.data.locationId, true);
+    const dataScope = resolvePosDataScope({
+      authorizedBranchIds: req.posUser!.authorizedHistoricalBranchIds,
+      employeeId: req.posUser!.employeeId,
+      canViewAllPortfolio: true,
+    });
     const locationScope = parsed.data.locationId
       ? [parsed.data.locationId]
       : (
@@ -479,7 +502,7 @@ router.get(
               active: true,
               OR: [
                 { branchId: null },
-                { branchId: { in: req.posUser!.authorizedBranchIds } },
+                { branchId: { in: dataScope.branchIds } },
               ],
             },
             select: { id: true },

@@ -396,6 +396,18 @@ export async function createOfflineBootstrap(
           },
           orderBy: { creadoEn: "asc" },
         },
+        clientMemberships: {
+          select: {
+            id: true,
+            folio: true,
+            customerId: true,
+            ticketId: true,
+            membershipItemId: true,
+            membershipNameSnapshot: true,
+            status: true,
+          },
+          orderBy: { unitOrdinal: "asc" },
+        },
       },
       orderBy: { creadoEn: "desc" },
       take: 200,

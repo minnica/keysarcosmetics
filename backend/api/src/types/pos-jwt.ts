@@ -21,6 +21,7 @@ export interface PosJwtPayload {
 
 export interface PosRequestUser extends PosJwtPayload {
   authorizedBranchIds: string[];
+  authorizedHistoricalBranchIds: string[];
   branchScope: "SESSION_BRANCH" | "ASSIGNED" | "ALL_ACTIVE";
 }
 

@@ -14,6 +14,7 @@ const sellerContext: PosMembershipContext = {
   employeeId: "seller-1",
   isMaster: false,
   authorizedBranchIds: ["branch-1", "branch-2"],
+  historicalBranchIds: ["branch-1", "branch-2", "branch-inactive"],
 };
 
 describe("membresías POS", () => {
@@ -64,5 +65,24 @@ describe("membresías POS", () => {
       currentSellerId: "seller-1",
       status: "ACTIVE",
     });
+  });
+
+  it("consulta por IDs canónicos y admite históricos explícitos sólo en listados", () => {
+    expect(
+      membershipListWhere({
+        context: sellerContext,
+        branchIds: ["branch-inactive"],
+        customerId: "customer-1",
+        purchaseTicketId: "550e8400-e29b-41d4-a716-446655440000",
+      }),
+    ).toEqual({
+      purchaseBranchId: { in: ["branch-inactive"] },
+      currentSellerId: "seller-1",
+      customerId: "customer-1",
+      ticketId: "550e8400-e29b-41d4-a716-446655440000",
+    });
+    expect(() =>
+      membershipScopeWhere(sellerContext, ["branch-inactive"]),
+    ).toThrow("no autorizada");
   });
 });

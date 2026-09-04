@@ -96,6 +96,7 @@ export async function posAuthMiddleware(
       ...identity,
       permissions,
       authorizedBranchIds: branchScope.branchIds,
+      authorizedHistoricalBranchIds: branchScope.historicalBranchIds,
       branchScope: branchScope.mode,
     };
     next();

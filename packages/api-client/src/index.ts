@@ -64,6 +64,7 @@ import type {
   PosOfflineOperationDto,
   PosOfflinePushResultDto,
   PosReportDatasetDto,
+  PosDataScopeDto,
   PosReportKey,
   PosSaleSellerDto,
   PosClientMembershipDto,
@@ -473,6 +474,11 @@ export interface PosApiClient {
     page?: number;
     pageSize?: number;
   }): Promise<{
+    scope: PosDataScopeDto;
+    identityResolution: {
+      strategy: "CANONICAL_IDS";
+      legacyFallbackMatches: number;
+    };
     items: PosTicketDto[];
     page: number;
     pageSize: number;
@@ -521,6 +527,11 @@ export interface PosApiClient {
     idempotencyKey?: string,
   ): Promise<{ issueId: string; copyNumber: number; printedAt: string }>;
   memberships(input: PosMembershipListRequest): Promise<{
+    scope: PosDataScopeDto;
+    identityResolution: {
+      strategy: "CANONICAL_IDS";
+      legacyFallbackMatches: number;
+    };
     items: PosClientMembershipDto[];
     page: number;
     pageSize: number;
@@ -555,7 +566,15 @@ export interface PosApiClient {
       PosMembershipListRequest,
       "branchIds" | "page" | "pageSize" | "followUpOnly"
     > & { branchIds: string[] },
-  ): Promise<{ generatedAt: string; items: PosClientMembershipDto[] }>;
+  ): Promise<{
+    generatedAt: string;
+    scope: PosDataScopeDto;
+    identityResolution: {
+      strategy: "CANONICAL_IDS";
+      legacyFallbackMatches: number;
+    };
+    items: PosClientMembershipDto[];
+  }>;
   createMembershipClosure(
     input: PosMembershipClosureRequestDto,
     idempotencyKey?: string,
@@ -647,11 +666,16 @@ export interface PosApiClient {
   reportDataset(
     key: PosReportKey,
     input: {
-      dateFrom: string;
-      dateTo: string;
+      dateFrom?: string;
+      dateTo?: string;
+      month?: string;
       branchIds?: string[];
       sellerId?: string;
       paymentMethodId?: string;
+      bankId?: string;
+      cardType?: "CREDIT" | "DEBIT";
+      installmentMonths?: number;
+      operationKind?: "SALE" | "LAYAWAY_PAYMENT" | "REFUND" | "REVISION";
       search?: string;
       page?: number;
       pageSize?: number;
@@ -660,11 +684,16 @@ export interface PosApiClient {
   exportDataset(
     key: PosReportKey,
     input: {
-      dateFrom: string;
-      dateTo: string;
+      dateFrom?: string;
+      dateTo?: string;
+      month?: string;
       branchIds?: string[];
       sellerId?: string;
       paymentMethodId?: string;
+      bankId?: string;
+      cardType?: "CREDIT" | "DEBIT";
+      installmentMonths?: number;
+      operationKind?: "SALE" | "LAYAWAY_PAYMENT" | "REFUND" | "REVISION";
       search?: string;
       page?: number;
       pageSize?: number;

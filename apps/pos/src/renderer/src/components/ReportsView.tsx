@@ -1689,7 +1689,7 @@ export function ReportsView({
   const exportFilename = `reporte-${slugify(activeDefinition.label)}-${dateFrom}-${dateTo}`;
 
   const resolveExportRows = async () =>
-    loadAuthorizedDataset && activeReport !== "BANK_RECONCILIATION"
+    loadAuthorizedDataset
     ? loadAuthorizedDataset({
         key: activeReport,
         dateFrom,

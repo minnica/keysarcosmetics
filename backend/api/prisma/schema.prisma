@@ -1865,6 +1865,7 @@ model PosPaymentOperation {
 
   @@index([ticketId, creadoEn])
   @@index([businessDate, creadoEn])
+  @@index([businessDate, kind, creadoEn])
 }
 
 model PosPayment {
@@ -1998,6 +1999,7 @@ model PosAppointment {
 
   @@index([customerId, scheduledAt])
   @@index([branchId, scheduledAt])
+  @@index([branchId, status, scheduledAt])
   @@index([externalReservationId])
   @@index([agendaReservationId])
   @@index([membershipId, status])
@@ -2221,7 +2223,9 @@ model PosClientMembership {
   actualizadoEn              DateTime                    @updatedAt
 
   @@unique([ticketLineId, unitOrdinal])
+  @@index([ticketId])
   @@index([customerId, status, purchasedAt])
+  @@index([customerId, purchaseBranchId, purchasedAt])
   @@index([purchaseBranchId, status, purchasedAt])
   @@index([currentSellerId, status, purchasedAt])
   @@index([originalSellerId, purchasedAt])

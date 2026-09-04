@@ -789,10 +789,27 @@ export const POS_REPORT_KEYS = [
   "EMPLOYEE_PERFORMANCE",
   "EMPLOYEE_DAILY",
   "CUSTOMER_OVERVIEW",
+  "CUSTOMER_SOURCE_MONTHLY",
+  "BANK_RECONCILIATION",
+  "INVENTORY_COUNTS",
 ] as const;
 
 export type PosReportKey = (typeof POS_REPORT_KEYS)[number];
 export type PosReportCell = string | number | boolean | null;
+
+export interface PosDataScopeDto {
+  timeZone: "America/Mexico_City";
+  branchIds: PosId[];
+  branches: Array<{
+    id: PosId;
+    name: string;
+    active: boolean;
+  }>;
+  portfolio: {
+    mode: "ALL" | "OWN";
+    employeeId: PosId | null;
+  };
+}
 
 export interface PosReportDatasetDto {
   key: PosReportKey;
@@ -801,6 +818,12 @@ export interface PosReportDatasetDto {
   branchIds: PosId[];
   includesCosts: boolean;
   generatedAt: IsoUtcDateTime;
+  scope: PosDataScopeDto;
+  summary: Record<string, PosReportCell>;
+  identityResolution: {
+    strategy: "CANONICAL_IDS";
+    legacyFallbackMatches: number;
+  };
   columns: string[];
   rows: Array<Record<string, PosReportCell>>;
   page: number;
@@ -1146,6 +1169,15 @@ export interface PosTicketDto extends Omit<PosTicketQuoteDto, "lines"> {
   paymentOperations: PosPaymentOperationDto[];
   owedProducts: PosOwedProductDto[];
   appointments: PosAppointmentDto[];
+  memberships: Array<{
+    id: PosId;
+    folio: string;
+    customerId: PosId;
+    purchaseTicketId: PosId;
+    membershipItemId: PosId;
+    membershipName: string;
+    status: "PENDING" | "ACTIVE" | "EXHAUSTED" | "CANCELED";
+  }>;
 }
 
 export interface PosLayawayPaymentRequestDto {
@@ -1256,6 +1288,8 @@ export interface PosClientMembershipDto {
 
 export interface PosMembershipListRequest extends PosPageRequest {
   branchIds?: PosId[];
+  customerId?: PosId;
+  purchaseTicketId?: PosId;
   query?: string;
   status?: PosMembershipStatus;
   profile?: PosMembershipClientProfile;
@@ -1402,6 +1436,7 @@ export interface PosCashExpenseVoidDto {
 }
 
 export interface PosOperationalSummaryDto {
+  scope: PosDataScopeDto;
   businessDate: BusinessDate;
   branchId: PosId | null;
   branchName: string;
@@ -1416,6 +1451,8 @@ export interface PosOperationalSummaryDto {
   unitsSold: Money;
   inventoryMovementCount: number;
   attendanceOpenCount: number;
+  membershipCount: number;
+  membershipSalesTotal: Money;
   paymentMethods: Array<{ methodId: PosId; name: string; amount: Money }>;
   sellers: Array<{ employeeId: PosId; name: string; amount: Money }>;
   products: Array<{

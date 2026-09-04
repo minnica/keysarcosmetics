@@ -7,6 +7,7 @@ import type {
 import { hashOpaqueToken } from "./pos-security";
 import { money } from "./pos-inventory";
 import { resolveRequestedBranchIds } from "./pos-scope";
+import { addCalendarDays, posLocalDateStart } from "./pos-reporting";
 
 type Transaction = Prisma.TransactionClient;
 
@@ -28,6 +29,7 @@ export interface PosMembershipContext {
   employeeId: string | null;
   isMaster: boolean;
   authorizedBranchIds: string[];
+  historicalBranchIds?: string[];
 }
 
 export async function requireMembershipAuthorization(
@@ -167,6 +169,7 @@ export function membershipDto(
 export function membershipScopeWhere(
   context: PosMembershipContext,
   requestedBranchIds?: readonly string[],
+  includeHistoricalBranches = false,
 ): Prisma.PosClientMembershipWhereInput {
   if (context.isMaster && !requestedBranchIds?.length) {
     throw new PosMembershipError(
@@ -174,7 +177,9 @@ export function membershipScopeWhere(
     );
   }
   const branchIds = resolveRequestedBranchIds({
-    authorizedBranchIds: context.authorizedBranchIds,
+    authorizedBranchIds: includeHistoricalBranches
+      ? (context.historicalBranchIds ?? context.authorizedBranchIds)
+      : context.authorizedBranchIds,
     requestedBranchIds,
   });
   return {
@@ -634,17 +639,13 @@ export async function changeMembershipStatus(
 }
 
 const monthRange = (month: string) => {
-  const from = new Date(`${month}-01T00:00:00.000Z`);
-  const to = new Date(
-    Date.UTC(from.getUTCFullYear(), from.getUTCMonth() + 1, 1),
-  );
+  const [year, monthNumber] = month.split("-").map(Number) as [number, number];
+  const from = posLocalDateStart(`${month}-01`);
+  const nextMonth = new Date(Date.UTC(year, monthNumber, 1))
+    .toISOString()
+    .slice(0, 7);
+  const to = posLocalDateStart(`${nextMonth}-01`);
   return { from, to };
-};
-
-const dayAfter = (businessDate: string) => {
-  const value = new Date(`${businessDate}T00:00:00.000Z`);
-  value.setUTCDate(value.getUTCDate() + 1);
-  return value;
 };
 
 const closureInclude = {
@@ -780,6 +781,8 @@ export async function createMembershipClosure(
 export function membershipListWhere(input: {
   context: PosMembershipContext;
   branchIds?: string[];
+  customerId?: string;
+  purchaseTicketId?: string;
   query?: string;
   status?: PosMembershipStatus;
   profile?: "POTENTIAL" | "LOYAL" | "VIP" | "RECOVERY";
@@ -788,7 +791,9 @@ export function membershipListWhere(input: {
   purchasedTo?: string;
 }): Prisma.PosClientMembershipWhereInput {
   return {
-    ...membershipScopeWhere(input.context, input.branchIds),
+    ...membershipScopeWhere(input.context, input.branchIds, true),
+    ...(input.customerId ? { customerId: input.customerId } : {}),
+    ...(input.purchaseTicketId ? { ticketId: input.purchaseTicketId } : {}),
     ...(input.status ? { status: input.status } : {}),
     ...(input.profile ? { profile: input.profile } : {}),
     ...(input.followUpOnly
@@ -800,9 +805,11 @@ export function membershipListWhere(input: {
       ? {
           purchasedAt: {
             ...(input.purchasedFrom
-              ? { gte: new Date(`${input.purchasedFrom}T00:00:00.000Z`) }
+              ? { gte: posLocalDateStart(input.purchasedFrom) }
               : {}),
-            ...(input.purchasedTo ? { lt: dayAfter(input.purchasedTo) } : {}),
+            ...(input.purchasedTo
+              ? { lt: posLocalDateStart(addCalendarDays(input.purchasedTo, 1)) }
+              : {}),
           },
         }
       : {}),

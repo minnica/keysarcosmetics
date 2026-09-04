@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { assertBranchAuthorized, resolveRequestedBranchIds } from "./pos-scope";
+import {
+  assertBranchAuthorized,
+  resolvePosDataScope,
+  resolveRequestedBranchIds,
+} from "./pos-scope";
 
 describe("alcance POS por sucursal", () => {
   it("materializa all_authorized como la unión exacta", () => {
@@ -29,5 +33,16 @@ describe("alcance POS por sucursal", () => {
     expect(() => assertBranchAuthorized(["branch-a"], "branch-b")).toThrow(
       "no está autorizada",
     );
+  });
+
+  it("conserva IDs históricos explícitos aunque la actividad se resuelva aparte", () => {
+    expect(
+      resolvePosDataScope({
+        authorizedBranchIds: ["active-branch", "inactive-explicit-branch"],
+        requestedBranchIds: ["inactive-explicit-branch"],
+        employeeId: null,
+        canViewAllPortfolio: true,
+      }).branchIds,
+    ).toEqual(["inactive-explicit-branch"]);
   });
 });
