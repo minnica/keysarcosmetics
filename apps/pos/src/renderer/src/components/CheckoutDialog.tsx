@@ -308,8 +308,9 @@ export function CheckoutDialog({
   const [deliveredCartItemIds, setDeliveredCartItemIds] = useState<string[]>(
     [],
   );
-  const [courtesyPackage, setCourtesyPackage] =
-    useState<CourtesyPackage>(courtesySettings.defaultPackage);
+  const [courtesyPackage, setCourtesyPackage] = useState<CourtesyPackage>(
+    courtesySettings.defaultPackage,
+  );
   const [courtesyDate, setCourtesyDate] = useState("");
   const [courtesyBranch, setCourtesyBranch] = useState("");
   const [courtesyTime, setCourtesyTime] = useState("");
@@ -332,7 +333,9 @@ export function CheckoutDialog({
     const initialCourtesyPackage =
       availableCourtesyPackages.find(
         (option) => option.id === courtesySettings.defaultPackage,
-      )?.id ?? availableCourtesyPackages[0]?.id ?? "";
+      )?.id ??
+      availableCourtesyPackages[0]?.id ??
+      "";
     const firstPaymentMethod = paymentMethods.find((method) => method.active);
     setClientMode("search");
     setCheckoutStep(1);
@@ -373,11 +376,23 @@ export function CheckoutDialog({
           ]
         : [],
     );
-  }, [availableCourtesyPackages, courtesySettings.defaultPackage, open, paymentMethods, presentSellers, total]);
+  }, [
+    availableCourtesyPackages,
+    courtesySettings.defaultPackage,
+    open,
+    paymentMethods,
+    presentSellers,
+    total,
+  ]);
 
   useEffect(() => {
     const query = clientSearch.trim();
-    if (!open || clientMode !== "search" || !onSearchClients || query.length < 2) {
+    if (
+      !open ||
+      clientMode !== "search" ||
+      !onSearchClients ||
+      query.length < 2
+    ) {
       setRemoteClients([]);
       return;
     }
@@ -451,16 +466,11 @@ export function CheckoutDialog({
   const selectedNextSessionMembership = selectedClientMemberships.find(
     (membership) => membership.id === nextSessionMembershipId,
   );
-  const clientHasSchedulableMemberships =
-    selectedClientMemberships.length > 0;
-  const clientHasMembershipHistory =
-    selectedClientMembershipHistory.length > 0;
+  const clientHasSchedulableMemberships = selectedClientMemberships.length > 0;
+  const clientHasMembershipHistory = selectedClientMembershipHistory.length > 0;
   const complaintCourtesyServices = clientHasSchedulableMemberships
     ? ["Facial de cortesía por queja"]
-    : [
-        "Facial de cortesía por queja",
-        "Corporal de cortesía por queja",
-      ];
+    : ["Facial de cortesía por queja", "Corporal de cortesía por queja"];
   const splitTarget = splitMode === "amount" ? total : 100;
   const splitTotal = selectedSellerIds.reduce(
     (sum, sellerId) => sum + (splitValues[sellerId] ?? 0),
@@ -492,8 +502,7 @@ export function CheckoutDialog({
     newClient.companyName.trim() ||
     companyName.trim() ||
     "Keysar Cosmetics";
-  const companyParticipantCode =
-    companySalesNumber.trim() || "EMPRESA-001";
+  const companyParticipantCode = companySalesNumber.trim() || "EMPRESA-001";
   const defaultSellerId =
     activeOwner?.id ?? (clientMode === "new" ? (newClientOwner?.id ?? "") : "");
   const normalizedSellerSearch = sellerSearch
@@ -553,19 +562,20 @@ export function CheckoutDialog({
     Object.keys(requiredFields) as ClientField[]
   ).filter((field) => requiredFields[field] && !newClient[field].trim());
   const courtesyAppointmentIsValid =
-    clientMode !== "new" || !courtesySettings.required ||
+    clientMode !== "new" ||
+    !courtesySettings.required ||
     Boolean(
       selectedCourtesyPackage &&
-        courtesyDate &&
-        courtesyBranch &&
-        selectedCourtesyAgendaOption,
+      courtesyDate &&
+      courtesyBranch &&
+      selectedCourtesyAgendaOption,
     );
   const clientIsValid =
     clientMode === "search"
       ? Boolean(selectedClient)
       : missingNewClientFields.length === 0 &&
         Boolean(newClient.source) &&
-        Boolean(clientOwnerId) &&
+        (clientIsCompanyLocked || Boolean(clientOwnerId)) &&
         courtesyAppointmentIsValid &&
         (!clientIsCompanyLocked || Boolean(newClient.companyName.trim()));
   const ownershipIsValid =
@@ -596,13 +606,21 @@ export function CheckoutDialog({
     balanceDue < 0.01 ? "PAID" : amountPaid > 0 ? "LAYAWAY" : "PENDING";
   const changeDue = Math.max(0, totalReceived - total);
   const paymentNeedsAuthorization = (methodId: string) => {
-    const method = paymentMethods.find((candidate) => candidate.id === methodId);
-    const identity = `${methodId} ${method?.label ?? ""}`.toLocaleLowerCase("es-MX");
+    const method = paymentMethods.find(
+      (candidate) => candidate.id === methodId,
+    );
+    const identity = `${methodId} ${method?.label ?? ""}`.toLocaleLowerCase(
+      "es-MX",
+    );
     return !identity.includes("cash") && !identity.includes("efectivo");
   };
   const paymentIsCard = (methodId: string) => {
-    const method = paymentMethods.find((candidate) => candidate.id === methodId);
-    const identity = `${methodId} ${method?.label ?? ""}`.toLocaleLowerCase("es-MX");
+    const method = paymentMethods.find(
+      (candidate) => candidate.id === methodId,
+    );
+    const identity = `${methodId} ${method?.label ?? ""}`.toLocaleLowerCase(
+      "es-MX",
+    );
     return identity.includes("card") || identity.includes("tarjeta");
   };
   const paymentReferencesAreValid = appliedPayments.every(
@@ -644,9 +662,10 @@ export function CheckoutDialog({
   const selectClient = (client: Client) => {
     setSelectedClientId(client.id);
     const owner = activeSellers.find((seller) => seller.id === client.ownerId);
-    const isCompanyPortfolio = Boolean(client.companyLocked || (client.ownerId && !owner));
-    const preferredSellerId =
-      owner?.id ?? presentSellers[0]?.id ?? "";
+    const isCompanyPortfolio = Boolean(
+      client.companyLocked || (client.ownerId && !owner),
+    );
+    const preferredSellerId = owner?.id ?? presentSellers[0]?.id ?? "";
     const ids = [
       ...(isCompanyPortfolio ? [COMPANY_SALES_PARTICIPANT_ID] : []),
       ...(preferredSellerId ? [preferredSellerId] : []),
@@ -833,7 +852,9 @@ export function CheckoutDialog({
       ...(clientMode === "new" && courtesySettings.required
         ? courtesyServices.map((service, index) => {
             const slotId = selectedCourtesyAgendaOption?.slotIds[index];
-            const slot = agendaSlots.find((candidate) => candidate.id === slotId);
+            const slot = agendaSlots.find(
+              (candidate) => candidate.id === slotId,
+            );
             return {
               kind: "COURTESY" as const,
               service,
@@ -1248,9 +1269,9 @@ export function CheckoutDialog({
                         {sourceOptions
                           .filter((source) => source.active)
                           .map((source) => (
-                          <SelectItem key={source.id} value={source.id}>
-                            {source.label}
-                          </SelectItem>
+                            <SelectItem key={source.id} value={source.id}>
+                              {source.label}
+                            </SelectItem>
                           ))}
                       </SelectContent>
                     </Select>
@@ -1303,145 +1324,147 @@ export function CheckoutDialog({
                       en sus próximas ventas.
                     </small>
                   </div>
-                  {courtesySettings.required && <div className="courtesy-appointment-panel new-client-grid-span">
-                    <div className="courtesy-appointment-heading">
-                      <span>
-                        <Gift size={18} />
-                      </span>
-                      <div>
-                        <strong>Cita de bienvenida incluida</strong>
-                        <small>
-                          Elige una o dos cortesías. Nunca se permiten más de
-                          dos servicios de regalo.
-                        </small>
+                  {courtesySettings.required && (
+                    <div className="courtesy-appointment-panel new-client-grid-span">
+                      <div className="courtesy-appointment-heading">
+                        <span>
+                          <Gift size={18} />
+                        </span>
+                        <div>
+                          <strong>Cita de bienvenida incluida</strong>
+                          <small>
+                            Elige una o dos cortesías. Nunca se permiten más de
+                            dos servicios de regalo.
+                          </small>
+                        </div>
                       </div>
-                    </div>
-                    <div className="appointment-fields-grid">
-                      <div className="field-stack">
-                        <Label htmlFor="courtesy-service">
-                          Paquete de cortesía <em>*</em>
-                        </Label>
-                        <Select
-                          value={courtesyPackage}
-                          onValueChange={(value) => {
-                            setCourtesyPackage(value as CourtesyPackage);
-                            setCourtesyReservationMode("SIMULTANEOUS_DOUBLE");
-                            setCourtesyTime("");
-                          }}
-                        >
-                          <SelectTrigger id="courtesy-service">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {availableCourtesyPackages.map((option) => (
+                      <div className="appointment-fields-grid">
+                        <div className="field-stack">
+                          <Label htmlFor="courtesy-service">
+                            Paquete de cortesía <em>*</em>
+                          </Label>
+                          <Select
+                            value={courtesyPackage}
+                            onValueChange={(value) => {
+                              setCourtesyPackage(value as CourtesyPackage);
+                              setCourtesyReservationMode("SIMULTANEOUS_DOUBLE");
+                              setCourtesyTime("");
+                            }}
+                          >
+                            <SelectTrigger id="courtesy-service">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {availableCourtesyPackages.map((option) => (
                                 <SelectItem key={option.id} value={option.id}>
                                   {option.label}
                                 </SelectItem>
                               ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="field-stack">
-                        <Label htmlFor="courtesy-date">
-                          Día de la cita <em>*</em>
-                        </Label>
-                        <DatePicker
-                          id="courtesy-date"
-                          value={courtesyDate}
-                          onChange={(date) => {
-                            setCourtesyDate(date);
-                            setCourtesyTime("");
-                          }}
-                          placeholder="Selecciona fecha"
-                        />
-                      </div>
-                      <div className="field-stack">
-                        <Label htmlFor="courtesy-branch">
-                          Sucursal <em>*</em>
-                        </Label>
-                        <Select
-                          value={courtesyBranch}
-                          onValueChange={(branch) => {
-                            setCourtesyBranch(branch);
-                            setCourtesyTime("");
-                          }}
-                        >
-                          <SelectTrigger id="courtesy-branch">
-                            <SelectValue placeholder="Selecciona sucursal" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {branches.map((branch) => (
-                              <SelectItem key={branch} value={branch}>
-                                {branch}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      {courtesyServiceCount > 1 && (
-                        <div className="field-stack appointment-reservation-mode-field">
-                          <Label htmlFor="courtesy-reservation-mode">
-                            Distribución de los dos servicios <em>*</em>
-                          </Label>
-                          <Select
-                            value={courtesyReservationMode}
-                            onValueChange={(mode) => {
-                              setCourtesyReservationMode(
-                                mode as AgendaReservationMode,
-                              );
-                              setCourtesyTime("");
-                            }}
-                          >
-                            <SelectTrigger id="courtesy-reservation-mode">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="SIMULTANEOUS_DOUBLE">
-                                Misma hora · cabina doble
-                              </SelectItem>
-                              <SelectItem value="CONSECUTIVE">
-                                Dos horarios consecutivos
-                              </SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
-                      )}
-                      <div className="field-stack appointment-availability-field">
-                        <Label htmlFor="courtesy-time">
-                          Espacio disponible <em>*</em>
-                        </Label>
-                        <Select
-                          value={courtesyTime}
-                          onValueChange={setCourtesyTime}
-                          disabled={!courtesyBranch || !courtesyDate}
-                        >
-                          <SelectTrigger id="courtesy-time">
-                            <SelectValue placeholder="Horario y cabina" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {courtesyAgendaOptions.map((option) => (
-                              <SelectItem key={option.key} value={option.key}>
-                                {option.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        {courtesyDate &&
-                          courtesyBranch &&
-                          courtesyAgendaOptions.length === 0 && (
-                            <small className="agenda-no-availability">
-                              No hay cabinas libres para esta configuración.
-                            </small>
-                          )}
+                        <div className="field-stack">
+                          <Label htmlFor="courtesy-date">
+                            Día de la cita <em>*</em>
+                          </Label>
+                          <DatePicker
+                            id="courtesy-date"
+                            value={courtesyDate}
+                            onChange={(date) => {
+                              setCourtesyDate(date);
+                              setCourtesyTime("");
+                            }}
+                            placeholder="Selecciona fecha"
+                          />
+                        </div>
+                        <div className="field-stack">
+                          <Label htmlFor="courtesy-branch">
+                            Sucursal <em>*</em>
+                          </Label>
+                          <Select
+                            value={courtesyBranch}
+                            onValueChange={(branch) => {
+                              setCourtesyBranch(branch);
+                              setCourtesyTime("");
+                            }}
+                          >
+                            <SelectTrigger id="courtesy-branch">
+                              <SelectValue placeholder="Selecciona sucursal" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {branches.map((branch) => (
+                                <SelectItem key={branch} value={branch}>
+                                  {branch}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        {courtesyServiceCount > 1 && (
+                          <div className="field-stack appointment-reservation-mode-field">
+                            <Label htmlFor="courtesy-reservation-mode">
+                              Distribución de los dos servicios <em>*</em>
+                            </Label>
+                            <Select
+                              value={courtesyReservationMode}
+                              onValueChange={(mode) => {
+                                setCourtesyReservationMode(
+                                  mode as AgendaReservationMode,
+                                );
+                                setCourtesyTime("");
+                              }}
+                            >
+                              <SelectTrigger id="courtesy-reservation-mode">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="SIMULTANEOUS_DOUBLE">
+                                  Misma hora · cabina doble
+                                </SelectItem>
+                                <SelectItem value="CONSECUTIVE">
+                                  Dos horarios consecutivos
+                                </SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        )}
+                        <div className="field-stack appointment-availability-field">
+                          <Label htmlFor="courtesy-time">
+                            Espacio disponible <em>*</em>
+                          </Label>
+                          <Select
+                            value={courtesyTime}
+                            onValueChange={setCourtesyTime}
+                            disabled={!courtesyBranch || !courtesyDate}
+                          >
+                            <SelectTrigger id="courtesy-time">
+                              <SelectValue placeholder="Horario y cabina" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {courtesyAgendaOptions.map((option) => (
+                                <SelectItem key={option.key} value={option.key}>
+                                  {option.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          {courtesyDate &&
+                            courtesyBranch &&
+                            courtesyAgendaOptions.length === 0 && (
+                              <small className="agenda-no-availability">
+                                No hay cabinas libres para esta configuración.
+                              </small>
+                            )}
+                        </div>
                       </div>
+                      {!courtesyAppointmentIsValid && (
+                        <p>
+                          Selecciona fecha, sucursal y un horario disponible
+                          para registrar la cortesía.
+                        </p>
+                      )}
                     </div>
-                    {!courtesyAppointmentIsValid && (
-                      <p>
-                        Selecciona fecha, sucursal y un horario disponible para
-                        registrar la cortesía.
-                      </p>
-                    )}
-                  </div>}
+                  )}
                   {missingNewClientFields.length > 0 && (
                     <p className="form-hint new-client-grid-span">
                       Obligatorios pendientes:{" "}
@@ -1538,7 +1561,10 @@ export function CheckoutDialog({
                           Número de venta: {companyParticipantCode}
                         </small>
                       </span>
-                      <LockKeyhole size={15} aria-label="Participación obligatoria" />
+                      <LockKeyhole
+                        size={15}
+                        aria-label="Participación obligatoria"
+                      />
                     </div>
                     <div className="split-value-input">
                       <span>{splitMode === "amount" ? "$" : "%"}</span>
@@ -1546,9 +1572,7 @@ export function CheckoutDialog({
                         type="number"
                         min="0"
                         step="0.01"
-                        value={
-                          splitValues[COMPANY_SALES_PARTICIPANT_ID] ?? 0
-                        }
+                        value={splitValues[COMPANY_SALES_PARTICIPANT_ID] ?? 0}
                         onChange={(event) =>
                           setSplitValues((current) => ({
                             ...current,
@@ -1787,19 +1811,18 @@ export function CheckoutDialog({
                   <Gift size={19} />
                   <span>
                     <small>CORTESÍA DE BIENVENIDA</small>
-                    <strong>{selectedCourtesyPackage?.label ?? "Sin paquete disponible"}</strong>
+                    <strong>
+                      {selectedCourtesyPackage?.label ??
+                        "Sin paquete disponible"}
+                    </strong>
                     <p>
-                      {courtesyDate} · {courtesyBranch} ·{
-                        selectedCourtesyAgendaOption?.label ?? "Sin espacio"
-                      }
+                      {courtesyDate} · {courtesyBranch} ·
+                      {selectedCourtesyAgendaOption?.label ?? "Sin espacio"}
                     </p>
                   </span>
                   <Badge variant="outline">
                     {courtesyServices.length} REGALO
-                    {courtesyServices.length === 1
-                      ? ""
-                      : "S"}{" "}
-                    $0
+                    {courtesyServices.length === 1 ? "" : "S"} $0
                   </Badge>
                 </div>
               )}
@@ -1817,18 +1840,14 @@ export function CheckoutDialog({
                   <div className="appointment-answer-buttons">
                     <button
                       type="button"
-                      className={
-                        nextSessionAnswer === "YES" ? "is-active" : ""
-                      }
+                      className={nextSessionAnswer === "YES" ? "is-active" : ""}
                       onClick={() => setNextSessionAnswer("YES")}
                     >
                       Sí, buscar espacio
                     </button>
                     <button
                       type="button"
-                      className={
-                        nextSessionAnswer === "NO" ? "is-active" : ""
-                      }
+                      className={nextSessionAnswer === "NO" ? "is-active" : ""}
                       onClick={() => {
                         setNextSessionAnswer("NO");
                         setNextSessionMembershipId("");
@@ -1861,97 +1880,95 @@ export function CheckoutDialog({
               ) : null}
 
               {clientMode === "search" && clientHasMembershipHistory && (
-                  <div className="membership-scheduling-card">
-                    <div
-                      className={`membership-scheduling-heading ${clientHasSchedulableMemberships ? "" : "is-exhausted"}`}
-                    >
-                      <Crown size={18} aria-hidden="true" />
-                      <span>
-                        <strong>
-                          {clientHasSchedulableMemberships
-                            ? "Servicios disponibles en membresías"
-                            : "Membresía sin sesiones disponibles"}
-                        </strong>
-                        <small>
-                          {clientHasSchedulableMemberships
-                            ? "Elige el tarjetón que se vinculará con la cita. La sesión sólo se descontará cuando Agenda confirme la asistencia."
-                            : "La opción de reservar con membresía fue desactivada. Sólo puedes elegir una cortesía por atención de queja."}
-                        </small>
-                      </span>
-                    </div>
-                    {clientHasSchedulableMemberships && (
-                      <div className="membership-service-options">
-                        {selectedClientMemberships.map((membership) => {
-                          const remaining =
-                            membership.totalSessions - membership.usedSessions;
-                          const isSelected =
-                            nextSessionMembershipId === membership.id &&
-                            !complaintCourtesy;
-                          return (
-                            <button
-                              key={membership.id}
-                              type="button"
-                              className={isSelected ? "is-selected" : ""}
-                              onClick={() => {
-                                setNextSessionAnswer("YES");
-                                setComplaintCourtesy(false);
-                                setNextSessionMembershipId(membership.id);
-                                setNextSessionService(membership.membershipName);
-                                setNextSessionTime("");
-                              }}
-                              aria-pressed={isSelected}
-                            >
-                              <span>
-                                <strong>{membership.membershipName}</strong>
-                                <small>{membership.folio}</small>
-                              </span>
-                              <b>
-                                {remaining}{" "}
-                                {remaining === 1 ? "sesión" : "sesiones"}
-                              </b>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
-                    <div className="complaint-courtesy-options">
-                      {complaintCourtesyServices.map((service) => {
+                <div className="membership-scheduling-card">
+                  <div
+                    className={`membership-scheduling-heading ${clientHasSchedulableMemberships ? "" : "is-exhausted"}`}
+                  >
+                    <Crown size={18} aria-hidden="true" />
+                    <span>
+                      <strong>
+                        {clientHasSchedulableMemberships
+                          ? "Servicios disponibles en membresías"
+                          : "Membresía sin sesiones disponibles"}
+                      </strong>
+                      <small>
+                        {clientHasSchedulableMemberships
+                          ? "Elige el tarjetón que se vinculará con la cita. La sesión sólo se descontará cuando Agenda confirme la asistencia."
+                          : "La opción de reservar con membresía fue desactivada. Sólo puedes elegir una cortesía por atención de queja."}
+                      </small>
+                    </span>
+                  </div>
+                  {clientHasSchedulableMemberships && (
+                    <div className="membership-service-options">
+                      {selectedClientMemberships.map((membership) => {
+                        const remaining =
+                          membership.totalSessions - membership.usedSessions;
                         const isSelected =
-                          complaintCourtesy && nextSessionService === service;
-                        const serviceKind = service.startsWith("Facial")
-                          ? "facial"
-                          : "corporal";
+                          nextSessionMembershipId === membership.id &&
+                          !complaintCourtesy;
                         return (
                           <button
-                            key={service}
+                            key={membership.id}
                             type="button"
-                            className={`complaint-courtesy-button ${isSelected ? "is-selected" : ""}`}
+                            className={isSelected ? "is-selected" : ""}
                             onClick={() => {
-                              const nextValue = !isSelected;
-                              setComplaintCourtesy(nextValue);
                               setNextSessionAnswer("YES");
-                              setNextSessionMembershipId("");
-                              setNextSessionService(nextValue ? service : "");
+                              setComplaintCourtesy(false);
+                              setNextSessionMembershipId(membership.id);
+                              setNextSessionService(membership.membershipName);
                               setNextSessionTime("");
                             }}
                             aria-pressed={isSelected}
                           >
-                            <Gift size={17} aria-hidden="true" />
                             <span>
-                              <strong>
-                                ¿Regalar {serviceKind} de cortesía?
-                              </strong>
-                              <small>
-                                Atención de una queja. No consume sesiones de
-                                membresía.
-                              </small>
+                              <strong>{membership.membershipName}</strong>
+                              <small>{membership.folio}</small>
                             </span>
+                            <b>
+                              {remaining}{" "}
+                              {remaining === 1 ? "sesión" : "sesiones"}
+                            </b>
                           </button>
                         );
                       })}
                     </div>
+                  )}
+                  <div className="complaint-courtesy-options">
+                    {complaintCourtesyServices.map((service) => {
+                      const isSelected =
+                        complaintCourtesy && nextSessionService === service;
+                      const serviceKind = service.startsWith("Facial")
+                        ? "facial"
+                        : "corporal";
+                      return (
+                        <button
+                          key={service}
+                          type="button"
+                          className={`complaint-courtesy-button ${isSelected ? "is-selected" : ""}`}
+                          onClick={() => {
+                            const nextValue = !isSelected;
+                            setComplaintCourtesy(nextValue);
+                            setNextSessionAnswer("YES");
+                            setNextSessionMembershipId("");
+                            setNextSessionService(nextValue ? service : "");
+                            setNextSessionTime("");
+                          }}
+                          aria-pressed={isSelected}
+                        >
+                          <Gift size={17} aria-hidden="true" />
+                          <span>
+                            <strong>¿Regalar {serviceKind} de cortesía?</strong>
+                            <small>
+                              Atención de una queja. No consume sesiones de
+                              membresía.
+                            </small>
+                          </span>
+                        </button>
+                      );
+                    })}
                   </div>
-                )}
+                </div>
+              )}
 
               {clientMode === "search" && nextSessionAnswer === "YES" && (
                 <div className="next-session-scheduler">
@@ -1964,78 +1981,77 @@ export function CheckoutDialog({
                         disponible.
                       </small>
                     </div>
-                    </div>
-                    <div className="appointment-fields-grid">
-                      <div className="field-stack">
-                        <Label htmlFor="next-session-service">Servicio</Label>
-                        {clientHasMembershipHistory ? (
-                          complaintCourtesy ? (
-                            <div
-                              id="next-session-service"
-                              className="complaint-courtesy-service"
-                            >
-                              <Gift size={15} /> {nextSessionService}
-                            </div>
-                          ) : clientHasSchedulableMemberships ? (
-                            <Select
-                              value={nextSessionMembershipId}
-                              onValueChange={(membershipId) => {
-                                const membership =
-                                  selectedClientMemberships.find(
-                                    (candidate) => candidate.id === membershipId,
-                                  );
-                                setNextSessionMembershipId(membershipId);
-                                setNextSessionService(
-                                  membership?.membershipName ?? "",
-                                );
-                                setNextSessionTime("");
-                              }}
-                            >
-                              <SelectTrigger id="next-session-service">
-                                <SelectValue placeholder="Selecciona membresía" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {selectedClientMemberships.map((membership) => {
-                                  const remaining =
-                                    membership.totalSessions -
-                                    membership.usedSessions;
-                                  return (
-                                    <SelectItem
-                                      key={membership.id}
-                                      value={membership.id}
-                                    >
-                                      {membership.membershipName} · {remaining}{" "}
-                                      {remaining === 1 ? "sesión" : "sesiones"}
-                                    </SelectItem>
-                                  );
-                                })}
-                              </SelectContent>
-                            </Select>
-                          ) : (
-                            <div
-                              id="next-session-service"
-                              className="complaint-courtesy-service is-empty"
-                            >
-                              Selecciona una cortesía facial o corporal
-                            </div>
-                          )
-                        ) : (
+                  </div>
+                  <div className="appointment-fields-grid">
+                    <div className="field-stack">
+                      <Label htmlFor="next-session-service">Servicio</Label>
+                      {clientHasMembershipHistory ? (
+                        complaintCourtesy ? (
+                          <div
+                            id="next-session-service"
+                            className="complaint-courtesy-service"
+                          >
+                            <Gift size={15} /> {nextSessionService}
+                          </div>
+                        ) : clientHasSchedulableMemberships ? (
                           <Select
-                            value={nextSessionService}
-                            onValueChange={setNextSessionService}
+                            value={nextSessionMembershipId}
+                            onValueChange={(membershipId) => {
+                              const membership = selectedClientMemberships.find(
+                                (candidate) => candidate.id === membershipId,
+                              );
+                              setNextSessionMembershipId(membershipId);
+                              setNextSessionService(
+                                membership?.membershipName ?? "",
+                              );
+                              setNextSessionTime("");
+                            }}
                           >
                             <SelectTrigger id="next-session-service">
-                              <SelectValue />
+                              <SelectValue placeholder="Selecciona membresía" />
                             </SelectTrigger>
                             <SelectContent>
-                              {nextSessionServices.map((service) => (
-                                <SelectItem key={service} value={service}>
-                                  {service}
-                                </SelectItem>
-                              ))}
+                              {selectedClientMemberships.map((membership) => {
+                                const remaining =
+                                  membership.totalSessions -
+                                  membership.usedSessions;
+                                return (
+                                  <SelectItem
+                                    key={membership.id}
+                                    value={membership.id}
+                                  >
+                                    {membership.membershipName} · {remaining}{" "}
+                                    {remaining === 1 ? "sesión" : "sesiones"}
+                                  </SelectItem>
+                                );
+                              })}
                             </SelectContent>
                           </Select>
-                        )}
+                        ) : (
+                          <div
+                            id="next-session-service"
+                            className="complaint-courtesy-service is-empty"
+                          >
+                            Selecciona una cortesía facial o corporal
+                          </div>
+                        )
+                      ) : (
+                        <Select
+                          value={nextSessionService}
+                          onValueChange={setNextSessionService}
+                        >
+                          <SelectTrigger id="next-session-service">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {nextSessionServices.map((service) => (
+                              <SelectItem key={service} value={service}>
+                                {service}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
                     </div>
                     <div className="field-stack">
                       <Label htmlFor="next-session-date">Día</Label>
@@ -2085,7 +2101,8 @@ export function CheckoutDialog({
                         <SelectContent>
                           {nextSessionAgendaSlots.map((slot) => (
                             <SelectItem key={slot.id} value={slot.id}>
-                              {slot.startTime}–{slot.endTime} · {slot.resourceName}
+                              {slot.startTime}–{slot.endTime} ·{" "}
+                              {slot.resourceName}
                               {slot.resourceType === "DOUBLE"
                                 ? ` · ${availableAgendaSeats(slot)} lugares`
                                 : ""}
@@ -2157,25 +2174,23 @@ export function CheckoutDialog({
                           value={payment.methodId}
                           onValueChange={(methodId) =>
                             setPayments((current) =>
-                              current.map((item) =>
-                                {
-                                  if (item.id !== payment.id) return item;
-                                  const {
-                                    cardType: _cardType,
-                                    cardNetwork: _cardNetwork,
-                                    bankId: _bankId,
-                                    bankName: _bankName,
-                                    installmentMonths: _installmentMonths,
-                                    ...paymentWithoutCardTerms
-                                  } = item;
-                                  return {
-                                    ...paymentWithoutCardTerms,
-                                    methodId,
-                                    authorizationCode: "",
-                                    cardOrBank: "",
-                                  };
-                                }
-                              ),
+                              current.map((item) => {
+                                if (item.id !== payment.id) return item;
+                                const {
+                                  cardType: _cardType,
+                                  cardNetwork: _cardNetwork,
+                                  bankId: _bankId,
+                                  bankName: _bankName,
+                                  installmentMonths: _installmentMonths,
+                                  ...paymentWithoutCardTerms
+                                } = item;
+                                return {
+                                  ...paymentWithoutCardTerms,
+                                  methodId,
+                                  authorizationCode: "",
+                                  cardOrBank: "",
+                                };
+                              }),
                             )
                           }
                         >
@@ -2257,8 +2272,8 @@ export function CheckoutDialog({
               {!paymentReferencesAreValid && (
                 <p className="payment-authorization-note">
                   Completa el banco y los cuatro dígitos de autorización. Para
-                  tarjeta indica crédito o débito, selecciona Visa o Mastercard y,
-                  en crédito, el plazo o una sola exhibición.
+                  tarjeta indica crédito o débito, selecciona Visa o Mastercard
+                  y, en crédito, el plazo o una sola exhibición.
                 </p>
               )}
 

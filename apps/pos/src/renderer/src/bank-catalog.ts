@@ -67,13 +67,8 @@ const currentAbmBankNames = [
   "Volkswagen Bank",
 ] as const;
 
-const bankId = (name: string, index: number) =>
-  `MX-BANK-${String(index + 1).padStart(3, "0")}-${name
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-zA-Z0-9]+/g, "-")
-    .replace(/^-|-$/g, "")
-    .toUpperCase()}`;
+const bankId = (_name: string, index: number) =>
+  `MX-BANK-${String(index + 1).padStart(3, "0")}`;
 
 export const initialBankCatalog: BankCatalogEntry[] = currentAbmBankNames.map(
   (name, index) => ({

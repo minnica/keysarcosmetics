@@ -96,6 +96,8 @@ export type PosBusinessDayStatus = "OPEN" | "CLOSED";
 export type PosCountKind = "OPENING" | "CLOSING";
 export type PosTicketStatus = "COMPLETED" | "LAYAWAY" | "CANCELED" | "REFUNDED";
 export type PosPaymentMethodType = "CASH" | "CARD" | "TRANSFER" | "OTHER";
+export type PosCardType = "CREDIT" | "DEBIT";
+export type PosTicketParticipantKind = "SELLER" | "COMPANY";
 export type PosSyncStatus =
   | "PENDING"
   | "SYNCING"
@@ -389,6 +391,7 @@ export interface PosCustomerSourceDto {
   id: PosId;
   name: string;
   active: boolean;
+  companyOwnedByDefault: boolean;
 }
 
 export interface PosCustomerDto {
@@ -398,6 +401,13 @@ export interface PosCustomerDto {
   email: string | null;
   active: boolean;
   agendaLinked: boolean;
+  currentPortfolio: {
+    kind: "SELLER" | "COMPANY";
+    employeeId: PosId | null;
+    companyId: PosId | null;
+    ownerName: string | null;
+    ownerCode: string | null;
+  } | null;
 }
 
 export interface PosSupplierDto {
@@ -420,6 +430,77 @@ export interface PosPaymentMethodDto {
   activeForPos: boolean;
   requiresReference: boolean;
   referenceLabel: string | null;
+}
+
+export interface PosBankDto {
+  id: PosId;
+  name: string;
+  active: boolean;
+  version: number;
+  sourceName: string;
+  sourceReviewedAt: BusinessDate;
+}
+
+export interface PosCardNetworkDto {
+  id: PosId;
+  name: string;
+  active: boolean;
+  version: number;
+  sourceName: string;
+  sourceReviewedAt: BusinessDate;
+}
+
+export interface PosInstallmentOptionDto {
+  id: PosId;
+  months: number;
+  label: string;
+  active: boolean;
+  version: number;
+  sourceName: string;
+  sourceReviewedAt: BusinessDate;
+}
+
+export interface PosPaymentCatalogsDto {
+  banks: PosBankDto[];
+  cardNetworks: PosCardNetworkDto[];
+  installmentOptions: PosInstallmentOptionDto[];
+}
+
+export interface PosCommercialCompanyDto {
+  id: PosId;
+  name: string;
+  salesNumber: string;
+  active: boolean;
+  version: number;
+}
+
+export interface PosCourtesyProductDto {
+  id: PosId;
+  name: string;
+  type: "FACIAL" | "BODY";
+  active: boolean;
+  version: number;
+}
+
+export interface PosCourtesyPackageDto {
+  id: PosId;
+  name: string;
+  active: boolean;
+  version: number;
+  productIds: PosId[];
+  products: Array<{
+    id: PosId;
+    name: string;
+    type: "FACIAL" | "BODY";
+    active: boolean;
+  }>;
+}
+
+export interface PosCourtesyConfigurationDto {
+  required: boolean;
+  defaultPackageId: PosId | null;
+  products: PosCourtesyProductDto[];
+  packages: PosCourtesyPackageDto[];
 }
 
 export interface PosTicketConfigurationDto {
@@ -754,6 +835,13 @@ export interface PosTicketSellerInputDto {
   share: Money;
 }
 
+export interface PosTicketParticipantInputDto {
+  kind: PosTicketParticipantKind;
+  share: Money;
+  employeeId?: PosId;
+  companyId?: PosId;
+}
+
 export interface PosTicketPaymentInputDto {
   methodId: PosId;
   methodType?: PosPaymentMethodType;
@@ -761,6 +849,10 @@ export interface PosTicketPaymentInputDto {
   reference?: string;
   institution?: string;
   authorizationLastFour?: string;
+  cardType?: PosCardType;
+  cardNetworkId?: PosId;
+  bankId?: PosId;
+  installmentMonths?: number;
 }
 
 export interface PosTicketDiscountInputDto {
@@ -863,6 +955,8 @@ export interface PosTicketCourtesyInputDto {
   policyId?: PosId;
   policyName: string;
   authorizationToken?: string;
+  courtesyProductId?: PosId;
+  courtesyPackageId?: PosId;
 }
 
 export interface PosTicketCustomerInputDto {
@@ -882,6 +976,7 @@ export interface PosTicketQuoteRequestDto {
   customerId?: PosId;
   lines: PosTicketLineInputDto[];
   sellers: PosTicketSellerInputDto[];
+  participants?: PosTicketParticipantInputDto[];
   payments?: PosTicketPaymentInputDto[];
   discount?: PosTicketDiscountInputDto;
   authorizationToken?: string;
@@ -929,6 +1024,12 @@ export interface PosTicketPaymentDto {
   reference: string | null;
   institution: string | null;
   authorizationLastFour: string | null;
+  cardType: PosCardType | null;
+  cardNetworkId: PosId | null;
+  cardNetworkName: string | null;
+  bankId: PosId | null;
+  bankName: string | null;
+  installmentMonths: number | null;
 }
 
 export interface PosPaymentOperationDto {
@@ -962,6 +1063,20 @@ export interface PosTicketLineDto {
 
 export interface PosTicketSellerDto {
   employeeId: PosId;
+  name: string;
+  shareAmount: Money;
+  sharePercent: Money;
+  clockedIn: boolean;
+  presenceBranchId: PosId | null;
+  attendanceId: PosId | null;
+}
+
+export interface PosTicketParticipantDto {
+  id: PosId;
+  kind: PosTicketParticipantKind;
+  employeeId: PosId | null;
+  companyId: PosId | null;
+  code: string;
   name: string;
   shareAmount: Money;
   sharePercent: Money;
@@ -1027,6 +1142,7 @@ export interface PosTicketDto extends Omit<PosTicketQuoteDto, "lines"> {
   customerPhone: string | null;
   lines: PosTicketLineDto[];
   sellers: PosTicketSellerDto[];
+  participants: PosTicketParticipantDto[];
   paymentOperations: PosPaymentOperationDto[];
   owedProducts: PosOwedProductDto[];
   appointments: PosAppointmentDto[];

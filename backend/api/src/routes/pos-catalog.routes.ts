@@ -783,6 +783,17 @@ router.get("/customers/search", requireCustomerReadOrSale, async (req, res) => {
   const [items, total] = await Promise.all([
     db.customer.findMany({
       where,
+      include: {
+        portfolios: {
+          where: { effectiveTo: null },
+          include: {
+            employee: { select: { id: true, nombreCompleto: true } },
+            company: { select: { id: true, name: true, salesNumber: true } },
+          },
+          orderBy: { effectiveFrom: "desc" },
+          take: 1,
+        },
+      },
       orderBy: { displayName: "asc" },
       skip: (parsed.data.page - 1) * parsed.data.pageSize,
       take: parsed.data.pageSize,
@@ -793,14 +804,35 @@ router.get("/customers/search", requireCustomerReadOrSale, async (req, res) => {
     success: true,
     message: "OK",
     data: {
-      items: items.map((item) => ({
-        id: item.id,
-        displayName: item.displayName,
-        phone: item.phone,
-        email: item.email,
-        active: item.active,
-        agendaLinked: Boolean(item.externalClientId),
-      })),
+      items: items.map((item) => {
+        const portfolio = item.portfolios[0];
+        return {
+          id: item.id,
+          displayName: item.displayName,
+          phone: item.phone,
+          email: item.email,
+          active: item.active,
+          agendaLinked: Boolean(item.externalClientId),
+          currentPortfolio: portfolio
+            ? {
+                kind: portfolio.companyId
+                  ? ("COMPANY" as const)
+                  : ("SELLER" as const),
+                employeeId: portfolio.employeeId,
+                companyId: portfolio.companyId,
+                ownerName:
+                  portfolio.ownerNameSnapshot ??
+                  portfolio.company?.name ??
+                  portfolio.employee?.nombreCompleto ??
+                  null,
+                ownerCode:
+                  portfolio.ownerCodeSnapshot ??
+                  portfolio.company?.salesNumber ??
+                  portfolio.employeeId,
+              }
+            : null,
+        };
+      }),
       page: parsed.data.page,
       pageSize: parsed.data.pageSize,
       total,
@@ -824,6 +856,17 @@ router.post(
       assertBranchAuthorized(req.posUser!.authorizedBranchIds, input.branchId);
     try {
       const customer = await db.$transaction(async (tx) => {
+        const source = input.sourceId
+          ? await tx.customerSource.findFirst({
+              where: { id: input.sourceId, active: true, deletedAt: null },
+              select: { companyOwnedByDefault: true },
+            })
+          : null;
+        const company = source?.companyOwnedByDefault
+          ? await tx.posCommercialCompany.findFirst({ where: { active: true } })
+          : null;
+        if (source?.companyOwnedByDefault && !company)
+          throw new Error("ACTIVE_COMPANY_REQUIRED");
         const created = await tx.customer.create({
           data: {
             displayName: input.displayName,
@@ -835,33 +878,56 @@ router.post(
             active: input.active,
           },
         });
-        if (input.branchId || input.employeeId)
+        if (input.branchId || input.employeeId || company)
           await tx.customerPortfolioAssignment.create({
             data: {
               customerId: created.id,
               branchId: input.branchId,
-              employeeId: input.employeeId,
+              employeeId: company ? null : input.employeeId,
+              companyId: company?.id ?? null,
+              ownerNameSnapshot: company?.name ?? null,
+              ownerCodeSnapshot: company?.salesNumber ?? null,
               createdByCredentialId: req.posUser!.credentialId,
             },
           });
-        return created;
+        return { created, company };
       });
       res.status(201).json({
         success: true,
         message: "Cliente creado",
         data: {
-          id: customer.id,
-          displayName: customer.displayName,
-          phone: customer.phone,
-          email: customer.email,
-          active: customer.active,
-          agendaLinked: Boolean(customer.externalClientId),
+          id: customer.created.id,
+          displayName: customer.created.displayName,
+          phone: customer.created.phone,
+          email: customer.created.email,
+          active: customer.created.active,
+          agendaLinked: Boolean(customer.created.externalClientId),
+          currentPortfolio: customer.company
+            ? {
+                kind: "COMPANY",
+                employeeId: null,
+                companyId: customer.company.id,
+                ownerName: customer.company.name,
+                ownerCode: customer.company.salesNumber,
+              }
+            : input.employeeId
+              ? {
+                  kind: "SELLER",
+                  employeeId: input.employeeId,
+                  companyId: null,
+                  ownerName: null,
+                  ownerCode: input.employeeId,
+                }
+              : null,
         },
       });
-    } catch {
+    } catch (error) {
       res.status(409).json({
         success: false,
-        message: "Teléfono ya registrado",
+        message:
+          error instanceof Error && error.message === "ACTIVE_COMPANY_REQUIRED"
+            ? "No hay una empresa comercial activa para esta procedencia"
+            : "Teléfono ya registrado",
         data: null,
       });
     }
@@ -881,28 +947,44 @@ router.put(
       });
     const input = parsed.data;
     try {
-      const { customer, agendaEventId } = await db.$transaction(async (tx) => {
-        const updated = await tx.customer.update({
-          where: { id: req.params["id"]! },
-          data: {
-            displayName: input.displayName,
-            normalizedName: normalize(input.displayName),
-            phone: normalizePhone(input.phone),
-            email: input.email?.toLocaleLowerCase("en-US") ?? null,
-            sourceId: input.sourceId,
-            notes: input.notes,
-            active: input.active,
-          },
-        });
-        const event = updated.externalClientId
-          ? await enqueueAgendaCustomerUpdate(tx, updated.id)
-          : null;
-        return { customer: updated, agendaEventId: event?.id ?? null };
-      });
+      const { customer, portfolio, agendaEventId } = await db.$transaction(
+        async (tx) => {
+          const updated = await tx.customer.update({
+            where: { id: req.params["id"]! },
+            data: {
+              displayName: input.displayName,
+              normalizedName: normalize(input.displayName),
+              phone: normalizePhone(input.phone),
+              email: input.email?.toLocaleLowerCase("en-US") ?? null,
+              sourceId: input.sourceId,
+              notes: input.notes,
+              active: input.active,
+            },
+          });
+          const event = updated.externalClientId
+            ? await enqueueAgendaCustomerUpdate(tx, updated.id)
+            : null;
+          const currentPortfolio =
+            await tx.customerPortfolioAssignment.findFirst({
+              where: { customerId: updated.id, effectiveTo: null },
+              include: {
+                employee: { select: { nombreCompleto: true } },
+                company: { select: { name: true, salesNumber: true } },
+              },
+              orderBy: { effectiveFrom: "desc" },
+            });
+          return {
+            customer: updated,
+            portfolio: currentPortfolio,
+            agendaEventId: event?.id ?? null,
+          };
+        },
+      );
       if (agendaEventId)
-        await processAgendaSyncEvents({ eventId: agendaEventId, limit: 1 }).catch(
-          () => undefined,
-        );
+        await processAgendaSyncEvents({
+          eventId: agendaEventId,
+          limit: 1,
+        }).catch(() => undefined);
       res.json({
         success: true,
         message: "Cliente actualizado",
@@ -913,6 +995,24 @@ router.put(
           email: customer.email,
           active: customer.active,
           agendaLinked: Boolean(customer.externalClientId),
+          currentPortfolio: portfolio
+            ? {
+                kind: portfolio.companyId
+                  ? ("COMPANY" as const)
+                  : ("SELLER" as const),
+                employeeId: portfolio.employeeId,
+                companyId: portfolio.companyId,
+                ownerName:
+                  portfolio.ownerNameSnapshot ??
+                  portfolio.company?.name ??
+                  portfolio.employee?.nombreCompleto ??
+                  null,
+                ownerCode:
+                  portfolio.ownerCodeSnapshot ??
+                  portfolio.company?.salesNumber ??
+                  portfolio.employeeId,
+              }
+            : null,
         },
       });
     } catch {
@@ -952,7 +1052,12 @@ router.get(
     res.json({
       success: true,
       message: "OK",
-      data: items.map(({ id, name, active }) => ({ id, name, active })),
+      data: items.map(({ id, name, active, companyOwnedByDefault }) => ({
+        id,
+        name,
+        active,
+        companyOwnedByDefault,
+      })),
     });
   },
 );
@@ -976,6 +1081,32 @@ router.post(
       res
         .status(409)
         .json({ success: false, message: "Fuente duplicada", data: null });
+    }
+  },
+);
+router.put(
+  "/customers/sources/:id",
+  requirePosPermission("CUSTOMERS_MANAGE"),
+  async (req, res) => {
+    const parsed = posCustomerSourceWriteSchema.safeParse(req.body);
+    if (!parsed.success)
+      return res.status(400).json({
+        success: false,
+        message: "Fuente inválida",
+        data: parsed.error.flatten().fieldErrors,
+      });
+    try {
+      const item = await db.customerSource.update({
+        where: { id: req.params["id"]! },
+        data: parsed.data,
+      });
+      res.json({ success: true, message: "Fuente actualizada", data: item });
+    } catch {
+      res.status(409).json({
+        success: false,
+        message: "Fuente no encontrada o duplicada",
+        data: null,
+      });
     }
   },
 );

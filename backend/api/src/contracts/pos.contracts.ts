@@ -304,6 +304,7 @@ export const posCustomerSourceWriteSchema = z
   .object({
     name: z.string().trim().min(2).max(160),
     active: z.boolean().default(true),
+    companyOwnedByDefault: z.boolean().default(false),
   })
   .strict();
 
@@ -640,6 +641,30 @@ export const posTicketSellerInputSchema = z
   })
   .strict();
 
+export const posTicketParticipantInputSchema = z
+  .object({
+    kind: z.enum(["SELLER", "COMPANY"]),
+    share: positiveQuantitySchema,
+    employeeId: idSchema.optional(),
+    companyId: idSchema.optional(),
+  })
+  .strict()
+  .superRefine((input, context) => {
+    const valid =
+      (input.kind === "SELLER" &&
+        Boolean(input.employeeId) &&
+        !input.companyId) ||
+      (input.kind === "COMPANY" &&
+        Boolean(input.companyId) &&
+        !input.employeeId);
+    if (!valid)
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "La identidad no corresponde al tipo de participante",
+        path: [input.kind === "SELLER" ? "employeeId" : "companyId"],
+      });
+  });
+
 export const posTicketPaymentInputSchema = z
   .object({
     methodId: idSchema,
@@ -651,6 +676,10 @@ export const posTicketPaymentInputSchema = z
       .string()
       .regex(/^\d{4}$/)
       .optional(),
+    cardType: z.enum(["CREDIT", "DEBIT"]).optional(),
+    cardNetworkId: idSchema.optional(),
+    bankId: idSchema.optional(),
+    installmentMonths: z.number().int().positive().max(120).optional(),
   })
   .strict();
 
@@ -675,7 +704,12 @@ const posTicketQuoteRequestObjectSchema = z
     branchId: idSchema,
     customerId: idSchema.optional(),
     lines: z.array(posTicketLineInputSchema).min(1).max(500),
-    sellers: z.array(posTicketSellerInputSchema).min(1).max(50),
+    sellers: z.array(posTicketSellerInputSchema).max(50),
+    participants: z
+      .array(posTicketParticipantInputSchema)
+      .min(1)
+      .max(51)
+      .optional(),
     payments: z.array(posTicketPaymentInputSchema).max(20).optional(),
     discount: posTicketDiscountInputSchema.optional(),
     authorizationToken: z.string().uuid().optional(),
@@ -686,6 +720,12 @@ const validateTicketCollections = (
   input: z.infer<typeof posTicketQuoteRequestObjectSchema>,
   context: z.RefinementCtx,
 ) => {
+  if (input.sellers.length === 0 && !input.participants?.length)
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Indica al menos un participante de venta",
+      path: ["participants"],
+    });
   if (
     new Set(input.lines.map((line) => `${line.itemId}:${line.packageId ?? ""}`))
       .size !== input.lines.length
@@ -695,6 +735,19 @@ const validateTicketCollections = (
       message: "No se permiten líneas duplicadas",
       path: ["lines"],
     });
+  }
+  if (input.participants) {
+    const identities = input.participants.map((participant) =>
+      participant.kind === "SELLER"
+        ? `SELLER:${participant.employeeId}`
+        : `COMPANY:${participant.companyId}`,
+    );
+    if (new Set(identities).size !== identities.length)
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "No se permiten participantes duplicados",
+        path: ["participants"],
+      });
   }
   if (
     new Set(input.sellers.map((seller) => seller.employeeId)).size !==
@@ -896,6 +949,8 @@ export const posTicketCourtesyInputSchema = z
     policyId: idSchema.optional(),
     policyName: z.string().trim().min(1).max(160),
     authorizationToken: z.string().uuid().optional(),
+    courtesyProductId: idSchema.optional(),
+    courtesyPackageId: idSchema.optional(),
   })
   .strict();
 

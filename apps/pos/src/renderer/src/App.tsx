@@ -87,6 +87,7 @@ import type {
   PosBranchSummaryDto,
   PosBusinessDayDto,
   PosCashExpenseDto,
+  PosCommercialCompanyDto,
   PosExpenseTypeDto,
   PosInventoryLocationDto,
   PosClientMembershipDto,
@@ -287,6 +288,11 @@ const clientFromPosCustomer = (customer: {
   id: string;
   displayName: string;
   phone: string | null;
+  currentPortfolio?: {
+    kind: "SELLER" | "COMPANY";
+    employeeId: string | null;
+    ownerName: string | null;
+  } | null;
 }): Client => {
   const [firstName = customer.displayName, ...lastNameParts] =
     customer.displayName.trim().split(/\s+/);
@@ -302,10 +308,15 @@ const clientFromPosCustomer = (customer: {
     whatsapp: customer.phone ?? "",
     source: "",
     sourceLabel: "Directorio central",
-    companyName: "",
-    companyLocked: false,
-    ownerId: null,
-    saleSellerIds: [],
+    companyName:
+      customer.currentPortfolio?.kind === "COMPANY"
+        ? (customer.currentPortfolio.ownerName ?? "Keysar Cosmetics")
+        : "",
+    companyLocked: customer.currentPortfolio?.kind === "COMPANY",
+    ownerId: customer.currentPortfolio?.employeeId ?? null,
+    saleSellerIds: customer.currentPortfolio?.employeeId
+      ? [customer.currentPortfolio.employeeId]
+      : [],
   };
 };
 
@@ -1710,6 +1721,8 @@ function App() {
   const [apiSession, setApiSession] = useState<PosSessionDto | null>(null);
   const [apiPermissions, setApiPermissions] = useState<PosPermissionKey[]>([]);
   const [apiBranches, setApiBranches] = useState<PosBranchSummaryDto[]>([]);
+  const [apiCommercialCompany, setApiCommercialCompany] =
+    useState<PosCommercialCompanyDto | null>(null);
   const [apiInventoryLocations, setApiInventoryLocations] = useState<
     PosInventoryLocationDto[]
   >([]);
@@ -2534,7 +2547,7 @@ function App() {
         id: source.id,
         label: source.name,
         active: source.active,
-        locksCompany: false,
+        locksCompany: source.companyOwnedByDefault,
       })),
     );
     setVoucherTemplates(
@@ -3018,10 +3031,14 @@ function App() {
       );
     }
     if (session.actor.isMaster || session.permissions.includes("SALE_CREATE")) {
-      const [methods, sources] = await Promise.all([
-        posApi.paymentMethods(),
-        posApi.customerSources(),
-      ]);
+      const [methods, sources, paymentCatalogs, courtesy, commercialCompany] =
+        await Promise.all([
+          posApi.paymentMethods(),
+          posApi.customerSources(),
+          posApi.paymentCatalogs(),
+          posApi.courtesyConfiguration(),
+          posApi.commercialCompany(),
+        ]);
       setPaymentMethods(
         methods
           .filter((method) => method.activeForPos)
@@ -3036,9 +3053,39 @@ function App() {
           id: source.id,
           label: source.name,
           active: source.active,
-          locksCompany: false,
+          locksCompany: source.companyOwnedByDefault,
         })),
       );
+      setBankCatalog(
+        paymentCatalogs.banks.map((bank) => ({
+          id: bank.id,
+          name: bank.name,
+          active: bank.active,
+          cardTypes: ["CREDIT", "DEBIT"],
+          cardNetworks: ["VISA", "MASTERCARD"],
+          source: bank.sourceName === "ABM" ? "ABM" : "CUSTOM",
+        })),
+      );
+      setCourtesySettings({
+        required: courtesy.required,
+        defaultPackage: courtesy.defaultPackageId ?? "",
+        enabledPackages: courtesy.packages
+          .filter((item) => item.active)
+          .map((item) => item.id),
+        products: courtesy.products.map((item) => ({
+          id: item.id,
+          name: item.name,
+          category: item.type,
+          active: item.active,
+        })),
+        packages: courtesy.packages.map((item) => ({
+          id: item.id,
+          name: item.name,
+          serviceIds: item.productIds,
+          active: item.active,
+        })),
+      });
+      setApiCommercialCompany(commercialCompany);
     }
     if (
       session.actor.isMaster ||
@@ -5847,7 +5894,28 @@ function App() {
         return false;
       }
       try {
-        const authorization = await posApi.createAuthorization({
+        const statusChanged = Boolean(
+          previousSeller && previousSeller.active !== seller.active,
+        );
+        let transferredCustomers = 0;
+        if (statusChanged) {
+          const statusAuthorization = await posApi.createAuthorization({
+            alias: masterAlias,
+            pin: masterCode,
+            purpose: "EMPLOYEE_STATUS_UPDATE",
+            entityType: "Empleado",
+            entityId: seller.id,
+          });
+          const statusResult = await posApi.updateEmployeeStatus(seller.id, {
+            active: seller.active,
+            reason: seller.active
+              ? "Reactivación autorizada desde configuración POS"
+              : "Baja autorizada desde configuración POS",
+            authorizationToken: statusAuthorization.authorizationToken,
+          });
+          transferredCustomers = statusResult.transferredCustomers;
+        }
+        const credentialAuthorization = await posApi.createAuthorization({
           alias: masterAlias,
           pin: masterCode,
           purpose: "EMPLOYEE_CREDENTIAL_UPDATE",
@@ -5860,11 +5928,19 @@ function App() {
           active: seller.active,
           offlineEnabled: false,
           isMaster: Boolean(seller.masterAccessCode),
-          authorizationToken: authorization.authorizationToken,
+          authorizationToken: credentialAuthorization.authorizationToken,
         });
         await reloadPosAccess();
+        if (statusChanged && !seller.active) {
+          toast.info(
+            transferredCustomers > 0
+              ? `${transferredCustomers} ${transferredCustomers === 1 ? "cliente pasó" : "clientes pasaron"} a la cartera de la empresa. El historial de tickets no cambió.`
+              : "El vendedor quedó inactivo. El historial de tickets no cambió.",
+          );
+        }
         return true;
       } catch (error) {
+        await reloadPosAccess().catch(() => undefined);
         const response = error as {
           response?: { data?: { message?: string } };
         };
@@ -7345,17 +7421,23 @@ function App() {
         return;
       }
       try {
-        const sellerShares = humanSellerSales.map((sale) =>
+        const participantShares = result.sellerSales.map((sale) =>
           Math.round(sale.amount * 100),
         );
         const expectedCents = Math.round(ticketTotal * 100);
-        const assignedCents = sellerShares.reduce(
+        const assignedCents = participantShares.reduce(
           (sum, share) => sum + share,
           0,
         );
-        if (sellerShares.length > 0)
-          sellerShares[sellerShares.length - 1]! +=
+        if (participantShares.length > 0)
+          participantShares[participantShares.length - 1]! +=
             expectedCents - assignedCents;
+        const participantShareById = new Map(
+          result.sellerSales.map((sale, index) => [
+            sale.sellerId,
+            participantShares[index] ?? 0,
+          ]),
+        );
         const appointments = result.appointments.map((appointment) => ({
           kind: appointment.kind,
           serviceName: appointment.service,
@@ -7418,9 +7500,21 @@ function App() {
               result.paymentStatus === "PAID" ||
               result.deliveredCartItemIds.includes(item.id),
           })),
-          sellers: humanSellerSales.map((sale, index) => ({
+          sellers: humanSellerSales.map((sale) => ({
             employeeId: sale.sellerId,
-            share: ((sellerShares[index] ?? 0) / 100).toFixed(2),
+            share: (
+              (participantShareById.get(sale.sellerId) ?? 0) / 100
+            ).toFixed(2),
+          })),
+          participants: result.sellerSales.map((sale, index) => ({
+            kind: sale.participantKind === "COMPANY" ? "COMPANY" : "SELLER",
+            share: ((participantShares[index] ?? 0) / 100).toFixed(2),
+            ...(sale.participantKind === "COMPANY"
+              ? {
+                  companyId:
+                    apiCommercialCompany?.id ?? "keysar-commercial-company",
+                }
+              : { employeeId: sale.sellerId }),
           })),
           payments: result.payments.map((payment) => ({
             methodId: payment.methodId,
@@ -7432,6 +7526,14 @@ function App() {
                 }
               : {}),
             ...(payment.cardOrBank ? { institution: payment.cardOrBank } : {}),
+            ...(payment.cardType ? { cardType: payment.cardType } : {}),
+            ...(payment.cardNetwork
+              ? { cardNetworkId: payment.cardNetwork }
+              : {}),
+            ...(payment.bankId ? { bankId: payment.bankId } : {}),
+            ...(payment.installmentMonths
+              ? { installmentMonths: payment.installmentMonths }
+              : {}),
           })),
           ...(ticketDiscountAmount > 0
             ? {
@@ -7469,7 +7571,7 @@ function App() {
         return;
       }
       try {
-        const sellerShares = humanSellerSales.map((sale) =>
+        const participantShares = result.sellerSales.map((sale) =>
           Math.round(sale.amount * 100),
         );
         const expectedCents = Math.round(
@@ -7478,13 +7580,19 @@ function App() {
         const authoritativeDiscount = Number(
           authoritativeQuote?.discountTotal ?? ticketDiscountAmount,
         );
-        const assignedCents = sellerShares.reduce(
+        const assignedCents = participantShares.reduce(
           (sum, share) => sum + share,
           0,
         );
-        if (sellerShares.length > 0)
-          sellerShares[sellerShares.length - 1]! +=
+        if (participantShares.length > 0)
+          participantShares[participantShares.length - 1]! +=
             expectedCents - assignedCents;
+        const participantShareById = new Map(
+          result.sellerSales.map((sale, index) => [
+            sale.sellerId,
+            participantShares[index] ?? 0,
+          ]),
+        );
         const appointments = result.appointments.map((appointment) => {
           const branchId =
             apiBranches.find((branch) => branch.name === appointment.branch)
@@ -7553,9 +7661,21 @@ function App() {
               result.paymentStatus === "PAID" ||
               result.deliveredCartItemIds.includes(item.id),
           })),
-          sellers: humanSellerSales.map((sale, index) => ({
+          sellers: humanSellerSales.map((sale) => ({
             employeeId: sale.sellerId,
-            share: ((sellerShares[index] ?? 0) / 100).toFixed(2),
+            share: (
+              (participantShareById.get(sale.sellerId) ?? 0) / 100
+            ).toFixed(2),
+          })),
+          participants: result.sellerSales.map((sale, index) => ({
+            kind: sale.participantKind === "COMPANY" ? "COMPANY" : "SELLER",
+            share: ((participantShares[index] ?? 0) / 100).toFixed(2),
+            ...(sale.participantKind === "COMPANY"
+              ? {
+                  companyId:
+                    apiCommercialCompany?.id ?? "keysar-commercial-company",
+                }
+              : { employeeId: sale.sellerId }),
           })),
           payments: result.payments.map((payment) => ({
             methodId: payment.methodId,
@@ -7567,6 +7687,14 @@ function App() {
                 }
               : {}),
             ...(payment.cardOrBank ? { institution: payment.cardOrBank } : {}),
+            ...(payment.cardType ? { cardType: payment.cardType } : {}),
+            ...(payment.cardNetwork
+              ? { cardNetworkId: payment.cardNetwork }
+              : {}),
+            ...(payment.bankId ? { bankId: payment.bankId } : {}),
+            ...(payment.installmentMonths
+              ? { installmentMonths: payment.installmentMonths }
+              : {}),
           })),
           ...(authoritativeDiscount > 0
             ? {
@@ -7581,6 +7709,24 @@ function App() {
             serviceName: result.appointments[appointmentIndex]!.service,
             appointmentIndex,
             policyName: "Cortesía de bienvenida",
+            ...(result.appointments[appointmentIndex]!.courtesyPackageId
+              ? {
+                  courtesyPackageId:
+                    result.appointments[appointmentIndex]!.courtesyPackageId,
+                }
+              : {}),
+            ...(courtesySettings.products.find(
+              (product) =>
+                product.name === result.appointments[appointmentIndex]!.service,
+            )?.id
+              ? {
+                  courtesyProductId: courtesySettings.products.find(
+                    (product) =>
+                      product.name ===
+                      result.appointments[appointmentIndex]!.service,
+                  )!.id,
+                }
+              : {}),
           })),
           ...(saleAuthorizationToken
             ? { authorizationToken: saleAuthorizationToken }
@@ -7612,7 +7758,9 @@ function App() {
         setAppointments((current) => [
           ...result.appointments.map((appointment, index) => ({
             ...appointment,
-            id: dto.appointments[index]?.id ?? `api-appointment-${dto.id}-${index}`,
+            id:
+              dto.appointments[index]?.id ??
+              `api-appointment-${dto.id}-${index}`,
             clientId: client.id,
             clientName,
             clientPhone: client.phone,
@@ -9918,6 +10066,14 @@ function App() {
                 }
               : {}),
             ...(payment.cardOrBank ? { institution: payment.cardOrBank } : {}),
+            ...(payment.cardType ? { cardType: payment.cardType } : {}),
+            ...(payment.cardNetwork
+              ? { cardNetworkId: payment.cardNetwork }
+              : {}),
+            ...(payment.bankId ? { bankId: payment.bankId } : {}),
+            ...(payment.installmentMonths
+              ? { installmentMonths: payment.installmentMonths }
+              : {}),
           })),
           deliveredCartItemIds,
         )

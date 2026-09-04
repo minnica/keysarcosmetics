@@ -45,8 +45,8 @@ Los dos esquemas Prisma existentes están sincronizados. No hay credenciales loc
 | 8. Piloto y despliegue               | Implementada en repositorio — activación pendiente | Operación + Backend/API + Producto     | Piloto conciliado, rollback disponible y aprobación operativa.                             |
 | 9. Autorización y alcance ampliados  | Completada — 2026-09-03                            | Backend/API + Seguridad + POS          | Cada destino, sucursal y acción nueva se autoriza en servidor y queda auditada.            |
 | 10. Membresías                       | Completada — 2026-09-04                            | Backend/API + POS + Producto           | Tarjetones, saldos y cierres comerciales son transaccionales, idempotentes y conciliables. |
-| 11. Agenda CRM                       | Pendiente                                          | Backend/API + Agenda + POS             | Cliente y reservación tienen IDs externos; conflictos y webhooks se reconcilian.           |
-| 12. Reglas comerciales ampliadas     | Pendiente                                          | Backend/API + POS + Finanzas           | Pagos, cortesías, cartera y participantes conservan validación y snapshots históricos.     |
+| 11. Agenda CRM                       | Completada — 2026-09-04                            | Backend/API + Agenda + POS             | Cliente y reservación tienen IDs externos; conflictos y webhooks se reconcilian.           |
+| 12. Reglas comerciales ampliadas     | Completada — 2026-09-04                            | Backend/API + POS + Finanzas           | Pagos, cortesías, cartera y participantes conservan validación y snapshots históricos.     |
 | 13. Consultas y reportes ampliados   | Pendiente                                          | Backend/API + POS                      | Indicadores, filtros y exportaciones coinciden para todo el alcance autorizado.            |
 | 14. Offline y segundo piloto         | Pendiente                                          | POS/Electron + Backend/API + Operación | Las capacidades nuevas sobreviven reintentos y pasan conciliación integral.                |
 
@@ -477,17 +477,28 @@ Todo requisito de las secciones 20–46 queda así asignado. La presencia de una
 
 ### Fase 12 — Pagos, cortesías, cartera y participantes de venta
 
-- [ ] Crear catálogo corporativo versionado de bancos, redes de tarjeta y plazos; validar su padrón inicial con fuente y fecha antes de sembrarlo. Altas, bajas y reactivaciones son auditadas y no cambian snapshots históricos.
-- [ ] Ampliar cada `PosPayment` con `cardType`, `cardNetwork`, `bankId`, `bankNameSnapshot` e `installmentMonths`. Crédito exige 1/3/6/9/12/18/24 o el catálogo vigente; débito y métodos no tarjeta guardan plazo `null`; transferencia puede usar banco sin tipo/red.
-- [ ] Aplicar las mismas reglas al cobro inicial, pago mixto, abono, liquidación, revisión y compensación. Nunca persistir PAN, CVV ni datos de banda; la autorización limitada a cuatro caracteres no se reutiliza como número de tarjeta.
-- [ ] Administrar productos de cortesía y paquetes desde Settings. Un paquete activo contiene una o dos unidades de servicio —incluido dos veces el mismo servicio—, conserva versiones/snapshots y se inactiva si alguna dependencia deja de estar disponible; reactivar una dependencia no republica el paquete automáticamente. Si el paquete predeterminado deja de ser válido, seleccionar el siguiente válido o desactivar la captura obligatoria cuando no exista ninguno.
-- [ ] Al inactivar un vendedor, cerrar atómicamente sus asignaciones vigentes de `CustomerPortfolioAssignment` y crear asignaciones de empresa con motivo, actor y snapshot del vendedor. Reactivarlo no devuelve cartera; una baja posterior sólo transfiere su cartera vigente.
-- [ ] Crear identidad comercial de empresa independiente de `Empleado` y un modelo general `PosTicketParticipant` con `SELLER`/`COMPANY`. Migrar/proyectar vendedores históricos sin duplicar comisiones y exigir la empresa cuando la cartera vigente sea empresarial.
-- [ ] Validar en servidor que participantes y porcentajes/importes cierren exactamente al total cotizado. Cambios posteriores de nombre o número de empresa no reescriben tickets, reportes ni proyecciones anteriores.
+- [x] Crear catálogo corporativo versionado de bancos, redes de tarjeta y plazos; validar su padrón inicial con fuente y fecha antes de sembrarlo. Altas, bajas y reactivaciones son auditadas y no cambian snapshots históricos.
+- [x] Ampliar cada `PosPayment` con `cardType`, `cardNetwork`, `bankId`, `bankNameSnapshot` e `installmentMonths`. Crédito exige 1/3/6/9/12/18/24 o el catálogo vigente; débito y métodos no tarjeta guardan plazo `null`; transferencia puede usar banco sin tipo/red.
+- [x] Aplicar las mismas reglas al cobro inicial, pago mixto, abono, liquidación, revisión y compensación. Nunca persistir PAN, CVV ni datos de banda; la autorización limitada a cuatro caracteres no se reutiliza como número de tarjeta.
+- [x] Administrar productos de cortesía y paquetes desde Settings. Un paquete activo contiene una o dos unidades de servicio —incluido dos veces el mismo servicio—, conserva versiones/snapshots y se inactiva si alguna dependencia deja de estar disponible; reactivar una dependencia no republica el paquete automáticamente. Si el paquete predeterminado deja de ser válido, seleccionar el siguiente válido o desactivar la captura obligatoria cuando no exista ninguno.
+- [x] Al inactivar un vendedor, cerrar atómicamente sus asignaciones vigentes de `CustomerPortfolioAssignment` y crear asignaciones de empresa con motivo, actor y snapshot del vendedor. Reactivarlo no devuelve cartera; una baja posterior sólo transfiere su cartera vigente.
+- [x] Crear identidad comercial de empresa independiente de `Empleado` y un modelo general `PosTicketParticipant` con `SELLER`/`COMPANY`. Migrar/proyectar vendedores históricos sin duplicar comisiones y exigir la empresa cuando la cartera vigente sea empresarial.
+- [x] Validar en servidor que participantes y porcentajes/importes cierren exactamente al total cotizado. Cambios posteriores de nombre o número de empresa no reescriben tickets, reportes ni proyecciones anteriores.
 
 **Persistencia prevista:** catálogos `PosBank`, `PosCardNetwork` y `PosInstallmentOption`; columnas/snapshots de pago; versión de cortesías/paquetes; identidad de empresa; participante general de ticket y eventos de transferencia de cartera. `Bank` de Payroll continúa fuera de este catálogo.
 
 **Puerta de salida:** matrices de validación por método/tipo/red/plazo, pago mixto y apartado; baja/reactivación concurrente con venta; empresa al 100 % o compartida; inmutabilidad de pagos, cartera, paquetes y participantes históricos.
+
+**Criterio de cierre en repositorio: cumplido el 2026-09-04.** La migración aditiva `20260904030000_add_pos_commercial_rules` agrega los tres catálogos versionados, snapshots de pago, cortesías/paquetes versionados, identidad comercial, participantes generales y transferencias de cartera. El padrón inicial de 54 bancos conserva ABM y fecha de revisión; redes y plazos conservan su fuente de política corporativa. La migración no se aplicó a development ni producción. La reconstrucción y concurrencia reales sobre PostgreSQL 16 efímero siguen como puerta operativa previa al despliegue porque Podman no puede iniciar en este workspace.
+
+#### Entregables verificables
+
+- Pagos: validación autoritativa compartida por venta, mixto y apartado; crédito/débito/plazo, catálogos activos, snapshots en compensaciones y rechazo preventivo de PAN en campos libres.
+- Cortesías: CRUD protegido de productos, paquetes de una o dos líneas con duplicados válidos, versiones append-only, cascada de inactivación sin reactivación automática y reparación de default.
+- Cartera: baja serializable de vendedor con cierre y transferencia a empresa, actor/motivo/snapshots, sin restitución al reactivar.
+- Participantes: `SELLER`/`COMPANY`, suma exacta al centavo, migración histórica y proyección legacy limitada a la porción humana para evitar comisiones duplicadas.
+- Contratos/API: tipos compartidos, validadores estrictos, rutas protegidas y cliente HTTP. La guía técnica y operativa está en `docs/POS_COMMERCIAL_RULES.md`.
+- Verificación local: ambos schemas Prisma sincronizados y válidos, revisión de seguridad de migraciones, lint y type-check de types/API client/API/POS, 75 pruebas unitarias, build del API y build Vite de renderer/main/preload en verde. El empaquetado instalable no pudo descargar Electron por la red restringida del workspace; no se aplicaron migraciones ni se consultó development o producción.
 
 ### Fase 13 — Agregados, indicadores, exportaciones y escala de sucursales
 

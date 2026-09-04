@@ -379,6 +379,7 @@ export async function createOfflineBootstrap(
           orderBy: { creadoEn: "asc" },
         },
         sellers: { orderBy: { creadoEn: "asc" } },
+        participants: { orderBy: { creadoEn: "asc" } },
         paymentOperations: {
           include: { payments: true },
           orderBy: { creadoEn: "asc" },
@@ -498,6 +499,7 @@ export async function createOfflineBootstrap(
       id: source.id,
       name: source.name,
       active: source.active,
+      companyOwnedByDefault: source.companyOwnedByDefault,
     })),
     ticketConfiguration: ticketConfiguration
       ? {

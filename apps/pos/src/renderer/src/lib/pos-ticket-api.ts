@@ -1,6 +1,11 @@
 import type { PosTicketDto } from "@cosmetics/types";
 import { calculateIncludedVat } from "../tax";
-import type { LayawayRecord, OwedProductRecord, Ticket } from "../types";
+import type {
+  CardNetwork,
+  LayawayRecord,
+  OwedProductRecord,
+  Ticket,
+} from "../types";
 
 const dateLabel = (iso: string) =>
   new Intl.DateTimeFormat("es-MX", {
@@ -11,7 +16,29 @@ const dateLabel = (iso: string) =>
     minute: "2-digit",
   }).format(new Date(iso));
 
+const supportedCardNetwork = (value: string | null): CardNetwork | undefined =>
+  value === "VISA" || value === "MASTERCARD" ? value : undefined;
+
 export function ticketFromDto(dto: PosTicketDto): Ticket {
+  // Bootstraps cifrados emitidos antes de Fase 12 no incluían participantes.
+  const participants = dto.participants ?? [];
+  const participantSales =
+    participants.length > 0
+      ? participants.map((participant) => ({
+          sellerId:
+            participant.employeeId ?? participant.companyId ?? participant.id,
+          sellerName: participant.name,
+          amount: Number(participant.shareAmount),
+          participantKind: participant.kind,
+          participantCode: participant.code,
+        }))
+      : dto.sellers.map((seller) => ({
+          sellerId: seller.employeeId,
+          sellerName: seller.name,
+          amount: Number(seller.shareAmount),
+          participantKind: "SELLER" as const,
+          participantCode: seller.employeeId,
+        }));
   const payments = dto.paymentOperations.flatMap((operation) =>
     operation.payments.map((payment) => ({
       id: payment.id,
@@ -20,7 +47,18 @@ export function ticketFromDto(dto: PosTicketDto): Ticket {
       ...(payment.authorizationLastFour
         ? { authorizationCode: payment.authorizationLastFour }
         : {}),
-      ...(payment.institution ? { cardOrBank: payment.institution } : {}),
+      ...((payment.bankName ?? payment.institution)
+        ? { cardOrBank: payment.bankName ?? payment.institution! }
+        : {}),
+      ...(payment.bankId ? { bankId: payment.bankId } : {}),
+      ...(payment.bankName ? { bankName: payment.bankName } : {}),
+      ...(payment.cardType ? { cardType: payment.cardType } : {}),
+      ...(supportedCardNetwork(payment.cardNetworkId)
+        ? { cardNetwork: supportedCardNetwork(payment.cardNetworkId)! }
+        : {}),
+      ...(payment.installmentMonths
+        ? { installmentMonths: payment.installmentMonths }
+        : {}),
       folio: operation.folio,
       createdAt: dateLabel(operation.createdAt),
       createdAtIso: operation.createdAt,
@@ -36,7 +74,9 @@ export function ticketFromDto(dto: PosTicketDto): Ticket {
     clientName: dto.customerName ?? "Público general",
     clientPhone: dto.customerPhone ?? "",
     branchName: dto.branchName,
-    sellerSummary: dto.sellers.map((seller) => seller.name).join(" / "),
+    sellerSummary: participantSales
+      .map((participant) => participant.sellerName)
+      .join(" / "),
     items: dto.lines.reduce((sum, line) => sum + Number(line.quantity), 0),
     discountAmount: Number(dto.discountTotal),
     subtotal: Number(dto.subtotal),
@@ -72,11 +112,7 @@ export function ticketFromDto(dto: PosTicketDto): Ticket {
           : {}),
       };
     }),
-    sellerSales: dto.sellers.map((seller) => ({
-      sellerId: seller.employeeId,
-      sellerName: seller.name,
-      amount: Number(seller.shareAmount),
-    })),
+    sellerSales: participantSales,
     status:
       dto.status === "CANCELED" || dto.status === "REFUNDED"
         ? "REFUNDED"
@@ -126,7 +162,18 @@ export function layawayFromDto(dto: PosTicketDto): LayawayRecord | null {
         ...(payment.authorizationLastFour
           ? { authorizationCode: payment.authorizationLastFour }
           : {}),
-        ...(payment.institution ? { cardOrBank: payment.institution } : {}),
+        ...((payment.bankName ?? payment.institution)
+          ? { cardOrBank: payment.bankName ?? payment.institution! }
+          : {}),
+        ...(payment.bankId ? { bankId: payment.bankId } : {}),
+        ...(payment.bankName ? { bankName: payment.bankName } : {}),
+        ...(payment.cardType ? { cardType: payment.cardType } : {}),
+        ...(supportedCardNetwork(payment.cardNetworkId)
+          ? { cardNetwork: supportedCardNetwork(payment.cardNetworkId)! }
+          : {}),
+        ...(payment.installmentMonths
+          ? { installmentMonths: payment.installmentMonths }
+          : {}),
         folio: operation.folio,
         createdAt: dateLabel(operation.createdAt),
         createdAtIso: operation.createdAt,

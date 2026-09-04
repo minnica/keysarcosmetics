@@ -2,6 +2,7 @@ import { Prisma, type MetodoPagoTipo } from "@prisma/client";
 import type {
   PosTicketCreateRequestDto,
   PosTicketDto,
+  PosTicketParticipantInputDto,
   PosTicketQuoteDto,
   PosTicketQuoteRequestDto,
 } from "@cosmetics/types";
@@ -45,6 +46,26 @@ const normalize = (value: string) =>
     .toLocaleLowerCase("es-MX");
 const normalizePhone = (value: string | null | undefined) =>
   value ? value.replace(/\D/g, "") || null : null;
+
+export function containsLikelyPan(value: string | null | undefined) {
+  if (!value) return false;
+  return (value.match(/(?:\d[ -]?){13,19}/g) ?? []).some((candidate) => {
+    const digits = candidate.replace(/\D/g, "");
+    if (digits.length < 13 || digits.length > 19) return false;
+    let sum = 0;
+    let double = false;
+    for (let index = digits.length - 1; index >= 0; index -= 1) {
+      let digit = Number(digits[index]);
+      if (double) {
+        digit *= 2;
+        if (digit > 9) digit -= 9;
+      }
+      sum += digit;
+      double = !double;
+    }
+    return sum % 10 === 0;
+  });
+}
 
 export function allocateLargestRemainder(
   totalCents: number,
@@ -419,44 +440,127 @@ export async function consumeTicketAuthorization(
   return consumed.count === 1 ? authorization : null;
 }
 
-async function validateSellers(
+async function validateParticipants(
   tx: Transaction,
-  sellers: PosTicketCreateRequestDto["sellers"],
+  input: PosTicketCreateRequestDto,
   totalCents: number,
   branchId: string,
-  customerId: string | null,
+  customerId: string,
 ) {
+  const requested: PosTicketParticipantInputDto[] =
+    input.participants ??
+    input.sellers.map((seller) => ({
+      kind: "SELLER" as const,
+      employeeId: seller.employeeId,
+      share: seller.share,
+    }));
+  if (requested.length === 0)
+    throw new PosTicketError("El ticket requiere al menos un participante");
+  const currentPortfolio = await tx.customerPortfolioAssignment.findFirst({
+    where: { customerId, effectiveTo: null },
+    orderBy: { effectiveFrom: "desc" },
+    select: { companyId: true },
+  });
+  const companyOwned = Boolean(currentPortfolio?.companyId);
+  const companyEntries = requested.filter((item) => item.kind === "COMPANY");
+  if (companyOwned && companyEntries.length !== 1)
+    throw new PosTicketError(
+      "La cartera empresarial exige una participación de empresa",
+    );
+  if (!companyOwned && companyEntries.length > 0)
+    throw new PosTicketError(
+      "La empresa sólo puede participar en tickets de cartera empresarial",
+    );
+  const company = companyEntries.length
+    ? await tx.posCommercialCompany.findFirst({
+        where: {
+          id: companyEntries[0]!.companyId,
+          active: true,
+          ...(currentPortfolio?.companyId
+            ? { id: currentPortfolio.companyId }
+            : {}),
+        },
+      })
+    : null;
+  if (companyEntries.length && !company)
+    throw new PosTicketError("La identidad comercial de empresa no es vigente");
+  const sellerInputs = requested.filter(
+    (
+      item,
+    ): item is PosTicketParticipantInputDto & {
+      kind: "SELLER";
+      employeeId: string;
+    } => item.kind === "SELLER" && Boolean(item.employeeId),
+  );
   const employees = await tx.empleado.findMany({
     where: {
-      id: { in: sellers.map((seller) => seller.employeeId) },
+      id: { in: sellerInputs.map((seller) => seller.employeeId) },
       activo: true,
       OR: [
         { todasSucursales: true },
         { sucursalId: branchId },
-        ...(customerId
-          ? [
-              {
-                customerPortfolios: {
-                  some: { customerId, effectiveTo: null },
-                },
-              },
-            ]
-          : []),
+        {
+          customerPortfolios: {
+            some: { customerId, effectiveTo: null },
+          },
+        },
       ],
     },
     select: { id: true, nombreCompleto: true },
   });
-  if (employees.length !== sellers.length)
+  if (employees.length !== sellerInputs.length)
     throw new PosTicketError(
       "El ticket contiene vendedores inactivos o inexistentes",
     );
-  const shares = sellers.map((seller) => toCents(seller.share));
-  if (shares.reduce((sum, share) => sum + share, 0) !== totalCents) {
+  const shares = requested.map((participant) => toCents(participant.share));
+  if (shares.reduce((sum, share) => sum + share, 0) !== totalCents)
     throw new PosTicketError(
-      "La distribución de vendedores no coincide con el total",
+      "La distribución de participantes no coincide con el total",
     );
+  return { requested, shares, employees, company };
+}
+
+export function validatePaymentCommercialDetails(input: {
+  methodType: MetodoPagoTipo;
+  cardType?: "CREDIT" | "DEBIT";
+  cardNetworkId?: string;
+  bankId?: string;
+  installmentMonths?: number;
+  authorizationLastFour?: string;
+  activeInstallments: readonly number[];
+}) {
+  if (input.methodType === "TARJETA") {
+    if (
+      !input.cardType ||
+      !input.cardNetworkId ||
+      !input.bankId ||
+      !input.authorizationLastFour ||
+      !/^\d{4}$/.test(input.authorizationLastFour)
+    )
+      throw new PosTicketError(
+        "Tarjeta requiere tipo, red, banco y cuatro dígitos de autorización",
+      );
+    if (input.cardType === "CREDIT") {
+      if (
+        !input.installmentMonths ||
+        !input.activeInstallments.includes(input.installmentMonths)
+      )
+        throw new PosTicketError("El plazo de crédito no está vigente");
+    } else if (input.installmentMonths !== undefined) {
+      throw new PosTicketError("Débito no admite meses sin intereses");
+    }
+    return;
   }
-  return { employees, shares };
+  if (
+    input.cardType ||
+    input.cardNetworkId ||
+    input.installmentMonths !== undefined
+  )
+    throw new PosTicketError(
+      "El método seleccionado no admite tipo, red ni plazo de tarjeta",
+    );
+  if (input.methodType !== "TRANSFERENCIA" && input.bankId)
+    throw new PosTicketError("El método seleccionado no admite banco");
 }
 
 async function validatePayments(
@@ -464,13 +568,36 @@ async function validatePayments(
   payments: PosTicketCreateRequestDto["payments"],
 ) {
   if (payments.length === 0) return [];
-  const methods = await tx.metodoPago.findMany({
-    where: {
-      id: { in: payments.map((payment) => payment.methodId) },
-      activo: true,
-    },
-    include: { posPolicy: true },
-  });
+  const [methods, banks, networks, installmentOptions] = await Promise.all([
+    tx.metodoPago.findMany({
+      where: {
+        id: { in: payments.map((payment) => payment.methodId) },
+        activo: true,
+      },
+      include: { posPolicy: true },
+    }),
+    tx.posBank.findMany({
+      where: {
+        id: {
+          in: payments.flatMap((payment) =>
+            payment.bankId ? [payment.bankId] : [],
+          ),
+        },
+        active: true,
+      },
+    }),
+    tx.posCardNetwork.findMany({
+      where: {
+        id: {
+          in: payments.flatMap((payment) =>
+            payment.cardNetworkId ? [payment.cardNetworkId] : [],
+          ),
+        },
+        active: true,
+      },
+    }),
+    tx.posInstallmentOption.findMany({ where: { active: true } }),
+  ]);
   if (
     methods.length !== new Set(payments.map((payment) => payment.methodId)).size
   ) {
@@ -479,6 +606,9 @@ async function validatePayments(
     );
   }
   const map = new Map(methods.map((method) => [method.id, method]));
+  const bankMap = new Map(banks.map((bank) => [bank.id, bank]));
+  const networkMap = new Map(networks.map((network) => [network.id, network]));
+  const activeInstallments = installmentOptions.map((option) => option.months);
   for (const payment of payments) {
     const method = map.get(payment.methodId)!;
     if (!method.posPolicy?.activeForPos)
@@ -501,18 +631,127 @@ async function validatePayments(
     if (method.posPolicy.requiresReference && !payment.reference)
       throw new PosTicketError(`${method.nombre} requiere referencia`);
     if (
-      method.tipo !== "EFECTIVO" &&
-      (!payment.institution || !payment.authorizationLastFour)
-    ) {
+      containsLikelyPan(payment.reference) ||
+      containsLikelyPan(payment.institution)
+    )
       throw new PosTicketError(
-        `${method.nombre} requiere institución y cuatro dígitos de autorización`,
+        "No se permite capturar ni persistir un número de tarjeta",
       );
-    }
+    validatePaymentCommercialDetails({
+      methodType: method.tipo,
+      cardType: payment.cardType,
+      cardNetworkId: payment.cardNetworkId,
+      bankId: payment.bankId,
+      installmentMonths: payment.installmentMonths,
+      authorizationLastFour: payment.authorizationLastFour,
+      activeInstallments,
+    });
+    if (payment.bankId && !bankMap.has(payment.bankId))
+      throw new PosTicketError("El banco no existe o está inactivo");
+    if (payment.cardNetworkId && !networkMap.has(payment.cardNetworkId))
+      throw new PosTicketError("La red de tarjeta no existe o está inactiva");
   }
   return payments.map((payment) => ({
     payment,
     method: map.get(payment.methodId)!,
+    bank: payment.bankId ? bankMap.get(payment.bankId)! : null,
+    network: payment.cardNetworkId
+      ? networkMap.get(payment.cardNetworkId)!
+      : null,
   }));
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+export function assertNoSensitivePaymentData(value: unknown): void {
+  if (Array.isArray(value)) {
+    value.forEach(assertNoSensitivePaymentData);
+    return;
+  }
+  if (!isRecord(value)) {
+    if (typeof value === "string" && containsLikelyPan(value))
+      throw new PosTicketError(
+        "No se permite capturar ni persistir un número de tarjeta",
+      );
+    return;
+  }
+  for (const [key, nested] of Object.entries(value)) {
+    const normalizedKey = key
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLocaleLowerCase("en-US")
+      .replace(/[^a-z]/g, "");
+    if (
+      [
+        "pan",
+        "cvv",
+        "cvc",
+        "cardnumber",
+        "cardno",
+        "numerodetarjeta",
+        "numerotarjeta",
+        "track",
+        "trackdata",
+        "magneticstripe",
+        "bandamagnetica",
+      ].includes(normalizedKey)
+    )
+      throw new PosTicketError(
+        "La revisión contiene datos de tarjeta prohibidos",
+      );
+    assertNoSensitivePaymentData(nested);
+  }
+}
+
+function revisionPayments(
+  value: unknown,
+): PosTicketCreateRequestDto["payments"] {
+  if (!isRecord(value) || !("payments" in value)) return [];
+  if (!Array.isArray(value["payments"]))
+    throw new PosTicketError("Los pagos de la revisión son inválidos");
+  return value["payments"].map((candidate) => {
+    if (!isRecord(candidate))
+      throw new PosTicketError("Los pagos de la revisión son inválidos");
+    const methodId = candidate["methodId"];
+    const amount = candidate["amount"];
+    if (
+      typeof methodId !== "string" ||
+      (typeof amount !== "string" && typeof amount !== "number")
+    )
+      throw new PosTicketError("Los pagos de la revisión son inválidos");
+    const optionalString = (key: string) =>
+      typeof candidate[key] === "string" ? candidate[key] : undefined;
+    const installmentMonths = candidate["installmentMonths"];
+    return {
+      methodId,
+      amount: String(amount),
+      reference: optionalString("reference"),
+      institution:
+        optionalString("institution") ?? optionalString("cardOrBank"),
+      authorizationLastFour:
+        optionalString("authorizationLastFour") ??
+        optionalString("authorizationCode"),
+      cardType:
+        candidate["cardType"] === "CREDIT" || candidate["cardType"] === "DEBIT"
+          ? candidate["cardType"]
+          : undefined,
+      cardNetworkId:
+        optionalString("cardNetworkId") ?? optionalString("cardNetwork"),
+      bankId: optionalString("bankId"),
+      installmentMonths:
+        typeof installmentMonths === "number" ? installmentMonths : undefined,
+    };
+  });
+}
+
+async function validateRevisionPaymentSnapshot(
+  tx: Transaction,
+  value: unknown,
+) {
+  assertNoSensitivePaymentData(value);
+  const payments = revisionPayments(value);
+  if (payments.length > 0) await validatePayments(tx, payments);
 }
 
 async function nextSequence(
@@ -626,6 +865,31 @@ async function projectPaymentOperation(
     );
 }
 
+export function sellerProjectionPayments(
+  payments: Array<{ methodId: string; amountCents: number }>,
+  sellerShareCents: number,
+  ticketTotalCents: number,
+) {
+  if (sellerShareCents <= 0 || ticketTotalCents <= 0) return [];
+  const operationTotal = payments.reduce(
+    (total, payment) => total + payment.amountCents,
+    0,
+  );
+  const projectedTotal = Math.min(
+    operationTotal,
+    Math.round((operationTotal * sellerShareCents) / ticketTotalCents),
+  );
+  const allocations = allocateLargestRemainder(
+    projectedTotal,
+    payments.map((payment) => payment.amountCents),
+  );
+  return payments.flatMap((payment, index) =>
+    allocations[index]
+      ? [{ methodId: payment.methodId, amountCents: allocations[index]! }]
+      : [],
+  );
+}
+
 const ticketInclude = {
   branch: { select: { nombre: true } },
   customer: { select: { id: true } },
@@ -634,6 +898,7 @@ const ticketInclude = {
     orderBy: { creadoEn: "asc" as const },
   },
   sellers: { orderBy: { creadoEn: "asc" as const } },
+  participants: { orderBy: { creadoEn: "asc" as const } },
   paymentOperations: {
     include: { payments: true },
     orderBy: { creadoEn: "asc" as const },
@@ -726,7 +991,26 @@ export function ticketDto(ticket: TicketPayload): PosTicketDto {
         reference: payment.reference,
         institution: payment.institution,
         authorizationLastFour: payment.authorizationLastFour,
+        cardType: payment.cardType,
+        cardNetworkId: payment.cardNetworkId,
+        cardNetworkName: payment.cardNetworkNameSnapshot,
+        bankId: payment.bankId,
+        bankName: payment.bankNameSnapshot,
+        installmentMonths: payment.installmentMonths,
       })),
+    })),
+    participants: ticket.participants.map((participant) => ({
+      id: participant.id,
+      kind: participant.kind,
+      employeeId: participant.employeeId,
+      companyId: participant.companyId,
+      code: participant.participantCodeSnapshot,
+      name: participant.participantNameSnapshot,
+      shareAmount: money(participant.shareAmount)!,
+      sharePercent: money(participant.sharePercent)!,
+      clockedIn: participant.clockedInSnapshot,
+      presenceBranchId: participant.presenceBranchIdSnapshot,
+      attendanceId: participant.attendanceIdSnapshot,
     })),
     owedProducts: ticket.owedProducts.map((owed) => ({
       id: owed.id,
@@ -827,25 +1111,6 @@ export async function createTicket(
       403,
     );
   }
-  const { employees, shares } = await validateSellers(
-    tx,
-    input.sellers,
-    quote.totalCents,
-    context.branchId,
-    input.customer.id ?? null,
-  );
-  const openAttendances = await tx.posAttendance.findMany({
-    where: {
-      employeeId: { in: input.sellers.map((seller) => seller.employeeId) },
-      branchId: context.branchId,
-      status: "OPEN",
-      clockOutAt: null,
-    },
-    select: { id: true, employeeId: true, branchId: true },
-  });
-  const attendanceByEmployee = new Map(
-    openAttendances.map((attendance) => [attendance.employeeId, attendance]),
-  );
   const payments = await validatePayments(tx, input.payments);
   if (
     payments.reduce((sum, entry) => sum + toCents(entry.payment.amount), 0) !==
@@ -853,6 +1118,21 @@ export async function createTicket(
   ) {
     throw new PosTicketError("Los pagos no coinciden con la cotización");
   }
+  const source = input.customer.create?.sourceId
+    ? await tx.customerSource.findFirst({
+        where: {
+          id: input.customer.create.sourceId,
+          active: true,
+          deletedAt: null,
+        },
+        select: { companyOwnedByDefault: true },
+      })
+    : null;
+  const defaultCompany = source?.companyOwnedByDefault
+    ? await tx.posCommercialCompany.findFirst({ where: { active: true } })
+    : null;
+  if (source?.companyOwnedByDefault && !defaultCompany)
+    throw new PosTicketError("No existe una empresa comercial activa", 409);
   const customer = input.customer.id
     ? await tx.customer.findFirst({
         where: { id: input.customer.id, active: true, deletedAt: null },
@@ -867,25 +1147,68 @@ export async function createTicket(
             externalClientId: agenda?.externalClientId ?? null,
             sourceId: input.customer.create.sourceId ?? null,
             notes: input.customer.create.notes ?? null,
-            portfolios: input.customer.create.ownerEmployeeId
-              ? {
-                  create: {
-                    branchId: context.branchId,
-                    employeeId: input.customer.create.ownerEmployeeId,
-                    createdByCredentialId: context.credentialId,
-                  },
-                }
-              : undefined,
+            portfolios:
+              input.customer.create.ownerEmployeeId || defaultCompany
+                ? {
+                    create: {
+                      branchId: context.branchId,
+                      employeeId: defaultCompany
+                        ? null
+                        : input.customer.create.ownerEmployeeId,
+                      companyId: defaultCompany?.id ?? null,
+                      ownerNameSnapshot: defaultCompany?.name ?? null,
+                      ownerCodeSnapshot: defaultCompany?.salesNumber ?? null,
+                      createdByCredentialId: context.credentialId,
+                    },
+                  }
+                : undefined,
           },
         })
       : null;
   if (!customer) throw new PosTicketError("Cliente no encontrado");
+  const {
+    requested: participantInputs,
+    shares,
+    employees,
+    company,
+  } = await validateParticipants(
+    tx,
+    input,
+    quote.totalCents,
+    context.branchId,
+    customer.id,
+  );
+  const sellerParticipantInputs = participantInputs.filter(
+    (
+      participant,
+    ): participant is PosTicketParticipantInputDto & {
+      kind: "SELLER";
+      employeeId: string;
+    } => participant.kind === "SELLER" && Boolean(participant.employeeId),
+  );
+  const openAttendances = await tx.posAttendance.findMany({
+    where: {
+      employeeId: {
+        in: sellerParticipantInputs.map((seller) => seller.employeeId),
+      },
+      branchId: context.branchId,
+      status: "OPEN",
+      clockOutAt: null,
+    },
+    select: { id: true, employeeId: true, branchId: true },
+  });
+  const attendanceByEmployee = new Map(
+    openAttendances.map((attendance) => [attendance.employeeId, attendance]),
+  );
   if (agenda) {
     if (
       customer.externalClientId &&
       customer.externalClientId !== agenda.externalClientId
     )
-      throw new PosTicketError("La identidad externa del cliente cambió durante la venta", 409);
+      throw new PosTicketError(
+        "La identidad externa del cliente cambió durante la venta",
+        409,
+      );
     if (!customer.externalClientId)
       await tx.customer.update({
         where: { id: customer.id },
@@ -913,6 +1236,7 @@ export async function createTicket(
   const employeeMap = new Map(
     employees.map((employee) => [employee.id, employee]),
   );
+  const participantPercentUnits = allocateLargestRemainder(1_000_000, shares);
   let ticket = await tx.posTicket.create({
     data: {
       folio,
@@ -982,22 +1306,53 @@ export async function createTicket(
         ],
       },
       sellers: {
-        create: input.sellers.map((seller, index) => ({
-          employeeId: seller.employeeId,
-          sellerNameSnapshot: employeeMap.get(seller.employeeId)!
-            .nombreCompleto,
-          shareAmount: decimalFromCents(shares[index]!),
-          sharePercent: new Prisma.Decimal(
-            quote.totalCents
-              ? ((shares[index]! * 100) / quote.totalCents).toFixed(4)
-              : "0",
-          ),
-          clockedInSnapshot: attendanceByEmployee.has(seller.employeeId),
-          presenceBranchIdSnapshot:
-            attendanceByEmployee.get(seller.employeeId)?.branchId ?? null,
-          attendanceIdSnapshot:
-            attendanceByEmployee.get(seller.employeeId)?.id ?? null,
-        })),
+        create: sellerParticipantInputs.map((seller) => {
+          const participantIndex = participantInputs.indexOf(seller);
+          return {
+            employeeId: seller.employeeId,
+            sellerNameSnapshot: employeeMap.get(seller.employeeId)!
+              .nombreCompleto,
+            shareAmount: decimalFromCents(shares[participantIndex]!),
+            sharePercent: new Prisma.Decimal(
+              (participantPercentUnits[participantIndex]! / 10_000).toFixed(4),
+            ),
+            clockedInSnapshot: attendanceByEmployee.has(seller.employeeId),
+            presenceBranchIdSnapshot:
+              attendanceByEmployee.get(seller.employeeId)?.branchId ?? null,
+            attendanceIdSnapshot:
+              attendanceByEmployee.get(seller.employeeId)?.id ?? null,
+          };
+        }),
+      },
+      participants: {
+        create: participantInputs.map((participant, index) => {
+          const attendance = participant.employeeId
+            ? attendanceByEmployee.get(participant.employeeId)
+            : null;
+          const employee = participant.employeeId
+            ? employeeMap.get(participant.employeeId)
+            : null;
+          return {
+            kind: participant.kind,
+            employeeId: participant.employeeId ?? null,
+            companyId: participant.companyId ?? null,
+            participantCodeSnapshot:
+              participant.kind === "COMPANY"
+                ? company!.salesNumber
+                : participant.employeeId!,
+            participantNameSnapshot:
+              participant.kind === "COMPANY"
+                ? company!.name
+                : employee!.nombreCompleto,
+            shareAmount: decimalFromCents(shares[index]!),
+            sharePercent: new Prisma.Decimal(
+              (participantPercentUnits[index]! / 10_000).toFixed(4),
+            ),
+            clockedInSnapshot: Boolean(attendance),
+            presenceBranchIdSnapshot: attendance?.branchId ?? null,
+            attendanceIdSnapshot: attendance?.id ?? null,
+          };
+        }),
       },
       layaway:
         quote.pendingCents > 0
@@ -1143,7 +1498,7 @@ export async function createTicket(
     const appointmentIndex: number = createdAppointments.length;
     const prepared: PreparedAgendaTicket["appointments"][number] | undefined =
       agenda?.appointments.find(
-      (candidate) => candidate.index === appointmentIndex,
+        (candidate) => candidate.index === appointmentIndex,
       );
     if (appointment.kind !== "NO_APPOINTMENT" && !prepared)
       throw new PosTicketError("La cita no fue confirmada por Agenda", 409);
@@ -1156,7 +1511,10 @@ export async function createTicket(
         },
       });
       if (!membership || membership.usedSessions >= membership.totalSessions)
-        throw new PosTicketError("La membresía no es vigente para esta cita", 409);
+        throw new PosTicketError(
+          "La membresía no es vigente para esta cita",
+          409,
+        );
     }
     createdAppointments.push(
       await tx.posAppointment.create({
@@ -1193,7 +1551,9 @@ export async function createTicket(
     await tx.agendaReservation.updateMany({
       where: {
         id: {
-          in: [...new Set(agenda.appointments.map((item) => item.reservationId))],
+          in: [
+            ...new Set(agenda.appointments.map((item) => item.reservationId)),
+          ],
         },
         status: "REMOTE_RESERVED",
       },
@@ -1206,6 +1566,32 @@ export async function createTicket(
   }
   const giftLines = ticket.lines.filter((line) => line.kind === "GIFT");
   for (const [index, courtesy] of (input.courtesies ?? []).entries()) {
+    const product = courtesy.courtesyProductId
+      ? await tx.posCourtesyProduct.findFirst({
+          where: {
+            id: courtesy.courtesyProductId,
+            active: true,
+          },
+        })
+      : null;
+    if (courtesy.courtesyProductId && !product)
+      throw new PosTicketError("El producto de cortesía no está activo");
+    const courtesyPackage = courtesy.courtesyPackageId
+      ? await tx.posCourtesyPackage.findFirst({
+          where: { id: courtesy.courtesyPackageId, active: true },
+          include: { lines: { include: { product: true } } },
+        })
+      : null;
+    if (
+      courtesy.courtesyPackageId &&
+      (!courtesyPackage ||
+        courtesyPackage.lines.length < 1 ||
+        courtesyPackage.lines.length > 2 ||
+        courtesyPackage.lines.some((line) => !line.product.active) ||
+        (product &&
+          !courtesyPackage.lines.some((line) => line.productId === product.id)))
+    )
+      throw new PosTicketError("El paquete de cortesía no es vigente");
     const policy = courtesy.policyId
       ? await tx.posCourtesyPolicy.findFirst({
           where: { id: courtesy.policyId, active: true, deletedAt: null },
@@ -1242,6 +1628,12 @@ export async function createTicket(
           (policy?.requiresAuthorization && context.isMaster
             ? context.credentialId
             : null),
+        courtesyProductId: product?.id ?? null,
+        productNameSnapshot: product?.name ?? courtesy.serviceName,
+        productTypeSnapshot: product?.type ?? null,
+        courtesyPackageId: courtesyPackage?.id ?? null,
+        packageVersionSnapshot: courtesyPackage?.version ?? null,
+        packageNameSnapshot: courtesyPackage?.name ?? null,
       },
     });
   }
@@ -1258,14 +1650,20 @@ export async function createTicket(
         actorCredentialId: context.credentialId,
         terminalId: context.terminalId,
         payments: {
-          create: payments.map(({ payment, method }) => ({
+          create: payments.map(({ payment, method, bank, network }) => ({
             paymentMethodId: method.id,
             methodNameSnapshot: method.nombre,
             methodTypeSnapshot: method.tipo,
             amount: new Prisma.Decimal(payment.amount),
             reference: payment.reference ?? null,
-            institution: payment.institution ?? null,
+            institution: bank?.name ?? payment.institution ?? null,
             authorizationLastFour: payment.authorizationLastFour ?? null,
+            cardType: payment.cardType ?? null,
+            cardNetworkId: network?.id ?? null,
+            cardNetworkNameSnapshot: network?.name ?? null,
+            bankId: bank?.id ?? null,
+            bankNameSnapshot: bank?.name ?? null,
+            installmentMonths: payment.installmentMonths ?? null,
           })),
         },
       },
@@ -1275,14 +1673,21 @@ export async function createTicket(
       branchId: context.branchId,
       businessDate: context.businessDate,
       note: `Proyección POS ${folio} / ${operation.folio}`,
-      sellers: input.sellers.map((seller, index) => ({
+      sellers: sellerParticipantInputs.map((seller) => ({
         employeeId: seller.employeeId,
-        weightCents: shares[index]!,
+        weightCents: shares[participantInputs.indexOf(seller)]!,
       })),
-      payments: payments.map(({ payment, method }) => ({
-        methodId: method.id,
-        amountCents: toCents(payment.amount),
-      })),
+      payments: sellerProjectionPayments(
+        payments.map(({ payment, method }) => ({
+          methodId: method.id,
+          amountCents: toCents(payment.amount),
+        })),
+        sellerParticipantInputs.reduce(
+          (total, seller) => total + shares[participantInputs.indexOf(seller)]!,
+          0,
+        ),
+        quote.totalCents,
+      ),
     });
   }
   ticket = (await findTicket(tx, ticket.id))!;
@@ -1342,14 +1747,20 @@ export async function addLayawayPayment(
       actorCredentialId: context.credentialId,
       terminalId: context.terminalId,
       payments: {
-        create: payments.map(({ payment, method }) => ({
+        create: payments.map(({ payment, method, bank, network }) => ({
           paymentMethodId: method.id,
           methodNameSnapshot: method.nombre,
           methodTypeSnapshot: method.tipo,
           amount: new Prisma.Decimal(payment.amount),
           reference: payment.reference ?? null,
-          institution: payment.institution ?? null,
+          institution: bank?.name ?? payment.institution ?? null,
           authorizationLastFour: payment.authorizationLastFour ?? null,
+          cardType: payment.cardType ?? null,
+          cardNetworkId: network?.id ?? null,
+          cardNetworkNameSnapshot: network?.name ?? null,
+          bankId: bank?.id ?? null,
+          bankNameSnapshot: bank?.name ?? null,
+          installmentMonths: payment.installmentMonths ?? null,
         })),
       },
     },
@@ -1381,10 +1792,17 @@ export async function addLayawayPayment(
       employeeId: seller.employeeId,
       weightCents: toCents(seller.shareAmount),
     })),
-    payments: payments.map(({ payment, method }) => ({
-      methodId: method.id,
-      amountCents: toCents(payment.amount),
-    })),
+    payments: sellerProjectionPayments(
+      payments.map(({ payment, method }) => ({
+        methodId: method.id,
+        amountCents: toCents(payment.amount),
+      })),
+      ticket.sellers.reduce(
+        (total, seller) => total + toCents(seller.shareAmount),
+        0,
+      ),
+      toCents(ticket.total),
+    ),
   });
   if (nextPending === 0) {
     await activateMembershipsForTicket(
@@ -1518,6 +1936,7 @@ export async function appendTicketRevision(
   },
 ) {
   await requireOpenBusinessDay(tx, context.branchId, context.businessDate);
+  await validateRevisionPaymentSnapshot(tx, input.snapshot);
   const ticket = await findTicket(tx, input.ticketId);
   if (!ticket || ticket.branchId !== context.branchId)
     throw new PosTicketError("Ticket no encontrado", 404);
@@ -1574,6 +1993,7 @@ export async function cancelOrReturnTicket(
   },
 ) {
   await requireOpenBusinessDay(tx, context.branchId, context.businessDate);
+  await validateRevisionPaymentSnapshot(tx, input.revision);
   const ticket = await findTicket(tx, input.ticketId);
   if (!ticket || ticket.branchId !== context.branchId)
     throw new PosTicketError("Ticket no encontrado", 404);
@@ -1673,24 +2093,49 @@ export async function cancelOrReturnTicket(
   if (refundCents > 0) {
     const paidByMethod = new Map<
       string,
-      { amountCents: number; name: string; type: MetodoPagoTipo }
+      {
+        paymentMethodId: string;
+        amountCents: number;
+        name: string;
+        type: MetodoPagoTipo;
+        cardType: "CREDIT" | "DEBIT" | null;
+        cardNetworkId: string | null;
+        cardNetworkNameSnapshot: string | null;
+        bankId: string | null;
+        bankNameSnapshot: string | null;
+        installmentMonths: number | null;
+      }
     >();
     for (const operation of ticket.paymentOperations.filter(
       (candidate) => candidate.kind !== "REFUND",
     )) {
       for (const payment of operation.payments) {
-        const current = paidByMethod.get(payment.paymentMethodId);
-        paidByMethod.set(payment.paymentMethodId, {
+        const key = [
+          payment.paymentMethodId,
+          payment.cardType ?? "",
+          payment.cardNetworkId ?? "",
+          payment.bankId ?? "",
+          payment.installmentMonths ?? "",
+        ].join(":");
+        const current = paidByMethod.get(key);
+        paidByMethod.set(key, {
+          paymentMethodId: payment.paymentMethodId,
           amountCents: (current?.amountCents ?? 0) + toCents(payment.amount),
           name: payment.methodNameSnapshot,
           type: payment.methodTypeSnapshot,
+          cardType: payment.cardType,
+          cardNetworkId: payment.cardNetworkId,
+          cardNetworkNameSnapshot: payment.cardNetworkNameSnapshot,
+          bankId: payment.bankId,
+          bankNameSnapshot: payment.bankNameSnapshot,
+          installmentMonths: payment.installmentMonths,
         });
       }
     }
-    const methods = [...paidByMethod.entries()];
+    const methods = [...paidByMethod.values()];
     const allocations = allocateLargestRemainder(
       refundCents,
-      methods.map(([, value]) => value.amountCents),
+      methods.map((value) => value.amountCents),
     );
     const sequence = await nextSequence(tx, "PosPaymentFolioSeq");
     const operation = await tx.posPaymentOperation.create({
@@ -1703,15 +2148,21 @@ export async function cancelOrReturnTicket(
         actorCredentialId: context.credentialId,
         terminalId: context.terminalId,
         payments: {
-          create: methods.flatMap(([methodId, value], index) =>
+          create: methods.flatMap((value, index) =>
             allocations[index]
               ? [
                   {
-                    paymentMethodId: methodId,
+                    paymentMethodId: value.paymentMethodId,
                     methodNameSnapshot: value.name,
                     methodTypeSnapshot: value.type,
                     amount: decimalFromCents(allocations[index]!),
                     reference: `DEVOLUCIÓN ${ticket.folio}`,
+                    cardType: value.cardType,
+                    cardNetworkId: value.cardNetworkId,
+                    cardNetworkNameSnapshot: value.cardNetworkNameSnapshot,
+                    bankId: value.bankId,
+                    bankNameSnapshot: value.bankNameSnapshot,
+                    installmentMonths: value.installmentMonths,
                   },
                 ]
               : [],
@@ -1730,10 +2181,22 @@ export async function cancelOrReturnTicket(
         employeeId: seller.employeeId,
         weightCents: toCents(seller.shareAmount),
       })),
-      payments: methods.flatMap(([methodId], index) =>
-        allocations[index]
-          ? [{ methodId, amountCents: allocations[index]! }]
-          : [],
+      payments: sellerProjectionPayments(
+        methods.flatMap((value, index) =>
+          allocations[index]
+            ? [
+                {
+                  methodId: value.paymentMethodId,
+                  amountCents: allocations[index]!,
+                },
+              ]
+            : [],
+        ),
+        ticket.sellers.reduce(
+          (total, seller) => total + toCents(seller.shareAmount),
+          0,
+        ),
+        toCents(ticket.total),
       ),
     });
   }

@@ -140,13 +140,11 @@ router.get(
   asyncRoute(async (req, res) => {
     const parsed = posSaleSellerQuerySchema.safeParse(req.query);
     if (!parsed.success)
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Búsqueda de vendedores inválida",
-          data: parsed.error.flatten().fieldErrors,
-        });
+      return res.status(400).json({
+        success: false,
+        message: "Búsqueda de vendedores inválida",
+        data: parsed.error.flatten().fieldErrors,
+      });
     const [openAttendances, owner] = await Promise.all([
       prisma.posAttendance.findMany({
         where: {
@@ -381,6 +379,7 @@ router.get(
             orderBy: { creadoEn: "asc" },
           },
           sellers: { orderBy: { creadoEn: "asc" } },
+          participants: { orderBy: { creadoEn: "asc" } },
           paymentOperations: {
             include: { payments: true },
             orderBy: { creadoEn: "asc" },
@@ -545,7 +544,7 @@ router.post(
               ticketId: req.params["id"]!,
               reason: parsed.data.reason,
               authorizationToken: parsed.data.authorizationToken,
-              snapshot: parsed.data as unknown as Prisma.InputJsonValue,
+              snapshot: (parsed.data.revision ?? {}) as Prisma.InputJsonValue,
             },
             saleContext(req),
           ),
@@ -716,9 +715,11 @@ router.use(
         .status(error.status)
         .json({ success: false, message: error.message, data: null });
     if (error instanceof PosAgendaError)
-      return res
-        .status(error.status)
-        .json({ success: false, message: error.message, data: { code: error.code } });
+      return res.status(error.status).json({
+        success: false,
+        message: error.message,
+        data: { code: error.code },
+      });
     if (error instanceof PosInventoryError)
       return res
         .status(error.status)

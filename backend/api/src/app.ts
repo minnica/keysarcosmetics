@@ -21,6 +21,7 @@ import posReportRoutes from "./routes/pos-report.routes";
 import posSyncRoutes from "./routes/pos-sync.routes";
 import posMembershipRoutes from "./routes/pos-membership.routes";
 import posAgendaRoutes from "./routes/pos-agenda.routes";
+import posCommercialRoutes from "./routes/pos-commercial.routes";
 import schedulerRoutes from "./routes/scheduler.routes";
 
 function configuredOrigins(): string[] {
@@ -97,6 +98,7 @@ export function createApp(): Express {
   app.use("/api/pos", posReportRoutes);
   app.use("/api/pos", posSyncRoutes);
   app.use("/api/pos", posMembershipRoutes);
+  app.use("/api/pos", posCommercialRoutes);
 
   app.use((_req, res) => {
     res.status(404).json({

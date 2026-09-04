@@ -34,6 +34,14 @@ import type {
   PosNotificationDto,
   PosNotificationPreferenceDto,
   PosPaymentMethodDto,
+  PosPaymentCatalogsDto,
+  PosBankDto,
+  PosCardNetworkDto,
+  PosInstallmentOptionDto,
+  PosCourtesyConfigurationDto,
+  PosCourtesyProductDto,
+  PosCourtesyPackageDto,
+  PosCommercialCompanyDto,
   PosPackageDto,
   PosTicketCreateRequestDto,
   PosTicketDto,
@@ -201,6 +209,19 @@ export interface PosApiClient {
     employeeId?: string | null;
   }): Promise<PosCustomerDto>;
   customerSources(): Promise<PosCustomerSourceDto[]>;
+  createCustomerSource(input: {
+    name: string;
+    active?: boolean;
+    companyOwnedByDefault?: boolean;
+  }): Promise<PosCustomerSourceDto>;
+  updateCustomerSource(
+    id: string,
+    input: {
+      name: string;
+      active?: boolean;
+      companyOwnedByDefault?: boolean;
+    },
+  ): Promise<PosCustomerSourceDto>;
   suppliers(): Promise<PosSupplierDto[]>;
   ticketConfiguration(): Promise<PosTicketConfigurationDto>;
   customerRequiredFields(): Promise<PosCustomerRequiredFieldDto[]>;
@@ -215,6 +236,95 @@ export interface PosApiClient {
   ): Promise<PosCustomerRequiredFieldDto>;
   voucherTemplates(): Promise<PosVoucherTemplateDto[]>;
   paymentMethods(): Promise<PosPaymentMethodDto[]>;
+  paymentCatalogs(): Promise<PosPaymentCatalogsDto>;
+  createBank(input: {
+    name: string;
+    active?: boolean;
+    sourceName?: string;
+    sourceReviewedAt: string;
+  }): Promise<PosBankDto>;
+  updateBank(
+    id: string,
+    input: {
+      name: string;
+      active?: boolean;
+      sourceName?: string;
+      sourceReviewedAt: string;
+    },
+  ): Promise<PosBankDto>;
+  createCardNetwork(input: {
+    name: string;
+    active?: boolean;
+    sourceName?: string;
+    sourceReviewedAt: string;
+  }): Promise<PosCardNetworkDto>;
+  updateCardNetwork(
+    id: string,
+    input: {
+      name: string;
+      active?: boolean;
+      sourceName?: string;
+      sourceReviewedAt: string;
+    },
+  ): Promise<PosCardNetworkDto>;
+  createInstallmentOption(input: {
+    months: number;
+    label: string;
+    active?: boolean;
+    sourceName?: string;
+    sourceReviewedAt: string;
+  }): Promise<PosInstallmentOptionDto>;
+  updateInstallmentOption(
+    id: string,
+    input: {
+      months: number;
+      label: string;
+      active?: boolean;
+      sourceName?: string;
+      sourceReviewedAt: string;
+    },
+  ): Promise<PosInstallmentOptionDto>;
+  courtesyConfiguration(): Promise<PosCourtesyConfigurationDto>;
+  createCourtesyProduct(input: {
+    name: string;
+    type: "FACIAL" | "BODY";
+    active?: boolean;
+  }): Promise<PosCourtesyProductDto>;
+  updateCourtesyProduct(
+    id: string,
+    input: { name: string; type: "FACIAL" | "BODY"; active?: boolean },
+  ): Promise<PosCourtesyProductDto>;
+  createCourtesyPackage(input: {
+    name: string;
+    productIds: string[];
+    active?: boolean;
+  }): Promise<PosCourtesyPackageDto>;
+  updateCourtesyPackage(
+    id: string,
+    input: { name: string; productIds: string[]; active?: boolean },
+  ): Promise<PosCourtesyPackageDto>;
+  updateCourtesyConfiguration(input: {
+    required: boolean;
+    defaultPackageId: string | null;
+  }): Promise<PosCourtesyConfigurationDto>;
+  commercialCompany(): Promise<PosCommercialCompanyDto | null>;
+  updateCommercialCompany(input: {
+    name: string;
+    salesNumber: string;
+    active?: boolean;
+  }): Promise<PosCommercialCompanyDto>;
+  updateEmployeeStatus(
+    employeeId: string,
+    input: {
+      active: boolean;
+      reason: string;
+      authorizationToken: string;
+    },
+  ): Promise<{
+    employeeId: string;
+    active: boolean;
+    transferredCustomers: number;
+  }>;
   packages(): Promise<PosPackageDto[]>;
   competitions(): Promise<PosSalesCompetitionDto[]>;
   createCompetition(
@@ -702,6 +812,10 @@ export function createPosApiClient(
       data<PosCustomerDto>(client.post("/customers", input)),
     customerSources: () =>
       data<PosCustomerSourceDto[]>(client.get("/customers/sources")),
+    createCustomerSource: (input) =>
+      data<PosCustomerSourceDto>(client.post("/customers/sources", input)),
+    updateCustomerSource: (id, input) =>
+      data<PosCustomerSourceDto>(client.put(`/customers/sources/${id}`, input)),
     suppliers: () => data<PosSupplierDto[]>(client.get("/suppliers")),
     ticketConfiguration: () =>
       data<PosTicketConfigurationDto>(client.get("/settings/ticket")),
@@ -720,6 +834,60 @@ export function createPosApiClient(
       data<PosVoucherTemplateDto[]>(client.get("/settings/vouchers")),
     paymentMethods: () =>
       data<PosPaymentMethodDto[]>(client.get("/settings/payment-methods")),
+    paymentCatalogs: () =>
+      data<PosPaymentCatalogsDto>(client.get("/settings/payment-catalogs")),
+    createBank: (input) =>
+      data<PosBankDto>(client.post("/settings/banks", input)),
+    updateBank: (id, input) =>
+      data<PosBankDto>(client.put(`/settings/banks/${id}`, input)),
+    createCardNetwork: (input) =>
+      data<PosCardNetworkDto>(client.post("/settings/card-networks", input)),
+    updateCardNetwork: (id, input) =>
+      data<PosCardNetworkDto>(
+        client.put(`/settings/card-networks/${id}`, input),
+      ),
+    createInstallmentOption: (input) =>
+      data<PosInstallmentOptionDto>(
+        client.post("/settings/installment-options", input),
+      ),
+    updateInstallmentOption: (id, input) =>
+      data<PosInstallmentOptionDto>(
+        client.put(`/settings/installment-options/${id}`, input),
+      ),
+    courtesyConfiguration: () =>
+      data<PosCourtesyConfigurationDto>(
+        client.get("/settings/courtesy-configuration"),
+      ),
+    createCourtesyProduct: (input) =>
+      data<PosCourtesyProductDto>(
+        client.post("/settings/courtesy-products", input),
+      ),
+    updateCourtesyProduct: (id, input) =>
+      data<PosCourtesyProductDto>(
+        client.put(`/settings/courtesy-products/${id}`, input),
+      ),
+    createCourtesyPackage: (input) =>
+      data<PosCourtesyPackageDto>(
+        client.post("/settings/courtesy-packages", input),
+      ),
+    updateCourtesyPackage: (id, input) =>
+      data<PosCourtesyPackageDto>(
+        client.put(`/settings/courtesy-packages/${id}`, input),
+      ),
+    updateCourtesyConfiguration: (input) =>
+      data<PosCourtesyConfigurationDto>(
+        client.put("/settings/courtesy-configuration", input),
+      ),
+    commercialCompany: () =>
+      data<PosCommercialCompanyDto | null>(
+        client.get("/settings/commercial-company"),
+      ),
+    updateCommercialCompany: (input) =>
+      data<PosCommercialCompanyDto>(
+        client.put("/settings/commercial-company", input),
+      ),
+    updateEmployeeStatus: (employeeId, input) =>
+      data(client.put(`/access/employees/${employeeId}/status`, input)),
     packages: () => data<PosPackageDto[]>(client.get("/packages")),
     competitions: () =>
       data<PosSalesCompetitionDto[]>(client.get("/competitions")),
@@ -818,7 +986,9 @@ export function createPosApiClient(
         client.post("/tickets", input, { headers: mutationHeaders(key) }),
       ),
     agendaAvailability: (input) =>
-      data<PosAgendaSlotDto[]>(client.get("/agenda/availability", { params: input })),
+      data<PosAgendaSlotDto[]>(
+        client.get("/agenda/availability", { params: input }),
+      ),
     reserveMembershipAppointment: (input, personalAuthorizationToken, key) =>
       data<PosTicketDto["appointments"][number]>(
         client.post("/agenda/membership-reservations", input, {
@@ -831,7 +1001,11 @@ export function createPosApiClient(
     agendaConflicts: (input = {}) =>
       data(client.get("/agenda/conflicts", { params: input })),
     retryAgendaConflicts: (eventId) =>
-      data(client.post("/agenda/conflicts/retry", { ...(eventId ? { eventId } : {}) })),
+      data(
+        client.post("/agenda/conflicts/retry", {
+          ...(eventId ? { eventId } : {}),
+        }),
+      ),
     resolveAgendaAttendanceCorrection: (input) =>
       data(client.post("/agenda/attendance-corrections", input)),
     tickets: (input = {}) =>
