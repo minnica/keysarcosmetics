@@ -40,7 +40,7 @@ Los dos esquemas Prisma existentes están sincronizados. No hay credenciales loc
 | 3. Inventario y bodega               | Completada — 2026-09-03 | Backend/API + Operación de almacén   | Ledger consistente, reintentos idempotentes y doble aprobación distinta.                  |
 | 4. Tickets y proyección financiera   | Completada — 2026-09-03 | Backend/API + POS + Envelope/Payroll | Totales, inventario y proyección legacy conciliados al centavo.                           |
 | 5. Jornada, asistencia y caja        | Completada — 2026-09-03 | Backend/API + Operación de sucursal  | Una jornada por sucursal/fecha y cierre inmutable.                                        |
-| 6. Offline y reconciliación          | Pendiente               | POS/Electron + Backend/API           | Reinicios y reintentos no pierden ni duplican operaciones.                                |
+| 6. Offline y reconciliación          | Completada — 2026-09-03 | POS/Electron + Backend/API           | Reinicios y reintentos no pierden ni duplican operaciones.                                |
 | 7. Reportes y retiro de mocks        | Pendiente               | Backend/API + POS                    | Módulos operativos consumen API o repositorio offline autorizado.                         |
 | 8. Piloto y despliegue               | Pendiente               | Operación + Backend/API + Producto   | Piloto conciliado, rollback disponible y aprobación operativa.                            |
 
@@ -310,16 +310,27 @@ Los tipos POS saldrán de `apps/pos` hacia `packages/types/src/pos.ts`; `package
 
 ### Fase 6 — Operación offline y reconciliación
 
-- [ ] Crear repositorio local SQLite en el proceso principal de Electron con IPC limitado; no exponer Node ni acceso directo al archivo desde el renderer.
-- [ ] Cifrar payloads con AES-GCM y proteger la clave del dispositivo con el almacén seguro de Electron.
-- [ ] En navegador usar IndexedDB y una clave Web Crypto no exportable.
-- [ ] Cachear catálogo, permisos, sucursal, terminal y grants offline firmados y con caducidad.
-- [ ] Permitir offline únicamente login previamente habilitado, conteos, venta, abonos, citas, cortesías, vouchers y cierre local.
-- [ ] Mantener catálogo, permisos, configuración, bodega y ajustes administrativos exclusivamente online.
-- [ ] Sincronizar por orden terminal/secuencia; estados `PENDING`, `SYNCING`, `SYNCED`, `ERROR` y `CONFLICT`.
-- [ ] Revalidar en servidor permisos, mínimos, credenciales, catálogo e inventario; un conflicto nunca borra la operación local.
+- [x] Crear repositorio local SQLite en el proceso principal de Electron con IPC limitado; no exponer Node ni acceso directo al archivo desde el renderer.
+- [x] Cifrar payloads con AES-GCM y proteger la clave del dispositivo con el almacén seguro de Electron.
+- [x] En navegador usar IndexedDB y una clave Web Crypto no exportable.
+- [x] Cachear catálogo, permisos, sucursal, terminal y grants offline firmados y con caducidad.
+- [x] Permitir offline únicamente login previamente habilitado, conteos, venta, abonos, citas, cortesías, vouchers y cierre local.
+- [x] Mantener catálogo, permisos, configuración, bodega y ajustes administrativos exclusivamente online.
+- [x] Sincronizar por orden terminal/secuencia; estados `PENDING`, `SYNCING`, `SYNCED`, `ERROR` y `CONFLICT`.
+- [x] Revalidar en servidor permisos, mínimos, credenciales, catálogo e inventario; un conflicto nunca borra la operación local.
 
-**Criterio de cierre:** cerrar Electron o perder red durante una venta no pierde ni duplica tickets, pagos o movimientos dependientes.
+**Criterio de cierre: cumplido en repositorio.** Confirmar una venta, abono, conteo, voucher o cierre escribe primero una operación cifrada e idempotente en el outbox local. SQLite usa WAL, durabilidad `FULL`, secuencia asignada dentro de `BEGIN IMMEDIATE` y una clave de dispositivo envuelta por `safeStorage`; el equivalente web conserva una `CryptoKey` AES-GCM no exportable en IndexedDB. Si el proceso o la red se interrumpen antes de recibir respuesta, el mismo UUID, secuencia e `Idempotency-Key` se reenvían: el servidor reproduce el resultado confirmado en lugar de ejecutar un segundo efecto. La prueba sobre un binario instalado y PostgreSQL desechable queda incluida en el piloto de la Fase 8; en esta fase no se aplicó la migración a development ni producción.
+
+#### Entregables verificables
+
+- Persistencia local: `apps/pos/src/main/offline-repository.ts` mantiene credenciales habilitadas y el outbox en SQLite sin exponer el archivo, Node ni consultas SQL al renderer. Todo bootstrap y payload se cifra con AES-256-GCM; la clave aleatoria se guarda cifrada con el almacén seguro del sistema y se borra de memoria al cerrar. Electron se actualizó a una línea que incorpora Node.js con `node:sqlite`.
+- Frontera Electron: `apps/pos/src/main/index.ts` conserva el secreto de terminal y los grants de conciliación únicamente en main y expone por preload sólo login, alta, estado, sincronización y cierre de sesión offline. `contextIsolation` y sandbox permanecen activos y `nodeIntegration` desactivado.
+- Equivalente web: `apps/pos/src/renderer/src/lib/pos-offline.ts` implementa credenciales y outbox cifrados en IndexedDB. La clave AES-GCM se genera como no exportable; el PIN deriva un verificador PBKDF2 y la sincronización conserva estados y errores sin revelar payloads en UI.
+- Caché y alcance: `GET /api/pos/sync/bootstrap` entrega catálogo publicado, mínimos, paquetes, formas de pago, vouchers, fuentes de cliente, configuración de ticket, vendedores, ubicaciones/saldos, jornada, tickets, identidad, permisos y sucursal/terminal junto con un grant firmado y caduco. Sólo una credencial con `offlineEnabled` puede crear o usar esa caché; la vigencia se controla con `POS_OFFLINE_GRANT_EXPIRES_IN` (72 horas por defecto).
+- Operación permitida: apertura y conteos no omitidos, checkout —incluidas citas y cortesías—, abonos, emisión/impresión de vouchers, conteo final y cierre master se agregan al outbox antes de actualizar su proyección visual. Catálogo, clientes administrativos, permisos, configuración, bodega, ajustes, costos y omisiones master continúan exclusivamente online.
+- Reconciliación: la migración aditiva `20260903050000_add_pos_offline_sync` agrega `PosSyncCursor` y `PosSyncOperation`, unicidad por operación, idempotencia y secuencia de terminal, además de protección append-only del contenido recibido. `POST /api/pos/sync/push` procesa hasta 100 operaciones contiguas, resuelve dependencias locales, revalida grant, credencial, identidad, terminal, sucursal, permisos, esquemas, catálogo, precios mínimos e inventario y conserva todo rechazo como `CONFLICT`.
+- Recuperación: los estados locales y de servidor son `PENDING`, `SYNCING`, `SYNCED`, `ERROR` y `CONFLICT`. Cada operación conserva cifrado el grant del actor que la originó y los lotes sólo agrupan tramos consecutivos de ese actor, por lo que cambiar de sesión no reasigna una venta o cierre. Una pérdida de respuesta deja la operación reintentable; `SYNCED` devuelve la respuesta persistida, `ERROR/SYNCING` retoma la misma ejecución idempotente, las operaciones no procesadas regresan a `PENDING` y `CONFLICT` nunca elimina ni modifica el payload local.
+- Verificación local: schemas Prisma sincronizados y válidos, lockfile reproducible sin red, type-check de `@cosmetics/types`, API client, API y POS, lint y build del API, build Vite de renderer/main/preload y 42 pruebas unitarias en verde. La migración es aditiva y no contiene `DROP`, `TRUNCATE`, seeds operativos ni modificaciones a tickets, cobros o movimientos existentes.
 
 ### Fase 7 — Notificaciones, reportes, exportaciones y retiro de mocks
 

@@ -5,11 +5,12 @@ import {
   type PosSessionDto,
 } from "@cosmetics/types";
 import { prisma } from "../prisma/client";
-import type { PosJwtPayload } from "../types/pos-jwt";
+import type { PosJwtPayload, PosOfflineGrantPayload } from "../types/pos-jwt";
 import { getPosJwtSecret } from "./pos-security";
 
 export const POS_JWT_AUDIENCE = "keysar-pos";
 export const POS_JWT_ISSUER = "keysar-api";
+export const POS_OFFLINE_AUDIENCE = "keysar-pos-offline";
 
 type CredentialWithIdentity = Awaited<ReturnType<typeof findCredentialForSession>>;
 
@@ -104,6 +105,39 @@ export function signPosToken(
     throw new Error("No se pudo calcular la vigencia del JWT POS");
   }
   return { token, expiresAt: new Date(decoded.exp * 1000).toISOString() };
+}
+
+export function signPosOfflineGrant(
+  payload: Omit<PosJwtPayload, "tokenType" | "iat" | "exp">,
+): { token: string; expiresAt: string } {
+  const expiresIn = (process.env["POS_OFFLINE_GRANT_EXPIRES_IN"] ??
+    "72h") as SignOptions["expiresIn"];
+  const token = jwt.sign(
+    { ...payload, tokenType: "pos-offline" },
+    getPosJwtSecret(),
+    {
+      expiresIn,
+      audience: POS_OFFLINE_AUDIENCE,
+      issuer: POS_JWT_ISSUER,
+      subject: payload.credentialId,
+    },
+  );
+  const decoded = jwt.decode(token);
+  if (!decoded || typeof decoded === "string" || typeof decoded.exp !== "number") {
+    throw new Error("No se pudo calcular la vigencia del grant offline");
+  }
+  return { token, expiresAt: new Date(decoded.exp * 1000).toISOString() };
+}
+
+export function verifyPosOfflineGrant(token: string): PosOfflineGrantPayload {
+  const payload = jwt.verify(token, getPosJwtSecret(), {
+    audience: POS_OFFLINE_AUDIENCE,
+    issuer: POS_JWT_ISSUER,
+  }) as PosOfflineGrantPayload;
+  if (payload.tokenType !== "pos-offline") {
+    throw new Error("Tipo de grant offline inválido");
+  }
+  return payload;
 }
 
 export function toPosSession(

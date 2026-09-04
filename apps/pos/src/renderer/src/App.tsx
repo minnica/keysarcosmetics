@@ -85,6 +85,7 @@ import type {
   PosExpenseTypeDto,
   PosInventoryLocationDto,
   PosOperationalSummaryDto,
+  PosOfflineBootstrapDto,
   PosPermissionKey,
   PosSessionDto,
   PosTicketQuoteDto,
@@ -248,6 +249,12 @@ import {
   owedProductsFromDto,
   ticketFromDto,
 } from "./lib/pos-ticket-api";
+import {
+  enqueueOfflineOperation,
+  offlineQueueStatus,
+  syncOfflineOperations,
+  type OfflineQueueStatus,
+} from "./lib/pos-offline";
 
 const getSaleProductBrand = (product: Product) =>
   product.kind === "SERVICE"
@@ -831,6 +838,7 @@ function App() {
   const [connectivityNotice, setConnectivityNotice] =
     useState<ConnectivityNotice | null>(null);
   const previousOnlineState = useRef(navigator.onLine);
+  const offlineSyncingRef = useRef(false);
   const [activeScreen, setActiveScreen] = useState<ScreenId>("sale");
   const [saleFocusMode, setSaleFocusMode] = useState(true);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -842,6 +850,9 @@ function App() {
   const [apiBranches, setApiBranches] = useState<PosBranchSummaryDto[]>([]);
   const [apiInventoryLocations, setApiInventoryLocations] = useState<PosInventoryLocationDto[]>([]);
   const [apiOperationalSummary, setApiOperationalSummary] = useState<PosOperationalSummaryDto | null>(null);
+  const [offlineBootstrap, setOfflineBootstrap] = useState<PosOfflineBootstrapDto | null>(null);
+  const [offlineQueue, setOfflineQueue] = useState<OfflineQueueStatus[]>([]);
+  const [operatingOffline, setOperatingOffline] = useState(false);
   const [sessionStage, setSessionStage] = useState<
     "LOGIN" | "OPENING_COUNT" | "OPEN" | "CLOSING_COUNT"
   >("LOGIN");
@@ -1179,7 +1190,7 @@ function App() {
   };
 
   const markAllOperationalNotificationsRead = (userId: string) => {
-    if (posApiEnabled) {
+    if (posApiEnabled && !operatingOffline) {
       operationalNotifications
         .filter((notification) => !notification.readByUserIds.includes(userId))
         .forEach((notification) => { void posApi.markNotificationRead(notification.id).catch(() => undefined); });
@@ -1209,16 +1220,27 @@ function App() {
 
   const allowedScreens = useMemo<ScreenId[]>(() => {
     if (!sessionUser) return [];
-    if (sessionUser.isMaster)
-      return Object.keys(screenMetadata) as ScreenId[];
-    if (posApiEnabled)
-      return Array.from(
+    const resolved = sessionUser.isMaster
+      ? Object.keys(screenMetadata) as ScreenId[]
+      : posApiEnabled
+        ? Array.from(
         new Set([...permissionsToScreens(apiPermissions), "my-account" as ScreenId]),
-      );
-    return Array.from(
-      new Set([...(sessionEmployeeRole?.moduleAccess ?? []), "my-account" as ScreenId]),
-    );
-  }, [apiPermissions, sessionEmployeeRole, sessionUser]);
+      )
+        : Array.from(
+            new Set([...(sessionEmployeeRole?.moduleAccess ?? []), "my-account" as ScreenId]),
+          );
+    if (!operatingOffline) return resolved;
+    const offlineScreens = new Set<ScreenId>([
+      "sale",
+      "seller-sales",
+      "receipts",
+      "appointments",
+      "close-day",
+      "data-update",
+      "my-account",
+    ]);
+    return resolved.filter((screen) => offlineScreens.has(screen));
+  }, [apiPermissions, operatingOffline, sessionEmployeeRole, sessionUser]);
 
   const canEditActiveModule = Boolean(
     sessionUser?.isMaster ||
@@ -1258,6 +1280,115 @@ function App() {
     [activeBranch, catalogProducts],
   );
 
+  const applyOfflineSession = (
+    session: PosSessionDto,
+    bootstrap: PosOfflineBootstrapDto,
+  ) => {
+    const nextUser = sessionUserFromDto(session);
+    const branchName = session.terminal.branch.name;
+    if (bootstrap.businessDay?.status === "CLOSED") {
+      throw new Error("La jornada guardada ya fue cerrada; conecta la terminal para renovar su estado.");
+    }
+    const products = bootstrap.catalog
+      .filter((item) => item.kind !== "SUPPLY")
+      .map((item) => productFromPosCatalog(item, branchName));
+    const locationById = new Map(
+      bootstrap.inventoryLocations.map((location) => [location.id, location]),
+    );
+    const nextBranchInventory: BranchInventory = { [branchName]: {} };
+    for (const balance of bootstrap.inventoryBalances) {
+      const location = locationById.get(balance.locationId);
+      if (location?.branchName) {
+        nextBranchInventory[location.branchName] ??= {};
+        nextBranchInventory[location.branchName]![balance.itemId] = Number(balance.availableQuantity);
+      }
+    }
+    setCatalogProducts(products.map((product) => ({
+      ...product,
+      stock: product.kind === "PRODUCT" ? nextBranchInventory[branchName]?.[product.id] ?? 0 : null,
+    })));
+    setBranchInventory(nextBranchInventory);
+    setApiInventoryLocations(bootstrap.inventoryLocations);
+    setActiveBranch(branchName);
+    setApiSession(session);
+    setApiPermissions(session.permissions);
+    setApiBranches([session.terminal.branch]);
+    setOfflineBootstrap(bootstrap);
+    setOperatingOffline(true);
+    setDaySession(bootstrap.businessDay ? daySessionFromDto(bootstrap.businessDay) : null);
+    setSellers(bootstrap.sellers.map((seller) => ({
+      id: seller.id,
+      name: seller.displayName,
+      alias: "",
+      initials: seller.displayName.split(/\s+/).filter(Boolean).slice(0, 2)
+        .map((part) => part[0]?.toLocaleUpperCase("es-MX") ?? "").join(""),
+      active: true,
+      accessCode: "",
+      masterAccessCode: null,
+      canViewCosts: false,
+      roleId: seller.positionId ?? "",
+    })));
+    setPaymentMethods(bootstrap.paymentMethods.filter((method) => method.activeForPos)
+      .map((method) => ({ id: method.id, label: method.name, active: method.active })));
+    setClientSources(bootstrap.customerSources.map((source) => ({
+      id: source.id,
+      label: source.name,
+      active: source.active,
+      locksCompany: false,
+    })));
+    setVoucherTemplates(bootstrap.voucherTemplates.map((voucher) => ({
+      ...voucher,
+      value: Number(voucher.value),
+    })));
+    setDeals(bootstrap.packages.map((item) => ({
+      id: item.id,
+      name: item.name,
+      sku: item.sku,
+      description: item.description ?? "",
+      price: Number(item.price),
+      lines: item.lines.map((line) => ({ productId: line.itemId, quantity: Number(line.quantity) })),
+      branches: [branchName],
+      startDate: item.startsAt?.slice(0, 10) ?? "",
+      endDate: item.endsAt?.slice(0, 10) ?? "",
+      status: item.status,
+      createdAtIso: item.startsAt ?? bootstrap.issuedAt,
+      publishedAtIso: item.startsAt ?? bootstrap.issuedAt,
+      authorizedBy: null,
+    })));
+    const cachedTickets = bootstrap.tickets.map(ticketFromDto);
+    setTickets(cachedTickets);
+    setLayaways(bootstrap.tickets.flatMap((ticket) => {
+      const layaway = layawayFromDto(ticket);
+      return layaway ? [layaway] : [];
+    }));
+    setOwedProducts(bootstrap.tickets.flatMap(owedProductsFromDto));
+    if (bootstrap.ticketConfiguration) {
+      const configuration = bootstrap.ticketConfiguration;
+      setReceiptSettings((current) => ({
+        ...current,
+        companyName: configuration.companyName,
+        address: configuration.address ?? current.address,
+        footerMessage: configuration.footerMessage ?? current.footerMessage,
+        policies: configuration.policies ?? current.policies,
+        showClientName: configuration.showClientName,
+        showClientPhone: configuration.showClientPhone,
+        showSellerName: configuration.showSellerName,
+        showVatBreakdown: configuration.showVatBreakdown,
+        showSpareCoverageMessage: configuration.showSpareCoverageMessage,
+        logoUrl: configuration.logoUrl ?? current.logoUrl,
+        branchName: `Sucursal ${branchName}`,
+      }));
+    }
+    const nextScreens = session.actor.isMaster
+      ? ["sale" as const]
+      : permissionsToScreens(session.permissions);
+    setSessionUser(nextUser);
+    setSessionStage(bootstrap.businessDay ? "OPEN" : "OPENING_COUNT");
+    setActiveScreen(nextScreens[0] ?? "my-account");
+    setSaleFocusMode(nextScreens[0] === "sale");
+    void offlineQueueStatus(bootstrap).then(setOfflineQueue);
+  };
+
   const applyApiSession = async (session: PosSessionDto) => {
     const nextUser = sessionUserFromDto(session);
     const branchName = session.terminal.branch.name;
@@ -1288,6 +1419,7 @@ function App() {
     }));
     setApiSession(session);
     setApiPermissions(session.permissions);
+    setOperatingOffline(false);
     setDaySession(currentBusinessDay ? daySessionFromDto(currentBusinessDay) : null);
     const branches = await posApi.branches();
     setApiBranches(branches);
@@ -1575,13 +1707,23 @@ function App() {
   }): Promise<string | null> => {
     if (posApiEnabled) {
       try {
-        const session = await loginPos(credentials.username, credentials.password);
-        await applyApiSession(session);
+        const login = await loginPos(credentials.username, credentials.password);
+        if (login.bootstrap) {
+          setOfflineBootstrap(login.bootstrap);
+          void offlineQueueStatus(login.bootstrap).then(setOfflineQueue);
+        }
+        if (login.offline && login.bootstrap) {
+          applyOfflineSession(login.session, login.bootstrap);
+        } else {
+          await applyApiSession(login.session);
+        }
         setConnectivityNotice({
-          kind: "ONLINE",
-          title: "Terminal conectada",
-          description: `Sesión protegida iniciada en ${session.terminal.branch.name}.`,
-          pendingCount: 0,
+          kind: login.offline ? "OFFLINE" : "ONLINE",
+          title: login.offline ? "Modo offline activado" : "Terminal conectada",
+          description: login.offline
+            ? `Acceso protegido con la caché vigente de ${login.session.terminal.branch.name}.`
+            : `Sesión protegida iniciada en ${login.session.terminal.branch.name}.`,
+          pendingCount: offlineQueue.length,
         });
         return null;
       } catch (error) {
@@ -1593,7 +1735,7 @@ function App() {
           response.response?.data?.message ?? response.message ??
           (navigator.onLine
             ? "No fue posible iniciar sesión en el POS."
-            : "El login offline se habilitará en la fase de sincronización.")
+            : "No existe una credencial offline vigente para este dispositivo.")
         );
       }
     }
@@ -1776,9 +1918,10 @@ function App() {
     comment: string,
     persisted = false,
     backendDay?: PosBusinessDayDto,
+    localDayId?: string,
   ) => {
     if (!sessionUser) return;
-    if (posApiEnabled && !persisted) {
+    if (posApiEnabled && !persisted && isOnline) {
       const location = apiInventoryLocations.find((candidate) => candidate.branchName === sessionUser.branch);
       if (skipped) {
         if (!apiSession) {
@@ -1814,6 +1957,34 @@ function App() {
       }).then((day) => completeOpeningCount(lines, skipped, comment, true, day)).catch((error: unknown) => toast.error(error instanceof Error ? error.message : "No se pudo abrir la jornada."));
       return;
     }
+    if (posApiEnabled && !persisted) {
+      if (!offlineBootstrap) {
+        toast.error("La credencial no tiene una caché offline vigente.");
+        return;
+      }
+      if (skipped) {
+        toast.error("Omitir el conteo inicial requiere conexión y autorización master.");
+        return;
+      }
+      const location = apiInventoryLocations.find((candidate) => candidate.branchName === sessionUser.branch);
+      if (!location) {
+        toast.error("La caché no contiene la ubicación de inventario de la sucursal.");
+        return;
+      }
+      const payload = {
+        skipped: false,
+        locationId: location.id,
+        notes: comment,
+        lines: lines.map((line) => ({ itemId: line.productId, countedQuantity: line.actualStock.toFixed(2) })),
+      };
+      void enqueueOfflineOperation({ kind: "BUSINESS_DAY_OPEN", payload }, offlineBootstrap)
+        .then(async (queued) => {
+          setOfflineQueue(await offlineQueueStatus(offlineBootstrap));
+          completeOpeningCount(lines, false, comment, true, undefined, queued.id);
+        })
+        .catch((error: unknown) => toast.error(error instanceof Error ? error.message : "No se pudo proteger la apertura local."));
+      return;
+    }
     const createdAtIso = new Date().toISOString();
     const audit: InventoryCountAudit = {
       id: backendDay?.openingCountId ?? `audit-open-${crypto.randomUUID()}`,
@@ -1835,7 +2006,7 @@ function App() {
     if (!skipped) applyPhysicalInventoryCount(audit.lines, sessionUser.branch);
     setInventoryCountAudits((current) => [audit, ...current]);
     setDaySession(backendDay ? daySessionFromDto(backendDay) : {
-      id: `day-${crypto.randomUUID()}`,
+      id: localDayId ?? `day-${crypto.randomUUID()}`,
       branch: sessionUser.branch,
       openedAtIso: createdAtIso,
       openedById: sessionUser.id,
@@ -1871,7 +2042,7 @@ function App() {
     backendDay?: PosBusinessDayDto,
   ) => {
     if (!sessionUser || !daySession) return;
-    if (posApiEnabled && !persisted) {
+    if (posApiEnabled && !persisted && isOnline) {
       const location = apiInventoryLocations.find((candidate) => candidate.branchName === sessionUser.branch);
       if (skipped) {
         const alias = window.prompt("Alias master para omitir el conteo final:");
@@ -1901,6 +2072,36 @@ function App() {
         notes: comment,
         lines: lines.map((line) => ({ itemId: line.productId, countedQuantity: line.actualStock.toFixed(2) })),
       }).then((day) => completeClosingCount(lines, skipped, comment, true, day)).catch((error: unknown) => toast.error(error instanceof Error ? error.message : "No se pudo guardar el conteo final."));
+      return;
+    }
+    if (posApiEnabled && !persisted) {
+      if (!offlineBootstrap) {
+        toast.error("La credencial no tiene una caché offline vigente.");
+        return;
+      }
+      if (skipped) {
+        toast.error("Omitir el conteo final requiere conexión y autorización master.");
+        return;
+      }
+      const location = apiInventoryLocations.find((candidate) => candidate.branchName === sessionUser.branch);
+      if (!location) {
+        toast.error("La caché no contiene la ubicación de inventario de la sucursal.");
+        return;
+      }
+      const payload = {
+        skipped: false,
+        locationId: location.id,
+        notes: comment,
+        lines: lines.map((line) => ({ itemId: line.productId, countedQuantity: line.actualStock.toFixed(2) })),
+      };
+      void enqueueOfflineOperation({
+        kind: "BUSINESS_DAY_CLOSING_COUNT",
+        entityId: daySession.id,
+        payload,
+      }, offlineBootstrap).then(async () => {
+        setOfflineQueue(await offlineQueueStatus(offlineBootstrap));
+        completeClosingCount(lines, false, comment, true);
+      }).catch((error: unknown) => toast.error(error instanceof Error ? error.message : "No se pudo proteger el conteo final local."));
       return;
     }
     const auditLines = skipped
@@ -2802,12 +3003,31 @@ function App() {
       });
       return;
     }
+    if (posApiEnabled && offlineBootstrap && !offlineSyncingRef.current) {
+      offlineSyncingRef.current = true;
+      void syncOfflineOperations(
+        offlineBootstrap,
+        posApi.pushOfflineOperations,
+      ).then(async (result) => {
+        setOfflineBootstrap((current) => current ? { ...current, nextSequence: result.nextSequence } : current);
+        setOfflineQueue(await offlineQueueStatus({ ...offlineBootstrap, nextSequence: result.nextSequence }));
+        setTickets((current) => current.map((ticket) => {
+          const synced = result.results.find((item) => item.id === ticket.backendId && item.status === "SYNCED");
+          return synced ? { ...ticket, backendId: synced.serverEntityId ?? ticket.backendId!, syncStatus: "SYNCED", syncedAtIso: new Date().toISOString() } : ticket;
+        }));
+      }).catch((error: unknown) => {
+        toast.error(error instanceof Error ? error.message : "No fue posible sincronizar la terminal.");
+      }).finally(() => {
+        offlineSyncingRef.current = false;
+      });
+    }
     setSessionDataSync((current) =>
       current.updating ? current : { ...current, updating: true },
     );
   };
 
   useEffect(() => {
+    if (posApiEnabled) return;
     const pendingTickets = tickets.filter(
       (ticket) => ticket.syncStatus === "PENDING_SYNC",
     );
@@ -2825,9 +3045,13 @@ function App() {
     if (previousOnlineState.current === isOnline) return;
     previousOnlineState.current = isOnline;
     if (!sessionUser) return;
-    const pendingCount = tickets.filter(
-      (ticket) => ticket.syncStatus === "PENDING_SYNC",
-    ).length;
+    const pendingCount = posApiEnabled
+      ? offlineQueue.filter((entry) => entry.status !== "SYNCED").length
+      : tickets.filter((ticket) => ticket.syncStatus === "PENDING_SYNC").length;
+    if (posApiEnabled && !isOnline) setOperatingOffline(true);
+    if (posApiEnabled && isOnline && window.sessionStorage.getItem("pos_access_token")) {
+      setOperatingOffline(false);
+    }
     setConnectivityNotice(
       isOnline
         ? {
@@ -2847,10 +3071,46 @@ function App() {
             pendingCount,
           },
     );
-  }, [isOnline, sessionUser, tickets]);
+  }, [isOnline, offlineBootstrap, offlineQueue, sessionUser, tickets]);
 
   useEffect(() => {
     if (!isOnline || !sessionUser) return;
+    if (posApiEnabled) {
+      if (
+        !offlineBootstrap ||
+        offlineSyncingRef.current ||
+        !offlineQueue.some((entry) => ["PENDING", "ERROR", "SYNCING"].includes(entry.status))
+      ) return;
+      offlineSyncingRef.current = true;
+      void syncOfflineOperations(offlineBootstrap, posApi.pushOfflineOperations)
+        .then(async (result) => {
+          const nextBootstrap = { ...offlineBootstrap, nextSequence: result.nextSequence };
+          setOfflineBootstrap(nextBootstrap);
+          const queue = await offlineQueueStatus(nextBootstrap);
+          setOfflineQueue(queue);
+          if (result.results.length > 0) {
+            setTickets((current) => current.map((ticket) => {
+              const synced = result.results.find((item) => item.id === ticket.backendId && item.status === "SYNCED");
+              return synced ? { ...ticket, backendId: synced.serverEntityId ?? ticket.backendId!, syncStatus: "SYNCED", syncedAtIso: new Date().toISOString() } : ticket;
+            }));
+          }
+          const conflicts = queue.filter((entry) => entry.status === "CONFLICT");
+          setConnectivityNotice({
+            kind: conflicts.length ? "OFFLINE" : "SYNCED",
+            title: conflicts.length ? "Sincronización con conflictos" : "Operaciones sincronizadas",
+            description: conflicts.length
+              ? `${conflicts.length} operación${conflicts.length === 1 ? " requiere" : "es requieren"} revisión y permanece protegida localmente.`
+              : `${result.results.filter((item) => item.status === "SYNCED").length} operación${result.results.length === 1 ? " fue conciliada" : "es fueron conciliadas"} con el servidor.`,
+            pendingCount: queue.length,
+          });
+          if (window.sessionStorage.getItem("pos_access_token")) setOperatingOffline(false);
+        })
+        .catch(() => undefined)
+        .finally(() => {
+          offlineSyncingRef.current = false;
+        });
+      return;
+    }
     const pendingTickets = tickets.filter(
       (ticket) => ticket.syncStatus === "PENDING_SYNC",
     );
@@ -2870,7 +3130,7 @@ function App() {
       description: `${pendingTickets.length} ticket${pendingTickets.length === 1 ? " local fue enviado" : "s locales fueron enviados"} correctamente al sistema.`,
       pendingCount: 0,
     });
-  }, [isOnline, sessionUser, tickets]);
+  }, [isOnline, offlineBootstrap, offlineQueue, sessionUser]);
 
   const renderConnectivityNotice = () => {
     const ConnectivityIcon =
@@ -3609,6 +3869,8 @@ function App() {
     setApiSession(null);
     setApiPermissions([]);
     if (posApiEnabled) posApi.clearSession();
+    if (posApiEnabled) void window.electronAPI?.posOfflineLogout();
+    setOperatingOffline(false);
     setSessionStage("LOGIN");
     setActiveScreen("sale");
     setSidebarCollapsed(false);
@@ -3622,6 +3884,31 @@ function App() {
     if (posApiEnabled) {
       if (!daySession) {
         setCloseDayAuthorizationError("No hay una jornada abierta para cerrar.");
+        return;
+      }
+      if (operatingOffline) {
+        if (!offlineBootstrap) {
+          setCloseDayAuthorizationError("No existe una autorización offline vigente en esta terminal.");
+          return;
+        }
+        void loginPos(
+          closeDayAuthorizationUser.trim(),
+          closeDayAuthorizationCode.trim(),
+        ).then(async (login) => {
+          if (!login.offline || !login.session.actor.isMaster || !login.bootstrap) {
+            throw new Error("El cierre offline requiere una credencial master habilitada previamente.");
+          }
+          setOfflineBootstrap(login.bootstrap);
+          await enqueueOfflineOperation({
+            kind: "BUSINESS_DAY_CLOSE",
+            entityId: daySession.id,
+            payload: {},
+          }, login.bootstrap);
+          setOfflineQueue(await offlineQueueStatus(login.bootstrap));
+          completeCloseDay({ id: login.session.actor.id, name: login.session.actor.displayName });
+        }).catch((error: unknown) => {
+          setCloseDayAuthorizationError(error instanceof Error ? error.message : "No se pudo autorizar el cierre offline.");
+        });
         return;
       }
       void posApi.createAuthorization({
@@ -4071,6 +4358,20 @@ function App() {
       return;
     }
     if (!apiSession || cart.length === 0) return;
+    if (operatingOffline) {
+      if (!offlineBootstrap) {
+        toast.error("La credencial no tiene una caché offline vigente.");
+        return;
+      }
+      if (!isCartFloorCoveredOrAuthorized(cart)) {
+        toast.error("Una venta bajo el mínimo combinado requiere conexión y autorización master.");
+        return;
+      }
+      setAuthoritativeQuote(null);
+      setSaleAuthorizationToken(null);
+      setCheckoutOpen(true);
+      return;
+    }
     try {
       const quote = await posApi.quoteTicket({
         branchId: apiSession.terminal.branch.id,
@@ -4115,7 +4416,68 @@ function App() {
   };
 
   const completeTicket = async (result: CheckoutResult) => {
-    if (posApiEnabled) {
+    let offlineOperationId: string | undefined;
+    if (posApiEnabled && operatingOffline) {
+      if (!apiSession || !offlineBootstrap) {
+        toast.error("La sesión offline no está disponible.");
+        return;
+      }
+      try {
+        const sellerShares = result.sellerSales.map((sale) => Math.round(sale.amount * 100));
+        const expectedCents = Math.round(ticketTotal * 100);
+        const assignedCents = sellerShares.reduce((sum, share) => sum + share, 0);
+        if (sellerShares.length > 0) sellerShares[sellerShares.length - 1]! += expectedCents - assignedCents;
+        const appointments = result.appointments.map((appointment) => ({
+          kind: appointment.kind,
+          serviceName: appointment.service,
+          branchId: apiSession.terminal.branch.id,
+          ...(result.sellerSales[0]?.sellerId ? { sellerId: result.sellerSales[0].sellerId } : {}),
+          ...(appointment.kind !== "NO_APPOINTMENT"
+            ? { scheduledAt: new Date(`${appointment.date}T${appointment.time}:00`).toISOString() }
+            : {}),
+        }));
+        const courtesyIndexes = result.appointments.flatMap((appointment, index) => appointment.kind === "COURTESY" ? [index] : []);
+        const payload = {
+          branchId: apiSession.terminal.branch.id,
+          customer: result.createdClient ? { create: {
+            displayName: `${result.client.firstName} ${result.client.lastName}`.trim(),
+            phone: result.client.phone || null,
+            sourceId: clientSources.some((source) => source.id === result.client.source) ? result.client.source : null,
+            notes: result.client.whatsapp ? `WhatsApp: ${result.client.whatsapp}` : null,
+            ownerEmployeeId: result.client.ownerId,
+          } } : { id: result.client.id },
+          lines: cart.map((item) => ({
+            itemId: item.product.id,
+            quantity: item.quantity.toFixed(2),
+            unitPrice: item.unitPrice.toFixed(2),
+            ...(item.comment ? { notes: item.comment } : {}),
+            ...(item.dealId ? { packageId: item.dealId } : {}),
+            delivered: result.paymentStatus === "PAID" || result.deliveredCartItemIds.includes(item.id),
+          })),
+          sellers: result.sellerSales.map((sale, index) => ({ employeeId: sale.sellerId, share: ((sellerShares[index] ?? 0) / 100).toFixed(2) })),
+          payments: result.payments.map((payment) => ({
+            methodId: payment.methodId,
+            amount: payment.amount.toFixed(2),
+            ...(payment.authorizationCode ? { reference: payment.authorizationCode, authorizationLastFour: payment.authorizationCode } : {}),
+            ...(payment.cardOrBank ? { institution: payment.cardOrBank } : {}),
+          })),
+          ...(ticketDiscountAmount > 0 ? { discount: { kind: "FIXED", value: ticketDiscountAmount.toFixed(2) } } : {}),
+          appointments,
+          courtesies: courtesyIndexes.map((appointmentIndex) => ({
+            serviceName: result.appointments[appointmentIndex]!.service,
+            appointmentIndex,
+            policyName: "Cortesía de bienvenida",
+          })),
+        };
+        const queued = await enqueueOfflineOperation({ kind: "TICKET_CREATE", payload }, offlineBootstrap);
+        offlineOperationId = queued.id;
+        setOfflineQueue(await offlineQueueStatus(offlineBootstrap));
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "No se pudo proteger el ticket local.");
+        return;
+      }
+    }
+    if (posApiEnabled && !operatingOffline) {
       if (!apiSession) {
         toast.error("La sesión POS no está disponible.");
         return;
@@ -4294,6 +4656,7 @@ function App() {
     const ticketVatAmount = roundCurrency(ticketTotal - ticketNetTotal);
     const ticket: Ticket = {
       id: ticketId,
+      ...(offlineOperationId ? { backendId: offlineOperationId } : {}),
       createdAt: createdAtLabel,
       createdAtIso: createdAt.toISOString(),
       clientId: result.client.id,
@@ -4344,9 +4707,9 @@ function App() {
       sellerSales: result.sellerSales,
       deals: ticketDeals,
       status: "COMPLETED",
-      syncStatus: isOnline ? "SYNCED" : "PENDING_SYNC",
-      createdOffline: !isOnline,
-      syncedAtIso: isOnline ? createdAt.toISOString() : null,
+      syncStatus: isOnline && !operatingOffline ? "SYNCED" : "PENDING_SYNC",
+      createdOffline: !isOnline || operatingOffline,
+      syncedAtIso: isOnline && !operatingOffline ? createdAt.toISOString() : null,
     };
     const clientName = `${result.client.firstName} ${result.client.lastName}`;
     const createdAppointments: Appointment[] = result.appointments.map(
@@ -6038,7 +6401,7 @@ function App() {
     );
   };
 
-  const registerLayawayPayment = (
+  const registerLayawayPayment = async (
     layawayId: string,
     requestedPayments: PaymentEntry[],
     sellerId: string,
@@ -6047,7 +6410,7 @@ function App() {
     const layaway = layaways.find((item) => item.id === layawayId);
     const seller = sellers.find((item) => item.id === sellerId);
     if (!layaway || layaway.status === "PAID" || !seller) return;
-    if (posApiEnabled) {
+    if (posApiEnabled && !operatingOffline) {
       void posApi.addLayawayPayment(layaway.id, requestedPayments.map((payment) => ({
         methodId: payment.methodId,
         amount: payment.amount.toFixed(2),
@@ -6068,6 +6431,33 @@ function App() {
         toast.success(`Abono registrado. Saldo ${formatCurrency(Number(dto.pendingAmount))}.`);
       }).catch((error: unknown) => toast.error((error as { response?: { data?: { message?: string } } }).response?.data?.message ?? "No se pudo registrar el abono."));
       return;
+    }
+    let offlinePaymentOperationId: string | undefined;
+    if (posApiEnabled) {
+      if (!offlineBootstrap) {
+        toast.error("La credencial no tiene una caché offline vigente.");
+        return;
+      }
+      try {
+        const queued = await enqueueOfflineOperation({
+          kind: "LAYAWAY_PAYMENT",
+          entityId: layaway.id,
+          payload: {
+            payments: requestedPayments.map((payment) => ({
+              methodId: payment.methodId,
+              amount: payment.amount.toFixed(2),
+              ...(payment.authorizationCode ? { reference: payment.authorizationCode, authorizationLastFour: payment.authorizationCode } : {}),
+              ...(payment.cardOrBank ? { institution: payment.cardOrBank } : {}),
+            })),
+            deliveredTicketLineIds: deliveredCartItemIds,
+          },
+        }, offlineBootstrap);
+        offlinePaymentOperationId = queued.id;
+        setOfflineQueue(await offlineQueueStatus(offlineBootstrap));
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "No se pudo proteger el abono local.");
+        return;
+      }
     }
     let remainingPaymentCapacity = layaway.balanceDue;
     const appliedPayments = requestedPayments
@@ -6373,6 +6763,7 @@ function App() {
     }
     const paymentTicket: Ticket = {
       id: paymentFolio,
+      ...(offlinePaymentOperationId ? { backendId: offlinePaymentOperationId } : {}),
       createdAt: createdAtLabel,
       createdAtIso: createdAt.toISOString(),
       clientName: layaway.clientName,
@@ -6406,9 +6797,9 @@ function App() {
       ticketType: "LAYAWAY_PAYMENT",
       relatedTicketId: layaway.originalTicketId,
       inventoryDeductions: liquidationDeliveredLines,
-      syncStatus: isOnline ? "SYNCED" : "PENDING_SYNC",
-      createdOffline: !isOnline,
-      syncedAtIso: isOnline ? createdAt.toISOString() : null,
+      syncStatus: isOnline && !operatingOffline ? "SYNCED" : "PENDING_SYNC",
+      createdOffline: !isOnline || operatingOffline,
+      syncedAtIso: isOnline && !operatingOffline ? createdAt.toISOString() : null,
     };
     setTickets((current) => [
       paymentTicket,
@@ -6528,7 +6919,7 @@ function App() {
         candidate.visibleToSellers,
     );
     if (!template) return null;
-    if (posApiEnabled) {
+    if (posApiEnabled && !operatingOffline) {
       if (!ticket.backendId) {
         toast.error("El ticket no tiene una referencia de backend válida.");
         return null;
@@ -6556,6 +6947,25 @@ function App() {
         return issue;
       } catch (error) {
         toast.error((error as { response?: { data?: { message?: string } } }).response?.data?.message ?? "No se pudo emitir el voucher.");
+        return null;
+      }
+    }
+    let offlineVoucherOperationId: string | undefined;
+    if (posApiEnabled) {
+      if (!offlineBootstrap || !ticket.backendId) {
+        toast.error("El ticket o la caché offline no están disponibles.");
+        return null;
+      }
+      try {
+        const queued = await enqueueOfflineOperation({
+          kind: "VOUCHER_ISSUE",
+          entityId: ticket.backendId,
+          payload: { templateId: voucherId },
+        }, offlineBootstrap);
+        offlineVoucherOperationId = queued.id;
+        setOfflineQueue(await offlineQueueStatus(offlineBootstrap));
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "No se pudo proteger el voucher local.");
         return null;
       }
     }
@@ -6589,7 +6999,7 @@ function App() {
       );
     });
     const issue: VoucherIssue = {
-      id: crypto.randomUUID(),
+      id: offlineVoucherOperationId ?? crypto.randomUUID(),
       folio: `VCH-${branchCode}-${String(sequence).padStart(6, "0")}`,
       voucherId: template.id,
       voucherName: template.name,
@@ -6611,6 +7021,17 @@ function App() {
 
   const printVoucher = async (issue: VoucherIssue) => {
     if (!posApiEnabled) return;
+    if (operatingOffline) {
+      if (!offlineBootstrap) throw new Error("La caché offline no está disponible");
+      const queued = await enqueueOfflineOperation({
+        kind: "VOUCHER_PRINT",
+        entityId: issue.id,
+        payload: {},
+      }, offlineBootstrap);
+      setOfflineQueue(await offlineQueueStatus(offlineBootstrap));
+      toast.success(`Impresión local protegida en la secuencia ${queued.sequence}.`);
+      return;
+    }
     try {
       await posApi.printVoucher(issue.id);
     } catch (error) {
@@ -11124,9 +11545,9 @@ function App() {
             now={syncClock}
             onRequestSync={requestSessionDataSync}
             isOnline={isOnline}
-            pendingTicketCount={tickets.filter(
-              (ticket) => ticket.syncStatus === "PENDING_SYNC",
-            ).length}
+            pendingTicketCount={posApiEnabled
+              ? offlineQueue.filter((entry) => entry.status !== "SYNCED").length
+              : tickets.filter((ticket) => ticket.syncStatus === "PENDING_SYNC").length}
           />
         );
       case "my-account":
@@ -11384,15 +11805,15 @@ function App() {
             />
             <div className="header-status">
               <div
-                className={`header-sync-status ${isOnline ? "is-online" : "is-offline"}`}
+                className={`header-sync-status ${isOnline && !operatingOffline ? "is-online" : "is-offline"}`}
                 aria-live="polite"
               >
                 <span className={sessionDataSync.updating ? "is-updating" : ""}>
-                  {isOnline ? <RefreshCw size={15} /> : <WifiOff size={15} />}
+                  {isOnline && !operatingOffline ? <RefreshCw size={15} /> : <WifiOff size={15} />}
                 </span>
                 <div>
                   <strong>
-                    {!isOnline
+                    {!isOnline || operatingOffline
                       ? "Modo offline"
                       : sessionDataSync.updating
                       ? interfaceLanguage === "EN"
@@ -11401,8 +11822,8 @@ function App() {
                       : `${interfaceLanguage === "EN" ? "Updated" : "Actualizado"} · ${lastUpdateTime}`}
                   </strong>
                   <small>
-                    {!isOnline
-                      ? `${tickets.filter((ticket) => ticket.syncStatus === "PENDING_SYNC").length} tickets pendientes de sincronizar`
+                    {!isOnline || operatingOffline
+                      ? `${posApiEnabled ? offlineQueue.length : tickets.filter((ticket) => ticket.syncStatus === "PENDING_SYNC").length} operaciones pendientes de sincronizar`
                       : sessionDataSync.updating
                       ? interfaceLanguage === "EN"
                         ? "Automatic synchronization in progress"
@@ -11583,7 +12004,7 @@ function App() {
         requiredFields={requiredFields}
         courtesySettings={courtesySettings}
         isMasterCode={isMasterAccessCode}
-        {...(posApiEnabled ? { onSearchClients: async (query: string) => {
+        {...(posApiEnabled && !operatingOffline ? { onSearchClients: async (query: string) => {
           const response = await posApi.customerSearch(query, 1, 20);
           return response.items.map(clientFromPosCustomer);
         } } : {})}

@@ -55,6 +55,71 @@ export type PosSyncStatus =
   | "ERROR"
   | "CONFLICT";
 
+export const POS_OFFLINE_OPERATION_KINDS = [
+  "BUSINESS_DAY_OPEN",
+  "INVENTORY_COUNT",
+  "TICKET_CREATE",
+  "LAYAWAY_PAYMENT",
+  "VOUCHER_ISSUE",
+  "VOUCHER_PRINT",
+  "BUSINESS_DAY_CLOSING_COUNT",
+  "BUSINESS_DAY_CLOSE",
+] as const;
+
+export type PosOfflineOperationKind =
+  (typeof POS_OFFLINE_OPERATION_KINDS)[number];
+
+export interface PosOfflineOperationDto {
+  id: PosId;
+  sequence: number;
+  kind: PosOfflineOperationKind;
+  entityId: PosId | null;
+  idempotencyKey: string;
+  createdAt: IsoUtcDateTime;
+  payload: Record<string, unknown>;
+}
+
+export interface PosOfflineOperationResultDto {
+  id: PosId;
+  sequence: number;
+  status: PosSyncStatus;
+  message: string;
+  serverEntityId: PosId | null;
+  data: unknown;
+}
+
+export interface PosOfflineBootstrapDto {
+  grantToken: string;
+  grantExpiresAt: IsoUtcDateTime;
+  issuedAt: IsoUtcDateTime;
+  nextSequence: number;
+  session: Omit<PosSessionDto, "accessToken">;
+  catalog: PosCatalogItemDto[];
+  packages: PosPackageDto[];
+  paymentMethods: PosPaymentMethodDto[];
+  voucherTemplates: PosVoucherTemplateDto[];
+  customerSources: PosCustomerSourceDto[];
+  ticketConfiguration: PosTicketConfigurationDto | null;
+  sellers: Array<{
+    id: PosId;
+    displayName: string;
+    positionId: PosId | null;
+  }>;
+  inventoryLocations: PosInventoryLocationDto[];
+  inventoryBalances: PosInventoryBalanceDto[];
+  businessDay: PosBusinessDayDto | null;
+  tickets: PosTicketDto[];
+}
+
+export interface PosOfflinePushRequestDto {
+  operations: PosOfflineOperationDto[];
+}
+
+export interface PosOfflinePushResultDto {
+  results: PosOfflineOperationResultDto[];
+  nextSequence: number;
+}
+
 export interface PosPageRequest {
   page?: number;
   pageSize?: number;

@@ -47,6 +47,9 @@ import type {
   PosCashExpenseCorrectionDto,
   PosCashExpenseVoidDto,
   PosOperationalSummaryDto,
+  PosOfflineBootstrapDto,
+  PosOfflineOperationDto,
+  PosOfflinePushResultDto,
 } from '@cosmetics/types'
 
 /**
@@ -168,6 +171,8 @@ export interface PosApiClient {
   voidExpense(id: string, input: PosCashExpenseVoidDto, idempotencyKey?: string): Promise<PosCashExpenseDto>
   dashboard(input?: { businessDate?: string; branchId?: string }): Promise<PosOperationalSummaryDto>
   xReport(input?: { businessDate?: string; branchId?: string }): Promise<PosOperationalSummaryDto>
+  offlineBootstrap(): Promise<PosOfflineBootstrapDto>
+  pushOfflineOperations(grantToken: string, operations: PosOfflineOperationDto[]): Promise<PosOfflinePushResultDto>
   clearSession(): void
 }
 
@@ -281,6 +286,14 @@ export function createPosApiClient(baseURL: string, options: PosApiClientOptions
     voidExpense: (id, input, key) => data<PosCashExpenseDto>(client.post(`/expenses/${id}/void`, input, { headers: mutationHeaders(key) })),
     dashboard: (input = {}) => data<PosOperationalSummaryDto>(client.get('/dashboard', { params: input })),
     xReport: (input = {}) => data<PosOperationalSummaryDto>(client.get('/reports/x-report', { params: input })),
+    offlineBootstrap: () => data<PosOfflineBootstrapDto>(client.get('/sync/bootstrap')),
+    pushOfflineOperations: (grantToken, operations) =>
+      data<PosOfflinePushResultDto>(client.post('/sync/push', { operations }, {
+        headers: {
+          Authorization: `Bearer ${grantToken}`,
+          ...mutationHeaders(),
+        },
+      })),
     clearSession: () => setAccessToken(null),
   }
 }

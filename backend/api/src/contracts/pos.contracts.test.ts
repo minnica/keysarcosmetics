@@ -12,6 +12,7 @@ import {
   posBusinessDayCloseSchema,
   posBusinessDayCountInputSchema,
   posCashExpenseCorrectionSchema,
+  posOfflinePushSchema,
 } from "./pos.contracts";
 
 describe("contratos públicos del POS", () => {
@@ -133,5 +134,20 @@ describe("contratos públicos del POS", () => {
     expect(posCashExpenseCorrectionSchema.safeParse(base).success).toBe(true);
     expect(posCashExpenseCorrectionSchema.safeParse({ ...base, reason: "" }).success).toBe(false);
     expect(posCashExpenseCorrectionSchema.safeParse({ ...base, amount: "125" }).success).toBe(false);
+  });
+
+  it("acepta sólo lotes offline contiguos y con UUID idempotente", () => {
+    const operation = {
+      id: "6a96e671-c899-43ce-a104-06b1c204927e",
+      sequence: 7,
+      kind: "TICKET_CREATE" as const,
+      entityId: null,
+      idempotencyKey: "7922a172-16ed-4fd6-9214-0f9bf575fef2",
+      createdAt: "2026-09-03T18:00:00.000Z",
+      payload: { branchId: "branch-1" },
+    };
+    expect(posOfflinePushSchema.safeParse({ operations: [operation, { ...operation, id: "ce58c055-a1ac-4f05-b788-b92c47664f61", idempotencyKey: "1abc8505-73f1-40d9-b6b5-8f75d72daee1", sequence: 8 }] }).success).toBe(true);
+    expect(posOfflinePushSchema.safeParse({ operations: [operation, { ...operation, id: "ce58c055-a1ac-4f05-b788-b92c47664f61", idempotencyKey: "1abc8505-73f1-40d9-b6b5-8f75d72daee1", sequence: 9 }] }).success).toBe(false);
+    expect(posOfflinePushSchema.safeParse({ operations: [{ ...operation, idempotencyKey: "invalid" }] }).success).toBe(false);
   });
 });

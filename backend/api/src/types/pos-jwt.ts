@@ -17,3 +17,8 @@ export interface PosJwtPayload {
   iat?: number;
   exp?: number;
 }
+
+export interface PosOfflineGrantPayload
+  extends Omit<PosJwtPayload, "tokenType"> {
+  tokenType: "pos-offline";
+}

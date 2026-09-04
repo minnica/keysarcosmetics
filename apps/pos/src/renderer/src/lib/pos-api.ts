@@ -2,6 +2,7 @@ import { createPosApiClient } from "@cosmetics/api-client";
 import type {
   PosAccessBootstrapDto,
   PosPermissionKey,
+  PosOfflineBootstrapDto,
   PosSessionDto,
 } from "@cosmetics/types";
 import type {
@@ -11,22 +12,46 @@ import type {
   ScreenId,
   Seller,
 } from "../types";
+import { authenticateBrowserOffline } from "./pos-offline";
 
 const apiUrl = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
 
 export const posApi = createPosApiClient(apiUrl);
 export const posApiEnabled = import.meta.env.VITE_POS_DATA_MODE !== "mock";
 
-export async function loginPos(alias: string, pin: string): Promise<PosSessionDto> {
+export interface PosLoginResult {
+  session: PosSessionDto;
+  offline: boolean;
+  bootstrap: PosOfflineBootstrapDto | null;
+}
+
+export async function loginPos(alias: string, pin: string): Promise<PosLoginResult> {
   if (!window.electronAPI?.posLogin) {
-    throw new Error("El login POS real requiere la terminal Electron provisionada.");
+    const bootstrap = await authenticateBrowserOffline(alias, pin);
+    if (!bootstrap) {
+      throw new Error("No existe una credencial offline vigente en este navegador.");
+    }
+    window.sessionStorage.removeItem("pos_access_token");
+    return {
+      session: { ...bootstrap.session, accessToken: "" },
+      offline: true,
+      bootstrap,
+    };
   }
   const result = await window.electronAPI.posLogin({ alias, pin });
   if (result.status < 200 || result.status >= 300 || !result.body.success) {
     throw new Error(result.body.message);
   }
-  window.sessionStorage.setItem("pos_access_token", result.body.data.accessToken);
-  return result.body.data;
+  if (result.body.data.accessToken) {
+    window.sessionStorage.setItem("pos_access_token", result.body.data.accessToken);
+  } else {
+    window.sessionStorage.removeItem("pos_access_token");
+  }
+  return {
+    session: result.body.data,
+    offline: result.offline,
+    bootstrap: result.bootstrap,
+  };
 }
 
 const screenPermissionMap: Partial<Record<ScreenId, PosPermissionKey[]>> = {

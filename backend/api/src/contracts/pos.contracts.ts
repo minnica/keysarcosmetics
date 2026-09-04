@@ -1,5 +1,8 @@
 import { z } from "zod";
-import { POS_PERMISSION_KEYS } from "@cosmetics/types";
+import {
+  POS_OFFLINE_OPERATION_KINDS,
+  POS_PERMISSION_KEYS,
+} from "@cosmetics/types";
 
 const idSchema = z.string().trim().min(1).max(191);
 const moneySchema = z
@@ -641,6 +644,41 @@ export const posInventoryBalanceSchema = z
     updatedAt: isoUtcSchema,
   })
   .strict();
+
+export const posOfflineOperationSchema = z
+  .object({
+    id: z.string().uuid(),
+    sequence: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+    kind: z.enum(POS_OFFLINE_OPERATION_KINDS),
+    entityId: idSchema.nullable(),
+    idempotencyKey: z.string().uuid(),
+    createdAt: isoUtcSchema,
+    payload: z.record(z.string(), z.unknown()),
+  })
+  .strict();
+
+export const posOfflinePushSchema = z
+  .object({
+    operations: z.array(posOfflineOperationSchema).min(1).max(100),
+  })
+  .strict()
+  .superRefine((input, context) => {
+    const ordered = [...input.operations].sort(
+      (left, right) => left.sequence - right.sequence,
+    );
+    if (
+      ordered.some(
+        (operation, index) =>
+          index > 0 && operation.sequence !== ordered[index - 1]!.sequence + 1,
+      )
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Las operaciones deben formar una secuencia contigua",
+        path: ["operations"],
+      });
+    }
+  });
 
 export type PosLoginRequest = z.infer<typeof posLoginRequestSchema>;
 export type PosTerminalRegistration = z.infer<

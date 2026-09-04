@@ -1,15 +1,39 @@
 /// <reference types="vite/client" />
 
-import type { ApiResponse, PosSessionDto } from "@cosmetics/types";
+import type {
+  ApiResponse,
+  PosOfflineBootstrapDto,
+  PosOfflineOperationKind,
+  PosOfflinePushResultDto,
+  PosSessionDto,
+  PosSyncStatus,
+} from "@cosmetics/types";
 
 declare global {
   interface Window {
     electronAPI?: {
-      ping(): Promise<unknown>;
       posLogin(input: { alias: string; pin: string }): Promise<{
         status: number;
         body: ApiResponse<PosSessionDto>;
+        offline: boolean;
+        bootstrap: PosOfflineBootstrapDto | null;
       }>;
+      posOfflineEnqueue(input: {
+        kind: PosOfflineOperationKind;
+        entityId?: string | null;
+        payload: Record<string, unknown>;
+        createdAt?: string;
+      }): Promise<{ id: string; sequence: number; status: "PENDING" }>;
+      posOfflineStatus(): Promise<Array<{
+        id: string;
+        sequence: number;
+        kind: PosOfflineOperationKind;
+        status: PosSyncStatus;
+        attempts: number;
+        errorMessage: string | null;
+      }>>;
+      posOfflineSync(): Promise<PosOfflinePushResultDto>;
+      posOfflineLogout(): Promise<void>;
     };
   }
 }
