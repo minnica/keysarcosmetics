@@ -68,6 +68,10 @@ describe("Scheduler access boundary", () => {
       screenKey: "scheduler/clients",
       capability: "EXPORT",
     });
+    expect(schedulerAuthorizationRequirements.CLIENT_MERGE).toEqual({
+      screenKey: "scheduler/clients",
+      capability: "ADMIN",
+    });
   });
 
   it("stores only a deterministic SHA-256 token digest", () => {

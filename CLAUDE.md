@@ -440,7 +440,13 @@ Datos:
 
 ## Estado actual de apps/scheduler
 
-`apps/scheduler` es la app de agenda y administración de reservas. Las Fases 1 y 2 ya conectaron login, bootstrap, permisos, alcance, autorizaciones secundarias y los catálogos base de sucursales/profesionales/servicios/recursos al backend compartido; clientes, citas, configuraciones operativas, reportes y paneles administrativos avanzados continúan local/mock hasta las fases posteriores. Los módulos mock sólo se renderizan con `NODE_ENV=development` y `SCHEDULER_ALLOW_MOCKS=true`; fuera de ese modo se abren exclusivamente las superficies ya persistentes y las demás se mantienen cerradas.
+`apps/scheduler` es la app de agenda y administración de reservas. Las Fases 1 a 3 ya implementaron login, bootstrap, permisos, alcance, autorizaciones secundarias, catálogos base y la API canónica de clientes sobre el backend compartido. La UI de Clientes, citas, configuraciones operativas, reportes y paneles administrativos avanzados continúa local/mock hasta las fases posteriores; los métodos tipados de Clientes ya existen, pero no se habilitan como superficie operativa hasta la conexión controlada de Fase 9. Los módulos mock sólo se renderizan con `NODE_ENV=development` y `SCHEDULER_ALLOW_MOCKS=true`; fuera de ese modo se abren exclusivamente las superficies ya persistentes y las demás se mantienen cerradas.
+
+- La Fase 3 quedó implementada progresivamente en repositorio el 4 de septiembre de 2026 mediante la migración exclusivamente aditiva `20260904080000_add_scheduler_customers`; no se aplicó a development ni production, no hace backfill/fusiones/seeds y ambos schemas Prisma permanecen sincronizados. Agrega `Customer.phoneNormalized` nullable y `version`, perfiles Scheduler, alias de nombre/teléfono, correos, campos personalizados versionados y eventos inmutables de fusión.
+- Scheduler y los escritores POS mantienen escritura dual del teléfono. `/api/scheduler/clients*` ofrece búsqueda paginada por nombre/teléfono/correo/alias, procedencias `CustomerSource`, campos por comercio, alta/edición con alcance y versión, expediente, visitas, finanzas POS de sólo lectura y fusión `SERIALIZABLE`. El alcance profesional propio exige cartera vigente; `RegistroCita` nunca se enlaza por nombre.
+- Expediente, visitas, finanzas y fusiones consumen autorizaciones secundarias ligadas a objetivo; `CLIENT_MERGE` exige `ADMIN`. La fusión rechaza identidades externas distintas, reasigna relaciones compartidas, conserva snapshots financieros, registra `SchedulerCustomerMergeEvent`/`AuditLog` y desactiva el origen sin borrar `Customer`. Scheduler no corrige tickets/pagos; las correcciones siguen siendo compensaciones de POS.
+- `scheduler:diagnose` ahora mide materialización/duplicados sin PII y `scheduler:customers:normalize` inicia en `DRY_RUN`, es reejecutable y sólo deriva `phoneNormalized`. Production exige confirmación exacta y PITR. El índice único parcial permanece deliberadamente pendiente hasta que la evidencia real indique `uniquePartialIndexReady = true`. Runbook: `docs/SCHEDULER_PHASE_3_CUSTOMERS.md`.
+- El cierre local de Fase 3 valida schemas, migración aditiva, lint/type-check/build del API, paquetes compartidos, Scheduler y 103 pruebas unitarias en 20 archivos. PostgreSQL 16, integración HTTP/concurrencia, diagnóstico/materialización real e índice parcial siguen siendo gates antes de activar Clientes.
 
 - La Fase 2 quedó implementada en repositorio el 4 de septiembre de 2026 mediante la migración exclusivamente aditiva `20260904070000_add_scheduler_operational_catalogs`; no se aplicó a development ni production, no crea seeds, perfiles ni datos operativos y ambos schemas Prisma permanecen sincronizados. Agrega comercios, perfiles uno-a-uno sobre `Sucursal`, `Empleado` y `CatalogItem SERVICE`, asignaciones, servicios/clases, especialidades, grupos, recursos, compatibilidades, horarios recurrentes y excepciones con vigencia y baja lógica.
 - `/api/scheduler/operations/candidates` y `/catalog` materializan únicamente las sucursales autorizadas y omiten bloques sin permiso. Las mutaciones de comercios, perfiles, servicios, recursos, grupos, compatibilidades y horarios exigen `ADMIN`, validan IDs/alcance, registran `AuditLog.application = SCHEDULER` y usan `expectedVersion` en perfiles y recursos. Sólo `SUPER_ADMIN` administra comercios; un administrador parcial no puede alterar perfiles compartidos fuera de su alcance.
@@ -1229,7 +1235,8 @@ backend/api/
 │   │   ├── 20260822000000_add_payroll_access_control/ → acceso independiente de Payroll por puesto y pantalla
 │   │   ├── 20260823000000_add_payroll_read_only_access/ → nivel de escritura por permiso de pantalla
 │   │   ├── 20260904060000_add_scheduler_security/ → seguridad, alcance y auditoría de Scheduler
-│   │   └── 20260904070000_add_scheduler_operational_catalogs/ → perfiles, recursos y horarios de Scheduler
+│   │   ├── 20260904070000_add_scheduler_operational_catalogs/ → perfiles, recursos y horarios de Scheduler
+│   │   └── 20260904080000_add_scheduler_customers/ → clientes compartidos, metadatos y fusiones de Scheduler
 │   ├── seed.ts                    → seed general/demo, usar con cuidado
 │   └── seed-catalogs.ts           → seed seguro para Bank/Position
 └── src/
@@ -1250,13 +1257,15 @@ backend/api/
     │   ├── payroll.routes.ts
     │   ├── pos.routes.ts        → auth POS, terminales, sucursales, permisos, credenciales y auditoría de Fase 1
     │   ├── scheduler.routes.ts    → bootstrap, código secundario, autorizaciones y administración de accesos
-    │   └── scheduler-operations.routes.ts → candidatos y catálogos operativos de Scheduler
+    │   ├── scheduler-operations.routes.ts → candidatos y catálogos operativos de Scheduler
+    │   └── scheduler-customers.routes.ts → clientes compartidos, expedientes, históricos y fusiones
     ├── services/
     │   ├── payroll-calculation.ts → motor puro de cálculo
     │   ├── payroll.service.ts     → corridas, reservas y snapshots
     │   ├── pos-pilot-reconciliation.ts → conciliación de sólo lectura para el piloto POS
     │   ├── scheduler-access.ts    → permisos, alcance, tokens de uso único y auditoría de Scheduler
     │   ├── scheduler-operations.ts → reglas puras de catálogos, vigencia y horarios de Scheduler
+    │   ├── scheduler-customers.ts → normalización, alcance y reglas de identidad/fusión
     │   └── payroll-storage.ts     → comprobantes en bucket privado
     ├── types/
     │   ├── express.d.ts           → extensión de tipos de Express
@@ -1330,6 +1339,7 @@ packages/ui/
 | Contratos POS                | `packages/types/src/pos.ts` y `backend/api/src/contracts/`                 |
 | Diagnóstico POS (lectura)    | `backend/api/scripts/diagnose-pos-data.ts`                                 |
 | Diagnóstico Scheduler        | `backend/api/scripts/diagnose-scheduler-data.ts`                           |
+| Normalización clientes       | `backend/api/scripts/normalize-scheduler-customers.ts`                     |
 | Guía de despliegue payroll   | `apps/payroll/PENDIENTES.md`                                               |
 | Guía operativa payroll       | `apps/payroll/GUIA_PRIMERA_NOMINA.md`                                      |
 | Agenda scheduler             | `apps/scheduler/src/app/(dashboard)/page.tsx`                              |
@@ -1392,6 +1402,7 @@ pnpm --filter @cosmetics/api prisma:schemas
 pnpm --filter @cosmetics/api prisma:validate
 pnpm --filter @cosmetics/api pos:diagnose # sólo lectura; requiere DATABASE_URL
 SCHEDULER_DIAGNOSE_ENVIRONMENT=development pnpm --filter @cosmetics/api scheduler:diagnose # sólo lectura
+SCHEDULER_DIAGNOSE_ENVIRONMENT=development SCHEDULER_CUSTOMER_NORMALIZATION_MODE=DRY_RUN pnpm --filter @cosmetics/api scheduler:customers:normalize
 pnpm --filter @cosmetics/api pos:reconcile # sólo lectura; requiere alcance del piloto
 pnpm migrations:review -- origin/develop
 pnpm test:integration  # requiere RUN_DATABASE_TESTS=true + PostgreSQL desechable

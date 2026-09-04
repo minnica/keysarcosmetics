@@ -56,6 +56,10 @@ export const schedulerAuthorizationRequirements: Record<
     screenKey: "scheduler/clients",
     capability: "READ",
   },
+  CLIENT_MERGE: {
+    screenKey: "scheduler/clients",
+    capability: "ADMIN",
+  },
   STATUS_COLORS_CHANGE: {
     screenKey: "scheduler/administration/status-colors",
     capability: "ADMIN",

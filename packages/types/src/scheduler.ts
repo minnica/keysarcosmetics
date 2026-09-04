@@ -45,6 +45,7 @@ export const SCHEDULER_AUTHORIZATION_PURPOSES = [
   "CLIENT_RECORD_VIEW",
   "CLIENT_VISIT_HISTORY_VIEW",
   "CLIENT_FINANCIAL_HISTORY_VIEW",
+  "CLIENT_MERGE",
   "STATUS_COLORS_CHANGE",
   "AVAILABILITY_OVERRIDE",
   "SENSITIVE_EXPORT",
@@ -466,4 +467,205 @@ export interface SchedulerAvailabilityExceptionsWriteDto {
     endMinute?: number | null;
     reason?: string | null;
   }>;
+}
+
+export const SCHEDULER_CUSTOMER_CONTACT_PREFERENCES = [
+  "PHONE",
+  "WHATSAPP",
+  "EMAIL",
+  "NONE",
+] as const;
+export type SchedulerCustomerContactPreference =
+  (typeof SCHEDULER_CUSTOMER_CONTACT_PREFERENCES)[number];
+
+export const SCHEDULER_CUSTOMER_FIELD_TYPES = [
+  "TEXT",
+  "NUMBER",
+  "BOOLEAN",
+  "DATE",
+  "SELECT",
+] as const;
+export type SchedulerCustomerFieldType =
+  (typeof SCHEDULER_CUSTOMER_FIELD_TYPES)[number];
+
+export interface SchedulerCustomerSourceDto {
+  id: string;
+  name: string;
+  active: boolean;
+  companyOwnedByDefault: boolean;
+}
+
+export interface SchedulerCustomerPortfolioDto {
+  id: string;
+  branchId: string | null;
+  branchName: string | null;
+  employeeId: string | null;
+  ownerName: string | null;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+}
+
+export interface SchedulerCustomerSummaryDto {
+  id: string;
+  displayName: string;
+  preferredName: string | null;
+  phone: string | null;
+  email: string | null;
+  source: SchedulerCustomerSourceDto | null;
+  active: boolean;
+  version: number;
+  aliases: string[];
+  currentPortfolios: SchedulerCustomerPortfolioDto[];
+}
+
+export interface SchedulerCustomerFieldDefinitionDto {
+  id: string;
+  commerceId: string;
+  key: string;
+  label: string;
+  type: SchedulerCustomerFieldType;
+  options: string[] | null;
+  required: boolean;
+  active: boolean;
+  version: number;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+}
+
+export interface SchedulerCustomerFieldValueDto {
+  definitionId: string;
+  definitionVersion: number;
+  key: string;
+  label: string;
+  type: SchedulerCustomerFieldType;
+  value: unknown;
+}
+
+export interface SchedulerCustomerDetailDto extends SchedulerCustomerSummaryDto {
+  notes: string | null;
+  profile: {
+    preferredLocale: string;
+    contactPreference: SchedulerCustomerContactPreference;
+    notes: string | null;
+    version: number;
+  } | null;
+  emails: Array<{
+    email: string;
+    isPrimary: boolean;
+    verifiedAt: string | null;
+  }>;
+  customFields: SchedulerCustomerFieldValueDto[];
+  mergeHistory: Array<{
+    id: string;
+    sourceCustomerId: string;
+    targetCustomerId: string;
+    reason: string;
+    createdAt: string;
+  }>;
+}
+
+export interface SchedulerCustomerSearchRequest {
+  query: string;
+  page?: number;
+  pageSize?: number;
+  branchId?: string;
+}
+
+export interface SchedulerCustomerPageDto {
+  items: SchedulerCustomerSummaryDto[];
+  page: number;
+  pageSize: number;
+  total: number;
+}
+
+export interface SchedulerCustomerWriteDto {
+  displayName: string;
+  phone?: string | null;
+  email?: string | null;
+  sourceId?: string | null;
+  branchId: string;
+  notes?: string | null;
+  active?: boolean;
+  expectedVersion?: number;
+  profile?: {
+    preferredName?: string | null;
+    preferredLocale?: string;
+    contactPreference?: SchedulerCustomerContactPreference;
+    notes?: string | null;
+  };
+  aliases?: string[];
+  alternateEmails?: string[];
+  customFields?: Array<{ definitionId: string; value: unknown }>;
+}
+
+export interface SchedulerCustomerMergeRequestDto {
+  sourceCustomerId: string;
+  targetCustomerId: string;
+  expectedSourceVersion: number;
+  expectedTargetVersion: number;
+  reason: string;
+  authorizationToken: string;
+}
+
+export interface SchedulerCustomerMergeResultDto {
+  mergeEventId: string;
+  sourceCustomerId: string;
+  targetCustomerId: string;
+  targetVersion: number;
+  reassignedRelations: Record<string, number>;
+}
+
+export interface SchedulerCustomerVisitHistoryDto {
+  items: Array<{
+    id: string;
+    origin: "POS_APPOINTMENT";
+    branchId: string;
+    branchName: string;
+    serviceName: string;
+    status: string;
+    scheduledAt: string | null;
+    createdAt: string;
+  }>;
+  page: number;
+  pageSize: number;
+  total: number;
+  legacyRegistroCitaLinked: false;
+}
+
+export interface SchedulerCustomerFinancialHistoryDto {
+  items: Array<{
+    ticketId: string;
+    folio: string;
+    branchId: string;
+    branchName: string;
+    businessDate: string;
+    status: string;
+    settlementStatus: string;
+    total: string;
+    amountPaid: string;
+    pendingAmount: string;
+    payments: Array<{
+      operationId: string;
+      operationKind: string;
+      operationFolio: string;
+      method: string;
+      amount: string;
+      createdAt: string;
+    }>;
+  }>;
+  page: number;
+  pageSize: number;
+  total: number;
+  authority: "POS_READ_ONLY";
+}
+
+export interface SchedulerCustomerFieldDefinitionWriteDto {
+  commerceId: string;
+  key: string;
+  label: string;
+  type: SchedulerCustomerFieldType;
+  options?: string[] | null;
+  required?: boolean;
+  active?: boolean;
+  expectedVersion?: number;
 }

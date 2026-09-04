@@ -74,6 +74,7 @@ Después de cinco intentos fallidos, el código queda bloqueado por 15 minutos. 
 - ficha de cliente;
 - historial de visitas;
 - historial financiero;
+- fusión de clientes (`CLIENT_MERGE`, agregada en Fase 3 y ligada a origen/destino);
 - cambio de colores de estatus;
 - excepción de disponibilidad;
 - exportación sensible.

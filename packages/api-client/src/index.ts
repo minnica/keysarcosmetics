@@ -102,6 +102,18 @@ import type {
   SchedulerServiceProfileWriteDto,
   SchedulerServiceResourceRequirementWriteDto,
   SchedulerSpecialtyWriteDto,
+  SchedulerCustomerDetailDto,
+  SchedulerCustomerFieldDefinitionDto,
+  SchedulerCustomerFieldDefinitionWriteDto,
+  SchedulerCustomerFinancialHistoryDto,
+  SchedulerCustomerMergeRequestDto,
+  SchedulerCustomerMergeResultDto,
+  SchedulerCustomerPageDto,
+  SchedulerCustomerSearchRequest,
+  SchedulerCustomerSourceDto,
+  SchedulerCustomerSummaryDto,
+  SchedulerCustomerVisitHistoryDto,
+  SchedulerCustomerWriteDto,
 } from "@cosmetics/types";
 
 /**
@@ -229,6 +241,42 @@ export interface SchedulerApiClient {
   replaceAvailabilityExceptions(
     input: SchedulerAvailabilityExceptionsWriteDto,
   ): Promise<SchedulerMutationResultDto[]>;
+  searchCustomers(
+    input: SchedulerCustomerSearchRequest,
+  ): Promise<SchedulerCustomerPageDto>;
+  customerSources(): Promise<SchedulerCustomerSourceDto[]>;
+  customerFieldDefinitions(): Promise<SchedulerCustomerFieldDefinitionDto[]>;
+  createCustomerFieldDefinition(
+    input: SchedulerCustomerFieldDefinitionWriteDto,
+  ): Promise<SchedulerCustomerFieldDefinitionDto>;
+  updateCustomerFieldDefinition(
+    id: string,
+    input: SchedulerCustomerFieldDefinitionWriteDto,
+  ): Promise<SchedulerCustomerFieldDefinitionDto>;
+  createCustomer(
+    input: SchedulerCustomerWriteDto,
+  ): Promise<SchedulerCustomerSummaryDto>;
+  updateCustomer(
+    id: string,
+    input: SchedulerCustomerWriteDto,
+  ): Promise<SchedulerCustomerSummaryDto>;
+  customerDetail(
+    id: string,
+    authorizationToken: string,
+  ): Promise<SchedulerCustomerDetailDto>;
+  customerVisits(
+    id: string,
+    authorizationToken: string,
+    input?: { page?: number; pageSize?: number; branchId?: string },
+  ): Promise<SchedulerCustomerVisitHistoryDto>;
+  customerFinancialHistory(
+    id: string,
+    authorizationToken: string,
+    input?: { page?: number; pageSize?: number; branchId?: string },
+  ): Promise<SchedulerCustomerFinancialHistoryDto>;
+  mergeCustomers(
+    input: SchedulerCustomerMergeRequestDto,
+  ): Promise<SchedulerCustomerMergeResultDto>;
   logout(): void;
 }
 
@@ -364,6 +412,58 @@ export function createSchedulerApiClient(
     replaceAvailabilityExceptions: (input) =>
       data(
         client.put("/api/scheduler/operations/availability/exceptions", input),
+      ),
+    searchCustomers: (input) =>
+      data<SchedulerCustomerPageDto>(
+        client.get("/api/scheduler/clients/search", { params: input }),
+      ),
+    customerSources: () =>
+      data<SchedulerCustomerSourceDto[]>(
+        client.get("/api/scheduler/clients/sources"),
+      ),
+    customerFieldDefinitions: () =>
+      data<SchedulerCustomerFieldDefinitionDto[]>(
+        client.get("/api/scheduler/clients/field-definitions"),
+      ),
+    createCustomerFieldDefinition: (input) =>
+      data<SchedulerCustomerFieldDefinitionDto>(
+        client.post("/api/scheduler/clients/field-definitions", input),
+      ),
+    updateCustomerFieldDefinition: (id, input) =>
+      data<SchedulerCustomerFieldDefinitionDto>(
+        client.put(`/api/scheduler/clients/field-definitions/${id}`, input),
+      ),
+    createCustomer: (input) =>
+      data<SchedulerCustomerSummaryDto>(
+        client.post("/api/scheduler/clients", input),
+      ),
+    updateCustomer: (id, input) =>
+      data<SchedulerCustomerSummaryDto>(
+        client.put(`/api/scheduler/clients/${id}`, input),
+      ),
+    customerDetail: (id, authorizationToken) =>
+      data<SchedulerCustomerDetailDto>(
+        client.get(`/api/scheduler/clients/${id}`, {
+          headers: { "x-scheduler-authorization": authorizationToken },
+        }),
+      ),
+    customerVisits: (id, authorizationToken, input = {}) =>
+      data<SchedulerCustomerVisitHistoryDto>(
+        client.get(`/api/scheduler/clients/${id}/visits`, {
+          params: input,
+          headers: { "x-scheduler-authorization": authorizationToken },
+        }),
+      ),
+    customerFinancialHistory: (id, authorizationToken, input = {}) =>
+      data<SchedulerCustomerFinancialHistoryDto>(
+        client.get(`/api/scheduler/clients/${id}/financial-history`, {
+          params: input,
+          headers: { "x-scheduler-authorization": authorizationToken },
+        }),
+      ),
+    mergeCustomers: (input) =>
+      data<SchedulerCustomerMergeResultDto>(
+        client.post("/api/scheduler/clients/merge", input),
       ),
     logout: () => setAccessToken(null),
   };

@@ -48,7 +48,7 @@ El desarrollo debe cubrir la aplicación completa, no solamente un MVP. La ejecu
 - El esquema canónico está en `backend/api/prisma/schema.prisma`.
 - Existe una copia en `backend/api/src/prisma/schema.prisma`; ambas eran idénticas durante este análisis.
 - Prisma validó correctamente.
-- Se encontraron 36 directorios de migración.
+- El análisis inicial encontró 36 directorios; después de las Fases 1 a 3 el repositorio contiene 39 migraciones versionadas.
 - El type-check y el build del API pasaron.
 - Las 84 pruebas unitarias encontradas para el API pasaron.
 - El type-check, las pruebas actuales y el build de Scheduler pasaron. El build mostró advertencias no bloqueantes relacionadas con imágenes y dependencias de hooks.
@@ -312,6 +312,8 @@ Evidencia disponible:
 
 ### Fase 3 — Clientes compartidos y deduplicación
 
+**Estado de implementación (4 de septiembre de 2026):** implementación progresiva completada en repositorio; migración, diagnóstico/materialización real y el índice único parcial permanecen pendientes de los gates de Fase 0 y de una PostgreSQL desechable. La UI de Clientes continúa mock hasta su conexión controlada en Fase 9.
+
 Objetivo: reutilizar `Customer` sin introducir identidades paralelas.
 
 Entregables:
@@ -327,6 +329,16 @@ Entregables:
 No se debe deducir una identidad sólo por el nombre contenido en `RegistroCita`.
 
 Criterio de salida: crear, encontrar y fusionar clientes no genera duplicados silenciosos ni rompe su historial compartido.
+
+Evidencia disponible:
+
+- `20260904080000_add_scheduler_customers` es exclusivamente aditiva: agrega `Customer.phoneNormalized` nullable y `version`, perfiles, alias, correos, definiciones/valores versionados y eventos de fusión; no hace backfill, no fusiona registros y no crea datos operativos.
+- Scheduler y los escritores POS mantienen escritura dual. Las altas/ediciones Scheduler normalizan teléfono, toman un advisory lock transaccional, revisan datos legacy/alias y usan control optimista; el diagnóstico reporta pendientes, discrepancias y duplicados sin exponer PII.
+- `scheduler:customers:normalize` es reejecutable, inicia en `DRY_RUN`, sólo materializa la clave derivada y exige confirmación más PITR para production. El índice único parcial se hará en otra migración únicamente cuando `uniquePartialIndexReady` sea verdadero.
+- `/api/scheduler/clients*` implementa búsqueda paginada y acotada, procedencias, campos versionados, alta/edición, expediente, visitas, finanzas POS de sólo lectura y fusión `SERIALIZABLE` con versiones, autorización secundaria, snapshots y auditoría.
+- La fusión reasigna las relaciones compartidas sin alterar snapshots financieros; rechaza identidades externas distintas, conserva el destino ante colisiones y desactiva el origen sin borrar `Customer`. `RegistroCita` no se vincula por nombre.
+- `@cosmetics/types` y `@cosmetics/api-client` publican el contrato. El cierre local valida schemas, lint/type-check/build del API, paquetes compartidos, Scheduler y 103 pruebas unitarias en 20 archivos. Reconstrucción e integración/concurrencia real siguen pendientes por falta de PostgreSQL desechable.
+- Runbook: `docs/SCHEDULER_PHASE_3_CUSTOMERS.md`.
 
 ### Fase 4 — Motor canónico de disponibilidad y citas
 
@@ -446,7 +458,7 @@ Objetivo: demostrar que la solución puede desplegarse y operarse con seguridad.
 
 Entregables:
 
-- Probar migraciones desde una base vacía y desde un snapshot representativo de las 36 migraciones existentes.
+- Probar migraciones desde una base vacía y desde un snapshot representativo de las 39 migraciones existentes.
 - Pruebas HTTP y de concurrencia contra PostgreSQL 16 efímero.
 - Pruebas de carga con al menos 30 sucursales, múltiples profesionales y recursos, operación de 24 horas y exportaciones grandes.
 - Agregar Scheduler a CI, pruebas E2E y smoke tests de desarrollo.
@@ -599,15 +611,16 @@ Opciones consideradas:
 
 ## 12. Punto recomendado para retomar
 
-La siguiente sesión operativa debe cerrar la **evidencia de la Fase 0** y activar de forma controlada las Fases 1 y 2 antes de iniciar clientes o citas:
+La siguiente sesión operativa debe cerrar la **evidencia de la Fase 0** y activar de forma controlada las Fases 1, 2 y 3 antes de iniciar citas:
 
 1. Confirmar que se dispone de acceso seguro a la base de desarrollo.
-2. Comparar migraciones aplicadas contra las 36 existentes en el repositorio.
+2. Comparar migraciones aplicadas contra las 39 existentes en el repositorio.
 3. Ejecutar `scheduler:diagnose` y conservar el JSON agregado como evidencia segura.
 4. Revisar conteos, duplicados y candidatos de mapeo reales.
-5. Reconstruir todas las migraciones, incluidas `20260904060000_add_scheduler_security` y `20260904070000_add_scheduler_operational_catalogs`, sobre PostgreSQL 16 desechable.
-6. Ejecutar pruebas HTTP de `401/403`, alcance, autorización de un solo uso, candidatos, perfiles, validaciones de horario y conflictos `409`.
-7. Aprobar la estrategia de backfill; aplicar ambas migraciones en development y provisionar grants/catálogos explícitos sin seeds operativos.
-8. Con esa evidencia, conectar gradualmente las pantallas administrativas a `/api/scheduler/operations` según la Fase 9 y diseñar Fase 3 sin introducir identidades de clientes paralelas.
+5. Reconstruir todas las migraciones, incluidas `20260904060000_add_scheduler_security`, `20260904070000_add_scheduler_operational_catalogs` y `20260904080000_add_scheduler_customers`, sobre PostgreSQL 16 desechable.
+6. Ejecutar pruebas HTTP de `401/403`, alcance, autorización de un solo uso, candidatos, perfiles, clientes, normalización, fusiones, validaciones de horario y conflictos `409`; probar además dos altas concurrentes con el mismo teléfono.
+7. Aprobar la estrategia de backfill; aplicar las tres migraciones en development y provisionar grants/catálogos explícitos sin seeds operativos.
+8. Ejecutar `scheduler:customers:normalize` en `DRY_RUN`, materializar sólo después de revisar el agregado y resolver manualmente duplicados antes de diseñar la migración del índice único parcial.
+9. Con esa evidencia, conectar gradualmente las pantallas administrativas y de Clientes según la Fase 9, y después diseñar Fase 4 sin introducir identidades ni citas paralelas.
 
 No debe iniciarse la migración canónica de citas hasta conocer el contenido real de `PosAppointment`, `RegistroCita` y las tablas `Agenda*` en el ambiente objetivo.

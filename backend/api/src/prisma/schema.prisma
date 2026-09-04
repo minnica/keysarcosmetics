@@ -57,6 +57,7 @@ model Usuario {
   schedulerSecondaryCredential            SchedulerSecondaryCredential?
   schedulerAuthorizations                 SchedulerAuthorization[]
   schedulerAuditLogs                      AuditLog[]                        @relation("SchedulerAuditActor")
+  schedulerCustomerMerges                 SchedulerCustomerMergeEvent[]     @relation("SchedulerCustomerMergeActor")
 }
 
 model Sucursal {
@@ -641,18 +642,19 @@ enum SchedulerResourceKind {
 }
 
 model SchedulerCommerce {
-  id             String                       @id @default(cuid())
-  name           String                       @db.VarChar(160)
-  normalizedName String                       @unique @db.VarChar(180)
-  active         Boolean                      @default(true)
-  effectiveFrom  DateTime                     @default(now())
-  effectiveTo    DateTime?
-  deactivatedAt  DateTime?
-  branchProfiles SchedulerBranchProfile[]
-  specialties    SchedulerSpecialty[]
-  groups         SchedulerProfessionalGroup[]
-  creadoEn       DateTime                     @default(now())
-  actualizadoEn  DateTime                     @updatedAt
+  id                       String                             @id @default(cuid())
+  name                     String                             @db.VarChar(160)
+  normalizedName           String                             @unique @db.VarChar(180)
+  active                   Boolean                            @default(true)
+  effectiveFrom            DateTime                           @default(now())
+  effectiveTo              DateTime?
+  deactivatedAt            DateTime?
+  branchProfiles           SchedulerBranchProfile[]
+  specialties              SchedulerSpecialty[]
+  groups                   SchedulerProfessionalGroup[]
+  customerFieldDefinitions SchedulerCustomerFieldDefinition[]
+  creadoEn                 DateTime                           @default(now())
+  actualizadoEn            DateTime                           @updatedAt
 
   @@index([active, effectiveFrom, effectiveTo])
 }
@@ -944,6 +946,131 @@ model SchedulerAvailabilityException {
   @@index([resourceId, date, active])
 }
 
+// ─── Scheduler: clientes compartidos y deduplicación ──────────────────────
+
+enum SchedulerCustomerAliasKind {
+  NAME
+  PHONE
+}
+
+enum SchedulerCustomerContactPreference {
+  PHONE
+  WHATSAPP
+  EMAIL
+  NONE
+}
+
+enum SchedulerCustomerFieldType {
+  TEXT
+  NUMBER
+  BOOLEAN
+  DATE
+  SELECT
+}
+
+model SchedulerCustomerProfile {
+  id                String                             @id @default(cuid())
+  customerId        String                             @unique
+  customer          Customer                           @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  preferredName     String?                            @db.VarChar(240)
+  preferredLocale   String                             @default("es-MX") @db.VarChar(24)
+  contactPreference SchedulerCustomerContactPreference @default(WHATSAPP)
+  notes             String?
+  active            Boolean                            @default(true)
+  version           Int                                @default(1)
+  creadoEn          DateTime                           @default(now())
+  actualizadoEn     DateTime                           @updatedAt
+
+  @@index([active])
+}
+
+model SchedulerCustomerAlias {
+  id              String                     @id @default(cuid())
+  customerId      String
+  customer        Customer                   @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  kind            SchedulerCustomerAliasKind @default(NAME)
+  value           String                     @db.VarChar(320)
+  normalizedValue String                     @db.VarChar(320)
+  active          Boolean                    @default(true)
+  creadoEn        DateTime                   @default(now())
+  actualizadoEn   DateTime                   @updatedAt
+
+  @@unique([customerId, kind, normalizedValue])
+  @@index([kind, normalizedValue, active])
+}
+
+model SchedulerCustomerEmail {
+  id              String    @id @default(cuid())
+  customerId      String
+  customer        Customer  @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  email           String    @db.VarChar(320)
+  normalizedEmail String    @db.VarChar(320)
+  isPrimary       Boolean   @default(false)
+  active          Boolean   @default(true)
+  verifiedAt      DateTime?
+  creadoEn        DateTime  @default(now())
+  actualizadoEn   DateTime  @updatedAt
+
+  @@unique([customerId, normalizedEmail])
+  @@index([normalizedEmail, active])
+}
+
+model SchedulerCustomerFieldDefinition {
+  id            String                        @id @default(cuid())
+  commerceId    String
+  commerce      SchedulerCommerce             @relation(fields: [commerceId], references: [id], onDelete: Restrict)
+  key           String                        @db.VarChar(80)
+  normalizedKey String                        @db.VarChar(80)
+  label         String                        @db.VarChar(160)
+  type          SchedulerCustomerFieldType
+  options       Json?
+  required      Boolean                       @default(false)
+  active        Boolean                       @default(true)
+  version       Int                           @default(1)
+  effectiveFrom DateTime                      @default(now())
+  effectiveTo   DateTime?
+  values        SchedulerCustomerFieldValue[]
+  creadoEn      DateTime                      @default(now())
+  actualizadoEn DateTime                      @updatedAt
+
+  @@unique([commerceId, normalizedKey, version], map: "SchedulerCustomerFieldDefinition_scope_version_key")
+  @@index([commerceId, active, normalizedKey], map: "SchedulerCustomerFieldDefinition_active_key_idx")
+}
+
+model SchedulerCustomerFieldValue {
+  id                        String                           @id @default(cuid())
+  customerId                String
+  customer                  Customer                         @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  definitionId              String
+  definition                SchedulerCustomerFieldDefinition @relation(fields: [definitionId], references: [id], onDelete: Restrict)
+  definitionVersionSnapshot Int
+  value                     Json
+  creadoEn                  DateTime                         @default(now())
+  actualizadoEn             DateTime                         @updatedAt
+
+  @@unique([customerId, definitionId])
+  @@index([definitionId])
+}
+
+model SchedulerCustomerMergeEvent {
+  id                  String   @id @default(uuid()) @db.Uuid
+  sourceCustomerId    String
+  sourceCustomer      Customer @relation("SchedulerCustomerMergeSource", fields: [sourceCustomerId], references: [id], onDelete: Restrict)
+  targetCustomerId    String
+  targetCustomer      Customer @relation("SchedulerCustomerMergeTarget", fields: [targetCustomerId], references: [id], onDelete: Restrict)
+  actorUserId         String
+  actorUser           Usuario  @relation("SchedulerCustomerMergeActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+  reason              String   @db.VarChar(500)
+  sourceSnapshot      Json
+  targetSnapshot      Json
+  reassignedRelations Json
+  creadoEn            DateTime @default(now())
+
+  @@index([sourceCustomerId, creadoEn])
+  @@index([targetCustomerId, creadoEn])
+  @@index([actorUserId, creadoEn])
+}
+
 // ─── Módulo POS: catálogo, clientes, configuración y activos ─────────────────────
 
 enum CatalogItemKind {
@@ -1163,31 +1290,40 @@ model CustomerSource {
 }
 
 model Customer {
-  id                   String                        @id @default(cuid())
-  displayName          String                        @db.VarChar(240)
-  normalizedName       String                        @db.VarChar(260)
-  phone                String?                       @unique @db.VarChar(32)
-  email                String?                       @db.VarChar(320)
-  externalClientId     String?                       @unique @db.VarChar(160)
-  sourceId             String?
-  source               CustomerSource?               @relation(fields: [sourceId], references: [id], onDelete: Restrict)
-  notes                String?
-  active               Boolean                       @default(true)
-  deletedAt            DateTime?
-  portfolios           CustomerPortfolioAssignment[]
-  priceListAssignments PriceListCustomerAssignment[]
-  warehouseRequests    WarehouseRequest[]
-  posTickets           PosTicket[]
-  posAppointments      PosAppointment[]
-  posVoucherIssues     PosVoucherIssue[]
-  posMemberships       PosClientMembership[]
-  agendaReservations   AgendaReservation[]
-  agendaSyncEvents     AgendaSyncEvent[]
-  portfolioTransfers   PosPortfolioTransferEvent[]
-  creadoEn             DateTime                      @default(now())
-  actualizadoEn        DateTime                      @updatedAt
+  id                      String                        @id @default(cuid())
+  displayName             String                        @db.VarChar(240)
+  normalizedName          String                        @db.VarChar(260)
+  phone                   String?                       @unique @db.VarChar(32)
+  phoneNormalized         String?                       @db.VarChar(32)
+  email                   String?                       @db.VarChar(320)
+  externalClientId        String?                       @unique @db.VarChar(160)
+  sourceId                String?
+  source                  CustomerSource?               @relation(fields: [sourceId], references: [id], onDelete: Restrict)
+  notes                   String?
+  active                  Boolean                       @default(true)
+  deletedAt               DateTime?
+  version                 Int                           @default(1)
+  portfolios              CustomerPortfolioAssignment[]
+  priceListAssignments    PriceListCustomerAssignment[]
+  warehouseRequests       WarehouseRequest[]
+  posTickets              PosTicket[]
+  posAppointments         PosAppointment[]
+  posVoucherIssues        PosVoucherIssue[]
+  posMemberships          PosClientMembership[]
+  agendaReservations      AgendaReservation[]
+  agendaSyncEvents        AgendaSyncEvent[]
+  portfolioTransfers      PosPortfolioTransferEvent[]
+  schedulerProfile        SchedulerCustomerProfile?
+  schedulerAliases        SchedulerCustomerAlias[]
+  schedulerEmails         SchedulerCustomerEmail[]
+  schedulerFieldValues    SchedulerCustomerFieldValue[]
+  schedulerMergesAsSource SchedulerCustomerMergeEvent[] @relation("SchedulerCustomerMergeSource")
+  schedulerMergesAsTarget SchedulerCustomerMergeEvent[] @relation("SchedulerCustomerMergeTarget")
+  creadoEn                DateTime                      @default(now())
+  actualizadoEn           DateTime                      @updatedAt
 
   @@index([normalizedName, active])
+  @@index([phoneNormalized, active])
   @@index([sourceId])
 }
 

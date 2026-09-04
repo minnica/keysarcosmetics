@@ -83,19 +83,23 @@ ni restaurabilidad del backup. La aprobación operativa continúa siendo humana.
 
 El revisor debe registrar, por ambiente:
 
-| Evidencia | Decisión requerida |
-| --- | --- |
-| `migrations.pending`, `databaseOnly`, `incomplete`, `checksumMismatches` | Resolver el estado antes de diseñar o aplicar migraciones de Scheduler. |
-| `branches.withoutSchedulerProfile` | Definir qué sucursales se activarán. Las no configuradas no aceptarán reservas. |
-| `services.withoutDuration` | Después de Fase 2 representa servicios canónicos sin perfil; todo perfil creado ya exige duración positiva. Definir preparación y limpieza antes de activarlo. |
-| `professionalCandidates` | Aprobar activaciones explícitas; nunca inferirlas automáticamente por nombre. |
-| `customers.duplicateGroups` y `recordsInDuplicateGroups` | Definir saneamiento antes del backfill o de un índice único normalizado. |
-| `appointmentInventory` | Separar histórico legado, vínculos POS vigentes y datos externos que sí deban importarse. |
-| `incompleteRelations` | Corregir mediante un procedimiento revisado; este comando no muta datos. |
+| Evidencia                                                                | Decisión requerida                                                                                                                                             |
+| ------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `migrations.pending`, `databaseOnly`, `incomplete`, `checksumMismatches` | Resolver el estado antes de diseñar o aplicar migraciones de Scheduler.                                                                                        |
+| `branches.withoutSchedulerProfile`                                       | Definir qué sucursales se activarán. Las no configuradas no aceptarán reservas.                                                                                |
+| `services.withoutDuration`                                               | Después de Fase 2 representa servicios canónicos sin perfil; todo perfil creado ya exige duración positiva. Definir preparación y limpieza antes de activarlo. |
+| `professionalCandidates`                                                 | Aprobar activaciones explícitas; nunca inferirlas automáticamente por nombre.                                                                                  |
+| `customers.duplicateGroups` y `recordsInDuplicateGroups`                 | Definir saneamiento antes del backfill o de un índice único normalizado.                                                                                       |
+| `appointmentInventory`                                                   | Separar histórico legado, vínculos POS vigentes y datos externos que sí deban importarse.                                                                      |
+| `incompleteRelations`                                                    | Corregir mediante un procedimiento revisado; este comando no muta datos.                                                                                       |
 
-`phoneNormalization = DIGITS_ONLY_V1_DIAGNOSTIC` produce candidatos de
-revisión. No prueba que dos registros sean la misma persona y no constituye la
-regla final de normalización.
+Antes de la Fase 3, `phoneNormalization = DIGITS_ONLY_V1_DIAGNOSTIC` produce
+candidatos de revisión. Cuando la migración de Fase 3 está aplicada, el reporte
+cambia a `DIGITS_ONLY_V1_DUAL_WRITE` y agrega disponibilidad de la columna,
+filas pendientes de materialización, discrepancias y longitudes para revisión.
+Ninguno de esos indicadores prueba que dos registros sean la misma persona.
+La escritura reejecutable vive en `scheduler:customers:normalize`; este
+diagnóstico continúa siendo de sólo lectura y no autoriza un índice único.
 
 La Fase 0 alcanza su criterio de salida operativo sólo cuando los inventarios
 de development y del ambiente objetivo estén revisados y exista una estrategia

@@ -23,6 +23,7 @@ type DatabaseMigrationRow = {
 type CountRow = { count: bigint };
 type GroupedCountRow = { key: string | null; count: bigint };
 type TableRow = { table_name: string };
+type ColumnRow = { column_name: string };
 type DatabaseMetadataRow = { schema_name: string; server_version: string };
 type AggregateRow = Record<string, bigint | number | string | null>;
 
@@ -55,6 +56,12 @@ const EXPECTED_TABLES = [
   "SchedulerResource",
   "SchedulerAvailabilityRule",
   "SchedulerAvailabilityException",
+  "SchedulerCustomerProfile",
+  "SchedulerCustomerAlias",
+  "SchedulerCustomerEmail",
+  "SchedulerCustomerFieldDefinition",
+  "SchedulerCustomerFieldValue",
+  "SchedulerCustomerMergeEvent",
 ] as const;
 
 type ExpectedTable = (typeof EXPECTED_TABLES)[number];
@@ -94,7 +101,7 @@ export type SchedulerDiagnosisReport = {
     branches: Record<string, number | boolean | string | null>;
     services: Record<string, number | boolean | string | null>;
     professionalCandidates: Record<string, number | boolean | string | null>;
-    customers: Record<string, number | string | null>;
+    customers: Record<string, number | boolean | string | null>;
   };
   appointmentInventory: {
     registroCita: Record<string, unknown>;
@@ -180,7 +187,9 @@ export function safeSchedulerDiagnosisError(error: unknown): string {
     const safePrefixes = [
       "SCHEDULER_DIAGNOSE_",
       "SCHEDULER_BACKUP_",
+      "SCHEDULER_CUSTOMER_",
       "Production requiere ",
+      "Production APPLY ",
     ];
     if (safePrefixes.some((prefix) => error.message.startsWith(prefix))) {
       return error.message;
@@ -339,6 +348,16 @@ export async function diagnoseSchedulerData(
     WHERE schemaname = current_schema()
   `;
   const existingTables = new Set(databaseTables.map((row) => row.table_name));
+  const customerColumns = existingTables.has("Customer")
+    ? await tx.$queryRaw<ColumnRow[]>`
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_schema = current_schema() AND table_name = 'Customer'
+      `
+    : [];
+  const phoneNormalizedColumnAvailable = customerColumns.some(
+    (column) => column.column_name === "phoneNormalized",
+  );
   const tableAvailability = Object.fromEntries(
     EXPECTED_TABLES.map((table) => [table, existingTables.has(table)]),
   ) as Record<ExpectedTable, boolean>;
@@ -485,6 +504,26 @@ export async function diagnoseSchedulerData(
          FROM normalized`,
       )
     : {};
+  const customerPhoneMaterializationMetrics =
+    tableAvailability.Customer && phoneNormalizedColumnAvailable
+      ? await aggregate(
+          tx,
+          `SELECT COUNT(*) FILTER (
+                    WHERE phone IS NOT NULL AND BTRIM(phone) <> ''
+                      AND "phoneNormalized" IS NULL
+                  )::bigint AS "pendingMaterialization",
+                  COUNT(*) FILTER (
+                    WHERE "phoneNormalized" IS NOT NULL
+                      AND "phoneNormalized" <> REGEXP_REPLACE(COALESCE(phone, ''), '[^0-9]', '', 'g')
+                  )::bigint AS "materializationMismatches",
+                  COUNT(*) FILTER (
+                    WHERE "phoneNormalized" IS NOT NULL
+                      AND "phoneNormalized" <> ''
+                      AND LENGTH("phoneNormalized") NOT BETWEEN 10 AND 15
+                  )::bigint AS "materializedLengthReviewCandidates"
+           FROM "Customer"`,
+        )
+      : {};
 
   const registroCita = tableAvailability.RegistroCita
     ? {
@@ -931,7 +970,11 @@ export async function diagnoseSchedulerData(
       customers: {
         ...customerMetrics,
         ...customerPhoneMetrics,
-        phoneNormalization: "DIGITS_ONLY_V1_DIAGNOSTIC",
+        ...customerPhoneMaterializationMetrics,
+        phoneNormalizedColumnAvailable,
+        phoneNormalization: phoneNormalizedColumnAvailable
+          ? "DIGITS_ONLY_V1_DUAL_WRITE"
+          : "DIGITS_ONLY_V1_DIAGNOSTIC",
         duplicateResolutionPolicy: "REVIEW_BEFORE_UNIQUE_CONSTRAINT",
       },
     },
@@ -959,7 +1002,7 @@ export async function diagnoseSchedulerData(
     notes: [
       "El reporte contiene únicamente conteos, clasificaciones y nombres versionados de migraciones; no lista clientes, empleados, teléfonos, correos ni credenciales.",
       "Los candidatos profesionales se derivan de actividad y relaciones históricas; nunca se activan ni se enlazan automáticamente por nombre.",
-      "DIGITS_ONLY_V1 es una señal diagnóstica, no una regla final de identidad ni un backfill.",
+      "DIGITS_ONLY_V1 materializa sólo una clave de búsqueda/deduplicación; no reemplaza el teléfono original ni autoriza fusiones automáticas.",
       "Las tablas Agenda* son legado de integración; sus conteos no las convierten en la agenda canónica de Scheduler.",
       "Este comando no aplica migraciones, no corrige relaciones y no sustituye la aprobación humana del inventario o de la estrategia de backfill.",
     ],

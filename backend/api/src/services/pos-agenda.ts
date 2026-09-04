@@ -419,7 +419,7 @@ export async function prepareAgendaTicketSaga(input: {
         ? [
             prisma.customer.update({
               where: { id: existingCustomer.id },
-              data: { externalClientId },
+              data: { externalClientId, version: { increment: 1 } },
             }),
           ]
         : []),
@@ -902,7 +902,7 @@ export async function reserveMembershipNextSession(input: {
     await prisma.$transaction([
       prisma.customer.update({
         where: { id: membership.customer.id },
-        data: { externalClientId },
+        data: { externalClientId, version: { increment: 1 } },
       }),
       prisma.agendaSyncEvent.update({
         where: { id: clientEvent.id },
