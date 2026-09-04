@@ -43,6 +43,12 @@ Los dos esquemas Prisma existentes están sincronizados. No hay credenciales loc
 | 6. Offline y reconciliación          | Completada — 2026-09-03                            | POS/Electron + Backend/API           | Reinicios y reintentos no pierden ni duplican operaciones.                                |
 | 7. Reportes y retiro de mocks        | Completada — 2026-09-03                            | Backend/API + POS                    | Módulos operativos consumen API o repositorio offline autorizado.                         |
 | 8. Piloto y despliegue               | Implementada en repositorio — activación pendiente | Operación + Backend/API + Producto   | Piloto conciliado, rollback disponible y aprobación operativa.                            |
+| 9. Autorización y alcance ampliados  | Pendiente                                          | Backend/API + Seguridad + POS        | Cada destino, sucursal y acción nueva se autoriza en servidor y queda auditada.            |
+| 10. Membresías                       | Pendiente                                          | Backend/API + POS + Producto         | Tarjetones, saldos y cierres comerciales son transaccionales, idempotentes y conciliables. |
+| 11. Agenda CRM                       | Pendiente                                          | Backend/API + Agenda + POS           | Cliente y reservación tienen IDs externos; conflictos y webhooks se reconcilian.           |
+| 12. Reglas comerciales ampliadas     | Pendiente                                          | Backend/API + POS + Finanzas         | Pagos, cortesías, cartera y participantes conservan validación y snapshots históricos.     |
+| 13. Consultas y reportes ampliados   | Pendiente                                          | Backend/API + POS                    | Indicadores, filtros y exportaciones coinciden para todo el alcance autorizado.            |
+| 14. Offline y segundo piloto         | Pendiente                                          | POS/Electron + Backend/API + Operación | Las capacidades nuevas sobreviven reintentos y pasan conciliación integral.              |
 
 El responsable principal ejecuta la fase; los equipos indicados como colaboradores revisan sus límites. Ninguna fase posterior inicia mutaciones de datos por el mero hecho de que exista este plan.
 
@@ -134,7 +140,7 @@ La autorización se resuelve en servidor y se aplica antes de consultar/serializ
   - Se elimina por completo el código estático `2468`.
   - Las autorizaciones master serán tokens de un solo uso, con propósito, entidad, alcance, caducidad, actor y auditoría; nunca se guardará el PIN capturado.
 - Catálogo compartido: `CatalogItem`, taxonomías, beneficios, disponibilidad por sucursal, historial de precios y activos.
-  - Tipos `PRODUCT`, `SERVICE`, `SUPPLY` y `MACHINE`.
+  - Tipos `PRODUCT`, `SERVICE`, `SUPPLY`, `MACHINE` y, desde la Fase 10, `MEMBERSHIP` con condiciones versionadas y sin inventario físico.
   - Tester será un uso autorizado de un producto, no otro producto duplicado.
   - Precios y costos usarán `Decimal`; la API transmitirá importes como strings con dos decimales.
   - Los tickets conservarán snapshots de nombre, SKU, taxonomía, IVA, mínimo, lista y costos autorizados.
@@ -177,8 +183,9 @@ Rutas principales:
 - Vouchers: emisión, impresión, reimpresión y canje sin duplicar la emisión.
 - Jornada: apertura, conteo final y cierre bajo `/business-days`; asistencia y gastos en recursos separados.
 - Consulta: `/dashboard`, `/reports/*`, `/exports/*` y `/notifications`.
+- Ampliación posterior: `/memberships`, `/agenda`, `/banks`, `/installment-options`, `/session/exit` y `/reports/bank-reconciliation`.
 
-Todas las mutaciones de ticket, pago, voucher, pedido y sincronización exigirán `Idempotency-Key`.
+Todas las mutaciones de ticket, pago, voucher, pedido, membresía, reservación y sincronización exigirán `Idempotency-Key`.
 
 Los tipos POS saldrán de `apps/pos` hacia `packages/types/src/pos.ts`; `packages/api-client` expondrá un cliente tipado. Los DTO diferenciarán datos públicos, datos con costos y snapshots históricos para impedir filtraciones por serialización accidental.
 
@@ -373,6 +380,107 @@ Los tipos POS saldrán de `apps/pos` hacia `packages/types/src/pos.ts`; `package
 - Runbook: `docs/POS_PILOT_RUNBOOK.md` prohíbe seeds/mocks en bases operativas, enumera el flujo real, explica que la feature flag es de build y ordena rollback de código compatible sin revertir migraciones.
 - Verificación local: sincronía/validación Prisma, type-check, lint, 48 pruebas unitarias y build del API deben quedar verdes. PostgreSQL/Supabase y el binario instalado se validan al ejecutar el workflow y el piloto externo descritos arriba.
 
+### Ampliación posterior a las fases 0–8
+
+El cambio integrado en `feature/pos-frontend-clean` el 3 de septiembre de 2026 añadió requisitos funcionales que no existían cuando se cerró el plan original. Las fases 0–8 continúan describiendo lo implementado y no se marcan nuevamente como incompletas; las fases 9–14 son trabajo adicional pendiente.
+
+#### Matriz de trazabilidad del alcance nuevo
+
+| Secciones de `apps/pos/archivo.md` | Evaluación frente al plan original | Fase que completa el backend |
+| --- | --- | --- |
+| 20, 33–36 | Había autenticación, permisos, asistencia y jornada, pero faltan reautorización personal por acción, permisos para todos los destinos, salida sin Close day y selección basada en presencia. | 9 |
+| 21, 27, 42 | Dominio nuevo: producto membresía, tarjetón, consumo, cartera protegida, cierres, ranking y seguimiento. | 10 |
+| 22, 24, 37 | Las citas locales ya existían, pero no el contrato real con Agenda, capacidad de cabinas, IDs externos, webhooks ni conciliación. | 11 |
+| 40, 41, 43–45 | Los paquetes, pagos, cartera y vendedores base existen; faltan administración completa de cortesías, baja de cartera, catálogo bancario/MSI y empresa como participante. | 12 |
+| 23, 25–26, 28, 31–32, 39 | Los reportes base ya filtran por sucursal; faltan agregados y proyecciones específicas, múltiples sucursales autorizadas y los indicadores cruzados de membresías. | 13 |
+| 29–30, 38, 46, traslado visual de Catálogo y selector de cumpleaños | Son requisitos de interfaz; no agregan persistencia central. Se verifican junto con la integración final para asegurar que no alteren filtros ni payloads. | 14 (E2E de POS) |
+
+Todo requisito de las secciones 20–46 queda así asignado. La presencia de una representación mock o de estado local en el renderer no cuenta como implementación de backend.
+
+### Fase 9 — Autorización secundaria, destinos y alcance por sucursal
+
+- [ ] Versionar el árbol de permisos para que cada módulo y submenú de la sección 34 tenga un nodo propio; agregar como mínimo `MEMBERSHIPS`, `SETTINGS`, `SESSION_EXIT`, `BANK_RECONCILIATION` y permisos separados de consulta, edición e impresión donde apliquen.
+- [ ] Implementar una autorización secundaria de vendedor, corta y ligada a identidad, terminal, propósito y sesión. El endpoint verifica el PIN de la misma persona autenticada y nunca acepta un `seller_id` del renderer como sustituto.
+- [ ] Resolver centralmente `authorizedBranchIds`: master puede recibir todas las sucursales activas y un rol multi-sucursal sólo las asignadas; un operador ordinario permanece limitado a la sucursal de la sesión. Agregar asignaciones explícitas por puesto/credencial sin inferir alcance de tickets históricos.
+- [ ] Aplicar el alcance antes de consultar o agregar en todos los endpoints y exportaciones. `all_authorized` es la unión exacta de IDs autorizados, nunca un booleano que omite el filtro.
+- [ ] Implementar `Salir · Sin Close day` como revocación de sesión auditada. No modifica `PosBusinessDay`, `PosAttendance`, conteos ni caja; invalida autorizaciones temporales y deja la asistencia abierta.
+- [ ] Endurecer Clock In/Out: código personal obligatorio, una sola asistencia abierta por empleado, salida manual idempotente sobre el mismo registro y cierre por jornada distinguible mediante `MANUAL`/`CLOSE_DAY`.
+- [ ] Exponer vendedores de Checkout desde asistencias abiertas de la sucursal; permitir buscar activos ausentes sólo con criterio y conservar en el ticket una instantánea de si tenían Clock In. El propietario vigente del cliente se preselecciona aunque esté ausente.
+- [ ] Invalidar permisos y alcance sin reiniciar la aplicación: retirar el destino activo cierra datos y diálogos protegidos, y desactivar una sucursal impide nuevas operaciones sin borrar históricos.
+
+**Persistencia prevista:** ampliar `PosPermissionNode`, crear asignaciones de sucursal y autorizaciones secundarias con caducidad/consumo, agregar auditoría de salida de sesión y snapshot de presencia al participante del ticket. Todas las migraciones son aditivas y posteriores a `20260903060000_add_pos_notifications_reports`.
+
+**Puerta de salida:** pruebas HTTP fuerzan IDs de vendedor/sucursal, retiro de permisos en sesión, doble Clock Out y salida sin cierre; ninguna solicitud amplía alcance ni altera la jornada.
+
+### Fase 10 — Membresías, tarjetones y cierres comerciales
+
+- [ ] Extender `CatalogItemKind` con `MEMBERSHIP` y crear condiciones versionadas con sesiones enteras mayores a cero. Generar SKU `MEM`, conservar precio/IVA/visibilidad existentes y excluir el producto de balances y movimientos físicos.
+- [ ] Crear `PosClientMembership` por cada unidad vendida, no sólo por línea. La unicidad `(ticketLineId, unitOrdinal)` y la idempotencia del ticket impiden tarjetones duplicados; cada registro guarda snapshots de cliente, condiciones, importe, sucursal y vendedor original/actual.
+- [ ] Fijar la regla financiera de activación: un ticket `COMPLETED` activa en su commit; un `LAYAWAY` activa sólo cuando `pendingAmount` llega a cero; un ticket pendiente no activa. Cancelación o devolución total cambia a `CANCELED` mediante evento compensatorio y nunca elimina el tarjetón.
+- [ ] Modelar estados `PENDING`, `ACTIVE`, `EXHAUSTED` y `CANCELED`, perfil `POTENTIAL/LOYAL/VIP/RECOVERY`, cambios de vendedor y estado append-only, y umbral de renovación configurable con valor inicial de dos sesiones.
+- [ ] Crear `PosMembershipAttendance` con unicidad por cita y número de sesión. Consumir bajo bloqueo transaccional sólo al procesar `ATTENDED`; `CANCELED`, `NO_SHOW`, reserva o reprogramación no consumen, y `usedSessions` nunca supera `totalSessions`.
+- [ ] Reservar desde ahora el estado de firma `PENDING/SIGNED/NOT_REQUIRED`; cualquier evidencia futura se almacenará cifrada fuera del payload público, con consentimiento, hash y metadatos auditables.
+- [ ] Implementar APIs paginadas de catálogo, tarjetones, detalle, asistencia, cambio de vendedor/estado, seguimiento y exportación. Todas requieren permiso, autorización secundaria y alcance de cartera/sucursal; master usa el alcance explícito de la consulta.
+- [ ] Crear cierres mensuales versionados y rankings por vendedor original, ordenados por cantidad y luego importe. Cancelaciones se excluyen y una corrección posterior agrega versión, no sobrescribe el cierre.
+
+**Persistencia prevista:** `PosMembershipTerms`, `PosClientMembership`, `PosMembershipAttendance`, `PosMembershipSellerChange`, `PosMembershipStatusChange`, `PosMembershipSalesClosure` y `PosMembershipSellerRanking`, con folio único, checks de saldo y triggers append-only.
+
+**Puerta de salida:** dos unidades crean dos folios; reintentar online/offline no duplica; liquidar un apartado activa una sola vez; dos confirmaciones concurrentes de asistencia consumen una sola sesión; consultas, alertas, cierres y descargas no revelan otra cartera.
+
+### Fase 11 — Integración transaccional con Agenda CRM
+
+- [ ] Definir un adaptador backend de Agenda; URL, token y secretos viven sólo en servidor. El renderer nunca llama directamente al CRM ni recibe sus credenciales.
+- [ ] Mapear `Customer` a `externalClientId` estable y conservar `externalReservationId`, `externalAppointmentId`, recurso, slot, versión, capacidad y snapshot horario en la cita local.
+- [ ] Consultar disponibilidad por sucursal/rango y aceptar únicamente slots elegibles con capacidad. La confirmación revalida en Agenda y usa una clave idempotente estable derivada de la operación local.
+- [ ] Reservar una cortesía doble como unidad: dos lugares del mismo slot/cabina `DOUBLE` o dos slots consecutivos de la misma cabina. Si Agenda no ofrece atomicidad múltiple, el adaptador aplica saga y cancela la primera reserva cuando falla la segunda.
+- [ ] Para una venta online con cita: persistir primero la intención de saga, ejecutar `upsert` de cliente y reserva en Agenda, y después confirmar la transacción local del ticket. Si Agenda falla no se crea el ticket; si el commit local falla, la intención durable permite cancelar la reserva mediante un worker. No afirmar atomicidad ACID entre dos sistemas.
+- [ ] Procesar webhooks firmados e idempotentes de `ATTENDED`, `CANCELED` y `NO_SHOW`. Sólo `ATTENDED` llama al consumo de la Fase 10; una corrección posterior genera eventos compensatorios y requiere autorización.
+- [ ] Sincronizar edición de cliente y cancelación de ticket, conservar una cola visible de conflictos y permitir reintentos seguros. No resolver identidad por nombre o teléfono cuando ya existe `client_id`/`externalClientId`.
+- [ ] Habilitar próxima sesión desde membresía y cortesías `WELCOME`/`COMPLAINT`, respetando membresía vigente, cualquier sucursal autorizada y la exclusión mutua entre cortesía y consumo.
+
+**Persistencia prevista:** `AgendaResource`, `AgendaSlot`, `AgendaReservation`, `AgendaSyncEvent` y el mapeo de identidad externa de cliente. Eventos y payloads normalizados se cifran o redactan cuando contienen datos personales.
+
+**Puerta de salida:** pruebas de contrato contra sandbox de Agenda cubren último lugar concurrente, slot cancelado reutilizado, webhook duplicado/fuera de orden, dos reservas parciales, falla local posterior a reserva y corrección de asistencia.
+
+### Fase 12 — Pagos, cortesías, cartera y participantes de venta
+
+- [ ] Crear catálogo corporativo versionado de bancos, redes de tarjeta y plazos; validar su padrón inicial con fuente y fecha antes de sembrarlo. Altas, bajas y reactivaciones son auditadas y no cambian snapshots históricos.
+- [ ] Ampliar cada `PosPayment` con `cardType`, `cardNetwork`, `bankId`, `bankNameSnapshot` e `installmentMonths`. Crédito exige 1/3/6/9/12/18/24 o el catálogo vigente; débito y métodos no tarjeta guardan plazo `null`; transferencia puede usar banco sin tipo/red.
+- [ ] Aplicar las mismas reglas al cobro inicial, pago mixto, abono, liquidación, revisión y compensación. Nunca persistir PAN, CVV ni datos de banda; la autorización limitada a cuatro caracteres no se reutiliza como número de tarjeta.
+- [ ] Administrar productos de cortesía y paquetes desde Settings. Un paquete activo contiene una o dos unidades de servicio —incluido dos veces el mismo servicio—, conserva versiones/snapshots y se inactiva si alguna dependencia deja de estar disponible; reactivar una dependencia no republica el paquete automáticamente. Si el paquete predeterminado deja de ser válido, seleccionar el siguiente válido o desactivar la captura obligatoria cuando no exista ninguno.
+- [ ] Al inactivar un vendedor, cerrar atómicamente sus asignaciones vigentes de `CustomerPortfolioAssignment` y crear asignaciones de empresa con motivo, actor y snapshot del vendedor. Reactivarlo no devuelve cartera; una baja posterior sólo transfiere su cartera vigente.
+- [ ] Crear identidad comercial de empresa independiente de `Empleado` y un modelo general `PosTicketParticipant` con `SELLER`/`COMPANY`. Migrar/proyectar vendedores históricos sin duplicar comisiones y exigir la empresa cuando la cartera vigente sea empresarial.
+- [ ] Validar en servidor que participantes y porcentajes/importes cierren exactamente al total cotizado. Cambios posteriores de nombre o número de empresa no reescriben tickets, reportes ni proyecciones anteriores.
+
+**Persistencia prevista:** catálogos `PosBank`, `PosCardNetwork` y `PosInstallmentOption`; columnas/snapshots de pago; versión de cortesías/paquetes; identidad de empresa; participante general de ticket y eventos de transferencia de cartera. `Bank` de Payroll continúa fuera de este catálogo.
+
+**Puerta de salida:** matrices de validación por método/tipo/red/plazo, pago mixto y apartado; baja/reactivación concurrente con venta; empresa al 100 % o compartida; inmutabilidad de pagos, cartera, paquetes y participantes históricos.
+
+### Fase 13 — Agregados, indicadores, exportaciones y escala de sucursales
+
+- [ ] Construir consultas específicas para membresías en Dashboard, Customers, Receipts y Mis ventas usando `client_id`, `purchaseTicketId` y autorización de cartera; cualquier conciliación legacy por teléfono/nombre queda explícita, medible y fuera de la regla normal.
+- [ ] Agregar reporte mensual de procedencia por `CustomerSource.id` y cliente único: participación, venta completada, ticket promedio, recurrencia, visitas y citas. Mes y periodos usan `America/Mexico_City`.
+- [ ] Agregar conciliación bancaria por movimiento `PosPayment`, no por ticket: ventas, abonos, liquidaciones y compensaciones; métricas, tabla, PDF y Excel comparten filtros y no duplican la venta comercial.
+- [ ] Completar el reporte de conteos por sucursal y consolidado: apertura, movimientos, existencia y cierre permanecen separados por ubicación; faltantes se muestran vacíos y costos requieren `REPORTS_COSTS`.
+- [ ] Unificar un objeto de alcance para Dashboard, Receipts, Customers, Citas, Membresías, Inventory, Cash Manager, X-Report y Reports. Totales y exportaciones se calculan sobre el dataset completo autorizado, no sobre la página actual.
+- [ ] Probar catálogos y selectores con 1, 10, 20 y 30 sucursales, altas/bajas en caliente e históricos de sucursal inactiva con permiso explícito. Ningún endpoint usa nombres, límites o fallback de Polanco codificados.
+- [ ] Auditar cada exportación con usuario, periodo, filtros y sucursales; PDF/XLSX incluyen alcance y `branch_id` por fila consolidada cuando corresponda.
+
+**Persistencia prevista:** vistas/consultas agregadas e índices sobre cliente, fuente, membresía, pago, fecha operativa y sucursal. Sólo se crean snapshots materializados cuando el cierre comercial exige versionado; los reportes ordinarios siguen derivados de datos canónicos.
+
+**Puerta de salida:** pruebas de igualdad pantalla/exportación, aislamiento de sucursales y cartera, paginación sobre totales completos, 30 sucursales, sucursal inactiva, transferencias sin doble conteo y costos redactados.
+
+### Fase 14 — Extensión offline, integración del POS y segundo piloto
+
+- [ ] Extender contratos, tipos compartidos, cliente HTTP y repositorios del POS para sustituir el estado local incorporado por las pantallas nuevas.
+- [ ] Incluir en el outbox membresías, activación por liquidación y operaciones de Agenda con dependencias explícitas `customer -> membership/ticket -> reservation -> attendance`. Una terminal offline no promete capacidad; muestra `PENDING_SYNC` hasta que Agenda confirme o devuelve `CONFLICT` sin perder el payload.
+- [ ] Mantener catálogos bancarios, permisos, Settings, cambios de cartera y cierres comerciales exclusivamente online. El bootstrap offline contiene sólo la versión publicada y autorizada necesaria para cobrar.
+- [ ] Verificar en Electron los requisitos puramente visuales de las secciones 29, 30, 38 y 46, el Catálogo bajo Ventas y el selector directo de mes/año, conservando estado, foco, accesibilidad y ausencia de desbordamiento.
+- [ ] Ampliar el conciliador y el workflow del piloto con tarjetones por unidad, activaciones, consumos, Agenda, cobros/MSI, cartera, participantes de empresa, reportes y operaciones offline pendientes.
+- [ ] Ejecutar el piloto en una sucursal y luego en alcance multi-sucursal. Producción sólo se habilita con cero diferencias, cero conflictos no resueltos, rollback compatible hacia adelante y aprobación de Agenda, Finanzas, Operación y Producto.
+
+**Puerta de salida:** type-check/build/test completos, migraciones reconstruidas desde cero sobre PostgreSQL 16, integración HTTP, pruebas de contrato Agenda, E2E web/Electron, recuperación offline y reporte de conciliación `PASS`.
+
 ## 4. Pruebas y criterios de aceptación
 
 - Unitarias: dinero/IVA, mínimo combinado, SPARE, descuentos, prorrateo de vendedores/métodos, folios, estados y permisos padre/hijo.
@@ -381,6 +489,9 @@ Los tipos POS saldrán de `apps/pos` hacia `packages/types/src/pos.ts`; `package
 - Offline: reinicio antes/después de confirmar, lote duplicado, operaciones fuera de orden, grant vencido, catálogo desactualizado, inventario insuficiente y reintentos.
 - E2E en navegador y Electron: login, apertura, venta, apartado/abono, cita, voucher, impresión, pedido, recepción, gasto y cierre.
 - Seguridad: ningún PIN, hash, costo no autorizado, payload cifrado o secreto master aparece en respuestas/logs.
+- Membresías y Agenda: tarjetón por unidad, activación por liquidación, consumo único por asistencia, webhook duplicado/fuera de orden, capacidad concurrente y compensación de reserva parcial.
+- Pagos y cartera: matriz método/tipo/red/plazo, conciliación por movimiento, catálogo inactivo, empresa como participante y baja/reactivación concurrente de vendedor.
+- Alcance: igualdad entre pantalla y exportación, cartera personal, sucursales autorizadas/inactivas y datasets de 1, 10, 20 y 30 sucursales.
 - Compatibilidad: ventas POS visibles una sola vez en Envelope y Payroll; una cancelación posterior al cierre genera compensación sin alterar snapshots aprobados.
 - Calidad obligatoria: sincronía de ambos schemas Prisma, `prisma validate`, type-check/build/test del API, type-check/Vite build del POS e integración sobre PostgreSQL efímero.
 
@@ -388,8 +499,9 @@ Los tipos POS saldrán de `apps/pos` hacia `packages/types/src/pos.ts`; `package
 
 - PostgreSQL seguirá siendo la única BD central; SQLite/IndexedDB sólo serán almacenamiento local de terminal.
 - Una jornada pertenece a una sucursal y fecha, no a cada terminal.
-- Clientes y citas serán modelos compartidos preparados para Scheduler.
+- `Customer` y `PosAppointment` conservan los IDs internos estables; desde la Fase 11 Agenda CRM es la fuente operativa de disponibilidad y estado de citas, enlazada mediante IDs externos y eventos conciliables.
 - Las funciones SaaS de tarjetas de suscripción, cobros mensuales, facturas de plataforma y `Websites` quedan fuera.
+- Las membresías de sesiones vendidas a clientas sí forman parte del POS; no deben confundirse con la suscripción SaaS de la plataforma que permanece fuera.
 - No se consultará ni modificará producción sin autorización explícita.
 - Empleados, puestos o sucursales existentes no recibirán credenciales ni permisos POS automáticamente.
 - Los documentos históricos y movimientos no se borrarán; sólo borradores sin efectos podrán ocultarse mediante soft delete.
@@ -541,3 +653,15 @@ Agregar una entrada nueva por cada redirección del PO:
 ```
 
 No reescribir silenciosamente este registro: conservar siempre la trazabilidad entre la intención inicial y el alcance vigente.
+
+### Cambio 1 — Alcance funcional incorporado desde `feature/pos`
+
+- Fecha: 2026-09-03.
+- Solicitado por: Producto, consolidado en `apps/pos/archivo.md` secciones 20–46.
+- Decisión anterior afectada: decisiones 1, 8 y 9; el plan original no incluía membresías, conexión operativa con Agenda CRM, datos bancarios enriquecidos ni empresa como participante de venta.
+- Contexto nuevo: el frontend incorporó las pantallas y reglas antes de que existieran contratos, persistencia y servicios equivalentes en el backend.
+- Nueva decisión: conservar las fases 0–8 como historial implementado y añadir las fases 9–14. `Customer` sigue siendo la identidad interna estable, mientras Agenda es autoridad de disponibilidad y estado de cita; el POS conserva sus IDs externos y concilia eventos.
+- Fases/modelos/endpoints afectados: fases 9–14, según la matriz de trazabilidad; seguridad, catálogo, clientes, tickets, pagos, asistencia, reportes, offline y piloto.
+- Datos o migraciones requeridos: sólo migraciones aditivas posteriores a `20260903060000_add_pos_notifications_reports`; no se migran los estados mock del frontend como datos operativos.
+- Compatibilidad y riesgos: Agenda no comparte una transacción ACID con PostgreSQL y exige saga/compensación; los nuevos participantes no deben duplicar proyecciones de nómina; bancos y membresías deben preservar snapshots; el alcance debe aplicarse antes de agregar o exportar.
+- Criterio de aceptación actualizado: las fases 9–14 y su segundo piloto deben quedar en `PASS` antes de considerar cubierto el `archivo.md` vigente.
