@@ -97,6 +97,7 @@ interface CustomersViewProps {
   layaways: LayawayRecord[];
   paymentMethods: PaymentMethodOption[];
   bankCatalog: BankCatalogEntry[];
+  installmentOptions: number[];
   branches: string[];
   receiptSettings: ReceiptSettings;
   sessionSellerId: string | null;
@@ -304,6 +305,7 @@ export function CustomersView({
   layaways,
   paymentMethods,
   bankCatalog,
+  installmentOptions,
   branches,
   receiptSettings,
   sessionSellerId,
@@ -1639,6 +1641,7 @@ export function CustomersView({
                                                 layaway={layaway}
                                                 paymentMethods={paymentMethods}
                                                 bankCatalog={bankCatalog}
+                                                installmentOptions={installmentOptions}
                                                 sellerId={sellerId}
                                                 onRegister={(payments, deliveryIds) =>
                                                   onRegisterLayawayPayment(

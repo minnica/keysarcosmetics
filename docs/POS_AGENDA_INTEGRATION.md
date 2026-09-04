@@ -10,7 +10,7 @@ Contrato operativo de la Fase 11 de `PLAN_BACKEND_POS.md`. Agenda CRM es la auto
 - Sólo `AVAILABLE` es elegible. Un slot `CANCELED`, `BOOKED`, `BLOCKED` u omitido por Agenda al refrescar el mismo rango se bloquea localmente y no puede reutilizarse.
 - POS y Agenda no comparten una transacción ACID. La consistencia se obtiene mediante intención durable, idempotencia estable, estados explícitos y compensaciones.
 - Los eventos persistidos contienen IDs y payloads normalizados/redactados. Nombres, teléfonos, correos, tokens y firmas HMAC no aparecen en la cola pública.
-- Esta fase cubre ventas online. Una terminal offline no promete capacidad ni llama Agenda; la dependencia explícita del outbox y su estado `PENDING_SYNC` pertenecen a la Fase 14. Hasta entonces, una cita offline conserva su payload y entra en `CONFLICT` al conciliar en vez de crear un ticket sin reserva remota.
+- Una terminal offline no promete capacidad ni llama Agenda. Desde la Fase 14, las próximas sesiones se guardan como `AGENDA_MEMBERSHIP_RESERVATION` y la asistencia puede depender explícitamente de ellas. Permanecen `PENDING_SYNC` hasta la validación remota y un rechazo queda `CONFLICT` sin perder el payload cifrado. Véase `docs/POS_OFFLINE_SECOND_PILOT.md`.
 
 ## Variables del servidor
 

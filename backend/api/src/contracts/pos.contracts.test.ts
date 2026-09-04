@@ -204,4 +204,30 @@ describe("contratos públicos del POS", () => {
     expect(posOfflinePushSchema.safeParse({ operations: [operation, { ...operation, id: "ce58c055-a1ac-4f05-b788-b92c47664f61", idempotencyKey: "1abc8505-73f1-40d9-b6b5-8f75d72daee1", sequence: 9 }] }).success).toBe(false);
     expect(posOfflinePushSchema.safeParse({ operations: [{ ...operation, idempotencyKey: "invalid" }] }).success).toBe(false);
   });
+
+  it("ordena las dependencias offline y rechaza ciclos locales", () => {
+    const firstId = "6a96e671-c899-43ce-a104-06b1c204927e";
+    const secondId = "ce58c055-a1ac-4f05-b788-b92c47664f61";
+    const base = {
+      id: firstId,
+      sequence: 1,
+      kind: "AGENDA_MEMBERSHIP_RESERVATION" as const,
+      entityId: "8103ea61-9861-40e3-a945-dbd71abe3746",
+      dependsOn: [],
+      idempotencyKey: "7922a172-16ed-4fd6-9214-0f9bf575fef2",
+      createdAt: "2026-09-04T18:00:00.000Z",
+      payload: {},
+    };
+    const attendance = {
+      ...base,
+      id: secondId,
+      sequence: 2,
+      kind: "MEMBERSHIP_ATTENDANCE" as const,
+      dependsOn: [firstId],
+      idempotencyKey: "1abc8505-73f1-40d9-b6b5-8f75d72daee1",
+    };
+    expect(posOfflinePushSchema.safeParse({ operations: [base, attendance] }).success).toBe(true);
+    expect(posOfflinePushSchema.safeParse({ operations: [{ ...base, dependsOn: [secondId] }, attendance] }).success).toBe(false);
+    expect(posOfflinePushSchema.safeParse({ operations: [{ ...base, dependsOn: [firstId] }] }).success).toBe(false);
+  });
 });

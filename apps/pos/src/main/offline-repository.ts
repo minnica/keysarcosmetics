@@ -196,12 +196,14 @@ export class PosOfflineRepository {
     const actual = pinVerifier(pin, Buffer.from(row.pinSalt, "base64"));
     const expected = Buffer.from(row.pinVerifier, "base64");
     if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) return null;
-    return this.decrypt<PosOfflineBootstrapDto>(row.bootstrap);
+    const bootstrap = this.decrypt<PosOfflineBootstrapDto>(row.bootstrap);
+    return bootstrap.schemaVersion === 2 ? bootstrap : null;
   }
 
   enqueue(input: {
     kind: PosOfflineOperationKind;
     entityId?: string | null;
+    dependsOn?: string[];
     payload: Record<string, unknown>;
     createdAt?: string;
   }, bootstrap: PosOfflineBootstrapDto): PosOfflineOperationDto {
@@ -217,6 +219,7 @@ export class PosOfflineRepository {
         sequence,
         kind: input.kind,
         entityId: input.entityId ?? null,
+        dependsOn: [...new Set(input.dependsOn ?? [])],
         idempotencyKey: crypto.randomUUID(),
         createdAt: input.createdAt ?? new Date().toISOString(),
         payload: input.payload,

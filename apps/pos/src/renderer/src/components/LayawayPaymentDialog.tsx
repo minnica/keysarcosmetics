@@ -33,12 +33,11 @@ import type {
 } from "../types";
 import { PaymentReferenceFields } from "./PaymentReferenceFields";
 
-const installmentOptions = [1, 3, 6, 9, 12, 18, 24];
-
 interface LayawayPaymentDialogProps {
   layaway: LayawayRecord;
   paymentMethods: PaymentMethodOption[];
   bankCatalog: BankCatalogEntry[];
+  installmentOptions: number[];
   sellerId: string;
   onRegister: (
     payments: PaymentEntry[],
@@ -58,6 +57,7 @@ export function LayawayPaymentDialog({
   layaway,
   paymentMethods,
   bankCatalog,
+  installmentOptions,
   sellerId,
   onRegister,
 }: LayawayPaymentDialogProps) {

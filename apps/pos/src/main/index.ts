@@ -123,6 +123,7 @@ ipcMain.handle(
     input: {
       kind: PosOfflineOperationKind;
       entityId?: string | null;
+      dependsOn?: string[];
       payload: Record<string, unknown>;
       createdAt?: string;
     },
@@ -147,6 +148,20 @@ ipcMain.handle("pos:offline:status", async () => {
       attempts: entry.attempts,
       errorMessage: entry.errorMessage,
     }));
+});
+
+ipcMain.handle("pos:offline:authorize", async (_event, pin: string) => {
+  if (!offlineRepository || !activeBootstrap || typeof pin !== "string")
+    return false;
+  const verified = offlineRepository.authenticate(
+    activeBootstrap.session.actor.alias,
+    pin,
+  );
+  return Boolean(
+    verified &&
+    verified.session.actor.id === activeBootstrap.session.actor.id &&
+    verified.session.terminal.id === activeBootstrap.session.terminal.id,
+  );
 });
 
 ipcMain.handle("pos:offline:sync", async () => {

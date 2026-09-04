@@ -9,10 +9,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   posOfflineEnqueue: (input: {
     kind: PosOfflineOperationKind
     entityId?: string | null
+    dependsOn?: string[]
     payload: Record<string, unknown>
     createdAt?: string
   }) => ipcRenderer.invoke('pos:offline:enqueue', input),
   posOfflineStatus: () => ipcRenderer.invoke('pos:offline:status'),
+  posOfflineAuthorize: (pin: string) =>
+    ipcRenderer.invoke('pos:offline:authorize', pin),
   posOfflineSync: () => ipcRenderer.invoke('pos:offline:sync'),
   posOfflineLogout: () => ipcRenderer.invoke('pos:offline:logout'),
 })

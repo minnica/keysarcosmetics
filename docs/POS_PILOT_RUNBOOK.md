@@ -16,8 +16,9 @@ vigente de una sucursal.
 - No copiar PIN, secreto de terminal, JWT, grant offline ni datos de clientes a
   logs, tickets, screenshots o artefactos.
 - La evidencia técnica válida es el resultado verde de `POS pilot gate`, con
-  SHA, fecha operativa y reporte `PASS`. La evidencia operativa es la aprobación
-  de Operación y Producto fuera del repositorio.
+  SHA, fecha operativa y reporte `PASS`. La evidencia operativa del segundo
+  piloto es la aprobación de Agenda, Finanzas, Operación y Producto fuera del
+  repositorio.
 - Un reporte verde comprueba consistencia técnica; no reemplaza la revisión
   humana del ticket, caja, Envelope y preview de Payroll.
 
@@ -76,13 +77,22 @@ operativos identificables por folio, no datos mock.
    - cerrar y volver a abrir la aplicación;
    - restaurar la red y sincronizar;
    - comprobar una sola operación `SYNCED`, sin ticket/cobro duplicado.
-8. Registrar el conteo final y cerrar la jornada con autorización master.
-9. Comparar contra el control paralelo de la sucursal:
-   - venta, cobro por método, apartado, abono y compensación;
-   - movimientos y saldo de inventario;
-   - gasto y flujo neto si se capturaron gastos;
-   - filas proyectadas una sola vez en Envelope;
-   - venta disponible una sola vez en el preview vigente de Payroll.
+8. Vender una membresía por unidad, comprobar su tarjetón `PENDING` en
+   apartado, liquidarla y verificar una sola activación. Sin red, solicitar la
+   próxima sesión y su asistencia: reserva y consumo deben mantener la
+   dependencia, continuar `PENDING_SYNC` y no descontar saldo hasta que Agenda
+   confirme.
+9. Registrar al menos un cobro de crédito con MSI vigente y un ticket con
+   participante de empresa; confirmar que la proyección humana no duplica la
+   participación comercial.
+10. Registrar el conteo final y cerrar la jornada con autorización master.
+11. Comparar contra el control paralelo de la sucursal:
+
+- venta, cobro por método, apartado, abono y compensación;
+- movimientos y saldo de inventario;
+- gasto y flujo neto si se capturaron gastos;
+- filas proyectadas una sola vez en Envelope;
+- venta disponible una sola vez en el preview vigente de Payroll.
 
 No aprobar la fecha piloto con operaciones `PENDING`, `SYNCING`, `ERROR` o
 `CONFLICT`. Los conflictos se conservan para auditoría y se resuelven antes de
@@ -113,20 +123,27 @@ Valida:
 - aritmética antes/después de cada línea del ledger de inventario;
 - notificación transaccional de cada ticket;
 - snapshot de cierre contra tickets y movimientos de caja;
-- secuencia contigua del outbox de servidor y ausencia de pendientes,
-  errores o conflictos;
-- cobertura mínima de tickets, abono, cancelación/devolución, inventario y
-  recuperación offline.
+- secuencia contigua del outbox de servidor y ausencia de pendientes, errores o
+  conflictos, incluidas sus dependencias explícitas;
+- tarjetones, activación por liquidación, asistencias y vínculos con Agenda;
+- pagos MSI, cartera y participantes de empresa, sin fuentes pendientes
+  excluidas de reportes;
+- cobertura mínima de tickets, abono, cancelación/devolución, inventario,
+  recuperación offline, membresía, asistencia, Agenda, MSI y empresa.
 
 La ejecución normal se hace desde **POS pilot gate** en GitHub Actions. Indicar:
 
 - `release_sha`: SHA completo ya desplegado en API development;
 - `branch_id`: ID de la única sucursal piloto;
+- `additional_branch_ids`: vacío durante la primera pasada; después, IDs de las
+  sucursales adicionales separados por coma para la expansión multi-sucursal;
 - `business_date`: fecha operativa cerrada;
 - `minimum_tickets`: mínimo acordado con Operación;
 - `require_offline_sync`: mantenerlo en `true` para el cierre final;
 - `operational_confirmation`: escribir `PILOTO_CONCILIADO` sólo después de la
   comparación y aprobación humanas.
+- `cross_team_confirmation`: escribir
+  `AGENDA_FINANZAS_OPERACION_PRODUCTO` sólo después de las cuatro aprobaciones.
 
 El workflow comprueba nuevamente migraciones e integración en PostgreSQL 16,
 identidad/readiness del API, estado de migraciones en Supabase development,

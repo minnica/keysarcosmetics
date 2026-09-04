@@ -923,6 +923,7 @@ const ticketInclude = {
       ticketId: true,
       membershipItemId: true,
       membershipNameSnapshot: true,
+      unitOrdinal: true,
       status: true,
     },
     orderBy: { unitOrdinal: "asc" as const },
@@ -1065,6 +1066,7 @@ export function ticketDto(ticket: TicketPayload): PosTicketDto {
       purchaseTicketId: membership.ticketId,
       membershipItemId: membership.membershipItemId,
       membershipName: membership.membershipNameSnapshot,
+      unitOrdinal: membership.unitOrdinal,
       status: membership.status,
     })),
   };

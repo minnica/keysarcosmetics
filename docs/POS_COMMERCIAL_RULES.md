@@ -65,7 +65,7 @@ Al inactivar un vendedor, la API toma bloqueo sobre el empleado y cada cliente a
 | `PUT /api/pos/access/employees/:id/status`            | `EMPLOYEES_MANAGE` y autorización master `EMPLOYEE_STATUS_UPDATE` |
 | `POST/PUT /api/pos/customers/sources/:id?`            | `CUSTOMERS_MANAGE`                                                |
 
-Los contratos públicos están en `packages/types/src/pos.ts`; `packages/api-client` expone todas las operaciones anteriores. La sustitución completa del estado incorporado del renderer y la publicación de estos catálogos en el bootstrap offline pertenecen a la Fase 14. Hasta entonces, Settings y cambios de cartera permanecen exclusivamente online.
+Los contratos públicos están en `packages/types/src/pos.ts`; `packages/api-client` expone todas las operaciones anteriores. Desde la Fase 14, el bootstrap offline v2 publica sólo bancos, redes, plazos, cortesías e identidad comercial activos y autorizados que necesita el cobro. La administración en Settings, los cambios de cartera y los cierres comerciales permanecen exclusivamente online; véase `docs/POS_OFFLINE_SECOND_PILOT.md`.
 
 ## Validación previa a despliegue
 

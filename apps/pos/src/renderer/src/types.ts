@@ -148,6 +148,7 @@ export interface ClientMembership {
   productId: string;
   membershipName: string;
   purchaseTicketId: string;
+  purchaseUnitOrdinal?: number;
   purchaseDateIso: string;
   purchaseAmount: number;
   branch: string;

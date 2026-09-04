@@ -209,6 +209,19 @@ export interface PosApiClient {
     branchId?: string | null;
     employeeId?: string | null;
   }): Promise<PosCustomerDto>;
+  updateCustomer(
+    id: string,
+    input: {
+      displayName: string;
+      phone?: string | null;
+      email?: string | null;
+      sourceId?: string | null;
+      notes?: string | null;
+      active?: boolean;
+      branchId?: string | null;
+      employeeId?: string | null;
+    },
+  ): Promise<PosCustomerDto>;
   customerSources(): Promise<PosCustomerSourceDto[]>;
   createCustomerSource(input: {
     name: string;
@@ -237,6 +250,29 @@ export interface PosApiClient {
   ): Promise<PosCustomerRequiredFieldDto>;
   voucherTemplates(): Promise<PosVoucherTemplateDto[]>;
   paymentMethods(): Promise<PosPaymentMethodDto[]>;
+  createPaymentMethod(input: {
+    name: string;
+    type: "EFECTIVO" | "TARJETA" | "TRANSFERENCIA" | "OTRO";
+    active: boolean;
+    activeForPos: boolean;
+    requiresReference: boolean;
+    referenceLabel?: string | null;
+    minAmount?: string | null;
+    maxAmount?: string | null;
+  }): Promise<PosPaymentMethodDto>;
+  updatePaymentMethod(
+    id: string,
+    input: {
+      name: string;
+      type: "EFECTIVO" | "TARJETA" | "TRANSFERENCIA" | "OTRO";
+      active: boolean;
+      activeForPos: boolean;
+      requiresReference: boolean;
+      referenceLabel?: string | null;
+      minAmount?: string | null;
+      maxAmount?: string | null;
+    },
+  ): Promise<PosPaymentMethodDto>;
   paymentCatalogs(): Promise<PosPaymentCatalogsDto>;
   createBank(input: {
     name: string;
@@ -839,6 +875,8 @@ export function createPosApiClient(
       ),
     createCustomer: (input) =>
       data<PosCustomerDto>(client.post("/customers", input)),
+    updateCustomer: (id, input) =>
+      data<PosCustomerDto>(client.put(`/customers/${id}`, input)),
     customerSources: () =>
       data<PosCustomerSourceDto[]>(client.get("/customers/sources")),
     createCustomerSource: (input) =>
@@ -863,6 +901,14 @@ export function createPosApiClient(
       data<PosVoucherTemplateDto[]>(client.get("/settings/vouchers")),
     paymentMethods: () =>
       data<PosPaymentMethodDto[]>(client.get("/settings/payment-methods")),
+    createPaymentMethod: (input) =>
+      data<PosPaymentMethodDto>(
+        client.post("/settings/payment-methods", input),
+      ),
+    updatePaymentMethod: (id, input) =>
+      data<PosPaymentMethodDto>(
+        client.put(`/settings/payment-methods/${id}`, input),
+      ),
     paymentCatalogs: () =>
       data<PosPaymentCatalogsDto>(client.get("/settings/payment-catalogs")),
     createBank: (input) =>

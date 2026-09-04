@@ -411,6 +411,7 @@ router.get(
               ticketId: true,
               membershipItemId: true,
               membershipNameSnapshot: true,
+              unitOrdinal: true,
               status: true,
             },
             orderBy: { unitOrdinal: "asc" },

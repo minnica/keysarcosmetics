@@ -64,6 +64,7 @@ interface SellerSalesViewProps {
   memberships: ClientMembership[];
   paymentMethods: PaymentMethodOption[];
   bankCatalog: BankCatalogEntry[];
+  installmentOptions: number[];
   layaways: LayawayRecord[];
   appointments: Appointment[];
   owedProducts: OwedProductRecord[];
@@ -211,6 +212,7 @@ export function SellerSalesView({
   memberships,
   paymentMethods,
   bankCatalog,
+  installmentOptions,
   layaways,
   appointments,
   owedProducts,
@@ -1092,6 +1094,7 @@ export function SellerSalesView({
                                   layaway={layaway}
                                   paymentMethods={paymentMethods}
                                   bankCatalog={bankCatalog}
+                                  installmentOptions={installmentOptions}
                                   sellerId={authorizedSeller.id}
                                   onRegister={(payments, deliveryIds) =>
                                     onRegisterLayawayPayment(

@@ -21,6 +21,7 @@ declare global {
       posOfflineEnqueue(input: {
         kind: PosOfflineOperationKind;
         entityId?: string | null;
+        dependsOn?: string[];
         payload: Record<string, unknown>;
         createdAt?: string;
       }): Promise<{ id: string; sequence: number; status: "PENDING" }>;
@@ -32,6 +33,7 @@ declare global {
         attempts: number;
         errorMessage: string | null;
       }>>;
+      posOfflineAuthorize(pin: string): Promise<boolean>;
       posOfflineSync(): Promise<PosOfflinePushResultDto>;
       posOfflineLogout(): Promise<void>;
     };

@@ -11,6 +11,11 @@ on:
         description: ID de la sucursal piloto en Supabase development
         required: true
         type: string
+      additional_branch_ids:
+        description: IDs adicionales separados por coma para la segunda pasada multi-sucursal
+        required: false
+        default: ""
+        type: string
       business_date:
         description: Fecha operativa conciliada (AAAA-MM-DD)
         required: true
@@ -26,7 +31,11 @@ on:
         default: true
         type: boolean
       operational_confirmation:
-        description: Escribe PILOTO_CONCILIADO después de la aprobación operativa
+        description: Escribe PILOTO_CONCILIADO tras conciliar la operación
+        required: true
+        type: string
+      cross_team_confirmation:
+        description: Escribe AGENDA_FINANZAS_OPERACION_PRODUCTO tras las cuatro aprobaciones
         required: true
         type: string
 
@@ -96,12 +105,14 @@ jobs:
       API_BASE_URL: ${{ vars.API_BASE_URL }}
       EXPECTED_API_SHA: ${{ inputs.release_sha }}
       POS_PILOT_BRANCH_ID: ${{ inputs.branch_id }}
+      POS_PILOT_ADDITIONAL_BRANCH_IDS: ${{ inputs.additional_branch_ids }}
       POS_PILOT_BUSINESS_DATE: ${{ inputs.business_date }}
       POS_PILOT_MIN_TICKETS: ${{ inputs.minimum_tickets }}
       POS_PILOT_REQUIRE_CLOSED_DAY: true
       POS_PILOT_REQUIRE_COVERAGE: true
       POS_PILOT_REQUIRE_OFFLINE_SYNC: ${{ inputs.require_offline_sync }}
       OPERATIONAL_CONFIRMATION: ${{ inputs.operational_confirmation }}
+      CROSS_TEAM_CONFIRMATION: ${{ inputs.cross_team_confirmation }}
     steps:
       - name: Validate development scope and operational approval
         run: |
@@ -113,6 +124,7 @@ jobs:
           test -n "$DIRECT_URL"
           test -n "$API_BASE_URL"
           test "$OPERATIONAL_CONFIRMATION" = "PILOTO_CONCILIADO"
+          test "$CROSS_TEAM_CONFIRMATION" = "AGENDA_FINANZAS_OPERACION_PRODUCTO"
       - uses: actions/checkout@v6
         with:
           ref: ${{ inputs.release_sha }}
@@ -143,6 +155,23 @@ jobs:
         run: pnpm --filter @cosmetics/api pos:diagnose > pos-pilot-diagnosis.json
       - name: Reconcile the completed pilot
         run: pnpm --filter @cosmetics/api pos:reconcile > pos-pilot-report.json
+      - name: Reconcile the multi-branch expansion
+        if: ${{ inputs.additional_branch_ids != '' }}
+        run: |
+          index=0
+          old_ifs="$IFS"
+          IFS=','
+          for branch_id in $POS_PILOT_ADDITIONAL_BRANCH_IDS; do
+            IFS="$old_ifs"
+            branch_id="$(printf '%s' "$branch_id" | tr -d '[:space:]')"
+            test -n "$branch_id"
+            index=$((index + 1))
+            POS_PILOT_BRANCH_ID="$branch_id" \
+              pnpm --filter @cosmetics/api pos:reconcile \
+              > "pos-pilot-report-branch-${index}.json"
+            IFS=','
+          done
+          IFS="$old_ifs"
       - name: Publish non-sensitive reconciliation summary
         if: always()
         run: |
@@ -162,6 +191,10 @@ jobs:
               `| Tickets | ${report.coverage.tickets} |`,
               `| Jornada | ${report.coverage.businessDayStatus} |`,
               `| Operaciones offline conciliadas | ${report.coverage.offlineOperationsSynced} |`,
+              `| Membresías/asistencias | ${report.coverage.memberships}/${report.coverage.membershipAttendances} |`,
+              `| Citas Agenda | ${report.coverage.agendaAppointments} |`,
+              `| Cobros MSI | ${report.coverage.installmentPayments} |`,
+              `| Participantes empresa | ${report.coverage.companyParticipants} |`,
               `| Diferencias | ${report.discrepancies.length} |`,
               `| Intento del workflow | ${process.env.GITHUB_RUN_ATTEMPT} |`,
             ];
@@ -175,5 +208,6 @@ jobs:
           path: |
             pos-pilot-diagnosis.json
             pos-pilot-report.json
+            pos-pilot-report-branch-*.json
           if-no-files-found: ignore
           retention-days: 30

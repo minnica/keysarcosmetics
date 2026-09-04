@@ -94,11 +94,13 @@ import type {
   PosNotificationDto,
   PosOperationalSummaryDto,
   PosOfflineBootstrapDto,
+  PosOfflineOperationResultDto,
   PosPermissionKey,
   PosSessionDto,
   PosSalesCompetitionDto,
   PosTicketQuoteDto,
   PosAgendaConflictDto,
+  PosAgendaSlotDto,
 } from "@cosmetics/types";
 import {
   CheckoutDialog,
@@ -272,6 +274,7 @@ import {
 } from "./lib/pos-ticket-api";
 import {
   enqueueOfflineOperation,
+  authorizeOfflineMembershipAccess,
   offlineQueueStatus,
   syncOfflineOperations,
   type OfflineQueueStatus,
@@ -384,6 +387,7 @@ const membershipFromDto = (dto: PosClientMembershipDto): ClientMembership => ({
   productId: dto.membershipItemId,
   membershipName: dto.membershipName,
   purchaseTicketId: dto.ticketFolio,
+  purchaseUnitOrdinal: dto.unitOrdinal,
   purchaseDateIso: dto.purchasedAt,
   purchaseAmount: Number(dto.purchaseAmount),
   branch: dto.purchaseBranchName,
@@ -420,6 +424,24 @@ const membershipFromDto = (dto: PosClientMembershipDto): ClientMembership => ({
     toStatus: membershipStatusFromDto(change.toStatus),
     reason: change.reason,
   })),
+});
+
+const agendaSlotFromDto = (slot: PosAgendaSlotDto): AgendaSlot => ({
+  id: slot.id,
+  externalSystem: slot.externalSystem,
+  externalCalendarId: slot.externalCalendarId ?? "",
+  externalSlotId: slot.externalSlotId,
+  branch: slot.branchName,
+  date: slot.date,
+  startTime: slot.startTime,
+  endTime: slot.endTime,
+  resourceId: slot.resourceId,
+  resourceName: slot.resourceName,
+  resourceType: slot.resourceType,
+  capacity: slot.capacity,
+  reservedCount: slot.reservedCount,
+  status: slot.status === "CANCELED" ? "CANCELLED" : slot.status,
+  updatedAtIso: slot.updatedAt,
 });
 
 const notificationTypeFromApi = (kind: string): OperationalNotificationType => {
@@ -2025,6 +2047,9 @@ function App() {
   );
   const [bankCatalog, setBankCatalog] =
     useState<BankCatalogEntry[]>(initialBankCatalog);
+  const [installmentOptions, setInstallmentOptions] = useState([
+    1, 3, 6, 9, 12, 18, 24,
+  ]);
   const [paymentSettingsOpen, setPaymentSettingsOpen] = useState(false);
   const [paymentSettingsCode, setPaymentSettingsCode] = useState("");
   const [paymentSettingsAuthorized, setPaymentSettingsAuthorized] =
@@ -2542,6 +2567,44 @@ function App() {
           active: method.active,
         })),
     );
+    setBankCatalog(
+      bootstrap.paymentCatalogs.banks.map((bank) => ({
+        id: bank.id,
+        name: bank.name,
+        active: bank.active,
+        cardTypes: ["CREDIT", "DEBIT"],
+        cardNetworks: bootstrap.paymentCatalogs.cardNetworks.flatMap<
+          "VISA" | "MASTERCARD"
+        >((network) => {
+          const name = network.name.toLocaleUpperCase("es-MX");
+          return name === "VISA" || name === "MASTERCARD" ? [name] : [];
+        }),
+        source: bank.sourceName === "ABM" ? "ABM" : "CUSTOM",
+      })),
+    );
+    setInstallmentOptions(
+      bootstrap.paymentCatalogs.installmentOptions.map((item) => item.months),
+    );
+    setCourtesySettings({
+      required: bootstrap.courtesyConfiguration.required,
+      defaultPackage: bootstrap.courtesyConfiguration.defaultPackageId ?? "",
+      enabledPackages: bootstrap.courtesyConfiguration.packages.map(
+        (item) => item.id,
+      ),
+      products: bootstrap.courtesyConfiguration.products.map((item) => ({
+        id: item.id,
+        name: item.name,
+        category: item.type,
+        active: item.active,
+      })),
+      packages: bootstrap.courtesyConfiguration.packages.map((item) => ({
+        id: item.id,
+        name: item.name,
+        serviceIds: item.productIds,
+        active: item.active,
+      })),
+    });
+    setApiCommercialCompany(bootstrap.commercialCompany);
     setClientSources(
       bootstrap.customerSources.map((source) => ({
         id: source.id,
@@ -2585,6 +2648,8 @@ function App() {
       }),
     );
     setOwedProducts(bootstrap.tickets.flatMap(owedProductsFromDto));
+    setClientMemberships(bootstrap.memberships.map(membershipFromDto));
+    setAgendaSlots(bootstrap.agendaSlots.map(agendaSlotFromDto));
     if (bootstrap.ticketConfiguration) {
       const configuration = bootstrap.ticketConfiguration;
       setReceiptSettings((current) => ({
@@ -3066,6 +3131,11 @@ function App() {
           source: bank.sourceName === "ABM" ? "ABM" : "CUSTOM",
         })),
       );
+      setInstallmentOptions(
+        paymentCatalogs.installmentOptions
+          .filter((item) => item.active)
+          .map((item) => item.months),
+      );
       setCourtesySettings({
         required: courtesy.required,
         defaultPackage: courtesy.defaultPackageId ?? "",
@@ -3510,25 +3580,7 @@ function App() {
           ),
         );
         if (disposed) return;
-        setAgendaSlots(
-          results.flat().map((slot) => ({
-            id: slot.id,
-            externalSystem: slot.externalSystem,
-            externalCalendarId: slot.externalCalendarId ?? "",
-            externalSlotId: slot.externalSlotId,
-            branch: slot.branchName,
-            date: slot.date,
-            startTime: slot.startTime,
-            endTime: slot.endTime,
-            resourceId: slot.resourceId,
-            resourceName: slot.resourceName,
-            resourceType: slot.resourceType,
-            capacity: slot.capacity,
-            reservedCount: slot.reservedCount,
-            status: slot.status === "CANCELED" ? "CANCELLED" : slot.status,
-            updatedAtIso: slot.updatedAt,
-          })),
-        );
+        setAgendaSlots(results.flat().map(agendaSlotFromDto));
       } catch {
         if (!disposed) setAgendaSlots([]);
       }
@@ -5458,6 +5510,171 @@ function App() {
     return () => window.clearTimeout(updateTimeout);
   }, [sessionDataSync.updating]);
 
+  const applyOfflineDomainResults = (
+    results: PosOfflineOperationResultDto[],
+  ) => {
+    if (results.length === 0) return;
+    for (const result of results) {
+      if (result.status !== "SYNCED") continue;
+      const queued = offlineQueue.find((entry) => entry.id === result.id);
+      const data =
+        result.data &&
+        !Array.isArray(result.data) &&
+        typeof result.data === "object"
+          ? (result.data as Record<string, unknown>)
+          : null;
+      const canonicalMemberships = Array.isArray(data?.["memberships"])
+        ? (data["memberships"] as Array<{
+            id?: string;
+            folio?: string;
+            membershipItemId?: string;
+            unitOrdinal?: number;
+            status?: "PENDING" | "ACTIVE" | "EXHAUSTED" | "CANCELED";
+          }>)
+        : [];
+      if (canonicalMemberships.length === 0) continue;
+      const localTicket =
+        queued?.kind === "TICKET_CREATE"
+          ? tickets.find((ticket) => ticket.backendId === result.id)
+          : null;
+      setClientMemberships((current) =>
+        current.map((membership) => {
+          const canonical = canonicalMemberships.find(
+            (candidate) =>
+              candidate.id === membership.id ||
+              (localTicket?.id === membership.purchaseTicketId &&
+                candidate.membershipItemId === membership.productId &&
+                candidate.unitOrdinal === membership.purchaseUnitOrdinal),
+          );
+          if (!canonical?.id) return membership;
+          return {
+            ...membership,
+            id: canonical.id,
+            folio: canonical.folio ?? membership.folio,
+            status:
+              canonical.status === "CANCELED"
+                ? "CANCELLED"
+                : (canonical.status ?? membership.status),
+            agendaSyncStatus: "SYNCED",
+            agendaSyncedAtIso: new Date().toISOString(),
+          };
+        }),
+      );
+    }
+    setAppointments((current) => {
+      let next = current;
+      for (const result of results) {
+        const queued = offlineQueue.find((entry) => entry.id === result.id);
+        if (queued?.kind === "AGENDA_MEMBERSHIP_RESERVATION") {
+          if (result.status === "SYNCED") {
+            const data = result.data as {
+              id?: string;
+              status?: string;
+              scheduledAt?: string | null;
+              agendaSlotId?: string | null;
+              externalReservationId?: string | null;
+              externalAppointmentId?: string | null;
+              agendaResourceName?: string | null;
+            };
+            next = next.map((appointment) =>
+              appointment.id === result.id
+                ? {
+                    ...appointment,
+                    id: data.id ?? result.serverEntityId ?? appointment.id,
+                    status:
+                      data.status === "COMPLETED"
+                        ? "ATTENDED"
+                        : data.status === "CANCELED"
+                          ? "CANCELLED"
+                          : data.status === "NO_SHOW"
+                            ? "NO_SHOW"
+                            : data.status === "SCHEDULED"
+                              ? "SCHEDULED"
+                              : "PENDING",
+                    agendaSyncStatus: "RESERVED",
+                    agendaSyncedAtIso: new Date().toISOString(),
+                    ...((data.agendaSlotId ?? appointment.agendaSlotId)
+                      ? {
+                          agendaSlotId:
+                            data.agendaSlotId ?? appointment.agendaSlotId!,
+                        }
+                      : {}),
+                    ...((data.externalReservationId ??
+                    appointment.agendaReservationId)
+                      ? {
+                          agendaReservationId:
+                            data.externalReservationId ??
+                            appointment.agendaReservationId!,
+                        }
+                      : {}),
+                    ...((data.externalAppointmentId ??
+                    appointment.externalAppointmentId)
+                      ? {
+                          externalAppointmentId:
+                            data.externalAppointmentId ??
+                            appointment.externalAppointmentId!,
+                        }
+                      : {}),
+                    ...((data.agendaResourceName ??
+                    appointment.agendaResourceName)
+                      ? {
+                          agendaResourceName:
+                            data.agendaResourceName ??
+                            appointment.agendaResourceName!,
+                        }
+                      : {}),
+                    ...(data.scheduledAt
+                      ? {
+                          date: data.scheduledAt.slice(0, 10),
+                          time: new Date(data.scheduledAt).toLocaleTimeString(
+                            "es-MX",
+                            { hour: "2-digit", minute: "2-digit" },
+                          ),
+                        }
+                      : {}),
+                  }
+                : appointment,
+            );
+          } else if (result.status === "CONFLICT") {
+            next = next.map((appointment) =>
+              appointment.id === result.id
+                ? {
+                    ...appointment,
+                    status: "PENDING",
+                    agendaSyncStatus: "CONFLICT",
+                  }
+                : appointment,
+            );
+          }
+        }
+        if (
+          queued?.kind === "MEMBERSHIP_ATTENDANCE" &&
+          result.status === "SYNCED"
+        ) {
+          const data = result.data as {
+            appointmentId?: string;
+            membership?: PosClientMembershipDto;
+          };
+          if (data.appointmentId) {
+            next = next.map((appointment) =>
+              appointment.id === data.appointmentId
+                ? {
+                    ...appointment,
+                    status: "ATTENDED",
+                    membershipSessionConsumedAtIso: new Date().toISOString(),
+                    agendaSyncStatus: "ATTENDED",
+                    agendaSyncedAtIso: new Date().toISOString(),
+                  }
+                : appointment,
+            );
+          }
+          if (data.membership) replaceMembershipFromApi(data.membership);
+        }
+      }
+      return next;
+    });
+  };
+
   const requestSessionDataSync = () => {
     if (!isOnline) {
       setConnectivityNotice({
@@ -5475,6 +5692,7 @@ function App() {
       offlineSyncingRef.current = true;
       void syncOfflineOperations(offlineBootstrap, posApi.pushOfflineOperations)
         .then(async (result) => {
+          applyOfflineDomainResults(result.results);
           setOfflineBootstrap((current) =>
             current
               ? { ...current, nextSequence: result.nextSequence }
@@ -5584,6 +5802,7 @@ function App() {
       offlineSyncingRef.current = true;
       void syncOfflineOperations(offlineBootstrap, posApi.pushOfflineOperations)
         .then(async (result) => {
+          applyOfflineDomainResults(result.results);
           const nextBootstrap = {
             ...offlineBootstrap,
             nextSequence: result.nextSequence,
@@ -6830,7 +7049,57 @@ function App() {
       firstName: updatedClient.firstName.trim(),
       lastName: updatedClient.lastName.trim(),
     };
-    if (previousClient.agendaClientId) {
+    if (posApiEnabled) {
+      if (operatingOffline) {
+        toast.error(
+          "Editar clientas y cartera requiere conexión; no se cambió el expediente local.",
+        );
+        return;
+      }
+      try {
+        const saved = await posApi.updateCustomer(updatedClient.id, {
+          displayName: updatedName,
+          phone: updatedClient.phone || null,
+          email: null,
+          sourceId: clientSources.some(
+            (source) => source.id === updatedClient.source,
+          )
+            ? updatedClient.source
+            : null,
+          notes: updatedClient.whatsapp
+            ? `WhatsApp: ${updatedClient.whatsapp}`
+            : null,
+          active: true,
+          branchId: apiSession?.terminal.branch.id ?? null,
+          employeeId: updatedClient.ownerId,
+        });
+        synchronizedClient = {
+          ...synchronizedClient,
+          phone: saved.phone ?? "",
+          companyLocked: saved.currentPortfolio?.kind === "COMPANY",
+          companyName:
+            saved.currentPortfolio?.kind === "COMPANY"
+              ? (saved.currentPortfolio.ownerName ?? "")
+              : "",
+          ownerId:
+            saved.currentPortfolio?.kind === "SELLER"
+              ? saved.currentPortfolio.employeeId
+              : null,
+          ...(saved.agendaLinked
+            ? {
+                agendaSyncStatus: "SYNCED",
+                agendaSyncedAtIso: new Date().toISOString(),
+              }
+            : {}),
+        };
+      } catch (error) {
+        toast.error(
+          (error as { response?: { data?: { message?: string } } }).response
+            ?.data?.message ?? "No se pudo actualizar la clienta.",
+        );
+        return;
+      }
+    } else if (previousClient.agendaClientId) {
       if (isOnline) {
         try {
           const link = await agendaGateway.upsertClient(synchronizedClient);
@@ -8051,7 +8320,7 @@ function App() {
     let membershipSequence = clientMemberships.length;
     const purchasedMemberships = cart.flatMap((item) =>
       item.product.kind === "MEMBERSHIP"
-        ? Array.from({ length: item.quantity }, () => {
+        ? Array.from({ length: item.quantity }, (_, unitIndex) => {
             membershipSequence += 1;
             const seller = primaryHumanSellerSale;
             return {
@@ -8068,6 +8337,7 @@ function App() {
               productId: item.product.id,
               membershipName: item.product.name,
               purchaseTicketId: ticketId,
+              purchaseUnitOrdinal: unitIndex + 1,
               purchaseDateIso: ticket.createdAtIso,
               purchaseAmount: item.unitPrice,
               branch: ticketBranch,
@@ -8078,7 +8348,10 @@ function App() {
               totalSessions: item.product.membershipSessions ?? 1,
               usedSessions: 0,
               profile: "POTENTIAL" as const,
-              status: "ACTIVE" as const,
+              status:
+                result.paymentStatus === "PAID"
+                  ? ("ACTIVE" as const)
+                  : ("PENDING" as const),
               attendance: [],
               sellerChanges: [],
               statusChanges: [],
@@ -8397,9 +8670,45 @@ function App() {
     toast.success("Configuración de cobros desbloqueada.");
   };
 
+  const paymentMethodPolicyInput = (
+    method: Pick<PaymentMethodOption, "id" | "label">,
+    active: boolean,
+  ) => {
+    const normalized = `${method.id} ${method.label}`.toLocaleUpperCase(
+      "es-MX",
+    );
+    const type =
+      normalized.includes("EFECTIVO") || normalized.includes("CASH")
+        ? ("EFECTIVO" as const)
+        : normalized.includes("TARJETA") || normalized.includes("CARD")
+          ? ("TARJETA" as const)
+          : normalized.includes("TRANSFER")
+            ? ("TRANSFERENCIA" as const)
+            : ("OTRO" as const);
+    return {
+      name: method.label,
+      type,
+      active,
+      activeForPos: active,
+      requiresReference: type === "TARJETA" || type === "TRANSFERENCIA",
+      referenceLabel:
+        type === "TARJETA"
+          ? "Autorización"
+          : type === "TRANSFERENCIA"
+            ? "Referencia"
+            : null,
+      minAmount: null,
+      maxAmount: null,
+    };
+  };
+
   const addPaymentMethod = () => {
     const label = newPaymentMethodName.trim();
     if (!label) return;
+    if (posApiEnabled && operatingOffline) {
+      toast.error("Administrar métodos de pago requiere conexión.");
+      return;
+    }
     const existingMethod = paymentMethods.find(
       (method) =>
         method.label.toLocaleLowerCase("es-MX") ===
@@ -8407,6 +8716,41 @@ function App() {
     );
     if (existingMethod?.active) {
       toast.error("Ese método de pago ya existe.");
+      return;
+    }
+    if (posApiEnabled) {
+      const draft = existingMethod ?? {
+        id: `CUSTOM-${Date.now()}`,
+        label,
+        active: true,
+      };
+      const request = existingMethod
+        ? posApi.updatePaymentMethod(
+            existingMethod.id,
+            paymentMethodPolicyInput(existingMethod, true),
+          )
+        : posApi.createPaymentMethod(paymentMethodPolicyInput(draft, true));
+      void request
+        .then((saved) => {
+          const mapped: PaymentMethodOption = {
+            id: saved.id,
+            label: saved.name,
+            active: saved.activeForPos && saved.active,
+          };
+          setPaymentMethods((current) => [
+            ...current.filter((method) => method.id !== saved.id),
+            mapped,
+          ]);
+          setNewPaymentMethodName("");
+          toast.success(`${saved.name} quedó disponible en el cobro.`);
+        })
+        .catch((error: unknown) =>
+          toast.error(
+            error instanceof Error
+              ? error.message
+              : "No se pudo guardar el método de pago.",
+          ),
+        );
       return;
     }
     if (existingMethod) {
@@ -8446,6 +8790,38 @@ function App() {
     }
     const method = paymentMethods.find((item) => item.id === methodId);
     if (!method) return;
+    if (posApiEnabled && operatingOffline) {
+      toast.error("Administrar métodos de pago requiere conexión.");
+      return;
+    }
+    if (posApiEnabled) {
+      void posApi
+        .updatePaymentMethod(method.id, paymentMethodPolicyInput(method, false))
+        .then((saved) => {
+          setPaymentMethods((current) =>
+            current.map((candidate) =>
+              candidate.id === saved.id
+                ? {
+                    ...candidate,
+                    label: saved.name,
+                    active: saved.activeForPos && saved.active,
+                  }
+                : candidate,
+            ),
+          );
+          toast.success(
+            `${saved.name} se retiró de nuevos cobros. Los tickets históricos lo conservan.`,
+          );
+        })
+        .catch((error: unknown) =>
+          toast.error(
+            error instanceof Error
+              ? error.message
+              : "No se pudo actualizar el método de pago.",
+          ),
+        );
+      return;
+    }
     setPaymentMethods((current) =>
       current.map((item) =>
         item.id === methodId ? { ...item, active: false } : item,
@@ -8458,6 +8834,10 @@ function App() {
 
   const addBankToCatalog = () => {
     if (!paymentSettingsAuthorized) return;
+    if (posApiEnabled && operatingOffline) {
+      toast.error("Administrar bancos requiere conexión.");
+      return;
+    }
     const name = newBankName.trim();
     if (!name) return;
     const existing = bankCatalog.find(
@@ -8467,6 +8847,46 @@ function App() {
     );
     if (existing?.active) {
       toast.error("Ese banco ya está disponible.");
+      return;
+    }
+    if (posApiEnabled) {
+      const request = existing
+        ? posApi.updateBank(existing.id, {
+            name: existing.name,
+            active: true,
+            sourceName: existing.source === "ABM" ? "ABM" : "KEYSAR POS",
+            sourceReviewedAt: new Date().toISOString().slice(0, 10),
+          })
+        : posApi.createBank({
+            name,
+            active: true,
+            sourceName: "KEYSAR POS",
+            sourceReviewedAt: new Date().toISOString().slice(0, 10),
+          });
+      void request
+        .then((saved) => {
+          const mapped: BankCatalogEntry = {
+            id: saved.id,
+            name: saved.name,
+            active: saved.active,
+            cardTypes: ["CREDIT", "DEBIT"],
+            cardNetworks: ["VISA", "MASTERCARD"],
+            source: saved.sourceName === "ABM" ? "ABM" : "CUSTOM",
+          };
+          setBankCatalog((current) => [
+            ...current.filter((bank) => bank.id !== saved.id),
+            mapped,
+          ]);
+          setNewBankName("");
+          toast.success(`${saved.name} quedó disponible en nuevos cobros.`);
+        })
+        .catch((error: unknown) =>
+          toast.error(
+            error instanceof Error
+              ? error.message
+              : "No se pudo guardar el banco.",
+          ),
+        );
       return;
     }
     if (existing) {
@@ -8496,12 +8916,47 @@ function App() {
 
   const setBankCatalogActive = (bankId: string, active: boolean) => {
     if (!paymentSettingsAuthorized) return;
+    if (posApiEnabled && operatingOffline) {
+      toast.error("Administrar bancos requiere conexión.");
+      return;
+    }
     if (!active && bankCatalog.filter((bank) => bank.active).length <= 1) {
       toast.error("Debe permanecer al menos un banco activo.");
       return;
     }
     const bank = bankCatalog.find((candidate) => candidate.id === bankId);
     if (!bank) return;
+    if (posApiEnabled) {
+      void posApi
+        .updateBank(bank.id, {
+          name: bank.name,
+          active,
+          sourceName: bank.source === "ABM" ? "ABM" : "KEYSAR POS",
+          sourceReviewedAt: new Date().toISOString().slice(0, 10),
+        })
+        .then((saved) => {
+          setBankCatalog((current) =>
+            current.map((candidate) =>
+              candidate.id === saved.id
+                ? { ...candidate, name: saved.name, active: saved.active }
+                : candidate,
+            ),
+          );
+          toast.success(
+            saved.active
+              ? `${saved.name} quedó disponible para nuevos cobros.`
+              : `${saved.name} se ocultó de nuevos cobros; el historial no cambia.`,
+          );
+        })
+        .catch((error: unknown) =>
+          toast.error(
+            error instanceof Error
+              ? error.message
+              : "No se pudo actualizar el banco.",
+          ),
+        );
+      return;
+    }
     setBankCatalog((current) =>
       current.map((candidate) =>
         candidate.id === bankId ? { ...candidate, active } : candidate,
@@ -8517,6 +8972,10 @@ function App() {
   const saveClientSource = () => {
     const label = clientSourceName.trim();
     if (!label) return;
+    if (posApiEnabled && operatingOffline) {
+      toast.error("Administrar procedencias requiere conexión.");
+      return;
+    }
     if (
       clientSources.some(
         (source) =>
@@ -8526,6 +8985,46 @@ function App() {
       )
     ) {
       toast.error("Ya existe una procedencia con ese nombre.");
+      return;
+    }
+    if (posApiEnabled) {
+      const currentSource = clientSources.find(
+        (source) => source.id === editingClientSourceId,
+      );
+      const request = currentSource
+        ? posApi.updateCustomerSource(currentSource.id, {
+            name: label,
+            active: currentSource.active,
+            companyOwnedByDefault: currentSource.locksCompany,
+          })
+        : posApi.createCustomerSource({
+            name: label,
+            active: true,
+            companyOwnedByDefault: false,
+          });
+      void request
+        .then((saved) => {
+          const mapped: ClientSourceOption = {
+            id: saved.id,
+            label: saved.name,
+            active: saved.active,
+            locksCompany: saved.companyOwnedByDefault,
+          };
+          setClientSources((current) => [
+            ...current.filter((source) => source.id !== mapped.id),
+            mapped,
+          ]);
+          setClientSourceName("");
+          setEditingClientSourceId("");
+          toast.success("Procedencia guardada para nuevos registros.");
+        })
+        .catch((error: unknown) =>
+          toast.error(
+            error instanceof Error
+              ? error.message
+              : "No se pudo guardar la procedencia.",
+          ),
+        );
       return;
     }
     if (editingClientSourceId) {
@@ -8557,6 +9056,42 @@ function App() {
   };
 
   const toggleClientSource = (sourceId: string) => {
+    const source = clientSources.find((candidate) => candidate.id === sourceId);
+    if (!source) return;
+    if (posApiEnabled && operatingOffline) {
+      toast.error("Administrar procedencias requiere conexión.");
+      return;
+    }
+    if (posApiEnabled) {
+      void posApi
+        .updateCustomerSource(source.id, {
+          name: source.label,
+          active: !source.active,
+          companyOwnedByDefault: source.locksCompany,
+        })
+        .then((saved) =>
+          setClientSources((current) =>
+            current.map((candidate) =>
+              candidate.id === saved.id
+                ? {
+                    ...candidate,
+                    label: saved.name,
+                    active: saved.active,
+                    locksCompany: saved.companyOwnedByDefault,
+                  }
+                : candidate,
+            ),
+          ),
+        )
+        .catch((error: unknown) =>
+          toast.error(
+            error instanceof Error
+              ? error.message
+              : "No se pudo actualizar la procedencia.",
+          ),
+        );
+      return;
+    }
     setClientSources((current) =>
       current.map((source) =>
         source.id === sourceId ? { ...source, active: !source.active } : source,
@@ -8574,6 +9109,39 @@ function App() {
       ...current,
       companyName: profile.companyName,
     }));
+  };
+
+  const saveCommercialCompany = () => {
+    if (!posApiEnabled) {
+      toast.success("Identidad comercial actualizada en esta sesión mock.");
+      return;
+    }
+    if (operatingOffline) {
+      toast.error("Actualizar la empresa comercial requiere conexión.");
+      return;
+    }
+    void posApi
+      .updateCommercialCompany({
+        name: receiptSettings.companyName.trim(),
+        salesNumber: receiptSettings.companySalesNumber.trim(),
+        active: true,
+      })
+      .then((saved) => {
+        setApiCommercialCompany(saved);
+        setReceiptSettings((current) => ({
+          ...current,
+          companyName: saved.name,
+          companySalesNumber: saved.salesNumber,
+        }));
+        toast.success("Identidad comercial guardada en el servidor.");
+      })
+      .catch((error: unknown) =>
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "No se pudo actualizar la empresa comercial.",
+        ),
+      );
   };
 
   const addBillingCard = (card: BillingCard) => {
@@ -10125,10 +10693,19 @@ function App() {
         return;
       }
       try {
+        const originalTicket = tickets.find(
+          (ticket) => ticket.id === layaway.originalTicketId,
+        );
+        const ticketDependency = offlineQueue.find(
+          (entry) =>
+            entry.kind === "TICKET_CREATE" &&
+            entry.id === originalTicket?.backendId,
+        );
         const queued = await enqueueOfflineOperation(
           {
             kind: "LAYAWAY_PAYMENT",
-            entityId: layaway.id,
+            entityId: ticketDependency?.id ?? layaway.id,
+            dependsOn: ticketDependency ? [ticketDependency.id] : [],
             payload: {
               payments: requestedPayments.map((payment) => ({
                 methodId: payment.methodId,
@@ -10141,6 +10718,14 @@ function App() {
                   : {}),
                 ...(payment.cardOrBank
                   ? { institution: payment.cardOrBank }
+                  : {}),
+                ...(payment.cardType ? { cardType: payment.cardType } : {}),
+                ...(payment.cardNetwork
+                  ? { cardNetworkId: payment.cardNetwork }
+                  : {}),
+                ...(payment.bankId ? { bankId: payment.bankId } : {}),
+                ...(payment.installmentMonths
+                  ? { installmentMonths: payment.installmentMonths }
                   : {}),
               })),
               deliveredTicketLineIds: deliveredCartItemIds,
@@ -10694,6 +11279,23 @@ function App() {
 
   const authorizeMembershipAccess = async (pin: string) => {
     if (!posApiEnabled) return false;
+    if (operatingOffline) {
+      if (!offlineBootstrap) {
+        toast.error("La credencial no tiene una caché offline vigente.");
+        return false;
+      }
+      const authorized = await authorizeOfflineMembershipAccess(
+        pin,
+        offlineBootstrap,
+      );
+      if (!authorized) {
+        setMembershipAuthorizationToken(null);
+        toast.error("La clave personal no coincide con la sesión protegida.");
+        return false;
+      }
+      setMembershipAuthorizationToken("OFFLINE_SIGNED_GRANT");
+      return true;
+    }
     try {
       const authorization = await posApi.createPersonalAuthorization({
         pin,
@@ -10739,6 +11341,10 @@ function App() {
   ) => {
     if (!canEditActiveModule) return;
     if (posApiEnabled) {
+      if (operatingOffline) {
+        toast.error("El perfilamiento de membresías requiere conexión.");
+        return;
+      }
       if (!membershipAuthorizationToken) {
         toast.error("Vuelve a autorizar el acceso a membresías.");
         return;
@@ -10783,7 +11389,18 @@ function App() {
     const appointment = appointments.find(
       (candidate) => candidate.id === appointmentId,
     );
-    if (!membership || !appointment || appointment.status !== "SCHEDULED") {
+    const canQueuePendingReservationAttendance = Boolean(
+      posApiEnabled &&
+      operatingOffline &&
+      appointment?.status === "PENDING" &&
+      appointment.agendaSyncStatus === "PENDING_SYNC",
+    );
+    if (
+      !membership ||
+      !appointment ||
+      (appointment.status !== "SCHEDULED" &&
+        !canQueuePendingReservationAttendance)
+    ) {
       toast.error("La cita ya no está disponible para registrar asistencia.");
       return false;
     }
@@ -10798,6 +11415,63 @@ function App() {
       if (!branch) {
         toast.error("La cita no pertenece a una sucursal autorizada.");
         return false;
+      }
+      if (operatingOffline) {
+        if (!offlineBootstrap) {
+          toast.error("La credencial no tiene una caché offline vigente.");
+          return false;
+        }
+        if (membership.usedSessions >= membership.totalSessions) {
+          toast.error("Esta membresía ya no tiene sesiones disponibles.");
+          return false;
+        }
+        try {
+          const appointmentDependency = offlineQueue.find(
+            (entry) =>
+              entry.id === appointmentId &&
+              entry.kind === "AGENDA_MEMBERSHIP_RESERVATION",
+          );
+          await enqueueOfflineOperation(
+            {
+              kind: "MEMBERSHIP_ATTENDANCE",
+              entityId: membershipId,
+              dependsOn: appointmentDependency
+                ? [appointmentDependency.id]
+                : [],
+              payload: {
+                appointmentId,
+                event: "ATTENDED",
+                branchId: branch.id,
+                signatureStatus: "PENDING",
+              },
+            },
+            offlineBootstrap,
+          );
+          setOfflineQueue(await offlineQueueStatus(offlineBootstrap));
+          setAppointments((current) =>
+            current.map((candidate) =>
+              candidate.id === appointmentId
+                ? {
+                    ...candidate,
+                    status: "PENDING",
+                    membershipId,
+                    agendaSyncStatus: "PENDING_SYNC",
+                  }
+                : candidate,
+            ),
+          );
+          toast.success(
+            "Asistencia protegida localmente; Agenda validará la cita antes de consumir la sesión.",
+          );
+          return true;
+        } catch (error) {
+          toast.error(
+            error instanceof Error
+              ? error.message
+              : "No se pudo proteger la asistencia local.",
+          );
+          return false;
+        }
       }
       try {
         const updated = await posApi.recordMembershipAttendance(membershipId, {
@@ -11028,6 +11702,102 @@ function App() {
         (candidate) => candidate.id === agendaSlotId,
       );
       if (!membership || !slot) return false;
+      if (operatingOffline) {
+        if (!offlineBootstrap) {
+          toast.error("La credencial no tiene una caché offline vigente.");
+          return false;
+        }
+        if (slot.status !== "AVAILABLE") {
+          toast.error("El horario ya no aparece disponible en la caché local.");
+          return false;
+        }
+        try {
+          const purchaseTicket = tickets.find(
+            (ticket) => ticket.id === membership.purchaseTicketId,
+          );
+          const ticketDependency = offlineQueue.find(
+            (entry) =>
+              entry.kind === "TICKET_CREATE" &&
+              entry.id === purchaseTicket?.backendId,
+          );
+          const localMembership =
+            !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+              membership.id,
+            );
+          if (
+            localMembership &&
+            (!ticketDependency || !membership.purchaseUnitOrdinal)
+          ) {
+            toast.error(
+              "La membresía local todavía no puede vincularse con su ticket protegido.",
+            );
+            return false;
+          }
+          const queued = await enqueueOfflineOperation(
+            {
+              kind: "AGENDA_MEMBERSHIP_RESERVATION",
+              entityId: membershipId,
+              dependsOn: ticketDependency ? [ticketDependency.id] : [],
+              payload: {
+                membershipId,
+                agendaSlotId,
+                sellerId: membership.sellerId,
+                ...(ticketDependency
+                  ? {
+                      membershipItemId: membership.productId,
+                      unitOrdinal: membership.purchaseUnitOrdinal!,
+                    }
+                  : {}),
+              },
+            },
+            offlineBootstrap,
+          );
+          const recordedAtIso = new Date().toISOString();
+          setAppointments((current) => [
+            {
+              id: queued.id,
+              kind: "NEXT_SESSION",
+              service: membership.membershipName,
+              date: slot.date,
+              branch: slot.branch,
+              time: slot.startTime,
+              agendaSlotId: slot.id,
+              externalSlotId: slot.externalSlotId,
+              agendaResourceName: slot.resourceName,
+              agendaReservationMode: "SINGLE",
+              clientId: membership.clientId,
+              clientName: membership.clientName,
+              clientPhone: membership.clientPhone,
+              ticketId: membership.purchaseTicketId,
+              sellerIds: [membership.sellerId],
+              recordedAt: new Intl.DateTimeFormat("es-MX", {
+                day: "2-digit",
+                month: "short",
+                year: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
+              }).format(new Date(recordedAtIso)),
+              recordedAtIso,
+              status: "PENDING",
+              membershipId,
+              agendaSyncStatus: "PENDING_SYNC",
+            },
+            ...current,
+          ]);
+          setOfflineQueue(await offlineQueueStatus(offlineBootstrap));
+          toast.success(
+            "Solicitud protegida localmente; Agenda confirmará capacidad al sincronizar.",
+          );
+          return true;
+        } catch (error) {
+          toast.error(
+            error instanceof Error
+              ? error.message
+              : "No se pudo proteger la solicitud de Agenda.",
+          );
+          return false;
+        }
+      }
       try {
         const created = await posApi.reserveMembershipAppointment(
           { membershipId, agendaSlotId, sellerId: membership.sellerId },
@@ -14343,6 +15113,7 @@ function App() {
               <span>Nombre de la empresa</span>
               <Input
                 value={receiptSettings.companyName}
+                disabled={posApiEnabled && operatingOffline}
                 onChange={(event) =>
                   setReceiptSettings((current) => ({
                     ...current,
@@ -14355,6 +15126,7 @@ function App() {
               <span>Número de empresa para ventas</span>
               <Input
                 value={receiptSettings.companySalesNumber}
+                disabled={posApiEnabled && operatingOffline}
                 onChange={(event) =>
                   setReceiptSettings((current) => ({
                     ...current,
@@ -14366,6 +15138,19 @@ function App() {
               <small>
                 Identificador comercial de la empresa en divisiones y reportes.
               </small>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={
+                  !receiptSettings.companyName.trim() ||
+                  !receiptSettings.companySalesNumber.trim() ||
+                  (posApiEnabled && operatingOffline)
+                }
+                onClick={saveCommercialCompany}
+              >
+                <CheckCircle2 size={15} /> Guardar empresa comercial
+              </Button>
             </div>
             <div className="field-stack">
               <span>Sucursal fija de esta computadora</span>
@@ -15066,19 +15851,17 @@ function App() {
                         .join(" / ");
                       rows.push(
                         ...dataset.rows.map((row) =>
-                          Object.fromEntries(
-                            [
-                              ["Alcance autorizado", scopeLabel],
-                              ...Object.entries(row).map(([column, value]) => [
-                                column,
-                                value === null
-                                  ? ""
-                                  : typeof value === "boolean"
-                                    ? String(value)
-                                    : value,
-                              ]),
-                            ],
-                          ),
+                          Object.fromEntries([
+                            ["Alcance autorizado", scopeLabel],
+                            ...Object.entries(row).map(([column, value]) => [
+                              column,
+                              value === null
+                                ? ""
+                                : typeof value === "boolean"
+                                  ? String(value)
+                                  : value,
+                            ]),
+                          ]),
                         ),
                       );
                       if (dataset.rows.length === 0) break;
@@ -16113,6 +16896,7 @@ function App() {
             memberships={clientMemberships}
             paymentMethods={paymentMethods}
             bankCatalog={bankCatalog}
+            installmentOptions={installmentOptions}
             layaways={layaways}
             appointments={appointments}
             owedProducts={owedProducts}
@@ -16135,6 +16919,7 @@ function App() {
             layaways={layaways}
             paymentMethods={paymentMethods}
             bankCatalog={bankCatalog}
+            installmentOptions={installmentOptions}
             branches={operationalBranches}
             receiptSettings={receiptSettings}
             sessionSellerId={
@@ -16345,19 +17130,17 @@ function App() {
                         .join(" / ");
                       rows.push(
                         ...dataset.rows.map((row) =>
-                          Object.fromEntries(
-                            [
-                              ["Alcance autorizado", scopeLabel],
-                              ...Object.entries(row).map(([column, value]) => [
-                                column,
-                                value === null
-                                  ? ""
-                                  : typeof value === "boolean"
-                                    ? String(value)
-                                    : value,
-                              ]),
-                            ],
-                          ),
+                          Object.fromEntries([
+                            ["Alcance autorizado", scopeLabel],
+                            ...Object.entries(row).map(([column, value]) => [
+                              column,
+                              value === null
+                                ? ""
+                                : typeof value === "boolean"
+                                  ? String(value)
+                                  : value,
+                            ]),
+                          ]),
                         ),
                       );
                       if (dataset.rows.length === 0) break;
@@ -17206,6 +17989,7 @@ function App() {
         clockedInSellerIds={clockedInSellerIds}
         paymentMethods={paymentMethods}
         bankCatalog={bankCatalog}
+        installmentOptions={installmentOptions}
         branches={operationalBranches}
         agendaSlots={agendaSlots}
         sourceOptions={clientSources}
@@ -17322,6 +18106,7 @@ function App() {
         products={catalogProducts}
         paymentMethods={paymentMethods}
         bankCatalog={bankCatalog}
+        installmentOptions={installmentOptions}
         backendMode={posApiEnabled}
         defaultAuthorizationAlias={
           apiSession?.actor.isMaster ? apiSession.actor.alias : ""

@@ -2573,6 +2573,8 @@ enum PosOfflineOperationKind {
   INVENTORY_COUNT
   TICKET_CREATE
   LAYAWAY_PAYMENT
+  AGENDA_MEMBERSHIP_RESERVATION
+  MEMBERSHIP_ATTENDANCE
   VOUCHER_ISSUE
   VOUCHER_PRINT
   BUSINESS_DAY_CLOSING_COUNT
@@ -2598,6 +2600,7 @@ model PosSyncOperation {
   kind              PosOfflineOperationKind
   idempotencyKey    String                  @unique @db.Uuid
   entityId          String?
+  dependencyIds     Json                    @default("[]")
   payloadHash       String                  @db.VarChar(64)
   status            PosSyncOperationStatus
   serverEntityId    String?

@@ -912,8 +912,17 @@ export const posAgendaMembershipReservationSchema = z
     membershipId: idSchema,
     agendaSlotId: idSchema,
     sellerId: idSchema.optional(),
+    membershipItemId: idSchema.optional(),
+    unitOrdinal: z.number().int().positive().optional(),
   })
-  .strict();
+  .strict()
+  .refine(
+    (input) => Boolean(input.membershipItemId) === Boolean(input.unitOrdinal),
+    {
+      message: "La referencia de membresía local requiere producto y ordinal",
+      path: ["membershipItemId"],
+    },
+  );
 
 export const posAgendaConflictQuerySchema = posPageQuerySchema.extend({
   status: z.enum(["PENDING", "FAILED", "CONFLICT"]).optional(),
@@ -1249,11 +1258,28 @@ export const posOfflineOperationSchema = z
     sequence: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
     kind: z.enum(POS_OFFLINE_OPERATION_KINDS),
     entityId: idSchema.nullable(),
+    dependsOn: z.array(z.string().uuid()).max(20).default([]),
     idempotencyKey: z.string().uuid(),
     createdAt: isoUtcSchema,
     payload: z.record(z.string(), z.unknown()),
   })
-  .strict();
+  .strict()
+  .superRefine((operation, context) => {
+    if (operation.dependsOn.includes(operation.id)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Una operación no puede depender de sí misma",
+        path: ["dependsOn"],
+      });
+    }
+    if (new Set(operation.dependsOn).size !== operation.dependsOn.length) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Las dependencias no pueden repetirse",
+        path: ["dependsOn"],
+      });
+    }
+  });
 
 export const posOfflinePushSchema = z
   .object({
@@ -1275,6 +1301,25 @@ export const posOfflinePushSchema = z
         message: "Las operaciones deben formar una secuencia contigua",
         path: ["operations"],
       });
+    }
+    const sequenceById = new Map(
+      input.operations.map((operation) => [operation.id, operation.sequence]),
+    );
+    for (const [index, operation] of input.operations.entries()) {
+      for (const dependencyId of operation.dependsOn) {
+        const dependencySequence = sequenceById.get(dependencyId);
+        if (
+          dependencySequence !== undefined &&
+          dependencySequence >= operation.sequence
+        ) {
+          context.addIssue({
+            code: z.ZodIssueCode.custom,
+            message:
+              "Una dependencia del lote debe aparecer antes que su operación",
+            path: ["operations", index, "dependsOn"],
+          });
+        }
+      }
     }
   });
 

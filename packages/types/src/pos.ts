@@ -125,6 +125,8 @@ export const POS_OFFLINE_OPERATION_KINDS = [
   "INVENTORY_COUNT",
   "TICKET_CREATE",
   "LAYAWAY_PAYMENT",
+  "AGENDA_MEMBERSHIP_RESERVATION",
+  "MEMBERSHIP_ATTENDANCE",
   "VOUCHER_ISSUE",
   "VOUCHER_PRINT",
   "BUSINESS_DAY_CLOSING_COUNT",
@@ -139,6 +141,8 @@ export interface PosOfflineOperationDto {
   sequence: number;
   kind: PosOfflineOperationKind;
   entityId: PosId | null;
+  /** Operaciones locales que deben estar conciliadas antes de ejecutar ésta. */
+  dependsOn: PosId[];
   idempotencyKey: string;
   createdAt: IsoUtcDateTime;
   payload: Record<string, unknown>;
@@ -154,6 +158,8 @@ export interface PosOfflineOperationResultDto {
 }
 
 export interface PosOfflineBootstrapDto {
+  /** Versión del contrato cifrado; una terminal invalida cachés incompatibles. */
+  schemaVersion: 2;
   grantToken: string;
   grantExpiresAt: IsoUtcDateTime;
   issuedAt: IsoUtcDateTime;
@@ -162,6 +168,9 @@ export interface PosOfflineBootstrapDto {
   catalog: PosCatalogItemDto[];
   packages: PosPackageDto[];
   paymentMethods: PosPaymentMethodDto[];
+  paymentCatalogs: PosPaymentCatalogsDto;
+  courtesyConfiguration: PosCourtesyConfigurationDto;
+  commercialCompany: PosCommercialCompanyDto | null;
   voucherTemplates: PosVoucherTemplateDto[];
   customerSources: PosCustomerSourceDto[];
   ticketConfiguration: PosTicketConfigurationDto | null;
@@ -174,6 +183,9 @@ export interface PosOfflineBootstrapDto {
   inventoryBalances: PosInventoryBalanceDto[];
   businessDay: PosBusinessDayDto | null;
   tickets: PosTicketDto[];
+  memberships: PosClientMembershipDto[];
+  /** Snapshot informativo; Agenda vuelve a validar capacidad al sincronizar. */
+  agendaSlots: PosAgendaSlotDto[];
 }
 
 export interface PosOfflinePushRequestDto {
@@ -1176,6 +1188,7 @@ export interface PosTicketDto extends Omit<PosTicketQuoteDto, "lines"> {
     purchaseTicketId: PosId;
     membershipItemId: PosId;
     membershipName: string;
+    unitOrdinal: number;
     status: "PENDING" | "ACTIVE" | "EXHAUSTED" | "CANCELED";
   }>;
 }

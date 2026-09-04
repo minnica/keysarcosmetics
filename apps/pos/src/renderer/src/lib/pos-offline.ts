@@ -170,13 +170,30 @@ export async function authenticateBrowserOffline(
   }
   const bootstrap = await decrypt<PosOfflineBootstrapDto>(await deviceKey(database), record.envelope);
   database.close();
-  return bootstrap;
+  return bootstrap.schemaVersion === 2 ? bootstrap : null;
+}
+
+export async function authorizeOfflineMembershipAccess(
+  pin: string,
+  bootstrap: PosOfflineBootstrapDto,
+): Promise<boolean> {
+  if (window.electronAPI) return window.electronAPI.posOfflineAuthorize(pin);
+  const verified = await authenticateBrowserOffline(
+    bootstrap.session.actor.alias,
+    pin,
+  );
+  return Boolean(
+    verified &&
+      verified.session.actor.id === bootstrap.session.actor.id &&
+      verified.session.terminal.id === bootstrap.session.terminal.id,
+  );
 }
 
 export async function enqueueOfflineOperation(
   input: {
     kind: PosOfflineOperationKind;
     entityId?: string | null;
+    dependsOn?: string[];
     payload: Record<string, unknown>;
     createdAt?: string;
   },
@@ -198,6 +215,7 @@ export async function enqueueOfflineOperation(
     sequence,
     kind: input.kind,
     entityId: input.entityId ?? null,
+    dependsOn: [...new Set(input.dependsOn ?? [])],
     idempotencyKey: crypto.randomUUID(),
     createdAt: input.createdAt ?? new Date().toISOString(),
     payload: input.payload,

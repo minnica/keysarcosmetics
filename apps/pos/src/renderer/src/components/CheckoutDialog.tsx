@@ -75,7 +75,6 @@ type ClientMode = "search" | "new";
 type SplitMode = "amount" | "percent";
 type CheckoutStep = 1 | 2 | 3 | 4;
 type AppointmentAnswer = "" | "YES" | "NO";
-const installmentOptions = [1, 3, 6, 9, 12, 18, 24];
 const COMPANY_SALES_PARTICIPANT_ID = "company-sales";
 
 export interface CheckoutResult {
@@ -104,6 +103,7 @@ interface CheckoutDialogProps {
   clockedInSellerIds: string[];
   paymentMethods: PaymentMethodOption[];
   bankCatalog: BankCatalogEntry[];
+  installmentOptions: number[];
   branches: string[];
   agendaSlots: AgendaSlot[];
   sourceOptions: ClientSourceOption[];
@@ -241,6 +241,7 @@ export function CheckoutDialog({
   clockedInSellerIds,
   paymentMethods,
   bankCatalog,
+  installmentOptions,
   branches,
   agendaSlots,
   sourceOptions,

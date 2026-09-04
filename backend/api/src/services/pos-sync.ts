@@ -9,8 +9,10 @@ import type {
 } from "@cosmetics/types";
 import {
   posBusinessDayCountInputSchema,
+  posAgendaMembershipReservationSchema,
   posInventoryCountRequestSchema,
   posLayawayPaymentRequestSchema,
+  posMembershipAttendanceRequestSchema,
   posTicketCreateRequestSchema,
   posVoucherIssueRequestSchema,
 } from "../contracts/pos.contracts";
@@ -25,6 +27,13 @@ import {
 } from "./pos-auth";
 import { executePosIdempotent } from "./pos-inventory";
 import { enqueuePosNotification } from "./pos-notifications";
+import { reserveMembershipNextSession } from "./pos-agenda";
+import {
+  consumeMembershipAttendance,
+  membershipDto,
+  membershipInclude,
+  type PosMembershipContext,
+} from "./pos-memberships";
 import {
   businessDayDto,
   businessDayInclude,
@@ -42,6 +51,16 @@ import {
 
 const money = (value: Prisma.Decimal | string | number) =>
   new Prisma.Decimal(value).toFixed(2);
+
+const posOfflineMembershipAttendanceSchema =
+  posMembershipAttendanceRequestSchema.omit({
+    personalAuthorizationToken: true,
+  });
+
+const jsonStringArray = (value: Prisma.JsonValue): string[] =>
+  Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : [];
 
 export class PosSyncError extends Error {
   constructor(
@@ -64,6 +83,8 @@ const operationPermission: Record<PosOfflineOperationKind, PosPermissionKey> = {
   INVENTORY_COUNT: "INVENTORY_VIEW",
   TICKET_CREATE: "SALE_CREATE",
   LAYAWAY_PAYMENT: "SALE_CREATE",
+  AGENDA_MEMBERSHIP_RESERVATION: "MEMBERSHIPS_MANAGE",
+  MEMBERSHIP_ATTENDANCE: "MEMBERSHIPS_MANAGE",
   VOUCHER_ISSUE: "VOUCHERS_MANAGE",
   VOUCHER_PRINT: "VOUCHERS_MANAGE",
   BUSINESS_DAY_CLOSING_COUNT: "BUSINESS_DAY_CLOSE",
@@ -87,6 +108,7 @@ function payloadHash(operation: PosOfflineOperationDto): string {
       stableJson({
         kind: operation.kind,
         entityId: operation.entityId,
+        dependsOn: operation.dependsOn,
         payload: operation.payload,
       }),
     )
@@ -253,7 +275,15 @@ export async function createOfflineBootstrap(
   actor: PosOfflineActor,
 ): Promise<PosOfflineBootstrapDto> {
   const now = new Date();
+  const agendaWindowEnd = new Date(now.getTime() + 31 * 24 * 60 * 60 * 1_000);
   const businessDate = businessDateAt(now.toISOString());
+  const canUseMemberships =
+    actor.isMaster ||
+    actor.permissions.some((permission) =>
+      ["MEMBERSHIPS_VIEW", "MEMBERSHIPS_MANAGE", "SALE_CREATE"].includes(
+        permission,
+      ),
+    );
   const [
     terminal,
     credential,
@@ -261,6 +291,13 @@ export async function createOfflineBootstrap(
     catalog,
     packages,
     paymentMethods,
+    banks,
+    cardNetworks,
+    installmentOptions,
+    courtesyProducts,
+    courtesyPackages,
+    courtesyConfiguration,
+    commercialCompany,
     vouchers,
     customerSources,
     ticketConfiguration,
@@ -269,6 +306,8 @@ export async function createOfflineBootstrap(
     balances,
     day,
     tickets,
+    memberships,
+    agendaSlots,
   ] = await Promise.all([
     prisma.posTerminal.findUniqueOrThrow({
       where: { id: actor.grant.terminalId },
@@ -330,6 +369,40 @@ export async function createOfflineBootstrap(
       where: { activo: true, posPolicy: { activeForPos: true } },
       include: { posPolicy: true },
       orderBy: { nombre: "asc" },
+    }),
+    prisma.posBank.findMany({
+      where: { active: true },
+      orderBy: { name: "asc" },
+    }),
+    prisma.posCardNetwork.findMany({
+      where: { active: true },
+      orderBy: { name: "asc" },
+    }),
+    prisma.posInstallmentOption.findMany({
+      where: { active: true },
+      orderBy: { months: "asc" },
+    }),
+    prisma.posCourtesyProduct.findMany({
+      where: { active: true },
+      orderBy: { name: "asc" },
+    }),
+    prisma.posCourtesyPackage.findMany({
+      where: { active: true },
+      include: {
+        lines: {
+          include: { product: true },
+          orderBy: { sortOrder: "asc" },
+        },
+      },
+      orderBy: { name: "asc" },
+    }),
+    prisma.posCourtesyCheckoutConfiguration.findFirst({
+      where: { OR: [{ branchId: actor.grant.branchId }, { branchId: null }] },
+      orderBy: { branchId: "desc" },
+    }),
+    prisma.posCommercialCompany.findFirst({
+      where: { active: true },
+      orderBy: { actualizadoEn: "desc" },
     }),
     prisma.posVoucherTemplate.findMany({
       where: { deletedAt: null, active: true, visibleToSellers: true },
@@ -404,6 +477,7 @@ export async function createOfflineBootstrap(
             ticketId: true,
             membershipItemId: true,
             membershipNameSnapshot: true,
+            unitOrdinal: true,
             status: true,
           },
           orderBy: { unitOrdinal: "asc" },
@@ -411,6 +485,31 @@ export async function createOfflineBootstrap(
       },
       orderBy: { creadoEn: "desc" },
       take: 200,
+    }),
+    canUseMemberships
+      ? prisma.posClientMembership.findMany({
+          where: {
+            purchaseBranchId: actor.grant.branchId,
+            ...(!actor.isMaster
+              ? actor.grant.employeeId
+                ? { currentSellerId: actor.grant.employeeId }
+                : { id: "__NO_OFFLINE_MEMBERSHIP_PORTFOLIO__" }
+              : {}),
+          },
+          include: membershipInclude,
+          orderBy: { purchasedAt: "desc" },
+          take: 500,
+        })
+      : Promise.resolve([]),
+    prisma.agendaSlot.findMany({
+      where: {
+        resource: { branchId: actor.grant.branchId, active: true },
+        startsAt: { gte: now, lte: agendaWindowEnd },
+        status: "AVAILABLE",
+      },
+      include: { resource: true },
+      orderBy: { startsAt: "asc" },
+      take: 1_000,
     }),
   ]);
   if (!credential) throw new PosSyncError("Credencial POS no encontrada", 401);
@@ -438,6 +537,7 @@ export async function createOfflineBootstrap(
     permissions: actor.permissions,
   });
   return {
+    schemaVersion: 2,
     grantToken: signed.token,
     grantExpiresAt: signed.expiresAt,
     issuedAt: now.toISOString(),
@@ -498,6 +598,77 @@ export async function createOfflineBootstrap(
       requiresReference: item.posPolicy?.requiresReference ?? false,
       referenceLabel: item.posPolicy?.referenceLabel ?? null,
     })),
+    paymentCatalogs: {
+      banks: banks.map((item) => ({
+        id: item.id,
+        name: item.name,
+        active: item.active,
+        version: item.version,
+        sourceName: item.sourceName,
+        sourceReviewedAt: item.sourceReviewedAt.toISOString().slice(0, 10),
+      })),
+      cardNetworks: cardNetworks.map((item) => ({
+        id: item.id,
+        name: item.name,
+        active: item.active,
+        version: item.version,
+        sourceName: item.sourceName,
+        sourceReviewedAt: item.sourceReviewedAt.toISOString().slice(0, 10),
+      })),
+      installmentOptions: installmentOptions.map((item) => ({
+        id: item.id,
+        months: item.months,
+        label: item.label,
+        active: item.active,
+        version: item.version,
+        sourceName: item.sourceName,
+        sourceReviewedAt: item.sourceReviewedAt.toISOString().slice(0, 10),
+      })),
+    },
+    courtesyConfiguration: (() => {
+      const validPackages = courtesyPackages.filter(
+        (item) =>
+          item.lines.length >= 1 &&
+          item.lines.length <= 2 &&
+          item.lines.every((line) => line.product.active),
+      );
+      const defaultPackage = validPackages.find(
+        (item) => item.id === courtesyConfiguration?.defaultPackageId,
+      );
+      return {
+        required: Boolean(courtesyConfiguration?.required && defaultPackage),
+        defaultPackageId: defaultPackage?.id ?? null,
+        products: courtesyProducts.map((item) => ({
+          id: item.id,
+          name: item.name,
+          type: item.type,
+          active: true,
+          version: item.version,
+        })),
+        packages: validPackages.map((item) => ({
+          id: item.id,
+          name: item.name,
+          active: true,
+          version: item.version,
+          productIds: item.lines.map((line) => line.productId),
+          products: item.lines.map((line) => ({
+            id: line.product.id,
+            name: line.product.name,
+            type: line.product.type,
+            active: line.product.active,
+          })),
+        })),
+      };
+    })(),
+    commercialCompany: commercialCompany
+      ? {
+          id: commercialCompany.id,
+          name: commercialCompany.name,
+          salesNumber: commercialCompany.salesNumber,
+          active: commercialCompany.active,
+          version: commercialCompany.version,
+        }
+      : null,
     voucherTemplates: vouchers.map((item) => ({
       id: item.id,
       name: item.name,
@@ -553,6 +724,39 @@ export async function createOfflineBootstrap(
     })),
     businessDay: day ? businessDayDto(day) : null,
     tickets: tickets.map(ticketDto),
+    memberships: memberships.map(membershipDto),
+    agendaSlots: agendaSlots.map((slot) => ({
+      id: slot.id,
+      externalSystem: "AGENDA_CRM" as const,
+      externalCalendarId: slot.resource.externalCalendarId,
+      externalSlotId: slot.externalSlotId,
+      branchId: slot.resource.branchId,
+      branchName: terminal.branch.nombre,
+      date: businessDateAt(slot.startsAt.toISOString()),
+      startsAt: slot.startsAt.toISOString(),
+      endsAt: slot.endsAt.toISOString(),
+      startTime: new Intl.DateTimeFormat("en-GB", {
+        timeZone: "America/Mexico_City",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      }).format(slot.startsAt),
+      endTime: new Intl.DateTimeFormat("en-GB", {
+        timeZone: "America/Mexico_City",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      }).format(slot.endsAt),
+      resourceId: slot.resourceId,
+      resourceName: slot.resource.nameSnapshot,
+      resourceType: slot.resource.type,
+      capacity: slot.capacity,
+      reservedCount: slot.reservedCount,
+      availableSeats: slot.capacity - slot.reservedCount,
+      status: slot.status,
+      version: slot.sourceVersion,
+      updatedAt: slot.actualizadoEn.toISOString(),
+    })),
   };
 }
 
@@ -561,6 +765,49 @@ async function executeOperation(
   actor: PosOfflineActor,
 ): Promise<{ data: unknown; message: string; status: number }> {
   assertPermission(actor, operation.kind as PosOfflineOperationKind);
+  const dependencies = operation.dependsOn.length
+    ? await prisma.posSyncOperation.findMany({
+        where: { clientOperationId: { in: operation.dependsOn } },
+        select: {
+          clientOperationId: true,
+          terminalId: true,
+          kind: true,
+          status: true,
+          serverEntityId: true,
+          response: true,
+        },
+      })
+    : [];
+  if (dependencies.length !== operation.dependsOn.length) {
+    throw new PosSyncError(
+      "La operación declara una dependencia local inexistente",
+      409,
+      "OFFLINE_DEPENDENCY_MISSING",
+    );
+  }
+  if (
+    dependencies.some(
+      (dependency) => dependency.terminalId !== actor.grant.terminalId,
+    )
+  ) {
+    throw new PosSyncError(
+      "La operación depende de otra terminal",
+      409,
+      "OFFLINE_DEPENDENCY_TERMINAL_MISMATCH",
+    );
+  }
+  if (
+    dependencies.some(
+      (dependency) =>
+        dependency.status !== "SYNCED" || !dependency.serverEntityId,
+    )
+  ) {
+    throw new PosSyncError(
+      "La operación depende de un efecto que todavía no fue conciliado",
+      409,
+      "OFFLINE_DEPENDENCY_UNRESOLVED",
+    );
+  }
   const localReference = operation.entityId
     ? await prisma.posSyncOperation.findUnique({
         where: { clientOperationId: operation.entityId },
@@ -588,6 +835,11 @@ async function executeOperation(
     businessDate: businessDateAt(operation.createdAt),
     isMaster: actor.isMaster,
     sessionId: actor.grant.sessionId,
+  };
+  const membershipContext: PosMembershipContext = {
+    ...context,
+    employeeId: actor.grant.employeeId,
+    authorizedBranchIds: [actor.grant.branchId],
   };
   if (resolvedOperation.kind === "TICKET_CREATE") {
     const input = posTicketCreateRequestSchema.parse(resolvedOperation.payload);
@@ -630,6 +882,153 @@ async function executeOperation(
           ),
         ),
       }),
+    });
+    return result;
+  }
+  if (resolvedOperation.kind === "AGENDA_MEMBERSHIP_RESERVATION") {
+    if (!resolvedOperation.entityId)
+      throw new PosSyncError("La reservación no indica membresía");
+    const input = posAgendaMembershipReservationSchema.parse(
+      resolvedOperation.payload,
+    );
+    if (input.membershipId !== operation.entityId) {
+      throw new PosSyncError(
+        "La membresía de la reservación no coincide con su entidad",
+      );
+    }
+    let membershipId = resolvedOperation.entityId;
+    if (input.membershipItemId && input.unitOrdinal) {
+      const ticketDependency = dependencies.find(
+        (dependency) => dependency.kind === "TICKET_CREATE",
+      );
+      const ticketResponse =
+        ticketDependency?.response &&
+        !Array.isArray(ticketDependency.response) &&
+        typeof ticketDependency.response === "object"
+          ? (ticketDependency.response as Record<string, unknown>)
+          : null;
+      const memberships = Array.isArray(ticketResponse?.["memberships"])
+        ? ticketResponse["memberships"]
+        : [];
+      const createdMembership = memberships.find((candidate) => {
+        if (
+          !candidate ||
+          Array.isArray(candidate) ||
+          typeof candidate !== "object"
+        )
+          return false;
+        const record = candidate as Record<string, unknown>;
+        return (
+          record["membershipItemId"] === input.membershipItemId &&
+          record["unitOrdinal"] === input.unitOrdinal
+        );
+      }) as Record<string, unknown> | undefined;
+      if (typeof createdMembership?.["id"] !== "string") {
+        throw new PosSyncError(
+          "La membresía local no pudo resolverse desde su ticket conciliado",
+          409,
+          "OFFLINE_MEMBERSHIP_REFERENCE_UNRESOLVED",
+        );
+      }
+      membershipId = createdMembership["id"];
+    }
+    const scopedMembership = await prisma.$transaction((tx) =>
+      tx.posClientMembership.findFirst({
+        where: {
+          id: membershipId,
+          purchaseBranchId: actor.grant.branchId,
+          ...(!actor.isMaster
+            ? actor.grant.employeeId
+              ? { currentSellerId: actor.grant.employeeId }
+              : { id: "__NO_OFFLINE_MEMBERSHIP_PORTFOLIO__" }
+            : {}),
+        },
+        select: { id: true },
+      }),
+    );
+    if (!scopedMembership)
+      throw new PosSyncError("Membresía no encontrada o fuera de alcance", 404);
+    const appointment = await reserveMembershipNextSession({
+      operationKey: operation.idempotencyKey,
+      membershipId,
+      agendaSlotId: input.agendaSlotId,
+      sellerId: input.sellerId,
+      credentialId: context.credentialId,
+      authorizedBranchIds: membershipContext.authorizedBranchIds,
+    });
+    return {
+      status: 201,
+      message: "Reservación offline confirmada por Agenda",
+      data: {
+        id: appointment.id,
+        kind: appointment.kind,
+        status: appointment.status,
+        serviceItemId: appointment.serviceItemId,
+        serviceName: appointment.serviceNameSnapshot,
+        branchId: appointment.branchId,
+        branchName: appointment.branch.nombre,
+        sellerId: appointment.sellerId,
+        scheduledAt: appointment.scheduledAt?.toISOString() ?? null,
+        agendaSlotId: appointment.agendaSlotId,
+        agendaReservationId: appointment.agendaReservationId,
+        externalReservationId: appointment.externalReservationId,
+        externalAppointmentId: appointment.externalAppointmentId,
+        agendaResourceName: appointment.agendaResource?.nameSnapshot ?? null,
+        agendaVersion: appointment.agendaVersion,
+        membershipId: appointment.membershipId,
+        courtesyReason: null,
+      },
+    };
+  }
+  if (resolvedOperation.kind === "MEMBERSHIP_ATTENDANCE") {
+    if (!resolvedOperation.entityId)
+      throw new PosSyncError("La asistencia no indica membresía");
+    const input = posOfflineMembershipAttendanceSchema.parse(
+      resolvedOperation.payload,
+    );
+    const appointmentDependency = dependencies.find(
+      (dependency) => dependency.clientOperationId === input.appointmentId,
+    );
+    const appointmentId =
+      appointmentDependency?.serverEntityId ?? input.appointmentId;
+    const appointmentResponse =
+      appointmentDependency?.response &&
+      !Array.isArray(appointmentDependency.response) &&
+      typeof appointmentDependency.response === "object"
+        ? (appointmentDependency.response as Record<string, unknown>)
+        : null;
+    const membershipId =
+      typeof appointmentResponse?.["membershipId"] === "string"
+        ? appointmentResponse["membershipId"]
+        : resolvedOperation.entityId;
+    const result = await executePosIdempotent({
+      key: operation.idempotencyKey,
+      actorCredentialId: context.credentialId,
+      operation: `POS_MEMBERSHIP_ATTENDANCE:${membershipId}:${appointmentId}`,
+      payload: { ...input, appointmentId },
+      execute: async (tx) => {
+        const membership = membershipDto(
+          await consumeMembershipAttendance(
+            tx,
+            {
+              membershipId,
+              appointmentId,
+              event: input.event,
+              branchId: input.branchId,
+              signatureStatus: input.signatureStatus,
+            },
+            membershipContext,
+          ),
+        );
+        return {
+          status: 200,
+          message:
+            input.event === "ATTENDED"
+              ? "Asistencia offline conciliada"
+              : "El evento offline no consume sesiones",
+          data: { id: membership.id, appointmentId, membership },
+        };
+      },
     });
     return result;
   }
@@ -958,6 +1357,8 @@ export async function pushOfflineOperations(
         existing.idempotencyKey !== operation.idempotencyKey ||
         existing.kind !== operation.kind ||
         existing.entityId !== operation.entityId ||
+        JSON.stringify(jsonStringArray(existing.dependencyIds)) !==
+          JSON.stringify(operation.dependsOn) ||
         existing.clientCreatedAt.getTime() !==
           new Date(operation.createdAt).getTime()
       ) {
@@ -1009,6 +1410,7 @@ export async function pushOfflineOperations(
           kind: operation.kind,
           idempotencyKey: operation.idempotencyKey,
           entityId: operation.entityId,
+          dependencyIds: operation.dependsOn,
           payloadHash: hash,
           status: "SYNCING",
           clientCreatedAt: new Date(operation.createdAt),

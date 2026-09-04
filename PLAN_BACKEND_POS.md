@@ -48,7 +48,7 @@ Los dos esquemas Prisma existentes están sincronizados. No hay credenciales loc
 | 11. Agenda CRM                       | Completada — 2026-09-04                            | Backend/API + Agenda + POS             | Cliente y reservación tienen IDs externos; conflictos y webhooks se reconcilian.           |
 | 12. Reglas comerciales ampliadas     | Completada — 2026-09-04                            | Backend/API + POS + Finanzas           | Pagos, cortesías, cartera y participantes conservan validación y snapshots históricos.     |
 | 13. Consultas y reportes ampliados   | Completada en repositorio — 2026-09-04             | Backend/API + POS                      | Indicadores, filtros y exportaciones coinciden para todo el alcance autorizado.            |
-| 14. Offline y segundo piloto         | Pendiente                                          | POS/Electron + Backend/API + Operación | Las capacidades nuevas sobreviven reintentos y pasan conciliación integral.                |
+| 14. Offline y segundo piloto         | Implementada en repositorio — activación pendiente | POS/Electron + Backend/API + Operación | Las capacidades nuevas sobreviven reintentos y pasan conciliación integral.                |
 
 El responsable principal ejecuta la fase; los equipos indicados como colaboradores revisan sus límites. Ninguna fase posterior inicia mutaciones de datos por el mero hecho de que exista este plan.
 
@@ -527,14 +527,16 @@ Todo requisito de las secciones 20–46 queda así asignado. La presencia de una
 
 ### Fase 14 — Extensión offline, integración del POS y segundo piloto
 
-- [ ] Extender contratos, tipos compartidos, cliente HTTP y repositorios del POS para sustituir el estado local incorporado por las pantallas nuevas.
-- [ ] Incluir en el outbox membresías, activación por liquidación y operaciones de Agenda con dependencias explícitas `customer -> membership/ticket -> reservation -> attendance`. Una terminal offline no promete capacidad; muestra `PENDING_SYNC` hasta que Agenda confirme o devuelve `CONFLICT` sin perder el payload.
-- [ ] Mantener catálogos bancarios, permisos, Settings, cambios de cartera y cierres comerciales exclusivamente online. El bootstrap offline contiene sólo la versión publicada y autorizada necesaria para cobrar.
+- [x] Extender contratos, tipos compartidos, cliente HTTP y repositorios del POS para sustituir el estado local incorporado por las pantallas nuevas.
+- [x] Incluir en el outbox membresías, activación por liquidación y operaciones de Agenda con dependencias explícitas `customer -> membership/ticket -> reservation -> attendance`. Una terminal offline no promete capacidad; muestra `PENDING_SYNC` hasta que Agenda confirme o devuelve `CONFLICT` sin perder el payload.
+- [x] Mantener catálogos bancarios, permisos, Settings, cambios de cartera y cierres comerciales exclusivamente online. El bootstrap offline contiene sólo la versión publicada y autorizada necesaria para cobrar.
 - [ ] Verificar en Electron los requisitos puramente visuales de las secciones 29, 30, 38 y 46, el Catálogo bajo Ventas y el selector directo de mes/año, conservando estado, foco, accesibilidad y ausencia de desbordamiento.
-- [ ] Ampliar el conciliador y el workflow del piloto con tarjetones por unidad, activaciones, consumos, Agenda, cobros/MSI, cartera, participantes de empresa, reportes y operaciones offline pendientes.
+- [x] Ampliar el conciliador y el workflow del piloto con tarjetones por unidad, activaciones, consumos, Agenda, cobros/MSI, cartera, participantes de empresa, reportes y operaciones offline pendientes.
 - [ ] Ejecutar el piloto en una sucursal y luego en alcance multi-sucursal. Producción sólo se habilita con cero diferencias, cero conflictos no resueltos, rollback compatible hacia adelante y aprobación de Agenda, Finanzas, Operación y Producto.
 
 **Puerta de salida:** type-check/build/test completos, migraciones reconstruidas desde cero sobre PostgreSQL 16, integración HTTP, pruebas de contrato Agenda, E2E web/Electron, recuperación offline y reporte de conciliación `PASS`.
+
+**Criterio de cierre en repositorio: implementado el 2026-09-04; activación pendiente.** El contrato offline v2, las dependencias durables de ticket/membresía/Agenda/asistencia, el bootstrap comercial autorizado y la conciliación ampliada están implementados mediante la migración aditiva `20260904050000_extend_pos_offline_pilot`. La verificación visual estructural y los builds se ejecutan localmente, pero la prueba Electron interactiva no puede abrir el puerto del renderer en este sandbox. La reconstrucción PostgreSQL 16, integración HTTP, sandbox de Agenda, recuperación con instalable y los pilotos real/multi-sucursal permanecen sin marcar y bloquean producción. Contrato: `docs/POS_OFFLINE_SECOND_PILOT.md`.
 
 ## 4. Pruebas y criterios de aceptación
 

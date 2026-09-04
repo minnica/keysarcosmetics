@@ -946,6 +946,11 @@ router.put(
         data: parsed.error.flatten().fieldErrors,
       });
     const input = parsed.data;
+    const updatesPortfolio =
+      Object.prototype.hasOwnProperty.call(req.body, "branchId") ||
+      Object.prototype.hasOwnProperty.call(req.body, "employeeId");
+    if (input.branchId)
+      assertBranchAuthorized(req.posUser!.authorizedBranchIds, input.branchId);
     try {
       const { customer, portfolio, agendaEventId } = await db.$transaction(
         async (tx) => {
@@ -964,6 +969,53 @@ router.put(
           const event = updated.externalClientId
             ? await enqueueAgendaCustomerUpdate(tx, updated.id)
             : null;
+          if (updatesPortfolio) {
+            const employee = input.employeeId
+              ? await tx.empleado.findFirst({
+                  where: { id: input.employeeId, activo: true },
+                  select: { id: true, nombreCompleto: true },
+                })
+              : null;
+            if (input.employeeId && !employee)
+              throw new Error("ACTIVE_EMPLOYEE_REQUIRED");
+            const company = !employee
+              ? await tx.posCommercialCompany.findFirst({
+                  where: { active: true },
+                  orderBy: { creadoEn: "asc" },
+                })
+              : null;
+            if (!employee && !company)
+              throw new Error("ACTIVE_COMPANY_REQUIRED");
+            const previousPortfolio =
+              await tx.customerPortfolioAssignment.findFirst({
+                where: { customerId: updated.id, effectiveTo: null },
+                orderBy: { effectiveFrom: "desc" },
+              });
+            if (
+              previousPortfolio?.branchId !== input.branchId ||
+              previousPortfolio?.employeeId !== (employee?.id ?? null) ||
+              previousPortfolio?.companyId !== (company?.id ?? null)
+            ) {
+              await tx.customerPortfolioAssignment.updateMany({
+                where: { customerId: updated.id, effectiveTo: null },
+                data: {
+                  effectiveTo: new Date(),
+                  endedReason: "MANUAL_TRANSFER",
+                },
+              });
+              await tx.customerPortfolioAssignment.create({
+                data: {
+                  customerId: updated.id,
+                  branchId: input.branchId,
+                  employeeId: employee?.id ?? null,
+                  companyId: company?.id ?? null,
+                  ownerNameSnapshot: employee?.nombreCompleto ?? company?.name,
+                  ownerCodeSnapshot: employee?.id ?? company?.salesNumber,
+                  createdByCredentialId: req.posUser!.credentialId,
+                },
+              });
+            }
+          }
           const currentPortfolio =
             await tx.customerPortfolioAssignment.findFirst({
               where: { customerId: updated.id, effectiveTo: null },
@@ -1216,6 +1268,60 @@ router.get(
         requiresReference: item.posPolicy?.requiresReference ?? false,
         referenceLabel: item.posPolicy?.referenceLabel ?? null,
       })),
+    });
+  },
+);
+router.post(
+  "/settings/payment-methods",
+  requirePosPermission("PAYMENTS_MANAGE"),
+  async (req, res) => {
+    const parsed = posPaymentPolicyWriteSchema.safeParse(req.body);
+    if (!parsed.success)
+      return res.status(400).json({
+        success: false,
+        message: "Método inválido",
+        data: parsed.error.flatten().fieldErrors,
+      });
+    const input = parsed.data;
+    const duplicate = await db.metodoPago.findFirst({
+      where: { nombre: { equals: input.name, mode: "insensitive" } },
+      select: { id: true },
+    });
+    if (duplicate)
+      return res.status(409).json({
+        success: false,
+        message: "Ya existe un método con ese nombre",
+        data: null,
+      });
+    const item = await db.metodoPago.create({
+      data: {
+        nombre: input.name,
+        tipo: input.type,
+        activo: input.active,
+        posPolicy: {
+          create: {
+            activeForPos: input.activeForPos,
+            requiresReference: input.requiresReference,
+            referenceLabel: input.referenceLabel,
+            minAmount: input.minAmount ? decimal(input.minAmount) : null,
+            maxAmount: input.maxAmount ? decimal(input.maxAmount) : null,
+          },
+        },
+      },
+      include: { posPolicy: true },
+    });
+    res.status(201).json({
+      success: true,
+      message: "Método POS creado",
+      data: {
+        id: item.id,
+        name: item.nombre,
+        type: item.tipo,
+        active: item.activo,
+        activeForPos: item.posPolicy!.activeForPos,
+        requiresReference: item.posPolicy!.requiresReference,
+        referenceLabel: item.posPolicy!.referenceLabel,
+      },
     });
   },
 );

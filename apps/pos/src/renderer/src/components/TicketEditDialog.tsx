@@ -45,8 +45,6 @@ interface EditableLine extends TicketEditProductInput {
   id: string;
 }
 
-const installmentOptions = [1, 3, 6, 9, 12, 18, 24];
-
 interface TicketEditDialogProps {
   open: boolean;
   ticket: Ticket | null;
@@ -54,6 +52,7 @@ interface TicketEditDialogProps {
   products: Product[];
   paymentMethods: PaymentMethodOption[];
   bankCatalog: BankCatalogEntry[];
+  installmentOptions: number[];
   onOpenChange: (open: boolean) => void;
   backendMode?: boolean;
   defaultAuthorizationAlias?: string;
@@ -67,6 +66,7 @@ export function TicketEditDialog({
   products,
   paymentMethods,
   bankCatalog,
+  installmentOptions,
   onOpenChange,
   onSave,
   backendMode = false,

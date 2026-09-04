@@ -404,7 +404,9 @@ export function MembershipsView({
         (appointment) =>
           appointment.clientId === selectedMembership.clientId &&
           appointment.membershipId === selectedMembership.id &&
-          appointment.status === "SCHEDULED" &&
+          (appointment.status === "SCHEDULED" ||
+            (appointment.status === "PENDING" &&
+              appointment.agendaSyncStatus === "PENDING_SYNC")) &&
           !appointment.membershipSessionConsumedAtIso,
       )
     : [];
@@ -593,7 +595,9 @@ export function MembershipsView({
     const firstAppointment = appointments.find(
       (appointment) =>
         appointment.clientId === membership.clientId &&
-        appointment.status === "SCHEDULED" &&
+        (appointment.status === "SCHEDULED" ||
+          (appointment.status === "PENDING" &&
+            appointment.agendaSyncStatus === "PENDING_SYNC")) &&
         !appointment.membershipSessionConsumedAtIso,
     );
     setSelectedAppointmentId(firstAppointment?.id ?? "");

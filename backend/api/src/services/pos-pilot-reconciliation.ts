@@ -40,6 +40,11 @@ export interface PosPilotReconciliationReport {
     layawayPayments: number;
     cancellationsOrReturns: number;
     inventoryMovements: number;
+    memberships: number;
+    membershipAttendances: number;
+    agendaAppointments: number;
+    installmentPayments: number;
+    companyParticipants: number;
     offlineOperationsSynced: number;
   };
   totals: {
@@ -204,6 +209,7 @@ export async function reconcilePosPilot(
       where: { branchId: options.branchId, businessDate },
       select: {
         id: true,
+        customerId: true,
         status: true,
         settlementStatus: true,
         total: true,
@@ -216,6 +222,43 @@ export async function reconcilePosPilot(
         paymentOperations: {
           select: { kind: true, amount: true },
         },
+        participants: {
+          select: {
+            kind: true,
+            employeeId: true,
+            companyId: true,
+            shareAmount: true,
+          },
+        },
+        clientMemberships: {
+          select: {
+            id: true,
+            status: true,
+            activatedAt: true,
+            usedSessions: true,
+            totalSessions: true,
+            purchaseBranchId: true,
+            attendance: {
+              select: {
+                branchId: true,
+                appointmentId: true,
+                corrections: { select: { sessionDelta: true } },
+              },
+            },
+          },
+        },
+        appointments: {
+          select: {
+            id: true,
+            status: true,
+            ticketId: true,
+            customerId: true,
+            branchId: true,
+            membershipId: true,
+            externalAppointmentId: true,
+            agendaReservationId: true,
+          },
+        },
       },
     }),
     db.posPaymentOperation.findMany({
@@ -227,7 +270,13 @@ export async function reconcilePosPilot(
         id: true,
         kind: true,
         amount: true,
-        payments: { select: { paymentMethodId: true, amount: true } },
+        payments: {
+          select: {
+            paymentMethodId: true,
+            amount: true,
+            installmentMonths: true,
+          },
+        },
         legacyProjections: {
           select: {
             employeeId: true,
@@ -407,6 +456,93 @@ export async function reconcilePosPilot(
     String(ticketSettlementMismatches),
   );
 
+  let participantMismatches = 0;
+  let membershipMismatches = 0;
+  let agendaMembershipMismatches = 0;
+  for (const ticket of tickets) {
+    const participantTotal = sum(
+      ticket.participants.map((participant) => participant.shareAmount),
+    );
+    if (
+      ticket.participants.length === 0 ||
+      !participantTotal.equals(ticket.total) ||
+      ticket.participants.some((participant) =>
+        participant.kind === "SELLER"
+          ? !participant.employeeId || Boolean(participant.companyId)
+          : !participant.companyId || Boolean(participant.employeeId),
+      )
+    ) {
+      participantMismatches += 1;
+    }
+    for (const membership of ticket.clientMemberships) {
+      const correctedAttendanceCount = membership.attendance.reduce(
+        (total, attendance) =>
+          total +
+          1 +
+          attendance.corrections.reduce(
+            (delta, correction) => delta + correction.sessionDelta,
+            0,
+          ),
+        0,
+      );
+      const paid = ticket.pendingAmount.equals(0);
+      const canceled = ["CANCELED", "REFUNDED"].includes(ticket.status);
+      const statusMatches = canceled
+        ? membership.status === "CANCELED"
+        : paid
+          ? membership.usedSessions >= membership.totalSessions
+            ? membership.status === "EXHAUSTED"
+            : membership.status === "ACTIVE"
+          : membership.status === "PENDING";
+      if (
+        membership.purchaseBranchId !== options.branchId ||
+        membership.usedSessions !== correctedAttendanceCount ||
+        !statusMatches ||
+        (!canceled &&
+          (paid ? !membership.activatedAt : Boolean(membership.activatedAt))) ||
+        membership.attendance.some(
+          (attendance) => attendance.branchId !== options.branchId,
+        )
+      ) {
+        membershipMismatches += 1;
+      }
+    }
+    for (const appointment of ticket.appointments) {
+      if (
+        appointment.ticketId !== ticket.id ||
+        appointment.customerId !== ticket.customerId ||
+        appointment.branchId !== options.branchId ||
+        (appointment.membershipId &&
+          !ticket.clientMemberships.some(
+            (membership) => membership.id === appointment.membershipId,
+          )) ||
+        (["SCHEDULED", "ATTENDED"].includes(appointment.status) &&
+          (!appointment.externalAppointmentId ||
+            !appointment.agendaReservationId))
+      ) {
+        agendaMembershipMismatches += 1;
+      }
+    }
+  }
+  check(
+    "COMMERCIAL_PARTICIPANTS_RECONCILED",
+    participantMismatches === 0,
+    "0 mismatches",
+    String(participantMismatches),
+  );
+  check(
+    "MEMBERSHIP_ACTIVATION_AND_CONSUMPTION_RECONCILED",
+    membershipMismatches === 0,
+    "0 mismatches",
+    String(membershipMismatches),
+  );
+  check(
+    "AGENDA_MEMBERSHIP_LINKS_RECONCILED",
+    agendaMembershipMismatches === 0,
+    "0 mismatches",
+    String(agendaMembershipMismatches),
+  );
+
   let operationPaymentMismatches = 0;
   let operationProjectionMismatches = 0;
   let legacySaleMismatches = 0;
@@ -558,8 +694,10 @@ export async function reconcilePosPilot(
     ? await db.posSyncOperation.findMany({
         where: { terminalId: { in: terminalIds } },
         select: {
+          clientOperationId: true,
           terminalId: true,
           terminalSequence: true,
+          dependencyIds: true,
           status: true,
           creadoEn: true,
         },
@@ -593,6 +731,10 @@ export async function reconcilePosPilot(
     ).length,
   };
   let syncSequenceMismatches = 0;
+  let syncDependencyMismatches = 0;
+  const syncByClientId = new Map(
+    syncOperations.map((operation) => [operation.clientOperationId, operation]),
+  );
   for (const terminalId of terminalIds) {
     const terminalOperations = syncOperations.filter(
       (operation) => operation.terminalId === terminalId,
@@ -614,6 +756,26 @@ export async function reconcilePosPilot(
     ) {
       syncSequenceMismatches += 1;
     }
+    for (const operation of terminalOperations) {
+      const dependencyIds = Array.isArray(operation.dependencyIds)
+        ? operation.dependencyIds.filter(
+            (value): value is string => typeof value === "string",
+          )
+        : [];
+      if (
+        dependencyIds.some((dependencyId) => {
+          const dependency = syncByClientId.get(dependencyId);
+          return (
+            !dependency ||
+            dependency.terminalId !== operation.terminalId ||
+            dependency.terminalSequence >= operation.terminalSequence ||
+            dependency.status !== "SYNCED"
+          );
+        })
+      ) {
+        syncDependencyMismatches += 1;
+      }
+    }
   }
   const unresolvedSync =
     synchronization.pending +
@@ -627,10 +789,22 @@ export async function reconcilePosPilot(
     String(unresolvedSync),
   );
   check(
+    "REPORT_SOURCES_HAVE_NO_PENDING_OFFLINE_DATA",
+    unresolvedSync === 0,
+    "0 operations excluded from canonical reports",
+    String(unresolvedSync),
+  );
+  check(
     "OFFLINE_SEQUENCE_CONTIGUOUS",
     syncSequenceMismatches === 0,
     "0 sequence mismatches",
     String(syncSequenceMismatches),
+  );
+  check(
+    "OFFLINE_DEPENDENCIES_RECONCILED",
+    syncDependencyMismatches === 0,
+    "0 dependency mismatches",
+    String(syncDependencyMismatches),
   );
 
   const ticketIds = tickets.map((ticket) => ticket.id);
@@ -705,6 +879,31 @@ export async function reconcilePosPilot(
   const layawayPayments = paymentOperations.filter(
     (operation) => operation.kind === "LAYAWAY_PAYMENT",
   ).length;
+  const memberships = tickets.flatMap((ticket) => ticket.clientMemberships);
+  const membershipAttendances = memberships.reduce(
+    (total, membership) => total + membership.attendance.length,
+    0,
+  );
+  const agendaAppointments = tickets.reduce(
+    (total, ticket) => total + ticket.appointments.length,
+    0,
+  );
+  const installmentPayments = paymentOperations.reduce(
+    (total, operation) =>
+      total +
+      operation.payments.filter(
+        (payment) => (payment.installmentMonths ?? 0) > 0,
+      ).length,
+    0,
+  );
+  const companyParticipants = tickets.reduce(
+    (total, ticket) =>
+      total +
+      ticket.participants.filter(
+        (participant) => participant.kind === "COMPANY",
+      ).length,
+    0,
+  );
   if (options.requireClosedDay) {
     check(
       "PILOT_DAY_CLOSED",
@@ -737,6 +936,30 @@ export async function reconcilePosPilot(
       inventoryMovements.length > 0,
       ">= 1 inventory movement",
       String(inventoryMovements.length),
+    );
+    check(
+      "PILOT_MEMBERSHIP_COVERAGE",
+      memberships.length > 0 && membershipAttendances > 0,
+      ">= 1 membership and attendance",
+      `${memberships.length}/${membershipAttendances}`,
+    );
+    check(
+      "PILOT_AGENDA_COVERAGE",
+      agendaAppointments > 0,
+      ">= 1 Agenda appointment",
+      String(agendaAppointments),
+    );
+    check(
+      "PILOT_INSTALLMENT_COVERAGE",
+      installmentPayments > 0,
+      ">= 1 installment payment",
+      String(installmentPayments),
+    );
+    check(
+      "PILOT_COMPANY_PARTICIPANT_COVERAGE",
+      companyParticipants > 0,
+      ">= 1 company participant",
+      String(companyParticipants),
     );
   }
   if (options.requireOfflineSync) {
@@ -784,6 +1007,11 @@ export async function reconcilePosPilot(
       layawayPayments,
       cancellationsOrReturns,
       inventoryMovements: inventoryMovements.length,
+      memberships: memberships.length,
+      membershipAttendances,
+      agendaAppointments,
+      installmentPayments,
+      companyParticipants,
       offlineOperationsSynced: synchronization.synced,
     },
     totals: {
