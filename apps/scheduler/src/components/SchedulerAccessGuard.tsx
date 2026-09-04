@@ -96,6 +96,11 @@ export function SchedulerAccessGuard({ children }: { children: ReactNode }) {
   const isSecuritySettings =
     pathname.startsWith("/configuraciones") &&
     searchParams.get("section") === "authorizations";
+  const isOperationalAdministration =
+    pathname.startsWith("/administracion") &&
+    ["locals", "professionals", "services", "resources"].includes(
+      searchParams.get("section") ?? "locals",
+    );
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -141,7 +146,11 @@ export function SchedulerAccessGuard({ children }: { children: ReactNode }) {
       </main>
     );
   }
-  if (!bootstrap.mockModeEnabled && !isSecuritySettings) {
+  if (
+    !bootstrap.mockModeEnabled &&
+    !isSecuritySettings &&
+    !isOperationalAdministration
+  ) {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center gap-4 bg-[var(--bg-primary)] px-6 text-center">
         <p className="section-heading">Scheduler protegido</p>

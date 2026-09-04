@@ -1,5 +1,5 @@
-import { AdministrationWorkspace } from '@/components/administration/AdministrationWorkspace'
+import { AdministrationEntry } from "@/components/administration/AdministrationEntry";
 
 export default function AdministrationPage() {
-  return <AdministrationWorkspace />
+  return <AdministrationEntry />;
 }

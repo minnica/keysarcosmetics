@@ -25,6 +25,7 @@ import {
   toSchedulerBootstrap,
   writeSchedulerAudit,
 } from "../services/scheduler-access";
+import schedulerOperationsRoutes from "./scheduler-operations.routes";
 
 const router: ExpressRouter = Router();
 const screenKeys = new Set<string>(SCHEDULER_SCREEN_KEYS);
@@ -95,6 +96,7 @@ const authorizationConsumeSchema = authorizationSchema
   });
 
 router.use(authMiddleware);
+router.use("/operations", schedulerOperationsRoutes);
 
 router.get("/bootstrap", async (req, res) => {
   try {
@@ -112,13 +114,11 @@ router.get("/bootstrap", async (req, res) => {
     });
   } catch (error) {
     console.error("[scheduler.bootstrap]", error);
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "No fue posible cargar la sesión de Scheduler",
-        data: null,
-      });
+    res.status(500).json({
+      success: false,
+      message: "No fue posible cargar la sesión de Scheduler",
+      data: null,
+    });
   }
 });
 
@@ -126,13 +126,11 @@ router.put("/security/secondary-secret", async (req, res) => {
   try {
     const parsed = secondarySecretSchema.safeParse(req.body);
     if (!parsed.success) {
-      res
-        .status(400)
-        .json({
-          success: false,
-          message: "Revisa la contraseña y el código secundario",
-          data: parsed.error.flatten().fieldErrors,
-        });
+      res.status(400).json({
+        success: false,
+        message: "Revisa la contraseña y el código secundario",
+        data: parsed.error.flatten().fieldErrors,
+      });
       return;
     }
     const access = await resolveSchedulerAccessForRequest(req);
@@ -157,13 +155,11 @@ router.put("/security/secondary-secret", async (req, res) => {
         outcome: "DENIED",
         actorUserId: access.userId,
       });
-      res
-        .status(403)
-        .json({
-          success: false,
-          message: "No fue posible validar la contraseña actual",
-          data: null,
-        });
+      res.status(403).json({
+        success: false,
+        message: "No fue posible validar la contraseña actual",
+        data: null,
+      });
       return;
     }
     const secretHash = await bcrypt.hash(parsed.data.secret, 12);
@@ -200,13 +196,11 @@ router.put("/security/secondary-secret", async (req, res) => {
     });
   } catch (error) {
     console.error("[scheduler.secondary-secret]", error);
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "No fue posible actualizar el código secundario",
-        data: null,
-      });
+    res.status(500).json({
+      success: false,
+      message: "No fue posible actualizar el código secundario",
+      data: null,
+    });
   }
 });
 
@@ -214,13 +208,11 @@ router.post("/authorizations", async (req, res) => {
   try {
     const parsed = authorizationSchema.safeParse(req.body);
     if (!parsed.success) {
-      res
-        .status(400)
-        .json({
-          success: false,
-          message: "Solicitud de autorización inválida",
-          data: parsed.error.flatten().fieldErrors,
-        });
+      res.status(400).json({
+        success: false,
+        message: "Solicitud de autorización inválida",
+        data: parsed.error.flatten().fieldErrors,
+      });
       return;
     }
     const access = await resolveSchedulerAccessForRequest(req);
@@ -248,13 +240,11 @@ router.post("/authorizations", async (req, res) => {
           screenKey: parsed.data.screenKey,
         },
       });
-      res
-        .status(403)
-        .json({
-          success: false,
-          message: "Código inválido, bloqueado o sin alcance suficiente",
-          data: null,
-        });
+      res.status(403).json({
+        success: false,
+        message: "Código inválido, bloqueado o sin alcance suficiente",
+        data: null,
+      });
       return;
     }
     await writeSchedulerAudit({
@@ -283,13 +273,11 @@ router.post("/authorizations", async (req, res) => {
     });
   } catch (error) {
     console.error("[scheduler.authorization]", error);
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "No fue posible emitir la autorización",
-        data: null,
-      });
+    res.status(500).json({
+      success: false,
+      message: "No fue posible emitir la autorización",
+      data: null,
+    });
   }
 });
 
@@ -297,13 +285,11 @@ router.post("/authorizations/consume", async (req, res) => {
   try {
     const parsed = authorizationConsumeSchema.safeParse(req.body);
     if (!parsed.success) {
-      res
-        .status(400)
-        .json({
-          success: false,
-          message: "Autorización temporal inválida",
-          data: parsed.error.flatten().fieldErrors,
-        });
+      res.status(400).json({
+        success: false,
+        message: "Autorización temporal inválida",
+        data: parsed.error.flatten().fieldErrors,
+      });
       return;
     }
     const access = await resolveSchedulerAccessForRequest(req);
@@ -324,13 +310,11 @@ router.post("/authorizations/consume", async (req, res) => {
       (!parsed.data.branchId ||
         hasSchedulerBranchAccess(access, parsed.data.branchId));
     if (!stillAuthorized) {
-      res
-        .status(403)
-        .json({
-          success: false,
-          message: "La sesión ya no conserva el permiso o alcance autorizado",
-          data: null,
-        });
+      res.status(403).json({
+        success: false,
+        message: "La sesión ya no conserva el permiso o alcance autorizado",
+        data: null,
+      });
       return;
     }
     const consumed = await consumeSchedulerAuthorization({
@@ -351,14 +335,12 @@ router.post("/authorizations/consume", async (req, res) => {
           screenKey: parsed.data.screenKey,
         },
       });
-      res
-        .status(403)
-        .json({
-          success: false,
-          message:
-            "La autorización expiró, ya fue usada o no corresponde al alcance",
-          data: null,
-        });
+      res.status(403).json({
+        success: false,
+        message:
+          "La autorización expiró, ya fue usada o no corresponde al alcance",
+        data: null,
+      });
       return;
     }
     await writeSchedulerAudit({
@@ -381,13 +363,11 @@ router.post("/authorizations/consume", async (req, res) => {
     });
   } catch (error) {
     console.error("[scheduler.authorization.consume]", error);
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "No fue posible consumir la autorización",
-        data: null,
-      });
+    res.status(500).json({
+      success: false,
+      message: "No fue posible consumir la autorización",
+      data: null,
+    });
   }
 });
 
@@ -428,13 +408,11 @@ router.get("/access", requireSchedulerAccessManager, async (req, res) => {
     res.json({ success: true, message: "OK", data });
   } catch (error) {
     console.error("[scheduler.access]", error);
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "No fue posible cargar los accesos de Scheduler",
-        data: null,
-      });
+    res.status(500).json({
+      success: false,
+      message: "No fue posible cargar los accesos de Scheduler",
+      data: null,
+    });
   }
 });
 
@@ -445,13 +423,11 @@ router.put(
     try {
       const parsed = permissionSchema.safeParse(req.body);
       if (!parsed.success) {
-        res
-          .status(400)
-          .json({
-            success: false,
-            message: "Revisa los permisos enviados",
-            data: parsed.error.flatten().fieldErrors,
-          });
+        res.status(400).json({
+          success: false,
+          message: "Revisa los permisos enviados",
+          data: parsed.error.flatten().fieldErrors,
+        });
         return;
       }
       const access = req.schedulerAccess!;
@@ -460,13 +436,11 @@ router.put(
         select: { id: true, canManageSchedulerAccess: true },
       });
       if (!position) {
-        res
-          .status(404)
-          .json({
-            success: false,
-            message: "Puesto no encontrado",
-            data: null,
-          });
+        res.status(404).json({
+          success: false,
+          message: "Puesto no encontrado",
+          data: null,
+        });
         return;
       }
       if (
@@ -475,14 +449,12 @@ router.put(
         parsed.data.canManageSchedulerAccess !==
           position.canManageSchedulerAccess
       ) {
-        res
-          .status(403)
-          .json({
-            success: false,
-            message:
-              "Sólo SUPER_ADMIN puede delegar la administración de accesos",
-            data: null,
-          });
+        res.status(403).json({
+          success: false,
+          message:
+            "Sólo SUPER_ADMIN puede delegar la administración de accesos",
+          data: null,
+        });
         return;
       }
       const permissions = new Map(
@@ -545,13 +517,11 @@ router.put(
       });
     } catch (error) {
       console.error("[scheduler.access.permissions]", error);
-      res
-        .status(500)
-        .json({
-          success: false,
-          message: "No fue posible actualizar los permisos",
-          data: null,
-        });
+      res.status(500).json({
+        success: false,
+        message: "No fue posible actualizar los permisos",
+        data: null,
+      });
     }
   },
 );
@@ -563,13 +533,11 @@ router.put(
     try {
       const parsed = branchAssignmentSchema.safeParse(req.body);
       if (!parsed.success) {
-        res
-          .status(400)
-          .json({
-            success: false,
-            message: "Revisa las sucursales enviadas",
-            data: parsed.error.flatten().fieldErrors,
-          });
+        res.status(400).json({
+          success: false,
+          message: "Revisa las sucursales enviadas",
+          data: parsed.error.flatten().fieldErrors,
+        });
         return;
       }
       const access = req.schedulerAccess!;
@@ -578,13 +546,11 @@ router.put(
         select: { id: true },
       });
       if (!position) {
-        res
-          .status(404)
-          .json({
-            success: false,
-            message: "Puesto no encontrado",
-            data: null,
-          });
+        res.status(404).json({
+          success: false,
+          message: "Puesto no encontrado",
+          data: null,
+        });
         return;
       }
       const requestedBranchIds = [...new Set(parsed.data.branchIds)];
@@ -595,26 +561,22 @@ router.put(
         access.role !== "SUPER_ADMIN" &&
         requestedBranchIds.some((branchId) => !managerBranchIds.has(branchId))
       ) {
-        res
-          .status(403)
-          .json({
-            success: false,
-            message: "No puedes delegar una sucursal fuera de tu alcance",
-            data: null,
-          });
+        res.status(403).json({
+          success: false,
+          message: "No puedes delegar una sucursal fuera de tu alcance",
+          data: null,
+        });
         return;
       }
       const existingBranches = await prisma.sucursal.count({
         where: { id: { in: requestedBranchIds } },
       });
       if (existingBranches !== requestedBranchIds.length) {
-        res
-          .status(400)
-          .json({
-            success: false,
-            message: "Una o más sucursales no existen",
-            data: null,
-          });
+        res.status(400).json({
+          success: false,
+          message: "Una o más sucursales no existen",
+          data: null,
+        });
         return;
       }
       await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
@@ -652,13 +614,11 @@ router.put(
       });
     } catch (error) {
       console.error("[scheduler.access.branches]", error);
-      res
-        .status(500)
-        .json({
-          success: false,
-          message: "No fue posible actualizar las sucursales",
-          data: null,
-        });
+      res.status(500).json({
+        success: false,
+        message: "No fue posible actualizar las sucursales",
+        data: null,
+      });
     }
   },
 );

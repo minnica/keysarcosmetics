@@ -50,7 +50,11 @@ const EXPECTED_TABLES = [
   "PosClientMembership",
   "PosCommercialCompany",
   "SchedulerBranchProfile",
+  "SchedulerProfessionalProfile",
   "SchedulerServiceProfile",
+  "SchedulerResource",
+  "SchedulerAvailabilityRule",
+  "SchedulerAvailabilityException",
 ] as const;
 
 type ExpectedTable = (typeof EXPECTED_TABLES)[number];
@@ -89,7 +93,7 @@ export type SchedulerDiagnosisReport = {
   schedulerReadiness: {
     branches: Record<string, number | boolean | string | null>;
     services: Record<string, number | boolean | string | null>;
-    professionalCandidates: Record<string, number | string | null>;
+    professionalCandidates: Record<string, number | boolean | string | null>;
     customers: Record<string, number | string | null>;
   };
   appointmentInventory: {
@@ -194,9 +198,12 @@ export function classifyMigrations(
     repositoryMigrations.map((migration) => [migration.name, migration]),
   );
   const appliedRows = databaseRows.filter(
-    (migration) => migration.finished_at !== null && migration.rolled_back_at === null,
+    (migration) =>
+      migration.finished_at !== null && migration.rolled_back_at === null,
   );
-  const appliedNames = new Set(appliedRows.map((migration) => migration.migration_name));
+  const appliedNames = new Set(
+    appliedRows.map((migration) => migration.migration_name),
+  );
 
   return {
     repositoryTotal: repositoryMigrations.length,
@@ -237,12 +244,16 @@ export function classifyMigrations(
   };
 }
 
-function numberValue(value: bigint | number | string | null | undefined): number {
+function numberValue(
+  value: bigint | number | string | null | undefined,
+): number {
   if (value === null || value === undefined) return 0;
   return Number(value);
 }
 
-function aggregateNumbers(row: AggregateRow | undefined): Record<string, number> {
+function aggregateNumbers(
+  row: AggregateRow | undefined,
+): Record<string, number> {
   if (!row) return {};
   return Object.fromEntries(
     Object.entries(row).map(([key, value]) => [key, numberValue(value)]),
@@ -365,6 +376,10 @@ export async function diagnoseSchedulerData(
   const branchProfileCount = tableAvailability.SchedulerBranchProfile
     ? await count(tx, '"SchedulerBranchProfile"')
     : 0;
+  const professionalProfileCount =
+    tableAvailability.SchedulerProfessionalProfile
+      ? await count(tx, '"SchedulerProfessionalProfile"')
+      : 0;
 
   const serviceMetrics = tableAvailability.CatalogItem
     ? await aggregate(
@@ -394,6 +409,22 @@ export async function diagnoseSchedulerData(
                     )
                 )::bigint AS "withoutVisibleBranch"
          FROM "CatalogItem" i`,
+      )
+    : {};
+  const schedulerServiceMetrics = hasTables(tableAvailability, [
+    "CatalogItem",
+    "SchedulerServiceProfile",
+  ])
+    ? await aggregate(
+        tx,
+        `SELECT COUNT(*) FILTER (
+                  WHERE i.kind = 'SERVICE' AND p.id IS NULL
+                )::bigint AS "withoutProfile",
+                COUNT(*) FILTER (
+                  WHERE i.kind = 'SERVICE' AND i.active AND p.active
+                )::bigint AS "activeProfiles"
+         FROM "CatalogItem" i
+         LEFT JOIN "SchedulerServiceProfile" p ON p."catalogItemId" = i.id`,
       )
     : {};
 
@@ -879,17 +910,21 @@ export async function diagnoseSchedulerData(
         schedulerProfileModelAvailable:
           tableAvailability.SchedulerServiceProfile,
         withoutDuration: tableAvailability.SchedulerServiceProfile
-          ? null
+          ? (schedulerServiceMetrics["withoutProfile"] ?? 0)
           : (serviceMetrics["total"] ?? null),
         durationAssessment: tableAvailability.SchedulerServiceProfile
-          ? "REQUIRES_PROFILE_SCHEMA_AWARE_DIAGNOSIS"
+          ? "PROFILE_REQUIRED_AND_POSITIVE_DURATION_ENFORCED"
           : "NO_SCHEDULER_SERVICE_PROFILE_MODEL",
+        activeProfiles: schedulerServiceMetrics["activeProfiles"] ?? null,
         withoutVisibleBranch:
           serviceBranchMetrics["withoutVisibleBranch"] ?? null,
       },
       professionalCandidates: {
         ...employeeMetrics,
         ...historicalProfessionalMetrics,
+        schedulerProfileModelAvailable:
+          tableAvailability.SchedulerProfessionalProfile,
+        schedulerProfiles: professionalProfileCount,
         activationPolicy: "EXPLICIT_REVIEW_REQUIRED",
         matchingPolicy: "NO_NAME_BASED_AUTOMATIC_MATCHING",
       },

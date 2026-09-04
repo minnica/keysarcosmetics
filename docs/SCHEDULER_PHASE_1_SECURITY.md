@@ -89,7 +89,7 @@ NODE_ENV=development
 SCHEDULER_ALLOW_MOCKS=true
 ```
 
-El valor por defecto es `false`. No existe una variable `NEXT_PUBLIC_*` para esta decisión. En cualquier otro ambiente, Scheduler permite login, bootstrap y configuración del código personal, pero mantiene cerrados los módulos operativos hasta que las fases siguientes conecten datos persistentes.
+El valor por defecto es `false`. No existe una variable `NEXT_PUBLIC_*` para esta decisión. Desde la Fase 2, las secciones administrativas de sucursales, profesionales, servicios y recursos pueden abrir su catálogo persistente sin mocks; los demás módulos operativos permanecen cerrados hasta que sus fases conecten datos reales.
 
 ## Aplicación segura
 

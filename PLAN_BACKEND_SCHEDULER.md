@@ -8,6 +8,7 @@
 
 ## Estado de ejecución
 
+- **Fase 2 — implementada en repositorio el 4 de septiembre de 2026; migración y provisión pendientes.** La migración exclusivamente aditiva `20260904070000_add_scheduler_operational_catalogs` agrega perfiles sobre `Sucursal`, `Empleado` y `CatalogItem SERVICE`, comercios, asignaciones por sucursal, servicios/clases, especialidades, grupos, recursos, compatibilidades, requisitos, horarios recurrentes y excepciones con vigencia/baja lógica. No crea seeds, perfiles ni datos operativos. `/api/scheduler/operations/*` expone candidatos y CRUDs tipados con alcance, auditoría y control optimista. Las secciones administrativas base ya muestran candidatos reales y permiten activar/configurar sucursales, profesionales, servicios y recursos; los flujos avanzados restantes se conectarán progresivamente en Fase 9. Guía: `docs/SCHEDULER_PHASE_2_OPERATIONAL_CATALOGS.md`.
 - **Fase 1 — implementada en repositorio el 4 de septiembre de 2026; activación por ambiente pendiente.** La migración aditiva `20260904060000_add_scheduler_security` incorpora permisos/capacidades por puesto, sucursales explícitas, alcance profesional propio, credenciales secundarias con bcrypt, autorizaciones opacas de dos minutos y consumo único, y extiende `AuditLog` con `Usuario` + origen `SCHEDULER`. El frontend ya usa el JWT compartido, bootstrap autoritativo y guards de servidor/UI; los códigos mock fueron retirados del flujo activo y el documento legacy se elimina al abrir la configuración personal.
 - `SCHEDULER_ALLOW_MOCKS=true` sólo surte efecto con `NODE_ENV=development`; sin ambas condiciones los módulos operativos mock permanecen cerrados. La migración no concede grants, no crea seeds y no se aplicó a development o production. La evidencia real pendiente de Fase 0, la reconstrucción sobre PostgreSQL 16 y las pruebas HTTP siguen siendo gates obligatorios antes de activar. Guía: `docs/SCHEDULER_PHASE_1_SECURITY.md`.
 - **Fase 0 — implementada en repositorio el 4 de septiembre de 2026; inventario real pendiente de conexión y aprobación.** `pnpm --filter @cosmetics/api scheduler:diagnose` compara las migraciones versionadas con `_prisma_migrations`, inventaría de forma agregada las entidades reutilizables, candidatos y relaciones incompletas, y clasifica `RegistroCita`, `PosAppointment` y las tablas `Agenda*`. Toda consulta corre dentro de una transacción PostgreSQL `READ ONLY`; el reporte no contiene registros personales, secretos ni detalles de conexión.
@@ -283,6 +284,8 @@ Evidencia disponible:
 
 ### Fase 2 — Catálogos operativos, profesionales y recursos
 
+**Estado de implementación (4 de septiembre de 2026):** completada en repositorio; migración y provisión manual en development pendientes por los gates de Fase 0 y PostgreSQL desechable. Las pantallas de candidatos/configuración base ya consumen la API; la sustitución de los flujos administrativos avanzados continúa en Fase 9.
+
 Objetivo: construir la base maestra necesaria para calcular disponibilidad.
 
 Entregables:
@@ -297,6 +300,15 @@ Entregables:
 - Bajas lógicas y vigencia temporal.
 
 Criterio de salida: una sucursal configurada puede expresar quién trabaja, qué servicio ofrece, cuándo está disponible y qué recurso necesita.
+
+Evidencia disponible:
+
+- `20260904070000_add_scheduler_operational_catalogs` crea únicamente tablas, enums, índices, checks y FKs; no inserta ni transforma datos.
+- Los perfiles uno-a-uno reutilizan `Sucursal`, `Empleado` y `CatalogItem`; activar un profesional o servicio siempre es una decisión explícita.
+- `backend/api/src/routes/scheduler-operations.routes.ts` implementa candidatos, catálogo materializado y mutaciones de comercios, perfiles, asignaciones, servicios/clases, especialidades, grupos, recursos, compatibilidades, horarios y excepciones.
+- El servidor aplica capacidades administrativas, sucursales materializadas, alcance profesional propio, auditoría y `expectedVersion`; una sucursal no habilita reservas sin horario general, profesional y servicio activos.
+- `packages/types/src/scheduler.ts` y `@cosmetics/api-client` publican el contrato compartido. `OperationalCatalogWorkspace` ofrece carga, vacío, error, sólo lectura y formularios de activación real para sucursales, profesionales, servicios y recursos; los demás paneles mock no se exponen fuera del modo de desarrollo.
+- El cierre local valida schemas, lint/type-check/build del API, paquetes compartidos, Scheduler y pruebas unitarias. La reconstrucción/HTTP sobre PostgreSQL 16 continúa pendiente porque Podman no puede iniciar en este workspace.
 
 ### Fase 3 — Clientes compartidos y deduplicación
 
@@ -587,14 +599,15 @@ Opciones consideradas:
 
 ## 12. Punto recomendado para retomar
 
-La siguiente sesión debe cerrar la **evidencia operativa de la Fase 0** y activar de forma controlada la Fase 1:
+La siguiente sesión operativa debe cerrar la **evidencia de la Fase 0** y activar de forma controlada las Fases 1 y 2 antes de iniciar clientes o citas:
 
 1. Confirmar que se dispone de acceso seguro a la base de desarrollo.
 2. Comparar migraciones aplicadas contra las 36 existentes en el repositorio.
 3. Ejecutar `scheduler:diagnose` y conservar el JSON agregado como evidencia segura.
 4. Revisar conteos, duplicados y candidatos de mapeo reales.
-5. Reconstruir todas las migraciones, incluida `20260904060000_add_scheduler_security`, sobre PostgreSQL 16 desechable y ejecutar pruebas HTTP de `401/403`, alcance y autorización de un solo uso.
-6. Aprobar la estrategia de backfill; aplicar Fase 1 en development y provisionar grants/sucursales explícitos sin seeds operativos.
-7. Con esa evidencia, cerrar los nombres y relaciones Prisma de las fases 2 a 4 antes de crear la migración de catálogos.
+5. Reconstruir todas las migraciones, incluidas `20260904060000_add_scheduler_security` y `20260904070000_add_scheduler_operational_catalogs`, sobre PostgreSQL 16 desechable.
+6. Ejecutar pruebas HTTP de `401/403`, alcance, autorización de un solo uso, candidatos, perfiles, validaciones de horario y conflictos `409`.
+7. Aprobar la estrategia de backfill; aplicar ambas migraciones en development y provisionar grants/catálogos explícitos sin seeds operativos.
+8. Con esa evidencia, conectar gradualmente las pantallas administrativas a `/api/scheduler/operations` según la Fase 9 y diseñar Fase 3 sin introducir identidades de clientes paralelas.
 
 No debe iniciarse la migración canónica de citas hasta conocer el contenido real de `PosAppointment`, `RegistroCita` y las tablas `Agenda*` en el ambiente objetivo.

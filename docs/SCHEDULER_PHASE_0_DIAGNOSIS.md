@@ -16,7 +16,7 @@ El JSON sólo contiene agregados y metadatos técnicos seguros:
 - migraciones aplicadas, pendientes, incompletas, revertidas o presentes sólo
   en la base, además de discrepancias de checksum;
 - disponibilidad y conteos de las tablas reutilizables;
-- sucursales pendientes de perfil y servicios pendientes de duración;
+- sucursales pendientes de perfil, profesionales activados explícitamente y servicios pendientes de perfil/duración;
 - empleados candidatos por estado y actividad histórica como facialista, sin
   listar su identidad y sin activarlos automáticamente;
 - grupos y filas afectadas por teléfonos duplicados después de una
@@ -87,7 +87,7 @@ El revisor debe registrar, por ambiente:
 | --- | --- |
 | `migrations.pending`, `databaseOnly`, `incomplete`, `checksumMismatches` | Resolver el estado antes de diseñar o aplicar migraciones de Scheduler. |
 | `branches.withoutSchedulerProfile` | Definir qué sucursales se activarán. Las no configuradas no aceptarán reservas. |
-| `services.withoutDuration` | Definir duración, preparación y limpieza antes de activar cada servicio. |
+| `services.withoutDuration` | Después de Fase 2 representa servicios canónicos sin perfil; todo perfil creado ya exige duración positiva. Definir preparación y limpieza antes de activarlo. |
 | `professionalCandidates` | Aprobar activaciones explícitas; nunca inferirlas automáticamente por nombre. |
 | `customers.duplicateGroups` y `recordsInDuplicateGroups` | Definir saneamiento antes del backfill o de un índice único normalizado. |
 | `appointmentInventory` | Separar histórico legado, vínculos POS vigentes y datos externos que sí deban importarse. |

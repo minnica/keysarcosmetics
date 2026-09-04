@@ -100,6 +100,7 @@ model Sucursal {
   posPortfolioTransfers            PosPortfolioTransferEvent[]
   schedulerPositionAssignments     PositionSchedulerBranchAssignment[]
   schedulerAuthorizations          SchedulerAuthorization[]
+  schedulerProfile                 SchedulerBranchProfile?
 
   @@index([activa])
 }
@@ -291,6 +292,7 @@ model Empleado {
   posMembershipRankings          PosMembershipSellerRanking[]
   posTicketParticipants          PosTicketParticipant[]
   posPortfolioTransfers          PosPortfolioTransferEvent[]
+  schedulerProfessionalProfile   SchedulerProfessionalProfile?
 
   @@index([sucursalId])
 }
@@ -604,6 +606,344 @@ model SchedulerAuthorization {
   @@index([branchId, expiresAt])
 }
 
+// ─── Scheduler: catálogos operativos y disponibilidad base ──────────────────
+
+enum SchedulerWeekday {
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+  SATURDAY
+  SUNDAY
+}
+
+enum SchedulerAvailabilityRuleKind {
+  WORKING
+  BREAK
+}
+
+enum SchedulerAvailabilityExceptionKind {
+  AVAILABLE
+  UNAVAILABLE
+}
+
+enum SchedulerServiceMode {
+  INDIVIDUAL
+  CLASS
+}
+
+enum SchedulerResourceKind {
+  ROOM
+  EQUIPMENT
+  STATION
+  OTHER
+}
+
+model SchedulerCommerce {
+  id             String                       @id @default(cuid())
+  name           String                       @db.VarChar(160)
+  normalizedName String                       @unique @db.VarChar(180)
+  active         Boolean                      @default(true)
+  effectiveFrom  DateTime                     @default(now())
+  effectiveTo    DateTime?
+  deactivatedAt  DateTime?
+  branchProfiles SchedulerBranchProfile[]
+  specialties    SchedulerSpecialty[]
+  groups         SchedulerProfessionalGroup[]
+  creadoEn       DateTime                     @default(now())
+  actualizadoEn  DateTime                     @updatedAt
+
+  @@index([active, effectiveFrom, effectiveTo])
+}
+
+model SchedulerBranchProfile {
+  id                      String                                   @id @default(cuid())
+  branchId                String                                   @unique
+  branch                  Sucursal                                 @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  commerceId              String
+  commerce                SchedulerCommerce                        @relation(fields: [commerceId], references: [id], onDelete: Restrict)
+  timezone                String                                   @default("America/Mexico_City") @db.VarChar(80)
+  bookingEnabled          Boolean                                  @default(false)
+  active                  Boolean                                  @default(true)
+  effectiveFrom           DateTime                                 @default(now())
+  effectiveTo             DateTime?
+  deactivatedAt           DateTime?
+  version                 Int                                      @default(1)
+  professionalAssignments SchedulerProfessionalBranchAssignment[]
+  serviceAssignments      SchedulerServiceBranchAssignment[]
+  professionalServices    SchedulerProfessionalServiceAssignment[]
+  resources               SchedulerResource[]
+  groups                  SchedulerProfessionalGroup[]
+  availabilityRules       SchedulerAvailabilityRule[]
+  availabilityExceptions  SchedulerAvailabilityException[]
+  creadoEn                DateTime                                 @default(now())
+  actualizadoEn           DateTime                                 @updatedAt
+
+  @@index([commerceId, active])
+  @@index([bookingEnabled, active])
+}
+
+model SchedulerProfessionalProfile {
+  id                     String                                   @id @default(cuid())
+  employeeId             String                                   @unique
+  employee               Empleado                                 @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  biography              String?
+  acceptsOnline          Boolean                                  @default(false)
+  active                 Boolean                                  @default(true)
+  effectiveFrom          DateTime                                 @default(now())
+  effectiveTo            DateTime?
+  deactivatedAt          DateTime?
+  version                Int                                      @default(1)
+  branchAssignments      SchedulerProfessionalBranchAssignment[]
+  serviceAssignments     SchedulerProfessionalServiceAssignment[]
+  specialties            SchedulerProfessionalSpecialty[]
+  groupMemberships       SchedulerProfessionalGroupMember[]
+  availabilityRules      SchedulerAvailabilityRule[]
+  availabilityExceptions SchedulerAvailabilityException[]
+  creadoEn               DateTime                                 @default(now())
+  actualizadoEn          DateTime                                 @updatedAt
+
+  @@index([active, effectiveFrom, effectiveTo])
+}
+
+model SchedulerProfessionalBranchAssignment {
+  id                    String                       @id @default(cuid())
+  professionalProfileId String
+  professionalProfile   SchedulerProfessionalProfile @relation(fields: [professionalProfileId], references: [id], onDelete: Restrict)
+  branchProfileId       String
+  branchProfile         SchedulerBranchProfile       @relation(fields: [branchProfileId], references: [id], onDelete: Restrict)
+  active                Boolean                      @default(true)
+  effectiveFrom         DateTime                     @default(now())
+  effectiveTo           DateTime?
+  deactivatedAt         DateTime?
+  creadoEn              DateTime                     @default(now())
+  actualizadoEn         DateTime                     @updatedAt
+
+  @@unique([professionalProfileId, branchProfileId])
+  @@index([branchProfileId, active])
+}
+
+model SchedulerServiceProfile {
+  id                      String                                   @id @default(cuid())
+  catalogItemId           String                                   @unique
+  catalogItem             CatalogItem                              @relation(fields: [catalogItemId], references: [id], onDelete: Restrict)
+  durationMinutes         Int
+  preparationMinutes      Int                                      @default(0)
+  cleanupMinutes          Int                                      @default(0)
+  capacity                Int                                      @default(1)
+  mode                    SchedulerServiceMode                     @default(INDIVIDUAL)
+  acceptsOnline           Boolean                                  @default(false)
+  active                  Boolean                                  @default(true)
+  effectiveFrom           DateTime                                 @default(now())
+  effectiveTo             DateTime?
+  deactivatedAt           DateTime?
+  version                 Int                                      @default(1)
+  branchAssignments       SchedulerServiceBranchAssignment[]
+  professionalAssignments SchedulerProfessionalServiceAssignment[]
+  resourceRequirements    SchedulerServiceResourceRequirement[]
+  creadoEn                DateTime                                 @default(now())
+  actualizadoEn           DateTime                                 @updatedAt
+
+  @@index([active, mode])
+}
+
+model SchedulerServiceBranchAssignment {
+  id               String                  @id @default(cuid())
+  serviceProfileId String
+  serviceProfile   SchedulerServiceProfile @relation(fields: [serviceProfileId], references: [id], onDelete: Restrict)
+  branchProfileId  String
+  branchProfile    SchedulerBranchProfile  @relation(fields: [branchProfileId], references: [id], onDelete: Restrict)
+  active           Boolean                 @default(true)
+  effectiveFrom    DateTime                @default(now())
+  effectiveTo      DateTime?
+  deactivatedAt    DateTime?
+  creadoEn         DateTime                @default(now())
+  actualizadoEn    DateTime                @updatedAt
+
+  @@unique([serviceProfileId, branchProfileId])
+  @@index([branchProfileId, active])
+}
+
+model SchedulerProfessionalServiceAssignment {
+  id                    String                       @id @default(cuid())
+  professionalProfileId String
+  professionalProfile   SchedulerProfessionalProfile @relation(fields: [professionalProfileId], references: [id], onDelete: Restrict)
+  serviceProfileId      String
+  serviceProfile        SchedulerServiceProfile      @relation(fields: [serviceProfileId], references: [id], onDelete: Restrict)
+  branchProfileId       String
+  branchProfile         SchedulerBranchProfile       @relation(fields: [branchProfileId], references: [id], onDelete: Restrict)
+  active                Boolean                      @default(true)
+  effectiveFrom         DateTime                     @default(now())
+  effectiveTo           DateTime?
+  deactivatedAt         DateTime?
+  creadoEn              DateTime                     @default(now())
+  actualizadoEn         DateTime                     @updatedAt
+
+  @@unique([professionalProfileId, serviceProfileId, branchProfileId])
+  @@index([serviceProfileId, branchProfileId, active])
+}
+
+model SchedulerSpecialty {
+  id             String                           @id @default(cuid())
+  commerceId     String
+  commerce       SchedulerCommerce                @relation(fields: [commerceId], references: [id], onDelete: Restrict)
+  name           String                           @db.VarChar(160)
+  normalizedName String                           @db.VarChar(180)
+  active         Boolean                          @default(true)
+  effectiveFrom  DateTime                         @default(now())
+  effectiveTo    DateTime?
+  deactivatedAt  DateTime?
+  professionals  SchedulerProfessionalSpecialty[]
+  creadoEn       DateTime                         @default(now())
+  actualizadoEn  DateTime                         @updatedAt
+
+  @@unique([commerceId, normalizedName])
+  @@index([commerceId, active])
+}
+
+model SchedulerProfessionalSpecialty {
+  id                    String                       @id @default(cuid())
+  professionalProfileId String
+  professionalProfile   SchedulerProfessionalProfile @relation(fields: [professionalProfileId], references: [id], onDelete: Restrict)
+  specialtyId           String
+  specialty             SchedulerSpecialty           @relation(fields: [specialtyId], references: [id], onDelete: Restrict)
+  active                Boolean                      @default(true)
+  effectiveFrom         DateTime                     @default(now())
+  effectiveTo           DateTime?
+  creadoEn              DateTime                     @default(now())
+  actualizadoEn         DateTime                     @updatedAt
+
+  @@unique([professionalProfileId, specialtyId])
+  @@index([specialtyId, active])
+}
+
+model SchedulerProfessionalGroup {
+  id              String                             @id @default(cuid())
+  commerceId      String
+  commerce        SchedulerCommerce                  @relation(fields: [commerceId], references: [id], onDelete: Restrict)
+  branchProfileId String
+  branchProfile   SchedulerBranchProfile             @relation(fields: [branchProfileId], references: [id], onDelete: Restrict)
+  name            String                             @db.VarChar(160)
+  normalizedName  String                             @db.VarChar(180)
+  active          Boolean                            @default(true)
+  effectiveFrom   DateTime                           @default(now())
+  effectiveTo     DateTime?
+  deactivatedAt   DateTime?
+  members         SchedulerProfessionalGroupMember[]
+  creadoEn        DateTime                           @default(now())
+  actualizadoEn   DateTime                           @updatedAt
+
+  @@unique([branchProfileId, normalizedName])
+  @@index([commerceId, active])
+}
+
+model SchedulerProfessionalGroupMember {
+  id                    String                       @id @default(cuid())
+  groupId               String
+  group                 SchedulerProfessionalGroup   @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  professionalProfileId String
+  professionalProfile   SchedulerProfessionalProfile @relation(fields: [professionalProfileId], references: [id], onDelete: Restrict)
+  active                Boolean                      @default(true)
+  effectiveFrom         DateTime                     @default(now())
+  effectiveTo           DateTime?
+  creadoEn              DateTime                     @default(now())
+  actualizadoEn         DateTime                     @updatedAt
+
+  @@unique([groupId, professionalProfileId])
+  @@index([professionalProfileId, active])
+}
+
+model SchedulerResource {
+  id                     String                                @id @default(cuid())
+  branchProfileId        String
+  branchProfile          SchedulerBranchProfile                @relation(fields: [branchProfileId], references: [id], onDelete: Restrict)
+  name                   String                                @db.VarChar(160)
+  normalizedName         String                                @db.VarChar(180)
+  kind                   SchedulerResourceKind
+  capacity               Int                                   @default(1)
+  exclusive              Boolean                               @default(true)
+  acceptsOnline          Boolean                               @default(false)
+  active                 Boolean                               @default(true)
+  effectiveFrom          DateTime                              @default(now())
+  effectiveTo            DateTime?
+  deactivatedAt          DateTime?
+  version                Int                                   @default(1)
+  serviceRequirements    SchedulerServiceResourceRequirement[]
+  availabilityRules      SchedulerAvailabilityRule[]
+  availabilityExceptions SchedulerAvailabilityException[]
+  creadoEn               DateTime                              @default(now())
+  actualizadoEn          DateTime                              @updatedAt
+
+  @@unique([branchProfileId, normalizedName])
+  @@index([branchProfileId, active])
+}
+
+model SchedulerServiceResourceRequirement {
+  id               String                  @id @default(cuid())
+  serviceProfileId String
+  serviceProfile   SchedulerServiceProfile @relation(fields: [serviceProfileId], references: [id], onDelete: Restrict)
+  resourceId       String
+  resource         SchedulerResource       @relation(fields: [resourceId], references: [id], onDelete: Restrict)
+  requiredUnits    Int                     @default(1)
+  exclusive        Boolean                 @default(true)
+  active           Boolean                 @default(true)
+  effectiveFrom    DateTime                @default(now())
+  effectiveTo      DateTime?
+  creadoEn         DateTime                @default(now())
+  actualizadoEn    DateTime                @updatedAt
+
+  @@unique([serviceProfileId, resourceId])
+  @@index([resourceId, active])
+}
+
+model SchedulerAvailabilityRule {
+  id                    String                        @id @default(cuid())
+  branchProfileId       String
+  branchProfile         SchedulerBranchProfile        @relation(fields: [branchProfileId], references: [id], onDelete: Restrict)
+  professionalProfileId String?
+  professionalProfile   SchedulerProfessionalProfile? @relation(fields: [professionalProfileId], references: [id], onDelete: Restrict)
+  resourceId            String?
+  resource              SchedulerResource?            @relation(fields: [resourceId], references: [id], onDelete: Restrict)
+  kind                  SchedulerAvailabilityRuleKind
+  weekday               SchedulerWeekday
+  startMinute           Int
+  endMinute             Int
+  active                Boolean                       @default(true)
+  effectiveFrom         DateTime                      @default(now())
+  effectiveTo           DateTime?
+  creadoEn              DateTime                      @default(now())
+  actualizadoEn         DateTime                      @updatedAt
+
+  @@index([branchProfileId, weekday, active])
+  @@index([professionalProfileId, weekday, active])
+  @@index([resourceId, weekday, active])
+}
+
+model SchedulerAvailabilityException {
+  id                    String                             @id @default(cuid())
+  branchProfileId       String
+  branchProfile         SchedulerBranchProfile             @relation(fields: [branchProfileId], references: [id], onDelete: Restrict)
+  professionalProfileId String?
+  professionalProfile   SchedulerProfessionalProfile?      @relation(fields: [professionalProfileId], references: [id], onDelete: Restrict)
+  resourceId            String?
+  resource              SchedulerResource?                 @relation(fields: [resourceId], references: [id], onDelete: Restrict)
+  kind                  SchedulerAvailabilityExceptionKind
+  date                  DateTime                           @db.Date
+  startMinute           Int?
+  endMinute             Int?
+  reason                String?                            @db.VarChar(500)
+  active                Boolean                            @default(true)
+  effectiveFrom         DateTime                           @default(now())
+  effectiveTo           DateTime?
+  creadoEn              DateTime                           @default(now())
+  actualizadoEn         DateTime                           @updatedAt
+
+  @@index([branchProfileId, date, active])
+  @@index([professionalProfileId, date, active])
+  @@index([resourceId, date, active])
+}
+
 // ─── Módulo POS: catálogo, clientes, configuración y activos ─────────────────────
 
 enum CatalogItemKind {
@@ -743,6 +1083,7 @@ model CatalogItem {
   posDeliveryLines         PosOwedProductDeliveryLine[]
   membershipTerms          PosMembershipTerms[]
   clientMemberships        PosClientMembership[]
+  schedulerServiceProfile  SchedulerServiceProfile?
   creadoEn                 DateTime                       @default(now())
   actualizadoEn            DateTime                       @updatedAt
 

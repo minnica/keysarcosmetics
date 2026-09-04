@@ -87,6 +87,21 @@ import type {
   SchedulerManagedPositionDto,
   SchedulerPermissionDto,
   SchedulerSecondarySecretRequestDto,
+  SchedulerAvailabilityExceptionsWriteDto,
+  SchedulerAvailabilityRulesWriteDto,
+  SchedulerBranchProfileWriteDto,
+  SchedulerCommerceDto,
+  SchedulerCommerceWriteDto,
+  SchedulerOperationalCandidatesDto,
+  SchedulerOperationalCatalogDto,
+  SchedulerMutationResultDto,
+  SchedulerProfessionalGroupWriteDto,
+  SchedulerProfessionalProfileWriteDto,
+  SchedulerProfessionalServiceWriteDto,
+  SchedulerResourceWriteDto,
+  SchedulerServiceProfileWriteDto,
+  SchedulerServiceResourceRequirementWriteDto,
+  SchedulerSpecialtyWriteDto,
 } from "@cosmetics/types";
 
 /**
@@ -160,6 +175,60 @@ export interface SchedulerApiClient {
     positionId: string,
     branchIds: string[],
   ): Promise<SchedulerManagedPositionDto>;
+  operationalCandidates(): Promise<SchedulerOperationalCandidatesDto>;
+  operationalCatalog(): Promise<SchedulerOperationalCatalogDto>;
+  createCommerce(
+    input: SchedulerCommerceWriteDto,
+  ): Promise<SchedulerCommerceDto>;
+  updateCommerce(
+    id: string,
+    input: SchedulerCommerceWriteDto,
+  ): Promise<SchedulerCommerceDto>;
+  updateBranchProfile(
+    branchId: string,
+    input: SchedulerBranchProfileWriteDto,
+  ): Promise<SchedulerMutationResultDto>;
+  updateProfessionalProfile(
+    employeeId: string,
+    input: SchedulerProfessionalProfileWriteDto,
+  ): Promise<SchedulerMutationResultDto>;
+  updateServiceProfile(
+    catalogItemId: string,
+    input: SchedulerServiceProfileWriteDto,
+  ): Promise<SchedulerMutationResultDto>;
+  createResource(
+    input: SchedulerResourceWriteDto,
+  ): Promise<SchedulerMutationResultDto>;
+  updateResource(
+    id: string,
+    input: SchedulerResourceWriteDto,
+  ): Promise<SchedulerMutationResultDto>;
+  createSpecialty(
+    input: SchedulerSpecialtyWriteDto,
+  ): Promise<SchedulerMutationResultDto>;
+  updateSpecialty(
+    id: string,
+    input: SchedulerSpecialtyWriteDto,
+  ): Promise<SchedulerMutationResultDto>;
+  createProfessionalGroup(
+    input: SchedulerProfessionalGroupWriteDto,
+  ): Promise<SchedulerMutationResultDto>;
+  updateProfessionalGroup(
+    id: string,
+    input: SchedulerProfessionalGroupWriteDto,
+  ): Promise<SchedulerMutationResultDto>;
+  updateProfessionalService(
+    input: SchedulerProfessionalServiceWriteDto,
+  ): Promise<SchedulerMutationResultDto>;
+  updateResourceRequirement(
+    input: SchedulerServiceResourceRequirementWriteDto,
+  ): Promise<SchedulerMutationResultDto>;
+  replaceAvailabilityRules(
+    input: SchedulerAvailabilityRulesWriteDto,
+  ): Promise<SchedulerMutationResultDto[]>;
+  replaceAvailabilityExceptions(
+    input: SchedulerAvailabilityExceptionsWriteDto,
+  ): Promise<SchedulerMutationResultDto[]>;
   logout(): void;
 }
 
@@ -241,6 +310,60 @@ export function createSchedulerApiClient(
         client.put(`/api/scheduler/access/positions/${positionId}/branches`, {
           branchIds,
         }),
+      ),
+    operationalCandidates: () =>
+      data<SchedulerOperationalCandidatesDto>(
+        client.get("/api/scheduler/operations/candidates"),
+      ),
+    operationalCatalog: () =>
+      data<SchedulerOperationalCatalogDto>(
+        client.get("/api/scheduler/operations/catalog"),
+      ),
+    createCommerce: (input) =>
+      data(client.post("/api/scheduler/operations/commerces", input)),
+    updateCommerce: (id, input) =>
+      data(client.put(`/api/scheduler/operations/commerces/${id}`, input)),
+    updateBranchProfile: (branchId, input) =>
+      data(client.put(`/api/scheduler/operations/branches/${branchId}`, input)),
+    updateProfessionalProfile: (employeeId, input) =>
+      data(
+        client.put(
+          `/api/scheduler/operations/professionals/${employeeId}`,
+          input,
+        ),
+      ),
+    updateServiceProfile: (catalogItemId, input) =>
+      data(
+        client.put(
+          `/api/scheduler/operations/services/${catalogItemId}`,
+          input,
+        ),
+      ),
+    createResource: (input) =>
+      data(client.post("/api/scheduler/operations/resources", input)),
+    updateResource: (id, input) =>
+      data(client.put(`/api/scheduler/operations/resources/${id}`, input)),
+    createSpecialty: (input) =>
+      data(client.post("/api/scheduler/operations/specialties", input)),
+    updateSpecialty: (id, input) =>
+      data(client.put(`/api/scheduler/operations/specialties/${id}`, input)),
+    createProfessionalGroup: (input) =>
+      data(client.post("/api/scheduler/operations/groups", input)),
+    updateProfessionalGroup: (id, input) =>
+      data(client.put(`/api/scheduler/operations/groups/${id}`, input)),
+    updateProfessionalService: (input) =>
+      data(
+        client.put("/api/scheduler/operations/professional-services", input),
+      ),
+    updateResourceRequirement: (input) =>
+      data(
+        client.put("/api/scheduler/operations/resource-requirements", input),
+      ),
+    replaceAvailabilityRules: (input) =>
+      data(client.put("/api/scheduler/operations/availability/rules", input)),
+    replaceAvailabilityExceptions: (input) =>
+      data(
+        client.put("/api/scheduler/operations/availability/exceptions", input),
       ),
     logout: () => setAccessToken(null),
   };

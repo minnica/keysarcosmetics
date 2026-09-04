@@ -140,3 +140,330 @@ export interface SchedulerAccessManagementDto {
   branches: SchedulerAuthorizedBranchDto[];
   positions: SchedulerManagedPositionDto[];
 }
+
+export const SCHEDULER_WEEKDAYS = [
+  "MONDAY",
+  "TUESDAY",
+  "WEDNESDAY",
+  "THURSDAY",
+  "FRIDAY",
+  "SATURDAY",
+  "SUNDAY",
+] as const;
+export type SchedulerWeekday = (typeof SCHEDULER_WEEKDAYS)[number];
+
+export const SCHEDULER_RESOURCE_KINDS = [
+  "ROOM",
+  "EQUIPMENT",
+  "STATION",
+  "OTHER",
+] as const;
+export type SchedulerResourceKind = (typeof SCHEDULER_RESOURCE_KINDS)[number];
+export type SchedulerServiceMode = "INDIVIDUAL" | "CLASS";
+export type SchedulerAvailabilityOwnerType =
+  | "BRANCH"
+  | "PROFESSIONAL"
+  | "RESOURCE";
+
+export interface SchedulerOperationalCandidatesDto {
+  branches: Array<{
+    id: string;
+    name: string;
+    active: boolean;
+    profileId: string | null;
+    profileActive: boolean | null;
+  }>;
+  employees: Array<{
+    id: string;
+    name: string;
+    active: boolean;
+    positionName: string | null;
+    branchId: string | null;
+    allBranches: boolean;
+    profileId: string | null;
+    profileActive: boolean | null;
+  }>;
+  services: Array<{
+    id: string;
+    sku: string;
+    name: string;
+    active: boolean;
+    published: boolean;
+    profileId: string | null;
+    profileActive: boolean | null;
+    durationMinutes: number | null;
+  }>;
+}
+
+export interface SchedulerCommerceDto {
+  id: string;
+  name: string;
+  active: boolean;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+}
+
+export interface SchedulerBranchProfileDto {
+  id: string;
+  branchId: string;
+  branchName: string;
+  branchActive: boolean;
+  commerceId: string;
+  timezone: string;
+  bookingEnabled: boolean;
+  active: boolean;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  version: number;
+}
+
+export interface SchedulerProfessionalProfileDto {
+  id: string;
+  employeeId: string;
+  name: string;
+  employeeActive: boolean;
+  biography: string | null;
+  acceptsOnline: boolean;
+  active: boolean;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  version: number;
+  branchProfileIds: string[];
+  specialtyIds: string[];
+}
+
+export interface SchedulerServiceProfileDto {
+  id: string;
+  catalogItemId: string;
+  sku: string;
+  name: string;
+  catalogActive: boolean;
+  durationMinutes: number;
+  preparationMinutes: number;
+  cleanupMinutes: number;
+  capacity: number;
+  mode: SchedulerServiceMode;
+  acceptsOnline: boolean;
+  active: boolean;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  version: number;
+  branchProfileIds: string[];
+}
+
+export interface SchedulerResourceDto {
+  id: string;
+  branchProfileId: string;
+  name: string;
+  kind: SchedulerResourceKind;
+  capacity: number;
+  exclusive: boolean;
+  acceptsOnline: boolean;
+  active: boolean;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  version: number;
+}
+
+export interface SchedulerSpecialtyDto {
+  id: string;
+  commerceId: string;
+  name: string;
+  active: boolean;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+}
+
+export interface SchedulerProfessionalGroupDto {
+  id: string;
+  commerceId: string;
+  branchProfileId: string;
+  name: string;
+  active: boolean;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  professionalProfileIds: string[];
+}
+
+export interface SchedulerProfessionalServiceDto {
+  professionalProfileId: string;
+  serviceProfileId: string;
+  branchProfileId: string;
+  active: boolean;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+}
+
+export interface SchedulerServiceResourceRequirementDto {
+  serviceProfileId: string;
+  resourceId: string;
+  requiredUnits: number;
+  exclusive: boolean;
+  active: boolean;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+}
+
+export interface SchedulerAvailabilityRuleDto {
+  id: string;
+  branchProfileId: string;
+  ownerType: SchedulerAvailabilityOwnerType;
+  ownerId: string;
+  kind: "WORKING" | "BREAK";
+  weekday: SchedulerWeekday;
+  startMinute: number;
+  endMinute: number;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+}
+
+export interface SchedulerAvailabilityExceptionDto {
+  id: string;
+  branchProfileId: string;
+  ownerType: SchedulerAvailabilityOwnerType;
+  ownerId: string;
+  kind: "AVAILABLE" | "UNAVAILABLE";
+  date: string;
+  startMinute: number | null;
+  endMinute: number | null;
+  reason: string | null;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+}
+
+export interface SchedulerOperationalCatalogDto {
+  commerces: SchedulerCommerceDto[];
+  branches: SchedulerBranchProfileDto[];
+  professionals: SchedulerProfessionalProfileDto[];
+  services: SchedulerServiceProfileDto[];
+  resources: SchedulerResourceDto[];
+  specialties: SchedulerSpecialtyDto[];
+  groups: SchedulerProfessionalGroupDto[];
+  professionalServices: SchedulerProfessionalServiceDto[];
+  resourceRequirements: SchedulerServiceResourceRequirementDto[];
+  availabilityRules: SchedulerAvailabilityRuleDto[];
+  availabilityExceptions: SchedulerAvailabilityExceptionDto[];
+}
+
+export interface SchedulerMutationResultDto {
+  id: string;
+}
+
+export interface SchedulerCommerceWriteDto {
+  name: string;
+  active: boolean;
+  effectiveFrom?: string;
+  effectiveTo?: string | null;
+}
+
+export interface SchedulerBranchProfileWriteDto {
+  commerceId: string;
+  timezone: string;
+  bookingEnabled: boolean;
+  active: boolean;
+  effectiveFrom?: string;
+  effectiveTo?: string | null;
+  expectedVersion?: number;
+}
+
+export interface SchedulerProfessionalProfileWriteDto {
+  biography?: string | null;
+  acceptsOnline: boolean;
+  active: boolean;
+  branchProfileIds: string[];
+  specialtyIds: string[];
+  effectiveFrom?: string;
+  effectiveTo?: string | null;
+  expectedVersion?: number;
+}
+
+export interface SchedulerServiceProfileWriteDto {
+  durationMinutes: number;
+  preparationMinutes: number;
+  cleanupMinutes: number;
+  capacity: number;
+  mode: SchedulerServiceMode;
+  acceptsOnline: boolean;
+  active: boolean;
+  branchProfileIds: string[];
+  effectiveFrom?: string;
+  effectiveTo?: string | null;
+  expectedVersion?: number;
+}
+
+export interface SchedulerResourceWriteDto {
+  branchProfileId: string;
+  name: string;
+  kind: SchedulerResourceKind;
+  capacity: number;
+  exclusive: boolean;
+  acceptsOnline: boolean;
+  active: boolean;
+  effectiveFrom?: string;
+  effectiveTo?: string | null;
+  expectedVersion?: number;
+}
+
+export interface SchedulerSpecialtyWriteDto {
+  commerceId: string;
+  name: string;
+  active: boolean;
+  effectiveFrom?: string;
+  effectiveTo?: string | null;
+}
+
+export interface SchedulerProfessionalGroupWriteDto {
+  commerceId: string;
+  branchProfileId: string;
+  name: string;
+  active: boolean;
+  professionalProfileIds: string[];
+  effectiveFrom?: string;
+  effectiveTo?: string | null;
+}
+
+export interface SchedulerProfessionalServiceWriteDto {
+  professionalProfileId: string;
+  serviceProfileId: string;
+  branchProfileId: string;
+  active: boolean;
+  effectiveFrom?: string;
+  effectiveTo?: string | null;
+}
+
+export interface SchedulerServiceResourceRequirementWriteDto {
+  serviceProfileId: string;
+  resourceId: string;
+  requiredUnits: number;
+  exclusive: boolean;
+  active: boolean;
+  effectiveFrom?: string;
+  effectiveTo?: string | null;
+}
+
+export interface SchedulerAvailabilityRulesWriteDto {
+  branchProfileId: string;
+  ownerType: SchedulerAvailabilityOwnerType;
+  ownerId: string;
+  effectiveFrom?: string;
+  rules: Array<{
+    kind: "WORKING" | "BREAK";
+    weekday: SchedulerWeekday;
+    startMinute: number;
+    endMinute: number;
+  }>;
+}
+
+export interface SchedulerAvailabilityExceptionsWriteDto {
+  branchProfileId: string;
+  ownerType: SchedulerAvailabilityOwnerType;
+  ownerId: string;
+  effectiveFrom?: string;
+  exceptions: Array<{
+    kind: "AVAILABLE" | "UNAVAILABLE";
+    date: string;
+    startMinute?: number | null;
+    endMinute?: number | null;
+    reason?: string | null;
+  }>;
+}

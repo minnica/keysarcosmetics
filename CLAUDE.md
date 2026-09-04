@@ -440,7 +440,12 @@ Datos:
 
 ## Estado actual de apps/scheduler
 
-`apps/scheduler` es la app de agenda y administración de reservas. La Fase 1 ya conectó login, bootstrap, permisos, alcance y autorizaciones secundarias al backend compartido; los catálogos, clientes, citas, configuraciones operativas y reportes continúan local/mock hasta las fases posteriores. Los módulos mock sólo se renderizan con `NODE_ENV=development` y `SCHEDULER_ALLOW_MOCKS=true`; en cualquier otro ambiente la sesión permanece protegida y esos módulos se mantienen cerrados.
+`apps/scheduler` es la app de agenda y administración de reservas. Las Fases 1 y 2 ya conectaron login, bootstrap, permisos, alcance, autorizaciones secundarias y los catálogos base de sucursales/profesionales/servicios/recursos al backend compartido; clientes, citas, configuraciones operativas, reportes y paneles administrativos avanzados continúan local/mock hasta las fases posteriores. Los módulos mock sólo se renderizan con `NODE_ENV=development` y `SCHEDULER_ALLOW_MOCKS=true`; fuera de ese modo se abren exclusivamente las superficies ya persistentes y las demás se mantienen cerradas.
+
+- La Fase 2 quedó implementada en repositorio el 4 de septiembre de 2026 mediante la migración exclusivamente aditiva `20260904070000_add_scheduler_operational_catalogs`; no se aplicó a development ni production, no crea seeds, perfiles ni datos operativos y ambos schemas Prisma permanecen sincronizados. Agrega comercios, perfiles uno-a-uno sobre `Sucursal`, `Empleado` y `CatalogItem SERVICE`, asignaciones, servicios/clases, especialidades, grupos, recursos, compatibilidades, horarios recurrentes y excepciones con vigencia y baja lógica.
+- `/api/scheduler/operations/candidates` y `/catalog` materializan únicamente las sucursales autorizadas y omiten bloques sin permiso. Las mutaciones de comercios, perfiles, servicios, recursos, grupos, compatibilidades y horarios exigen `ADMIN`, validan IDs/alcance, registran `AuditLog.application = SCHEDULER` y usan `expectedVersion` en perfiles y recursos. Sólo `SUPER_ADMIN` administra comercios; un administrador parcial no puede alterar perfiles compartidos fuera de su alcance.
+- Un profesional se activa explícitamente desde un `Empleado`; un servicio sólo parte de `CatalogItem.kind = SERVICE`, exige duración y sucursal; `CLASS` representa clases con capacidad; cabinas/equipos/estaciones son recursos físicos. Una sucursal no puede activar `bookingEnabled` hasta tener horario general, profesional y servicio activos. `OperationalCatalogWorkspace` conecta candidatos y configuración base real para sucursales, profesionales, servicios y recursos; los flujos administrativos avanzados continúan mock sólo en desarrollo hasta su conexión progresiva en Fase 9. Los mocks no se migran. Runbook: `docs/SCHEDULER_PHASE_2_OPERATIONAL_CATALOGS.md`.
+- El cierre local de Fase 2 valida schemas, lint/type-check/build del API, contratos compartidos, Scheduler y pruebas unitarias. PostgreSQL 16 e integración HTTP permanecen pendientes porque Podman no puede iniciar su runtime en este workspace; el diagnóstico real de Fase 0 y la aprobación del inventario continúan siendo gates antes de aplicar/provisionar.
 
 - La Fase 1 quedó implementada en repositorio el 4 de septiembre de 2026 mediante la migración exclusivamente aditiva `20260904060000_add_scheduler_security`; no se aplicó a development ni production y no concede permisos, crea seeds o modifica datos operativos. Agrega permisos de pantalla con capacidades `READ/WRITE/ADMIN/EXPORT/EXCEPTION`, asignaciones explícitas de sucursal, alcance profesional propio, credenciales secundarias y autorizaciones de uso único. Ambos schemas Prisma deben permanecer sincronizados.
 - Scheduler usa `POST /api/auth/login` y el JWT compartido. `GET /api/scheduler/bootstrap` materializa usuario, grants, sucursales y alcance profesional; sólo `SUPER_ADMIN` recibe todas las sucursales activas. Un puesto usa sus asignaciones explícitas o, si no existen, únicamente la sucursal canónica de su usuario/empleado; un conjunto vacío nunca significa acceso global.
@@ -1193,7 +1198,7 @@ apps/scheduler/
 │   ├── scheduler/                 → header, sidebar, grid agenda, tarjetas y diálogos del scheduler
 │   ├── reports/                   → dashboards y contenidos de reportes; navegación en la sidebar global
 │   └── settings/                  → workspace y paneles locales; navegación en la sidebar global
-├── src/components/administration/ → contenidos y CRUDs mock; navegación en la sidebar global
+├── src/components/administration/ → workspace mock en desarrollo + catálogo operativo real de Fase 2
 └── src/lib/
     ├── administration-scheduler-config.ts → sincronización local de comercios, sucursales y profesionales
     ├── commerce-operating-hours.ts → horario operativo y rango visible por comercio
@@ -1222,7 +1227,9 @@ backend/api/
 │   │   ├── 20260813020000_add_payroll_expense_categories/ → catálogo y backfill de categorías de gasto
 │   │   ├── 20260813030000_link_payroll_expense_categories/ → referencias de catálogo con snapshots históricos
 │   │   ├── 20260822000000_add_payroll_access_control/ → acceso independiente de Payroll por puesto y pantalla
-│   │   └── 20260823000000_add_payroll_read_only_access/ → nivel de escritura por permiso de pantalla
+│   │   ├── 20260823000000_add_payroll_read_only_access/ → nivel de escritura por permiso de pantalla
+│   │   ├── 20260904060000_add_scheduler_security/ → seguridad, alcance y auditoría de Scheduler
+│   │   └── 20260904070000_add_scheduler_operational_catalogs/ → perfiles, recursos y horarios de Scheduler
 │   ├── seed.ts                    → seed general/demo, usar con cuidado
 │   └── seed-catalogs.ts           → seed seguro para Bank/Position
 └── src/
@@ -1242,12 +1249,14 @@ backend/api/
     │   ├── payroll-access.routes.ts → permisos y credenciales administrativas de Payroll
     │   ├── payroll.routes.ts
     │   ├── pos.routes.ts        → auth POS, terminales, sucursales, permisos, credenciales y auditoría de Fase 1
-    │   └── scheduler.routes.ts    → bootstrap, código secundario, autorizaciones y administración de accesos
+    │   ├── scheduler.routes.ts    → bootstrap, código secundario, autorizaciones y administración de accesos
+    │   └── scheduler-operations.routes.ts → candidatos y catálogos operativos de Scheduler
     ├── services/
     │   ├── payroll-calculation.ts → motor puro de cálculo
     │   ├── payroll.service.ts     → corridas, reservas y snapshots
     │   ├── pos-pilot-reconciliation.ts → conciliación de sólo lectura para el piloto POS
     │   ├── scheduler-access.ts    → permisos, alcance, tokens de uso único y auditoría de Scheduler
+    │   ├── scheduler-operations.ts → reglas puras de catálogos, vigencia y horarios de Scheduler
     │   └── payroll-storage.ts     → comprobantes en bucket privado
     ├── types/
     │   ├── express.d.ts           → extensión de tipos de Express
