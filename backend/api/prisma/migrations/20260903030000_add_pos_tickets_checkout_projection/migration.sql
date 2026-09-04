@@ -114,6 +114,7 @@ CREATE TABLE "PosPaymentOperation" (
 CREATE TABLE "PosPayment" (
   "id" TEXT NOT NULL,
   "operationId" UUID NOT NULL,
+  "paymentMethodId" TEXT NOT NULL,
   "methodNameSnapshot" VARCHAR(160) NOT NULL,
   "methodTypeSnapshot" "MetodoPagoTipo" NOT NULL,
   "amount" DECIMAL(14,2) NOT NULL,
@@ -225,7 +226,6 @@ CREATE TABLE "PosLegacySaleProjection" (
   "id" TEXT NOT NULL,
   "operationId" UUID NOT NULL,
   "employeeId" TEXT NOT NULL,
-  "paymentMethodId" TEXT NOT NULL,
   "ventaId" TEXT NOT NULL,
   "amount" DECIMAL(14,2) NOT NULL,
   "creadoEn" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
