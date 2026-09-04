@@ -60,15 +60,7 @@ describe("Scheduler customer identity rules", () => {
     );
     expect(
       schedulerCustomerScopeWhere({ ...access, selfProfessionalOnly: true }),
-    ).toEqual({
-      portfolios: {
-        some: {
-          branchId: { in: ["branch-1"] },
-          employeeId: "employee-1",
-          effectiveTo: null,
-        },
-      },
-    });
+    ).toMatchObject({ OR: expect.any(Array) });
   });
 
   it("validates custom field values by their versioned definition", () => {

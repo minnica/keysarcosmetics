@@ -469,6 +469,220 @@ export interface SchedulerAvailabilityExceptionsWriteDto {
   }>;
 }
 
+export const SCHEDULER_APPOINTMENT_STATUSES = [
+  "PENDING",
+  "RESERVED",
+  "CONFIRMED",
+  "ARRIVED",
+  "WAITING",
+  "ATTENDED",
+  "NO_SHOW",
+  "CANCELED",
+] as const;
+export type SchedulerAppointmentStatus =
+  (typeof SCHEDULER_APPOINTMENT_STATUSES)[number];
+
+export type SchedulerAppointmentOrigin =
+  | "SCHEDULER"
+  | "POS"
+  | "INTERNAL_API"
+  | "IMPORT";
+
+export type SchedulerAvailabilityConflictCode =
+  | "BRANCH_CLOSED"
+  | "PROFESSIONAL_UNAVAILABLE"
+  | "RESOURCE_UNAVAILABLE"
+  | "PROFESSIONAL_BUSY"
+  | "RESOURCE_BUSY"
+  | "SERVICE_CAPACITY_EXHAUSTED"
+  | "SCHEDULE_BLOCKED"
+  | "MEMBERSHIP_NOT_ELIGIBLE"
+  | "VERSION_CONFLICT"
+  | "SERVICE_NOT_AVAILABLE"
+  | "INVALID_STATUS_TRANSITION"
+  | "LOCAL_TIME_GAP"
+  | "INVALID_OVERRIDE_AUTHORIZATION"
+  | "IDEMPOTENCY_CONFLICT"
+  | "CONCURRENT_WRITE";
+
+export interface SchedulerAppointmentServiceWriteDto {
+  serviceProfileId: string;
+  professionalProfileIds: string[];
+  resourceIds?: string[];
+  startsAt?: string;
+  capacityUnits?: number;
+  membershipId?: string | null;
+}
+
+export interface SchedulerAppointmentCreateDto {
+  branchId: string;
+  customerId: string;
+  startsAt: string;
+  status?: "PENDING" | "RESERVED" | "CONFIRMED";
+  notes?: string | null;
+  services: SchedulerAppointmentServiceWriteDto[];
+  override?: {
+    authorizationToken: string;
+    reason: string;
+  };
+}
+
+export interface SchedulerAppointmentUpdateDto
+  extends SchedulerAppointmentCreateDto {
+  expectedVersion: number;
+}
+
+export interface SchedulerAppointmentMoveDto {
+  startsAt: string;
+  expectedVersion: number;
+  services?: SchedulerAppointmentServiceWriteDto[];
+  override?: {
+    authorizationToken: string;
+    reason: string;
+  };
+}
+
+export interface SchedulerAppointmentStatusWriteDto {
+  status: SchedulerAppointmentStatus;
+  expectedVersion: number;
+  reason?: string | null;
+}
+
+export interface SchedulerAppointmentCancelDto {
+  expectedVersion: number;
+  reason: string;
+}
+
+export interface SchedulerAppointmentServiceDto {
+  id: string;
+  sequence: number;
+  serviceProfileId: string;
+  serviceName: string;
+  serviceVersion: number;
+  durationMinutes: number;
+  preparationMinutes: number;
+  cleanupMinutes: number;
+  capacityUnits: number;
+  startsAt: string;
+  endsAt: string;
+  occupiesFrom: string;
+  occupiesUntil: string;
+  professionals: Array<{
+    professionalProfileId: string;
+    name: string;
+    role: "PRIMARY" | "SUPPORT";
+  }>;
+  resources: Array<{
+    resourceId: string;
+    name: string;
+    units: number;
+    exclusive: boolean;
+  }>;
+  membership: {
+    membershipId: string;
+    name: string;
+    status: "RESERVED" | "CONSUMED" | "RELEASED";
+  } | null;
+}
+
+export interface SchedulerAppointmentDto {
+  id: string;
+  branchId: string;
+  branchProfileId: string;
+  branchName: string;
+  customerId: string;
+  customerName: string;
+  status: SchedulerAppointmentStatus;
+  origin: SchedulerAppointmentOrigin;
+  timezone: string;
+  startsAt: string;
+  endsAt: string;
+  notes: string | null;
+  cancellationReason: string | null;
+  version: number;
+  services: SchedulerAppointmentServiceDto[];
+  stateHistory: Array<{
+    fromStatus: SchedulerAppointmentStatus | null;
+    toStatus: SchedulerAppointmentStatus;
+    reason: string | null;
+    version: number;
+    actorUserId: string;
+    createdAt: string;
+  }>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SchedulerAppointmentPageDto {
+  items: SchedulerAppointmentDto[];
+  page: number;
+  pageSize: number;
+  total: number;
+}
+
+export interface SchedulerAppointmentListRequest {
+  branchId?: string;
+  from: string;
+  to: string;
+  professionalProfileId?: string;
+  customerId?: string;
+  status?: SchedulerAppointmentStatus;
+  page?: number;
+  pageSize?: number;
+}
+
+export interface SchedulerAvailabilityRequestDto {
+  branchId: string;
+  serviceProfileId: string;
+  date: string;
+  professionalProfileId?: string;
+  resourceId?: string;
+}
+
+export interface SchedulerAvailabilitySlotDto {
+  startsAt: string;
+  endsAt: string;
+  professionalProfileId: string;
+  professionalName: string;
+  resourceIds: string[];
+  remainingCapacity: number;
+}
+
+export interface SchedulerAvailabilityDto {
+  branchId: string;
+  serviceProfileId: string;
+  date: string;
+  timezone: string;
+  intervalMinutes: 15;
+  slots: SchedulerAvailabilitySlotDto[];
+}
+
+export interface SchedulerScheduleBlockWriteDto {
+  branchId: string;
+  professionalProfileId?: string | null;
+  resourceId?: string | null;
+  startsAt: string;
+  endsAt: string;
+  reason: string;
+  expectedVersion?: number;
+}
+
+export interface SchedulerScheduleBlockDto {
+  id: string;
+  branchId: string;
+  branchProfileId: string;
+  professionalProfileId: string | null;
+  resourceId: string | null;
+  startsAt: string;
+  endsAt: string;
+  timezone: string;
+  reason: string;
+  status: "ACTIVE" | "CANCELED";
+  version: number;
+  createdAt: string;
+  canceledAt: string | null;
+}
+
 export const SCHEDULER_CUSTOMER_CONTACT_PREFERENCES = [
   "PHONE",
   "WHATSAPP",
@@ -618,7 +832,7 @@ export interface SchedulerCustomerMergeResultDto {
 export interface SchedulerCustomerVisitHistoryDto {
   items: Array<{
     id: string;
-    origin: "POS_APPOINTMENT";
+    origin: "SCHEDULER_APPOINTMENT" | "POS_APPOINTMENT";
     branchId: string;
     branchName: string;
     serviceName: string;

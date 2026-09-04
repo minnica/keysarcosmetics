@@ -62,6 +62,14 @@ const EXPECTED_TABLES = [
   "SchedulerCustomerFieldDefinition",
   "SchedulerCustomerFieldValue",
   "SchedulerCustomerMergeEvent",
+  "SchedulerAppointment",
+  "SchedulerAppointmentService",
+  "SchedulerAppointmentParticipant",
+  "SchedulerAppointmentResource",
+  "SchedulerAppointmentMembershipBenefit",
+  "SchedulerAppointmentStateHistory",
+  "SchedulerScheduleBlock",
+  "SchedulerIdempotencyKey",
 ] as const;
 
 type ExpectedTable = (typeof EXPECTED_TABLES)[number];
@@ -104,6 +112,7 @@ export type SchedulerDiagnosisReport = {
     customers: Record<string, number | boolean | string | null>;
   };
   appointmentInventory: {
+    schedulerAppointment: Record<string, unknown>;
     registroCita: Record<string, unknown>;
     posAppointment: Record<string, unknown>;
     agendaResource: Record<string, unknown>;
@@ -580,6 +589,26 @@ export async function diagnoseSchedulerData(
       }
     : { total: null, tableStatus: "NOT_AVAILABLE" };
 
+  const schedulerAppointment = tableAvailability.SchedulerAppointment
+    ? {
+        total: await count(tx, '"SchedulerAppointment"'),
+        byStatus: await group(
+          tx,
+          `SELECT status::text AS key, COUNT(*)::bigint AS count
+           FROM "SchedulerAppointment" GROUP BY status ORDER BY status`,
+        ),
+        reviewCandidates: await aggregate(
+          tx,
+          `SELECT COUNT(*) FILTER (WHERE "endsAt" <= "startsAt")::bigint AS "invalidTimeWindow",
+                  COUNT(*) FILTER (WHERE version <= 0)::bigint AS "invalidVersion",
+                  COUNT(*) FILTER (
+                    WHERE status = 'CANCELED' AND "cancellationReason" IS NULL
+                  )::bigint AS "canceledWithoutReason"
+           FROM "SchedulerAppointment"`,
+        ),
+      }
+    : { total: null, tableStatus: "NOT_AVAILABLE" };
+
   const agendaResource = tableAvailability.AgendaResource
     ? {
         total: await count(tx, '"AgendaResource"'),
@@ -979,6 +1008,7 @@ export async function diagnoseSchedulerData(
       },
     },
     appointmentInventory: {
+      schedulerAppointment,
       registroCita,
       posAppointment,
       agendaResource,

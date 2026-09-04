@@ -114,6 +114,17 @@ import type {
   SchedulerCustomerSummaryDto,
   SchedulerCustomerVisitHistoryDto,
   SchedulerCustomerWriteDto,
+  SchedulerAppointmentCreateDto,
+  SchedulerAppointmentDto,
+  SchedulerAppointmentListRequest,
+  SchedulerAppointmentMoveDto,
+  SchedulerAppointmentPageDto,
+  SchedulerAppointmentStatusWriteDto,
+  SchedulerAppointmentUpdateDto,
+  SchedulerAvailabilityDto,
+  SchedulerAvailabilityRequestDto,
+  SchedulerScheduleBlockDto,
+  SchedulerScheduleBlockWriteDto,
 } from "@cosmetics/types";
 
 /**
@@ -277,6 +288,49 @@ export interface SchedulerApiClient {
   mergeCustomers(
     input: SchedulerCustomerMergeRequestDto,
   ): Promise<SchedulerCustomerMergeResultDto>;
+  availability(
+    input: SchedulerAvailabilityRequestDto,
+  ): Promise<SchedulerAvailabilityDto>;
+  appointments(
+    input: SchedulerAppointmentListRequest,
+  ): Promise<SchedulerAppointmentPageDto>;
+  appointment(id: string): Promise<SchedulerAppointmentDto>;
+  createAppointment(
+    input: SchedulerAppointmentCreateDto,
+    idempotencyKey: string,
+  ): Promise<SchedulerAppointmentDto>;
+  updateAppointment(
+    id: string,
+    input: SchedulerAppointmentUpdateDto,
+  ): Promise<SchedulerAppointmentDto>;
+  moveAppointment(
+    id: string,
+    input: SchedulerAppointmentMoveDto,
+  ): Promise<SchedulerAppointmentDto>;
+  changeAppointmentStatus(
+    id: string,
+    input: SchedulerAppointmentStatusWriteDto,
+  ): Promise<SchedulerAppointmentDto>;
+  cancelAppointment(
+    id: string,
+    input: { expectedVersion: number; reason: string },
+  ): Promise<SchedulerAppointmentDto>;
+  scheduleBlocks(input: {
+    branchId: string;
+    from: string;
+    to: string;
+  }): Promise<SchedulerScheduleBlockDto[]>;
+  createScheduleBlock(
+    input: SchedulerScheduleBlockWriteDto,
+  ): Promise<SchedulerScheduleBlockDto>;
+  updateScheduleBlock(
+    id: string,
+    input: SchedulerScheduleBlockWriteDto & { expectedVersion: number },
+  ): Promise<SchedulerScheduleBlockDto>;
+  cancelScheduleBlock(
+    id: string,
+    input: { expectedVersion: number; reason: string },
+  ): Promise<SchedulerScheduleBlockDto>;
   logout(): void;
 }
 
@@ -464,6 +518,56 @@ export function createSchedulerApiClient(
     mergeCustomers: (input) =>
       data<SchedulerCustomerMergeResultDto>(
         client.post("/api/scheduler/clients/merge", input),
+      ),
+    availability: (input) =>
+      data<SchedulerAvailabilityDto>(
+        client.get("/api/scheduler/availability", { params: input }),
+      ),
+    appointments: (input) =>
+      data<SchedulerAppointmentPageDto>(
+        client.get("/api/scheduler/appointments", { params: input }),
+      ),
+    appointment: (id) =>
+      data<SchedulerAppointmentDto>(
+        client.get(`/api/scheduler/appointments/${id}`),
+      ),
+    createAppointment: (input, key) =>
+      data<SchedulerAppointmentDto>(
+        client.post("/api/scheduler/appointments", input, {
+          headers: { "Idempotency-Key": key },
+        }),
+      ),
+    updateAppointment: (id, input) =>
+      data<SchedulerAppointmentDto>(
+        client.put(`/api/scheduler/appointments/${id}`, input),
+      ),
+    moveAppointment: (id, input) =>
+      data<SchedulerAppointmentDto>(
+        client.post(`/api/scheduler/appointments/${id}/move`, input),
+      ),
+    changeAppointmentStatus: (id, input) =>
+      data<SchedulerAppointmentDto>(
+        client.post(`/api/scheduler/appointments/${id}/status`, input),
+      ),
+    cancelAppointment: (id, input) =>
+      data<SchedulerAppointmentDto>(
+        client.post(`/api/scheduler/appointments/${id}/cancel`, input),
+      ),
+    scheduleBlocks: (input) =>
+      data<SchedulerScheduleBlockDto[]>(
+        client.get("/api/scheduler/blocks", { params: input }),
+      ),
+    createScheduleBlock: (input) =>
+      data<SchedulerScheduleBlockDto>(
+        client.post("/api/scheduler/blocks", input),
+      ),
+    updateScheduleBlock: (id, input) =>
+      data<SchedulerScheduleBlockDto>(
+        client.put(`/api/scheduler/blocks/${id}`, input),
+      ),
+    cancelScheduleBlock: (id, input) =>
+      data<SchedulerScheduleBlockDto>(
+        client.post(`/api/scheduler/blocks/${id}/cancel`, input),
       ),
     logout: () => setAccessToken(null),
   };

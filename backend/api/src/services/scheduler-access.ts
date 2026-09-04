@@ -469,9 +469,11 @@ export async function consumeSchedulerAuthorization(input: {
   branchId?: string;
   targetType?: string;
   targetId?: string;
+  tx?: Prisma.TransactionClient;
 }) {
+  const database = input.tx ?? prisma;
   const tokenHash = schedulerAuthorizationTokenHash(input.token);
-  const authorization = await prisma.schedulerAuthorization.findUnique({
+  const authorization = await database.schedulerAuthorization.findUnique({
     where: { tokenHash },
   });
   if (
@@ -501,7 +503,7 @@ export async function consumeSchedulerAuthorization(input: {
   }
 
   const usedAt = new Date();
-  const consumed = await prisma.schedulerAuthorization.updateMany({
+  const consumed = await database.schedulerAuthorization.updateMany({
     where: {
       id: authorization.id,
       usedAt: null,

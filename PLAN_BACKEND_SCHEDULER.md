@@ -8,6 +8,8 @@
 
 ## Estado de ejecución
 
+- **Fase 4 — implementada en repositorio el 4 de septiembre de 2026; migración, integración PostgreSQL y activación pendientes.** La migración exclusivamente aditiva `20260904090000_add_scheduler_appointments` agrega citas canónicas multi-servicio, participantes, recursos, bloqueos, historial append-only, idempotencia, reservas de beneficios y el vínculo opcional desde `PosAppointment`; no importa mocks ni transforma Agenda/POS. `/api/scheduler/availability`, `/appointments*` y `/blocks*` aplican JWT, capacidades, sucursales/profesional propio, horario IANA, control optimista, auditoría, locks ordenados y transacciones serializables. La prueba concurrente crítica quedó como integración opt-in para PostgreSQL desechable. Guía: `docs/SCHEDULER_PHASE_4_APPOINTMENTS.md`.
+- **Fase 3 — implementada progresivamente en repositorio el 4 de septiembre de 2026; migración, diagnóstico/materialización e índice parcial pendientes.** La migración aditiva `20260904080000_add_scheduler_customers` agrega normalización nullable/versionada, perfiles, alias, correos, campos personalizados y fusiones auditables sin backfill ni datos operativos. `/api/scheduler/clients*` ofrece búsqueda, alta/edición, expediente, históricos y fusión serializable; las citas canónicas ya participan en la fusión y el historial de visitas. Guía: `docs/SCHEDULER_PHASE_3_CUSTOMERS.md`.
 - **Fase 2 — implementada en repositorio el 4 de septiembre de 2026; migración y provisión pendientes.** La migración exclusivamente aditiva `20260904070000_add_scheduler_operational_catalogs` agrega perfiles sobre `Sucursal`, `Empleado` y `CatalogItem SERVICE`, comercios, asignaciones por sucursal, servicios/clases, especialidades, grupos, recursos, compatibilidades, requisitos, horarios recurrentes y excepciones con vigencia/baja lógica. No crea seeds, perfiles ni datos operativos. `/api/scheduler/operations/*` expone candidatos y CRUDs tipados con alcance, auditoría y control optimista. Las secciones administrativas base ya muestran candidatos reales y permiten activar/configurar sucursales, profesionales, servicios y recursos; los flujos avanzados restantes se conectarán progresivamente en Fase 9. Guía: `docs/SCHEDULER_PHASE_2_OPERATIONAL_CATALOGS.md`.
 - **Fase 1 — implementada en repositorio el 4 de septiembre de 2026; activación por ambiente pendiente.** La migración aditiva `20260904060000_add_scheduler_security` incorpora permisos/capacidades por puesto, sucursales explícitas, alcance profesional propio, credenciales secundarias con bcrypt, autorizaciones opacas de dos minutos y consumo único, y extiende `AuditLog` con `Usuario` + origen `SCHEDULER`. El frontend ya usa el JWT compartido, bootstrap autoritativo y guards de servidor/UI; los códigos mock fueron retirados del flujo activo y el documento legacy se elimina al abrir la configuración personal.
 - `SCHEDULER_ALLOW_MOCKS=true` sólo surte efecto con `NODE_ENV=development`; sin ambas condiciones los módulos operativos mock permanecen cerrados. La migración no concede grants, no crea seeds y no se aplicó a development o production. La evidencia real pendiente de Fase 0, la reconstrucción sobre PostgreSQL 16 y las pruebas HTTP siguen siendo gates obligatorios antes de activar. Guía: `docs/SCHEDULER_PHASE_1_SECURITY.md`.
@@ -48,7 +50,7 @@ El desarrollo debe cubrir la aplicación completa, no solamente un MVP. La ejecu
 - El esquema canónico está en `backend/api/prisma/schema.prisma`.
 - Existe una copia en `backend/api/src/prisma/schema.prisma`; ambas eran idénticas durante este análisis.
 - Prisma validó correctamente.
-- El análisis inicial encontró 36 directorios; después de las Fases 1 a 3 el repositorio contiene 39 migraciones versionadas.
+- El análisis inicial encontró 36 directorios; después de las Fases 1 a 4 el repositorio contiene 40 migraciones versionadas.
 - El type-check y el build del API pasaron.
 - Las 84 pruebas unitarias encontradas para el API pasaron.
 - El type-check, las pruebas actuales y el build de Scheduler pasaron. El build mostró advertencias no bloqueantes relacionadas con imágenes y dependencias de hooks.
@@ -342,6 +344,8 @@ Evidencia disponible:
 
 ### Fase 4 — Motor canónico de disponibilidad y citas
 
+**Estado de implementación (4 de septiembre de 2026):** completada en repositorio; migración, reconstrucción/integración PostgreSQL y activación operativa pendientes por los gates de Fase 0 y una base desechable. La UI de Agenda continúa mock hasta su conexión controlada en Fase 9.
+
 Objetivo: convertir Scheduler en la fuente de verdad de citas futuras.
 
 Entregables:
@@ -358,6 +362,19 @@ Entregables:
 Prueba crítica: dos solicitudes concurrentes por el último espacio disponible deben producir exactamente un éxito y un `409`, sin sobreventa.
 
 Criterio de salida: todas las operaciones centrales de agenda funcionan sin mocks y resisten concurrencia real.
+
+Evidencia disponible:
+
+- `20260904090000_add_scheduler_appointments` es exclusivamente aditiva: agrega citas multi-servicio, participantes, recursos, bloqueos cancelables, estados, snapshots, historial append-only, idempotencia y beneficios; no crea datos ni convierte `RegistroCita`, `PosAppointment` o `Agenda*`.
+- `PosAppointment.schedulerAppointmentId` relaciona la operación POS sin reemplazar aún al proveedor Agenda; la sustitución del adaptador pertenece a Fase 5.
+- `/api/scheduler/availability`, `/appointments*` y `/blocks*` exponen disponibilidad diaria optimizada, listado/detalle, alta, edición, movimiento, transición/cancelación y bloqueos. Todos materializan sucursales y, cuando aplica, profesional propio.
+- El cálculo conserva zona IANA, genera intervalos de 15 minutos, aplica jornadas/excepciones/bloqueos/citas/capacidades en orden, y usa intervalos semiabiertos. `PENDING`, `RESERVED`, `CONFIRMED`, `ARRIVED` y `WAITING` ocupan agenda.
+- Las mutaciones usan `expectedVersion`; los conflictos entregan códigos `409` estables. Las excepciones requieren capacidad `EXCEPTION`, autorización secundaria `AVAILABILITY_OVERRIDE`, motivo y auditoría.
+- Las altas exigen `Idempotency-Key`; un lock propio hace converger reintentos concurrentes al mismo resultado. Las reservas toman advisory locks ordenados por día/sucursal/profesional/recurso dentro de transacciones `SERIALIZABLE` con reintento de `P2034`.
+- Los beneficios bloquean la membresía, validan identidad/estado/sesiones/condiciones y contabilizan juntas varias líneas. Scheduler reserva, consume o libera su ledger sin modificar `usedSessions` ni fabricar asistencias POS antes de la integración de Fase 5.
+- `scheduler-appointments.integration.test.ts` prueba el último espacio con dos solicitudes simultáneas y exige un `201` y un `409`. La suite está opt-in y no se ejecutó localmente por falta de PostgreSQL desechable; es obligatoria antes de activar.
+- El diagnóstico incorpora las nuevas tablas y el historial de Clientes combina citas Scheduler y POS sin enlazar `RegistroCita` por nombre.
+- El cierre local valida schemas, lint/type-check/build del API, contratos compartidos y 109 pruebas unitarias en 21 archivos. Runbook: `docs/SCHEDULER_PHASE_4_APPOINTMENTS.md`.
 
 ### Fase 5 — Sustitución de Agenda CRM en la integración con POS
 
@@ -614,13 +631,13 @@ Opciones consideradas:
 La siguiente sesión operativa debe cerrar la **evidencia de la Fase 0** y activar de forma controlada las Fases 1, 2 y 3 antes de iniciar citas:
 
 1. Confirmar que se dispone de acceso seguro a la base de desarrollo.
-2. Comparar migraciones aplicadas contra las 39 existentes en el repositorio.
+2. Comparar migraciones aplicadas contra las 40 existentes en el repositorio.
 3. Ejecutar `scheduler:diagnose` y conservar el JSON agregado como evidencia segura.
 4. Revisar conteos, duplicados y candidatos de mapeo reales.
-5. Reconstruir todas las migraciones, incluidas `20260904060000_add_scheduler_security`, `20260904070000_add_scheduler_operational_catalogs` y `20260904080000_add_scheduler_customers`, sobre PostgreSQL 16 desechable.
-6. Ejecutar pruebas HTTP de `401/403`, alcance, autorización de un solo uso, candidatos, perfiles, clientes, normalización, fusiones, validaciones de horario y conflictos `409`; probar además dos altas concurrentes con el mismo teléfono.
-7. Aprobar la estrategia de backfill; aplicar las tres migraciones en development y provisionar grants/catálogos explícitos sin seeds operativos.
+5. Reconstruir todas las migraciones, incluidas `20260904060000_add_scheduler_security`, `20260904070000_add_scheduler_operational_catalogs`, `20260904080000_add_scheduler_customers` y `20260904090000_add_scheduler_appointments`, sobre PostgreSQL 16 desechable.
+6. Ejecutar pruebas HTTP de `401/403`, alcance, autorización de un solo uso, candidatos, perfiles, clientes, normalización, fusiones, horarios, bloqueos, idempotencia y conflictos `409`; probar además dos altas concurrentes con el mismo teléfono y dos reservas por el último espacio.
+7. Aprobar la estrategia de backfill; aplicar las cuatro migraciones en development y provisionar grants/catálogos explícitos sin seeds operativos.
 8. Ejecutar `scheduler:customers:normalize` en `DRY_RUN`, materializar sólo después de revisar el agregado y resolver manualmente duplicados antes de diseñar la migración del índice único parcial.
-9. Con esa evidencia, conectar gradualmente las pantallas administrativas y de Clientes según la Fase 9, y después diseñar Fase 4 sin introducir identidades ni citas paralelas.
+9. Con esa evidencia, conectar gradualmente Administración, Clientes y Agenda según la Fase 9; después ejecutar la sustitución controlada del adaptador POS de Fase 5.
 
 No debe iniciarse la migración canónica de citas hasta conocer el contenido real de `PosAppointment`, `RegistroCita` y las tablas `Agenda*` en el ambiente objetivo.

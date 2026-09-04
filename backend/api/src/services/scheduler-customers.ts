@@ -55,13 +55,35 @@ export function schedulerCustomerScopeWhere(
 
   if (access.selfProfessionalOnly) {
     return {
-      portfolios: {
-        some: {
-          branchId: { in: branchIds },
-          employeeId: access.professionalEmployeeId ?? "__none__",
-          effectiveTo: null,
+      OR: [
+        {
+          portfolios: {
+            some: {
+              branchId: { in: branchIds },
+              employeeId: access.professionalEmployeeId ?? "__none__",
+              effectiveTo: null,
+            },
+          },
         },
-      },
+        {
+          schedulerAppointments: {
+            some: {
+              branchProfile: { branchId: { in: branchIds } },
+              services: {
+                some: {
+                  participants: {
+                    some: {
+                      professionalProfile: {
+                        employeeId: access.professionalEmployeeId ?? "__none__",
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      ],
     };
   }
 
@@ -70,6 +92,11 @@ export function schedulerCustomerScopeWhere(
       { portfolios: { some: { branchId: { in: branchIds } } } },
       { posTickets: { some: { branchId: { in: branchIds } } } },
       { posAppointments: { some: { branchId: { in: branchIds } } } },
+      {
+        schedulerAppointments: {
+          some: { branchProfile: { branchId: { in: branchIds } } },
+        },
+      },
       { agendaReservations: { some: { branchId: { in: branchIds } } } },
       {
         posMemberships: {

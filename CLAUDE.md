@@ -440,10 +440,15 @@ Datos:
 
 ## Estado actual de apps/scheduler
 
-`apps/scheduler` es la app de agenda y administración de reservas. Las Fases 1 a 3 ya implementaron login, bootstrap, permisos, alcance, autorizaciones secundarias, catálogos base y la API canónica de clientes sobre el backend compartido. La UI de Clientes, citas, configuraciones operativas, reportes y paneles administrativos avanzados continúa local/mock hasta las fases posteriores; los métodos tipados de Clientes ya existen, pero no se habilitan como superficie operativa hasta la conexión controlada de Fase 9. Los módulos mock sólo se renderizan con `NODE_ENV=development` y `SCHEDULER_ALLOW_MOCKS=true`; fuera de ese modo se abren exclusivamente las superficies ya persistentes y las demás se mantienen cerradas.
+`apps/scheduler` es la app de agenda y administración de reservas. Las Fases 1 a 4 ya implementaron login, bootstrap, permisos, alcance, autorizaciones secundarias, catálogos base, clientes compartidos y el motor canónico de disponibilidad/citas sobre el backend compartido. La UI de Clientes, citas, configuraciones operativas, reportes y paneles administrativos avanzados continúa local/mock hasta la conexión controlada de Fase 9. Los módulos mock sólo se renderizan con `NODE_ENV=development` y `SCHEDULER_ALLOW_MOCKS=true`; fuera de ese modo se abren exclusivamente las superficies ya persistentes y las demás se mantienen cerradas.
+
+- La Fase 4 quedó implementada en repositorio el 4 de septiembre de 2026 mediante la migración exclusivamente aditiva `20260904090000_add_scheduler_appointments`; no se aplicó a development ni production, no crea/importa citas o seeds y ambos schemas Prisma permanecen sincronizados. Agrega citas multi-servicio, participantes, recursos, bloqueos, snapshots, estados, historial append-only, idempotencia, reservas de membresía y `PosAppointment.schedulerAppointmentId`.
+- `/api/scheduler/availability`, `/appointments*` y `/blocks*` aplican JWT, capacidades y sucursales/profesional propio. El cálculo usa UTC + zona IANA, intervalos de 15 minutos y evalúa jornada, excepciones, bloqueos, citas, capacidad del servicio y recursos. Las mutaciones usan `expectedVersion`; las excepciones consumen `AVAILABILITY_OVERRIDE` y conservan motivo/auditoría.
+- Crear exige `Idempotency-Key`. La confirmación usa advisory locks ordenados por día/sucursal/profesional/recurso y transacciones `SERIALIZABLE`; la integración opt-in prueba que dos solicitudes por el último lugar producen un `201` y un `409`. Beneficios de membresía se reservan/consumen/liberan en el ledger de Scheduler sin alterar todavía `usedSessions` ni fabricar una asistencia POS; esa propagación pertenece a Fase 5.
+- El cierre local de Fase 4 valida schemas, lint/type-check/build del API, contratos compartidos y 109 pruebas unitarias en 21 archivos. PostgreSQL 16, integración HTTP/concurrencia, diagnóstico real y aplicación/provisión continúan como gates obligatorios. Runbook: `docs/SCHEDULER_PHASE_4_APPOINTMENTS.md`.
 
 - La Fase 3 quedó implementada progresivamente en repositorio el 4 de septiembre de 2026 mediante la migración exclusivamente aditiva `20260904080000_add_scheduler_customers`; no se aplicó a development ni production, no hace backfill/fusiones/seeds y ambos schemas Prisma permanecen sincronizados. Agrega `Customer.phoneNormalized` nullable y `version`, perfiles Scheduler, alias de nombre/teléfono, correos, campos personalizados versionados y eventos inmutables de fusión.
-- Scheduler y los escritores POS mantienen escritura dual del teléfono. `/api/scheduler/clients*` ofrece búsqueda paginada por nombre/teléfono/correo/alias, procedencias `CustomerSource`, campos por comercio, alta/edición con alcance y versión, expediente, visitas, finanzas POS de sólo lectura y fusión `SERIALIZABLE`. El alcance profesional propio exige cartera vigente; `RegistroCita` nunca se enlaza por nombre.
+- Scheduler y los escritores POS mantienen escritura dual del teléfono. `/api/scheduler/clients*` ofrece búsqueda paginada por nombre/teléfono/correo/alias, procedencias `CustomerSource`, campos por comercio, alta/edición con alcance y versión, expediente, visitas, finanzas POS de sólo lectura y fusión `SERIALIZABLE`. El alcance profesional propio exige cartera vigente o participación en una cita canónica de la sucursal; `RegistroCita` nunca se enlaza por nombre.
 - Expediente, visitas, finanzas y fusiones consumen autorizaciones secundarias ligadas a objetivo; `CLIENT_MERGE` exige `ADMIN`. La fusión rechaza identidades externas distintas, reasigna relaciones compartidas, conserva snapshots financieros, registra `SchedulerCustomerMergeEvent`/`AuditLog` y desactiva el origen sin borrar `Customer`. Scheduler no corrige tickets/pagos; las correcciones siguen siendo compensaciones de POS.
 - `scheduler:diagnose` ahora mide materialización/duplicados sin PII y `scheduler:customers:normalize` inicia en `DRY_RUN`, es reejecutable y sólo deriva `phoneNormalized`. Production exige confirmación exacta y PITR. El índice único parcial permanece deliberadamente pendiente hasta que la evidencia real indique `uniquePartialIndexReady = true`. Runbook: `docs/SCHEDULER_PHASE_3_CUSTOMERS.md`.
 - El cierre local de Fase 3 valida schemas, migración aditiva, lint/type-check/build del API, paquetes compartidos, Scheduler y 103 pruebas unitarias en 20 archivos. PostgreSQL 16, integración HTTP/concurrencia, diagnóstico/materialización real e índice parcial siguen siendo gates antes de activar Clientes.
@@ -466,7 +471,7 @@ Datos:
 
 ### Agenda
 
-- La agenda principal (`/`) modela una agenda operativa estilo AgendaPro con vistas `day` y `week`, filtro por sucursal, selección de profesionales, filtro de estatus, búsqueda rápida por hora, calendario mensual y acciones directas sobre slots vacíos.
+- La agenda principal (`/`) modela una agenda operativa estilo AgendaPro con vistas `day` y `week`, filtro por sucursal, selección de profesionales, filtro de estatus, búsqueda rápida por hora, calendario mensual y acciones directas sobre slots vacíos. Esta superficie aún usa el estado mock de desarrollo; el backend canónico de Fase 4 se conectará gradualmente en Fase 9.
 - El contexto operativo de la agenda se generalizó a `Comercio → Sucursal → Profesional`. `schedulerCommerces` define los comercios disponibles; cada sucursal pertenece a un comercio y cada profesional puede estar asignado a varios comercios y sucursales mediante `commerceIds`/`branchIds`. Al cambiar de comercio, la UI carga solo las sucursales permitidas de ese comercio y después filtra los profesionales disponibles para la sucursal elegida.
 - La fuente efectiva de comercios, sucursales y profesionales combina los catálogos mock con la configuración guardada por Administración. `src/lib/administration-scheduler-config.ts` persiste el conjunto en `scheduler-administration-configuration`, normaliza registros estáticos por nombre y notifica cambios con `scheduler-administration-configuration-change`. Altas, cambios de nombre, asignaciones y activaciones/desactivaciones se reflejan en Agenda sin backend; los elementos inactivos dejan de ofrecerse operativamente.
 - El horario operativo pertenece al comercio, no a cada sucursal. `src/lib/commerce-operating-hours.ts` guarda una agenda semanal o modo 24 horas por comercio, calcula el rango visible de las vistas diaria/semanal y marca como bloqueadas las celdas fuera del servicio. Una reserva activa fuera de ese horario o sobre un bloqueo manual abre una confirmación de dos pasos y exige escribir `RESERVAR`; la excepción aplica solo a esa reserva y no modifica el horario general. Las reservas canceladas no disparan conflictos.
@@ -476,8 +481,8 @@ Datos:
 - El registro mock de clientes vive en `src/lib/mock-client-data.ts` y es transversal a comercios/sucursales. Antes de abrir `Nuevo cliente`, el único input `Cliente` funciona como buscador combinado: acepta letras o números y consulta nombre completo, alias o cualquier segmento del teléfono normalizado; seleccionar una coincidencia completa nombre, teléfono y correo y vincula la reserva mediante `clientId`. El campo `Teléfono` solo aparece dentro del formulario `Nuevo cliente`; en clientes existentes se reutiliza el dato vinculado. El teléfono es obligatorio, se compara sin espacios/signos y debe ser único. Si se intenta guardar otro nombre con un teléfono existente, la UI pide confirmar la unificación: conserva el nombre/correo canónicos, guarda variantes como alias/correos alternativos y agrega la visita al mismo historial con `branchId`, fecha y `bookingId`. Esta lógica es local/mock; la futura API deberá repetir la restricción única y la unificación dentro de una transacción.
 - La entrada principal es `SchedulerWorkspace`, que compone `SchedulerHeader`, `SchedulerSidebar` y `SchedulerAgendaGrid`, y abre tres diálogos especializados: `SchedulerBookingDialog`, `SchedulerBlockDialog` y `SchedulerDetailDialog`.
 - Los datos salen de `src/lib/mock-scheduler-data.ts` y se manipulan con helpers en `src/components/scheduler/scheduler-utils.tsx`.
-- El login temporal solo redirige a la agenda principal; no hay flujo auth real para esta app todavía.
-- `src/lib/scheduler-access.ts` concentra el perfil de acceso mock actual: pantallas permitidas y alcance por comercio, sucursal y profesional. `SchedulerAppSidebar` oculta pantallas no autorizadas, `SchedulerAccessGuard` impide abrir directamente áreas completas sin permiso y Administración descarta secciones no permitidas. Esta capa sigue siendo demostrativa/local; la autorización real deberá validarse también en backend durante la fase de persistencia.
+- El login usa `POST /api/auth/login`, conserva el JWT compartido y exige un bootstrap válido antes de abrir la agenda.
+- `src/lib/scheduler-access.ts` adapta el bootstrap autoritativo a la navegación: `SchedulerAppSidebar` oculta pantallas no autorizadas, `SchedulerAccessGuard` impide abrir directamente áreas completas sin permiso y Administración descarta secciones no permitidas. El backend vuelve a validar capacidad, sucursal y alcance profesional en cada endpoint; la UI nunca es la frontera de seguridad.
 - La agenda usa colores de estatus configurables por comercio desde Administración. La paleta se guarda en `scheduler-status-colors-by-commerce`, requiere desbloqueo mediante un código mock de perfil autorizado y actualiza puntos, selectores y tarjetas al emitir `scheduler-status-colors-change`.
 - El historial de visitas y el historial financiero del cliente son flujos separados. Consultar información sensible exige un código personal mock; los perfiles `master` y `admin` pueden editar o eliminar movimientos de pago, mientras un vendedor solo puede consultar clientes asignados. Las consultas y mutaciones generan auditoría local. Los códigos incluidos en `scheduler-access.ts` son exclusivamente demostrativos: en producción deben validarse en backend y nunca enviarse en el bundle del navegador.
 
@@ -535,7 +540,7 @@ La ruta `/reportes` contiene la primera fase local/mock de reportes: resumen eje
 - **Fase 2 — Catálogos base**: implementar Comercios/sucursales, Profesionales y Servicios con listado, búsqueda/filtros, crear, editar, activar/desactivar y confirmaciones. Implementada en local/mock.
 - **Fase 3 — Reglas operativas**: implementar Comisiones, Recursos y Gift Cards; integrar horarios, descansos, recursos, categorías y restricciones de reserva; cubrir flujos alternativos de gift card de servicio y de monto. Implementada en local/mock.
 - **Fase 4 — Comunicación y documentos**: conectar WhatsApp real, envío de mensajes y persistencia de plantillas; implementar Consentimientos como catálogo de documentos; definir antes de construir el flujo de resultados de Encuestas y el uso de Consentimientos dentro de una cita. Catálogo y configuración implementados en local/mock; Consentimientos ya incluye nombre, archivo, validación de 5 MB, tabla CRUD y confirmación de eliminación; firma, uso dentro de una cita y persistencia siguen fuera de alcance.
-- **Fase 5 — Persistencia y conexión con agenda**: modelar y validar `Cliente`, `Servicio`, `Cita`, `BloqueHorario` y las entidades administrativas necesarias; crear endpoints `/api/scheduler` y conectar el frontend sin romper el mock actual; aplicar permisos por rol y reglas de sucursal. Pendiente: no iniciar hasta cerrar el acabado visual y recibir autorización explícita para modificar backend/Prisma.
+- **Fase 5 — Persistencia y conexión con agenda**: el backend/Prisma base de Cliente, Servicio, Cita y BloqueHorario ya existe por las Fases 1 a 4 de `PLAN_BACKEND_SCHEDULER.md`; permanece pendiente conectar gradualmente la agenda visual sin convertir mocks en datos operativos. La sustitución del proveedor Agenda usado por POS se ejecuta aparte en la Fase 5 del plan backend.
 - **Fase 6 — Calidad y operación**: pruebas de flujos completos, responsive y accesibilidad; estados de error/reintento y protección contra cambios destructivos; preparar despliegue cuando el comportamiento local esté validado.
 
 **Criterios para cada módulo**: antes de marcar un módulo como terminado deben existir listado, estado vacío, búsqueda o filtro cuando aplique, alta, edición, validaciones, confirmación para eliminar/desactivar, feedback de éxito/error, comportamiento móvil y documentación de las decisiones no visibles en las capturas.
@@ -1186,7 +1191,7 @@ apps/scheduler/
 │   ├── logo.svg                   → logo compartido Keysar
 │   └── fonts/                     → Emofera + Gilroy para identidad visual
 ├── src/app/
-│   ├── (auth)/login/              → acceso temporal/mock al scheduler
+│   ├── (auth)/login/              → login JWT y bootstrap real de Scheduler
 │   ├── (dashboard)/page.tsx       → agenda principal (día / semana)
 │   ├── (dashboard)/administracion/ → workspace administrativo completo
 │   ├── (dashboard)/configuraciones/ → configuración visual/local del scheduler
@@ -1236,7 +1241,8 @@ backend/api/
 │   │   ├── 20260823000000_add_payroll_read_only_access/ → nivel de escritura por permiso de pantalla
 │   │   ├── 20260904060000_add_scheduler_security/ → seguridad, alcance y auditoría de Scheduler
 │   │   ├── 20260904070000_add_scheduler_operational_catalogs/ → perfiles, recursos y horarios de Scheduler
-│   │   └── 20260904080000_add_scheduler_customers/ → clientes compartidos, metadatos y fusiones de Scheduler
+│   │   ├── 20260904080000_add_scheduler_customers/ → clientes compartidos, metadatos y fusiones de Scheduler
+│   │   └── 20260904090000_add_scheduler_appointments/ → disponibilidad, citas, bloqueos e idempotencia
 │   ├── seed.ts                    → seed general/demo, usar con cuidado
 │   └── seed-catalogs.ts           → seed seguro para Bank/Position
 └── src/
@@ -1258,7 +1264,8 @@ backend/api/
     │   ├── pos.routes.ts        → auth POS, terminales, sucursales, permisos, credenciales y auditoría de Fase 1
     │   ├── scheduler.routes.ts    → bootstrap, código secundario, autorizaciones y administración de accesos
     │   ├── scheduler-operations.routes.ts → candidatos y catálogos operativos de Scheduler
-    │   └── scheduler-customers.routes.ts → clientes compartidos, expedientes, históricos y fusiones
+    │   ├── scheduler-customers.routes.ts → clientes compartidos, expedientes, históricos y fusiones
+    │   └── scheduler-appointments.routes.ts → disponibilidad, citas, estados y bloqueos canónicos
     ├── services/
     │   ├── payroll-calculation.ts → motor puro de cálculo
     │   ├── payroll.service.ts     → corridas, reservas y snapshots
@@ -1266,6 +1273,7 @@ backend/api/
     │   ├── scheduler-access.ts    → permisos, alcance, tokens de uso único y auditoría de Scheduler
     │   ├── scheduler-operations.ts → reglas puras de catálogos, vigencia y horarios de Scheduler
     │   ├── scheduler-customers.ts → normalización, alcance y reglas de identidad/fusión
+    │   ├── scheduler-appointments.ts → zonas IANA, intervalos, estados, membresías e idempotencia
     │   └── payroll-storage.ts     → comprobantes en bucket privado
     ├── types/
     │   ├── express.d.ts           → extensión de tipos de Express

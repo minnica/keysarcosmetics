@@ -1239,6 +1239,13 @@ router.post(
             }),
           );
           await move(
+            "schedulerAppointments",
+            tx.schedulerAppointment.updateMany({
+              where: { customerId: source.id },
+              data: { customerId: target.id },
+            }),
+          );
+          await move(
             "memberships",
             tx.posClientMembership.updateMany({
               where: { customerId: source.id },
@@ -1654,20 +1661,50 @@ router.get(
         ? [parsed.data.branchId]
         : req.schedulerAccess!.authorizedBranches.map((branch) => branch.id);
       const where = { customerId, branchId: { in: branchIds } };
-      const [items, total] = await Promise.all([
+      const schedulerWhere = {
+        customerId,
+        branchProfile: { branchId: { in: branchIds } },
+      };
+      const fetchLimit = parsed.data.page * parsed.data.pageSize;
+      const [posItems, posTotal, schedulerItems, schedulerTotal] =
+        await Promise.all([
         prisma.posAppointment.findMany({
           where,
           include: { branch: { select: { nombre: true } } },
           orderBy: [{ scheduledAt: "desc" }, { creadoEn: "desc" }],
-          skip: (parsed.data.page - 1) * parsed.data.pageSize,
-          take: parsed.data.pageSize,
+          take: fetchLimit,
         }),
         prisma.posAppointment.count({ where }),
+        prisma.schedulerAppointment.findMany({
+          where: schedulerWhere,
+          include: {
+            branchProfile: { include: { branch: true } },
+            services: {
+              orderBy: { sequence: "asc" },
+              select: { serviceNameSnapshot: true },
+            },
+          },
+          orderBy: [{ startsAt: "desc" }, { creadoEn: "desc" }],
+          take: fetchLimit,
+        }),
+        prisma.schedulerAppointment.count({ where: schedulerWhere }),
       ]);
-      const data: SchedulerCustomerVisitHistoryDto = {
-        items: items.map((item) => ({
+      const mergedItems: SchedulerCustomerVisitHistoryDto["items"] = [
+        ...schedulerItems.map((item) => ({
           id: item.id,
-          origin: "POS_APPOINTMENT",
+          origin: "SCHEDULER_APPOINTMENT" as const,
+          branchId: item.branchProfile.branchId,
+          branchName: item.branchProfile.branch.nombre,
+          serviceName: item.services
+            .map((service) => service.serviceNameSnapshot)
+            .join(" + "),
+          status: item.status,
+          scheduledAt: item.startsAt.toISOString(),
+          createdAt: item.creadoEn.toISOString(),
+        })),
+        ...posItems.map((item) => ({
+          id: item.id,
+          origin: "POS_APPOINTMENT" as const,
           branchId: item.branchId,
           branchName: item.branch.nombre,
           serviceName: item.serviceNameSnapshot,
@@ -1675,9 +1712,21 @@ router.get(
           scheduledAt: item.scheduledAt?.toISOString() ?? null,
           createdAt: item.creadoEn.toISOString(),
         })),
+      ]
+        .sort((left, right) =>
+          (right.scheduledAt ?? right.createdAt).localeCompare(
+            left.scheduledAt ?? left.createdAt,
+          ),
+        )
+        .slice(
+          (parsed.data.page - 1) * parsed.data.pageSize,
+          parsed.data.page * parsed.data.pageSize,
+        );
+      const data: SchedulerCustomerVisitHistoryDto = {
+        items: mergedItems,
         page: parsed.data.page,
         pageSize: parsed.data.pageSize,
-        total,
+        total: posTotal + schedulerTotal,
         legacyRegistroCitaLinked: false,
       };
       await writeSchedulerAudit({

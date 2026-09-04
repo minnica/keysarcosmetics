@@ -21,43 +21,49 @@ enum PosTerminalStatus {
 }
 
 model Usuario {
-  id                                      String                            @id @default(cuid())
+  id                                      String                             @id @default(cuid())
   nombre                                  String
-  email                                   String                            @unique
+  email                                   String                             @unique
   passwordHash                            String
   rol                                     Rol
-  activo                                  Boolean                           @default(true)
+  activo                                  Boolean                            @default(true)
   sucursalId                              String?
-  sucursal                                Sucursal?                         @relation(fields: [sucursalId], references: [id])
-  empleadoId                              String?                           @unique
-  empleado                                Empleado?                         @relation(fields: [empleadoId], references: [id])
+  sucursal                                Sucursal?                          @relation(fields: [sucursalId], references: [id])
+  empleadoId                              String?                            @unique
+  empleado                                Empleado?                          @relation(fields: [empleadoId], references: [id])
   registrosCitaCreados                    RegistroCita[]
   passwordChangedAt                       DateTime?
   passwordSetupTokenHash                  String?
   passwordSetupTokenExpiresAt             DateTime?
-  creadoEn                                DateTime                          @default(now())
-  actualizadoEn                           DateTime                          @updatedAt
-  payrollRunsCreated                      PayrollRun[]                      @relation("PayrollRunCreatedBy")
-  payrollRunsApproved                     PayrollRun[]                      @relation("PayrollRunApprovedBy")
-  payrollRunsPaid                         PayrollRun[]                      @relation("PayrollRunPaidBy")
-  payrollCatalogItemsCreated              PayrollCatalogItem[]              @relation("PayrollCatalogItemCreatedBy")
-  payrollSchemeVersionsCreated            CommissionSchemeVersion[]         @relation("CommissionSchemeVersionCreatedBy")
-  payrollAssignmentsCreated               EmployeeCommissionAssignment[]    @relation("EmployeeCommissionAssignmentCreatedBy")
-  payrollMovementsCreated                 PayrollMovement[]                 @relation("PayrollMovementCreatedBy")
-  payrollMovementsReviewed                PayrollMovement[]                 @relation("PayrollMovementReviewedBy")
-  payrollExpensesCreated                  PayrollExpense[]                  @relation("PayrollExpenseCreatedBy")
-  payrollExpenseRecurrencesCreated        PayrollExpenseRecurrence[]        @relation("PayrollExpenseRecurrenceCreatedBy")
-  payrollExpenseRecurrenceVersionsCreated PayrollExpenseRecurrenceVersion[] @relation("PayrollExpenseRecurrenceVersionCreatedBy")
-  payrollExpenseCategoriesCreated         PayrollExpenseCategory[]          @relation("PayrollExpenseCategoryCreatedBy")
-  payrollLoansCreated                     LoanAdvance[]                     @relation("LoanAdvanceCreatedBy")
-  payrollReceiptsSent                     PayrollReceipt[]                  @relation("PayrollReceiptSentBy")
-  payrollReceiptsConfirmed                PayrollReceipt[]                  @relation("PayrollReceiptConfirmedBy")
+  creadoEn                                DateTime                           @default(now())
+  actualizadoEn                           DateTime                           @updatedAt
+  payrollRunsCreated                      PayrollRun[]                       @relation("PayrollRunCreatedBy")
+  payrollRunsApproved                     PayrollRun[]                       @relation("PayrollRunApprovedBy")
+  payrollRunsPaid                         PayrollRun[]                       @relation("PayrollRunPaidBy")
+  payrollCatalogItemsCreated              PayrollCatalogItem[]               @relation("PayrollCatalogItemCreatedBy")
+  payrollSchemeVersionsCreated            CommissionSchemeVersion[]          @relation("CommissionSchemeVersionCreatedBy")
+  payrollAssignmentsCreated               EmployeeCommissionAssignment[]     @relation("EmployeeCommissionAssignmentCreatedBy")
+  payrollMovementsCreated                 PayrollMovement[]                  @relation("PayrollMovementCreatedBy")
+  payrollMovementsReviewed                PayrollMovement[]                  @relation("PayrollMovementReviewedBy")
+  payrollExpensesCreated                  PayrollExpense[]                   @relation("PayrollExpenseCreatedBy")
+  payrollExpenseRecurrencesCreated        PayrollExpenseRecurrence[]         @relation("PayrollExpenseRecurrenceCreatedBy")
+  payrollExpenseRecurrenceVersionsCreated PayrollExpenseRecurrenceVersion[]  @relation("PayrollExpenseRecurrenceVersionCreatedBy")
+  payrollExpenseCategoriesCreated         PayrollExpenseCategory[]           @relation("PayrollExpenseCategoryCreatedBy")
+  payrollLoansCreated                     LoanAdvance[]                      @relation("LoanAdvanceCreatedBy")
+  payrollReceiptsSent                     PayrollReceipt[]                   @relation("PayrollReceiptSentBy")
+  payrollReceiptsConfirmed                PayrollReceipt[]                   @relation("PayrollReceiptConfirmedBy")
   payrollAuditEvents                      PayrollAuditEvent[]
   posCredentials                          PosCredential[]
   schedulerSecondaryCredential            SchedulerSecondaryCredential?
   schedulerAuthorizations                 SchedulerAuthorization[]
-  schedulerAuditLogs                      AuditLog[]                        @relation("SchedulerAuditActor")
-  schedulerCustomerMerges                 SchedulerCustomerMergeEvent[]     @relation("SchedulerCustomerMergeActor")
+  schedulerAuditLogs                      AuditLog[]                         @relation("SchedulerAuditActor")
+  schedulerCustomerMerges                 SchedulerCustomerMergeEvent[]      @relation("SchedulerCustomerMergeActor")
+  schedulerAppointmentsCreated            SchedulerAppointment[]             @relation("SchedulerAppointmentCreatedBy")
+  schedulerAppointmentsUpdated            SchedulerAppointment[]             @relation("SchedulerAppointmentUpdatedBy")
+  schedulerAppointmentStateChanges        SchedulerAppointmentStateHistory[]
+  schedulerBlocksCreated                  SchedulerScheduleBlock[]           @relation("SchedulerBlockCreatedBy")
+  schedulerBlocksCanceled                 SchedulerScheduleBlock[]           @relation("SchedulerBlockCanceledBy")
+  schedulerIdempotencyKeys                SchedulerIdempotencyKey[]
 }
 
 model Sucursal {
@@ -679,6 +685,8 @@ model SchedulerBranchProfile {
   groups                  SchedulerProfessionalGroup[]
   availabilityRules       SchedulerAvailabilityRule[]
   availabilityExceptions  SchedulerAvailabilityException[]
+  appointments            SchedulerAppointment[]
+  scheduleBlocks          SchedulerScheduleBlock[]
   creadoEn                DateTime                                 @default(now())
   actualizadoEn           DateTime                                 @updatedAt
 
@@ -687,24 +695,26 @@ model SchedulerBranchProfile {
 }
 
 model SchedulerProfessionalProfile {
-  id                     String                                   @id @default(cuid())
-  employeeId             String                                   @unique
-  employee               Empleado                                 @relation(fields: [employeeId], references: [id], onDelete: Restrict)
-  biography              String?
-  acceptsOnline          Boolean                                  @default(false)
-  active                 Boolean                                  @default(true)
-  effectiveFrom          DateTime                                 @default(now())
-  effectiveTo            DateTime?
-  deactivatedAt          DateTime?
-  version                Int                                      @default(1)
-  branchAssignments      SchedulerProfessionalBranchAssignment[]
-  serviceAssignments     SchedulerProfessionalServiceAssignment[]
-  specialties            SchedulerProfessionalSpecialty[]
-  groupMemberships       SchedulerProfessionalGroupMember[]
-  availabilityRules      SchedulerAvailabilityRule[]
-  availabilityExceptions SchedulerAvailabilityException[]
-  creadoEn               DateTime                                 @default(now())
-  actualizadoEn          DateTime                                 @updatedAt
+  id                      String                                   @id @default(cuid())
+  employeeId              String                                   @unique
+  employee                Empleado                                 @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  biography               String?
+  acceptsOnline           Boolean                                  @default(false)
+  active                  Boolean                                  @default(true)
+  effectiveFrom           DateTime                                 @default(now())
+  effectiveTo             DateTime?
+  deactivatedAt           DateTime?
+  version                 Int                                      @default(1)
+  branchAssignments       SchedulerProfessionalBranchAssignment[]
+  serviceAssignments      SchedulerProfessionalServiceAssignment[]
+  specialties             SchedulerProfessionalSpecialty[]
+  groupMemberships        SchedulerProfessionalGroupMember[]
+  availabilityRules       SchedulerAvailabilityRule[]
+  availabilityExceptions  SchedulerAvailabilityException[]
+  appointmentParticipants SchedulerAppointmentParticipant[]
+  scheduleBlocks          SchedulerScheduleBlock[]
+  creadoEn                DateTime                                 @default(now())
+  actualizadoEn           DateTime                                 @updatedAt
 
   @@index([active, effectiveFrom, effectiveTo])
 }
@@ -744,6 +754,7 @@ model SchedulerServiceProfile {
   branchAssignments       SchedulerServiceBranchAssignment[]
   professionalAssignments SchedulerProfessionalServiceAssignment[]
   resourceRequirements    SchedulerServiceResourceRequirement[]
+  appointmentServices     SchedulerAppointmentService[]
   creadoEn                DateTime                                 @default(now())
   actualizadoEn           DateTime                                 @updatedAt
 
@@ -874,6 +885,8 @@ model SchedulerResource {
   serviceRequirements    SchedulerServiceResourceRequirement[]
   availabilityRules      SchedulerAvailabilityRule[]
   availabilityExceptions SchedulerAvailabilityException[]
+  appointmentResources   SchedulerAppointmentResource[]
+  scheduleBlocks         SchedulerScheduleBlock[]
   creadoEn               DateTime                              @default(now())
   actualizadoEn          DateTime                              @updatedAt
 
@@ -944,6 +957,205 @@ model SchedulerAvailabilityException {
   @@index([branchProfileId, date, active])
   @@index([professionalProfileId, date, active])
   @@index([resourceId, date, active])
+}
+
+// ─── Scheduler: motor canónico de citas ──────────────────────────────────
+
+enum SchedulerAppointmentStatus {
+  PENDING
+  RESERVED
+  CONFIRMED
+  ARRIVED
+  WAITING
+  ATTENDED
+  NO_SHOW
+  CANCELED
+}
+
+enum SchedulerAppointmentOrigin {
+  SCHEDULER
+  POS
+  INTERNAL_API
+  IMPORT
+}
+
+enum SchedulerAppointmentParticipantRole {
+  PRIMARY
+  SUPPORT
+}
+
+enum SchedulerMembershipBenefitStatus {
+  RESERVED
+  CONSUMED
+  RELEASED
+}
+
+enum SchedulerScheduleBlockStatus {
+  ACTIVE
+  CANCELED
+}
+
+model SchedulerAppointment {
+  id                 String                             @id @default(uuid()) @db.Uuid
+  branchProfileId    String
+  branchProfile      SchedulerBranchProfile             @relation(fields: [branchProfileId], references: [id], onDelete: Restrict)
+  customerId         String
+  customer           Customer                           @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  status             SchedulerAppointmentStatus         @default(RESERVED)
+  origin             SchedulerAppointmentOrigin         @default(SCHEDULER)
+  timezone           String                             @db.VarChar(80)
+  startsAt           DateTime
+  endsAt             DateTime
+  notes              String?
+  cancellationReason String?                            @db.VarChar(500)
+  version            Int                                @default(1)
+  createdByUserId    String
+  createdByUser      Usuario                            @relation("SchedulerAppointmentCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  updatedByUserId    String
+  updatedByUser      Usuario                            @relation("SchedulerAppointmentUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: Restrict)
+  services           SchedulerAppointmentService[]
+  stateHistory       SchedulerAppointmentStateHistory[]
+  idempotencyKeys    SchedulerIdempotencyKey[]
+  posAppointments    PosAppointment[]
+  creadoEn           DateTime                           @default(now())
+  actualizadoEn      DateTime                           @updatedAt
+
+  @@index([branchProfileId, startsAt, endsAt])
+  @@index([branchProfileId, status, startsAt])
+  @@index([customerId, startsAt])
+}
+
+model SchedulerAppointmentService {
+  id                         String                                 @id @default(uuid()) @db.Uuid
+  appointmentId              String                                 @db.Uuid
+  appointment                SchedulerAppointment                   @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
+  serviceProfileId           String
+  serviceProfile             SchedulerServiceProfile                @relation(fields: [serviceProfileId], references: [id], onDelete: Restrict)
+  sequence                   Int
+  serviceNameSnapshot        String                                 @db.VarChar(240)
+  serviceVersionSnapshot     Int
+  durationMinutesSnapshot    Int
+  preparationMinutesSnapshot Int
+  cleanupMinutesSnapshot     Int
+  capacityUnits              Int                                    @default(1)
+  startsAt                   DateTime
+  endsAt                     DateTime
+  occupiesFrom               DateTime
+  occupiesUntil              DateTime
+  participants               SchedulerAppointmentParticipant[]
+  resources                  SchedulerAppointmentResource[]
+  membershipBenefit          SchedulerAppointmentMembershipBenefit?
+  creadoEn                   DateTime                               @default(now())
+  actualizadoEn              DateTime                               @updatedAt
+
+  @@unique([appointmentId, sequence])
+  @@index([serviceProfileId, startsAt, endsAt])
+  @@index([occupiesFrom, occupiesUntil])
+}
+
+model SchedulerAppointmentParticipant {
+  id                       String                              @id @default(uuid()) @db.Uuid
+  appointmentServiceId     String                              @db.Uuid
+  appointmentService       SchedulerAppointmentService         @relation(fields: [appointmentServiceId], references: [id], onDelete: Restrict)
+  professionalProfileId    String
+  professionalProfile      SchedulerProfessionalProfile        @relation(fields: [professionalProfileId], references: [id], onDelete: Restrict)
+  role                     SchedulerAppointmentParticipantRole @default(PRIMARY)
+  professionalNameSnapshot String                              @db.VarChar(240)
+  creadoEn                 DateTime                            @default(now())
+
+  @@unique([appointmentServiceId, professionalProfileId])
+  @@index([professionalProfileId, appointmentServiceId])
+}
+
+model SchedulerAppointmentResource {
+  id                   String                      @id @default(uuid()) @db.Uuid
+  appointmentServiceId String                      @db.Uuid
+  appointmentService   SchedulerAppointmentService @relation(fields: [appointmentServiceId], references: [id], onDelete: Restrict)
+  resourceId           String
+  resource             SchedulerResource           @relation(fields: [resourceId], references: [id], onDelete: Restrict)
+  units                Int                         @default(1)
+  exclusiveSnapshot    Boolean
+  resourceNameSnapshot String                      @db.VarChar(160)
+  creadoEn             DateTime                    @default(now())
+
+  @@unique([appointmentServiceId, resourceId])
+  @@index([resourceId, appointmentServiceId])
+}
+
+model SchedulerAppointmentMembershipBenefit {
+  id                     String                           @id @default(uuid()) @db.Uuid
+  appointmentServiceId   String                           @unique @db.Uuid
+  appointmentService     SchedulerAppointmentService      @relation(fields: [appointmentServiceId], references: [id], onDelete: Restrict)
+  membershipId           String                           @db.Uuid
+  membership             PosClientMembership              @relation(fields: [membershipId], references: [id], onDelete: Restrict)
+  status                 SchedulerMembershipBenefitStatus @default(RESERVED)
+  membershipNameSnapshot String                           @db.VarChar(240)
+  reservedAt             DateTime                         @default(now())
+  consumedAt             DateTime?
+  releasedAt             DateTime?
+  creadoEn               DateTime                         @default(now())
+  actualizadoEn          DateTime                         @updatedAt
+
+  @@index([membershipId, status])
+}
+
+model SchedulerAppointmentStateHistory {
+  id            String                      @id @default(uuid()) @db.Uuid
+  appointmentId String                      @db.Uuid
+  appointment   SchedulerAppointment        @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
+  fromStatus    SchedulerAppointmentStatus?
+  toStatus      SchedulerAppointmentStatus
+  reason        String?                     @db.VarChar(500)
+  version       Int
+  actorUserId   String
+  actorUser     Usuario                     @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
+  creadoEn      DateTime                    @default(now())
+
+  @@unique([appointmentId, version])
+  @@index([appointmentId, creadoEn])
+}
+
+model SchedulerScheduleBlock {
+  id                    String                        @id @default(uuid()) @db.Uuid
+  branchProfileId       String
+  branchProfile         SchedulerBranchProfile        @relation(fields: [branchProfileId], references: [id], onDelete: Restrict)
+  professionalProfileId String?
+  professionalProfile   SchedulerProfessionalProfile? @relation(fields: [professionalProfileId], references: [id], onDelete: Restrict)
+  resourceId            String?
+  resource              SchedulerResource?            @relation(fields: [resourceId], references: [id], onDelete: Restrict)
+  startsAt              DateTime
+  endsAt                DateTime
+  timezone              String                        @db.VarChar(80)
+  reason                String                        @db.VarChar(500)
+  status                SchedulerScheduleBlockStatus  @default(ACTIVE)
+  version               Int                           @default(1)
+  createdByUserId       String
+  createdByUser         Usuario                       @relation("SchedulerBlockCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  canceledByUserId      String?
+  canceledByUser        Usuario?                      @relation("SchedulerBlockCanceledBy", fields: [canceledByUserId], references: [id], onDelete: Restrict)
+  canceledAt            DateTime?
+  creadoEn              DateTime                      @default(now())
+  actualizadoEn         DateTime                      @updatedAt
+
+  @@index([branchProfileId, status, startsAt, endsAt])
+  @@index([professionalProfileId, status, startsAt])
+  @@index([resourceId, status, startsAt])
+}
+
+model SchedulerIdempotencyKey {
+  id             String                @id @default(uuid()) @db.Uuid
+  actorUserId    String
+  actorUser      Usuario               @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
+  operation      String                @db.VarChar(80)
+  idempotencyKey String                @db.VarChar(160)
+  requestHash    String                @db.VarChar(64)
+  appointmentId  String?               @db.Uuid
+  appointment    SchedulerAppointment? @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
+  response       Json
+  creadoEn       DateTime              @default(now())
+
+  @@unique([actorUserId, operation, idempotencyKey])
+  @@index([appointmentId])
 }
 
 // ─── Scheduler: clientes compartidos y deduplicación ──────────────────────
@@ -1319,6 +1531,7 @@ model Customer {
   schedulerFieldValues    SchedulerCustomerFieldValue[]
   schedulerMergesAsSource SchedulerCustomerMergeEvent[] @relation("SchedulerCustomerMergeSource")
   schedulerMergesAsTarget SchedulerCustomerMergeEvent[] @relation("SchedulerCustomerMergeTarget")
+  schedulerAppointments   SchedulerAppointment[]
   creadoEn                DateTime                      @default(now())
   actualizadoEn           DateTime                      @updatedAt
 
@@ -2512,42 +2725,44 @@ model PosOwedProductDeliveryLine {
 }
 
 model PosAppointment {
-  id                    String                   @id @default(uuid()) @db.Uuid
-  ticketId              String                   @db.Uuid
-  ticket                PosTicket                @relation(fields: [ticketId], references: [id], onDelete: Restrict)
-  customerId            String
-  customer              Customer                 @relation(fields: [customerId], references: [id], onDelete: Restrict)
-  kind                  PosAppointmentKind
-  status                PosAppointmentStatus
-  serviceItemId         String?
-  serviceItem           CatalogItem?             @relation(fields: [serviceItemId], references: [id], onDelete: Restrict)
-  serviceNameSnapshot   String                   @db.VarChar(240)
-  branchId              String
-  branch                Sucursal                 @relation(fields: [branchId], references: [id], onDelete: Restrict)
-  sellerId              String?
-  seller                Empleado?                @relation(fields: [sellerId], references: [id], onDelete: Restrict)
-  scheduledAt           DateTime?
-  externalReservationId String?                  @db.VarChar(160)
-  externalAppointmentId String?                  @unique @db.VarChar(160)
-  agendaResourceId      String?                  @db.Uuid
-  agendaResource        AgendaResource?          @relation(fields: [agendaResourceId], references: [id], onDelete: Restrict)
-  agendaSlotId          String?                  @db.Uuid
-  agendaSlot            AgendaSlot?              @relation(fields: [agendaSlotId], references: [id], onDelete: Restrict)
-  agendaReservationId   String?                  @db.Uuid
-  agendaReservation     AgendaReservation?       @relation(fields: [agendaReservationId], references: [id], onDelete: Restrict)
-  agendaVersion         Int?
-  capacitySnapshot      Int?
-  startsAtSnapshot      DateTime?
-  endsAtSnapshot        DateTime?
-  membershipId          String?                  @db.Uuid
-  membership            PosClientMembership?     @relation(fields: [membershipId], references: [id], onDelete: Restrict)
-  courtesyReason        String?                  @db.VarChar(40)
-  createdByCredentialId String
-  createdByCredential   PosCredential            @relation(fields: [createdByCredentialId], references: [id], onDelete: Restrict)
-  courtesy              PosCourtesy?
-  membershipAttendance  PosMembershipAttendance?
-  agendaSyncEvents      AgendaSyncEvent[]
-  creadoEn              DateTime                 @default(now())
+  id                     String                   @id @default(uuid()) @db.Uuid
+  ticketId               String                   @db.Uuid
+  ticket                 PosTicket                @relation(fields: [ticketId], references: [id], onDelete: Restrict)
+  customerId             String
+  customer               Customer                 @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  kind                   PosAppointmentKind
+  status                 PosAppointmentStatus
+  serviceItemId          String?
+  serviceItem            CatalogItem?             @relation(fields: [serviceItemId], references: [id], onDelete: Restrict)
+  serviceNameSnapshot    String                   @db.VarChar(240)
+  branchId               String
+  branch                 Sucursal                 @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  sellerId               String?
+  seller                 Empleado?                @relation(fields: [sellerId], references: [id], onDelete: Restrict)
+  scheduledAt            DateTime?
+  externalReservationId  String?                  @db.VarChar(160)
+  externalAppointmentId  String?                  @unique @db.VarChar(160)
+  agendaResourceId       String?                  @db.Uuid
+  agendaResource         AgendaResource?          @relation(fields: [agendaResourceId], references: [id], onDelete: Restrict)
+  agendaSlotId           String?                  @db.Uuid
+  agendaSlot             AgendaSlot?              @relation(fields: [agendaSlotId], references: [id], onDelete: Restrict)
+  agendaReservationId    String?                  @db.Uuid
+  agendaReservation      AgendaReservation?       @relation(fields: [agendaReservationId], references: [id], onDelete: Restrict)
+  agendaVersion          Int?
+  capacitySnapshot       Int?
+  startsAtSnapshot       DateTime?
+  endsAtSnapshot         DateTime?
+  membershipId           String?                  @db.Uuid
+  membership             PosClientMembership?     @relation(fields: [membershipId], references: [id], onDelete: Restrict)
+  courtesyReason         String?                  @db.VarChar(40)
+  createdByCredentialId  String
+  createdByCredential    PosCredential            @relation(fields: [createdByCredentialId], references: [id], onDelete: Restrict)
+  courtesy               PosCourtesy?
+  membershipAttendance   PosMembershipAttendance?
+  schedulerAppointmentId String?                  @db.Uuid
+  schedulerAppointment   SchedulerAppointment?    @relation(fields: [schedulerAppointmentId], references: [id], onDelete: Restrict)
+  agendaSyncEvents       AgendaSyncEvent[]
+  creadoEn               DateTime                 @default(now())
 
   @@index([customerId, scheduledAt])
   @@index([branchId, scheduledAt])
@@ -2555,6 +2770,7 @@ model PosAppointment {
   @@index([externalReservationId])
   @@index([agendaReservationId])
   @@index([membershipId, status])
+  @@index([schedulerAppointmentId])
 }
 
 model AgendaResource {
@@ -2730,49 +2946,50 @@ model PosMembershipTerms {
 }
 
 model PosClientMembership {
-  id                         String                      @id @default(uuid()) @db.Uuid
-  folio                      String                      @unique @db.VarChar(80)
-  ticketId                   String                      @db.Uuid
-  ticket                     PosTicket                   @relation(fields: [ticketId], references: [id], onDelete: Restrict)
+  id                         String                                  @id @default(uuid()) @db.Uuid
+  folio                      String                                  @unique @db.VarChar(80)
+  ticketId                   String                                  @db.Uuid
+  ticket                     PosTicket                               @relation(fields: [ticketId], references: [id], onDelete: Restrict)
   ticketLineId               String
-  ticketLine                 PosTicketLine               @relation(fields: [ticketLineId], references: [id], onDelete: Restrict)
+  ticketLine                 PosTicketLine                           @relation(fields: [ticketLineId], references: [id], onDelete: Restrict)
   unitOrdinal                Int
   customerId                 String
-  customer                   Customer                    @relation(fields: [customerId], references: [id], onDelete: Restrict)
-  customerNameSnapshot       String                      @db.VarChar(240)
-  customerPhoneSnapshot      String?                     @db.VarChar(32)
+  customer                   Customer                                @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  customerNameSnapshot       String                                  @db.VarChar(240)
+  customerPhoneSnapshot      String?                                 @db.VarChar(32)
   membershipItemId           String
-  membershipItem             CatalogItem                 @relation(fields: [membershipItemId], references: [id], onDelete: Restrict)
-  membershipNameSnapshot     String                      @db.VarChar(240)
-  membershipSkuSnapshot      String                      @db.VarChar(96)
+  membershipItem             CatalogItem                             @relation(fields: [membershipItemId], references: [id], onDelete: Restrict)
+  membershipNameSnapshot     String                                  @db.VarChar(240)
+  membershipSkuSnapshot      String                                  @db.VarChar(96)
   termsId                    String
-  terms                      PosMembershipTerms          @relation(fields: [termsId], references: [id], onDelete: Restrict)
+  terms                      PosMembershipTerms                      @relation(fields: [termsId], references: [id], onDelete: Restrict)
   termsVersionSnapshot       Int
   totalSessions              Int
-  usedSessions               Int                         @default(0)
-  renewalThreshold           Int                         @default(2)
-  purchaseAmount             Decimal                     @db.Decimal(14, 2)
+  usedSessions               Int                                     @default(0)
+  renewalThreshold           Int                                     @default(2)
+  purchaseAmount             Decimal                                 @db.Decimal(14, 2)
   purchaseBranchId           String
-  purchaseBranch             Sucursal                    @relation(fields: [purchaseBranchId], references: [id], onDelete: Restrict)
-  purchaseBranchNameSnapshot String                      @db.VarChar(160)
+  purchaseBranch             Sucursal                                @relation(fields: [purchaseBranchId], references: [id], onDelete: Restrict)
+  purchaseBranchNameSnapshot String                                  @db.VarChar(160)
   originalSellerId           String?
-  originalSeller             Empleado?                   @relation("PosMembershipOriginalSeller", fields: [originalSellerId], references: [id], onDelete: Restrict)
-  originalSellerNameSnapshot String                      @db.VarChar(240)
+  originalSeller             Empleado?                               @relation("PosMembershipOriginalSeller", fields: [originalSellerId], references: [id], onDelete: Restrict)
+  originalSellerNameSnapshot String                                  @db.VarChar(240)
   currentSellerId            String?
-  currentSeller              Empleado?                   @relation("PosMembershipCurrentSeller", fields: [currentSellerId], references: [id], onDelete: Restrict)
-  currentSellerNameSnapshot  String                      @db.VarChar(240)
-  profile                    PosMembershipClientProfile  @default(POTENTIAL)
-  status                     PosMembershipStatus         @default(PENDING)
+  currentSeller              Empleado?                               @relation("PosMembershipCurrentSeller", fields: [currentSellerId], references: [id], onDelete: Restrict)
+  currentSellerNameSnapshot  String                                  @db.VarChar(240)
+  profile                    PosMembershipClientProfile              @default(POTENTIAL)
+  status                     PosMembershipStatus                     @default(PENDING)
   activatedAt                DateTime?
   exhaustedAt                DateTime?
   canceledAt                 DateTime?
-  purchasedAt                DateTime                    @default(now())
+  purchasedAt                DateTime                                @default(now())
   attendance                 PosMembershipAttendance[]
   appointments               PosAppointment[]
   sellerChanges              PosMembershipSellerChange[]
   statusChanges              PosMembershipStatusChange[]
-  creadoEn                   DateTime                    @default(now())
-  actualizadoEn              DateTime                    @updatedAt
+  schedulerBenefits          SchedulerAppointmentMembershipBenefit[]
+  creadoEn                   DateTime                                @default(now())
+  actualizadoEn              DateTime                                @updatedAt
 
   @@unique([ticketLineId, unitOrdinal])
   @@index([ticketId])
