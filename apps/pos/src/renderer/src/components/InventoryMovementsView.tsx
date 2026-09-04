@@ -4,6 +4,7 @@ import {
   ArrowLeftRight,
   ArrowUpFromLine,
   Ban,
+  Building2,
   CalendarDays,
   CheckCircle2,
   ChevronDown,
@@ -207,6 +208,7 @@ export function InventoryMovementsView({
   const [filterDate, setFilterDate] = useState(getMovementBusinessDate);
   const [filterSearch, setFilterSearch] = useState("");
   const [movementFilter, setMovementFilter] = useState<MovementFilter>("ALL");
+  const [reportBranch, setReportBranch] = useState("ALL");
   const [historySort, setHistorySort] = useState<{
     key: MovementHistorySortKey;
     direction: TableSortDirection;
@@ -228,7 +230,9 @@ export function InventoryMovementsView({
         branches.find((branch) => branch !== sourceBranch) ?? "",
       );
     }
-  }, [branchKey, destinationBranch, sourceBranch]);
+    if (reportBranch !== "ALL" && !branches.includes(reportBranch))
+      setReportBranch("ALL");
+  }, [branchKey, destinationBranch, reportBranch, sourceBranch]);
   const [reportMonth, setReportMonth] = useState(() =>
     new Intl.DateTimeFormat("en-CA", {
       year: "numeric",
@@ -416,6 +420,13 @@ export function InventoryMovementsView({
         group.movements.some(
           (movement) => movement.direction === movementFilter,
         );
+      const matchesBranch =
+        reportBranch === "ALL" ||
+        group.movements.some(
+          (movement) =>
+            movement.sourceBranch === reportBranch ||
+            movement.destinationBranch === reportBranch,
+        );
       const values = [
         group.folio,
         ...group.movements.flatMap((movement) => [
@@ -434,7 +445,7 @@ export function InventoryMovementsView({
         values.some((value) =>
           value.toLocaleLowerCase("es-MX").includes(query),
         );
-      return matchesDate && matchesMovement && matchesSearch;
+      return matchesDate && matchesMovement && matchesBranch && matchesSearch;
     });
 
     const uniqueText = (values: string[]) =>
@@ -494,10 +505,11 @@ export function InventoryMovementsView({
     historySort,
     movementFilter,
     movementFolioGroups,
+    reportBranch,
   ]);
   const movementHistoryPagination = useHistoryPagination(
     filteredMovementGroups,
-    `${filterDate}|${filterSearch}|${movementFilter}|${historySort.key}|${historySort.direction}`,
+    `${filterDate}|${filterSearch}|${movementFilter}|${reportBranch}|${historySort.key}|${historySort.direction}`,
   );
 
   const selectedMovementGroup = movementFolioGroups.find(
@@ -527,9 +539,13 @@ export function InventoryMovementsView({
   const monthlyCostMovements = useMemo(
     () =>
       movements.filter(
-        (movement) => movement.createdAtIso.slice(0, 7) === reportMonth,
+        (movement) =>
+          movement.createdAtIso.slice(0, 7) === reportMonth &&
+          (reportBranch === "ALL" ||
+            movement.sourceBranch === reportBranch ||
+            movement.destinationBranch === reportBranch),
       ),
-    [movements, reportMonth],
+    [movements, reportBranch, reportMonth],
   );
   const monthlyBranchCosts = useMemo(
     () =>
@@ -585,7 +601,8 @@ export function InventoryMovementsView({
     const saleTickets = tickets.filter(
       (ticket) =>
         ticket.createdAtIso.slice(0, 7) === reportMonth &&
-        ticket.ticketType !== "LAYAWAY_PAYMENT",
+        ticket.ticketType !== "LAYAWAY_PAYMENT" &&
+        (reportBranch === "ALL" || ticket.branchName === reportBranch),
     );
     const totalRevenue = saleTickets.reduce(
       (sum, ticket) => sum + ticket.total,
@@ -657,7 +674,7 @@ export function InventoryMovementsView({
       highestSeller: sellerRates[0] ?? null,
       lowestSeller: sellerRates.at(-1) ?? null,
     };
-  }, [products, reportMonth, sellers, tickets]);
+  }, [products, reportBranch, reportMonth, sellers, tickets]);
   const monthlySalesStrategy = useMemo(() => {
     const topProduct = monthlySalesDashboard.topProduct?.name ??
       "el producto con mayor rotación";
@@ -832,6 +849,12 @@ export function InventoryMovementsView({
       toast.error("No hay movimientos para el mes seleccionado.");
       return;
     }
+    const scopeLabel =
+      reportBranch === "ALL" ? "Todas las sucursales" : reportBranch;
+    const scopeFileName =
+      reportBranch === "ALL"
+        ? "todas-las-sucursales"
+        : reportBranch.toLowerCase().replace(/[^a-z0-9]+/g, "-");
     const summaryRows = monthlyBranchCosts
       .map(
         ([branch, totals]) => `<tr><td>${spreadsheetEscape(branch)}</td><td>${totals.movements}</td><td>${totals.usd.toFixed(2)}</td><td>${totals.mxn.toFixed(2)}</td></tr>`,
@@ -865,7 +888,7 @@ export function InventoryMovementsView({
       .join("");
     const workbook = `<!doctype html><html><head><meta charset="utf-8"></head><body>
       <h1>Reporte mensual de costos de inventario</h1>
-      <p>Periodo: ${spreadsheetEscape(reportMonth)}</p>
+      <p>Periodo: ${spreadsheetEscape(reportMonth)} · Alcance: ${spreadsheetEscape(scopeLabel)}</p>
       <h2>Resumen por sucursal</h2>
       <table border="1"><thead><tr><th>Sucursal</th><th>Movimientos</th><th>Costo USD</th><th>Costo MXN</th></tr></thead><tbody>${summaryRows}</tbody></table>
       <h2>Resumen por tipo de movimiento</h2>
@@ -882,12 +905,14 @@ export function InventoryMovementsView({
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `reporte-costos-${reportMonth}.xls`;
+    link.download = `reporte-costos-${reportMonth}-${scopeFileName}.xls`;
     document.body.appendChild(link);
     link.click();
     link.remove();
     URL.revokeObjectURL(url);
-    toast.success(`Reporte mensual ${reportMonth} generado para Excel.`);
+    toast.success(
+      `Reporte mensual ${reportMonth} · ${scopeLabel} generado para Excel.`,
+    );
   };
 
   const exportMonthlyCostPdf = () => {
@@ -899,6 +924,8 @@ export function InventoryMovementsView({
       toast.error("No hay movimientos para el mes seleccionado.");
       return;
     }
+    const scopeLabel =
+      reportBranch === "ALL" ? "Todas las sucursales" : reportBranch;
     const printWindow = window.open(
       "",
       "_blank",
@@ -949,7 +976,7 @@ export function InventoryMovementsView({
     printWindow.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Reporte de costos ${spreadsheetEscape(reportMonth)}</title><style>
       @page{size:landscape;margin:10mm}*{box-sizing:border-box}body{font-family:Arial,sans-serif;color:#171717;margin:0}header{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2px solid #171717;padding-bottom:12px;margin-bottom:18px}h1{font-size:22px;margin:0 0 5px}h2{font-size:14px;margin:18px 0 8px}.meta{font-size:10px;color:#555}.totals{display:flex;gap:10px}.total{min-width:150px;border:1px solid #bbb;padding:9px}.total span{display:block;font-size:8px;color:#666}.total strong{display:block;margin-top:3px;font-size:15px}table{width:100%;border-collapse:collapse;font-size:8px}th{background:#eee;text-align:left}th,td{border:1px solid #bbb;padding:5px;vertical-align:top}tbody tr:nth-child(even){background:#fafafa}.footer{margin-top:12px;font-size:8px;color:#666}
     </style></head><body>
-      <header><div><h1>Reporte mensual de costos de inventario</h1><div class="meta">KEYSAR COSMETICS · Periodo ${spreadsheetEscape(reportMonth)} · Generado ${new Date().toLocaleString("es-MX")}</div></div><div class="totals"><div class="total"><span>COSTO TOTAL USD</span><strong>$${totalUsd.toFixed(2)}</strong></div><div class="total"><span>COSTO TOTAL MXN</span><strong>${new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(totalMxn)}</strong></div></div></header>
+      <header><div><h1>Reporte mensual de costos de inventario</h1><div class="meta">KEYSAR COSMETICS · Periodo ${spreadsheetEscape(reportMonth)} · Alcance ${spreadsheetEscape(scopeLabel)} · Generado ${new Date().toLocaleString("es-MX")}</div></div><div class="totals"><div class="total"><span>COSTO TOTAL USD</span><strong>$${totalUsd.toFixed(2)}</strong></div><div class="total"><span>COSTO TOTAL MXN</span><strong>${new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(totalMxn)}</strong></div></div></header>
       <h2>Resumen por sucursal</h2><table><thead><tr><th>Sucursal</th><th>Movimientos</th><th>Costo USD</th><th>Costo MXN</th></tr></thead><tbody>${summaryRows}</tbody></table>
       <h2>Resumen por tipo de movimiento</h2><table><thead><tr><th>Tipo</th><th>Movimientos</th><th>Costo USD</th><th>Costo MXN</th></tr></thead><tbody>${categoryRows}</tbody></table>
       <h2>Dashboard comercial</h2><table><thead><tr><th>Tickets</th><th>Venta total</th><th>Ticket promedio</th><th>Producto más vendido</th><th>Servicio más vendido</th><th>Mayor tasa</th><th>Menor tasa</th></tr></thead><tbody><tr><td>${monthlySalesDashboard.tickets}</td><td>${new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(monthlySalesDashboard.totalRevenue)}</td><td>${new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(monthlySalesDashboard.averageTicket)}</td><td>${spreadsheetEscape(monthlySalesDashboard.topProduct?.name ?? "Sin datos")}</td><td>${spreadsheetEscape(monthlySalesDashboard.topService?.name ?? "Sin datos")}</td><td>${spreadsheetEscape(monthlySalesDashboard.highestSeller ? `${monthlySalesDashboard.highestSeller.name} · ${monthlySalesDashboard.highestSeller.rate.toFixed(1)}%` : "Sin datos")}</td><td>${spreadsheetEscape(monthlySalesDashboard.lowestSeller ? `${monthlySalesDashboard.lowestSeller.name} · ${monthlySalesDashboard.lowestSeller.rate.toFixed(1)}%` : "Sin datos")}</td></tr></tbody></table>
@@ -961,7 +988,7 @@ export function InventoryMovementsView({
     printWindow.focus();
     window.setTimeout(() => printWindow.print(), 300);
     toast.success(
-      `Reporte mensual ${reportMonth} listo; selecciona “Guardar como PDF”.`,
+      `Reporte mensual ${reportMonth} · ${scopeLabel} listo; selecciona “Guardar como PDF”.`,
     );
   };
 
@@ -2116,6 +2143,20 @@ export function InventoryMovementsView({
                 <SelectItem value="ADD">Sumas</SelectItem>
                 <SelectItem value="REMOVE">Bajas</SelectItem>
                 <SelectItem value="TRANSFER">Transferencias</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="movement-filter-field">
+            <Building2 size={17} />
+            <Select value={reportBranch} onValueChange={setReportBranch}>
+              <SelectTrigger aria-label="Filtrar movimientos por sucursal">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">Todas las sucursales</SelectItem>
+                {branches.map((branch) => (
+                  <SelectItem key={branch} value={branch}>{branch}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>

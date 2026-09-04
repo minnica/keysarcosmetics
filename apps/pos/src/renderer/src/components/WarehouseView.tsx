@@ -1,4 +1,4 @@
-import { useMemo, useState, type ChangeEvent } from "react";
+import { useEffect, useMemo, useState, type ChangeEvent } from "react";
 import {
   AlertTriangle,
   ArrowDownToLine,
@@ -305,6 +305,14 @@ export function WarehouseView({
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [sort, setSort] = useState<{ key: WarehouseSortKey; direction: "asc" | "desc" }>({ key: "date", direction: "desc" });
+  const branchKey = branches.join("\u0000");
+
+  useEffect(() => {
+    if (!branches.includes(destinationBranch))
+      setDestinationBranch(branches[0] ?? "");
+    if (branchFilter !== "ALL" && !branches.includes(branchFilter))
+      setBranchFilter("ALL");
+  }, [branchFilter, branchKey, destinationBranch]);
 
   const visibleSupplies = supplies.filter((supply) => supply.active && supply.branchVisible);
   const testerProducts = physicalProducts.filter((product) => product.testerOrderEnabled);
@@ -401,6 +409,10 @@ export function WarehouseView({
   const filteredMovements = useMemo(() => {
     const normalizedSearch = search.trim().toLocaleLowerCase("es-MX");
     const rows = movements.filter((movement) => {
+      const isAuthorizedBranch = movement.destinationBranch
+        ? branches.includes(movement.destinationBranch)
+        : scope === "MATRIX";
+      if (!isAuthorizedBranch) return false;
       if (selectedCategory !== "ALL" && movement.categoryId !== selectedCategory) return false;
       if (statusFilter !== "ALL" && movement.status !== statusFilter) return false;
       if (branchFilter !== "ALL" && movement.destinationBranch !== branchFilter) return false;
@@ -430,7 +442,7 @@ export function WarehouseView({
       const comparison = typeof a === "number" && typeof b === "number" ? a - b : String(a).localeCompare(String(b), "es-MX");
       return sort.direction === "asc" ? comparison : -comparison;
     });
-  }, [branchFilter, dateFrom, dateTo, historyTypeFilter, movements, search, selectedCategory, sort, statusFilter, supplierFilter]);
+  }, [branchFilter, branches, dateFrom, dateTo, historyTypeFilter, movements, scope, search, selectedCategory, sort, statusFilter, supplierFilter]);
 
   const shipments = movements.filter((movement) =>
     ["SHIPMENT", "BRANCH_REQUEST"].includes(movement.kind) &&

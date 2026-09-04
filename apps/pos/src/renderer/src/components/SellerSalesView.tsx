@@ -1,10 +1,11 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   Building2,
   CalendarRange,
   CircleDollarSign,
   Clock3,
+  Crown,
   Eye,
   KeyRound,
   LogOut,
@@ -23,6 +24,9 @@ import {
   DatePicker,
   Input,
   Label,
+  Popover,
+  PopoverAnchor,
+  PopoverContent,
   Select,
   SelectContent,
   SelectItem,
@@ -36,9 +40,12 @@ import {
   TableRow,
 } from "@cosmetics/ui";
 import { formatCurrency } from "../mock-data";
+import { cardNetworkLabels } from "../bank-catalog";
 import type {
   Appointment,
+  BankCatalogEntry,
   Client,
+  ClientMembership,
   LayawayRecord,
   OwedProductRecord,
   PaymentEntry,
@@ -52,8 +59,11 @@ import { LayawayPaymentDialog } from "./LayawayPaymentDialog";
 interface SellerSalesViewProps {
   sellers: Seller[];
   tickets: Ticket[];
+  branches: string[];
   clients: Client[];
+  memberships: ClientMembership[];
   paymentMethods: PaymentMethodOption[];
+  bankCatalog: BankCatalogEntry[];
   layaways: LayawayRecord[];
   appointments: Appointment[];
   owedProducts: OwedProductRecord[];
@@ -99,11 +109,108 @@ const sameClient = (client: Client, ticket: Ticket) => {
   );
 };
 
+function SellerClientMembershipPreview({
+  clientName,
+  memberships,
+}: {
+  clientName: string;
+  memberships: ClientMembership[];
+}) {
+  const [open, setOpen] = useState(false);
+  const activeMemberships = memberships.filter(
+    (membership) => membership.status === "ACTIVE",
+  );
+  if (activeMemberships.length === 0) return null;
+
+  const orderedMemberships = [...memberships].sort((left, right) => {
+    if (left.status === "ACTIVE" && right.status !== "ACTIVE") return -1;
+    if (right.status === "ACTIVE" && left.status !== "ACTIVE") return 1;
+    return right.purchaseDateIso.localeCompare(left.purchaseDateIso);
+  });
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverAnchor asChild>
+        <button
+          type="button"
+          className="seller-ticket-membership-badge"
+          aria-label={`${clientName} tiene ${activeMemberships.length} ${activeMemberships.length === 1 ? "membresía activa" : "membresías activas"}. Mostrar detalle`}
+          aria-expanded={open}
+          onMouseEnter={() => setOpen(true)}
+          onMouseLeave={() => setOpen(false)}
+          onFocus={() => setOpen(true)}
+          onBlur={() => setOpen(false)}
+          onClick={() => setOpen(true)}
+        >
+          <Crown size={11} aria-hidden="true" />
+          {activeMemberships.length}
+        </button>
+      </PopoverAnchor>
+      <PopoverContent
+        side="top"
+        align="center"
+        sideOffset={7}
+        className="customer-membership-popover"
+        onOpenAutoFocus={(event) => event.preventDefault()}
+      >
+        <div className="customer-membership-popover-heading">
+          <Crown size={16} />
+          <span>
+            <strong>Membresías de {clientName}</strong>
+            <small>
+              {activeMemberships.length}{" "}
+              {activeMemberships.length === 1 ? "activa" : "activas"} ·{" "}
+              {memberships.length} compradas
+            </small>
+          </span>
+        </div>
+        <div className="customer-membership-popover-list">
+          {orderedMemberships.map((membership) => {
+            const remaining = Math.max(
+              0,
+              membership.totalSessions - membership.usedSessions,
+            );
+            const statusLabel =
+              membership.status === "ACTIVE"
+                ? "ACTIVA"
+                : membership.status === "EXHAUSTED"
+                  ? "AGOTADA"
+                  : "CANCELADA";
+            return (
+              <article key={membership.id}>
+                <span>
+                  <strong>{membership.membershipName}</strong>
+                  <small>
+                    {membership.folio} · {membership.branch}
+                  </small>
+                </span>
+                <span>
+                  <b
+                    className={`is-${membership.status.toLocaleLowerCase("es-MX")}`}
+                  >
+                    {statusLabel}
+                  </b>
+                  <small>
+                    {remaining}/{membership.totalSessions} sesiones
+                  </small>
+                </span>
+              </article>
+            );
+          })}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 export function SellerSalesView({
   sellers,
   tickets,
+  branches,
   clients,
+  memberships,
   paymentMethods,
+  bankCatalog,
   layaways,
   appointments,
   owedProducts,
@@ -120,6 +227,16 @@ export function SellerSalesView({
   const [selectedClientId, setSelectedClientId] = useState("");
   const [clientQuickFilter, setClientQuickFilter] =
     useState<ClientQuickFilter>("ALL");
+  const [branchFilter, setBranchFilter] = useState("ALL");
+
+  useEffect(() => {
+    if (branchFilter !== "ALL" && !branches.includes(branchFilter))
+      setBranchFilter("ALL");
+  }, [branchFilter, branches]);
+
+  const ticketBranch = (ticket: Ticket) => ticket.branchName ?? branches[0] ?? "";
+  const branchMatches = (branch: string) =>
+    branchFilter === "ALL" || branch === branchFilter;
 
   const activeSellers = useMemo(
     () => sellers.filter((seller) => seller.active),
@@ -128,6 +245,34 @@ export function SellerSalesView({
   const authorizedSeller = activeSellers.find(
     (seller) => seller.id === authorizedSellerId,
   );
+  const sellerVisibleMemberships = useMemo(
+    () =>
+      memberships.filter(
+        (membership) =>
+          Boolean(authorizedSellerId) &&
+          branchMatches(membership.branch) &&
+          (membership.sellerId === authorizedSellerId ||
+            membership.originalSellerId === authorizedSellerId ||
+            membership.sellerChanges.some(
+              (change) =>
+                change.fromSellerId === authorizedSellerId ||
+                change.toSellerId === authorizedSellerId,
+            )),
+      ),
+    [authorizedSellerId, branchFilter, memberships],
+  );
+  const membershipsForTicketClient = (ticket: Ticket) => {
+    const ticketPhone = ticket.clientPhone.replace(/\D/g, "");
+    const ticketName = ticket.clientName.trim().toLocaleLowerCase("es-MX");
+    return sellerVisibleMemberships.filter((membership) => {
+      const membershipPhone = membership.clientPhone.replace(/\D/g, "");
+      return (
+        membership.clientId === ticket.clientId ||
+        (Boolean(ticketPhone) && membershipPhone === ticketPhone) ||
+        membership.clientName.trim().toLocaleLowerCase("es-MX") === ticketName
+      );
+    });
+  };
 
   const sellerTickets = useMemo(() => {
     if (!authorizedSellerId) return [];
@@ -138,16 +283,27 @@ export function SellerSalesView({
       );
       return (
         participates &&
+        branchMatches(ticketBranch(ticket)) &&
         (!dateFrom || date >= dateFrom) &&
         (!dateTo || date <= dateTo)
       );
     });
-  }, [authorizedSellerId, dateFrom, dateTo, tickets]);
+  }, [authorizedSellerId, branchFilter, branches, dateFrom, dateTo, tickets]);
 
   const ownedClients = useMemo(() => {
     if (!authorizedSellerId) return [];
-    return clients.filter((client) => client.ownerId === authorizedSellerId);
-  }, [authorizedSellerId, clients]);
+    return clients.filter(
+      (client) =>
+        client.ownerId === authorizedSellerId &&
+        (branchFilter === "ALL" ||
+          client.registrationBranch === branchFilter ||
+          tickets.some(
+            (ticket) =>
+              sameClient(client, ticket) &&
+              ticketBranch(ticket) === branchFilter,
+          )),
+    );
+  }, [authorizedSellerId, branchFilter, branches, clients, tickets]);
 
   const clientIdsWithDebt = useMemo(
     () =>
@@ -157,11 +313,12 @@ export function SellerSalesView({
             (layaway) =>
               layaway.status === "ACTIVE" &&
               layaway.balanceDue > 0.01 &&
-              layaway.sellerIds.includes(authorizedSellerId),
+              layaway.sellerIds.includes(authorizedSellerId) &&
+              branchMatches(layaway.branch),
           )
           .map((layaway) => layaway.clientId),
       ),
-    [authorizedSellerId, layaways],
+    [authorizedSellerId, branchFilter, layaways],
   );
   const clientIdsWithoutAppointment = useMemo(
     () =>
@@ -171,11 +328,12 @@ export function SellerSalesView({
             (appointment) =>
               appointment.kind === "NO_APPOINTMENT" &&
               appointment.status === "PENDING" &&
-              appointment.sellerIds.includes(authorizedSellerId),
+              appointment.sellerIds.includes(authorizedSellerId) &&
+              branchMatches(appointment.branch),
           )
           .map((appointment) => appointment.clientId),
       ),
-    [appointments, authorizedSellerId],
+    [appointments, authorizedSellerId, branchFilter],
   );
 
   const visibleClients = (showAllClients
@@ -193,7 +351,11 @@ export function SellerSalesView({
     (client) => client.id === selectedClientId,
   );
   const selectedClientTickets = selectedClient
-    ? tickets.filter((ticket) => sameClient(selectedClient, ticket))
+    ? tickets.filter(
+        (ticket) =>
+          sameClient(selectedClient, ticket) &&
+          branchMatches(ticketBranch(ticket)),
+      )
     : [];
   const sellerTicketPagination = useHistoryPagination(
     sellerTickets,
@@ -216,7 +378,7 @@ export function SellerSalesView({
   const overdueThreshold = new Date();
   overdueThreshold.setMonth(overdueThreshold.getMonth() - 4);
   const sellerLayaways = layaways.filter((layaway) =>
-    layaway.sellerIds.includes(authorizedSellerId),
+    layaway.sellerIds.includes(authorizedSellerId) && branchMatches(layaway.branch),
   );
   const overdueLayaways = sellerLayaways.filter(
     (layaway) =>
@@ -227,12 +389,14 @@ export function SellerSalesView({
     (appointment) =>
       appointment.kind === "NO_APPOINTMENT" &&
       appointment.status === "PENDING" &&
-      appointment.sellerIds.includes(authorizedSellerId),
+      appointment.sellerIds.includes(authorizedSellerId) &&
+      branchMatches(appointment.branch),
   );
   const sellerOwedProducts = owedProducts.filter(
     (record) =>
       record.status === "PENDING" &&
-      record.sellerIds.includes(authorizedSellerId),
+      record.sellerIds.includes(authorizedSellerId) &&
+      branchMatches(record.branch),
   );
   const selectedClientLayaways = selectedClient
     ? sellerLayaways.filter((layaway) => layaway.clientId === selectedClient.id)
@@ -286,6 +450,7 @@ export function SellerSalesView({
     setDateFrom("");
     setDateTo("");
     setClientQuickFilter("ALL");
+    setBranchFilter("ALL");
   };
 
   const openClientQuickFilter = (filter: ClientQuickFilter) => {
@@ -357,6 +522,13 @@ export function SellerSalesView({
           </div>
           <div className="seller-period-filter">
             <CalendarRange size={18} />
+            <Select value={branchFilter} onValueChange={setBranchFilter}>
+              <SelectTrigger aria-label="Filtrar mis ventas por sucursal"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">Todas las sucursales</SelectItem>
+                {branches.map((branch) => <SelectItem key={branch} value={branch}>{branch}</SelectItem>)}
+              </SelectContent>
+            </Select>
             <DatePicker
               value={dateFrom}
               onChange={setDateFrom}
@@ -564,6 +736,10 @@ export function SellerSalesView({
                       <TableCell>
                         <div className="seller-ticket-client">
                           <strong>{ticket.clientName}</strong>
+                          <SellerClientMembershipPreview
+                            clientName={ticket.clientName}
+                            memberships={membershipsForTicketClient(ticket)}
+                          />
                           <small>{ticket.clientPhone || "Sin teléfono"}</small>
                         </div>
                       </TableCell>
@@ -899,7 +1075,7 @@ export function SellerSalesView({
                                       }])
                                         .map(
                                           (entry) =>
-                                            `${paymentLabel(entry.methodId)}${entry.cardOrBank ? ` · ${entry.cardOrBank}` : ""}${entry.authorizationCode ? ` · Aut. ${entry.authorizationCode}` : ""} ${formatCurrency(entry.amount)}`,
+                                            `${paymentLabel(entry.methodId)}${entry.cardNetwork ? ` · ${cardNetworkLabels[entry.cardNetwork]}` : ""}${entry.cardOrBank ? ` · ${entry.cardOrBank}` : ""}${entry.authorizationCode ? ` · Aut. ${entry.authorizationCode}` : ""} ${formatCurrency(entry.amount)}`,
                                         )
                                         .join(" + ")}
                                       {typeof payment.balanceAfter === "number" && (
@@ -915,6 +1091,7 @@ export function SellerSalesView({
                                 <LayawayPaymentDialog
                                   layaway={layaway}
                                   paymentMethods={paymentMethods}
+                                  bankCatalog={bankCatalog}
                                   sellerId={authorizedSeller.id}
                                   onRegister={(payments, deliveryIds) =>
                                     onRegisterLayawayPayment(

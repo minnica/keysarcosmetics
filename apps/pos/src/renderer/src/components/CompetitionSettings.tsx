@@ -129,6 +129,14 @@ export function CompetitionSettings({
     }
   }, [open]);
 
+  useEffect(() => {
+    setForm((current) =>
+      current.branch === "ALL" || branches.includes(current.branch)
+        ? current
+        : { ...current, branch: "ALL" },
+    );
+  }, [branches]);
+
   const authorize = () => {
     if (onAuthorize(accessCode.trim())) {
       setAccessCode("");
@@ -159,6 +167,10 @@ export function CompetitionSettings({
     }
     if (!form.dateFrom || !form.dateTo || form.dateFrom > form.dateTo) {
       toast.error("Selecciona un periodo válido.");
+      return;
+    }
+    if (form.branch !== "ALL" && !branches.includes(form.branch)) {
+      toast.error("La sucursal seleccionada ya no está disponible.");
       return;
     }
     if (form.type === "PRODUCT" && !form.productId) {

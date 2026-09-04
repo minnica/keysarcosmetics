@@ -36,9 +36,11 @@ import { HistoryPagination, useHistoryPagination } from "./HistoryPagination";
 interface ClockInViewProps {
   sellers: Seller[];
   branches: string[];
+  activeBranch: string;
+  canViewAllBranches: boolean;
   records: AttendanceRecord[];
   onClockIn: (accessCode: string, branch: string) => boolean | Promise<boolean>;
-  onClockOut: (recordId: string) => void | Promise<void>;
+  onClockOut: (recordId: string) => boolean | Promise<boolean>;
 }
 
 const formatDuration = (startIso: string, endIso: string | null, now: number) => {
@@ -63,12 +65,17 @@ const isToday = (createdAtIso: string) => {
 export function ClockInView({
   sellers,
   branches,
+  activeBranch,
+  canViewAllBranches,
   records,
   onClockIn,
   onClockOut,
 }: ClockInViewProps) {
   const [accessCode, setAccessCode] = useState("");
-  const [branch, setBranch] = useState(branches[0] ?? "Polanco");
+  const [branch, setBranch] = useState(activeBranch);
+  const [reportBranch, setReportBranch] = useState(
+    canViewAllBranches ? "ALL" : activeBranch,
+  );
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -77,32 +84,64 @@ export function ClockInView({
   }, []);
 
   useEffect(() => {
-    if (!branches.includes(branch)) setBranch(branches[0] ?? "");
-  }, [branch, branches]);
+    if (!branches.includes(branch)) setBranch(activeBranch);
+    if (!canViewAllBranches) setReportBranch(activeBranch);
+    else if (reportBranch !== "ALL" && !branches.includes(reportBranch))
+      setReportBranch("ALL");
+  }, [activeBranch, branch, branches, canViewAllBranches, reportBranch]);
 
-  const onlineRecords = useMemo(
+  const authorizedRecords = useMemo(
+    () =>
+      records.filter(
+        (record) =>
+          branches.includes(record.branch) &&
+          (reportBranch === "ALL" || record.branch === reportBranch),
+      ),
+    [branches, records, reportBranch],
+  );
+  const allOnlineRecords = useMemo(
     () => records.filter((record) => record.status === "ONLINE"),
     [records],
   );
+  const onlineRecords = useMemo(
+    () => authorizedRecords.filter((record) => record.status === "ONLINE"),
+    [authorizedRecords],
+  );
   const todayRecords = useMemo(
     () =>
-      records
+      authorizedRecords
         .filter((record) => isToday(record.clockInAtIso))
         .sort((left, right) =>
           right.clockInAtIso.localeCompare(left.clockInAtIso),
         ),
-    [records],
+    [authorizedRecords],
   );
   const attendancePagination = useHistoryPagination(todayRecords, "today");
   const attendedSellerIds = new Set(
     todayRecords.map((record) => record.sellerId),
   );
   const activeSellers = sellers.filter((seller) => seller.active);
+  const identifiedSeller =
+    accessCode.length === 4
+      ? activeSellers.find((seller) => seller.accessCode === accessCode) ?? null
+      : null;
+  const identifiedOnlineRecord = identifiedSeller
+    ? allOnlineRecords.find((record) => record.sellerId === identifiedSeller.id) ??
+      null
+    : null;
 
   const submitClockIn = async () => {
     if (!accessCode.trim() || !branch) return;
     const registered = await onClockIn(accessCode.trim(), branch);
     if (registered) setAccessCode("");
+  };
+
+  const submitAttendance = async () => {
+    if (identifiedOnlineRecord) {
+      if (await onClockOut(identifiedOnlineRecord.id)) setAccessCode("");
+      return;
+    }
+    await submitClockIn();
   };
 
   return (
@@ -117,12 +156,14 @@ export function ClockInView({
               <span className="section-kicker">CONTROL DE ASISTENCIA</span>
               <h2>Clock In de vendedores</h2>
               <p>
-                El código registra asistencia exclusivamente; no abre ventas,
-                reportes ni permisos administrativos.
+                Ingresa tu código personal. Si ya tienes una entrada activa,
+                sólo se mostrará la opción para registrar tu salida.
               </p>
             </div>
           </div>
-          <div className="clock-in-form">
+          <div
+            className={`clock-in-form ${identifiedOnlineRecord ? "is-clock-out" : ""}`}
+          >
             <div className="field-stack">
               <Label htmlFor="seller-clock-code">Código personal</Label>
               <div className="clock-in-input-shell">
@@ -135,33 +176,61 @@ export function ClockInView({
                   value={accessCode}
                   onChange={(event) => setAccessCode(event.target.value)}
                   onKeyDown={(event) => {
-                    if (event.key === "Enter") void submitClockIn();
+                    if (event.key === "Enter") void submitAttendance();
                   }}
                   placeholder="Código de vendedor"
                 />
               </div>
             </div>
-            <div className="field-stack">
-              <Label>Sucursal de asistencia</Label>
-              <Select value={branch} onValueChange={setBranch}>
-                <SelectTrigger aria-label="Sucursal para Clock In">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {branches.map((option) => (
-                    <SelectItem key={option} value={option}>
-                      {option}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            {identifiedOnlineRecord ? (
+              <div className="clock-in-active-session" aria-live="polite">
+                <span className="clock-in-avatar" aria-hidden="true">
+                  {identifiedOnlineRecord.sellerInitials}
+                </span>
+                <span>
+                  <strong>{identifiedOnlineRecord.sellerName}</strong>
+                  <small>
+                    Entrada {identifiedOnlineRecord.clockInAt} ·{" "}
+                    {identifiedOnlineRecord.branch}
+                  </small>
+                </span>
+              </div>
+            ) : (
+              <div className="field-stack">
+                <Label>Sucursal de asistencia</Label>
+                <Select value={branch} onValueChange={setBranch}>
+                  <SelectTrigger aria-label="Sucursal para Clock In">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {branches.map((option) => (
+                      <SelectItem key={option} value={option}>
+                        {option}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <Button
               type="button"
-              onClick={() => void submitClockIn()}
-              disabled={accessCode.length !== 4 || !branch}
+              variant={identifiedOnlineRecord ? "outline" : "default"}
+              className={identifiedOnlineRecord ? "clock-out-button" : ""}
+              onClick={() => void submitAttendance()}
+              disabled={
+                accessCode.length !== 4 ||
+                (!identifiedOnlineRecord && !branch)
+              }
             >
-              <LogIn size={17} /> Registrar entrada
+              {identifiedOnlineRecord ? (
+                <>
+                  <LogOut size={17} /> Registrar salida
+                </>
+              ) : (
+                <>
+                  <LogIn size={17} /> Registrar entrada
+                </>
+              )}
             </Button>
           </div>
           <div className="clock-in-security-note">
@@ -173,6 +242,19 @@ export function ClockInView({
           </div>
         </CardContent>
       </Card>
+
+      <div className="module-branch-scope">
+        <span><Building2 size={15} /> ALCANCE DE ASISTENCIA</span>
+        {canViewAllBranches ? (
+          <Select value={reportBranch} onValueChange={setReportBranch}>
+            <SelectTrigger aria-label="Filtrar asistencia por sucursal"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">Todas las sucursales</SelectItem>
+              {branches.map((option) => <SelectItem key={option} value={option}>{option}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        ) : <strong>{activeBranch}</strong>}
+      </div>
 
       <div className="clock-in-metrics">
         <Card>
@@ -230,14 +312,6 @@ export function ClockInView({
                     {formatDuration(record.clockInAtIso, null, now)}
                   </small>
                 </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => void onClockOut(record.id)}
-                >
-                  <LogOut size={15} /> Marcar salida
-                </Button>
               </article>
             ))}
             {onlineRecords.length === 0 && (

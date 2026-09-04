@@ -37,6 +37,8 @@ interface CompetitionViewProps {
   tickets: Ticket[];
   sellers: Seller[];
   products: Product[];
+  branches: string[];
+  canOpenSettings: boolean;
   onOpenSettings: () => void;
 }
 
@@ -92,9 +94,15 @@ export function CompetitionView({
   tickets,
   sellers,
   products,
+  branches,
+  canOpenSettings,
   onOpenSettings,
 }: CompetitionViewProps) {
-  const activeCompetitions = competitions.filter((competition) => competition.active);
+  const activeCompetitions = competitions.filter(
+    (competition) =>
+      competition.active &&
+      (competition.branch === "ALL" || branches.includes(competition.branch)),
+  );
   const [selectedId, setSelectedId] = useState(activeCompetitions[0]?.id ?? "");
 
   useEffect(() => {
@@ -111,16 +119,18 @@ export function CompetitionView({
     if (!selectedCompetition) return [];
     return tickets.filter((ticket) => {
       const businessDate = getBusinessDate(ticket.createdAtIso);
+      const ticketBranch = ticket.branchName ?? branches[0] ?? "";
       return (
         ticket.status === "COMPLETED" &&
         ticket.ticketType !== "LAYAWAY_PAYMENT" &&
+        branches.includes(ticketBranch) &&
         businessDate >= selectedCompetition.dateFrom &&
         businessDate <= selectedCompetition.dateTo &&
         (selectedCompetition.branch === "ALL" ||
-          ticket.branchName === selectedCompetition.branch)
+          ticketBranch === selectedCompetition.branch)
       );
     });
-  }, [selectedCompetition, tickets]);
+  }, [branches, selectedCompetition, tickets]);
 
   const ranking = useMemo<SellerRanking[]>(() => {
     if (!selectedCompetition) return [];
@@ -189,9 +199,11 @@ export function CompetitionView({
           <span className="section-kicker">COMPETICIONES</span>
           <h2>No hay competencias activas</h2>
           <p>Crea o activa una competencia desde Settings para comenzar el conteo.</p>
-          <Button type="button" onClick={onOpenSettings}>
-            <Settings2 size={16} /> Abrir configuración
-          </Button>
+          {canOpenSettings && (
+            <Button type="button" onClick={onOpenSettings}>
+              <Settings2 size={16} /> Abrir configuración
+            </Button>
+          )}
         </CardContent>
       </Card>
     );
@@ -255,9 +267,11 @@ export function CompetitionView({
               ))}
             </SelectContent>
           </Select>
-          <Button type="button" variant="outline" onClick={onOpenSettings}>
-            <Settings2 size={16} /> Configurar
-          </Button>
+          {canOpenSettings && (
+            <Button type="button" variant="outline" onClick={onOpenSettings}>
+              <Settings2 size={16} /> Configurar
+            </Button>
+          )}
         </div>
       </div>
 

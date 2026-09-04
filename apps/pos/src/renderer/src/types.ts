@@ -5,6 +5,7 @@ export type ScreenId =
   | "receipts"
   | "customers"
   | "appointments"
+  | "memberships"
   | "inventory"
   | "warehouse"
   | "branch-inventory"
@@ -71,7 +72,7 @@ export interface PosDaySession {
   closedByName: string | null;
 }
 
-export type ProductKind = "PRODUCT" | "SERVICE";
+export type ProductKind = "PRODUCT" | "SERVICE" | "MEMBERSHIP";
 
 export interface Product {
   id: string;
@@ -101,6 +102,71 @@ export interface Product {
   stockMax: number | null;
   branches: string[];
   active: boolean;
+  membershipSessions?: number | undefined;
+}
+
+export type MembershipClientProfile =
+  | "POTENTIAL"
+  | "LOYAL"
+  | "VIP"
+  | "RECOVERY";
+
+export interface MembershipAttendance {
+  id: string;
+  appointmentId: string | null;
+  attendedAtIso: string;
+  branch: string;
+  sellerName: string;
+  signatureStatus: "NOT_REQUIRED" | "PENDING" | "SIGNED";
+  externalAppointmentId?: string;
+  agendaSyncStatus?: "SYNCED" | "PENDING_SYNC" | "ERROR";
+}
+
+export interface MembershipSellerChange {
+  id: string;
+  changedAtIso: string;
+  fromSellerId?: string;
+  toSellerId?: string;
+  fromSellerName: string;
+  toSellerName: string;
+  reason: string;
+}
+
+export interface MembershipStatusChange {
+  id: string;
+  changedAtIso: string;
+  fromStatus: "ACTIVE" | "EXHAUSTED" | "CANCELLED";
+  toStatus: "ACTIVE" | "EXHAUSTED" | "CANCELLED";
+  reason: string;
+}
+
+export interface ClientMembership {
+  id: string;
+  folio: string;
+  clientId: string;
+  clientName: string;
+  clientPhone: string;
+  productId: string;
+  membershipName: string;
+  purchaseTicketId: string;
+  purchaseDateIso: string;
+  purchaseAmount: number;
+  branch: string;
+  sellerId: string;
+  sellerName: string;
+  originalSellerId?: string;
+  originalSellerName: string;
+  totalSessions: number;
+  usedSessions: number;
+  profile: MembershipClientProfile;
+  status: "ACTIVE" | "EXHAUSTED" | "CANCELLED";
+  attendance: MembershipAttendance[];
+  sellerChanges: MembershipSellerChange[];
+  statusChanges: MembershipStatusChange[];
+  agendaClientId?: string;
+  externalMembershipId?: string;
+  agendaSyncStatus?: "SYNCED" | "PENDING_SYNC" | "ERROR";
+  agendaSyncedAtIso?: string;
 }
 
 export interface CartItem {
@@ -114,6 +180,16 @@ export interface CartItem {
   dealName?: string;
   dealInstanceId?: string;
   dealQuantity?: number;
+}
+
+export interface ClientOwnershipHistoryEntry {
+  id: string;
+  sellerId: string;
+  sellerName: string;
+  assignedAtIso?: string;
+  endedAtIso: string;
+  reason: "SELLER_INACTIVATED" | "REASSIGNED" | "COMPANY_TRANSFER";
+  authorizedBy?: string;
 }
 
 export interface Client {
@@ -131,8 +207,12 @@ export interface Client {
   companyName: string;
   companyLocked: boolean;
   ownerId: string | null;
+  ownershipHistory?: ClientOwnershipHistoryEntry[];
   saleSellerIds: string[];
   registrationBranch?: string;
+  agendaClientId?: string;
+  agendaSyncStatus?: "SYNCED" | "PENDING_SYNC" | "ERROR";
+  agendaSyncedAtIso?: string;
 }
 
 export type ClientSource = string;
@@ -168,6 +248,7 @@ export type EmployeeConfigurationPermission =
   | "COMPETITIONS"
   | "REPORTS_COSTS"
   | "BRANCHES"
+  | "SESSION_EXIT"
   | "USERS_ROLES";
 
 export interface EmployeeRole {
@@ -182,17 +263,28 @@ export interface EmployeeRole {
   configurationAccess: EmployeeConfigurationPermission[];
 }
 
-export type CourtesyPackage =
-  | "FACIAL"
-  | "BODY"
-  | "DOUBLE_FACIAL"
-  | "DOUBLE_BODY"
-  | "MIXED";
+export type CourtesyPackage = string;
+
+export interface CourtesyProductOption {
+  id: string;
+  name: string;
+  category: "FACIAL" | "BODY";
+  active: boolean;
+}
+
+export interface CourtesyPackageOption {
+  id: CourtesyPackage;
+  name: string;
+  serviceIds: string[];
+  active: boolean;
+}
 
 export interface CourtesySettings {
   required: boolean;
   defaultPackage: CourtesyPackage;
   enabledPackages: CourtesyPackage[];
+  products: CourtesyProductOption[];
+  packages: CourtesyPackageOption[];
 }
 
 export interface AttendanceRecord {
@@ -319,6 +411,8 @@ export interface MasterUser {
 export interface SellerSplit {
   sellerId: string;
   value: number;
+  participantKind?: "SELLER" | "COMPANY";
+  participantCode?: string;
 }
 
 export interface Ticket {
@@ -439,6 +533,7 @@ export interface ReceiptSettings {
   logoUrl: string;
   logoWidth: number;
   companyName: string;
+  companySalesNumber: string;
   branchName: string;
   address: string;
   footerMessage: string;
@@ -742,12 +837,29 @@ export interface PaymentMethodOption {
   active: boolean;
 }
 
+export type CardType = "CREDIT" | "DEBIT";
+export type CardNetwork = "VISA" | "MASTERCARD";
+
+export interface BankCatalogEntry {
+  id: string;
+  name: string;
+  active: boolean;
+  cardTypes: CardType[];
+  cardNetworks: CardNetwork[];
+  source: "ABM" | "CUSTOM";
+}
+
 export interface PaymentEntry {
   id: string;
   methodId: PaymentMethod;
   amount: number;
   authorizationCode?: string;
   cardOrBank?: string;
+  cardType?: CardType;
+  cardNetwork?: CardNetwork;
+  bankId?: string;
+  bankName?: string;
+  installmentMonths?: number;
   folio?: string;
   createdAt?: string;
   createdAtIso?: string;
@@ -782,7 +894,38 @@ export interface TicketSellerSale {
   sellerId: string;
   sellerName: string;
   amount: number;
+  participantKind?: "SELLER" | "COMPANY";
+  participantCode?: string;
 }
+
+export type AgendaSlotStatus =
+  | "AVAILABLE"
+  | "CANCELLED"
+  | "BOOKED"
+  | "BLOCKED";
+
+export interface AgendaSlot {
+  id: string;
+  externalSystem: string;
+  externalCalendarId: string;
+  externalSlotId: string;
+  branch: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  resourceId: string;
+  resourceName: string;
+  resourceType: "INDIVIDUAL" | "DOUBLE";
+  capacity: number;
+  reservedCount: number;
+  status: AgendaSlotStatus;
+  updatedAtIso: string;
+}
+
+export type AgendaReservationMode =
+  | "SINGLE"
+  | "SIMULTANEOUS_DOUBLE"
+  | "CONSECUTIVE";
 
 export type AppointmentKind = "COURTESY" | "NEXT_SESSION" | "NO_APPOINTMENT";
 
@@ -792,6 +935,14 @@ export interface AppointmentDraft {
   date: string;
   branch: string;
   time: string;
+  membershipId?: string;
+  courtesyReason?: "WELCOME" | "COMPLAINT";
+  courtesyPackageId?: string;
+  courtesyPackageName?: string;
+  agendaSlotId?: string;
+  externalSlotId?: string;
+  agendaResourceName?: string;
+  agendaReservationMode?: AgendaReservationMode;
 }
 
 export interface Appointment extends AppointmentDraft {
@@ -803,7 +954,19 @@ export interface Appointment extends AppointmentDraft {
   sellerIds: string[];
   recordedAt: string;
   recordedAtIso: string;
-  status: "SCHEDULED" | "PENDING";
+  status:
+    | "SCHEDULED"
+    | "PENDING"
+    | "ATTENDED"
+    | "CANCELLED"
+    | "NO_SHOW";
+  membershipId?: string;
+  membershipSessionConsumedAtIso?: string;
+  agendaClientId?: string;
+  agendaReservationId?: string;
+  externalAppointmentId?: string;
+  agendaSyncStatus?: "RESERVED" | "ATTENDED" | "PENDING_SYNC" | "CONFLICT" | "CANCELLED" | "NO_SHOW";
+  agendaSyncedAtIso?: string;
 }
 
 export type PaymentStatus = "PAID" | "LAYAWAY" | "PENDING";

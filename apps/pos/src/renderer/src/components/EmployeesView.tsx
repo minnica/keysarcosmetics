@@ -75,6 +75,7 @@ const moduleOptions: Array<{
   { id: "receipts", label: "Receipts", description: "Consulta e impresión de tickets." },
   { id: "customers", label: "Customers", description: "Directorio y expedientes." },
   { id: "appointments", label: "Citas", description: "Agenda y cortesías." },
+  { id: "memberships", label: "Membresías", description: "Tarjetones, sesiones, asistencia y análisis protegido." },
   { id: "inventory", label: "Inventory", description: "Productos, stock y pedidos." },
   { id: "warehouse", label: "Pedido sucursales", description: "Existencias de bodega, compras, entradas, solicitudes y envíos." },
   { id: "branch-inventory", label: "Almacén matriz", description: "Solicitudes de productos, testers e insumos hacia bodega matriz." },
@@ -112,18 +113,18 @@ const modulePermissionGroups: Array<{
 }> = [
   {
     label: "Operación de venta",
-    description: "Venta, tickets, caja y cierre diario.",
-    moduleIds: ["sale", "seller-sales", "receipts", "cash-manager", "x-report", "close-day"],
+    description: "Venta, catálogo, tickets, caja y cierre diario.",
+    moduleIds: ["sale", "catalog", "seller-sales", "receipts", "cash-manager", "x-report", "close-day"],
   },
   {
     label: "Clientes y servicio",
     description: "Expedientes, citas, competiciones y accesos web.",
-    moduleIds: ["customers", "appointments", "competition", "websites"],
+    moduleIds: ["customers", "appointments", "memberships", "competition", "websites"],
   },
   {
     label: "Inventario y almacén",
-    description: "Catálogo, existencias, movimientos, proveedores y paquetes.",
-    moduleIds: ["inventory", "catalog", "inventory-movements", "warehouse", "branch-inventory", "suppliers", "deals"],
+    description: "Existencias, movimientos, proveedores y paquetes.",
+    moduleIds: ["inventory", "inventory-movements", "warehouse", "branch-inventory", "suppliers", "deals"],
   },
   {
     label: "Administración y análisis",
@@ -142,6 +143,7 @@ const printableModuleIds = new Set<ScreenId>([
   "seller-sales",
   "receipts",
   "customers",
+  "memberships",
   "x-report",
   "close-day",
 ]);
@@ -162,6 +164,7 @@ const configurationOptions: Array<{
   { id: "COMPETITIONS", label: "Competiciones", description: "Tipos, periodos y objetivos." },
   { id: "REPORTS_COSTS", label: "Reportes y costos", description: "Costos, utilidad y reportes administrativos." },
   { id: "BRANCHES", label: "Sucursales", description: "Alta, activación e inactivación." },
+  { id: "SESSION_EXIT", label: "Salir sin Close day", description: "Cerrar únicamente la sesión del usuario sin generar ni modificar el corte." },
   { id: "USERS_ROLES", label: "Usuarios y roles", description: "Asignaciones y permisos del personal." },
 ];
 
@@ -418,7 +421,9 @@ export function EmployeesView({
       return {
         ...current,
         moduleAccess:
-          !selected && !current.moduleAccess.includes("settings")
+          permission !== "SESSION_EXIT" &&
+          !selected &&
+          !current.moduleAccess.includes("settings")
             ? [...current.moduleAccess, "settings"]
             : current.moduleAccess,
         configurationAccess: selected
@@ -446,8 +451,11 @@ export function EmployeesView({
       toast.error("Ingresa un código Master válido para guardar los permisos.");
       return;
     }
+    const hasSettingsConfiguration = roleDraft.configurationAccess.some(
+      (permission) => permission !== "SESSION_EXIT",
+    );
     const normalizedModuleAccess =
-      roleDraft.configurationAccess.length > 0 &&
+      hasSettingsConfiguration &&
       !roleDraft.moduleAccess.includes("settings")
         ? [...roleDraft.moduleAccess, "settings" as const]
         : roleDraft.moduleAccess;

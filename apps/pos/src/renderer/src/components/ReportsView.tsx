@@ -44,6 +44,7 @@ import {
   toast,
 } from "@cosmetics/ui";
 import { formatCurrency } from "../mock-data";
+import { cardNetworkLabels } from "../bank-catalog";
 import { getTicketTaxSummary, roundCurrency } from "../tax";
 import { getProductSpare, getTicketSpare } from "../spare";
 import { ReportsCustomerDialog } from "./ReportsCustomerDialog";
@@ -64,6 +65,7 @@ import type {
 
 type ReportKey =
   | "SALES_DETAIL"
+  | "BANK_RECONCILIATION"
   | "CASH_MOVEMENTS"
   | "SOLD_PRODUCTS"
   | "SALES_BY_EMPLOYEE"
@@ -133,6 +135,11 @@ const reportGroups: ReportGroup[] = [
         key: "SALES_DETAIL",
         label: "Detalle de ventas",
         description: "Ingresos, SPARE, impuestos, descuentos, cobros y tickets.",
+      },
+      {
+        key: "BANK_RECONCILIATION",
+        label: "Conciliación bancaria",
+        description: "Cobros por día, ticket, sucursal, vendedor, método y meses sin intereses.",
       },
       {
         key: "SOLD_PRODUCTS",
@@ -238,6 +245,16 @@ const percentage = (value: number) =>
 const compactNumber = (value: number) =>
   new Intl.NumberFormat("es-MX", { maximumFractionDigits: 1 }).format(value);
 
+const formatReportMonth = (month: string) => {
+  const [year, monthNumber] = month.split("-").map(Number);
+  if (!year || !monthNumber) return "Periodo personalizado";
+  const label = new Intl.DateTimeFormat("es-MX", {
+    month: "long",
+    year: "numeric",
+  }).format(new Date(year, monthNumber - 1, 1, 12));
+  return label.charAt(0).toLocaleUpperCase("es-MX") + label.slice(1);
+};
+
 const currencyColumns = new Set(
   [
     "precio completo",
@@ -305,6 +322,8 @@ export function ReportsView({
   const [expenseTypeId, setExpenseTypeId] = useState("ALL");
   const [productKind, setProductKind] =
     useState<ProductKindFilter>("ALL");
+  const [customerMonth, setCustomerMonth] = useState("CUSTOM");
+  const [customerSource, setCustomerSource] = useState("ALL");
   const [search, setSearch] = useState("");
   const [comparePrevious, setComparePrevious] = useState(true);
   const [exporting, setExporting] = useState<"PDF" | "EXCEL" | null>(null);
@@ -333,6 +352,33 @@ export function ReportsView({
   );
   const selectedCustomer =
     clients.find((client) => client.id === selectedCustomerId) ?? null;
+  const customerMonthOptions = useMemo(
+    () =>
+      Array.from(
+        new Set([
+          ...tickets.map((ticket) => getBusinessDate(ticket.createdAtIso).slice(0, 7)),
+          ...clients.map((client) => getBusinessDate(client.registeredAtIso).slice(0, 7)),
+        ]),
+      ).sort((left, right) => right.localeCompare(left)),
+    [clients, tickets],
+  );
+  const customerSourceOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(clients.map((client) => client.sourceLabel.trim()).filter(Boolean)),
+      ).sort((left, right) => left.localeCompare(right, "es-MX")),
+    [clients],
+  );
+
+  const selectCustomerMonth = (month: string) => {
+    setCustomerMonth(month);
+    if (month === "CUSTOM") return;
+    const [year, monthNumber] = month.split("-").map(Number);
+    if (!year || !monthNumber) return;
+    const lastDay = new Date(year, monthNumber, 0).getDate();
+    setDateFrom(`${month}-01`);
+    setDateTo(`${month}-${String(lastDay).padStart(2, "0")}`);
+  };
 
   const openCustomerFromRow = (row: DetailRow) => {
     const ticket = tickets.find((candidate) => candidate.id === row.Folio);
@@ -379,10 +425,19 @@ export function ReportsView({
     ticket.branchName ?? receiptSettings.branchName;
   const isTicketInScope = (ticket: Ticket, from = dateFrom, to = dateTo) =>
     ticket.status === "COMPLETED" &&
-    ticket.ticketType !== "LAYAWAY_PAYMENT" &&
+    (activeReport === "BANK_RECONCILIATION" ||
+      ticket.ticketType !== "LAYAWAY_PAYMENT") &&
     getBusinessDate(ticket.createdAtIso) >= from &&
     getBusinessDate(ticket.createdAtIso) <= to &&
     selectedBranches.includes(ticketBranch(ticket)) &&
+    (activeGroup !== "CUSTOMER" ||
+      customerSource === "ALL" ||
+      clients.some(
+        (client) =>
+          client.sourceLabel === customerSource &&
+          ((client.phone && ticket.clientPhone === client.phone) ||
+            ticket.clientName === `${client.firstName} ${client.lastName}`),
+      )) &&
     (sellerId === "ALL" ||
       ticket.sellerSales.some((sale) => sale.sellerId === sellerId)) &&
     (paymentMethodId === "ALL" ||
@@ -395,6 +450,10 @@ export function ReportsView({
     [
       dateFrom,
       dateTo,
+      activeReport,
+      activeGroup,
+      clients,
+      customerSource,
       paymentMethodId,
       receiptSettings.branchName,
       selectedBranches,
@@ -528,6 +587,76 @@ export function ReportsView({
         (paymentMethodId === "ALL" || payment.methodId === paymentMethodId),
     ),
   ).length;
+  const reconciliationPayments = useMemo(
+    () =>
+      filteredTickets.flatMap((ticket) =>
+        ticket.payments
+          .filter(
+            (payment) =>
+              payment.amount > 0 &&
+              (paymentMethodId === "ALL" ||
+                payment.methodId === paymentMethodId),
+          )
+          .map((payment) => ({ ticket, payment })),
+      ),
+    [filteredTickets, paymentMethodId],
+  );
+  const reconciliationTotal = reconciliationPayments.reduce(
+    (sum, item) => sum + item.payment.amount,
+    0,
+  );
+  const paymentUsage = Array.from(
+    reconciliationPayments.reduce<
+      Map<string, { methodId: string; label: string; count: number; total: number }>
+    >((summary, { payment }) => {
+      const current = summary.get(payment.methodId) ?? {
+        methodId: payment.methodId,
+        label:
+          paymentMethods.find((method) => method.id === payment.methodId)
+            ?.label ?? payment.methodId,
+        count: 0,
+        total: 0,
+      };
+      current.count += 1;
+      current.total += payment.amount;
+      summary.set(payment.methodId, current);
+      return summary;
+    }, new Map()).values(),
+  ).sort(
+    (left, right) => right.count - left.count || right.total - left.total,
+  );
+  const installmentUsage = Array.from(
+    reconciliationPayments.reduce<
+      Map<number, { months: number; count: number; total: number }>
+    >((summary, { payment }) => {
+      if (payment.cardType !== "CREDIT") return summary;
+      const months = payment.installmentMonths ?? 1;
+      const current = summary.get(months) ?? {
+        months,
+        count: 0,
+        total: 0,
+      };
+      current.count += 1;
+      current.total += payment.amount;
+      summary.set(months, current);
+      return summary;
+    }, new Map()).values(),
+  ).sort(
+    (left, right) => right.count - left.count || right.total - left.total,
+  );
+  const creditTotal = reconciliationPayments
+    .filter(({ payment }) => payment.cardType === "CREDIT")
+    .reduce((sum, { payment }) => sum + payment.amount, 0);
+  const debitTotal = reconciliationPayments
+    .filter(({ payment }) => payment.cardType === "DEBIT")
+    .reduce((sum, { payment }) => sum + payment.amount, 0);
+  const installmentTotal = reconciliationPayments
+    .filter(
+      ({ payment }) =>
+        payment.cardType === "CREDIT" &&
+        (payment.installmentMonths ?? 1) > 1,
+    )
+    .reduce((sum, { payment }) => sum + payment.amount, 0);
   const discountTotal = filteredTickets.reduce(
     (sum, ticket) => sum + ticket.discountAmount,
     0,
@@ -798,11 +927,17 @@ export function ReportsView({
       .filter((client) =>
         activeGroup === "CUSTOMER" ? client.visits > 0 || client.isNew : true,
       )
+      .filter((client) =>
+        activeGroup === "CUSTOMER" && customerSource !== "ALL"
+          ? client.source === customerSource
+          : true,
+      )
       .sort((left, right) => right.total - left.total);
   }, [
     activeGroup,
     appointments,
     clients,
+    customerSource,
     dateFrom,
     dateTo,
     filteredTickets,
@@ -833,7 +968,94 @@ export function ReportsView({
       ? (repeatCustomers / customerSummary.length) * 100
       : 0;
 
+  const customerSourceStats = useMemo(() => {
+    const summary = new Map<
+      string,
+      {
+        source: string;
+        customers: number;
+        sales: number;
+        visits: number;
+        appointments: number;
+        recurring: number;
+      }
+    >();
+    customerSummary.forEach((client) => {
+      const current = summary.get(client.source) ?? {
+        source: client.source,
+        customers: 0,
+        sales: 0,
+        visits: 0,
+        appointments: 0,
+        recurring: 0,
+      };
+      current.customers += 1;
+      current.sales += client.total;
+      current.visits += client.visits;
+      current.appointments += client.appointments;
+      current.recurring += client.visits > 1 ? 1 : 0;
+      summary.set(client.source, current);
+    });
+    return Array.from(summary.values())
+      .map((item) => ({
+        ...item,
+        share:
+          customerSummary.length > 0
+            ? (item.customers / customerSummary.length) * 100
+            : 0,
+        averageTicket: item.visits > 0 ? item.sales / item.visits : 0,
+        repeatRate:
+          item.customers > 0 ? (item.recurring / item.customers) * 100 : 0,
+      }))
+      .sort((left, right) => right.customers - left.customers);
+  }, [customerSummary]);
+
   const rawMetrics: MetricDefinition[] = (() => {
+    if (activeReport === "BANK_RECONCILIATION") {
+      const leadingMethod = paymentUsage[0];
+      const leadingInstallment = installmentUsage[0];
+      return [
+        {
+          label: "COBROS CONCILIABLES",
+          value: formatCurrency(reconciliationTotal),
+          detail: `${reconciliationPayments.length} movimientos de pago`,
+          tone: "positive",
+        },
+        {
+          label: "CRÉDITO",
+          value: formatCurrency(creditTotal),
+          detail: `${reconciliationPayments.filter(({ payment }) => payment.cardType === "CREDIT").length} cobros`,
+        },
+        {
+          label: "DÉBITO",
+          value: formatCurrency(debitTotal),
+          detail: `${reconciliationPayments.filter(({ payment }) => payment.cardType === "DEBIT").length} cobros`,
+        },
+        {
+          label: "VENTA A MSI",
+          value: formatCurrency(installmentTotal),
+          detail: "Crédito con plazo mayor a una exhibición",
+        },
+        {
+          label: "MÉTODO MÁS UTILIZADO",
+          value: leadingMethod?.label ?? "Sin cobros",
+          detail: leadingMethod
+            ? `${leadingMethod.count} movimientos · ${formatCurrency(leadingMethod.total)}`
+            : "Sin actividad",
+        },
+        {
+          label: "PLAZO MÁS UTILIZADO",
+          value: leadingInstallment
+            ? leadingInstallment.months === 1
+              ? "Una exhibición"
+              : `${leadingInstallment.months} MSI`
+            : "Sin crédito",
+          detail: leadingInstallment
+            ? `${leadingInstallment.count} cobros · ${formatCurrency(leadingInstallment.total)}`
+            : "Sin plazos registrados",
+        },
+      ];
+    }
     if (activeReport === "CASH_MOVEMENTS") {
       return [
         {
@@ -1050,7 +1272,10 @@ export function ReportsView({
       map.set(
         date,
         (map.get(date) ?? 0) +
-          (activeReport === "CASH_MOVEMENTS" ? ticketCollected : ticket.total),
+          (activeReport === "CASH_MOVEMENTS" ||
+          activeReport === "BANK_RECONCILIATION"
+            ? ticketCollected
+            : ticket.total),
       );
     });
     if (activeReport === "CASH_MOVEMENTS") {
@@ -1067,6 +1292,12 @@ export function ReportsView({
   }, [activeExpenses, activeReport, filteredTickets, paymentMethodId]);
 
   const distributionRows = useMemo(() => {
+    if (activeReport === "BANK_RECONCILIATION") {
+      return paymentUsage.map((item) => ({
+        label: `${item.label} · ${item.count} ${item.count === 1 ? "cobro" : "cobros"}`,
+        value: item.total,
+      }));
+    }
     if (activeReport === "CASH_MOVEMENTS") {
       const typeMap = new Map<string, number>();
       activeExpenses.forEach((expense) =>
@@ -1125,9 +1356,52 @@ export function ReportsView({
     movementRemovals,
     movementTransfers,
     paymentMethods,
+    paymentUsage,
   ]);
 
   const rawDetailRows: DetailRow[] = useMemo(() => {
+    if (activeReport === "BANK_RECONCILIATION") {
+      return reconciliationPayments
+        .map(({ ticket, payment }) => ({
+          Fecha: getBusinessDate(ticket.createdAtIso),
+          Ticket: ticket.id,
+          Sucursal: ticketBranch(ticket),
+          Cliente: ticket.clientName,
+          Vendedor: ticket.sellerSummary,
+          "Método de pago":
+            paymentMethods.find((method) => method.id === payment.methodId)
+              ?.label ?? payment.methodId,
+          "Tipo de tarjeta":
+            payment.cardType === "CREDIT"
+              ? "Crédito"
+              : payment.cardType === "DEBIT"
+                ? "Débito"
+                : "No aplica",
+          Red: payment.cardNetwork
+            ? cardNetworkLabels[payment.cardNetwork]
+            : "No aplica",
+          Banco: payment.bankName || payment.cardOrBank || "—",
+          "Meses sin intereses":
+            payment.cardType === "CREDIT"
+              ? payment.installmentMonths && payment.installmentMonths > 1
+                ? payment.installmentMonths
+                : "Una exhibición"
+              : "No aplica",
+          Autorización: payment.authorizationCode || "—",
+          Monto: roundCurrency(payment.amount),
+          Estado:
+            ticket.paymentStatus === "PAID"
+              ? "PAGADO"
+              : ticket.paymentStatus === "LAYAWAY"
+                ? "APARTADO"
+                : "PENDIENTE",
+        }))
+        .sort((left, right) =>
+          `${right.Fecha} ${right.Ticket}`.localeCompare(
+            `${left.Fecha} ${left.Ticket}`,
+          ),
+        );
+    }
     if (activeReport === "CASH_MOVEMENTS") {
       const incomeRows = filteredTickets.flatMap((ticket) =>
         ticket.payments
@@ -1321,6 +1595,7 @@ export function ReportsView({
     productById,
     productSummary,
     products,
+    reconciliationPayments,
     receiptSettings.branchName,
     salesTotal,
     unitsSold,
@@ -1351,7 +1626,7 @@ export function ReportsView({
   }, [activeGroup, detailRows, search]);
   const detailPagination = useHistoryPagination(
     searchedDetailRows,
-    `${activeReport}|${dateFrom}|${dateTo}|${selectedBranches.join(",")}|${sellerId}|${paymentMethodId}|${expenseTypeId}|${productKind}|${search}`,
+    `${activeReport}|${dateFrom}|${dateTo}|${selectedBranches.join(",")}|${sellerId}|${paymentMethodId}|${expenseTypeId}|${productKind}|${customerMonth}|${customerSource}|${search}`,
   );
 
   const detailColumns = Object.keys(searchedDetailRows[0] ?? detailRows[0] ?? {});
@@ -1391,6 +1666,14 @@ export function ReportsView({
               ? "Empresa general"
               : selectedBranches.join(" / "),
           },
+          ...(activeGroup === "CUSTOMER"
+            ? [
+                {
+                  Concepto: "Procedencia",
+                  Valor: customerSource === "ALL" ? "Todas" : customerSource,
+                },
+              ]
+            : []),
           { Concepto: "Venta completa", Valor: roundCurrency(salesTotal) },
           { Concepto: "Venta sin IVA", Valor: roundCurrency(netSales) },
           { Concepto: "IVA incluido", Valor: roundCurrency(vatTotal) },
@@ -1405,7 +1688,8 @@ export function ReportsView({
 
   const exportFilename = `reporte-${slugify(activeDefinition.label)}-${dateFrom}-${dateTo}`;
 
-  const resolveExportRows = async () => loadAuthorizedDataset
+  const resolveExportRows = async () =>
+    loadAuthorizedDataset && activeReport !== "BANK_RECONCILIATION"
     ? loadAuthorizedDataset({
         key: activeReport,
         dateFrom,
@@ -1464,6 +1748,33 @@ export function ReportsView({
       });
       XLSX.utils.book_append_sheet(workbook, summarySheet, "Resumen ejecutivo");
       XLSX.utils.book_append_sheet(workbook, detailSheet, "Detalle");
+      if (activeGroup === "CUSTOMER") {
+        const sourceSheet = XLSX.utils.json_to_sheet(
+          customerSourceStats.length > 0
+            ? customerSourceStats.map((item) => ({
+                Procedencia: item.source,
+                Clientes: item.customers,
+                "Participación %": roundCurrency(item.share),
+                Ventas: roundCurrency(item.sales),
+                "Ticket promedio": roundCurrency(item.averageTicket),
+                "Recurrencia %": roundCurrency(item.repeatRate),
+                Visitas: item.visits,
+                Citas: item.appointments,
+              }))
+            : [{ Resultado: "Sin clientes para los filtros seleccionados" }],
+        );
+        sourceSheet["!cols"] = [
+          { wch: 24 },
+          { wch: 12 },
+          { wch: 16 },
+          { wch: 16 },
+          { wch: 18 },
+          { wch: 16 },
+          { wch: 12 },
+          { wch: 12 },
+        ];
+        XLSX.utils.book_append_sheet(workbook, sourceSheet, "Estadísticas procedencia");
+      }
       XLSX.writeFile(workbook, `${exportFilename}.xlsx`, { compression: true });
       toast.success("Reporte ejecutivo descargado en Excel.");
     } catch {
@@ -1493,7 +1804,7 @@ export function ReportsView({
       doc.setFont("helvetica", "normal");
       doc.setFontSize(8.5);
       doc.text(
-        `${dateFrom} al ${dateTo} · ${allBranchesSelected ? "Empresa general" : selectedBranches.join(" / ")}`,
+        `${dateFrom} al ${dateTo} · ${allBranchesSelected ? "Empresa general" : selectedBranches.join(" / ")}${activeGroup === "CUSTOMER" ? ` · Procedencia: ${customerSource === "ALL" ? "Todas" : customerSource}` : ""}`,
         36,
         74,
       );
@@ -1668,12 +1979,54 @@ export function ReportsView({
             <div className="reports-filter-grid">
               <div className="field-stack">
                 <Label>Desde</Label>
-                <DatePicker value={dateFrom} onChange={setDateFrom} placeholder="Fecha inicial" />
+                <DatePicker
+                  value={dateFrom}
+                  onChange={(value) => {
+                    setDateFrom(value);
+                    if (activeGroup === "CUSTOMER") setCustomerMonth("CUSTOM");
+                  }}
+                  placeholder="Fecha inicial"
+                />
               </div>
               <div className="field-stack">
                 <Label>Hasta</Label>
-                <DatePicker value={dateTo} onChange={setDateTo} placeholder="Fecha final" />
+                <DatePicker
+                  value={dateTo}
+                  onChange={(value) => {
+                    setDateTo(value);
+                    if (activeGroup === "CUSTOMER") setCustomerMonth("CUSTOM");
+                  }}
+                  placeholder="Fecha final"
+                />
               </div>
+              {activeGroup === "CUSTOMER" && (
+                <div className="field-stack">
+                  <Label>Mes de procedencia</Label>
+                  <Select value={customerMonth} onValueChange={selectCustomerMonth}>
+                    <SelectTrigger aria-label="Mes de procedencia"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="CUSTOM">Periodo personalizado</SelectItem>
+                      {customerMonthOptions.map((month) => (
+                        <SelectItem value={month} key={month}>{formatReportMonth(month)}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              {activeGroup === "CUSTOMER" && (
+                <div className="field-stack">
+                  <Label>Procedencia</Label>
+                  <Select value={customerSource} onValueChange={setCustomerSource}>
+                    <SelectTrigger aria-label="Filtrar por procedencia"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ALL">Todas las procedencias</SelectItem>
+                      {customerSourceOptions.map((source) => (
+                        <SelectItem value={source} key={source}>{source}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
               {(activeGroup === "SALES" || activeGroup === "EMPLOYEE" || activeGroup === "CUSTOMER") && (
                 <div className="field-stack">
                   <Label>Usuario / vendedor</Label>
@@ -1769,11 +2122,59 @@ export function ReportsView({
           ))}
         </div>
 
+        {activeGroup === "CUSTOMER" && (
+          <Card className="reports-customer-source-card">
+            <CardContent>
+              <div className="reports-card-heading">
+                <div>
+                  <span>TIPOS DE CLIENTE</span>
+                  <h3>Estadísticas por procedencia</h3>
+                  <p>
+                    {customerMonth === "CUSTOM"
+                      ? `${dateFrom} al ${dateTo}`
+                      : formatReportMonth(customerMonth)}
+                    {customerSource === "ALL" ? " · Todas las procedencias" : ` · ${customerSource}`}
+                  </p>
+                </div>
+                <UsersRound size={19} />
+              </div>
+              <div className="reports-customer-source-grid">
+                {customerSourceStats.map((item) => (
+                  <article className="reports-customer-source-stat" key={item.source}>
+                    <header>
+                      <div>
+                        <span>PROCEDENCIA</span>
+                        <h4>{item.source}</h4>
+                      </div>
+                      <strong>{item.customers}</strong>
+                    </header>
+                    <div className="reports-customer-source-share">
+                      <i><b style={{ width: `${Math.max(3, item.share)}%` }} /></i>
+                      <span>{percentage(item.share)} de clientes</span>
+                    </div>
+                    <dl>
+                      <div><dt>Venta</dt><dd>{formatCurrency(item.sales)}</dd></div>
+                      <div><dt>Ticket promedio</dt><dd>{formatCurrency(item.averageTicket)}</dd></div>
+                      <div><dt>Recurrencia</dt><dd>{percentage(item.repeatRate)}</dd></div>
+                      <div><dt>Visitas / citas</dt><dd>{item.visits} / {item.appointments}</dd></div>
+                    </dl>
+                  </article>
+                ))}
+                {customerSourceStats.length === 0 && (
+                  <p className="reports-customer-source-empty">
+                    Sin clientes para el mes y la procedencia seleccionados.
+                  </p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         <div className="reports-chart-grid">
           <Card className="reports-chart-card">
             <CardContent>
               <div className="reports-card-heading">
-                <div><span>TENDENCIA</span><h3>{activeReport === "CASH_MOVEMENTS" ? "Flujo neto por día" : "Operación por día"}</h3></div>
+                <div><span>TENDENCIA</span><h3>{activeReport === "CASH_MOVEMENTS" ? "Flujo neto por día" : activeReport === "BANK_RECONCILIATION" ? "Cobros conciliables por día" : "Operación por día"}</h3></div>
                 {salesChange >= 0 ? <TrendingUp size={19} /> : <TrendingDown size={19} />}
               </div>
               <div className="reports-column-chart">
@@ -1794,7 +2195,7 @@ export function ReportsView({
               <div className="reports-card-heading">
                 <div>
                   <span>DISTRIBUCIÓN</span>
-                  <h3>{activeReport === "CASH_MOVEMENTS" ? "Gastos por tipo" : activeGroup === "CUSTOMER" ? "Procedencia" : activeGroup === "EMPLOYEE" ? "Venta por vendedor" : activeGroup === "MERCHANDISE" ? "Flujo de inventario" : "Formas de pago"}</h3>
+                  <h3>{activeReport === "CASH_MOVEMENTS" ? "Gastos por tipo" : activeReport === "BANK_RECONCILIATION" ? "Métodos más utilizados" : activeGroup === "CUSTOMER" ? "Procedencia" : activeGroup === "EMPLOYEE" ? "Venta por vendedor" : activeGroup === "MERCHANDISE" ? "Flujo de inventario" : "Formas de pago"}</h3>
                 </div>
                 <BarChart3 size={19} />
               </div>
@@ -1810,6 +2211,41 @@ export function ReportsView({
             </CardContent>
           </Card>
         </div>
+
+        {activeReport === "BANK_RECONCILIATION" && (
+          <Card className="reports-chart-card reports-installment-card">
+            <CardContent>
+              <div className="reports-card-heading">
+                <div>
+                  <span>CRÉDITO</span>
+                  <h3>Meses sin intereses más utilizados</h3>
+                  <p>Frecuencia e importe por plazo dentro del periodo seleccionado.</p>
+                </div>
+                <WalletCards size={19} />
+              </div>
+              <div className="reports-horizontal-chart">
+                {installmentUsage.map((item) => (
+                  <div key={item.months}>
+                    <span>
+                      <b>{item.months === 1 ? "Una exhibición" : `${item.months} MSI`}</b>
+                      <strong>{item.count} {item.count === 1 ? "cobro" : "cobros"} · {formatCurrency(item.total)}</strong>
+                    </span>
+                    <i>
+                      <b
+                        style={{
+                          width: `${Math.max(3, (item.count / Math.max(1, installmentUsage[0]?.count ?? 1)) * 100)}%`,
+                        }}
+                      />
+                    </i>
+                  </div>
+                ))}
+                {installmentUsage.length === 0 && (
+                  <p>Sin compras con tarjeta de crédito en este periodo.</p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {activeGroup === "MERCHANDISE" && (
           <div className="reports-demand-grid">
@@ -1927,7 +2363,9 @@ export function ReportsView({
           <CircleDollarSign size={18} />
           <span>
             <strong>Lectura ejecutiva:</strong>{" "}
-            {activeReport === "CASH_MOVEMENTS"
+            {activeReport === "BANK_RECONCILIATION"
+              ? "cada pago se presenta por ticket, sucursal y vendedor; las compras con crédito conservan el plazo de meses sin intereses capturado al cobrar."
+              : activeReport === "CASH_MOVEMENTS"
               ? "el flujo neto considera cobros recibidos menos gastos vigentes; los folios anulados permanecen en auditoría con impacto $0.00."
               : canViewCosts
                 ? "utilidad estimada con costo MXN registrado y venta sin IVA; cancelaciones y abonos independientes no inflan la venta."

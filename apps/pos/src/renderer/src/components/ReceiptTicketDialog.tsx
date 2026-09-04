@@ -15,6 +15,7 @@ import {
   SelectValue,
 } from "@cosmetics/ui";
 import { formatCurrency } from "../mock-data";
+import { cardNetworkLabels } from "../bank-catalog";
 import { getTicketTaxSummary } from "../tax";
 import type {
   LayawayRecord,
@@ -149,10 +150,28 @@ export function ReceiptTicketDialog({
                 )}
                 {settings.showSellerName && (
                   <div>
-                    <span>VENDEDOR</span>
+                    <span>DIVISIÓN DE VENTA</span>
                     <strong>{ticket.sellerSummary}</strong>
                   </div>
                 )}
+              </section>
+            )}
+
+            {settings.showSellerName && ticket.sellerSales.length > 0 && (
+              <section className="customer-ticket-sale-division">
+                {ticket.sellerSales.map((sale) => (
+                  <div key={sale.sellerId}>
+                    <span>
+                      {sale.sellerName}
+                      <small>
+                        {sale.participantKind === "COMPANY"
+                          ? `Empresa · ${sale.participantCode ?? "EMPRESA-001"}`
+                          : "Vendedor"}
+                      </small>
+                    </span>
+                    <strong>{formatCurrency(sale.amount)}</strong>
+                  </div>
+                ))}
               </section>
             )}
 
@@ -227,9 +246,20 @@ export function ReceiptTicketDialog({
                       {payment.folio && <small>Folio {payment.folio}</small>}
                       {paymentLabel(payment.methodId)}
                       {payment.cardOrBank ? ` · ${payment.cardOrBank}` : ""}
+                      {payment.cardNetwork
+                        ? ` · ${cardNetworkLabels[payment.cardNetwork]}`
+                        : ""}
                       {payment.authorizationCode
                         ? ` · Aut. ${payment.authorizationCode}`
                         : ""}
+                      {payment.cardType === "CREDIT"
+                        ? payment.installmentMonths &&
+                          payment.installmentMonths > 1
+                          ? ` · ${payment.installmentMonths} MSI`
+                          : " · una exhibición"
+                        : payment.cardType === "DEBIT"
+                          ? " · débito"
+                          : ""}
                     </span>
                     <strong>{formatCurrency(payment.amount)}</strong>
                   </div>
@@ -268,7 +298,7 @@ export function ReceiptTicketDialog({
                           {entries
                             .map(
                               (entry) =>
-                                `${paymentLabel(entry.methodId)}${entry.cardOrBank ? ` · ${entry.cardOrBank}` : ""}${entry.authorizationCode ? ` · Aut. ${entry.authorizationCode}` : ""} ${formatCurrency(entry.amount)}`,
+                                `${paymentLabel(entry.methodId)}${entry.cardNetwork ? ` · ${cardNetworkLabels[entry.cardNetwork]}` : ""}${entry.cardOrBank ? ` · ${entry.cardOrBank}` : ""}${entry.authorizationCode ? ` · Aut. ${entry.authorizationCode}` : ""}${entry.cardType === "CREDIT" ? entry.installmentMonths && entry.installmentMonths > 1 ? ` · ${entry.installmentMonths} MSI` : " · una exhibición" : entry.cardType === "DEBIT" ? " · débito" : ""} ${formatCurrency(entry.amount)}`,
                             )
                             .join(" + ")}
                         </small>

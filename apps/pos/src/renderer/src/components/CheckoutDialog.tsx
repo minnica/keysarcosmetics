@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  ArrowRight,
   Banknote,
   Building2,
   CalendarHeart,
   CheckCircle2,
   Clock3,
   CreditCard,
+  Crown,
   DollarSign,
   Gift,
   Landmark,
@@ -40,12 +42,20 @@ import {
   toast,
 } from "@cosmetics/ui";
 import { formatCurrency } from "../mock-data";
+import { paymentReferenceIsValid } from "../bank-catalog";
+import {
+  availableAgendaSeats,
+  isSellerSelectableAgendaSlot,
+} from "../agenda-gateway";
 import type {
+  AgendaReservationMode,
+  AgendaSlot,
   AppointmentDraft,
   CartItem,
   CourtesyPackage,
   CourtesySettings,
   Client,
+  ClientMembership,
   ClientField,
   ClientSourceOption,
   NewClientDraft,
@@ -53,28 +63,20 @@ import type {
   PaymentEntry,
   PaymentMethodOption,
   PaymentStatus,
+  BankCatalogEntry,
   RequiredClientFields,
   Seller,
   SellerSplit,
   TicketSellerSale,
 } from "../types";
+import { PaymentReferenceFields } from "./PaymentReferenceFields";
 
 type ClientMode = "search" | "new";
 type SplitMode = "amount" | "percent";
 type CheckoutStep = 1 | 2 | 3 | 4;
 type AppointmentAnswer = "" | "YES" | "NO";
-const cardAndBankOptions = [
-  "Visa",
-  "Mastercard",
-  "American Express",
-  "BBVA",
-  "Banamex",
-  "Santander",
-  "Banorte",
-  "HSBC",
-  "Mercado Pago",
-  "Otro banco",
-];
+const installmentOptions = [1, 3, 6, 9, 12, 18, 24];
+const COMPANY_SALES_PARTICIPANT_ID = "company-sales";
 
 export interface CheckoutResult {
   client: Client;
@@ -97,12 +99,18 @@ interface CheckoutDialogProps {
   discountAmount: number;
   cart: CartItem[];
   clients: Client[];
+  clientMemberships: ClientMembership[];
   sellers: Seller[];
+  clockedInSellerIds: string[];
   paymentMethods: PaymentMethodOption[];
+  bankCatalog: BankCatalogEntry[];
   branches: string[];
+  agendaSlots: AgendaSlot[];
   sourceOptions: ClientSourceOption[];
   requiredFields: RequiredClientFields;
   courtesySettings: CourtesySettings;
+  companyName: string;
+  companySalesNumber: string;
   isMasterCode: (code: string) => boolean;
   onSearchClients?: (query: string) => Promise<Client[]>;
   onOpenChange: (open: boolean) => void;
@@ -131,12 +139,6 @@ const clientFieldLabels: Record<ClientField, string> = {
   companyName: "Empresa asignada",
 };
 
-const appointmentTimeSets = [
-  ["10:00", "11:30", "13:00", "16:00", "18:30"],
-  ["09:30", "12:00", "14:30", "17:00", "19:00"],
-  ["10:30", "12:30", "15:00", "17:30", "19:30"],
-] as const;
-
 const nextSessionServices = [
   "Facial de seguimiento",
   "Masaje",
@@ -144,27 +146,77 @@ const nextSessionServices = [
   "Seguimiento de tratamiento",
 ];
 
-const courtesyPackages: Record<
-  CourtesyPackage,
-  { label: string; services: string[] }
-> = {
-  FACIAL: { label: "Facial · 1 cortesía", services: ["Facial de cortesía"] },
-  BODY: {
-    label: "Corporal · 1 cortesía",
-    services: ["Corporal de cortesía"],
-  },
-  DOUBLE_FACIAL: {
-    label: "Doble facial · 2 cortesías",
-    services: ["Facial de cortesía", "Facial de cortesía"],
-  },
-  DOUBLE_BODY: {
-    label: "Doble corporal · 2 cortesías",
-    services: ["Corporal de cortesía", "Corporal de cortesía"],
-  },
-  MIXED: {
-    label: "Mixto · facial + corporal",
-    services: ["Facial de cortesía", "Corporal de cortesía"],
-  },
+interface AgendaSelectionOption {
+  key: string;
+  slotIds: string[];
+  mode: AgendaReservationMode;
+  label: string;
+}
+
+interface SaleParticipant {
+  id: string;
+  name: string;
+  participantKind: "SELLER" | "COMPANY";
+  participantCode: string;
+}
+
+const cancelledAvailabilityLabel = (slots: AgendaSlot[]) =>
+  slots.some((slot) => slot.status === "CANCELLED")
+    ? " · liberado por cancelación"
+    : "";
+
+const buildCourtesyAgendaOptions = (
+  slots: AgendaSlot[],
+  serviceCount: number,
+  mode: AgendaReservationMode,
+): AgendaSelectionOption[] => {
+  const selectable = slots.filter(isSellerSelectableAgendaSlot);
+  if (serviceCount <= 1) {
+    return selectable.map((slot) => ({
+      key: slot.id,
+      slotIds: [slot.id],
+      mode: "SINGLE",
+      label: `${slot.startTime}–${slot.endTime} · ${slot.resourceName}${cancelledAvailabilityLabel([slot])}`,
+    }));
+  }
+  if (mode === "SIMULTANEOUS_DOUBLE") {
+    return selectable
+      .filter(
+        (slot) =>
+          slot.resourceType === "DOUBLE" &&
+          availableAgendaSeats(slot) >= serviceCount,
+      )
+      .map((slot) => ({
+        key: `simultaneous-${slot.id}`,
+        slotIds: Array.from({ length: serviceCount }, () => slot.id),
+        mode,
+        label: `${slot.startTime}–${slot.endTime} · ${slot.resourceName} · ${serviceCount} lugares simultáneos${cancelledAvailabilityLabel([slot])}`,
+      }));
+  }
+
+  return selectable
+    .flatMap((first) => {
+      const second = selectable.find(
+        (candidate) =>
+          candidate.resourceId === first.resourceId &&
+          candidate.date === first.date &&
+          candidate.startTime === first.endTime,
+      );
+      return second
+        ? [
+            {
+              key: `consecutive-${first.id}-${second.id}`,
+              slotIds: [first.id, second.id],
+              mode: "CONSECUTIVE" as const,
+              label: `${first.startTime}–${second.endTime} · ${first.resourceName} · 2 horarios consecutivos${cancelledAvailabilityLabel([first, second])}`,
+            },
+          ]
+        : [];
+    })
+    .filter(
+      (option, index, all) =>
+        all.findIndex((candidate) => candidate.key === option.key) === index,
+    );
 };
 
 function createEvenSplit(ids: string[], mode: SplitMode, total: number) {
@@ -184,12 +236,18 @@ export function CheckoutDialog({
   discountAmount,
   cart,
   clients,
+  clientMemberships,
   sellers,
+  clockedInSellerIds,
   paymentMethods,
+  bankCatalog,
   branches,
+  agendaSlots,
   sourceOptions,
   requiredFields,
   courtesySettings,
+  companyName,
+  companySalesNumber,
   isMasterCode,
   onSearchClients,
   onOpenChange,
@@ -199,16 +257,38 @@ export function CheckoutDialog({
     () => sellers.filter((seller) => seller.active),
     [sellers],
   );
-  const appointmentBranches = useMemo(
-    () =>
-      branches.map((name, index) => ({
-        name,
-        times:
-          appointmentTimeSets[index % appointmentTimeSets.length] ??
-          appointmentTimeSets[0],
-      })),
-    [branches],
+  const clockedInSellerIdSet = useMemo(
+    () => new Set(clockedInSellerIds),
+    [clockedInSellerIds],
   );
+  const presentSellers = useMemo(
+    () => activeSellers.filter((seller) => clockedInSellerIdSet.has(seller.id)),
+    [activeSellers, clockedInSellerIdSet],
+  );
+  const availableCourtesyPackages = useMemo(() => {
+    const activeProducts = new Map(
+      courtesySettings.products
+        .filter((product) => product.active)
+        .map((product) => [product.id, product]),
+    );
+    return courtesySettings.packages
+      .filter(
+        (option) =>
+          option.active &&
+          courtesySettings.enabledPackages.includes(option.id) &&
+          option.serviceIds.length > 0 &&
+          option.serviceIds.length <= 2 &&
+          option.serviceIds.every((serviceId) => activeProducts.has(serviceId)),
+      )
+      .map((option) => ({
+        id: option.id,
+        name: option.name,
+        label: `${option.name} · ${option.serviceIds.length} ${option.serviceIds.length === 1 ? "cortesía" : "cortesías"}`,
+        services: option.serviceIds.map(
+          (serviceId) => activeProducts.get(serviceId)!.name,
+        ),
+      }));
+  }, [courtesySettings]);
   const [clientMode, setClientMode] = useState<ClientMode>("search");
   const [checkoutStep, setCheckoutStep] = useState<CheckoutStep>(1);
   const [clientSearch, setClientSearch] = useState("");
@@ -233,18 +313,26 @@ export function CheckoutDialog({
   const [courtesyDate, setCourtesyDate] = useState("");
   const [courtesyBranch, setCourtesyBranch] = useState("");
   const [courtesyTime, setCourtesyTime] = useState("");
+  const [courtesyReservationMode, setCourtesyReservationMode] =
+    useState<AgendaReservationMode>("SIMULTANEOUS_DOUBLE");
   const [nextSessionAnswer, setNextSessionAnswer] =
     useState<AppointmentAnswer>("");
   const [nextSessionService, setNextSessionService] = useState<string>(
     "Facial de seguimiento",
   );
+  const [nextSessionMembershipId, setNextSessionMembershipId] = useState("");
+  const [complaintCourtesy, setComplaintCourtesy] = useState(false);
   const [nextSessionDate, setNextSessionDate] = useState("");
   const [nextSessionBranch, setNextSessionBranch] = useState("");
   const [nextSessionTime, setNextSessionTime] = useState("");
 
   useEffect(() => {
     if (!open) return;
-    const firstSellerId = activeSellers[0]?.id ?? "";
+    const firstSellerId = presentSellers[0]?.id ?? "";
+    const initialCourtesyPackage =
+      availableCourtesyPackages.find(
+        (option) => option.id === courtesySettings.defaultPackage,
+      )?.id ?? availableCourtesyPackages[0]?.id ?? "";
     const firstPaymentMethod = paymentMethods.find((method) => method.active);
     setClientMode("search");
     setCheckoutStep(1);
@@ -262,12 +350,15 @@ export function CheckoutDialog({
     setShowAdditionalSellers(false);
     setSellerSearch("");
     setDeliveredCartItemIds([]);
-    setCourtesyPackage(courtesySettings.defaultPackage);
+    setCourtesyPackage(initialCourtesyPackage);
     setCourtesyDate("");
     setCourtesyBranch("");
     setCourtesyTime("");
+    setCourtesyReservationMode("SIMULTANEOUS_DOUBLE");
     setNextSessionAnswer("");
     setNextSessionService("Facial de seguimiento");
+    setNextSessionMembershipId("");
+    setComplaintCourtesy(false);
     setNextSessionDate("");
     setNextSessionBranch("");
     setNextSessionTime("");
@@ -282,7 +373,7 @@ export function CheckoutDialog({
           ]
         : [],
     );
-  }, [activeSellers, courtesySettings.defaultPackage, open, paymentMethods, total]);
+  }, [availableCourtesyPackages, courtesySettings.defaultPackage, open, paymentMethods, presentSellers, total]);
 
   useEffect(() => {
     const query = clientSearch.trim();
@@ -292,11 +383,13 @@ export function CheckoutDialog({
     }
     const controller = new AbortController();
     const timeout = window.setTimeout(() => {
-      void onSearchClients(query).then((items) => {
-        if (!controller.signal.aborted) setRemoteClients(items);
-      }).catch(() => {
-        if (!controller.signal.aborted) setRemoteClients([]);
-      });
+      void onSearchClients(query)
+        .then((items) => {
+          if (!controller.signal.aborted) setRemoteClients(items);
+        })
+        .catch(() => {
+          if (!controller.signal.aborted) setRemoteClients([]);
+        });
     }, 250);
     return () => {
       controller.abort();
@@ -309,6 +402,17 @@ export function CheckoutDialog({
     for (const client of remoteClients) byId.set(client.id, client);
     return [...byId.values()];
   }, [clients, remoteClients]);
+
+  useEffect(() => {
+    if (courtesyBranch && !branches.includes(courtesyBranch)) {
+      setCourtesyBranch("");
+      setCourtesyTime("");
+    }
+    if (nextSessionBranch && !branches.includes(nextSessionBranch)) {
+      setNextSessionBranch("");
+      setNextSessionTime("");
+    }
+  }, [branches, courtesyBranch, nextSessionBranch]);
 
   const filteredClients = useMemo(() => {
     const query = clientSearch.trim().toLocaleLowerCase("es-MX");
@@ -327,6 +431,36 @@ export function CheckoutDialog({
   const selectedClient = availableClients.find(
     (client) => client.id === selectedClientId,
   );
+  const selectedClientMembershipHistory = useMemo(
+    () =>
+      clientMemberships.filter(
+        (membership) => membership.clientId === selectedClientId,
+      ),
+    [clientMemberships, selectedClientId],
+  );
+  const selectedClientMemberships = useMemo(
+    () =>
+      clientMemberships.filter(
+        (membership) =>
+          membership.clientId === selectedClientId &&
+          membership.status === "ACTIVE" &&
+          membership.usedSessions < membership.totalSessions,
+      ),
+    [clientMemberships, selectedClientId],
+  );
+  const selectedNextSessionMembership = selectedClientMemberships.find(
+    (membership) => membership.id === nextSessionMembershipId,
+  );
+  const clientHasSchedulableMemberships =
+    selectedClientMemberships.length > 0;
+  const clientHasMembershipHistory =
+    selectedClientMembershipHistory.length > 0;
+  const complaintCourtesyServices = clientHasSchedulableMemberships
+    ? ["Facial de cortesía por queja"]
+    : [
+        "Facial de cortesía por queja",
+        "Corporal de cortesía por queja",
+      ];
   const splitTarget = splitMode === "amount" ? total : 100;
   const splitTotal = selectedSellerIds.reduce(
     (sum, sellerId) => sum + (splitValues[sellerId] ?? 0),
@@ -353,6 +487,13 @@ export function CheckoutDialog({
           (selectedClient.companyLocked || clientHadInactiveOwner),
         )
       : Boolean(selectedSourceOption?.locksCompany);
+  const companyParticipantName =
+    selectedClient?.companyName.trim() ||
+    newClient.companyName.trim() ||
+    companyName.trim() ||
+    "Keysar Cosmetics";
+  const companyParticipantCode =
+    companySalesNumber.trim() || "EMPRESA-001";
   const defaultSellerId =
     activeOwner?.id ?? (clientMode === "new" ? (newClientOwner?.id ?? "") : "");
   const normalizedSellerSearch = sellerSearch
@@ -370,21 +511,55 @@ export function CheckoutDialog({
   };
   const matchingAdditionalSellers = activeSellers.filter(
     (seller) =>
-      !selectedSellerIds.includes(seller.id) && sellerMatchesSearch(seller),
+      normalizedSellerSearch &&
+      !selectedSellerIds.includes(seller.id) &&
+      sellerMatchesSearch(seller),
   );
-  const visibleSellers = showAdditionalSellers
-    ? activeSellers.filter(
-        (seller) =>
-          selectedSellerIds.includes(seller.id) || sellerMatchesSearch(seller),
-      )
-    : activeSellers.filter((seller) => selectedSellerIds.includes(seller.id));
+  const visibleSellers = activeSellers.filter(
+    (seller) =>
+      selectedSellerIds.includes(seller.id) ||
+      clockedInSellerIdSet.has(seller.id) ||
+      (showAdditionalSellers &&
+        Boolean(normalizedSellerSearch) &&
+        sellerMatchesSearch(seller)),
+  );
+
+  const selectedCourtesyPackage = availableCourtesyPackages.find(
+    (option) => option.id === courtesyPackage,
+  );
+  const courtesyServices = selectedCourtesyPackage?.services ?? [];
+  const courtesyServiceCount = courtesyServices.length;
+  const courtesyAgendaOptions = buildCourtesyAgendaOptions(
+    agendaSlots.filter(
+      (slot) => slot.branch === courtesyBranch && slot.date === courtesyDate,
+    ),
+    courtesyServiceCount,
+    courtesyServiceCount === 1 ? "SINGLE" : courtesyReservationMode,
+  );
+  const selectedCourtesyAgendaOption = courtesyAgendaOptions.find(
+    (option) => option.key === courtesyTime,
+  );
+  const nextSessionAgendaSlots = agendaSlots.filter(
+    (slot) =>
+      slot.branch === nextSessionBranch &&
+      slot.date === nextSessionDate &&
+      isSellerSelectableAgendaSlot(slot),
+  );
+  const selectedNextSessionAgendaSlot = nextSessionAgendaSlots.find(
+    (slot) => slot.id === nextSessionTime,
+  );
 
   const missingNewClientFields = (
     Object.keys(requiredFields) as ClientField[]
   ).filter((field) => requiredFields[field] && !newClient[field].trim());
   const courtesyAppointmentIsValid =
     clientMode !== "new" || !courtesySettings.required ||
-    Boolean(courtesyPackage && courtesyDate && courtesyBranch && courtesyTime);
+    Boolean(
+      selectedCourtesyPackage &&
+        courtesyDate &&
+        courtesyBranch &&
+        selectedCourtesyAgendaOption,
+    );
   const clientIsValid =
     clientMode === "search"
       ? Boolean(selectedClient)
@@ -425,14 +600,26 @@ export function CheckoutDialog({
     const identity = `${methodId} ${method?.label ?? ""}`.toLocaleLowerCase("es-MX");
     return !identity.includes("cash") && !identity.includes("efectivo");
   };
+  const paymentIsCard = (methodId: string) => {
+    const method = paymentMethods.find((candidate) => candidate.id === methodId);
+    const identity = `${methodId} ${method?.label ?? ""}`.toLocaleLowerCase("es-MX");
+    return identity.includes("card") || identity.includes("tarjeta");
+  };
   const paymentReferencesAreValid = appliedPayments.every(
     (payment) =>
       !paymentNeedsAuthorization(payment.methodId) ||
-      (/^\d{4}$/.test(payment.authorizationCode ?? "") &&
-        Boolean(payment.cardOrBank?.trim())),
+      paymentReferenceIsValid(
+        payment,
+        paymentIsCard(payment.methodId),
+        installmentOptions,
+      ),
   );
   const sellerStepIsValid =
-    selectedSellerIds.length > 0 && splitIsValid && ownershipIsValid;
+    selectedSellerIds.length > 0 &&
+    splitIsValid &&
+    ownershipIsValid &&
+    (!clientIsCompanyLocked ||
+      selectedSellerIds.includes(COMPANY_SALES_PARTICIPANT_ID));
   const nextSessionIsValid =
     clientMode === "new"
       ? courtesyAppointmentIsValid
@@ -440,9 +627,12 @@ export function CheckoutDialog({
         (nextSessionAnswer === "YES" &&
           Boolean(
             nextSessionService &&
+            (!clientHasMembershipHistory ||
+              complaintCourtesy ||
+              selectedNextSessionMembership) &&
             nextSessionDate &&
             nextSessionBranch &&
-            nextSessionTime,
+            selectedNextSessionAgendaSlot,
           ));
   const canComplete =
     clientIsValid &&
@@ -450,26 +640,76 @@ export function CheckoutDialog({
     nextSessionIsValid &&
     payments.length > 0 &&
     paymentReferencesAreValid;
-  const courtesyTimes =
-    appointmentBranches.find((branch) => branch.name === courtesyBranch)
-      ?.times ?? [];
-  const nextSessionTimes =
-    appointmentBranches.find((branch) => branch.name === nextSessionBranch)
-      ?.times ?? [];
 
   const selectClient = (client: Client) => {
     setSelectedClientId(client.id);
     const owner = activeSellers.find((seller) => seller.id === client.ownerId);
-    const preferredSellerId = owner?.id ?? activeSellers[0]?.id ?? "";
-    const ids = preferredSellerId ? [preferredSellerId] : [];
+    const isCompanyPortfolio = Boolean(client.companyLocked || (client.ownerId && !owner));
+    const preferredSellerId =
+      owner?.id ?? presentSellers[0]?.id ?? "";
+    const ids = [
+      ...(isCompanyPortfolio ? [COMPANY_SALES_PARTICIPANT_ID] : []),
+      ...(preferredSellerId ? [preferredSellerId] : []),
+    ];
     setSelectedSellerIds(ids);
     setSplitValues(createEvenSplit(ids, splitMode, total));
-    setClientOwnerId(owner && !client.companyLocked ? preferredSellerId : "");
+    setClientOwnerId(owner && !client.companyLocked ? owner.id : "");
     setOwnershipMasterOpen(false);
     setOwnershipMasterCode("");
     setOwnershipAuthorized(false);
     setShowAdditionalSellers(false);
     setSellerSearch("");
+    const membershipHistory = clientMemberships.filter(
+      (membership) => membership.clientId === client.id,
+    );
+    const availableMemberships = membershipHistory.filter(
+      (membership) =>
+        membership.status === "ACTIVE" &&
+        membership.usedSessions < membership.totalSessions,
+    );
+    setNextSessionAnswer("");
+    setNextSessionMembershipId("");
+    setComplaintCourtesy(false);
+    setNextSessionService(
+      membershipHistory.length > 0 ? "" : "Facial de seguimiento",
+    );
+    setNextSessionDate("");
+    setNextSessionBranch("");
+    setNextSessionTime("");
+  };
+
+  const changeClientMode = (mode: ClientMode) => {
+    const firstSellerId = presentSellers[0]?.id ?? "";
+    setClientMode(mode);
+    setSelectedClientId("");
+    setNewClient(emptyClient);
+    setSelectedSellerIds(firstSellerId ? [firstSellerId] : []);
+    setSplitValues(firstSellerId ? { [firstSellerId]: splitTarget } : {});
+    setClientOwnerId(firstSellerId);
+    setOwnershipAuthorized(false);
+    setShowAdditionalSellers(false);
+    setSellerSearch("");
+  };
+
+  const selectClientSource = (source: string) => {
+    const locksCompany = Boolean(
+      sourceOptions.find((item) => item.id === source)?.locksCompany,
+    );
+    const humanSellerIds = selectedSellerIds.filter(
+      (sellerId) => sellerId !== COMPANY_SALES_PARTICIPANT_ID,
+    );
+    const nextSellerIds = locksCompany
+      ? [COMPANY_SALES_PARTICIPANT_ID, ...humanSellerIds]
+      : humanSellerIds;
+    setNewClient((current) => ({
+      ...current,
+      source,
+      companyName: locksCompany
+        ? current.companyName || companyName || "Keysar Cosmetics"
+        : "",
+    }));
+    setSelectedSellerIds(nextSellerIds);
+    setSplitValues(createEvenSplit(nextSellerIds, splitMode, total));
   };
 
   const selectClientOwner = (sellerId: string) => {
@@ -492,6 +732,7 @@ export function CheckoutDialog({
   };
 
   const handleSellerToggle = (sellerId: string) => {
+    if (sellerId === COMPANY_SALES_PARTICIPANT_ID) return;
     const isSelected = selectedSellerIds.includes(sellerId);
     if (isSelected && sellerId === defaultSellerId && !ownershipAuthorized)
       return;
@@ -540,7 +781,12 @@ export function CheckoutDialog({
         : (selectedSellerIds[0] ?? null);
     const existingSellerIds = selectedClient?.saleSellerIds ?? [];
     const saleSellerIds = Array.from(
-      new Set([...existingSellerIds, ...selectedSellerIds]),
+      new Set([
+        ...existingSellerIds,
+        ...selectedSellerIds.filter(
+          (sellerId) => sellerId !== COMPANY_SALES_PARTICIPANT_ID,
+        ),
+      ]),
     );
     const client: Client =
       clientMode === "search" && selectedClient
@@ -559,27 +805,85 @@ export function CheckoutDialog({
             sourceLabel: selectedSourceOption?.label ?? "Abordaje",
             saleSellerIds,
           };
-    const selectedSellers = selectedSellerIds
-      .map((sellerId) => sellers.find((seller) => seller.id === sellerId))
-      .filter((seller): seller is Seller => Boolean(seller));
+    const selectedParticipants = selectedSellerIds.reduce<SaleParticipant[]>(
+      (participants, sellerId) => {
+        if (sellerId === COMPANY_SALES_PARTICIPANT_ID) {
+          participants.push({
+            id: COMPANY_SALES_PARTICIPANT_ID,
+            name: companyParticipantName,
+            participantKind: "COMPANY",
+            participantCode: companyParticipantCode,
+          });
+          return participants;
+        }
+        const seller = sellers.find((candidate) => candidate.id === sellerId);
+        if (seller) {
+          participants.push({
+            id: seller.id,
+            name: seller.name,
+            participantKind: "SELLER",
+            participantCode: seller.id,
+          });
+        }
+        return participants;
+      },
+      [],
+    );
     const appointments: AppointmentDraft[] = [
       ...(clientMode === "new" && courtesySettings.required
-        ? courtesyPackages[courtesyPackage].services.map((service) => ({
-            kind: "COURTESY" as const,
-            service,
-            date: courtesyDate,
-            branch: courtesyBranch,
-            time: courtesyTime,
-          }))
+        ? courtesyServices.map((service, index) => {
+            const slotId = selectedCourtesyAgendaOption?.slotIds[index];
+            const slot = agendaSlots.find((candidate) => candidate.id === slotId);
+            return {
+              kind: "COURTESY" as const,
+              service,
+              courtesyReason: "WELCOME" as const,
+              ...(selectedCourtesyPackage
+                ? {
+                    courtesyPackageId: selectedCourtesyPackage.id,
+                    courtesyPackageName: selectedCourtesyPackage.name,
+                  }
+                : {}),
+              date: slot?.date ?? courtesyDate,
+              branch: slot?.branch ?? courtesyBranch,
+              time: slot?.startTime ?? "",
+              ...(slot
+                ? {
+                    agendaSlotId: slot.id,
+                    externalSlotId: slot.externalSlotId,
+                    agendaResourceName: slot.resourceName,
+                    agendaReservationMode:
+                      selectedCourtesyAgendaOption?.mode ?? "SINGLE",
+                  }
+                : {}),
+            };
+          })
         : []),
       ...(clientMode === "search" && nextSessionAnswer === "YES"
         ? [
             {
-              kind: "NEXT_SESSION" as const,
+              kind: complaintCourtesy
+                ? ("COURTESY" as const)
+                : ("NEXT_SESSION" as const),
               service: nextSessionService,
+              ...(complaintCourtesy
+                ? { courtesyReason: "COMPLAINT" as const }
+                : selectedNextSessionMembership
+                  ? { membershipId: selectedNextSessionMembership.id }
+                  : {}),
               date: nextSessionDate,
               branch: nextSessionBranch,
-              time: nextSessionTime,
+              time: selectedNextSessionAgendaSlot?.startTime ?? "",
+              ...(selectedNextSessionAgendaSlot
+                ? {
+                    agendaSlotId: selectedNextSessionAgendaSlot.id,
+                    externalSlotId:
+                      selectedNextSessionAgendaSlot.externalSlotId,
+                    agendaResourceName:
+                      selectedNextSessionAgendaSlot.resourceName,
+                    agendaReservationMode: "SINGLE" as const,
+                  }
+                : {}),
             },
           ]
         : clientMode === "search" && nextSessionAnswer === "NO"
@@ -603,19 +907,31 @@ export function CheckoutDialog({
       splits: selectedSellerIds.map((sellerId) => ({
         sellerId,
         value: splitValues[sellerId] ?? 0,
+        participantKind:
+          sellerId === COMPANY_SALES_PARTICIPANT_ID ? "COMPANY" : "SELLER",
+        participantCode:
+          sellerId === COMPANY_SALES_PARTICIPANT_ID
+            ? companyParticipantCode
+            : sellerId,
       })),
-      sellerSummary: selectedSellers.map((seller) => seller.name).join(" / "),
+      sellerSummary: selectedParticipants
+        .map((participant) => participant.name)
+        .join(" / "),
       paymentMethod:
         appliedPayments[0]?.methodId ?? paymentMethods[0]?.id ?? "",
       payments: appliedPayments,
       sellerSales: selectedSellerIds.map((sellerId) => {
-        const seller = sellers.find((candidate) => candidate.id === sellerId);
+        const participant = selectedParticipants.find(
+          (candidate) => candidate.id === sellerId,
+        );
         const splitValue = splitValues[sellerId] ?? 0;
         return {
           sellerId,
-          sellerName: seller?.name ?? "Vendedor",
+          sellerName: participant?.name ?? "Vendedor",
           amount:
             splitMode === "amount" ? splitValue : total * (splitValue / 100),
+          participantKind: participant?.participantKind ?? "SELLER",
+          participantCode: participant?.participantCode ?? sellerId,
         };
       }),
       amountPaid,
@@ -722,14 +1038,14 @@ export function CheckoutDialog({
                 <button
                   type="button"
                   className={clientMode === "search" ? "is-active" : ""}
-                  onClick={() => setClientMode("search")}
+                  onClick={() => changeClientMode("search")}
                 >
                   <Search size={16} /> Buscar cliente
                 </button>
                 <button
                   type="button"
                   className={clientMode === "new" ? "is-active" : ""}
-                  onClick={() => setClientMode("new")}
+                  onClick={() => changeClientMode("new")}
                 >
                   <UserPlus size={16} /> Nuevo cliente
                 </button>
@@ -856,37 +1172,66 @@ export function CheckoutDialog({
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="field-stack">
-                    <Label htmlFor="client-phone">
-                      Teléfono {requiredFields.phone && <em>*</em>}
-                    </Label>
-                    <Input
-                      id="client-phone"
-                      type="tel"
-                      value={newClient.phone}
-                      onChange={(event) =>
+                  <div className="new-client-contact-copy-row">
+                    <div className="field-stack">
+                      <Label htmlFor="client-phone">
+                        Teléfono {requiredFields.phone && <em>*</em>}
+                      </Label>
+                      <Input
+                        id="client-phone"
+                        type="tel"
+                        value={newClient.phone}
+                        onChange={(event) =>
+                          setNewClient((current) => ({
+                            ...current,
+                            phone: event.target.value,
+                          }))
+                        }
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className={`copy-phone-to-whatsapp ${newClient.phone.trim() !== "" && newClient.phone === newClient.whatsapp ? "is-copied" : ""}`}
+                      disabled={!newClient.phone.trim()}
+                      aria-label="Copiar teléfono a WhatsApp"
+                      title={
+                        newClient.phone.trim() !== "" &&
+                        newClient.phone === newClient.whatsapp
+                          ? "WhatsApp usa el mismo número"
+                          : "Usar el mismo número en WhatsApp"
+                      }
+                      onClick={() =>
                         setNewClient((current) => ({
                           ...current,
-                          phone: event.target.value,
+                          whatsapp: current.phone,
                         }))
                       }
-                    />
-                  </div>
-                  <div className="field-stack">
-                    <Label htmlFor="client-whatsapp">
-                      WhatsApp {requiredFields.whatsapp && <em>*</em>}
-                    </Label>
-                    <Input
-                      id="client-whatsapp"
-                      type="tel"
-                      value={newClient.whatsapp}
-                      onChange={(event) =>
-                        setNewClient((current) => ({
-                          ...current,
-                          whatsapp: event.target.value,
-                        }))
-                      }
-                    />
+                    >
+                      {newClient.phone.trim() !== "" &&
+                      newClient.phone === newClient.whatsapp ? (
+                        <CheckCircle2 size={17} />
+                      ) : (
+                        <ArrowRight size={17} />
+                      )}
+                    </Button>
+                    <div className="field-stack">
+                      <Label htmlFor="client-whatsapp">
+                        WhatsApp {requiredFields.whatsapp && <em>*</em>}
+                      </Label>
+                      <Input
+                        id="client-whatsapp"
+                        type="tel"
+                        value={newClient.whatsapp}
+                        onChange={(event) =>
+                          setNewClient((current) => ({
+                            ...current,
+                            whatsapp: event.target.value,
+                          }))
+                        }
+                      />
+                    </div>
                   </div>
                   <div className="field-stack">
                     <Label htmlFor="client-source">
@@ -894,17 +1239,7 @@ export function CheckoutDialog({
                     </Label>
                     <Select
                       value={newClient.source}
-                      onValueChange={(source) =>
-                        setNewClient((current) => ({
-                          ...current,
-                          source,
-                          companyName:
-                            sourceOptions.find((item) => item.id === source)
-                              ?.locksCompany
-                              ? current.companyName || "Keysar Cosmetics"
-                              : "",
-                        }))
-                      }
+                      onValueChange={selectClientSource}
                     >
                       <SelectTrigger id="client-source">
                         <SelectValue placeholder="Selecciona procedencia" />
@@ -988,21 +1323,21 @@ export function CheckoutDialog({
                         </Label>
                         <Select
                           value={courtesyPackage}
-                          onValueChange={(value) =>
-                            setCourtesyPackage(value as CourtesyPackage)
-                          }
+                          onValueChange={(value) => {
+                            setCourtesyPackage(value as CourtesyPackage);
+                            setCourtesyReservationMode("SIMULTANEOUS_DOUBLE");
+                            setCourtesyTime("");
+                          }}
                         >
                           <SelectTrigger id="courtesy-service">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            {Object.entries(courtesyPackages).filter(([value]) => courtesySettings.enabledPackages.includes(value as CourtesyPackage)).map(
-                              ([value, option]) => (
-                                <SelectItem key={value} value={value}>
+                            {availableCourtesyPackages.map((option) => (
+                                <SelectItem key={option.id} value={option.id}>
                                   {option.label}
                                 </SelectItem>
-                              ),
-                            )}
+                              ))}
                           </SelectContent>
                         </Select>
                       </div>
@@ -1013,7 +1348,10 @@ export function CheckoutDialog({
                         <DatePicker
                           id="courtesy-date"
                           value={courtesyDate}
-                          onChange={setCourtesyDate}
+                          onChange={(date) => {
+                            setCourtesyDate(date);
+                            setCourtesyTime("");
+                          }}
                           placeholder="Selecciona fecha"
                         />
                       </div>
@@ -1032,34 +1370,69 @@ export function CheckoutDialog({
                             <SelectValue placeholder="Selecciona sucursal" />
                           </SelectTrigger>
                           <SelectContent>
-                            {appointmentBranches.map((branch) => (
-                              <SelectItem key={branch.name} value={branch.name}>
-                                {branch.name}
+                            {branches.map((branch) => (
+                              <SelectItem key={branch} value={branch}>
+                                {branch}
                               </SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
                       </div>
-                      <div className="field-stack">
+                      {courtesyServiceCount > 1 && (
+                        <div className="field-stack appointment-reservation-mode-field">
+                          <Label htmlFor="courtesy-reservation-mode">
+                            Distribución de los dos servicios <em>*</em>
+                          </Label>
+                          <Select
+                            value={courtesyReservationMode}
+                            onValueChange={(mode) => {
+                              setCourtesyReservationMode(
+                                mode as AgendaReservationMode,
+                              );
+                              setCourtesyTime("");
+                            }}
+                          >
+                            <SelectTrigger id="courtesy-reservation-mode">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="SIMULTANEOUS_DOUBLE">
+                                Misma hora · cabina doble
+                              </SelectItem>
+                              <SelectItem value="CONSECUTIVE">
+                                Dos horarios consecutivos
+                              </SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+                      <div className="field-stack appointment-availability-field">
                         <Label htmlFor="courtesy-time">
-                          Horario disponible <em>*</em>
+                          Espacio disponible <em>*</em>
                         </Label>
                         <Select
                           value={courtesyTime}
                           onValueChange={setCourtesyTime}
-                          disabled={!courtesyBranch}
+                          disabled={!courtesyBranch || !courtesyDate}
                         >
                           <SelectTrigger id="courtesy-time">
-                            <SelectValue placeholder="Selecciona horario" />
+                            <SelectValue placeholder="Horario y cabina" />
                           </SelectTrigger>
                           <SelectContent>
-                            {courtesyTimes.map((time) => (
-                              <SelectItem key={time} value={time}>
-                                {time} h
+                            {courtesyAgendaOptions.map((option) => (
+                              <SelectItem key={option.key} value={option.key}>
+                                {option.label}
                               </SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
+                        {courtesyDate &&
+                          courtesyBranch &&
+                          courtesyAgendaOptions.length === 0 && (
+                            <small className="agenda-no-availability">
+                              No hay cabinas libres para esta configuración.
+                            </small>
+                          )}
                       </div>
                     </div>
                     {!courtesyAppointmentIsValid && (
@@ -1110,6 +1483,23 @@ export function CheckoutDialog({
                 </div>
               </div>
 
+              <div
+                className={`seller-attendance-summary ${presentSellers.length === 0 ? "is-empty" : ""}`}
+              >
+                <Clock3 size={17} aria-hidden="true" />
+                <span>
+                  <strong>
+                    {presentSellers.length === 0
+                      ? "Sin vendedores con Clock In"
+                      : `${presentSellers.length} ${presentSellers.length === 1 ? "vendedor presente" : "vendedores presentes"}`}
+                  </strong>
+                  <small>
+                    Se muestran primero los Clock In de esta sucursal. Busca por
+                    nombre o alias para agregar a alguien que no esté presente.
+                  </small>
+                </span>
+              </div>
+
               {showAdditionalSellers && (
                 <div className="seller-search-filter">
                   <Search size={16} aria-hidden="true" />
@@ -1121,17 +1511,60 @@ export function CheckoutDialog({
                     autoFocus
                   />
                   <small>
-                    {matchingAdditionalSellers.length}{" "}
-                    {matchingAdditionalSellers.length === 1
-                      ? "vendedor disponible"
-                      : "vendedores disponibles"}
+                    {normalizedSellerSearch
+                      ? `${matchingAdditionalSellers.length} ${
+                          matchingAdditionalSellers.length === 1
+                            ? "coincidencia disponible"
+                            : "coincidencias disponibles"
+                        }`
+                      : "Escribe un nombre o alias para buscar fuera del Clock In"}
                   </small>
                 </div>
               )}
 
               <div className="seller-list">
+                {clientIsCompanyLocked && (
+                  <div className="seller-split-row company-sale-participant is-selected">
+                    <div className="seller-selector company-sale-selector">
+                      <span className="seller-avatar company-sale-avatar">
+                        <Building2 size={17} aria-hidden="true" />
+                      </span>
+                      <span>
+                        <strong>{companyParticipantName}</strong>
+                        <small>
+                          Empresa de venta · participación obligatoria
+                        </small>
+                        <small className="seller-search-alias">
+                          Número de venta: {companyParticipantCode}
+                        </small>
+                      </span>
+                      <LockKeyhole size={15} aria-label="Participación obligatoria" />
+                    </div>
+                    <div className="split-value-input">
+                      <span>{splitMode === "amount" ? "$" : "%"}</span>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={
+                          splitValues[COMPANY_SALES_PARTICIPANT_ID] ?? 0
+                        }
+                        onChange={(event) =>
+                          setSplitValues((current) => ({
+                            ...current,
+                            [COMPANY_SALES_PARTICIPANT_ID]: Number(
+                              event.target.value,
+                            ),
+                          }))
+                        }
+                        aria-label={`Participación de ${companyParticipantName}`}
+                      />
+                    </div>
+                  </div>
+                )}
                 {visibleSellers.map((seller) => {
                   const isSelected = selectedSellerIds.includes(seller.id);
+                  const hasClockIn = clockedInSellerIdSet.has(seller.id);
                   return (
                     <div
                       key={seller.id}
@@ -1148,10 +1581,12 @@ export function CheckoutDialog({
                           <strong>{seller.name}</strong>
                           <small>
                             {seller.id === defaultSellerId
-                              ? "Vendedor asignado a la clienta"
+                              ? `Vendedor asignado · ${hasClockIn ? "Clock In activo" : "Sin Clock In"}`
                               : isSelected
-                                ? "Participa en la venta"
-                                : "Disponible para añadir"}
+                                ? `Participa en la venta · ${hasClockIn ? "Clock In activo" : "Sin Clock In"}`
+                                : hasClockIn
+                                  ? "Clock In activo · disponible"
+                                  : "Sin Clock In · disponible para añadir"}
                           </small>
                           {seller.alias && (
                             <small className="seller-search-alias">
@@ -1236,9 +1671,9 @@ export function CheckoutDialog({
                       </strong>
                     </div>
                     <p>
-                      La procedencia de lead o redes sociales mantiene esta
-                      clienta ligada a la empresa, aunque participen varios
-                      vendedores.
+                      La empresa participa con el número de venta{" "}
+                      <strong>{companyParticipantCode}</strong>. Su importe se
+                      guarda por separado del de los vendedores humanos.
                     </p>
                   </div>
                 )}
@@ -1296,7 +1731,7 @@ export function CheckoutDialog({
                           >
                             Autorizar
                           </Button>
-                          <small>Requiere autorización master vigente.</small>
+                          <small>Mock: 2468</small>
                         </div>
                       ))}
                   </div>
@@ -1352,14 +1787,16 @@ export function CheckoutDialog({
                   <Gift size={19} />
                   <span>
                     <small>CORTESÍA DE BIENVENIDA</small>
-                    <strong>{courtesyPackages[courtesyPackage].label}</strong>
+                    <strong>{selectedCourtesyPackage?.label ?? "Sin paquete disponible"}</strong>
                     <p>
-                      {courtesyDate} · {courtesyBranch} · {courtesyTime} h
+                      {courtesyDate} · {courtesyBranch} ·{
+                        selectedCourtesyAgendaOption?.label ?? "Sin espacio"
+                      }
                     </p>
                   </span>
                   <Badge variant="outline">
-                    {courtesyPackages[courtesyPackage].services.length} REGALO
-                    {courtesyPackages[courtesyPackage].services.length === 1
+                    {courtesyServices.length} REGALO
+                    {courtesyServices.length === 1
                       ? ""
                       : "S"}{" "}
                     $0
@@ -1371,7 +1808,7 @@ export function CheckoutDialog({
                 <div className="next-session-question">
                   <div>
                     <strong>
-                      ¿La clienta ya cuenta con cita para su próxima sesión?
+                      ¿Deseas dejar agendada la próxima sesión de la clienta?
                     </strong>
                     <small>
                       La respuesta es obligatoria antes de continuar al cobro.
@@ -1385,14 +1822,26 @@ export function CheckoutDialog({
                       }
                       onClick={() => setNextSessionAnswer("YES")}
                     >
-                      Sí, agendar ahora
+                      Sí, buscar espacio
                     </button>
                     <button
                       type="button"
                       className={
                         nextSessionAnswer === "NO" ? "is-active" : ""
                       }
-                      onClick={() => setNextSessionAnswer("NO")}
+                      onClick={() => {
+                        setNextSessionAnswer("NO");
+                        setNextSessionMembershipId("");
+                        setComplaintCourtesy(false);
+                        setNextSessionService(
+                          clientHasMembershipHistory
+                            ? ""
+                            : "Facial de seguimiento",
+                        );
+                        setNextSessionDate("");
+                        setNextSessionBranch("");
+                        setNextSessionTime("");
+                      }}
                     >
                       No por ahora
                     </button>
@@ -1411,6 +1860,99 @@ export function CheckoutDialog({
                 </div>
               ) : null}
 
+              {clientMode === "search" && clientHasMembershipHistory && (
+                  <div className="membership-scheduling-card">
+                    <div
+                      className={`membership-scheduling-heading ${clientHasSchedulableMemberships ? "" : "is-exhausted"}`}
+                    >
+                      <Crown size={18} aria-hidden="true" />
+                      <span>
+                        <strong>
+                          {clientHasSchedulableMemberships
+                            ? "Servicios disponibles en membresías"
+                            : "Membresía sin sesiones disponibles"}
+                        </strong>
+                        <small>
+                          {clientHasSchedulableMemberships
+                            ? "Elige el tarjetón que se vinculará con la cita. La sesión sólo se descontará cuando Agenda confirme la asistencia."
+                            : "La opción de reservar con membresía fue desactivada. Sólo puedes elegir una cortesía por atención de queja."}
+                        </small>
+                      </span>
+                    </div>
+                    {clientHasSchedulableMemberships && (
+                      <div className="membership-service-options">
+                        {selectedClientMemberships.map((membership) => {
+                          const remaining =
+                            membership.totalSessions - membership.usedSessions;
+                          const isSelected =
+                            nextSessionMembershipId === membership.id &&
+                            !complaintCourtesy;
+                          return (
+                            <button
+                              key={membership.id}
+                              type="button"
+                              className={isSelected ? "is-selected" : ""}
+                              onClick={() => {
+                                setNextSessionAnswer("YES");
+                                setComplaintCourtesy(false);
+                                setNextSessionMembershipId(membership.id);
+                                setNextSessionService(membership.membershipName);
+                                setNextSessionTime("");
+                              }}
+                              aria-pressed={isSelected}
+                            >
+                              <span>
+                                <strong>{membership.membershipName}</strong>
+                                <small>{membership.folio}</small>
+                              </span>
+                              <b>
+                                {remaining}{" "}
+                                {remaining === 1 ? "sesión" : "sesiones"}
+                              </b>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                    <div className="complaint-courtesy-options">
+                      {complaintCourtesyServices.map((service) => {
+                        const isSelected =
+                          complaintCourtesy && nextSessionService === service;
+                        const serviceKind = service.startsWith("Facial")
+                          ? "facial"
+                          : "corporal";
+                        return (
+                          <button
+                            key={service}
+                            type="button"
+                            className={`complaint-courtesy-button ${isSelected ? "is-selected" : ""}`}
+                            onClick={() => {
+                              const nextValue = !isSelected;
+                              setComplaintCourtesy(nextValue);
+                              setNextSessionAnswer("YES");
+                              setNextSessionMembershipId("");
+                              setNextSessionService(nextValue ? service : "");
+                              setNextSessionTime("");
+                            }}
+                            aria-pressed={isSelected}
+                          >
+                            <Gift size={17} aria-hidden="true" />
+                            <span>
+                              <strong>
+                                ¿Regalar {serviceKind} de cortesía?
+                              </strong>
+                              <small>
+                                Atención de una queja. No consume sesiones de
+                                membresía.
+                              </small>
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
               {clientMode === "search" && nextSessionAnswer === "YES" && (
                 <div className="next-session-scheduler">
                   <div className="appointment-scheduler-heading">
@@ -1422,32 +1964,88 @@ export function CheckoutDialog({
                         disponible.
                       </small>
                     </div>
-                  </div>
-                  <div className="appointment-fields-grid">
-                    <div className="field-stack">
-                      <Label htmlFor="next-session-service">Servicio</Label>
-                      <Select
-                        value={nextSessionService}
-                        onValueChange={setNextSessionService}
-                      >
-                        <SelectTrigger id="next-session-service">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {nextSessionServices.map((service) => (
-                            <SelectItem key={service} value={service}>
-                              {service}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                    </div>
+                    <div className="appointment-fields-grid">
+                      <div className="field-stack">
+                        <Label htmlFor="next-session-service">Servicio</Label>
+                        {clientHasMembershipHistory ? (
+                          complaintCourtesy ? (
+                            <div
+                              id="next-session-service"
+                              className="complaint-courtesy-service"
+                            >
+                              <Gift size={15} /> {nextSessionService}
+                            </div>
+                          ) : clientHasSchedulableMemberships ? (
+                            <Select
+                              value={nextSessionMembershipId}
+                              onValueChange={(membershipId) => {
+                                const membership =
+                                  selectedClientMemberships.find(
+                                    (candidate) => candidate.id === membershipId,
+                                  );
+                                setNextSessionMembershipId(membershipId);
+                                setNextSessionService(
+                                  membership?.membershipName ?? "",
+                                );
+                                setNextSessionTime("");
+                              }}
+                            >
+                              <SelectTrigger id="next-session-service">
+                                <SelectValue placeholder="Selecciona membresía" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {selectedClientMemberships.map((membership) => {
+                                  const remaining =
+                                    membership.totalSessions -
+                                    membership.usedSessions;
+                                  return (
+                                    <SelectItem
+                                      key={membership.id}
+                                      value={membership.id}
+                                    >
+                                      {membership.membershipName} · {remaining}{" "}
+                                      {remaining === 1 ? "sesión" : "sesiones"}
+                                    </SelectItem>
+                                  );
+                                })}
+                              </SelectContent>
+                            </Select>
+                          ) : (
+                            <div
+                              id="next-session-service"
+                              className="complaint-courtesy-service is-empty"
+                            >
+                              Selecciona una cortesía facial o corporal
+                            </div>
+                          )
+                        ) : (
+                          <Select
+                            value={nextSessionService}
+                            onValueChange={setNextSessionService}
+                          >
+                            <SelectTrigger id="next-session-service">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {nextSessionServices.map((service) => (
+                                <SelectItem key={service} value={service}>
+                                  {service}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
                     </div>
                     <div className="field-stack">
                       <Label htmlFor="next-session-date">Día</Label>
                       <DatePicker
                         id="next-session-date"
                         value={nextSessionDate}
-                        onChange={setNextSessionDate}
+                        onChange={(date) => {
+                          setNextSessionDate(date);
+                          setNextSessionTime("");
+                        }}
                         placeholder="Selecciona fecha"
                       />
                     </div>
@@ -1464,9 +2062,9 @@ export function CheckoutDialog({
                           <SelectValue placeholder="Selecciona sucursal" />
                         </SelectTrigger>
                         <SelectContent>
-                          {appointmentBranches.map((branch) => (
-                            <SelectItem key={branch.name} value={branch.name}>
-                              {branch.name}
+                          {branches.map((branch) => (
+                            <SelectItem key={branch} value={branch}>
+                              {branch}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -1474,24 +2072,37 @@ export function CheckoutDialog({
                     </div>
                     <div className="field-stack">
                       <Label htmlFor="next-session-time">
-                        Horario disponible
+                        Espacio disponible
                       </Label>
                       <Select
                         value={nextSessionTime}
                         onValueChange={setNextSessionTime}
-                        disabled={!nextSessionBranch}
+                        disabled={!nextSessionBranch || !nextSessionDate}
                       >
                         <SelectTrigger id="next-session-time">
-                          <SelectValue placeholder="Selecciona horario" />
+                          <SelectValue placeholder="Horario y cabina" />
                         </SelectTrigger>
                         <SelectContent>
-                          {nextSessionTimes.map((time) => (
-                            <SelectItem key={time} value={time}>
-                              {time} h
+                          {nextSessionAgendaSlots.map((slot) => (
+                            <SelectItem key={slot.id} value={slot.id}>
+                              {slot.startTime}–{slot.endTime} · {slot.resourceName}
+                              {slot.resourceType === "DOUBLE"
+                                ? ` · ${availableAgendaSeats(slot)} lugares`
+                                : ""}
+                              {slot.status === "CANCELLED"
+                                ? " · liberado por cancelación"
+                                : ""}
                             </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
+                      {nextSessionDate &&
+                        nextSessionBranch &&
+                        nextSessionAgendaSlots.length === 0 && (
+                          <small className="agenda-no-availability">
+                            Sin espacios vacíos o cancelados disponibles.
+                          </small>
+                        )}
                     </div>
                   </div>
                 </div>
@@ -1547,14 +2158,23 @@ export function CheckoutDialog({
                           onValueChange={(methodId) =>
                             setPayments((current) =>
                               current.map((item) =>
-                                item.id === payment.id
-                                  ? {
-                                      ...item,
-                                      methodId,
-                                      authorizationCode: "",
-                                      cardOrBank: "",
-                                    }
-                                  : item,
+                                {
+                                  if (item.id !== payment.id) return item;
+                                  const {
+                                    cardType: _cardType,
+                                    cardNetwork: _cardNetwork,
+                                    bankId: _bankId,
+                                    bankName: _bankName,
+                                    installmentMonths: _installmentMonths,
+                                    ...paymentWithoutCardTerms
+                                  } = item;
+                                  return {
+                                    ...paymentWithoutCardTerms,
+                                    methodId,
+                                    authorizationCode: "",
+                                    cardOrBank: "",
+                                  };
+                                }
                               ),
                             )
                           }
@@ -1613,59 +2233,20 @@ export function CheckoutDialog({
                       )}
                       {requiresAuthorization && (
                         <div className="payment-reference-fields">
-                          <div className="field-stack">
-                            <Label>Tipo de tarjeta o banco</Label>
-                            <Select
-                              value={payment.cardOrBank ?? ""}
-                              onValueChange={(cardOrBank) =>
-                                setPayments((current) =>
-                                  current.map((item) =>
-                                    item.id === payment.id
-                                      ? { ...item, cardOrBank }
-                                      : item,
-                                  ),
-                                )
-                              }
-                            >
-                              <SelectTrigger
-                                aria-label={`Tipo de tarjeta o banco ${index + 1}`}
-                              >
-                                <SelectValue placeholder="Selecciona tarjeta o banco" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {cardAndBankOptions.map((option) => (
-                                  <SelectItem key={option} value={option}>
-                                    {option}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div className="field-stack">
-                            <Label htmlFor={`payment-authorization-${payment.id}`}>
-                              4 dígitos de autorización
-                            </Label>
-                            <Input
-                              id={`payment-authorization-${payment.id}`}
-                              value={payment.authorizationCode ?? ""}
-                              inputMode="numeric"
-                              maxLength={4}
-                              placeholder="0000"
-                              aria-label={`Autorización de pago ${index + 1}`}
-                              onChange={(event) => {
-                                const authorizationCode = event.target.value
-                                  .replace(/\D/g, "")
-                                  .slice(0, 4);
-                                setPayments((current) =>
-                                  current.map((item) =>
-                                    item.id === payment.id
-                                      ? { ...item, authorizationCode }
-                                      : item,
-                                  ),
-                                );
-                              }}
-                            />
-                          </div>
+                          <PaymentReferenceFields
+                            payment={payment}
+                            isCard={paymentIsCard(payment.methodId)}
+                            bankCatalog={bankCatalog}
+                            installmentOptions={installmentOptions}
+                            ariaContext={`del pago ${index + 1}`}
+                            onChange={(nextPayment) =>
+                              setPayments((current) =>
+                                current.map((item) =>
+                                  item.id === payment.id ? nextPayment : item,
+                                ),
+                              )
+                            }
+                          />
                         </div>
                       )}
                     </div>
@@ -1675,8 +2256,9 @@ export function CheckoutDialog({
 
               {!paymentReferencesAreValid && (
                 <p className="payment-authorization-note">
-                  Selecciona la tarjeta o banco y captura exactamente cuatro
-                  dígitos de autorización en cada cobro no efectivo.
+                  Completa el banco y los cuatro dígitos de autorización. Para
+                  tarjeta indica crédito o débito, selecciona Visa o Mastercard y,
+                  en crédito, el plazo o una sola exhibición.
                 </p>
               )}
 

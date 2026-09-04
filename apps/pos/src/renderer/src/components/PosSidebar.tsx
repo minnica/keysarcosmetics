@@ -14,10 +14,12 @@ import {
   DoorClosed,
   Gauge,
   Globe2,
+  LogOut,
   Menu,
   PanelLeftClose,
   PackagePlus,
   ContactRound,
+  Crown,
   Pin,
   PinOff,
   ReceiptText,
@@ -50,6 +52,12 @@ const navigationItems: NavigationItem[] = [
     label: "Citas",
     icon: CalendarHeart,
     color: "#c78494",
+  },
+  {
+    id: "memberships",
+    label: "Membresías",
+    icon: Crown,
+    color: "#b18455",
   },
   { id: "inventory", label: "Inventory", icon: Boxes, color: "#d97562" },
   { id: "x-report", label: "X-Report", icon: ClipboardList, color: "#242321" },
@@ -111,6 +119,12 @@ const saleNavigationItems: NavigationItem[] = [
     color: "#c89856",
   },
   {
+    id: "catalog",
+    label: "Catálogo",
+    icon: BookOpenCheck,
+    color: "#8b6f54",
+  },
+  {
     id: "close-day",
     label: "Close day",
     icon: DoorClosed,
@@ -144,12 +158,6 @@ const inventoryNavigationItems: NavigationItem[] = [
     color: "#8f6b50",
   },
   {
-    id: "catalog",
-    label: "Catálogo",
-    icon: BookOpenCheck,
-    color: "#8b6f54",
-  },
-  {
     id: "inventory-movements",
     label: "Movimientos",
     icon: ArrowLeftRight,
@@ -170,6 +178,7 @@ const navigationLabelsEnglish: Partial<Record<ScreenId, string>> = {
   receipts: "Receipts",
   customers: "Customers",
   appointments: "Appointments",
+  memberships: "Memberships",
   inventory: "Inventory",
   warehouse: "Warehouse",
   "branch-inventory": "Branch inventory",
@@ -199,8 +208,10 @@ interface PosSidebarProps {
   pinned: boolean;
   allowedScreens: ScreenId[];
   cartCount: number;
+  canExitWithoutCloseDay: boolean;
   language: "ES" | "EN";
   onNavigate: (screen: ScreenId) => void;
+  onRequestSessionExit: () => void;
   onRequestLocationSwitch: () => void;
   onToggle: () => void;
   onTogglePin: () => void;
@@ -213,8 +224,10 @@ export function PosSidebar({
   pinned,
   allowedScreens,
   cartCount,
+  canExitWithoutCloseDay,
   language,
   onNavigate,
+  onRequestSessionExit,
   onRequestLocationSwitch,
   onToggle,
   onTogglePin,
@@ -296,12 +309,15 @@ export function PosSidebar({
                   type="button"
                   className={`sidebar-item ${saleIsActive ? "is-active" : ""}`}
                   onClick={() => {
-                    onNavigate("sale");
-                    if (!collapsed) {
-                      const next = !saleMenuOpen;
-                      setSaleMenuOpen(next);
-                      if (next) setInventoryMenuOpen(false);
+                    if (collapsed) {
+                      setSaleMenuOpen(true);
+                      setInventoryMenuOpen(false);
+                      onToggle();
+                      return;
                     }
+                    const next = !saleMenuOpen;
+                    setSaleMenuOpen(next);
+                    if (next) setInventoryMenuOpen(false);
                   }}
                   aria-expanded={!collapsed ? saleMenuOpen : undefined}
                   aria-current={isActive ? "page" : undefined}
@@ -362,7 +378,14 @@ export function PosSidebar({
                   type="button"
                   className={`sidebar-item ${inventoryIsActive ? "is-active" : ""}`}
                   onClick={() => {
-                    onNavigate("inventory");
+                    const canOpenInventory = allowedScreens.includes("inventory");
+                    if (canOpenInventory) onNavigate("inventory");
+                    if (!canOpenInventory && collapsed) {
+                      setInventoryMenuOpen(true);
+                      setSaleMenuOpen(false);
+                      onToggle();
+                      return;
+                    }
                     if (!collapsed) {
                       const next = !inventoryMenuOpen;
                       setInventoryMenuOpen(next);
@@ -451,12 +474,34 @@ export function PosSidebar({
               title={collapsed ? navigationLabel(item, language) : undefined}
             >
               <span className="sidebar-icon" style={navigationIconStyle(item.color)}>
-                <Icon size={23} strokeWidth={1.65} />
+                <Icon size={18} strokeWidth={1.7} />
               </span>
               {!collapsed && <span>{navigationLabel(item, language)}</span>}
             </button>
           );
         })}
+        {canExitWithoutCloseDay && (
+          <button
+            type="button"
+            className="sidebar-item sidebar-session-exit-button"
+            onClick={onRequestSessionExit}
+            aria-label={language === "EN" ? "Sign out without Close day" : "Salir sin realizar Close day"}
+            title={language === "EN" ? "Sign out without Close day" : "Salir sin realizar Close day"}
+          >
+            <span
+              className="sidebar-icon"
+              style={navigationIconStyle("#c97863")}
+            >
+              <LogOut size={18} strokeWidth={1.7} />
+            </span>
+            {!collapsed && (
+              <span className="sidebar-session-exit-copy">
+                <strong>{language === "EN" ? "Sign out" : "Salir"}</strong>
+                <small>{language === "EN" ? "Without Close day" : "Sin Close day"}</small>
+              </span>
+            )}
+          </button>
+        )}
       </nav>
 
       <div className="sidebar-status">
