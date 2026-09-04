@@ -378,6 +378,8 @@ Evidencia disponible:
 
 ### Fase 5 — Sustitución de Agenda CRM en la integración con POS
 
+**Estado de implementación (4 de septiembre de 2026):** completada en repositorio; activación operativa y prueba integrada sobre PostgreSQL 16 pendientes de los gates de Fase 0 y de provisionar sucursales, servicios, profesionales y credenciales POS enlazadas. `internal` es el proveedor por defecto en código; un ambiente no debe cambiar desde `http` hasta aprobar el checklist de corte.
+
 Objetivo: hacer que POS consulte y confirme contra Scheduler interno sin perder una ruta de rollback operativo.
 
 Entregables:
@@ -392,6 +394,18 @@ Entregables:
 - Actualizar la documentación del POS, el plan de integración previo y `CLAUDE.md` para reflejar la nueva autoridad.
 
 Criterio de salida: POS puede validar, reservar y relacionar citas internas sin depender de Agenda CRM externa.
+
+Evidencia disponible:
+
+- `InternalAgendaAdapter` conserva el contrato consumido por POS, calcula slots desde perfiles, jornadas, excepciones, bloqueos, profesionales, recursos y citas de Scheduler, y no ejecuta `fetch` ni consulta secretos externos.
+- `AGENDA_PROVIDER=internal|http` selecciona el proveedor en servidor. La ausencia de variable resuelve a `internal`; un valor desconocido falla cerrado. `HttpAgendaAdapter` permanece intacto como rollback explícito y es el único modo que usa URL/token/timeout y webhooks HMAC.
+- La venta prepara únicamente una intención compatible y crea la cita Scheduler con `origin = POS` dentro de la misma transacción `SERIALIZABLE` que el ticket. Cada `PosAppointment` conserva snapshots legacy y enlaza `schedulerAppointmentId`; un fallo revierte ambos lados locales.
+- Próximas sesiones de membresía siguen el mismo camino interno. El ledger de Scheduler reserva el beneficio y un cambio a `ATTENDED` genera un `AgendaSyncEvent` interno idempotente, crea como máximo una asistencia POS y actualiza `usedSessions` bajo bloqueo. `CANCELED` y `NO_SHOW` no consumen.
+- La conciliación offline de tickets ya ejecuta la misma preparación antes de `createTicket`; una terminal nunca promete capacidad y un conflicto interno permanece auditable sin dejar una cita/ticket parcial.
+- `AgendaResource`, `AgendaSlot`, `AgendaReservation` y `AgendaSyncEvent` permanecen como proyección/bitácora de compatibilidad; no son la autoridad de disponibilidad. Los eventos internos usan IDs deterministas y `providerEventId` único.
+- El endpoint de webhooks externos responde `410` en modo interno. Cambiar temporalmente a `http` restaura el contrato anterior sin revertir migraciones ni eliminar citas.
+- No se creó importador: el diagnóstico real aún no ha demostrado que existan reservas externas futuras que deban convertirse. Cualquier importación continúa condicionada al inventario aprobado de Fase 0 y deberá ser explícita, reejecutable e idempotente.
+- El cierre local valida lint/type-check/build del API, contratos compartidos y 114 pruebas unitarias en 22 archivos. La reconstrucción, integración HTTP y concurrencia real sobre PostgreSQL desechable siguen siendo obligatorias antes del corte. Runbook: `docs/SCHEDULER_PHASE_5_POS_INTEGRATION.md`.
 
 ### Fase 6 — Administración completa y configuraciones
 
@@ -638,6 +652,6 @@ La siguiente sesión operativa debe cerrar la **evidencia de la Fase 0** y activ
 6. Ejecutar pruebas HTTP de `401/403`, alcance, autorización de un solo uso, candidatos, perfiles, clientes, normalización, fusiones, horarios, bloqueos, idempotencia y conflictos `409`; probar además dos altas concurrentes con el mismo teléfono y dos reservas por el último espacio.
 7. Aprobar la estrategia de backfill; aplicar las cuatro migraciones en development y provisionar grants/catálogos explícitos sin seeds operativos.
 8. Ejecutar `scheduler:customers:normalize` en `DRY_RUN`, materializar sólo después de revisar el agregado y resolver manualmente duplicados antes de diseñar la migración del índice único parcial.
-9. Con esa evidencia, conectar gradualmente Administración, Clientes y Agenda según la Fase 9; después ejecutar la sustitución controlada del adaptador POS de Fase 5.
+9. Con esa evidencia, conectar gradualmente Administración, Clientes y Agenda según la Fase 9; después activar de forma controlada el proveedor `internal` ya implementado en Fase 5 y validar POS/Scheduler antes de retirar el rollback HTTP.
 
 No debe iniciarse la migración canónica de citas hasta conocer el contenido real de `PosAppointment`, `RegistroCita` y las tablas `Agenda*` en el ambiente objetivo.

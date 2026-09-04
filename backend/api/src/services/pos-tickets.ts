@@ -19,7 +19,10 @@ import {
   cancelMembershipsForTicket,
   createMembershipsForTicket,
 } from "./pos-memberships";
-import type { PreparedAgendaTicket } from "./pos-agenda";
+import {
+  confirmPreparedInternalAgenda,
+  type PreparedAgendaTicket,
+} from "./pos-agenda";
 import {
   findSchedulerCustomerPhoneDuplicate,
   lockSchedulerCustomerPhone,
@@ -1531,6 +1534,14 @@ export async function createTicket(
       "La cita contiene una sucursal inactiva o inexistente",
     );
   }
+  const schedulerAppointmentIds = agenda
+    ? await confirmPreparedInternalAgenda(tx, {
+        agenda,
+        appointments: input.appointments ?? [],
+        customerId: customer.id,
+        credentialId: context.credentialId,
+      })
+    : new Map<number, string>();
   for (const appointment of input.appointments ?? []) {
     const appointmentIndex: number = createdAppointments.length;
     const prepared: PreparedAgendaTicket["appointments"][number] | undefined =
@@ -1580,6 +1591,8 @@ export async function createTicket(
           membershipId: appointment.membershipId ?? null,
           courtesyReason: appointment.courtesyReason ?? null,
           createdByCredentialId: context.credentialId,
+          schedulerAppointmentId:
+            schedulerAppointmentIds.get(appointmentIndex) ?? null,
         },
       }),
     );

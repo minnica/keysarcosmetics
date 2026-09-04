@@ -8,7 +8,7 @@ La Fase 4 está implementada en código y permanece pendiente de reconstrucción
 
 La migración `20260904090000_add_scheduler_appointments` es exclusivamente aditiva. No importa datos mock, no crea citas, no modifica filas existentes y no convierte automáticamente `RegistroCita`, `PosAppointment` ni las tablas `Agenda*`.
 
-Scheduler pasa a ser el modelo canónico para nuevas citas una vez que esta fase sea activada. La sustitución del proveedor Agenda usado por POS corresponde a la Fase 5; hasta entonces, `PosAppointment.schedulerAppointmentId` sólo ofrece el vínculo opcional y no cambia el proveedor efectivo de POS.
+Scheduler pasa a ser el modelo canónico para nuevas citas una vez que esta fase sea activada. La Fase 5 ya implementó la sustitución del proveedor Agenda usado por POS: `PosAppointment.schedulerAppointmentId` enlaza la operación y `AGENDA_PROVIDER=http` conserva temporalmente el rollback. El corte por ambiente continúa condicionado al diagnóstico, provisión y pruebas descritos en `docs/SCHEDULER_PHASE_5_POS_INTEGRATION.md`.
 
 ## Modelo persistente
 
@@ -75,7 +75,7 @@ La prueba `scheduler-appointments.integration.test.ts` crea dos solicitudes conc
 
 Una cita puede reservar una membresía por servicio. El backend bloquea la fila de `PosClientMembership`, exige la misma clienta, estado `ACTIVE`, sesiones disponibles y, cuando existan, condiciones `schedulerServiceProfileIds` o `serviceItemIds`. Varias líneas de la misma solicitud se contabilizan juntas para no sobre-reservar la última sesión.
 
-El ledger de Scheduler considera `RESERVED` y `CONSUMED` al calcular disponibilidad; cancelar libera sólo reservas no consumidas y `ATTENDED` las marca consumidas una vez. En Fase 4 no se modifica `usedSessions` ni se fabrica una asistencia POS: POS conserva la autoridad financiera y la propagación canónica a su historial se implementará junto con el adaptador interno de Fase 5.
+El ledger de Scheduler considera `RESERVED` y `CONSUMED` al calcular disponibilidad; cancelar libera sólo reservas no consumidas y `ATTENDED` las marca consumidas una vez. La Fase 5 implementa la propagación canónica: el evento interno idempotente crea como máximo una asistencia POS y actualiza `usedSessions` bajo bloqueo, mientras POS conserva la autoridad financiera.
 
 ## Activación segura
 

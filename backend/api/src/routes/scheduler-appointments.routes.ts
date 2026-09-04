@@ -39,6 +39,7 @@ import {
   type AvailabilityRuleLike,
   type MinuteInterval,
 } from "../services/scheduler-appointments";
+import { propagateSchedulerAppointmentStatusToPos } from "../services/scheduler-pos-events";
 
 const router: ExpressRouter = Router();
 const identifier = z.string().trim().min(1).max(191);
@@ -241,7 +242,7 @@ function uniqueIds(values: string[]): string[] {
   return [...new Set(values)];
 }
 
-interface MaterializedService {
+export interface MaterializedService {
   serviceProfileId: string;
   serviceName: string;
   serviceVersion: number;
@@ -268,7 +269,7 @@ interface MaterializedService {
   membershipName: string | null;
 }
 
-async function resolveBranchProfile(tx: Tx, branchId: string, at: Date) {
+export async function resolveBranchProfile(tx: Tx, branchId: string, at: Date) {
   const profile = await tx.schedulerBranchProfile.findFirst({
     where: { branchId },
     include: { branch: true, commerce: true },
@@ -328,7 +329,7 @@ async function resolveBranchProfileForDate(
   return { profile, range };
 }
 
-async function materializeServices(input: {
+export async function materializeServices(input: {
   tx: Tx;
   branchProfileId: string;
   appointmentStartsAt: Date;
@@ -498,7 +499,7 @@ function exceptionDate(value: Date): string {
   return value.toISOString().slice(0, 10);
 }
 
-async function assertMemberships(
+export async function assertMemberships(
   tx: Tx,
   customerId: string,
   services: MaterializedService[],
@@ -824,7 +825,7 @@ function assertScheduleWithConstraints(input: {
   }
 }
 
-async function assertScheduleAvailable(input: {
+export async function assertScheduleAvailable(input: {
   tx: Tx;
   branchProfileId: string;
   timezone: string;
@@ -880,7 +881,7 @@ async function assertScheduleAvailable(input: {
   });
 }
 
-async function lockSchedule(tx: Tx, branchProfileId: string, services: MaterializedService[]) {
+export async function lockSchedule(tx: Tx, branchProfileId: string, services: MaterializedService[]) {
   const keys = uniqueIds(
     services.flatMap((service) => {
       const dateBuckets = uniqueIds([
@@ -925,7 +926,7 @@ async function consumeOverride(
   // La autorización se consume antes del commit de la cita por diseño; un intento fallido no puede reutilizarla.
 }
 
-async function replaceAppointmentServices(tx: Tx, appointmentId: string, services: MaterializedService[]) {
+export async function replaceAppointmentServices(tx: Tx, appointmentId: string, services: MaterializedService[]) {
   const existingServices = await tx.schedulerAppointmentService.findMany({
     where: { appointmentId },
     select: { id: true },
@@ -1718,6 +1719,11 @@ async function changeStatus(req: Request, appointmentId: string, nextStatus: Sch
     }
     await tx.schedulerAppointmentStateHistory.create({
       data: { appointmentId: current.id, fromStatus: current.status, toStatus: nextStatus, reason: reason ?? null, version: nextVersion, actorUserId: req.schedulerAccess!.userId },
+    });
+    await propagateSchedulerAppointmentStatusToPos(tx, {
+      schedulerAppointmentId: current.id,
+      status: nextStatus,
+      version: nextVersion,
     });
     await tx.auditLog.create({
       data: {

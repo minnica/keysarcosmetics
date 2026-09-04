@@ -12,7 +12,17 @@ import {
   agendaPayloadHash,
   type AgendaAdapter,
 } from "./agenda-adapter";
+import { parseInternalAgendaResourceId } from "./internal-agenda-adapter";
 import { consumeOperationAuthorization } from "./pos-operations";
+import {
+  assertMemberships,
+  assertScheduleAvailable,
+  lockSchedule,
+  materializeServices,
+  replaceAppointmentServices,
+  resolveBranchProfile,
+} from "../routes/scheduler-appointments.routes";
+import { SchedulerAppointmentError } from "./scheduler-appointments";
 
 type Transaction = Prisma.TransactionClient;
 
@@ -95,9 +105,8 @@ export async function refreshAgendaAvailability(input: {
       409,
       "BRANCH_NOT_MAPPED",
     );
-  const slots = await (
-    input.adapter ?? agendaAdapterFromEnvironment()
-  ).listAvailability({
+  const adapter = input.adapter ?? agendaAdapterFromEnvironment();
+  const slots = await adapter.listAvailability({
     branchCode: branch.posProfile.code,
     from: input.from,
     to: input.to,
@@ -120,14 +129,15 @@ export async function refreshAgendaAvailability(input: {
       "AGENDA_INVALID_RESPONSE",
     );
   const stored = await prisma.$transaction(async (tx) => {
-    await tx.agendaSlot.updateMany({
-      where: {
-        resource: { branchId: branch.id },
-        startsAt: { gte: rangeStart, lt: rangeEnd },
-        externalSlotId: { notIn: slots.map((slot) => slot.externalSlotId) },
-      },
-      data: { status: "BLOCKED" },
-    });
+    if (!input.serviceItemId)
+      await tx.agendaSlot.updateMany({
+        where: {
+          resource: { branchId: branch.id },
+          startsAt: { gte: rangeStart, lt: rangeEnd },
+          externalSlotId: { notIn: slots.map((slot) => slot.externalSlotId) },
+        },
+        data: { status: "BLOCKED" },
+      });
     const values = [];
     for (const slot of slots) {
       const resource = await tx.agendaResource.upsert({
@@ -190,7 +200,10 @@ export async function refreshAgendaAvailability(input: {
     .filter((slot) => isAgendaSlotEligible(slot, input.seats))
     .map((slot) => ({
       id: slot.id,
-      externalSystem: "AGENDA_CRM",
+      externalSystem:
+        (adapter.provider ?? "http") === "internal"
+          ? "SCHEDULER_INTERNAL"
+          : "AGENDA_CRM",
       externalCalendarId: slot.resource.externalCalendarId,
       externalSlotId: slot.externalSlotId,
       branchId: branch.id,
@@ -250,6 +263,7 @@ export function groupAgendaAppointments(
 }
 
 export interface PreparedAgendaTicket {
+  provider: "internal" | "http";
   externalClientId: string;
   clientSyncEventId: string;
   appointments: Array<{
@@ -359,6 +373,7 @@ export async function prepareAgendaTicketSaga(input: {
   const groups = groupAgendaAppointments(input.ticket.appointments ?? []);
   if (groups.length === 0) return null;
   const adapter = input.adapter ?? agendaAdapterFromEnvironment();
+  const provider = adapter.provider ?? "http";
   const existingCustomer = input.ticket.customer.id
     ? await prisma.customer.findFirst({
         where: { id: input.ticket.customer.id, active: true, deletedAt: null },
@@ -406,16 +421,17 @@ export async function prepareAgendaTicketSaga(input: {
         `${input.operationKey}:customer`,
       )
     ).externalClientId;
-    assertStableExternalClientId(
-      existingCustomer?.externalClientId ?? null,
-      externalClientId,
-    );
+    if (provider === "http")
+      assertStableExternalClientId(
+        existingCustomer?.externalClientId ?? null,
+        externalClientId,
+      );
     await prisma.$transaction([
       prisma.agendaSyncEvent.update({
         where: { id: clientEvent.id },
         data: { status: "SUCCEEDED", resolvedAt: new Date() },
       }),
-      ...(existingCustomer
+      ...(existingCustomer && provider === "http"
         ? [
             prisma.customer.update({
               where: { id: existingCustomer.id },
@@ -732,6 +748,7 @@ export async function prepareAgendaTicketSaga(input: {
       });
     }
     return {
+      provider,
       externalClientId,
       clientSyncEventId: clientEvent.id,
       appointments: prepared,
@@ -759,6 +776,201 @@ export async function prepareAgendaTicketSaga(input: {
           failure.code,
         );
   }
+}
+
+export async function confirmPreparedInternalAgenda(
+  tx: Transaction,
+  input: {
+    agenda: PreparedAgendaTicket;
+    appointments: PosTicketAppointmentInputDto[];
+    customerId: string;
+    credentialId: string;
+  },
+): Promise<Map<number, string>> {
+  if (input.agenda.provider !== "internal") return new Map();
+  const credential = await tx.posCredential.findUnique({
+    where: { id: input.credentialId },
+    include: {
+      user: { select: { id: true } },
+      employee: { include: { usuario: { select: { id: true } } } },
+    },
+  });
+  const actorUserId = credential?.user?.id ?? credential?.employee?.usuario?.id;
+  if (!actorUserId)
+    throw new PosAgendaError(
+      "La credencial POS debe estar vinculada a un usuario para crear citas internas",
+      409,
+      "SCHEDULER_ACTOR_NOT_LINKED",
+    );
+
+  const links = new Map<number, string>();
+  for (const prepared of input.agenda.appointments) {
+    const requested = input.appointments[prepared.index];
+    if (
+      !requested ||
+      requested.kind === "NO_APPOINTMENT" ||
+      !requested.serviceItemId
+    )
+      throw new PosAgendaError(
+        "La cita interna requiere un servicio canónico",
+        409,
+        "SCHEDULER_SERVICE_REQUIRED",
+      );
+    const slot = await tx.agendaSlot.findUnique({
+      where: { id: prepared.slotId },
+      include: { resource: true },
+    });
+    const internalResource = slot
+      ? parseInternalAgendaResourceId(slot.resource.externalResourceId)
+      : null;
+    if (!slot || !internalResource)
+      throw new PosAgendaError(
+        "El slot no pertenece al proveedor interno",
+        409,
+        "AGENDA_SLOT_PROVIDER_MISMATCH",
+      );
+    const serviceProfile = await tx.schedulerServiceProfile.findUnique({
+      where: { catalogItemId: requested.serviceItemId },
+      select: { id: true },
+    });
+    if (!serviceProfile)
+      throw new PosAgendaError(
+        "El servicio no está configurado en Scheduler",
+        409,
+        "SERVICE_NOT_AVAILABLE",
+      );
+    const startsAt = prepared.startsAt;
+    const branch = await resolveBranchProfile(tx, requested.branchId, startsAt);
+    if (internalResource.branchProfileId !== branch.id)
+      throw new PosAgendaError(
+        "El slot interno pertenece a otra sucursal",
+        409,
+        "SLOT_BRANCH_MISMATCH",
+      );
+    const assignments =
+      await tx.schedulerProfessionalServiceAssignment.findMany({
+        where: {
+          serviceProfileId: serviceProfile.id,
+          branchProfileId: branch.id,
+          active: true,
+        },
+        select: { professionalProfileId: true },
+      });
+    const candidateIds = [
+      internalResource.professionalProfileId,
+      ...assignments.map((assignment) => assignment.professionalProfileId),
+    ].filter((id, index, values) => values.indexOf(id) === index);
+    let services: Awaited<ReturnType<typeof materializeServices>> | null = null;
+    let lastAvailabilityError: SchedulerAppointmentError | null = null;
+    for (const professionalProfileId of candidateIds) {
+      try {
+        const candidate = await materializeServices({
+          tx,
+          branchProfileId: branch.id,
+          appointmentStartsAt: startsAt,
+          services: [
+            {
+              serviceProfileId: serviceProfile.id,
+              professionalProfileIds: [professionalProfileId],
+              startsAt: startsAt.toISOString(),
+              capacityUnits: 1,
+              membershipId: requested.membershipId ?? null,
+            },
+          ],
+          selfProfessionalEmployeeId: null,
+        });
+        await lockSchedule(tx, branch.id, candidate);
+        await assertMemberships(tx, input.customerId, candidate);
+        await assertScheduleAvailable({
+          tx,
+          branchProfileId: branch.id,
+          timezone: branch.timezone,
+          services: candidate,
+          allowOverride: false,
+        });
+        services = candidate;
+        break;
+      } catch (error) {
+        if (!(error instanceof SchedulerAppointmentError)) throw error;
+        lastAvailabilityError = error;
+      }
+    }
+    if (!services)
+      throw new PosAgendaError(
+        lastAvailabilityError?.message ?? "No queda un especialista disponible",
+        409,
+        lastAvailabilityError?.code ?? "PROFESSIONAL_UNAVAILABLE",
+      );
+    const service = services[0]!;
+    prepared.endsAt = service.endsAt;
+    const appointment = await tx.schedulerAppointment.create({
+      data: {
+        branchProfileId: branch.id,
+        customerId: input.customerId,
+        status: "RESERVED",
+        origin: "POS",
+        timezone: branch.timezone,
+        startsAt: service.startsAt,
+        endsAt: service.endsAt,
+        notes: `Creada desde POS (${requested.kind})`,
+        createdByUserId: actorUserId,
+        updatedByUserId: actorUserId,
+      },
+    });
+    await replaceAppointmentServices(tx, appointment.id, services);
+    await tx.schedulerAppointmentStateHistory.create({
+      data: {
+        appointmentId: appointment.id,
+        fromStatus: null,
+        toStatus: "RESERVED",
+        version: 1,
+        actorUserId,
+      },
+    });
+    await tx.auditLog.create({
+      data: {
+        application: "SCHEDULER",
+        action: "SCHEDULER_APPOINTMENT_CREATED_FROM_POS",
+        outcome: "SUCCESS",
+        actorCredentialId: input.credentialId,
+        actorUserId,
+        branchId: requested.branchId,
+        targetType: "SchedulerAppointment",
+        targetId: appointment.id,
+        metadata: {
+          source: requested.kind,
+          agendaReservationId: prepared.reservationId,
+        },
+      },
+    });
+    links.set(prepared.index, appointment.id);
+    prepared.externalReservationId = `scheduler:${appointment.id}`;
+    prepared.externalAppointmentId = `scheduler:${appointment.id}`;
+    prepared.version = appointment.version;
+  }
+
+  const reservationGroups = new Map<string, string[]>();
+  for (const prepared of input.agenda.appointments) {
+    const appointmentId = links.get(prepared.index);
+    if (!appointmentId) continue;
+    reservationGroups.set(prepared.reservationId, [
+      ...(reservationGroups.get(prepared.reservationId) ?? []),
+      `scheduler:${appointmentId}`,
+    ]);
+  }
+  for (const [reservationId, ids] of reservationGroups) {
+    await tx.agendaReservation.update({
+      where: { id: reservationId },
+      data: {
+        externalReservationId: ids[0]!,
+        externalReservationIdsSnapshot: ids,
+        externalAppointmentIdsSnapshot: ids,
+        externalVersionsSnapshot: ids.map(() => 1),
+        remoteVersion: 1,
+      },
+    });
+  }
+  return links;
 }
 
 export async function compensatePreparedAgendaTicket(
@@ -873,6 +1085,7 @@ export async function reserveMembershipNextSession(input: {
       "BRANCH_NOT_MAPPED",
     );
   const adapter = input.adapter ?? agendaAdapterFromEnvironment();
+  const provider = adapter.provider ?? "http";
   const client = {
     localClientKey: membership.customer.id,
     externalClientId: membership.customer.externalClientId,
@@ -895,15 +1108,20 @@ export async function reserveMembershipNextSession(input: {
     externalClientId = (
       await adapter.upsertClient(client, `${input.operationKey}:customer`)
     ).externalClientId;
-    assertStableExternalClientId(
-      membership.customer.externalClientId,
-      externalClientId,
-    );
+    if (provider === "http")
+      assertStableExternalClientId(
+        membership.customer.externalClientId,
+        externalClientId,
+      );
     await prisma.$transaction([
-      prisma.customer.update({
-        where: { id: membership.customer.id },
-        data: { externalClientId, version: { increment: 1 } },
-      }),
+      ...(provider === "http"
+        ? [
+            prisma.customer.update({
+              where: { id: membership.customer.id },
+              data: { externalClientId, version: { increment: 1 } },
+            }),
+          ]
+        : []),
       prisma.agendaSyncEvent.update({
         where: { id: clientEvent.id },
         data: { status: "SUCCEEDED", resolvedAt: new Date() },
@@ -1043,8 +1261,48 @@ export async function reserveMembershipNextSession(input: {
       });
     }
     const appointment = await prisma.$transaction(async (tx) => {
+      const schedulerLinks = await confirmPreparedInternalAgenda(tx, {
+        agenda: {
+          provider,
+          externalClientId,
+          clientSyncEventId: clientEvent.id,
+          appointments: [
+            {
+              index: 0,
+              reservationId: reservation.id,
+              externalReservationId: reservation.externalReservationId!,
+              externalAppointmentId: externalAppointmentIds[0]!,
+              slotId: slot.id,
+              resourceId: slot.resourceId,
+              version: externalVersions[0] ?? remoteVersion,
+              capacity: slot.capacity,
+              startsAt: slot.startsAt,
+              endsAt: slot.endsAt,
+            },
+          ],
+        },
+        appointments: [
+          {
+            kind: "NEXT_SESSION",
+            serviceItemId: membership.membershipItemId,
+            serviceName: membership.membershipNameSnapshot,
+            branchId: slot.resource.branchId,
+            sellerId: input.sellerId ?? membership.currentSellerId ?? undefined,
+            scheduledAt: slot.startsAt.toISOString(),
+            agendaSlotId: slot.id,
+            agendaReservationMode: "SINGLE",
+            membershipId: membership.id,
+          },
+        ],
+        customerId: membership.customerId,
+        credentialId: input.credentialId,
+      });
+      const canonicalExternalAppointmentId =
+        provider === "internal" && schedulerLinks.get(0)
+          ? `scheduler:${schedulerLinks.get(0)!}`
+          : externalAppointmentIds[0]!;
       const existing = await tx.posAppointment.findUnique({
-        where: { externalAppointmentId: externalAppointmentIds[0]! },
+        where: { externalAppointmentId: canonicalExternalAppointmentId },
         include: {
           branch: { select: { nombre: true } },
           agendaResource: { select: { nameSnapshot: true } },
@@ -1062,8 +1320,11 @@ export async function reserveMembershipNextSession(input: {
           branchId: slot.resource.branchId,
           sellerId: input.sellerId ?? membership.currentSellerId,
           scheduledAt: slot.startsAt,
-          externalReservationId: reservation.externalReservationId,
-          externalAppointmentId: externalAppointmentIds[0]!,
+          externalReservationId:
+            provider === "internal"
+              ? canonicalExternalAppointmentId
+              : reservation.externalReservationId,
+          externalAppointmentId: canonicalExternalAppointmentId,
           agendaResourceId: slot.resourceId,
           agendaSlotId: slot.id,
           agendaReservationId: reservation.id,
@@ -1073,6 +1334,7 @@ export async function reserveMembershipNextSession(input: {
           endsAtSnapshot: slot.endsAt,
           membershipId: membership.id,
           createdByCredentialId: input.credentialId,
+          schedulerAppointmentId: schedulerLinks.get(0) ?? null,
         },
         include: {
           branch: { select: { nombre: true } },
