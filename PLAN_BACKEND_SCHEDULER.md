@@ -6,6 +6,11 @@
 > Rama revisada: `feature/scheduler`  
 > Alcance acordado: backend, base de datos e integración completa de todos los módulos visibles en Scheduler.
 
+## Estado de ejecución
+
+- **Fase 0 — implementada en repositorio el 4 de septiembre de 2026; inventario real pendiente de conexión y aprobación.** `pnpm --filter @cosmetics/api scheduler:diagnose` compara las migraciones versionadas con `_prisma_migrations`, inventaría de forma agregada las entidades reutilizables, candidatos y relaciones incompletas, y clasifica `RegistroCita`, `PosAppointment` y las tablas `Agenda*`. Toda consulta corre dentro de una transacción PostgreSQL `READ ONLY`; el reporte no contiene registros personales, secretos ni detalles de conexión.
+- No se agregaron modelos, migraciones, seeds, endpoints o datos operativos en esta fase. La corrida intentada contra `.env.dev` no alcanzó el pooler desde este workspace, por lo que el criterio de salida de datos continúa pendiente: development y el ambiente objetivo deben ejecutarse y aprobarse antes de definir el backfill o iniciar la Fase 1. Guía operativa: `docs/SCHEDULER_PHASE_0_DIAGNOSIS.md`.
+
 ## 1. Objetivo
 
 Construir el backend y la capa de persistencia de `apps/scheduler`, reemplazando los datos mock y el estado operativo guardado en `localStorage` por APIs y modelos persistentes, sin duplicar entidades que ya existen en la plataforma.
@@ -211,6 +216,8 @@ Todos los endpoints deberán vivir bajo `/api/scheduler` y validar autenticació
 
 ### Fase 0 — Diagnóstico reproducible de ambientes y datos
 
+**Estado de implementación (4 de septiembre de 2026):** herramienta y salvaguardas completadas en repositorio. La ejecución real en development y la aprobación del inventario/backfill siguen pendientes por falta de conectividad PostgreSQL desde el workspace. Esto no autoriza avanzar con migraciones canónicas.
+
 Objetivo: convertir las incógnitas de la base real en un inventario verificable antes de diseñar backfills o restricciones.
 
 Entregables:
@@ -231,6 +238,15 @@ Reglas:
 - No usar `prisma db push`, resets ni seeds operativos en producción.
 
 Criterio de salida: inventario real aprobado y estrategia de backfill definida sin ambigüedades.
+
+Evidencia disponible:
+
+- `backend/api/scripts/diagnose-scheduler-data.ts` abre una transacción `READ ONLY` y emite JSON agregado.
+- `backend/api/src/services/scheduler-data-diagnosis.ts` tolera tablas aún no migradas, clasifica migraciones y evita inferencias automáticas por nombre.
+- Production exige la confirmación literal `PRODUCCION_SOLO_LECTURA`; backup/PITR continúa como una verificación externa obligatoria antes de migrar.
+- Los errores de ejecución se redactan para no filtrar hosts, URLs, secretos o registros.
+- El procedimiento, campos y plantilla de decisión están documentados en `docs/SCHEDULER_PHASE_0_DIAGNOSIS.md`.
+- El cierre local pasó lint, type-check y build del API, sincronía/validación de schemas Prisma y 89 pruebas unitarias en 17 archivos.
 
 ### Fase 1 — Contratos, autenticación, permisos y auditoría
 
@@ -556,12 +572,12 @@ Opciones consideradas:
 
 ## 12. Punto recomendado para retomar
 
-La siguiente sesión debe comenzar por la **Fase 0**:
+La siguiente sesión debe cerrar la **evidencia operativa de la Fase 0**:
 
 1. Confirmar que se dispone de acceso seguro a la base de desarrollo.
 2. Comparar migraciones aplicadas contra las 36 existentes en el repositorio.
-3. Implementar el diagnóstico de sólo lectura.
-4. Obtener conteos, duplicados y candidatos de mapeo reales.
-5. Con esa evidencia, cerrar los nombres y relaciones Prisma de las fases 1 a 4 antes de crear la primera migración.
+3. Ejecutar `scheduler:diagnose` y conservar el JSON agregado como evidencia segura.
+4. Revisar conteos, duplicados y candidatos de mapeo reales.
+5. Aprobar la estrategia de backfill y, con esa evidencia, cerrar los nombres y relaciones Prisma de las fases 1 a 4 antes de crear la primera migración.
 
 No debe iniciarse la migración canónica de citas hasta conocer el contenido real de `PosAppointment`, `RegistroCita` y las tablas `Agenda*` en el ambiente objetivo.

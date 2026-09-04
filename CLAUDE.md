@@ -440,7 +440,12 @@ Datos:
 
 ## Estado actual de apps/scheduler
 
-`apps/scheduler` es la app de agenda y administración de reservas. Sigue en fase local/mock, sin backend real ni Prisma. Parte de la configuración se conserva en `localStorage`, pero todavía no existe persistencia compartida entre usuarios ni validación de servidor. No se modifican backend, Prisma ni variables de entorno en esta etapa. La agenda, la administración, las configuraciones y los reportes viven local/mock; toda la información técnica de esta app está concentrada en esta sección.
+`apps/scheduler` es la app de agenda y administración de reservas. Sigue en fase operativa local/mock, sin endpoints ni modelos Prisma propios. Parte de la configuración se conserva en `localStorage`, pero todavía no existe persistencia compartida entre usuarios ni validación de servidor. La Fase 0 de `PLAN_BACKEND_SCHEDULER.md` agregó únicamente el diagnóstico backend de sólo lectura descrito abajo; no agregó persistencia, rutas, migraciones, seeds ni variables de entorno. La agenda, la administración, las configuraciones y los reportes continúan local/mock.
+
+- La Fase 0 quedó implementada en repositorio el 4 de septiembre de 2026 con `pnpm --filter @cosmetics/api scheduler:diagnose`. El comando compara migraciones locales con `_prisma_migrations`, detecta tablas disponibles antes de consultarlas e inventaría conteos, perfiles/duraciones pendientes, candidatos profesionales, duplicados de teléfono normalizado, relaciones incompletas y datos de `RegistroCita`, `PosAppointment` y `Agenda*`.
+- El diagnóstico ejecuta todas las consultas dentro de una transacción PostgreSQL `READ ONLY`, sólo emite agregados y redacta errores para no exponer personas, secretos o detalles de conexión. Exige declarar `SCHEDULER_DIAGNOSE_ENVIRONMENT`; production requiere además `SCHEDULER_DIAGNOSE_PRODUCTION_CONFIRMATION=PRODUCCION_SOLO_LECTURA` y autorización humana previa.
+- No se modificaron los schemas Prisma porque la fase es diagnóstica. La corrida con `.env.dev` no pudo alcanzar el pooler desde este workspace; no se conectó a production. El inventario real y la estrategia de backfill todavía deben aprobarse antes de iniciar migraciones de Scheduler. Runbook: `docs/SCHEDULER_PHASE_0_DIAGNOSIS.md`.
+- El cierre local de la Fase 0 pasó lint, type-check y build del API, sincronía/validación de ambos schemas Prisma y 89 pruebas unitarias en 17 archivos.
 
 ### Agenda
 
@@ -1306,6 +1311,7 @@ packages/ui/
 | Ciclo/snapshots payroll      | `backend/api/src/services/payroll.service.ts`                              |
 | Contratos POS                | `packages/types/src/pos.ts` y `backend/api/src/contracts/`                 |
 | Diagnóstico POS (lectura)    | `backend/api/scripts/diagnose-pos-data.ts`                                 |
+| Diagnóstico Scheduler        | `backend/api/scripts/diagnose-scheduler-data.ts`                           |
 | Guía de despliegue payroll   | `apps/payroll/PENDIENTES.md`                                               |
 | Guía operativa payroll       | `apps/payroll/GUIA_PRIMERA_NOMINA.md`                                      |
 | Agenda scheduler             | `apps/scheduler/src/app/(dashboard)/page.tsx`                              |
@@ -1367,6 +1373,7 @@ El scheduler usa `.next-dev` para `next dev` y `.next` para `next build`. Esta s
 pnpm --filter @cosmetics/api prisma:schemas
 pnpm --filter @cosmetics/api prisma:validate
 pnpm --filter @cosmetics/api pos:diagnose # sólo lectura; requiere DATABASE_URL
+SCHEDULER_DIAGNOSE_ENVIRONMENT=development pnpm --filter @cosmetics/api scheduler:diagnose # sólo lectura
 pnpm --filter @cosmetics/api pos:reconcile # sólo lectura; requiere alcance del piloto
 pnpm migrations:review -- origin/develop
 pnpm test:integration  # requiere RUN_DATABASE_TESTS=true + PostgreSQL desechable

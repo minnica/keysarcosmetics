@@ -24,6 +24,7 @@
     "db:migrate:dev": "dotenv -e .env.dev -- prisma migrate deploy",
     "db:migrate:deploy": "prisma migrate deploy",
     "pos:diagnose": "tsx scripts/diagnose-pos-data.ts",
+    "scheduler:diagnose": "node --import tsx scripts/diagnose-scheduler-data.ts",
     "pos:reconcile": "tsx scripts/reconcile-pos-pilot.ts",
     "pos:agenda:worker": "tsx scripts/process-agenda-sync.ts",
     "prisma:validate": "prisma validate",
