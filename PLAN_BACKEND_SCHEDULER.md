@@ -8,6 +8,8 @@
 
 ## Estado de ejecución
 
+- **Fase 1 — implementada en repositorio el 4 de septiembre de 2026; activación por ambiente pendiente.** La migración aditiva `20260904060000_add_scheduler_security` incorpora permisos/capacidades por puesto, sucursales explícitas, alcance profesional propio, credenciales secundarias con bcrypt, autorizaciones opacas de dos minutos y consumo único, y extiende `AuditLog` con `Usuario` + origen `SCHEDULER`. El frontend ya usa el JWT compartido, bootstrap autoritativo y guards de servidor/UI; los códigos mock fueron retirados del flujo activo y el documento legacy se elimina al abrir la configuración personal.
+- `SCHEDULER_ALLOW_MOCKS=true` sólo surte efecto con `NODE_ENV=development`; sin ambas condiciones los módulos operativos mock permanecen cerrados. La migración no concede grants, no crea seeds y no se aplicó a development o production. La evidencia real pendiente de Fase 0, la reconstrucción sobre PostgreSQL 16 y las pruebas HTTP siguen siendo gates obligatorios antes de activar. Guía: `docs/SCHEDULER_PHASE_1_SECURITY.md`.
 - **Fase 0 — implementada en repositorio el 4 de septiembre de 2026; inventario real pendiente de conexión y aprobación.** `pnpm --filter @cosmetics/api scheduler:diagnose` compara las migraciones versionadas con `_prisma_migrations`, inventaría de forma agregada las entidades reutilizables, candidatos y relaciones incompletas, y clasifica `RegistroCita`, `PosAppointment` y las tablas `Agenda*`. Toda consulta corre dentro de una transacción PostgreSQL `READ ONLY`; el reporte no contiene registros personales, secretos ni detalles de conexión.
 - No se agregaron modelos, migraciones, seeds, endpoints o datos operativos en esta fase. La corrida intentada contra `.env.dev` no alcanzó el pooler desde este workspace, por lo que el criterio de salida de datos continúa pendiente: development y el ambiente objetivo deben ejecutarse y aprobarse antes de definir el backfill o iniciar la Fase 1. Guía operativa: `docs/SCHEDULER_PHASE_0_DIAGNOSIS.md`.
 
@@ -67,25 +69,25 @@ No se migrarán a Supabase los clientes, citas, códigos, métricas ni configura
 
 ## 3. Inventario de modelos existentes que deben reutilizarse
 
-| Modelo o área existente | Uso propuesto en Scheduler |
-| --- | --- |
-| `Usuario` | Identidad autenticada, actor de auditoría y sesión compartida. |
-| `Position` | Base de los permisos por puesto; se extenderá con permisos específicos de Scheduler. |
-| `PositionScreenPermission` y permisos equivalentes | Patrón de referencia para acceso por pantalla y capacidades. |
-| `Sucursal` | Catálogo canónico de sucursales; no crear una segunda tabla de sucursales. |
-| `Empleado` | Persona canónica que puede convertirse explícitamente en profesional agendable. |
-| `Customer` | Identidad canónica del cliente; será extendida mediante perfiles y datos normalizados. |
-| `CustomerSource` | Origen o canal de adquisición del cliente. |
-| `CustomerPortfolioAssignment` | Asignaciones existentes de cartera o seguimiento. |
-| `CatalogItem` | Catálogo canónico de servicios y productos; los servicios de Scheduler usarán `kind = SERVICE`. |
-| Taxonomías, precios, recursos visuales y visibilidad por sucursal de catálogo | Clasificación, precios, imágenes y disponibilidad comercial de servicios. |
-| `PosPackage` | Paquetes vendibles; Scheduler agregará sólo metadatos de agenda cuando sean necesarios. |
-| `PosTicket`, `PosPayment` y membresías | Historial financiero, elegibilidad y reportes; el POS conserva la autoridad financiera. |
-| `RegistroCita` | Historial legado de citas atendidas. No será la agenda canónica futura. |
-| `AgendaResource`, `AgendaSlot`, `AgendaReservation`, `AgendaSyncEvent` | Bitácora y compatibilidad con Agenda CRM externa; no reutilizarlas como núcleo interno de Scheduler. |
-| `PosAppointment` | Vínculo del POS con una cita; deberá apuntar a la nueva cita canónica de Scheduler. |
-| `AuditLog` | Registro de cambios sensibles, accesos privilegiados y operaciones administrativas. |
-| Nómina y bancos | No usarlos como sustituto de pagos, comisiones o liquidaciones propias de Scheduler. |
+| Modelo o área existente                                                       | Uso propuesto en Scheduler                                                                           |
+| ----------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `Usuario`                                                                     | Identidad autenticada, actor de auditoría y sesión compartida.                                       |
+| `Position`                                                                    | Base de los permisos por puesto; se extenderá con permisos específicos de Scheduler.                 |
+| `PositionScreenPermission` y permisos equivalentes                            | Patrón de referencia para acceso por pantalla y capacidades.                                         |
+| `Sucursal`                                                                    | Catálogo canónico de sucursales; no crear una segunda tabla de sucursales.                           |
+| `Empleado`                                                                    | Persona canónica que puede convertirse explícitamente en profesional agendable.                      |
+| `Customer`                                                                    | Identidad canónica del cliente; será extendida mediante perfiles y datos normalizados.               |
+| `CustomerSource`                                                              | Origen o canal de adquisición del cliente.                                                           |
+| `CustomerPortfolioAssignment`                                                 | Asignaciones existentes de cartera o seguimiento.                                                    |
+| `CatalogItem`                                                                 | Catálogo canónico de servicios y productos; los servicios de Scheduler usarán `kind = SERVICE`.      |
+| Taxonomías, precios, recursos visuales y visibilidad por sucursal de catálogo | Clasificación, precios, imágenes y disponibilidad comercial de servicios.                            |
+| `PosPackage`                                                                  | Paquetes vendibles; Scheduler agregará sólo metadatos de agenda cuando sean necesarios.              |
+| `PosTicket`, `PosPayment` y membresías                                        | Historial financiero, elegibilidad y reportes; el POS conserva la autoridad financiera.              |
+| `RegistroCita`                                                                | Historial legado de citas atendidas. No será la agenda canónica futura.                              |
+| `AgendaResource`, `AgendaSlot`, `AgendaReservation`, `AgendaSyncEvent`        | Bitácora y compatibilidad con Agenda CRM externa; no reutilizarlas como núcleo interno de Scheduler. |
+| `PosAppointment`                                                              | Vínculo del POS con una cita; deberá apuntar a la nueva cita canónica de Scheduler.                  |
+| `AuditLog`                                                                    | Registro de cambios sensibles, accesos privilegiados y operaciones administrativas.                  |
+| Nómina y bancos                                                               | No usarlos como sustituto de pagos, comisiones o liquidaciones propias de Scheduler.                 |
 
 ## 4. Arquitectura de datos objetivo
 
@@ -250,6 +252,8 @@ Evidencia disponible:
 
 ### Fase 1 — Contratos, autenticación, permisos y auditoría
 
+**Estado de implementación (4 de septiembre de 2026):** completada en repositorio; migración y activación operativa pendientes por los gates de Fase 0 y PostgreSQL desechable.
+
 Objetivo: establecer la frontera de seguridad antes de exponer datos de Scheduler.
 
 Entregables:
@@ -265,6 +269,17 @@ Entregables:
 - Bandera explícita para permitir mocks únicamente en desarrollo.
 
 Criterio de salida: ninguna pantalla protegida obtiene datos fuera del alcance de la sesión y ningún secreto operativo llega al bundle del navegador.
+
+Evidencia disponible:
+
+- `packages/types/src/scheduler.ts` define 28 pantallas, cinco capacidades, bootstrap, administración de accesos y autorizaciones secundarias.
+- `backend/api/src/services/scheduler-access.ts` materializa sucursales sin fallbacks globales, resuelve permisos y ofrece middlewares reutilizables para endpoints posteriores.
+- `/api/scheduler/bootstrap`, `/security/secondary-secret`, `/authorizations`, `/authorizations/consume` y `/access*` implementan el contrato con JWT compartido y respuestas estándar.
+- `SchedulerSecondaryCredential` usa bcrypt; `SchedulerAuthorization` guarda sólo SHA-256 del token, caduca a los dos minutos y se consume de forma atómica una vez.
+- `AuditLog.application = SCHEDULER` y `actorUserId` registran emisión/consumo/denegación, rotación de código y cambios de permisos/sucursales sin secretos.
+- El login y los guards del frontend consumen el bootstrap real. Configuración permite rotar sólo el código propio confirmando la contraseña actual; no persiste códigos en cliente.
+- El cierre local pasó schemas Prisma, lint/type-check/build del API, type-check de paquetes compartidos, 93 pruebas unitarias, y lint/type-check/build de Scheduler. Las advertencias de imágenes/hooks de Scheduler ya existían y siguen siendo no bloqueantes.
+- Runbook: `docs/SCHEDULER_PHASE_1_SECURITY.md`.
 
 ### Fase 2 — Catálogos operativos, profesionales y recursos
 
@@ -501,16 +516,16 @@ Criterio de salida: despliegue repetible, observable y reversible a nivel de apl
 
 ## 9. Riesgos principales y mitigaciones
 
-| Riesgo | Mitigación |
-| --- | --- |
-| Estado real de migraciones desconocido | Fase 0 obligatoria y diagnóstico de sólo lectura por ambiente. |
-| Datos duplicados en clientes | Normalización progresiva, reporte previo e índice único sólo después del saneamiento. |
-| Sobreventa por concurrencia | Transacciones, locks/revalidación, idempotencia y pruebas concurrentes. |
-| Duplicar entidades ya existentes | Extender `Sucursal`, `Empleado`, `Customer`, catálogo y POS mediante perfiles y relaciones. |
-| Confundir tablas Agenda con el nuevo núcleo | Mantenerlas como legado de integración y crear un modelo canónico explícito. |
-| Exponer códigos o datos médicos | Secretos de servidor, hash/HMAC, almacenamiento privado, cifrado y auditoría. |
-| KPIs inconsistentes entre legado y POS | Definir fuente por métrica, marcar origen y prevenir doble conteo. |
-| Corte total difícil de revertir | Migración por módulos y adaptador `internal|http` para POS. |
+| Riesgo                                      | Mitigación                                                                                  |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------- | --------------- |
+| Estado real de migraciones desconocido      | Fase 0 obligatoria y diagnóstico de sólo lectura por ambiente.                              |
+| Datos duplicados en clientes                | Normalización progresiva, reporte previo e índice único sólo después del saneamiento.       |
+| Sobreventa por concurrencia                 | Transacciones, locks/revalidación, idempotencia y pruebas concurrentes.                     |
+| Duplicar entidades ya existentes            | Extender `Sucursal`, `Empleado`, `Customer`, catálogo y POS mediante perfiles y relaciones. |
+| Confundir tablas Agenda con el nuevo núcleo | Mantenerlas como legado de integración y crear un modelo canónico explícito.                |
+| Exponer códigos o datos médicos             | Secretos de servidor, hash/HMAC, almacenamiento privado, cifrado y auditoría.               |
+| KPIs inconsistentes entre legado y POS      | Definir fuente por métrica, marcar origen y prevenir doble conteo.                          |
+| Corte total difícil de revertir             | Migración por módulos y adaptador `internal                                                 | http` para POS. |
 
 ## 10. Decisiones y supuestos vigentes
 
@@ -572,12 +587,14 @@ Opciones consideradas:
 
 ## 12. Punto recomendado para retomar
 
-La siguiente sesión debe cerrar la **evidencia operativa de la Fase 0**:
+La siguiente sesión debe cerrar la **evidencia operativa de la Fase 0** y activar de forma controlada la Fase 1:
 
 1. Confirmar que se dispone de acceso seguro a la base de desarrollo.
 2. Comparar migraciones aplicadas contra las 36 existentes en el repositorio.
 3. Ejecutar `scheduler:diagnose` y conservar el JSON agregado como evidencia segura.
 4. Revisar conteos, duplicados y candidatos de mapeo reales.
-5. Aprobar la estrategia de backfill y, con esa evidencia, cerrar los nombres y relaciones Prisma de las fases 1 a 4 antes de crear la primera migración.
+5. Reconstruir todas las migraciones, incluida `20260904060000_add_scheduler_security`, sobre PostgreSQL 16 desechable y ejecutar pruebas HTTP de `401/403`, alcance y autorización de un solo uso.
+6. Aprobar la estrategia de backfill; aplicar Fase 1 en development y provisionar grants/sucursales explícitos sin seeds operativos.
+7. Con esa evidencia, cerrar los nombres y relaciones Prisma de las fases 2 a 4 antes de crear la migración de catálogos.
 
 No debe iniciarse la migración canónica de citas hasta conocer el contenido real de `PosAppointment`, `RegistroCita` y las tablas `Agenda*` en el ambiente objetivo.

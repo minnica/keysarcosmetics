@@ -79,6 +79,14 @@ import type {
   PosAgendaConflictDto,
   PosAgendaMembershipReservationRequestDto,
   PosAgendaSlotDto,
+  SchedulerAccessManagementDto,
+  SchedulerAuthorizationDto,
+  SchedulerAuthorizationConsumeRequestDto,
+  SchedulerAuthorizationRequestDto,
+  SchedulerBootstrapDto,
+  SchedulerManagedPositionDto,
+  SchedulerPermissionDto,
+  SchedulerSecondarySecretRequestDto,
 } from "@cosmetics/types";
 
 /**
@@ -120,6 +128,122 @@ export function createApiClient(baseURL: string): AxiosInstance {
   );
 
   return client;
+}
+
+export interface SchedulerApiClientOptions {
+  getAccessToken?: () => string | null;
+  setAccessToken?: (token: string | null) => void;
+}
+
+export interface SchedulerApiClient {
+  login(email: string, password: string): Promise<SchedulerBootstrapDto>;
+  bootstrap(): Promise<SchedulerBootstrapDto>;
+  updateSecondarySecret(
+    input: SchedulerSecondarySecretRequestDto,
+  ): Promise<{ configured: true }>;
+  createAuthorization(
+    input: SchedulerAuthorizationRequestDto,
+  ): Promise<SchedulerAuthorizationDto>;
+  consumeAuthorization(
+    input: SchedulerAuthorizationConsumeRequestDto,
+  ): Promise<{ authorized: true }>;
+  accessManagement(): Promise<SchedulerAccessManagementDto>;
+  updatePositionPermissions(
+    positionId: string,
+    input: {
+      canManageSchedulerAccess?: boolean;
+      selfProfessionalOnly: boolean;
+      permissions: SchedulerPermissionDto[];
+    },
+  ): Promise<SchedulerManagedPositionDto>;
+  updatePositionBranches(
+    positionId: string,
+    branchIds: string[],
+  ): Promise<SchedulerManagedPositionDto>;
+  logout(): void;
+}
+
+export function createSchedulerApiClient(
+  baseURL: string,
+  options: SchedulerApiClientOptions = {},
+): SchedulerApiClient {
+  const storageKey = "auth_token";
+  const getAccessToken =
+    options.getAccessToken ??
+    (() =>
+      typeof window === "undefined"
+        ? null
+        : window.localStorage.getItem(storageKey));
+  const setAccessToken =
+    options.setAccessToken ??
+    ((token: string | null) => {
+      if (typeof window === "undefined") return;
+      if (token) window.localStorage.setItem(storageKey, token);
+      else window.localStorage.removeItem(storageKey);
+    });
+  const client = axios.create({
+    baseURL: baseURL.replace(/\/$/, ""),
+    headers: { "Content-Type": "application/json" },
+    timeout: 15_000,
+  });
+  client.interceptors.request.use((config) => {
+    const token = getAccessToken();
+    if (token) config.headers["Authorization"] = `Bearer ${token}`;
+    return config;
+  });
+  client.interceptors.response.use(
+    (response) => response,
+    (error: AxiosError<ApiResponse<unknown>>) => {
+      if (error.response?.status === 401) setAccessToken(null);
+      return Promise.reject(error);
+    },
+  );
+  const data = async <T>(
+    request: Promise<{ data: ApiResponse<T> }>,
+  ): Promise<T> => (await request).data.data;
+
+  return {
+    async login(email, password) {
+      const login = await data<{ token: string }>(
+        client.post("/api/auth/login", { email, password }),
+      );
+      setAccessToken(login.token);
+      try {
+        return await data<SchedulerBootstrapDto>(
+          client.get("/api/scheduler/bootstrap"),
+        );
+      } catch (error) {
+        setAccessToken(null);
+        throw error;
+      }
+    },
+    bootstrap: () =>
+      data<SchedulerBootstrapDto>(client.get("/api/scheduler/bootstrap")),
+    updateSecondarySecret: (input) =>
+      data(client.put("/api/scheduler/security/secondary-secret", input)),
+    createAuthorization: (input) =>
+      data<SchedulerAuthorizationDto>(
+        client.post("/api/scheduler/authorizations", input),
+      ),
+    consumeAuthorization: (input) =>
+      data(client.post("/api/scheduler/authorizations/consume", input)),
+    accessManagement: () =>
+      data<SchedulerAccessManagementDto>(client.get("/api/scheduler/access")),
+    updatePositionPermissions: (positionId, input) =>
+      data<SchedulerManagedPositionDto>(
+        client.put(
+          `/api/scheduler/access/positions/${positionId}/permissions`,
+          input,
+        ),
+      ),
+    updatePositionBranches: (positionId, branchIds) =>
+      data<SchedulerManagedPositionDto>(
+        client.put(`/api/scheduler/access/positions/${positionId}/branches`, {
+          branchIds,
+        }),
+      ),
+    logout: () => setAccessToken(null),
+  };
 }
 
 export interface PosApiClientOptions {

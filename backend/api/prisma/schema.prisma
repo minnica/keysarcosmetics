@@ -54,20 +54,23 @@ model Usuario {
   payrollReceiptsConfirmed                PayrollReceipt[]                  @relation("PayrollReceiptConfirmedBy")
   payrollAuditEvents                      PayrollAuditEvent[]
   posCredentials                          PosCredential[]
+  schedulerSecondaryCredential            SchedulerSecondaryCredential?
+  schedulerAuthorizations                 SchedulerAuthorization[]
+  schedulerAuditLogs                      AuditLog[]                        @relation("SchedulerAuditActor")
 }
 
 model Sucursal {
-  id                               String                            @id @default(cuid())
+  id                               String                              @id @default(cuid())
   nombre                           String
-  metaMensual                      Decimal                           @default(0) @db.Decimal(14, 2)
-  activa                           Boolean                           @default(true)
+  metaMensual                      Decimal                             @default(0) @db.Decimal(14, 2)
+  activa                           Boolean                             @default(true)
   desactivadaEn                    DateTime?
   usuarios                         Usuario[]
   empleados                        Empleado[]
   ventas                           Venta[]
   registrosCita                    RegistroCita[]
-  creadoEn                         DateTime                          @default(now())
-  actualizadoEn                    DateTime                          @updatedAt
+  creadoEn                         DateTime                            @default(now())
+  actualizadoEn                    DateTime                            @updatedAt
   payrollMovementAllocations       PayrollMovementAllocation[]
   payrollExpenses                  PayrollExpense[]
   payrollExpenseRecurrenceVersions PayrollExpenseRecurrenceVersion[]
@@ -95,6 +98,8 @@ model Sucursal {
   agendaResources                  AgendaResource[]
   agendaReservations               AgendaReservation[]
   posPortfolioTransfers            PosPortfolioTransferEvent[]
+  schedulerPositionAssignments     PositionSchedulerBranchAssignment[]
+  schedulerAuthorizations          SchedulerAuthorization[]
 
   @@index([activa])
 }
@@ -153,19 +158,23 @@ model Bank {
 }
 
 model Position {
-  id                       String                            @id @default(cuid())
-  nombre                   String                            @unique
-  activo                   Boolean                           @default(true)
-  canManageAccess          Boolean                           @default(false)
-  canManagePayrollAccess   Boolean                           @default(false)
-  selfDataOnly             Boolean                           @default(false)
-  empleados                Empleado[]
-  screenPermissions        PositionScreenPermission[]
-  payrollScreenPermissions PositionPayrollScreenPermission[]
-  posPermissions           PositionPosPermission[]
-  posBranchAssignments     PosPositionBranchAssignment[]
-  creadoEn                 DateTime                          @default(now())
-  actualizadoEn            DateTime                          @updatedAt
+  id                            String                              @id @default(cuid())
+  nombre                        String                              @unique
+  activo                        Boolean                             @default(true)
+  canManageAccess               Boolean                             @default(false)
+  canManagePayrollAccess        Boolean                             @default(false)
+  selfDataOnly                  Boolean                             @default(false)
+  empleados                     Empleado[]
+  screenPermissions             PositionScreenPermission[]
+  payrollScreenPermissions      PositionPayrollScreenPermission[]
+  posPermissions                PositionPosPermission[]
+  posBranchAssignments          PosPositionBranchAssignment[]
+  canManageSchedulerAccess      Boolean                             @default(false)
+  schedulerSelfProfessionalOnly Boolean                             @default(false)
+  schedulerScreenPermissions    PositionSchedulerScreenPermission[]
+  schedulerBranchAssignments    PositionSchedulerBranchAssignment[]
+  creadoEn                      DateTime                            @default(now())
+  actualizadoEn                 DateTime                            @updatedAt
 }
 
 model PositionScreenPermission {
@@ -191,6 +200,35 @@ model PositionPayrollScreenPermission {
   actualizadoEn DateTime @updatedAt
 
   @@unique([positionId, screenKey])
+}
+
+model PositionSchedulerScreenPermission {
+  id            String   @id @default(cuid())
+  positionId    String
+  position      Position @relation(fields: [positionId], references: [id], onDelete: Cascade)
+  screenKey     String   @db.VarChar(120)
+  canRead       Boolean  @default(false)
+  canWrite      Boolean  @default(false)
+  canAdmin      Boolean  @default(false)
+  canExport     Boolean  @default(false)
+  canOverride   Boolean  @default(false)
+  creadoEn      DateTime @default(now())
+  actualizadoEn DateTime @updatedAt
+
+  @@unique([positionId, screenKey])
+  @@index([screenKey])
+}
+
+model PositionSchedulerBranchAssignment {
+  id         String   @id @default(cuid())
+  positionId String
+  position   Position @relation(fields: [positionId], references: [id], onDelete: Cascade)
+  branchId   String
+  branch     Sucursal @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  creadoEn   DateTime @default(now())
+
+  @@unique([positionId, branchId])
+  @@index([branchId])
 }
 
 enum ProtectedEmployeeKey {
@@ -522,11 +560,48 @@ model AuditLog {
   ipAddress         String?        @db.VarChar(64)
   userAgent         String?        @db.VarChar(512)
   metadata          Json?
+  application       String         @default("POS") @db.VarChar(32)
+  actorUserId       String?
+  actorUser         Usuario?       @relation("SchedulerAuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
   creadoEn          DateTime       @default(now())
 
   @@index([action, creadoEn])
   @@index([actorCredentialId, creadoEn])
   @@index([terminalId, creadoEn])
+  @@index([application, actorUserId, creadoEn])
+}
+
+model SchedulerSecondaryCredential {
+  id             String    @id @default(cuid())
+  userId         String    @unique
+  user           Usuario   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  secretHash     String
+  failedAttempts Int       @default(0)
+  lockedUntil    DateTime?
+  version        Int       @default(1)
+  active         Boolean   @default(true)
+  lastUsedAt     DateTime?
+  creadoEn       DateTime  @default(now())
+  actualizadoEn  DateTime  @updatedAt
+}
+
+model SchedulerAuthorization {
+  id          String    @id @default(uuid()) @db.Uuid
+  tokenHash   String    @unique @db.VarChar(64)
+  purpose     String    @db.VarChar(80)
+  screenKey   String    @db.VarChar(120)
+  scope       Json?
+  actorUserId String
+  actorUser   Usuario   @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
+  branchId    String?
+  branch      Sucursal? @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  expiresAt   DateTime
+  usedAt      DateTime?
+  revokedAt   DateTime?
+  creadoEn    DateTime  @default(now())
+
+  @@index([actorUserId, purpose, expiresAt])
+  @@index([branchId, expiresAt])
 }
 
 // ─── Módulo POS: catálogo, clientes, configuración y activos ─────────────────────

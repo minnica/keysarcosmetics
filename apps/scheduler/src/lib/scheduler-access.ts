@@ -1,3 +1,9 @@
+import type {
+  SchedulerBootstrapDto,
+  SchedulerCapability,
+  SchedulerScreenKey,
+} from "@cosmetics/types";
+
 export type SchedulerScreenId =
   | "agenda"
   | "clients"
@@ -16,14 +22,27 @@ export type SchedulerScreenId =
   | "administration.gift-cards"
   | "administration.status-colors";
 
-export interface SchedulerAccessProfile {
-  id: string;
-  name: string;
-  allowedCommerceIds: string[];
-  allowedBranchIds: string[];
-  allowedProfessionalIds: string[] | null;
-  allowedScreenIds: SchedulerScreenId[];
-}
+export const schedulerScreenKeyById: Record<
+  SchedulerScreenId,
+  SchedulerScreenKey
+> = {
+  agenda: "scheduler/agenda",
+  clients: "scheduler/clients",
+  services: "scheduler/services",
+  "reports.summary": "scheduler/reports/summary",
+  "reports.reservations": "scheduler/reports/reservations",
+  "reports.sales": "scheduler/reports/sales",
+  "administration.locals": "scheduler/administration/locals",
+  "administration.professionals": "scheduler/administration/professionals",
+  "administration.services": "scheduler/administration/services",
+  "administration.commissions": "scheduler/administration/commissions",
+  "administration.resources": "scheduler/administration/resources",
+  "administration.surveys": "scheduler/administration/surveys",
+  "administration.consents": "scheduler/administration/consents",
+  "administration.whatsapp": "scheduler/administration/whatsapp",
+  "administration.gift-cards": "scheduler/administration/gift-cards",
+  "administration.status-colors": "scheduler/administration/status-colors",
+};
 
 export type SchedulerFinancialRole = "master" | "admin" | "seller";
 
@@ -31,11 +50,14 @@ export interface SchedulerFinancialProfile {
   id: string;
   name: string;
   role: SchedulerFinancialRole;
-  personalCode: string;
-  assignedClientIds: string[] | null;
+  expiresAt: string;
 }
 
-export type SchedulerFinancialAuditAction = "view" | "create" | "update" | "delete";
+export type SchedulerFinancialAuditAction =
+  | "view"
+  | "create"
+  | "update"
+  | "delete";
 
 export interface SchedulerFinancialAuditEvent {
   id: string;
@@ -50,62 +72,11 @@ export interface SchedulerFinancialAuditEvent {
   occurredAt: string;
 }
 
-/**
- * Códigos mock para demostrar el flujo. En producción deben validarse en el
- * backend y nunca distribuirse dentro del bundle del navegador.
- */
-export const schedulerFinancialProfiles: SchedulerFinancialProfile[] = [
-  {
-    id: "financial-master",
-    name: "Master Keysar",
-    role: "master",
-    personalCode: "9001",
-    assignedClientIds: null,
-  },
-  {
-    id: "scheduler-admin",
-    name: "Administrador de agenda",
-    role: "admin",
-    personalCode: "2468",
-    assignedClientIds: null,
-  },
-  {
-    id: "seller-valeria",
-    name: "Valeria Hernández",
-    role: "seller",
-    personalCode: "1357",
-    assignedClientIds: ["client-patricia-delgado", "client-yumi-hirasawa"],
-  },
-  {
-    id: "seller-mariana",
-    name: "Mariana Ortega",
-    role: "seller",
-    personalCode: "8642",
-    assignedClientIds: ["client-maria-camila", "client-adriana-acosta"],
-  },
-];
-
-export function getSchedulerClientAccessKey(clientId: string | undefined, phone: string): string {
-  return clientId ?? `phone:${phone.replace(/\D/g, "").slice(-10)}`;
-}
-
-export function authorizeSchedulerFinancialProfile(
-  personalCode: string,
+export function getSchedulerClientAccessKey(
   clientId: string | undefined,
-): { profile?: SchedulerFinancialProfile; error?: string } {
-  const profile = schedulerFinancialProfiles.find(
-    (candidate) => candidate.personalCode === personalCode.trim(),
-  );
-
-  if (!profile) return { error: "El código de autorización no es válido." };
-  if (
-    profile.assignedClientIds !== null &&
-    (!clientId || !profile.assignedClientIds.includes(clientId))
-  ) {
-    return { error: "Este cliente no está asignado al perfil autorizado." };
-  }
-
-  return { profile };
+  phone: string,
+): string {
+  return clientId ?? `phone:${phone.replace(/\D/g, "").slice(-10)}`;
 }
 
 export function canManageSchedulerPaymentHistory(
@@ -114,62 +85,43 @@ export function canManageSchedulerPaymentHistory(
   return profile?.role === "master" || profile?.role === "admin";
 }
 
-/**
- * Perfil mock de la sesión actual. La persistencia y los roles reales se
- * incorporarán cuando Scheduler se conecte al backend.
- */
-export const currentSchedulerAccess: SchedulerAccessProfile = {
-  id: "scheduler-admin",
-  name: "Administrador de agenda",
-  allowedCommerceIds: ["opatra-mexico", "keysar-cosmetics"],
-  allowedBranchIds: [
-    "galerias-insurgentes",
-    "mitikah",
-    "masaryk",
-    "keysar-reforma",
-    "keysar-polanco",
-  ],
-  allowedProfessionalIds: null,
-  allowedScreenIds: [
-    "agenda",
-    "clients",
-    "services",
-    "reports.summary",
-    "reports.reservations",
-    "administration.locals",
-    "administration.professionals",
-    "administration.services",
-    "administration.commissions",
-    "administration.resources",
-    "administration.surveys",
-    "administration.consents",
-    "administration.whatsapp",
-    "administration.gift-cards",
-    "administration.status-colors",
-  ],
-};
-
-export function canAccessSchedulerScreen(screenId: SchedulerScreenId): boolean {
-  return currentSchedulerAccess.allowedScreenIds.includes(screenId);
-}
-
-export function canAccessSchedulerCommerce(commerceId: string): boolean {
-  return (
-    currentSchedulerAccess.id === "scheduler-admin" ||
-    currentSchedulerAccess.allowedCommerceIds.includes(commerceId)
+export function canAccessSchedulerScreen(
+  bootstrap: SchedulerBootstrapDto | null,
+  screenId: SchedulerScreenId,
+  capability: SchedulerCapability = "READ",
+): boolean {
+  const screenKey = schedulerScreenKeyById[screenId];
+  return Boolean(
+    bootstrap?.permissions.some(
+      (permission) =>
+        permission.screenKey === screenKey &&
+        permission.capabilities.includes(capability),
+    ),
   );
 }
 
-export function canAccessSchedulerBranch(branchId: string): boolean {
-  return (
-    currentSchedulerAccess.id === "scheduler-admin" ||
-    currentSchedulerAccess.allowedBranchIds.includes(branchId)
+export function canAccessSchedulerBranch(
+  bootstrap: SchedulerBootstrapDto | null,
+  branchId: string,
+): boolean {
+  if (bootstrap?.mockModeEnabled) return true;
+  return Boolean(bootstrap?.authorizedBranchIds.includes(branchId));
+}
+
+export function canAccessSchedulerCommerce(
+  bootstrap: SchedulerBootstrapDto | null,
+  _commerceId: string,
+): boolean {
+  return Boolean(
+    bootstrap?.mockModeEnabled || bootstrap?.authorizedBranchIds.length,
   );
 }
 
-export function canAccessSchedulerProfessional(professionalId: string): boolean {
-  return (
-    currentSchedulerAccess.allowedProfessionalIds === null ||
-    currentSchedulerAccess.allowedProfessionalIds.includes(professionalId)
-  );
+export function canAccessSchedulerProfessional(
+  bootstrap: SchedulerBootstrapDto | null,
+  professionalId: string,
+): boolean {
+  if (!bootstrap) return false;
+  if (!bootstrap.selfProfessionalOnly) return true;
+  return bootstrap.professionalEmployeeId === professionalId;
 }

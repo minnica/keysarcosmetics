@@ -440,7 +440,13 @@ Datos:
 
 ## Estado actual de apps/scheduler
 
-`apps/scheduler` es la app de agenda y administración de reservas. Sigue en fase operativa local/mock, sin endpoints ni modelos Prisma propios. Parte de la configuración se conserva en `localStorage`, pero todavía no existe persistencia compartida entre usuarios ni validación de servidor. La Fase 0 de `PLAN_BACKEND_SCHEDULER.md` agregó únicamente el diagnóstico backend de sólo lectura descrito abajo; no agregó persistencia, rutas, migraciones, seeds ni variables de entorno. La agenda, la administración, las configuraciones y los reportes continúan local/mock.
+`apps/scheduler` es la app de agenda y administración de reservas. La Fase 1 ya conectó login, bootstrap, permisos, alcance y autorizaciones secundarias al backend compartido; los catálogos, clientes, citas, configuraciones operativas y reportes continúan local/mock hasta las fases posteriores. Los módulos mock sólo se renderizan con `NODE_ENV=development` y `SCHEDULER_ALLOW_MOCKS=true`; en cualquier otro ambiente la sesión permanece protegida y esos módulos se mantienen cerrados.
+
+- La Fase 1 quedó implementada en repositorio el 4 de septiembre de 2026 mediante la migración exclusivamente aditiva `20260904060000_add_scheduler_security`; no se aplicó a development ni production y no concede permisos, crea seeds o modifica datos operativos. Agrega permisos de pantalla con capacidades `READ/WRITE/ADMIN/EXPORT/EXCEPTION`, asignaciones explícitas de sucursal, alcance profesional propio, credenciales secundarias y autorizaciones de uso único. Ambos schemas Prisma deben permanecer sincronizados.
+- Scheduler usa `POST /api/auth/login` y el JWT compartido. `GET /api/scheduler/bootstrap` materializa usuario, grants, sucursales y alcance profesional; sólo `SUPER_ADMIN` recibe todas las sucursales activas. Un puesto usa sus asignaciones explícitas o, si no existen, únicamente la sucursal canónica de su usuario/empleado; un conjunto vacío nunca significa acceso global.
+- Los códigos mock fueron retirados del flujo activo y no se conservan en `localStorage`. Cada usuario rota su código personal confirmando la contraseña actual; se guarda con bcrypt, se bloquea 15 minutos tras cinco fallos y emite tokens SHA-256 ligados a actor/propósito/alcance que caducan en dos minutos y se consumen una sola vez. Abrir la configuración elimina el documento legacy `keysar-scheduler-authorizations-settings`.
+- `AuditLog` ahora admite `application` y `actorUserId`: Scheduler registra emisión/consumo/denegación de autorización, rotación de código y cambios de permisos/sucursales con origen `SCHEDULER` y `Usuario` como actor, sin contraseñas, códigos o tokens. Contratos: `packages/types/src/scheduler.ts`; servicio: `backend/api/src/services/scheduler-access.ts`; runbook: `docs/SCHEDULER_PHASE_1_SECURITY.md`.
+- El cierre local de Fase 1 pasó schemas Prisma, lint/type-check/build del API, type-check de paquetes compartidos, 93 pruebas unitarias en 18 archivos y lint/type-check/build de Scheduler. La reconstrucción de migraciones y las pruebas HTTP sobre PostgreSQL 16 efímero, el diagnóstico real de Fase 0 y la aplicación por ambiente siguen pendientes y son obligatorios antes de activar.
 
 - La Fase 0 quedó implementada en repositorio el 4 de septiembre de 2026 con `pnpm --filter @cosmetics/api scheduler:diagnose`. El comando compara migraciones locales con `_prisma_migrations`, detecta tablas disponibles antes de consultarlas e inventaría conteos, perfiles/duraciones pendientes, candidatos profesionales, duplicados de teléfono normalizado, relaciones incompletas y datos de `RegistroCita`, `PosAppointment` y `Agenda*`.
 - El diagnóstico ejecuta todas las consultas dentro de una transacción PostgreSQL `READ ONLY`, sólo emite agregados y redacta errores para no exponer personas, secretos o detalles de conexión. Exige declarar `SCHEDULER_DIAGNOSE_ENVIRONMENT`; production requiere además `SCHEDULER_DIAGNOSE_PRODUCTION_CONFIRMATION=PRODUCCION_SOLO_LECTURA` y autorización humana previa.
@@ -1194,7 +1200,9 @@ apps/scheduler/
     ├── mock-client-data.ts        → clientes mock, alias, teléfono único e historial por sucursal
     ├── mock-scheduler-data.ts     → datos mock de sucursales, profesionales, citas, bloqueos y leyenda
     ├── scheduler-agenda-settings.ts → intervalo visual de slots persistido localmente
-    ├── scheduler-access.ts        → alcance mock por comercio, sucursal, profesional y pantalla
+    ├── scheduler-access.ts        → mapeo frontend del bootstrap real; sin perfiles ni códigos embebidos
+    ├── session.tsx                → sesión JWT, bootstrap, guards y autorizaciones secundarias
+    ├── api.ts                     → cliente tipado de Scheduler
     ├── mock-administration-data.ts → catálogos mock de locales, profesionales, servicios y módulos administrativos
     └── mock-report-data.ts        → periodos, KPIs y series mock del resumen de reportes
 ```
@@ -1234,11 +1242,12 @@ backend/api/
     │   ├── payroll-access.routes.ts → permisos y credenciales administrativas de Payroll
     │   ├── payroll.routes.ts
     │   ├── pos.routes.ts        → auth POS, terminales, sucursales, permisos, credenciales y auditoría de Fase 1
-    │   └── scheduler.routes.ts
+    │   └── scheduler.routes.ts    → bootstrap, código secundario, autorizaciones y administración de accesos
     ├── services/
     │   ├── payroll-calculation.ts → motor puro de cálculo
     │   ├── payroll.service.ts     → corridas, reservas y snapshots
     │   ├── pos-pilot-reconciliation.ts → conciliación de sólo lectura para el piloto POS
+    │   ├── scheduler-access.ts    → permisos, alcance, tokens de uso único y auditoría de Scheduler
     │   └── payroll-storage.ts     → comprobantes en bucket privado
     ├── types/
     │   ├── express.d.ts           → extensión de tipos de Express

@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { Toaster } from '@cosmetics/ui'
+import { SchedulerSessionProvider } from '@/lib/session'
 import './globals.css'
 
 export const metadata: Metadata = {
@@ -16,7 +17,7 @@ export default function RootLayout({
   return (
     <html lang="es" suppressHydrationWarning>
       <body className="bg-[var(--bg-primary)] text-[var(--text-primary)] antialiased">
-        {children}
+        <SchedulerSessionProvider>{children}</SchedulerSessionProvider>
         <Toaster position="bottom-center" />
       </body>
     </html>

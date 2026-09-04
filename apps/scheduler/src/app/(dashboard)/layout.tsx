@@ -2,6 +2,8 @@ import type { ReactNode } from "react";
 import { SchedulerAccessGuard } from "@/components/SchedulerAccessGuard";
 import { SchedulerLayoutShell } from "@/components/layout/SchedulerLayoutShell";
 
+export const dynamic = "force-dynamic";
+
 export default function SchedulerDashboardLayout({
   children,
 }: {

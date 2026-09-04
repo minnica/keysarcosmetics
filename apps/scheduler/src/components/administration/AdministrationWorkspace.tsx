@@ -132,7 +132,6 @@ import {
   type BookingStatus,
   type BookingStatusColors,
 } from "@/lib/mock-scheduler-data";
-import { schedulerFinancialProfiles } from "@/lib/scheduler-access";
 import {
   getCommerceOperatingHours,
   saveCommerceOperatingHours,
@@ -142,7 +141,8 @@ import {
   saveAdministrationSchedulerConfig,
 } from "@/lib/administration-scheduler-config";
 import type { AdministrationSectionId } from "@/components/SchedulerPrimaryNav";
-import { canAccessSchedulerScreen } from "@/lib/scheduler-access";
+import { useSchedulerSession } from "@/lib/session";
+import { schedulerApiErrorMessage } from "@/lib/api";
 
 type AdminSection = AdministrationSectionId;
 const ADMIN_SECTION_CHANGE_EVENT = "scheduler-administration-section-change";
@@ -267,23 +267,6 @@ const sectionGroups: {
     ],
   },
 ];
-
-const visibleSectionGroups = sectionGroups
-  .map((group) => ({
-    ...group,
-    items: group.items.filter((item) =>
-      canAccessSchedulerScreen(`administration.${item.id}`),
-    ),
-  }))
-  .filter((group) => group.items.length > 0);
-
-const allowedAdminSections = visibleSectionGroups.flatMap((group) =>
-  group.items.map((item) => item.id),
-);
-
-function canAccessAdminSection(section: AdminSection): boolean {
-  return allowedAdminSections.includes(section);
-}
 
 const sectionTitles: Record<
   AdminSection,
@@ -8785,6 +8768,7 @@ function AdministrationHeader({
 }
 
 function StatusColorsSection({ commerces }: { commerces: CommerceRecord[] }) {
+  const { authorize: authorizeSecondary } = useSchedulerSession();
   const [authorized, setAuthorized] = useState(false);
   const [authorizationCode, setAuthorizationCode] = useState("");
   const [authorizationError, setAuthorizationError] = useState("");
@@ -8794,19 +8778,21 @@ function StatusColorsSection({ commerces }: { commerces: CommerceRecord[] }) {
   );
   const [saved, setSaved] = useState(false);
 
-  function authorize(event: FormEvent<HTMLFormElement>) {
+  async function authorize(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const profile = schedulerFinancialProfiles.find(
-      (candidate) =>
-        candidate.personalCode === authorizationCode &&
-        (candidate.role === "master" || candidate.role === "admin"),
-    );
-    if (!profile) {
-      setAuthorizationError("El código no es válido.");
-      return;
+    try {
+      await authorizeSecondary({
+        secret: authorizationCode,
+        purpose: "STATUS_COLORS_CHANGE",
+        screenKey: "scheduler/administration/status-colors",
+        targetType: "SchedulerCommerce",
+        targetId: commerceId,
+      });
+      setAuthorized(true);
+      setAuthorizationError("");
+    } catch (error) {
+      setAuthorizationError(schedulerApiErrorMessage(error, "El código no es válido."));
     }
-    setAuthorized(true);
-    setAuthorizationError("");
   }
 
   useEffect(() => {
@@ -8981,6 +8967,16 @@ function StatusColorsSection({ commerces }: { commerces: CommerceRecord[] }) {
 }
 
 export function AdministrationWorkspace() {
+  const { canAccess } = useSchedulerSession();
+  const allowedAdminSections = useMemo(
+    () =>
+      sectionGroups.flatMap((group) =>
+        group.items
+          .filter((item) => canAccess(`administration.${item.id}`))
+          .map((item) => item.id),
+      ),
+    [canAccess],
+  );
   const [active, setActive] = useState<AdminSection>(
     allowedAdminSections[0] ?? "locals",
   );
@@ -9022,13 +9018,13 @@ export function AdministrationWorkspace() {
 
     const params = new URLSearchParams(window.location.search);
     const section = params.get("section") as AdminSection | null;
-    if (section && sectionTitles[section] && canAccessAdminSection(section)) {
+    if (section && sectionTitles[section] && allowedAdminSections.includes(section)) {
       setActive(section);
     }
 
     const handleExternalSectionChange = (event: Event) => {
       const nextSection = (event as CustomEvent<AdminSection>).detail;
-      if (nextSection && sectionTitles[nextSection] && canAccessAdminSection(nextSection)) {
+      if (nextSection && sectionTitles[nextSection] && allowedAdminSections.includes(nextSection)) {
         setActive(nextSection);
       }
     };
@@ -9036,7 +9032,7 @@ export function AdministrationWorkspace() {
     window.addEventListener(ADMIN_SECTION_CHANGE_EVENT, handleExternalSectionChange);
     return () =>
       window.removeEventListener(ADMIN_SECTION_CHANGE_EVENT, handleExternalSectionChange);
-  }, []);
+  }, [allowedAdminSections]);
   useEffect(() => {
     if (!configurationHydrated) return;
     try {
