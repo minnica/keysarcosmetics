@@ -90,7 +90,7 @@ CREATE TABLE "PosPaymentMethodPolicy" (
   "referenceLabel" VARCHAR(80), "minAmount" DECIMAL(14,2), "maxAmount" DECIMAL(14,2),
   "activeForPos" BOOLEAN NOT NULL DEFAULT true, "creadoEn" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "actualizadoEn" TIMESTAMP(3) NOT NULL, CONSTRAINT "PosPaymentMethodPolicy_pkey" PRIMARY KEY ("id"),
-  CONSTRAINT "PosPaymentMethodPolicy_amount_valid_check" CHECK ("minAmount" IS NULL OR "minAmount" >= 0) 
+  CONSTRAINT "PosPaymentMethodPolicy_amount_valid_check" CHECK ("minAmount" IS NULL OR "minAmount" >= 0)
 );
 
 CREATE TABLE "PosTicketConfiguration" (
