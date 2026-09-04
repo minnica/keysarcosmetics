@@ -38,6 +38,15 @@ import type {
   PosTicketQuoteRequestDto,
   PosTicketPaymentInputDto,
   PosVoucherIssueDto,
+  PosBusinessDayDto,
+  PosBusinessDayCountInputDto,
+  PosAttendanceDto,
+  PosExpenseTypeDto,
+  PosCashExpenseDto,
+  PosCashExpenseWriteDto,
+  PosCashExpenseCorrectionDto,
+  PosCashExpenseVoidDto,
+  PosOperationalSummaryDto,
 } from '@cosmetics/types'
 
 /**
@@ -142,6 +151,23 @@ export interface PosApiClient {
   vouchers(input?: { page?: number; pageSize?: number }): Promise<{ items: PosVoucherIssueDto[]; page: number; pageSize: number; total: number }>
   issueVoucher(ticketId: string, templateId: string, idempotencyKey?: string): Promise<PosVoucherIssueDto>
   printVoucher(issueId: string, idempotencyKey?: string): Promise<{ issueId: string; copyNumber: number; printedAt: string }>
+  currentBusinessDay(): Promise<PosBusinessDayDto | null>
+  openBusinessDay(input: PosBusinessDayCountInputDto, idempotencyKey?: string): Promise<PosBusinessDayDto>
+  submitClosingCount(id: string, input: PosBusinessDayCountInputDto, idempotencyKey?: string): Promise<PosBusinessDayDto>
+  closeBusinessDay(id: string, authorizationToken: string, idempotencyKey?: string): Promise<PosBusinessDayDto>
+  attendance(input?: { businessDate?: string; page?: number; pageSize?: number }): Promise<{ items: PosAttendanceDto[]; page: number; pageSize: number; total: number }>
+  clockIn(pin: string, idempotencyKey?: string): Promise<PosAttendanceDto>
+  clockOut(attendanceId: string, idempotencyKey?: string): Promise<PosAttendanceDto>
+  expenseTypes(): Promise<PosExpenseTypeDto[]>
+  createExpenseType(input: { name: string; active?: boolean }): Promise<PosExpenseTypeDto>
+  updateExpenseType(id: string, input: { name: string; active?: boolean }): Promise<PosExpenseTypeDto>
+  deleteExpenseType(id: string): Promise<{ id: string }>
+  expenses(input?: { businessDate?: string; branchId?: string; status?: "ACTIVE" | "VOIDED"; page?: number; pageSize?: number }): Promise<{ items: PosCashExpenseDto[]; page: number; pageSize: number; total: number }>
+  createExpense(input: PosCashExpenseWriteDto, idempotencyKey?: string): Promise<PosCashExpenseDto>
+  correctExpense(id: string, input: PosCashExpenseCorrectionDto, idempotencyKey?: string): Promise<PosCashExpenseDto>
+  voidExpense(id: string, input: PosCashExpenseVoidDto, idempotencyKey?: string): Promise<PosCashExpenseDto>
+  dashboard(input?: { businessDate?: string; branchId?: string }): Promise<PosOperationalSummaryDto>
+  xReport(input?: { businessDate?: string; branchId?: string }): Promise<PosOperationalSummaryDto>
   clearSession(): void
 }
 
@@ -238,6 +264,23 @@ export function createPosApiClient(baseURL: string, options: PosApiClientOptions
     vouchers: (input = {}) => data(client.get('/vouchers', { params: input })),
     issueVoucher: (ticketId, templateId, key) => data<PosVoucherIssueDto>(client.post(`/tickets/${ticketId}/vouchers`, { templateId }, { headers: mutationHeaders(key) })),
     printVoucher: (issueId, key) => data(client.post(`/vouchers/${issueId}/print`, {}, { headers: mutationHeaders(key) })),
+    currentBusinessDay: () => data<PosBusinessDayDto | null>(client.get('/business-days/current')),
+    openBusinessDay: (input, key) => data<PosBusinessDayDto>(client.post('/business-days/open', input, { headers: mutationHeaders(key) })),
+    submitClosingCount: (id, input, key) => data<PosBusinessDayDto>(client.post(`/business-days/${id}/closing-count`, input, { headers: mutationHeaders(key) })),
+    closeBusinessDay: (id, authorizationToken, key) => data<PosBusinessDayDto>(client.post(`/business-days/${id}/close`, { authorizationToken }, { headers: mutationHeaders(key) })),
+    attendance: (input = {}) => data(client.get('/attendance', { params: input })),
+    clockIn: (pin, key) => data<PosAttendanceDto>(client.post('/attendance/clock-in', { pin }, { headers: mutationHeaders(key) })),
+    clockOut: (attendanceId, key) => data<PosAttendanceDto>(client.post(`/attendance/${attendanceId}/clock-out`, {}, { headers: mutationHeaders(key) })),
+    expenseTypes: () => data<PosExpenseTypeDto[]>(client.get('/expense-types')),
+    createExpenseType: (input) => data<PosExpenseTypeDto>(client.post('/expense-types', input)),
+    updateExpenseType: (id, input) => data<PosExpenseTypeDto>(client.put(`/expense-types/${id}`, input)),
+    deleteExpenseType: (id) => data<{ id: string }>(client.delete(`/expense-types/${id}`)),
+    expenses: (input = {}) => data(client.get('/expenses', { params: input })),
+    createExpense: (input, key) => data<PosCashExpenseDto>(client.post('/expenses', input, { headers: mutationHeaders(key) })),
+    correctExpense: (id, input, key) => data<PosCashExpenseDto>(client.put(`/expenses/${id}`, input, { headers: mutationHeaders(key) })),
+    voidExpense: (id, input, key) => data<PosCashExpenseDto>(client.post(`/expenses/${id}/void`, input, { headers: mutationHeaders(key) })),
+    dashboard: (input = {}) => data<PosOperationalSummaryDto>(client.get('/dashboard', { params: input })),
+    xReport: (input = {}) => data<PosOperationalSummaryDto>(client.get('/reports/x-report', { params: input })),
     clearSession: () => setAccessToken(null),
   }
 }

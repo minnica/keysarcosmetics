@@ -37,8 +37,8 @@ interface ClockInViewProps {
   sellers: Seller[];
   branches: string[];
   records: AttendanceRecord[];
-  onClockIn: (accessCode: string, branch: string) => boolean;
-  onClockOut: (recordId: string) => void;
+  onClockIn: (accessCode: string, branch: string) => boolean | Promise<boolean>;
+  onClockOut: (recordId: string) => void | Promise<void>;
 }
 
 const formatDuration = (startIso: string, endIso: string | null, now: number) => {
@@ -99,9 +99,9 @@ export function ClockInView({
   );
   const activeSellers = sellers.filter((seller) => seller.active);
 
-  const submitClockIn = () => {
+  const submitClockIn = async () => {
     if (!accessCode.trim() || !branch) return;
-    const registered = onClockIn(accessCode.trim(), branch);
+    const registered = await onClockIn(accessCode.trim(), branch);
     if (registered) setAccessCode("");
   };
 
@@ -135,7 +135,7 @@ export function ClockInView({
                   value={accessCode}
                   onChange={(event) => setAccessCode(event.target.value)}
                   onKeyDown={(event) => {
-                    if (event.key === "Enter") submitClockIn();
+                    if (event.key === "Enter") void submitClockIn();
                   }}
                   placeholder="Código de vendedor"
                 />
@@ -158,7 +158,7 @@ export function ClockInView({
             </div>
             <Button
               type="button"
-              onClick={submitClockIn}
+              onClick={() => void submitClockIn()}
               disabled={accessCode.length !== 4 || !branch}
             >
               <LogIn size={17} /> Registrar entrada
@@ -234,7 +234,7 @@ export function ClockInView({
                   type="button"
                   variant="outline"
                   size="sm"
-                  onClick={() => onClockOut(record.id)}
+                  onClick={() => void onClockOut(record.id)}
                 >
                   <LogOut size={15} /> Marcar salida
                 </Button>

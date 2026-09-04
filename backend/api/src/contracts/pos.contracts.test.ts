@@ -9,6 +9,9 @@ import {
   posWarehouseRequestWriteSchema,
   posTerminalStatusUpdateSchema,
   posTicketQuoteRequestSchema,
+  posBusinessDayCloseSchema,
+  posBusinessDayCountInputSchema,
+  posCashExpenseCorrectionSchema,
 } from "./pos.contracts";
 
 describe("contratos públicos del POS", () => {
@@ -110,5 +113,25 @@ describe("contratos públicos del POS", () => {
     expect(posWarehouseRequestWriteSchema.safeParse({ source: "BRANCH", requestType: "PRODUCT", branchId: "branch-1", lines: [{ itemId: "item-1", quantity: "2.00" }] }).success).toBe(true);
     expect(posWarehouseRequestWriteSchema.safeParse({ source: "SUPPLIER", requestType: "SUPPLY", branchId: "branch-1", lines: [{ itemId: "item-1", quantity: "2.00" }] }).success).toBe(false);
     expect(posWarehouseRequestWriteSchema.safeParse({ source: "BRANCH", requestType: "TESTER", branchId: "branch-1", lines: [{ itemId: "item-1", quantity: "1.00" }, { itemId: "item-1", quantity: "1.00" }] }).success).toBe(false);
+  });
+
+  it("requiere conteo o autorización master para abrir/cerrar una jornada", () => {
+    expect(posBusinessDayCountInputSchema.safeParse({ skipped: true }).success).toBe(false);
+    expect(posBusinessDayCountInputSchema.safeParse({ locationId: "loc-1", lines: [{ itemId: "item-1", countedQuantity: "1.00" }] }).success).toBe(true);
+    expect(posBusinessDayCountInputSchema.safeParse({ skipped: true, authorizationToken: "6a96e671-c899-43ce-a104-06b1c204927e" }).success).toBe(true);
+    expect(posBusinessDayCloseSchema.safeParse({ authorizationToken: "not-a-token" }).success).toBe(false);
+  });
+
+  it("exige compensación autorizada para editar un gasto histórico", () => {
+    const base = {
+      expenseTypeId: "expense-type-1",
+      amount: "125.00",
+      concept: "Compra de insumos",
+      authorizationToken: "6a96e671-c899-43ce-a104-06b1c204927e",
+      reason: "Corrección de importe",
+    };
+    expect(posCashExpenseCorrectionSchema.safeParse(base).success).toBe(true);
+    expect(posCashExpenseCorrectionSchema.safeParse({ ...base, reason: "" }).success).toBe(false);
+    expect(posCashExpenseCorrectionSchema.safeParse({ ...base, amount: "125" }).success).toBe(false);
   });
 });

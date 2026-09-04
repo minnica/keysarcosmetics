@@ -122,6 +122,8 @@ interface CashManagerViewProps {
   companyName: string;
   logoUrl: string;
   isMasterCode: (code: string) => boolean;
+  apiManaged?: boolean;
+  operator?: { id: string; name: string; isMaster: boolean } | null;
   onCreateExpense: (expense: CashExpense) => void;
   onUpdateExpense: (expense: CashExpense) => void;
   onVoidExpense: (id: string) => void;
@@ -136,6 +138,8 @@ export function CashManagerView({
   companyName,
   logoUrl,
   isMasterCode,
+  apiManaged = false,
+  operator = null,
   onCreateExpense,
   onUpdateExpense,
   onVoidExpense,
@@ -166,7 +170,27 @@ export function CashManagerView({
 
   const loggedSeller =
     sellers.find((seller) => seller.id === loggedSellerId) ??
-    (loggedSellerId === masterUser.id ? masterUser : undefined);
+    (loggedSellerId === masterUser.id ? masterUser : undefined) ??
+    (apiManaged && operator
+      ? {
+          id: operator.id,
+          name: operator.name,
+          alias: "",
+          initials: operator.name.slice(0, 2).toLocaleUpperCase("es-MX"),
+          active: true,
+          accessCode: "",
+          masterAccessCode: operator.isMaster ? "PROTECTED" : null,
+          canViewCosts: false,
+          roleId: "",
+        }
+      : undefined);
+
+  useEffect(() => {
+    if (apiManaged && operator) {
+      setLoggedSellerId(operator.id);
+      setMasterAuthorized(operator.isMaster);
+    }
+  }, [apiManaged, operator]);
 
   useEffect(() => {
     if (!masterAuthorized) return;
@@ -323,6 +347,18 @@ export function CashManagerView({
 
   const openNewExpense = () => {
     if (!loggedSeller) return;
+    if (apiManaged) {
+      setEditingExpense(null);
+      setForm({
+        ...emptyForm,
+        sellerId: loggedSeller.id,
+        branch: activeBranch,
+        typeId: expenseTypes.find((type) => type.active)?.id ?? "",
+        expenseDate: today,
+      });
+      setFormOpen(true);
+      return;
+    }
     setEditingExpense(null);
     setMovementCode("");
     setReminderOpen(true);
@@ -367,7 +403,8 @@ export function CashManagerView({
     const amount = Number(form.amount);
     const seller =
       sellers.find((item) => item.id === form.sellerId) ??
-      (form.sellerId === masterUser.id ? masterUser : undefined);
+      (form.sellerId === masterUser.id ? masterUser : undefined) ??
+      (apiManaged && loggedSeller?.id === form.sellerId ? loggedSeller : undefined);
     const type = expenseTypes.find((item) => item.id === form.typeId);
     if (!seller || !type || !form.branch || !form.concept.trim() || amount <= 0) {
       toast.error("Completa tipo, monto, sucursal, usuario y concepto.");
@@ -519,7 +556,7 @@ export function CashManagerView({
     }
   };
 
-  if (!loggedSeller) {
+  if (!loggedSeller && !apiManaged) {
     return (
       <Card className="cash-access-card">
         <CardContent>
@@ -564,7 +601,7 @@ export function CashManagerView({
             <div>
               <span className="section-kicker">CAJA · {masterAuthorized ? "ACCESO MASTER" : "OPERACIÓN DEL DÍA"}</span>
               <h2>Gastos de operación</h2>
-              <p>{loggedSeller.name} · {masterAuthorized ? "historial y edición habilitados" : "consulta vigente sin edición"}</p>
+              <p>{loggedSeller?.name ?? "Operador POS"} · {masterAuthorized ? "historial y edición habilitados" : "consulta vigente sin edición"}</p>
             </div>
             <div className="cash-manager-actions">
               <Button type="button" onClick={openNewExpense}><Plus size={16} /> Registrar gasto</Button>
@@ -649,7 +686,7 @@ export function CashManagerView({
       <Dialog open={reminderOpen} onOpenChange={setReminderOpen}>
         <DialogContent className="cash-reminder-dialog sm:max-w-[520px]">
           <DialogHeader><DialogTitle>Movimiento sujeto a autorización</DialogTitle><DialogDescription>Antes de continuar, confirma que Administración autorizó este gasto.</DialogDescription></DialogHeader>
-          <div className="cash-reminder-body"><div><ShieldCheck size={28} /></div><span><small>AUTORIZACIÓN ADMINISTRATIVA</small><strong>Recuerda que todos los movimientos deben ser autorizados por Administración.</strong><p>El registro quedará automáticamente ligado a {loggedSeller.name} y a la sucursal fija de la terminal.</p></span></div>
+          <div className="cash-reminder-body"><div><ShieldCheck size={28} /></div><span><small>AUTORIZACIÓN ADMINISTRATIVA</small><strong>Recuerda que todos los movimientos deben ser autorizados por Administración.</strong><p>El registro quedará automáticamente ligado a {loggedSeller?.name ?? "el operador POS"} y a la sucursal fija de la terminal.</p></span></div>
           <label className="cash-reminder-code"><KeyRound size={17} /><Input type="password" inputMode="numeric" maxLength={4} value={movementCode} onChange={(event) => setMovementCode(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") authorizeMovement(); }} placeholder="Código de autorización" /></label>
           <DialogFooter><Button type="button" variant="outline" onClick={() => setReminderOpen(false)}>Cancelar</Button><Button type="button" className="cash-continue-button" onClick={authorizeMovement} disabled={movementCode.length !== 4}><CheckCircle2 size={16} /> Continuar</Button></DialogFooter>
         </DialogContent>

@@ -737,6 +737,115 @@ export interface PosVoucherIssueDto {
   issuedAt: IsoUtcDateTime;
 }
 
+export interface PosBusinessDayDto {
+  id: PosId;
+  branchId: PosId;
+  branchName: string;
+  businessDate: BusinessDate;
+  status: PosBusinessDayStatus;
+  openingCountId: PosId | null;
+  openingSkipped: boolean;
+  openedByName: string;
+  openedAt: IsoUtcDateTime;
+  closingCountId: PosId | null;
+  closingSkipped: boolean;
+  closedByName: string | null;
+  closedAt: IsoUtcDateTime | null;
+}
+
+export interface PosBusinessDayCountInputDto {
+  skipped?: boolean;
+  authorizationToken?: string;
+  locationId?: PosId;
+  notes?: string;
+  lines?: Array<{ itemId: PosId; countedQuantity: Money }>;
+}
+
+export interface PosBusinessDayCloseDto {
+  authorizationToken: string;
+}
+
+export interface PosAttendanceDto {
+  id: PosId;
+  businessDayId: PosId;
+  employeeId: PosId;
+  employeeName: string;
+  branchId: PosId;
+  branchName: string;
+  businessDate: BusinessDate;
+  clockInAt: IsoUtcDateTime;
+  clockOutAt: IsoUtcDateTime | null;
+  status: "OPEN" | "CLOSED";
+  closeReason: "MANUAL" | "CLOSE_DAY" | null;
+}
+
+export interface PosExpenseTypeDto {
+  id: PosId;
+  name: string;
+  active: boolean;
+}
+
+export interface PosCashExpenseDto {
+  id: PosId;
+  folio: string;
+  businessDate: BusinessDate;
+  branchId: PosId;
+  branchName: string;
+  employeeId: PosId | null;
+  employeeName: string;
+  expenseTypeId: PosId;
+  expenseTypeName: string;
+  amount: Money;
+  concept: string;
+  comment: string | null;
+  status: "ACTIVE" | "VOIDED";
+  correctsExpenseId: PosId | null;
+  createdAt: IsoUtcDateTime;
+  voidedAt: IsoUtcDateTime | null;
+}
+
+export interface PosCashExpenseWriteDto {
+  expenseTypeId: PosId;
+  amount: Money;
+  concept: string;
+  comment?: string | null;
+  employeeId?: PosId | null;
+}
+
+export interface PosCashExpenseCorrectionDto extends PosCashExpenseWriteDto {
+  authorizationToken: string;
+  reason: string;
+}
+
+export interface PosCashExpenseVoidDto {
+  authorizationToken: string;
+  reason: string;
+}
+
+export interface PosOperationalSummaryDto {
+  businessDate: BusinessDate;
+  branchId: PosId | null;
+  branchName: string;
+  businessDayStatus: PosBusinessDayStatus | "NOT_OPENED";
+  salesTotal: Money;
+  collectedTotal: Money;
+  discountTotal: Money;
+  expenseTotal: Money;
+  netCashFlow: Money;
+  ticketCount: number;
+  sellerCount: number;
+  unitsSold: Money;
+  inventoryMovementCount: number;
+  attendanceOpenCount: number;
+  paymentMethods: Array<{ methodId: PosId; name: string; amount: Money }>;
+  sellers: Array<{ employeeId: PosId; name: string; amount: Money }>;
+  products: Array<{ itemId: PosId | null; name: string; quantity: Money; amount: Money }>;
+  inventoryAudit?: {
+    opening: PosInventoryCountDto | PosAuditedInventoryCountDto | null;
+    closing: PosInventoryCountDto | PosAuditedInventoryCountDto | null;
+  };
+}
+
 export interface PosSyncOperationDto {
   id: string;
   sequence: number;

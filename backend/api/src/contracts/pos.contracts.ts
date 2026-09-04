@@ -566,6 +566,71 @@ export const posTicketEventRequestSchema = z.object({
 
 export const posVoucherIssueRequestSchema = z.object({ templateId: idSchema }).strict();
 
+export const posBusinessDayCountInputSchema = z
+  .object({
+    skipped: z.boolean().optional().default(false),
+    authorizationToken: z.string().uuid().optional(),
+    locationId: idSchema.optional(),
+    notes: z.string().trim().max(500).optional(),
+    lines: z.array(posInventoryCountLineSchema).min(1).max(10_000).optional(),
+  })
+  .strict()
+  .superRefine((input, context) => {
+    if (input.skipped && !input.authorizationToken) {
+      context.addIssue({ code: z.ZodIssueCode.custom, message: "Omitir el conteo requiere autorización master", path: ["authorizationToken"] });
+    }
+    if (!input.skipped && (!input.locationId || !input.lines?.length)) {
+      context.addIssue({ code: z.ZodIssueCode.custom, message: "El conteo requiere ubicación y partidas", path: ["lines"] });
+    }
+    if (input.lines && new Set(input.lines.map((line) => line.itemId)).size !== input.lines.length) {
+      context.addIssue({ code: z.ZodIssueCode.custom, message: "No se permiten productos duplicados", path: ["lines"] });
+    }
+  });
+
+export const posBusinessDayCloseSchema = z
+  .object({ authorizationToken: z.string().uuid() })
+  .strict();
+
+export const posAttendanceClockInSchema = z
+  .object({ pin: z.string().regex(/^\d{4,12}$/, "PIN inválido") })
+  .strict();
+
+export const posCashExpenseWriteSchema = z
+  .object({
+    expenseTypeId: idSchema,
+    amount: positiveQuantitySchema,
+    concept: z.string().trim().min(2).max(500),
+    comment: z.string().trim().max(1_000).nullable().optional().default(null),
+    employeeId: idSchema.nullable().optional().default(null),
+  })
+  .strict();
+
+export const posCashExpenseCorrectionSchema = posCashExpenseWriteSchema.extend({
+  authorizationToken: z.string().uuid(),
+  reason: z.string().trim().min(3).max(1_000),
+}).strict();
+
+export const posCashExpenseVoidSchema = z
+  .object({
+    authorizationToken: z.string().uuid(),
+    reason: z.string().trim().min(3).max(1_000),
+  })
+  .strict();
+
+export const posExpenseTypeWriteSchema = z
+  .object({ name: z.string().trim().min(2).max(160), active: z.boolean().optional().default(true) })
+  .strict();
+
+export const posOperationQuerySchema = z
+  .object({
+    businessDate: businessDateSchema.optional(),
+    branchId: idSchema.optional(),
+    status: z.enum(["ACTIVE", "VOIDED"]).optional(),
+    page: z.coerce.number().int().min(1).default(1),
+    pageSize: z.coerce.number().int().min(1).max(100).default(20),
+  })
+  .strict();
+
 export const posInventoryBalanceSchema = z
   .object({
     itemId: idSchema,

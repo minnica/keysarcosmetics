@@ -77,7 +77,18 @@ import {
   Toaster,
   toast,
 } from "@cosmetics/ui";
-import type { PosBranchSummaryDto, PosInventoryLocationDto, PosPermissionKey, PosSessionDto, PosTicketQuoteDto } from "@cosmetics/types";
+import type {
+  PosAttendanceDto,
+  PosBranchSummaryDto,
+  PosBusinessDayDto,
+  PosCashExpenseDto,
+  PosExpenseTypeDto,
+  PosInventoryLocationDto,
+  PosOperationalSummaryDto,
+  PosPermissionKey,
+  PosSessionDto,
+  PosTicketQuoteDto,
+} from "@cosmetics/types";
 import {
   CheckoutDialog,
   type CheckoutResult,
@@ -489,6 +500,65 @@ const operationalBusinessDate = (iso: string) =>
     day: "2-digit",
   }).format(new Date(iso));
 
+const attendanceFromDto = (record: PosAttendanceDto): AttendanceRecord => ({
+  id: record.id,
+  sellerId: record.employeeId,
+  sellerName: record.employeeName,
+  sellerInitials: record.employeeName
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toLocaleUpperCase("es-MX") ?? "")
+    .join(""),
+  branch: record.branchName,
+  clockInAt: new Intl.DateTimeFormat("es-MX", { timeZone: "America/Mexico_City", hour: "2-digit", minute: "2-digit", second: "2-digit" }).format(new Date(record.clockInAt)),
+  clockInAtIso: record.clockInAt,
+  clockOutAt: record.clockOutAt
+    ? new Intl.DateTimeFormat("es-MX", { timeZone: "America/Mexico_City", hour: "2-digit", minute: "2-digit", second: "2-digit" }).format(new Date(record.clockOutAt))
+    : null,
+  clockOutAtIso: record.clockOutAt,
+  status: record.status === "OPEN" ? "ONLINE" : "OFFLINE",
+  clockOutReason: record.closeReason === "CLOSE_DAY" ? "CLOSE_DAY" : record.closeReason === "MANUAL" ? "MANUAL" : null,
+});
+
+const expenseFromDto = (expense: PosCashExpenseDto): CashExpense => ({
+  id: expense.id,
+  folio: expense.folio,
+  createdAt: new Intl.DateTimeFormat("es-MX", { timeZone: "America/Mexico_City", day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(expense.createdAt)),
+  createdAtIso: expense.createdAt,
+  expenseDate: expense.businessDate,
+  typeId: expense.expenseTypeId,
+  typeName: expense.expenseTypeName,
+  amount: Number(expense.amount),
+  branch: expense.branchName,
+  sellerId: expense.employeeId ?? "pos-system",
+  sellerName: expense.employeeName,
+  concept: expense.concept,
+  comment: expense.comment ?? "",
+  authorizedBy: "Registro POS autorizado",
+  status: expense.status,
+  updatedAtIso: expense.voidedAt,
+});
+
+const expenseTypeFromDto = (type: PosExpenseTypeDto): ExpenseType => ({
+  id: type.id,
+  name: type.name,
+  active: type.active,
+});
+
+const daySessionFromDto = (day: PosBusinessDayDto): PosDaySession => ({
+  id: day.id,
+  branch: day.branchName,
+  openedAtIso: day.openedAt,
+  openedById: "pos-opened",
+  openingAuditId: day.openingCountId ?? `opening-skip-${day.id}`,
+  status: day.status,
+  closingAuditId: day.closingCountId ?? (day.closingSkipped ? `closing-skip-${day.id}` : null),
+  closedAtIso: day.closedAt,
+  closedById: day.closedByName ? "pos-closed" : null,
+  closedByName: day.closedByName,
+});
+
 const createInitialOperationalNotifications = (): OperationalNotification[] => {
   const currentDate = operationalBusinessDate(new Date().toISOString());
   const recipients = [masterUser.id];
@@ -771,6 +841,7 @@ function App() {
   const [apiPermissions, setApiPermissions] = useState<PosPermissionKey[]>([]);
   const [apiBranches, setApiBranches] = useState<PosBranchSummaryDto[]>([]);
   const [apiInventoryLocations, setApiInventoryLocations] = useState<PosInventoryLocationDto[]>([]);
+  const [apiOperationalSummary, setApiOperationalSummary] = useState<PosOperationalSummaryDto | null>(null);
   const [sessionStage, setSessionStage] = useState<
     "LOGIN" | "OPENING_COUNT" | "OPEN" | "CLOSING_COUNT"
   >("LOGIN");
@@ -1190,7 +1261,14 @@ function App() {
   const applyApiSession = async (session: PosSessionDto) => {
     const nextUser = sessionUserFromDto(session);
     const branchName = session.terminal.branch.name;
-    let needsOpeningCount = false;
+    const currentBusinessDay = await posApi.currentBusinessDay();
+    if (currentBusinessDay?.status === "CLOSED") {
+      posApi.clearSession();
+      setApiSession(null);
+      setApiPermissions([]);
+      throw new Error("La jornada actual de esta sucursal ya fue cerrada. La terminal no puede registrar operaciones retroactivas.");
+    }
+    const needsOpeningCount = !currentBusinessDay;
     setBranchInventory((current) =>
       current[branchName]
         ? current
@@ -1210,6 +1288,7 @@ function App() {
     }));
     setApiSession(session);
     setApiPermissions(session.permissions);
+    setDaySession(currentBusinessDay ? daySessionFromDto(currentBusinessDay) : null);
     const branches = await posApi.branches();
     setApiBranches(branches);
     setBranchInventory((current) => ({
@@ -1267,14 +1346,6 @@ function App() {
         posApi.inventoryMovements({ pageSize: 100 }),
       ]);
       setApiInventoryLocations(locations);
-      if (session.actor.isMaster || session.permissions.includes("INVENTORY_VIEW")) {
-        const currentLocation = locations.find((location) => location.branchId === session.terminal.branch.id);
-        if (currentLocation) {
-          const currentBusinessDate = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Mexico_City", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
-          const openingCounts = await posApi.inventoryCounts({ locationId: currentLocation.id, businessDate: currentBusinessDate, kind: "OPENING" });
-          needsOpeningCount = openingCounts.length === 0;
-        }
-      }
       const locationById = new Map(locations.map((location) => [location.id, location]));
       const nextBranchInventory: BranchInventory = {};
       for (const location of locations.filter((candidate) => candidate.type === "BRANCH" && candidate.branchName)) {
@@ -1463,12 +1534,35 @@ function App() {
       }
       setClients([...knownClients.values()]);
     }
+    if (session.actor.isMaster || session.permissions.includes("BUSINESS_DAY_OPEN")) {
+      const attendance = await posApi.attendance({ pageSize: 100 });
+      setAttendanceRecords(attendance.items.map(attendanceFromDto));
+    } else {
+      setAttendanceRecords([]);
+    }
+    if (session.actor.isMaster || session.permissions.includes("CASH_MANAGE")) {
+      const [types, expenses] = await Promise.all([
+        posApi.expenseTypes(),
+        posApi.expenses({ pageSize: 100 }),
+      ]);
+      setExpenseTypes(types.map(expenseTypeFromDto));
+      setCashExpenses(expenses.items.map(expenseFromDto));
+    } else {
+      setCashExpenses([]);
+    }
+    if (session.actor.isMaster || session.permissions.some((permission) => permission === "DASHBOARD_VIEW" || permission === "REPORTS_VIEW")) {
+      const summary = session.actor.isMaster || session.permissions.includes("REPORTS_VIEW")
+        ? await posApi.xReport()
+        : await posApi.dashboard();
+      setApiOperationalSummary(summary);
+    } else {
+      setApiOperationalSummary(null);
+    }
     const nextScreens = session.actor.isMaster
       ? (Object.keys(screenMetadata) as ScreenId[])
       : permissionsToScreens(session.permissions);
     setSessionUser(nextUser);
     setSessionStage(needsOpeningCount ? "OPENING_COUNT" : "OPEN");
-    setDaySession(null);
     setActiveScreen(nextScreens[0] ?? "my-account");
     setSaleFocusMode(nextScreens[0] === "sale");
   };
@@ -1681,26 +1775,48 @@ function App() {
     skipped: boolean,
     comment: string,
     persisted = false,
+    backendDay?: PosBusinessDayDto,
   ) => {
     if (!sessionUser) return;
-    if (posApiEnabled && !persisted && !skipped) {
+    if (posApiEnabled && !persisted) {
       const location = apiInventoryLocations.find((candidate) => candidate.branchName === sessionUser.branch);
+      if (skipped) {
+        if (!apiSession) {
+          toast.error("La sesión online no está disponible para autorizar la apertura.");
+          return;
+        }
+        const alias = window.prompt("Alias master para omitir el conteo inicial:");
+        const pin = alias ? window.prompt("PIN master:") : null;
+        if (!alias || !pin) return;
+        void posApi.createAuthorization({
+          alias,
+          pin,
+          purpose: "BUSINESS_DAY_OPEN_SKIP",
+          entityType: "Sucursal",
+          entityId: apiSession.terminal.branch.id,
+        }).then((authorization) => posApi.openBusinessDay({
+          skipped: true,
+          authorizationToken: authorization.authorizationToken,
+          notes: comment,
+        })).then((day) => completeOpeningCount(lines, true, comment, true, day)).catch((error: unknown) => {
+          toast.error(error instanceof Error ? error.message : "No se pudo abrir la jornada sin conteo.");
+        });
+        return;
+      }
       if (!location) {
         toast.error("La sucursal no tiene una ubicación de inventario configurada.");
         return;
       }
-      void posApi.createInventoryCount({
-        kind: "OPENING",
-        businessDate: new Intl.DateTimeFormat("en-CA", { timeZone: "America/Mexico_City", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date()),
+      void posApi.openBusinessDay({
         locationId: location.id,
         notes: comment,
         lines: lines.map((line) => ({ itemId: line.productId, countedQuantity: line.actualStock.toFixed(2) })),
-      }).then(() => completeOpeningCount(lines, skipped, comment, true)).catch((error: unknown) => toast.error(error instanceof Error ? error.message : "No se pudo guardar el conteo."));
+      }).then((day) => completeOpeningCount(lines, skipped, comment, true, day)).catch((error: unknown) => toast.error(error instanceof Error ? error.message : "No se pudo abrir la jornada."));
       return;
     }
     const createdAtIso = new Date().toISOString();
     const audit: InventoryCountAudit = {
-      id: `audit-open-${crypto.randomUUID()}`,
+      id: backendDay?.openingCountId ?? `audit-open-${crypto.randomUUID()}`,
       type: "OPENING",
       branch: sessionUser.branch,
       createdAtIso,
@@ -1718,7 +1834,7 @@ function App() {
     };
     if (!skipped) applyPhysicalInventoryCount(audit.lines, sessionUser.branch);
     setInventoryCountAudits((current) => [audit, ...current]);
-    setDaySession({
+    setDaySession(backendDay ? daySessionFromDto(backendDay) : {
       id: `day-${crypto.randomUUID()}`,
       branch: sessionUser.branch,
       openedAtIso: createdAtIso,
@@ -1752,21 +1868,39 @@ function App() {
     skipped: boolean,
     comment: string,
     persisted = false,
+    backendDay?: PosBusinessDayDto,
   ) => {
     if (!sessionUser || !daySession) return;
-    if (posApiEnabled && !persisted && !skipped) {
+    if (posApiEnabled && !persisted) {
       const location = apiInventoryLocations.find((candidate) => candidate.branchName === sessionUser.branch);
+      if (skipped) {
+        const alias = window.prompt("Alias master para omitir el conteo final:");
+        const pin = alias ? window.prompt("PIN master:") : null;
+        if (!alias || !pin) return;
+        void posApi.createAuthorization({
+          alias,
+          pin,
+          purpose: "BUSINESS_DAY_CLOSE_SKIP",
+          entityType: "PosBusinessDay",
+          entityId: daySession.id,
+        }).then((authorization) => posApi.submitClosingCount(daySession.id, {
+          skipped: true,
+          authorizationToken: authorization.authorizationToken,
+          notes: comment,
+        })).then((day) => completeClosingCount(lines, true, comment, true, day)).catch((error: unknown) => {
+          toast.error(error instanceof Error ? error.message : "No se pudo guardar el conteo final omitido.");
+        });
+        return;
+      }
       if (!location) {
         toast.error("La sucursal no tiene una ubicación de inventario configurada.");
         return;
       }
-      void posApi.createInventoryCount({
-        kind: "CLOSING",
-        businessDate: new Intl.DateTimeFormat("en-CA", { timeZone: "America/Mexico_City", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date()),
+      void posApi.submitClosingCount(daySession.id, {
         locationId: location.id,
         notes: comment,
         lines: lines.map((line) => ({ itemId: line.productId, countedQuantity: line.actualStock.toFixed(2) })),
-      }).then(() => completeClosingCount(lines, skipped, comment, true)).catch((error: unknown) => toast.error(error instanceof Error ? error.message : "No se pudo guardar el conteo."));
+      }).then((day) => completeClosingCount(lines, skipped, comment, true, day)).catch((error: unknown) => toast.error(error instanceof Error ? error.message : "No se pudo guardar el conteo final."));
       return;
     }
     const auditLines = skipped
@@ -1777,7 +1911,7 @@ function App() {
         }))
       : lines;
     const audit: InventoryCountAudit = {
-      id: `audit-close-${crypto.randomUUID()}`,
+      id: backendDay?.closingCountId ?? `audit-close-${crypto.randomUUID()}`,
       type: "CLOSING",
       branch: sessionUser.branch,
       createdAtIso: new Date().toISOString(),
@@ -1789,7 +1923,7 @@ function App() {
     };
     if (!skipped) applyPhysicalInventoryCount(auditLines, sessionUser.branch);
     setInventoryCountAudits((current) => [audit, ...current]);
-    setDaySession((current) =>
+    setDaySession(backendDay ? daySessionFromDto(backendDay) : (current) =>
       current ? { ...current, closingAuditId: audit.id } : current,
     );
     setSessionStage("OPEN");
@@ -3268,7 +3402,24 @@ function App() {
       timeZone: "America/Mexico_City",
     }).format(date);
 
-  const clockInSeller = (accessCode: string, branch: string): boolean => {
+  const clockInSeller = async (accessCode: string, branch: string): Promise<boolean> => {
+    if (posApiEnabled) {
+      try {
+        const attendance = await posApi.clockIn(accessCode);
+        const record = attendanceFromDto(attendance);
+        setAttendanceRecords((current) =>
+          current.some((candidate) => candidate.id === record.id)
+            ? current
+            : [record, ...current],
+        );
+        toast.success(`${record.sellerName} registró entrada en ${record.branch}.`);
+        return true;
+      } catch (error) {
+        const response = error as { response?: { data?: { message?: string } }; message?: string };
+        toast.error(response.response?.data?.message ?? response.message ?? "No se pudo registrar la entrada.");
+        return false;
+      }
+    }
     const seller = sellers.find(
       (candidate) =>
         candidate.active && candidate.accessCode === accessCode,
@@ -3316,7 +3467,19 @@ function App() {
     return true;
   };
 
-  const clockOutSeller = (recordId: string) => {
+  const clockOutSeller = async (recordId: string) => {
+    if (posApiEnabled) {
+      try {
+        const attendance = await posApi.clockOut(recordId);
+        const record = attendanceFromDto(attendance);
+        setAttendanceRecords((current) => current.map((candidate) => candidate.id === record.id ? record : candidate));
+        toast.success(`${record.sellerName} registró su salida.`);
+      } catch (error) {
+        const response = error as { response?: { data?: { message?: string } }; message?: string };
+        toast.error(response.response?.data?.message ?? response.message ?? "No se pudo registrar la salida.");
+      }
+      return;
+    }
     const record = attendanceRecords.find(
       (candidate) =>
         candidate.id === recordId && candidate.status === "ONLINE",
@@ -3456,6 +3619,27 @@ function App() {
   };
 
   const authorizeCloseDay = () => {
+    if (posApiEnabled) {
+      if (!daySession) {
+        setCloseDayAuthorizationError("No hay una jornada abierta para cerrar.");
+        return;
+      }
+      void posApi.createAuthorization({
+        alias: closeDayAuthorizationUser.trim(),
+        pin: closeDayAuthorizationCode.trim(),
+        purpose: "BUSINESS_DAY_CLOSE",
+        entityType: "PosBusinessDay",
+        entityId: daySession.id,
+      }).then((authorization) =>
+        posApi.closeBusinessDay(daySession.id, authorization.authorizationToken),
+      ).then((day) => {
+        completeCloseDay({ id: "pos-close", name: day.closedByName ?? closeDayAuthorizationUser.trim() });
+      }).catch((error: unknown) => {
+        const response = error as { response?: { data?: { message?: string } }; message?: string };
+        setCloseDayAuthorizationError(response.response?.data?.message ?? response.message ?? "No se pudo cerrar la jornada.");
+      });
+      return;
+    }
     const normalizedUser = closeDayAuthorizationUser
       .trim()
       .toLocaleLowerCase("es-MX");
@@ -8686,9 +8870,31 @@ function App() {
       <ExpenseTypeSettings
         types={expenseTypes}
         isMasterCode={isMasterAccessCode}
-        onSave={saveExpenseType}
-        onToggle={toggleExpenseType}
-        onDelete={deleteExpenseType}
+        onSave={(type) => {
+          if (!posApiEnabled) return saveExpenseType(type);
+          const mutation = expenseTypes.some((item) => item.id === type.id)
+            ? posApi.updateExpenseType(type.id, { name: type.name, active: type.active })
+            : posApi.createExpenseType({ name: type.name, active: type.active });
+          void mutation.then((saved) => {
+            const mapped = expenseTypeFromDto(saved);
+            setExpenseTypes((current) => current.some((item) => item.id === mapped.id) ? current.map((item) => item.id === mapped.id ? mapped : item) : [...current, mapped]);
+          }).catch((error: unknown) => toast.error(error instanceof Error ? error.message : "No se pudo guardar el tipo de gasto."));
+        }}
+        onToggle={(typeId) => {
+          if (!posApiEnabled) return toggleExpenseType(typeId);
+          const type = expenseTypes.find((item) => item.id === typeId);
+          if (!type) return;
+          void posApi.updateExpenseType(typeId, { name: type.name, active: !type.active }).then((saved) => {
+            const mapped = expenseTypeFromDto(saved);
+            setExpenseTypes((current) => current.map((item) => item.id === mapped.id ? mapped : item));
+          }).catch((error: unknown) => toast.error(error instanceof Error ? error.message : "No se pudo actualizar el tipo de gasto."));
+        }}
+        onDelete={(typeId) => {
+          if (!posApiEnabled) return deleteExpenseType(typeId);
+          void posApi.deleteExpenseType(typeId).then(() => {
+            setExpenseTypes((current) => current.map((item) => item.id === typeId ? { ...item, active: false } : item));
+          }).catch((error: unknown) => toast.error(error instanceof Error ? error.message : "No se pudo retirar el tipo de gasto."));
+        }}
       />
       <CompetitionSettings
         open={competitionSettingsOpen}
@@ -9575,6 +9781,11 @@ function App() {
           <span className="status-dot" />
           <div className="x-report-live-copy">
             <strong>Dashboard en tiempo real · {reportDayLabel}</strong>
+            {posApiEnabled && apiOperationalSummary && (
+              <small>
+                Datos confirmados por API · cobro {formatCurrency(Number(apiOperationalSummary.collectedTotal))} · gastos {formatCurrency(Number(apiOperationalSummary.expenseTotal))}
+              </small>
+            )}
             <small>
               Todas las sucursales activas · Actualizado {reportUpdatedAt}
             </small>
@@ -10736,7 +10947,26 @@ function App() {
             companyName={receiptSettings.companyName}
             logoUrl={receiptSettings.logoUrl}
             isMasterCode={isMasterAccessCode}
+            apiManaged={posApiEnabled}
+            operator={sessionUser ? { id: sessionUser.id, name: sessionUser.name, isMaster: sessionUser.isMaster } : null}
             onCreateExpense={(expense) => {
+              if (posApiEnabled) {
+                void posApi.createExpense({
+                  expenseTypeId: expense.typeId,
+                  amount: expense.amount.toFixed(2),
+                  concept: expense.concept,
+                  comment: expense.comment || null,
+                  employeeId: expense.sellerId === "pos-system" ? null : expense.sellerId,
+                }).then((created) => {
+                  const mapped = expenseFromDto(created);
+                  setCashExpenses((current) => [mapped, ...current]);
+                  toast.success(`Gasto registrado con folio ${mapped.folio}.`);
+                }).catch((error: unknown) => {
+                  const response = error as { response?: { data?: { message?: string } }; message?: string };
+                  toast.error(response.response?.data?.message ?? response.message ?? "No se pudo registrar el gasto.");
+                });
+                return;
+              }
               setCashExpenses((current) => [expense, ...current]);
               pushOperationalNotification({
                 type: "CASH_EXPENSE",
@@ -10751,6 +10981,31 @@ function App() {
               });
             }}
             onUpdateExpense={(expense) => {
+              if (posApiEnabled) {
+                const alias = window.prompt("Alias master para corregir el gasto:");
+                const pin = alias ? window.prompt("PIN master:") : null;
+                if (!alias || !pin) return;
+                void posApi.createAuthorization({ alias, pin, purpose: "CASH_EXPENSE_EDIT", entityType: "PosCashExpense", entityId: expense.id })
+                  .then((authorization) => posApi.correctExpense(expense.id, {
+                    expenseTypeId: expense.typeId,
+                    amount: expense.amount.toFixed(2),
+                    concept: expense.concept,
+                    comment: expense.comment || null,
+                    employeeId: expense.sellerId === "pos-system" ? null : expense.sellerId,
+                    authorizationToken: authorization.authorizationToken,
+                    reason: "Corrección desde Cash Manager",
+                  }))
+                  .then((updated) => {
+                    const mapped = expenseFromDto(updated);
+                    setCashExpenses((current) => [mapped, ...current.map((item) => item.id === expense.id ? { ...item, status: "VOIDED" as const, updatedAtIso: new Date().toISOString() } : item)]);
+                    toast.success(`Gasto corregido mediante ${mapped.folio}.`);
+                  })
+                  .catch((error: unknown) => {
+                    const response = error as { response?: { data?: { message?: string } }; message?: string };
+                    toast.error(response.response?.data?.message ?? response.message ?? "No se pudo corregir el gasto.");
+                  });
+                return;
+              }
               setCashExpenses((current) =>
                 current.map((item) =>
                   item.id === expense.id ? expense : item,
@@ -10769,6 +11024,23 @@ function App() {
               });
             }}
             onVoidExpense={(expenseId) => {
+              if (posApiEnabled) {
+                const alias = window.prompt("Alias master para anular el gasto:");
+                const pin = alias ? window.prompt("PIN master:") : null;
+                if (!alias || !pin) return;
+                void posApi.createAuthorization({ alias, pin, purpose: "CASH_EXPENSE_VOID", entityType: "PosCashExpense", entityId: expenseId })
+                  .then((authorization) => posApi.voidExpense(expenseId, { authorizationToken: authorization.authorizationToken, reason: "Anulación desde Cash Manager" }))
+                  .then((voided) => {
+                    const mapped = expenseFromDto(voided);
+                    setCashExpenses((current) => current.map((expense) => expense.id === mapped.id ? mapped : expense));
+                    toast.success("El gasto fue anulado mediante una compensación auditada.");
+                  })
+                  .catch((error: unknown) => {
+                    const response = error as { response?: { data?: { message?: string } }; message?: string };
+                    toast.error(response.response?.data?.message ?? response.message ?? "No se pudo anular el gasto.");
+                  });
+                return;
+              }
               const voidedExpense = cashExpenses.find(
                 (expense) => expense.id === expenseId,
               );

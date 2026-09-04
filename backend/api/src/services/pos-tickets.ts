@@ -718,6 +718,28 @@ export async function findTicket(tx: Transaction, ticketId: string) {
   });
 }
 
+async function requireOpenBusinessDay(
+  tx: Transaction,
+  branchId: string,
+  businessDate: string,
+) {
+  const day = await tx.posBusinessDay.findUnique({
+    where: {
+      branchId_businessDate: {
+        branchId,
+        businessDate: businessDateValue(businessDate),
+      },
+    },
+    select: { status: true },
+  });
+  if (day?.status !== "OPEN") {
+    throw new PosTicketError(
+      "La operación requiere una jornada abierta para la fecha operativa actual",
+      409,
+    );
+  }
+}
+
 export async function createTicket(
   tx: Transaction,
   input: PosTicketCreateRequestDto,
@@ -731,6 +753,7 @@ export async function createTicket(
 ) {
   if (input.branchId !== context.branchId)
     throw new PosTicketError("La sucursal no coincide con la terminal", 403);
+  await requireOpenBusinessDay(tx, context.branchId, context.businessDate);
   const quote = await calculateAuthoritativeQuote(tx, input, context.branchId);
   const authorization = quote.requiresAuthorization
     ? await consumeTicketAuthorization(
@@ -1134,6 +1157,7 @@ export async function addLayawayPayment(
     businessDate: string;
   },
 ) {
+  await requireOpenBusinessDay(tx, context.branchId, context.businessDate);
   const ticket = await findTicket(tx, input.ticketId);
   if (!ticket || ticket.branchId !== context.branchId)
     throw new PosTicketError("Apartado no encontrado", 404);
@@ -1234,6 +1258,7 @@ export async function deliverOwedProduct(
     businessDate: string;
   },
 ) {
+  await requireOpenBusinessDay(tx, context.branchId, context.businessDate);
   const owed = await tx.posOwedProduct.findUnique({
     where: { id: input.owedProductId },
     include: { ticket: true, item: true },
@@ -1323,9 +1348,11 @@ export async function appendTicketRevision(
     credentialId: string;
     terminalId: string;
     branchId: string;
+    businessDate: string;
     isMaster: boolean;
   },
 ) {
+  await requireOpenBusinessDay(tx, context.branchId, context.businessDate);
   const ticket = await findTicket(tx, input.ticketId);
   if (!ticket || ticket.branchId !== context.branchId)
     throw new PosTicketError("Ticket no encontrado", 404);
@@ -1379,6 +1406,7 @@ export async function cancelOrReturnTicket(
     isMaster: boolean;
   },
 ) {
+  await requireOpenBusinessDay(tx, context.branchId, context.businessDate);
   const ticket = await findTicket(tx, input.ticketId);
   if (!ticket || ticket.branchId !== context.branchId)
     throw new PosTicketError("Ticket no encontrado", 404);

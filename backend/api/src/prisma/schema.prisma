@@ -84,6 +84,9 @@ model Sucursal {
   posNotifications                 PosNotification[]
   posTickets                       PosTicket[]
   posAppointments                  PosAppointment[]
+  posBusinessDays                  PosBusinessDay[]
+  posAttendanceRecords             PosAttendance[]
+  posCashExpenses                  PosCashExpense[]
 
   @@index([activa])
 }
@@ -232,6 +235,8 @@ model Empleado {
   posTicketSellers           PosTicketSeller[]
   posAppointments            PosAppointment[]
   posLegacyProjections       PosLegacySaleProjection[]
+  posAttendances             PosAttendance[]
+  posCashExpenses            PosCashExpense[]
 
   @@index([sucursalId])
 }
@@ -277,6 +282,14 @@ model PosCredential {
   posAppointments                   PosAppointment[]
   posVoucherIssues                  PosVoucherIssue[]
   posVoucherPrints                  PosVoucherPrintEvent[]
+  posBusinessDaysOpened             PosBusinessDay[]        @relation("PosBusinessDayOpenedBy")
+  posBusinessDaysClosed             PosBusinessDay[]        @relation("PosBusinessDayClosedBy")
+  posAttendances                    PosAttendance[]          @relation("PosAttendanceCredential")
+  posAttendancesClosed              PosAttendance[]          @relation("PosAttendanceClosedBy")
+  posExpenseTypesCreated            PosExpenseType[]
+  posCashExpensesCreated            PosCashExpense[]         @relation("PosCashExpenseCreatedBy")
+  posCashExpensesVoided             PosCashExpense[]         @relation("PosCashExpenseVoidedBy")
+  posCashMovements                  PosCashMovement[]
 
   @@index([active, aliasNormalized])
 }
@@ -323,6 +336,10 @@ model PosTerminal {
   posPaymentOperations PosPaymentOperation[]
   posDeliveries        PosOwedProductDelivery[]
   posVoucherPrints     PosVoucherPrintEvent[]
+  posBusinessDaysOpened PosBusinessDay[] @relation("PosBusinessDayOpenedTerminal")
+  posBusinessDaysClosed PosBusinessDay[] @relation("PosBusinessDayClosedTerminal")
+  posAttendances        PosAttendance[]
+  posCashExpenses       PosCashExpense[]
 
   @@index([branchId, status])
 }
@@ -373,6 +390,11 @@ model MasterAuthorization {
   expiresAt         DateTime
   usedAt            DateTime?
   creadoEn          DateTime      @default(now())
+  businessDayOpening PosBusinessDay? @relation("PosBusinessDayOpeningAuthorization")
+  businessDayClosing PosBusinessDay? @relation("PosBusinessDayClosingAuthorization")
+  businessDayCloseApproval PosBusinessDay? @relation("PosBusinessDayCloseApproval")
+  cashExpensesVoided PosCashExpense[]
+  cashMovements      PosCashMovement[]
 
   @@index([actorCredentialId, purpose, expiresAt])
   @@index([terminalId, expiresAt])
@@ -1030,6 +1052,8 @@ model InventoryCount {
   lines                 InventoryCountLine[]
   movement              InventoryMovement?
   creadoEn              DateTime             @default(now())
+  openingBusinessDay    PosBusinessDay?       @relation("PosBusinessDayOpeningCount")
+  closingBusinessDay    PosBusinessDay?       @relation("PosBusinessDayClosingCount")
 
   @@unique([locationId, businessDate, kind])
   @@index([businessDate, kind])
@@ -1529,6 +1553,168 @@ model PosVoucherPrintEvent {
 
   @@unique([issueId, copyNumber])
   @@index([issueId, creadoEn])
+}
+
+// ─── Módulo POS: jornada, asistencia y caja ──────────────────────────────
+
+enum PosBusinessDayStatus {
+  OPEN
+  CLOSED
+}
+
+enum PosAttendanceStatus {
+  OPEN
+  CLOSED
+}
+
+enum PosAttendanceCloseReason {
+  MANUAL
+  CLOSE_DAY
+}
+
+enum PosCashExpenseStatus {
+  ACTIVE
+  VOIDED
+}
+
+enum PosCashMovementKind {
+  EXPENSE
+  CORRECTION
+  VOID
+}
+
+model PosBusinessDay {
+  id                     String               @id @default(uuid()) @db.Uuid
+  branchId               String
+  branch                 Sucursal             @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  businessDate           DateTime             @db.Date
+  status                 PosBusinessDayStatus @default(OPEN)
+  openingCountId         String?              @unique
+  openingCount           InventoryCount?      @relation("PosBusinessDayOpeningCount", fields: [openingCountId], references: [id], onDelete: Restrict)
+  openingSkipped         Boolean              @default(false)
+  openingAuthorizationId String?              @unique
+  openingAuthorization   MasterAuthorization? @relation("PosBusinessDayOpeningAuthorization", fields: [openingAuthorizationId], references: [id], onDelete: Restrict)
+  openedByCredentialId   String
+  openedByCredential     PosCredential        @relation("PosBusinessDayOpenedBy", fields: [openedByCredentialId], references: [id], onDelete: Restrict)
+  openedTerminalId       String
+  openedTerminal         PosTerminal          @relation("PosBusinessDayOpenedTerminal", fields: [openedTerminalId], references: [id], onDelete: Restrict)
+  openedAt               DateTime             @default(now())
+  closingCountId         String?              @unique
+  closingCount           InventoryCount?      @relation("PosBusinessDayClosingCount", fields: [closingCountId], references: [id], onDelete: Restrict)
+  closingSkipped         Boolean              @default(false)
+  closingAuthorizationId String?              @unique
+  closingAuthorization   MasterAuthorization? @relation("PosBusinessDayClosingAuthorization", fields: [closingAuthorizationId], references: [id], onDelete: Restrict)
+  closeAuthorizationId   String?              @unique
+  closeAuthorization     MasterAuthorization? @relation("PosBusinessDayCloseApproval", fields: [closeAuthorizationId], references: [id], onDelete: Restrict)
+  closedByCredentialId   String?
+  closedByCredential     PosCredential?       @relation("PosBusinessDayClosedBy", fields: [closedByCredentialId], references: [id], onDelete: Restrict)
+  closedTerminalId       String?
+  closedTerminal         PosTerminal?         @relation("PosBusinessDayClosedTerminal", fields: [closedTerminalId], references: [id], onDelete: Restrict)
+  closedAt               DateTime?
+  closeSummary           Json?
+  attendances            PosAttendance[]
+  cashExpenses           PosCashExpense[]
+  creadoEn               DateTime             @default(now())
+  actualizadoEn          DateTime             @updatedAt
+
+  @@unique([branchId, businessDate])
+  @@index([status, businessDate])
+}
+
+model PosAttendance {
+  id                   String                   @id @default(uuid()) @db.Uuid
+  businessDayId        String                   @db.Uuid
+  businessDay          PosBusinessDay           @relation(fields: [businessDayId], references: [id], onDelete: Restrict)
+  employeeId           String
+  employee             Empleado                 @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  branchId             String
+  branch               Sucursal                 @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  businessDate         DateTime                 @db.Date
+  credentialId         String
+  credential           PosCredential            @relation("PosAttendanceCredential", fields: [credentialId], references: [id], onDelete: Restrict)
+  terminalId           String
+  terminal             PosTerminal              @relation(fields: [terminalId], references: [id], onDelete: Restrict)
+  clockInAt            DateTime                 @default(now())
+  clockOutAt           DateTime?
+  status               PosAttendanceStatus      @default(OPEN)
+  closeReason          PosAttendanceCloseReason?
+  closedByCredentialId String?
+  closedByCredential   PosCredential?           @relation("PosAttendanceClosedBy", fields: [closedByCredentialId], references: [id], onDelete: Restrict)
+  creadoEn             DateTime                 @default(now())
+
+  @@index([branchId, businessDate, status])
+  @@index([employeeId, businessDate])
+}
+
+model PosExpenseType {
+  id                    String           @id @default(cuid())
+  name                  String           @unique @db.VarChar(160)
+  active                Boolean          @default(true)
+  deletedAt             DateTime?
+  createdByCredentialId String
+  createdByCredential   PosCredential    @relation(fields: [createdByCredentialId], references: [id], onDelete: Restrict)
+  expenses              PosCashExpense[]
+  creadoEn              DateTime         @default(now())
+  actualizadoEn         DateTime         @updatedAt
+
+  @@index([active, name])
+}
+
+model PosCashExpense {
+  id                    String               @id @default(uuid()) @db.Uuid
+  folio                 String               @unique @db.VarChar(80)
+  businessDayId         String               @db.Uuid
+  businessDay           PosBusinessDay       @relation(fields: [businessDayId], references: [id], onDelete: Restrict)
+  businessDate          DateTime             @db.Date
+  branchId              String
+  branch                Sucursal             @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  terminalId            String
+  terminal              PosTerminal          @relation(fields: [terminalId], references: [id], onDelete: Restrict)
+  employeeId            String?
+  employee              Empleado?            @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  employeeNameSnapshot  String                @db.VarChar(240)
+  expenseTypeId         String
+  expenseType           PosExpenseType       @relation(fields: [expenseTypeId], references: [id], onDelete: Restrict)
+  expenseTypeSnapshot   String                @db.VarChar(160)
+  amount                Decimal              @db.Decimal(14, 2)
+  concept               String               @db.VarChar(500)
+  comment               String?              @db.VarChar(1000)
+  status                PosCashExpenseStatus @default(ACTIVE)
+  correctsExpenseId     String?              @db.Uuid
+  correctsExpense       PosCashExpense?       @relation("PosCashExpenseCorrections", fields: [correctsExpenseId], references: [id], onDelete: Restrict)
+  corrections           PosCashExpense[]      @relation("PosCashExpenseCorrections")
+  createdByCredentialId String
+  createdByCredential   PosCredential        @relation("PosCashExpenseCreatedBy", fields: [createdByCredentialId], references: [id], onDelete: Restrict)
+  voidedAt              DateTime?
+  voidedByCredentialId  String?
+  voidedByCredential    PosCredential?       @relation("PosCashExpenseVoidedBy", fields: [voidedByCredentialId], references: [id], onDelete: Restrict)
+  voidAuthorizationId   String?
+  voidAuthorization     MasterAuthorization? @relation(fields: [voidAuthorizationId], references: [id], onDelete: Restrict)
+  movements             PosCashMovement[]
+  creadoEn              DateTime             @default(now())
+
+  @@index([branchId, businessDate, creadoEn])
+  @@index([employeeId, businessDate])
+  @@index([status, businessDate])
+}
+
+model PosCashMovement {
+  id                    String               @id @default(uuid()) @db.Uuid
+  expenseId             String               @db.Uuid
+  expense               PosCashExpense       @relation(fields: [expenseId], references: [id], onDelete: Restrict)
+  kind                  PosCashMovementKind
+  amount                Decimal              @db.Decimal(14, 2)
+  businessDate          DateTime             @db.Date
+  actorCredentialId     String
+  actorCredential       PosCredential        @relation(fields: [actorCredentialId], references: [id], onDelete: Restrict)
+  authorizationId       String?
+  authorization         MasterAuthorization? @relation(fields: [authorizationId], references: [id], onDelete: Restrict)
+  reason                String?              @db.VarChar(1000)
+  snapshot              Json
+  creadoEn              DateTime             @default(now())
+
+  @@index([businessDate, creadoEn])
+  @@index([expenseId, creadoEn])
 }
 
 enum TipoCompraCita {

@@ -39,7 +39,7 @@ Los dos esquemas Prisma existentes están sincronizados. No hay credenciales loc
 | 2. Catálogo, clientes y activos      | Completada — 2026-09-03 | Backend/API + POS                    | Catálogo histórico inmutable y costos redaccionados por servidor.                         |
 | 3. Inventario y bodega               | Completada — 2026-09-03 | Backend/API + Operación de almacén   | Ledger consistente, reintentos idempotentes y doble aprobación distinta.                  |
 | 4. Tickets y proyección financiera   | Completada — 2026-09-03 | Backend/API + POS + Envelope/Payroll | Totales, inventario y proyección legacy conciliados al centavo.                           |
-| 5. Jornada, asistencia y caja        | Pendiente               | Backend/API + Operación de sucursal  | Una jornada por sucursal/fecha y cierre inmutable.                                        |
+| 5. Jornada, asistencia y caja        | Completada — 2026-09-03 | Backend/API + Operación de sucursal  | Una jornada por sucursal/fecha y cierre inmutable.                                        |
 | 6. Offline y reconciliación          | Pendiente               | POS/Electron + Backend/API           | Reinicios y reintentos no pierden ni duplican operaciones.                                |
 | 7. Reportes y retiro de mocks        | Pendiente               | Backend/API + POS                    | Módulos operativos consumen API o repositorio offline autorizado.                         |
 | 8. Piloto y despliegue               | Pendiente               | Operación + Backend/API + Producto   | Piloto conciliado, rollback disponible y aprobación operativa.                            |
@@ -289,14 +289,24 @@ Los tipos POS saldrán de `apps/pos` hacia `packages/types/src/pos.ts`; `package
 
 ### Fase 5 — Jornada, asistencia, caja y operación ejecutiva
 
-- [ ] Implementar jornada única por sucursal/día, apertura, conteo final y cierre.
-- [ ] Limitar las respuestas de conteo ciego a correcto/incorrecto; diferencias, notas y costos se filtran en servidor.
-- [ ] Cerrar asistencias abiertas al terminar la jornada.
-- [ ] Implementar tipos de gasto, gastos, anulaciones y autorización.
-- [ ] Conectar Clock In, Cash Manager, Dashboard, X-Report y Close day.
-- [ ] Bloquear edición retroactiva después del cierre y usar compensaciones actuales.
+- [x] Implementar jornada única por sucursal/día, apertura, conteo final y cierre.
+- [x] Limitar las respuestas de conteo ciego a correcto/incorrecto; diferencias, notas y costos se filtran en servidor.
+- [x] Cerrar asistencias abiertas al terminar la jornada.
+- [x] Implementar tipos de gasto, gastos, anulaciones y autorización.
+- [x] Conectar Clock In, Cash Manager, Dashboard, X-Report y Close day.
+- [x] Bloquear edición retroactiva después del cierre y usar compensaciones actuales.
 
-**Criterio de cierre:** dos terminales no pueden abrir o cerrar dos jornadas para la misma sucursal y fecha.
+**Criterio de cierre: cumplido en repositorio.** `PosBusinessDay` tiene una llave única `(branchId, businessDate)` y la apertura/cierre toma un advisory lock transaccional; por ello dos terminales no pueden confirmar jornadas distintas para la misma sucursal y fecha. El cierre pasa a `CLOSED` una sola vez, guarda un snapshot conciliado, termina las asistencias abiertas y queda protegido contra edición o borrado. La ejecución de migración y la prueba de concurrencia HTTP contra PostgreSQL siguen siendo obligatorias en la Fase 8 sobre una base efímera/development autorizada.
+
+#### Entregables verificables
+
+- Migración aditiva: `backend/api/prisma/migrations/20260903040000_add_pos_business_day_cash/migration.sql`. Crea `PosBusinessDay`, `PosAttendance`, `PosExpenseType`, `PosCashExpense` y `PosCashMovement`, además de los enums, secuencia de folios e índices. No inserta jornadas, asistencias, tipos ni gastos mock. La clave única de jornada, el índice parcial de una asistencia abierta por empleado y los triggers impiden duplicación o reescritura de históricos.
+- Operación transaccional: `backend/api/src/routes/pos-operation.routes.ts` expone `/business-days/current`, apertura, conteo final, cierre, asistencia, tipos de gasto, gastos, dashboard y X-Report. Las mutaciones de jornada, asistencia y gastos usan `Idempotency-Key`, aislamiento `Serializable` del helper POS, permisos por módulo y alcance fijo de terminal. Saltar un conteo, corregir/anular un gasto y cerrar día consumen una autorización master ligada a la terminal y entidad.
+- Conteos y asistencia: la apertura/fin conserva el mismo conteo autoritativo que inventario. Sin `INVENTORY_AUDIT` sólo se serializan cantidad capturada y coincidencia; notas, esperado y diferencia quedan filtrados, y el costo requiere además master o `REPORTS_COSTS`. El cierre convierte en el mismo commit todas las asistencias `OPEN` de esa jornada a `CLOSED/CLOSE_DAY`.
+- Caja e inmutabilidad: cada gasto crea un movimiento positivo append-only. Editar o anular no reconstruye una jornada cerrada: marca el documento de origen como anulado y agrega el movimiento negativo o la corrección en la jornada abierta de la fecha actual. Tipos ya usados se inactivan o eliminan lógicamente para preservar su snapshot histórico.
+- Integración: `packages/types` y `packages/api-client` incluyen DTOs y operaciones tipadas. En `VITE_POS_DATA_MODE=api`, POS resuelve la jornada actual al iniciar sesión, abre/cierra con el backend, registra Clock In/Out, carga gastos/tipos/asistencia reales y consulta los totales confirmados para Dashboard/X-Report. Cash Manager crea gastos reales; corrección y anulación solicitan alias/PIN master para obtener el token de un solo uso.
+- Compatibilidad: `pos-tickets.ts` exige una jornada `OPEN` antes de crear ventas, abonos, entregas, revisiones o cancelaciones. Así no hay venta retroactiva después de un corte; las correcciones permitidas se contabilizan en la fecha operativa actual.
+- Verificación local: ambos schemas Prisma sincronizados y válidos, type-check de types/API client/API/POS, lint y build del API, revisión de seguridad de migración y 41 pruebas unitarias en verde. Vite/Electron compiló renderer, main y preload; el empaquetado final de Electron no pudo descargar/crear su caché global restringida (`~/.cache/electron`), una limitación del entorno no relacionada con el código.
 
 ### Fase 6 — Operación offline y reconciliación
 
