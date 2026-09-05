@@ -103,6 +103,11 @@ La versión remota de Node no coincide con `.nvmrc`, que fija `22.23.2`.
 | Payroll   | Automático                 | `turbo build`                              | Automático | Habilitado                   |
 | Scheduler | Automático                 | `turbo build`                              | `.next`    | Habilitado                   |
 
+> Actualización posterior, 5 de septiembre de 2026: durante la validación de la
+> PR #88, el Build Command de Envelope se cambió a
+> `cd ../.. && pnpm build --filter=@cosmetics/envelope`. La tabla anterior se
+> conserva como evidencia del estado observado en la auditoría de la Fase 0.
+
 La configuración no está normalizada. Envelope es además el único proyecto sin
 `enableAffectedProjectsDeployments` habilitado, lo que explica parte de su
 comportamiento distinto ante cambios fuera de su Root Directory.

@@ -25,7 +25,7 @@ export const ACTIVE_VERCEL_PROJECTS = Object.freeze({
       tokenSecret: "VERCEL_TOKEN_ENVELOPE_DEPLOY",
     },
     projectSettings: {
-      buildCommand: "cd ../.. && pnpm build --filter=envelope",
+      buildCommand: "cd ../.. && pnpm build --filter=@cosmetics/envelope",
       framework: "nextjs",
       installCommand: "cd ../.. && pnpm install",
       nodeVersion: "22.x",

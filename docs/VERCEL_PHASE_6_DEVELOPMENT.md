@@ -39,13 +39,13 @@ antes de cualquier build; consulta las variables con `decrypt=false` y el JSON
 sanitizado sólo conserva nombres. Una variable requerida ausente o una variable
 Preview no declarada bloquean el deployment para forzar revisión explícita.
 
-| App       | Root             | Install                    | Build                                      | Output     | Variable Preview requerida |
-| --------- | ---------------- | -------------------------- | ------------------------------------------ | ---------- | -------------------------- |
-| Envelope  | `apps/envelope`  | `cd ../.. && pnpm install` | `cd ../.. && pnpm build --filter=envelope` | automático | `NEXT_PUBLIC_API_URL`      |
-| Finance   | `apps/finance`   | automático                 | automático                                 | automático | ninguna                    |
-| HR        | `apps/hr`        | automático                 | automático                                 | automático | ninguna                    |
-| Payroll   | `apps/payroll`   | automático                 | `turbo build`                              | automático | `NEXT_PUBLIC_API_URL`      |
-| Scheduler | `apps/scheduler` | automático                 | `turbo build`                              | `.next`    | `NEXT_PUBLIC_API_URL`      |
+| App       | Root             | Install                    | Build                                                 | Output     | Variable Preview requerida |
+| --------- | ---------------- | -------------------------- | ----------------------------------------------------- | ---------- | -------------------------- |
+| Envelope  | `apps/envelope`  | `cd ../.. && pnpm install` | `cd ../.. && pnpm build --filter=@cosmetics/envelope` | automático | `NEXT_PUBLIC_API_URL`      |
+| Finance   | `apps/finance`   | automático                 | automático                                            | automático | ninguna                    |
+| HR        | `apps/hr`        | automático                 | automático                                            | automático | ninguna                    |
+| Payroll   | `apps/payroll`   | automático                 | `turbo build`                                         | automático | `NEXT_PUBLIC_API_URL`      |
+| Scheduler | `apps/scheduler` | automático                 | `turbo build`                                         | `.next`    | `NEXT_PUBLIC_API_URL`      |
 
 Todos deben usar framework `nextjs`, Node `22.x`, Production Branch `master`,
 acceso al monorepo fuera del Root Directory y el alias estable de `develop`

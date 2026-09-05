@@ -292,20 +292,20 @@ seleccionarse.
 
 ### 7.3 Turborepo
 
-El repositorio usa Turborepo `1.13.4`. Antes de depender de funcionalidades
-modernas de análisis se hará una actualización aislada y validada:
+La Fase 2 actualizó el repositorio de Turborepo `1.13.4` a `2.10.5` mediante la
+PR independiente #88:
 
-- migrar `pipeline` a `tasks`;
-- validar compatibilidad con pnpm 10 y Node.js 22.23.2;
-- conservar los mismos comandos funcionales;
-- verificar el grafo y los builds de todas las apps;
-- usar `turbo query affected` o el mecanismo estable equivalente de la versión
-  elegida;
+- `pipeline` se migró a `tasks`;
+- la CI conserva pnpm 10 y Node.js 22.23.2 como validación obligatoria;
+- los comandos funcionales existentes se conservan y POS agrega `build:web`;
+- el grafo y los builds de todas las apps se verifican en `Production builds`;
+- `turbo query affected` está disponible como diagnóstico secundario;
 - no usar `turbo-ignore` como base permanente.
 
-También se revisará `globalDependencies`. El patrón actual `**/.env.*` invalida
-globalmente ejemplos de environment dentro de cualquier workspace y debe
-sustituirse por inputs deliberados que reflejen el build real.
+`globalDependencies` ya no contiene `**/.env.*`: sólo conserva `.nvmrc`,
+`pnpm-workspace.yaml` y `tsconfig.json`. El ESLint raíz participa únicamente en
+la tarea `lint`. La evidencia y los límites de la validación están en
+`docs/VERCEL_PHASE_2_TURBO.md`.
 
 ### 7.4 Build y publicación
 
@@ -416,24 +416,36 @@ Rollback: retirar el check diagnóstico; no modifica ambientes.
 
 Objetivo: disponer de un grafo moderno y confiable.
 
+Estado al 5 de septiembre de 2026: **completada e integrada en `develop`**
+mediante la PR #88. Turbo quedó fijado en `2.10.5`, `pipeline` se migró a
+`tasks` y el grafo se valida automáticamente con
+`pnpm turbo:graph:verify`. La comparación con `1.13.4`, las decisiones de
+hashing y la evidencia viven en `docs/VERCEL_PHASE_2_TURBO.md`.
+
+Durante la validación se corrigió en Vercel el Build Command de Envelope de
+`--filter=envelope` a `--filter=@cosmetics/envelope`, necesario para que Turbo 2
+resuelva el workspace. El comando canónico también se validó con Turbo 1.13.4.
+
 Tareas:
 
-- Actualizar Turbo en un PR independiente.
-- Migrar la configuración al schema correspondiente.
-- Revisar y reducir invalidaciones globales.
-- Ejecutar lint, type-check, unit tests, contratos UI, regresión visual, builds e
-  integración de BD existentes.
-- Comparar el grafo anterior y el nuevo para todas las aplicaciones.
-- Mantener los nombres actuales de los checks requeridos.
+- [x] Actualizar Turbo en un PR independiente.
+- [x] Migrar la configuración al schema correspondiente.
+- [x] Revisar y reducir invalidaciones globales.
+- [x] Ejecutar lint, type-check, unit tests, contratos UI, regresión visual,
+      builds e integración de BD existentes.
+- [x] Comparar el grafo anterior y el nuevo para todas las aplicaciones.
+- [x] Mantener los nombres actuales de los checks requeridos.
 
 Criterio de salida:
 
-- CI completa en verde.
-- Builds reproducibles para las ocho aplicaciones locales y el backend, aunque
-  sólo cinco frontends tengan actualmente proyecto Vercel.
-- Detector de Fase 1 produce el mismo resultado esperado con el grafo nuevo.
+- [x] CI completa en verde.
+- [x] Builds reproducibles para las ocho aplicaciones locales y el backend,
+      aunque sólo cinco frontends tengan actualmente proyecto Vercel.
+- [x] El detector de Fase 1 produce el mismo resultado esperado con el grafo
+      nuevo.
 
-Rollback: revertir este PR completo; no cambiar aún Vercel.
+Rollback: revertir la PR #88 completa. El Build Command canónico de Envelope es
+compatible con Turbo 1.13.4 y puede conservarse durante el rollback.
 
 ### Fase 3 — Identidad de releases y smokes multiversión
 
