@@ -64,6 +64,6 @@ export DATABASE_URL="$SCHEDULER_UPGRADE_DATABASE_URL"
 export DIRECT_URL="${SCHEDULER_UPGRADE_DIRECT_URL:-$SCHEDULER_UPGRADE_DATABASE_URL}"
 
 pnpm --dir "$repo_root/backend/api" exec prisma migrate deploy --schema "$tmp_root/prisma/schema.prisma"
-pnpm --filter @cosmetics/api scheduler:migration:fixture -- seed
+pnpm --filter @cosmetics/api run scheduler:migration:fixture seed
 pnpm --filter @cosmetics/api db:migrate:deploy
-pnpm --filter @cosmetics/api scheduler:migration:fixture -- verify
+pnpm --filter @cosmetics/api run scheduler:migration:fixture verify
