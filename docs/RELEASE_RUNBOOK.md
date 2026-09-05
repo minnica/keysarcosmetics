@@ -6,6 +6,12 @@ Este documento define el flujo seguro para promover cambios desde una feature ha
 
 Crear los environments `development` y `production`.
 
+Mientras la selección frontend permanezca en la Fase 4 diagnóstica, configurar
+como secret de repositorio `VERCEL_TOKEN_READ_ONLY`. Debe ser una credencial
+dedicada al scope de los cinco proyectos activos. El workflow sólo hace
+consultas `GET`; no colocar este token en los environments de API ni reutilizar
+`FLY_API_TOKEN` o los bypass de automatización.
+
 En ambos environments configurar estos secretos:
 
 - `DATABASE_URL`: conexión PostgreSQL del ambiente usada por Prisma.
@@ -66,9 +72,13 @@ Si solo existe una persona desarrolladora, la aprobación de código puede queda
 3. Esperar CI y revisar el Preview Deployment de Vercel.
 4. Para cambios Prisma, confirmar que la migración sea aditiva. SQL destructivo requiere una revisión explícita y el comentario `-- migration-safety: reviewed` dentro de la migración.
 5. Hacer squash merge y eliminar la rama.
-6. Ejecutar manualmente `Deploy API` hacia `development` cuando cambien API o Prisma.
-7. Ejecutar `Environment smoke tests` contra `development`, indicando por separado los SHA completos servidos por Envelope, Payroll, Scheduler y `/health`.
-8. Cuando la combinación vaya a promoverse, ejecutar `Authenticated development E2E` con la misma matriz multiversión.
+6. Revisar `Vercel frontend impact diagnostic`: debe haber esperado una CI verde,
+   publicar la matriz teórica y declarar cero operaciones de deployment. Durante
+   la Fase 4, contrastar su resumen con los deployments que todavía crea la
+   integración Git automática y conservar el artefacto por 30 días.
+7. Ejecutar manualmente `Deploy API` hacia `development` cuando cambien API o Prisma.
+8. Ejecutar `Environment smoke tests` contra `development`, indicando por separado los SHA completos servidos por Envelope, Payroll, Scheduler y `/health`.
+9. Cuando la combinación vaya a promoverse, ejecutar `Authenticated development E2E` con la misma matriz multiversión.
 
 Los seis smoke tests públicos no autentican usuarios ni escriben datos: comprueban identidad exacta de Envelope, Payroll, Scheduler y API, `/health`, `/ready`, el contrato JSON 404 y las tres pantallas de login. En previews protegidos envían los bypass de automatización mediante headers. Traces, screenshots y video están desactivados para que secretos o datos no entren en artefactos.
 

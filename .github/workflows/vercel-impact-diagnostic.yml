@@ -1,0 +1,127 @@
+name: Vercel frontend impact diagnostic
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [develop, master]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vercel-impact-diagnostic-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: true
+
+jobs:
+  ci-gate:
+    name: Confirm successful CI push
+    if: >-
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+    outputs:
+      branch: ${{ steps.context.outputs.branch }}
+      environment: ${{ steps.context.outputs.environment }}
+      target_sha: ${{ steps.context.outputs.target_sha }}
+    steps:
+      - name: Verify CI result and release context
+        id: context
+        env:
+          CI_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          test "$CI_CONCLUSION" = "success"
+          [[ "$HEAD_SHA" =~ ^[0-9a-fA-F]{40}$ ]]
+          case "$HEAD_BRANCH" in
+            develop)
+              target_environment=development
+              ;;
+            master)
+              target_environment=production
+              ;;
+            *)
+              echo "Rama no admitida: $HEAD_BRANCH" >&2
+              exit 1
+              ;;
+          esac
+          {
+            echo "branch=$HEAD_BRANCH"
+            echo "environment=$target_environment"
+            echo "target_sha=${HEAD_SHA,,}"
+          } >> "$GITHUB_OUTPUT"
+
+  diagnose:
+    name: Select affected Vercel frontends
+    needs: ci-gate
+    runs-on: ubuntu-latest
+    outputs:
+      affected_count: ${{ steps.summary.outputs.affected_count }}
+      matrix: ${{ steps.summary.outputs.matrix }}
+    steps:
+      - name: Checkout the exact successful SHA with full history
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: ${{ needs.ci-gate.outputs.target_sha }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22.23.2
+      - name: Require read-only Vercel credentials
+        env:
+          VERCEL_TOKEN_READ_ONLY: ${{ secrets.VERCEL_TOKEN_READ_ONLY }}
+        run: test -n "$VERCEL_TOKEN_READ_ONLY"
+      - name: Collect previous deployments and current Git integration evidence
+        env:
+          VERCEL_TOKEN_READ_ONLY: ${{ secrets.VERCEL_TOKEN_READ_ONLY }}
+        run: |
+          node scripts/collect-vercel-deployment-state.mjs \
+            --environment "${{ needs.ci-gate.outputs.environment }}" \
+            --branch "${{ needs.ci-gate.outputs.branch }}" \
+            --target-sha "${{ needs.ci-gate.outputs.target_sha }}" \
+            --output vercel-deployment-evidence.json
+      - name: Run the fail-closed impact detector
+        run: |
+          node scripts/detect-vercel-impact.mjs \
+            --environment "${{ needs.ci-gate.outputs.environment }}" \
+            --branch "${{ needs.ci-gate.outputs.branch }}" \
+            --target-sha "${{ needs.ci-gate.outputs.target_sha }}" \
+            --app envelope,finance,hr,payroll,scheduler \
+            --deployment-state vercel-deployment-evidence.json \
+            > vercel-impact.json
+      - name: Publish the dynamic matrix and audit summary
+        id: summary
+        run: |
+          node scripts/write-vercel-impact-summary.mjs \
+            --impact vercel-impact.json \
+            --evidence vercel-deployment-evidence.json
+      - name: Record a fail-closed diagnostic error
+        if: failure()
+        run: |
+          {
+            echo "## Vercel frontend impact — bloqueado"
+            echo ""
+            echo "La evidencia remota o el detector fueron inconclusos. No se produjo una matriz de deployment y no se invocó ninguna operación de publicación en Vercel."
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Preserve sanitized diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: vercel-impact-${{ needs.ci-gate.outputs.environment }}-${{ needs.ci-gate.outputs.target_sha }}-${{ github.run_attempt }}
+          path: |
+            vercel-deployment-evidence.json
+            vercel-impact.json
+          if-no-files-found: ignore
+          retention-days: 30
+
+  deployments-disabled:
+    name: Deployments disabled in Phase 4
+    needs: diagnose
+    if: ${{ false }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.diagnose.outputs.matrix) }}
+    steps:
+      - run: echo "No deployment is permitted during Phase 4"

@@ -197,10 +197,15 @@ function isExcludedRepositoryFile(filePath) {
   if (filePath.startsWith("apps/ui-testbed/")) return true;
   if (
     new Set([
+      "scripts/collect-vercel-deployment-state.mjs",
       "scripts/detect-vercel-impact.mjs",
       "scripts/run-vercel-impact-history.mjs",
+      "scripts/verify-turbo-graph.mjs",
+      "scripts/vercel-deployment-state-lib.mjs",
       "scripts/vercel-impact-detector-lib.mjs",
       "scripts/vercel-impact-detector.test.mjs",
+      "scripts/vercel-impact-summary-lib.mjs",
+      "scripts/write-vercel-impact-summary.mjs",
     ]).has(filePath)
   )
     return true;

@@ -60,3 +60,5 @@ playwright-report-development/
 test-results/
 apps/e2e/.auth/
 apps/e2e/release-manifest*.json
+vercel-deployment-evidence.json
+vercel-impact.json

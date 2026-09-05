@@ -2,9 +2,10 @@
 
 > Estado: implementación aprobada. Fases 0 y 1 completadas el 4 de septiembre
 > de 2026. La Fase 2 se integró en `develop` mediante la PR #88 con CI y
-> previews en verde. La Fase 3 quedó implementada en repositorio el 5 de
-> septiembre de 2026 y espera su validación de ambiente. Durante la validación
-> de la Fase 2 se corrigió en Vercel el Build Command de Envelope a
+> previews en verde. Las Fases 3 y 4 quedaron implementadas en repositorio el
+> 5 de septiembre de 2026 y esperan sus corridas completas de CI/ambiente para
+> cumplir los criterios de salida remotos. Durante la validación de la Fase 2 se
+> corrigió en Vercel el Build Command de Envelope a
 > `--filter=@cosmetics/envelope`; no se aplicaron otros cambios operativos.
 
 ## 1. Objetivo
@@ -458,25 +459,38 @@ siendo amplios.
 
 Objetivo: validar la orquestación sin crear deployments.
 
+Estado al 5 de septiembre de 2026: **implementada en repositorio; pendiente de
+observación remota**. `Vercel frontend impact diagnostic` se inicia sólo cuando
+el workflow `CI` termina correctamente para un push del mismo repositorio a
+`develop` o `master`. Consulta por API el historial de los cinco proyectos
+activos, descarta el deployment del SHA objetivo, conserva como base el último
+`READY` anterior que sea ancestro y entrega esa evidencia al detector de la
+Fase 1. La matriz, comparación contra la integración Git y artefactos
+sanitizados quedan registrados sin ejecutar builds, deployments o aliases. El
+contrato y la puesta en marcha están en
+`docs/VERCEL_PHASE_4_DIAGNOSTIC_WORKFLOW.md`.
+
 Tareas:
 
-- Crear el workflow para pushes a `develop` y `master`.
-- Esperar o comprobar el resultado de CI antes de continuar.
-- Ejecutar el detector y producir una matriz dinámica.
-- Publicar en `GITHUB_STEP_SUMMARY`:
+- [x] Crear el workflow para pushes a `develop` y `master`.
+- [x] Esperar o comprobar el resultado de CI antes de continuar.
+- [x] Ejecutar el detector y producir una matriz dinámica.
+- [x] Publicar en `GITHUB_STEP_SUMMARY`:
   - apps afectadas;
   - apps omitidas;
   - SHA base/objetivo;
   - razones;
   - impacto esperado en Vercel.
-- Conservar todos los jobs de deployment deshabilitados.
-- Comparar durante varios merges el resultado teórico con los deployments que
-  genera todavía la integración Git automática.
+- [x] Conservar todos los jobs de deployment deshabilitados.
+- [ ] Comparar durante varios merges el resultado teórico con los deployments que
+      genera todavía la integración Git automática.
 
 Criterio de salida:
 
-- La selección coincide con la revisión humana y con el grafo real.
-- No hay falsos negativos en los casos observados.
+- Cumplido localmente: la selección conserva la matriz de aceptación y usa el
+  grafo real del SHA objetivo.
+- Pendiente remoto: confirmar durante varios merges que no existen falsos
+  negativos y conservar sus artefactos de evidencia.
 
 Rollback: deshabilitar el workflow diagnóstico.
 
@@ -708,7 +722,7 @@ Metas iniciales:
       falta conservar evidencia de los smokes sobre aliases reales.
 - [ ] Estrategia de credenciales y environments aprobada.
 - [ ] Rollback del piloto preparado antes de retirar su integración Git.
-- [x] Producción permanece sin cambios durante las Fases 0–3.
+- [x] Producción permanece sin cambios durante las Fases 0–4.
 
 ## 15. Decisiones pendientes
 

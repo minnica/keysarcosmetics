@@ -1164,6 +1164,17 @@ La migración en Supabase dev, el backend `cosmetics-api-dev`, el login `SUPER_A
   aprobada. Contrato, pruebas y rollback:
   `docs/VERCEL_PHASE_3_RELEASE_IDENTITY.md`. No se modificó configuración remota
   ni producción.
+- La Fase 4 quedó implementada en repositorio el 5 de septiembre de 2026 y
+  permanece pendiente de observar varios merges reales. El workflow
+  `.github/workflows/vercel-impact-diagnostic.yml` se dispara después de una CI
+  exitosa de un push a `develop` o `master`, consulta en sólo lectura el último
+  deployment `READY` anterior y ancestro de cada uno de los cinco proyectos
+  activos, ejecuta el detector fail-closed y publica matriz, razones y
+  comparación contra la integración Git actual. El SHA objetivo nunca se usa
+  como su propia base. Los jobs de deployment están deshabilitados; no se
+  construyen artefactos ni se modifican deployments o aliases. La primera
+  corrida remota requiere el secret dedicado `VERCEL_TOKEN_READ_ONLY`; contrato
+  y evidencia: `docs/VERCEL_PHASE_4_DIAGNOSTIC_WORKFLOW.md`.
 - No subir `.env` ni `.env.local` al repositorio.
 - `apps/envelope/.env.local` es solo local y no debe commitearse.
 - `apps/payroll/.env.local` también es solo local y no debe commitearse; las variables de Vercel se configuran por proyecto y ambiente.
@@ -1392,7 +1403,8 @@ apps/e2e/
 ├── deploy-api.yml                → migración + deploy manual protegido
 ├── development-e2e.yml           → E2E autenticado por SHA, solo development
 ├── pos-pilot.yml                 → migraciones efímeras + conciliación protegida del piloto POS
-└── staging-smoke.yml             → smoke tests manuales development/production
+├── staging-smoke.yml             → smoke tests manuales development/production
+└── vercel-impact-diagnostic.yml  → selección frontend de sólo lectura después de CI
 ```
 
 ### packages/ui
@@ -1524,6 +1536,11 @@ pnpm deploy:impact:test   # matriz local del detector selectivo, sin invocar Ver
 pnpm deploy:impact:history # cinco diagnósticos históricos reproducibles
 pnpm deploy:release-manifest:test # contrato multiversión y alias desfasados
 ```
+
+La recolección remota de la Fase 4 se ejecuta exclusivamente desde
+`Vercel frontend impact diagnostic` después de CI. Requiere
+`VERCEL_TOKEN_READ_ONLY`, escribe evidencia sanitizada y no debe usarse para
+crear deployments o descargar variables.
 
 ### Deploy backend
 

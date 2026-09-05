@@ -51,9 +51,10 @@ Opciones:
 | `--repository`       | Ruta del repositorio; por defecto usa el directorio de trabajo      |
 
 En ramas desplegables es obligatorio proporcionar `--base-sha` o
-`--deployment-state`. En esta fase el estado se inyecta deliberadamente desde
-un archivo para no consultar Vercel. La Fase 4 será responsable de obtener la
-evidencia remota y entregarla al mismo contrato.
+`--deployment-state`. En esta fase el estado se inyectó deliberadamente desde
+un archivo para no consultar Vercel. La Fase 4 ya obtiene esa evidencia remota
+en modo de sólo lectura y la entrega al mismo contrato; ver
+`docs/VERCEL_PHASE_4_DIAGNOSTIC_WORKFLOW.md`.
 
 ### Estado de deployments
 
@@ -186,7 +187,8 @@ los cinco proyectos Vercel sigue sin cambios y producción permanece intacta.
 
 La Fase 2 actualizará Turborepo en un cambio aislado. Después, la misma matriz
 debe seguir en verde y sus resultados deben compararse con el grafo moderno.
-La Fase 4 integrará este detector en un workflow exclusivamente diagnóstico.
+La Fase 4 ya integra este detector en un workflow exclusivamente diagnóstico;
+su comparación sobre varios merges reales permanece pendiente.
 
 Rollback de esta fase: retirar los cuatro scripts y los tres comandos
 `deploy:impact*`; no existe rollback remoto porque no hubo mutaciones externas.

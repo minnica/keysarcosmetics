@@ -139,6 +139,14 @@ git status
 
 El árbol de trabajo debe quedar limpio.
 
+Después de que la CI del push integrado termine en verde, GitHub ejecuta
+`Vercel frontend impact diagnostic`. Durante la Fase 4 este workflow sólo
+consulta el historial de los cinco proyectos activos, calcula qué aplicaciones
+deberían desplegarse y publica la comparación con la integración Git automática.
+No construye, despliega ni cambia aliases. Revisar su resumen y conservar el
+artefacto cuando el merge represente un caso nuevo de la matriz; una corrida
+inconclusa debe tratarse como bloqueo del diagnóstico, nunca como “cero apps”.
+
 ---
 
 # 4. Despliegue en development
