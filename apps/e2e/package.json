@@ -15,7 +15,7 @@
     "test:ui:visual:update": "playwright test -c playwright.visual.config.ts --update-snapshots"
   },
   "devDependencies": {
-    "@types/node": "^20.14.9",
-    "playwright": "^1.60.0"
+    "@types/node": "^26.4.1",
+    "playwright": "^1.62.1"
   }
 }
