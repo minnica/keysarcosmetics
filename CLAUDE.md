@@ -333,7 +333,7 @@ La regresión visual de los componentes de alto riesgo usa `apps/ui-testbed`, un
 
 El E2E funcional autenticado de development vive en `apps/e2e/development` y se ejecuta con `pnpm test:e2e:development` o mediante **Authenticated development E2E**. Usa cuentas técnicas distintas y de mínimo privilegio, genera `storageState` temporal bajo `apps/e2e/.auth`, y cubre ocho recorridos de solo lectura por app; ambos incluyen calendarios reales, tablas, selects, navegación móvil y logout. Un fixture falla ante cualquier método distinto de `GET`, `HEAD` u `OPTIONS`. Los proyectos autenticados desactivan traces, screenshots y video para que JWT, bypass secrets y datos operativos no entren en artefactos; solo se conserva siete días el reporte HTML seguro. Antes de los recorridos, los alias Vercel deben exponer el SHA indicado en `meta[name="keysar-release"]` y `/health.release` debe coincidir con el SHA de API indicado. La preparación de cuentas, permisos, variables y diagnóstico está en `apps/e2e/README.md`. La Fase 4 de `PLAN_PRUEBAS_UI_COMPARTIDA_Y_E2E.md` quedó implementada el 2026-08-27.
 
-El smoke autenticado productivo vive en `apps/e2e/production` y solo se ejecuta después de los cinco smokes públicos mediante **Environment smoke tests** sobre el environment protegido `production`. Usa cuentas productivas separadas: Envelope recibe exclusivamente `dashboard` y `reportes/total-general` con `selfDataOnly`; Payroll recibe únicamente `payroll/esquemas` con `canWrite = false`. Cada app tiene tres recorridos y el mismo guard bloquea escrituras. El reporte total general de Envelope acepta como resultados sanos tanto la tabla como el estado vacío autorizado para la cuenta de alcance propio; el logout acepta `/login` con o sin el parámetro `next` que conserva la ruta de retorno. La configuración productiva usa cero retries, desactiva traces/screenshots/video, no publica reporte HTML y elimina sesiones/resultados incluso al fallar. El workflow exige los SHA exactos de frontends/API y registra duración, intento y resultado en el resumen. Las cuentas, los cuatro secrets `PRODUCTION_MONITOR_*` y la observación de cinco promociones son activación administrativa externa; no crear seeds ni credenciales en el repositorio. La implementación de la Fase 5 concluyó en repositorio el 2026-08-27.
+El smoke autenticado productivo vive en `apps/e2e/production` y solo se ejecuta después de los seis smokes públicos mediante **Environment smoke tests** sobre el environment protegido `production`. Usa cuentas productivas separadas: Envelope recibe exclusivamente `dashboard` y `reportes/total-general` con `selfDataOnly`; Payroll recibe únicamente `payroll/esquemas` con `canWrite = false`. Cada app tiene tres recorridos y el mismo guard bloquea escrituras. El reporte total general de Envelope acepta como resultados sanos tanto la tabla como el estado vacío autorizado para la cuenta de alcance propio; el logout acepta `/login` con o sin el parámetro `next` que conserva la ruta de retorno. La configuración productiva usa cero retries, desactiva traces/screenshots/video, no publica reporte HTML y elimina sesiones/resultados incluso al fallar. El workflow exige la matriz exacta de SHAs independientes para frontends/API, publica el manifiesto verificado y registra duración, intento y resultado en el resumen. Las cuentas, los cuatro secrets `PRODUCTION_MONITOR_*` y la observación de cinco promociones son activación administrativa externa; no crear seeds ni credenciales en el repositorio. La implementación de la Fase 5 concluyó en repositorio el 2026-08-27.
 
 Componentes shadcn canónicos en `packages/ui/src/components/ui`:
 
@@ -1140,6 +1140,30 @@ La migración en Supabase dev, el backend `cosmetics-api-dev`, el login `SUPER_A
   cinco diagnósticos históricos. Contrato y evidencia:
   `docs/VERCEL_PHASE_1_DETECTOR.md`. La integración Git automática actual sigue
   activa hasta las fases posteriores y producción permanece sin cambios.
+- La Fase 2 se integró en `develop` el 5 de septiembre de 2026 mediante la
+  PR #88, con CI y previews de Vercel en verde. Turbo está fijado en
+  `2.10.5`, `turbo.json` usa `tasks` y las invalidaciones globales se limitan a
+  `.nvmrc`, `pnpm-workspace.yaml` y `tsconfig.json`; `.eslintrc.cjs` sólo
+  participa en `lint`. `pnpm turbo:graph:verify` compara el grafo de build con
+  los manifests y exige las ocho apps más el API. `auth` y `api-client` declaran
+  ahora `types` como dependencia directa para que `^build` represente la arista
+  real. `Production builds` ejecuta ese gate, la matriz del detector, el
+  contrato de manifiesto multiversión y los nueve builds; POS usa `build:web` y
+  no ejecuta `electron-builder`. Evidencia y
+  límites locales: `docs/VERCEL_PHASE_2_TURBO.md`. Durante la validación se
+  corrigió en Vercel el Build Command de Envelope para usar el nombre exacto
+  `--filter=@cosmetics/envelope`; no se desplegó manualmente a producción.
+- La Fase 3 quedó implementada en repositorio el 5 de septiembre de 2026 y
+  permanece pendiente de validar los workflows sobre aliases reales con SHAs
+  distintos. Envelope, Payroll y Scheduler exponen
+  `meta[name="keysar-release"]`; los smokes reciben un SHA independiente para
+  cada app y para API, validan la matriz antes de autenticar y publican por 30
+  días un manifiesto JSON sin URLs ni secretos. `Deploy API` ya no exige el
+  mismo commit para Scheduler y API al activar el proveedor interno: recibe
+  `scheduler_frontend_sha`, verifica ambos releases y registra la combinación
+  aprobada. Contrato, pruebas y rollback:
+  `docs/VERCEL_PHASE_3_RELEASE_IDENTITY.md`. No se modificó configuración remota
+  ni producción.
 - No subir `.env` ni `.env.local` al repositorio.
 - `apps/envelope/.env.local` es solo local y no debe commitearse.
 - `apps/payroll/.env.local` también es solo local y no debe commitearse; las variables de Vercel se configuran por proyecto y ambiente.
@@ -1151,9 +1175,9 @@ La migración en Supabase dev, el backend `cosmetics-api-dev`, el login `SUPER_A
 - `.github/workflows/ci.yml` valida PRs y pushes a `develop`/`master` con los checks independientes `Shared UI contracts` y `UI regression canaries`, lint, TypeScript, unit tests, builds productivos, sincronía de schemas Prisma, aplicación completa de migraciones sobre PostgreSQL 16 efímero e integración HTTP real de login/sesión. `Shared UI contracts` ejecuta la suite de `@cosmetics/ui` con sus umbrales obligatorios de cobertura; `UI regression canaries` compara los snapshots del testbed en Chromium.
 - Los scripts `type-check`, `test:unit` y `test:integration` de `@cosmetics/api` ejecutan previamente `prisma generate`; esto es obligatorio porque un runner limpio todavía no tiene los tipos y enums generados de `@prisma/client`.
 - Envelope conserva temporalmente un presupuesto máximo de 8 warnings ESLint y Payroll de 7; CI bloquea cualquier incremento mientras se reduce esa deuda en cambios separados.
-- `.github/workflows/deploy-api.yml` solo se ejecuta manualmente. Fija el SHA de la rama `develop` o `master` antes de la aprobación, usa el environment `development` o `production`, aplica `prisma migrate deploy`, despliega exactamente ese commit y espera `/ready`. Producción exige escribir `PRODUCCION_RESPALDADA`; esta confirmación no sustituye verificar backup/PITR ni la aprobación del environment.
-- `.github/workflows/staging-smoke.yml` exige los SHA completos servidos y ejecuta cinco smoke tests Playwright públicos de solo lectura contra API, Envelope y Payroll en el environment elegido. En producción encadena además `Authenticated production smoke`, con tres recorridos por app, cuentas de monitoreo, cero retries y sin artefactos sensibles. Los previews protegidos usan `ENVELOPE_VERCEL_BYPASS_SECRET` y `PAYROLL_VERCEL_BYPASS_SECRET`, generados por separado en cada proyecto Vercel; todas las suites de ambiente desactivan traces, screenshots y video.
-- `.github/workflows/development-e2e.yml` ejecuta manualmente 16 recorridos autenticados de solo lectura (8 Envelope + 8 Payroll) únicamente en el environment `development`. Requiere las cuatro credenciales `E2E_*`, los bypass de Vercel y los SHA completos de frontend/API; compara la identidad desplegada antes de probar y elimina los `storageState` antes de adjuntar el reporte seguro.
+- `.github/workflows/deploy-api.yml` solo se ejecuta manualmente. Fija el SHA de la rama `develop` o `master` antes de la aprobación, usa el environment `development` o `production`, aplica `prisma migrate deploy`, despliega exactamente ese commit y exige que `/health.release` coincida además de esperar `/ready`. La activación interna de Scheduler recibe y verifica por separado `scheduler_frontend_sha`, conserva la confirmación literal y registra la pareja compatible. Producción exige escribir `PRODUCCION_RESPALDADA`; esta confirmación no sustituye verificar backup/PITR ni la aprobación del environment.
+- `.github/workflows/staging-smoke.yml` exige SHAs completos independientes para API, Envelope, Payroll y Scheduler y ejecuta seis smoke tests Playwright públicos de solo lectura en el environment elegido. Una matriz verificada produce un manifiesto JSON seguro por 30 días. En producción encadena además `Authenticated production smoke`, con tres recorridos por app, cuentas de monitoreo, cero retries y sin artefactos sensibles. Los previews protegidos usan bypass secrets separados por proyecto; todas las suites de ambiente desactivan traces, screenshots y video.
+- `.github/workflows/development-e2e.yml` ejecuta manualmente 19 recorridos autenticados de solo lectura (8 Envelope + 8 Payroll + 3 Scheduler) únicamente en el environment `development`. Requiere seis credenciales `E2E_*`, los bypass de Vercel y los cuatro SHAs independientes; compara la identidad desplegada antes de crear sesiones, registra el manifiesto multiversión y elimina los `storageState` antes de adjuntar el reporte seguro.
 - `.github/workflows/pos-pilot.yml` implementa la puerta manual **POS pilot gate** sobre el environment `development`. Primero reconstruye todas las migraciones y ejecuta integración HTTP en PostgreSQL 16 efímero; después verifica el SHA/readiness desplegado, `prisma migrate status`, diagnóstico y conciliación `READ ONLY` de una sucursal/fecha. La confirmación `PILOTO_CONCILIADO` representa la aprobación humana y no se usa para crear datos ni credenciales.
 - El API separa `src/app.ts` (Express importable) de `src/index.ts` (listener y cierre ordenado). `/health` verifica el proceso y `/ready` verifica conectividad PostgreSQL; Fly enruta mediante el segundo.
 - Las migraciones Prisma dejaron de estar ignoradas por Git. `scripts/check-migration-safety.mjs` bloquea SQL nuevo potencialmente destructivo salvo revisión explícita documentada con `-- migration-safety: reviewed`.
@@ -1358,6 +1382,7 @@ backend/api/
 apps/e2e/
 ├── playwright.config.ts                     → proyectos smoke API, Envelope, Payroll y Scheduler
 ├── playwright.development.config.ts         → E2E autenticado seguro de development
+├── helpers/release-identity.ts               → contrato y manifiesto multiversión compartido
 ├── development/                             → setups aislados, guard de escritura y 19 recorridos
 ├── tests/                                   → smoke tests públicos por ambiente
 └── README.md                                → cuentas, permisos, secrets y diagnóstico
@@ -1497,6 +1522,7 @@ pnpm test:e2e:production  # diagnóstico administrado; solo cuentas de monitoreo
 pnpm turbo:graph:verify   # valida el grafo de build de las ocho apps y el API
 pnpm deploy:impact:test   # matriz local del detector selectivo, sin invocar Vercel
 pnpm deploy:impact:history # cinco diagnósticos históricos reproducibles
+pnpm deploy:release-manifest:test # contrato multiversión y alias desfasados
 ```
 
 ### Deploy backend

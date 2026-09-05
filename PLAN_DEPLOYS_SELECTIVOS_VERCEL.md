@@ -1,8 +1,11 @@
 # Plan de despliegues selectivos en Vercel
 
 > Estado: implementación aprobada. Fases 0 y 1 completadas el 4 de septiembre
-> de 2026. No se han aplicado cambios operativos en GitHub, Vercel, Fly.io,
-> Supabase ni en los workflows existentes.
+> de 2026. La Fase 2 se integró en `develop` mediante la PR #88 con CI y
+> previews en verde. La Fase 3 quedó implementada en repositorio el 5 de
+> septiembre de 2026 y espera su validación de ambiente. Durante la validación
+> de la Fase 2 se corrigió en Vercel el Build Command de Envelope a
+> `--filter=@cosmetics/envelope`; no se aplicaron otros cambios operativos.
 
 ## 1. Objetivo
 
@@ -421,22 +424,32 @@ Rollback: revertir este PR completo; no cambiar aún Vercel.
 
 Objetivo: permitir que aplicaciones sin cambios conserven un SHA anterior.
 
+Estado al 5 de septiembre de 2026: **implementada en repositorio; pendiente de
+validación remota**. Scheduler ya expone `keysar-release`; los smokes reciben un
+SHA independiente por frontend y API, verifican la matriz antes de autenticar y
+publican un manifiesto JSON sin secretos. `Deploy API` aprueba y registra una
+pareja Scheduler/API compatible aunque sus SHAs sean distintos. El contrato,
+pruebas y evidencia local viven en
+`docs/VERCEL_PHASE_3_RELEASE_IDENTITY.md`.
+
 Tareas:
 
-- Añadir `keysar-release` a Scheduler; verificar las demás apps desplegadas que
-  deban participar en los smokes.
-- Cambiar los workflows de smoke/E2E para aceptar un SHA esperado por
-  aplicación, en lugar de un único SHA compartido.
-- Registrar un manifiesto de ambiente con las versiones servidas por app y API.
-- Adaptar el gate de activación Scheduler para comprobar una combinación
-  compatible aprobada de frontend/API.
-- Mantener pruebas de sólo lectura y protección de secretos.
+- [x] Añadir `keysar-release` a Scheduler; verificar las demás apps desplegadas
+      que deban participar en los smokes.
+- [x] Cambiar los workflows de smoke/E2E para aceptar un SHA esperado por
+      aplicación, en lugar de un único SHA compartido.
+- [x] Registrar un manifiesto de ambiente con las versiones servidas por app y
+      API.
+- [x] Adaptar el gate de activación Scheduler para comprobar una combinación
+      compatible aprobada de frontend/API.
+- [x] Mantener pruebas de sólo lectura y protección de secretos.
 
 Criterio de salida:
 
-- Los smokes pasan cuando Envelope, Payroll y Scheduler sirven SHAs distintos y
-  correctos.
-- Los smokes fallan si cualquier alias sirve un SHA diferente al declarado.
+- Pendiente remoto: los smokes pasan cuando Envelope, Payroll y Scheduler sirven
+  SHAs distintos y correctos.
+- Cumplido por contrato y prueba local; pendiente de evidencia remota: los
+  smokes fallan si cualquier alias sirve un SHA diferente al declarado.
 
 Rollback: restaurar el contrato de SHA único mientras los deployments continúen
 siendo amplios.
@@ -691,10 +704,11 @@ Metas iniciales:
 - [x] Política de archivos globales y excluidos formalizada y validada por la
       Fase 1; cualquier ruta no contemplada bloquea el detector.
 - [ ] Actualización de Turborepo aprobada como PR independiente.
-- [ ] Contrato de identidad multiversión aprobado.
+- [x] Contrato de identidad multiversión aprobado e implementado por la Fase 3;
+      falta conservar evidencia de los smokes sobre aliases reales.
 - [ ] Estrategia de credenciales y environments aprobada.
 - [ ] Rollback del piloto preparado antes de retirar su integración Git.
-- [ ] Producción permanece sin cambios hasta completar las fases de staging.
+- [x] Producción permanece sin cambios durante las Fases 0–3.
 
 ## 15. Decisiones pendientes
 
@@ -708,8 +722,8 @@ fases:
    Actions con la configuración efectiva de la cuenta.
 4. Cómo normalizar Node remoto `24.x` frente a `.nvmrc` `22.23.2` y los comandos
    de build distintos antes del piloto.
-5. Cómo provisionar `NEXT_PUBLIC_API_URL` para Scheduler y adaptar los smokes al
-   modelo multiversión.
+5. Cómo provisionar `NEXT_PUBLIC_API_URL` para Scheduler; los smokes ya usan el
+   modelo multiversión desde la Fase 3.
 6. Qué aplicaciones de producción necesitan un gate de API exacto y cuáles sólo
    compatibilidad contractual.
 7. Durante cuántas promociones exitosas debe ejecutarse producción en sombra

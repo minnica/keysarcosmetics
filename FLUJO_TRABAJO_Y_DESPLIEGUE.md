@@ -191,7 +191,9 @@ Actions
 → Run workflow
 → Branch: develop
 → Environment: development
-→ release_sha: SHA completo servido por Envelope y Payroll
+→ envelope_sha: SHA completo servido por Envelope
+→ payroll_sha: SHA completo servido por Payroll
+→ scheduler_sha: SHA completo servido por Scheduler
 → api_sha: SHA completo reportado por /health
 ```
 
@@ -200,23 +202,25 @@ Los smoke tests comprueban:
 - `/health`.
 - `/ready`.
 - Contrato básico del API.
-- Pantalla de login de Envelope.
-- Pantalla de login de Payroll.
-- Identidad exacta de ambos frontends y la API.
+- Pantallas de login de Envelope, Payroll y Scheduler.
+- Identidad exacta e independiente de los tres frontends y la API.
+- Manifiesto JSON de la combinación realmente servida.
 
 ## Ejecutar E2E autenticado de solo lectura
 
-Antes de promover un SHA de `develop`, esperar a que los alias estables de Envelope y Payroll terminen su deploy y ejecutar:
+Antes de promover una combinación de `develop`, esperar a que los alias estables de Envelope, Payroll y Scheduler terminen sus deployments aplicables y ejecutar:
 
 ```text
 Actions
 → Authenticated development E2E
 → Run workflow
-→ release_sha: SHA completo servido por ambos alias Vercel
+→ envelope_sha: SHA completo servido por Envelope
+→ payroll_sha: SHA completo servido por Payroll
+→ scheduler_sha: SHA completo servido por Scheduler
 → api_sha: SHA completo reportado por /health en API development
 ```
 
-El workflow inicia sesión con dos cuentas técnicas de mínimo privilegio, genera `storageState` temporal y ejecuta ocho recorridos por app. Ambos incluyen una interacción real con calendario; también cubren tablas, selects, módulos críticos, sidebar móvil y logout. La suite falla si detecta un `POST`, `PUT`, `PATCH` o `DELETE`, si un alias sirve otro SHA o si la API no reporta el SHA indicado.
+El workflow valida primero la matriz multiversión y sólo entonces inicia sesión con tres cuentas técnicas de mínimo privilegio. Genera `storageState` temporal y ejecuta ocho recorridos para Envelope, ocho para Payroll y tres para Scheduler. La suite falla si detecta un `POST`, `PUT`, `PATCH` o `DELETE`, si un alias sirve otro SHA o si la API no reporta el SHA indicado.
 
 No habilitar esta suite contra producción. Las credenciales viven exclusivamente en secrets del environment `development`; las sesiones temporales se eliminan antes de publicar el reporte. El diagnóstico seguro no incluye traces, screenshots ni video. La preparación exacta de puestos, permisos y variables está en `apps/e2e/README.md`.
 
@@ -392,13 +396,15 @@ Actions
 → Run workflow
 → Branch: master
 → Environment: production
-→ release_sha: SHA completo servido por Envelope y Payroll
+→ envelope_sha: SHA completo servido por Envelope
+→ payroll_sha: SHA completo servido por Payroll
+→ scheduler_sha: SHA completo servido por Scheduler
 → api_sha: SHA completo reportado por /health
 ```
 
 Después de aprobar el environment:
 
-- [ ] Los cinco smoke tests públicos pasaron.
+- [ ] Los seis smoke tests públicos pasaron.
 - [ ] `Authenticated production smoke` pasó sus tres recorridos por app.
 - [ ] `/health` reporta el SHA esperado.
 - [ ] `/ready` está sano.

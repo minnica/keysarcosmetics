@@ -1,9 +1,11 @@
 import { expect, test } from "playwright/test";
 import {
-  assertFullGitSha,
-  optionalEnvironment,
+  assertReleaseIdentity,
+  readExpectedReleases,
   requiredEnvironment,
-} from "./helpers/environment";
+  writeVerifiedReleaseManifest,
+  type ReleaseSet,
+} from "../helpers/release-identity";
 
 type HealthPayload = {
   status: string;
@@ -14,10 +16,7 @@ test("los alias estables y la API exponen los releases esperados", async ({
   browser,
   request,
 }) => {
-  const expectedFrontendSha = requiredEnvironment("E2E_EXPECTED_FRONTEND_SHA");
-  const expectedApiSha = optionalEnvironment("E2E_EXPECTED_API_SHA");
-  assertFullGitSha(expectedFrontendSha, "E2E_EXPECTED_FRONTEND_SHA");
-  if (expectedApiSha) assertFullGitSha(expectedApiSha, "E2E_EXPECTED_API_SHA");
+  const expectedReleases = readExpectedReleases("E2E");
 
   async function readFrontendRelease(
     baseURL: string,
@@ -65,20 +64,30 @@ test("los alias estables y la API exponen los releases esperados", async ({
       request.get(`${requiredEnvironment("API_BASE_URL")}/health`),
     ]);
 
-  expect(envelopeRelease).toBe(expectedFrontendSha);
-  expect(payrollRelease).toBe(expectedFrontendSha);
-  expect(schedulerRelease).toBe(expectedFrontendSha);
   expect(healthResponse.ok()).toBe(true);
 
   const health = (await healthResponse.json()) as HealthPayload;
   expect(health.status).toBe("ok");
-  expect(health.release).toMatch(/^[a-f0-9]{40}$/i);
-  if (expectedApiSha) expect(health.release).toBe(expectedApiSha);
+  const actualReleases: ReleaseSet = {
+    envelope: envelopeRelease,
+    payroll: payrollRelease,
+    scheduler: schedulerRelease,
+    api: health.release,
+  };
+  assertReleaseIdentity(expectedReleases, actualReleases);
+
+  await writeVerifiedReleaseManifest(process.env["RELEASE_MANIFEST_PATH"], {
+    environment: requiredEnvironment("RELEASE_MANIFEST_ENVIRONMENT"),
+    releases: actualReleases,
+    suiteSha: process.env["GITHUB_SHA"]?.trim(),
+  });
 
   test
     .info()
     .annotations.push(
-      { type: "frontend-release", description: expectedFrontendSha },
-      { type: "api-release", description: health.release },
+      { type: "envelope-release", description: actualReleases.envelope },
+      { type: "payroll-release", description: actualReleases.payroll },
+      { type: "scheduler-release", description: actualReleases.scheduler },
+      { type: "api-release", description: actualReleases.api },
     );
 });
