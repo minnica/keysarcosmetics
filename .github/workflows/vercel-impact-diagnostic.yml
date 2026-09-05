@@ -60,9 +60,6 @@ jobs:
       affected_count: ${{ steps.summary.outputs.affected_count }}
       matrix: ${{ steps.summary.outputs.matrix }}
       expected_frontend_releases: ${{ steps.summary.outputs.expected_frontend_releases }}
-      pilot_affected: ${{ steps.summary.outputs.pilot_affected }}
-      pilot_observation_status: ${{ steps.summary.outputs.pilot_observation_status }}
-      pilot_reusable_deployment_id: ${{ steps.summary.outputs.pilot_reusable_deployment_id }}
     steps:
       - name: Checkout the exact successful SHA with full history
         uses: actions/checkout@v6

@@ -143,9 +143,11 @@ Después de que la CI del push integrado termine en verde, GitHub ejecuta
 `Vercel selective frontends and production shadow`. Consulta el historial de los cinco
 proyectos activos, calcula las apps afectadas y despliega sólo las que ya tengan
 activo su flag individual. Cada app conserva credencial, alias y concurrencia
-propios. Durante la migración se activa una por vez y sólo se retira su
-iniciador Git después del ensayo, publicación y rollback documentados en
-`docs/VERCEL_PHASE_6_DEVELOPMENT.md`. Una corrida inconclusa es un bloqueo,
+propios. La auditoría semanal exige exactamente un iniciador: Actions para una
+app activada o Vercel Git mientras siga en transición, nunca ambos ni ninguno.
+La migración y su cierre se documentan en
+`docs/VERCEL_PHASE_6_DEVELOPMENT.md` y
+`docs/VERCEL_PHASE_9_OPERATIONS.md`. Una corrida inconclusa es un bloqueo,
 nunca “cero apps”.
 
 ---
@@ -370,6 +372,7 @@ Envelope, Payroll y Scheduler. Antes de cambiar un flag:
 - [ ] Retirar el iniciador Git automático únicamente de esa app.
 - [ ] Confirmar que no existen deployments duplicados.
 - [ ] Configurar credencial, project ID y `VERCEL_<APP>_PRODUCTION_DOMAIN` en el environment `production`.
+- [ ] Definir una `change_reference` de ticket/incidente para cada operación manual.
 
 Después activar sólo:
 
@@ -565,6 +568,57 @@ El tag funciona como referencia inmutable y punto de rollback.
 
 ---
 
+# 16. Forzar un redeploy frontend
+
+No crear un commit vacío cuando sólo cambió una variable de Vercel o se
+necesita reconstruir una aplicación durante un incidente.
+
+En development:
+
+1. obtener el SHA completo servido por el alias;
+2. ejecutar `Vercel development frontend operations` con
+   `deploy_without_alias`, ese SHA y una `change_reference`;
+3. revisar el nuevo `dpl_*` y ejecutar `publish_existing` con
+   `PUBLICAR_DEVELOP`;
+4. correr el smoke con el manifiesto actualizado.
+
+En production:
+
+1. abrir ticket/incidente y confirmar el deployment de rollback;
+2. actualizar los gates de API/compatibilidad aplicables;
+3. ejecutar `Vercel production frontend operations` con
+   `deploy_without_domain`, el SHA vigente de `master` y la
+   `change_reference`;
+4. publicar el `dpl_*` verificado con `PUBLICAR_PRODUCCION`;
+5. correr smokes, observar 15 minutos y hacer rollback si falla.
+
+La operación de build manual siempre crea un deployment nuevo del mismo SHA y
+descarga las variables actuales del ambiente. Detalle y restricciones:
+`docs/VERCEL_PHASE_9_OPERATIONS.md`.
+
+---
+
+# 17. Auditoría y métricas
+
+Revisar cada semana el workflow `Vercel operations audit` en `development` y
+`production`:
+
+- [ ] los cinco Root Directories y settings coinciden;
+- [ ] cada ruta estable sirve un deployment `READY` de la rama correcta;
+- [ ] el manifiesto contiene los cinco SHA observados;
+- [ ] cada proyecto tiene exactamente un iniciador automático;
+- [ ] no hay deployments de ramas de trabajo en los últimos 30 días;
+- [ ] los fallos del detector y falsos negativos son cero;
+- [ ] los falsos positivos confirmados tienen corrección y prueba de regresión;
+- [ ] el fan-out evitado y los duplicados se comparan con el corte anterior.
+
+Una discrepancia `blocked` detiene la siguiente activación o release. Durante
+la migración, `transition` es válido sólo si cada app conserva exactamente un
+iniciador. Las clasificaciones humanas se agregan por PR a
+`docs/vercel-detector-reviews.json`, sin secretos ni datos operativos.
+
+---
+
 # Matriz según el tipo de cambio
 
 | Tipo de cambio          | Después del merge a `develop`                              | Al liberar a producción            |
@@ -607,6 +661,7 @@ feature
 → deploy productivo protegido
 → smokes públicos + autenticados de producción
 → observación
+→ auditoría periódica de iniciadores, manifests y métricas
 → tag
 ```
 
@@ -627,3 +682,5 @@ feature
 11. Crear un tag después de validar cada release productiva.
 12. Si existe un hotfix en `master`, sincronizarlo con `develop`.
 13. Una feature integrada en `develop` no tiene que liberarse inmediatamente a producción.
+14. No crear commits vacíos para redeploys por variables; usar la operación manual por app.
+15. Revisar `Vercel operations audit` semanalmente y bloquear la siguiente release ante estado `blocked`.

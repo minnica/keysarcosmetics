@@ -1264,6 +1264,25 @@ La migración en Supabase dev, el backend `cosmetics-api-dev`, el login `SUPER_A
 - El check requerido `Production builds` ejecuta
   `pnpm deploy:production:test` para bloquear cambios que eliminen flags,
   gates, build Production, promoción verificada, observación o rollback.
+- La Fase 9 de `PLAN_DEPLOYS_SELECTIVOS_VERCEL.md` quedó implementada en
+  repositorio el 5 de septiembre de 2026; el cierre remoto permanece pendiente
+  de completar las Fases 5–8. `Vercel operations audit` corre semanalmente y a
+  demanda, usa sólo `GET`, valida por ambiente manifests, Root Directories,
+  rutas estables, ramas y exactamente un iniciador automático por proyecto.
+  Devuelve `transition` mientras una app conserve Vercel Git, `ready` cuando
+  las cinco usen Actions como iniciador único y `blocked` ante drift, cero/dos
+  iniciadores o un falso negativo sin resolver.
+- La auditoría mide sobre una ventana de 7, 30 o 90 días el fan-out evitado
+  contra cinco deployments por CI verde, duplicados, ramas de trabajo, fallos
+  del detector y revisiones confirmadas de
+  `docs/vercel-detector-reviews.json`. Sus artefactos sanitizados duran 90
+  días. El contrato y el cierre administrativo están en
+  `docs/VERCEL_PHASE_9_OPERATIONS.md`; `Production builds` ejecuta también
+  `pnpm deploy:operations:test`.
+- Los workflows manuales de development/production son además el mecanismo de
+  redeploy por variables: construyen un deployment nuevo del mismo SHA antes
+  de publicar y exigen `change_reference`. No crear commits vacíos ni usar un
+  build Preview en producción.
 - No subir `.env` ni `.env.local` al repositorio.
 - `apps/envelope/.env.local` es solo local y no debe commitearse.
 - `apps/payroll/.env.local` también es solo local y no debe commitearse; las variables de Vercel se configuran por proyecto y ambiente.
@@ -1495,7 +1514,8 @@ apps/e2e/
 ├── staging-smoke.yml             → smoke tests manuales development/production
 ├── vercel-impact-diagnostic.yml  → selección y deploy gradual de development/production después de CI
 ├── vercel-development-manual.yml → deployment sin alias, publicación y rollback de development
-└── vercel-production-manual.yml  → ensayo sin dominio, publicación y rollback de production
+├── vercel-production-manual.yml  → ensayo sin dominio, publicación y rollback de production
+└── vercel-operations-audit.yml   → auditoría periódica de configuración, iniciadores y métricas
 ```
 
 ### packages/ui
@@ -1629,10 +1649,11 @@ pnpm deploy:pilot:test # contrato fail-closed del deployment y alias piloto HR
 pnpm deploy:development:test # contrato remoto esperado de los cinco proyectos
 pnpm deploy:production-shadow:test # coordinación, manifiesto y rollback productivos en seco
 pnpm deploy:production:test # activación gradual, gates y workflows productivos
+pnpm deploy:operations:test # auditoría operativa, iniciador único y métricas
 pnpm deploy:release-manifest:test # contrato multiversión y alias desfasados
 ```
 
-La recolección remota de las Fases 4–8 se ejecuta desde
+La recolección remota de las Fases 4–9 se ejecuta desde
 `Vercel selective frontends and production shadow` después de CI. La selección usa
 `VERCEL_TOKEN_READ_ONLY`, escribe evidencia sanitizada y no descarga variables.
 Cada uno de los cinco proyectos sólo puede pasar a deployment en `develop` si
@@ -1641,7 +1662,8 @@ deployment propia y separada del token de lectura. El workflow manual comparte
 el environment y el grupo de concurrencia por app. En production se usan flags
 `VERCEL_<APP>_PRODUCTION_SELECTIVE_ENABLED` separados; el build y la publicación
 siguen apagados hasta completar Fase 7 y habilitar cada proyecto. Ver
-`docs/VERCEL_PHASE_8_PRODUCTION.md`.
+`docs/VERCEL_PHASE_8_PRODUCTION.md`. La auditoría semanal usa el mismo token de
+lectura y los environments existentes; no instala Vercel CLI ni muta proyectos.
 
 ### Deploy backend
 

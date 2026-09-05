@@ -166,6 +166,14 @@ URLs ni datos operativos durante 90 días. No contiene credenciales, JWT,
 cookies ni datos de tablas. El smoke productivo tiene cero retries para que una
 falla no quede oculta.
 
+`Vercel operations audit` genera además, cada semana, un manifiesto por
+ambiente desde las rutas estables observadas en la API de Vercel. Ese manifiesto
+sirve para detectar drift de proyecto, rama, alias/dominio e iniciador, pero no
+sustituye este smoke HTTP: sólo Playwright confirma el `keysar-release`
+realmente servido, readiness y los recorridos de lectura. Si ambos manifiestos
+no coinciden, detener la siguiente release y tratar la auditoría como
+`blocked`.
+
 Interpretación de fallas:
 
 - `release-identity`: algún alias o la API no sirve su SHA declarado en la matriz;
@@ -174,6 +182,12 @@ Interpretación de fallas:
 - `solo lectura`: el recorrido intentó un método de escritura y debe corregirse antes de reintentar.
 
 Si hace falta inspección visual, reproducir localmente con `test:development:headed`; no habilitar traces o screenshots en CI con cuentas que puedan leer información operativa.
+
+Después de un redeploy por variables sin cambio de SHA, repetir primero el
+smoke público. En production también se ejecuta el smoke autenticado y la
+observación de 15 minutos. El SHA igual demuestra identidad de código, no que
+el nuevo valor de ambiente sea correcto; por eso deben conservarse el nuevo
+`dpl_*`, la `change_reference` y el resultado funcional.
 
 ## Duración y flakiness
 

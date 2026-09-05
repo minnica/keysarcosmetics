@@ -33,6 +33,10 @@ on:
         description: PUBLICAR_DEVELOP o ROLLBACK_DEVELOP cuando aplique
         required: false
         type: string
+      change_reference:
+        description: Ticket o incidente auditable (por ejemplo ENV-2026-09-05)
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -50,6 +54,7 @@ jobs:
       release_sha: ${{ steps.inputs.outputs.release_sha }}
       deployment_id: ${{ steps.inputs.outputs.deployment_id }}
       application: ${{ steps.inputs.outputs.application }}
+      change_reference: ${{ steps.inputs.outputs.change_reference }}
       alias_variable: ${{ steps.config.outputs.alias_variable }}
       bypass_secret: ${{ steps.config.outputs.bypass_secret }}
       project_id_secret: ${{ steps.config.outputs.project_id_secret }}
@@ -64,9 +69,11 @@ jobs:
           RELEASE_SHA: ${{ inputs.release_sha }}
           DEPLOYMENT_ID: ${{ inputs.deployment_id }}
           CONFIRMATION: ${{ inputs.confirmation }}
+          CHANGE_REFERENCE: ${{ inputs.change_reference }}
         run: |
           normalized_sha=${RELEASE_SHA,,}
           [[ "$normalized_sha" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$CHANGE_REFERENCE" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]{2,79}$ ]]
           case "$OPERATION" in
             deploy_without_alias)
               test -z "$DEPLOYMENT_ID"
@@ -89,6 +96,7 @@ jobs:
             echo "operation=$OPERATION"
             echo "release_sha=$normalized_sha"
             echo "deployment_id=$DEPLOYMENT_ID"
+            echo "change_reference=$CHANGE_REFERENCE"
           } >> "$GITHUB_OUTPUT"
       - name: Resolve canonical project controls
         id: config
@@ -120,6 +128,7 @@ jobs:
     env:
       APPLICATION: ${{ needs.validate.outputs.application }}
       TARGET_SHA: ${{ needs.validate.outputs.release_sha }}
+      CHANGE_REFERENCE: ${{ needs.validate.outputs.change_reference }}
       VERCEL_TOKEN_DEPLOY: ${{ secrets[needs.validate.outputs.token_secret] }}
       VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
       VERCEL_PROJECT_ID: ${{ secrets[needs.validate.outputs.project_id_secret] }}
@@ -194,6 +203,7 @@ jobs:
             echo "| Deployment | \`${{ steps.verify-deployment.outputs.deployment_id }}\` |"
             echo "| URL | ${{ steps.verify-deployment.outputs.deployment_url }} |"
             echo "| SHA | \`$TARGET_SHA\` |"
+            echo "| Cambio/incidente | \`$CHANGE_REFERENCE\` |"
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Preserve sanitized deployment evidence
         if: always()
@@ -218,6 +228,7 @@ jobs:
       OPERATION: ${{ needs.validate.outputs.operation }}
       TARGET_SHA: ${{ needs.validate.outputs.release_sha }}
       DEPLOYMENT_ID: ${{ needs.validate.outputs.deployment_id }}
+      CHANGE_REFERENCE: ${{ needs.validate.outputs.change_reference }}
       VERCEL_TOKEN_DEPLOY: ${{ secrets[needs.validate.outputs.token_secret] }}
       VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
       VERCEL_PROJECT_ID: ${{ secrets[needs.validate.outputs.project_id_secret] }}
@@ -294,6 +305,7 @@ jobs:
             echo "| URL inmutable | ${{ steps.verify-alias.outputs.deployment_url }} |"
             echo "| Alias | https://$DEVELOP_ALIAS |"
             echo "| SHA | \`$TARGET_SHA\` |"
+            echo "| Cambio/incidente | \`$CHANGE_REFERENCE\` |"
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Preserve sanitized alias evidence
         if: always()

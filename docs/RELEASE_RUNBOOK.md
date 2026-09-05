@@ -6,7 +6,7 @@ Este documento define el flujo seguro para promover cambios desde una feature ha
 
 Crear los environments `development` y `production`.
 
-Para la selección frontend y la sombra productiva de las Fases 4–8, configurar como secret de
+Para la selección frontend y la auditoría operativa de las Fases 4–9, configurar como secret de
 repositorio `VERCEL_TOKEN_READ_ONLY`. Debe ser una credencial
 dedicada al scope de los cinco proyectos activos. El workflow sólo hace
 consultas `GET`; no colocar este token en los environments de API ni reutilizar
@@ -74,7 +74,9 @@ son autorizaciones por release: retirarlos o sustituirlos después del cierre.
 Finance y HR no requieren pareja mientras sean independientes del API.
 `Vercel production frontend operations` exige adicionalmente
 `VERCEL_PRODUCTION_MANUAL_GATE=<frontend_sha>:<api_sha>` antes de cualquier
-publicación o rollback manual.
+publicación o rollback manual. Los dos workflows manuales exigen también una
+`change_reference` segura y visible en el resumen para ligar el deployment,
+publicación o rollback a su cambio o incidente.
 
 Los builds selectivos inyectan `KEYSAR_RELEASE_SHA`; la integración Git
 transitoria conserva `VERCEL_GIT_COMMIT_SHA`. Las cinco apps deben publicar
@@ -191,6 +193,40 @@ aumentar retries para ocultarla.
 
 Registrar en el incidente el SHA, migraciones aplicadas, hora, impacto y decisión de recuperación.
 
+### 5.1 Redeploy frontend sin cambio de código
+
+Un cambio de variables no genera diff y no debe fingirse con un commit vacío.
+Usar el workflow manual de una sola aplicación con el SHA que ya sirve la ruta
+estable:
+
+- development: `deploy_without_alias` crea y verifica otro Preview del mismo
+  SHA; después `publish_existing` mueve el alias con `PUBLICAR_DEVELOP`;
+- production: `deploy_without_domain` construye de nuevo con variables
+  Production y `--skip-domain`; después `publish_existing` exige
+  `PUBLICAR_PRODUCCION`, gates de API/compatibilidad y observación normal.
+
+En ambas corridas usar la misma `change_reference`. El workflow manual no
+reutiliza deployments anteriores al construir, por lo que obtiene un artefacto
+nuevo aun cuando el SHA sea igual. Si falla producción, ejecutar `rollback` con
+el `dpl_*` sano, su SHA, `ROLLBACK_PRODUCCION` y la referencia del incidente.
+El procedimiento completo está en `docs/VERCEL_PHASE_9_OPERATIONS.md`.
+
+### 5.2 Auditoría operativa
+
+`Vercel operations audit` se ejecuta semanalmente y bajo demanda para ambos
+environments. Es de sólo lectura y valida manifests, Root Directories, rutas,
+ramas y exactamente un iniciador por proyecto. También mide fan-out evitado,
+duplicados, fallos del detector y revisiones confirmadas registradas en
+`docs/vercel-detector-reviews.json`.
+
+- `transition` es esperado mientras alguna app conserve integración Git;
+- `ready` exige Actions activo e integración Git apagada en las cinco apps;
+- `blocked` requiere corregir configuración/evidencia antes del siguiente
+  release.
+
+Production conserva la aprobación de su environment aunque la auditoría no
+mute nada. Revisar y conservar los artefactos sanitizados por 90 días.
+
 ## 6. Comandos locales
 
 ```bash
@@ -202,6 +238,7 @@ pnpm test:unit
 pnpm ci:build
 pnpm deploy:production-shadow:test
 pnpm deploy:production:test
+pnpm deploy:operations:test
 pnpm test:e2e:development # solo contra development, requiere variables y cuentas técnicas
 pnpm test:e2e:production  # solo diagnóstico administrado; validar antes los SHA con test:smoke
 pnpm --filter @cosmetics/api prisma:schemas

@@ -177,6 +177,11 @@ El workflow `Vercel production frontend operations` admite:
   que ese SHA siga siendo el head de `master`;
 - `rollback`: exige `ROLLBACK_PRODUCCION`, el `dpl_*` sano anterior y su SHA.
 
+Las tres operaciones exigen `change_reference` con el ticket o incidente. Un
+redeploy por variables usa primero `deploy_without_domain` sobre el SHA vigente
+de `master`; ese camino construye siempre un artefacto nuevo y no reutiliza el
+deployment anterior. Ver `docs/VERCEL_PHASE_9_OPERATIONS.md`.
+
 Antes de mover un dominio, publicación y rollback exigen además que
 `VERCEL_PRODUCTION_MANUAL_GATE` coincida con
 `<frontend_sha>:<api_sha_servido>`. Las apps no independientes vuelven a exigir

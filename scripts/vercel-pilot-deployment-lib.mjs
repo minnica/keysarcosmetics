@@ -298,14 +298,14 @@ export async function verifyServedPilotRelease({
   );
 }
 
-export function resolvePilotSelection(impact, evidence, application = "hr") {
+export function resolveDeploymentSelection(impact, evidence, application) {
   const result = impact?.results?.find(
     (entry) => entry.application === application,
   );
   if (!result) {
     throw new VercelPilotDeploymentError(
-      "MISSING_PILOT_RESULT",
-      `El detector no incluyó ${application}`,
+      "MISSING_DEPLOYMENT_RESULT",
+      `El detector no incluyó la aplicación ${application}`,
     );
   }
   const observation = evidence?.observations?.[application] ?? null;

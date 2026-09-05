@@ -1,0 +1,95 @@
+name: Vercel operations audit
+
+on:
+  schedule:
+    - cron: "17 13 * * 1"
+  workflow_dispatch:
+    inputs:
+      window_days:
+        description: Ventana de métricas y deployments
+        required: true
+        default: "30"
+        type: choice
+        options:
+          - "7"
+          - "30"
+          - "90"
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: vercel-operations-audit
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    name: Audit ${{ matrix.environment }} Vercel operations
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        include:
+          - environment: development
+            branch: develop
+          - environment: production
+            branch: master
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: ${{ matrix.environment }}
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+      VERCEL_TOKEN_READ_ONLY: ${{ secrets.VERCEL_TOKEN_READ_ONLY }}
+      VERCEL_PROJECT_ID_ENVELOPE: ${{ secrets.VERCEL_PROJECT_ID_ENVELOPE }}
+      VERCEL_PROJECT_ID_FINANCE: ${{ secrets.VERCEL_PROJECT_ID_FINANCE }}
+      VERCEL_PROJECT_ID_HR: ${{ secrets.VERCEL_PROJECT_ID_HR }}
+      VERCEL_PROJECT_ID_PAYROLL: ${{ secrets.VERCEL_PROJECT_ID_PAYROLL }}
+      VERCEL_PROJECT_ID_SCHEDULER: ${{ secrets.VERCEL_PROJECT_ID_SCHEDULER }}
+      VERCEL_ROUTE_ENVELOPE: ${{ vars[matrix.environment == 'development' && 'VERCEL_ENVELOPE_DEVELOP_ALIAS' || 'VERCEL_ENVELOPE_PRODUCTION_DOMAIN'] }}
+      VERCEL_ROUTE_FINANCE: ${{ vars[matrix.environment == 'development' && 'VERCEL_FINANCE_DEVELOP_ALIAS' || 'VERCEL_FINANCE_PRODUCTION_DOMAIN'] }}
+      VERCEL_ROUTE_HR: ${{ vars[matrix.environment == 'development' && 'VERCEL_HR_DEVELOP_ALIAS' || 'VERCEL_HR_PRODUCTION_DOMAIN'] }}
+      VERCEL_ROUTE_PAYROLL: ${{ vars[matrix.environment == 'development' && 'VERCEL_PAYROLL_DEVELOP_ALIAS' || 'VERCEL_PAYROLL_PRODUCTION_DOMAIN'] }}
+      VERCEL_ROUTE_SCHEDULER: ${{ vars[matrix.environment == 'development' && 'VERCEL_SCHEDULER_DEVELOP_ALIAS' || 'VERCEL_SCHEDULER_PRODUCTION_DOMAIN'] }}
+      VERCEL_SELECTIVE_ENVELOPE: ${{ vars[matrix.environment == 'development' && 'VERCEL_ENVELOPE_SELECTIVE_ENABLED' || 'VERCEL_ENVELOPE_PRODUCTION_SELECTIVE_ENABLED'] }}
+      VERCEL_SELECTIVE_FINANCE: ${{ vars[matrix.environment == 'development' && 'VERCEL_FINANCE_SELECTIVE_ENABLED' || 'VERCEL_FINANCE_PRODUCTION_SELECTIVE_ENABLED'] }}
+      VERCEL_SELECTIVE_HR: ${{ vars[matrix.environment == 'development' && 'VERCEL_HR_SELECTIVE_ENABLED' || 'VERCEL_HR_PRODUCTION_SELECTIVE_ENABLED'] }}
+      VERCEL_SELECTIVE_PAYROLL: ${{ vars[matrix.environment == 'development' && 'VERCEL_PAYROLL_SELECTIVE_ENABLED' || 'VERCEL_PAYROLL_PRODUCTION_SELECTIVE_ENABLED'] }}
+      VERCEL_SELECTIVE_SCHEDULER: ${{ vars[matrix.environment == 'development' && 'VERCEL_SCHEDULER_SELECTIVE_ENABLED' || 'VERCEL_SCHEDULER_PRODUCTION_SELECTIVE_ENABLED'] }}
+    steps:
+      - name: Checkout the audited branch with full history
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: ${{ matrix.branch }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22.23.2
+      - name: Audit manifests, roots, routes, branches, initiators and metrics
+        env:
+          WINDOW_DAYS: ${{ inputs.window_days || '30' }}
+        run: |
+          node scripts/audit-vercel-operations.mjs \
+            --environment "${{ matrix.environment }}" \
+            --branch "${{ matrix.branch }}" \
+            --window-days "$WINDOW_DAYS" \
+            --output "vercel-operations-audit-${{ matrix.environment }}.json" \
+            --manifest "vercel-release-manifest-${{ matrix.environment }}.json"
+      - name: Record a fail-closed audit error
+        if: failure()
+        run: |
+          {
+            echo "## Auditoría operativa Vercel — bloqueada"
+            echo ""
+            echo "La evidencia remota fue incompleta o contradice el contrato. La auditoría no ejecutó deployments, promociones, rollbacks ni cambios de configuración."
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Preserve sanitized operations evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: vercel-operations-audit-${{ matrix.environment }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            vercel-operations-audit-${{ matrix.environment }}.json
+            vercel-release-manifest-${{ matrix.environment }}.json
+          if-no-files-found: ignore
+          retention-days: 90

@@ -23,6 +23,7 @@
     "deploy:development:test": "node scripts/vercel-development-config.test.mjs",
     "deploy:production-shadow:test": "node scripts/vercel-production-shadow.test.mjs",
     "deploy:production:test": "node scripts/vercel-production-activation.test.mjs && node scripts/vercel-production-workflow.test.mjs",
+    "deploy:operations:test": "node scripts/vercel-operations-audit.test.mjs",
     "deploy:release-manifest:test": "node --experimental-strip-types --no-warnings=MODULE_TYPELESS_PACKAGE_JSON apps/e2e/helpers/release-identity.test.ts",
     "migrations:review": "node scripts/check-migration-safety.mjs",
     "type-check": "turbo run type-check",

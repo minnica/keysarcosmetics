@@ -4,7 +4,7 @@ import {
   extractReleaseSha,
   inspectVercelPilotDeployment,
   normalizeDeploymentReference,
-  resolvePilotSelection,
+  resolveDeploymentSelection,
   verifyServedPilotRelease,
 } from "./vercel-pilot-deployment-lib.mjs";
 
@@ -156,11 +156,15 @@ describe("contrato del deployment piloto HR", () => {
       results: [{ application: "hr", affected: true }],
     };
     assert.deepEqual(
-      resolvePilotSelection(impact, {
-        observations: {
-          hr: { status: "READY", deploymentId: deployment.uid, sha },
+      resolveDeploymentSelection(
+        impact,
+        {
+          observations: {
+            hr: { status: "READY", deploymentId: deployment.uid, sha },
+          },
         },
-      }),
+        "hr",
+      ),
       {
         affected: true,
         reusableDeploymentId: deployment.uid,
@@ -168,11 +172,15 @@ describe("contrato del deployment piloto HR", () => {
       },
     );
     assert.equal(
-      resolvePilotSelection(impact, {
-        observations: {
-          hr: { status: "ERROR", deploymentId: deployment.uid, sha },
+      resolveDeploymentSelection(
+        impact,
+        {
+          observations: {
+            hr: { status: "ERROR", deploymentId: deployment.uid, sha },
+          },
         },
-      }).reusableDeploymentId,
+        "hr",
+      ).reusableDeploymentId,
       null,
     );
   });

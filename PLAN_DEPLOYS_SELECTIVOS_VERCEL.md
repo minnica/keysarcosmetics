@@ -14,9 +14,13 @@
 > la activación remota. La Fase 8 quedó implementada en repositorio el 5 de
 > septiembre de 2026, cerrada por cinco flags productivos y con HR como primer
 > candidato; espera los requisitos remotos de la Fase 7, credenciales,
-> activación gradual, smokes, observación y rollback reales. Durante la
-> validación de la Fase 2 se corrigió en Vercel el Build Command de Envelope a
-> `--filter=@cosmetics/envelope`; no se aplicaron otros cambios operativos.
+> activación gradual, smokes, observación y rollback reales. La Fase 9
+> quedó implementada en repositorio el 5 de septiembre de 2026 con auditoría
+> periódica, métricas y redeploy manual auditable; su cierre remoto depende de
+> completar las Fases 5–8 y obtener auditorías `ready` en ambos ambientes.
+> Durante la validación de la Fase 2 se corrigió en Vercel el Build Command de
+> Envelope a `--filter=@cosmetics/envelope`; no se aplicaron otros cambios
+> operativos.
 
 ## 1. Objetivo
 
@@ -734,22 +738,56 @@ Rollback:
 
 Objetivo: dejar la estrategia como flujo operativo estable.
 
+Estado al 5 de septiembre de 2026: **implementada en repositorio; cierre remoto
+pendiente**. `Vercel operations audit` valida semanalmente y bajo demanda los
+cinco proyectos en ambos ambientes, exige un iniciador por app, genera el
+manifiesto observado y mide fan-out evitado, duplicados, fallos del detector y
+revisiones confirmadas. Los redeploys por variables reutilizan los workflows
+manuales, pero siempre construyen un artefacto nuevo del SHA autorizado y
+exigen `change_reference`. Contrato y operación:
+`docs/VERCEL_PHASE_9_OPERATIONS.md`.
+
 Tareas:
 
-- Eliminar configuraciones temporales de transición.
-- Confirmar que ningún proyecto conserve dos iniciadores.
-- Actualizar `CLAUDE.md`, `docs/RELEASE_RUNBOOK.md`,
-  `FLUJO_TRABAJO_Y_DESPLIEGUE.md` y las guías E2E.
-- Documentar cómo forzar un redeploy por aplicación ante cambios de variables o
-  incidentes.
-- Añadir una auditoría periódica de manifests, Root Directories, alias y ramas.
-- Medir deployments evitados, fallos del detector y falsos positivos.
+- [ ] Eliminar configuraciones temporales de transición.
+  - [x] Retirar del orquestador general los outputs exclusivos del antiguo
+        piloto HR y consolidar la exclusión del tooling Vercel en una sola regla.
+  - [ ] Retirar iniciadores/configuración remotos transitorios app por app sólo
+        después de completar los gates de las Fases 5–8.
+- [ ] Confirmar que ningún proyecto conserve dos iniciadores.
+  - [x] Implementar el contrato fail-closed que exige exactamente uno y admite
+        explícitamente el estado `transition`.
+  - [ ] Conservar una auditoría remota `ready` de development y otra de
+        production.
+- [x] Actualizar `CLAUDE.md`, `docs/RELEASE_RUNBOOK.md`,
+      `FLUJO_TRABAJO_Y_DESPLIEGUE.md` y las guías E2E.
+- [x] Documentar cómo forzar un redeploy por aplicación ante cambios de
+      variables o incidentes, sin commits vacíos ni builds Preview en
+      producción.
+- [x] Añadir una auditoría periódica de manifests, Root Directories, rutas
+      estables y ramas, con artefactos sanitizados por 90 días.
+- [x] Medir deployments evitados contra la línea base amplia, fallos del
+      detector y falsos positivos/negativos confirmados.
+- [x] Agregar `pnpm deploy:operations:test` a `Production builds` y validar
+      localmente sus seis contratos sin invocar Vercel.
+- [x] Completar validación local: Prettier, workflows YAML, diff, lint `15/15`,
+      type-check `18/18`, unitarios `133/133` y builds de API/frontends/POS.
 
 Criterio de salida:
 
-- La documentación coincide con la configuración efectiva.
-- No hay lógica duplicada de impacto.
-- Existe un procedimiento claro para alta de nuevas aplicaciones y paquetes.
+- Cumplido en repositorio; pendiente de evidencia remota: la documentación
+  coincide con el contrato versionado y deberá contrastarse con cada corrida.
+- Cumplido: la política de impacto continúa en un solo detector; la Fase 9
+  sustituyó la enumeración repetida de scripts Vercel por una regla única.
+- Cumplido: existe un procedimiento claro para alta de nuevas aplicaciones y
+  paquetes en `docs/VERCEL_PHASE_9_OPERATIONS.md`.
+- Pendiente remoto: ambos ambientes deben alcanzar `phase9Ready=true`, sin
+  ramas de trabajo, fallos del detector ni falsos negativos en la ventana.
+
+Rollback: deshabilitar el schedule, conservar la ejecución manual de sólo
+lectura y revertir exclusivamente los cambios de repositorio de esta fase. No
+reactivar o retirar iniciadores remotos como consecuencia automática de una
+auditoría.
 
 ## 9. Seguridad y secretos
 

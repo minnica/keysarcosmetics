@@ -136,6 +136,7 @@ jobs:
       - run: pnpm deploy:development:test
       - run: pnpm deploy:production-shadow:test
       - run: pnpm deploy:production:test
+      - run: pnpm deploy:operations:test
       - run: pnpm deploy:release-manifest:test
       - run: pnpm ci:build
 

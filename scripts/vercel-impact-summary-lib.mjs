@@ -2,7 +2,7 @@ import {
   ACTIVE_VERCEL_PROJECTS,
   UNPROVISIONED_VERCEL_APPLICATIONS,
 } from "./vercel-deployment-state-lib.mjs";
-import { resolvePilotSelection } from "./vercel-pilot-deployment-lib.mjs";
+import { resolveDeploymentSelection } from "./vercel-pilot-deployment-lib.mjs";
 
 function assertDiagnosticContract(impact, evidence) {
   if (impact?.status !== "ok" || impact?.mode !== "diagnostic") {
@@ -103,7 +103,7 @@ export function createDiagnosticMatrix(impact, evidence) {
           project: project.project,
           projectIdSecret: expectedProject.deployment.projectIdSecret,
           root: project.root,
-          reusableDeploymentId: resolvePilotSelection(
+          reusableDeploymentId: resolveDeploymentSelection(
             impact,
             evidence,
             result.application,
@@ -123,14 +123,6 @@ export function createExpectedFrontendReleases(impact, evidence) {
       result.affected ? impact.targetSha : result.baseSha,
     ]),
   );
-}
-
-export function createPilotSelection(impact, evidence, application = "hr") {
-  assertDiagnosticContract(impact, evidence);
-  if (!ACTIVE_VERCEL_PROJECTS[application]) {
-    throw new Error(`La aplicación piloto ${application} no está provisionada`);
-  }
-  return resolvePilotSelection(impact, evidence, application);
 }
 
 export function formatGitHubDiagnosticSummary(impact, evidence) {

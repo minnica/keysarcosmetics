@@ -155,6 +155,7 @@ describe("contrato del deployment selectivo productivo", () => {
       "rollback",
       "PUBLICAR_PRODUCCION",
       "ROLLBACK_PRODUCCION",
+      "change_reference",
       "VERCEL_PRODUCTION_MANUAL_GATE",
       "Verify API readiness and manual compatibility approval",
       "--skip-domain",

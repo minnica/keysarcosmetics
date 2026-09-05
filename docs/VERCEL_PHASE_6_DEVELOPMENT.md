@@ -102,10 +102,10 @@ Para cada aplicación:
 1. Normalizar Node a `22.x` y confirmar el contrato de la tabla anterior.
 2. Crear/validar token, project ID, bypass y alias del environment.
 3. Ejecutar `Vercel development frontend operations` con
-   `deploy_without_alias` para un SHA completo de `develop`; conservar los JSON
-   sanitizados y revisar assets/rutas.
-4. Ejecutar `publish_existing` con el `dpl_*` verificado y
-   `PUBLICAR_DEVELOP`; comprobar el alias.
+   `deploy_without_alias` para un SHA completo de `develop` y una
+   `change_reference`; conservar los JSON sanitizados y revisar assets/rutas.
+4. Ejecutar `publish_existing` con el `dpl_*` verificado,
+   `PUBLICAR_DEVELOP` y la misma `change_reference`; comprobar el alias.
 5. Ejecutar `rollback` hacia el deployment sano anterior con
    `ROLLBACK_DEVELOP`; volver a publicar el candidato.
 6. Cambiar únicamente `VERCEL_<APP>_SELECTIVE_ENABLED=true`.
