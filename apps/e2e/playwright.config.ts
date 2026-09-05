@@ -64,5 +64,17 @@ export default defineConfig({
         baseURL: process.env["PAYROLL_BASE_URL"] ?? "http://127.0.0.1:3002",
       },
     },
+    {
+      name: "scheduler",
+      testMatch: /web\.smoke\.spec\.ts/,
+      use: {
+        ...devices["Desktop Chrome"],
+        ...vercelProtectionBypass(
+          process.env["SCHEDULER_VERCEL_BYPASS_SECRET"],
+        ),
+        channel: "chrome",
+        baseURL: process.env["SCHEDULER_BASE_URL"] ?? "http://127.0.0.1:3004",
+      },
+    },
   ],
 });

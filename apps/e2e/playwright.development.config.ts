@@ -62,6 +62,16 @@ export default defineConfig({
       },
     },
     {
+      name: "scheduler-auth-setup",
+      testMatch: /auth\/scheduler\.setup\.ts/,
+      use: {
+        baseURL: process.env["SCHEDULER_BASE_URL"],
+        ...vercelProtectionBypass(
+          process.env["SCHEDULER_VERCEL_BYPASS_SECRET"],
+        ),
+      },
+    },
+    {
       name: "envelope-development",
       testMatch: /envelope\.development\.spec\.ts/,
       dependencies: ["envelope-auth-setup", "release-identity"],
@@ -79,6 +89,18 @@ export default defineConfig({
         baseURL: process.env["PAYROLL_BASE_URL"],
         storageState: path.join(authDir, "payroll.json"),
         ...vercelProtectionBypass(process.env["PAYROLL_VERCEL_BYPASS_SECRET"]),
+      },
+    },
+    {
+      name: "scheduler-development",
+      testMatch: /scheduler\.development\.spec\.ts/,
+      dependencies: ["scheduler-auth-setup", "release-identity"],
+      use: {
+        baseURL: process.env["SCHEDULER_BASE_URL"],
+        storageState: path.join(authDir, "scheduler.json"),
+        ...vercelProtectionBypass(
+          process.env["SCHEDULER_VERCEL_BYPASS_SECRET"],
+        ),
       },
     },
   ],

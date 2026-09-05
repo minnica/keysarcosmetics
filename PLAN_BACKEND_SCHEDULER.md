@@ -8,6 +8,7 @@
 
 ## Estado de ejecución
 
+- **Fase 10 — implementada en repositorio el 4 de septiembre de 2026; ejecución CI y activación por ambiente pendientes.** CI reconstruye las 43 migraciones desde cero y ensaya el upgrade desde el snapshot exacto de 39 migraciones con datos técnicos preservados. La integración cubre autenticación, idempotencia, versión y concurrencia; el gate de carga modela 30 sucursales, 60 profesionales, 60 recursos, 24 horas y 1,440 citas. Scheduler participa en smoke/E2E y el deploy protegido verifica backup/PITR, API, frontend y confirmación antes de activar el proveedor interno. `scheduler:release:audit` observa citas, outbox, Agenda y auditoría en `READ ONLY`. No hubo migraciones, seeds, despliegues ni datos operativos. Guía: `docs/SCHEDULER_PHASE_10_RELEASE.md`.
 - **Fase 9 — implementada en repositorio el 4 de septiembre de 2026; activación HTTP/E2E pendiente.** Las rutas visibles montan workspaces API para Agenda, Clientes, Administración, Configuraciones, Comunicaciones/Documentos y Reportes. `useSchedulerQuery` unifica carga, error, vacío, reintento e invalidación; las mutaciones distinguen conflictos `409` y respetan capacidades. Los fixtures se cargan dinámicamente sólo cuando el bootstrap autoritativo habilita mocks en desarrollo; una sesión normal no lee ni escribe estado operativo simulado. No hubo migraciones ni datos. Guía: `docs/SCHEDULER_PHASE_9_FRONTEND.md`.
 - **Fase 8 — implementada en repositorio el 4 de septiembre de 2026; migración e integración PostgreSQL pendientes.** La migración exclusivamente aditiva `20260904120000_add_scheduler_reporting_indexes` agrega índices para estados, comisiones, outbox y encuestas sin crear o transformar datos. `/api/scheduler/reports/:key` y `/exports/:key` construyen el mismo dataset para citas, ocupación, cancelaciones, no-show, clientes, servicios, profesionales, comisiones, encuestas, comunicaciones, ventas y pagos; aplican permisos, sucursales, alcance profesional, fechas locales y auditoría. La UI real ya consume estos datasets y genera CSV desde la respuesta completa de exportación. `RegistroCita` sólo se consulta como fuente legado explícita y separada; POS conserva la autoridad financiera. Guía: `docs/SCHEDULER_PHASE_8_REPORTING.md`.
 - **Fase 4 — implementada en repositorio el 4 de septiembre de 2026; migración, integración PostgreSQL y activación pendientes.** La migración exclusivamente aditiva `20260904090000_add_scheduler_appointments` agrega citas canónicas multi-servicio, participantes, recursos, bloqueos, historial append-only, idempotencia, reservas de beneficios y el vínculo opcional desde `PosAppointment`; no importa mocks ni transforma Agenda/POS. `/api/scheduler/availability`, `/appointments*` y `/blocks*` aplican JWT, capacidades, sucursales/profesional propio, horario IANA, control optimista, auditoría, locks ordenados y transacciones serializables. La prueba concurrente crítica quedó como integración opt-in para PostgreSQL desechable. Guía: `docs/SCHEDULER_PHASE_4_APPOINTMENTS.md`.
@@ -539,6 +540,8 @@ Evidencia disponible:
 
 ### Fase 10 — Calidad, migraciones y despliegue
 
+**Estado de implementación (4 de septiembre de 2026):** completada en repositorio; la primera ejecución del nuevo CI, el diagnóstico/provisión real, los E2E de development, la carga desde la red objetivo y el corte protegido permanecen pendientes. No agrega migraciones, seeds ni datos operativos.
+
 Objetivo: demostrar que la solución puede desplegarse y operarse con seguridad.
 
 Entregables:
@@ -554,6 +557,17 @@ Entregables:
 - El rollback operativo cambia el proveedor; no revierte migraciones destruyendo datos.
 
 Criterio de salida: despliegue repetible, observable y reversible a nivel de aplicación.
+
+Evidencia disponible:
+
+- `database-integration` reconstruye las 43 migraciones en PostgreSQL 16 vacío y `scripts/verify-scheduler-migration-path.sh` prueba por separado el upgrade desde las primeras 39. El fixture sólo admite loopback, una base efímera con `scheduler_upgrade` en el nombre y la confirmación `EPHEMERAL_ONLY`; verifica preservación de sucursal, comercio, profesional, servicio, recurso, cliente y relaciones.
+- `scheduler-appointments.integration.test.ts` cubre `401`, bootstrap real, replay del `Idempotency-Key`, conflicto `VERSION_CONFLICT` y concurrencia por el último lugar sobre PostgreSQL. No usa mocks.
+- `scheduler-load.integration.test.ts` crea 30 sucursales, dos profesionales y dos recursos por cada una, horarios de 24 horas y 1,440 citas. Valida la exportación completa, las 30 sucursales, los slots de 15 minutos y el umbral configurable de CI.
+- El smoke público abre el login de Scheduler y valida su SHA junto con API, Envelope y Payroll. Development E2E usa una identidad propia, capacidades sólo `READ` para Agenda/Clientes/Reportes y un guard que rechaza `POST`, `PUT`, `PATCH` o `DELETE`.
+- `Deploy API` exige timestamp ISO de backup/PITR en production y la confirmación `SCHEDULER_INTERNO_VALIDADO`; aplica migraciones, despliega/verifica API, comprueba el SHA de frontend y sólo entonces configura `AGENDA_PROVIDER=internal`. Después ejecuta diagnóstico y auditoría agregada `READ ONLY`.
+- `scheduler:release:audit` reporta estados de citas, outbox, eventos internos de Agenda, auditoría, locks vencidos, reintentos agotados y round-trip de base sin emitir PII, destinos, payloads o secretos.
+- El cierre local valida type-check/lint de API y E2E, pruebas unitarias, build de API/Scheduler, schemas Prisma sincronizados/válidos y `git diff --check`. PostgreSQL 16 no pudo ejecutarse localmente porque Podman no puede preparar `/run/user/1000/libpod`; CI y los ambientes protegidos son la evidencia obligatoria restante.
+- Runbook: `docs/SCHEDULER_PHASE_10_RELEASE.md`.
 
 ## 7. Estrategia de migraciones
 
@@ -696,16 +710,16 @@ Opciones consideradas:
 
 ## 12. Punto recomendado para retomar
 
-La siguiente sesión operativa debe cerrar la **evidencia de la Fase 0** y activar de forma controlada las Fases 1 a 8 antes de conectar el frontend o habilitar proveedores:
+La siguiente sesión operativa debe ejecutar las puertas externas preparadas en Fase 10; la implementación de repositorio no sustituye la evidencia real de Fase 0 ni autoriza proveedores:
 
 1. Confirmar que se dispone de acceso seguro a la base de desarrollo.
 2. Comparar migraciones aplicadas contra el inventario vigente del repositorio, sin depender de un conteo histórico fijo.
 3. Ejecutar `scheduler:diagnose` y conservar el JSON agregado como evidencia segura.
 4. Revisar conteos, duplicados y candidatos de mapeo reales.
-5. Reconstruir todas las migraciones, incluidas las de Scheduler `20260904060000` a `20260904120000`, sobre PostgreSQL 16 desechable.
-6. Ejecutar pruebas HTTP de `401/403`, alcance, autorización de un solo uso, candidatos, perfiles, clientes, normalización, fusiones, horarios, bloqueos, idempotencia y conflictos `409`; probar además concurrencia de clientes/citas, outbox, webhooks, URLs privadas, doble envío de encuesta y paridad de datasets pantalla/exportación.
+5. Confirmar verde el job CI de PostgreSQL 16: reconstrucción vacía, upgrade desde 39 migraciones, integración HTTP/concurrencia y gate de 30 sucursales.
+6. Ejecutar las pruebas HTTP restantes de alcance, autorización de un solo uso, candidatos, perfiles, clientes, normalización, fusiones, horarios, bloqueos, outbox, webhooks, URLs privadas, doble envío de encuesta y paridad de datasets pantalla/exportación.
 7. Aprobar la estrategia de backfill; aplicar las migraciones de Scheduler en development y provisionar grants, bucket, llaves y catálogos explícitos sin seeds operativos. Mantener el proveedor de mensajería deshabilitado hasta completar sandbox.
 8. Ejecutar `scheduler:customers:normalize` en `DRY_RUN`, materializar sólo después de revisar el agregado y resolver manualmente duplicados antes de diseñar la migración del índice único parcial.
-9. Con esa evidencia, ejecutar los recorridos HTTP/E2E de la UI de Fase 9 ya conectada; después activar de forma controlada el proveedor `internal` ya implementado en Fase 5, validar POS/Scheduler y habilitar mensajería sólo tras aprobar sandbox.
+9. Ejecutar smoke y E2E autenticado de Scheduler; después usar el corte protegido de `Deploy API`, validar POS/Scheduler y observar `scheduler:release:audit`. Habilitar mensajería sólo tras aprobar sandbox.
 
 No debe iniciarse la migración canónica de citas hasta conocer el contenido real de `PosAppointment`, `RegistroCita` y las tablas `Agenda*` en el ambiente objetivo.

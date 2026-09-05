@@ -442,7 +442,12 @@ Datos:
 
 ## Estado actual de apps/scheduler
 
-`apps/scheduler` es la app de agenda y administración de reservas. Las Fases 1 a 9 ya implementaron login, bootstrap, permisos, alcance, autorizaciones secundarias, catálogos, clientes compartidos, agenda canónica, integración POS, administración/configuración, comunicaciones/documentos/encuestas, reportes/exportaciones y su conexión visual. Una sesión normal monta exclusivamente los workspaces de `src/components/api/` y no lee ni escribe estado operativo simulado. Los módulos históricos sólo se cargan como chunks dinámicos cuando el bootstrap devuelve `mockModeEnabled`, posibilidad limitada por servidor a `NODE_ENV=development` + `SCHEDULER_ALLOW_MOCKS=true`.
+`apps/scheduler` es la app de agenda y administración de reservas. Las Fases 1 a 10 ya implementaron login, bootstrap, permisos, alcance, autorizaciones secundarias, catálogos, clientes compartidos, agenda canónica, integración POS, administración/configuración, comunicaciones/documentos/encuestas, reportes/exportaciones, conexión visual y puertas de calidad/despliegue. Una sesión normal monta exclusivamente los workspaces de `src/components/api/` y no lee ni escribe estado operativo simulado. Los módulos históricos sólo se cargan como chunks dinámicos cuando el bootstrap devuelve `mockModeEnabled`, posibilidad limitada por servidor a `NODE_ENV=development` + `SCHEDULER_ALLOW_MOCKS=true`.
+
+- La Fase 10 quedó implementada en repositorio el 4 de septiembre de 2026 sin nuevas migraciones, seeds, despliegues ni datos operativos. CI reconstruye las 43 migraciones sobre PostgreSQL 16 vacío y ensaya por separado el salto desde el snapshot exacto de las primeras 39 mediante un fixture técnico que sólo admite una base efímera local.
+- La integración HTTP de Scheduler cubre autenticación, bootstrap, replay idempotente, conflicto optimista y la carrera por el último lugar. El gate de carga crea 30 sucursales, 60 profesionales, 60 recursos, horarios de 24 horas y 1,440 citas; exige exportación completa, slots de 15 minutos y un umbral configurable de 30 segundos en CI.
+- Scheduler participa en smoke público y E2E autenticado de development con una identidad exclusivamente `READ` y guard contra escrituras. `Deploy API` puede activar `AGENDA_PROVIDER=internal` sólo después de migración, API/readiness, SHA del frontend, backup/PITR productivo y confirmación literal; después genera diagnóstico y auditoría agregada `READ ONLY`.
+- `pnpm --filter @cosmetics/api scheduler:release:audit` observa estados de citas, outbox, eventos `AgendaSyncEvent`, auditoría, locks vencidos, reintentos agotados y round-trip de base sin PII ni secretos. El cierre local pasó type-check/lint de API y E2E, pruebas unitarias, build de API/Scheduler, schemas Prisma y `git diff --check`; PostgreSQL 16/CI y los ambientes reales siguen siendo gates externos porque Podman no puede usar su runtime en este workspace. Runbook: `docs/SCHEDULER_PHASE_10_RELEASE.md`.
 
 - La Fase 9 quedó implementada en repositorio el 4 de septiembre de 2026 sin modelos, migraciones, seeds ni cambios de datos. `SchedulerPageEntries.tsx` aísla los fixtures de desarrollo; `ApiState.tsx` unifica carga, vacío, error/reintento, descarte de respuestas obsoletas, invalidación y conflictos `409`.
 - Agenda consume catálogo, disponibilidad, citas y bloqueos canónicos; permite crear/mover/cancelar, cambiar estado y crear/cancelar bloqueos según permisos. Clientes consume búsqueda/alta/edición y abre perfil, visitas y finanzas con tres autorizaciones independientes de un solo uso.
@@ -526,19 +531,19 @@ El fixture de Servicios conserva listados por categoría, edición, opciones ava
 
 **Alcance administrativo por módulo:**
 
-| Módulo                 | Alcance funcional                                                                                                                                                                  | Estado de definición                                                         |
-| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| Comercios y sucursales | Comercio como entidad principal con estado, horario semanal/24 horas y entidades asociadas; sucursales con ubicación y contacto                                                    | API real; activación explícita y versionada                                  |
-| Profesionales          | Asignación múltiple a comercios/sucursales, servicios, horarios, descansos, especialidades y grupos                                                                                | API real; perfil explícito sobre `Empleado`                                  |
-| Servicios              | Servicios, clases, paquetes y adicionales canónicos                                                                                                                                | API real; precios masivos permanecen sólo como fixture                       |
-| Comisiones             | Por profesional, servicio/producto y valor por defecto; porcentaje o monto                                                                                                         | API real versionada; pago final en Nómina                                    |
-| Recursos               | Recursos generales y recursos con horario, asignación a servicios y locales                                                                                                        | API real                                                                     |
-| Encuestas              | Encuestas, preguntas y asociación a servicios                                                                                                                                       | API real; resultados mediante reporte canónico                               |
-| Consentimientos        | Catálogo y documentos privados versionados                                                                                                                                          | API real; asignación/firma disponible en backend                             |
-| WhatsApp               | Plantillas versionadas, outbox y reintentos por canal                                                                                                                               | API real; proveedor deshabilitado hasta sandbox                              |
-| Gift Cards             | Plantilla de servicio o monto, vencimiento, diseño y estado                                                                                                                         | API real; emisión/saldo fuera de alcance                                     |
-| Colores de status      | Paleta por comercio con control optimista                                                                                                                                           | API real; requiere autorización secundaria                                   |
-| Planes                 | No se implementa en este proyecto                                                                                                                                                  | Fuera de alcance                                                             |
+| Módulo                 | Alcance funcional                                                                                                               | Estado de definición                                   |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| Comercios y sucursales | Comercio como entidad principal con estado, horario semanal/24 horas y entidades asociadas; sucursales con ubicación y contacto | API real; activación explícita y versionada            |
+| Profesionales          | Asignación múltiple a comercios/sucursales, servicios, horarios, descansos, especialidades y grupos                             | API real; perfil explícito sobre `Empleado`            |
+| Servicios              | Servicios, clases, paquetes y adicionales canónicos                                                                             | API real; precios masivos permanecen sólo como fixture |
+| Comisiones             | Por profesional, servicio/producto y valor por defecto; porcentaje o monto                                                      | API real versionada; pago final en Nómina              |
+| Recursos               | Recursos generales y recursos con horario, asignación a servicios y locales                                                     | API real                                               |
+| Encuestas              | Encuestas, preguntas y asociación a servicios                                                                                   | API real; resultados mediante reporte canónico         |
+| Consentimientos        | Catálogo y documentos privados versionados                                                                                      | API real; asignación/firma disponible en backend       |
+| WhatsApp               | Plantillas versionadas, outbox y reintentos por canal                                                                           | API real; proveedor deshabilitado hasta sandbox        |
+| Gift Cards             | Plantilla de servicio o monto, vencimiento, diseño y estado                                                                     | API real; emisión/saldo fuera de alcance               |
+| Colores de status      | Paleta por comercio con control optimista                                                                                       | API real; requiere autorización secundaria             |
+| Planes                 | No se implementa en este proyecto                                                                                               | Fuera de alcance                                       |
 
 `Local` y `Profesional` son entidades separadas: las sucursales se administran dentro de Comercios; los profesionales son personas reales y no sustitutos de sucursales.
 
@@ -1326,9 +1331,9 @@ backend/api/
 
 ```text
 apps/e2e/
-├── playwright.config.ts                     → proyectos smoke API, Envelope y Payroll
+├── playwright.config.ts                     → proyectos smoke API, Envelope, Payroll y Scheduler
 ├── playwright.development.config.ts         → E2E autenticado seguro de development
-├── development/                             → setup de sesión, guard de escritura y 16 recorridos
+├── development/                             → setups aislados, guard de escritura y 19 recorridos
 ├── tests/                                   → smoke tests públicos por ambiente
 └── README.md                                → cuentas, permisos, secrets y diagnóstico
 
@@ -1388,6 +1393,9 @@ packages/ui/
 | Contratos POS                | `packages/types/src/pos.ts` y `backend/api/src/contracts/`                 |
 | Diagnóstico POS (lectura)    | `backend/api/scripts/diagnose-pos-data.ts`                                 |
 | Diagnóstico Scheduler        | `backend/api/scripts/diagnose-scheduler-data.ts`                           |
+| Auditoría release Scheduler  | `backend/api/scripts/audit-scheduler-release.ts`                           |
+| Gate carga Scheduler         | `backend/api/src/scheduler-load.integration.test.ts`                       |
+| Runbook release Scheduler    | `docs/SCHEDULER_PHASE_10_RELEASE.md`                                       |
 | Normalización clientes       | `backend/api/scripts/normalize-scheduler-customers.ts`                     |
 | Guía de despliegue payroll   | `apps/payroll/PENDIENTES.md`                                               |
 | Guía operativa payroll       | `apps/payroll/GUIA_PRIMERA_NOMINA.md`                                      |
@@ -1453,6 +1461,8 @@ pnpm --filter @cosmetics/api pos:diagnose # sólo lectura; requiere DATABASE_URL
 SCHEDULER_DIAGNOSE_ENVIRONMENT=development pnpm --filter @cosmetics/api scheduler:diagnose # sólo lectura
 SCHEDULER_DIAGNOSE_ENVIRONMENT=development SCHEDULER_CUSTOMER_NORMALIZATION_MODE=DRY_RUN pnpm --filter @cosmetics/api scheduler:customers:normalize
 pnpm --filter @cosmetics/api scheduler:messages:worker # outbox; proveedor disabled por default
+SCHEDULER_RELEASE_AUDIT_ENVIRONMENT=development pnpm --filter @cosmetics/api scheduler:release:audit # agregado y READ ONLY
+RUN_SCHEDULER_LOAD_TESTS=true pnpm --filter @cosmetics/api test:scheduler:load # sólo PostgreSQL efímera
 pnpm --filter @cosmetics/api pos:reconcile # sólo lectura; requiere alcance del piloto
 pnpm migrations:review -- origin/develop
 pnpm test:integration  # requiere RUN_DATABASE_TESTS=true + PostgreSQL desechable
@@ -1465,8 +1475,10 @@ pnpm test:e2e:production  # diagnóstico administrado; solo cuentas de monitoreo
 
 Ejecutar manualmente el workflow de GitHub Actions `Deploy API` y elegir el
 environment `development` o `production`. Producción requiere aprobación del
-environment y escribir `PRODUCCION_RESPALDADA`; no desplegar directamente con
-Fly desde una terminal local. La primera habilitación POS requiere antes un
+environment, escribir `PRODUCCION_RESPALDADA` y registrar el instante ISO UTC
+de verificación de backup/PITR; no desplegar directamente con Fly desde una
+terminal local. El primer corte Scheduler requiere además
+`SCHEDULER_INTERNO_VALIDADO` y sigue `docs/SCHEDULER_PHASE_10_RELEASE.md`. La primera habilitación POS requiere antes un
 resultado verde de `POS pilot gate`; ver `docs/POS_PILOT_RUNBOOK.md` y
 `docs/RELEASE_RUNBOOK.md`.
 

@@ -119,7 +119,8 @@ integrationDescribe("Scheduler appointment concurrency with PostgreSQL", () => {
       server = app.listen(0, "127.0.0.1", () => resolve());
     });
     const address = server.address();
-    if (!address || typeof address === "string") throw new Error("Puerto inválido");
+    if (!address || typeof address === "string")
+      throw new Error("Puerto inválido");
     baseUrl = `http://127.0.0.1:${address.port}`;
     const login = await request("/api/auth/login", {
       method: "POST",
@@ -138,12 +139,89 @@ integrationDescribe("Scheduler appointment concurrency with PostgreSQL", () => {
     await prisma.$disconnect();
   });
 
+  it("enforces authentication and exposes the materialized Scheduler bootstrap", async () => {
+    const anonymous = await request("/api/scheduler/bootstrap");
+    expect(anonymous.response.status).toBe(401);
+
+    const authenticated = await request("/api/scheduler/bootstrap", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(authenticated.response.status).toBe(200);
+    expect(authenticated.body).toMatchObject({
+      success: true,
+      data: { user: { role: "SUPER_ADMIN" } },
+    });
+  });
+
+  it("replays an idempotent create and rejects a stale version", async () => {
+    const body = {
+      branchId,
+      customerId,
+      startsAt: "2026-09-11T18:00:00.000Z",
+      services: [
+        { serviceProfileId, professionalProfileIds: [professionalProfileId] },
+      ],
+    };
+    const idempotencyKey = randomUUID();
+    const create = () =>
+      request("/api/scheduler/appointments", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+          "idempotency-key": idempotencyKey,
+        },
+        body: JSON.stringify(body),
+      });
+    const first = await create();
+    const replay = await create();
+    expect(first.response.status).toBe(201);
+    expect(replay.response.status).toBe(200);
+    const appointment = (
+      first.body as { data: { id: string; version: number } }
+    ).data;
+    expect(replay.body).toMatchObject({
+      data: { id: appointment.id, version: 1 },
+    });
+
+    const changed = await request(
+      `/api/scheduler/appointments/${appointment.id}/status`,
+      {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ status: "CONFIRMED", expectedVersion: 1 }),
+      },
+    );
+    expect(changed.response.status).toBe(200);
+    const stale = await request(
+      `/api/scheduler/appointments/${appointment.id}/status`,
+      {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ status: "ARRIVED", expectedVersion: 1 }),
+      },
+    );
+    expect(stale.response.status).toBe(409);
+    expect(stale.body).toMatchObject({
+      success: false,
+      data: { code: "VERSION_CONFLICT" },
+    });
+  });
+
   it("accepts exactly one request for the last professional slot", async () => {
     const body = {
       branchId,
       customerId,
       startsAt: "2026-09-11T16:00:00.000Z",
-      services: [{ serviceProfileId, professionalProfileIds: [professionalProfileId] }],
+      services: [
+        { serviceProfileId, professionalProfileIds: [professionalProfileId] },
+      ],
     };
     const create = (key: string) =>
       request("/api/scheduler/appointments", {
@@ -155,7 +233,10 @@ integrationDescribe("Scheduler appointment concurrency with PostgreSQL", () => {
         },
         body: JSON.stringify(body),
       });
-    const results = await Promise.all([create(randomUUID()), create(randomUUID())]);
+    const results = await Promise.all([
+      create(randomUUID()),
+      create(randomUUID()),
+    ]);
     expect(results.map(({ response }) => response.status).sort()).toEqual([
       201, 409,
     ]);

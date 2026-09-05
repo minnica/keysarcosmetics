@@ -48,20 +48,26 @@ test("los alias estables y la API exponen los releases esperados", async ({
     }
   }
 
-  const [envelopeRelease, payrollRelease, healthResponse] = await Promise.all([
-    readFrontendRelease(
-      requiredEnvironment("ENVELOPE_BASE_URL"),
-      process.env["ENVELOPE_VERCEL_BYPASS_SECRET"],
-    ),
-    readFrontendRelease(
-      requiredEnvironment("PAYROLL_BASE_URL"),
-      process.env["PAYROLL_VERCEL_BYPASS_SECRET"],
-    ),
-    request.get(`${requiredEnvironment("API_BASE_URL")}/health`),
-  ]);
+  const [envelopeRelease, payrollRelease, schedulerRelease, healthResponse] =
+    await Promise.all([
+      readFrontendRelease(
+        requiredEnvironment("ENVELOPE_BASE_URL"),
+        process.env["ENVELOPE_VERCEL_BYPASS_SECRET"],
+      ),
+      readFrontendRelease(
+        requiredEnvironment("PAYROLL_BASE_URL"),
+        process.env["PAYROLL_VERCEL_BYPASS_SECRET"],
+      ),
+      readFrontendRelease(
+        requiredEnvironment("SCHEDULER_BASE_URL"),
+        process.env["SCHEDULER_VERCEL_BYPASS_SECRET"],
+      ),
+      request.get(`${requiredEnvironment("API_BASE_URL")}/health`),
+    ]);
 
   expect(envelopeRelease).toBe(expectedFrontendSha);
   expect(payrollRelease).toBe(expectedFrontendSha);
+  expect(schedulerRelease).toBe(expectedFrontendSha);
   expect(healthResponse.ok()).toBe(true);
 
   const health = (await healthResponse.json()) as HealthPayload;
