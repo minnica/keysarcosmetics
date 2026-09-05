@@ -1,10 +1,20 @@
-name: Vercel HR pilot operations
+name: Vercel development frontend operations
 
 on:
   workflow_dispatch:
     inputs:
+      application:
+        description: Proyecto frontend de development
+        required: true
+        type: choice
+        options:
+          - envelope
+          - finance
+          - hr
+          - payroll
+          - scheduler
       operation:
-        description: Operación protegida del piloto
+        description: Operación protegida del proyecto
         required: true
         type: choice
         options:
@@ -12,7 +22,7 @@ on:
           - publish_existing
           - rollback
       release_sha:
-        description: SHA completo que debe servir HR
+        description: SHA completo que debe servir la aplicación
         required: true
         type: string
       deployment_id:
@@ -20,7 +30,7 @@ on:
         required: false
         type: string
       confirmation:
-        description: PUBLICAR_HR_DEVELOP o ROLLBACK_HR_DEVELOP cuando aplique
+        description: PUBLICAR_DEVELOP o ROLLBACK_DEVELOP cuando aplique
         required: false
         type: string
 
@@ -28,22 +38,29 @@ permissions:
   contents: read
 
 concurrency:
-  group: vercel-development-hr
+  group: vercel-development-${{ inputs.application }}
   cancel-in-progress: true
 
 jobs:
   validate:
-    name: Validate manual HR operation
+    name: Validate manual frontend operation
     runs-on: ubuntu-latest
     outputs:
       operation: ${{ steps.inputs.outputs.operation }}
       release_sha: ${{ steps.inputs.outputs.release_sha }}
       deployment_id: ${{ steps.inputs.outputs.deployment_id }}
+      application: ${{ steps.inputs.outputs.application }}
+      alias_variable: ${{ steps.config.outputs.alias_variable }}
+      bypass_secret: ${{ steps.config.outputs.bypass_secret }}
+      project_id_secret: ${{ steps.config.outputs.project_id_secret }}
+      project_name: ${{ steps.config.outputs.project_name }}
+      token_secret: ${{ steps.config.outputs.token_secret }}
     steps:
       - name: Validate inputs without expanding commands
         id: inputs
         env:
           OPERATION: ${{ inputs.operation }}
+          APPLICATION: ${{ inputs.application }}
           RELEASE_SHA: ${{ inputs.release_sha }}
           DEPLOYMENT_ID: ${{ inputs.deployment_id }}
           CONFIRMATION: ${{ inputs.confirmation }}
@@ -57,35 +74,56 @@ jobs:
               ;;
             publish_existing)
               [[ "$DEPLOYMENT_ID" =~ ^dpl_[A-Za-z0-9]+$ ]]
-              test "$CONFIRMATION" = "PUBLICAR_HR_DEVELOP"
+              test "$CONFIRMATION" = "PUBLICAR_DEVELOP"
               ;;
             rollback)
               [[ "$DEPLOYMENT_ID" =~ ^dpl_[A-Za-z0-9]+$ ]]
-              test "$CONFIRMATION" = "ROLLBACK_HR_DEVELOP"
+              test "$CONFIRMATION" = "ROLLBACK_DEVELOP"
               ;;
             *)
               exit 1
               ;;
           esac
           {
+            echo "application=$APPLICATION"
             echo "operation=$OPERATION"
             echo "release_sha=$normalized_sha"
             echo "deployment_id=$DEPLOYMENT_ID"
           } >> "$GITHUB_OUTPUT"
+      - name: Resolve canonical project controls
+        id: config
+        env:
+          APPLICATION: ${{ inputs.application }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { appendFileSync } from "node:fs";
+          import { ACTIVE_VERCEL_PROJECTS } from "./scripts/vercel-deployment-state-lib.mjs";
+          const config = ACTIVE_VERCEL_PROJECTS[process.env.APPLICATION];
+          if (!config) throw new Error("Aplicación Vercel no provisionada");
+          appendFileSync(process.env.GITHUB_OUTPUT, [
+            `alias_variable=${config.deployment.aliasVariable}`,
+            `bypass_secret=${config.deployment.bypassSecret}`,
+            `project_id_secret=${config.deployment.projectIdSecret}`,
+            `project_name=${config.project}`,
+            `token_secret=${config.deployment.tokenSecret}`,
+            "",
+          ].join("\n"));
+          NODE
 
   deploy-without-alias:
-    name: Build and verify HR without publishing alias
+    name: Build and verify the app without publishing alias
     needs: validate
     if: needs.validate.outputs.operation == 'deploy_without_alias'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     environment: development
     env:
+      APPLICATION: ${{ needs.validate.outputs.application }}
       TARGET_SHA: ${{ needs.validate.outputs.release_sha }}
-      VERCEL_TOKEN_HR_DEPLOY: ${{ secrets.VERCEL_TOKEN_HR_DEPLOY }}
+      VERCEL_TOKEN_DEPLOY: ${{ secrets[needs.validate.outputs.token_secret] }}
       VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID_HR }}
-      HR_VERCEL_BYPASS_SECRET: ${{ secrets.HR_VERCEL_BYPASS_SECRET }}
+      VERCEL_PROJECT_ID: ${{ secrets[needs.validate.outputs.project_id_secret] }}
+      VERCEL_BYPASS_SECRET: ${{ secrets[needs.validate.outputs.bypass_secret] }}
     steps:
       - name: Checkout the exact requested SHA
         uses: actions/checkout@v6
@@ -101,26 +139,28 @@ jobs:
           cache: pnpm
       - name: Validate credentials and develop ancestry
         run: |
-          test -n "$VERCEL_TOKEN_HR_DEPLOY"
+          test -n "$VERCEL_TOKEN_DEPLOY"
           test -n "$VERCEL_ORG_ID"
           test -n "$VERCEL_PROJECT_ID"
-          test -n "$HR_VERCEL_BYPASS_SECRET"
+          test -n "$VERCEL_BYPASS_SECRET"
           git fetch --no-tags origin develop
           git merge-base --is-ancestor "$TARGET_SHA" refs/remotes/origin/develop
       - run: pnpm install --frozen-lockfile
       - name: Install the pinned Vercel CLI
         run: npm install --global vercel@59.11.2
-      - name: Verify the resolved Vercel project before mutation
+      - name: Verify root, runtime, commands and Preview variables
         run: |
-          vercel project inspect --non-interactive \
-            --token="$VERCEL_TOKEN_HR_DEPLOY"
-      - name: Pull HR Preview settings
-        run: vercel pull --yes --environment=preview --token="$VERCEL_TOKEN_HR_DEPLOY"
-      - name: Build only HR and its workspace dependencies
+          node scripts/inspect-vercel-development-project.mjs \
+            --application "$APPLICATION" \
+            --project-id "$VERCEL_PROJECT_ID" \
+            --output "vercel-$APPLICATION-config.json"
+      - name: Pull Preview settings
+        run: vercel pull --yes --environment=preview --token="$VERCEL_TOKEN_DEPLOY"
+      - name: Build only the selected app and its workspace dependencies
         env:
           KEYSAR_RELEASE_SHA: ${{ needs.validate.outputs.release_sha }}
           VERCEL_GIT_COMMIT_SHA: ${{ needs.validate.outputs.release_sha }}
-        run: vercel build --token="$VERCEL_TOKEN_HR_DEPLOY"
+        run: vercel build --token="$VERCEL_TOKEN_DEPLOY"
       - name: Create an immutable Preview without moving aliases
         id: create-deployment
         run: |
@@ -130,22 +170,22 @@ jobs:
             --meta githubCommitRepo=keysarcosmetics \
             --meta githubCommitRef=develop \
             --meta githubCommitSha="$TARGET_SHA" \
-            --token="$VERCEL_TOKEN_HR_DEPLOY")
+            --token="$VERCEL_TOKEN_DEPLOY")
           echo "reference=$deployment_url" >> "$GITHUB_OUTPUT"
       - name: Verify the immutable deployment
         id: verify-deployment
         run: |
-          node scripts/inspect-vercel-pilot-deployment.mjs \
+          node scripts/inspect-vercel-development-deployment.mjs \
+            --application "$APPLICATION" \
             --branch develop \
             --project-id "$VERCEL_PROJECT_ID" \
-            --project-name keysarcosmetics-hr \
             --reference "${{ steps.create-deployment.outputs.reference }}" \
             --sha "$TARGET_SHA" \
-            --output vercel-hr-pilot-result.json
+            --output "vercel-$APPLICATION-deployment.json"
       - name: Record the non-publishing result
         run: |
           {
-            echo "## Piloto HR — deployment inmutable verificado"
+            echo "## $APPLICATION — deployment inmutable verificado"
             echo ""
             echo "No se actualizó ningún alias."
             echo ""
@@ -159,27 +199,30 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: vercel-hr-manual-${{ needs.validate.outputs.release_sha }}-${{ github.run_attempt }}
-          path: vercel-hr-pilot-result.json
+          name: vercel-${{ needs.validate.outputs.application }}-manual-${{ needs.validate.outputs.release_sha }}-${{ github.run_attempt }}
+          path: |
+            vercel-${{ needs.validate.outputs.application }}-config.json
+            vercel-${{ needs.validate.outputs.application }}-deployment.json
           if-no-files-found: ignore
           retention-days: 30
 
   move-alias:
-    name: Publish or roll back the HR development alias
+    name: Publish or roll back the development alias
     needs: validate
     if: needs.validate.outputs.operation != 'deploy_without_alias'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: development
     env:
+      APPLICATION: ${{ needs.validate.outputs.application }}
       OPERATION: ${{ needs.validate.outputs.operation }}
       TARGET_SHA: ${{ needs.validate.outputs.release_sha }}
       DEPLOYMENT_ID: ${{ needs.validate.outputs.deployment_id }}
-      VERCEL_TOKEN_HR_DEPLOY: ${{ secrets.VERCEL_TOKEN_HR_DEPLOY }}
+      VERCEL_TOKEN_DEPLOY: ${{ secrets[needs.validate.outputs.token_secret] }}
       VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID_HR }}
-      HR_VERCEL_BYPASS_SECRET: ${{ secrets.HR_VERCEL_BYPASS_SECRET }}
-      HR_DEVELOP_ALIAS: ${{ vars.VERCEL_HR_DEVELOP_ALIAS }}
+      VERCEL_PROJECT_ID: ${{ secrets[needs.validate.outputs.project_id_secret] }}
+      VERCEL_BYPASS_SECRET: ${{ secrets[needs.validate.outputs.bypass_secret] }}
+      DEVELOP_ALIAS: ${{ vars[needs.validate.outputs.alias_variable] }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -189,11 +232,11 @@ jobs:
           node-version: 22.23.2
       - name: Validate protected configuration
         run: |
-          [[ "$HR_DEVELOP_ALIAS" =~ ^[a-z0-9][a-z0-9.-]*[a-z0-9]$ ]]
-          test -n "$VERCEL_TOKEN_HR_DEPLOY"
+          [[ "$DEVELOP_ALIAS" =~ ^[a-z0-9][a-z0-9.-]*[a-z0-9]$ ]]
+          test -n "$VERCEL_TOKEN_DEPLOY"
           test -n "$VERCEL_ORG_ID"
           test -n "$VERCEL_PROJECT_ID"
-          test -n "$HR_VERCEL_BYPASS_SECRET"
+          test -n "$VERCEL_BYPASS_SECRET"
           if [ "$OPERATION" = "publish_existing" ]; then
             git fetch --no-tags origin develop
             latest_sha=$(git rev-parse refs/remotes/origin/develop)
@@ -201,55 +244,64 @@ jobs:
           fi
       - name: Install the pinned Vercel CLI
         run: npm install --global vercel@59.11.2
-      - name: Verify the resolved Vercel project before mutation
+      - name: Verify root, runtime, commands and Preview variables
         run: |
-          vercel project inspect --non-interactive \
-            --token="$VERCEL_TOKEN_HR_DEPLOY"
+          node scripts/inspect-vercel-development-project.mjs \
+            --application "$APPLICATION" \
+            --project-id "$VERCEL_PROJECT_ID" \
+            --output "vercel-$APPLICATION-config.json"
       - name: Verify the target deployment before moving the alias
         id: verify-deployment
         run: |
-          node scripts/inspect-vercel-pilot-deployment.mjs \
+          node scripts/inspect-vercel-development-deployment.mjs \
+            --application "$APPLICATION" \
             --branch develop \
             --project-id "$VERCEL_PROJECT_ID" \
-            --project-name keysarcosmetics-hr \
             --reference "$DEPLOYMENT_ID" \
             --sha "$TARGET_SHA" \
-            --output vercel-hr-pilot-result.json
+            --output "vercel-$APPLICATION-deployment.json"
+      - name: Recheck develop immediately before publication
+        if: env.OPERATION == 'publish_existing'
+        run: |
+          latest_sha=$(git ls-remote origin refs/heads/develop | cut -f1)
+          test "$latest_sha" = "$TARGET_SHA"
       - name: Move the stable development alias
         run: |
           vercel alias set \
             "${{ steps.verify-deployment.outputs.deployment_url }}" \
-            "$HR_DEVELOP_ALIAS" \
-            --token="$VERCEL_TOKEN_HR_DEPLOY"
+            "$DEVELOP_ALIAS" \
+            --token="$VERCEL_TOKEN_DEPLOY"
       - name: Verify the alias after publication
         id: verify-alias
         run: |
-          node scripts/inspect-vercel-pilot-deployment.mjs \
+          node scripts/inspect-vercel-development-deployment.mjs \
+            --application "$APPLICATION" \
             --branch develop \
             --project-id "$VERCEL_PROJECT_ID" \
-            --project-name keysarcosmetics-hr \
-            --reference "$HR_DEVELOP_ALIAS" \
-            --http-host "$HR_DEVELOP_ALIAS" \
+            --reference "$DEVELOP_ALIAS" \
+            --http-host "$DEVELOP_ALIAS" \
             --sha "$TARGET_SHA" \
-            --output vercel-hr-pilot-result.json
+            --output "vercel-$APPLICATION-deployment.json"
       - name: Record publication or rollback
         run: |
           {
-            echo "## Piloto HR — alias actualizado"
+            echo "## $APPLICATION — alias actualizado"
             echo ""
             echo "| Campo | Valor |"
             echo "| --- | --- |"
             echo "| Operación | \`$OPERATION\` |"
             echo "| Deployment | \`${{ steps.verify-alias.outputs.deployment_id }}\` |"
             echo "| URL inmutable | ${{ steps.verify-alias.outputs.deployment_url }} |"
-            echo "| Alias | https://$HR_DEVELOP_ALIAS |"
+            echo "| Alias | https://$DEVELOP_ALIAS |"
             echo "| SHA | \`$TARGET_SHA\` |"
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Preserve sanitized alias evidence
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: vercel-hr-${{ needs.validate.outputs.operation }}-${{ needs.validate.outputs.release_sha }}-${{ github.run_attempt }}
-          path: vercel-hr-pilot-result.json
+          name: vercel-${{ needs.validate.outputs.application }}-${{ needs.validate.outputs.operation }}-${{ needs.validate.outputs.release_sha }}-${{ github.run_attempt }}
+          path: |
+            vercel-${{ needs.validate.outputs.application }}-config.json
+            vercel-${{ needs.validate.outputs.application }}-deployment.json
           if-no-files-found: ignore
           retention-days: 30

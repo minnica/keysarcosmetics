@@ -9,7 +9,10 @@ export const metadata: Metadata = {
     "Agenda interna para operaciones y reservas de Keysar Cosmetics.",
   icons: { icon: "/logo.svg" },
   other: {
-    "keysar-release": process.env["VERCEL_GIT_COMMIT_SHA"] ?? "local",
+    "keysar-release":
+      process.env["KEYSAR_RELEASE_SHA"] ??
+      process.env["VERCEL_GIT_COMMIT_SHA"] ??
+      "local",
   },
 };
 

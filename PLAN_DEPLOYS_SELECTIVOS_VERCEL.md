@@ -6,8 +6,10 @@
 > 5 de septiembre de 2026. La Fase 5 también quedó implementada ese día con HR
 > como piloto, pero espera credenciales, activación y sus casos de aceptación
 > remotos. Las Fases 3–5 aún requieren corridas completas de CI/ambiente para
-> cumplir sus criterios de salida. Durante la validación de la Fase 2 se corrigió
-> en Vercel el Build Command de Envelope a `--filter=@cosmetics/envelope`; no se
+> cumplir sus criterios de salida. La Fase 6 quedó
+> implementada en repositorio el 5 de septiembre y espera una migración remota
+> proyecto por proyecto. Durante la validación de la Fase 2 se corrigió en
+> Vercel el Build Command de Envelope a `--filter=@cosmetics/envelope`; no se
 > aplicaron otros cambios operativos.
 
 ## 1. Objetivo
@@ -506,8 +508,8 @@ Fase 0; Finance o HR son candidatas si sus proyectos y alias están operativos.
 
 Estado al 5 de septiembre de 2026: **implementada en repositorio; pendiente de
 activación y evidencia remota**. Se eligió HR porque no consume API ni variables
-de ambiente y opera con mocks locales. El workflow automático queda cerrado por
-`VERCEL_HR_PILOT_ENABLED`; el workflow manual permite desplegar sin alias,
+de ambiente y opera con mocks locales. La Fase 6 sustituyó el flag original por
+`VERCEL_HR_SELECTIVE_ENABLED`; el workflow manual general permite desplegar sin alias,
 publicar un deployment ya verificado y ensayar rollback. Ambos verifican
 proyecto, Preview `READY`, procedencia Git, SHA servido y Deployment Protection.
 Contrato y secuencia: `docs/VERCEL_PHASE_5_HR_PILOT.md`.
@@ -528,7 +530,7 @@ Tareas:
 - [ ] Verificar variables, assets, rutas, SHA y protección sobre el deployment real.
 - [ ] Activar el job selectivo para el piloto.
   - [x] Implementar el job consumidor de la selección, cerrado por feature flag.
-  - [ ] Configurar `VERCEL_HR_PILOT_ENABLED=true` después del ensayo manual.
+  - [ ] Configurar `VERCEL_HR_SELECTIVE_ENABLED=true` después del ensayo manual.
 - [ ] Sólo después de demostrarlo, retirar su iniciador Git automático.
 - [ ] Probar en merges reales:
   - [ ] cambio directo en la app;
@@ -565,23 +567,57 @@ Rollback:
 Objetivo: aplicar selección a los cinco proyectos Vercel activos de staging y
 dejar definido el alta posterior de CRM, POS y Landing.
 
+Estado al 5 de septiembre de 2026: **implementada en repositorio; activación y
+evidencia remota pendientes**. El job selectivo usa la matriz de los cinco
+proyectos, flags/credenciales/aliases por app, concurrencia máxima de dos y un
+grupo por app. Valida configuración remota antes del build, reutiliza un
+deployment `READY`, bloquea alias obsoletos y ejecuta smokes de cinco frontends
+más API cuando toda la migración está activa. La operación manual permite
+ensayo, publicación y rollback por proyecto. Contrato y secuencia:
+`docs/VERCEL_PHASE_6_DEVELOPMENT.md`.
+
 Tareas:
 
-- Migrar una aplicación por vez.
-- Confirmar Root Directory, build, output, variables y alias de cada una.
-- Retirar la integración Git automática sólo después de validar su workflow.
-- Activar concurrencia controlada por app y ambiente.
-- Impedir que un job antiguo actualice el alias después de uno más nuevo.
-- Ejecutar smoke tests con el manifiesto multiversión.
-- Observar consumo de Vercel y duración durante varias integraciones.
+- [ ] Migrar remotamente una aplicación por vez: HR, Finance, Envelope,
+      Payroll y Scheduler.
+  - [x] Implementar flags, secrets, aliases y operación manual independientes.
+  - [ ] Crear credenciales, activar flags y conservar evidencia por proyecto.
+- [ ] Confirmar Root Directory, build, output, variables y alias de cada una.
+  - [x] Versionar el contrato y validarlo automáticamente antes de mutar.
+  - [ ] Normalizar Node `22.x`, provisionar la variable faltante de Scheduler y
+        validar la configuración remota real.
+- [ ] Retirar la integración Git automática sólo después de validar su workflow.
+  - [x] Documentar la secuencia y rollback aislado.
+  - [ ] Desactivar el iniciador Git uno por uno y comprobar ausencia de dobles.
+- [x] Activar concurrencia controlada por app y ambiente: grupos individuales,
+      cancelación de obsoletos en development y máximo dos builds simultáneos.
+- [x] Impedir que un job antiguo actualice el alias después de uno más nuevo
+      mediante concurrencia y una consulta de `origin/develop` inmediatamente
+      antes de publicar.
+- [ ] Ejecutar smoke tests con el manifiesto multiversión.
+  - [x] Ampliar identidad, smokes y manifiesto a los cinco frontends más API.
+  - [x] Encadenar el smoke automático sólo cuando los cinco proyectos estén
+        migrados y el gate administrativo esté activo.
+  - [ ] Conservar una corrida remota verde con SHAs distintos.
+- [ ] Observar consumo de Vercel y duración durante varias integraciones.
+  - [x] Registrar por app deployment, reutilización, duración e intento.
+  - [ ] Revisar al menos cinco integraciones representativas.
+- [x] Definir el alta posterior, validación y rollback de CRM, POS web y Landing.
+- [x] Validar localmente 36 contratos del detector, 13 del deployment, cuatro
+      de configuración, cinco del manifiesto, cinco casos históricos, grafo
+      Turbo, lint/type-check completos, 133 pruebas unitarias y los builds de
+      API, ocho frontends y POS web.
 
 Criterio de salida:
 
-- `feature/*` y equivalentes crean cero deployments.
-- Un cambio aislado en `develop` crea exactamente un deployment.
-- Un cambio compartido despliega exactamente los consumidores esperados.
-- Documentación y backend exclusivos crean cero deployments frontend.
-- No existen dos iniciadores activos para el mismo proyecto.
+- Pendiente remoto: `feature/*` y equivalentes crean cero deployments.
+- Preparado por contrato; pendiente remoto: un cambio aislado en `develop` crea
+  exactamente un deployment.
+- Preparado por contrato; pendiente remoto: un cambio compartido despliega
+  exactamente los consumidores esperados.
+- Cumplido por detector; pendiente de evidencia remota: documentación y backend
+  exclusivos crean cero deployments frontend.
+- Pendiente remoto: no existen dos iniciadores activos para el mismo proyecto.
 
 Rollback: por proyecto, volver temporalmente al iniciador Git y al último alias
 sano sin afectar las demás aplicaciones.

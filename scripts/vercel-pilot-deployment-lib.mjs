@@ -88,7 +88,7 @@ function assertDeploymentContract(payload, expected) {
   if (target !== "preview") {
     throw new VercelPilotDeploymentError(
       "INVALID_DEPLOYMENT_TARGET",
-      "El piloto de HR sólo admite deployments Preview",
+      `${expected.application} sólo admite deployments Preview en development`,
     );
   }
 
@@ -98,7 +98,7 @@ function assertDeploymentContract(payload, expected) {
   ) {
     throw new VercelPilotDeploymentError(
       "PROJECT_MISMATCH",
-      "El deployment no pertenece al proyecto piloto HR esperado",
+      `El deployment no pertenece al proyecto esperado de ${expected.application}`,
     );
   }
 
@@ -142,6 +142,7 @@ export function extractReleaseSha(html) {
 }
 
 export async function inspectVercelPilotDeployment({
+  application = "hr",
   branch = "develop",
   fetchImpl = fetch,
   organization = "minnica",
@@ -155,13 +156,13 @@ export async function inspectVercelPilotDeployment({
   if (!token) {
     throw new VercelPilotDeploymentError(
       "MISSING_VERCEL_TOKEN",
-      "Falta la credencial de deployment del piloto HR",
+      `Falta la credencial de deployment de ${application}`,
     );
   }
   if (!projectId) {
     throw new VercelPilotDeploymentError(
       "MISSING_PROJECT_ID",
-      "Falta el project ID del piloto HR",
+      `Falta el project ID de ${application}`,
     );
   }
   const normalizedSha = requireFullSha(sha, "El SHA esperado");
@@ -200,6 +201,7 @@ export async function inspectVercelPilotDeployment({
     );
   }
   assertDeploymentContract(payload, {
+    application,
     branch,
     organization,
     projectId,
@@ -216,6 +218,7 @@ export async function inspectVercelPilotDeployment({
 }
 
 export async function verifyServedPilotRelease({
+  application = "hr",
   attempts = 10,
   bypassSecret,
   delay = (milliseconds) =>
@@ -236,7 +239,7 @@ export async function verifyServedPilotRelease({
   if (!bypassSecret) {
     throw new VercelPilotDeploymentError(
       "MISSING_BYPASS_SECRET",
-      "Falta el bypass de Deployment Protection para verificar HR",
+      `Falta el bypass de Deployment Protection para verificar ${application}`,
     );
   }
 
@@ -267,7 +270,7 @@ export async function verifyServedPilotRelease({
   }
   throw new VercelPilotDeploymentError(
     "SERVED_RELEASE_MISMATCH",
-    `HR no sirvió el SHA esperado después de ${attempts} intentos: ${lastError?.message ?? "error desconocido"}`,
+    `${application} no sirvió el SHA esperado después de ${attempts} intentos: ${lastError?.message ?? "error desconocido"}`,
   );
 }
 

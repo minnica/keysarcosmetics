@@ -1,12 +1,24 @@
-import type { Metadata } from 'next';
-import type { ReactNode } from 'react';
-import './globals.css';
+import type { Metadata } from "next";
+import type { ReactNode } from "react";
+import "./globals.css";
 
 export const metadata: Metadata = {
-  title: 'Keysar Finance · Control financiero',
-  description: 'Control financiero de Keysar Cosmetics',
+  title: "Keysar Finance · Control financiero",
+  description: "Control financiero de Keysar Cosmetics",
+  other: {
+    "keysar-release":
+      process.env["KEYSAR_RELEASE_SHA"] ??
+      process.env["VERCEL_GIT_COMMIT_SHA"] ??
+      "local",
+  },
 };
 
-export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
-  return <html lang="es" suppressHydrationWarning><body className="finance-theme">{children}</body></html>;
+export default function RootLayout({
+  children,
+}: Readonly<{ children: ReactNode }>) {
+  return (
+    <html lang="es" suppressHydrationWarning>
+      <body className="finance-theme">{children}</body>
+    </html>
+  );
 }

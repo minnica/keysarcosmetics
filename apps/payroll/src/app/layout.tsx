@@ -8,7 +8,10 @@ export const metadata: Metadata = {
   description: "Administración de nómina de Keysar Cosmetics",
   icons: { icon: "/logo.svg" },
   other: {
-    "keysar-release": process.env["VERCEL_GIT_COMMIT_SHA"] ?? "local",
+    "keysar-release":
+      process.env["KEYSAR_RELEASE_SHA"] ??
+      process.env["VERCEL_GIT_COMMIT_SHA"] ??
+      "local",
   },
 };
 

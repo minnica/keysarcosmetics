@@ -58,6 +58,26 @@ describe("contrato del deployment piloto HR", () => {
     });
   });
 
+  test("el mismo contrato verifica cualquiera de los cinco proyectos", async () => {
+    const financeDeployment = {
+      ...deployment,
+      uid: "dpl_Finance123",
+      name: "keysarcosmetics-finance",
+      projectId: "prj_finance_test",
+      url: "keysarcosmetics-finance-preview.vercel.app",
+    };
+    const result = await inspectVercelPilotDeployment({
+      application: "finance",
+      projectId: financeDeployment.projectId,
+      projectName: financeDeployment.name,
+      reference: financeDeployment.uid,
+      sha,
+      token: "test-token",
+      fetchImpl: async () => jsonResponse(financeDeployment),
+    });
+    assert.equal(result.deploymentId, financeDeployment.uid);
+  });
+
   test("falla cerrado ante proyecto, target, estado o SHA incorrectos", async (context) => {
     for (const [name, override] of [
       ["project", { projectId: "prj_other" }],

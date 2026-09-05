@@ -1,26 +1,37 @@
-import type { Metadata } from 'next'
-import { BaseToaster, Toaster } from '@cosmetics/ui'
-import { I18nProvider } from '@/lib/i18n'
-import { SessionProvider } from '@/lib/session'
-import './globals.css'
+import type { Metadata } from "next";
+import { BaseToaster, Toaster } from "@cosmetics/ui";
+import { I18nProvider } from "@/lib/i18n";
+import { SessionProvider } from "@/lib/session";
+import "./globals.css";
 
 export const metadata: Metadata = {
-  title: 'Keysarcosmetics — Control de Ventas',
-  description: 'Sistema de control de ventas por sucursal',
-  icons: { icon: '/logo.svg' },
+  title: "Keysarcosmetics — Control de Ventas",
+  description: "Sistema de control de ventas por sucursal",
+  icons: { icon: "/logo.svg" },
   other: {
-    'keysar-release': process.env['VERCEL_GIT_COMMIT_SHA'] ?? 'local',
+    "keysar-release":
+      process.env["KEYSAR_RELEASE_SHA"] ??
+      process.env["VERCEL_GIT_COMMIT_SHA"] ??
+      "local",
   },
-}
+};
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     // suppressHydrationWarning evita el error de hidratación por el script de dark mode
     <html lang="es" suppressHydrationWarning>
       <head>
         {/* Google Fonts — Inter como fallback de Gilroy */}
         <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link
+          rel="preconnect"
+          href="https://fonts.gstatic.com"
+          crossOrigin="anonymous"
+        />
         <link
           href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,300;0,14..32,400;0,14..32,500;0,14..32,600;0,14..32,700&display=swap"
           rel="stylesheet"
@@ -45,5 +56,5 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         </I18nProvider>
       </body>
     </html>
-  )
+  );
 }

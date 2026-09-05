@@ -1,5 +1,9 @@
 # Vercel Fase 4 — workflow frontend en modo diagnóstico
 
+> Continuidad: desde la Fase 6 la matriz puede ser consumida por cualquiera de
+> los cinco proyectos en `develop`, siempre bajo su flag individual. `master`
+> conserva el comportamiento diagnóstico descrito aquí.
+
 > Fecha de implementación: 5 de septiembre de 2026  
 > Estado: **implementada en repositorio; pendiente de observación remota**  
 > Alcance operativo: ninguna configuración, variable, integración, deployment o
@@ -8,11 +12,12 @@
 ## Resultado
 
 El workflow `.github/workflows/vercel-impact-diagnostic.yml` conectó la CI con
-el detector de impacto sin habilitar publicación durante la Fase 4. Desde la
-Fase 5 conserva intacto ese job de selección de sólo lectura y expone su salida
-al piloto HR, cerrado por una bandera administrativa. Se
-ejecuta después de `CI`, únicamente para pushes del mismo repositorio a
-`develop` o `master`, y continúa sólo cuando esa corrida terminó en verde.
+el detector de impacto sin habilitar publicación durante la Fase 4. Conserva
+intacto ese job de selección de sólo lectura y, desde la Fase 6, expone su
+matriz a los cinco frontends activos de `develop`, cada uno cerrado por su
+propia bandera administrativa. Se ejecuta después de `CI`, únicamente para
+pushes del mismo repositorio a `develop` o `master`, y continúa sólo cuando esa
+corrida terminó en verde. `master` sigue siendo exclusivamente diagnóstico.
 
 La selección cubre los cinco proyectos Vercel activos del monorepo:
 
@@ -47,10 +52,11 @@ que `git merge-base --is-ancestor` y los diffs históricos puedan fallar de form
 explícita si falta evidencia.
 
 Durante la Fase 4 el job `Deployments disabled in Phase 4` fue la frontera
-explícita. La Fase 5 lo sustituyó por un consumidor exclusivo de HR en
-`development`; sólo puede ejecutarse si el detector marca HR afectada y la
-variable de repositorio `VERCEL_HR_PILOT_ENABLED` vale `true`. La selección no
-recibe la credencial de escritura. Ver `docs/VERCEL_PHASE_5_HR_PILOT.md`.
+explícita. La Fase 5 lo sustituyó por un consumidor exclusivo de HR y la Fase 6
+lo generalizó mediante una matriz a Envelope, Finance, HR, Payroll y Scheduler.
+El job de selección no recibe credenciales de escritura; sólo los jobs de la
+matriz acceden al secret del proyecto afectado después de superar su flag. Ver
+`docs/VERCEL_PHASE_6_DEVELOPMENT.md`.
 
 ## Evidencia de deployments
 

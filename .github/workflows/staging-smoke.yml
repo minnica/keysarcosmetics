@@ -14,6 +14,14 @@ on:
         description: SHA completo servido por Envelope
         required: true
         type: string
+      finance_sha:
+        description: SHA completo servido por Finance
+        required: false
+        type: string
+      hr_sha:
+        description: SHA completo servido por HR
+        required: false
+        type: string
       payroll_sha:
         description: SHA completo servido por Payroll
         required: true
@@ -36,19 +44,25 @@ concurrency:
 
 jobs:
   smoke:
-    name: API, Envelope, Payroll and Scheduler
+    name: API and environment frontends
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment }}
     env:
       TARGET_ENVIRONMENT: ${{ inputs.environment }}
       API_BASE_URL: ${{ vars.API_BASE_URL }}
       ENVELOPE_BASE_URL: ${{ vars.ENVELOPE_BASE_URL }}
+      FINANCE_BASE_URL: ${{ vars.FINANCE_BASE_URL }}
+      HR_BASE_URL: ${{ vars.HR_BASE_URL }}
       PAYROLL_BASE_URL: ${{ vars.PAYROLL_BASE_URL }}
       SCHEDULER_BASE_URL: ${{ vars.SCHEDULER_BASE_URL }}
       ENVELOPE_VERCEL_BYPASS_SECRET: ${{ secrets.ENVELOPE_VERCEL_BYPASS_SECRET }}
+      FINANCE_VERCEL_BYPASS_SECRET: ${{ secrets.FINANCE_VERCEL_BYPASS_SECRET }}
+      HR_VERCEL_BYPASS_SECRET: ${{ secrets.HR_VERCEL_BYPASS_SECRET }}
       PAYROLL_VERCEL_BYPASS_SECRET: ${{ secrets.PAYROLL_VERCEL_BYPASS_SECRET }}
       SCHEDULER_VERCEL_BYPASS_SECRET: ${{ secrets.SCHEDULER_VERCEL_BYPASS_SECRET }}
       SMOKE_EXPECTED_ENVELOPE_SHA: ${{ inputs.envelope_sha }}
+      SMOKE_EXPECTED_FINANCE_SHA: ${{ inputs.finance_sha }}
+      SMOKE_EXPECTED_HR_SHA: ${{ inputs.hr_sha }}
       SMOKE_EXPECTED_PAYROLL_SHA: ${{ inputs.payroll_sha }}
       SMOKE_EXPECTED_SCHEDULER_SHA: ${{ inputs.scheduler_sha }}
       SMOKE_EXPECTED_API_SHA: ${{ inputs.api_sha }}
@@ -75,7 +89,13 @@ jobs:
           test -n "$PAYROLL_BASE_URL"
           test -n "$SCHEDULER_BASE_URL"
           if [ "$TARGET_ENVIRONMENT" = "development" ]; then
+            [[ "$SMOKE_EXPECTED_FINANCE_SHA" =~ ^[0-9a-fA-F]{40}$ ]]
+            [[ "$SMOKE_EXPECTED_HR_SHA" =~ ^[0-9a-fA-F]{40}$ ]]
+            test -n "$FINANCE_BASE_URL"
+            test -n "$HR_BASE_URL"
             test -n "$ENVELOPE_VERCEL_BYPASS_SECRET"
+            test -n "$FINANCE_VERCEL_BYPASS_SECRET"
+            test -n "$HR_VERCEL_BYPASS_SECRET"
             test -n "$PAYROLL_VERCEL_BYPASS_SECRET"
             test -n "$SCHEDULER_VERCEL_BYPASS_SECRET"
           fi
@@ -99,6 +119,10 @@ jobs:
             echo "| Componente | SHA declarado |"
             echo "| --- | --- |"
             echo "| Envelope | $SMOKE_EXPECTED_ENVELOPE_SHA |"
+            if [ "$TARGET_ENVIRONMENT" = "development" ]; then
+              echo "| Finance | $SMOKE_EXPECTED_FINANCE_SHA |"
+              echo "| HR | $SMOKE_EXPECTED_HR_SHA |"
+            fi
             echo "| Payroll | $SMOKE_EXPECTED_PAYROLL_SHA |"
             echo "| Scheduler | $SMOKE_EXPECTED_SCHEDULER_SHA |"
             echo "| API | $SMOKE_EXPECTED_API_SHA |"

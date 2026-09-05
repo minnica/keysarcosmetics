@@ -12,9 +12,11 @@ import {
 
 const releases: ReleaseSet = {
   envelope: "1111111111111111111111111111111111111111",
-  payroll: "2222222222222222222222222222222222222222",
-  scheduler: "3333333333333333333333333333333333333333",
-  api: "4444444444444444444444444444444444444444",
+  finance: "2222222222222222222222222222222222222222",
+  hr: "3333333333333333333333333333333333333333",
+  payroll: "4444444444444444444444444444444444444444",
+  scheduler: "5555555555555555555555555555555555555555",
+  api: "6666666666666666666666666666666666666666",
 };
 
 test("acepta una combinación multiversión exacta", () => {
@@ -24,17 +26,31 @@ test("acepta una combinación multiversión exacta", () => {
     createReleaseManifest({
       environment: "development",
       releases,
-      suiteSha: "5555555555555555555555555555555555555555",
+      suiteSha: "7777777777777777777777777777777777777777",
       verifiedAt: "2026-09-05T12:00:00.000Z",
     }),
     {
       schemaVersion: 1,
       environment: "development",
       verifiedAt: "2026-09-05T12:00:00.000Z",
-      suiteSha: "5555555555555555555555555555555555555555",
+      suiteSha: "7777777777777777777777777777777777777777",
       releases,
     },
   );
+});
+
+test("mantiene production en tres frontends más API", () => {
+  const manifest = createReleaseManifest({
+    environment: "production",
+    releases,
+    verifiedAt: "2026-09-05T12:00:00.000Z",
+  });
+  assert.deepEqual(Object.keys(manifest.releases), [
+    "envelope",
+    "payroll",
+    "scheduler",
+    "api",
+  ]);
 });
 
 test("rechaza cualquier alias diferente al SHA declarado", () => {
@@ -44,7 +60,7 @@ test("rechaza cualquier alias diferente al SHA declarado", () => {
         ...releases,
         payroll: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       }),
-    /payroll sirve a{40}, pero el manifiesto declara 2{40}/,
+    /payroll sirve a{40}, pero el manifiesto declara 4{40}/,
   );
 });
 

@@ -1,6 +1,8 @@
 import { expect, test } from "playwright/test";
 import {
   assertReleaseIdentity,
+  frontendReleaseComponents,
+  frontendReleasePaths,
   readExpectedReleases,
   requiredEnvironment,
   writeVerifiedReleaseManifest,
@@ -17,13 +19,17 @@ test("the environment serves the expected frontend and API releases", async ({
   request,
 }) => {
   const expectedReleases = readExpectedReleases("SMOKE");
+  const expectedFrontendComponents = frontendReleaseComponents.filter(
+    (component) => expectedReleases[component] !== undefined,
+  );
 
   async function readFrontendRelease(
-    baseURL: string,
+    component: (typeof frontendReleaseComponents)[number],
     bypassSecret: string | undefined,
   ): Promise<string> {
+    const upperComponent = component.toUpperCase();
     const context = await browser.newContext({
-      baseURL,
+      baseURL: requiredEnvironment(`${upperComponent}_BASE_URL`),
       extraHTTPHeaders: bypassSecret
         ? {
             "x-vercel-protection-bypass": bypassSecret,
@@ -34,7 +40,7 @@ test("the environment serves the expected frontend and API releases", async ({
 
     try {
       const page = await context.newPage();
-      const response = await page.goto("/login", {
+      const response = await page.goto(frontendReleasePaths[component], {
         waitUntil: "domcontentloaded",
       });
       expect(response?.ok()).toBe(true);
@@ -48,33 +54,27 @@ test("the environment serves the expected frontend and API releases", async ({
     }
   }
 
-  const [envelopeRelease, payrollRelease, schedulerRelease, healthResponse] =
-    await Promise.all([
-      readFrontendRelease(
-        requiredEnvironment("ENVELOPE_BASE_URL"),
-        process.env["ENVELOPE_VERCEL_BYPASS_SECRET"],
+  const frontendEntries = await Promise.all(
+    expectedFrontendComponents.map(async (component) => [
+      component,
+      await readFrontendRelease(
+        component,
+        process.env[`${component.toUpperCase()}_VERCEL_BYPASS_SECRET`],
       ),
-      readFrontendRelease(
-        requiredEnvironment("PAYROLL_BASE_URL"),
-        process.env["PAYROLL_VERCEL_BYPASS_SECRET"],
-      ),
-      readFrontendRelease(
-        requiredEnvironment("SCHEDULER_BASE_URL"),
-        process.env["SCHEDULER_VERCEL_BYPASS_SECRET"],
-      ),
-      request.get(`${requiredEnvironment("API_BASE_URL")}/health`),
-    ]);
+    ]),
+  );
+  const healthResponse = await request.get(
+    `${requiredEnvironment("API_BASE_URL")}/health`,
+  );
 
   expect(healthResponse.ok()).toBe(true);
 
   const health = (await healthResponse.json()) as HealthPayload;
   expect(health.status).toBe("ok");
   const actualReleases: ReleaseSet = {
-    envelope: envelopeRelease,
-    payroll: payrollRelease,
-    scheduler: schedulerRelease,
+    ...Object.fromEntries(frontendEntries),
     api: health.release,
-  };
+  } as ReleaseSet;
   assertReleaseIdentity(expectedReleases, actualReleases);
 
   await writeVerifiedReleaseManifest(process.env["RELEASE_MANIFEST_PATH"], {

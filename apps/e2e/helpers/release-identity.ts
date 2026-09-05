@@ -3,13 +3,41 @@ import path from "node:path";
 
 export const releaseComponents = [
   "envelope",
+  "finance",
+  "hr",
   "payroll",
   "scheduler",
   "api",
 ] as const;
 
+export const productionReleaseComponents = [
+  "envelope",
+  "payroll",
+  "scheduler",
+  "api",
+] as const;
+
+export const frontendReleaseComponents = [
+  "envelope",
+  "finance",
+  "hr",
+  "payroll",
+  "scheduler",
+] as const;
+
+export type FrontendReleaseComponent =
+  (typeof frontendReleaseComponents)[number];
+
+export const frontendReleasePaths: Record<FrontendReleaseComponent, string> = {
+  envelope: "/login",
+  finance: "/",
+  hr: "/",
+  payroll: "/login",
+  scheduler: "/login",
+};
+
 export type ReleaseComponent = (typeof releaseComponents)[number];
-export type ReleaseSet = Record<ReleaseComponent, string>;
+export type ReleaseSet = Partial<Record<ReleaseComponent, string>>;
 
 type ReleaseManifestOptions = {
   environment: string;
@@ -43,8 +71,13 @@ export function requiredEnvironment(name: string): string {
 }
 
 export function readExpectedReleases(prefix: "SMOKE" | "E2E"): ReleaseSet {
+  const environment = requiredEnvironment("RELEASE_MANIFEST_ENVIRONMENT");
+  const components =
+    environment === "development"
+      ? releaseComponents
+      : productionReleaseComponents;
   const releases = Object.fromEntries(
-    releaseComponents.map((component) => {
+    components.map((component) => {
       const variableName = `${prefix}_EXPECTED_${component.toUpperCase()}_SHA`;
       const value = requiredEnvironment(variableName);
       assertFullGitSha(value, variableName);
@@ -59,11 +92,16 @@ export function assertReleaseIdentity(
   expected: ReleaseSet,
   actual: ReleaseSet,
 ): void {
-  for (const component of releaseComponents) {
-    assertFullGitSha(actual[component], `${component} release servido`);
-    if (actual[component].toLowerCase() !== expected[component].toLowerCase()) {
+  const expectedComponents = releaseComponents.filter(
+    (component) => expected[component] !== undefined,
+  );
+  for (const component of expectedComponents) {
+    const actualRelease = actual[component] ?? "";
+    const expectedRelease = expected[component] ?? "";
+    assertFullGitSha(actualRelease, `${component} release servido`);
+    if (actualRelease.toLowerCase() !== expectedRelease.toLowerCase()) {
       throw new Error(
-        `${component} sirve ${actual[component]}, pero el manifiesto declara ${expected[component]}.`,
+        `${component} sirve ${actualRelease}, pero el manifiesto declara ${expectedRelease}.`,
       );
     }
   }
@@ -80,8 +118,12 @@ export function createReleaseManifest({
     throw new Error("El ambiente del manifiesto es obligatorio.");
   }
 
-  for (const component of releaseComponents) {
-    assertFullGitSha(releases[component], `${component} release`);
+  const components =
+    normalizedEnvironment === "development"
+      ? releaseComponents
+      : productionReleaseComponents;
+  for (const component of components) {
+    assertFullGitSha(releases[component] ?? "", `${component} release`);
   }
   if (suiteSha) assertFullGitSha(suiteSha, "suiteSha");
   if (new Date(verifiedAt).toISOString() !== verifiedAt) {
@@ -94,9 +136,9 @@ export function createReleaseManifest({
     verifiedAt,
     suiteSha: suiteSha?.toLowerCase() ?? null,
     releases: Object.fromEntries(
-      releaseComponents.map((component) => [
+      components.map((component) => [
         component,
-        releases[component].toLowerCase(),
+        (releases[component] ?? "").toLowerCase(),
       ]),
     ) as ReleaseSet,
   };

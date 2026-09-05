@@ -1,4 +1,4 @@
-name: Vercel frontend impact and HR pilot
+name: Vercel selective development frontends
 
 on:
   workflow_run:
@@ -59,6 +59,7 @@ jobs:
     outputs:
       affected_count: ${{ steps.summary.outputs.affected_count }}
       matrix: ${{ steps.summary.outputs.matrix }}
+      expected_frontend_releases: ${{ steps.summary.outputs.expected_frontend_releases }}
       pilot_affected: ${{ steps.summary.outputs.pilot_affected }}
       pilot_observation_status: ${{ steps.summary.outputs.pilot_observation_status }}
       pilot_reusable_deployment_id: ${{ steps.summary.outputs.pilot_reusable_deployment_id }}
@@ -118,73 +119,87 @@ jobs:
           if-no-files-found: ignore
           retention-days: 30
 
-  hr-pilot-disabled:
-    name: HR pilot awaiting administrative activation
+  deploy-selected-preview:
+    name: Deploy ${{ matrix.application }} Preview if activated
     needs: [ci-gate, diagnose]
     if: >-
       needs.ci-gate.outputs.environment == 'development' &&
-      needs.diagnose.outputs.pilot_affected == 'true' &&
-      vars.VERCEL_HR_PILOT_ENABLED != 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Record the closed activation gate
-        run: |
-          {
-            echo "## Piloto selectivo HR — no activado"
-            echo ""
-            echo "HR fue seleccionada, pero la variable de repositorio \`VERCEL_HR_PILOT_ENABLED\` no vale \`true\`. No se construyó, desplegó ni modificó ningún alias."
-          } >> "$GITHUB_STEP_SUMMARY"
-
-  deploy-hr-pilot:
-    name: Deploy selected HR Preview
-    needs: [ci-gate, diagnose]
-    if: >-
-      needs.ci-gate.outputs.environment == 'development' &&
-      needs.diagnose.outputs.pilot_affected == 'true' &&
-      vars.VERCEL_HR_PILOT_ENABLED == 'true'
+      needs.diagnose.outputs.affected_count != '0'
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix: ${{ fromJSON(needs.diagnose.outputs.matrix) }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     environment: development
     concurrency:
-      group: vercel-development-hr
+      group: vercel-development-${{ matrix.application }}
       cancel-in-progress: true
     env:
+      APPLICATION: ${{ matrix.application }}
       TARGET_SHA: ${{ needs.ci-gate.outputs.target_sha }}
-      VERCEL_TOKEN_HR_DEPLOY: ${{ secrets.VERCEL_TOKEN_HR_DEPLOY }}
+      VERCEL_TOKEN_DEPLOY: ${{ secrets[matrix.tokenSecret] }}
       VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID_HR }}
-      HR_VERCEL_BYPASS_SECRET: ${{ secrets.HR_VERCEL_BYPASS_SECRET }}
-      HR_DEVELOP_ALIAS: ${{ vars.VERCEL_HR_DEVELOP_ALIAS }}
-      REUSABLE_DEPLOYMENT_ID: ${{ needs.diagnose.outputs.pilot_reusable_deployment_id }}
+      VERCEL_PROJECT_ID: ${{ secrets[matrix.projectIdSecret] }}
+      VERCEL_BYPASS_SECRET: ${{ secrets[matrix.bypassSecret] }}
+      DEVELOP_ALIAS: ${{ vars[matrix.aliasVariable] }}
+      REUSABLE_DEPLOYMENT_ID: ${{ matrix.reusableDeploymentId }}
     steps:
+      - name: Resolve the per-project activation gate
+        id: activation
+        env:
+          ENABLED: ${{ vars[matrix.enabledVariable] }}
+          ENABLED_VARIABLE: ${{ matrix.enabledVariable }}
+        run: |
+          if [ "$ENABLED" = "true" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "## Deployment selectivo $APPLICATION — no activado"
+              echo ""
+              echo "La variable \`$ENABLED_VARIABLE\` no vale \`true\`. No se construyó, desplegó ni modificó ningún alias."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
       - name: Checkout the exact successful SHA
+        if: steps.activation.outputs.enabled == 'true'
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
           ref: ${{ needs.ci-gate.outputs.target_sha }}
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        if: steps.activation.outputs.enabled == 'true'
         with:
           version: 10.0.0
       - uses: actions/setup-node@v6
+        if: steps.activation.outputs.enabled == 'true'
         with:
           node-version: 22.23.2
           cache: pnpm
-      - name: Validate the protected pilot configuration
+      - name: Validate the protected project configuration
+        if: steps.activation.outputs.enabled == 'true'
         run: |
           [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]
-          [[ "$HR_DEVELOP_ALIAS" =~ ^[a-z0-9][a-z0-9.-]*[a-z0-9]$ ]]
-          test -n "$VERCEL_TOKEN_HR_DEPLOY"
+          [[ "$DEVELOP_ALIAS" =~ ^[a-z0-9][a-z0-9.-]*[a-z0-9]$ ]]
+          test -n "$VERCEL_TOKEN_DEPLOY"
           test -n "$VERCEL_ORG_ID"
           test -n "$VERCEL_PROJECT_ID"
-          test -n "$HR_VERCEL_BYPASS_SECRET"
-      - run: pnpm install --frozen-lockfile
+          test -n "$VERCEL_BYPASS_SECRET"
+          echo "DEPLOY_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
+      - if: steps.activation.outputs.enabled == 'true'
+        run: pnpm install --frozen-lockfile
       - name: Install the pinned Vercel CLI
+        if: steps.activation.outputs.enabled == 'true'
         run: npm install --global vercel@59.11.2
-      - name: Verify the resolved Vercel project before mutation
+      - name: Verify root, runtime, commands and Preview variables
+        if: steps.activation.outputs.enabled == 'true'
         run: |
-          vercel project inspect --non-interactive \
-            --token="$VERCEL_TOKEN_HR_DEPLOY"
+          node scripts/inspect-vercel-development-project.mjs \
+            --application "$APPLICATION" \
+            --project-id "$VERCEL_PROJECT_ID" \
+            --output "vercel-$APPLICATION-config.json"
       - name: Resolve an idempotent deployment reference
+        if: steps.activation.outputs.enabled == 'true'
         id: deployment-reference
         run: |
           if [[ "$REUSABLE_DEPLOYMENT_ID" =~ ^dpl_[A-Za-z0-9]+$ ]]; then
@@ -193,17 +208,23 @@ jobs:
           else
             echo "reused=false" >> "$GITHUB_OUTPUT"
           fi
-      - name: Pull HR Preview settings
-        if: steps.deployment-reference.outputs.reused != 'true'
-        run: vercel pull --yes --environment=preview --token="$VERCEL_TOKEN_HR_DEPLOY"
-      - name: Build only HR and its workspace dependencies
-        if: steps.deployment-reference.outputs.reused != 'true'
+      - name: Pull Preview settings
+        if: >-
+          steps.activation.outputs.enabled == 'true' &&
+          steps.deployment-reference.outputs.reused != 'true'
+        run: vercel pull --yes --environment=preview --token="$VERCEL_TOKEN_DEPLOY"
+      - name: Build only the selected app and its workspace dependencies
+        if: >-
+          steps.activation.outputs.enabled == 'true' &&
+          steps.deployment-reference.outputs.reused != 'true'
         env:
           KEYSAR_RELEASE_SHA: ${{ needs.ci-gate.outputs.target_sha }}
           VERCEL_GIT_COMMIT_SHA: ${{ needs.ci-gate.outputs.target_sha }}
-        run: vercel build --token="$VERCEL_TOKEN_HR_DEPLOY"
-      - name: Create the immutable HR Preview
-        if: steps.deployment-reference.outputs.reused != 'true'
+        run: vercel build --token="$VERCEL_TOKEN_DEPLOY"
+      - name: Create the immutable Preview
+        if: >-
+          steps.activation.outputs.enabled == 'true' &&
+          steps.deployment-reference.outputs.reused != 'true'
         id: create-deployment
         run: |
           deployment_url=$(vercel deploy --prebuilt --archive=tgz \
@@ -212,9 +233,10 @@ jobs:
             --meta githubCommitRepo=keysarcosmetics \
             --meta githubCommitRef=develop \
             --meta githubCommitSha="$TARGET_SHA" \
-            --token="$VERCEL_TOKEN_HR_DEPLOY")
+            --token="$VERCEL_TOKEN_DEPLOY")
           echo "reference=$deployment_url" >> "$GITHUB_OUTPUT"
       - name: Select the verified deployment reference
+        if: steps.activation.outputs.enabled == 'true'
         id: selected-deployment
         env:
           REUSED_REFERENCE: ${{ steps.deployment-reference.outputs.reference }}
@@ -224,64 +246,162 @@ jobs:
           test -n "$deployment_reference"
           echo "reference=$deployment_reference" >> "$GITHUB_OUTPUT"
       - name: Verify project, Preview status and immutable release
+        if: steps.activation.outputs.enabled == 'true'
         id: verify-deployment
         run: |
-          node scripts/inspect-vercel-pilot-deployment.mjs \
+          node scripts/inspect-vercel-development-deployment.mjs \
+            --application "$APPLICATION" \
             --branch develop \
             --project-id "$VERCEL_PROJECT_ID" \
-            --project-name keysarcosmetics-hr \
             --reference "${{ steps.selected-deployment.outputs.reference }}" \
             --sha "$TARGET_SHA" \
-            --output vercel-hr-pilot-result.json
+            --output "vercel-$APPLICATION-deployment.json"
       - name: Ensure this SHA is still the head of develop
+        if: steps.activation.outputs.enabled == 'true'
         run: |
-          git fetch --no-tags origin develop
-          latest_sha=$(git rev-parse refs/remotes/origin/develop)
+          latest_sha=$(git ls-remote origin refs/heads/develop | cut -f1)
           test "$latest_sha" = "$TARGET_SHA"
-      - name: Publish the stable HR development alias
+      - name: Publish the stable development alias
+        if: steps.activation.outputs.enabled == 'true'
         run: |
           vercel alias set \
             "${{ steps.verify-deployment.outputs.deployment_url }}" \
-            "$HR_DEVELOP_ALIAS" \
-            --token="$VERCEL_TOKEN_HR_DEPLOY"
+            "$DEVELOP_ALIAS" \
+            --token="$VERCEL_TOKEN_DEPLOY"
       - name: Verify the alias resolves to the exact release
+        if: steps.activation.outputs.enabled == 'true'
         id: verify-alias
         run: |
-          node scripts/inspect-vercel-pilot-deployment.mjs \
+          node scripts/inspect-vercel-development-deployment.mjs \
+            --application "$APPLICATION" \
             --branch develop \
             --project-id "$VERCEL_PROJECT_ID" \
-            --project-name keysarcosmetics-hr \
-            --reference "$HR_DEVELOP_ALIAS" \
-            --http-host "$HR_DEVELOP_ALIAS" \
+            --reference "$DEVELOP_ALIAS" \
+            --http-host "$DEVELOP_ALIAS" \
             --sha "$TARGET_SHA" \
-            --output vercel-hr-pilot-result.json
-      - name: Publish the pilot result
+            --output "vercel-$APPLICATION-deployment.json"
+      - name: Publish deployment metrics and result
+        if: steps.activation.outputs.enabled == 'true'
         run: |
+          duration_seconds=$(($(date +%s) - DEPLOY_STARTED_AT))
           {
-            echo "## Piloto selectivo HR — publicado"
+            echo "## Deployment selectivo $APPLICATION — publicado"
             echo ""
             echo "| Campo | Valor |"
             echo "| --- | --- |"
             echo "| Deployment | \`${{ steps.verify-alias.outputs.deployment_id }}\` |"
             echo "| URL inmutable | ${{ steps.verify-alias.outputs.deployment_url }} |"
-            echo "| Alias estable | https://$HR_DEVELOP_ALIAS |"
+            echo "| Alias estable | https://$DEVELOP_ALIAS |"
             echo "| SHA | \`$TARGET_SHA\` |"
             echo "| Reutilizado | \`${{ steps.deployment-reference.outputs.reused }}\` |"
+            echo "| Duración total | ${duration_seconds}s |"
             echo "| Intento | \`$GITHUB_RUN_ATTEMPT\` |"
           } >> "$GITHUB_STEP_SUMMARY"
-      - name: Record a fail-closed pilot error
-        if: failure()
+      - name: Record a fail-closed deployment error
+        if: failure() && steps.activation.outputs.enabled == 'true'
         run: |
           {
-            echo "## Piloto selectivo HR — bloqueado"
+            echo "## Deployment selectivo $APPLICATION — bloqueado"
             echo ""
             echo "El build, deployment, verificación o control de concurrencia falló. El workflow no considera publicado el SHA objetivo; revisar el alias antes de reintentar."
           } >> "$GITHUB_STEP_SUMMARY"
-      - name: Preserve sanitized pilot evidence
+      - name: Preserve sanitized deployment evidence
+        if: always() && steps.activation.outputs.enabled == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: vercel-${{ matrix.application }}-development-${{ needs.ci-gate.outputs.target_sha }}-${{ github.run_attempt }}
+          path: |
+            vercel-${{ matrix.application }}-config.json
+            vercel-${{ matrix.application }}-deployment.json
+          if-no-files-found: ignore
+          retention-days: 30
+
+  smoke-development:
+    name: Smoke the five development aliases
+    needs: [ci-gate, diagnose, deploy-selected-preview]
+    if: >-
+      always() &&
+      needs.ci-gate.outputs.environment == 'development' &&
+      needs.diagnose.result == 'success' &&
+      (needs.deploy-selected-preview.result == 'success' || needs.deploy-selected-preview.result == 'skipped') &&
+      vars.VERCEL_DEVELOPMENT_SMOKES_ENABLED == 'true' &&
+      vars.VERCEL_ENVELOPE_SELECTIVE_ENABLED == 'true' &&
+      vars.VERCEL_FINANCE_SELECTIVE_ENABLED == 'true' &&
+      vars.VERCEL_HR_SELECTIVE_ENABLED == 'true' &&
+      vars.VERCEL_PAYROLL_SELECTIVE_ENABLED == 'true' &&
+      vars.VERCEL_SCHEDULER_SELECTIVE_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: development
+    concurrency:
+      group: vercel-development-smoke
+      cancel-in-progress: true
+    env:
+      TARGET_ENVIRONMENT: development
+      API_BASE_URL: ${{ vars.API_BASE_URL }}
+      ENVELOPE_BASE_URL: ${{ vars.ENVELOPE_BASE_URL }}
+      FINANCE_BASE_URL: ${{ vars.FINANCE_BASE_URL }}
+      HR_BASE_URL: ${{ vars.HR_BASE_URL }}
+      PAYROLL_BASE_URL: ${{ vars.PAYROLL_BASE_URL }}
+      SCHEDULER_BASE_URL: ${{ vars.SCHEDULER_BASE_URL }}
+      ENVELOPE_VERCEL_BYPASS_SECRET: ${{ secrets.ENVELOPE_VERCEL_BYPASS_SECRET }}
+      FINANCE_VERCEL_BYPASS_SECRET: ${{ secrets.FINANCE_VERCEL_BYPASS_SECRET }}
+      HR_VERCEL_BYPASS_SECRET: ${{ secrets.HR_VERCEL_BYPASS_SECRET }}
+      PAYROLL_VERCEL_BYPASS_SECRET: ${{ secrets.PAYROLL_VERCEL_BYPASS_SECRET }}
+      SCHEDULER_VERCEL_BYPASS_SECRET: ${{ secrets.SCHEDULER_VERCEL_BYPASS_SECRET }}
+      SMOKE_EXPECTED_ENVELOPE_SHA: ${{ fromJSON(needs.diagnose.outputs.expected_frontend_releases).envelope }}
+      SMOKE_EXPECTED_FINANCE_SHA: ${{ fromJSON(needs.diagnose.outputs.expected_frontend_releases).finance }}
+      SMOKE_EXPECTED_HR_SHA: ${{ fromJSON(needs.diagnose.outputs.expected_frontend_releases).hr }}
+      SMOKE_EXPECTED_PAYROLL_SHA: ${{ fromJSON(needs.diagnose.outputs.expected_frontend_releases).payroll }}
+      SMOKE_EXPECTED_SCHEDULER_SHA: ${{ fromJSON(needs.diagnose.outputs.expected_frontend_releases).scheduler }}
+      SMOKE_EXPECTED_API_SHA: ${{ vars.DEVELOPMENT_API_RELEASE_SHA }}
+      RELEASE_MANIFEST_ENVIRONMENT: development
+      RELEASE_MANIFEST_PATH: apps/e2e/release-manifest-development.json
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.ci-gate.outputs.target_sha }}
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 10.0.0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22.23.2
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Validate the declared multiversion set
+        run: |
+          for value in \
+            "$SMOKE_EXPECTED_ENVELOPE_SHA" \
+            "$SMOKE_EXPECTED_FINANCE_SHA" \
+            "$SMOKE_EXPECTED_HR_SHA" \
+            "$SMOKE_EXPECTED_PAYROLL_SHA" \
+            "$SMOKE_EXPECTED_SCHEDULER_SHA" \
+            "$SMOKE_EXPECTED_API_SHA"; do
+            [[ "$value" =~ ^[0-9a-f]{40}$ ]]
+          done
+      - name: Run read-only smokes and record duration
+        run: |
+          started_at=$(date +%s)
+          set +e
+          pnpm test:smoke
+          status=$?
+          duration_seconds=$(($(date +%s) - started_at))
+          {
+            echo "## Development selective smoke"
+            echo ""
+            echo "| Métrica | Valor |"
+            echo "| --- | --- |"
+            echo "| Duración | ${duration_seconds}s |"
+            echo "| Resultado | $([ "$status" -eq 0 ] && echo verde || echo falló) |"
+            echo "| Intento | $GITHUB_RUN_ATTEMPT |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
+      - name: Preserve the verified multiversion manifest
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: vercel-hr-pilot-${{ needs.ci-gate.outputs.target_sha }}-${{ github.run_attempt }}
-          path: vercel-hr-pilot-result.json
+          name: release-manifest-development-${{ needs.ci-gate.outputs.target_sha }}-${{ github.run_attempt }}
+          path: ${{ env.RELEASE_MANIFEST_PATH }}
           if-no-files-found: ignore
           retention-days: 30

@@ -54,9 +54,16 @@ E2E_SCHEDULER_EMAIL
 E2E_SCHEDULER_PASSWORD
 ```
 
-Conservar también las variables `API_BASE_URL`, `ENVELOPE_BASE_URL`, `PAYROLL_BASE_URL` y `SCHEDULER_BASE_URL`, además de los bypass secrets separados de Vercel que ya usa el smoke del ambiente. Nunca copiar valores reales a `.env.example`, logs, issues o artefactos.
+Conservar también las variables `API_BASE_URL`, `ENVELOPE_BASE_URL`,
+`FINANCE_BASE_URL`, `HR_BASE_URL`, `PAYROLL_BASE_URL` y `SCHEDULER_BASE_URL`,
+además de los cinco bypass secrets separados de Vercel que usa el smoke del
+ambiente. Nunca copiar valores reales a `.env.example`, logs, issues o
+artefactos.
 
-En los proyectos Vercel de Envelope, Payroll y Scheduler debe estar habilitada la exposición automática de System Environment Variables para que `VERCEL_GIT_COMMIT_SHA` exista durante el build. Si falta, el meta de release será `local` y el workflow se detendrá antes de autenticarse.
+Las cinco apps exponen `keysar-release`. Los builds selectivos inyectan
+`KEYSAR_RELEASE_SHA`; mientras una app conserve integración Git, ésta usa
+`VERCEL_GIT_COMMIT_SHA`. Si ambos faltan, el meta será `local` y el workflow se
+detendrá antes de autenticarse.
 
 ## Preparación única de producción
 
@@ -99,13 +106,18 @@ La creación de cuentas y secrets es una activación administrativa externa: no 
 Después de desplegar `develop`, abrir **Authenticated development E2E** en GitHub Actions e indicar:
 
 - `envelope_sha`: SHA completo servido por el alias de Envelope;
+- `finance_sha`: SHA completo servido por el alias de Finance;
+- `hr_sha`: SHA completo servido por el alias de HR;
 - `payroll_sha`: SHA completo servido por el alias de Payroll;
 - `scheduler_sha`: SHA completo servido por el alias de Scheduler;
 - `api_sha`: SHA completo expuesto como `release` por `/health` en la API de desarrollo.
 
 GitHub solo permite disparar manualmente un `workflow_dispatch` cuando el archivo ya existe en la rama por defecto (`master`). En la primera incorporación de este workflow, ejecutar `pnpm test:e2e:development` desde el SHA de `develop` contra el ambiente desplegado y conservar el resultado en el PR de release; después de que el archivo llegue a `master`, las promociones siguientes usan GitHub Actions normalmente seleccionando el ref de `develop`.
 
-La suite rechaza alias desfasados antes de crear sesiones o ejecutar los recorridos. Envelope, Payroll y Scheduler incluyen `meta[name="keysar-release"]`, generado desde `VERCEL_GIT_COMMIT_SHA`; la API usa `RELEASE_SHA`. Los cuatro SHAs pueden ser distintos.
+La suite rechaza alias desfasados antes de crear sesiones o ejecutar los
+recorridos. Envelope, Finance, HR, Payroll y Scheduler incluyen
+`meta[name="keysar-release"]`; la API usa `RELEASE_SHA`. Los seis SHAs pueden
+ser distintos.
 
 Cuando las identidades coinciden, el workflow publica por 30 días un artefacto `release-manifest-development-*` con ambiente, fecha, SHA de la suite y la matriz de versiones realmente servida. No contiene URLs, credenciales, cookies ni bypass secrets. Si una identidad no coincide, el archivo no se genera.
 
@@ -117,7 +129,11 @@ pnpm test:e2e:development
 
 Playwright crea temporalmente `apps/e2e/.auth/envelope.json`, `payroll.json` y `scheduler.json`. Son archivos ignorados que contienen JWT/cookies y nunca deben adjuntarse ni versionarse. El workflow los elimina antes de publicar diagnósticos.
 
-Para production, ejecutar únicamente **Environment smoke tests** desde `master`, seleccionar `production` e indicar por separado `envelope_sha`, `payroll_sha`, `scheduler_sha` y `api_sha`. El workflow primero ejecuta los seis smokes públicos —incluido el login de Scheduler— y valida la matriz; solo entonces crea las sesiones temporales de monitoreo productivo para Envelope y Payroll. `pnpm test:e2e:production` queda disponible para diagnóstico administrado, pero no debe invocarse contra otro ambiente ni sin confirmar antes los SHA.
+Para production, ejecutar únicamente **Environment smoke tests** desde
+`master`, seleccionar `production` e indicar `envelope_sha`, `payroll_sha`,
+`scheduler_sha` y `api_sha`; `finance_sha` y `hr_sha` permanecen vacíos en esta
+fase. El workflow conserva el contrato productivo original; sólo entonces crea
+las sesiones temporales de monitoreo para Envelope y Payroll.
 
 ## Cobertura de la primera versión
 

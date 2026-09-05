@@ -133,6 +133,7 @@ jobs:
       - run: pnpm turbo:graph:verify
       - run: pnpm deploy:impact:test
       - run: pnpm deploy:pilot:test
+      - run: pnpm deploy:development:test
       - run: pnpm deploy:release-manifest:test
       - run: pnpm ci:build
 

@@ -7,6 +7,14 @@ on:
         description: SHA completo servido por Envelope develop
         required: true
         type: string
+      finance_sha:
+        description: SHA completo servido por Finance develop
+        required: true
+        type: string
+      hr_sha:
+        description: SHA completo servido por HR develop
+        required: true
+        type: string
       payroll_sha:
         description: SHA completo servido por Payroll develop
         required: true
@@ -35,9 +43,13 @@ jobs:
     env:
       API_BASE_URL: ${{ vars.API_BASE_URL }}
       ENVELOPE_BASE_URL: ${{ vars.ENVELOPE_BASE_URL }}
+      FINANCE_BASE_URL: ${{ vars.FINANCE_BASE_URL }}
+      HR_BASE_URL: ${{ vars.HR_BASE_URL }}
       PAYROLL_BASE_URL: ${{ vars.PAYROLL_BASE_URL }}
       SCHEDULER_BASE_URL: ${{ vars.SCHEDULER_BASE_URL }}
       ENVELOPE_VERCEL_BYPASS_SECRET: ${{ secrets.ENVELOPE_VERCEL_BYPASS_SECRET }}
+      FINANCE_VERCEL_BYPASS_SECRET: ${{ secrets.FINANCE_VERCEL_BYPASS_SECRET }}
+      HR_VERCEL_BYPASS_SECRET: ${{ secrets.HR_VERCEL_BYPASS_SECRET }}
       PAYROLL_VERCEL_BYPASS_SECRET: ${{ secrets.PAYROLL_VERCEL_BYPASS_SECRET }}
       SCHEDULER_VERCEL_BYPASS_SECRET: ${{ secrets.SCHEDULER_VERCEL_BYPASS_SECRET }}
       E2E_ENVELOPE_EMAIL: ${{ secrets.E2E_ENVELOPE_EMAIL }}
@@ -47,6 +59,8 @@ jobs:
       E2E_SCHEDULER_EMAIL: ${{ secrets.E2E_SCHEDULER_EMAIL }}
       E2E_SCHEDULER_PASSWORD: ${{ secrets.E2E_SCHEDULER_PASSWORD }}
       E2E_EXPECTED_ENVELOPE_SHA: ${{ inputs.envelope_sha }}
+      E2E_EXPECTED_FINANCE_SHA: ${{ inputs.finance_sha }}
+      E2E_EXPECTED_HR_SHA: ${{ inputs.hr_sha }}
       E2E_EXPECTED_PAYROLL_SHA: ${{ inputs.payroll_sha }}
       E2E_EXPECTED_SCHEDULER_SHA: ${{ inputs.scheduler_sha }}
       E2E_EXPECTED_API_SHA: ${{ inputs.api_sha }}
@@ -56,14 +70,20 @@ jobs:
       - name: Validate release identity and development configuration
         run: |
           [[ "$E2E_EXPECTED_ENVELOPE_SHA" =~ ^[0-9a-fA-F]{40}$ ]]
+          [[ "$E2E_EXPECTED_FINANCE_SHA" =~ ^[0-9a-fA-F]{40}$ ]]
+          [[ "$E2E_EXPECTED_HR_SHA" =~ ^[0-9a-fA-F]{40}$ ]]
           [[ "$E2E_EXPECTED_PAYROLL_SHA" =~ ^[0-9a-fA-F]{40}$ ]]
           [[ "$E2E_EXPECTED_SCHEDULER_SHA" =~ ^[0-9a-fA-F]{40}$ ]]
           [[ "$E2E_EXPECTED_API_SHA" =~ ^[0-9a-fA-F]{40}$ ]]
           test -n "$API_BASE_URL"
           test -n "$ENVELOPE_BASE_URL"
+          test -n "$FINANCE_BASE_URL"
+          test -n "$HR_BASE_URL"
           test -n "$PAYROLL_BASE_URL"
           test -n "$SCHEDULER_BASE_URL"
           test -n "$ENVELOPE_VERCEL_BYPASS_SECRET"
+          test -n "$FINANCE_VERCEL_BYPASS_SECRET"
+          test -n "$HR_VERCEL_BYPASS_SECRET"
           test -n "$PAYROLL_VERCEL_BYPASS_SECRET"
           test -n "$SCHEDULER_VERCEL_BYPASS_SECRET"
           test -n "$E2E_ENVELOPE_EMAIL"

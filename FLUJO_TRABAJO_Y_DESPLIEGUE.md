@@ -140,12 +140,13 @@ git status
 El árbol de trabajo debe quedar limpio.
 
 Después de que la CI del push integrado termine en verde, GitHub ejecuta
-`Vercel frontend impact diagnostic`. Durante la Fase 4 este workflow sólo
-consulta el historial de los cinco proyectos activos, calcula qué aplicaciones
-deberían desplegarse y publica la comparación con la integración Git automática.
-No construye, despliega ni cambia aliases. Revisar su resumen y conservar el
-artefacto cuando el merge represente un caso nuevo de la matriz; una corrida
-inconclusa debe tratarse como bloqueo del diagnóstico, nunca como “cero apps”.
+`Vercel selective development frontends`. Consulta el historial de los cinco
+proyectos activos, calcula las apps afectadas y despliega sólo las que ya tengan
+activo su flag individual. Cada app conserva credencial, alias y concurrencia
+propios. Durante la migración se activa una por vez y sólo se retira su
+iniciador Git después del ensayo, publicación y rollback documentados en
+`docs/VERCEL_PHASE_6_DEVELOPMENT.md`. Una corrida inconclusa es un bloqueo,
+nunca “cero apps”.
 
 ---
 
@@ -200,6 +201,8 @@ Actions
 → Branch: develop
 → Environment: development
 → envelope_sha: SHA completo servido por Envelope
+→ finance_sha: SHA completo servido por Finance
+→ hr_sha: SHA completo servido por HR
 → payroll_sha: SHA completo servido por Payroll
 → scheduler_sha: SHA completo servido por Scheduler
 → api_sha: SHA completo reportado por /health
@@ -210,25 +213,31 @@ Los smoke tests comprueban:
 - `/health`.
 - `/ready`.
 - Contrato básico del API.
-- Pantallas de login de Envelope, Payroll y Scheduler.
-- Identidad exacta e independiente de los tres frontends y la API.
+- Pantallas de login de Envelope, Payroll y Scheduler; shells de Finance y HR.
+- Identidad exacta e independiente de los cinco frontends y la API.
 - Manifiesto JSON de la combinación realmente servida.
 
 ## Ejecutar E2E autenticado de solo lectura
 
-Antes de promover una combinación de `develop`, esperar a que los alias estables de Envelope, Payroll y Scheduler terminen sus deployments aplicables y ejecutar:
+Antes de promover una combinación de `develop`, esperar a que los cinco aliases
+estables terminen sus deployments aplicables y ejecutar:
 
 ```text
 Actions
 → Authenticated development E2E
 → Run workflow
 → envelope_sha: SHA completo servido por Envelope
+→ finance_sha: SHA completo servido por Finance
+→ hr_sha: SHA completo servido por HR
 → payroll_sha: SHA completo servido por Payroll
 → scheduler_sha: SHA completo servido por Scheduler
 → api_sha: SHA completo reportado por /health en API development
 ```
 
-El workflow valida primero la matriz multiversión y sólo entonces inicia sesión con tres cuentas técnicas de mínimo privilegio. Genera `storageState` temporal y ejecuta ocho recorridos para Envelope, ocho para Payroll y tres para Scheduler. La suite falla si detecta un `POST`, `PUT`, `PATCH` o `DELETE`, si un alias sirve otro SHA o si la API no reporta el SHA indicado.
+El workflow valida primero los cinco frontends y la API; sólo entonces inicia
+sesión con tres cuentas técnicas de mínimo privilegio. Genera `storageState`
+temporal y ejecuta ocho recorridos para Envelope, ocho para Payroll y tres para
+Scheduler. La suite falla ante escritura, alias desfasado o SHA de API distinto.
 
 No habilitar esta suite contra producción. Las credenciales viven exclusivamente en secrets del environment `development`; las sesiones temporales se eliminan antes de publicar el reporte. El diagnóstico seguro no incluye traces, screenshots ni video. La preparación exacta de puestos, permisos y variables está en `apps/e2e/README.md`.
 
@@ -412,7 +421,7 @@ Actions
 
 Después de aprobar el environment:
 
-- [ ] Los seis smoke tests públicos pasaron.
+- [ ] Los seis smoke tests públicos productivos pasaron.
 - [ ] `Authenticated production smoke` pasó sus tres recorridos por app.
 - [ ] `/health` reporta el SHA esperado.
 - [ ] `/ready` está sano.
@@ -474,7 +483,7 @@ El tag funciona como referencia inmutable y punto de rollback.
 
 | Tipo de cambio          | Después del merge a `develop`                              | Al liberar a producción            |
 | ----------------------- | ---------------------------------------------------------- | ---------------------------------- |
-| Solo frontend           | Preview automático, E2E autenticado y pruebas manuales     | Vercel desde `master` y validación |
+| Solo frontend           | Preview selectivo, E2E autenticado y pruebas manuales      | Vercel desde `master` y validación |
 | Solo backend            | Deploy API, smoke y E2E autenticado en development         | Deploy API a production            |
 | Migración de BD         | CI desechable, Deploy API y E2E autenticado en development | Respaldo y Deploy API production   |
 | Frontend + backend + BD | Flujo completo de development, incluido E2E autenticado    | Flujo completo protegido           |

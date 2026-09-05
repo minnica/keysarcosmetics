@@ -4,6 +4,11 @@
 > Estado: **implementada en repositorio; activación y evidencia remota pendientes**  
 > Producción: sin cambios
 
+> Nota de continuidad: la Fase 6 generalizó este contrato en
+> `.github/workflows/vercel-development-manual.yml` y sustituyó el flag
+> `VERCEL_HR_PILOT_ENABLED` por `VERCEL_HR_SELECTIVE_ENABLED`. Esta guía conserva
+> la evidencia y secuencia histórica del piloto.
+
 ## Resultado y elección del piloto
 
 HR es la aplicación piloto. Frente a las otras candidatas, reduce el alcance

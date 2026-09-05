@@ -1,6 +1,8 @@
 import { expect, test } from "playwright/test";
 import {
   assertReleaseIdentity,
+  frontendReleaseComponents,
+  frontendReleasePaths,
   readExpectedReleases,
   requiredEnvironment,
   writeVerifiedReleaseManifest,
@@ -19,11 +21,12 @@ test("los alias estables y la API exponen los releases esperados", async ({
   const expectedReleases = readExpectedReleases("E2E");
 
   async function readFrontendRelease(
-    baseURL: string,
+    component: (typeof frontendReleaseComponents)[number],
     bypassSecret: string | undefined,
   ): Promise<string> {
+    const upperComponent = component.toUpperCase();
     const context = await browser.newContext({
-      baseURL,
+      baseURL: requiredEnvironment(`${upperComponent}_BASE_URL`),
       extraHTTPHeaders: bypassSecret
         ? {
             "x-vercel-protection-bypass": bypassSecret,
@@ -33,7 +36,7 @@ test("los alias estables y la API exponen los releases esperados", async ({
     });
     try {
       const page = await context.newPage();
-      const response = await page.goto("/login", {
+      const response = await page.goto(frontendReleasePaths[component], {
         waitUntil: "domcontentloaded",
       });
       expect(response?.ok()).toBe(true);
@@ -47,33 +50,27 @@ test("los alias estables y la API exponen los releases esperados", async ({
     }
   }
 
-  const [envelopeRelease, payrollRelease, schedulerRelease, healthResponse] =
-    await Promise.all([
-      readFrontendRelease(
-        requiredEnvironment("ENVELOPE_BASE_URL"),
-        process.env["ENVELOPE_VERCEL_BYPASS_SECRET"],
+  const frontendEntries = await Promise.all(
+    frontendReleaseComponents.map(async (component) => [
+      component,
+      await readFrontendRelease(
+        component,
+        process.env[`${component.toUpperCase()}_VERCEL_BYPASS_SECRET`],
       ),
-      readFrontendRelease(
-        requiredEnvironment("PAYROLL_BASE_URL"),
-        process.env["PAYROLL_VERCEL_BYPASS_SECRET"],
-      ),
-      readFrontendRelease(
-        requiredEnvironment("SCHEDULER_BASE_URL"),
-        process.env["SCHEDULER_VERCEL_BYPASS_SECRET"],
-      ),
-      request.get(`${requiredEnvironment("API_BASE_URL")}/health`),
-    ]);
+    ]),
+  );
+  const healthResponse = await request.get(
+    `${requiredEnvironment("API_BASE_URL")}/health`,
+  );
 
   expect(healthResponse.ok()).toBe(true);
 
   const health = (await healthResponse.json()) as HealthPayload;
   expect(health.status).toBe("ok");
   const actualReleases: ReleaseSet = {
-    envelope: envelopeRelease,
-    payroll: payrollRelease,
-    scheduler: schedulerRelease,
+    ...Object.fromEntries(frontendEntries),
     api: health.release,
-  };
+  } as ReleaseSet;
   assertReleaseIdentity(expectedReleases, actualReleases);
 
   await writeVerifiedReleaseManifest(process.env["RELEASE_MANIFEST_PATH"], {
@@ -82,12 +79,15 @@ test("los alias estables y la API exponen los releases esperados", async ({
     suiteSha: process.env["GITHUB_SHA"]?.trim(),
   });
 
-  test
-    .info()
-    .annotations.push(
-      { type: "envelope-release", description: actualReleases.envelope },
-      { type: "payroll-release", description: actualReleases.payroll },
-      { type: "scheduler-release", description: actualReleases.scheduler },
-      { type: "api-release", description: actualReleases.api },
-    );
+  test.info().annotations.push(
+    { type: "envelope-release", description: actualReleases.envelope ?? "" },
+    { type: "finance-release", description: actualReleases.finance ?? "" },
+    { type: "hr-release", description: actualReleases.hr ?? "" },
+    { type: "payroll-release", description: actualReleases.payroll ?? "" },
+    {
+      type: "scheduler-release",
+      description: actualReleases.scheduler ?? "",
+    },
+    { type: "api-release", description: actualReleases.api ?? "" },
+  );
 });

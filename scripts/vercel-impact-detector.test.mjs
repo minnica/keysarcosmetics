@@ -14,6 +14,7 @@ import {
 import { collectProjectDeploymentHistory } from "./vercel-deployment-state-lib.mjs";
 import {
   createDiagnosticMatrix,
+  createExpectedFrontendReleases,
   createPilotSelection,
   formatGitHubDiagnosticSummary,
 } from "./vercel-impact-summary-lib.mjs";
@@ -681,6 +682,7 @@ describe("orquestación diagnóstica de la Fase 4", () => {
       observations: {
         payroll: {
           deploymentId: "dpl_target",
+          sha: targetSha,
           status: "READY",
         },
         finance: null,
@@ -692,12 +694,22 @@ describe("orquestación diagnóstica de la Fase 4", () => {
       include: [
         {
           application: "payroll",
+          aliasVariable: "VERCEL_PAYROLL_DEVELOP_ALIAS",
+          bypassSecret: "PAYROLL_VERCEL_BYPASS_SECRET",
+          enabledVariable: "VERCEL_PAYROLL_SELECTIVE_ENABLED",
           environment: "development",
           project: "keysarcosmetics-payroll",
+          projectIdSecret: "VERCEL_PROJECT_ID_PAYROLL",
           root: "apps/payroll",
+          reusableDeploymentId: "dpl_target",
           targetSha,
+          tokenSecret: "VERCEL_TOKEN_PAYROLL_DEPLOY",
         },
       ],
+    });
+    assert.deepEqual(createExpectedFrontendReleases(impact, evidence), {
+      payroll: targetSha,
+      finance: baseSha,
     });
     const summary = formatGitHubDiagnosticSummary(impact, evidence);
     assert.match(summary, /sólo lectura/);

@@ -6,8 +6,8 @@ Este documento define el flujo seguro para promover cambios desde una feature ha
 
 Crear los environments `development` y `production`.
 
-Mientras la selección frontend permanezca en la Fase 4 diagnóstica, configurar
-como secret de repositorio `VERCEL_TOKEN_READ_ONLY`. Debe ser una credencial
+Para la selección frontend de las Fases 4–6, configurar como secret de
+repositorio `VERCEL_TOKEN_READ_ONLY`. Debe ser una credencial
 dedicada al scope de los cinco proyectos activos. El workflow sólo hace
 consultas `GET`; no colocar este token en los environments de API ni reutilizar
 `FLY_API_TOKEN` o los bypass de automatización.
@@ -20,6 +20,13 @@ En ambos environments configurar estos secretos:
 - `ENVELOPE_VERCEL_BYPASS_SECRET`: bypass de automatización generado exclusivamente en el proyecto Vercel de Envelope cuando la URL del ambiente esté protegida.
 - `PAYROLL_VERCEL_BYPASS_SECRET`: bypass independiente generado en el proyecto Vercel de Payroll cuando la URL del ambiente esté protegida. No reutilizar el secreto de Envelope.
 - `SCHEDULER_VERCEL_BYPASS_SECRET`: bypass independiente del proyecto Scheduler cuando la URL del ambiente esté protegida.
+- `FINANCE_VERCEL_BYPASS_SECRET` y `HR_VERCEL_BYPASS_SECRET`: bypass separados
+  para comprobar los aliases de las dos aplicaciones mock.
+
+Sólo en `development`, configurar además `VERCEL_ORG_ID` y un token/project ID
+por frontend: `VERCEL_TOKEN_<APP>_DEPLOY` y `VERCEL_PROJECT_ID_<APP>` para
+`ENVELOPE`, `FINANCE`, `HR`, `PAYROLL` y `SCHEDULER`. Los tokens no se comparten
+entre proyectos cuando el plan de Vercel permita ese alcance.
 
 Solo en `development`, crear además las cuentas técnicas de mínimo privilegio descritas en `apps/e2e/README.md` y configurar:
 
@@ -42,8 +49,19 @@ Configurar estas variables:
 - `ENVELOPE_BASE_URL`: URL del frontend Envelope del ambiente.
 - `PAYROLL_BASE_URL`: URL del frontend Payroll del ambiente.
 - `SCHEDULER_BASE_URL`: URL del frontend Scheduler del ambiente.
+- `FINANCE_BASE_URL` y `HR_BASE_URL`: aliases estables de las aplicaciones mock.
+- `DEVELOPMENT_API_RELEASE_SHA`: SHA completo servido por `/health.release` en
+  development; sólo se usa por el smoke automático selectivo.
 
-En los proyectos Vercel de Envelope, Payroll y Scheduler, habilitar **Automatically expose System Environment Variables**. El E2E usa `VERCEL_GIT_COMMIT_SHA` durante el build para comprobar la identidad exacta de cada alias estable.
+Como variables de repositorio, mantener `VERCEL_<APP>_SELECTIVE_ENABLED=false`
+para los cinco proyectos hasta migrarlos individualmente. Activar
+`VERCEL_DEVELOPMENT_SMOKES_ENABLED` sólo después de que los cinco flags estén
+en `true` y ya no exista doble iniciador. Los nombres, contrato remoto y orden
+de migración están en `docs/VERCEL_PHASE_6_DEVELOPMENT.md`.
+
+Los builds selectivos inyectan `KEYSAR_RELEASE_SHA`; la integración Git
+transitoria conserva `VERCEL_GIT_COMMIT_SHA`. Las cinco apps deben publicar
+`meta[name="keysar-release"]` antes de retirar su iniciador anterior.
 
 En `production`, habilitar required reviewer, impedir self-review cuando exista otra persona autorizada y deshabilitar bypass de administradores si el plan lo permite.
 
@@ -69,20 +87,29 @@ Si solo existe una persona desarrolladora, la aprobación de código puede queda
 
 1. Crear una rama corta desde el `develop` actualizado.
 2. Abrir PR hacia `develop`.
-3. Esperar CI y revisar el Preview Deployment de Vercel.
+3. Esperar CI; las ramas de trabajo no deben crear Preview Deployments.
 4. Para cambios Prisma, confirmar que la migración sea aditiva. SQL destructivo requiere una revisión explícita y el comentario `-- migration-safety: reviewed` dentro de la migración.
 5. Hacer squash merge y eliminar la rama.
-6. Revisar `Vercel frontend impact diagnostic`: debe haber esperado una CI verde,
-   publicar la matriz teórica y declarar cero operaciones de deployment. Durante
-   la Fase 4, contrastar su resumen con los deployments que todavía crea la
-   integración Git automática y conservar el artefacto por 30 días.
+6. Revisar `Vercel selective development frontends`: debe haber esperado una CI
+   verde, publicar la matriz y desplegar únicamente las apps afectadas cuyos
+   flags estén activos. Durante la migración, contrastar cada proyecto con su
+   integración Git y conservar los artefactos por 30 días.
 7. Ejecutar manualmente `Deploy API` hacia `development` cuando cambien API o Prisma.
-8. Ejecutar `Environment smoke tests` contra `development`, indicando por separado los SHA completos servidos por Envelope, Payroll, Scheduler y `/health`.
+8. El smoke automático se ejecuta cuando los cinco proyectos ya están migrados;
+   también puede ejecutarse `Environment smoke tests` indicando los cinco SHAs
+   frontend y el SHA de `/health`.
 9. Cuando la combinación vaya a promoverse, ejecutar `Authenticated development E2E` con la misma matriz multiversión.
 
-Los seis smoke tests públicos no autentican usuarios ni escriben datos: comprueban identidad exacta de Envelope, Payroll, Scheduler y API, `/health`, `/ready`, el contrato JSON 404 y las tres pantallas de login. En previews protegidos envían los bypass de automatización mediante headers. Traces, screenshots y video están desactivados para que secretos o datos no entren en artefactos.
+Los smokes públicos no autentican usuarios ni escriben datos: comprueban
+identidad exacta de Envelope, Finance, HR, Payroll, Scheduler y API, `/health`,
+`/ready`, el contrato JSON 404, los tres logins y los shells mock. En previews
+protegidos envían bypass independientes mediante headers. Traces, screenshots
+y video están desactivados.
 
-El E2E autenticado sí inicia sesiones dedicadas, pero continúa siendo de solo lectura: Envelope y Payroll conservan ocho recorridos cada una, y Scheduler cubre Agenda, Clientes y Reportes. Un guard bloquea cualquier método de escritura. Antes de autenticar, el workflow compara cada SHA declarado contra el `meta[name="keysar-release"]` de su app y `api_sha` contra `/health.release`; un componente desfasado detiene la promoción. Publica un manifiesto JSON seguro de la combinación verificada. No publicar `apps/e2e/.auth`: contiene JWT/cookies. El reporte HTML no incluye traces, screenshots ni video.
+El E2E autenticado sí inicia sesiones dedicadas, pero continúa siendo de solo
+lectura para Envelope, Payroll y Scheduler. Antes de autenticar, también valida
+las identidades de Finance y HR, además del API, y publica el mismo manifiesto
+de seis componentes. No publica `apps/e2e/.auth`, traces, screenshots ni video.
 
 ## 4. Release a producción
 
@@ -98,7 +125,7 @@ quedan bloqueadas por esta puerta, pero ninguna terminal POS debe cambiar a
 4. Ejecutar `Deploy API` seleccionando `production` y escribiendo `PRODUCCION_RESPALDADA`.
 5. El workflow fija el SHA de `master` antes de solicitar aprobación, valida schemas, unit tests y build; aplica `prisma migrate deploy`; despliega exactamente ese commit en Fly; espera el health check y consulta `/ready`.
 6. En Vercel, revisar el build de producción preparado y promover Envelope/Payroll solo después de que el API esté listo. Se recomienda desactivar la asignación automática del dominio productivo.
-7. Ejecutar `Environment smoke tests` contra `production` e indicar los SHA completos realmente servidos por Envelope, Payroll, Scheduler y API. El primer job ejecuta los seis smokes públicos y registra el manifiesto multiversión; si quedan verdes, `Authenticated production smoke` ejecuta tres recorridos de solo lectura por app con las cuentas productivas de monitoreo.
+7. Ejecutar `Environment smoke tests` contra `production` e indicar los SHA completos realmente servidos por Envelope, Payroll, Scheduler y API; Finance/HR se dejan vacíos en esta fase. El primer job ejecuta los seis smokes públicos y registra el manifiesto multiversión; si quedan verdes, `Authenticated production smoke` ejecuta tres recorridos de solo lectura por app con las cuentas productivas de monitoreo.
 8. Confirmar que el resumen de Actions muestre cero retries en el smoke autenticado y que el workflow eliminó los `storageState` y `test-results`; producción no publica reporte HTML, traces, screenshots ni video.
 9. Observar errores, latencia y acciones críticas durante al menos 15 minutos.
 10. Crear un tag inmutable `prod-AAAA-MM-DD.N` sobre el commit desplegado.

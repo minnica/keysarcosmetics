@@ -88,6 +88,7 @@ export function createDiagnosticMatrix(impact, evidence) {
       .filter((result) => result.affected)
       .map((result) => {
         const project = evidence.projects[result.application];
+        const expectedProject = ACTIVE_VERCEL_PROJECTS[result.application];
         if (!project) {
           throw new Error(
             `Falta configuración Vercel para ${result.application}`,
@@ -95,13 +96,33 @@ export function createDiagnosticMatrix(impact, evidence) {
         }
         return {
           application: result.application,
+          aliasVariable: expectedProject.deployment.aliasVariable,
+          bypassSecret: expectedProject.deployment.bypassSecret,
+          enabledVariable: expectedProject.deployment.enabledVariable,
           environment: impact.environment,
           project: project.project,
+          projectIdSecret: expectedProject.deployment.projectIdSecret,
           root: project.root,
+          reusableDeploymentId: resolvePilotSelection(
+            impact,
+            evidence,
+            result.application,
+          ).reusableDeploymentId,
           targetSha: impact.targetSha,
+          tokenSecret: expectedProject.deployment.tokenSecret,
         };
       }),
   };
+}
+
+export function createExpectedFrontendReleases(impact, evidence) {
+  assertDiagnosticContract(impact, evidence);
+  return Object.fromEntries(
+    impact.results.map((result) => [
+      result.application,
+      result.affected ? impact.targetSha : result.baseSha,
+    ]),
+  );
 }
 
 export function createPilotSelection(impact, evidence, application = "hr") {
@@ -153,7 +174,7 @@ export function formatGitHubDiagnosticSummary(impact, evidence) {
     `- Afectadas: ${affected.length > 0 ? affected.map((app) => `\`${app}\``).join(", ") : "ninguna"}.`,
     `- Omitidas: ${skipped.length > 0 ? skipped.map((app) => `\`${app}\``).join(", ") : "ninguna"}.`,
     `- Sin proyecto Vercel en esta fase: ${unprovisioned.map((app) => `\`${app}\``).join(", ")}.`,
-    "- Matriz dinámica conservada como output `matrix`; sólo el piloto HR de `development` puede consumirla y requiere la bandera administrativa de activación.",
+    "- Matriz dinámica conservada como output `matrix`; en `development` cada proyecto sólo puede consumir su fila si su bandera administrativa individual está activa.",
     "",
   );
   return `${lines.join("\n")}\n`;
