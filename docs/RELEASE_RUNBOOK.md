@@ -6,7 +6,7 @@ Este documento define el flujo seguro para promover cambios desde una feature ha
 
 Crear los environments `development` y `production`.
 
-Para la selección frontend de las Fases 4–6, configurar como secret de
+Para la selección frontend y la sombra productiva de las Fases 4–7, configurar como secret de
 repositorio `VERCEL_TOKEN_READ_ONLY`. Debe ser una credencial
 dedicada al scope de los cinco proyectos activos. El workflow sólo hace
 consultas `GET`; no colocar este token en los environments de API ni reutilizar
@@ -59,6 +59,12 @@ para los cinco proyectos hasta migrarlos individualmente. Activar
 en `true` y ya no exista doble iniciador. Los nombres, contrato remoto y orden
 de migración están en `docs/VERCEL_PHASE_6_DEVELOPMENT.md`.
 
+La Fase 7 no agrega tokens productivos de deployment. El job de sombra entra al
+environment protegido `production` únicamente para leer `API_BASE_URL`, consulta
+`/health` y reutiliza el token de sólo lectura del repositorio para la evidencia
+Vercel recolectada previamente. No crear `VERCEL_TOKEN_*_DEPLOY` productivos
+antes de aprobar explícitamente la Fase 8.
+
 Los builds selectivos inyectan `KEYSAR_RELEASE_SHA`; la integración Git
 transitoria conserva `VERCEL_GIT_COMMIT_SHA`. Las cinco apps deben publicar
 `meta[name="keysar-release"]` antes de retirar su iniciador anterior.
@@ -90,7 +96,7 @@ Si solo existe una persona desarrolladora, la aprobación de código puede queda
 3. Esperar CI; las ramas de trabajo no deben crear Preview Deployments.
 4. Para cambios Prisma, confirmar que la migración sea aditiva. SQL destructivo requiere una revisión explícita y el comentario `-- migration-safety: reviewed` dentro de la migración.
 5. Hacer squash merge y eliminar la rama.
-6. Revisar `Vercel selective development frontends`: debe haber esperado una CI
+6. Revisar `Vercel selective frontends and production shadow`: debe haber esperado una CI
    verde, publicar la matriz y desplegar únicamente las apps afectadas cuyos
    flags estén activos. Durante la migración, contrastar cada proyecto con su
    integración Git y conservar los artefactos por 30 días.
@@ -122,19 +128,44 @@ quedan bloqueadas por esta puerta, pero ninguna terminal POS debe cambiar a
 1. Abrir PR `develop → master`, confirmar que GitHub indique que no hay conflictos y esperar los cinco checks requeridos del PR. Los fallos opcionales de proveedores externos por cuota, como `Deployment rate limited` de Vercel, no sustituyen ni invalidan esos checks; el frontend debe verificarse por separado antes de promoverlo.
 2. Confirmar en Supabase que existe un backup recuperable o PITR vigente.
 3. Hacer merge commit hacia `master`.
-4. Ejecutar `Deploy API` seleccionando `production` y escribiendo `PRODUCCION_RESPALDADA`.
-5. El workflow fija el SHA de `master` antes de solicitar aprobación, valida schemas, unit tests y build; aplica `prisma migrate deploy`; despliega exactamente ese commit en Fly; espera el health check y consulta `/ready`.
-6. En Vercel, revisar el build de producción preparado y promover Envelope/Payroll solo después de que el API esté listo. Se recomienda desactivar la asignación automática del dominio productivo.
-7. Ejecutar `Environment smoke tests` contra `production` e indicar los SHA completos realmente servidos por Envelope, Payroll, Scheduler y API; Finance/HR se dejan vacíos en esta fase. El primer job ejecuta los seis smokes públicos y registra el manifiesto multiversión; si quedan verdes, `Authenticated production smoke` ejecuta tres recorridos de solo lectura por app con las cuentas productivas de monitoreo.
-8. Confirmar que el resumen de Actions muestre cero retries en el smoke autenticado y que el workflow eliminó los `storageState` y `test-results`; producción no publica reporte HTML, traces, screenshots ni video.
-9. Observar errores, latencia y acciones críticas durante al menos 15 minutos.
-10. Crear un tag inmutable `prod-AAAA-MM-DD.N` sobre el commit desplegado.
+4. Aprobar y revisar `Rehearse selective production without mutations`. Debe
+   declarar cero mutaciones, comparar la selección con el deployment amplio,
+   identificar los objetivos `READY` de rollback y producir un manifiesto
+   teórico de cinco frontends más API. Si falla, no contar la promoción como
+   evidencia de la Fase 7 ni continuar sin resolver la causa.
+5. Si el reporte exige API o migraciones, ejecutar `Deploy API` seleccionando
+   `production` y escribiendo `PRODUCCION_RESPALDADA`. El workflow fija el SHA
+   de `master` y valida schemas, unit tests y build. Después ejecuta
+   `prisma migrate deploy`, despliega ese commit en Fly y verifica `/health` y
+   `/ready`.
+6. Revisar los gates de compatibilidad del reporte: Envelope/Payroll requieren
+   compatibilidad hacia atrás; Scheduler requiere una pareja frontend/API
+   explícita cuando aplique; Finance/HR son independientes mientras conserven su
+   implementación mock.
+7. En Vercel, revisar el build productivo amplio vigente y publicar los
+   frontends sólo después de que el API esté listo. Durante la Fase 7 no mover
+   aliases desde Actions: la producción selectiva continúa desactivada.
+8. Ejecutar `Environment smoke tests` contra `production` e indicar los SHA
+   completos realmente servidos por Envelope, Finance, HR, Payroll, Scheduler y
+   API. El primer job ejecuta ocho smokes públicos y registra el manifiesto
+   multiversión; si queda verde, `Authenticated production smoke` ejecuta tres
+   recorridos de solo lectura por app para Envelope y Payroll.
+9. Confirmar que el resumen de Actions muestre cero retries en el smoke autenticado y que el workflow eliminó los `storageState` y `test-results`; producción no publica reporte HTML, traces, screenshots ni video.
+10. Observar errores, latencia y acciones críticas durante al menos 15 minutos.
+11. Crear un tag inmutable `prod-AAAA-MM-DD.N` sobre el commit desplegado.
 
-Durante las primeras cinco promociones después de activar este gate, registrar duración, intento y resultado desde `GITHUB_STEP_SUMMARY`. Una falla intermitente o un rerun manual cuenta como flakiness y debe corregirse antes de declarar estable el gate; no aumentar retries para ocultarla.
+Durante la Fase 7, conservar al menos tres promociones representativas según
+`docs/VERCEL_PHASE_7_PRODUCTION_SHADOW.md`. Durante las primeras cinco
+promociones después de activar los smokes completos, registrar duración, intento
+y resultado desde `GITHUB_STEP_SUMMARY`. Una falla intermitente o un rerun manual
+cuenta como flakiness y debe corregirse antes de declarar estable el gate; no
+aumentar retries para ocultarla.
 
 ## 5. Rollback
 
-- Frontend: reasignar el dominio al último deployment sano de Vercel.
+- Frontend: reasignar el dominio al último deployment sano de Vercel. Durante la
+  Fase 7, comprobar que coincida con el `dpl_*` y SHA del `rollbackDrills` sin
+  ejecutar la reasignación desde el job de sombra.
 - API: desplegar el tag o commit anterior mediante Fly.
 - Base de datos: no revertir migraciones destructivamente. Las migraciones deben mantener compatibilidad con el API anterior; ante un problema, hacer rollback del código y preparar una migración correctiva hacia adelante.
 - Datos: restaurar backup/PITR solo como respuesta a pérdida o corrupción confirmada y siguiendo el procedimiento de Supabase.
@@ -150,6 +181,7 @@ pnpm test:ui
 pnpm test:ui:visual
 pnpm test:unit
 pnpm ci:build
+pnpm deploy:production-shadow:test
 pnpm test:e2e:development # solo contra development, requiere variables y cuentas técnicas
 pnpm test:e2e:production  # solo diagnóstico administrado; validar antes los SHA con test:smoke
 pnpm --filter @cosmetics/api prisma:schemas

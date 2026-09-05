@@ -140,7 +140,7 @@ git status
 El árbol de trabajo debe quedar limpio.
 
 Después de que la CI del push integrado termine en verde, GitHub ejecuta
-`Vercel selective development frontends`. Consulta el historial de los cinco
+`Vercel selective frontends and production shadow`. Consulta el historial de los cinco
 proyectos activos, calcula las apps afectadas y despliega sólo las que ya tengan
 activo su flag individual. Cada app conserva credencial, alias y concurrencia
 propios. Durante la migración se activa una por vez y sólo se retira su
@@ -334,7 +334,34 @@ Si excepcionalmente se aplica un hotfix directamente en `master`, debe incorpora
 
 ---
 
-# 9. Desplegar el backend en producción
+# 9. Revisar la sombra productiva
+
+Después de la CI verde del push a `master`, aprobar el job:
+
+```text
+Vercel selective frontends and production shadow
+→ Rehearse selective production without mutations
+→ Environment: production
+```
+
+Confirmar en su resumen:
+
+- [ ] Declara `read-only` y cero mutaciones.
+- [ ] La selección teórica coincide con el alcance de la release.
+- [ ] El fan-out amplio evitable está explicado por aplicación.
+- [ ] El diff desde `/health.release` exige o descarta correctamente `Deploy API`.
+- [ ] El orden de backup/PITR, migraciones, API y frontends es correcto.
+- [ ] Cada app afectada tiene un deployment `READY` anterior para rollback.
+- [ ] El manifiesto teórico contiene cinco frontends más API.
+
+La sombra no construye, despliega ni mueve aliases. Durante al menos tres
+promociones representativas se conserva como evidencia antes de solicitar la
+activación selectiva de la Fase 8. Ver
+`docs/VERCEL_PHASE_7_PRODUCTION_SHADOW.md`.
+
+---
+
+# 10. Desplegar el backend en producción
 
 Si la release contiene backend o migraciones, ejecutar:
 
@@ -360,7 +387,7 @@ El workflow:
 
 ---
 
-# 10. Verificar el backend productivo
+# 11. Verificar el backend productivo
 
 ```bash
 curl -fsS https://cosmetics-api.fly.dev/health
@@ -383,15 +410,18 @@ git rev-parse HEAD
 
 ---
 
-# 11. Verificar los frontends productivos
+# 12. Verificar los frontends productivos
 
 Vercel construye los frontends desde `master`.
 
 Comprobar:
 
 - [ ] Envelope está en estado `Ready`.
+- [ ] Finance está en estado `Ready`.
+- [ ] HR está en estado `Ready`.
 - [ ] Payroll está en estado `Ready`.
-- [ ] Ambos apuntan a `https://cosmetics-api.fly.dev`.
+- [ ] Scheduler está en estado `Ready`.
+- [ ] Envelope, Payroll y Scheduler apuntan al API productivo esperado.
 - [ ] El login funciona.
 - [ ] La navegación funciona.
 - [ ] Los flujos críticos funcionan.
@@ -399,11 +429,13 @@ Comprobar:
 
 Cuando una release cambie frontend y backend simultáneamente, los cambios deben conservar compatibilidad durante el despliegue.
 
-A futuro, se recomienda configurar promoción manual de los dominios productivos en Vercel para publicar el frontend solamente después de que el API esté listo.
+La Fase 7 sólo observa el deployment amplio vigente. No activar promoción
+selectiva ni mover dominios desde Actions hasta contar con las promociones
+representativas y la aprobación explícita de la Fase 8.
 
 ---
 
-# 12. Smoke tests de producción
+# 13. Smoke tests de producción
 
 En GitHub:
 
@@ -414,6 +446,8 @@ Actions
 → Branch: master
 → Environment: production
 → envelope_sha: SHA completo servido por Envelope
+→ finance_sha: SHA completo servido por Finance
+→ hr_sha: SHA completo servido por HR
 → payroll_sha: SHA completo servido por Payroll
 → scheduler_sha: SHA completo servido por Scheduler
 → api_sha: SHA completo reportado por /health
@@ -421,12 +455,14 @@ Actions
 
 Después de aprobar el environment:
 
-- [ ] Los seis smoke tests públicos productivos pasaron.
+- [ ] Los ocho smoke tests públicos productivos pasaron.
 - [ ] `Authenticated production smoke` pasó sus tres recorridos por app.
 - [ ] `/health` reporta el SHA esperado.
 - [ ] `/ready` está sano.
 - [ ] Envelope funciona.
+- [ ] Finance y HR sirven sus shells y SHA declarados.
 - [ ] Payroll funciona.
+- [ ] Scheduler sirve el SHA declarado.
 
 El segundo job usa cuentas productivas exclusivas de monitoreo. Envelope solo puede abrir dashboard y total general con alcance propio; Payroll solo puede abrir esquemas en modo `canWrite = false`. Un fixture falla ante cualquier `POST`, `PUT`, `PATCH` o `DELETE`. La configuración desactiva traces, screenshots y video, usa cero retries, no publica reporte HTML y elimina los `storageState` y resultados locales incluso si falla.
 
@@ -434,7 +470,7 @@ Durante las primeras cinco promociones, revisar en el resumen del workflow la du
 
 ---
 
-# 13. Observación posterior al despliegue
+# 14. Observación posterior al despliegue
 
 Observar producción durante al menos 15 minutos.
 
@@ -457,7 +493,7 @@ Los fallos temporales del health check durante el arranque son aceptables si, se
 
 ---
 
-# 14. Crear el tag de producción
+# 15. Crear el tag de producción
 
 Después de completar todas las validaciones:
 
@@ -517,6 +553,7 @@ feature
 → respaldo
 → Pull Request de release
 → master
+→ sombra selectiva de solo lectura
 → deploy productivo protegido
 → smokes públicos + autenticados de producción
 → observación

@@ -1,4 +1,4 @@
-name: Vercel selective development frontends
+name: Vercel selective frontends and production shadow
 
 on:
   workflow_run:
@@ -315,6 +315,62 @@ jobs:
             vercel-${{ matrix.application }}-deployment.json
           if-no-files-found: ignore
           retention-days: 30
+
+  production-shadow:
+    name: Rehearse selective production without mutations
+    needs: [ci-gate, diagnose]
+    if: >-
+      needs.ci-gate.outputs.environment == 'production' &&
+      needs.diagnose.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    concurrency:
+      group: vercel-production-shadow
+      cancel-in-progress: false
+    env:
+      API_BASE_URL: ${{ vars.API_BASE_URL }}
+    steps:
+      - name: Checkout the exact promoted SHA with full history
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: ${{ needs.ci-gate.outputs.target_sha }}
+      - name: Download the sanitized detector evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: vercel-impact-production-${{ needs.ci-gate.outputs.target_sha }}-${{ github.run_attempt }}
+          path: .
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22.23.2
+      - name: Validate the read-only production context
+        run: |
+          test -n "$API_BASE_URL"
+          [[ "${{ needs.ci-gate.outputs.target_sha }}" =~ ^[0-9a-f]{40}$ ]]
+      - name: Build the production shadow, rollback drills and release manifest
+        run: |
+          node scripts/write-vercel-production-shadow.mjs \
+            --impact vercel-impact.json \
+            --evidence vercel-deployment-evidence.json \
+            --api-base-url "$API_BASE_URL" \
+            --output vercel-production-shadow.json
+      - name: Record a fail-closed production shadow error
+        if: failure()
+        run: |
+          {
+            echo "## Vercel production selective shadow — bloqueado"
+            echo ""
+            echo "No fue posible demostrar la selección, coordinación API/BD, manifiesto o rollback. No se ejecutó ninguna mutación productiva y esta promoción no cuenta como evidencia válida de la Fase 7."
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Preserve the sanitized production rehearsal
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: vercel-production-shadow-${{ needs.ci-gate.outputs.target_sha }}-${{ github.run_attempt }}
+          path: vercel-production-shadow.json
+          if-no-files-found: ignore
+          retention-days: 90
 
   smoke-development:
     name: Smoke the five development aliases

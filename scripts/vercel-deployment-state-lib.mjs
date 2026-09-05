@@ -8,6 +8,11 @@ export const ACTIVE_VERCEL_PROJECTS = Object.freeze({
     project: "keysarcosmetics-envelope",
     root: "apps/envelope",
     releasePath: "/login",
+    productionCompatibility: {
+      apiMode: "backward-compatible",
+      description:
+        "Envelope acepta una API compatible hacia atrás y se valida con smoke; no exige igualdad de SHA.",
+    },
     deployment: {
       aliasVariable: "VERCEL_ENVELOPE_DEVELOP_ALIAS",
       bypassSecret: "ENVELOPE_VERCEL_BYPASS_SECRET",
@@ -28,6 +33,11 @@ export const ACTIVE_VERCEL_PROJECTS = Object.freeze({
     project: "keysarcosmetics-finance",
     root: "apps/finance",
     releasePath: "/",
+    productionCompatibility: {
+      apiMode: "independent",
+      description:
+        "Finance opera con estado mock y no consume la API compartida en su implementación actual.",
+    },
     deployment: {
       aliasVariable: "VERCEL_FINANCE_DEVELOP_ALIAS",
       bypassSecret: "FINANCE_VERCEL_BYPASS_SECRET",
@@ -48,6 +58,11 @@ export const ACTIVE_VERCEL_PROJECTS = Object.freeze({
     project: "keysarcosmetics-hr",
     root: "apps/hr",
     releasePath: "/",
+    productionCompatibility: {
+      apiMode: "independent",
+      description:
+        "HR opera con estado mock y no consume la API compartida en su implementación actual.",
+    },
     deployment: {
       aliasVariable: "VERCEL_HR_DEVELOP_ALIAS",
       bypassSecret: "HR_VERCEL_BYPASS_SECRET",
@@ -68,6 +83,11 @@ export const ACTIVE_VERCEL_PROJECTS = Object.freeze({
     project: "keysarcosmetics-payroll",
     root: "apps/payroll",
     releasePath: "/login",
+    productionCompatibility: {
+      apiMode: "backward-compatible",
+      description:
+        "Payroll acepta una API compatible hacia atrás y se valida con smoke; no exige igualdad de SHA.",
+    },
     deployment: {
       aliasVariable: "VERCEL_PAYROLL_DEVELOP_ALIAS",
       bypassSecret: "PAYROLL_VERCEL_BYPASS_SECRET",
@@ -88,6 +108,11 @@ export const ACTIVE_VERCEL_PROJECTS = Object.freeze({
     project: "keysarcosmetics-scheduler",
     root: "apps/scheduler",
     releasePath: "/login",
+    productionCompatibility: {
+      apiMode: "approved-pair",
+      description:
+        "Scheduler exige una pareja frontend/API explícita y verificada cuando cambia su contrato o proveedor; los SHA pueden ser distintos.",
+    },
     deployment: {
       aliasVariable: "VERCEL_SCHEDULER_DEVELOP_ALIAS",
       bypassSecret: "SCHEDULER_VERCEL_BYPASS_SECRET",

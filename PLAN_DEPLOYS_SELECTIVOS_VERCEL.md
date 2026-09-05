@@ -8,9 +8,12 @@
 > remotos. Las Fases 3–5 aún requieren corridas completas de CI/ambiente para
 > cumplir sus criterios de salida. La Fase 6 quedó
 > implementada en repositorio el 5 de septiembre y espera una migración remota
-> proyecto por proyecto. Durante la validación de la Fase 2 se corrigió en
-> Vercel el Build Command de Envelope a `--filter=@cosmetics/envelope`; no se
-> aplicaron otros cambios operativos.
+> proyecto por proyecto. La Fase 7 quedó implementada en repositorio el 5 de
+> septiembre de 2026 como una simulación productiva estrictamente de sólo
+> lectura; requiere observar promociones reales y aprobación explícita antes de
+> la Fase 8. Durante la validación de la Fase 2 se corrigió en Vercel el Build
+> Command de Envelope a `--filter=@cosmetics/envelope`; no se aplicaron otros
+> cambios operativos.
 
 ## 1. Objetivo
 
@@ -626,21 +629,43 @@ sano sin afectar las demás aplicaciones.
 
 Objetivo: validar qué habría ocurrido en `master` sin alterar producción.
 
+Estado al 5 de septiembre de 2026: **implementada en repositorio; observación y
+aprobación remotas pendientes**. Cada CI verde de un push a `master` conserva la
+selección productiva, contrasta el fan-out teórico contra los deployments amplios
+observados, consulta el release actual del API y genera un plan fail-closed de
+orden API/BD/frontend, un manifiesto teórico de cinco frontends más API y un
+objetivo `READY` de rollback por app afectada. El job usa el environment
+protegido `production`, sólo realiza lecturas y declara explícitamente cero
+mutaciones. Contrato y operación: `docs/VERCEL_PHASE_7_PRODUCTION_SHADOW.md`.
+
 Tareas:
 
-- Ejecutar el detector sobre cada promoción `develop → master`.
-- Publicar la selección productiva teórica.
-- Comparar con el deployment productivo amplio vigente.
-- Confirmar coordinación con `Deploy API`, migraciones y orden de publicación.
-- Ensayar rollback individual y manifiesto multiversión.
-- Definir qué apps exigen compatibilidad exacta con un SHA de API y cuáles
-  aceptan compatibilidad hacia atrás.
+- [x] Ejecutar el detector sobre cada promoción `develop → master` después de la
+      CI verde del SHA exacto.
+- [x] Publicar la selección productiva teórica en el resumen y en un artefacto
+      sanitizado retenido 90 días.
+- [x] Comparar con el deployment productivo amplio vigente por aplicación y
+      contabilizar el fan-out evitable observado al corte.
+- [x] Confirmar coordinación con `Deploy API`, migraciones y orden de publicación
+      mediante un plan derivado del diff entre el API servido y `master`.
+- [x] Ensayar en seco rollback individual contra el deployment `READY` anterior
+      y generar el manifiesto multiversión teórico de cinco frontends más API.
+- [x] Definir compatibilidad: Finance/HR independientes; Envelope/Payroll
+      compatibles hacia atrás; Scheduler requiere una pareja frontend/API
+      explícita y verificada. Ninguna app exige igualdad artificial de SHA.
+- [x] Validar localmente 7 contratos de sombra, 36 del detector, 13 del
+      deployment, cuatro de configuración, cinco del manifiesto, grafo Turbo,
+      lint/type-check completos, 133 pruebas unitarias y los builds de API,
+      siete frontends Next.js y POS web.
 
 Criterio de salida:
 
-- Varias promociones consecutivas sin falsos negativos.
-- Runbook de producción, aprobación y rollback actualizado y ensayado.
-- Aprobación explícita para activar producción selectiva.
+- Pendiente remoto: al menos tres promociones representativas consecutivas sin
+  falsos negativos; una debe incluir frontend aislado, otra contrato/API y otra
+  documentación o backend exclusivo.
+- Cumplido en repositorio: runbook de producción, aprobación, orden y rollback
+  actualizado; pendiente conservar los ensayos remotos.
+- Pendiente: aprobación explícita para activar producción selectiva.
 
 Rollback: no aplica; producción sigue usando su flujo vigente.
 

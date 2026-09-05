@@ -6,7 +6,7 @@
 
 ## Resultado
 
-El workflow `Vercel selective development frontends` amplía el piloto de HR a
+El workflow `Vercel selective frontends and production shadow` amplía el piloto de HR a
 los cinco proyectos activos: Envelope, Finance, HR, Payroll y Scheduler. La
 selección continúa ejecutándose únicamente después de una CI verde del SHA
 exacto. En `master` permanece diagnóstica; sólo `develop` puede construir,

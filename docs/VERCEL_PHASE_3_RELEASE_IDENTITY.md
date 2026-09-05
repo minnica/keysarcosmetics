@@ -1,8 +1,9 @@
 # Vercel Fase 3 — identidad de releases multiversión
 
 > Continuidad: la Fase 6 amplió el contrato original a Envelope, Finance, HR,
-> Payroll y Scheduler más API. Esta guía conserva el alcance histórico con el
-> que se cerró la Fase 3.
+> Payroll y Scheduler más API en development; la Fase 7 aplicó la misma matriz
+> de seis componentes al smoke y manifiesto de production. Esta guía conserva
+> el alcance histórico con el que se cerró la Fase 3.
 
 Estado al 5 de septiembre de 2026: implementada en repositorio. El contrato,
 las pruebas unitarias, el type-check de E2E y el build de Scheduler se validaron

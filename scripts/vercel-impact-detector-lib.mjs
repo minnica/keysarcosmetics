@@ -199,13 +199,23 @@ function isExcludedRepositoryFile(filePath) {
     new Set([
       "scripts/collect-vercel-deployment-state.mjs",
       "scripts/detect-vercel-impact.mjs",
+      "scripts/inspect-vercel-development-deployment.mjs",
+      "scripts/inspect-vercel-development-project.mjs",
+      "scripts/inspect-vercel-pilot-deployment.mjs",
       "scripts/run-vercel-impact-history.mjs",
       "scripts/verify-turbo-graph.mjs",
       "scripts/vercel-deployment-state-lib.mjs",
+      "scripts/vercel-development-config-lib.mjs",
+      "scripts/vercel-development-config.test.mjs",
       "scripts/vercel-impact-detector-lib.mjs",
       "scripts/vercel-impact-detector.test.mjs",
       "scripts/vercel-impact-summary-lib.mjs",
+      "scripts/vercel-pilot-deployment-lib.mjs",
+      "scripts/vercel-pilot-deployment.test.mjs",
+      "scripts/vercel-production-shadow-lib.mjs",
+      "scripts/vercel-production-shadow.test.mjs",
       "scripts/write-vercel-impact-summary.mjs",
+      "scripts/write-vercel-production-shadow.mjs",
     ]).has(filePath)
   )
     return true;

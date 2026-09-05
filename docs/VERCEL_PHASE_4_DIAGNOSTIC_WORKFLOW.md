@@ -1,8 +1,9 @@
 # Vercel Fase 4 — workflow frontend en modo diagnóstico
 
 > Continuidad: desde la Fase 6 la matriz puede ser consumida por cualquiera de
-> los cinco proyectos en `develop`, siempre bajo su flag individual. `master`
-> conserva el comportamiento diagnóstico descrito aquí.
+> los cinco proyectos en `develop`, siempre bajo su flag individual. Desde la
+> Fase 7, `master` agrega una sombra productiva de sólo lectura y continúa sin
+> publicar.
 
 > Fecha de implementación: 5 de septiembre de 2026  
 > Estado: **implementada en repositorio; pendiente de observación remota**  

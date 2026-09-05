@@ -12,6 +12,8 @@ export const releaseComponents = [
 
 export const productionReleaseComponents = [
   "envelope",
+  "finance",
+  "hr",
   "payroll",
   "scheduler",
   "api",

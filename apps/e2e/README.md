@@ -130,16 +130,22 @@ pnpm test:e2e:development
 Playwright crea temporalmente `apps/e2e/.auth/envelope.json`, `payroll.json` y `scheduler.json`. Son archivos ignorados que contienen JWT/cookies y nunca deben adjuntarse ni versionarse. El workflow los elimina antes de publicar diagnósticos.
 
 Para production, ejecutar únicamente **Environment smoke tests** desde
-`master`, seleccionar `production` e indicar `envelope_sha`, `payroll_sha`,
-`scheduler_sha` y `api_sha`; `finance_sha` y `hr_sha` permanecen vacíos en esta
-fase. El workflow conserva el contrato productivo original; sólo entonces crea
-las sesiones temporales de monitoreo para Envelope y Payroll.
+`master`, seleccionar `production` e indicar los SHA completos de Envelope,
+Finance, HR, Payroll, Scheduler y API. Desde la Fase 7, el manifiesto productivo
+usa los mismos seis componentes que development y permite SHA distintos. Sólo
+después de verificar esas identidades el workflow crea las sesiones temporales
+de monitoreo para Envelope y Payroll.
 
 ## Cobertura de la primera versión
 
 Envelope y Payroll conservan ocho recorridos autenticados cada una. Scheduler agrega tres recorridos de sólo lectura para Agenda, Clientes y Reportes y verifica que una sesión normal no anuncie fixtures. En conjunto validan login/sesión, pantallas principales, calendarios reales, tablas, selects y navegación.
 
-El smoke productivo autenticado limita su cobertura a tres recorridos por app para Envelope y Payroll. Scheduler participa en el smoke público y sus recorridos autenticados se ejecutan en development con permisos `READ`. Los setups de autenticación son casos separados y las sesiones no se comparten entre aplicaciones.
+El smoke productivo público ejecuta ocho contratos e incluye los shells de
+Finance y HR. El smoke autenticado limita su cobertura a tres recorridos por app
+para Envelope y Payroll. Scheduler participa en el smoke público y sus
+recorridos autenticados se ejecutan en development con permisos `READ`. Los
+setups de autenticación son casos separados y las sesiones no se comparten entre
+aplicaciones.
 
 Todas las páginas se ejecutan con un fixture que registra métodos HTTP y falla ante cualquier request distinta de `GET`, `HEAD` u `OPTIONS`. Los proyectos autenticados tienen máximo un retry en CI.
 

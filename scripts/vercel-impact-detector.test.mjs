@@ -282,9 +282,19 @@ describe("matriz de aceptación de deployments selectivos", () => {
       ".gitignore",
       "docs/VERCEL_PHASE_4_DIAGNOSTIC_WORKFLOW.md",
       "scripts/collect-vercel-deployment-state.mjs",
+      "scripts/inspect-vercel-development-deployment.mjs",
+      "scripts/inspect-vercel-development-project.mjs",
+      "scripts/inspect-vercel-pilot-deployment.mjs",
       "scripts/vercel-deployment-state-lib.mjs",
+      "scripts/vercel-development-config-lib.mjs",
+      "scripts/vercel-development-config.test.mjs",
       "scripts/vercel-impact-summary-lib.mjs",
+      "scripts/vercel-pilot-deployment-lib.mjs",
+      "scripts/vercel-pilot-deployment.test.mjs",
+      "scripts/vercel-production-shadow-lib.mjs",
+      "scripts/vercel-production-shadow.test.mjs",
       "scripts/write-vercel-impact-summary.mjs",
+      "scripts/write-vercel-production-shadow.mjs",
     ]);
     assert.deepEqual(affectedApplications(results), []);
   });

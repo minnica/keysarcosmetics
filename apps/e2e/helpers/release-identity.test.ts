@@ -39,7 +39,7 @@ test("acepta una combinación multiversión exacta", () => {
   );
 });
 
-test("mantiene production en tres frontends más API", () => {
+test("mantiene production en cinco frontends más API", () => {
   const manifest = createReleaseManifest({
     environment: "production",
     releases,
@@ -47,6 +47,8 @@ test("mantiene production en tres frontends más API", () => {
   });
   assert.deepEqual(Object.keys(manifest.releases), [
     "envelope",
+    "finance",
+    "hr",
     "payroll",
     "scheduler",
     "api",
