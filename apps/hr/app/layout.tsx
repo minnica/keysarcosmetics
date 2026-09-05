@@ -7,6 +7,12 @@ export const metadata: Metadata = {
   description: "Gestión de personas, turnos y bienestar de Keysar Cosmetics.",
   manifest: "/manifest.webmanifest",
   icons: { icon: "/favicon.svg", shortcut: "/favicon.svg" },
+  other: {
+    "keysar-release":
+      process.env["KEYSAR_RELEASE_SHA"] ??
+      process.env["VERCEL_GIT_COMMIT_SHA"] ??
+      "local",
+  },
 };
 
 export default function RootLayout({

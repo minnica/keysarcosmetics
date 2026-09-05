@@ -55,6 +55,26 @@ export default defineConfig({
       },
     },
     {
+      name: "finance",
+      testMatch: /mock-shell\.smoke\.spec\.ts/,
+      use: {
+        ...devices["Desktop Chrome"],
+        ...vercelProtectionBypass(process.env["FINANCE_VERCEL_BYPASS_SECRET"]),
+        channel: "chrome",
+        baseURL: process.env["FINANCE_BASE_URL"] ?? "http://127.0.0.1:3006",
+      },
+    },
+    {
+      name: "hr",
+      testMatch: /mock-shell\.smoke\.spec\.ts/,
+      use: {
+        ...devices["Desktop Chrome"],
+        ...vercelProtectionBypass(process.env["HR_VERCEL_BYPASS_SECRET"]),
+        channel: "chrome",
+        baseURL: process.env["HR_BASE_URL"] ?? "http://127.0.0.1:3007",
+      },
+    },
+    {
       name: "payroll",
       testMatch: /web\.smoke\.spec\.ts/,
       use: {

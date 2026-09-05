@@ -131,6 +131,13 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm turbo:graph:verify
+      - run: pnpm deploy:impact:test
+      - run: pnpm deploy:pilot:test
+      - run: pnpm deploy:development:test
+      - run: pnpm deploy:production-shadow:test
+      - run: pnpm deploy:production:test
+      - run: pnpm deploy:operations:test
+      - run: pnpm deploy:release-manifest:test
       - run: pnpm ci:build
 
   database-integration:

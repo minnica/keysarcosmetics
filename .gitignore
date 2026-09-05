@@ -26,6 +26,9 @@ release/
 # Turbo
 .turbo/
 
+# Vercel CLI (project link, settings and pulled environment files)
+.vercel/
+
 # TypeScript
 *.tsbuildinfo
 tsconfig.tsbuildinfo
@@ -59,3 +62,7 @@ playwright-report/
 playwright-report-development/
 test-results/
 apps/e2e/.auth/
+apps/e2e/release-manifest*.json
+vercel-deployment-evidence.json
+vercel-impact.json
+vercel-hr-pilot-result.json

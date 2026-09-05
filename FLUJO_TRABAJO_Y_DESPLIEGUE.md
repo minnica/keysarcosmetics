@@ -139,6 +139,17 @@ git status
 
 El árbol de trabajo debe quedar limpio.
 
+Después de que la CI del push integrado termine en verde, GitHub ejecuta
+`Vercel selective frontends and production shadow`. Consulta el historial de los cinco
+proyectos activos, calcula las apps afectadas y despliega sólo las que ya tengan
+activo su flag individual. Cada app conserva credencial, alias y concurrencia
+propios. La auditoría semanal exige exactamente un iniciador: Actions para una
+app activada o Vercel Git mientras siga en transición, nunca ambos ni ninguno.
+La migración y su cierre se documentan en
+`docs/VERCEL_PHASE_6_DEVELOPMENT.md` y
+`docs/VERCEL_PHASE_9_OPERATIONS.md`. Una corrida inconclusa es un bloqueo,
+nunca “cero apps”.
+
 ---
 
 # 4. Despliegue en development
@@ -191,7 +202,11 @@ Actions
 → Run workflow
 → Branch: develop
 → Environment: development
-→ release_sha: SHA completo servido por Envelope y Payroll
+→ envelope_sha: SHA completo servido por Envelope
+→ finance_sha: SHA completo servido por Finance
+→ hr_sha: SHA completo servido por HR
+→ payroll_sha: SHA completo servido por Payroll
+→ scheduler_sha: SHA completo servido por Scheduler
 → api_sha: SHA completo reportado por /health
 ```
 
@@ -200,23 +215,31 @@ Los smoke tests comprueban:
 - `/health`.
 - `/ready`.
 - Contrato básico del API.
-- Pantalla de login de Envelope.
-- Pantalla de login de Payroll.
-- Identidad exacta de ambos frontends y la API.
+- Pantallas de login de Envelope, Payroll y Scheduler; shells de Finance y HR.
+- Identidad exacta e independiente de los cinco frontends y la API.
+- Manifiesto JSON de la combinación realmente servida.
 
 ## Ejecutar E2E autenticado de solo lectura
 
-Antes de promover un SHA de `develop`, esperar a que los alias estables de Envelope y Payroll terminen su deploy y ejecutar:
+Antes de promover una combinación de `develop`, esperar a que los cinco aliases
+estables terminen sus deployments aplicables y ejecutar:
 
 ```text
 Actions
 → Authenticated development E2E
 → Run workflow
-→ release_sha: SHA completo servido por ambos alias Vercel
+→ envelope_sha: SHA completo servido por Envelope
+→ finance_sha: SHA completo servido por Finance
+→ hr_sha: SHA completo servido por HR
+→ payroll_sha: SHA completo servido por Payroll
+→ scheduler_sha: SHA completo servido por Scheduler
 → api_sha: SHA completo reportado por /health en API development
 ```
 
-El workflow inicia sesión con dos cuentas técnicas de mínimo privilegio, genera `storageState` temporal y ejecuta ocho recorridos por app. Ambos incluyen una interacción real con calendario; también cubren tablas, selects, módulos críticos, sidebar móvil y logout. La suite falla si detecta un `POST`, `PUT`, `PATCH` o `DELETE`, si un alias sirve otro SHA o si la API no reporta el SHA indicado.
+El workflow valida primero los cinco frontends y la API; sólo entonces inicia
+sesión con tres cuentas técnicas de mínimo privilegio. Genera `storageState`
+temporal y ejecuta ocho recorridos para Envelope, ocho para Payroll y tres para
+Scheduler. La suite falla ante escritura, alias desfasado o SHA de API distinto.
 
 No habilitar esta suite contra producción. Las credenciales viven exclusivamente en secrets del environment `development`; las sesiones temporales se eliminan antes de publicar el reporte. El diagnóstico seguro no incluye traces, screenshots ni video. La preparación exacta de puestos, permisos y variables está en `apps/e2e/README.md`.
 
@@ -313,7 +336,73 @@ Si excepcionalmente se aplica un hotfix directamente en `master`, debe incorpora
 
 ---
 
-# 9. Desplegar el backend en producción
+# 9. Revisar la sombra productiva
+
+Después de la CI verde del push a `master`, aprobar el job:
+
+```text
+Vercel selective frontends and production shadow
+→ Rehearse selective production without mutations
+→ Environment: production
+```
+
+Confirmar en su resumen:
+
+- [ ] Declara `read-only` y cero mutaciones.
+- [ ] La selección teórica coincide con el alcance de la release.
+- [ ] El fan-out amplio evitable está explicado por aplicación.
+- [ ] El diff desde `/health.release` exige o descarta correctamente `Deploy API`.
+- [ ] El orden de backup/PITR, migraciones, API y frontends es correcto.
+- [ ] Cada app afectada tiene un deployment `READY` anterior para rollback.
+- [ ] El manifiesto teórico contiene cinco frontends más API.
+
+La sombra no construye, despliega ni mueve aliases. Durante al menos tres
+promociones representativas se conserva como evidencia antes de activar la
+Fase 8. La implementación productiva ya existe, pero todos sus flags deben
+permanecer apagados hasta cumplir ese gate. Ver
+`docs/VERCEL_PHASE_7_PRODUCTION_SHADOW.md`.
+
+## 9.1 Activar y publicar un frontend selectivo
+
+La migración se hace una aplicación por vez en este orden: HR, Finance,
+Envelope, Payroll y Scheduler. Antes de cambiar un flag:
+
+- [ ] Ejecutar dos ensayos `deploy_without_domain` desde `Vercel production frontend operations`.
+- [ ] Ejecutar un rollback real con `ROLLBACK_PRODUCCION` y restaurar el candidato sano.
+- [ ] Retirar el iniciador Git automático únicamente de esa app.
+- [ ] Confirmar que no existen deployments duplicados.
+- [ ] Configurar credencial, project ID y `VERCEL_<APP>_PRODUCTION_DOMAIN` en el environment `production`.
+- [ ] Definir una `change_reference` de ticket/incidente para cada operación manual.
+
+Después activar sólo:
+
+```text
+VERCEL_<APP>_PRODUCTION_SELECTIVE_ENABLED=true
+```
+
+Si la sombra exige API o Prisma, no aprobar el job de frontend hasta completar
+`Deploy API`, verificar `/health`/`/ready` y fijar los gates del SHA exacto:
+
+```text
+VERCEL_PRODUCTION_API_GATE_SHA
+VERCEL_PRODUCTION_DATABASE_GATE_SHA
+```
+
+Envelope, Payroll y Scheduler requieren además la pareja aprobada:
+
+```text
+VERCEL_<APP>_PRODUCTION_COMPATIBILITY=<frontend_sha>:<api_sha>
+```
+
+El job crea primero un deployment Production inmutable sin dominio, comprueba
+`READY`, proyecto, procedencia `master` y `keysar-release`, revalida que el SHA
+siga siendo el head de `master` y sólo entonces ejecuta `vercel promote`. Las apps
+afectadas cuyo flag siga apagado conservan su release anterior. Procedimiento
+completo: `docs/VERCEL_PHASE_8_PRODUCTION.md`.
+
+---
+
+# 10. Desplegar el backend en producción
 
 Si la release contiene backend o migraciones, ejecutar:
 
@@ -339,7 +428,7 @@ El workflow:
 
 ---
 
-# 10. Verificar el backend productivo
+# 11. Verificar el backend productivo
 
 ```bash
 curl -fsS https://cosmetics-api.fly.dev/health
@@ -362,15 +451,20 @@ git rev-parse HEAD
 
 ---
 
-# 11. Verificar los frontends productivos
+# 12. Verificar los frontends productivos
 
-Vercel construye los frontends desde `master`.
+Durante la migración, Vercel puede construir un proyecto aún no migrado desde
+`master`; las aplicaciones ya activadas se construyen exclusivamente desde el
+workflow selectivo.
 
 Comprobar:
 
 - [ ] Envelope está en estado `Ready`.
+- [ ] Finance está en estado `Ready`.
+- [ ] HR está en estado `Ready`.
 - [ ] Payroll está en estado `Ready`.
-- [ ] Ambos apuntan a `https://cosmetics-api.fly.dev`.
+- [ ] Scheduler está en estado `Ready`.
+- [ ] Envelope, Payroll y Scheduler apuntan al API productivo esperado.
 - [ ] El login funciona.
 - [ ] La navegación funciona.
 - [ ] Los flujos críticos funcionan.
@@ -378,13 +472,16 @@ Comprobar:
 
 Cuando una release cambie frontend y backend simultáneamente, los cambios deben conservar compatibilidad durante el despliegue.
 
-A futuro, se recomienda configurar promoción manual de los dominios productivos en Vercel para publicar el frontend solamente después de que el API esté listo.
+No activar promoción selectiva ni mover dominios desde Actions hasta contar con
+las promociones representativas y la aprobación explícita. La Fase 8 queda
+cerrada por flags individuales y reviewers del environment.
 
 ---
 
-# 12. Smoke tests de producción
+# 13. Smoke tests de producción
 
-En GitHub:
+El workflow selectivo ejecuta automáticamente estos mismos smokes después de
+publicar una o más apps activadas. Para repetirlos manualmente, en GitHub:
 
 ```text
 Actions
@@ -392,28 +489,43 @@ Actions
 → Run workflow
 → Branch: master
 → Environment: production
-→ release_sha: SHA completo servido por Envelope y Payroll
+→ envelope_sha: SHA completo servido por Envelope
+→ finance_sha: SHA completo servido por Finance
+→ hr_sha: SHA completo servido por HR
+→ payroll_sha: SHA completo servido por Payroll
+→ scheduler_sha: SHA completo servido por Scheduler
 → api_sha: SHA completo reportado por /health
 ```
 
 Después de aprobar el environment:
 
-- [ ] Los cinco smoke tests públicos pasaron.
+- [ ] Los ocho smoke tests públicos productivos pasaron.
 - [ ] `Authenticated production smoke` pasó sus tres recorridos por app.
 - [ ] `/health` reporta el SHA esperado.
 - [ ] `/ready` está sano.
 - [ ] Envelope funciona.
+- [ ] Finance y HR sirven sus shells y SHA declarados.
 - [ ] Payroll funciona.
+- [ ] Scheduler sirve el SHA declarado.
 
 El segundo job usa cuentas productivas exclusivas de monitoreo. Envelope solo puede abrir dashboard y total general con alcance propio; Payroll solo puede abrir esquemas en modo `canWrite = false`. Un fixture falla ante cualquier `POST`, `PUT`, `PATCH` o `DELETE`. La configuración desactiva traces, screenshots y video, usa cero retries, no publica reporte HTML y elimina los `storageState` y resultados locales incluso si falla.
 
-Durante las primeras cinco promociones, revisar en el resumen del workflow la duración, intento y resultado. Un rerun manual o falla intermitente se registra y corrige; no se compensa aumentando retries. La preparación y rotación de cuentas/secrets está en `apps/e2e/README.md`.
+Durante las primeras cinco promociones, revisar en el resumen la duración,
+intento y resultado. El flujo selectivo repite el smoke público cada cinco
+minutos durante 15 minutos y conserva el manifiesto/métricas por 90 días. Un
+rerun manual o falla intermitente se registra y corrige; no se compensa
+aumentando retries. La preparación y rotación de cuentas/secrets está en
+`apps/e2e/README.md`.
 
 ---
 
-# 13. Observación posterior al despliegue
+# 14. Observación posterior al despliegue
 
 Observar producción durante al menos 15 minutos.
+
+`Smoke and observe the production release set` cubre automáticamente errores
+HTTP, readiness, identidad de los seis releases y duración mediante tres
+muestras posteriores. Además revisar logs de backend y métricas del proveedor:
 
 ```bash
 fly logs -a cosmetics-api --no-tail | tail -n 120
@@ -434,7 +546,7 @@ Los fallos temporales del health check durante el arranque son aceptables si, se
 
 ---
 
-# 14. Crear el tag de producción
+# 15. Crear el tag de producción
 
 Después de completar todas las validaciones:
 
@@ -456,11 +568,62 @@ El tag funciona como referencia inmutable y punto de rollback.
 
 ---
 
+# 16. Forzar un redeploy frontend
+
+No crear un commit vacío cuando sólo cambió una variable de Vercel o se
+necesita reconstruir una aplicación durante un incidente.
+
+En development:
+
+1. obtener el SHA completo servido por el alias;
+2. ejecutar `Vercel development frontend operations` con
+   `deploy_without_alias`, ese SHA y una `change_reference`;
+3. revisar el nuevo `dpl_*` y ejecutar `publish_existing` con
+   `PUBLICAR_DEVELOP`;
+4. correr el smoke con el manifiesto actualizado.
+
+En production:
+
+1. abrir ticket/incidente y confirmar el deployment de rollback;
+2. actualizar los gates de API/compatibilidad aplicables;
+3. ejecutar `Vercel production frontend operations` con
+   `deploy_without_domain`, el SHA vigente de `master` y la
+   `change_reference`;
+4. publicar el `dpl_*` verificado con `PUBLICAR_PRODUCCION`;
+5. correr smokes, observar 15 minutos y hacer rollback si falla.
+
+La operación de build manual siempre crea un deployment nuevo del mismo SHA y
+descarga las variables actuales del ambiente. Detalle y restricciones:
+`docs/VERCEL_PHASE_9_OPERATIONS.md`.
+
+---
+
+# 17. Auditoría y métricas
+
+Revisar cada semana el workflow `Vercel operations audit` en `development` y
+`production`:
+
+- [ ] los cinco Root Directories y settings coinciden;
+- [ ] cada ruta estable sirve un deployment `READY` de la rama correcta;
+- [ ] el manifiesto contiene los cinco SHA observados;
+- [ ] cada proyecto tiene exactamente un iniciador automático;
+- [ ] no hay deployments de ramas de trabajo en los últimos 30 días;
+- [ ] los fallos del detector y falsos negativos son cero;
+- [ ] los falsos positivos confirmados tienen corrección y prueba de regresión;
+- [ ] el fan-out evitado y los duplicados se comparan con el corte anterior.
+
+Una discrepancia `blocked` detiene la siguiente activación o release. Durante
+la migración, `transition` es válido sólo si cada app conserva exactamente un
+iniciador. Las clasificaciones humanas se agregan por PR a
+`docs/vercel-detector-reviews.json`, sin secretos ni datos operativos.
+
+---
+
 # Matriz según el tipo de cambio
 
 | Tipo de cambio          | Después del merge a `develop`                              | Al liberar a producción            |
 | ----------------------- | ---------------------------------------------------------- | ---------------------------------- |
-| Solo frontend           | Preview automático, E2E autenticado y pruebas manuales     | Vercel desde `master` y validación |
+| Solo frontend           | Preview selectivo, E2E autenticado y pruebas manuales      | Vercel desde `master` y validación |
 | Solo backend            | Deploy API, smoke y E2E autenticado en development         | Deploy API a production            |
 | Migración de BD         | CI desechable, Deploy API y E2E autenticado en development | Respaldo y Deploy API production   |
 | Frontend + backend + BD | Flujo completo de development, incluido E2E autenticado    | Flujo completo protegido           |
@@ -494,9 +657,11 @@ feature
 → respaldo
 → Pull Request de release
 → master
+→ sombra selectiva de solo lectura
 → deploy productivo protegido
 → smokes públicos + autenticados de producción
 → observación
+→ auditoría periódica de iniciadores, manifests y métricas
 → tag
 ```
 
@@ -517,3 +682,5 @@ feature
 11. Crear un tag después de validar cada release productiva.
 12. Si existe un hotfix en `master`, sincronizarlo con `develop`.
 13. Una feature integrada en `develop` no tiene que liberarse inmediatamente a producción.
+14. No crear commits vacíos para redeploys por variables; usar la operación manual por app.
+15. Revisar `Vercel operations audit` semanalmente y bloquear la siguiente release ante estado `blocked`.

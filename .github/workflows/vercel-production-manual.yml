@@ -1,0 +1,346 @@
+name: Vercel production frontend operations
+
+on:
+  workflow_dispatch:
+    inputs:
+      application:
+        description: Proyecto frontend de production
+        required: true
+        type: choice
+        options:
+          - envelope
+          - finance
+          - hr
+          - payroll
+          - scheduler
+      operation:
+        description: Operación productiva protegida
+        required: true
+        type: choice
+        options:
+          - deploy_without_domain
+          - publish_existing
+          - rollback
+      release_sha:
+        description: SHA completo que debe servir la aplicación
+        required: true
+        type: string
+      deployment_id:
+        description: Deployment productivo dpl_* existente
+        required: false
+        type: string
+      confirmation:
+        description: PUBLICAR_PRODUCCION o ROLLBACK_PRODUCCION cuando aplique
+        required: false
+        type: string
+      change_reference:
+        description: Ticket o incidente auditable (por ejemplo INC-2026-09-05)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vercel-production-${{ inputs.application }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate manual production operation
+    runs-on: ubuntu-latest
+    outputs:
+      operation: ${{ steps.inputs.outputs.operation }}
+      release_sha: ${{ steps.inputs.outputs.release_sha }}
+      deployment_id: ${{ steps.inputs.outputs.deployment_id }}
+      application: ${{ steps.inputs.outputs.application }}
+      change_reference: ${{ steps.inputs.outputs.change_reference }}
+      domain_variable: ${{ steps.config.outputs.domain_variable }}
+      compatibility_mode: ${{ steps.config.outputs.compatibility_mode }}
+      compatibility_variable: ${{ steps.config.outputs.compatibility_variable }}
+      bypass_secret: ${{ steps.config.outputs.bypass_secret }}
+      project_id_secret: ${{ steps.config.outputs.project_id_secret }}
+      project_name: ${{ steps.config.outputs.project_name }}
+      token_secret: ${{ steps.config.outputs.token_secret }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Validate inputs without expanding commands
+        id: inputs
+        env:
+          OPERATION: ${{ inputs.operation }}
+          APPLICATION: ${{ inputs.application }}
+          RELEASE_SHA: ${{ inputs.release_sha }}
+          DEPLOYMENT_ID: ${{ inputs.deployment_id }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+          CHANGE_REFERENCE: ${{ inputs.change_reference }}
+        run: |
+          normalized_sha=${RELEASE_SHA,,}
+          [[ "$normalized_sha" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$CHANGE_REFERENCE" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]{2,79}$ ]]
+          case "$OPERATION" in
+            deploy_without_domain)
+              test -z "$DEPLOYMENT_ID"
+              test -z "$CONFIRMATION"
+              ;;
+            publish_existing)
+              [[ "$DEPLOYMENT_ID" =~ ^dpl_[A-Za-z0-9]+$ ]]
+              test "$CONFIRMATION" = "PUBLICAR_PRODUCCION"
+              ;;
+            rollback)
+              [[ "$DEPLOYMENT_ID" =~ ^dpl_[A-Za-z0-9]+$ ]]
+              test "$CONFIRMATION" = "ROLLBACK_PRODUCCION"
+              ;;
+            *)
+              exit 1
+              ;;
+          esac
+          {
+            echo "application=$APPLICATION"
+            echo "operation=$OPERATION"
+            echo "release_sha=$normalized_sha"
+            echo "deployment_id=$DEPLOYMENT_ID"
+            echo "change_reference=$CHANGE_REFERENCE"
+          } >> "$GITHUB_OUTPUT"
+      - name: Resolve canonical project controls
+        id: config
+        env:
+          APPLICATION: ${{ inputs.application }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { appendFileSync } from "node:fs";
+          import { ACTIVE_VERCEL_PROJECTS } from "./scripts/vercel-deployment-state-lib.mjs";
+          const config = ACTIVE_VERCEL_PROJECTS[process.env.APPLICATION];
+          if (!config) throw new Error("Aplicación Vercel no provisionada");
+          appendFileSync(process.env.GITHUB_OUTPUT, [
+            `domain_variable=${config.deployment.productionAliasVariable}`,
+            `compatibility_mode=${config.productionCompatibility.apiMode}`,
+            `compatibility_variable=${config.deployment.productionCompatibilityVariable}`,
+            `bypass_secret=${config.deployment.bypassSecret}`,
+            `project_id_secret=${config.deployment.projectIdSecret}`,
+            `project_name=${config.project}`,
+            `token_secret=${config.deployment.tokenSecret}`,
+            "",
+          ].join("\n"));
+          NODE
+
+  deploy-without-domain:
+    name: Build and verify without publishing the domain
+    needs: validate
+    if: needs.validate.outputs.operation == 'deploy_without_domain'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment: production
+    env:
+      APPLICATION: ${{ needs.validate.outputs.application }}
+      TARGET_SHA: ${{ needs.validate.outputs.release_sha }}
+      CHANGE_REFERENCE: ${{ needs.validate.outputs.change_reference }}
+      VERCEL_TOKEN_DEPLOY: ${{ secrets[needs.validate.outputs.token_secret] }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets[needs.validate.outputs.project_id_secret] }}
+      VERCEL_BYPASS_SECRET: ${{ secrets[needs.validate.outputs.bypass_secret] }}
+    steps:
+      - name: Checkout the exact requested SHA
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: ${{ needs.validate.outputs.release_sha }}
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 10.0.0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22.23.2
+          cache: pnpm
+      - name: Validate credentials and exact master head
+        run: |
+          test -n "$VERCEL_TOKEN_DEPLOY"
+          test -n "$VERCEL_ORG_ID"
+          test -n "$VERCEL_PROJECT_ID"
+          git fetch --no-tags origin master
+          test "$(git rev-parse refs/remotes/origin/master)" = "$TARGET_SHA"
+      - run: pnpm install --frozen-lockfile
+      - name: Install the pinned Vercel CLI
+        run: npm install --global vercel@59.11.2
+      - name: Verify project, runtime, commands and Production variables
+        run: |
+          node scripts/inspect-vercel-production-project.mjs \
+            --application "$APPLICATION" \
+            --project-id "$VERCEL_PROJECT_ID" \
+            --output "vercel-$APPLICATION-production-config.json"
+      - name: Pull Production settings
+        run: vercel pull --yes --environment=production --token="$VERCEL_TOKEN_DEPLOY"
+      - name: Build only the selected app with Production variables
+        env:
+          KEYSAR_RELEASE_SHA: ${{ needs.validate.outputs.release_sha }}
+          VERCEL_GIT_COMMIT_SHA: ${{ needs.validate.outputs.release_sha }}
+        run: vercel build --prod --token="$VERCEL_TOKEN_DEPLOY"
+      - name: Create an immutable Production deployment without domains
+        id: create-deployment
+        run: |
+          deployment_url=$(vercel deploy --prebuilt --prod --skip-domain --archive=tgz \
+            --meta githubDeployment=1 \
+            --meta githubCommitOrg=minnica \
+            --meta githubCommitRepo=keysarcosmetics \
+            --meta githubCommitRef=master \
+            --meta githubCommitSha="$TARGET_SHA" \
+            --token="$VERCEL_TOKEN_DEPLOY")
+          echo "reference=$deployment_url" >> "$GITHUB_OUTPUT"
+      - name: Verify the immutable Production deployment
+        id: verify-deployment
+        run: |
+          node scripts/inspect-vercel-production-deployment.mjs \
+            --application "$APPLICATION" \
+            --project-id "$VERCEL_PROJECT_ID" \
+            --reference "${{ steps.create-deployment.outputs.reference }}" \
+            --sha "$TARGET_SHA" \
+            --output "vercel-$APPLICATION-production-deployment.json"
+      - name: Record the non-publishing result
+        run: |
+          {
+            echo "## $APPLICATION — deployment Production inmutable verificado"
+            echo ""
+            echo "No se actualizó ningún dominio."
+            echo ""
+            echo "| Campo | Valor |"
+            echo "| --- | --- |"
+            echo "| Deployment | \`${{ steps.verify-deployment.outputs.deployment_id }}\` |"
+            echo "| URL | ${{ steps.verify-deployment.outputs.deployment_url }} |"
+            echo "| SHA | \`$TARGET_SHA\` |"
+            echo "| Cambio/incidente | \`$CHANGE_REFERENCE\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Preserve sanitized deployment evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: vercel-${{ needs.validate.outputs.application }}-production-manual-${{ needs.validate.outputs.release_sha }}-${{ github.run_attempt }}
+          path: |
+            vercel-${{ needs.validate.outputs.application }}-production-config.json
+            vercel-${{ needs.validate.outputs.application }}-production-deployment.json
+          if-no-files-found: ignore
+          retention-days: 90
+
+  move-domain:
+    name: Publish or roll back the production domain
+    needs: validate
+    if: needs.validate.outputs.operation != 'deploy_without_domain'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    env:
+      APPLICATION: ${{ needs.validate.outputs.application }}
+      OPERATION: ${{ needs.validate.outputs.operation }}
+      TARGET_SHA: ${{ needs.validate.outputs.release_sha }}
+      DEPLOYMENT_ID: ${{ needs.validate.outputs.deployment_id }}
+      CHANGE_REFERENCE: ${{ needs.validate.outputs.change_reference }}
+      VERCEL_TOKEN_DEPLOY: ${{ secrets[needs.validate.outputs.token_secret] }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets[needs.validate.outputs.project_id_secret] }}
+      VERCEL_BYPASS_SECRET: ${{ secrets[needs.validate.outputs.bypass_secret] }}
+      PRODUCTION_DOMAIN: ${{ vars[needs.validate.outputs.domain_variable] }}
+      API_BASE_URL: ${{ vars.API_BASE_URL }}
+      COMPATIBILITY_MODE: ${{ needs.validate.outputs.compatibility_mode }}
+      COMPATIBILITY_APPROVAL: ${{ vars[needs.validate.outputs.compatibility_variable] }}
+      MANUAL_GATE: ${{ vars.VERCEL_PRODUCTION_MANUAL_GATE }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22.23.2
+      - name: Validate protected production configuration
+        run: |
+          [[ "$PRODUCTION_DOMAIN" =~ ^[a-z0-9][a-z0-9.-]*[a-z0-9]$ ]]
+          test -n "$VERCEL_TOKEN_DEPLOY"
+          test -n "$VERCEL_ORG_ID"
+          test -n "$VERCEL_PROJECT_ID"
+          test -n "$API_BASE_URL"
+          if [ "$OPERATION" = "publish_existing" ]; then
+            git fetch --no-tags origin master
+            test "$(git rev-parse refs/remotes/origin/master)" = "$TARGET_SHA"
+          fi
+      - name: Verify API readiness and manual compatibility approval
+        run: |
+          curl --fail --retry 6 --retry-delay 5 --retry-all-errors "$API_BASE_URL/ready"
+          health_file=$(mktemp)
+          trap 'rm -f -- "$health_file"' EXIT
+          curl --fail --retry 6 --retry-delay 5 --retry-all-errors \
+            "$API_BASE_URL/health" > "$health_file"
+          api_sha=$(node -e '
+            const fs = require("node:fs");
+            const health = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+            if (health.status !== "ok" || !/^[0-9a-f]{40}$/i.test(health.release ?? "")) process.exit(1);
+            process.stdout.write(health.release.toLowerCase());
+          ' "$health_file")
+          test "$MANUAL_GATE" = "$TARGET_SHA:$api_sha"
+          if [ "$COMPATIBILITY_MODE" != "independent" ]; then
+            test "$COMPATIBILITY_APPROVAL" = "$TARGET_SHA:$api_sha"
+          fi
+      - name: Install the pinned Vercel CLI
+        run: npm install --global vercel@59.11.2
+      - name: Verify Production project configuration
+        run: |
+          node scripts/inspect-vercel-production-project.mjs \
+            --application "$APPLICATION" \
+            --project-id "$VERCEL_PROJECT_ID" \
+            --output "vercel-$APPLICATION-production-config.json"
+      - name: Verify the target deployment before moving the domain
+        id: verify-deployment
+        run: |
+          node scripts/inspect-vercel-production-deployment.mjs \
+            --application "$APPLICATION" \
+            --project-id "$VERCEL_PROJECT_ID" \
+            --reference "$DEPLOYMENT_ID" \
+            --sha "$TARGET_SHA" \
+            --output "vercel-$APPLICATION-production-deployment.json"
+      - name: Recheck master immediately before publication
+        if: env.OPERATION == 'publish_existing'
+        run: |
+          test "$(git ls-remote origin refs/heads/master | cut -f1)" = "$TARGET_SHA"
+      - name: Promote or roll back the Production deployment
+        run: |
+          if [ "$OPERATION" = "publish_existing" ]; then
+            vercel promote \
+              "${{ steps.verify-deployment.outputs.deployment_url }}" \
+              --yes \
+              --token="$VERCEL_TOKEN_DEPLOY"
+          else
+            vercel rollback \
+              "${{ steps.verify-deployment.outputs.deployment_url }}" \
+              --yes \
+              --token="$VERCEL_TOKEN_DEPLOY"
+          fi
+      - name: Verify the domain after publication
+        id: verify-domain
+        run: |
+          node scripts/inspect-vercel-production-deployment.mjs \
+            --application "$APPLICATION" \
+            --project-id "$VERCEL_PROJECT_ID" \
+            --reference "$PRODUCTION_DOMAIN" \
+            --http-host "$PRODUCTION_DOMAIN" \
+            --sha "$TARGET_SHA" \
+            --output "vercel-$APPLICATION-production-deployment.json"
+      - name: Record publication or rollback
+        run: |
+          {
+            echo "## $APPLICATION — dominio productivo actualizado"
+            echo ""
+            echo "| Campo | Valor |"
+            echo "| --- | --- |"
+            echo "| Operación | \`$OPERATION\` |"
+            echo "| Deployment | \`${{ steps.verify-domain.outputs.deployment_id }}\` |"
+            echo "| URL inmutable | ${{ steps.verify-domain.outputs.deployment_url }} |"
+            echo "| Dominio | https://$PRODUCTION_DOMAIN |"
+            echo "| SHA | \`$TARGET_SHA\` |"
+            echo "| Cambio/incidente | \`$CHANGE_REFERENCE\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Preserve sanitized domain evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: vercel-${{ needs.validate.outputs.application }}-production-${{ needs.validate.outputs.operation }}-${{ needs.validate.outputs.release_sha }}-${{ github.run_attempt }}
+          path: |
+            vercel-${{ needs.validate.outputs.application }}-production-config.json
+            vercel-${{ needs.validate.outputs.application }}-production-deployment.json
+          if-no-files-found: ignore
+          retention-days: 90

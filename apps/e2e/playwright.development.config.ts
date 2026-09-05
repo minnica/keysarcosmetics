@@ -48,6 +48,7 @@ export default defineConfig({
     {
       name: "envelope-auth-setup",
       testMatch: /auth\/envelope\.setup\.ts/,
+      dependencies: ["release-identity"],
       use: {
         baseURL: process.env["ENVELOPE_BASE_URL"],
         ...vercelProtectionBypass(process.env["ENVELOPE_VERCEL_BYPASS_SECRET"]),
@@ -56,6 +57,7 @@ export default defineConfig({
     {
       name: "payroll-auth-setup",
       testMatch: /auth\/payroll\.setup\.ts/,
+      dependencies: ["release-identity"],
       use: {
         baseURL: process.env["PAYROLL_BASE_URL"],
         ...vercelProtectionBypass(process.env["PAYROLL_VERCEL_BYPASS_SECRET"]),
@@ -64,6 +66,7 @@ export default defineConfig({
     {
       name: "scheduler-auth-setup",
       testMatch: /auth\/scheduler\.setup\.ts/,
+      dependencies: ["release-identity"],
       use: {
         baseURL: process.env["SCHEDULER_BASE_URL"],
         ...vercelProtectionBypass(
@@ -74,7 +77,7 @@ export default defineConfig({
     {
       name: "envelope-development",
       testMatch: /envelope\.development\.spec\.ts/,
-      dependencies: ["envelope-auth-setup", "release-identity"],
+      dependencies: ["envelope-auth-setup"],
       use: {
         baseURL: process.env["ENVELOPE_BASE_URL"],
         storageState: path.join(authDir, "envelope.json"),
@@ -84,7 +87,7 @@ export default defineConfig({
     {
       name: "payroll-development",
       testMatch: /payroll\.development\.spec\.ts/,
-      dependencies: ["payroll-auth-setup", "release-identity"],
+      dependencies: ["payroll-auth-setup"],
       use: {
         baseURL: process.env["PAYROLL_BASE_URL"],
         storageState: path.join(authDir, "payroll.json"),
@@ -94,7 +97,7 @@ export default defineConfig({
     {
       name: "scheduler-development",
       testMatch: /scheduler\.development\.spec\.ts/,
-      dependencies: ["scheduler-auth-setup", "release-identity"],
+      dependencies: ["scheduler-auth-setup"],
       use: {
         baseURL: process.env["SCHEDULER_BASE_URL"],
         storageState: path.join(authDir, "scheduler.json"),
