@@ -17,6 +17,10 @@ export const ACTIVE_VERCEL_PROJECTS = Object.freeze({
       aliasVariable: "VERCEL_ENVELOPE_DEVELOP_ALIAS",
       bypassSecret: "ENVELOPE_VERCEL_BYPASS_SECRET",
       enabledVariable: "VERCEL_ENVELOPE_SELECTIVE_ENABLED",
+      productionAliasVariable: "VERCEL_ENVELOPE_PRODUCTION_DOMAIN",
+      productionCompatibilityVariable:
+        "VERCEL_ENVELOPE_PRODUCTION_COMPATIBILITY",
+      productionEnabledVariable: "VERCEL_ENVELOPE_PRODUCTION_SELECTIVE_ENABLED",
       projectIdSecret: "VERCEL_PROJECT_ID_ENVELOPE",
       tokenSecret: "VERCEL_TOKEN_ENVELOPE_DEPLOY",
     },
@@ -27,6 +31,7 @@ export const ACTIVE_VERCEL_PROJECTS = Object.freeze({
       nodeVersion: "22.x",
       outputDirectory: null,
       requiredPreviewVariables: ["NEXT_PUBLIC_API_URL"],
+      requiredProductionVariables: ["NEXT_PUBLIC_API_URL"],
     },
   },
   finance: {
@@ -42,6 +47,10 @@ export const ACTIVE_VERCEL_PROJECTS = Object.freeze({
       aliasVariable: "VERCEL_FINANCE_DEVELOP_ALIAS",
       bypassSecret: "FINANCE_VERCEL_BYPASS_SECRET",
       enabledVariable: "VERCEL_FINANCE_SELECTIVE_ENABLED",
+      productionAliasVariable: "VERCEL_FINANCE_PRODUCTION_DOMAIN",
+      productionCompatibilityVariable:
+        "VERCEL_FINANCE_PRODUCTION_COMPATIBILITY",
+      productionEnabledVariable: "VERCEL_FINANCE_PRODUCTION_SELECTIVE_ENABLED",
       projectIdSecret: "VERCEL_PROJECT_ID_FINANCE",
       tokenSecret: "VERCEL_TOKEN_FINANCE_DEPLOY",
     },
@@ -52,6 +61,7 @@ export const ACTIVE_VERCEL_PROJECTS = Object.freeze({
       nodeVersion: "22.x",
       outputDirectory: null,
       requiredPreviewVariables: [],
+      requiredProductionVariables: [],
     },
   },
   hr: {
@@ -67,6 +77,9 @@ export const ACTIVE_VERCEL_PROJECTS = Object.freeze({
       aliasVariable: "VERCEL_HR_DEVELOP_ALIAS",
       bypassSecret: "HR_VERCEL_BYPASS_SECRET",
       enabledVariable: "VERCEL_HR_SELECTIVE_ENABLED",
+      productionAliasVariable: "VERCEL_HR_PRODUCTION_DOMAIN",
+      productionCompatibilityVariable: "VERCEL_HR_PRODUCTION_COMPATIBILITY",
+      productionEnabledVariable: "VERCEL_HR_PRODUCTION_SELECTIVE_ENABLED",
       projectIdSecret: "VERCEL_PROJECT_ID_HR",
       tokenSecret: "VERCEL_TOKEN_HR_DEPLOY",
     },
@@ -77,6 +90,7 @@ export const ACTIVE_VERCEL_PROJECTS = Object.freeze({
       nodeVersion: "22.x",
       outputDirectory: null,
       requiredPreviewVariables: [],
+      requiredProductionVariables: [],
     },
   },
   payroll: {
@@ -92,6 +106,10 @@ export const ACTIVE_VERCEL_PROJECTS = Object.freeze({
       aliasVariable: "VERCEL_PAYROLL_DEVELOP_ALIAS",
       bypassSecret: "PAYROLL_VERCEL_BYPASS_SECRET",
       enabledVariable: "VERCEL_PAYROLL_SELECTIVE_ENABLED",
+      productionAliasVariable: "VERCEL_PAYROLL_PRODUCTION_DOMAIN",
+      productionCompatibilityVariable:
+        "VERCEL_PAYROLL_PRODUCTION_COMPATIBILITY",
+      productionEnabledVariable: "VERCEL_PAYROLL_PRODUCTION_SELECTIVE_ENABLED",
       projectIdSecret: "VERCEL_PROJECT_ID_PAYROLL",
       tokenSecret: "VERCEL_TOKEN_PAYROLL_DEPLOY",
     },
@@ -102,6 +120,7 @@ export const ACTIVE_VERCEL_PROJECTS = Object.freeze({
       nodeVersion: "22.x",
       outputDirectory: null,
       requiredPreviewVariables: ["NEXT_PUBLIC_API_URL"],
+      requiredProductionVariables: ["NEXT_PUBLIC_API_URL"],
     },
   },
   scheduler: {
@@ -117,6 +136,11 @@ export const ACTIVE_VERCEL_PROJECTS = Object.freeze({
       aliasVariable: "VERCEL_SCHEDULER_DEVELOP_ALIAS",
       bypassSecret: "SCHEDULER_VERCEL_BYPASS_SECRET",
       enabledVariable: "VERCEL_SCHEDULER_SELECTIVE_ENABLED",
+      productionAliasVariable: "VERCEL_SCHEDULER_PRODUCTION_DOMAIN",
+      productionCompatibilityVariable:
+        "VERCEL_SCHEDULER_PRODUCTION_COMPATIBILITY",
+      productionEnabledVariable:
+        "VERCEL_SCHEDULER_PRODUCTION_SELECTIVE_ENABLED",
       projectIdSecret: "VERCEL_PROJECT_ID_SCHEDULER",
       tokenSecret: "VERCEL_TOKEN_SCHEDULER_DEPLOY",
     },
@@ -127,6 +151,7 @@ export const ACTIVE_VERCEL_PROJECTS = Object.freeze({
       nodeVersion: "22.x",
       outputDirectory: ".next",
       requiredPreviewVariables: ["NEXT_PUBLIC_API_URL"],
+      requiredProductionVariables: ["NEXT_PUBLIC_API_URL"],
     },
   },
 });

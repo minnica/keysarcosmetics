@@ -355,9 +355,47 @@ Confirmar en su resumen:
 - [ ] El manifiesto teórico contiene cinco frontends más API.
 
 La sombra no construye, despliega ni mueve aliases. Durante al menos tres
-promociones representativas se conserva como evidencia antes de solicitar la
-activación selectiva de la Fase 8. Ver
+promociones representativas se conserva como evidencia antes de activar la
+Fase 8. La implementación productiva ya existe, pero todos sus flags deben
+permanecer apagados hasta cumplir ese gate. Ver
 `docs/VERCEL_PHASE_7_PRODUCTION_SHADOW.md`.
+
+## 9.1 Activar y publicar un frontend selectivo
+
+La migración se hace una aplicación por vez en este orden: HR, Finance,
+Envelope, Payroll y Scheduler. Antes de cambiar un flag:
+
+- [ ] Ejecutar dos ensayos `deploy_without_domain` desde `Vercel production frontend operations`.
+- [ ] Ejecutar un rollback real con `ROLLBACK_PRODUCCION` y restaurar el candidato sano.
+- [ ] Retirar el iniciador Git automático únicamente de esa app.
+- [ ] Confirmar que no existen deployments duplicados.
+- [ ] Configurar credencial, project ID y `VERCEL_<APP>_PRODUCTION_DOMAIN` en el environment `production`.
+
+Después activar sólo:
+
+```text
+VERCEL_<APP>_PRODUCTION_SELECTIVE_ENABLED=true
+```
+
+Si la sombra exige API o Prisma, no aprobar el job de frontend hasta completar
+`Deploy API`, verificar `/health`/`/ready` y fijar los gates del SHA exacto:
+
+```text
+VERCEL_PRODUCTION_API_GATE_SHA
+VERCEL_PRODUCTION_DATABASE_GATE_SHA
+```
+
+Envelope, Payroll y Scheduler requieren además la pareja aprobada:
+
+```text
+VERCEL_<APP>_PRODUCTION_COMPATIBILITY=<frontend_sha>:<api_sha>
+```
+
+El job crea primero un deployment Production inmutable sin dominio, comprueba
+`READY`, proyecto, procedencia `master` y `keysar-release`, revalida que el SHA
+siga siendo el head de `master` y sólo entonces ejecuta `vercel promote`. Las apps
+afectadas cuyo flag siga apagado conservan su release anterior. Procedimiento
+completo: `docs/VERCEL_PHASE_8_PRODUCTION.md`.
 
 ---
 
@@ -412,7 +450,9 @@ git rev-parse HEAD
 
 # 12. Verificar los frontends productivos
 
-Vercel construye los frontends desde `master`.
+Durante la migración, Vercel puede construir un proyecto aún no migrado desde
+`master`; las aplicaciones ya activadas se construyen exclusivamente desde el
+workflow selectivo.
 
 Comprobar:
 
@@ -429,15 +469,16 @@ Comprobar:
 
 Cuando una release cambie frontend y backend simultáneamente, los cambios deben conservar compatibilidad durante el despliegue.
 
-La Fase 7 sólo observa el deployment amplio vigente. No activar promoción
-selectiva ni mover dominios desde Actions hasta contar con las promociones
-representativas y la aprobación explícita de la Fase 8.
+No activar promoción selectiva ni mover dominios desde Actions hasta contar con
+las promociones representativas y la aprobación explícita. La Fase 8 queda
+cerrada por flags individuales y reviewers del environment.
 
 ---
 
 # 13. Smoke tests de producción
 
-En GitHub:
+El workflow selectivo ejecuta automáticamente estos mismos smokes después de
+publicar una o más apps activadas. Para repetirlos manualmente, en GitHub:
 
 ```text
 Actions
@@ -466,13 +507,22 @@ Después de aprobar el environment:
 
 El segundo job usa cuentas productivas exclusivas de monitoreo. Envelope solo puede abrir dashboard y total general con alcance propio; Payroll solo puede abrir esquemas en modo `canWrite = false`. Un fixture falla ante cualquier `POST`, `PUT`, `PATCH` o `DELETE`. La configuración desactiva traces, screenshots y video, usa cero retries, no publica reporte HTML y elimina los `storageState` y resultados locales incluso si falla.
 
-Durante las primeras cinco promociones, revisar en el resumen del workflow la duración, intento y resultado. Un rerun manual o falla intermitente se registra y corrige; no se compensa aumentando retries. La preparación y rotación de cuentas/secrets está en `apps/e2e/README.md`.
+Durante las primeras cinco promociones, revisar en el resumen la duración,
+intento y resultado. El flujo selectivo repite el smoke público cada cinco
+minutos durante 15 minutos y conserva el manifiesto/métricas por 90 días. Un
+rerun manual o falla intermitente se registra y corrige; no se compensa
+aumentando retries. La preparación y rotación de cuentas/secrets está en
+`apps/e2e/README.md`.
 
 ---
 
 # 14. Observación posterior al despliegue
 
 Observar producción durante al menos 15 minutos.
+
+`Smoke and observe the production release set` cubre automáticamente errores
+HTTP, readiness, identidad de los seis releases y duración mediante tres
+muestras posteriores. Además revisar logs de backend y métricas del proveedor:
 
 ```bash
 fly logs -a cosmetics-api --no-tail | tail -n 120

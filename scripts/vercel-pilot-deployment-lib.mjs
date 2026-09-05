@@ -85,10 +85,10 @@ function assertDeploymentContract(payload, expected) {
   }
 
   const target = payload?.target ?? "preview";
-  if (target !== "preview") {
+  if (target !== expected.target) {
     throw new VercelPilotDeploymentError(
       "INVALID_DEPLOYMENT_TARGET",
-      `${expected.application} sólo admite deployments Preview en development`,
+      `${expected.application} requiere un deployment ${expected.target} en ${expected.environment}`,
     );
   }
 
@@ -144,6 +144,7 @@ export function extractReleaseSha(html) {
 export async function inspectVercelPilotDeployment({
   application = "hr",
   branch = "develop",
+  environment = "development",
   fetchImpl = fetch,
   organization = "minnica",
   projectId,
@@ -166,6 +167,12 @@ export async function inspectVercelPilotDeployment({
     );
   }
   const normalizedSha = requireFullSha(sha, "El SHA esperado");
+  if (!["development", "production"].includes(environment)) {
+    throw new VercelPilotDeploymentError(
+      "INVALID_ENVIRONMENT",
+      "El ambiente debe ser development o production",
+    );
+  }
   const normalizedReference = normalizeDeploymentReference(reference);
   const url = new URL(
     `/v13/deployments/${encodeURIComponent(normalizedReference)}`,
@@ -203,11 +210,13 @@ export async function inspectVercelPilotDeployment({
   assertDeploymentContract(payload, {
     application,
     branch,
+    environment,
     organization,
     projectId,
     projectName,
     repository,
     sha: normalizedSha,
+    target: environment === "production" ? "production" : "preview",
   });
 
   return {
@@ -225,6 +234,8 @@ export async function verifyServedPilotRelease({
     new Promise((resolve) => setTimeout(resolve, milliseconds)),
   fetchImpl = fetch,
   host,
+  path = "/",
+  requireBypass = true,
   retryDelayMs = 5_000,
   sha,
 }) {
@@ -236,7 +247,7 @@ export async function verifyServedPilotRelease({
       "La verificación HTTP requiere un hostname, no un deployment ID",
     );
   }
-  if (!bypassSecret) {
+  if (requireBypass && !bypassSecret) {
     throw new VercelPilotDeploymentError(
       "MISSING_BYPASS_SECRET",
       `Falta el bypass de Deployment Protection para verificar ${application}`,
@@ -244,20 +255,33 @@ export async function verifyServedPilotRelease({
   }
 
   let lastError;
+  if (
+    typeof path !== "string" ||
+    !path.startsWith("/") ||
+    path.startsWith("//")
+  ) {
+    throw new VercelPilotDeploymentError(
+      "INVALID_RELEASE_PATH",
+      "La ruta de verificación debe ser relativa al hostname",
+    );
+  }
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     try {
-      const response = await fetchImpl(`https://${normalizedHost}/`, {
-        headers: {
-          "x-vercel-protection-bypass": bypassSecret,
-          "x-vercel-set-bypass-cookie": "true",
-        },
+      const headers = bypassSecret
+        ? {
+            "x-vercel-protection-bypass": bypassSecret,
+            "x-vercel-set-bypass-cookie": "true",
+          }
+        : {};
+      const response = await fetchImpl(`https://${normalizedHost}${path}`, {
+        headers,
         redirect: "follow",
         signal: AbortSignal.timeout(20_000),
       });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const actualSha = requireFullSha(
         extractReleaseSha(await response.text()),
-        "El SHA servido por HR",
+        `El SHA servido por ${application}`,
       );
       if (actualSha !== expectedSha) {
         throw new Error(`se recibió ${actualSha}, se esperaba ${expectedSha}`);

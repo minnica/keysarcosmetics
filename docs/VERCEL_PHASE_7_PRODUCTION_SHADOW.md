@@ -148,7 +148,7 @@ El workflow conserva por 90 días
 contiene tokens, bypass, URLs privadas, valores de variables, cookies ni datos
 operativos. El diagnóstico Vercel fuente conserva su artefacto por 30 días.
 
-Antes de solicitar la Fase 8 se requieren al menos tres promociones
+Antes de activar remotamente la Fase 8 se requieren al menos tres promociones
 representativas consecutivas:
 
 1. cambio aislado de un frontend;
@@ -166,8 +166,9 @@ En cada una revisar:
 - ninguna operación mutante en el job;
 - intento, duración y cualquier rerun o flakiness.
 
-La Fase 7 no activa automáticamente la Fase 8. Se requiere aprobación explícita
-registrada después de revisar la evidencia completa.
+La Fase 7 no activa automáticamente la Fase 8. Su implementación vive en
+`docs/VERCEL_PHASE_8_PRODUCTION.md`, permanece cerrada por flags y requiere
+aprobación explícita registrada después de revisar la evidencia completa.
 
 ## Validación local
 

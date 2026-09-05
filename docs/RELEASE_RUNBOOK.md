@@ -6,7 +6,7 @@ Este documento define el flujo seguro para promover cambios desde una feature ha
 
 Crear los environments `development` y `production`.
 
-Para la selección frontend y la sombra productiva de las Fases 4–7, configurar como secret de
+Para la selección frontend y la sombra productiva de las Fases 4–8, configurar como secret de
 repositorio `VERCEL_TOKEN_READ_ONLY`. Debe ser una credencial
 dedicada al scope de los cinco proyectos activos. El workflow sólo hace
 consultas `GET`; no colocar este token en los environments de API ni reutilizar
@@ -23,10 +23,11 @@ En ambos environments configurar estos secretos:
 - `FINANCE_VERCEL_BYPASS_SECRET` y `HR_VERCEL_BYPASS_SECRET`: bypass separados
   para comprobar los aliases de las dos aplicaciones mock.
 
-Sólo en `development`, configurar además `VERCEL_ORG_ID` y un token/project ID
+En ambos environments, configurar además `VERCEL_ORG_ID` y un token/project ID
 por frontend: `VERCEL_TOKEN_<APP>_DEPLOY` y `VERCEL_PROJECT_ID_<APP>` para
 `ENVELOPE`, `FINANCE`, `HR`, `PAYROLL` y `SCHEDULER`. Los tokens no se comparten
-entre proyectos cuando el plan de Vercel permita ese alcance.
+entre proyectos cuando el plan de Vercel permita ese alcance, y los valores de
+production nunca se comparten con development.
 
 Solo en `development`, crear además las cuentas técnicas de mínimo privilegio descritas en `apps/e2e/README.md` y configurar:
 
@@ -59,11 +60,21 @@ para los cinco proyectos hasta migrarlos individualmente. Activar
 en `true` y ya no exista doble iniciador. Los nombres, contrato remoto y orden
 de migración están en `docs/VERCEL_PHASE_6_DEVELOPMENT.md`.
 
-La Fase 7 no agrega tokens productivos de deployment. El job de sombra entra al
-environment protegido `production` únicamente para leer `API_BASE_URL`, consulta
-`/health` y reutiliza el token de sólo lectura del repositorio para la evidencia
-Vercel recolectada previamente. No crear `VERCEL_TOKEN_*_DEPLOY` productivos
-antes de aprobar explícitamente la Fase 8.
+Para Fase 8 crear en `production`, inicialmente en `false`,
+`VERCEL_<APP>_PRODUCTION_SELECTIVE_ENABLED` para las cinco aplicaciones. Crear
+también `VERCEL_<APP>_PRODUCTION_DOMAIN`. HR se activa primero; no cambiar su
+flag hasta completar los ensayos y retirar su iniciador Git productivo.
+
+Ante un diff de API, `VERCEL_PRODUCTION_API_GATE_SHA` debe coincidir con el SHA
+servido después de `Deploy API`. Ante Prisma,
+`VERCEL_PRODUCTION_DATABASE_GATE_SHA` debe coincidir con el SHA de `master` cuya
+migración ya fue aplicada. Envelope, Payroll y Scheduler usan además
+`VERCEL_<APP>_PRODUCTION_COMPATIBILITY=<frontend_sha>:<api_sha>`. Estos valores
+son autorizaciones por release: retirarlos o sustituirlos después del cierre.
+Finance y HR no requieren pareja mientras sean independientes del API.
+`Vercel production frontend operations` exige adicionalmente
+`VERCEL_PRODUCTION_MANUAL_GATE=<frontend_sha>:<api_sha>` antes de cualquier
+publicación o rollback manual.
 
 Los builds selectivos inyectan `KEYSAR_RELEASE_SHA`; la integración Git
 transitoria conserva `VERCEL_GIT_COMMIT_SHA`. Las cinco apps deben publicar
@@ -138,23 +149,31 @@ quedan bloqueadas por esta puerta, pero ninguna terminal POS debe cambiar a
    de `master` y valida schemas, unit tests y build. Después ejecuta
    `prisma migrate deploy`, despliega ese commit en Fly y verifica `/health` y
    `/ready`.
+   Después fijar los gates `VERCEL_PRODUCTION_API_GATE_SHA` y, cuando aplique,
+   `VERCEL_PRODUCTION_DATABASE_GATE_SHA` con los SHAs exactos verificados.
 6. Revisar los gates de compatibilidad del reporte: Envelope/Payroll requieren
    compatibilidad hacia atrás; Scheduler requiere una pareja frontend/API
    explícita cuando aplique; Finance/HR son independientes mientras conserven su
    implementación mock.
-7. En Vercel, revisar el build productivo amplio vigente y publicar los
-   frontends sólo después de que el API esté listo. Durante la Fase 7 no mover
-   aliases desde Actions: la producción selectiva continúa desactivada.
-8. Ejecutar `Environment smoke tests` contra `production` e indicar los SHA
-   completos realmente servidos por Envelope, Finance, HR, Payroll, Scheduler y
-   API. El primer job ejecuta ocho smokes públicos y registra el manifiesto
-   multiversión; si queda verde, `Authenticated production smoke` ejecuta tres
-   recorridos de solo lectura por app para Envelope y Payroll.
-9. Confirmar que el resumen de Actions muestre cero retries en el smoke autenticado y que el workflow eliminó los `storageState` y `test-results`; producción no publica reporte HTML, traces, screenshots ni video.
-10. Observar errores, latencia y acciones críticas durante al menos 15 minutos.
-11. Crear un tag inmutable `prod-AAAA-MM-DD.N` sobre el commit desplegado.
+7. Para cada app compatible afectada, fijar
+   `VERCEL_<APP>_PRODUCTION_COMPATIBILITY` con la pareja exacta del reporte y
+   aprobar el job productivo. Finance/HR omiten este gate.
+8. `Deploy <app> to Production if activated` reutiliza o construye el artefacto
+   con variables Production, lo verifica sin dominio, revalida `master` y sólo
+   entonces mueve el dominio. Una app no activada conserva su SHA anterior.
+9. `Smoke and observe the production release set` ejecuta automáticamente los
+   ocho smokes públicos, los recorridos autenticados de Envelope/Payroll y tres
+   muestras adicionales durante 15 minutos. También puede ejecutarse
+   `Environment smoke tests` manualmente con los seis SHAs servidos.
+10. Confirmar que el resumen muestre cero retries, identidades exactas y que se
+    eliminaron `storageState` y `test-results`; producción no publica reporte
+    HTML, traces, screenshots ni video.
+11. Revisar además logs y métricas de Fly/Vercel durante la ventana de 15
+    minutos.
+12. Crear un tag inmutable `prod-AAAA-MM-DD.N` sobre el commit desplegado y
+    limpiar los gates de SHA de esta release.
 
-Durante la Fase 7, conservar al menos tres promociones representativas según
+Antes de activar Fase 8, conservar al menos tres promociones representativas según
 `docs/VERCEL_PHASE_7_PRODUCTION_SHADOW.md`. Durante las primeras cinco
 promociones después de activar los smokes completos, registrar duración, intento
 y resultado desde `GITHUB_STEP_SUMMARY`. Una falla intermitente o un rerun manual
@@ -163,9 +182,9 @@ aumentar retries para ocultarla.
 
 ## 5. Rollback
 
-- Frontend: reasignar el dominio al último deployment sano de Vercel. Durante la
-  Fase 7, comprobar que coincida con el `dpl_*` y SHA del `rollbackDrills` sin
-  ejecutar la reasignación desde el job de sombra.
+- Frontend: ejecutar `Vercel production frontend operations` con `rollback`, el
+  `dpl_*`, SHA del `rollbackDrills` y `ROLLBACK_PRODUCCION`. La sombra nunca
+  ejecuta esa reasignación.
 - API: desplegar el tag o commit anterior mediante Fly.
 - Base de datos: no revertir migraciones destructivamente. Las migraciones deben mantener compatibilidad con el API anterior; ante un problema, hacer rollback del código y preparar una migración correctiva hacia adelante.
 - Datos: restaurar backup/PITR solo como respuesta a pérdida o corrupción confirmada y siguiendo el procedimiento de Supabase.
@@ -182,6 +201,7 @@ pnpm test:ui:visual
 pnpm test:unit
 pnpm ci:build
 pnpm deploy:production-shadow:test
+pnpm deploy:production:test
 pnpm test:e2e:development # solo contra development, requiere variables y cuentas técnicas
 pnpm test:e2e:production  # solo diagnóstico administrado; validar antes los SHA con test:smoke
 pnpm --filter @cosmetics/api prisma:schemas

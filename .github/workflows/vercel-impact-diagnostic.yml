@@ -328,6 +328,13 @@ jobs:
     concurrency:
       group: vercel-production-shadow
       cancel-in-progress: false
+    outputs:
+      activated_count: ${{ steps.activation.outputs.activated_count }}
+      api_deployment_required: ${{ steps.activation.outputs.api_deployment_required }}
+      database_gate_required: ${{ steps.activation.outputs.database_gate_required }}
+      expected_api_sha: ${{ steps.activation.outputs.expected_api_sha }}
+      matrix: ${{ steps.activation.outputs.matrix }}
+      release_manifest: ${{ steps.activation.outputs.release_manifest }}
     env:
       API_BASE_URL: ${{ vars.API_BASE_URL }}
     steps:
@@ -355,6 +362,18 @@ jobs:
             --evidence vercel-deployment-evidence.json \
             --api-base-url "$API_BASE_URL" \
             --output vercel-production-shadow.json
+      - name: Resolve the gradual production activation
+        id: activation
+        env:
+          VERCEL_ENVELOPE_PRODUCTION_SELECTIVE_ENABLED: ${{ vars.VERCEL_ENVELOPE_PRODUCTION_SELECTIVE_ENABLED }}
+          VERCEL_FINANCE_PRODUCTION_SELECTIVE_ENABLED: ${{ vars.VERCEL_FINANCE_PRODUCTION_SELECTIVE_ENABLED }}
+          VERCEL_HR_PRODUCTION_SELECTIVE_ENABLED: ${{ vars.VERCEL_HR_PRODUCTION_SELECTIVE_ENABLED }}
+          VERCEL_PAYROLL_PRODUCTION_SELECTIVE_ENABLED: ${{ vars.VERCEL_PAYROLL_PRODUCTION_SELECTIVE_ENABLED }}
+          VERCEL_SCHEDULER_PRODUCTION_SELECTIVE_ENABLED: ${{ vars.VERCEL_SCHEDULER_PRODUCTION_SELECTIVE_ENABLED }}
+        run: |
+          node scripts/write-vercel-production-activation.mjs \
+            --shadow vercel-production-shadow.json \
+            --output vercel-production-activation.json
       - name: Record a fail-closed production shadow error
         if: failure()
         run: |
@@ -368,7 +387,335 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: vercel-production-shadow-${{ needs.ci-gate.outputs.target_sha }}-${{ github.run_attempt }}
-          path: vercel-production-shadow.json
+          path: |
+            vercel-production-shadow.json
+            vercel-production-activation.json
+          if-no-files-found: ignore
+          retention-days: 90
+
+  deploy-selected-production:
+    name: Deploy ${{ matrix.application }} to Production if activated
+    needs: [ci-gate, diagnose, production-shadow]
+    if: >-
+      needs.ci-gate.outputs.environment == 'production' &&
+      needs.production-shadow.result == 'success' &&
+      needs.production-shadow.outputs.activated_count != '0'
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix: ${{ fromJSON(needs.production-shadow.outputs.matrix) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+    concurrency:
+      group: vercel-production-${{ matrix.application }}
+      cancel-in-progress: false
+    env:
+      APPLICATION: ${{ matrix.application }}
+      TARGET_SHA: ${{ needs.ci-gate.outputs.target_sha }}
+      EXPECTED_API_SHA: ${{ needs.production-shadow.outputs.expected_api_sha }}
+      API_DEPLOYMENT_REQUIRED: ${{ needs.production-shadow.outputs.api_deployment_required }}
+      DATABASE_GATE_REQUIRED: ${{ needs.production-shadow.outputs.database_gate_required }}
+      API_GATE_SHA: ${{ vars.VERCEL_PRODUCTION_API_GATE_SHA }}
+      DATABASE_GATE_SHA: ${{ vars.VERCEL_PRODUCTION_DATABASE_GATE_SHA }}
+      COMPATIBILITY_APPROVAL: ${{ vars[matrix.productionCompatibilityVariable] }}
+      PRODUCTION_DOMAIN: ${{ vars[matrix.productionAliasVariable] }}
+      VERCEL_TOKEN_DEPLOY: ${{ secrets[matrix.tokenSecret] }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets[matrix.projectIdSecret] }}
+      VERCEL_BYPASS_SECRET: ${{ secrets[matrix.bypassSecret] }}
+      REUSABLE_DEPLOYMENT_ID: ${{ matrix.reusableDeploymentId }}
+      API_BASE_URL: ${{ vars.API_BASE_URL }}
+    steps:
+      - name: Checkout the exact successful SHA
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: ${{ needs.ci-gate.outputs.target_sha }}
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 10.0.0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22.23.2
+          cache: pnpm
+      - name: Validate protected production gates
+        env:
+          COMPATIBILITY_REQUIRED: ${{ matrix.compatibilityRequired }}
+        run: |
+          [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$EXPECTED_API_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$PRODUCTION_DOMAIN" =~ ^[a-z0-9][a-z0-9.-]*[a-z0-9]$ ]]
+          test -n "$API_BASE_URL"
+          test -n "$VERCEL_TOKEN_DEPLOY"
+          test -n "$VERCEL_ORG_ID"
+          test -n "$VERCEL_PROJECT_ID"
+          if [ "$API_DEPLOYMENT_REQUIRED" = "true" ]; then
+            test "$API_GATE_SHA" = "$EXPECTED_API_SHA"
+          fi
+          if [ "$DATABASE_GATE_REQUIRED" = "true" ]; then
+            test "$DATABASE_GATE_SHA" = "$TARGET_SHA"
+          fi
+          if [ "$COMPATIBILITY_REQUIRED" = "true" ]; then
+            test "$COMPATIBILITY_APPROVAL" = "$TARGET_SHA:$EXPECTED_API_SHA"
+          fi
+          echo "DEPLOY_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
+      - name: Verify API readiness and the approved release
+        run: |
+          curl --fail --retry 6 --retry-delay 5 --retry-all-errors "$API_BASE_URL/ready"
+          health_file=$(mktemp)
+          trap 'rm -f -- "$health_file"' EXIT
+          curl --fail --retry 6 --retry-delay 5 --retry-all-errors \
+            "$API_BASE_URL/health" > "$health_file"
+          node -e '
+            const fs = require("node:fs");
+            const health = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+            if (health.status !== "ok" || health.release !== process.env.EXPECTED_API_SHA) {
+              throw new Error("La API productiva no sirve el release aprobado.");
+            }
+          ' "$health_file"
+      - run: pnpm install --frozen-lockfile
+      - name: Install the pinned Vercel CLI
+        run: npm install --global vercel@59.11.2
+      - name: Verify project, runtime, commands and Production variables
+        run: |
+          node scripts/inspect-vercel-production-project.mjs \
+            --application "$APPLICATION" \
+            --project-id "$VERCEL_PROJECT_ID" \
+            --output "vercel-$APPLICATION-production-config.json"
+      - name: Resolve an idempotent Production deployment
+        id: deployment-reference
+        run: |
+          if [[ "$REUSABLE_DEPLOYMENT_ID" =~ ^dpl_[A-Za-z0-9]+$ ]]; then
+            echo "reference=$REUSABLE_DEPLOYMENT_ID" >> "$GITHUB_OUTPUT"
+            echo "reused=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "reused=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Pull Production settings
+        if: steps.deployment-reference.outputs.reused != 'true'
+        run: vercel pull --yes --environment=production --token="$VERCEL_TOKEN_DEPLOY"
+      - name: Build only the selected app with Production variables
+        if: steps.deployment-reference.outputs.reused != 'true'
+        env:
+          KEYSAR_RELEASE_SHA: ${{ needs.ci-gate.outputs.target_sha }}
+          VERCEL_GIT_COMMIT_SHA: ${{ needs.ci-gate.outputs.target_sha }}
+        run: vercel build --prod --token="$VERCEL_TOKEN_DEPLOY"
+      - name: Create an immutable Production deployment without domains
+        if: steps.deployment-reference.outputs.reused != 'true'
+        id: create-deployment
+        run: |
+          deployment_url=$(vercel deploy --prebuilt --prod --skip-domain --archive=tgz \
+            --meta githubDeployment=1 \
+            --meta githubCommitOrg=minnica \
+            --meta githubCommitRepo=keysarcosmetics \
+            --meta githubCommitRef=master \
+            --meta githubCommitSha="$TARGET_SHA" \
+            --token="$VERCEL_TOKEN_DEPLOY")
+          echo "reference=$deployment_url" >> "$GITHUB_OUTPUT"
+      - name: Select the verified deployment reference
+        id: selected-deployment
+        env:
+          REUSED_REFERENCE: ${{ steps.deployment-reference.outputs.reference }}
+          CREATED_REFERENCE: ${{ steps.create-deployment.outputs.reference }}
+        run: |
+          deployment_reference=${REUSED_REFERENCE:-$CREATED_REFERENCE}
+          test -n "$deployment_reference"
+          echo "reference=$deployment_reference" >> "$GITHUB_OUTPUT"
+      - name: Verify target, project, status and immutable release
+        id: verify-deployment
+        run: |
+          node scripts/inspect-vercel-production-deployment.mjs \
+            --application "$APPLICATION" \
+            --project-id "$VERCEL_PROJECT_ID" \
+            --reference "${{ steps.selected-deployment.outputs.reference }}" \
+            --sha "$TARGET_SHA" \
+            --output "vercel-$APPLICATION-production-deployment.json"
+      - name: Ensure this SHA is still the head of master
+        run: |
+          test "$(git ls-remote origin refs/heads/master | cut -f1)" = "$TARGET_SHA"
+      - name: Promote the verified Production deployment
+        run: |
+          vercel promote \
+            "${{ steps.verify-deployment.outputs.deployment_url }}" \
+            --yes \
+            --token="$VERCEL_TOKEN_DEPLOY"
+      - name: Verify the domain resolves to the exact release
+        id: verify-domain
+        run: |
+          node scripts/inspect-vercel-production-deployment.mjs \
+            --application "$APPLICATION" \
+            --project-id "$VERCEL_PROJECT_ID" \
+            --reference "$PRODUCTION_DOMAIN" \
+            --http-host "$PRODUCTION_DOMAIN" \
+            --sha "$TARGET_SHA" \
+            --output "vercel-$APPLICATION-production-deployment.json"
+      - name: Publish deployment metrics and result
+        run: |
+          duration_seconds=$(($(date +%s) - DEPLOY_STARTED_AT))
+          {
+            echo "## Deployment productivo selectivo $APPLICATION — publicado"
+            echo ""
+            echo "| Campo | Valor |"
+            echo "| --- | --- |"
+            echo "| Deployment | \`${{ steps.verify-domain.outputs.deployment_id }}\` |"
+            echo "| URL inmutable | ${{ steps.verify-domain.outputs.deployment_url }} |"
+            echo "| Dominio | https://$PRODUCTION_DOMAIN |"
+            echo "| SHA frontend | \`$TARGET_SHA\` |"
+            echo "| SHA API | \`$EXPECTED_API_SHA\` |"
+            echo "| Compatibilidad | \`${{ matrix.compatibilityMode }}\` |"
+            echo "| Reutilizado | \`${{ steps.deployment-reference.outputs.reused }}\` |"
+            echo "| Duración total | ${duration_seconds}s |"
+            echo "| Intento | \`$GITHUB_RUN_ATTEMPT\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Record a fail-closed production deployment error
+        if: failure()
+        run: |
+          {
+            echo "## Deployment productivo selectivo $APPLICATION — bloqueado"
+            echo ""
+            echo "Falló un gate, build, verificación o publicación. Revisar el dominio y usar el workflow manual de rollback si ya se había movido."
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Preserve sanitized Production evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: vercel-${{ matrix.application }}-production-${{ needs.ci-gate.outputs.target_sha }}-${{ github.run_attempt }}
+          path: |
+            vercel-${{ matrix.application }}-production-config.json
+            vercel-${{ matrix.application }}-production-deployment.json
+          if-no-files-found: ignore
+          retention-days: 90
+
+  smoke-production:
+    name: Smoke and observe the production release set
+    needs: [ci-gate, production-shadow, deploy-selected-production]
+    if: >-
+      always() &&
+      needs.ci-gate.outputs.environment == 'production' &&
+      needs.production-shadow.result == 'success' &&
+      needs.production-shadow.outputs.activated_count != '0' &&
+      (needs.deploy-selected-production.result == 'success' ||
+      needs.deploy-selected-production.result == 'failure')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+    concurrency:
+      group: vercel-production-smoke
+      cancel-in-progress: false
+    env:
+      TARGET_ENVIRONMENT: production
+      API_BASE_URL: ${{ vars.API_BASE_URL }}
+      ENVELOPE_BASE_URL: ${{ vars.ENVELOPE_BASE_URL }}
+      FINANCE_BASE_URL: ${{ vars.FINANCE_BASE_URL }}
+      HR_BASE_URL: ${{ vars.HR_BASE_URL }}
+      PAYROLL_BASE_URL: ${{ vars.PAYROLL_BASE_URL }}
+      SCHEDULER_BASE_URL: ${{ vars.SCHEDULER_BASE_URL }}
+      ENVELOPE_VERCEL_BYPASS_SECRET: ${{ secrets.ENVELOPE_VERCEL_BYPASS_SECRET }}
+      FINANCE_VERCEL_BYPASS_SECRET: ${{ secrets.FINANCE_VERCEL_BYPASS_SECRET }}
+      HR_VERCEL_BYPASS_SECRET: ${{ secrets.HR_VERCEL_BYPASS_SECRET }}
+      PAYROLL_VERCEL_BYPASS_SECRET: ${{ secrets.PAYROLL_VERCEL_BYPASS_SECRET }}
+      SCHEDULER_VERCEL_BYPASS_SECRET: ${{ secrets.SCHEDULER_VERCEL_BYPASS_SECRET }}
+      PRODUCTION_MONITOR_ENVELOPE_EMAIL: ${{ secrets.PRODUCTION_MONITOR_ENVELOPE_EMAIL }}
+      PRODUCTION_MONITOR_ENVELOPE_PASSWORD: ${{ secrets.PRODUCTION_MONITOR_ENVELOPE_PASSWORD }}
+      PRODUCTION_MONITOR_PAYROLL_EMAIL: ${{ secrets.PRODUCTION_MONITOR_PAYROLL_EMAIL }}
+      PRODUCTION_MONITOR_PAYROLL_PASSWORD: ${{ secrets.PRODUCTION_MONITOR_PAYROLL_PASSWORD }}
+      SMOKE_EXPECTED_ENVELOPE_SHA: ${{ fromJSON(needs.production-shadow.outputs.release_manifest).envelope }}
+      SMOKE_EXPECTED_FINANCE_SHA: ${{ fromJSON(needs.production-shadow.outputs.release_manifest).finance }}
+      SMOKE_EXPECTED_HR_SHA: ${{ fromJSON(needs.production-shadow.outputs.release_manifest).hr }}
+      SMOKE_EXPECTED_PAYROLL_SHA: ${{ fromJSON(needs.production-shadow.outputs.release_manifest).payroll }}
+      SMOKE_EXPECTED_SCHEDULER_SHA: ${{ fromJSON(needs.production-shadow.outputs.release_manifest).scheduler }}
+      SMOKE_EXPECTED_API_SHA: ${{ fromJSON(needs.production-shadow.outputs.release_manifest).api }}
+      RELEASE_MANIFEST_ENVIRONMENT: production
+      RELEASE_MANIFEST_PATH: apps/e2e/release-manifest-production.json
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.ci-gate.outputs.target_sha }}
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 10.0.0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22.23.2
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Validate the declared six-component release set
+        run: |
+          for value in \
+            "$SMOKE_EXPECTED_ENVELOPE_SHA" \
+            "$SMOKE_EXPECTED_FINANCE_SHA" \
+            "$SMOKE_EXPECTED_HR_SHA" \
+            "$SMOKE_EXPECTED_PAYROLL_SHA" \
+            "$SMOKE_EXPECTED_SCHEDULER_SHA" \
+            "$SMOKE_EXPECTED_API_SHA"; do
+            [[ "$value" =~ ^[0-9a-f]{40}$ ]]
+          done
+      - name: Run the public smoke and record initial latency
+        run: |
+          started_at=$(date +%s)
+          pnpm test:smoke
+          duration_seconds=$(($(date +%s) - started_at))
+          echo "initial_public_smoke_seconds=$duration_seconds" > production-observation.txt
+      - name: Install pinned Chromium
+        run: pnpm --filter @cosmetics/e2e exec playwright install --with-deps chromium
+      - name: Run authenticated read-only production smoke
+        run: pnpm test:e2e:production
+      - name: Observe HTTP errors, release identity and latency for 15 minutes
+        run: |
+          for sample in 1 2 3; do
+            sleep 300
+            started_at=$(date +%s)
+            pnpm test:smoke
+            duration_seconds=$(($(date +%s) - started_at))
+            echo "sample_${sample}_public_smoke_seconds=$duration_seconds" >> production-observation.txt
+          done
+      - name: Publish observation result
+        run: |
+          {
+            echo "## Production selective smoke and observation"
+            echo ""
+            echo "La matriz pública y los recorridos autenticados fueron verdes. Durante 15 minutos se repitió la comprobación HTTP, identidad de releases y readiness sin errores."
+            echo ""
+            echo "| Componente | SHA servido |"
+            echo "| --- | --- |"
+            echo "| Envelope | \`$SMOKE_EXPECTED_ENVELOPE_SHA\` |"
+            echo "| Finance | \`$SMOKE_EXPECTED_FINANCE_SHA\` |"
+            echo "| HR | \`$SMOKE_EXPECTED_HR_SHA\` |"
+            echo "| Payroll | \`$SMOKE_EXPECTED_PAYROLL_SHA\` |"
+            echo "| Scheduler | \`$SMOKE_EXPECTED_SCHEDULER_SHA\` |"
+            echo "| API | \`$SMOKE_EXPECTED_API_SHA\` |"
+            echo ""
+            echo "### Duraciones observadas"
+            echo ""
+            while IFS='=' read -r sample seconds; do
+              echo "- $sample: ${seconds}s"
+            done < production-observation.txt
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Record a fail-closed production smoke or observation error
+        if: failure()
+        run: |
+          {
+            echo "## Production selective smoke and observation — bloqueado"
+            echo ""
+            echo "La matriz servida, el smoke autenticado o la ventana de observación falló. La release no puede etiquetarse; revisar los dominios publicados y ejecutar rollback individual cuando corresponda."
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Remove authenticated sessions and diagnostics
+        if: always()
+        run: |
+          rm -f apps/e2e/.auth/production-envelope.json
+          rm -f apps/e2e/.auth/production-payroll.json
+          if [ -d apps/e2e/test-results/production ]; then
+            rm -r -- apps/e2e/test-results/production
+          fi
+      - name: Preserve the verified release set and observation
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-manifest-production-${{ needs.ci-gate.outputs.target_sha }}-${{ github.run_attempt }}
+          path: |
+            ${{ env.RELEASE_MANIFEST_PATH }}
+            production-observation.txt
           if-no-files-found: ignore
           retention-days: 90
 

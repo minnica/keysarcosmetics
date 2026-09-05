@@ -59,6 +59,7 @@ export function assertVercelProjectSettings(
   project,
   environmentVariables,
   projectId,
+  environment = "development",
 ) {
   const expected = requireApplication(application);
   const settings = expected.projectSettings;
@@ -82,10 +83,16 @@ export function assertVercelProjectSettings(
     }
   }
 
+  if (!["development", "production"].includes(environment)) {
+    throw new VercelDevelopmentConfigError(
+      "INVALID_ENVIRONMENT",
+      "El ambiente debe ser development o production",
+    );
+  }
   if (!Array.isArray(environmentVariables)) {
     throw new VercelDevelopmentConfigError(
       "INVALID_ENVIRONMENT_RESPONSE",
-      "Vercel no devolvió la lista de variables Preview",
+      `Vercel no devolvió la lista de variables de ${environment}`,
     );
   }
   const variableNames = [
@@ -95,24 +102,28 @@ export function assertVercelProjectSettings(
         .filter((key) => typeof key === "string" && key.length > 0),
     ),
   ].sort();
-  for (const requiredName of settings.requiredPreviewVariables) {
+  const requiredVariables =
+    environment === "production"
+      ? settings.requiredProductionVariables
+      : settings.requiredPreviewVariables;
+  for (const requiredName of requiredVariables) {
     if (!variableNames.includes(requiredName)) {
-      mismatches.push(`variable Preview de develop ausente: ${requiredName}`);
+      mismatches.push(`variable de ${environment} ausente: ${requiredName}`);
     }
   }
   const unexpectedVariables = variableNames.filter(
-    (name) => !settings.requiredPreviewVariables.includes(name),
+    (name) => !requiredVariables.includes(name),
   );
   if (unexpectedVariables.length > 0) {
     mismatches.push(
-      `variables Preview de develop no declaradas: ${unexpectedVariables.join(", ")}`,
+      `variables de ${environment} no declaradas: ${unexpectedVariables.join(", ")}`,
     );
   }
 
   if (mismatches.length > 0) {
     throw new VercelDevelopmentConfigError(
       "PROJECT_CONFIGURATION_MISMATCH",
-      `${application} no coincide con el contrato de development: ${mismatches.join("; ")}`,
+      `${application} no coincide con el contrato de ${environment}: ${mismatches.join("; ")}`,
     );
   }
 
@@ -125,13 +136,24 @@ export function assertVercelProjectSettings(
     installCommand: settings.installCommand,
     buildCommand: settings.buildCommand,
     outputDirectory: settings.outputDirectory,
-    requiredPreviewVariables: [...settings.requiredPreviewVariables],
-    observedPreviewVariableNames: variableNames,
+    environment,
+    requiredVariableNames: [...requiredVariables],
+    observedVariableNames: variableNames,
+    ...(environment === "development"
+      ? {
+          requiredPreviewVariables: [...requiredVariables],
+          observedPreviewVariableNames: variableNames,
+        }
+      : {
+          requiredProductionVariables: [...requiredVariables],
+          observedProductionVariableNames: variableNames,
+        }),
   };
 }
 
-export async function inspectVercelDevelopmentProject({
+export async function inspectVercelProject({
   application,
+  environment = "development",
   fetchImpl = fetch,
   projectId,
   token,
@@ -149,14 +171,25 @@ export async function inspectVercelDevelopmentProject({
     );
   }
   requireApplication(application);
+  if (!["development", "production"].includes(environment)) {
+    throw new VercelDevelopmentConfigError(
+      "INVALID_ENVIRONMENT",
+      "El ambiente debe ser development o production",
+    );
+  }
 
   const projectPath = `/v9/projects/${encodeURIComponent(projectId)}`;
   const environmentPath = new URL(
     `/v10/projects/${encodeURIComponent(projectId)}/env`,
     VERCEL_API_ORIGIN,
   );
-  environmentPath.searchParams.set("target", "preview");
-  environmentPath.searchParams.set("gitBranch", "develop");
+  environmentPath.searchParams.set(
+    "target",
+    environment === "production" ? "production" : "preview",
+  );
+  if (environment === "development") {
+    environmentPath.searchParams.set("gitBranch", "develop");
+  }
   environmentPath.searchParams.set("decrypt", "false");
 
   const [project, environmentPayload] = await Promise.all([
@@ -172,5 +205,10 @@ export async function inspectVercelDevelopmentProject({
     project,
     environmentPayload?.envs,
     projectId,
+    environment,
   );
+}
+
+export function inspectVercelDevelopmentProject(options) {
+  return inspectVercelProject({ ...options, environment: "development" });
 }

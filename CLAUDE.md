@@ -1240,6 +1240,30 @@ La migración en Supabase dev, el backend `cosmetics-api-dev`, el login `SUPER_A
   builds de API, siete frontends Next.js y POS web. Esto no sustituye el
   historial Vercel, la aprobación del environment ni las promociones remotas
   requeridas.
+- La Fase 8 de `PLAN_DEPLOYS_SELECTIVOS_VERCEL.md` quedó implementada en
+  repositorio el 5 de septiembre de 2026 sin activar producción. La sombra
+  productiva ahora deriva un plan gradual y sólo entrega a la matriz las apps
+  afectadas cuyo `VERCEL_<APP>_PRODUCTION_SELECTIVE_ENABLED` vale `true`; todos
+  los flags deben permanecer inicialmente en `false` y HR es el primer
+  candidato después de completar la evidencia remota de Fase 7.
+- Cada job productivo usa el environment protegido `production`, concurrencia
+  no cancelable por app, credencial y dominio propios. Valida configuración y
+  nombres de variables sin descifrarlas, exige API/readiness y gates explícitos
+  de Prisma/compatibilidad cuando aplican, construye con `vercel build --prod`,
+  crea un deployment `--prod --skip-domain`, verifica target `production`,
+  `READY`, proyecto, metadata `master` y `keysar-release`, y vuelve a consultar
+  el head de `master` antes de mover el dominio.
+- `Vercel production frontend operations` separa ensayo sin dominio,
+  publicación y rollback mediante confirmaciones literales. Tras una
+  publicación automática se ejecutan los ocho smokes públicos, los recorridos
+  productivos autenticados de sólo lectura y tres comprobaciones adicionales
+  durante 15 minutos; el manifiesto de cinco frontends más API y las duraciones
+  se conservan 90 días. Credenciales, flags, retiro del iniciador Git, ensayos,
+  smokes y rollback reales siguen pendientes. Contrato y orden:
+  `docs/VERCEL_PHASE_8_PRODUCTION.md`.
+- El check requerido `Production builds` ejecuta
+  `pnpm deploy:production:test` para bloquear cambios que eliminen flags,
+  gates, build Production, promoción verificada, observación o rollback.
 - No subir `.env` ni `.env.local` al repositorio.
 - `apps/envelope/.env.local` es solo local y no debe commitearse.
 - `apps/payroll/.env.local` también es solo local y no debe commitearse; las variables de Vercel se configuran por proyecto y ambiente.
@@ -1469,8 +1493,9 @@ apps/e2e/
 ├── development-e2e.yml           → E2E autenticado por SHA, solo development
 ├── pos-pilot.yml                 → migraciones efímeras + conciliación protegida del piloto POS
 ├── staging-smoke.yml             → smoke tests manuales development/production
-├── vercel-impact-diagnostic.yml  → selección/deploy de development y sombra productiva después de CI
-└── vercel-development-manual.yml → deployment sin alias, publicación y rollback por frontend
+├── vercel-impact-diagnostic.yml  → selección y deploy gradual de development/production después de CI
+├── vercel-development-manual.yml → deployment sin alias, publicación y rollback de development
+└── vercel-production-manual.yml  → ensayo sin dominio, publicación y rollback de production
 ```
 
 ### packages/ui
@@ -1603,17 +1628,20 @@ pnpm deploy:impact:history # cinco diagnósticos históricos reproducibles
 pnpm deploy:pilot:test # contrato fail-closed del deployment y alias piloto HR
 pnpm deploy:development:test # contrato remoto esperado de los cinco proyectos
 pnpm deploy:production-shadow:test # coordinación, manifiesto y rollback productivos en seco
+pnpm deploy:production:test # activación gradual, gates y workflows productivos
 pnpm deploy:release-manifest:test # contrato multiversión y alias desfasados
 ```
 
-La recolección remota de las Fases 4–6 se ejecuta desde
+La recolección remota de las Fases 4–8 se ejecuta desde
 `Vercel selective frontends and production shadow` después de CI. La selección usa
 `VERCEL_TOKEN_READ_ONLY`, escribe evidencia sanitizada y no descarga variables.
 Cada uno de los cinco proyectos sólo puede pasar a deployment en `develop` si
 su variable `VERCEL_<APP>_SELECTIVE_ENABLED` vale `true`; usa una credencial de
 deployment propia y separada del token de lectura. El workflow manual comparte
-el environment y el grupo de concurrencia por app; producción permanece fuera
-de alcance.
+el environment y el grupo de concurrencia por app. En production se usan flags
+`VERCEL_<APP>_PRODUCTION_SELECTIVE_ENABLED` separados; el build y la publicación
+siguen apagados hasta completar Fase 7 y habilitar cada proyecto. Ver
+`docs/VERCEL_PHASE_8_PRODUCTION.md`.
 
 ### Deploy backend
 

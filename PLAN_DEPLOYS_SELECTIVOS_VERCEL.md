@@ -11,9 +11,12 @@
 > proyecto por proyecto. La Fase 7 quedó implementada en repositorio el 5 de
 > septiembre de 2026 como una simulación productiva estrictamente de sólo
 > lectura; requiere observar promociones reales y aprobación explícita antes de
-> la Fase 8. Durante la validación de la Fase 2 se corrigió en Vercel el Build
-> Command de Envelope a `--filter=@cosmetics/envelope`; no se aplicaron otros
-> cambios operativos.
+> la activación remota. La Fase 8 quedó implementada en repositorio el 5 de
+> septiembre de 2026, cerrada por cinco flags productivos y con HR como primer
+> candidato; espera los requisitos remotos de la Fase 7, credenciales,
+> activación gradual, smokes, observación y rollback reales. Durante la
+> validación de la Fase 2 se corrigió en Vercel el Build Command de Envelope a
+> `--filter=@cosmetics/envelope`; no se aplicaron otros cambios operativos.
 
 ## 1. Objetivo
 
@@ -673,24 +676,52 @@ Rollback: no aplica; producción sigue usando su flujo vigente.
 
 Objetivo: reducir deployments productivos sin disminuir las protecciones.
 
+Estado al 5 de septiembre de 2026: **implementada en repositorio; activación y
+evidencia remotas pendientes**. La sombra produce un plan gradual; cada app
+queda cerrada por su flag productivo, credencial, dominio y grupo de
+concurrencia. HR es el primer candidato. Los jobs construyen con Production,
+crean el deployment sin dominio, validan gates API/Prisma/compatibilidad,
+publican sólo tras verificar el SHA y ejecutan smokes más 15 minutos de
+observación. Existe un workflow manual para ensayo, publicación y rollback.
+Contrato y activación: `docs/VERCEL_PHASE_8_PRODUCTION.md`.
+
 Tareas:
 
-- Migrar primero una aplicación con bajo riesgo operativo.
-- Exigir environment `production` y sus reviewers.
-- Construir con variables Production.
-- Cuando haya cambios API/Prisma, completar primero los gates definidos por el
-  runbook y confirmar compatibilidad antes de publicar el frontend.
-- Actualizar dominios sólo después del build y verificación.
-- Ejecutar smokes públicos y autenticados aplicables.
-- Observar errores y latencia; registrar el conjunto de versiones liberado.
-- Extender gradualmente a las demás aplicaciones.
+- [ ] Migrar primero una aplicación con bajo riesgo operativo.
+  - [x] Elegir HR y preparar su flag, credencial, dominio, build, verificación y
+        rollback independientes.
+  - [ ] Completar evidencia de Fase 7, ensayo sin dominio, rollback remoto,
+        retiro del iniciador Git y activar HR en producción.
+- [x] Exigir environment `production`, concurrencia no cancelable y sus
+      reviewers para build, publicación, smokes y operaciones manuales.
+- [x] Construir con settings y variables Production mediante `vercel pull`,
+      `vercel build --prod` y `deploy --prebuilt --prod --skip-domain`.
+- [x] Cuando haya cambios API/Prisma, exigir primero los gates del runbook, SHA
+      exacto de API/readiness y confirmación explícita de compatibilidad antes
+      de publicar el frontend.
+- [x] Actualizar dominios sólo después del build, target `production`, estado
+      `READY`, proyecto, metadata Git y `keysar-release`; revalidar `master`
+      inmediatamente antes de publicar.
+- [x] Ejecutar smokes públicos y autenticados aplicables con manifiesto
+      multiversión de cinco frontends más API.
+- [x] Observar errores HTTP, readiness, identidad y latencia durante 15 minutos;
+      registrar el conjunto de versiones y duraciones por 90 días.
+- [ ] Extender gradualmente a las demás aplicaciones.
+  - [x] Implementar flags, dominios, credenciales, compatibilidad, concurrencia y
+        rollback independientes para Finance, Envelope, Payroll y Scheduler.
+  - [ ] Activar y observar remotamente una aplicación por vez después de HR.
+- [x] Validar localmente 14 contratos productivos, 7 de sombra, 13 del piloto y
+      4 de configuración de development sin invocar Vercel.
 
 Criterio de salida:
 
-- Sólo las apps afectadas reciben deployments productivos.
-- La combinación app/API queda registrada y verificada.
-- Rollback individual probado.
-- Consumo de deployments inferior a la línea base de la Fase 0.
+- Preparado por contrato; pendiente remoto: sólo las apps afectadas y activadas
+  reciben deployments productivos.
+- Preparado por contrato; pendiente remoto: la combinación app/API queda
+  registrada y verificada sobre dominios reales.
+- Preparado en workflow; pendiente remoto: rollback individual probado.
+- Pendiente remoto: consumo de deployments inferior a la línea base de la
+  Fase 0.
 
 Rollback:
 

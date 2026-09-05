@@ -129,12 +129,13 @@ pnpm test:e2e:development
 
 Playwright crea temporalmente `apps/e2e/.auth/envelope.json`, `payroll.json` y `scheduler.json`. Son archivos ignorados que contienen JWT/cookies y nunca deben adjuntarse ni versionarse. El workflow los elimina antes de publicar diagnósticos.
 
-Para production, ejecutar únicamente **Environment smoke tests** desde
-`master`, seleccionar `production` e indicar los SHA completos de Envelope,
-Finance, HR, Payroll, Scheduler y API. Desde la Fase 7, el manifiesto productivo
-usa los mismos seis componentes que development y permite SHA distintos. Sólo
-después de verificar esas identidades el workflow crea las sesiones temporales
-de monitoreo para Envelope y Payroll.
+Para production, **Environment smoke tests** permite una repetición manual desde
+`master`: seleccionar `production` e indicar los SHA completos de Envelope,
+Finance, HR, Payroll, Scheduler y API. Desde la Fase 8, una publicación
+selectiva ejecuta automáticamente la misma matriz pública y después crea las
+sesiones temporales de monitoreo para Envelope y Payroll. El manifiesto
+productivo usa los mismos seis componentes que development y permite SHA
+distintos.
 
 ## Cobertura de la primera versión
 
@@ -158,7 +159,12 @@ El reporte HTML `authenticated-development-e2e-report` de development se conserv
 - video;
 - adjuntos de `storageState`.
 
-Producción no publica reporte HTML ni `test-results`: el workflow elimina sesiones y diagnósticos locales incluso si falla. Solo conserva el resumen textual de GitHub con duración, número de intento y resultado; no contiene URLs privadas, credenciales, JWT ni datos de tablas. El smoke productivo tiene cero retries para que una falla no quede oculta.
+Producción no publica reporte HTML ni `test-results`: el workflow elimina
+sesiones y diagnósticos locales incluso si falla. Conserva el resumen textual,
+el manifiesto seguro y, en el flujo selectivo, un archivo de duraciones sin
+URLs ni datos operativos durante 90 días. No contiene credenciales, JWT,
+cookies ni datos de tablas. El smoke productivo tiene cero retries para que una
+falla no quede oculta.
 
 Interpretación de fallas:
 
@@ -171,4 +177,11 @@ Si hace falta inspección visual, reproducir localmente con `test:development:he
 
 ## Duración y flakiness
 
-Los workflows escriben duración, intento y resultado en `GITHUB_STEP_SUMMARY`. Durante las primeras cinco promociones revisar los cinco resultados consecutivos de **Environment smoke tests** y **Authenticated production smoke**; cualquier retry manual o falla intermitente se registra como incidencia y se corrige antes de considerar estable el gate. Los contratos de UI registran cero retries y los canaries visuales permiten como máximo uno.
+Los workflows escriben duración, intento y resultado en
+`GITHUB_STEP_SUMMARY`. Después de una publicación selectiva, el smoke público
+se repite cada cinco minutos durante 15 minutos para observar errores HTTP,
+readiness, identidad y duración. Durante las primeras cinco promociones revisar
+los resultados consecutivos del smoke público y autenticado; cualquier retry
+manual o falla intermitente se registra como incidencia y se corrige antes de
+considerar estable el gate. Los contratos de UI registran cero retries y los
+canaries visuales permiten como máximo uno.
