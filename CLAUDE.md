@@ -1112,9 +1112,22 @@ La migración en Supabase dev, el backend `cosmetics-api-dev`, el login `SUPER_A
 
 **Notas importantes:**
 
-- Frontend en Vercel se despliega automáticamente por push a `master`/`develop`.
+- Los cinco proyectos frontend actualmente conectados al monorepo en Vercel
+  (Envelope, Payroll, Scheduler, Finance y HR) crean deployments automáticamente
+  por integración Git en cualquier rama, no sólo en `master`/`develop`. CRM,
+  POS y `apps/landing` no tienen proyecto Vercel; `keysar-landing` pertenece a
+  otro repositorio.
 - Backend en Fly.io se despliega mediante el workflow manual protegido `.github/workflows/deploy-api.yml`; no se despliega automáticamente por push.
 - Migraciones de BD se aplican dentro del workflow manual protegido y con revisión previa; nunca por un push automático.
+- La Fase 0 del plan de despliegues selectivos se completó el 4 de septiembre de
+  2026 sin cambiar configuraciones operativas. El inventario verificó cinco
+  proyectos Vercel conectados al monorepo y tres apps sin proyecto. En la línea
+  base hubo 356 deployments del monorepo; 314 (88.2%) provinieron de ramas
+  distintas de `develop`/`master`, todos iniciados por Git. Ningún workflow ni
+  deployment hook inicia esos frontends. También se documentaron el desfase de
+  Node remoto y la variable faltante de Scheduler. La evidencia, configuración
+  efectiva y puntos de rollback viven en `docs/VERCEL_PHASE_0_AUDIT.md`; la
+  Fase 1 puede comenzar y producción permanece sin cambios.
 - No subir `.env` ni `.env.local` al repositorio.
 - `apps/envelope/.env.local` es solo local y no debe commitearse.
 - `apps/payroll/.env.local` también es solo local y no debe commitearse; las variables de Vercel se configuran por proyecto y ambiente.
