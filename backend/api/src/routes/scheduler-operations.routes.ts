@@ -2030,7 +2030,7 @@ router.put("/availability/rules", requireOperationsRead, async (req, res) => {
           ...owner,
           active: true,
         },
-        data: { active: false },
+        data: { active: false, effectiveTo: effectiveFrom },
       });
       const saved = [];
       for (const rule of parsed.data.rules)
@@ -2119,7 +2119,7 @@ router.put(
             ...owner,
             active: true,
           },
-          data: { active: false },
+          data: { active: false, effectiveTo: effectiveFrom },
         });
         const saved = [];
         for (const exception of parsed.data.exceptions)

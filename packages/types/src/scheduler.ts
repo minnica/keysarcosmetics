@@ -1184,12 +1184,9 @@ export interface SchedulerCustomerFieldDefinitionWriteDto {
   expectedVersion?: number;
 }
 
-export const SCHEDULER_MESSAGE_CHANNELS = [
-  "WHATSAPP",
-  "EMAIL",
-  "SMS",
-] as const;
-export type SchedulerMessageChannel = (typeof SCHEDULER_MESSAGE_CHANNELS)[number];
+export const SCHEDULER_MESSAGE_CHANNELS = ["WHATSAPP", "EMAIL", "SMS"] as const;
+export type SchedulerMessageChannel =
+  (typeof SCHEDULER_MESSAGE_CHANNELS)[number];
 
 export const SCHEDULER_CONTACT_CHANNEL_STATUSES = [
   "UNVERIFIED",
@@ -1343,4 +1340,64 @@ export interface SchedulerSurveyPublicDto {
     prompt: string;
     required: boolean;
   }>;
+}
+
+export const SCHEDULER_REPORT_KEYS = [
+  "APPOINTMENTS",
+  "OCCUPANCY",
+  "CANCELLATIONS",
+  "NO_SHOW",
+  "CUSTOMERS",
+  "SERVICES",
+  "PROFESSIONALS",
+  "COMMISSIONS",
+  "SURVEYS",
+  "COMMUNICATIONS",
+  "SALES",
+  "PAYMENTS",
+] as const;
+
+export type SchedulerReportKey = (typeof SCHEDULER_REPORT_KEYS)[number];
+export type SchedulerReportSource = "CANONICAL" | "LEGACY";
+export type SchedulerReportCell = string | number | boolean | null;
+
+export interface SchedulerReportRequest {
+  dateFrom: string;
+  dateTo: string;
+  branchIds?: string[];
+  professionalProfileId?: string;
+  serviceProfileId?: string;
+  status?: SchedulerAppointmentStatus;
+  channel?: SchedulerMessageChannel;
+  source?: SchedulerReportSource;
+  search?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+export interface SchedulerReportDatasetDto {
+  key: SchedulerReportKey;
+  dateFrom: string;
+  dateTo: string;
+  interval: "[dateFrom, dateTo + 1 day)";
+  source: SchedulerReportSource;
+  sourceAuthority: "SCHEDULER" | "ENVELOPE_LEGACY" | "POS";
+  sourceAuthorities: Array<"SCHEDULER" | "ENVELOPE_LEGACY" | "POS">;
+  generatedAt: string;
+  branchIds: string[];
+  timeZones: Record<string, string>;
+  filters: {
+    professionalProfileId: string | null;
+    serviceProfileId: string | null;
+    status: SchedulerAppointmentStatus | null;
+    channel: SchedulerMessageChannel | null;
+    searchApplied: boolean;
+  };
+  summary: Record<string, SchedulerReportCell>;
+  columns: string[];
+  rows: Array<Record<string, SchedulerReportCell>>;
+  page: number;
+  pageSize: number;
+  total: number;
+  notes: string[];
 }

@@ -442,7 +442,12 @@ Datos:
 
 ## Estado actual de apps/scheduler
 
-`apps/scheduler` es la app de agenda y administración de reservas. Las Fases 1 a 7 ya implementaron login, bootstrap, permisos, alcance, autorizaciones secundarias, catálogos base, clientes compartidos, el motor canónico de disponibilidad/citas, la sustitución del proveedor Agenda usado por POS, la administración/configuración avanzada y el backend de comunicaciones, documentos, expediente médico y encuestas. La UI de Clientes, citas, comunicaciones, documentos, configuraciones operativas, reportes y paneles administrativos avanzados continúa local/mock hasta la conexión controlada de Fase 9. Los módulos mock sólo se renderizan con `NODE_ENV=development` y `SCHEDULER_ALLOW_MOCKS=true`; fuera de ese modo se abren exclusivamente las superficies ya persistentes y las demás se mantienen cerradas.
+`apps/scheduler` es la app de agenda y administración de reservas. Las Fases 1 a 8 ya implementaron login, bootstrap, permisos, alcance, autorizaciones secundarias, catálogos base, clientes compartidos, el motor canónico de disponibilidad/citas, la sustitución del proveedor Agenda usado por POS, la administración/configuración avanzada, comunicaciones/documentos/expediente/encuestas y los datasets de reportes/exportaciones. La UI de Clientes, citas, comunicaciones, documentos, configuraciones operativas, reportes y paneles administrativos avanzados continúa local/mock hasta la conexión controlada de Fase 9. Los módulos mock sólo se renderizan con `NODE_ENV=development` y `SCHEDULER_ALLOW_MOCKS=true`; fuera de ese modo se abren exclusivamente las superficies ya persistentes y las demás se mantienen cerradas.
+
+- La Fase 8 quedó implementada en repositorio el 4 de septiembre de 2026 mediante la migración exclusivamente aditiva `20260904120000_add_scheduler_reporting_indexes`; no se aplicó a development ni production, no crea/backfillea datos y ambos schemas Prisma permanecen sincronizados. Agrega cuatro índices para reportar estados, políticas de comisión, outbox y encuestas.
+- `/api/scheduler/reports/:key` y `/exports/:key` publican doce datasets desde un único constructor: citas, ocupación, cancelaciones, no-show, clientes, servicios, profesionales, comisiones, encuestas, comunicaciones, ventas y pagos. El servidor exige `READ`/`EXPORT`, materializa sucursales, aplica `selfProfessionalOnly`, pagina sólo pantalla y registra cada exportación. Clientes requiere además `SENSITIVE_EXPORT` de un solo uso, consumido atómicamente con el audit log.
+- La ocupación usa minutos realmente disponibles después de intersectar horarios de sucursal/profesional y descontar descansos, excepciones y bloqueos. Los reemplazos nuevos de horarios/excepciones cierran `effectiveTo`; no se inventan cortes para filas antiguas sin evidencia. Los periodos son `[inicio, fin)`, con la zona IANA del perfil. `RegistroCita` sólo participa como fuente legado explícita y separada; nunca se une por nombres ni se suma automáticamente al núcleo. Ventas/pagos usan POS canónico y no `Venta*`; Nómina conserva la liquidación final de comisiones.
+- El contrato vive en `packages/types/src/scheduler.ts` y `@cosmetics/api-client` expone `report()`/`exportReport()`. El cierre local valida schemas, contratos, lint/type-check/build del API, 133 pruebas unitarias en 25 archivos y type-check/build de Scheduler; permanecen sólo las advertencias conocidas de imágenes/hooks. La UI de reportes sigue mock hasta Fase 9. PostgreSQL 16, integración HTTP, paridad pantalla/exportación, zonas históricas y volumen de 30 sucursales permanecen pendientes antes de activar. Runbook: `docs/SCHEDULER_PHASE_8_REPORTING.md`.
 
 - La Fase 7 quedó implementada en repositorio el 4 de septiembre de 2026 mediante la migración exclusivamente aditiva `20260904110000_add_scheduler_engagement`; no se aplicó a development ni production, no importa mocks/seeds ni crea mensajes, documentos, expedientes o encuestas. Ambos schemas Prisma permanecen sincronizados. Agrega plantillas/versiones, preferencias por canal, outbox/eventos, consentimientos/documentos, expedientes cifrados, encuestas/tokens/respuestas y protecciones append-only.
 - `/api/scheduler/communications*`, `/documents*`, `/medical-records*` y `/surveys*` aplican permisos, sucursales materializadas, alcance profesional propio, control optimista y auditoría. Los webhooks HMAC y la respuesta de encuesta por token son las únicas rutas públicas; se montan antes del router JWT y no exponen PII, rutas de storage, hashes o ciphertext.
@@ -1266,7 +1271,8 @@ backend/api/
 │   │   ├── 20260904080000_add_scheduler_customers/ → clientes compartidos, metadatos y fusiones de Scheduler
 │   │   ├── 20260904090000_add_scheduler_appointments/ → disponibilidad, citas, bloqueos e idempotencia
 │   │   ├── 20260904100000_add_scheduler_administration/ → paquetes, clases, comisiones, gift cards y settings
-│   │   └── 20260904110000_add_scheduler_engagement/ → mensajes, documentos, expediente y encuestas
+│   │   ├── 20260904110000_add_scheduler_engagement/ → mensajes, documentos, expediente y encuestas
+│   │   └── 20260904120000_add_scheduler_reporting_indexes/ → índices de reportes/exportaciones Scheduler
 │   ├── seed.ts                    → seed general/demo, usar con cuidado
 │   └── seed-catalogs.ts           → seed seguro para Bank/Position
 └── src/
@@ -1292,6 +1298,7 @@ backend/api/
     │   ├── scheduler-appointments.routes.ts → disponibilidad, citas, estados y bloqueos canónicos
     │   ├── scheduler-administration.routes.ts → administración avanzada, referencias POS y configuración
     │   ├── scheduler-engagement.routes.ts → comunicaciones, documentos, expediente y encuestas autenticadas
+    │   ├── scheduler-report.routes.ts → datasets y exportaciones auditadas de Scheduler
     │   └── scheduler-public.routes.ts → webhooks HMAC y respuesta pública por token
     ├── services/
     │   ├── payroll-calculation.ts → motor puro de cálculo
@@ -1303,6 +1310,7 @@ backend/api/
     │   ├── scheduler-appointments.ts → zonas IANA, intervalos, clases, estados, membresías e idempotencia
     │   ├── scheduler-administration.ts → validación de comisiones, clases, secretos y precedencia
     │   ├── scheduler-engagement.ts → cifrado, plantillas, webhooks, recordatorios y encuestas
+    │   ├── scheduler-reporting.ts → periodos, intervalos, paginación y cálculo reproducible de reportes
     │   ├── scheduler-messaging.ts → adaptador y worker idempotente del outbox
     │   ├── scheduler-private-storage.ts → documentos privados y URLs firmadas
     │   ├── internal-agenda-adapter.ts → disponibilidad Scheduler compatible con el contrato Agenda de POS

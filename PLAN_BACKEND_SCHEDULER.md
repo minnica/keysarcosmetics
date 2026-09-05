@@ -8,6 +8,7 @@
 
 ## Estado de ejecución
 
+- **Fase 8 — implementada en repositorio el 4 de septiembre de 2026; migración, integración PostgreSQL y conexión visual pendientes.** La migración exclusivamente aditiva `20260904120000_add_scheduler_reporting_indexes` agrega índices para estados, comisiones, outbox y encuestas sin crear o transformar datos. `/api/scheduler/reports/:key` y `/exports/:key` construyen el mismo dataset para citas, ocupación, cancelaciones, no-show, clientes, servicios, profesionales, comisiones, encuestas, comunicaciones, ventas y pagos; aplican permisos, sucursales, alcance profesional, fechas locales y auditoría. `RegistroCita` sólo se consulta como fuente legado explícita y separada; POS conserva la autoridad financiera. Guía: `docs/SCHEDULER_PHASE_8_REPORTING.md`.
 - **Fase 4 — implementada en repositorio el 4 de septiembre de 2026; migración, integración PostgreSQL y activación pendientes.** La migración exclusivamente aditiva `20260904090000_add_scheduler_appointments` agrega citas canónicas multi-servicio, participantes, recursos, bloqueos, historial append-only, idempotencia, reservas de beneficios y el vínculo opcional desde `PosAppointment`; no importa mocks ni transforma Agenda/POS. `/api/scheduler/availability`, `/appointments*` y `/blocks*` aplican JWT, capacidades, sucursales/profesional propio, horario IANA, control optimista, auditoría, locks ordenados y transacciones serializables. La prueba concurrente crítica quedó como integración opt-in para PostgreSQL desechable. Guía: `docs/SCHEDULER_PHASE_4_APPOINTMENTS.md`.
 - **Fase 3 — implementada progresivamente en repositorio el 4 de septiembre de 2026; migración, diagnóstico/materialización e índice parcial pendientes.** La migración aditiva `20260904080000_add_scheduler_customers` agrega normalización nullable/versionada, perfiles, alias, correos, campos personalizados y fusiones auditables sin backfill ni datos operativos. `/api/scheduler/clients*` ofrece búsqueda, alta/edición, expediente, históricos y fusión serializable; las citas canónicas ya participan en la fusión y el historial de visitas. Guía: `docs/SCHEDULER_PHASE_3_CUSTOMERS.md`.
 - **Fase 2 — implementada en repositorio el 4 de septiembre de 2026; migración y provisión pendientes.** La migración exclusivamente aditiva `20260904070000_add_scheduler_operational_catalogs` agrega perfiles sobre `Sucursal`, `Empleado` y `CatalogItem SERVICE`, comercios, asignaciones por sucursal, servicios/clases, especialidades, grupos, recursos, compatibilidades, requisitos, horarios recurrentes y excepciones con vigencia/baja lógica. No crea seeds, perfiles ni datos operativos. `/api/scheduler/operations/*` expone candidatos y CRUDs tipados con alcance, auditoría y control optimista. Las secciones administrativas base ya muestran candidatos reales y permiten activar/configurar sucursales, profesionales, servicios y recursos; los flujos avanzados restantes se conectarán progresivamente en Fase 9. Guía: `docs/SCHEDULER_PHASE_2_OPERATIONAL_CATALOGS.md`.
@@ -50,7 +51,7 @@ El desarrollo debe cubrir la aplicación completa, no solamente un MVP. La ejecu
 - El esquema canónico está en `backend/api/prisma/schema.prisma`.
 - Existe una copia en `backend/api/src/prisma/schema.prisma`; ambas eran idénticas durante este análisis.
 - Prisma validó correctamente.
-- El análisis inicial encontró 36 directorios; después de las Fases 1 a 4 y la Fase 6 el repositorio contiene 41 migraciones versionadas. La Fase 5 no requirió migración.
+- El análisis inicial encontró 36 directorios; después de las Fases 1 a 4 y 6 a 8 el repositorio contiene 43 migraciones versionadas. La Fase 5 no requirió migración.
 - El type-check y el build del API pasaron.
 - Las 84 pruebas unitarias encontradas para el API pasaron.
 - El type-check, las pruebas actuales y el build de Scheduler pasaron. El build mostró advertencias no bloqueantes relacionadas con imágenes y dependencias de hooks.
@@ -467,6 +468,8 @@ Evidencia disponible:
 
 ### Fase 8 — Reportes y exportaciones
 
+**Estado de implementación (4 de septiembre de 2026):** completada en repositorio; migración, PostgreSQL 16, integración HTTP/volumen y conexión visual pendientes de los gates de Fase 0 y Fase 9.
+
 Objetivo: sustituir todos los KPIs y reportes mock por consultas consistentes y reproducibles.
 
 Entregables:
@@ -481,6 +484,18 @@ Entregables:
 - Tratar correctamente zona horaria, intervalos inclusivos/exclusivos y cierres de día.
 
 Criterio de salida: las cifras en pantalla coinciden con los archivos exportados y tienen una fuente identificable.
+
+Evidencia disponible:
+
+- `20260904120000_add_scheduler_reporting_indexes` sólo agrega cuatro índices; no crea datos, no hace backfill ni modifica las fuentes operativas. Ambos schemas Prisma permanecen sincronizados.
+- `SCHEDULER_REPORT_KEYS` define doce datasets. `/api/scheduler/reports/:key` pagina y `/api/scheduler/exports/:key` devuelve el conjunto completo desde el mismo constructor y con el mismo resumen.
+- Las claves se autorizan contra las pantallas de resumen, reservaciones o ventas; el servidor vuelve a materializar sucursales y `selfProfessionalOnly`. Toda exportación se audita y Clientes consume `SENSITIVE_EXPORT` dentro de la misma transacción del audit log.
+- La ocupación intersecta horarios vigentes de sucursal/profesional y descuenta descansos, excepciones y bloqueos antes de fusionar minutos reservados/atendidos. Periodos y cierres usan intervalos `[inicio, fin)` y la zona IANA de cada perfil.
+- Los reemplazos nuevos de horarios y excepciones cierran `effectiveTo` en las filas anteriores para conservar el denominador histórico; no se inventa un backfill para filas antiguas sin corte verificable.
+- Scheduler y `RegistroCita` son fuentes mutuamente excluyentes. El legado queda etiquetado y no se enlaza por nombres; ventas/pagos se derivan sólo de `PosTicket`/`PosPayment`, y las tablas `Venta*` no se usan sin diagnóstico aprobado.
+- Comisiones combina políticas versionadas con tickets enlazados por IDs canónicos, pero no crea liquidaciones y declara a Nómina como autoridad final. Encuestas omite comentarios libres y comunicaciones omite destinos cifrados/payloads.
+- El cierre local valida schemas, contratos, lint/type-check/build del API, 133 pruebas unitarias en 25 archivos y type-check/build de Scheduler; permanecen sólo las advertencias ya conocidas de imágenes/hooks.
+- Contrato y operación: `docs/SCHEDULER_PHASE_8_REPORTING.md`. La paridad HTTP, PostgreSQL 16, zonas históricas, volumen de 30 sucursales y conexión del frontend permanecen como gates externos antes de activar.
 
 ### Fase 9 — Sustitución progresiva del frontend mock
 
@@ -666,14 +681,14 @@ Opciones consideradas:
 
 ## 12. Punto recomendado para retomar
 
-La siguiente sesión operativa debe cerrar la **evidencia de la Fase 0** y activar de forma controlada las Fases 1 a 7 antes de conectar el frontend o habilitar proveedores:
+La siguiente sesión operativa debe cerrar la **evidencia de la Fase 0** y activar de forma controlada las Fases 1 a 8 antes de conectar el frontend o habilitar proveedores:
 
 1. Confirmar que se dispone de acceso seguro a la base de desarrollo.
 2. Comparar migraciones aplicadas contra el inventario vigente del repositorio, sin depender de un conteo histórico fijo.
 3. Ejecutar `scheduler:diagnose` y conservar el JSON agregado como evidencia segura.
 4. Revisar conteos, duplicados y candidatos de mapeo reales.
-5. Reconstruir todas las migraciones, incluidas las de Scheduler `20260904060000` a `20260904110000`, sobre PostgreSQL 16 desechable.
-6. Ejecutar pruebas HTTP de `401/403`, alcance, autorización de un solo uso, candidatos, perfiles, clientes, normalización, fusiones, horarios, bloqueos, idempotencia y conflictos `409`; probar además concurrencia de clientes/citas, outbox, webhooks, URLs privadas y doble envío de encuesta.
+5. Reconstruir todas las migraciones, incluidas las de Scheduler `20260904060000` a `20260904120000`, sobre PostgreSQL 16 desechable.
+6. Ejecutar pruebas HTTP de `401/403`, alcance, autorización de un solo uso, candidatos, perfiles, clientes, normalización, fusiones, horarios, bloqueos, idempotencia y conflictos `409`; probar además concurrencia de clientes/citas, outbox, webhooks, URLs privadas, doble envío de encuesta y paridad de datasets pantalla/exportación.
 7. Aprobar la estrategia de backfill; aplicar las migraciones de Scheduler en development y provisionar grants, bucket, llaves y catálogos explícitos sin seeds operativos. Mantener el proveedor de mensajería deshabilitado hasta completar sandbox.
 8. Ejecutar `scheduler:customers:normalize` en `DRY_RUN`, materializar sólo después de revisar el agregado y resolver manualmente duplicados antes de diseñar la migración del índice único parcial.
 9. Con esa evidencia, conectar gradualmente Administración, Clientes, Agenda, Comunicaciones y Documentos según la Fase 9; después activar de forma controlada el proveedor `internal` ya implementado en Fase 5, validar POS/Scheduler y habilitar mensajería sólo tras aprobar sandbox.

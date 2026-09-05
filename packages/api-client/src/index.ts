@@ -150,6 +150,9 @@ import type {
   SchedulerSurveyDto,
   SchedulerSurveyPublicDto,
   SchedulerSurveyWriteDto,
+  SchedulerReportDatasetDto,
+  SchedulerReportKey,
+  SchedulerReportRequest,
 } from "@cosmetics/types";
 
 /**
@@ -480,13 +483,26 @@ export interface SchedulerApiClient {
   ): Promise<{ id: string; version: number; versionId: string }>;
   issueSurveyToken(
     id: string,
-    input: { customerId: string; appointmentId?: string | null; expiresAt: string },
+    input: {
+      customerId: string;
+      appointmentId?: string | null;
+      expiresAt: string;
+    },
   ): Promise<{ token: string; expiresAt: string }>;
   publicSurvey(token: string): Promise<SchedulerSurveyPublicDto>;
   submitSurvey(
     token: string,
     answers: Array<{ questionId: string; value: unknown }>,
   ): Promise<{ id: string }>;
+  report(
+    key: SchedulerReportKey,
+    input: SchedulerReportRequest,
+  ): Promise<SchedulerReportDatasetDto>;
+  exportReport(
+    key: SchedulerReportKey,
+    input: SchedulerReportRequest,
+    authorizationToken?: string,
+  ): Promise<SchedulerReportDatasetDto>;
   logout(): void;
 }
 
@@ -908,6 +924,31 @@ export function createSchedulerApiClient(
     submitSurvey: (token, answers) =>
       data<{ id: string }>(
         client.post(`/api/scheduler/surveys/respond/${token}`, { answers }),
+      ),
+    report: (key, input) =>
+      data<SchedulerReportDatasetDto>(
+        client.get(`/api/scheduler/reports/${key}`, {
+          params: {
+            ...input,
+            branchIds: input.branchIds?.join(","),
+          },
+        }),
+      ),
+    exportReport: (key, input, authorizationToken) =>
+      data<SchedulerReportDatasetDto>(
+        client.get(`/api/scheduler/exports/${key}`, {
+          params: {
+            ...input,
+            branchIds: input.branchIds?.join(","),
+          },
+          ...(authorizationToken
+            ? {
+                headers: {
+                  "x-scheduler-authorization": authorizationToken,
+                },
+              }
+            : {}),
+        }),
       ),
     logout: () => setAccessToken(null),
   };
