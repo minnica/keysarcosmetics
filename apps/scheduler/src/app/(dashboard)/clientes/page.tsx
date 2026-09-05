@@ -1,5 +1,5 @@
-import { ClientsWorkspace } from "@/components/clients/ClientsWorkspace";
+import { SchedulerClientsEntry } from "@/components/api/SchedulerPageEntries";
 
 export default function ClientsPage() {
-  return <ClientsWorkspace />;
+  return <SchedulerClientsEntry />;
 }

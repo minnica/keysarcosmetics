@@ -1,5 +1,5 @@
-import { AdministrationEntry } from "@/components/administration/AdministrationEntry";
+import { SchedulerAdministrationEntry } from "@/components/api/SchedulerPageEntries";
 
 export default function AdministrationPage() {
-  return <AdministrationEntry />;
+  return <SchedulerAdministrationEntry />;
 }

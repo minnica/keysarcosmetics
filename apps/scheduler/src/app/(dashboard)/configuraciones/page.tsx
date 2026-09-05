@@ -1,5 +1,5 @@
-import { SettingsWorkspace } from "@/components/settings/SettingsWorkspace";
+import { SchedulerSettingsEntry } from "@/components/api/SchedulerPageEntries";
 
 export default function SettingsPage() {
-  return <SettingsWorkspace />;
+  return <SchedulerSettingsEntry />;
 }

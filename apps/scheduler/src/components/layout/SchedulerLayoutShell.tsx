@@ -8,10 +8,12 @@ import {
   SidebarTrigger,
 } from "@cosmetics/ui";
 import { SchedulerAppSidebar } from "./SchedulerAppSidebar";
+import { useSchedulerSession } from "@/lib/session";
 
 export function SchedulerLayoutShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const locksAgendaViewport = pathname === "/";
+  const { bootstrap } = useSchedulerSession();
+  const locksAgendaViewport = pathname === "/" && Boolean(bootstrap?.mockModeEnabled);
 
   return (
     <SidebarProvider

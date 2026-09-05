@@ -42,8 +42,11 @@ function getRequiredScreen(
   pathname: string,
   section: string | null,
 ): SchedulerScreenKey | null {
-  if (pathname === "/clientes" || pathname.startsWith("/clientes/")) {
+  if (pathname === "/clientes") {
     return schedulerScreenKeyById.clients;
+  }
+  if (pathname.startsWith("/clientes/")) {
+    return schedulerScreenKeyById["reports.summary"];
   }
   if (pathname.startsWith("/administracion")) {
     return schedulerScreenKeyById[
@@ -55,6 +58,9 @@ function getRequiredScreen(
     return (
       settingsSections[section ?? "company"] ?? "scheduler/settings/company"
     );
+  }
+  if (pathname.startsWith("/reportes/ventas")) {
+    return schedulerScreenKeyById["reports.sales"];
   }
   if (pathname.startsWith("/reportes/reservas")) {
     return schedulerScreenKeyById["reports.reservations"];
@@ -71,6 +77,7 @@ function firstAccessiblePath(permissions: SchedulerScreenKey[]): string | null {
     ["scheduler/clients", "/clientes"],
     ["scheduler/reports/summary", "/reportes"],
     ["scheduler/reports/reservations", "/reportes/reservas"],
+    ["scheduler/reports/sales", "/reportes/ventas"],
     ["scheduler/administration/locals", "/administracion?section=locals"],
     ["scheduler/settings/company", "/configuraciones?section=company"],
   ];
@@ -93,14 +100,6 @@ export function SchedulerAccessGuard({ children }: { children: ReactNode }) {
   const allowed =
     requiredScreen === null || readableScreens.includes(requiredScreen);
   const fallback = firstAccessiblePath(readableScreens);
-  const isSecuritySettings =
-    pathname.startsWith("/configuraciones") &&
-    searchParams.get("section") === "authorizations";
-  const isOperationalAdministration =
-    pathname.startsWith("/administracion") &&
-    ["locals", "professionals", "services", "resources"].includes(
-      searchParams.get("section") ?? "locals",
-    );
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -146,31 +145,5 @@ export function SchedulerAccessGuard({ children }: { children: ReactNode }) {
       </main>
     );
   }
-  if (
-    !bootstrap.mockModeEnabled &&
-    !isSecuritySettings &&
-    !isOperationalAdministration
-  ) {
-    return (
-      <main className="flex min-h-screen flex-col items-center justify-center gap-4 bg-[var(--bg-primary)] px-6 text-center">
-        <p className="section-heading">Scheduler protegido</p>
-        <p className="max-w-lg text-sm leading-6 text-slate-600">
-          La sesión y los permisos ya se validan en servidor. Los módulos
-          operativos permanecen cerrados hasta conectar sus datos persistentes;
-          los mocks sólo pueden habilitarse explícitamente en desarrollo.
-        </p>
-        <Button
-          variant="outline"
-          onClick={() => {
-            logout();
-            router.replace("/login");
-          }}
-        >
-          Cerrar sesión
-        </Button>
-      </main>
-    );
-  }
-
   return children;
 }

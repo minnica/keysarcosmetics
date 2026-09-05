@@ -15,3 +15,11 @@ export function schedulerApiErrorMessage(
   }
   return error instanceof Error ? error.message : fallback;
 }
+
+export function schedulerApiErrorStatus(error: unknown): number | null {
+  if (typeof error !== "object" || !error || !("response" in error)) {
+    return null;
+  }
+  const response = (error as { response?: { status?: number } }).response;
+  return response?.status ?? null;
+}
