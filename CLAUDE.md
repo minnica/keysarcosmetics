@@ -276,7 +276,7 @@ Las reglas visuales y operativas siguientes conservan la referencia necesaria pa
 
 ## Stack actual
 
-- **Monorepo**: Turborepo + pnpm workspaces
+- **Monorepo**: Turborepo `2.10.5` + pnpm workspaces
 - **Frontend**: Next.js 14 (App Router) + TypeScript strict
 - **UI**: shadcn/ui desde `@cosmetics/ui` + Tailwind CSS
 - **Motion web**: GSAP + `@gsap/react` para secuencias puntuales con cleanup y `prefers-reduced-motion`; las transiciones simples permanecen en CSS
@@ -1469,6 +1469,7 @@ pnpm test:integration  # requiere RUN_DATABASE_TESTS=true + PostgreSQL desechabl
 pnpm test:smoke        # requiere URLs de ambiente o servicios locales activos
 pnpm test:e2e:development # requiere development desplegado, cuentas E2E y SHA exactos
 pnpm test:e2e:production  # diagnóstico administrado; solo cuentas de monitoreo productivas
+pnpm turbo:graph:verify   # valida el grafo de build de las ocho apps y el API
 ```
 
 ### Deploy backend
