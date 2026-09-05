@@ -1,6 +1,7 @@
 # Plan de despliegues selectivos en Vercel
 
-> Estado: implementación aprobada. Fase 0 completada el 4 de septiembre de 2026. No se han aplicado cambios operativos en GitHub, Vercel, Fly.io,
+> Estado: implementación aprobada. Fases 0 y 1 completadas el 4 de septiembre
+> de 2026. No se han aplicado cambios operativos en GitHub, Vercel, Fly.io,
 > Supabase ni en los workflows existentes.
 
 ## 1. Objetivo
@@ -361,10 +362,17 @@ Rollback: no aplica; fase de sólo lectura.
 
 Objetivo: demostrar la selección antes de desplegar.
 
+Estado al 4 de septiembre de 2026: **completada**. El detector versionado vive
+en `scripts/detect-vercel-impact.mjs` y
+`scripts/vercel-impact-detector-lib.mjs`; su contrato, política, errores y
+resultados están documentados en `docs/VERCEL_PHASE_1_DETECTOR.md`. La matriz
+automatizada pasó 31 pruebas y cinco diagnósticos históricos representativos.
+No se invocó Vercel ni se modificaron ambientes o workflows.
+
 Tareas:
 
-- Definir casos automatizados para cada fila de la matriz.
-- Añadir casos para:
+- [x] Definir casos automatizados para cada fila de la matriz.
+- [x] Añadir casos para:
   - un cambio directo por app;
   - `ui`, `types`, `auth` y `api-client`;
   - lockfile exclusivo y compartido;
@@ -374,15 +382,15 @@ Tareas:
   - combinación frontend + backend;
   - deployment previo fallido;
   - historia Git insuficiente.
-- Crear el script de detección con salida JSON y resumen humano.
-- Ejecutarlo en modo diagnóstico sobre commits históricos representativos.
-- No invocar Vercel en esta fase.
+- [x] Crear el script de detección con salida JSON y resumen humano.
+- [x] Ejecutarlo en modo diagnóstico sobre commits históricos representativos.
+- [x] No invocar Vercel en esta fase.
 
 Criterio de salida:
 
-- Todos los casos esperados pasan.
-- Cada resultado explica por qué una aplicación está o no afectada.
-- Un error técnico jamás produce silenciosamente una lista vacía.
+- Cumplido: todos los casos esperados pasan.
+- Cumplido: cada resultado explica por qué una aplicación está o no afectada.
+- Cumplido: un error técnico jamás produce silenciosamente una lista vacía.
 
 Rollback: retirar el check diagnóstico; no modifica ambientes.
 
@@ -680,7 +688,8 @@ Metas iniciales:
 - [x] Deployments inmutables de `develop` y dominios productivos documentados.
 - [x] Línea base de consumo registrada.
 - [ ] Aplicación piloto elegida.
-- [ ] Política de archivos globales y excluidos aprobada.
+- [x] Política de archivos globales y excluidos formalizada y validada por la
+      Fase 1; cualquier ruta no contemplada bloquea el detector.
 - [ ] Actualización de Turborepo aprobada como PR independiente.
 - [ ] Contrato de identidad multiversión aprobado.
 - [ ] Estrategia de credenciales y environments aprobada.

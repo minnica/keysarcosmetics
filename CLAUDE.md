@@ -1127,7 +1127,19 @@ La migración en Supabase dev, el backend `cosmetics-api-dev`, el login `SUPER_A
   deployment hook inicia esos frontends. También se documentaron el desfase de
   Node remoto y la variable faltante de Scheduler. La evidencia, configuración
   efectiva y puntos de rollback viven en `docs/VERCEL_PHASE_0_AUDIT.md`; la
-  Fase 1 puede comenzar y producción permanece sin cambios.
+  Esa auditoría fue la entrada de la Fase 1 y producción permanece sin cambios.
+- La Fase 1 del plan de despliegues selectivos se completó el 4 de septiembre de
+  2026 sin invocar Vercel ni modificar workflows o ambientes. El detector
+  fail-closed vive en `scripts/detect-vercel-impact.mjs`, reconstruye el grafo
+  desde los manifests del SHA objetivo, analiza `pnpm-lock.yaml` v9 por
+  importador y cierre transitivo, y emite JSON por stdout más resumen humano por
+  stderr. En ramas desplegables exige `--base-sha` diagnóstico o un archivo
+  `--deployment-state` ordenado con el último estado `READY`; historia Git,
+  grafo, lockfile o rutas ambiguas producen exit code no cero sin listas vacías.
+  `pnpm deploy:impact:test` valida 31 casos y `pnpm deploy:impact:history` repite
+  cinco diagnósticos históricos. Contrato y evidencia:
+  `docs/VERCEL_PHASE_1_DETECTOR.md`. La integración Git automática actual sigue
+  activa hasta las fases posteriores y producción permanece sin cambios.
 - No subir `.env` ni `.env.local` al repositorio.
 - `apps/envelope/.env.local` es solo local y no debe commitearse.
 - `apps/payroll/.env.local` también es solo local y no debe commitearse; las variables de Vercel se configuran por proyecto y ambiente.
@@ -1483,6 +1495,8 @@ pnpm test:smoke        # requiere URLs de ambiente o servicios locales activos
 pnpm test:e2e:development # requiere development desplegado, cuentas E2E y SHA exactos
 pnpm test:e2e:production  # diagnóstico administrado; solo cuentas de monitoreo productivas
 pnpm turbo:graph:verify   # valida el grafo de build de las ocho apps y el API
+pnpm deploy:impact:test   # matriz local del detector selectivo, sin invocar Vercel
+pnpm deploy:impact:history # cinco diagnósticos históricos reproducibles
 ```
 
 ### Deploy backend
