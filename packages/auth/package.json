@@ -18,13 +18,11 @@
     "lint": "eslint \"src/**/*.ts\" --max-warnings=0"
   },
   "dependencies": {
+    "@cosmetics/types": "workspace:*",
     "jsonwebtoken": "^9.0.2"
   },
   "devDependencies": {
     "@types/jsonwebtoken": "^9.0.6",
     "typescript": "^5.4.5"
-  },
-  "peerDependencies": {
-    "@cosmetics/types": "workspace:*"
   }
 }
