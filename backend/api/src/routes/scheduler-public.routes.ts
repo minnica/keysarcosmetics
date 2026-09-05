@@ -55,7 +55,7 @@ router.post("/communications/webhooks", async (req, res) => {
     const input = webhookSchema.parse(req.body);
     const result = await prisma.$transaction(
       async (tx) => {
-        await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`scheduler-webhook:${input.eventId}`}, 0))`;
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`scheduler-webhook:${input.eventId}`}, 0))`;
         const duplicate = await tx.schedulerMessageDeliveryEvent.findUnique({
           where: { providerEventId: input.eventId },
         });

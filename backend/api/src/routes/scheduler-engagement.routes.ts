@@ -657,7 +657,7 @@ router.post(
       const encrypted = encryptSchedulerValue(destination);
       const scheduledAt = new Date(input.scheduledAt);
       const queued = await prisma.$transaction(async (tx) => {
-        await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`scheduler-message:${req.schedulerAccess!.userId}:${idempotencyKey}`}, 0))`;
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`scheduler-message:${req.schedulerAccess!.userId}:${idempotencyKey}`}, 0))`;
         const concurrent = await tx.schedulerMessageOutbox.findUnique({
           where: { idempotencyKey },
         });

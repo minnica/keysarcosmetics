@@ -702,7 +702,7 @@ export async function createMembershipClosure(
     .update(branchIds.join("\n"))
     .digest("hex");
   const { from, to } = monthRange(input.month);
-  await tx.$queryRaw(
+  await tx.$executeRaw(
     Prisma.sql`SELECT pg_advisory_xact_lock(hashtext(${`pos-membership-closure:${input.month}:${scopeHash}`}))`,
   );
   const latest = await tx.posMembershipSalesClosure.findFirst({

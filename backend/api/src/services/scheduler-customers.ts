@@ -137,7 +137,7 @@ export async function lockSchedulerCustomerPhone(
   phoneNormalized: string | null,
 ): Promise<void> {
   if (!phoneNormalized) return;
-  await tx.$queryRaw`
+  await tx.$executeRaw`
     SELECT pg_advisory_xact_lock(
       hashtextextended(${`scheduler-customer-phone:${phoneNormalized}`}, 0)
     )

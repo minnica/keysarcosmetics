@@ -1093,7 +1093,7 @@ export async function lockSchedule(
     }),
   ).sort();
   for (const key of keys) {
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${key}, 0))`;
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${key}, 0))`;
   }
 }
 
@@ -1721,7 +1721,7 @@ router.post(
       const data = await withSerializableRetry(() =>
         prisma.$transaction(
           async (tx) => {
-            await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`scheduler-idempotency:${req.schedulerAccess!.userId}:${operation}:${keyParsed.data}`}, 0))`;
+            await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`scheduler-idempotency:${req.schedulerAccess!.userId}:${operation}:${keyParsed.data}`}, 0))`;
             const concurrentReplay =
               await tx.schedulerIdempotencyKey.findUnique({
                 where: {
