@@ -7,8 +7,10 @@
 
 ## Resultado
 
-El workflow `.github/workflows/vercel-impact-diagnostic.yml` conecta la CI con
-el detector de impacto sin habilitar todavía la publicación selectiva. Se
+El workflow `.github/workflows/vercel-impact-diagnostic.yml` conectó la CI con
+el detector de impacto sin habilitar publicación durante la Fase 4. Desde la
+Fase 5 conserva intacto ese job de selección de sólo lectura y expone su salida
+al piloto HR, cerrado por una bandera administrativa. Se
 ejecuta después de `CI`, únicamente para pushes del mismo repositorio a
 `develop` o `master`, y continúa sólo cuando esa corrida terminó en verde.
 
@@ -35,7 +37,7 @@ push a develop/master
   → último READY anterior que también sea ancestro del target
   → detector fail-closed de Fase 1
   → matriz JSON + GITHUB_STEP_SUMMARY + artefactos por 30 días
-  → 0 builds, 0 deployments, 0 promociones, 0 cambios de alias
+  → job diagnóstico: 0 builds, 0 deployments, 0 promociones, 0 cambios de alias
 ```
 
 `workflow_run` aporta la espera de CI. El gate comprueba además que el evento
@@ -44,9 +46,11 @@ que rama/SHA tengan el contrato esperado. El checkout usa `fetch-depth: 0` para
 que `git merge-base --is-ancestor` y los diffs históricos puedan fallar de forma
 explícita si falta evidencia.
 
-El job `Deployments disabled in Phase 4` existe únicamente como frontera
-visible del cambio posterior y tiene `if: false`. No recibe tokens y no contiene
-ningún comando Vercel.
+Durante la Fase 4 el job `Deployments disabled in Phase 4` fue la frontera
+explícita. La Fase 5 lo sustituyó por un consumidor exclusivo de HR en
+`development`; sólo puede ejecutarse si el detector marca HR afectada y la
+variable de repositorio `VERCEL_HR_PILOT_ENABLED` vale `true`. La selección no
+recibe la credencial de escritura. Ver `docs/VERCEL_PHASE_5_HR_PILOT.md`.
 
 ## Evidencia de deployments
 
@@ -106,8 +110,9 @@ evidencia coincidan exactamente con el resultado del detector. Después publica:
 - coincidencia, fan-out evitable o evidencia aún pendiente.
 
 El output `matrix` sólo contiene aplicaciones afectadas entre los cinco
-proyectos activos. Durante esta fase se conserva como evidencia y el job que
-podría consumirlo permanece deshabilitado.
+proyectos activos. El job diagnóstico también expone la decisión y cualquier
+deployment `READY` reutilizable del piloto HR; no decide el feature flag ni
+recibe secrets de publicación.
 
 Los archivos `vercel-deployment-evidence.json` y `vercel-impact.json` se guardan
 como artefacto por 30 días. Contienen slugs, deployment IDs, estados, fechas y

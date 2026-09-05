@@ -4,6 +4,7 @@ import { appendFileSync, readFileSync } from "node:fs";
 import process from "node:process";
 import {
   createDiagnosticMatrix,
+  createPilotSelection,
   formatGitHubDiagnosticSummary,
 } from "./vercel-impact-summary-lib.mjs";
 
@@ -29,10 +30,22 @@ try {
   }
 
   const matrix = createDiagnosticMatrix(impact, evidence);
+  const pilot = createPilotSelection(impact, evidence);
   appendFileSync(outputPath, `matrix=${JSON.stringify(matrix)}\n`, "utf8");
   appendFileSync(
     outputPath,
     `affected_count=${impact.affectedApplications.length}\n`,
+    "utf8",
+  );
+  appendFileSync(outputPath, `pilot_affected=${pilot.affected}\n`, "utf8");
+  appendFileSync(
+    outputPath,
+    `pilot_observation_status=${pilot.observedStatus ?? ""}\n`,
+    "utf8",
+  );
+  appendFileSync(
+    outputPath,
+    `pilot_reusable_deployment_id=${pilot.reusableDeploymentId ?? ""}\n`,
     "utf8",
   );
   appendFileSync(

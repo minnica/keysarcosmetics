@@ -19,6 +19,7 @@
     "deploy:impact": "node scripts/detect-vercel-impact.mjs",
     "deploy:impact:test": "node scripts/vercel-impact-detector.test.mjs",
     "deploy:impact:history": "node scripts/run-vercel-impact-history.mjs",
+    "deploy:pilot:test": "node scripts/vercel-pilot-deployment.test.mjs",
     "deploy:release-manifest:test": "node --experimental-strip-types --no-warnings=MODULE_TYPELESS_PACKAGE_JSON apps/e2e/helpers/release-identity.test.ts",
     "migrations:review": "node scripts/check-migration-safety.mjs",
     "type-check": "turbo run type-check",

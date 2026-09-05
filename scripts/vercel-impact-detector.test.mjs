@@ -14,6 +14,7 @@ import {
 import { collectProjectDeploymentHistory } from "./vercel-deployment-state-lib.mjs";
 import {
   createDiagnosticMatrix,
+  createPilotSelection,
   formatGitHubDiagnosticSummary,
 } from "./vercel-impact-summary-lib.mjs";
 
@@ -704,5 +705,49 @@ describe("orquestación diagnóstica de la Fase 4", () => {
     assert.match(summary, /Cambió directamente payroll/);
     assert.match(summary, /apps\/payroll\/src\/page\.tsx/);
     assert.match(summary, /Fan-out evitable|Coincide/);
+  });
+
+  test("la selección del piloto sólo reutiliza HR cuando está afectada y READY", () => {
+    const targetSha = "c".repeat(40);
+    const impact = {
+      status: "ok",
+      mode: "diagnostic",
+      environment: "development",
+      branch: "develop",
+      targetSha,
+      affectedApplications: ["hr"],
+      skippedApplications: [],
+      results: [
+        {
+          affected: true,
+          application: "hr",
+          baseSha: "a".repeat(40),
+          package: "@cosmetics/hr",
+          reasons: [],
+          targetSha,
+        },
+      ],
+    };
+    const evidence = {
+      environment: "development",
+      branch: "develop",
+      targetSha,
+      projects: {
+        hr: { project: "keysarcosmetics-hr", root: "apps/hr" },
+      },
+      observations: {
+        hr: {
+          deploymentId: "dpl_HrPilot123",
+          status: "READY",
+          sha: targetSha,
+        },
+      },
+    };
+
+    assert.deepEqual(createPilotSelection(impact, evidence), {
+      affected: true,
+      reusableDeploymentId: "dpl_HrPilot123",
+      observedStatus: "READY",
+    });
   });
 });

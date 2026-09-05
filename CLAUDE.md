@@ -1171,10 +1171,34 @@ La migración en Supabase dev, el backend `cosmetics-api-dev`, el login `SUPER_A
   deployment `READY` anterior y ancestro de cada uno de los cinco proyectos
   activos, ejecuta el detector fail-closed y publica matriz, razones y
   comparación contra la integración Git actual. El SHA objetivo nunca se usa
-  como su propia base. Los jobs de deployment están deshabilitados; no se
-  construyen artefactos ni se modifican deployments o aliases. La primera
-  corrida remota requiere el secret dedicado `VERCEL_TOKEN_READ_ONLY`; contrato
-  y evidencia: `docs/VERCEL_PHASE_4_DIAGNOSTIC_WORKFLOW.md`.
+  como su propia base. La selección sigue siendo de sólo lectura; desde la Fase
+  5 únicamente el piloto HR de `development` puede consumirla y permanece
+  cerrado por feature flag. La primera corrida remota requiere el secret
+  dedicado `VERCEL_TOKEN_READ_ONLY`; contrato y evidencia:
+  `docs/VERCEL_PHASE_4_DIAGNOSTIC_WORKFLOW.md`.
+- La Fase 5 de `PLAN_DEPLOYS_SELECTIVOS_VERCEL.md` quedó implementada en
+  repositorio el 5 de septiembre de 2026 con HR como piloto, sin cambios
+  remotos. HR fue elegida porque no consume API ni variables de ambiente y opera
+  con mocks locales. `Vercel HR pilot operations` permite crear un Preview del
+  SHA exacto sin alias, publicar un deployment `READY` ya verificado o regresar
+  el alias mediante confirmaciones literales. El job automático de
+  `.github/workflows/vercel-impact-diagnostic.yml` sólo consume la decisión
+  fail-closed para HR en `develop` y permanece inactivo mientras la variable de
+  repositorio `VERCEL_HR_PILOT_ENABLED` no sea `true`.
+- Los deployments CLI del piloto fijan Node.js `22.23.2`, pnpm `10.0.0` y
+  Vercel CLI `59.11.2`, construyen con `--prebuilt`, envían procedencia Git
+  explícita y verifican project ID, target Preview, estado `READY`, SHA y
+  `meta[name="keysar-release"]` detrás de Deployment Protection antes de mover
+  el alias. Un rerun reutiliza el deployment observado `READY`; antes de
+  publicar se exige que `origin/develop` siga en el SHA autorizado. Credenciales,
+  normalización remota de Node, despliegues manuales, feature flag, retiro del
+  iniciador Git y casos de aceptación/rollback reales siguen pendientes. Guía:
+  `docs/VERCEL_PHASE_5_HR_PILOT.md`.
+- El cierre local de la Fase 5 valida 12 contratos del piloto, 36 del detector,
+  cinco casos históricos, cuatro contratos multiversión, el grafo Turbo, lint y
+  type-check completos, el build de HR con SHA inyectado y `ci:build` para API,
+  ocho frontends y POS web. Estas pruebas no sustituyen Node.js 22 en CI, las
+  credenciales ni los deployments/aliases reales.
 - No subir `.env` ni `.env.local` al repositorio.
 - `apps/envelope/.env.local` es solo local y no debe commitearse.
 - `apps/payroll/.env.local` también es solo local y no debe commitearse; las variables de Vercel se configuran por proyecto y ambiente.
@@ -1404,7 +1428,8 @@ apps/e2e/
 ├── development-e2e.yml           → E2E autenticado por SHA, solo development
 ├── pos-pilot.yml                 → migraciones efímeras + conciliación protegida del piloto POS
 ├── staging-smoke.yml             → smoke tests manuales development/production
-└── vercel-impact-diagnostic.yml  → selección frontend de sólo lectura después de CI
+├── vercel-impact-diagnostic.yml  → selección frontend y piloto HR cerrado por feature flag después de CI
+└── vercel-hr-pilot-manual.yml    → deployment HR sin alias, publicación y rollback protegidos
 ```
 
 ### packages/ui
@@ -1534,13 +1559,17 @@ pnpm test:e2e:production  # diagnóstico administrado; solo cuentas de monitoreo
 pnpm turbo:graph:verify   # valida el grafo de build de las ocho apps y el API
 pnpm deploy:impact:test   # matriz local del detector selectivo, sin invocar Vercel
 pnpm deploy:impact:history # cinco diagnósticos históricos reproducibles
+pnpm deploy:pilot:test # contrato fail-closed del deployment y alias piloto HR
 pnpm deploy:release-manifest:test # contrato multiversión y alias desfasados
 ```
 
-La recolección remota de la Fase 4 se ejecuta exclusivamente desde
-`Vercel frontend impact diagnostic` después de CI. Requiere
-`VERCEL_TOKEN_READ_ONLY`, escribe evidencia sanitizada y no debe usarse para
-crear deployments o descargar variables.
+La recolección remota de las Fases 4–5 se ejecuta desde
+`Vercel frontend impact and HR pilot` después de CI. La selección usa
+`VERCEL_TOKEN_READ_ONLY`, escribe evidencia sanitizada y no descarga variables.
+Sólo HR puede pasar a deployment en `develop`, requiere explícitamente
+`VERCEL_HR_PILOT_ENABLED=true` y usa una credencial de deployment separada del
+token de lectura. El workflow manual del piloto comparte el environment
+`development`; producción permanece fuera de alcance.
 
 ### Deploy backend
 

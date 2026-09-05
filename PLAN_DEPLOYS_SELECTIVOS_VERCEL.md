@@ -3,10 +3,12 @@
 > Estado: implementación aprobada. Fases 0 y 1 completadas el 4 de septiembre
 > de 2026. La Fase 2 se integró en `develop` mediante la PR #88 con CI y
 > previews en verde. Las Fases 3 y 4 quedaron implementadas en repositorio el
-> 5 de septiembre de 2026 y esperan sus corridas completas de CI/ambiente para
-> cumplir los criterios de salida remotos. Durante la validación de la Fase 2 se
-> corrigió en Vercel el Build Command de Envelope a
-> `--filter=@cosmetics/envelope`; no se aplicaron otros cambios operativos.
+> 5 de septiembre de 2026. La Fase 5 también quedó implementada ese día con HR
+> como piloto, pero espera credenciales, activación y sus casos de aceptación
+> remotos. Las Fases 3–5 aún requieren corridas completas de CI/ambiente para
+> cumplir sus criterios de salida. Durante la validación de la Fase 2 se corrigió
+> en Vercel el Build Command de Envelope a `--filter=@cosmetics/envelope`; no se
+> aplicaron otros cambios operativos.
 
 ## 1. Objetivo
 
@@ -502,28 +504,55 @@ Proyecto recomendado para iniciar: una aplicación interna no crítica y sin
 coordinación inmediata de BD. La selección final se hará con el inventario de la
 Fase 0; Finance o HR son candidatas si sus proyectos y alias están operativos.
 
+Estado al 5 de septiembre de 2026: **implementada en repositorio; pendiente de
+activación y evidencia remota**. Se eligió HR porque no consume API ni variables
+de ambiente y opera con mocks locales. El workflow automático queda cerrado por
+`VERCEL_HR_PILOT_ENABLED`; el workflow manual permite desplegar sin alias,
+publicar un deployment ya verificado y ensayar rollback. Ambos verifican
+proyecto, Preview `READY`, procedencia Git, SHA servido y Deployment Protection.
+Contrato y secuencia: `docs/VERCEL_PHASE_5_HR_PILOT.md`.
+
 Tareas:
 
-- Crear credenciales de deployment limitadas y secrets por environment.
-- Preparar build, publicación, alias y verificación para el proyecto piloto.
-- Ejecutar primero deployments manuales del mismo SHA sin cambiar alias.
-- Verificar variables, assets, rutas, SHA y protección.
-- Activar el job selectivo para el piloto.
-- Sólo después de demostrarlo, retirar su iniciador Git automático.
-- Probar:
-  - cambio directo en la app;
-  - sólo documentación;
-  - otra app;
-  - paquete compartido;
-  - deployment fallido y siguiente commit no relacionado;
-  - reintento del workflow.
+- [ ] Crear credenciales de deployment limitadas y secrets por environment.
+  - [x] Definir nombres, separación read/deploy, feature flag y alcance mínimo.
+  - [ ] Crear y validar las credenciales reales en GitHub/Vercel.
+- [x] Preparar build, publicación, alias y verificación para HR.
+  - [x] Fijar Node.js 22.23.2, pnpm 10.0.0 y Vercel CLI 59.11.2.
+  - [x] Inyectar y comprobar `keysar-release` en HR.
+  - [x] Validar proyecto, Preview `READY`, metadata Git, protección y SHA HTTP.
+  - [x] Bloquear publicación obsoleta y reutilizar un deployment `READY` en rerun.
+- [ ] Ejecutar primero deployments manuales del mismo SHA sin cambiar alias.
+  - [x] Implementar la operación protegida `deploy_without_alias`.
+  - [ ] Ejecutarla y conservar evidencia remota de al menos dos corridas.
+- [ ] Verificar variables, assets, rutas, SHA y protección sobre el deployment real.
+- [ ] Activar el job selectivo para el piloto.
+  - [x] Implementar el job consumidor de la selección, cerrado por feature flag.
+  - [ ] Configurar `VERCEL_HR_PILOT_ENABLED=true` después del ensayo manual.
+- [ ] Sólo después de demostrarlo, retirar su iniciador Git automático.
+- [ ] Probar en merges reales:
+  - [ ] cambio directo en la app;
+  - [ ] sólo documentación;
+  - [ ] otra app;
+  - [ ] paquete compartido;
+  - [ ] deployment fallido y siguiente commit no relacionado;
+  - [ ] reintento del workflow.
+- [x] Preparar rollback protegido por deployment ID y SHA completos.
+- [ ] Ejecutar y documentar el rollback remoto al deployment anterior.
+- [x] Validar localmente 12 contratos del piloto, 36 del detector, cinco casos
+      históricos, lint/type-check completos y los builds de API, ocho frontends
+      y POS web.
 
 Criterio de salida:
 
-- Sólo el cambio directo y el compartido crean deployments del piloto.
-- Ninguna rama de trabajo genera deployment del piloto.
-- El alias estable sirve exactamente el SHA registrado.
-- Existe rollback probado al deployment anterior.
+- Pendiente remoto: sólo el cambio directo y el compartido crean deployments del
+  piloto.
+- Cumplido por trigger; pendiente de evidencia remota: ninguna rama de trabajo
+  genera deployment del piloto.
+- Cumplido por contrato y prueba local; pendiente remoto: el alias estable sirve
+  exactamente el SHA registrado.
+- Preparado en repositorio; pendiente remoto: rollback probado al deployment
+  anterior.
 
 Rollback:
 
@@ -714,33 +743,33 @@ Metas iniciales:
 - [x] Lista definitiva: cinco proyectos existentes y tres ausencias.
 - [x] Deployments inmutables de `develop` y dominios productivos documentados.
 - [x] Línea base de consumo registrada.
-- [ ] Aplicación piloto elegida.
+- [x] Aplicación piloto elegida: HR.
 - [x] Política de archivos globales y excluidos formalizada y validada por la
       Fase 1; cualquier ruta no contemplada bloquea el detector.
 - [ ] Actualización de Turborepo aprobada como PR independiente.
 - [x] Contrato de identidad multiversión aprobado e implementado por la Fase 3;
       falta conservar evidencia de los smokes sobre aliases reales.
-- [ ] Estrategia de credenciales y environments aprobada.
-- [ ] Rollback del piloto preparado antes de retirar su integración Git.
-- [x] Producción permanece sin cambios durante las Fases 0–4.
+- [x] Estrategia de credenciales y environments definida con token HR separado,
+      secrets de `development` y feature flag de repositorio; falta crearla y
+      validarla remotamente.
+- [x] Rollback del piloto preparado antes de retirar su integración Git; falta
+      ejecutar el ensayo remoto.
+- [x] Producción permanece sin cambios durante las Fases 0–5.
 
 ## 15. Decisiones pendientes
 
-Con el inventario remoto cerrado, quedan estas decisiones para las siguientes
+La Fase 5 resolvió para el piloto que la aplicación será HR, que el alias se
+mueve sólo después de verificar el deployment inmutable, que la procedencia Git
+se enviará como metadata explícita y que el build externo usará Node.js
+`22.23.2`. La configuración remota de HR todavía debe normalizarse de `24.x` a
+`22.x` antes del primer ensayo. Quedan estas decisiones para las siguientes
 fases:
 
-1. Qué aplicación se utilizará como piloto.
-2. Si los alias de `develop` se actualizan directamente después del smoke mínimo
-   o mediante una promoción separada.
-3. Qué mecanismo de Vercel conserva mejor la procedencia Git al desplegar desde
-   Actions con la configuración efectiva de la cuenta.
-4. Cómo normalizar Node remoto `24.x` frente a `.nvmrc` `22.23.2` y los comandos
-   de build distintos antes del piloto.
-5. Cómo provisionar `NEXT_PUBLIC_API_URL` para Scheduler; los smokes ya usan el
+1. Cómo provisionar `NEXT_PUBLIC_API_URL` para Scheduler; los smokes ya usan el
    modelo multiversión desde la Fase 3.
-6. Qué aplicaciones de producción necesitan un gate de API exacto y cuáles sólo
+2. Qué aplicaciones de producción necesitan un gate de API exacto y cuáles sólo
    compatibilidad contractual.
-7. Durante cuántas promociones exitosas debe ejecutarse producción en sombra
+3. Durante cuántas promociones exitosas debe ejecutarse producción en sombra
    antes de activar selección; recomendación inicial: al menos tres releases
    representativos.
 

@@ -2,6 +2,7 @@ import {
   ACTIVE_VERCEL_PROJECTS,
   UNPROVISIONED_VERCEL_APPLICATIONS,
 } from "./vercel-deployment-state-lib.mjs";
+import { resolvePilotSelection } from "./vercel-pilot-deployment-lib.mjs";
 
 function assertDiagnosticContract(impact, evidence) {
   if (impact?.status !== "ok" || impact?.mode !== "diagnostic") {
@@ -103,13 +104,21 @@ export function createDiagnosticMatrix(impact, evidence) {
   };
 }
 
+export function createPilotSelection(impact, evidence, application = "hr") {
+  assertDiagnosticContract(impact, evidence);
+  if (!ACTIVE_VERCEL_PROJECTS[application]) {
+    throw new Error(`La aplicación piloto ${application} no está provisionada`);
+  }
+  return resolvePilotSelection(impact, evidence, application);
+}
+
 export function formatGitHubDiagnosticSummary(impact, evidence) {
   assertDiagnosticContract(impact, evidence);
   const matrix = createDiagnosticMatrix(impact, evidence);
   const lines = [
     "## Vercel frontend impact — diagnóstico",
     "",
-    "> Este workflow es de sólo lectura. No construyó ni creó deployments y no modificó aliases.",
+    "> Este job de selección es de sólo lectura. No construyó ni creó deployments y no modificó aliases.",
     "",
     "| Campo | Valor |",
     "| --- | --- |",
@@ -144,7 +153,7 @@ export function formatGitHubDiagnosticSummary(impact, evidence) {
     `- Afectadas: ${affected.length > 0 ? affected.map((app) => `\`${app}\``).join(", ") : "ninguna"}.`,
     `- Omitidas: ${skipped.length > 0 ? skipped.map((app) => `\`${app}\``).join(", ") : "ninguna"}.`,
     `- Sin proyecto Vercel en esta fase: ${unprovisioned.map((app) => `\`${app}\``).join(", ")}.`,
-    "- Matriz dinámica conservada como output `matrix`; los jobs de deployment permanecen deshabilitados.",
+    "- Matriz dinámica conservada como output `matrix`; sólo el piloto HR de `development` puede consumirla y requiere la bandera administrativa de activación.",
     "",
   );
   return `${lines.join("\n")}\n`;
