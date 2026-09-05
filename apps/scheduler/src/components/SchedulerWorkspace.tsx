@@ -40,16 +40,16 @@ import {
   type ServiceOption,
 } from '@/lib/mock-scheduler-data'
 import {
-  authorizeSchedulerFinancialProfile,
   canManageSchedulerPaymentHistory,
   canAccessSchedulerBranch,
   canAccessSchedulerCommerce,
   canAccessSchedulerProfessional,
-  currentSchedulerAccess,
   getSchedulerClientAccessKey,
   type SchedulerFinancialAuditEvent,
   type SchedulerFinancialProfile,
 } from '@/lib/scheduler-access'
+import { useSchedulerSession } from '@/lib/session'
+import { schedulerApiErrorMessage } from '@/lib/api'
 import {
   initialSchedulerClients,
   normalizeClientPhone,
@@ -148,6 +148,7 @@ function buildServiceRecords(
 }
 
 export function SchedulerWorkspace() {
+  const { bootstrap, canAccess, authorize: authorizeSecondary } = useSchedulerSession()
   const [selectedDate, setSelectedDate] = useState(schedulerReferenceDate)
   const [monthCursor, setMonthCursor] = useState(startOfMonth(schedulerReferenceDate))
   const [currentView, setCurrentView] = useState<SchedulerView>('day')
@@ -172,8 +173,8 @@ export function SchedulerWorkspace() {
     [administrationConfig],
   )
   const allowedCommerces = useMemo(
-    () => configuredCommerces.filter((commerce) => canAccessSchedulerCommerce(commerce.id)),
-    [configuredCommerces],
+    () => configuredCommerces.filter((commerce) => canAccessSchedulerCommerce(bootstrap, commerce.id)),
+    [bootstrap, configuredCommerces],
   )
   const [selectedCommerce, setSelectedCommerce] = useState(
     allowedCommerces[0]?.id ?? '',
@@ -191,9 +192,9 @@ export function SchedulerWorkspace() {
     () =>
       configuredBranches.filter(
         (branch) =>
-          branch.commerceId === selectedCommerce && canAccessSchedulerBranch(branch.id),
+          branch.commerceId === selectedCommerce && canAccessSchedulerBranch(bootstrap, branch.id),
       ),
-    [configuredBranches, selectedCommerce],
+    [bootstrap, configuredBranches, selectedCommerce],
   )
   const [selectedBranch, setSelectedBranch] = useState(
     () => allowedBranches[0]?.id ?? '',
@@ -327,9 +328,9 @@ export function SchedulerWorkspace() {
       (professional) =>
         professional.commerceIds.includes(selectedCommerce) &&
         professional.branchIds.includes(selectedBranch) &&
-        canAccessSchedulerProfessional(professional.id),
+        canAccessSchedulerProfessional(bootstrap, professional.id),
     )
-  }, [configuredProfessionals, selectedBranch, selectedCommerce])
+  }, [bootstrap, configuredProfessionals, selectedBranch, selectedCommerce])
 
   const sidebarProfessionals = useMemo(() => {
     const normalizedQuery = professionalQuery.trim().toLowerCase()
@@ -506,7 +507,7 @@ export function SchedulerWorkspace() {
       (professional) =>
         professional.commerceIds.includes(selectedCommerce) &&
         professional.branchIds.includes(branchId) &&
-        canAccessSchedulerProfessional(professional.id),
+        canAccessSchedulerProfessional(bootstrap, professional.id),
     )
 
     setSelectedBranch(branchId)
@@ -636,16 +637,38 @@ export function SchedulerWorkspace() {
     handleOpenBookingDetail(nextBooking, 'attendance')
   }
 
-  function handleAuthorizeFinancialHistory(booking: Booking, personalCode: string): string | null {
-    const authorization = authorizeSchedulerFinancialProfile(personalCode, booking.clientId)
-    if (!authorization.profile) return authorization.error ?? 'No fue posible autorizar la consulta.'
+  async function handleAuthorizeFinancialHistory(booking: Booking, personalCode: string): Promise<string | null> {
+    if (!bootstrap) return 'La sesión ya no está disponible.'
+    try {
+      const purpose = financialAccessNextView === 'history'
+        ? 'CLIENT_VISIT_HISTORY_VIEW'
+        : financialAccessNextView === 'record'
+          ? 'CLIENT_RECORD_VIEW'
+          : 'CLIENT_FINANCIAL_HISTORY_VIEW'
+      const authorization = await authorizeSecondary({
+        secret: personalCode,
+        purpose,
+        screenKey: 'scheduler/clients',
+        targetType: 'SchedulerClient',
+        targetId: getSchedulerClientAccessKey(booking.clientId, booking.phone),
+      })
+      const profile: SchedulerFinancialProfile = {
+        id: authorization.actor.userId,
+        name: authorization.actor.name,
+        role: bootstrap.user.role === 'SUPER_ADMIN'
+          ? 'master'
+          : canAccess('clients', 'ADMIN')
+            ? 'admin'
+            : 'seller',
+        expiresAt: authorization.expiresAt,
+      }
 
-    const clientKey = getSchedulerClientAccessKey(booking.clientId, booking.phone)
-    const consultation: SchedulerFinancialAuditEvent = {
+      const clientKey = getSchedulerClientAccessKey(booking.clientId, booking.phone)
+      const consultation: SchedulerFinancialAuditEvent = {
       id: `financial-consultation-${Date.now()}`,
-      userId: authorization.profile.id,
-      userName: authorization.profile.name,
-      userRole: authorization.profile.role,
+      userId: profile.id,
+      userName: profile.name,
+      userRole: profile.role,
       clientKey,
       clientName: booking.customerName,
       bookingId: booking.id,
@@ -657,28 +680,28 @@ export function SchedulerWorkspace() {
             ? 'Consultó la ficha del cliente.'
             : 'Consultó el historial financiero del cliente.',
       occurredAt: new Date().toISOString(),
-    }
+      }
 
-    setFinancialAccessByClient((current) => ({
-      ...current,
-      [clientKey]: authorization.profile as SchedulerFinancialProfile,
-    }))
-    setFinancialAuditEvents((current) => [consultation, ...current])
-    if (financialAccessNextView === 'record') {
+      setFinancialAccessByClient((current) => ({ ...current, [clientKey]: profile }))
+      setFinancialAuditEvents((current) => [consultation, ...current])
+      if (financialAccessNextView === 'record') {
       if (booking.date) {
         const bookingDate = new Date(`${booking.date}T12:00:00`)
         if (!isSameDay(selectedDate, bookingDate)) setSelectedDate(bookingDate)
       }
       setActiveBooking(booking)
       setDetailView('record')
-    } else if (financialAccessNextView === 'history') {
-      setClientHistoryBooking(booking)
+      } else if (financialAccessNextView === 'history') {
+        setClientHistoryBooking(booking)
+      }
+      setFinancialAccessNextView(null)
+      toast.success('Historial autorizado', {
+        description: `Consulta registrada a nombre de ${profile.name}.`,
+      })
+      return null
+    } catch (error) {
+      return schedulerApiErrorMessage(error, 'No fue posible autorizar la consulta.')
     }
-    setFinancialAccessNextView(null)
-    toast.success('Historial autorizado', {
-      description: `Consulta registrada a nombre de ${authorization.profile.name}.`,
-    })
-    return null
   }
 
   function handleRevokeFinancialHistory(booking: Booking) {
@@ -691,7 +714,8 @@ export function SchedulerWorkspace() {
   }
 
   function getAuthorizedFinancialProfile(booking: Booking): SchedulerFinancialProfile | undefined {
-    return financialAccessByClient[getSchedulerClientAccessKey(booking.clientId, booking.phone)]
+    const profile = financialAccessByClient[getSchedulerClientAccessKey(booking.clientId, booking.phone)]
+    return profile && new Date(profile.expiresAt).getTime() > Date.now() ? profile : undefined
   }
 
   function handleOpenClientHistory(booking: Booking) {
@@ -1006,8 +1030,8 @@ export function SchedulerWorkspace() {
     setFinancialAuditEvents((current) => [
       {
         id: `financial-audit-create-${Date.now()}`,
-        userId: authorizedProfile?.id ?? currentSchedulerAccess.id,
-        userName: authorizedProfile?.name ?? currentSchedulerAccess.name,
+        userId: authorizedProfile?.id ?? bootstrap?.user.id ?? 'unknown',
+        userName: authorizedProfile?.name ?? bootstrap?.user.name ?? 'Usuario de Scheduler',
         userRole: authorizedProfile?.role ?? 'admin',
         clientKey,
         clientName: paymentBooking.customerName,
@@ -1054,7 +1078,7 @@ export function SchedulerWorkspace() {
 
     if (startMinutes < schedulerBaseMinutes || endMinutes > schedulerClosingMinutes) {
       toast.error('El bloqueo esta fuera del horario permitido', {
-        description: 'La agenda solo admite horarios entre 09:00 y 21:00.',
+        description: 'La hora de inicio y fin debe pertenecer al mismo día.',
       })
       return
     }
@@ -1366,7 +1390,7 @@ export function SchedulerWorkspace() {
     : undefined
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(195,165,131,0.14),transparent_16%),linear-gradient(180deg,#f3f0e9_0%,#f7f3ed_100%)]">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(195,165,131,0.14),transparent_16%),linear-gradient(180deg,#f3f0e9_0%,#f7f3ed_100%)]">
       <SchedulerHeader
         currentView={currentView}
         onViewChange={setCurrentView}
@@ -1430,9 +1454,9 @@ export function SchedulerWorkspace() {
         </SheetContent>
       </Sheet>
 
-      <main className="flex min-h-[calc(100vh-84px)] min-w-0 items-start">
+      <main className="flex min-h-0 min-w-0 flex-1 items-stretch overflow-hidden">
         {resourcePanelOpen ? (
-          <aside className="sticky top-0 hidden h-screen w-[340px] shrink-0 overflow-y-auto border-r border-[rgba(236,209,200,0.82)] xl:block">
+          <aside className="hidden h-full min-h-0 w-[304px] shrink-0 overflow-y-auto overscroll-contain border-r border-[rgba(236,209,200,0.82)] xl:block">
             <SchedulerSidebar
               commerces={allowedCommerces}
               selectedCommerce={selectedCommerce}
@@ -1463,7 +1487,7 @@ export function SchedulerWorkspace() {
           </aside>
         ) : null}
 
-        <section className="flex min-w-0 flex-1 flex-col px-4 py-5 sm:px-6 xl:px-8">
+        <section className="scheduler-agenda-content flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden px-4 py-5 sm:px-6 xl:px-8">
           {!resourcePanelOpen ? (
             <button
               className="mb-4 hidden h-11 w-fit items-center gap-2 rounded-2xl border border-[rgba(236,209,200,0.82)] bg-white px-4 text-sm font-semibold text-slate-600 shadow-sm transition hover:border-[var(--scheduler-accent)] hover:bg-[var(--scheduler-accent-soft)] xl:flex"

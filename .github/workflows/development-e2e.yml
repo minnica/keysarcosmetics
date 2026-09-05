@@ -21,19 +21,23 @@ concurrency:
 
 jobs:
   development-e2e:
-    name: Envelope and Payroll read-only journeys
+    name: Envelope, Payroll and Scheduler read-only journeys
     runs-on: ubuntu-latest
     environment: development
     env:
       API_BASE_URL: ${{ vars.API_BASE_URL }}
       ENVELOPE_BASE_URL: ${{ vars.ENVELOPE_BASE_URL }}
       PAYROLL_BASE_URL: ${{ vars.PAYROLL_BASE_URL }}
+      SCHEDULER_BASE_URL: ${{ vars.SCHEDULER_BASE_URL }}
       ENVELOPE_VERCEL_BYPASS_SECRET: ${{ secrets.ENVELOPE_VERCEL_BYPASS_SECRET }}
       PAYROLL_VERCEL_BYPASS_SECRET: ${{ secrets.PAYROLL_VERCEL_BYPASS_SECRET }}
+      SCHEDULER_VERCEL_BYPASS_SECRET: ${{ secrets.SCHEDULER_VERCEL_BYPASS_SECRET }}
       E2E_ENVELOPE_EMAIL: ${{ secrets.E2E_ENVELOPE_EMAIL }}
       E2E_ENVELOPE_PASSWORD: ${{ secrets.E2E_ENVELOPE_PASSWORD }}
       E2E_PAYROLL_EMAIL: ${{ secrets.E2E_PAYROLL_EMAIL }}
       E2E_PAYROLL_PASSWORD: ${{ secrets.E2E_PAYROLL_PASSWORD }}
+      E2E_SCHEDULER_EMAIL: ${{ secrets.E2E_SCHEDULER_EMAIL }}
+      E2E_SCHEDULER_PASSWORD: ${{ secrets.E2E_SCHEDULER_PASSWORD }}
       E2E_EXPECTED_FRONTEND_SHA: ${{ inputs.release_sha }}
       E2E_EXPECTED_API_SHA: ${{ inputs.api_sha }}
     steps:
@@ -44,12 +48,16 @@ jobs:
           test -n "$API_BASE_URL"
           test -n "$ENVELOPE_BASE_URL"
           test -n "$PAYROLL_BASE_URL"
+          test -n "$SCHEDULER_BASE_URL"
           test -n "$ENVELOPE_VERCEL_BYPASS_SECRET"
           test -n "$PAYROLL_VERCEL_BYPASS_SECRET"
+          test -n "$SCHEDULER_VERCEL_BYPASS_SECRET"
           test -n "$E2E_ENVELOPE_EMAIL"
           test -n "$E2E_ENVELOPE_PASSWORD"
           test -n "$E2E_PAYROLL_EMAIL"
           test -n "$E2E_PAYROLL_PASSWORD"
+          test -n "$E2E_SCHEDULER_EMAIL"
+          test -n "$E2E_SCHEDULER_PASSWORD"
       - uses: actions/checkout@v6
         with:
           ref: ${{ inputs.release_sha }}
@@ -70,6 +78,7 @@ jobs:
         run: |
           rm -f apps/e2e/.auth/envelope.json
           rm -f apps/e2e/.auth/payroll.json
+          rm -f apps/e2e/.auth/scheduler.json
       - name: Publish safe Playwright report
         if: always()
         uses: actions/upload-artifact@v4

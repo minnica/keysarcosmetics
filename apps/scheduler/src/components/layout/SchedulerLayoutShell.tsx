@@ -1,20 +1,38 @@
 "use client";
 
 import type { CSSProperties, ReactNode } from "react";
+import { usePathname } from "next/navigation";
 import {
   SidebarInset,
   SidebarProvider,
   SidebarTrigger,
 } from "@cosmetics/ui";
 import { SchedulerAppSidebar } from "./SchedulerAppSidebar";
+import { useSchedulerSession } from "@/lib/session";
 
 export function SchedulerLayoutShell({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
+  const { bootstrap } = useSchedulerSession();
+  const locksAgendaViewport = pathname === "/" && Boolean(bootstrap?.mockModeEnabled);
+
   return (
     <SidebarProvider
-      style={{ "--sidebar-width-icon": "4rem" } as CSSProperties}
+      className={locksAgendaViewport ? "h-svh min-h-0 overflow-hidden" : undefined}
+      style={
+        {
+          "--sidebar-width": "14rem",
+          "--sidebar-width-icon": "3.5rem",
+        } as CSSProperties
+      }
     >
       <SchedulerAppSidebar />
-      <SidebarInset className="min-w-0 overflow-x-hidden bg-[var(--bg-primary)]">
+      <SidebarInset
+        className={
+          locksAgendaViewport
+            ? "h-svh min-h-0 min-w-0 overflow-hidden bg-[var(--bg-primary)]"
+            : "min-w-0 overflow-x-hidden bg-[var(--bg-primary)]"
+        }
+      >
         <header className="flex h-14 shrink-0 items-center gap-3 border-b border-[var(--border-color)] bg-white/90 px-4 backdrop-blur md:hidden">
           <SidebarTrigger
             aria-label="Abrir navegación principal"
@@ -36,7 +54,14 @@ export function SchedulerLayoutShell({ children }: { children: ReactNode }) {
             </p>
           </div>
         </header>
-        <main id="scheduler-main-content" className="min-w-0">
+        <main
+          id="scheduler-main-content"
+          className={
+            locksAgendaViewport
+              ? "min-h-0 min-w-0 flex-1 overflow-hidden"
+              : "min-w-0"
+          }
+        >
           {children}
         </main>
       </SidebarInset>

@@ -2,8 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { clientNavigationItems } from "@/lib/client-navigation";
-import { SurveyReportWorkspace } from "@/components/clients/SurveyReportWorkspace";
-import { RemindersWorkspace } from "@/components/clients/RemindersWorkspace";
+import { SchedulerClientSectionEntry } from "@/components/api/SchedulerPageEntries";
 
 export function generateStaticParams() {
   return clientNavigationItems
@@ -21,8 +20,9 @@ export default function ClientSectionPage({
   );
   if (!section) notFound();
   if (params.section === "reporte-de-encuestas")
-    return <SurveyReportWorkspace />;
-  if (params.section === "recordatorios") return <RemindersWorkspace />;
+    return <SchedulerClientSectionEntry section="reporte-de-encuestas" />;
+  if (params.section === "recordatorios")
+    return <SchedulerClientSectionEntry section="recordatorios" />;
   const Icon = section.icon;
 
   return (

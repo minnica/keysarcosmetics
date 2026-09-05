@@ -34,8 +34,8 @@ export function SchedulerAgendaList({
   )
 
   return (
-    <section className="overflow-hidden rounded-[28px] border border-[rgba(236,209,200,0.82)] bg-white shadow-[0_18px_45px_rgba(43,35,28,0.06)]">
-      <div className="flex flex-col gap-4 border-b border-[#eee6df] bg-[linear-gradient(180deg,#fff_0%,#fcfaf8_100%)] px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+    <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-[28px] border border-[rgba(236,209,200,0.82)] bg-white shadow-[0_18px_45px_rgba(43,35,28,0.06)]">
+      <div className="flex shrink-0 flex-col gap-4 border-b border-[#eee6df] bg-[linear-gradient(180deg,#fff_0%,#fcfaf8_100%)] px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
         <div>
           <p className="label-caps">Vista de lista</p>
           <h2 className="mt-1 text-xl font-semibold capitalize text-[#263649]">
@@ -55,7 +55,7 @@ export function SchedulerAgendaList({
       </div>
 
       {orderedBookings.length ? (
-        <div className="divide-y divide-[#eee6df]">
+        <div className="min-h-0 flex-1 divide-y divide-[#eee6df] overflow-y-auto overscroll-contain">
           {orderedBookings.map((booking) => {
             const professional = professionals.find(
               (candidate) => candidate.id === booking.professionalId,
@@ -123,7 +123,7 @@ export function SchedulerAgendaList({
           })}
         </div>
       ) : (
-        <div className="flex flex-col items-center px-6 py-16 text-center">
+        <div className="flex min-h-0 flex-1 flex-col items-center overflow-y-auto px-6 py-16 text-center">
           <span className="flex h-16 w-16 items-center justify-center rounded-[22px] bg-[#f5ede4] text-[#ad8b67]">
             <CalendarDays className="h-7 w-7" />
           </span>

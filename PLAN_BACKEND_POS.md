@@ -451,6 +451,8 @@ Todo requisito de las secciones 20–46 queda así asignado. La presencia de una
 
 ### Fase 11 — Integración transaccional con Agenda CRM
 
+> **Autoridad actual (4 de septiembre de 2026):** la Fase 5 de `PLAN_BACKEND_SCHEDULER.md` sustituyó el proveedor efectivo por Scheduler interno. Esta sección conserva el contrato HTTP y la saga como rollback temporal; `AGENDA_PROVIDER=internal` es el default, las nuevas citas se enlazan mediante `PosAppointment.schedulerAppointmentId` y Agenda CRM ya no es la autoridad final. Ver `docs/SCHEDULER_PHASE_5_POS_INTEGRATION.md`.
+
 - [x] Definir un adaptador backend de Agenda; URL, token y secretos viven sólo en servidor. El renderer nunca llama directamente al CRM ni recibe sus credenciales.
 - [x] Mapear `Customer` a `externalClientId` estable y conservar `externalReservationId`, `externalAppointmentId`, recurso, slot, versión, capacidad y snapshot horario en la cita local.
 - [x] Consultar disponibilidad por sucursal/rango y aceptar únicamente slots elegibles con capacidad. La confirmación revalida en Agenda y usa una clave idempotente estable derivada de la operación local.

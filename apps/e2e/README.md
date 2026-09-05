@@ -10,7 +10,7 @@ La suite amplia de development nunca se ejecuta contra producción. El smoke pro
 
 ## Preparación única de development
 
-Crear dos cuentas exclusivas de automatización, con empleados y puestos propios. No reutilizar cuentas personales ni `SUPER_ADMIN`.
+Crear tres cuentas exclusivas de automatización, con empleados y puestos propios. No reutilizar cuentas personales ni `SUPER_ADMIN`.
 
 ### Envelope
 
@@ -32,6 +32,17 @@ El puesto de la cuenta debe tener:
 - `canWrite = false` en todas las pantallas;
 - ninguna otra pantalla.
 
+### Scheduler
+
+El puesto de la cuenta debe tener:
+
+- `canManageSchedulerAccess = false`;
+- `selfProfessionalOnly = false` y una asignación explícita a una sucursal de prueba;
+- capacidad `READ` únicamente en `scheduler/agenda`, `scheduler/clients` y `scheduler/reports`;
+- ninguna capacidad `WRITE`, `ADMIN`, `EXPORT` o `EXCEPTION`.
+
+El guard de red de Playwright impide además cualquier método HTTP de escritura.
+
 Guardar las credenciales en secrets del environment de GitHub `development`:
 
 ```text
@@ -39,9 +50,11 @@ E2E_ENVELOPE_EMAIL
 E2E_ENVELOPE_PASSWORD
 E2E_PAYROLL_EMAIL
 E2E_PAYROLL_PASSWORD
+E2E_SCHEDULER_EMAIL
+E2E_SCHEDULER_PASSWORD
 ```
 
-Conservar también las variables `API_BASE_URL`, `ENVELOPE_BASE_URL` y `PAYROLL_BASE_URL`, además de los bypass secrets separados de Vercel que ya usa el smoke del ambiente. Nunca copiar valores reales a `.env.example`, logs, issues o artefactos.
+Conservar también las variables `API_BASE_URL`, `ENVELOPE_BASE_URL`, `PAYROLL_BASE_URL` y `SCHEDULER_BASE_URL`, además de los bypass secrets separados de Vercel que ya usa el smoke del ambiente. Nunca copiar valores reales a `.env.example`, logs, issues o artefactos.
 
 En ambos proyectos Vercel debe estar habilitada la exposición automática de System Environment Variables para que `VERCEL_GIT_COMMIT_SHA` exista durante el build. Si falta, el meta de release será `local` y el workflow se detendrá antes de autenticarse.
 
@@ -85,12 +98,12 @@ La creación de cuentas y secrets es una activación administrativa externa: no 
 
 Después de desplegar `develop`, abrir **Authenticated development E2E** en GitHub Actions e indicar:
 
-- `release_sha`: SHA completo servido por ambos alias Vercel;
+- `release_sha`: SHA completo servido por los tres alias Vercel;
 - `api_sha`: SHA completo expuesto como `release` por `/health` en la API de desarrollo.
 
 GitHub solo permite disparar manualmente un `workflow_dispatch` cuando el archivo ya existe en la rama por defecto (`master`). En la primera incorporación de este workflow, ejecutar `pnpm test:e2e:development` desde el SHA de `develop` contra el ambiente desplegado y conservar el resultado en el PR de release; después de que el archivo llegue a `master`, las promociones siguientes usan GitHub Actions normalmente seleccionando el ref de `develop`.
 
-La suite rechaza alias desfasados antes de ejecutar los recorridos. Envelope y Payroll incluyen `meta[name="keysar-release"]`, generado desde `VERCEL_GIT_COMMIT_SHA`; la API usa `RELEASE_SHA`.
+La suite rechaza alias desfasados antes de ejecutar los recorridos. Envelope, Payroll y Scheduler incluyen `meta[name="keysar-release"]`, generado desde `VERCEL_GIT_COMMIT_SHA`; la API usa `RELEASE_SHA`.
 
 Para una ejecución local, exportar las variables listadas en `.env.example` y ejecutar:
 
@@ -98,15 +111,15 @@ Para una ejecución local, exportar las variables listadas en `.env.example` y e
 pnpm test:e2e:development
 ```
 
-Playwright crea temporalmente `apps/e2e/.auth/envelope.json` y `payroll.json`. Son archivos ignorados que contienen JWT/cookies y nunca deben adjuntarse ni versionarse. El workflow los elimina antes de publicar diagnósticos.
+Playwright crea temporalmente `apps/e2e/.auth/envelope.json`, `payroll.json` y `scheduler.json`. Son archivos ignorados que contienen JWT/cookies y nunca deben adjuntarse ni versionarse. El workflow los elimina antes de publicar diagnósticos.
 
-Para production, ejecutar únicamente **Environment smoke tests** desde `master`, seleccionar `production` e indicar el SHA completo de los frontends y el SHA completo servido por `/health`. El workflow primero ejecuta los cinco smokes públicos y valida identidad; solo entonces crea sesiones temporales y ejecuta tres recorridos por app. `pnpm test:e2e:production` queda disponible para diagnóstico administrado, pero no debe invocarse contra otro ambiente ni sin confirmar antes los SHA.
+Para production, ejecutar únicamente **Environment smoke tests** desde `master`, seleccionar `production` e indicar el SHA completo de los frontends y el SHA completo servido por `/health`. El workflow primero ejecuta los seis smokes públicos —incluido el login de Scheduler— y valida identidad; solo entonces crea las sesiones temporales de monitoreo productivo para Envelope y Payroll. `pnpm test:e2e:production` queda disponible para diagnóstico administrado, pero no debe invocarse contra otro ambiente ni sin confirmar antes los SHA.
 
 ## Cobertura de la primera versión
 
-Cada app tiene ocho recorridos autenticados. Ambos validan login/sesión, pantalla principal, calendarios reales, tablas, selects, navegación de escritorio/móvil y logout. Envelope cubre ventas, citas y total general; Payroll cubre resumen, movimientos, esquemas, recibos y desglose por sucursal.
+Envelope y Payroll conservan ocho recorridos autenticados cada una. Scheduler agrega tres recorridos de sólo lectura para Agenda, Clientes y Reportes y verifica que una sesión normal no anuncie fixtures. En conjunto validan login/sesión, pantallas principales, calendarios reales, tablas, selects y navegación.
 
-El smoke productivo limita su cobertura a tres recorridos por app: Envelope carga dashboard, total general y logout; Payroll carga esquemas en solo lectura, valida sus listados sin controles de escritura y hace logout. Los dos setups de autenticación son casos separados y las sesiones no se comparten entre aplicaciones.
+El smoke productivo autenticado limita su cobertura a tres recorridos por app para Envelope y Payroll. Scheduler participa en el smoke público y sus recorridos autenticados se ejecutan en development con permisos `READ`. Los setups de autenticación son casos separados y las sesiones no se comparten entre aplicaciones.
 
 Todas las páginas se ejecutan con un fixture que registra métodos HTTP y falla ante cualquier request distinta de `GET`, `HEAD` u `OPTIONS`. Los proyectos autenticados tienen máximo un retry en CI.
 

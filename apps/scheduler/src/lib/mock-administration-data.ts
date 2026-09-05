@@ -309,7 +309,7 @@ export const createEmptyCommerce = (): CommerceRecord => ({
   name: "",
   status: "active",
   open24Hours: false,
-  schedule: createSchedule("09:00", "21:00"),
+  schedule: createSchedule("09:00", "22:00"),
 });
 
 export const initialCommerces: CommerceRecord[] = [
@@ -318,14 +318,14 @@ export const initialCommerces: CommerceRecord[] = [
     name: "OPATRA MEXICO",
     status: "active",
     open24Hours: false,
-    schedule: createSchedule("09:00", "21:00"),
+    schedule: createSchedule("09:00", "22:00"),
   },
   {
     id: "keysar-cosmetics",
     name: "KEYSAR COSMETICS",
     status: "active",
     open24Hours: false,
-    schedule: createSchedule("09:00", "21:00"),
+    schedule: createSchedule("09:00", "22:00"),
   },
 ];
 

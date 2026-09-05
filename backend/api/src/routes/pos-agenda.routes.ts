@@ -23,6 +23,7 @@ import {
 import { prisma } from "../prisma/client";
 import {
   AgendaAdapterError,
+  agendaProviderFromEnvironment,
   verifyAgendaWebhookSignature,
 } from "../services/agenda-adapter";
 import {
@@ -63,6 +64,13 @@ const membershipContext = (req: Request): PosMembershipContext => ({
 router.post(
   "/agenda/webhooks",
   asyncRoute(async (req, res) => {
+    if (agendaProviderFromEnvironment() === "internal")
+      return res.status(410).json({
+        success: false,
+        message:
+          "Los webhooks externos están deshabilitados con Agenda interna",
+        data: { code: "AGENDA_WEBHOOKS_DISABLED" },
+      });
     const signature = Array.isArray(req.headers["x-agenda-signature"])
       ? req.headers["x-agenda-signature"][0]
       : req.headers["x-agenda-signature"];

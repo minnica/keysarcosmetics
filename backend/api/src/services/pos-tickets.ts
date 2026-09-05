@@ -19,7 +19,14 @@ import {
   cancelMembershipsForTicket,
   createMembershipsForTicket,
 } from "./pos-memberships";
-import type { PreparedAgendaTicket } from "./pos-agenda";
+import {
+  confirmPreparedInternalAgenda,
+  type PreparedAgendaTicket,
+} from "./pos-agenda";
+import {
+  findSchedulerCustomerPhoneDuplicate,
+  lockSchedulerCustomerPhone,
+} from "./scheduler-customers";
 
 export class PosTicketError extends Error {
   constructor(
@@ -1156,38 +1163,45 @@ export async function createTicket(
     : null;
   if (source?.companyOwnedByDefault && !defaultCompany)
     throw new PosTicketError("No existe una empresa comercial activa", 409);
-  const customer = input.customer.id
+  let customer = input.customer.id
     ? await tx.customer.findFirst({
         where: { id: input.customer.id, active: true, deletedAt: null },
       })
-    : input.customer.create
-      ? await tx.customer.create({
-          data: {
-            displayName: input.customer.create.displayName,
-            normalizedName: normalize(input.customer.create.displayName),
-            phone: normalizePhone(input.customer.create.phone),
-            email: input.customer.create.email ?? null,
-            externalClientId: agenda?.externalClientId ?? null,
-            sourceId: input.customer.create.sourceId ?? null,
-            notes: input.customer.create.notes ?? null,
-            portfolios:
-              input.customer.create.ownerEmployeeId || defaultCompany
-                ? {
-                    create: {
-                      branchId: context.branchId,
-                      employeeId: defaultCompany
-                        ? null
-                        : input.customer.create.ownerEmployeeId,
-                      companyId: defaultCompany?.id ?? null,
-                      ownerNameSnapshot: defaultCompany?.name ?? null,
-                      ownerCodeSnapshot: defaultCompany?.salesNumber ?? null,
-                      createdByCredentialId: context.credentialId,
-                    },
-                  }
-                : undefined,
-          },
-        })
-      : null;
+    : null;
+  if (!customer && input.customer.create) {
+    const phoneNormalized = normalizePhone(input.customer.create.phone);
+    await lockSchedulerCustomerPhone(tx, phoneNormalized);
+    if (await findSchedulerCustomerPhoneDuplicate(tx, phoneNormalized)) {
+      throw new PosTicketError("Ya existe un cliente con ese teléfono", 409);
+    }
+    customer = await tx.customer.create({
+      data: {
+        displayName: input.customer.create.displayName,
+        normalizedName: normalize(input.customer.create.displayName),
+        phone: phoneNormalized,
+        phoneNormalized,
+        email: input.customer.create.email ?? null,
+        externalClientId: agenda?.externalClientId ?? null,
+        sourceId: input.customer.create.sourceId ?? null,
+        notes: input.customer.create.notes ?? null,
+        portfolios:
+          input.customer.create.ownerEmployeeId || defaultCompany
+            ? {
+                create: {
+                  branchId: context.branchId,
+                  employeeId: defaultCompany
+                    ? null
+                    : input.customer.create.ownerEmployeeId,
+                  companyId: defaultCompany?.id ?? null,
+                  ownerNameSnapshot: defaultCompany?.name ?? null,
+                  ownerCodeSnapshot: defaultCompany?.salesNumber ?? null,
+                  createdByCredentialId: context.credentialId,
+                },
+              }
+            : undefined,
+      },
+    });
+  }
   if (!customer) throw new PosTicketError("Cliente no encontrado");
   const {
     requested: participantInputs,
@@ -1235,7 +1249,10 @@ export async function createTicket(
     if (!customer.externalClientId)
       await tx.customer.update({
         where: { id: customer.id },
-        data: { externalClientId: agenda.externalClientId },
+        data: {
+          externalClientId: agenda.externalClientId,
+          version: { increment: 1 },
+        },
       });
     await tx.agendaSyncEvent.update({
       where: { id: agenda.clientSyncEventId },
@@ -1517,6 +1534,14 @@ export async function createTicket(
       "La cita contiene una sucursal inactiva o inexistente",
     );
   }
+  const schedulerAppointmentIds = agenda
+    ? await confirmPreparedInternalAgenda(tx, {
+        agenda,
+        appointments: input.appointments ?? [],
+        customerId: customer.id,
+        credentialId: context.credentialId,
+      })
+    : new Map<number, string>();
   for (const appointment of input.appointments ?? []) {
     const appointmentIndex: number = createdAppointments.length;
     const prepared: PreparedAgendaTicket["appointments"][number] | undefined =
@@ -1566,6 +1591,8 @@ export async function createTicket(
           membershipId: appointment.membershipId ?? null,
           courtesyReason: appointment.courtesyReason ?? null,
           createdByCredentialId: context.credentialId,
+          schedulerAppointmentId:
+            schedulerAppointmentIds.get(appointmentIndex) ?? null,
         },
       }),
     );

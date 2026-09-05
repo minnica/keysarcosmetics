@@ -14,6 +14,19 @@ on:
         description: Para producción escribe PRODUCCION_RESPALDADA
         required: false
         type: string
+      backup_pitr_confirmed_at:
+        description: Fecha ISO UTC de la verificación de backup/PITR de producción
+        required: false
+        type: string
+      activate_scheduler_internal:
+        description: Activar Scheduler interno después de verificar API y frontend
+        required: false
+        default: false
+        type: boolean
+      scheduler_activation_confirmation:
+        description: Para activar escribe SCHEDULER_INTERNO_VALIDADO
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -46,12 +59,27 @@ jobs:
       DIRECT_URL: ${{ secrets.DIRECT_URL }}
       FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
       API_BASE_URL: ${{ vars.API_BASE_URL }}
+      SCHEDULER_BASE_URL: ${{ vars.SCHEDULER_BASE_URL }}
+      SCHEDULER_VERCEL_BYPASS_SECRET: ${{ secrets.SCHEDULER_VERCEL_BYPASS_SECRET }}
     steps:
       - name: Validate production backup confirmation
         if: inputs.environment == 'production'
         env:
           BACKUP_CONFIRMATION: ${{ inputs.backup_confirmation }}
-        run: test "$BACKUP_CONFIRMATION" = "PRODUCCION_RESPALDADA"
+          BACKUP_PITR_CONFIRMED_AT: ${{ inputs.backup_pitr_confirmed_at }}
+        run: |
+          test "$BACKUP_CONFIRMATION" = "PRODUCCION_RESPALDADA"
+          node -e '
+            const value = process.env.BACKUP_PITR_CONFIRMED_AT;
+            if (!value || new Date(value).toISOString() !== value) process.exit(1);
+          '
+      - name: Validate Scheduler activation gate
+        if: inputs.activate_scheduler_internal
+        env:
+          ACTIVATION_CONFIRMATION: ${{ inputs.scheduler_activation_confirmation }}
+        run: |
+          test "$ACTIVATION_CONFIRMATION" = "SCHEDULER_INTERNO_VALIDADO"
+          test -n "$SCHEDULER_BASE_URL"
       - uses: actions/checkout@v6
         with:
           ref: ${{ needs.resolve-release.outputs.release_sha }}
@@ -88,3 +116,56 @@ jobs:
             --env RELEASE_SHA="${{ needs.resolve-release.outputs.release_sha }}"
       - name: Verify readiness
         run: curl --fail --retry 12 --retry-delay 5 --retry-all-errors "$API_BASE_URL/ready"
+      - name: Verify Scheduler frontend release before cutover
+        if: inputs.activate_scheduler_internal
+        env:
+          EXPECTED_RELEASE_SHA: ${{ needs.resolve-release.outputs.release_sha }}
+        run: |
+          for attempt in $(seq 1 12); do
+            html_file=$(mktemp)
+            if curl --fail --silent --show-error \
+              -H "x-vercel-protection-bypass: $SCHEDULER_VERCEL_BYPASS_SECRET" \
+              -H "x-vercel-set-bypass-cookie: true" \
+              "$SCHEDULER_BASE_URL/login" > "$html_file" && \
+              grep -q "keysar-release" "$html_file" && \
+              grep -q "$EXPECTED_RELEASE_SHA" "$html_file"; then
+              rm -f -- "$html_file"
+              exit 0
+            fi
+            rm -f -- "$html_file"
+            sleep 10
+          done
+          echo "Scheduler no sirve todavía el SHA esperado." >&2
+          exit 1
+      - name: Activate the internal Scheduler provider
+        if: inputs.activate_scheduler_internal
+        run: |
+          if [ "${{ inputs.environment }}" = "production" ]; then
+            FLY_APP="cosmetics-api"
+          else
+            FLY_APP="cosmetics-api-dev"
+          fi
+          flyctl secrets set AGENDA_PROVIDER=internal --app "$FLY_APP"
+          curl --fail --retry 12 --retry-delay 5 --retry-all-errors "$API_BASE_URL/ready"
+      - name: Run post-deployment Scheduler diagnosis and operational audit
+        if: inputs.activate_scheduler_internal
+        env:
+          AGENDA_PROVIDER: internal
+          SCHEDULER_DIAGNOSE_ENVIRONMENT: ${{ inputs.environment }}
+          SCHEDULER_DIAGNOSE_PRODUCTION_CONFIRMATION: ${{ inputs.environment == 'production' && 'PRODUCCION_SOLO_LECTURA' || '' }}
+          SCHEDULER_BACKUP_PITR_CONFIRMED_AT: ${{ inputs.backup_pitr_confirmed_at }}
+          SCHEDULER_RELEASE_AUDIT_ENVIRONMENT: ${{ inputs.environment }}
+          SCHEDULER_RELEASE_AUDIT_PRODUCTION_CONFIRMATION: ${{ inputs.environment == 'production' && 'PRODUCCION_SOLO_LECTURA' || '' }}
+        run: |
+          pnpm --filter @cosmetics/api scheduler:diagnose > scheduler-diagnosis.json
+          pnpm --filter @cosmetics/api scheduler:release:audit > scheduler-release-audit.json
+      - name: Upload safe Scheduler rollout evidence
+        if: inputs.activate_scheduler_internal && always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: scheduler-rollout-${{ inputs.environment }}-${{ needs.resolve-release.outputs.release_sha }}
+          path: |
+            scheduler-diagnosis.json
+            scheduler-release-audit.json
+          if-no-files-found: ignore
+          retention-days: 30

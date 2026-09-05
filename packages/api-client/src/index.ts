@@ -79,6 +79,80 @@ import type {
   PosAgendaConflictDto,
   PosAgendaMembershipReservationRequestDto,
   PosAgendaSlotDto,
+  SchedulerAccessManagementDto,
+  SchedulerAuthorizationDto,
+  SchedulerAuthorizationConsumeRequestDto,
+  SchedulerAuthorizationRequestDto,
+  SchedulerBootstrapDto,
+  SchedulerManagedPositionDto,
+  SchedulerPermissionDto,
+  SchedulerSecondarySecretRequestDto,
+  SchedulerAvailabilityExceptionsWriteDto,
+  SchedulerAvailabilityRulesWriteDto,
+  SchedulerBranchProfileWriteDto,
+  SchedulerCommerceDto,
+  SchedulerCommerceWriteDto,
+  SchedulerOperationalCandidatesDto,
+  SchedulerOperationalCatalogDto,
+  SchedulerMutationResultDto,
+  SchedulerProfessionalGroupWriteDto,
+  SchedulerProfessionalProfileWriteDto,
+  SchedulerProfessionalServiceWriteDto,
+  SchedulerResourceWriteDto,
+  SchedulerServiceProfileWriteDto,
+  SchedulerServiceResourceRequirementWriteDto,
+  SchedulerSpecialtyWriteDto,
+  SchedulerCustomerDetailDto,
+  SchedulerCustomerFieldDefinitionDto,
+  SchedulerCustomerFieldDefinitionWriteDto,
+  SchedulerCustomerFinancialHistoryDto,
+  SchedulerCustomerMergeRequestDto,
+  SchedulerCustomerMergeResultDto,
+  SchedulerCustomerPageDto,
+  SchedulerCustomerSearchRequest,
+  SchedulerCustomerSourceDto,
+  SchedulerCustomerSummaryDto,
+  SchedulerCustomerVisitHistoryDto,
+  SchedulerCustomerWriteDto,
+  SchedulerAppointmentCreateDto,
+  SchedulerAppointmentDto,
+  SchedulerAppointmentListRequest,
+  SchedulerAppointmentMoveDto,
+  SchedulerAppointmentPageDto,
+  SchedulerAppointmentStatusWriteDto,
+  SchedulerAppointmentUpdateDto,
+  SchedulerAvailabilityDto,
+  SchedulerAvailabilityRequestDto,
+  SchedulerScheduleBlockDto,
+  SchedulerScheduleBlockWriteDto,
+  SchedulerAdministrationCatalogDto,
+  SchedulerAddonProfileWriteDto,
+  SchedulerClassSchedulesWriteDto,
+  SchedulerCommissionPolicyWriteDto,
+  SchedulerGiftCardTemplateWriteDto,
+  SchedulerPackageProfileWriteDto,
+  SchedulerPosReferencesDto,
+  SchedulerResolvedSettingDto,
+  SchedulerSettingSection,
+  SchedulerSettingWriteDto,
+  SchedulerStatusColorDto,
+  SchedulerStatusColorsWriteDto,
+  SchedulerContactChannelDto,
+  SchedulerContactChannelStatus,
+  SchedulerConsentRecordDto,
+  SchedulerConsentTemplateDto,
+  SchedulerDocumentDto,
+  SchedulerMedicalRecordDto,
+  SchedulerMessageChannel,
+  SchedulerMessageOutboxDto,
+  SchedulerMessageTemplateDto,
+  SchedulerMessageTemplateWriteDto,
+  SchedulerSurveyDto,
+  SchedulerSurveyPublicDto,
+  SchedulerSurveyWriteDto,
+  SchedulerReportDatasetDto,
+  SchedulerReportKey,
+  SchedulerReportRequest,
 } from "@cosmetics/types";
 
 /**
@@ -120,6 +194,764 @@ export function createApiClient(baseURL: string): AxiosInstance {
   );
 
   return client;
+}
+
+export interface SchedulerApiClientOptions {
+  getAccessToken?: () => string | null;
+  setAccessToken?: (token: string | null) => void;
+}
+
+export interface SchedulerApiClient {
+  login(email: string, password: string): Promise<SchedulerBootstrapDto>;
+  bootstrap(): Promise<SchedulerBootstrapDto>;
+  updateSecondarySecret(
+    input: SchedulerSecondarySecretRequestDto,
+  ): Promise<{ configured: true }>;
+  createAuthorization(
+    input: SchedulerAuthorizationRequestDto,
+  ): Promise<SchedulerAuthorizationDto>;
+  consumeAuthorization(
+    input: SchedulerAuthorizationConsumeRequestDto,
+  ): Promise<{ authorized: true }>;
+  accessManagement(): Promise<SchedulerAccessManagementDto>;
+  updatePositionPermissions(
+    positionId: string,
+    input: {
+      canManageSchedulerAccess?: boolean;
+      selfProfessionalOnly: boolean;
+      permissions: SchedulerPermissionDto[];
+    },
+  ): Promise<SchedulerManagedPositionDto>;
+  updatePositionBranches(
+    positionId: string,
+    branchIds: string[],
+  ): Promise<SchedulerManagedPositionDto>;
+  operationalCandidates(): Promise<SchedulerOperationalCandidatesDto>;
+  operationalCatalog(): Promise<SchedulerOperationalCatalogDto>;
+  createCommerce(
+    input: SchedulerCommerceWriteDto,
+  ): Promise<SchedulerCommerceDto>;
+  updateCommerce(
+    id: string,
+    input: SchedulerCommerceWriteDto,
+  ): Promise<SchedulerCommerceDto>;
+  updateBranchProfile(
+    branchId: string,
+    input: SchedulerBranchProfileWriteDto,
+  ): Promise<SchedulerMutationResultDto>;
+  updateProfessionalProfile(
+    employeeId: string,
+    input: SchedulerProfessionalProfileWriteDto,
+  ): Promise<SchedulerMutationResultDto>;
+  updateServiceProfile(
+    catalogItemId: string,
+    input: SchedulerServiceProfileWriteDto,
+  ): Promise<SchedulerMutationResultDto>;
+  createResource(
+    input: SchedulerResourceWriteDto,
+  ): Promise<SchedulerMutationResultDto>;
+  updateResource(
+    id: string,
+    input: SchedulerResourceWriteDto,
+  ): Promise<SchedulerMutationResultDto>;
+  createSpecialty(
+    input: SchedulerSpecialtyWriteDto,
+  ): Promise<SchedulerMutationResultDto>;
+  updateSpecialty(
+    id: string,
+    input: SchedulerSpecialtyWriteDto,
+  ): Promise<SchedulerMutationResultDto>;
+  createProfessionalGroup(
+    input: SchedulerProfessionalGroupWriteDto,
+  ): Promise<SchedulerMutationResultDto>;
+  updateProfessionalGroup(
+    id: string,
+    input: SchedulerProfessionalGroupWriteDto,
+  ): Promise<SchedulerMutationResultDto>;
+  updateProfessionalService(
+    input: SchedulerProfessionalServiceWriteDto,
+  ): Promise<SchedulerMutationResultDto>;
+  updateResourceRequirement(
+    input: SchedulerServiceResourceRequirementWriteDto,
+  ): Promise<SchedulerMutationResultDto>;
+  replaceAvailabilityRules(
+    input: SchedulerAvailabilityRulesWriteDto,
+  ): Promise<SchedulerMutationResultDto[]>;
+  replaceAvailabilityExceptions(
+    input: SchedulerAvailabilityExceptionsWriteDto,
+  ): Promise<SchedulerMutationResultDto[]>;
+  searchCustomers(
+    input: SchedulerCustomerSearchRequest,
+  ): Promise<SchedulerCustomerPageDto>;
+  customerSources(): Promise<SchedulerCustomerSourceDto[]>;
+  customerFieldDefinitions(): Promise<SchedulerCustomerFieldDefinitionDto[]>;
+  createCustomerFieldDefinition(
+    input: SchedulerCustomerFieldDefinitionWriteDto,
+  ): Promise<SchedulerCustomerFieldDefinitionDto>;
+  updateCustomerFieldDefinition(
+    id: string,
+    input: SchedulerCustomerFieldDefinitionWriteDto,
+  ): Promise<SchedulerCustomerFieldDefinitionDto>;
+  createCustomer(
+    input: SchedulerCustomerWriteDto,
+  ): Promise<SchedulerCustomerSummaryDto>;
+  updateCustomer(
+    id: string,
+    input: SchedulerCustomerWriteDto,
+  ): Promise<SchedulerCustomerSummaryDto>;
+  customerDetail(
+    id: string,
+    authorizationToken: string,
+  ): Promise<SchedulerCustomerDetailDto>;
+  customerVisits(
+    id: string,
+    authorizationToken: string,
+    input?: { page?: number; pageSize?: number; branchId?: string },
+  ): Promise<SchedulerCustomerVisitHistoryDto>;
+  customerFinancialHistory(
+    id: string,
+    authorizationToken: string,
+    input?: { page?: number; pageSize?: number; branchId?: string },
+  ): Promise<SchedulerCustomerFinancialHistoryDto>;
+  mergeCustomers(
+    input: SchedulerCustomerMergeRequestDto,
+  ): Promise<SchedulerCustomerMergeResultDto>;
+  availability(
+    input: SchedulerAvailabilityRequestDto,
+  ): Promise<SchedulerAvailabilityDto>;
+  appointments(
+    input: SchedulerAppointmentListRequest,
+  ): Promise<SchedulerAppointmentPageDto>;
+  appointment(id: string): Promise<SchedulerAppointmentDto>;
+  createAppointment(
+    input: SchedulerAppointmentCreateDto,
+    idempotencyKey: string,
+  ): Promise<SchedulerAppointmentDto>;
+  updateAppointment(
+    id: string,
+    input: SchedulerAppointmentUpdateDto,
+  ): Promise<SchedulerAppointmentDto>;
+  moveAppointment(
+    id: string,
+    input: SchedulerAppointmentMoveDto,
+  ): Promise<SchedulerAppointmentDto>;
+  changeAppointmentStatus(
+    id: string,
+    input: SchedulerAppointmentStatusWriteDto,
+  ): Promise<SchedulerAppointmentDto>;
+  cancelAppointment(
+    id: string,
+    input: { expectedVersion: number; reason: string },
+  ): Promise<SchedulerAppointmentDto>;
+  scheduleBlocks(input: {
+    branchId: string;
+    from: string;
+    to: string;
+  }): Promise<SchedulerScheduleBlockDto[]>;
+  createScheduleBlock(
+    input: SchedulerScheduleBlockWriteDto,
+  ): Promise<SchedulerScheduleBlockDto>;
+  updateScheduleBlock(
+    id: string,
+    input: SchedulerScheduleBlockWriteDto & { expectedVersion: number },
+  ): Promise<SchedulerScheduleBlockDto>;
+  cancelScheduleBlock(
+    id: string,
+    input: { expectedVersion: number; reason: string },
+  ): Promise<SchedulerScheduleBlockDto>;
+  administrationCatalog(): Promise<SchedulerAdministrationCatalogDto>;
+  updatePackageProfile(
+    posPackageId: string,
+    input: SchedulerPackageProfileWriteDto,
+  ): Promise<{ id: string; version: number }>;
+  updateAddonProfile(
+    catalogItemId: string,
+    input: SchedulerAddonProfileWriteDto,
+  ): Promise<{ id: string; version: number }>;
+  replaceClassSchedules(
+    serviceProfileId: string,
+    input: SchedulerClassSchedulesWriteDto,
+  ): Promise<{ ids: string[] }>;
+  updateCommissionPolicy(
+    input: SchedulerCommissionPolicyWriteDto,
+  ): Promise<{ id: string; version: number }>;
+  createGiftCard(
+    input: SchedulerGiftCardTemplateWriteDto,
+  ): Promise<{ id: string; version: number }>;
+  updateGiftCard(
+    id: string,
+    input: SchedulerGiftCardTemplateWriteDto,
+  ): Promise<{ id: string; version: number }>;
+  updateStatusColors(
+    commerceId: string,
+    input: SchedulerStatusColorsWriteDto,
+  ): Promise<SchedulerStatusColorDto[]>;
+  resolvedSetting(
+    section: SchedulerSettingSection,
+    input: { commerceId: string; branchProfileId?: string },
+  ): Promise<SchedulerResolvedSettingDto>;
+  updateSetting(
+    section: SchedulerSettingSection,
+    input: SchedulerSettingWriteDto,
+  ): Promise<{ id: string; version: number }>;
+  posReferences(branchId?: string): Promise<SchedulerPosReferencesDto>;
+  messageTemplates(): Promise<SchedulerMessageTemplateDto[]>;
+  createMessageTemplate(
+    input: SchedulerMessageTemplateWriteDto,
+  ): Promise<{ id: string; version: number }>;
+  updateMessageTemplate(
+    id: string,
+    input: SchedulerMessageTemplateWriteDto,
+  ): Promise<{ id: string; version: number }>;
+  contactChannels(customerId: string): Promise<SchedulerContactChannelDto[]>;
+  updateContactChannel(
+    customerId: string,
+    input: {
+      channel: SchedulerMessageChannel;
+      status: SchedulerContactChannelStatus;
+      source?: string | null;
+      expectedVersion?: number;
+    },
+  ): Promise<{ version: number }>;
+  enqueueMessage(
+    input: {
+      templateId: string;
+      customerId: string;
+      branchId: string;
+      appointmentId?: string | null;
+      scheduledAt: string;
+      variables: Record<string, string>;
+    },
+    idempotencyKey: string,
+  ): Promise<{ id: string; status: SchedulerMessageOutboxDto["status"] }>;
+  messageOutbox(): Promise<SchedulerMessageOutboxDto[]>;
+  retryMessage(id: string): Promise<{ id: string }>;
+  consentTemplates(): Promise<SchedulerConsentTemplateDto[]>;
+  uploadConsentTemplate(
+    form: FormData,
+    id?: string,
+  ): Promise<{ id: string; documentId: string; version: number }>;
+  assignConsent(input: {
+    templateVersionId: string;
+    customerId: string;
+    branchId: string;
+    appointmentId?: string | null;
+  }): Promise<SchedulerConsentRecordDto>;
+  consentRecords(input: {
+    customerId: string;
+    branchId: string;
+  }): Promise<SchedulerConsentRecordDto[]>;
+  updateConsentStatus(
+    id: string,
+    form: FormData,
+  ): Promise<SchedulerConsentRecordDto>;
+  uploadCustomerDocument(
+    customerId: string,
+    form: FormData,
+  ): Promise<{ id: string; sha256: string }>;
+  customerDocuments(
+    customerId: string,
+    branchId: string,
+    authorizationToken: string,
+  ): Promise<SchedulerDocumentDto[]>;
+  privateDocumentUrl(
+    kind: "consent" | "signed-consent" | "customer",
+    id: string,
+    authorizationToken: string,
+  ): Promise<{ url: string; expiresInSeconds: number }>;
+  medicalRecord(
+    customerId: string,
+    commerceId: string,
+    authorizationToken: string,
+  ): Promise<SchedulerMedicalRecordDto>;
+  updateMedicalRecord(
+    customerId: string,
+    input: {
+      commerceId: string;
+      fields: Record<string, unknown>;
+      expectedVersion?: number;
+      authorizationToken: string;
+    },
+  ): Promise<{ version: number; updatedAt: string }>;
+  surveys(): Promise<SchedulerSurveyDto[]>;
+  createSurvey(
+    input: SchedulerSurveyWriteDto,
+  ): Promise<{ id: string; version: number; versionId: string }>;
+  updateSurvey(
+    id: string,
+    input: SchedulerSurveyWriteDto,
+  ): Promise<{ id: string; version: number; versionId: string }>;
+  issueSurveyToken(
+    id: string,
+    input: {
+      customerId: string;
+      appointmentId?: string | null;
+      expiresAt: string;
+    },
+  ): Promise<{ token: string; expiresAt: string }>;
+  publicSurvey(token: string): Promise<SchedulerSurveyPublicDto>;
+  submitSurvey(
+    token: string,
+    answers: Array<{ questionId: string; value: unknown }>,
+  ): Promise<{ id: string }>;
+  report(
+    key: SchedulerReportKey,
+    input: SchedulerReportRequest,
+  ): Promise<SchedulerReportDatasetDto>;
+  exportReport(
+    key: SchedulerReportKey,
+    input: SchedulerReportRequest,
+    authorizationToken?: string,
+  ): Promise<SchedulerReportDatasetDto>;
+  logout(): void;
+}
+
+export function createSchedulerApiClient(
+  baseURL: string,
+  options: SchedulerApiClientOptions = {},
+): SchedulerApiClient {
+  const storageKey = "auth_token";
+  const getAccessToken =
+    options.getAccessToken ??
+    (() =>
+      typeof window === "undefined"
+        ? null
+        : window.localStorage.getItem(storageKey));
+  const setAccessToken =
+    options.setAccessToken ??
+    ((token: string | null) => {
+      if (typeof window === "undefined") return;
+      if (token) window.localStorage.setItem(storageKey, token);
+      else window.localStorage.removeItem(storageKey);
+    });
+  const client = axios.create({
+    baseURL: baseURL.replace(/\/$/, ""),
+    headers: { "Content-Type": "application/json" },
+    timeout: 15_000,
+  });
+  client.interceptors.request.use((config) => {
+    const token = getAccessToken();
+    if (token) config.headers["Authorization"] = `Bearer ${token}`;
+    return config;
+  });
+  client.interceptors.response.use(
+    (response) => response,
+    (error: AxiosError<ApiResponse<unknown>>) => {
+      if (error.response?.status === 401) setAccessToken(null);
+      return Promise.reject(error);
+    },
+  );
+  const data = async <T>(
+    request: Promise<{ data: ApiResponse<T> }>,
+  ): Promise<T> => (await request).data.data;
+
+  return {
+    async login(email, password) {
+      const login = await data<{ token: string }>(
+        client.post("/api/auth/login", { email, password }),
+      );
+      setAccessToken(login.token);
+      try {
+        return await data<SchedulerBootstrapDto>(
+          client.get("/api/scheduler/bootstrap"),
+        );
+      } catch (error) {
+        setAccessToken(null);
+        throw error;
+      }
+    },
+    bootstrap: () =>
+      data<SchedulerBootstrapDto>(client.get("/api/scheduler/bootstrap")),
+    updateSecondarySecret: (input) =>
+      data(client.put("/api/scheduler/security/secondary-secret", input)),
+    createAuthorization: (input) =>
+      data<SchedulerAuthorizationDto>(
+        client.post("/api/scheduler/authorizations", input),
+      ),
+    consumeAuthorization: (input) =>
+      data(client.post("/api/scheduler/authorizations/consume", input)),
+    accessManagement: () =>
+      data<SchedulerAccessManagementDto>(client.get("/api/scheduler/access")),
+    updatePositionPermissions: (positionId, input) =>
+      data<SchedulerManagedPositionDto>(
+        client.put(
+          `/api/scheduler/access/positions/${positionId}/permissions`,
+          input,
+        ),
+      ),
+    updatePositionBranches: (positionId, branchIds) =>
+      data<SchedulerManagedPositionDto>(
+        client.put(`/api/scheduler/access/positions/${positionId}/branches`, {
+          branchIds,
+        }),
+      ),
+    operationalCandidates: () =>
+      data<SchedulerOperationalCandidatesDto>(
+        client.get("/api/scheduler/operations/candidates"),
+      ),
+    operationalCatalog: () =>
+      data<SchedulerOperationalCatalogDto>(
+        client.get("/api/scheduler/operations/catalog"),
+      ),
+    createCommerce: (input) =>
+      data(client.post("/api/scheduler/operations/commerces", input)),
+    updateCommerce: (id, input) =>
+      data(client.put(`/api/scheduler/operations/commerces/${id}`, input)),
+    updateBranchProfile: (branchId, input) =>
+      data(client.put(`/api/scheduler/operations/branches/${branchId}`, input)),
+    updateProfessionalProfile: (employeeId, input) =>
+      data(
+        client.put(
+          `/api/scheduler/operations/professionals/${employeeId}`,
+          input,
+        ),
+      ),
+    updateServiceProfile: (catalogItemId, input) =>
+      data(
+        client.put(
+          `/api/scheduler/operations/services/${catalogItemId}`,
+          input,
+        ),
+      ),
+    createResource: (input) =>
+      data(client.post("/api/scheduler/operations/resources", input)),
+    updateResource: (id, input) =>
+      data(client.put(`/api/scheduler/operations/resources/${id}`, input)),
+    createSpecialty: (input) =>
+      data(client.post("/api/scheduler/operations/specialties", input)),
+    updateSpecialty: (id, input) =>
+      data(client.put(`/api/scheduler/operations/specialties/${id}`, input)),
+    createProfessionalGroup: (input) =>
+      data(client.post("/api/scheduler/operations/groups", input)),
+    updateProfessionalGroup: (id, input) =>
+      data(client.put(`/api/scheduler/operations/groups/${id}`, input)),
+    updateProfessionalService: (input) =>
+      data(
+        client.put("/api/scheduler/operations/professional-services", input),
+      ),
+    updateResourceRequirement: (input) =>
+      data(
+        client.put("/api/scheduler/operations/resource-requirements", input),
+      ),
+    replaceAvailabilityRules: (input) =>
+      data(client.put("/api/scheduler/operations/availability/rules", input)),
+    replaceAvailabilityExceptions: (input) =>
+      data(
+        client.put("/api/scheduler/operations/availability/exceptions", input),
+      ),
+    searchCustomers: (input) =>
+      data<SchedulerCustomerPageDto>(
+        client.get("/api/scheduler/clients/search", { params: input }),
+      ),
+    customerSources: () =>
+      data<SchedulerCustomerSourceDto[]>(
+        client.get("/api/scheduler/clients/sources"),
+      ),
+    customerFieldDefinitions: () =>
+      data<SchedulerCustomerFieldDefinitionDto[]>(
+        client.get("/api/scheduler/clients/field-definitions"),
+      ),
+    createCustomerFieldDefinition: (input) =>
+      data<SchedulerCustomerFieldDefinitionDto>(
+        client.post("/api/scheduler/clients/field-definitions", input),
+      ),
+    updateCustomerFieldDefinition: (id, input) =>
+      data<SchedulerCustomerFieldDefinitionDto>(
+        client.put(`/api/scheduler/clients/field-definitions/${id}`, input),
+      ),
+    createCustomer: (input) =>
+      data<SchedulerCustomerSummaryDto>(
+        client.post("/api/scheduler/clients", input),
+      ),
+    updateCustomer: (id, input) =>
+      data<SchedulerCustomerSummaryDto>(
+        client.put(`/api/scheduler/clients/${id}`, input),
+      ),
+    customerDetail: (id, authorizationToken) =>
+      data<SchedulerCustomerDetailDto>(
+        client.get(`/api/scheduler/clients/${id}`, {
+          headers: { "x-scheduler-authorization": authorizationToken },
+        }),
+      ),
+    customerVisits: (id, authorizationToken, input = {}) =>
+      data<SchedulerCustomerVisitHistoryDto>(
+        client.get(`/api/scheduler/clients/${id}/visits`, {
+          params: input,
+          headers: { "x-scheduler-authorization": authorizationToken },
+        }),
+      ),
+    customerFinancialHistory: (id, authorizationToken, input = {}) =>
+      data<SchedulerCustomerFinancialHistoryDto>(
+        client.get(`/api/scheduler/clients/${id}/financial-history`, {
+          params: input,
+          headers: { "x-scheduler-authorization": authorizationToken },
+        }),
+      ),
+    mergeCustomers: (input) =>
+      data<SchedulerCustomerMergeResultDto>(
+        client.post("/api/scheduler/clients/merge", input),
+      ),
+    availability: (input) =>
+      data<SchedulerAvailabilityDto>(
+        client.get("/api/scheduler/availability", { params: input }),
+      ),
+    appointments: (input) =>
+      data<SchedulerAppointmentPageDto>(
+        client.get("/api/scheduler/appointments", { params: input }),
+      ),
+    appointment: (id) =>
+      data<SchedulerAppointmentDto>(
+        client.get(`/api/scheduler/appointments/${id}`),
+      ),
+    createAppointment: (input, key) =>
+      data<SchedulerAppointmentDto>(
+        client.post("/api/scheduler/appointments", input, {
+          headers: { "Idempotency-Key": key },
+        }),
+      ),
+    updateAppointment: (id, input) =>
+      data<SchedulerAppointmentDto>(
+        client.put(`/api/scheduler/appointments/${id}`, input),
+      ),
+    moveAppointment: (id, input) =>
+      data<SchedulerAppointmentDto>(
+        client.post(`/api/scheduler/appointments/${id}/move`, input),
+      ),
+    changeAppointmentStatus: (id, input) =>
+      data<SchedulerAppointmentDto>(
+        client.post(`/api/scheduler/appointments/${id}/status`, input),
+      ),
+    cancelAppointment: (id, input) =>
+      data<SchedulerAppointmentDto>(
+        client.post(`/api/scheduler/appointments/${id}/cancel`, input),
+      ),
+    scheduleBlocks: (input) =>
+      data<SchedulerScheduleBlockDto[]>(
+        client.get("/api/scheduler/blocks", { params: input }),
+      ),
+    createScheduleBlock: (input) =>
+      data<SchedulerScheduleBlockDto>(
+        client.post("/api/scheduler/blocks", input),
+      ),
+    updateScheduleBlock: (id, input) =>
+      data<SchedulerScheduleBlockDto>(
+        client.put(`/api/scheduler/blocks/${id}`, input),
+      ),
+    cancelScheduleBlock: (id, input) =>
+      data<SchedulerScheduleBlockDto>(
+        client.post(`/api/scheduler/blocks/${id}/cancel`, input),
+      ),
+    administrationCatalog: () =>
+      data<SchedulerAdministrationCatalogDto>(
+        client.get("/api/scheduler/administration/catalog"),
+      ),
+    updatePackageProfile: (posPackageId, input) =>
+      data<{ id: string; version: number }>(
+        client.put(
+          `/api/scheduler/administration/packages/${posPackageId}`,
+          input,
+        ),
+      ),
+    updateAddonProfile: (catalogItemId, input) =>
+      data<{ id: string; version: number }>(
+        client.put(
+          `/api/scheduler/administration/addons/${catalogItemId}`,
+          input,
+        ),
+      ),
+    replaceClassSchedules: (serviceProfileId, input) =>
+      data<{ ids: string[] }>(
+        client.put(
+          `/api/scheduler/administration/classes/${serviceProfileId}/schedules`,
+          input,
+        ),
+      ),
+    updateCommissionPolicy: (input) =>
+      data<{ id: string; version: number }>(
+        client.put("/api/scheduler/administration/commission-policies", input),
+      ),
+    createGiftCard: (input) =>
+      data<{ id: string; version: number }>(
+        client.post("/api/scheduler/administration/gift-cards", input),
+      ),
+    updateGiftCard: (id, input) =>
+      data<{ id: string; version: number }>(
+        client.put(`/api/scheduler/administration/gift-cards/${id}`, input),
+      ),
+    updateStatusColors: (commerceId, input) =>
+      data<SchedulerStatusColorDto[]>(
+        client.put(
+          `/api/scheduler/administration/status-colors/${commerceId}`,
+          input,
+        ),
+      ),
+    resolvedSetting: (section, input) =>
+      data<SchedulerResolvedSettingDto>(
+        client.get(
+          `/api/scheduler/administration/settings/${section}/resolved`,
+          {
+            params: input,
+          },
+        ),
+      ),
+    updateSetting: (section, input) =>
+      data<{ id: string; version: number }>(
+        client.put(`/api/scheduler/administration/settings/${section}`, input),
+      ),
+    posReferences: (branchId) =>
+      data<SchedulerPosReferencesDto>(
+        client.get("/api/scheduler/administration/pos-references", {
+          params: branchId ? { branchId } : undefined,
+        }),
+      ),
+    messageTemplates: () =>
+      data<SchedulerMessageTemplateDto[]>(
+        client.get("/api/scheduler/communications/templates"),
+      ),
+    createMessageTemplate: (input) =>
+      data<{ id: string; version: number }>(
+        client.post("/api/scheduler/communications/templates", input),
+      ),
+    updateMessageTemplate: (id, input) =>
+      data<{ id: string; version: number }>(
+        client.put(`/api/scheduler/communications/templates/${id}`, input),
+      ),
+    contactChannels: (customerId) =>
+      data<SchedulerContactChannelDto[]>(
+        client.get(
+          `/api/scheduler/communications/customers/${customerId}/contact-channels`,
+        ),
+      ),
+    updateContactChannel: (customerId, input) =>
+      data<{ version: number }>(
+        client.put(
+          `/api/scheduler/communications/customers/${customerId}/contact-channels`,
+          input,
+        ),
+      ),
+    enqueueMessage: (input, idempotencyKey) =>
+      data<{ id: string; status: SchedulerMessageOutboxDto["status"] }>(
+        client.post("/api/scheduler/communications/outbox", input, {
+          headers: { "Idempotency-Key": idempotencyKey },
+        }),
+      ),
+    messageOutbox: () =>
+      data<SchedulerMessageOutboxDto[]>(
+        client.get("/api/scheduler/communications/outbox"),
+      ),
+    retryMessage: (id) =>
+      data<{ id: string }>(
+        client.post(`/api/scheduler/communications/outbox/${id}/retry`),
+      ),
+    consentTemplates: () =>
+      data<SchedulerConsentTemplateDto[]>(
+        client.get("/api/scheduler/documents/consent-templates"),
+      ),
+    uploadConsentTemplate: (form, id) =>
+      data<{ id: string; documentId: string; version: number }>(
+        client.post(
+          `/api/scheduler/documents/consent-templates${id ? `/${id}` : ""}`,
+          form,
+          { headers: { "Content-Type": "multipart/form-data" } },
+        ),
+      ),
+    assignConsent: (input) =>
+      data<SchedulerConsentRecordDto>(
+        client.post("/api/scheduler/documents/consent-records", input),
+      ),
+    consentRecords: (input) =>
+      data<SchedulerConsentRecordDto[]>(
+        client.get("/api/scheduler/documents/consent-records", {
+          params: input,
+        }),
+      ),
+    updateConsentStatus: (id, form) =>
+      data<SchedulerConsentRecordDto>(
+        client.post(
+          `/api/scheduler/documents/consent-records/${id}/status`,
+          form,
+          { headers: { "Content-Type": "multipart/form-data" } },
+        ),
+      ),
+    uploadCustomerDocument: (customerId, form) =>
+      data<{ id: string; sha256: string }>(
+        client.post(`/api/scheduler/documents/customers/${customerId}`, form, {
+          headers: { "Content-Type": "multipart/form-data" },
+        }),
+      ),
+    customerDocuments: (customerId, branchId, authorizationToken) =>
+      data<SchedulerDocumentDto[]>(
+        client.get(`/api/scheduler/documents/customers/${customerId}`, {
+          params: { branchId },
+          headers: { "x-scheduler-authorization": authorizationToken },
+        }),
+      ),
+    privateDocumentUrl: (kind, id, authorizationToken) =>
+      data<{ url: string; expiresInSeconds: number }>(
+        client.post(`/api/scheduler/documents/${kind}/${id}/signed-url`, {
+          authorizationToken,
+        }),
+      ),
+    medicalRecord: (customerId, commerceId, authorizationToken) =>
+      data<SchedulerMedicalRecordDto>(
+        client.get(`/api/scheduler/medical-records/${customerId}`, {
+          params: { commerceId },
+          headers: { "x-scheduler-authorization": authorizationToken },
+        }),
+      ),
+    updateMedicalRecord: (customerId, input) =>
+      data<{ version: number; updatedAt: string }>(
+        client.put(`/api/scheduler/medical-records/${customerId}`, input),
+      ),
+    surveys: () =>
+      data<SchedulerSurveyDto[]>(client.get("/api/scheduler/surveys")),
+    createSurvey: (input) =>
+      data<{ id: string; version: number; versionId: string }>(
+        client.post("/api/scheduler/surveys", input),
+      ),
+    updateSurvey: (id, input) =>
+      data<{ id: string; version: number; versionId: string }>(
+        client.put(`/api/scheduler/surveys/${id}`, input),
+      ),
+    issueSurveyToken: (id, input) =>
+      data<{ token: string; expiresAt: string }>(
+        client.post(`/api/scheduler/surveys/${id}/tokens`, input),
+      ),
+    publicSurvey: (token) =>
+      data<SchedulerSurveyPublicDto>(
+        client.get(`/api/scheduler/surveys/respond/${token}`),
+      ),
+    submitSurvey: (token, answers) =>
+      data<{ id: string }>(
+        client.post(`/api/scheduler/surveys/respond/${token}`, { answers }),
+      ),
+    report: (key, input) =>
+      data<SchedulerReportDatasetDto>(
+        client.get(`/api/scheduler/reports/${key}`, {
+          params: {
+            ...input,
+            branchIds: input.branchIds?.join(","),
+          },
+        }),
+      ),
+    exportReport: (key, input, authorizationToken) =>
+      data<SchedulerReportDatasetDto>(
+        client.get(`/api/scheduler/exports/${key}`, {
+          params: {
+            ...input,
+            branchIds: input.branchIds?.join(","),
+          },
+          ...(authorizationToken
+            ? {
+                headers: {
+                  "x-scheduler-authorization": authorizationToken,
+                },
+              }
+            : {}),
+        }),
+      ),
+    logout: () => setAccessToken(null),
+  };
 }
 
 export interface PosApiClientOptions {

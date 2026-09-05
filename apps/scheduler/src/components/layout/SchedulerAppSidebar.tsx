@@ -43,9 +43,10 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import {
-  canAccessSchedulerScreen,
   type SchedulerScreenId,
 } from "@/lib/scheduler-access";
+import type { SchedulerScreenKey } from "@cosmetics/types";
+import { useSchedulerSession } from "@/lib/session";
 import type { AdministrationSectionId } from "@/components/SchedulerPrimaryNav";
 import { clientNavigationItems } from "@/lib/client-navigation";
 
@@ -73,6 +74,7 @@ interface NavigationItem {
   href?: string;
   icon: LucideIcon;
   screenId?: SchedulerScreenId;
+  screenKey?: SchedulerScreenKey;
   adminSection?: AdministrationSectionId;
   settingsSection?: SettingsSectionId;
   pending?: boolean;
@@ -84,7 +86,7 @@ const primaryItems: NavigationItem[] = [
 
 const clientItems: NavigationItem[] = clientNavigationItems.map((item) => ({
   ...item,
-  screenId: "clients",
+  screenId: item.href === "/clientes" ? "clients" : "reports.summary",
 }));
 
 const reportItems: NavigationItem[] = [
@@ -94,6 +96,12 @@ const reportItems: NavigationItem[] = [
     href: "/reportes/reservas",
     icon: CalendarDays,
     screenId: "reports.reservations",
+  },
+  {
+    label: "Ventas y pagos",
+    href: "/reportes/ventas",
+    icon: WalletCards,
+    screenId: "reports.sales",
   },
 ];
 
@@ -146,18 +154,18 @@ const administrationItems: NavigationItem[] = [
 ];
 
 const settingsItems: NavigationItem[] = [
-  { label: "Empresa", icon: Building2, settingsSection: "company" },
-  { label: "Sitio web", icon: Globe2, settingsSection: "website" },
-  { label: "Agenda", icon: CalendarDays, settingsSection: "agenda" },
-  { label: "Pagos Keysar", icon: WalletCards, settingsSection: "payments" },
-  { label: "Recordatorios", icon: Bell, settingsSection: "reminders" },
-  { label: "Fichas médicas", icon: ClipboardList, settingsSection: "records" },
-  { label: "E-mails", icon: Mail, settingsSection: "emails" },
-  { label: "Integraciones", icon: SlidersHorizontal, settingsSection: "integrations" },
-  { label: "Notificaciones", icon: Bell, settingsSection: "notifications" },
-  { label: "Clientes", icon: UsersRound, settingsSection: "clients" },
-  { label: "Encuestas", icon: MessageSquareText, settingsSection: "surveys" },
-  { label: "Códigos de autorización", icon: FileCheck2, settingsSection: "authorizations" },
+  { label: "Empresa", icon: Building2, settingsSection: "company", screenKey: "scheduler/settings/company" },
+  { label: "Sitio web", icon: Globe2, settingsSection: "website", screenKey: "scheduler/settings/website" },
+  { label: "Agenda", icon: CalendarDays, settingsSection: "agenda", screenKey: "scheduler/settings/agenda" },
+  { label: "Pagos Keysar", icon: WalletCards, settingsSection: "payments", screenKey: "scheduler/settings/payments" },
+  { label: "Recordatorios", icon: Bell, settingsSection: "reminders", screenKey: "scheduler/settings/reminders" },
+  { label: "Fichas médicas", icon: ClipboardList, settingsSection: "records", screenKey: "scheduler/settings/records" },
+  { label: "E-mails", icon: Mail, settingsSection: "emails", screenKey: "scheduler/settings/emails" },
+  { label: "Integraciones", icon: SlidersHorizontal, settingsSection: "integrations", screenKey: "scheduler/settings/integrations" },
+  { label: "Notificaciones", icon: Bell, settingsSection: "notifications", screenKey: "scheduler/settings/notifications" },
+  { label: "Clientes", icon: UsersRound, settingsSection: "clients", screenKey: "scheduler/settings/clients" },
+  { label: "Encuestas", icon: MessageSquareText, settingsSection: "surveys", screenKey: "scheduler/settings/surveys" },
+  { label: "Código personal", icon: FileCheck2, settingsSection: "authorizations" },
 ];
 
 function NavigationGroup({
@@ -183,8 +191,16 @@ function NavigationGroup({
   onToggle?: () => void;
   onNavigate: (item: NavigationItem, event: ReactMouseEvent<HTMLAnchorElement>) => void;
 }) {
+  const { bootstrap, canAccess } = useSchedulerSession();
   const visibleItems = items.filter(
-    (item) => !item.screenId || canAccessSchedulerScreen(item.screenId),
+    (item) =>
+      (!item.screenId || canAccess(item.screenId)) &&
+      (!item.screenKey ||
+        bootstrap?.permissions.some(
+          (permission) =>
+            permission.screenKey === item.screenKey &&
+            permission.capabilities.includes("READ"),
+        )),
   );
 
   if (visibleItems.length === 0) return null;
@@ -279,6 +295,7 @@ function NavigationGroup({
 }
 
 export function SchedulerAppSidebar() {
+  const { logout } = useSchedulerSession();
   const pathname = usePathname();
   const { isMobile, setOpenMobile, state: sidebarState } = useSidebar();
   const [activeAdminSection, setActiveAdminSection] =
@@ -484,7 +501,7 @@ export function SchedulerAppSidebar() {
               tooltip="Cerrar sesión"
               className="cursor-pointer justify-center rounded-lg bg-[#ecd1c8] text-[#1a1a1a] transition-colors hover:bg-[#e4c2b7] hover:text-[#1a1a1a]"
             >
-              <Link href="/login" onClick={() => setOpenMobile(false)}>
+              <Link href="/login" onClick={() => { logout(); setOpenMobile(false); }}>
                 <LogOut aria-hidden="true" className="h-4 w-4 shrink-0" />
                 <span>Cerrar sesión</span>
               </Link>

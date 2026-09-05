@@ -1,5 +1,5 @@
-import { ReservationReportWorkspace } from "@/components/reports/ReservationReportWorkspace";
+import { SchedulerReservationReportsEntry } from "@/components/api/SchedulerPageEntries";
 
 export default function ReservationPerformancePage() {
-  return <ReservationReportWorkspace view="performance" />;
+  return <SchedulerReservationReportsEntry view="performance" />;
 }

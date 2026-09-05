@@ -75,6 +75,8 @@ import {
   schedulerAgendaSettingsStorageKey,
   schedulerAgendaSlotOptions,
 } from "@/lib/scheduler-agenda-settings";
+import { schedulerApi, schedulerApiErrorMessage } from "@/lib/api";
+import { useSchedulerSession } from "@/lib/session";
 
 type SettingsSection =
   | "company"
@@ -201,27 +203,6 @@ type ReminderSettings = {
 type SurveySettings = {
   enabled: boolean;
   sendDelayHours: string;
-};
-
-type AuthorizationCode = {
-  id: string;
-  name: string;
-  code: string;
-  active: boolean;
-  reservations: boolean;
-  cashRegister: boolean;
-  downloads: boolean;
-};
-
-type AuthorizationSettings = {
-  requireForReservations: boolean;
-  requireForCashRegister: boolean;
-  requireForDownloads: boolean;
-  codes: AuthorizationCode[];
-};
-
-type AuthorizationCodeDraft = Omit<AuthorizationCode, "id"> & {
-  id: string | null;
 };
 
 type EmailSettings = {
@@ -398,122 +379,6 @@ const initialReminderSettings: ReminderSettings = {
 const initialSurveySettings: SurveySettings = {
   enabled: true,
   sendDelayHours: "0",
-};
-
-const initialAuthorizationSettings: AuthorizationSettings = {
-  requireForReservations: true,
-  requireForCashRegister: false,
-  requireForDownloads: true,
-  codes: [
-    {
-      id: "axel-blancas",
-      name: "Axel blancas",
-      code: "19001",
-      active: true,
-      reservations: true,
-      cashRegister: false,
-      downloads: true,
-    },
-    {
-      id: "luis-velazco",
-      name: "LUIS VELAZCO",
-      code: "2428",
-      active: false,
-      reservations: true,
-      cashRegister: false,
-      downloads: true,
-    },
-    {
-      id: "michelle-perez",
-      name: "MICHELLE PEREZ",
-      code: "8899",
-      active: true,
-      reservations: true,
-      cashRegister: false,
-      downloads: true,
-    },
-    {
-      id: "rafael-ceglia",
-      name: "Rafael Ceglia",
-      code: "3278",
-      active: true,
-      reservations: true,
-      cashRegister: false,
-      downloads: true,
-    },
-    {
-      id: "emiliano-luna",
-      name: "Emiliano Luna",
-      code: "0512",
-      active: false,
-      reservations: true,
-      cashRegister: false,
-      downloads: true,
-    },
-    {
-      id: "abel-ambrosini",
-      name: "ABEL AMBROSINI",
-      code: "1515",
-      active: false,
-      reservations: true,
-      cashRegister: false,
-      downloads: true,
-    },
-    {
-      id: "edy",
-      name: "edy",
-      code: "1615",
-      active: true,
-      reservations: true,
-      cashRegister: false,
-      downloads: true,
-    },
-    {
-      id: "paulo-avalos",
-      name: "Paulo Avalos",
-      code: "3536",
-      active: true,
-      reservations: true,
-      cashRegister: false,
-      downloads: true,
-    },
-    {
-      id: "omri-nissim",
-      name: "OMRI NISSIM",
-      code: "1818",
-      active: false,
-      reservations: true,
-      cashRegister: false,
-      downloads: true,
-    },
-    {
-      id: "kevin",
-      name: "Kevin",
-      code: "4321",
-      active: true,
-      reservations: true,
-      cashRegister: false,
-      downloads: true,
-    },
-    {
-      id: "rosa",
-      name: "rosa",
-      code: "1516",
-      active: true,
-      reservations: true,
-      cashRegister: false,
-      downloads: true,
-    },
-    {
-      id: "daniel-rojas",
-      name: "Daniel rojas",
-      code: "1111",
-      active: true,
-      reservations: true,
-      cashRegister: false,
-      downloads: true,
-    },
-  ],
 };
 
 const initialEmailSettings: EmailSettings = {
@@ -5399,163 +5264,49 @@ function SurveySettingsPanel({
   );
 }
 
-function AuthorizationSettingsPanel({
+function SecureAuthorizationSettingsPanel({
   onDirtyChange,
 }: {
   onDirtyChange: (dirty: boolean) => void;
 }) {
-  const [settings, setSettings] = useState(initialAuthorizationSettings);
-  const [lastSaved, setLastSaved] = useState(initialAuthorizationSettings);
-  const [draft, setDraft] = useState<AuthorizationCodeDraft | null>(null);
-  const isDirty = JSON.stringify(settings) !== JSON.stringify(lastSaved);
+  const { bootstrap, refresh } = useSchedulerSession();
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [secret, setSecret] = useState("");
+  const [confirmation, setConfirmation] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const dirty = Boolean(currentPassword || secret || confirmation);
 
-  useUnsavedChanges(isDirty);
-
+  useEffect(() => onDirtyChange(dirty), [dirty, onDirtyChange]);
   useEffect(() => {
-    onDirtyChange(isDirty);
-  }, [isDirty, onDirtyChange]);
-
-  useEffect(() => {
-    const saved = window.localStorage.getItem(authorizationsStorageKey);
-    if (!saved) return;
-    try {
-      const next = {
-        ...initialAuthorizationSettings,
-        ...(JSON.parse(saved) as Partial<AuthorizationSettings>),
-      };
-      setSettings(next);
-      setLastSaved(next);
-    } catch {
-      window.localStorage.removeItem(authorizationsStorageKey);
-    }
+    window.localStorage.removeItem(authorizationsStorageKey);
   }, []);
 
-  const columns = useMemo<ColumnDef<AuthorizationCode>[]>(
-    () => [
-      { accessorKey: "name", header: "NOMBRE" },
-      {
-        accessorKey: "active",
-        header: "ACTIVO",
-        cell: ({ row }) => (
-          <div className="authorization-table-toggle">
-            <AgendaFieldSwitch
-              checked={row.original.active}
-              label={`${row.original.active ? "Desactivar" : "Activar"} código de ${row.original.name}`}
-              onChange={(active) =>
-                setSettings((current) => ({
-                  ...current,
-                  codes: current.codes.map((code) =>
-                    code.id === row.original.id ? { ...code, active } : code,
-                  ),
-                }))
-              }
-            />
-          </div>
-        ),
-      },
-      { accessorKey: "code", header: "CÓDIGO" },
-      {
-        accessorKey: "reservations",
-        header: "RESERVAS",
-        cell: ({ row }) =>
-          row.original.reservations ? "Permitido" : "Denegado",
-      },
-      {
-        accessorKey: "cashRegister",
-        header: "CAJA",
-        cell: ({ row }) =>
-          row.original.cashRegister ? "Permitido" : "Denegado",
-      },
-      {
-        accessorKey: "downloads",
-        header: "DESCARGA DE ARCHIVOS",
-        cell: ({ row }) => (row.original.downloads ? "Permitido" : "Denegado"),
-      },
-      {
-        id: "actions",
-        header: "OPCIONES",
-        enableSorting: false,
-        enableGlobalFilter: false,
-        cell: ({ row }) => (
-          <div className="authorization-row-actions">
-            <button
-              className="client-filter-edit"
-              onClick={() => openEdit(row.original)}
-              type="button"
-            >
-              <Pencil className="h-3.5 w-3.5" /> Editar
-            </button>
-            <ClientDeleteButton
-              description={`Se eliminará el código de autorización de “${row.original.name}”.`}
-              label={`Eliminar código de ${row.original.name}`}
-              onDelete={() =>
-                setSettings((current) => ({
-                  ...current,
-                  codes: current.codes.filter(
-                    (code) => code.id !== row.original.id,
-                  ),
-                }))
-              }
-              text
-            />
-          </div>
-        ),
-      },
-    ],
-    [],
-  );
-
-  function openCreate() {
-    setDraft({
-      id: null,
-      name: "",
-      code: "",
-      active: false,
-      reservations: false,
-      cashRegister: false,
-      downloads: false,
-    });
-  }
-
-  function openEdit(code: AuthorizationCode) {
-    setDraft({ ...code });
-  }
-
-  function saveCode() {
-    if (!draft?.name.trim() || !draft.code.trim()) {
-      toast.warning("Captura el nombre y el código de autorización.");
+  async function save() {
+    if (!/^\d{4,12}$/.test(secret)) {
+      setError("El código debe tener de 4 a 12 dígitos.");
       return;
     }
-    const duplicate = settings.codes.some(
-      (code) => code.id !== draft.id && code.code === draft.code.trim(),
-    );
-    if (duplicate) {
-      toast.warning("Ese código ya está asignado a otra persona.");
+    if (secret !== confirmation) {
+      setError("La confirmación no coincide con el código.");
       return;
     }
-    const id = draft.id ?? `authorization-${Date.now()}`;
-    const nextCode: AuthorizationCode = {
-      ...draft,
-      id,
-      name: draft.name.trim(),
-      code: draft.code.trim(),
-    };
-    setSettings((current) => ({
-      ...current,
-      codes: draft.id
-        ? current.codes.map((code) => (code.id === draft.id ? nextCode : code))
-        : [...current.codes, nextCode],
-    }));
-    setDraft(null);
-  }
-
-  function save() {
-    window.localStorage.setItem(
-      authorizationsStorageKey,
-      JSON.stringify(settings),
-    );
-    setLastSaved(settings);
-    toast.success("Códigos de autorización guardados.");
+    setSaving(true);
+    setError("");
+    try {
+      await schedulerApi.updateSecondarySecret({ currentPassword, secret });
+      setCurrentPassword("");
+      setSecret("");
+      setConfirmation("");
+      await refresh();
+      toast.success("Código secundario actualizado", {
+        description: "Las autorizaciones temporales anteriores fueron invalidadas.",
+      });
+    } catch (cause) {
+      setError(schedulerApiErrorMessage(cause, "No fue posible actualizar el código."));
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -5563,212 +5314,44 @@ function AuthorizationSettingsPanel({
       <section className="settings-card">
         <div className="settings-card-heading">
           <div>
-            <p className="settings-kicker">Opciones avanzadas</p>
-            <div className="flex flex-wrap items-center gap-3">
-              <h1 className="settings-title">Códigos de autorización</h1>
-              {isDirty ? (
-                <span className="settings-unsaved-badge">
-                  <span /> Cambios sin guardar
-                </span>
-              ) : null}
-            </div>
+            <p className="settings-kicker">Seguridad de cuenta</p>
+            <h1 className="settings-title">Código de autorización secundario</h1>
             <p className="settings-description">
-              Configura códigos y permisos para tu equipo.
+              El código se guarda con hash en el servidor y genera autorizaciones de un solo uso por dos minutos.
             </p>
           </div>
-          <Button
-            className={
-              isDirty
-                ? "settings-primary-save settings-primary-save-dirty"
-                : "settings-primary-save"
-            }
-            disabled={!isDirty}
-            onClick={save}
-            type="button"
-          >
-            <Save className="mr-2 h-4 w-4" /> Guardar cambios
-          </Button>
+          <span className={bootstrap?.secondaryAuthorizationConfigured ? "text-sm font-medium text-emerald-700" : "text-sm font-medium text-amber-700"}>
+            {bootstrap?.secondaryAuthorizationConfigured ? "Configurado" : "Pendiente"}
+          </span>
         </div>
-        <div className="settings-panel-body authorization-global-settings">
-          <p className="authorization-intro">
-            Define cuándo debe solicitarse el código de un integrante del equipo
-            para realizar acciones sensibles.
-          </p>
-          <AgendaToggleRow
-            checked={settings.requireForReservations}
-            description="Solicita autorización al ingresar o modificar reservas."
-            onChange={(requireForReservations) =>
-              setSettings((current) => ({ ...current, requireForReservations }))
-            }
-            title="Requerir código de cajero para acciones de reservas"
-          />
-          <AgendaToggleRow
-            checked={settings.requireForCashRegister}
-            description="Solicita autorización al ingresar o modificar movimientos de caja."
-            onChange={(requireForCashRegister) =>
-              setSettings((current) => ({ ...current, requireForCashRegister }))
-            }
-            title="Requerir código de cajero para acciones de caja"
-          />
-          <AgendaToggleRow
-            checked={settings.requireForDownloads}
-            description="Solicita autorización para descargar archivos y reportes."
-            onChange={(requireForDownloads) =>
-              setSettings((current) => ({ ...current, requireForDownloads }))
-            }
-            title="Requerir código de cajero para descargar archivos y reportes"
-          />
-        </div>
-      </section>
-
-      <section className="settings-card authorization-list-card">
-        <div className="settings-section-heading client-section-actions">
+        <div className="settings-panel-body grid gap-5 md:grid-cols-3">
           <div>
-            <h2 className="font-semibold text-slate-700">Listado de códigos</h2>
-            <p className="mt-1 text-xs text-slate-400">
-              Configura códigos y permisos para tu equipo.
-            </p>
+            <Label htmlFor="scheduler-current-password">Contraseña actual</Label>
+            <Input id="scheduler-current-password" type="password" autoComplete="current-password" value={currentPassword} onChange={(event) => { setCurrentPassword(event.target.value); setError(""); }} />
           </div>
-          <Button
-            className="client-field-button"
-            onClick={openCreate}
-            type="button"
-          >
-            <Plus className="h-4 w-4" /> Agregar código
-          </Button>
-        </div>
-        <div className="authorization-table-wrap">
-          <DataTable
-            columns={columns}
-            data={settings.codes}
-            emptyMessage="No hay códigos de autorización."
-            labels={{
-              records: "códigos",
-              all: "Todos",
-              results: (count) => `${count} códigos`,
-            }}
-            pageSize={20}
-            searchPlaceholder="Buscar por nombre o código..."
-          />
+          <div>
+            <Label htmlFor="scheduler-secondary-code">Nuevo código</Label>
+            <Input id="scheduler-secondary-code" type="password" inputMode="numeric" autoComplete="new-password" maxLength={12} value={secret} onChange={(event) => { setSecret(event.target.value.replace(/\D/g, "")); setError(""); }} />
+          </div>
+          <div>
+            <Label htmlFor="scheduler-secondary-confirmation">Confirmar código</Label>
+            <Input id="scheduler-secondary-confirmation" type="password" inputMode="numeric" autoComplete="new-password" maxLength={12} value={confirmation} onChange={(event) => { setConfirmation(event.target.value.replace(/\D/g, "")); setError(""); }} />
+          </div>
+          {error ? <p className="text-sm font-medium text-rose-600 md:col-span-3" role="alert">{error}</p> : null}
+          <div className="flex justify-end md:col-span-3">
+            <Button disabled={saving || !currentPassword || !secret || !confirmation} onClick={() => void save()} type="button">
+              <Save className="mr-2 h-4 w-4" /> {saving ? "Guardando…" : "Guardar código"}
+            </Button>
+          </div>
         </div>
       </section>
-
-      <UnsavedChangesBar
-        isDirty={isDirty}
-        onCancel={() => {
-          setSettings(lastSaved);
-          setDraft(null);
-        }}
-        onSave={save}
-      />
-      {draft ? (
-        <AuthorizationCodeDialog
-          draft={draft}
-          onChange={setDraft}
-          onClose={() => setDraft(null)}
-          onSave={saveCode}
-        />
-      ) : null}
+      <section className="settings-card p-6">
+        <h2 className="font-semibold text-slate-700">Permisos y alcance</h2>
+        <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
+          Lectura, escritura, administración, exportación y excepciones se asignan por puesto en el backend. Sólo SUPER_ADMIN recibe alcance global.
+        </p>
+      </section>
     </div>
-  );
-}
-
-function AuthorizationCodeDialog({
-  draft,
-  onChange,
-  onClose,
-  onSave,
-}: {
-  draft: AuthorizationCodeDraft;
-  onChange: (draft: AuthorizationCodeDraft) => void;
-  onClose: () => void;
-  onSave: () => void;
-}) {
-  return (
-    <Dialog
-      open
-      onOpenChange={(open) => {
-        if (!open) onClose();
-      }}
-    >
-      <DialogContent className="authorization-code-dialog max-w-[44rem]">
-        <DialogHeader>
-          <DialogTitle>
-            {draft.id ? "Editar código" : "Nuevo código"}
-          </DialogTitle>
-          <DialogDescription>
-            Asigna un código personal y define las acciones que puede autorizar.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="authorization-code-form">
-          <div>
-            <Label htmlFor="authorization-name">Nombre</Label>
-            <Input
-              autoFocus
-              id="authorization-name"
-              onChange={(event) =>
-                onChange({ ...draft, name: event.target.value })
-              }
-              value={draft.name}
-            />
-          </div>
-          <div>
-            <Label htmlFor="authorization-code">Código</Label>
-            <Input
-              id="authorization-code"
-              inputMode="numeric"
-              maxLength={12}
-              onChange={(event) =>
-                onChange({
-                  ...draft,
-                  code: event.target.value.replace(/\D/g, ""),
-                })
-              }
-              value={draft.code}
-            />
-          </div>
-          <div className="authorization-code-permissions">
-            <AgendaToggleRow
-              checked={draft.active}
-              description="Permite utilizar este código inmediatamente."
-              onChange={(active) => onChange({ ...draft, active })}
-              title="Activar código"
-            />
-            <AgendaToggleRow
-              checked={draft.reservations}
-              description="Autoriza acciones relacionadas con reservas."
-              onChange={(reservations) => onChange({ ...draft, reservations })}
-              title="Dar permisos de reservas"
-            />
-            <AgendaToggleRow
-              checked={draft.cashRegister}
-              description="Autoriza acciones relacionadas con el sistema de caja."
-              onChange={(cashRegister) => onChange({ ...draft, cashRegister })}
-              title="Dar permisos de caja"
-            />
-            <AgendaToggleRow
-              checked={draft.downloads}
-              description="Autoriza la descarga de archivos y reportes."
-              onChange={(downloads) => onChange({ ...draft, downloads })}
-              title="Dar permisos de descarga de archivos"
-            />
-          </div>
-        </div>
-        <DialogFooter>
-          <Button onClick={onClose} type="button" variant="outline">
-            Cancelar
-          </Button>
-          <Button
-            className="client-field-button"
-            disabled={!draft.name.trim() || !draft.code.trim()}
-            onClick={onSave}
-            type="button"
-          >
-            Guardar código
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
   );
 }
 
@@ -5865,7 +5448,7 @@ export function SettingsWorkspace() {
           ) : activeSection === "surveys" ? (
             <SurveySettingsPanel onDirtyChange={setHasUnsavedChanges} />
           ) : activeSection === "authorizations" ? (
-            <AuthorizationSettingsPanel onDirtyChange={setHasUnsavedChanges} />
+            <SecureAuthorizationSettingsPanel onDirtyChange={setHasUnsavedChanges} />
           ) : (
             <PendingSettingsPanel section={activeSection} />
           )}

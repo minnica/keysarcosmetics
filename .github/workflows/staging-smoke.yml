@@ -11,7 +11,7 @@ on:
           - development
           - production
       release_sha:
-        description: SHA completo servido por Envelope y Payroll
+        description: SHA completo servido por Envelope, Payroll y Scheduler
         required: true
         type: string
       api_sha:
@@ -28,7 +28,7 @@ concurrency:
 
 jobs:
   smoke:
-    name: API, Envelope and Payroll
+    name: API, Envelope, Payroll and Scheduler
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment }}
     env:
@@ -36,8 +36,10 @@ jobs:
       API_BASE_URL: ${{ vars.API_BASE_URL }}
       ENVELOPE_BASE_URL: ${{ vars.ENVELOPE_BASE_URL }}
       PAYROLL_BASE_URL: ${{ vars.PAYROLL_BASE_URL }}
+      SCHEDULER_BASE_URL: ${{ vars.SCHEDULER_BASE_URL }}
       ENVELOPE_VERCEL_BYPASS_SECRET: ${{ secrets.ENVELOPE_VERCEL_BYPASS_SECRET }}
       PAYROLL_VERCEL_BYPASS_SECRET: ${{ secrets.PAYROLL_VERCEL_BYPASS_SECRET }}
+      SCHEDULER_VERCEL_BYPASS_SECRET: ${{ secrets.SCHEDULER_VERCEL_BYPASS_SECRET }}
       SMOKE_EXPECTED_FRONTEND_SHA: ${{ inputs.release_sha }}
       SMOKE_EXPECTED_API_SHA: ${{ inputs.api_sha }}
     steps:
@@ -59,9 +61,11 @@ jobs:
           test -n "$API_BASE_URL"
           test -n "$ENVELOPE_BASE_URL"
           test -n "$PAYROLL_BASE_URL"
+          test -n "$SCHEDULER_BASE_URL"
           if [ "$TARGET_ENVIRONMENT" = "development" ]; then
             test -n "$ENVELOPE_VERCEL_BYPASS_SECRET"
             test -n "$PAYROLL_VERCEL_BYPASS_SECRET"
+            test -n "$SCHEDULER_VERCEL_BYPASS_SECRET"
           fi
       - name: Run public smoke and record duration
         run: |

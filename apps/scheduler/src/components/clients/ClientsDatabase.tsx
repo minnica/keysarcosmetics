@@ -56,7 +56,8 @@ import {
   schedulerProfessionals,
   schedulerServices,
 } from "@/lib/mock-scheduler-data";
-import { authorizeSchedulerFinancialProfile } from "@/lib/scheduler-access";
+import { useSchedulerSession } from "@/lib/session";
+import { schedulerApiErrorMessage } from "@/lib/api";
 import {
   daysSinceClientActivity,
   daysUntilNextBirthday,
@@ -279,6 +280,7 @@ export function ClientsDatabase({
   clients: SchedulerClient[];
   onView: (client: SchedulerClient) => void;
 }) {
+  const { authorize } = useSchedulerSession();
   const [query, setQuery] = useState("");
   const [filters, setFilters] = useState(emptyClientFilters);
   const [sort, setSort] = useState<{
@@ -396,24 +398,17 @@ export function ClientsDatabase({
     });
   }
 
-  function exportClientList() {
-    const authorization = authorizeSchedulerFinancialProfile(
-      authorizationCode,
-      undefined,
-    );
-    if (!authorization.profile) {
-      setAuthorizationError(
-        authorization.error ?? "El código de autorización no es válido.",
-      );
-      return;
-    }
-    if (
-      authorization.profile.role !== "master" &&
-      authorization.profile.role !== "admin"
-    ) {
-      setAuthorizationError(
-        "Este código no tiene permisos para descargar listados.",
-      );
+  async function exportClientList() {
+    try {
+      await authorize({
+        secret: authorizationCode,
+        purpose: "SENSITIVE_EXPORT",
+        screenKey: "scheduler/clients",
+        targetType: "SchedulerClientExport",
+        targetId: "filtered-client-list",
+      });
+    } catch (error) {
+      setAuthorizationError(schedulerApiErrorMessage(error, "El código de autorización no es válido."));
       return;
     }
     downloadCsv(`clientes-${new Date().toLocaleDateString("en-CA")}.csv`, [
