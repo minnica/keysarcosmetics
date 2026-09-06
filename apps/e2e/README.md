@@ -54,9 +54,16 @@ E2E_SCHEDULER_EMAIL
 E2E_SCHEDULER_PASSWORD
 ```
 
-Conservar también las variables `API_BASE_URL`, `ENVELOPE_BASE_URL`, `PAYROLL_BASE_URL` y `SCHEDULER_BASE_URL`, además de los bypass secrets separados de Vercel que ya usa el smoke del ambiente. Nunca copiar valores reales a `.env.example`, logs, issues o artefactos.
+Conservar también las variables `API_BASE_URL`, `ENVELOPE_BASE_URL`,
+`FINANCE_BASE_URL`, `HR_BASE_URL`, `PAYROLL_BASE_URL` y `SCHEDULER_BASE_URL`,
+además de los cinco bypass secrets separados de Vercel que usa el smoke del
+ambiente. Nunca copiar valores reales a `.env.example`, logs, issues o
+artefactos.
 
-En ambos proyectos Vercel debe estar habilitada la exposición automática de System Environment Variables para que `VERCEL_GIT_COMMIT_SHA` exista durante el build. Si falta, el meta de release será `local` y el workflow se detendrá antes de autenticarse.
+Las cinco apps exponen `keysar-release`. Los builds selectivos inyectan
+`KEYSAR_RELEASE_SHA`; mientras una app conserve integración Git, ésta usa
+`VERCEL_GIT_COMMIT_SHA`. Si ambos faltan, el meta será `local` y el workflow se
+detendrá antes de autenticarse.
 
 ## Preparación única de producción
 
@@ -98,12 +105,21 @@ La creación de cuentas y secrets es una activación administrativa externa: no 
 
 Después de desplegar `develop`, abrir **Authenticated development E2E** en GitHub Actions e indicar:
 
-- `release_sha`: SHA completo servido por los tres alias Vercel;
+- `envelope_sha`: SHA completo servido por el alias de Envelope;
+- `finance_sha`: SHA completo servido por el alias de Finance;
+- `hr_sha`: SHA completo servido por el alias de HR;
+- `payroll_sha`: SHA completo servido por el alias de Payroll;
+- `scheduler_sha`: SHA completo servido por el alias de Scheduler;
 - `api_sha`: SHA completo expuesto como `release` por `/health` en la API de desarrollo.
 
 GitHub solo permite disparar manualmente un `workflow_dispatch` cuando el archivo ya existe en la rama por defecto (`master`). En la primera incorporación de este workflow, ejecutar `pnpm test:e2e:development` desde el SHA de `develop` contra el ambiente desplegado y conservar el resultado en el PR de release; después de que el archivo llegue a `master`, las promociones siguientes usan GitHub Actions normalmente seleccionando el ref de `develop`.
 
-La suite rechaza alias desfasados antes de ejecutar los recorridos. Envelope, Payroll y Scheduler incluyen `meta[name="keysar-release"]`, generado desde `VERCEL_GIT_COMMIT_SHA`; la API usa `RELEASE_SHA`.
+La suite rechaza alias desfasados antes de crear sesiones o ejecutar los
+recorridos. Envelope, Finance, HR, Payroll y Scheduler incluyen
+`meta[name="keysar-release"]`; la API usa `RELEASE_SHA`. Los seis SHAs pueden
+ser distintos.
+
+Cuando las identidades coinciden, el workflow publica por 30 días un artefacto `release-manifest-development-*` con ambiente, fecha, SHA de la suite y la matriz de versiones realmente servida. No contiene URLs, credenciales, cookies ni bypass secrets. Si una identidad no coincide, el archivo no se genera.
 
 Para una ejecución local, exportar las variables listadas en `.env.example` y ejecutar:
 
@@ -113,13 +129,24 @@ pnpm test:e2e:development
 
 Playwright crea temporalmente `apps/e2e/.auth/envelope.json`, `payroll.json` y `scheduler.json`. Son archivos ignorados que contienen JWT/cookies y nunca deben adjuntarse ni versionarse. El workflow los elimina antes de publicar diagnósticos.
 
-Para production, ejecutar únicamente **Environment smoke tests** desde `master`, seleccionar `production` e indicar el SHA completo de los frontends y el SHA completo servido por `/health`. El workflow primero ejecuta los seis smokes públicos —incluido el login de Scheduler— y valida identidad; solo entonces crea las sesiones temporales de monitoreo productivo para Envelope y Payroll. `pnpm test:e2e:production` queda disponible para diagnóstico administrado, pero no debe invocarse contra otro ambiente ni sin confirmar antes los SHA.
+Para production, **Environment smoke tests** permite una repetición manual desde
+`master`: seleccionar `production` e indicar los SHA completos de Envelope,
+Finance, HR, Payroll, Scheduler y API. Desde la Fase 8, una publicación
+selectiva ejecuta automáticamente la misma matriz pública y después crea las
+sesiones temporales de monitoreo para Envelope y Payroll. El manifiesto
+productivo usa los mismos seis componentes que development y permite SHA
+distintos.
 
 ## Cobertura de la primera versión
 
 Envelope y Payroll conservan ocho recorridos autenticados cada una. Scheduler agrega tres recorridos de sólo lectura para Agenda, Clientes y Reportes y verifica que una sesión normal no anuncie fixtures. En conjunto validan login/sesión, pantallas principales, calendarios reales, tablas, selects y navegación.
 
-El smoke productivo autenticado limita su cobertura a tres recorridos por app para Envelope y Payroll. Scheduler participa en el smoke público y sus recorridos autenticados se ejecutan en development con permisos `READ`. Los setups de autenticación son casos separados y las sesiones no se comparten entre aplicaciones.
+El smoke productivo público ejecuta ocho contratos e incluye los shells de
+Finance y HR. El smoke autenticado limita su cobertura a tres recorridos por app
+para Envelope y Payroll. Scheduler participa en el smoke público y sus
+recorridos autenticados se ejecutan en development con permisos `READ`. Los
+setups de autenticación son casos separados y las sesiones no se comparten entre
+aplicaciones.
 
 Todas las páginas se ejecutan con un fixture que registra métodos HTTP y falla ante cualquier request distinta de `GET`, `HEAD` u `OPTIONS`. Los proyectos autenticados tienen máximo un retry en CI.
 
@@ -132,17 +159,43 @@ El reporte HTML `authenticated-development-e2e-report` de development se conserv
 - video;
 - adjuntos de `storageState`.
 
-Producción no publica reporte HTML ni `test-results`: el workflow elimina sesiones y diagnósticos locales incluso si falla. Solo conserva el resumen textual de GitHub con duración, número de intento y resultado; no contiene URLs privadas, credenciales, JWT ni datos de tablas. El smoke productivo tiene cero retries para que una falla no quede oculta.
+Producción no publica reporte HTML ni `test-results`: el workflow elimina
+sesiones y diagnósticos locales incluso si falla. Conserva el resumen textual,
+el manifiesto seguro y, en el flujo selectivo, un archivo de duraciones sin
+URLs ni datos operativos durante 90 días. No contiene credenciales, JWT,
+cookies ni datos de tablas. El smoke productivo tiene cero retries para que una
+falla no quede oculta.
+
+`Vercel operations audit` genera además, cada semana, un manifiesto por
+ambiente desde las rutas estables observadas en la API de Vercel. Ese manifiesto
+sirve para detectar drift de proyecto, rama, alias/dominio e iniciador, pero no
+sustituye este smoke HTTP: sólo Playwright confirma el `keysar-release`
+realmente servido, readiness y los recorridos de lectura. Si ambos manifiestos
+no coinciden, detener la siguiente release y tratar la auditoría como
+`blocked`.
 
 Interpretación de fallas:
 
-- `release-identity`: algún alias o la API no sirve el SHA indicado;
+- `release-identity`: algún alias o la API no sirve su SHA declarado en la matriz;
 - `*-auth-setup`: credenciales, permisos, CORS o bypass de Vercel incorrectos;
 - encabezado/ruta ausente: permiso faltante, guard de sesión o carga integrada rota;
 - `solo lectura`: el recorrido intentó un método de escritura y debe corregirse antes de reintentar.
 
 Si hace falta inspección visual, reproducir localmente con `test:development:headed`; no habilitar traces o screenshots en CI con cuentas que puedan leer información operativa.
 
+Después de un redeploy por variables sin cambio de SHA, repetir primero el
+smoke público. En production también se ejecuta el smoke autenticado y la
+observación de 15 minutos. El SHA igual demuestra identidad de código, no que
+el nuevo valor de ambiente sea correcto; por eso deben conservarse el nuevo
+`dpl_*`, la `change_reference` y el resultado funcional.
+
 ## Duración y flakiness
 
-Los workflows escriben duración, intento y resultado en `GITHUB_STEP_SUMMARY`. Durante las primeras cinco promociones revisar los cinco resultados consecutivos de **Environment smoke tests** y **Authenticated production smoke**; cualquier retry manual o falla intermitente se registra como incidencia y se corrige antes de considerar estable el gate. Los contratos de UI registran cero retries y los canaries visuales permiten como máximo uno.
+Los workflows escriben duración, intento y resultado en
+`GITHUB_STEP_SUMMARY`. Después de una publicación selectiva, el smoke público
+se repite cada cinco minutos durante 15 minutos para observar errores HTTP,
+readiness, identidad y duración. Durante las primeras cinco promociones revisar
+los resultados consecutivos del smoke público y autenticado; cualquier retry
+manual o falla intermitente se registra como incidencia y se corrige antes de
+considerar estable el gate. Los contratos de UI registran cero retries y los
+canaries visuales permiten como máximo uno.

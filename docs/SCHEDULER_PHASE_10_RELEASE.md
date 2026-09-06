@@ -12,7 +12,7 @@ La fase cierra el camino reproducible de calidad y operación sin crear migracio
 - Un gate de carga separado crea 30 sucursales, dos profesionales y dos recursos por sucursal, horarios de 24 horas y 1,440 citas. Exige que la exportación completa mantenga las 1,440 filas, las 30 sucursales y que disponibilidad/exportación terminen por debajo del umbral de CI de 30 segundos.
 - Playwright agrega Scheduler al smoke público y a los recorridos autenticados de development. La cuenta E2E sólo recibe `READ` para Agenda, Clientes y Reportes; un guard falla ante cualquier request de escritura.
 - `scheduler:release:audit` agrega observabilidad postdespliegue de sólo lectura sobre estados de citas, outbox, eventos internos de Agenda, auditoría, mensajes agotados, locks vencidos y latencia básica de base.
-- El workflow protegido `Deploy API` puede activar `AGENDA_PROVIDER=internal` sólo después de migrar, desplegar/verificar API y confirmar que el frontend Scheduler sirve el mismo SHA. El cambio de proveedor requiere la confirmación literal `SCHEDULER_INTERNO_VALIDADO`.
+- El workflow protegido `Deploy API` puede activar `AGENDA_PROVIDER=internal` sólo después de migrar, desplegar/verificar API y confirmar una combinación explícita de SHA de Scheduler y SHA de API. El cambio de proveedor requiere `scheduler_frontend_sha` y la confirmación literal `SCHEDULER_INTERNO_VALIDADO`; ambos SHAs pueden ser distintos.
 
 ## Gates locales y de CI
 
@@ -55,7 +55,7 @@ E2E_SCHEDULER_PASSWORD
 
 La identidad E2E requiere una sucursal de prueba explícita y sólo las capacidades descritas en `apps/e2e/README.md`. No usar `SUPER_ADMIN`, cuentas personales ni capturas/traces con datos reales. Después del deploy ejecutar, en este orden:
 
-1. `Environment smoke tests` para API y shells públicos, indicando los SHA exactos.
+1. `Environment smoke tests` para API y shells públicos, indicando por separado los SHA exactos de Envelope, Payroll, Scheduler y API.
 2. `Authenticated development E2E` para Agenda, Clientes y Reportes de Scheduler.
 3. Revisar que no hubo retries inesperados y conservar el reporte seguro por siete días.
 
@@ -73,10 +73,10 @@ La identidad E2E requiere una sucursal de prueba explícita y sólo las capacida
 ### Secuencia
 
 1. Disparar `Deploy API` desde la rama del ambiente con el SHA que ya pasó CI.
-2. Para el primer corte Scheduler activar `activate_scheduler_internal` y escribir `SCHEDULER_INTERNO_VALIDADO`.
+2. Para el primer corte Scheduler activar `activate_scheduler_internal`, indicar el `scheduler_frontend_sha` compatible y escribir `SCHEDULER_INTERNO_VALIDADO`.
 3. El workflow valida schemas y pruebas, aplica migraciones aditivas con `prisma migrate deploy` y despliega la API exacta.
-4. Verifica `/ready` y espera a que `/login` de Scheduler exponga el mismo `keysar-release`.
-5. Sólo entonces configura `AGENDA_PROVIDER=internal` en Fly y vuelve a verificar readiness.
+4. Verifica `/ready`, exige que `/health.release` coincida con el SHA de API fijado y espera a que `/login` de Scheduler exponga el `scheduler_frontend_sha` aprobado.
+5. Registra la pareja comprobada en `scheduler-compatibility-manifest.json`; sólo entonces configura `AGENDA_PROVIDER=internal` en Fly y vuelve a verificar readiness.
 6. Ejecuta `scheduler:diagnose` y `scheduler:release:audit` dentro de transacciones `READ ONLY`; publica únicamente JSON agregado por 30 días.
 7. Ejecutar los workflows de smoke y E2E de development. Validar manualmente creación/movimiento/cancelación, asistencia y conciliación POS/Scheduler en la sucursal piloto autorizada.
 8. Observar durante la ventana acordada errores 5xx, p95/p99 HTTP, `409`, locks/transacciones, outbox, `AgendaSyncEvent` y uso del proveedor. Los logs no deben contener PII, tokens ni destinos descifrados.

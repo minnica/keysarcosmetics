@@ -18,12 +18,10 @@
     "lint": "eslint \"src/**/*.ts\" --max-warnings=0"
   },
   "dependencies": {
+    "@cosmetics/types": "workspace:*",
     "axios": "^1.7.2"
   },
   "devDependencies": {
     "typescript": "^5.4.5"
-  },
-  "peerDependencies": {
-    "@cosmetics/types": "workspace:*"
   }
 }

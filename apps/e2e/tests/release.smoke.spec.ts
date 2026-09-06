@@ -1,42 +1,35 @@
 import { expect, test } from "playwright/test";
+import {
+  assertReleaseIdentity,
+  frontendReleaseComponents,
+  frontendReleasePaths,
+  readExpectedReleases,
+  requiredEnvironment,
+  writeVerifiedReleaseManifest,
+  type ReleaseSet,
+} from "../helpers/release-identity";
 
 type HealthPayload = {
   release: string;
   status: string;
 };
 
-function requiredEnvironment(name: string): string {
-  const value = process.env[name]?.trim();
-  if (!value)
-    throw new Error(
-      `Falta ${name}; configura el environment sin imprimir su valor.`,
-    );
-  return value;
-}
-
-function assertFullGitSha(value: string, name: string): void {
-  if (!/^[a-f0-9]{40}$/i.test(value)) {
-    throw new Error(`${name} debe contener un SHA completo de 40 caracteres.`);
-  }
-}
-
 test("the environment serves the expected frontend and API releases", async ({
   browser,
   request,
 }) => {
-  const expectedFrontendSha = requiredEnvironment(
-    "SMOKE_EXPECTED_FRONTEND_SHA",
+  const expectedReleases = readExpectedReleases("SMOKE");
+  const expectedFrontendComponents = frontendReleaseComponents.filter(
+    (component) => expectedReleases[component] !== undefined,
   );
-  const expectedApiSha = requiredEnvironment("SMOKE_EXPECTED_API_SHA");
-  assertFullGitSha(expectedFrontendSha, "SMOKE_EXPECTED_FRONTEND_SHA");
-  assertFullGitSha(expectedApiSha, "SMOKE_EXPECTED_API_SHA");
 
   async function readFrontendRelease(
-    baseURL: string,
+    component: (typeof frontendReleaseComponents)[number],
     bypassSecret: string | undefined,
   ): Promise<string> {
+    const upperComponent = component.toUpperCase();
     const context = await browser.newContext({
-      baseURL,
+      baseURL: requiredEnvironment(`${upperComponent}_BASE_URL`),
       extraHTTPHeaders: bypassSecret
         ? {
             "x-vercel-protection-bypass": bypassSecret,
@@ -47,7 +40,7 @@ test("the environment serves the expected frontend and API releases", async ({
 
     try {
       const page = await context.newPage();
-      const response = await page.goto("/login", {
+      const response = await page.goto(frontendReleasePaths[component], {
         waitUntil: "domcontentloaded",
       });
       expect(response?.ok()).toBe(true);
@@ -61,29 +54,32 @@ test("the environment serves the expected frontend and API releases", async ({
     }
   }
 
-  const [envelopeRelease, payrollRelease, schedulerRelease, healthResponse] =
-    await Promise.all([
-      readFrontendRelease(
-        requiredEnvironment("ENVELOPE_BASE_URL"),
-        process.env["ENVELOPE_VERCEL_BYPASS_SECRET"],
+  const frontendEntries = await Promise.all(
+    expectedFrontendComponents.map(async (component) => [
+      component,
+      await readFrontendRelease(
+        component,
+        process.env[`${component.toUpperCase()}_VERCEL_BYPASS_SECRET`],
       ),
-      readFrontendRelease(
-        requiredEnvironment("PAYROLL_BASE_URL"),
-        process.env["PAYROLL_VERCEL_BYPASS_SECRET"],
-      ),
-      readFrontendRelease(
-        requiredEnvironment("SCHEDULER_BASE_URL"),
-        process.env["SCHEDULER_VERCEL_BYPASS_SECRET"],
-      ),
-      request.get(`${requiredEnvironment("API_BASE_URL")}/health`),
-    ]);
+    ]),
+  );
+  const healthResponse = await request.get(
+    `${requiredEnvironment("API_BASE_URL")}/health`,
+  );
 
-  expect(envelopeRelease).toBe(expectedFrontendSha);
-  expect(payrollRelease).toBe(expectedFrontendSha);
-  expect(schedulerRelease).toBe(expectedFrontendSha);
   expect(healthResponse.ok()).toBe(true);
 
   const health = (await healthResponse.json()) as HealthPayload;
   expect(health.status).toBe("ok");
-  expect(health.release).toBe(expectedApiSha);
+  const actualReleases: ReleaseSet = {
+    ...Object.fromEntries(frontendEntries),
+    api: health.release,
+  } as ReleaseSet;
+  assertReleaseIdentity(expectedReleases, actualReleases);
+
+  await writeVerifiedReleaseManifest(process.env["RELEASE_MANIFEST_PATH"], {
+    environment: requiredEnvironment("RELEASE_MANIFEST_ENVIRONMENT"),
+    releases: actualReleases,
+    suiteSha: process.env["GITHUB_SHA"]?.trim(),
+  });
 });
