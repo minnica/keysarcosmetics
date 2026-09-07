@@ -4,7 +4,7 @@
 > Rama inspeccionada: `feature/scheduler`.
 > Referencia visual aprobada por el PO, indicada por el usuario: `e9077ddad945325b1a132962ce0c2fcd9ae7f74a`.
 > HEAD al redactar el plan: `9784c1b222dc2aa69cb304a5b492eeb1786ac980`.
-> Estado: RV0–RV4 implementadas con validación visual/funcional pendiente; RV5–RV8 pendientes.
+> Estado: RV0–RV5 implementadas con validación visual/funcional pendiente; RV6–RV8 pendientes.
 
 ## 1. Objetivo y acuerdo de alcance
 
@@ -19,6 +19,8 @@ RV2 quedó implementada el 6 de septiembre de 2026: la Agenda aprobada vuelve a 
 RV3 quedó implementada el 6 de septiembre de 2026: Clientes recupera cabecera, filtros, tabla, vacíos, paginación y diálogos aprobados sobre la identidad compartida. Alta/edición cubre perfil, procedencia, alias, correos y campos por comercio/sucursal; la fusión usa versiones y autorización ligada. Expediente, visitas y finanzas se desbloquean por separado, expiran y se purgan; POS sigue siendo la autoridad financiera. Agenda y Clientes comparten adaptador e invalidación. Evidencia: `docs/SCHEDULER_RV3_CLIENTS_RESTORATION.md`. Capturas y recorridos HTTP/concurrentes permanecen pendientes por B06.
 
 RV4 quedó implementada el 6 de septiembre de 2026: Administración recupera la presentación aprobada para comercios/sucursales, especialistas, servicios, comisiones, recursos, gift cards y colores sobre candidatos y perfiles canónicos. Integra horarios, descansos, excepciones, grupos, especialidades, asignaciones, requisitos, clases, paquetes, complementos, reglas versionadas y autorización reforzada; Agenda se invalida tras cambios. Precio/categoría masivos, identidad de sucursal, alta inicial de complementos, validación anticipada de uso de recursos y operación financiera de gift cards permanecen como brechas explícitas, no simulaciones. Evidencia: `docs/SCHEDULER_RV4_ADMINISTRATION_RESTORATION.md`. Capturas y recorridos HTTP/PostgreSQL permanecen pendientes por B06.
+
+RV5 quedó implementada el 6 de septiembre de 2026: Configuraciones sustituye el editor JSON por formularios estructurados para las once secciones documentales, conserva la presentación aprobada, el código personal seguro, precedencia y permisos. La respuesta resuelta incluye el documento autorizado de cada capa para editar sólo el alcance seleccionado; el frontend aplica únicamente paths modificados y preserva claves desconocidas. Cada campo declara su efecto real y ninguno se presenta como consumidor operativo cuando no existe; secretos permanecen fuera del documento. La densidad visual de Agenda sigue local. Evidencia: `docs/SCHEDULER_RV5_SETTINGS_RESTORATION.md`. Capturas y persistencia HTTP/PostgreSQL permanecen pendientes por B06.
 
 Este plan complementa `PLAN_BACKEND_SCHEDULER.md`: sus contratos, seguridad y reglas de negocio siguen vigentes. Corrige la presentación introducida durante su integración frontend. Las fases de este documento usan el prefijo **RV** para diferenciarlas de las fases del plan backend.
 
@@ -60,7 +62,7 @@ El backend devuelve citas, profesionales, recursos, horarios, estados y versione
 | RV2  | Agenda aprobada conectada de punta a punta              | RV1          | Implementada; validación pendiente |
 | RV3  | Clientes, expediente e históricos                       | RV2 validada | Implementada; validación pendiente |
 | RV4  | Administración y catálogos                              | RV3          | Implementada; validación pendiente |
-| RV5  | Formularios de Configuraciones                          | RV4          | Pendiente                          |
+| RV5  | Formularios de Configuraciones                          | RV4          | Implementada; validación pendiente |
 | RV6  | Comunicaciones, documentos y encuestas                  | RV5          | Pendiente                          |
 | RV7  | Reportes y exportaciones                                | RV6          | Pendiente                          |
 | RV8  | Verificación integral, limpieza y entrega               | RV2–RV7      | Pendiente                          |
@@ -184,13 +186,15 @@ Estado RV4 (6 de septiembre de 2026): implementación local completa y checks t�
 
 ### RV5 — Formularios de Configuraciones
 
-- [ ] Recuperar los formularios aprobados de Empresa, Sitio web, Agenda, Pagos Keysar, Recordatorios, Fichas médicas, E-mails, Integraciones, Notificaciones, Clientes y Encuestas.
-- [ ] Documentar por campo: clave, tipo, valor predeterminado, alcance, permiso y consumidor real. Persistir una clave JSON no demuestra que tenga efecto sobre el producto.
-- [ ] Adaptar lectura/escritura a documentos versionados conservando claves desconocidas y distinguiendo valores heredados de overrides. Verificar la semántica del endpoint antes de enviar cambios de una capa.
-- [ ] Evitar que cambiar sección/comercio/sucursal/capa mezcle borradores o guarde datos en otro contexto. Conservar advertencia de cambios sin guardar y recuperación ante `409`.
-- [ ] Usar los formularios aprobados como interfaz; no entregar el editor JSON genérico como sustituto de las pantallas anteriores.
-- [ ] Mantener el formulario seguro de código personal con contraseña actual. No restaurar listados de códigos visibles de otros usuarios.
-- [ ] Conservar local sólo preferencias visuales permitidas; configuraciones operativas usan servidor. Probar herencia, recarga y ausencia de secretos en documentos.
+- [x] Recuperar los formularios aprobados de Empresa, Sitio web, Agenda, Pagos Keysar, Recordatorios, Fichas médicas, E-mails, Integraciones, Notificaciones, Clientes y Encuestas.
+- [x] Documentar por campo: clave, tipo, valor predeterminado, alcance, permiso y consumidor real. Persistir una clave JSON no demuestra que tenga efecto sobre el producto.
+- [x] Adaptar lectura/escritura a documentos versionados conservando claves desconocidas y distinguiendo valores heredados de overrides. Verificar la semántica del endpoint antes de enviar cambios de una capa.
+- [x] Evitar que cambiar sección/comercio/sucursal/capa mezcle borradores o guarde datos en otro contexto. Conservar advertencia de cambios sin guardar y recuperación ante `409`.
+- [x] Usar los formularios aprobados como interfaz; no entregar el editor JSON genérico como sustituto de las pantallas anteriores.
+- [x] Mantener el formulario seguro de código personal con contraseña actual. No restaurar listados de códigos visibles de otros usuarios.
+- [ ] Conservar local sólo preferencias visuales permitidas; configuraciones operativas usan servidor. Probar herencia, recarga y ausencia de secretos en documentos. La separación local/servidor, la herencia pura y la omisión de campos de secretos tienen cobertura local; falta el recorrido HTTP/recarga y la inspección de ambiente por B06.
+
+Estado RV5 (6 de septiembre de 2026): implementación local completa y checks técnicos correctos. El runner visual cubre cuatro secciones en escritorio y Clientes móvil; la persistencia conserva el documento propio de la capa y sólo aplica paths modificados. No se ejecutaron capturas ni recorridos con API/PostgreSQL desechables porque B06 continúa vigente. Ver `docs/SCHEDULER_RV5_SETTINGS_RESTORATION.md`; no marcar `Validada` hasta revisar esas evidencias.
 
 **Criterio de salida:** formularios restaurados y persistentes, con alcance y efectos identificados por campo; ninguna capa recibe accidentalmente los valores efectivos de las demás.
 
@@ -275,7 +279,7 @@ La auditoría identificó estos puntos a verificar, no incompatibilidades visual
 | B01 | Teléfono, precio, avatar y detalles por tarjeta no están todos en el DTO de cita          | Ficha autorizada bajo demanda; definir contrato agregado para precio/avatar sin N+1                                                                                                                                                                                                         | Parcial RV2; precio/avatar agregados pendientes       |
 | B02 | Pendientes sin profesional/recurso asignado                                               | El validador exige al menos un profesional por servicio; decidir si se amplía el contrato                                                                                                                                                                                                   | RV2 no inventa cola; decisión backend pendiente       |
 | B03 | Formularios administrativos, archivos masivos y capacidades mock sin contrato equivalente | RV4 restaura CRUDs canónicos y registra sin simular identidad de sucursal, precios/categorías masivos, candidatos de complementos, validación anticipada de uso de recursos y operación financiera de gift cards; Clientes mantiene importación/audiencias/fichas y RV6 resuelve engagement | Parcial RV3/RV4; resolver contratos comerciales y RV6 |
-| B04 | Persistencia JSON frente a efectos reales de Configuraciones                              | No se encontraron consumidores operativos de los documentos; mapear cada campo                                                                                                                                                                                                              | Confirmada RV0; resolver RV5                          |
+| B04 | Persistencia JSON frente a efectos reales de Configuraciones                              | RV5 documenta cada campo, identifica la ausencia de consumidores y la muestra en UI; conectar efectos futuros exige contrato y pruebas propias                                                                                                                                              | Resuelta RV5; consumidores futuros fuera de alcance   |
 | B05 | KPIs, series y formatos históricos frente a los datasets actuales                         | Hay doce datasets y sólo CSV; verificar agrupaciones y formatos                                                                                                                                                                                                                             | Clasificada RV0; resolver RV7                         |
 | B06 | Ambiente reproducible para referencia y pruebas de escritura                              | Build aislado disponible; Chromium, puertos y PostgreSQL desechable no disponibles en sandbox                                                                                                                                                                                               | Diagnóstico RV0; captura/BD pendientes                |
 | B07 | Cobertura real de rutas profundas y redirecciones                                         | Seis rutas redirigen en referencia y HEAD; cinco componentes no están montados                                                                                                                                                                                                              | Confirmada RV0; resolver RV7                          |
@@ -395,3 +399,17 @@ Solicitud sugerida para otra sesión:
 - **Brechas o validaciones pendientes:** ejecutar comparación en los viewports RV0; recorrer CRUD, recarga, alcance, conflictos y efectos sobre Agenda con API/PostgreSQL desechables; B03 conserva contratos comerciales, validación anticipada de recursos y trabajo de Clientes/engagement; B06 conserva la infraestructura de evidencia.
 - **Estado Git al cerrar:** cambios RV4 y documentación sin commit; no se modificaron backend, Prisma, migraciones, seeds, variables, despliegues ni datos operativos.
 - **Siguiente tarea concreta:** ejecutar la evidencia visual/funcional acumulada RV2–RV4 en un host compatible; después iniciar RV5 mapeando cada campo y consumidor real antes de sustituir el editor JSON de Configuraciones.
+
+### Bitácora RV5 — 6 de septiembre de 2026
+
+- **Fecha y fase:** 6 de septiembre de 2026, RV5.
+- **Rama y HEAD:** `feature/scheduler`, base `c35131786a7306502c31e34588c9a52514a5889f`.
+- **Estado:** Implementada; validación visual y funcional pendiente por B06.
+- **Tareas completadas:** sustitución del editor JSON por formularios estructurados de las once secciones; matriz de campos/defaults/permisos/consumidores; lectura por capa; aplicación exclusiva de paths modificados; conservación de claves desconocidas; permisos `WRITE`/`ADMIN`; confirmación de borradores al cambiar contexto; recuperación ante `409`; densidad visual local; código personal seguro; omisión de secretos; estados sólo lectura, carga y error.
+- **Archivos modificados:** `ApiSettingsWorkspace.tsx`; nuevo catálogo/adaptador y prueba `scheduler-settings-presentation`; contrato `SchedulerResolvedSettingDto` y respuesta del endpoint; fixture/spec visual RV5; `CLAUDE.md`, este plan y `docs/SCHEDULER_RV5_SETTINGS_RESTORATION.md`.
+- **Pruebas ejecutadas y resultado:** type-check de Scheduler, types, API client, API y E2E, correctos; Scheduler tests, correctos (7 archivos); API unit tests, correctos (133 pruebas/25 archivos); lint de Scheduler correcto con advertencias históricas fuera de RV5; lint del API y E2E, correctos; builds de Scheduler (21 páginas) y API, correctos; descubrimiento Playwright correcto (29 pruebas) e incluye los dos recorridos RV5; Prettier y `git diff --check`, correctos al cierre.
+- **Evidencia visual:** runner `apps/e2e/development/scheduler-settings.visual.spec.ts`; adjuntos previstos de Empresa, Agenda, Fichas médicas e Integraciones a `1366×768`, y Clientes a `390×844`. No se generaron PNG porque B06 impide iniciar servidor/Chromium.
+- **Diferencias funcionales/visuales y decisiones:** Sitio web y Notificaciones completan los estados pendientes de la referencia con formularios versionados; Integraciones no inventa campos para secretos; Pagos omite `publicKey`/`accessToken`; listas clínicas/de clientes conservan propiedades no editadas; todos los documentos declaran que aún no tienen consumidor operativo. La identidad/sucursales, disponibilidad, POS, engagement, clientes canónicos y encuestas prevalecen.
+- **Brechas o validaciones pendientes:** comparar en viewports RV0; recorrer creación/actualización/recarga y conflicto en las tres capas sobre API/PostgreSQL desechables; inspeccionar respuestas/chunks sin secretos. B06 conserva la infraestructura de evidencia.
+- **Estado Git al cerrar:** cambios RV5 y documentación sin commit; no se aplicaron migraciones, seeds, variables, despliegues ni datos operativos.
+- **Siguiente tarea concreta:** ejecutar la evidencia visual/funcional acumulada RV2–RV5 en un host compatible; después iniciar RV6 conectando Comunicaciones, documentos y encuestas sin activar proveedores reales.

@@ -932,6 +932,7 @@ export interface SchedulerResolvedSettingDto {
     scope: SchedulerSettingScope;
     scopeReferenceId: string;
     version: number;
+    document: Record<string, unknown>;
   }>;
 }
 
