@@ -5,7 +5,6 @@ import type {
   SchedulerOperationalCatalogDto,
   SchedulerScheduleBlockDto,
 } from "@cosmetics/types";
-import type { CommerceOperatingHours } from "./commerce-operating-hours";
 import type {
   AvailabilityBlock,
   Booking,
@@ -13,6 +12,97 @@ import type {
   Professional,
   ServiceOption,
 } from "./scheduler-presentation";
+
+export interface SchedulerOperatingDay {
+  day: string;
+  enabled: boolean;
+  open: string;
+  close: string;
+}
+
+export interface SchedulerOperatingHours {
+  commerceId: string;
+  is24Hours: boolean;
+  schedule: SchedulerOperatingDay[];
+}
+
+function schedulerTimeToMinutes(value: string): number {
+  const [hours = "0", minutes = "0"] = value.split(":");
+  return Number(hours) * 60 + Number(minutes);
+}
+
+function schedulerMinutesToTime(totalMinutes: number): string {
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return `${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}`;
+}
+
+function schedulerOperatingWindow(config: SchedulerOperatingHours, date: Date) {
+  if (config.is24Hours) {
+    return {
+      enabled: true,
+      is24Hours: true,
+      openMinutes: 0,
+      closeMinutes: 1_440,
+    };
+  }
+  const day = config.schedule[(date.getDay() + 6) % 7];
+  if (!day?.enabled) {
+    return {
+      enabled: false,
+      is24Hours: false,
+      openMinutes: 0,
+      closeMinutes: 0,
+    };
+  }
+  return {
+    enabled: true,
+    is24Hours: false,
+    openMinutes: schedulerTimeToMinutes(day.open),
+    closeMinutes: schedulerTimeToMinutes(day.close),
+  };
+}
+
+export function isOutsideSchedulerOperatingHours(
+  config: SchedulerOperatingHours,
+  date: Date,
+  start: string,
+  end: string,
+): boolean {
+  const window = schedulerOperatingWindow(config, date);
+  if (!window.enabled) return true;
+  if (window.is24Hours) return false;
+  return (
+    schedulerTimeToMinutes(start) < window.openMinutes ||
+    schedulerTimeToMinutes(end) > window.closeMinutes
+  );
+}
+
+export function getSchedulerCalendarRange(
+  config: SchedulerOperatingHours,
+  dates: Date[],
+  slotMinutes = 60,
+): { startMinutes: number; endMinutes: number; slots: string[] } | null {
+  const enabledWindows = dates
+    .map((date) => schedulerOperatingWindow(config, date))
+    .filter((window) => window.enabled);
+  if (enabledWindows.length === 0) return null;
+
+  const startMinutes = Math.min(
+    ...enabledWindows.map((window) => window.openMinutes),
+  );
+  const endMinutes = Math.max(
+    ...enabledWindows.map((window) => window.closeMinutes),
+  );
+  const slots = Array.from(
+    {
+      length: Math.max(0, Math.ceil((endMinutes - startMinutes) / slotMinutes)),
+    },
+    (_, index) => schedulerMinutesToTime(startMinutes + index * slotMinutes),
+  );
+
+  return { startMinutes, endMinutes, slots };
+}
 
 export type SchedulerAgendaColumnKind = "PROFESSIONAL" | "RESOURCE" | "QUEUE";
 
@@ -539,7 +629,7 @@ export function buildSchedulerCanonicalOperatingHours(
   catalog: SchedulerOperationalCatalogDto,
   branchId: string,
   visibleDates: Date[],
-): CommerceOperatingHours {
+): SchedulerOperatingHours {
   const branch = catalog.branches.find(
     (candidate) => candidate.branchId === branchId,
   );

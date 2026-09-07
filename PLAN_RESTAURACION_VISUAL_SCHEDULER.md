@@ -4,7 +4,7 @@
 > Rama inspeccionada: `feature/scheduler`.
 > Referencia visual aprobada por el PO, indicada por el usuario: `e9077ddad945325b1a132962ce0c2fcd9ae7f74a`.
 > HEAD al redactar el plan: `9784c1b222dc2aa69cb304a5b492eeb1786ac980`.
-> Estado: RV0–RV7 implementadas con validación visual/funcional pendiente; RV8 pendiente.
+> Estado: RV0–RV8 implementadas con validación visual/funcional pendiente.
 
 ## 1. Objetivo y acuerdo de alcance
 
@@ -25,6 +25,8 @@ RV5 quedó implementada el 6 de septiembre de 2026: Configuraciones sustituye el
 RV6 quedó implementada el 6 de septiembre de 2026: Encuestas, Consentimientos y Comunicaciones recuperan sus paneles aprobados sobre snapshots versionados, servicios canónicos, storage privado, preferencias de contacto y outbox real. Encolado, aceptación del proveedor, entrega y lectura son estados distintos; sólo `FAILED` admite reintento manual y ningún control activa el proveedor. Consentimientos cubre versiones, asignación, firma/revocación y URLs efímeras con autorización; Clientes integra expediente médico cifrado y soportes con autorizaciones independientes y purga temporal. Tokens/respuestas permanecen fuera de Administración y sus métricas continúan en RV7. Evidencia: `docs/SCHEDULER_RV6_ENGAGEMENT_RESTORATION.md`. Capturas, storage, proveedor sandbox y recorridos HTTP/PostgreSQL permanecen pendientes por B06.
 
 RV7 quedó implementada el 6 de septiembre de 2026: Reportes recupera la jerarquía, filtros, tarjetas, series, rankings, tablas y navegación aprobadas sobre los doce datasets canónicos. Pantalla pagina hasta `total`; exportación vuelve a construir el conjunto completo mediante `/exports` y produce CSV/XLSX/PDF después de autorizar y auditar. Locales, Mensajería móvil, Métricas y Servicios dejan de redirigir; los desgloses por local usan `branchId` canónico y alcance de bootstrap. Resumen, Ventas, Encuestas y Recordatorios declaran sus límites sin inventar comparación, cuota, ingresos atribuidos o respuestas por pregunta. Evidencia: `docs/SCHEDULER_RV7_REPORTS_RESTORATION.md`. Capturas y paridad HTTP/PostgreSQL permanecen pendientes por B06.
+
+RV8 quedó implementada el 6 de septiembre de 2026: las 19 entradas de App Router tienen un guard automatizado contra rutas faltantes, imports rotos, mocks alcanzables y persistencia operativa local. Se retiraron 36 archivos históricos sin consumidores, se eliminó la última clave local de horarios, se agregó revalidación de sesión/permisos y se impide que un bootstrap tardío restaure otra identidad. Los workspaces se dividen por módulo, reduciendo el JS inicial operativo de 359 kB a 89.7–89.8 kB; los generadores de exportación siguen diferidos. Se documentó la candidata y el rollback exclusivamente frontend. Evidencia: `docs/SCHEDULER_RV8_RELEASE_CANDIDATE.md`. Los recorridos Playwright, comparación integral y escritura/concurrencia sobre API/PostgreSQL permanecen pendientes por B06; la fase no está validada ni autoriza despliegue.
 
 Este plan complementa `PLAN_BACKEND_SCHEDULER.md`: sus contratos, seguridad y reglas de negocio siguen vigentes. Corrige la presentación introducida durante su integración frontend. Las fases de este documento usan el prefijo **RV** para diferenciarlas de las fases del plan backend.
 
@@ -69,7 +71,7 @@ El backend devuelve citas, profesionales, recursos, horarios, estados y versione
 | RV5  | Formularios de Configuraciones                          | RV4          | Implementada; validación pendiente |
 | RV6  | Comunicaciones, documentos y encuestas                  | RV5          | Implementada; validación pendiente |
 | RV7  | Reportes y exportaciones                                | RV6          | Implementada; validación pendiente |
-| RV8  | Verificación integral, limpieza y entrega               | RV2–RV7      | Pendiente                          |
+| RV8  | Verificación integral, limpieza y entrega               | RV2–RV7      | Implementada; validación pendiente |
 
 Estados permitidos: `Pendiente`, `En curso`, `Implementada; validación pendiente`, `Validada`, `Bloqueada`. Registrar el motivo exacto de un bloqueo y el trabajo independiente que puede continuar. Los estados de módulos pueden ser diferentes dentro de una fase.
 
@@ -230,13 +232,15 @@ Estado RV7 (6 de septiembre de 2026): implementación local completa y checks t�
 
 ### RV8 — Verificación integral, limpieza y entrega
 
-- [ ] Revisar toda la matriz RV0 y los enlaces profundos. Confirmar que ninguna ruta visible escapa a la restauración o vuelve a servir datos mock.
+- [x] Revisar toda la matriz RV0 y los enlaces profundos. Confirmar que ninguna ruta visible escapa a la restauración o vuelve a servir datos mock.
 - [ ] Ejecutar comparaciones visuales finales y recorridos integrados entre Agenda, Clientes, Administración, Configuraciones y Reportes. Registrar diferencias intencionales y su decisión.
 - [ ] Verificar login/logout, sesión vencida, pérdida de permisos, alcance por sucursal/profesional, doble envío, conflictos y ausencia de datos sensibles al cambiar usuario.
-- [ ] Retirar componentes/workspaces simplificados sólo después de comprobar que ya no tienen consumidores ni funciones exclusivas pendientes. Conservar helpers y contratos útiles; los fixtures quedan aislados en pruebas/desarrollo.
-- [ ] Revisar imports transitivos y chunks de una sesión normal, además de accesos a `localStorage`: no deben cargar ni persistir datos operativos simulados.
-- [ ] Ejecutar las comprobaciones técnicas aplicables, actualizar `CLAUDE.md` y enlazar evidencia de cierre desde este plan.
-- [ ] Documentar la versión candidata y una reversión de frontend a un commit conocido compatible, sin revertir migraciones ni cambiar el proveedor POS para corregir un problema visual.
+- [x] Retirar componentes/workspaces simplificados sólo después de comprobar que ya no tienen consumidores ni funciones exclusivas pendientes. Conservar helpers y contratos útiles; los fixtures quedan aislados en pruebas/desarrollo.
+- [x] Revisar imports transitivos y chunks de una sesión normal, además de accesos a `localStorage`: no deben cargar ni persistir datos operativos simulados.
+- [x] Ejecutar las comprobaciones técnicas aplicables, actualizar `CLAUDE.md` y enlazar evidencia de cierre desde este plan.
+- [x] Documentar la versión candidata y una reversión de frontend a un commit conocido compatible, sin revertir migraciones ni cambiar el proveedor POS para corregir un problema visual.
+
+Estado RV8 (6 de septiembre de 2026): implementación local completa. El guard RV8 cubre las 19 páginas, el grafo fuente, almacenamiento y carga diferida; sesión vencida y revocación de permisos tienen recorridos E2E descubiertos. Las dos tareas integrales permanecen abiertas porque B06 impide ejecutar Chromium/servidores y no ofrece PostgreSQL desechable. Ver `docs/SCHEDULER_RV8_RELEASE_CANDIDATE.md`; no marcar `Validada` ni desplegar hasta revisar esa evidencia.
 
 **Criterio de salida:** presentación aprobada recuperada en todo el alcance acordado, backend integrado, evidencia visual/funcional disponible y sin brechas ocultas. El despliegue por ambiente es un paso operativo separado sujeto al runbook y a su autorización vigente.
 
@@ -289,7 +293,7 @@ La auditoría identificó estos puntos a verificar, no incompatibilidades visual
 | B03 | Formularios administrativos, archivos masivos y capacidades mock sin contrato equivalente | RV4 restaura CRUDs canónicos y registra sin simular identidad de sucursal, precios/categorías masivos, candidatos de complementos, validación anticipada de uso de recursos y operación financiera de gift cards; Clientes mantiene importación/audiencias/reporte de fichas y RV6 resuelve engagement, expediente médico y documentos | Parcial RV3/RV4/RV6; resolver contratos comerciales  |
 | B04 | Persistencia JSON frente a efectos reales de Configuraciones                              | RV5 documenta cada campo, identifica la ausencia de consumidores y la muestra en UI; conectar efectos futuros exige contrato y pruebas propias                                                                                                                                                                                         | Resuelta RV5; consumidores futuros fuera de alcance  |
 | B05 | KPIs, series y formatos históricos frente a los datasets actuales                         | RV7 mapea los doce datasets, pagina pantalla hasta `total` y genera CSV/XLSX/PDF desde `/exports`; comparación/paridad real pendiente por B06                                                                                                                                                                                          | Resuelta en código RV7; validación externa pendiente |
-| B06 | Ambiente reproducible para referencia y pruebas de escritura                              | Build aislado disponible; Chromium, puertos y PostgreSQL desechable no disponibles en sandbox                                                                                                                                                                                                                                          | Diagnóstico RV0; captura/BD pendientes               |
+| B06 | Ambiente reproducible para referencia y pruebas de escritura                              | RV8 confirma build, grafo y chunks; Chromium, puertos y PostgreSQL desechable siguen no disponibles en sandbox                                                                                                                                                                                                                         | RV0/RV8; captura, E2E y BD pendientes                |
 | B07 | Cobertura real de rutas profundas y redirecciones                                         | RV7 monta Locales, Mensajería, Métricas y Servicios; agrega rutas dinámicas por `branchId` y conserva `opatra-mexico` sólo como alias al selector                                                                                                                                                                                      | Resuelta RV7                                         |
 | B08 | El fixture permite mutar pagos y borrar historial financiero                              | Conservar POS como autoridad y restaurar estas superficies sólo en lectura                                                                                                                                                                                                                                                             | Resuelta en Agenda RV2 y Clientes RV3                |
 | B09 | La referencia redirige login y expone códigos mock                                        | Conservar login JWT, permisos y formulario seguro actual                                                                                                                                                                                                                                                                               | Decisión de seguridad RV0; transversal               |
@@ -449,3 +453,17 @@ Solicitud sugerida para otra sesión:
 - **Brechas o validaciones pendientes:** comparar seis vistas contra la referencia; recorrer paginación/paridad export, CSV/XLSX/PDF, autorización de un uso, permisos parciales, alcance por local, vacíos y doble conteo sobre API/PostgreSQL desechables. B06 conserva la infraestructura pendiente.
 - **Estado Git al cerrar:** cambios RV7 y documentación sin commit; no se modificaron backend, Prisma, migraciones, seeds, variables, despliegues ni datos operativos.
 - **Siguiente tarea concreta:** ejecutar evidencia visual/funcional acumulada RV2–RV7 en un host compatible; después iniciar RV8 con la matriz completa, rutas profundas, chunks y limpieza final.
+
+### Bitácora RV8 — 6 de septiembre de 2026
+
+- **Fecha y fase:** 6 de septiembre de 2026, RV8.
+- **Rama y HEAD:** `feature/scheduler`, base `9706a9fd125759d0c2a37b36d76d0738d0d8e1e0`.
+- **Estado:** Implementada; validación visual y recorridos integrados HTTP/PostgreSQL pendientes por B06.
+- **Tareas completadas:** revisión de las 19 entradas RV0 y rutas profundas; guard automatizado del grafo productivo; eliminación de rama placeholder; retiro de 36 archivos históricos sin consumidores; fixtures confinados a E2E; horarios visuales derivados sólo del catálogo canónico; revalidación de sesión/permisos cada 30 segundos y al recuperar foco/visibilidad/cambiar token; descarte de bootstrap tardío; casos E2E para `401` y revocación; separación dinámica de cinco workspaces; auditoría de chunks y almacenamiento; candidata y rollback frontend documentados.
+- **Archivos modificados:** sesión y adaptador/grid de Agenda; entradas/página profunda de Scheduler; spec E2E; dos suites RV8; eliminación de workspaces/helpers/mocks huérfanos; `CLAUDE.md`, este plan, baseline y `docs/SCHEDULER_RV8_RELEASE_CANDIDATE.md`.
+- **Pruebas ejecutadas y resultado:** `pnpm --filter @cosmetics/scheduler test`, correcto (8 suites); `type-check`, correcto; `lint`, correcto con cuatro advertencias históricas de `<img>`; `build`, correcto (21 páginas); JS inicial operativo reducido de 359 kB a 89.7–89.8 kB; type-check/lint E2E correctos; descubrimiento Playwright correcto (17 pruebas con dependencias); búsqueda de mocks/clave de horarios en chunks, sin coincidencias; Prettier y `git diff --check`, correctos al cierre.
+- **Evidencia visual:** runners RV0 y RV2–RV7 inventariados en el runbook RV8; no se generaron PNG porque B06 impide iniciar servidor/Chromium.
+- **Diferencias funcionales/visuales y decisiones:** la carga diferida muestra skeletons y no cambia la presentación final; las funciones históricas sin contrato permanecen como B03/B05 y recuperables desde `e9077dd`, no como código operativo muerto; `auth_token` y `slotMinutes` son las únicas persistencias autorizadas; la candidata aún no tiene SHA porque los cambios no están commiteados.
+- **Brechas o validaciones pendientes:** ejecutar comparación integral en viewports RV0, los dos recorridos E2E RV8 y los flujos de escritura, concurrencia, permisos, storage, proveedor y exportación sobre infraestructura desechable. No desplegar ni marcar RV0–RV8 validadas hasta revisar la evidencia.
+- **Estado Git al cerrar:** cambios RV8 y documentación sin commit; no se modificaron API, Prisma, migraciones, seeds, variables, despliegues ni datos operativos.
+- **Siguiente tarea concreta:** ejecutar en un host compatible la referencia y los runners RV2–RV8; revisar diferencias con el PO y recorrer API/PostgreSQL 16 desechable. Si todo pasa, registrar artefactos y SHA real, marcar las fases `Validada` y tramitar el despliegue por el runbook operativo separado.

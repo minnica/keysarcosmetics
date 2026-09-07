@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import type {
@@ -19,6 +20,10 @@ import {
   canAccessSchedulerScreen,
   type SchedulerScreenId,
 } from "./scheduler-access";
+import {
+  schedulerSessionRefreshIntervalMs,
+  shouldAcceptSchedulerSessionResponse,
+} from "./scheduler-session-state";
 
 type SessionStatus = "loading" | "authenticated" | "unauthenticated";
 
@@ -49,25 +54,44 @@ export function SchedulerSessionProvider({
     null,
   );
   const [status, setStatus] = useState<SessionStatus>("loading");
+  const requestRef = useRef(0);
 
   const refresh = useCallback(async () => {
     const token =
       typeof window === "undefined" ? null : localStorage.getItem("auth_token");
+    const request = ++requestRef.current;
     if (!token) {
       setBootstrap(null);
       setStatus("unauthenticated");
       return;
     }
     try {
-      setBootstrap(await schedulerApi.bootstrap());
+      const nextBootstrap = await schedulerApi.bootstrap();
+      const currentToken =
+        typeof window === "undefined"
+          ? null
+          : localStorage.getItem("auth_token");
+      if (
+        !shouldAcceptSchedulerSessionResponse({
+          request,
+          currentRequest: requestRef.current,
+          token,
+          currentToken,
+        })
+      ) {
+        return;
+      }
+      setBootstrap(nextBootstrap);
       setStatus("authenticated");
     } catch {
+      if (request !== requestRef.current) return;
       setBootstrap(null);
       setStatus("unauthenticated");
     }
   }, []);
 
   const logout = useCallback(() => {
+    requestRef.current += 1;
     schedulerApi.logout();
     setBootstrap(null);
     setStatus("unauthenticated");
@@ -76,6 +100,31 @@ export function SchedulerSessionProvider({
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    if (status !== "authenticated") return;
+
+    const revalidate = () => void refresh();
+    const revalidateVisible = () => {
+      if (document.visibilityState === "visible") revalidate();
+    };
+    const revalidateToken = (event: StorageEvent) => {
+      if (event.key === "auth_token") revalidate();
+    };
+    const interval = window.setInterval(
+      revalidate,
+      schedulerSessionRefreshIntervalMs,
+    );
+    window.addEventListener("focus", revalidate);
+    window.addEventListener("storage", revalidateToken);
+    document.addEventListener("visibilitychange", revalidateVisible);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", revalidate);
+      window.removeEventListener("storage", revalidateToken);
+      document.removeEventListener("visibilitychange", revalidateVisible);
+    };
+  }, [refresh, status]);
 
   const value = useMemo<SchedulerSessionValue>(
     () => ({

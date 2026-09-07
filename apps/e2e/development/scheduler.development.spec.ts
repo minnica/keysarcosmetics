@@ -112,4 +112,47 @@ test.describe("Scheduler autenticado en development", () => {
   test("carga Reportes sin emitir escrituras", async ({ page }) => {
     await openAuthenticatedPage(page, "/reportes", "Resumen de operación");
   });
+
+  test("cierra la sesión vencida al revalidar una pestaña abierta", async ({
+    page,
+  }) => {
+    await openAuthenticatedPage(page, "/", "Agenda");
+    await page.route("**/api/scheduler/bootstrap", (route) =>
+      route.fulfill({
+        status: 401,
+        json: { success: false, message: "Sesión vencida" },
+      }),
+    );
+
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+
+    await expect(page).toHaveURL(/\/login\?next=%2F$/);
+    await expect
+      .poll(() =>
+        page.evaluate(() => window.localStorage.getItem("auth_token")),
+      )
+      .toBeNull();
+  });
+
+  test("retira la pantalla cuando la sesión pierde todos sus permisos", async ({
+    page,
+  }) => {
+    await openAuthenticatedPage(page, "/", "Agenda");
+    await page.route("**/api/scheduler/bootstrap", async (route) => {
+      const response = await route.fetch();
+      const payload = await response.json();
+      await route.fulfill({
+        response,
+        json: {
+          ...payload,
+          data: { ...payload.data, permissions: [] },
+        },
+      });
+    });
+
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+
+    await expect(page.getByText("Acceso pendiente")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Agenda" })).toHaveCount(0);
+  });
 });
