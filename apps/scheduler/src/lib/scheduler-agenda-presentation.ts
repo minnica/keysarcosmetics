@@ -5,6 +5,14 @@ import type {
   SchedulerOperationalCatalogDto,
   SchedulerScheduleBlockDto,
 } from "@cosmetics/types";
+import type { CommerceOperatingHours } from "./commerce-operating-hours";
+import type {
+  AvailabilityBlock,
+  Booking,
+  BookingStatus,
+  Professional,
+  ServiceOption,
+} from "./scheduler-presentation";
 
 export type SchedulerAgendaColumnKind = "PROFESSIONAL" | "RESOURCE" | "QUEUE";
 
@@ -116,6 +124,34 @@ export const schedulerAppointmentStatusLabels: Record<
   ATTENDED: "Atendida",
   NO_SHOW: "No asistió",
   CANCELED: "Cancelada",
+};
+
+export const schedulerCanonicalToBookingStatus: Record<
+  SchedulerAppointmentStatus,
+  BookingStatus
+> = {
+  PENDING: "pending",
+  RESERVED: "reserved",
+  CONFIRMED: "confirmed",
+  ARRIVED: "arrived",
+  WAITING: "waiting",
+  ATTENDED: "attended",
+  NO_SHOW: "no-show",
+  CANCELED: "canceled",
+};
+
+export const schedulerBookingToCanonicalStatus: Record<
+  BookingStatus,
+  SchedulerAppointmentStatus
+> = {
+  pending: "PENDING",
+  reserved: "RESERVED",
+  confirmed: "CONFIRMED",
+  arrived: "ARRIVED",
+  waiting: "WAITING",
+  attended: "ATTENDED",
+  "no-show": "NO_SHOW",
+  canceled: "CANCELED",
 };
 
 function zonedParts(value: string, timezone: string) {
@@ -305,4 +341,259 @@ export function buildSchedulerAgendaPresentation({
     ),
     blocks: blocks.map(adaptSchedulerBlock),
   };
+}
+
+const columnAccents = [
+  "#c3a583",
+  "#b994a8",
+  "#89a7a0",
+  "#95a8bd",
+  "#b9a77d",
+  "#aa9387",
+];
+
+function shortName(value: string): string {
+  return value
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0]?.toLocaleUpperCase("es-MX") ?? "")
+    .join("");
+}
+
+export function buildSchedulerVisualColumns(
+  presentation: SchedulerAgendaPresentation,
+  commerceId: string,
+  branchId: string,
+): Professional[] {
+  return presentation.columns
+    .filter((column) => column.active)
+    .map((column, index) => ({
+      id: column.id,
+      ...(column.entityId ? { entityId: column.entityId } : {}),
+      kind: column.kind === "RESOURCE" ? "RESOURCE" : "PROFESSIONAL",
+      commerceIds: [commerceId],
+      branchIds: [branchId],
+      name: column.label,
+      shortName: shortName(column.label),
+      avatar: column.avatarUrl ?? "",
+      accent: columnAccents[index % columnAccents.length] ?? columnAccents[0]!,
+    }));
+}
+
+export function buildSchedulerVisualBookings(
+  presentation: SchedulerAgendaPresentation,
+): Booking[] {
+  return presentation.appointments.flatMap((appointment) => {
+    const columnIds = appointment.columnIds.length
+      ? appointment.columnIds
+      : ["queue:unassigned"];
+    return columnIds.map((columnId) => ({
+      id: `${appointment.id}:${columnId}`,
+      sourceId: appointment.id,
+      version: appointment.version,
+      clientId: appointment.customerId,
+      branchId: appointment.branchId,
+      date: appointment.localDate,
+      customerName: appointment.customerName,
+      serviceName: appointment.services
+        .map((service) => service.serviceName)
+        .join(" · "),
+      professionalId: columnId,
+      start: appointment.localStart,
+      end: appointment.localEnd,
+      status: schedulerCanonicalToBookingStatus[appointment.status],
+      phone: appointment.contact.phone ?? "",
+      ...(appointment.contact.email
+        ? { customerEmail: appointment.contact.email }
+        : {}),
+      ...(appointment.canonical.notes
+        ? { notes: appointment.canonical.notes }
+        : {}),
+      paymentLabel:
+        appointment.totalPrice == null
+          ? "Precio no disponible"
+          : "Importe de la cita",
+      totalPrice: appointment.totalPrice,
+      ...(appointment.totalPrice == null
+        ? {}
+        : { purchaseAmount: appointment.totalPrice }),
+    }));
+  });
+}
+
+function blockColumnIds(
+  block: SchedulerAgendaBlock,
+  columns: SchedulerAgendaColumn[],
+): string[] {
+  return block.columnIds.length
+    ? block.columnIds
+    : columns.filter((column) => column.active).map((column) => column.id);
+}
+
+export function buildSchedulerVisualBlocks(
+  presentation: SchedulerAgendaPresentation,
+  catalog: SchedulerOperationalCatalogDto,
+): AvailabilityBlock[] {
+  const persisted = presentation.blocks
+    .filter((block) => block.status === "ACTIVE")
+    .flatMap((block) =>
+      blockColumnIds(block, presentation.columns).map((columnId) => ({
+        id: `${block.id}:${columnId}`,
+        sourceId: block.id,
+        branchId: block.branchId,
+        date: block.localDate,
+        professionalId: columnId,
+        start: block.localStart,
+        end: block.localEnd,
+        label: block.reason,
+        variant: "blocked" as const,
+      })),
+    );
+
+  const branchProfileId = presentation.columns[0]?.branchProfileId;
+  if (!branchProfileId) return persisted;
+  const exceptions = catalog.availabilityExceptions
+    .filter(
+      (exception) =>
+        exception.branchProfileId === branchProfileId &&
+        exception.kind === "UNAVAILABLE" &&
+        exception.effectiveTo === null,
+    )
+    .flatMap((exception) => {
+      const columns =
+        exception.ownerType === "BRANCH"
+          ? presentation.columns.filter((column) => column.active)
+          : presentation.columns.filter(
+              (column) =>
+                column.entityId === exception.ownerId &&
+                column.kind === exception.ownerType,
+            );
+      return columns.map((column) => ({
+        id: `exception:${exception.id}:${column.id}`,
+        sourceId: exception.id,
+        branchId:
+          catalog.branches.find((branch) => branch.id === branchProfileId)
+            ?.branchId ?? "",
+        date: exception.date,
+        professionalId: column.id,
+        start: minutesToTime(exception.startMinute ?? 0),
+        end: minutesToTime(exception.endMinute ?? 24 * 60),
+        label: exception.reason || "No disponible",
+        variant: "unavailable" as const,
+      }));
+    });
+
+  return [...persisted, ...exceptions];
+}
+
+export function buildSchedulerVisualServices(
+  catalog: SchedulerOperationalCatalogDto,
+  branchProfileId: string,
+): ServiceOption[] {
+  return catalog.services
+    .filter(
+      (service) =>
+        service.active && service.branchProfileIds.includes(branchProfileId),
+    )
+    .map((service) => ({
+      id: service.id,
+      name: service.name,
+      durationMinutes: service.durationMinutes,
+      // The operational catalog intentionally has no commercial price.
+      price: 0,
+    }));
+}
+
+const weekdayNames = [
+  "Domingo",
+  "Lunes",
+  "Martes",
+  "Miércoles",
+  "Jueves",
+  "Viernes",
+  "Sábado",
+] as const;
+const weekdayKeys = [
+  "SUNDAY",
+  "MONDAY",
+  "TUESDAY",
+  "WEDNESDAY",
+  "THURSDAY",
+  "FRIDAY",
+  "SATURDAY",
+] as const;
+
+function minutesToTime(value: number): string {
+  const safe = Math.max(0, Math.min(24 * 60, value));
+  const hours = Math.floor(safe / 60);
+  const minutes = safe % 60;
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+}
+
+function localDateKey(value: Date): string {
+  return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
+}
+
+export function buildSchedulerCanonicalOperatingHours(
+  catalog: SchedulerOperationalCatalogDto,
+  branchId: string,
+  visibleDates: Date[],
+): CommerceOperatingHours {
+  const branch = catalog.branches.find(
+    (candidate) => candidate.branchId === branchId,
+  );
+  const schedule = weekdayNames
+    .slice(1)
+    .concat(weekdayNames[0])
+    .map((day) => ({ day, enabled: false, open: "00:00", close: "00:00" }));
+  if (!branch) return { commerceId: "", is24Hours: false, schedule };
+
+  for (const date of visibleDates) {
+    const dayName = weekdayNames[date.getDay()]!;
+    const dayKey = weekdayKeys[date.getDay()]!;
+    const target = schedule.find((day) => day.day === dayName);
+    if (!target) continue;
+    const working = catalog.availabilityRules.filter(
+      (rule) =>
+        rule.branchProfileId === branch.id &&
+        rule.ownerType === "BRANCH" &&
+        rule.ownerId === branch.id &&
+        rule.kind === "WORKING" &&
+        rule.weekday === dayKey &&
+        rule.effectiveTo === null,
+    );
+    const dateKey = localDateKey(date);
+    const exceptions = catalog.availabilityExceptions.filter(
+      (exception) =>
+        exception.branchProfileId === branch.id &&
+        exception.ownerType === "BRANCH" &&
+        exception.ownerId === branch.id &&
+        exception.date === dateKey &&
+        exception.effectiveTo === null,
+    );
+    const closesAllDay = exceptions.some(
+      (exception) =>
+        exception.kind === "UNAVAILABLE" &&
+        exception.startMinute === null &&
+        exception.endMinute === null,
+    );
+    if (closesAllDay) continue;
+    const available = exceptions.filter(
+      (exception) => exception.kind === "AVAILABLE",
+    );
+    const windows = [
+      ...working.map((rule) => [rule.startMinute, rule.endMinute] as const),
+      ...available.map(
+        (exception) =>
+          [exception.startMinute ?? 0, exception.endMinute ?? 24 * 60] as const,
+      ),
+    ];
+    if (!windows.length) continue;
+    target.enabled = true;
+    target.open = minutesToTime(Math.min(...windows.map(([start]) => start)));
+    target.close = minutesToTime(Math.max(...windows.map(([, end]) => end)));
+  }
+
+  return { commerceId: branch.commerceId, is24Hours: false, schedule };
 }

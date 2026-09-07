@@ -25,7 +25,14 @@ const {
   adaptSchedulerAppointment,
   adaptSchedulerBlock,
   buildSchedulerAgendaPresentation,
+  buildSchedulerCanonicalOperatingHours,
+  buildSchedulerVisualBookings,
 } = loadSource("scheduler-agenda-presentation");
+const {
+  buildSchedulerAgendaRange,
+  loadAllSchedulerAppointments,
+  schedulerLocalDateTimeToInstant,
+} = loadSource("scheduler-agenda-data");
 const {
   buildSchedulerQueryScope,
   schedulerQueryMatchesInvalidation,
@@ -202,6 +209,148 @@ test("builds typed columns without turning resources into professionals", () => 
   });
   assert.equal(result.columns[0].kind, "PROFESSIONAL");
   assert.equal(result.columns[1].kind, "RESOURCE");
+});
+
+test("projects one canonical appointment into its professional and resource columns", () => {
+  const presentation = buildSchedulerAgendaPresentation({
+    catalog: {
+      commerces: [],
+      branches: [{ id: "branch-profile-1", branchId: "branch-1" }],
+      professionals: [
+        {
+          id: "professional-1",
+          name: "Renata",
+          active: true,
+          branchProfileIds: ["branch-profile-1"],
+        },
+      ],
+      resources: [
+        {
+          id: "resource-1",
+          name: "Cabina 1",
+          active: true,
+          branchProfileId: "branch-profile-1",
+        },
+      ],
+      services: [],
+      specialties: [],
+      groups: [],
+      professionalServices: [],
+      resourceRequirements: [],
+      availabilityRules: [],
+      availabilityExceptions: [],
+    },
+    branchId: "branch-1",
+    appointments: [appointment()],
+    blocks: [],
+  });
+  const bookings = buildSchedulerVisualBookings(presentation);
+  assert.equal(bookings.length, 2);
+  assert.equal(bookings[0].sourceId, "appointment-1");
+  assert.equal(bookings[0].status, "arrived");
+  assert.deepEqual(
+    bookings.map((item) => item.professionalId),
+    ["professional:professional-1", "resource:resource-1"],
+  );
+});
+
+test("derives the visible calendar window from canonical branch rules and closures", () => {
+  const monday = new Date("2026-09-07T12:00:00");
+  const result = buildSchedulerCanonicalOperatingHours(
+    {
+      branches: [
+        {
+          id: "branch-profile-1",
+          branchId: "branch-1",
+          commerceId: "commerce-1",
+        },
+      ],
+      availabilityRules: [
+        {
+          id: "rule-1",
+          branchProfileId: "branch-profile-1",
+          ownerType: "BRANCH",
+          ownerId: "branch-profile-1",
+          kind: "WORKING",
+          weekday: "MONDAY",
+          startMinute: 480,
+          endMinute: 1080,
+          effectiveTo: null,
+        },
+      ],
+      availabilityExceptions: [
+        {
+          id: "exception-1",
+          branchProfileId: "branch-profile-1",
+          ownerType: "BRANCH",
+          ownerId: "branch-profile-1",
+          kind: "UNAVAILABLE",
+          date: "2026-09-07",
+          startMinute: null,
+          endMinute: null,
+          effectiveTo: null,
+        },
+      ],
+    },
+    "branch-1",
+    [monday],
+  );
+  const mondaySchedule = result.schedule.find((day) => day.day === "Lunes");
+  assert.equal(mondaySchedule.enabled, false);
+});
+
+test("loads every appointment page in the visible range", async () => {
+  const requestedPages = [];
+  const items = await loadAllSchedulerAppointments(
+    async ({ page, pageSize }) => {
+      requestedPages.push(page);
+      const count = page === 3 ? 25 : pageSize;
+      return {
+        items: Array.from({ length: count }, (_, index) => ({
+          id: `${page}-${index}`,
+        })),
+        page,
+        pageSize,
+        total: 225,
+      };
+    },
+    {
+      branchId: "branch-1",
+      from: "2026-09-01T00:00:00.000Z",
+      to: "2026-09-10T00:00:00.000Z",
+    },
+  );
+  assert.equal(items.length, 225);
+  assert.deepEqual(requestedPages, [1, 2, 3]);
+});
+
+test("builds a complete Monday-to-Sunday range with UTC guards", () => {
+  const result = buildSchedulerAgendaRange(
+    new Date("2026-09-09T12:00:00"),
+    "week",
+  );
+  assert.deepEqual(Array.from(result.visibleDateKeys), [
+    "2026-09-07",
+    "2026-09-08",
+    "2026-09-09",
+    "2026-09-10",
+    "2026-09-11",
+    "2026-09-12",
+    "2026-09-13",
+  ]);
+  assert.equal(result.from, "2026-09-06T00:00:00.000Z");
+  assert.equal(result.to, "2026-09-15T00:00:00.000Z");
+});
+
+test("converts a branch-local block time to its UTC instant", () => {
+  assert.equal(
+    schedulerLocalDateTimeToInstant(
+      "2026-09-07",
+      "09:30",
+      "America/Mexico_City",
+    ),
+    "2026-09-07T15:30:00.000Z",
+  );
 });
 
 test("query scopes separate users, branches and filters", () => {

@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -15,11 +16,13 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  Input,
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
+  Textarea,
 } from '@cosmetics/ui'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -34,7 +37,8 @@ interface SchedulerBlockDialogProps {
   draft: BlockDraft | null
   onDraftChange: (draft: BlockDraft) => void
   onSave: () => void
-  onDelete?: () => void
+  onDelete?: (reason: string) => void
+  saving?: boolean
 }
 
 export function SchedulerBlockDialog({
@@ -45,7 +49,9 @@ export function SchedulerBlockDialog({
   onDraftChange,
   onSave,
   onDelete,
+  saving = false,
 }: SchedulerBlockDialogProps) {
+  const [cancellationReason, setCancellationReason] = useState('')
   if (!draft) return null
   const currentDraft = draft
 
@@ -126,6 +132,17 @@ export function SchedulerBlockDialog({
                 </Select>
               </div>
 
+              <div className="mt-4 space-y-2">
+                <label className="scheduler-modal-label" htmlFor="scheduler-block-reason">Motivo</label>
+                <Input
+                  className="scheduler-modal-input"
+                  id="scheduler-block-reason"
+                  onChange={(event) => patchDraft({ label: event.target.value })}
+                  placeholder="Ej. mantenimiento de cabina"
+                  value={currentDraft.label ?? ''}
+                />
+              </div>
+
               <div className="mt-4 grid gap-4 lg:grid-cols-2">
                 <div className="rounded-[22px] border border-[rgba(236,209,200,0.88)] bg-white p-4">
                   <div className="mb-3 flex items-center gap-2 text-[var(--scheduler-ink-strong)]">
@@ -204,7 +221,11 @@ export function SchedulerBlockDialog({
 
               <div className="flex flex-col gap-3 sm:flex-row">
                 {isEditing && onDelete ? (
-                  <AlertDialog>
+                  <AlertDialog
+                    onOpenChange={(nextOpen) => {
+                      if (!nextOpen) setCancellationReason('')
+                    }}
+                  >
                     <AlertDialogTrigger asChild>
                       <Button className="scheduler-modal-secondary text-rose-700 hover:bg-rose-50 hover:text-rose-800" variant="outline">
                         <Trash2 className="mr-2 h-4 w-4" />
@@ -215,14 +236,26 @@ export function SchedulerBlockDialog({
                       <AlertDialogHeader>
                         <AlertDialogTitle className="text-[1.25rem] font-semibold">Quitar bloqueo</AlertDialogTitle>
                         <AlertDialogDescription className="text-[0.95rem] leading-6 text-slate-600">
-                          Esta accion vuelve a dejar disponible ese espacio dentro de la agenda local.
+                          El bloqueo se conservará en el historial y la franja volverá a estar disponible.
                         </AlertDialogDescription>
                       </AlertDialogHeader>
+                      <div className="space-y-2">
+                        <label className="scheduler-modal-label" htmlFor="scheduler-block-cancellation-reason">
+                          Motivo de cancelación
+                        </label>
+                        <Textarea
+                          id="scheduler-block-cancellation-reason"
+                          onChange={(event) => setCancellationReason(event.target.value)}
+                          placeholder="Describe por qué se retira el bloqueo"
+                          value={cancellationReason}
+                        />
+                      </div>
                       <AlertDialogFooter>
                         <AlertDialogCancel className="scheduler-modal-secondary mt-0">Cancelar</AlertDialogCancel>
                         <AlertDialogAction
                           className="scheduler-modal-secondary border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 hover:text-rose-800"
-                          onClick={onDelete}
+                          disabled={!cancellationReason.trim() || saving}
+                          onClick={() => onDelete(cancellationReason.trim())}
                         >
                           Quitar bloqueo
                         </AlertDialogAction>
@@ -230,9 +263,9 @@ export function SchedulerBlockDialog({
                     </AlertDialogContent>
                   </AlertDialog>
                 ) : null}
-                <Button className="scheduler-modal-cta" onClick={onSave}>
+                <Button className="scheduler-modal-cta" disabled={saving} onClick={onSave}>
                   <Ban className="mr-2 h-4 w-4" />
-                  {isEditing ? 'Guardar cambios' : 'Guardar bloqueo'}
+                  {saving ? 'Guardando…' : isEditing ? 'Guardar cambios' : 'Guardar bloqueo'}
                 </Button>
               </div>
             </div>

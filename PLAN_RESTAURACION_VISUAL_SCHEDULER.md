@@ -4,7 +4,7 @@
 > Rama inspeccionada: `feature/scheduler`.
 > Referencia visual aprobada por el PO, indicada por el usuario: `e9077ddad945325b1a132962ce0c2fcd9ae7f74a`.
 > HEAD al redactar el plan: `9784c1b222dc2aa69cb304a5b492eeb1786ac980`.
-> Estado: RV0 y RV1 implementadas con validación visual pendiente; RV2–RV8 pendientes.
+> Estado: RV0, RV1 y RV2 implementadas con validación visual/funcional pendiente; RV3–RV8 pendientes.
 
 ## 1. Objetivo y acuerdo de alcance
 
@@ -13,6 +13,8 @@ Recuperar la presentación aprobada de todo `apps/scheduler`, conectándola con 
 RV0 quedó implementada en repositorio el 6 de septiembre de 2026: inventario, matriz, referencia aislada, runner determinista, diagnóstico de infraestructura y brechas están documentados en `docs/SCHEDULER_VISUAL_RESTORATION_BASELINE.md`. El sandbox no permitió iniciar Chromium ni servidores locales, por lo que faltan las capturas antes de validar la fase. No se aplicaron migraciones, seeds, despliegues ni datos operativos.
 
 RV1 quedó implementada el 6 de septiembre de 2026: modelos y adaptadores de presentación, consultas separadas por sesión/sucursal, invalidación, descarte de respuestas obsoletas, limpieza de datos sensibles, entradas sin fallback mock, runner unitario y fixture E2E aislado. Evidencia y comandos: `docs/SCHEDULER_RV1_PRESENTATION_BOUNDARY.md`. La captura E2E permanece pendiente por B06.
+
+RV2 quedó implementada el 6 de septiembre de 2026: la Agenda aprobada vuelve a ser la interfaz operativa y consume catálogo, paginación completa de citas, horarios/excepciones/bloqueos, disponibilidad, clientes y mutaciones canónicas. Integra día/semana/lista, versiones, idempotencia, conflictos y consultas sensibles separadas; finanzas permanece en sólo lectura. Evidencia: `docs/SCHEDULER_RV2_AGENDA_RESTORATION.md`. La comparación visual y los recorridos con API/BD desechable permanecen pendientes por B06.
 
 Este plan complementa `PLAN_BACKEND_SCHEDULER.md`: sus contratos, seguridad y reglas de negocio siguen vigentes. Corrige la presentación introducida durante su integración frontend. Las fases de este documento usan el prefijo **RV** para diferenciarlas de las fases del plan backend.
 
@@ -51,7 +53,7 @@ El backend devuelve citas, profesionales, recursos, horarios, estados y versione
 | ---- | ------------------------------------------------------- | ------------ | ---------------------------------- |
 | RV0  | Inventario y referencia visual reproducible             | Ninguna      | Implementada; validación pendiente |
 | RV1  | Separación de presentación, contratos y datos de prueba | RV0          | Implementada; validación pendiente |
-| RV2  | Agenda aprobada conectada de punta a punta              | RV1          | Pendiente                          |
+| RV2  | Agenda aprobada conectada de punta a punta              | RV1          | Implementada; validación pendiente |
 | RV3  | Clientes, expediente e históricos                       | RV2 validada | Pendiente                          |
 | RV4  | Administración y catálogos                              | RV3          | Pendiente                          |
 | RV5  | Formularios de Configuraciones                          | RV4          | Pendiente                          |
@@ -135,15 +137,17 @@ Estado RV1 (6 de septiembre de 2026): la frontera y su runner están implementad
 
 Objetivo: completar el primer recorrido de punta a punta y usarlo como patrón para los siguientes módulos.
 
-- [ ] Recuperar `SchedulerHeader`, panel de recursos, `SchedulerAgendaGrid`, `SchedulerAgendaList`, tarjetas y diálogos. Aplicar el comportamiento sticky/viewport a la Agenda restaurada en modo normal, sin romper el scroll de otras rutas.
-- [ ] Conectar comercio/sucursal autorizados, columnas de profesionales/recursos, búsqueda, filtros, calendario mensual y vistas día/semana. Cargar todas las páginas necesarias del rango visible; no limitar silenciosamente a las primeras 100 citas.
-- [ ] Dibujar horarios, excepciones, bloqueos, colores de estado, servicios y participantes desde datos canónicos. No fijar el horario operativo a los ejemplos del baseline.
-- [ ] Integrar búsqueda/selección de cliente y el alta necesaria para el flujo de nueva cita mediante API. La restauración completa de Clientes se realiza en RV3.
-- [ ] Conectar creación, edición, movimiento, cancelación, transiciones y creación/edición/cancelación de bloqueos desde los diálogos aprobados. Sustituir los `window.prompt` de la vista simplificada por formularios consistentes con esos diálogos.
-- [ ] Mantener versiones, idempotencia y manejo de respuestas `401`, `403`, `409`, errores de red y reintentos. Recalcular/refrescar disponibilidad tras mutaciones.
-- [ ] Integrar consulta autorizada de ficha e históricos desde las tarjetas, reutilizando la capa de Clientes; los pagos siguen siendo de sólo lectura.
+- [x] Recuperar `SchedulerHeader`, panel de recursos, `SchedulerAgendaGrid`, `SchedulerAgendaList`, tarjetas y diálogos. Aplicar el comportamiento sticky/viewport a la Agenda restaurada en modo normal, sin romper el scroll de otras rutas.
+- [x] Conectar comercio/sucursal autorizados, columnas de profesionales/recursos, búsqueda, filtros, calendario mensual y vistas día/semana. Cargar todas las páginas necesarias del rango visible; no limitar silenciosamente a las primeras 100 citas.
+- [x] Dibujar horarios, excepciones, bloqueos, colores de estado, servicios y participantes desde datos canónicos. No fijar el horario operativo a los ejemplos del baseline.
+- [x] Integrar búsqueda/selección de cliente y el alta necesaria para el flujo de nueva cita mediante API. La restauración completa de Clientes se realiza en RV3.
+- [x] Conectar creación, edición, movimiento, cancelación, transiciones y creación/edición/cancelación de bloqueos desde los diálogos aprobados. Sustituir los `window.prompt` de la vista simplificada por formularios consistentes con esos diálogos.
+- [x] Mantener versiones, idempotencia y manejo de respuestas `401`, `403`, `409`, errores de red y reintentos. Recalcular/refrescar disponibilidad tras mutaciones.
+- [x] Integrar consulta autorizada de ficha e históricos desde las tarjetas, reutilizando la capa de Clientes; los pagos siguen siendo de sólo lectura.
 - [ ] Comparar visualmente filtros abiertos/cerrados, cuatro columnas y muchas columnas, día/semana/lista, modales, estados vacíos y pantallas pequeñas con la referencia.
 - [ ] Verificar contra API y BD de prueba: crear → recargar → editar/mover → cambiar estado → cancelar; bloquear → editar → cancelar; dos sesiones y conflicto de versión/capacidad.
+
+Estado RV2 (6 de septiembre de 2026): implementación local completa y checks técnicos correctos. Las dos tareas de evidencia permanecen abiertas porque el sandbox no permite iniciar servidor/Chromium ni ofrece PostgreSQL desechable. Ver `docs/SCHEDULER_RV2_AGENDA_RESTORATION.md`; no marcar `Validada` hasta ejecutar y revisar ambos recorridos en un host compatible.
 
 **Criterio de salida:** Agenda recuperada visualmente y recorridos persistentes verificados. La semana no usa `schedulerWeekBookings`. Las brechas de Agenda deben quedar resueltas o aceptadas explícitamente como pendientes antes de declarar validada la fase.
 
@@ -250,7 +254,7 @@ pnpm --filter @cosmetics/e2e type-check
 pnpm --filter @cosmetics/e2e lint
 ```
 
-Registrar en la fase el comando exacto de cualquier nueva suite y sus prerrequisitos; no citar `pnpm --filter @cosmetics/scheduler test` como existente. Conservar `.next-dev` para desarrollo y `.next` para build según la configuración vigente.
+Registrar en la fase el comando exacto de cualquier nueva suite y sus prerrequisitos. Desde RV1 existe `pnpm --filter @cosmetics/scheduler test`; conservar `.next-dev` para desarrollo y `.next` para build según la configuración vigente.
 
 Si se autoriza modificar paquetes compartidos o API, añadir sus comprobaciones y pruebas de consumidores afectados. Para API/Prisma seguir además las validaciones de `CLAUDE.md` y el plan backend. Un cambio sólo documental requiere revisión de enlaces, coherencia del plan y `git diff --check`, sin reconstruir la app.
 
@@ -260,14 +264,14 @@ La auditoría identificó estos puntos a verificar, no incompatibilidades visual
 
 | ID  | Punto                                                                                     | Próxima acción                                                                                | Estado                                          |
 | --- | ----------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- | ----------------------------------------------- |
-| B01 | Teléfono, precio, avatar y detalles por tarjeta no están todos en el DTO de cita          | Usar consulta autorizada/agregada; evitar N+1                                                 | Modelo opcional listo RV1; origen pendiente RV2 |
-| B02 | Pendientes sin profesional/recurso asignado                                               | El validador exige al menos un profesional por servicio; decidir si se amplía el contrato     | Confirmada RV0; decisión RV2/backend            |
+| B01 | Teléfono, precio, avatar y detalles por tarjeta no están todos en el DTO de cita          | Ficha autorizada bajo demanda; definir contrato agregado para precio/avatar sin N+1            | Parcial RV2; precio/avatar agregados pendientes |
+| B02 | Pendientes sin profesional/recurso asignado                                               | El validador exige al menos un profesional por servicio; decidir si se amplía el contrato     | RV2 no inventa cola; decisión backend pendiente |
 | B03 | Formularios administrativos, archivos masivos y capacidades mock sin contrato equivalente | Inventario por acción disponible en baseline; definir ampliación o limitación explícita       | Clasificada RV0; resolver RV3/RV4/RV6           |
 | B04 | Persistencia JSON frente a efectos reales de Configuraciones                              | No se encontraron consumidores operativos de los documentos; mapear cada campo                | Confirmada RV0; resolver RV5                    |
 | B05 | KPIs, series y formatos históricos frente a los datasets actuales                         | Hay doce datasets y sólo CSV; verificar agrupaciones y formatos                               | Clasificada RV0; resolver RV7                   |
 | B06 | Ambiente reproducible para referencia y pruebas de escritura                              | Build aislado disponible; Chromium, puertos y PostgreSQL desechable no disponibles en sandbox | Diagnóstico RV0; captura/BD pendientes          |
 | B07 | Cobertura real de rutas profundas y redirecciones                                         | Seis rutas redirigen en referencia y HEAD; cinco componentes no están montados                | Confirmada RV0; resolver RV7                    |
-| B08 | El fixture permite mutar pagos y borrar historial financiero                              | Conservar POS como autoridad y restaurar estas superficies sólo en lectura                    | Decisión semántica RV0; aplicar RV2/RV3         |
+| B08 | El fixture permite mutar pagos y borrar historial financiero                              | Conservar POS como autoridad y restaurar estas superficies sólo en lectura                    | Aplicada en Agenda RV2; completar Clientes RV3  |
 | B09 | La referencia redirige login y expone códigos mock                                        | Conservar login JWT, permisos y formulario seguro actual                                      | Decisión de seguridad RV0; transversal          |
 | B10 | `/reportes/ventas` no existe en la referencia                                             | Tratarla como ampliación y aplicar lenguaje visual consistente                                | Clasificada RV0; resolver RV7                   |
 
@@ -312,7 +316,7 @@ Siguiente tarea concreta:
 
 Solicitud sugerida para otra sesión:
 
-> Lee CLAUDE.md y PLAN_RESTAURACION_VISUAL_SCHEDULER.md. Retoma la primera tarea pendiente de la fase RV0, conserva e9077dd como referencia visual y el backend actual como fuente de verdad. Actualiza la matriz, las brechas y la bitácora con la evidencia obtenida.
+> Lee CLAUDE.md y PLAN_RESTAURACION_VISUAL_SCHEDULER.md. Ejecuta la evidencia visual y funcional pendiente de RV2 en un host compatible, conserva e9077dd como referencia visual y el backend actual como fuente de verdad. Si RV2 queda validada, inicia RV3. Actualiza la matriz, las brechas y la bitácora con la evidencia obtenida.
 
 ### Bitácora RV0 — 6 de septiembre de 2026
 
@@ -341,3 +345,17 @@ Solicitud sugerida para otra sesión:
 - **Brechas o validaciones pendientes:** ejecutar captura RV0 y prueba visual RV1 en host con Chromium/servidor; resolver en RV2 la fuente agregada B01, decisión B02 y recorrido completo de Agenda.
 - **Estado Git al cerrar:** cambios de RV1 y documentación sin commit; no se aplicaron migraciones, seeds, despliegues ni datos operativos.
 - **Siguiente tarea concreta:** iniciar RV2 montando `SchedulerHeader`, panel de recursos y `SchedulerAgendaGrid/List` sobre `SchedulerAgendaPresentation`, con paginación completa del rango visible y horarios canónicos.
+
+### Bitácora RV2 — 6 de septiembre de 2026
+
+- **Fecha y fase:** 6 de septiembre de 2026, RV2.
+- **Rama y HEAD:** `feature/scheduler`, base `0264e11ead656bbd9138ed5231ad25cd77ca50c2`.
+- **Estado:** Implementada; validación visual y funcional pendiente por B06.
+- **Tareas completadas:** montaje operativo de la presentación aprobada; comercio/sucursal autorizados; columnas profesional/recurso; búsqueda, filtros, calendario y día/semana/lista; paginación completa; zona IANA; horarios, excepciones y bloqueos canónicos; búsqueda/alta de cliente; disponibilidad de servidor; crear/editar/mover/cancelar/transicionar citas; crear/editar/cancelar bloqueos; conflictos, versiones e idempotencia; ficha, visitas y finanzas con autorizaciones independientes y purga en memoria.
+- **Archivos modificados:** `ApiAgendaWorkspace.tsx`, componentes de `components/scheduler/`, adaptadores/utilidades en `src/lib/`, pruebas unitarias y E2E, `CLAUDE.md`, este plan y `docs/SCHEDULER_RV2_AGENDA_RESTORATION.md`.
+- **Pruebas ejecutadas y resultado:** `pnpm --filter @cosmetics/scheduler type-check`, correcto; `test`, correcto (4 archivos); `lint`, correcto con advertencias históricas fuera de RV2; `build`, correcto (21 páginas); `pnpm --filter @cosmetics/e2e type-check` y `lint`, correctos; descubrimiento Playwright correcto (6 pruebas); `git diff --check`, correcto.
+- **Evidencia visual:** fixture E2E actualizado para catálogo/citas/bloqueos controlados y adjuntos `scheduler-agenda-rv2-calendar-1366x768`/`scheduler-agenda-rv2-list-1366x768`; no se generó imagen porque B06 impide iniciar Chromium/servidor en el sandbox.
+- **Diferencias funcionales/visuales y decisiones:** las acciones históricas de borrar se presentan como cancelaciones con motivo; excepciones se leen y administran desde Administración; la tarjeta no inventa precio/contacto/avatar; citas multi-servicio conservan sus servicios y bloquean su sustitución desde el selector único; finanzas es sólo lectura; no se sintetiza cola sin asignación.
+- **Brechas o validaciones pendientes:** ejecutar comparación en seis viewports; recorrer escrituras, recarga y conflictos con API/PostgreSQL desechable; B01 mantiene precio/avatar agregados pendientes y B02 requiere decisión backend si se desea cola sin profesional.
+- **Estado Git al cerrar:** cambios de RV2 y documentación sin commit; no se modificaron backend, Prisma, migraciones, seeds, variables, despliegues ni datos operativos.
+- **Siguiente tarea concreta:** ejecutar la evidencia RV2 en un host compatible y, tras revisar las diferencias, marcarla `Validada`; RV3 depende de esa validación.

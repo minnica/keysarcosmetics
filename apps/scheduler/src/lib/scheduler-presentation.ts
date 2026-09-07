@@ -26,6 +26,8 @@ export interface BranchOption {
 
 export interface Professional {
   id: string;
+  entityId?: string;
+  kind?: "PROFESSIONAL" | "RESOURCE";
   commerceIds: string[];
   branchIds: string[];
   name: string;
@@ -50,6 +52,8 @@ export interface BookingServiceRecord {
 
 export interface Booking {
   id: string;
+  sourceId?: string;
+  version?: number;
   clientId?: string;
   branchId?: string;
   date?: string;
@@ -66,6 +70,7 @@ export interface Booking {
   purchased?: boolean;
   purchaseType?: BookingPurchaseType;
   purchaseAmount?: number;
+  totalPrice?: number | null;
   tentativePurchaseAmount?: number;
   serviceRecords?: BookingServiceRecord[];
   sessionLabel?: string;
@@ -73,6 +78,7 @@ export interface Booking {
 
 export interface AvailabilityBlock {
   id: string;
+  sourceId?: string;
   branchId?: string;
   date?: string;
   professionalId: string;

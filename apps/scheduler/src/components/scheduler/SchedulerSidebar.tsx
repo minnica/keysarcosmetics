@@ -158,11 +158,11 @@ export function SchedulerSidebar({
             <div className="scheduler-sidebar-card">
               <div className="mb-3 flex items-center justify-between">
                 <div>
-                  <label className="scheduler-label !mb-0">Especialista</label>
-                  <p className="mt-1 text-[0.78rem] uppercase tracking-[0.14em] text-slate-500">Disponibles en esta sucursal</p>
+                  <label className="scheduler-label !mb-0">Recursos de agenda</label>
+                  <p className="mt-1 text-[0.78rem] uppercase tracking-[0.14em] text-slate-500">Profesionales y espacios</p>
                 </div>
                 <Badge className="rounded-full border-0 bg-[rgba(195,165,131,0.12)] px-3 py-1 text-xs font-semibold text-[var(--scheduler-accent-strong)]">
-                  {visibleProfessionalCount} activos
+                  {visibleProfessionalCount} visibles
                 </Badge>
               </div>
 
@@ -170,7 +170,7 @@ export function SchedulerSidebar({
                 <Search className="h-4 w-4 text-slate-400" />
                 <input
                   className="w-full border-0 bg-transparent text-sm text-slate-600 outline-none placeholder:text-slate-400"
-                  placeholder="Buscar especialista"
+                  placeholder="Buscar profesional o recurso"
                   value={professionalQuery}
                   onChange={(event) => onProfessionalQueryChange(event.target.value)}
                 />
@@ -200,7 +200,9 @@ export function SchedulerSidebar({
                       />
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-[0.94rem] font-semibold tracking-[-0.02em] text-slate-800">{professional.name}</p>
-                        <p className="text-[0.92rem] text-slate-400">Disponible hoy</p>
+                        <p className="text-[0.92rem] text-slate-400">
+                          {professional.kind === 'RESOURCE' ? 'Recurso físico' : 'Profesional'}
+                        </p>
                       </div>
                       <div className={isSelected ? 'h-3 w-3 rounded-full bg-[var(--scheduler-accent)]' : 'h-3 w-3 rounded-full bg-slate-200'} />
                     </button>
@@ -208,7 +210,7 @@ export function SchedulerSidebar({
                 })}
                 {professionals.length === 0 ? (
                   <div className="rounded-[22px] border border-dashed border-[rgba(236,209,200,0.92)] bg-[rgba(248,244,239,0.7)] px-4 py-5 text-sm text-slate-500">
-                    No tienes especialistas disponibles en esta sucursal. Revisa sus asignaciones o tus permisos.
+                    No hay profesionales ni recursos disponibles en esta sucursal. Revisa sus asignaciones o tus permisos.
                   </div>
                 ) : null}
               </div>

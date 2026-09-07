@@ -66,9 +66,21 @@ interface SchedulerBookingCardProps {
     tentativeAmount?: number,
   ) => void
   onDeletePaymentHistory: (paymentBookingId: string) => void
+  canWrite?: boolean
+  financialHistoryReadOnly?: boolean
+  destructiveActionLabel?: string
 }
 
-const statusOrder: BookingStatus[] = ['reserved', 'confirmed', 'arrived', 'no-show', 'pending', 'waiting']
+const statusTransitions: Record<BookingStatus, BookingStatus[]> = {
+  pending: ['reserved', 'confirmed'],
+  reserved: ['confirmed', 'arrived', 'no-show'],
+  confirmed: ['arrived', 'no-show'],
+  arrived: ['waiting', 'attended'],
+  waiting: ['attended', 'no-show'],
+  attended: [],
+  'no-show': [],
+  canceled: [],
+}
 
 export function SchedulerBookingCard({
   booking,
@@ -89,6 +101,9 @@ export function SchedulerBookingCard({
   onRevokeFinancialAccess,
   onUpdatePaymentHistory,
   onDeletePaymentHistory,
+  canWrite = true,
+  financialHistoryReadOnly = false,
+  destructiveActionLabel = 'Cancelar reserva',
 }: SchedulerBookingCardProps) {
   const [editingPaymentId, setEditingPaymentId] = useState<string | null>(null)
   const [editingAmount, setEditingAmount] = useState('')
@@ -96,8 +111,10 @@ export function SchedulerBookingCard({
   const statusMeta = bookingStatuses[booking.status]
   const service = getServiceByName(booking.serviceName)
   const hasPayment = typeof booking.purchaseAmount === 'number' && booking.purchaseAmount > 0
-  const isCompleted = Boolean(booking.serviceRecords?.length)
-  const canManagePaymentHistory = canManageSchedulerPaymentHistory(financialProfile)
+  const availableStatusTransitions = statusTransitions[booking.status]
+  const isCompleted = Boolean(booking.serviceRecords?.length) || availableStatusTransitions.length === 0
+  const canEditBooking = ['pending', 'reserved', 'confirmed'].includes(booking.status)
+  const canManagePaymentHistory = !financialHistoryReadOnly && canManageSchedulerPaymentHistory(financialProfile)
 
   return (
     <div className="space-y-3 text-[12px] text-slate-700">
@@ -115,7 +132,11 @@ export function SchedulerBookingCard({
           <p className="mt-2 truncate text-[0.98rem] font-semibold uppercase tracking-[0.01em] text-slate-700">
             {booking.serviceName}
           </p>
-          <p className="mt-1 text-[0.96rem] text-slate-700">{formatMoney(service?.price ?? 0)}</p>
+          <p className="mt-1 text-[0.96rem] text-slate-700">
+            {booking.totalPrice === null
+              ? 'Precio no disponible'
+              : formatMoney(booking.totalPrice ?? service?.price ?? 0)}
+          </p>
           <p className="mt-0.5 text-[0.88rem] capitalize text-slate-600">
             {format(selectedDate, "EEEE d 'de' MMMM", { locale: es })} · {booking.start} a {booking.end} hrs
           </p>
@@ -448,13 +469,13 @@ export function SchedulerBookingCard({
           />
           <span className="font-medium">{statusMeta.label}</span>
         </div>
-        {isCompleted ? (
+        {isCompleted || !canWrite ? (
           <div className="ml-auto inline-flex items-center gap-1.5 text-[0.82rem] font-medium text-slate-600">
             <LockKeyhole className="h-3.5 w-3.5" />
-            Registro finalizado
+            {isCompleted ? 'Registro finalizado' : 'Sólo lectura'}
           </div>
         ) : (
-          statusOrder.map((status) => (
+          availableStatusTransitions.map((status) => (
             <button
               key={status}
               aria-label={`Cambiar estado a ${bookingStatuses[status].label}`}
@@ -472,7 +493,7 @@ export function SchedulerBookingCard({
         )}
       </div>
 
-      {booking.status === 'arrived' && !isCompleted ? (
+      {!financialHistoryReadOnly && booking.status === 'arrived' && !isCompleted ? (
         <div className="rounded-xl bg-[rgba(245,237,228,0.72)] p-3">
           <div className="flex items-center gap-2 text-[0.92rem] font-semibold text-[var(--scheduler-ink-strong)]">
             <ShoppingBag className="h-4 w-4 text-[var(--scheduler-accent-strong)]" />
@@ -520,24 +541,26 @@ export function SchedulerBookingCard({
       ) : null}
 
       <div className="flex flex-wrap items-center justify-end gap-2 border-t border-[rgba(236,209,200,0.88)] pt-3">
-        {!isCompleted ? (
+        {!isCompleted && canWrite ? (
           <div className="mr-auto flex items-center gap-2">
             <button
-              aria-label={`Eliminar cita de ${booking.customerName}`}
+              aria-label={`${destructiveActionLabel} de ${booking.customerName}`}
               className="flex h-9 w-9 items-center justify-center rounded-xl border border-[rgba(236,209,200,0.95)] bg-white text-rose-500 transition hover:bg-rose-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-300"
               onClick={() => onDelete(booking.id)}
               type="button"
             >
               <Trash2 className="h-3.5 w-3.5" />
             </button>
-            <button
-              className="flex items-center gap-2 rounded-xl border border-[rgba(236,209,200,0.95)] bg-white px-3 py-2 text-[var(--scheduler-accent-strong)] transition hover:bg-[rgba(245,237,228,0.85)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(195,165,131,0.55)]"
-              onClick={() => onEdit(booking)}
-              type="button"
-            >
-              <SquarePen className="h-3.5 w-3.5" />
-              <span className="text-[0.9rem] font-medium">Editar</span>
-            </button>
+            {canEditBooking ? (
+              <button
+                className="flex items-center gap-2 rounded-xl border border-[rgba(236,209,200,0.95)] bg-white px-3 py-2 text-[var(--scheduler-accent-strong)] transition hover:bg-[rgba(245,237,228,0.85)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(195,165,131,0.55)]"
+                onClick={() => onEdit(booking)}
+                type="button"
+              >
+                <SquarePen className="h-3.5 w-3.5" />
+                <span className="text-[0.9rem] font-medium">Editar</span>
+              </button>
+            ) : null}
           </div>
         ) : null}
         <button

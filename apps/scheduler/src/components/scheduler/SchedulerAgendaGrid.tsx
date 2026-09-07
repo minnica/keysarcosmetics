@@ -32,6 +32,8 @@ import {
   schedulerCompactLayout,
   schedulerDenseLayout,
   schedulerUltraDenseLayout,
+  type ClientPaymentHistoryEntry,
+  type ClientPurchaseAccount,
   type SchedulerAgendaLayoutMetrics,
   type EmptySlotAction,
 } from './scheduler-utils'
@@ -56,6 +58,7 @@ interface SchedulerAgendaGridProps {
   commerceName: string
   weekDays: Date[]
   weekBookings: Array<Booking & { dayOffset: number }>
+  weekBlocks?: Array<AvailabilityBlock & { dayOffset: number }>
   emptySlotAction: EmptySlotAction | null
   onOpenSlotAction: (professionalId: string, startTime: string) => void
   onCloseSlotAction: () => void
@@ -79,6 +82,10 @@ interface SchedulerAgendaGridProps {
     tentativeAmount?: number,
   ) => void
   onDeletePaymentHistory: (clientBooking: Booking, paymentBookingId: string) => void
+  canWrite?: boolean
+  financialHistoryReadOnly?: boolean
+  clientAccountsByClient?: Record<string, ClientPurchaseAccount>
+  paymentHistoryByClient?: Record<string, ClientPaymentHistoryEntry[]>
 }
 
 interface DayOverlayBooking {
@@ -169,6 +176,7 @@ export function SchedulerAgendaGrid({
   commerceName,
   weekDays,
   weekBookings,
+  weekBlocks = [],
   emptySlotAction,
   onOpenSlotAction,
   onCloseSlotAction,
@@ -187,6 +195,10 @@ export function SchedulerAgendaGrid({
   onRevokeFinancialAccess,
   onUpdatePaymentHistory,
   onDeletePaymentHistory,
+  canWrite = true,
+  financialHistoryReadOnly = false,
+  clientAccountsByClient = {},
+  paymentHistoryByClient = {},
 }: SchedulerAgendaGridProps) {
   const baseAgendaLayout = useAgendaLayoutMetrics()
   const gridViewportRef = useRef<HTMLDivElement>(null)
@@ -446,7 +458,7 @@ export function SchedulerAgendaGrid({
                             : 'scheduler-body-cell-interactive',
                         )}
                       >
-                        {isOccupied ? null : (
+                        {isOccupied || !canWrite ? null : (
                           <button
                             aria-label={`Abrir acciones para ${professional.name} a las ${slot}`}
                             className="scheduler-cell-hitbox"
@@ -473,6 +485,7 @@ export function SchedulerAgendaGrid({
                   style={style}
                   type="button"
                   onClick={() => onEditBlock(block)}
+                  disabled={!canWrite}
                 >
                   <p className="scheduler-appointment-title truncate text-[0.9rem] font-semibold">{block.label}</p>
                   <p className="scheduler-appointment-detail text-[0.72rem] uppercase tracking-[0.16em]">
@@ -522,10 +535,14 @@ export function SchedulerAgendaGrid({
                       <SchedulerBookingCard
                         booking={booking}
                         commerceName={commerceName}
-                        clientAccount={getClientPurchaseAccount(allBookings, booking)}
-                        paymentHistory={financialAccessByClient[getSchedulerClientAccessKey(booking.clientId, booking.phone)]
-                          ? getClientPaymentHistory(allBookings, booking)
-                          : []}
+                        clientAccount={(booking.clientId
+                          ? clientAccountsByClient[booking.clientId]
+                          : undefined) ?? getClientPurchaseAccount(allBookings, booking)}
+                        paymentHistory={(booking.clientId
+                          ? paymentHistoryByClient[booking.clientId]
+                          : undefined) ?? (financialAccessByClient[getSchedulerClientAccessKey(booking.clientId, booking.phone)]
+                            ? getClientPaymentHistory(allBookings, booking)
+                            : [])}
                         {...(financialAccessByClient[getSchedulerClientAccessKey(booking.clientId, booking.phone)]
                           ? { financialProfile: financialAccessByClient[getSchedulerClientAccessKey(booking.clientId, booking.phone)] }
                           : {})}
@@ -546,13 +563,15 @@ export function SchedulerAgendaGrid({
                           onUpdatePaymentHistory(booking, paymentBookingId, amount, tentativeAmount)}
                         onDeletePaymentHistory={(paymentBookingId) =>
                           onDeletePaymentHistory(booking, paymentBookingId)}
+                        canWrite={canWrite}
+                        financialHistoryReadOnly={financialHistoryReadOnly}
                       />
                     </DialogContent>
                   </Dialog>
                 )
               })}
 
-              {slotActionOverlay ? (
+              {slotActionOverlay && canWrite ? (
                 <div className="scheduler-slot-action" style={slotActionOverlay.style}>
                   <div className="scheduler-slot-action-header">
                     <button
@@ -677,19 +696,121 @@ export function SchedulerAgendaGrid({
                 )
 
                 return (
-                  <div
-                    key={booking.id}
-                    className="scheduler-appointment scheduler-appointment-blocked text-left"
-                    style={{
-                      ...style,
-                      ...horizontalStyle,
-                    }}
+                  <Dialog key={booking.id}>
+                    <DialogTrigger asChild>
+                      <button
+                        className="scheduler-appointment scheduler-appointment-contained scheduler-appointment-booking text-left transition hover:-translate-y-0.5"
+                        style={{
+                          ...style,
+                          ...horizontalStyle,
+                          backgroundColor: `color-mix(in srgb, ${statusColors[booking.status]} 8%, white)`,
+                          borderColor: `color-mix(in srgb, ${statusColors[booking.status]} 25%, white)`,
+                          color: `color-mix(in srgb, ${statusColors[booking.status]} 70%, #364152)`,
+                        }}
+                        type="button"
+                      >
+                        <div className="scheduler-appointment-meta mb-1 flex items-center gap-2">
+                          <span
+                            className="h-2.5 w-2.5 rounded-full"
+                            style={{ backgroundColor: statusColors[booking.status] }}
+                          />
+                          <span className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] opacity-70">
+                            {booking.start}
+                          </span>
+                        </div>
+                        <p className="scheduler-appointment-title line-clamp-2 text-[0.9rem] font-semibold">
+                          {booking.customerName}
+                        </p>
+                        <p className="scheduler-appointment-detail mt-1 truncate text-[0.7rem] uppercase tracking-[0.12em] opacity-75">
+                          {booking.serviceName}
+                        </p>
+                      </button>
+                    </DialogTrigger>
+                    <DialogContent
+                      className="w-[min(560px,calc(100vw-2rem))] max-h-[90vh] overflow-y-auto rounded-[20px] border p-3.5 shadow-[0_18px_42px_rgba(79,61,43,0.14)]"
+                      style={{
+                        backgroundColor: `color-mix(in srgb, ${statusColors[booking.status]} 8%, white)`,
+                        borderColor: `color-mix(in srgb, ${statusColors[booking.status]} 25%, white)`,
+                      }}
+                    >
+                      <SchedulerBookingCard
+                        booking={booking}
+                        commerceName={commerceName}
+                        clientAccount={(booking.clientId
+                          ? clientAccountsByClient[booking.clientId]
+                          : undefined) ?? getClientPurchaseAccount(allBookings, booking)}
+                        paymentHistory={(booking.clientId
+                          ? paymentHistoryByClient[booking.clientId]
+                          : undefined) ?? (financialAccessByClient[getSchedulerClientAccessKey(booking.clientId, booking.phone)]
+                            ? getClientPaymentHistory(allBookings, booking)
+                            : [])}
+                        {...(financialAccessByClient[getSchedulerClientAccessKey(booking.clientId, booking.phone)]
+                          ? { financialProfile: financialAccessByClient[getSchedulerClientAccessKey(booking.clientId, booking.phone)] }
+                          : {})}
+                        financialAuditEvents={financialAuditEvents.filter(
+                          (event) => event.clientKey === getSchedulerClientAccessKey(booking.clientId, booking.phone),
+                        )}
+                        selectedDate={new Date(`${booking.date ?? format(selectedDate, 'yyyy-MM-dd')}T12:00:00`)}
+                        statusColors={statusColors}
+                        onDelete={onDeleteBooking}
+                        onEdit={onEditBooking}
+                        onOpenDetail={onOpenBookingDetail}
+                        onOpenClientHistory={onOpenClientHistory}
+                        onStatusChange={onUpdateBookingStatus}
+                        onPurchaseDecision={onPurchaseDecision}
+                        onRequestFinancialAccess={onRequestFinancialAccess}
+                        onRevokeFinancialAccess={onRevokeFinancialAccess}
+                        onUpdatePaymentHistory={(paymentBookingId, amount, tentativeAmount) =>
+                          onUpdatePaymentHistory(booking, paymentBookingId, amount, tentativeAmount)}
+                        onDeletePaymentHistory={(paymentBookingId) =>
+                          onDeletePaymentHistory(booking, paymentBookingId)}
+                        canWrite={canWrite}
+                        financialHistoryReadOnly={financialHistoryReadOnly}
+                      />
+                    </DialogContent>
+                  </Dialog>
+                )
+              })}
+
+              {weekBlocks.map((block) => {
+                const blockStartMinutes = getMinutesFromTime(block.start)
+                if (
+                  blockStartMinutes < weekBaseMinutes ||
+                  blockStartMinutes >= weekClosingMinutes
+                ) return null
+                const style = getSingleCellAppointmentStyle(
+                  block.start,
+                  weekBaseMinutes,
+                  weekClosingMinutes,
+                  slotMinutes,
+                  agendaLayout,
+                )
+                const horizontalStyle = getOverlayHorizontalStyle(
+                  block.dayOffset,
+                  7,
+                  agendaLayout,
+                )
+
+                return (
+                  <button
+                    key={block.id}
+                    aria-label={`${block.label}, ${block.start} a ${block.end}`}
+                    className={cn(
+                      'scheduler-appointment scheduler-appointment-contained text-left',
+                      block.variant === 'blocked'
+                        ? 'scheduler-appointment-blocked'
+                        : 'scheduler-appointment-unavailable',
+                    )}
+                    disabled={!canWrite || block.variant === 'unavailable'}
+                    onClick={() => onEditBlock(block)}
+                    style={{ ...style, ...horizontalStyle }}
+                    type="button"
                   >
-                    <p className="truncate text-sm font-semibold">{booking.customerName}</p>
+                    <p className="truncate text-sm font-semibold">{block.label}</p>
                     <p className="text-xs uppercase tracking-[0.12em]">
-                      {booking.start} - {booking.end}
+                      {block.start} - {block.end}
                     </p>
-                  </div>
+                  </button>
                 )
               })}
             </div>

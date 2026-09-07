@@ -44,7 +44,7 @@ pnpm --filter @cosmetics/scheduler test
 
 `tests/scheduler-agenda-presentation.test.cjs` cubre zona horaria y cruce de medianoche, distinción `ARRIVED`/`ATTENDED`, cita multi-servicio, profesionales, recurso, membresía, versiones, campos ausentes, bloqueos, columnas y alcance/descarte de consultas.
 
-La prueba `renderiza DTOs controlados sin sustituir sesión ni permisos` de `apps/e2e/development/scheduler.development.spec.ts` intercepta únicamente los GET de citas y bloqueos. Usa la autenticación, bootstrap, sucursales y permisos del ambiente; adjunta una captura `scheduler-agenda-rv1-1366x768`. Sus DTOs están en `apps/e2e/development/fixtures/scheduler-agenda.ts` y no son importados por Scheduler.
+La prueba `renderiza DTOs controlados sin sustituir sesión ni permisos` de `apps/e2e/development/scheduler.development.spec.ts` nació en RV1 con GET controlados de citas y bloqueos. RV2 la amplió con columnas/horarios deterministas sobre el catálogo autorizado y cambió los adjuntos a `scheduler-agenda-rv2-calendar-1366x768` y `scheduler-agenda-rv2-list-1366x768`; consultar `docs/SCHEDULER_RV2_AGENDA_RESTORATION.md` para su contrato vigente. Sus DTOs están en `apps/e2e/development/fixtures/scheduler-agenda.ts` y no son importados por Scheduler.
 
 Comando de ejecución en un ambiente development autenticado:
 

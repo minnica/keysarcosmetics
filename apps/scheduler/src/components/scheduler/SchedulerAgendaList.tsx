@@ -19,6 +19,7 @@ interface SchedulerAgendaListProps {
   statusColors: BookingStatusColors
   onOpenBooking: (booking: Booking) => void
   onOpenNewBooking: () => void
+  canWrite?: boolean
 }
 
 export function SchedulerAgendaList({
@@ -28,6 +29,7 @@ export function SchedulerAgendaList({
   statusColors,
   onOpenBooking,
   onOpenNewBooking,
+  canWrite = true,
 }: SchedulerAgendaListProps) {
   const orderedBookings = [...bookings].sort((left, right) =>
     left.start.localeCompare(right.start),
@@ -47,6 +49,7 @@ export function SchedulerAgendaList({
         </div>
         <Button
           className="h-11 rounded-2xl bg-[#263649] px-5 text-white hover:bg-[#1d2b3a]"
+          disabled={!canWrite}
           onClick={onOpenNewBooking}
         >
           <Plus className="mr-2 h-4 w-4" />
@@ -133,6 +136,7 @@ export function SchedulerAgendaList({
           </p>
           <Button
             className="mt-5 rounded-2xl bg-[#263649] text-white hover:bg-[#1d2b3a]"
+            disabled={!canWrite}
             onClick={onOpenNewBooking}
           >
             <Plus className="mr-2 h-4 w-4" />
