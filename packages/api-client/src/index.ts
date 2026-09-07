@@ -104,6 +104,7 @@ import type {
   SchedulerSpecialtyWriteDto,
   SchedulerCustomerDetailDto,
   SchedulerCustomerFieldDefinitionDto,
+  SchedulerCustomerFieldDefinitionRequest,
   SchedulerCustomerFieldDefinitionWriteDto,
   SchedulerCustomerFinancialHistoryDto,
   SchedulerCustomerMergeRequestDto,
@@ -284,7 +285,9 @@ export interface SchedulerApiClient {
     input: SchedulerCustomerSearchRequest,
   ): Promise<SchedulerCustomerPageDto>;
   customerSources(): Promise<SchedulerCustomerSourceDto[]>;
-  customerFieldDefinitions(): Promise<SchedulerCustomerFieldDefinitionDto[]>;
+  customerFieldDefinitions(
+    input?: SchedulerCustomerFieldDefinitionRequest,
+  ): Promise<SchedulerCustomerFieldDefinitionDto[]>;
   createCustomerFieldDefinition(
     input: SchedulerCustomerFieldDefinitionWriteDto,
   ): Promise<SchedulerCustomerFieldDefinitionDto>;
@@ -647,9 +650,11 @@ export function createSchedulerApiClient(
       data<SchedulerCustomerSourceDto[]>(
         client.get("/api/scheduler/clients/sources"),
       ),
-    customerFieldDefinitions: () =>
+    customerFieldDefinitions: (input = {}) =>
       data<SchedulerCustomerFieldDefinitionDto[]>(
-        client.get("/api/scheduler/clients/field-definitions"),
+        client.get("/api/scheduler/clients/field-definitions", {
+          params: input,
+        }),
       ),
     createCustomerFieldDefinition: (input) =>
       data<SchedulerCustomerFieldDefinitionDto>(

@@ -1083,6 +1083,11 @@ export interface SchedulerCustomerSearchRequest {
   page?: number;
   pageSize?: number;
   branchId?: string;
+  sourceId?: string;
+}
+
+export interface SchedulerCustomerFieldDefinitionRequest {
+  branchId?: string;
 }
 
 export interface SchedulerCustomerPageDto {

@@ -57,6 +57,7 @@ import {
   type CommerceOption,
 } from "@/lib/scheduler-presentation";
 import type { SchedulerClient } from "@/lib/scheduler-client-presentation";
+import { adaptSchedulerCustomerSummary } from "@/lib/scheduler-customer-data";
 import type { SchedulerFinancialProfile } from "@/lib/scheduler-access";
 import {
   getSchedulerAgendaSlotMinutes,
@@ -128,25 +129,6 @@ function appointmentWriteServices(
     capacityUnits: service.capacityUnits,
     membershipId: service.membership?.membershipId ?? null,
   }));
-}
-
-function visualCustomer(customer: {
-  id: string;
-  displayName: string;
-  aliases: string[];
-  phone: string | null;
-  email: string | null;
-}): SchedulerClient {
-  return {
-    id: customer.id,
-    fullName: customer.displayName,
-    aliases: customer.aliases,
-    phone: customer.phone ?? "",
-    normalizedPhone: (customer.phone ?? "").replace(/\D/g, ""),
-    email: customer.email ?? "",
-    alternateEmails: [],
-    history: [],
-  };
 }
 
 function slotLocalTime(
@@ -244,10 +226,7 @@ export function ApiAgendaWorkspace() {
   const { bootstrap, canAccess } = useSchedulerSession();
   const canWrite = canAccess("agenda", "WRITE");
   const canCreateClient = canAccess("clients", "WRITE");
-  const canReadStatusColors = canAccess(
-    "administration.status-colors",
-    "READ",
-  );
+  const canReadStatusColors = canAccess("administration.status-colors", "READ");
   const [selectedDate, setSelectedDate] = useState(() => new Date());
   const [monthCursor, setMonthCursor] = useState(() =>
     startOfMonth(new Date()),
@@ -537,10 +516,7 @@ export function ApiAgendaWorkspace() {
       )
       .map((block) => ({
         ...block,
-        dayOffset: Math.max(
-          0,
-          range.visibleDateKeys.indexOf(block.date ?? ""),
-        ),
+        dayOffset: Math.max(0, range.visibleDateKeys.indexOf(block.date ?? "")),
       }));
   }, [allBlocks, range.visibleDateKeys, visibleColumns]);
   const listBookings = useMemo(
@@ -668,7 +644,7 @@ export function ApiAgendaWorkspace() {
     },
   );
   const customerOptions = useMemo(
-    () => customers.data?.items.map(visualCustomer) ?? [],
+    () => customers.data?.items.map(adaptSchedulerCustomerSummary) ?? [],
     [customers.data?.items],
   );
   const draftDateKey = bookingDraft

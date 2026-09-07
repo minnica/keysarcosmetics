@@ -4,7 +4,7 @@
 > Rama inspeccionada: `feature/scheduler`.
 > Referencia visual aprobada por el PO, indicada por el usuario: `e9077ddad945325b1a132962ce0c2fcd9ae7f74a`.
 > HEAD al redactar el plan: `9784c1b222dc2aa69cb304a5b492eeb1786ac980`.
-> Estado: RV0, RV1 y RV2 implementadas con validación visual/funcional pendiente; RV3–RV8 pendientes.
+> Estado: RV0–RV3 implementadas con validación visual/funcional pendiente; RV4–RV8 pendientes.
 
 ## 1. Objetivo y acuerdo de alcance
 
@@ -15,6 +15,8 @@ RV0 quedó implementada en repositorio el 6 de septiembre de 2026: inventario, m
 RV1 quedó implementada el 6 de septiembre de 2026: modelos y adaptadores de presentación, consultas separadas por sesión/sucursal, invalidación, descarte de respuestas obsoletas, limpieza de datos sensibles, entradas sin fallback mock, runner unitario y fixture E2E aislado. Evidencia y comandos: `docs/SCHEDULER_RV1_PRESENTATION_BOUNDARY.md`. La captura E2E permanece pendiente por B06.
 
 RV2 quedó implementada el 6 de septiembre de 2026: la Agenda aprobada vuelve a ser la interfaz operativa y consume catálogo, paginación completa de citas, horarios/excepciones/bloqueos, disponibilidad, clientes y mutaciones canónicas. Integra día/semana/lista, versiones, idempotencia, conflictos y consultas sensibles separadas; finanzas permanece en sólo lectura. Evidencia: `docs/SCHEDULER_RV2_AGENDA_RESTORATION.md`. La comparación visual y los recorridos con API/BD desechable permanecen pendientes por B06.
+
+RV3 quedó implementada el 6 de septiembre de 2026: Clientes recupera cabecera, filtros, tabla, vacíos, paginación y diálogos aprobados sobre la identidad compartida. Alta/edición cubre perfil, procedencia, alias, correos y campos por comercio/sucursal; la fusión usa versiones y autorización ligada. Expediente, visitas y finanzas se desbloquean por separado, expiran y se purgan; POS sigue siendo la autoridad financiera. Agenda y Clientes comparten adaptador e invalidación. Evidencia: `docs/SCHEDULER_RV3_CLIENTS_RESTORATION.md`. Capturas y recorridos HTTP/concurrentes permanecen pendientes por B06.
 
 Este plan complementa `PLAN_BACKEND_SCHEDULER.md`: sus contratos, seguridad y reglas de negocio siguen vigentes. Corrige la presentación introducida durante su integración frontend. Las fases de este documento usan el prefijo **RV** para diferenciarlas de las fases del plan backend.
 
@@ -54,7 +56,7 @@ El backend devuelve citas, profesionales, recursos, horarios, estados y versione
 | RV0  | Inventario y referencia visual reproducible             | Ninguna      | Implementada; validación pendiente |
 | RV1  | Separación de presentación, contratos y datos de prueba | RV0          | Implementada; validación pendiente |
 | RV2  | Agenda aprobada conectada de punta a punta              | RV1          | Implementada; validación pendiente |
-| RV3  | Clientes, expediente e históricos                       | RV2 validada | Pendiente                          |
+| RV3  | Clientes, expediente e históricos                       | RV2 validada | Implementada; validación pendiente |
 | RV4  | Administración y catálogos                              | RV3          | Pendiente                          |
 | RV5  | Formularios de Configuraciones                          | RV4          | Pendiente                          |
 | RV6  | Comunicaciones, documentos y encuestas                  | RV5          | Pendiente                          |
@@ -153,12 +155,14 @@ Estado RV2 (6 de septiembre de 2026): implementación local completa y checks t�
 
 ### RV3 — Clientes, expediente e históricos
 
-- [ ] Recuperar listado, búsqueda, filtros, paginación, formularios y diálogos aprobados con sus campos reales.
-- [ ] Conectar alta/edición, procedencia, alias, teléfonos/correos, campos personalizados y fusión versionada cuando corresponda al inventario.
-- [ ] Conservar autorizaciones independientes de un solo uso para perfil, visitas y finanzas, con emisión/consumo en el endpoint correcto. Cubrir expiración, denegación y reapertura.
-- [ ] Compartir la consulta de cliente con Agenda sin mantener dos identidades o historiales locales divergentes. Invalidar ambas vistas después de editar o fusionar.
-- [ ] Verificar duplicados y cambios concurrentes, alcance de sucursal, históricos paginados, lectura financiera y recarga de datos.
+- [x] Recuperar listado, búsqueda, filtros, paginación, formularios y diálogos aprobados con sus campos reales.
+- [x] Conectar alta/edición, procedencia, alias, teléfonos/correos, campos personalizados y fusión versionada cuando corresponda al inventario.
+- [x] Conservar autorizaciones independientes de un solo uso para perfil, visitas y finanzas, con emisión/consumo en el endpoint correcto. Cubrir expiración, denegación y reapertura.
+- [x] Compartir la consulta de cliente con Agenda sin mantener dos identidades o historiales locales divergentes. Invalidar ambas vistas después de editar o fusionar.
+- [ ] Verificar duplicados y cambios concurrentes, alcance de sucursal, históricos paginados, lectura financiera y recarga de datos. La lógica y los estados quedaron conectados; falta el recorrido HTTP/PostgreSQL desechable por B06.
 - [ ] Comparar listado, vacíos y diálogos con la referencia. Las subsecciones de recordatorios/encuestas se completan en RV6/RV7, manteniendo sus rutas.
+
+Estado RV3 (6 de septiembre de 2026): implementación local completa y checks técnicos correctos. La dependencia visual de RV2 y las dos últimas tareas permanecen abiertas por B06; la solicitud explícita de esta sesión autorizó avanzar en el trabajo independiente de RV3 sin declarar validada ninguna de las dos fases. Ver `docs/SCHEDULER_RV3_CLIENTS_RESTORATION.md`.
 
 **Criterio de salida:** experiencia de Clientes e históricos restaurada, con identidad compartida, privacidad y persistencia verificadas.
 
@@ -262,18 +266,18 @@ Si se autoriza modificar paquetes compartidos o API, añadir sus comprobaciones 
 
 La auditoría identificó estos puntos a verificar, no incompatibilidades visuales insalvables:
 
-| ID  | Punto                                                                                     | Próxima acción                                                                                | Estado                                          |
-| --- | ----------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- | ----------------------------------------------- |
-| B01 | Teléfono, precio, avatar y detalles por tarjeta no están todos en el DTO de cita          | Ficha autorizada bajo demanda; definir contrato agregado para precio/avatar sin N+1            | Parcial RV2; precio/avatar agregados pendientes |
-| B02 | Pendientes sin profesional/recurso asignado                                               | El validador exige al menos un profesional por servicio; decidir si se amplía el contrato     | RV2 no inventa cola; decisión backend pendiente |
-| B03 | Formularios administrativos, archivos masivos y capacidades mock sin contrato equivalente | Inventario por acción disponible en baseline; definir ampliación o limitación explícita       | Clasificada RV0; resolver RV3/RV4/RV6           |
-| B04 | Persistencia JSON frente a efectos reales de Configuraciones                              | No se encontraron consumidores operativos de los documentos; mapear cada campo                | Confirmada RV0; resolver RV5                    |
-| B05 | KPIs, series y formatos históricos frente a los datasets actuales                         | Hay doce datasets y sólo CSV; verificar agrupaciones y formatos                               | Clasificada RV0; resolver RV7                   |
-| B06 | Ambiente reproducible para referencia y pruebas de escritura                              | Build aislado disponible; Chromium, puertos y PostgreSQL desechable no disponibles en sandbox | Diagnóstico RV0; captura/BD pendientes          |
-| B07 | Cobertura real de rutas profundas y redirecciones                                         | Seis rutas redirigen en referencia y HEAD; cinco componentes no están montados                | Confirmada RV0; resolver RV7                    |
-| B08 | El fixture permite mutar pagos y borrar historial financiero                              | Conservar POS como autoridad y restaurar estas superficies sólo en lectura                    | Aplicada en Agenda RV2; completar Clientes RV3  |
-| B09 | La referencia redirige login y expone códigos mock                                        | Conservar login JWT, permisos y formulario seguro actual                                      | Decisión de seguridad RV0; transversal          |
-| B10 | `/reportes/ventas` no existe en la referencia                                             | Tratarla como ampliación y aplicar lenguaje visual consistente                                | Clasificada RV0; resolver RV7                   |
+| ID  | Punto                                                                                     | Próxima acción                                                                                                                    | Estado                                          |
+| --- | ----------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| B01 | Teléfono, precio, avatar y detalles por tarjeta no están todos en el DTO de cita          | Ficha autorizada bajo demanda; definir contrato agregado para precio/avatar sin N+1                                               | Parcial RV2; precio/avatar agregados pendientes |
+| B02 | Pendientes sin profesional/recurso asignado                                               | El validador exige al menos un profesional por servicio; decidir si se amplía el contrato                                         | RV2 no inventa cola; decisión backend pendiente |
+| B03 | Formularios administrativos, archivos masivos y capacidades mock sin contrato equivalente | Clientes deja importación, audiencias y reporte de fichas visibles pero no simulados; resolver los contratos restantes en RV4/RV6 | Parcial RV3; resolver RV4/RV6                   |
+| B04 | Persistencia JSON frente a efectos reales de Configuraciones                              | No se encontraron consumidores operativos de los documentos; mapear cada campo                                                    | Confirmada RV0; resolver RV5                    |
+| B05 | KPIs, series y formatos históricos frente a los datasets actuales                         | Hay doce datasets y sólo CSV; verificar agrupaciones y formatos                                                                   | Clasificada RV0; resolver RV7                   |
+| B06 | Ambiente reproducible para referencia y pruebas de escritura                              | Build aislado disponible; Chromium, puertos y PostgreSQL desechable no disponibles en sandbox                                     | Diagnóstico RV0; captura/BD pendientes          |
+| B07 | Cobertura real de rutas profundas y redirecciones                                         | Seis rutas redirigen en referencia y HEAD; cinco componentes no están montados                                                    | Confirmada RV0; resolver RV7                    |
+| B08 | El fixture permite mutar pagos y borrar historial financiero                              | Conservar POS como autoridad y restaurar estas superficies sólo en lectura                                                        | Resuelta en Agenda RV2 y Clientes RV3           |
+| B09 | La referencia redirige login y expone códigos mock                                        | Conservar login JWT, permisos y formulario seguro actual                                                                          | Decisión de seguridad RV0; transversal          |
+| B10 | `/reportes/ventas` no existe en la referencia                                             | Tratarla como ampliación y aplicar lenguaje visual consistente                                                                    | Clasificada RV0; resolver RV7                   |
 
 Para cada brecha nueva registrar: pantalla/acción, evidencia, contrato actual, contrato requerido, impacto visual, solución propuesta, decisión y fase responsable. Una aceptación parcial debe indicar exactamente qué sigue pendiente; no equivale al cierre de todo el plan.
 
@@ -359,3 +363,17 @@ Solicitud sugerida para otra sesión:
 - **Brechas o validaciones pendientes:** ejecutar comparación en seis viewports; recorrer escrituras, recarga y conflictos con API/PostgreSQL desechable; B01 mantiene precio/avatar agregados pendientes y B02 requiere decisión backend si se desea cola sin profesional.
 - **Estado Git al cerrar:** cambios de RV2 y documentación sin commit; no se modificaron backend, Prisma, migraciones, seeds, variables, despliegues ni datos operativos.
 - **Siguiente tarea concreta:** ejecutar la evidencia RV2 en un host compatible y, tras revisar las diferencias, marcarla `Validada`; RV3 depende de esa validación.
+
+### Bitácora RV3 — 6 de septiembre de 2026
+
+- **Fecha y fase:** 6 de septiembre de 2026, RV3.
+- **Rama y HEAD:** `feature/scheduler`, base `735ca6679aa0e8a2b70a279ab0a6330f93474950`.
+- **Estado:** Implementada; validación visual y funcional pendiente por B06.
+- **Tareas completadas:** presentación aprobada de Clientes sobre datos reales; búsqueda paginada y filtro de procedencia en servidor; definiciones de campos acotadas por sucursal/comercio; alta/edición de identidad, perfil, alias, correos, procedencia y campos tipados; fusión versionada con autorización ligada; expediente, visitas y finanzas independientes, paginados, temporales y purgados; adaptador/invalidador compartido con Agenda; estados de carga, vacío, error, sólo lectura y conflicto.
+- **Archivos modificados:** contratos en `packages/types` y `packages/api-client`; ruta de clientes del API; `ApiClientsWorkspace.tsx`, adaptador de clientes y consumo desde Agenda; pruebas unitarias/E2E; `CLAUDE.md`, este plan, guía de Fase 3 backend y `docs/SCHEDULER_RV3_CLIENTS_RESTORATION.md`.
+- **Pruebas ejecutadas y resultado:** type-check de Scheduler, types, API client, API y E2E, correctos; Scheduler tests, correctos (5 archivos); API unit tests, correctos (133 pruebas/25 archivos); lint de Scheduler correcto con advertencias históricas fuera de RV3; lint del API y E2E, correctos; builds de Scheduler (21 páginas) y API, correctos; descubrimiento Playwright correcto (7 pruebas); `git diff --check`, correcto al cierre.
+- **Evidencia visual:** fixture `apps/e2e/development/fixtures/scheduler-clients.ts`, prueba de sólo lectura y adjunto previsto `scheduler-clients-rv3-list-1366x768`; no se generó PNG porque B06 impide iniciar servidor/Chromium en el sandbox.
+- **Diferencias funcionales/visuales y decisiones:** la búsqueda conserva el mínimo contractual de dos caracteres; sólo se ofrecen filtros respaldados por servidor; no se simulan filtros demográficos, importación, audiencias ni reporte de fichas; no se descarga una página parcial como si fuera el listado completo; el expediente exige autorización antes de editar metadatos sensibles y expira también durante edición; cada página de históricos requiere un nuevo token; finanzas no ofrece mutaciones.
+- **Brechas o validaciones pendientes:** ejecutar comparación en seis viewports y recorridos create/edit/merge/reload/concurrencia/duplicado/autorización con API y PostgreSQL desechables; B03 continúa para importación, audiencias y reporte de fichas; recordatorios/encuestas continúan en RV6/RV7.
+- **Estado Git al cerrar:** cambios de RV3 y documentación sin commit; no se modificaron Prisma, migraciones, seeds, variables, despliegues ni datos operativos.
+- **Siguiente tarea concreta:** ejecutar evidencia conjunta RV2/RV3 en un host compatible; después iniciar RV4 restaurando Administración y catálogos sobre contratos canónicos.
