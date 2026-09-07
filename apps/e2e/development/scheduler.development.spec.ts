@@ -110,6 +110,6 @@ test.describe("Scheduler autenticado en development", () => {
   });
 
   test("carga Reportes sin emitir escrituras", async ({ page }) => {
-    await openAuthenticatedPage(page, "/reportes", "Reportes");
+    await openAuthenticatedPage(page, "/reportes", "Resumen de operación");
   });
 });

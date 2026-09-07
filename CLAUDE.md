@@ -558,7 +558,9 @@ El fixture de Servicios conserva listados por categoría, edición, opciones ava
 
 ### Reportes
 
-`/reportes`, `/reportes/reservas`, `/reportes/ventas`, Historial, Rendimiento, Reporte de encuestas y Recordatorios montan `ApiReportsWorkspace` en modo normal. La pantalla limita las doce claves según permisos de resumen/reservas/ventas, usa filtros de periodo y sucursales autorizadas y presenta `summary`, columnas y filas devueltas por el servidor. Exportar descarga CSV a partir de `/exports`, no de la página visual; Clientes emite `SENSITIVE_EXPORT` ligado al dataset y el servidor lo consume con la auditoría.
+- Desde RV7, `/reportes`, `/reportes/reservas`, `/reportes/ventas`, Historial, Rendimiento, Reporte de encuestas y Recordatorios montan `ApiReportsWorkspace` con la presentación restaurada en `RestoredReportsWorkspace`. Locales, Mensajería móvil, Métricas y Servicios ya no redirigen; Servicios/Prestadores por local usan rutas dinámicas con `branchId` canónico. El alias histórico `opatra-mexico` vuelve al selector de Locales y nunca se interpreta como identidad.
+- Cada vista declara sus datasets de las doce claves canónicas y limita la consulta a capacidades reales de resumen/reservas/ventas. Periodo, búsqueda, estado/canal y sucursales forman el request; las rutas por local fallan cerradas si el ID no pertenece al bootstrap. Pantalla recorre todas las páginas hasta `total`; tarjetas usan el `summary` completo y gráficos/tablas la unión completa, nunca una primera página presentada como total.
+- Exportar vuelve a solicitar `/exports` y genera CSV, XLSX o PDF desde el conjunto completo auditado, no desde la tabla visual. `CUSTOMERS` usa un diálogo con campo seguro, emite `SENSITIVE_EXPORT` ligado al dataset y consume la autorización de un solo uso. XLSX/PDF se renderizan localmente después de la autorización; fuentes canónica/legado no se mezclan y POS sólo se atribuye por enlaces canónicos. Matriz y límites: `docs/SCHEDULER_RV7_REPORTS_RESTORATION.md`.
 
 ### Navegación y UI
 

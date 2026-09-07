@@ -16,11 +16,14 @@
     "@cosmetics/types": "workspace:*",
     "@cosmetics/ui": "workspace:*",
     "date-fns": "^3.6.0",
+    "jspdf": "^4.2.1",
+    "jspdf-autotable": "^5.0.8",
     "lucide-react": "^0.400.0",
     "next": "14.2.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-hook-form": "^7.52.1",
+    "xlsx": "^0.18.5",
     "zod": "^3.23.8"
   },
   "devDependencies": {

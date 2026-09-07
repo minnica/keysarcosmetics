@@ -25,26 +25,33 @@ export function SchedulerSettingsEntry() {
 }
 
 export function SchedulerReportsEntry({
-  initialKey = "APPOINTMENTS",
+  view = "summary",
 }: {
-  initialKey?: "APPOINTMENTS" | "SALES";
+  view?: "summary" | "sales";
 }) {
-  return <ApiReportsWorkspace initialKey={initialKey} />;
+  return <ApiReportsWorkspace view={view} />;
 }
 
 export function SchedulerReservationReportsEntry({
-  view,
+  view = "reservations",
+  fixedBranchId,
 }: {
-  view?: "history" | "performance";
+  view?:
+    | "reservations"
+    | "history"
+    | "performance"
+    | "locations"
+    | "messaging"
+    | "metrics"
+    | "services"
+    | "services-by-location"
+    | "providers-by-location";
+  fixedBranchId?: string;
 }) {
   return (
     <ApiReportsWorkspace
-      compactTitle={
-        view === "performance"
-          ? "Rendimiento de reservas"
-          : "Reporte de reservas"
-      }
-      initialKey={view === "performance" ? "PROFESSIONALS" : "APPOINTMENTS"}
+      view={view}
+      {...(fixedBranchId ? { fixedBranchId } : {})}
     />
   );
 }
@@ -56,14 +63,7 @@ export function SchedulerClientSectionEntry({
 }) {
   return (
     <ApiReportsWorkspace
-      compactTitle={
-        section === "reporte-de-encuestas"
-          ? "Reporte de encuestas"
-          : "Recordatorios"
-      }
-      initialKey={
-        section === "reporte-de-encuestas" ? "SURVEYS" : "COMMUNICATIONS"
-      }
+      view={section === "reporte-de-encuestas" ? "surveys" : "reminders"}
     />
   );
 }
