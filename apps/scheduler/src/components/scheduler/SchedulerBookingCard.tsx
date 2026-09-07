@@ -30,7 +30,7 @@ import {
   type Booking,
   type BookingStatus,
   type BookingStatusColors,
-} from '@/lib/mock-scheduler-data'
+} from '@/lib/scheduler-presentation'
 import {
   canManageSchedulerPaymentHistory,
   type SchedulerFinancialAuditEvent,

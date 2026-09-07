@@ -23,15 +23,15 @@ import {
   Upload,
 } from "lucide-react";
 import {
-  initialSchedulerClients,
   normalizeClientPhone,
   normalizeClientText,
   type SchedulerClient,
-} from "@/lib/mock-client-data";
+} from "@/lib/scheduler-client-presentation";
 import {
   schedulerBranches,
   schedulerProfessionals,
 } from "@/lib/mock-scheduler-data";
+import { initialSchedulerClients } from "@/lib/mock-client-data";
 
 import { ClientsDatabase } from "./ClientsDatabase";
 

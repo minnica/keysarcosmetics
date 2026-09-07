@@ -9,7 +9,7 @@ import {
   type Booking,
   type BookingStatusColors,
   type Professional,
-} from '@/lib/mock-scheduler-data'
+} from '@/lib/scheduler-presentation'
 import { SchedulerAvatar } from './SchedulerAvatar'
 
 interface SchedulerAgendaListProps {

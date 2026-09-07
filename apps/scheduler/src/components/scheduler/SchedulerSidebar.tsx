@@ -10,7 +10,7 @@ import {
   type BookingStatus,
   type CommerceOption,
   type Professional,
-} from '@/lib/mock-scheduler-data'
+} from '@/lib/scheduler-presentation'
 import { SchedulerAvatar } from './SchedulerAvatar'
 
 export type SchedulerDisplayMode = 'calendar' | 'list'

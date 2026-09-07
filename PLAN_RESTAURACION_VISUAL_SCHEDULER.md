@@ -4,13 +4,15 @@
 > Rama inspeccionada: `feature/scheduler`.
 > Referencia visual aprobada por el PO, indicada por el usuario: `e9077ddad945325b1a132962ce0c2fcd9ae7f74a`.
 > HEAD al redactar el plan: `9784c1b222dc2aa69cb304a5b492eeb1786ac980`.
-> Estado: RV0 implementada con validación visual pendiente; RV1–RV8 pendientes.
+> Estado: RV0 y RV1 implementadas con validación visual pendiente; RV2–RV8 pendientes.
 
 ## 1. Objetivo y acuerdo de alcance
 
 Recuperar la presentación aprobada de todo `apps/scheduler`, conectándola con los contratos y garantías del backend actual. Incluye Agenda, Clientes, Administración, Configuraciones, comunicaciones/documentos/encuestas y Reportes. Conservar calendario, distribución, navegación, tipografía, colores, densidades, tarjetas, tablas y diálogos de la referencia, con datos reales y estados operativos explícitos.
 
 RV0 quedó implementada en repositorio el 6 de septiembre de 2026: inventario, matriz, referencia aislada, runner determinista, diagnóstico de infraestructura y brechas están documentados en `docs/SCHEDULER_VISUAL_RESTORATION_BASELINE.md`. El sandbox no permitió iniciar Chromium ni servidores locales, por lo que faltan las capturas antes de validar la fase. No se aplicaron migraciones, seeds, despliegues ni datos operativos.
+
+RV1 quedó implementada el 6 de septiembre de 2026: modelos y adaptadores de presentación, consultas separadas por sesión/sucursal, invalidación, descarte de respuestas obsoletas, limpieza de datos sensibles, entradas sin fallback mock, runner unitario y fixture E2E aislado. Evidencia y comandos: `docs/SCHEDULER_RV1_PRESENTATION_BOUNDARY.md`. La captura E2E permanece pendiente por B06.
 
 Este plan complementa `PLAN_BACKEND_SCHEDULER.md`: sus contratos, seguridad y reglas de negocio siguen vigentes. Corrige la presentación introducida durante su integración frontend. Las fases de este documento usan el prefijo **RV** para diferenciarlas de las fases del plan backend.
 
@@ -39,7 +41,7 @@ La auditoría previa contrastó el historial local con GitHub MCP. La rama remot
 | [c950f7f](https://github.com/minnica/keysarcosmetics/commit/c950f7fb6319ae527b7e624af1a477f2f42bb5f5) | Fase 9: entradas y workspaces API nuevos                 | Sustitución general de la experiencia en modo normal                 |
 | [9784c1b](https://github.com/minnica/keysarcosmetics/commit/9784c1b222dc2aa69cb304a5b492eeb1786ac980) | Merge posterior; metadata de release en layout Scheduler | No originó la sustitución del calendario                             |
 
-`SchedulerPageEntries.tsx` selecciona hoy workspaces API para una sesión normal y componentes históricos cuando el servidor habilita mocks de desarrollo. Los archivos `globals.css`, `SchedulerAgendaGrid.tsx`, `SchedulerAgendaList.tsx`, `SchedulerHeader.tsx`, `SchedulerSidebar.tsx` y `SchedulerBookingCard.tsx` no presentan diferencias entre la referencia y el HEAD inspeccionado. Otros archivos históricos sí recibieron cambios de seguridad y deben compararse individualmente.
+Desde RV1, `SchedulerPageEntries.tsx` selecciona exclusivamente workspaces API hasta que cada presentación restaurada esté conectada; `mockModeEnabled` no activa componentes, permisos ni alcance simulados. Los archivos `globals.css`, `SchedulerAgendaGrid.tsx`, `SchedulerAgendaList.tsx`, `SchedulerHeader.tsx`, `SchedulerSidebar.tsx` y `SchedulerBookingCard.tsx` no presentaban diferencias visuales entre la referencia y el HEAD auditado. Otros archivos históricos sí recibieron cambios de seguridad y deben compararse individualmente.
 
 El backend devuelve citas, profesionales, recursos, horarios, estados y versiones suficientes para reconstruir el calendario. Esto demuestra viabilidad arquitectónica, pero no garantiza que todos los campos y acciones del frontend histórico tengan cobertura: esa comprobación corresponde a RV0.
 
@@ -48,7 +50,7 @@ El backend devuelve citas, profesionales, recursos, horarios, estados y versione
 | Fase | Entrega                                                 | Dependencia  | Estado                             |
 | ---- | ------------------------------------------------------- | ------------ | ---------------------------------- |
 | RV0  | Inventario y referencia visual reproducible             | Ninguna      | Implementada; validación pendiente |
-| RV1  | Separación de presentación, contratos y datos de prueba | RV0          | Pendiente                          |
+| RV1  | Separación de presentación, contratos y datos de prueba | RV0          | Implementada; validación pendiente |
 | RV2  | Agenda aprobada conectada de punta a punta              | RV1          | Pendiente                          |
 | RV3  | Clientes, expediente e históricos                       | RV2 validada | Pendiente                          |
 | RV4  | Administración y catálogos                              | RV3          | Pendiente                          |
@@ -117,13 +119,15 @@ Estado RV0 (6 de septiembre de 2026): `apps/e2e/scripts/capture-scheduler-refere
 
 Objetivo: alimentar los componentes aprobados mediante la API y permitir probar su apariencia con datos controlados.
 
-- [ ] Extraer tipos, constantes de presentación y utilidades puras que hoy están mezclados con módulos `mock-*`. Revisar imports transitivos, especialmente utilidades de calendario y datos semanales.
-- [ ] Definir modelos de presentación tipados para columnas, citas, servicios, bloqueos, estados y datos opcionales; conservar IDs, versiones y participantes del DTO canónico sin aplanamientos que pierdan información.
-- [ ] Adaptar `useSchedulerQuery`/mutaciones existentes o su equivalente para filtros, invalidación, descarte de respuestas obsoletas y separación por sesión/sucursal. Verificar su comportamiento antes de reutilizarlo.
-- [ ] Mantener estado visual local legítimo: vista, filtros, panel abierto, densidad y borradores. Limpiar datos sensibles al cerrar sesión o perder autorización.
-- [ ] Definir el cambio de entrada por módulo: activar la vista restaurada cuando esté lista, conservando las demás entradas mientras se trabajan. El retorno temporal debe apuntar a una vista API, nunca a mocks operativos.
-- [ ] Preparar pruebas visuales que inyecten DTOs ficticios en la misma presentación que usará producción, aisladas del modo normal. No exponer un bypass de sesión o permisos.
-- [ ] Probar conversiones con fechas, estados, recursos, citas multi-servicio y campos ausentes. Definir runner de pruebas apropiado si hace falta; hoy Scheduler no declara script `test` propio.
+- [x] Extraer tipos, constantes de presentación y utilidades puras que hoy están mezclados con módulos `mock-*`. Revisar imports transitivos, especialmente utilidades de calendario y datos semanales.
+- [x] Definir modelos de presentación tipados para columnas, citas, servicios, bloqueos, estados y datos opcionales; conservar IDs, versiones y participantes del DTO canónico sin aplanamientos que pierdan información.
+- [x] Adaptar `useSchedulerQuery`/mutaciones existentes o su equivalente para filtros, invalidación, descarte de respuestas obsoletas y separación por sesión/sucursal. Verificar su comportamiento antes de reutilizarlo.
+- [x] Mantener estado visual local legítimo: vista, filtros, panel abierto, densidad y borradores. Limpiar datos sensibles al cerrar sesión o perder autorización.
+- [x] Definir el cambio de entrada por módulo: activar la vista restaurada cuando esté lista, conservando las demás entradas mientras se trabajan. El retorno temporal debe apuntar a una vista API, nunca a mocks operativos.
+- [x] Preparar pruebas visuales que inyecten DTOs ficticios en la misma presentación que usará producción, aisladas del modo normal. No exponer un bypass de sesión o permisos.
+- [x] Probar conversiones con fechas, estados, recursos, citas multi-servicio y campos ausentes. Definir runner de pruebas apropiado si hace falta; hoy Scheduler no declara script `test` propio.
+
+Estado RV1 (6 de septiembre de 2026): la frontera y su runner están implementados. Los chunks productivos no contienen identificadores de los fixtures revisados. La prueba visual controlada conserva sesión y permisos reales, pero no se ejecutó porque B06 impide iniciar app/Chromium en este sandbox; por ello la fase no se marca `Validada`. Evidencia: `docs/SCHEDULER_RV1_PRESENTATION_BOUNDARY.md`.
 
 **Criterio de salida:** frontera de datos y presentación verificada; los componentes operativos no dependen de fixtures transitivos, secretos locales ni datos simulados de reserva.
 
@@ -254,18 +258,18 @@ Si se autoriza modificar paquetes compartidos o API, añadir sus comprobaciones 
 
 La auditoría identificó estos puntos a verificar, no incompatibilidades visuales insalvables:
 
-| ID  | Punto                                                                                     | Próxima acción                                                                                | Estado                                  |
-| --- | ----------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- | --------------------------------------- |
-| B01 | Teléfono, precio, avatar y detalles por tarjeta no están todos en el DTO de cita          | Usar consulta autorizada/agregada; evitar N+1                                                 | Confirmada RV0; resolver RV1/RV2        |
-| B02 | Pendientes sin profesional/recurso asignado                                               | El validador exige al menos un profesional por servicio; decidir si se amplía el contrato     | Confirmada RV0; decisión RV2/backend    |
-| B03 | Formularios administrativos, archivos masivos y capacidades mock sin contrato equivalente | Inventario por acción disponible en baseline; definir ampliación o limitación explícita       | Clasificada RV0; resolver RV3/RV4/RV6   |
-| B04 | Persistencia JSON frente a efectos reales de Configuraciones                              | No se encontraron consumidores operativos de los documentos; mapear cada campo                | Confirmada RV0; resolver RV5            |
-| B05 | KPIs, series y formatos históricos frente a los datasets actuales                         | Hay doce datasets y sólo CSV; verificar agrupaciones y formatos                               | Clasificada RV0; resolver RV7           |
-| B06 | Ambiente reproducible para referencia y pruebas de escritura                              | Build aislado disponible; Chromium, puertos y PostgreSQL desechable no disponibles en sandbox | Diagnóstico RV0; captura/BD pendientes  |
-| B07 | Cobertura real de rutas profundas y redirecciones                                         | Seis rutas redirigen en referencia y HEAD; cinco componentes no están montados                | Confirmada RV0; resolver RV7            |
-| B08 | El fixture permite mutar pagos y borrar historial financiero                              | Conservar POS como autoridad y restaurar estas superficies sólo en lectura                    | Decisión semántica RV0; aplicar RV2/RV3 |
-| B09 | La referencia redirige login y expone códigos mock                                        | Conservar login JWT, permisos y formulario seguro actual                                      | Decisión de seguridad RV0; transversal  |
-| B10 | `/reportes/ventas` no existe en la referencia                                             | Tratarla como ampliación y aplicar lenguaje visual consistente                                | Clasificada RV0; resolver RV7           |
+| ID  | Punto                                                                                     | Próxima acción                                                                                | Estado                                          |
+| --- | ----------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| B01 | Teléfono, precio, avatar y detalles por tarjeta no están todos en el DTO de cita          | Usar consulta autorizada/agregada; evitar N+1                                                 | Modelo opcional listo RV1; origen pendiente RV2 |
+| B02 | Pendientes sin profesional/recurso asignado                                               | El validador exige al menos un profesional por servicio; decidir si se amplía el contrato     | Confirmada RV0; decisión RV2/backend            |
+| B03 | Formularios administrativos, archivos masivos y capacidades mock sin contrato equivalente | Inventario por acción disponible en baseline; definir ampliación o limitación explícita       | Clasificada RV0; resolver RV3/RV4/RV6           |
+| B04 | Persistencia JSON frente a efectos reales de Configuraciones                              | No se encontraron consumidores operativos de los documentos; mapear cada campo                | Confirmada RV0; resolver RV5                    |
+| B05 | KPIs, series y formatos históricos frente a los datasets actuales                         | Hay doce datasets y sólo CSV; verificar agrupaciones y formatos                               | Clasificada RV0; resolver RV7                   |
+| B06 | Ambiente reproducible para referencia y pruebas de escritura                              | Build aislado disponible; Chromium, puertos y PostgreSQL desechable no disponibles en sandbox | Diagnóstico RV0; captura/BD pendientes          |
+| B07 | Cobertura real de rutas profundas y redirecciones                                         | Seis rutas redirigen en referencia y HEAD; cinco componentes no están montados                | Confirmada RV0; resolver RV7                    |
+| B08 | El fixture permite mutar pagos y borrar historial financiero                              | Conservar POS como autoridad y restaurar estas superficies sólo en lectura                    | Decisión semántica RV0; aplicar RV2/RV3         |
+| B09 | La referencia redirige login y expone códigos mock                                        | Conservar login JWT, permisos y formulario seguro actual                                      | Decisión de seguridad RV0; transversal          |
+| B10 | `/reportes/ventas` no existe en la referencia                                             | Tratarla como ampliación y aplicar lenguaje visual consistente                                | Clasificada RV0; resolver RV7                   |
 
 Para cada brecha nueva registrar: pantalla/acción, evidencia, contrato actual, contrato requerido, impacto visual, solución propuesta, decisión y fase responsable. Una aceptación parcial debe indicar exactamente qué sigue pendiente; no equivale al cierre de todo el plan.
 
@@ -323,3 +327,17 @@ Solicitud sugerida para otra sesión:
 - **Brechas o validaciones pendientes:** producir y revisar las capturas en los seis viewports; API/BD de prueba no están disponibles (`DATABASE_URL` ausente, sin PostgreSQL/Docker y Podman inutilizable). Las brechas de producto B01–B10 se asignaron a RV1–RV7.
 - **Estado Git al cerrar:** cambios sin commit en los cinco archivos anteriores; se preservaron los cambios locales iniciales de `CLAUDE.md` y del plan.
 - **Siguiente tarea concreta:** ejecutar el runner en un host donde Chromium pueda iniciar, revisar que sólo contenga fixtures y enlazar las PNG; después marcar RV0 `Validada` e iniciar RV1 con la separación presentación/datos.
+
+### Bitácora RV1 — 6 de septiembre de 2026
+
+- **Fecha y fase:** 6 de septiembre de 2026, RV1.
+- **Rama y HEAD:** `feature/scheduler`, base `b1b4595619f6030c4a81beff486a32da472eccc5`.
+- **Estado:** Implementada; validación visual pendiente por B06.
+- **Tareas completadas:** extracción de tipos/constantes/utilidades puras; modelos y adaptadores canónicos de Agenda; distinción de columnas profesional/recurso/cola, `ARRIVED`/`ATTENDED` y campos opcionales; consultas con alcance de usuario/sucursal/filtros, invalidación y descarte obsoleto; limpieza de expediente y borradores al cerrar/cambiar sesión; entradas productivas sin fallback mock; fixture E2E de sólo lectura y runner unitario.
+- **Archivos modificados:** fronteras nuevas en `apps/scheduler/src/lib/scheduler-*-presentation.ts` y `scheduler-query-scope.ts`; componentes Agenda/API/guard/entradas; fixture y spec E2E; `apps/scheduler/package.json`; `CLAUDE.md`, este plan y `docs/SCHEDULER_RV1_PRESENTATION_BOUNDARY.md`.
+- **Pruebas ejecutadas y resultado:** `pnpm --filter @cosmetics/scheduler type-check`, correcto; `pnpm --filter @cosmetics/scheduler test`, correcto (4 archivos); `pnpm --filter @cosmetics/scheduler lint`, correcto con advertencias históricas; `pnpm --filter @cosmetics/scheduler build`, correcto (21 páginas); `pnpm --filter @cosmetics/e2e type-check` y `lint`, correctos; descubrimiento Playwright del proyecto Scheduler, correcto (6 pruebas); búsqueda de identificadores de fixtures/mock en chunks operativos, sin coincidencias; `git diff --check`, correcto.
+- **Evidencia visual (rutas/artefactos):** prueba preparada en `apps/e2e/development/scheduler.development.spec.ts`, DTOs en `apps/e2e/development/fixtures/scheduler-agenda.ts` y nombre del adjunto `scheduler-agenda-rv1-1366x768`; no se generó imagen en este sandbox.
+- **Diferencias funcionales/visuales y decisiones:** RV1 conserva temporalmente los workspaces API mientras prepara la presentación; la Agenda aprobada se monta en RV2. No se sintetiza una cola pendiente sin contrato. Contacto/avatar/precio faltantes se representan como `null`, nunca como ejemplos. La prueba visual no reemplaza bootstrap, permisos ni sucursales.
+- **Brechas o validaciones pendientes:** ejecutar captura RV0 y prueba visual RV1 en host con Chromium/servidor; resolver en RV2 la fuente agregada B01, decisión B02 y recorrido completo de Agenda.
+- **Estado Git al cerrar:** cambios de RV1 y documentación sin commit; no se aplicaron migraciones, seeds, despliegues ni datos operativos.
+- **Siguiente tarea concreta:** iniciar RV2 montando `SchedulerHeader`, panel de recursos y `SchedulerAgendaGrid/List` sobre `SchedulerAgendaPresentation`, con paginación completa del rango visible y horarios canónicos.

@@ -14,7 +14,7 @@ import {
 } from 'lucide-react'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
-import { schedulerLegendItems, type SchedulerView } from '@/lib/mock-scheduler-data'
+import { schedulerLegendItems, type SchedulerView } from '@/lib/scheduler-presentation'
 import { getLegendIcon } from './scheduler-utils'
 
 interface SchedulerHeaderProps {

@@ -26,18 +26,18 @@ import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import {
   bookingStatuses,
-  schedulerServices,
   type AvailabilityBlock,
   type Booking,
   type BookingStatus,
   type BookingStatusColors,
   type BranchOption,
-} from '@/lib/mock-scheduler-data'
+  type ServiceOption,
+} from '@/lib/scheduler-presentation'
 import {
   findSchedulerClients,
   normalizeClientPhone,
   type SchedulerClient,
-} from '@/lib/mock-client-data'
+} from '@/lib/scheduler-client-presentation'
 import {
   formatMoney,
   getAvailableBookingStartTimes,
@@ -53,6 +53,7 @@ interface SchedulerBookingDialogProps {
   bookings: Booking[]
   availabilityBlocks: AvailabilityBlock[]
   clients: SchedulerClient[]
+  services: ServiceOption[]
   draft: BookingDraft
   statusColors: BookingStatusColors
   onDraftChange: (draft: BookingDraft) => void
@@ -68,12 +69,13 @@ export function SchedulerBookingDialog({
   bookings,
   availabilityBlocks,
   clients,
+  services,
   draft,
   statusColors,
   onDraftChange,
   onSave,
 }: SchedulerBookingDialogProps) {
-  const selectedService = schedulerServices.find((service) => service.id === draft.serviceId)
+  const selectedService = services.find((service) => service.id === draft.serviceId)
   const isEditing = Boolean(draft.bookingId)
   const [isNewClientOpen, setIsNewClientOpen] = useState(false)
   const [isAdditionalInfoOpen, setIsAdditionalInfoOpen] = useState(false)
@@ -541,7 +543,7 @@ export function SchedulerBookingDialog({
                       <SelectValue placeholder="Busca un servicio" />
                     </SelectTrigger>
                     <SelectContent className="scheduler-modal-select-content max-h-[320px]">
-                      {schedulerServices.map((service) => (
+                      {services.map((service) => (
                         <SelectItem key={service.id} className="scheduler-modal-select-item" value={service.id}>
                           {service.name}
                         </SelectItem>

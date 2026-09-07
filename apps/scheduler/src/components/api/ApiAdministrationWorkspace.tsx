@@ -77,8 +77,8 @@ function AdministrationShell({
 function CommissionSection() {
   const { canAccess } = useSchedulerSession();
   const canWrite = canAccess("administration.commissions", "ADMIN");
-  const catalog = useSchedulerQuery(() => schedulerApi.administrationCatalog(), []);
-  const operations = useSchedulerQuery(() => schedulerApi.operationalCatalog(), []);
+  const catalog = useSchedulerQuery(() => schedulerApi.administrationCatalog(), [], { queryKey: "administration-catalog" });
+  const operations = useSchedulerQuery(() => schedulerApi.operationalCatalog(), [], { queryKey: "operational-catalog" });
   const [amount, setAmount] = useState("0");
   const [conflict, setConflict] = useState<string | null>(null);
   const commerceId = operations.data?.commerces[0]?.id ?? "";
@@ -108,8 +108,8 @@ function CommissionSection() {
 function GiftCardsSection() {
   const { canAccess } = useSchedulerSession();
   const canWrite = canAccess("administration.gift-cards", "ADMIN");
-  const catalog = useSchedulerQuery(() => schedulerApi.administrationCatalog(), []);
-  const operations = useSchedulerQuery(() => schedulerApi.operationalCatalog(), []);
+  const catalog = useSchedulerQuery(() => schedulerApi.administrationCatalog(), [], { queryKey: "administration-catalog" });
+  const operations = useSchedulerQuery(() => schedulerApi.operationalCatalog(), [], { queryKey: "operational-catalog" });
   const [name, setName] = useState("");
   const [salePrice, setSalePrice] = useState("0");
   const [conflict, setConflict] = useState<string | null>(null);
@@ -133,8 +133,8 @@ function GiftCardsSection() {
 function SurveysSection() {
   const { canAccess } = useSchedulerSession();
   const canWrite = canAccess("administration.surveys", "ADMIN");
-  const operations = useSchedulerQuery(() => schedulerApi.operationalCatalog(), []);
-  const surveys = useSchedulerQuery(() => schedulerApi.surveys(), []);
+  const operations = useSchedulerQuery(() => schedulerApi.operationalCatalog(), [], { queryKey: "operational-catalog" });
+  const surveys = useSchedulerQuery(() => schedulerApi.surveys(), [], { queryKey: "surveys" });
   const [name, setName] = useState("");
   const [prompt, setPrompt] = useState("¿Cómo calificarías tu visita?");
   const commerceId = operations.data?.commerces[0]?.id ?? "";
@@ -153,8 +153,8 @@ function SurveysSection() {
 function ConsentsSection() {
   const { canAccess } = useSchedulerSession();
   const canWrite = canAccess("administration.consents", "ADMIN");
-  const templates = useSchedulerQuery(() => schedulerApi.consentTemplates(), []);
-  const operations = useSchedulerQuery(() => schedulerApi.operationalCatalog(), []);
+  const templates = useSchedulerQuery(() => schedulerApi.consentTemplates(), [], { queryKey: "consents" });
+  const operations = useSchedulerQuery(() => schedulerApi.operationalCatalog(), [], { queryKey: "operational-catalog" });
   const [name, setName] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const commerceId = operations.data?.commerces[0]?.id ?? "";
@@ -175,8 +175,8 @@ function ConsentsSection() {
 function CommunicationsSection() {
   const { canAccess } = useSchedulerSession();
   const canWrite = canAccess("administration.whatsapp", "ADMIN");
-  const operations = useSchedulerQuery(() => schedulerApi.operationalCatalog(), []);
-  const content = useSchedulerQuery(async () => { const [templates, outbox] = await Promise.all([schedulerApi.messageTemplates(), schedulerApi.messageOutbox()]); return { templates, outbox }; }, []);
+  const operations = useSchedulerQuery(() => schedulerApi.operationalCatalog(), [], { queryKey: "operational-catalog" });
+  const content = useSchedulerQuery(async () => { const [templates, outbox] = await Promise.all([schedulerApi.messageTemplates(), schedulerApi.messageOutbox()]); return { templates, outbox }; }, [], { queryKey: "communications" });
   const [name, setName] = useState("");
   const [body, setBody] = useState("");
   const [channel, setChannel] = useState<SchedulerMessageChannel>("WHATSAPP");
@@ -193,8 +193,8 @@ function CommunicationsSection() {
 function StatusColorsSection() {
   const { canAccess } = useSchedulerSession();
   const canWrite = canAccess("administration.status-colors", "ADMIN");
-  const operations = useSchedulerQuery(() => schedulerApi.operationalCatalog(), []);
-  const catalog = useSchedulerQuery(() => schedulerApi.administrationCatalog(), []);
+  const operations = useSchedulerQuery(() => schedulerApi.operationalCatalog(), [], { queryKey: "operational-catalog" });
+  const catalog = useSchedulerQuery(() => schedulerApi.administrationCatalog(), [], { queryKey: "administration-catalog" });
   const [commerceId, setCommerceId] = useState("");
   const [secret, setSecret] = useState("");
   const [changes, setChanges] = useState<Partial<Record<SchedulerAppointmentStatus, string>>>({});
@@ -218,8 +218,8 @@ function StatusColorsSection() {
 function ServiceExtensionsPanel() {
   const { canAccess } = useSchedulerSession();
   const canAdmin = canAccess("administration.services", "ADMIN");
-  const catalog = useSchedulerQuery(() => schedulerApi.administrationCatalog(), []);
-  const operations = useSchedulerQuery(() => schedulerApi.operationalCatalog(), []);
+  const catalog = useSchedulerQuery(() => schedulerApi.administrationCatalog(), [], { queryKey: "administration-catalog" });
+  const operations = useSchedulerQuery(() => schedulerApi.operationalCatalog(), [], { queryKey: "operational-catalog" });
   const [conflict, setConflict] = useState<string | null>(null);
   const [classDraft, setClassDraft] = useState({ serviceProfileId: "", branchProfileId: "", professionalProfileId: "", weekday: "MONDAY", startMinute: "540", endMinute: "600", capacity: "1" });
 

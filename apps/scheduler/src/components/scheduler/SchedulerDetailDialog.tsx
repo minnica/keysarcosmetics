@@ -17,7 +17,7 @@ import {
   type AttendingSpecialist,
   type Booking,
   type BookingPurchaseType,
-} from '@/lib/mock-scheduler-data'
+} from '@/lib/scheduler-presentation'
 import {
   formatMoney,
   getServiceByName,

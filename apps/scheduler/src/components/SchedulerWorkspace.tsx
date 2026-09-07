@@ -28,6 +28,7 @@ import {
   schedulerReferenceDate,
   schedulerReferenceDateKey,
   schedulerServices,
+  schedulerWeekBookings,
   getBookingStatusColors,
   type BookingStatusColors,
   type AvailabilityBlock,
@@ -212,7 +213,13 @@ export function SchedulerWorkspace() {
   const [duplicateClient, setDuplicateClient] = useState<SchedulerClient | null>(null)
   const [availabilityBlocks, setAvailabilityBlocks] = useState<AvailabilityBlock[]>(schedulerDayBlocks)
   const [draft, setDraft] = useState<BookingDraft>(() =>
-    createDraft(schedulerReferenceDate, configuredProfessionals),
+    createDraft(
+      schedulerReferenceDate,
+      configuredProfessionals,
+      undefined,
+      undefined,
+      schedulerServices,
+    ),
   )
   const [blockDraft, setBlockDraft] = useState<BlockDraft | null>(null)
   const [isBlockDialogOpen, setIsBlockDialogOpen] = useState(false)
@@ -495,6 +502,7 @@ export function SchedulerWorkspace() {
         professionalsSource,
         professionalId,
         startTime,
+        schedulerServices,
       ),
     )
     setIsDialogOpen(true)
@@ -540,7 +548,7 @@ export function SchedulerWorkspace() {
     }, 140)
   }
 
-  function handleMockBlock(professionalId: string, startTime: string) {
+  function handleCreateBlock(professionalId: string, startTime: string) {
     setEmptySlotAction(null)
     setBlockDraft(createBlockDraft(selectedDate, branchProfessionals, professionalId, startTime))
     setIsBlockDialogOpen(true)
@@ -557,7 +565,7 @@ export function SchedulerWorkspace() {
       toast.error('Este registro ya está finalizado')
       return
     }
-    setDraft(createDraftFromBooking(booking, selectedDate))
+    setDraft(createDraftFromBooking(booking, selectedDate, schedulerServices))
     setEmptySlotAction(null)
     setIsDialogOpen(true)
   }
@@ -1515,11 +1523,12 @@ export function SchedulerWorkspace() {
                   'Sin comercio'
                 }
                 weekDays={weekDays}
+                weekBookings={schedulerWeekBookings}
                 emptySlotAction={emptySlotAction}
                 onOpenSlotAction={openSlotAction}
                 onCloseSlotAction={() => setEmptySlotAction(null)}
                 onOpenNewBooking={openNewBooking}
-                onMockBlock={handleMockBlock}
+                onCreateBlock={handleCreateBlock}
                 onEditBlock={handleEditBlock}
                 onDeleteBooking={handleDeleteBooking}
                 onEditBooking={handleEditBooking}
@@ -1560,6 +1569,7 @@ export function SchedulerWorkspace() {
         bookings={bookings}
         availabilityBlocks={availabilityBlocks}
         clients={clients}
+        services={schedulerServices}
         draft={draft}
         statusColors={statusColors}
         onDraftChange={setDraft}

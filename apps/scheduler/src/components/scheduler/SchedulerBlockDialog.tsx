@@ -24,7 +24,7 @@ import {
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { Ban, Clock3, Trash2, X } from 'lucide-react'
-import { type Professional } from '@/lib/mock-scheduler-data'
+import { type Professional } from '@/lib/scheduler-presentation'
 import { endHourOptions, minuteOptions, startHourOptions, type BlockDraft } from './scheduler-utils'
 
 interface SchedulerBlockDialogProps {

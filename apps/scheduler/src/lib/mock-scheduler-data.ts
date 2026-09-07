@@ -1,21 +1,40 @@
-export type SchedulerView = 'day' | 'week'
-export type BookingStatus = 'reserved' | 'confirmed' | 'arrived' | 'no-show' | 'pending' | 'waiting' | 'canceled'
-export type BookingChannel = 'web' | 'marketplace' | 'charly' | 'walk-in'
-export type BookingPurchaseType = 'cash' | 'layaway' | 'settlement'
+import {
+  defaultBookingStatusColors,
+  type AttendingSpecialist,
+  type AvailabilityBlock,
+  type Booking,
+  type BookingStatusColors,
+  type BranchOption,
+  type CommerceOption,
+  type Professional,
+  type ServiceOption,
+} from './scheduler-presentation'
+
+export type {
+  AttendingSpecialist,
+  AvailabilityBlock,
+  Booking,
+  BookingChannel,
+  BookingPurchaseType,
+  BookingServiceRecord,
+  BookingStatus,
+  BookingStatusColors,
+  BranchOption,
+  CommerceOption,
+  Professional,
+  SchedulerLegendItem,
+  SchedulerView,
+  ServiceOption,
+} from './scheduler-presentation'
+
+export {
+  bookingStatusOptions,
+  bookingStatuses,
+  defaultBookingStatusColors,
+  schedulerLegendItems,
+} from './scheduler-presentation'
 
 export const schedulerStatusColorStorageKey = 'scheduler-status-colors-by-commerce'
-
-export const defaultBookingStatusColors: Record<BookingStatus, string> = {
-  reserved: '#38bdf8',
-  confirmed: '#fbbf24',
-  arrived: '#e879f9',
-  'no-show': '#fb7185',
-  pending: '#f87171',
-  waiting: '#a3e635',
-  canceled: '#94a3b8',
-}
-
-export type BookingStatusColors = Record<BookingStatus, string>
 
 export function getBookingStatusColors(commerceId: string): BookingStatusColors {
   if (typeof window === 'undefined') return { ...defaultBookingStatusColors }
@@ -34,88 +53,6 @@ export function getBookingStatusColors(commerceId: string): BookingStatusColors 
   }
 }
 
-export interface CommerceOption {
-  id: string
-  name: string
-}
-
-export interface BranchOption {
-  id: string
-  commerceId: string
-  name: string
-}
-
-export interface Professional {
-  id: string
-  commerceIds: string[]
-  branchIds: string[]
-  name: string
-  shortName: string
-  avatar: string
-  accent: string
-}
-
-export interface AttendingSpecialist {
-  id: string
-  name: string
-  branchIds: string[]
-}
-
-export interface BookingServiceRecord {
-  id: string
-  specialistId: string
-  specialistName: string
-  sharePercentage: number
-  allocatedAmount: number
-}
-
-export interface Booking {
-  id: string
-  clientId?: string
-  branchId?: string
-  date?: string
-  customerName: string
-  serviceName: string
-  professionalId: string
-  start: string
-  end: string
-  status: BookingStatus
-  phone: string
-  customerEmail?: string
-  notes?: string
-  paymentLabel: string
-  purchased?: boolean
-  purchaseType?: BookingPurchaseType
-  purchaseAmount?: number
-  tentativePurchaseAmount?: number
-  serviceRecords?: BookingServiceRecord[]
-  sessionLabel?: string
-}
-
-export interface AvailabilityBlock {
-  id: string
-  branchId?: string
-  date?: string
-  professionalId: string
-  start: string
-  end: string
-  label: string
-  variant: 'unavailable' | 'blocked'
-}
-
-export interface ServiceOption {
-  id: string
-  name: string
-  durationMinutes: number
-  price: number
-}
-
-export interface SchedulerLegendItem {
-  id: string
-  label: string
-  icon: 'globe' | 'calendar-plus' | 'user-search' | 'house' | 'video' | 'package' | 'dollar' | 'link' | 'wallet' | 'scan'
-}
-
 export const schedulerReferenceDate = new Date('2026-06-30T11:00:00')
 export const schedulerReferenceDateKey = '2026-06-30'
 
@@ -131,65 +68,6 @@ export const schedulerBranches: BranchOption[] = [
   { id: 'keysar-reforma', commerceId: 'keysar-cosmetics', name: 'REFORMA' },
   { id: 'keysar-polanco', commerceId: 'keysar-cosmetics', name: 'POLANCO' },
 ]
-
-export const bookingStatusOptions: Array<{ value: BookingStatus | 'active'; label: string }> = [
-  { value: 'active', label: 'Reservas activas' },
-  { value: 'reserved', label: 'Reservado' },
-  { value: 'confirmed', label: 'Confirmado' },
-  { value: 'arrived', label: 'Asistió' },
-  { value: 'no-show', label: 'No asistio' },
-  { value: 'pending', label: 'Pendiente' },
-  { value: 'waiting', label: 'En espera' },
-  { value: 'canceled', label: 'Cancelado' },
-]
-
-export const bookingStatuses: Record<
-  BookingStatus,
-  { label: string; badgeClassName: string; cardClassName: string; dotClassName: string }
-> = {
-  reserved: {
-    label: 'Reservado',
-    badgeClassName: 'bg-sky-100 text-sky-700 border-sky-200',
-    cardClassName: 'bg-sky-50 border-sky-200 text-slate-700',
-    dotClassName: 'bg-sky-400',
-  },
-  confirmed: {
-    label: 'Confirmado',
-    badgeClassName: 'bg-amber-100 text-amber-800 border-amber-200',
-    cardClassName: 'bg-amber-50 border-amber-200 text-amber-900',
-    dotClassName: 'bg-amber-400',
-  },
-  arrived: {
-    label: 'Asistió',
-    badgeClassName: 'bg-fuchsia-100 text-fuchsia-700 border-fuchsia-200',
-    cardClassName: 'bg-fuchsia-50 border-fuchsia-200 text-fuchsia-800',
-    dotClassName: 'bg-fuchsia-300',
-  },
-  'no-show': {
-    label: 'No asistio',
-    badgeClassName: 'bg-rose-100 text-rose-700 border-rose-200',
-    cardClassName: 'bg-rose-50 border-rose-200 text-rose-800',
-    dotClassName: 'bg-rose-300',
-  },
-  pending: {
-    label: 'Pendiente',
-    badgeClassName: 'bg-red-100 text-red-700 border-red-200',
-    cardClassName: 'bg-red-50 border-red-200 text-red-800',
-    dotClassName: 'bg-red-400',
-  },
-  waiting: {
-    label: 'En espera',
-    badgeClassName: 'bg-lime-100 text-lime-800 border-lime-200',
-    cardClassName: 'bg-lime-50 border-lime-200 text-lime-900',
-    dotClassName: 'bg-lime-400',
-  },
-  canceled: {
-    label: 'Cancelado',
-    badgeClassName: 'bg-slate-100 text-slate-600 border-slate-200',
-    cardClassName: 'bg-slate-50 border-slate-200 text-slate-600',
-    dotClassName: 'bg-slate-400',
-  },
-}
 
 export const schedulerProfessionals: Professional[] = [
   {
@@ -773,18 +651,4 @@ export const schedulerWeekBookings: Array<Booking & { dayOffset: number }> = [
     paymentLabel: 'Bloqueo interno',
     dayOffset: 6,
   },
-]
-
-export const schedulerLegendItems: SchedulerLegendItem[] = [
-  { id: 'web', label: 'Realizada desde sitio web', icon: 'globe' },
-  { id: 'market', label: 'Generada por AgendaPro Market', icon: 'calendar-plus' },
-  { id: 'charly', label: 'Generada por Charly', icon: 'user-search' },
-  { id: 'home', label: 'Reserva a domicilio', icon: 'house' },
-  { id: 'video', label: 'Reserva por videollamada', icon: 'video' },
-  { id: 'no-pref', label: 'Sin preferencia de especialista', icon: 'user-search' },
-  { id: 'plan', label: 'Plan reservado', icon: 'package' },
-  { id: 'payment', label: 'Agregar pago', icon: 'dollar' },
-  { id: 'link', label: 'Copiar link', icon: 'link' },
-  { id: 'pos', label: 'Pagada con POS', icon: 'wallet' },
-  { id: 'scan', label: 'Reserva en escaneo rapido', icon: 'scan' },
 ]

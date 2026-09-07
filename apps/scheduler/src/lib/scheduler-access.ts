@@ -104,7 +104,6 @@ export function canAccessSchedulerBranch(
   bootstrap: SchedulerBootstrapDto | null,
   branchId: string,
 ): boolean {
-  if (bootstrap?.mockModeEnabled) return true;
   return Boolean(bootstrap?.authorizedBranchIds.includes(branchId));
 }
 
@@ -112,9 +111,7 @@ export function canAccessSchedulerCommerce(
   bootstrap: SchedulerBootstrapDto | null,
   _commerceId: string,
 ): boolean {
-  return Boolean(
-    bootstrap?.mockModeEnabled || bootstrap?.authorizedBranchIds.length,
-  );
+  return Boolean(bootstrap?.authorizedBranchIds.length);
 }
 
 export function canAccessSchedulerProfessional(

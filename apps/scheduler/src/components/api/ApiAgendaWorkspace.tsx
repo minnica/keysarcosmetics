@@ -4,8 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import type {
   SchedulerAppointmentDto,
   SchedulerAppointmentStatus,
-  SchedulerOperationalCatalogDto,
 } from "@cosmetics/types";
+import { SCHEDULER_APPOINTMENT_STATUSES } from "@cosmetics/types";
 import {
   Badge,
   Button,
@@ -25,6 +25,10 @@ import { CalendarDays, LockKeyhole, Plus, RefreshCw } from "lucide-react";
 import { schedulerApi } from "@/lib/api";
 import { useSchedulerSession } from "@/lib/session";
 import {
+  buildSchedulerAgendaPresentation,
+  schedulerAppointmentStatusLabels,
+} from "@/lib/scheduler-agenda-presentation";
+import {
   ConflictNotice,
   QueryBoundary,
   WorkspaceHeader,
@@ -33,26 +37,8 @@ import {
 } from "./ApiState";
 
 const statuses: SchedulerAppointmentStatus[] = [
-  "PENDING",
-  "RESERVED",
-  "CONFIRMED",
-  "ARRIVED",
-  "WAITING",
-  "ATTENDED",
-  "NO_SHOW",
-  "CANCELED",
+  ...SCHEDULER_APPOINTMENT_STATUSES,
 ];
-
-const statusLabels: Record<SchedulerAppointmentStatus, string> = {
-  PENDING: "Pendiente",
-  RESERVED: "Reservada",
-  CONFIRMED: "Confirmada",
-  ARRIVED: "Llegó",
-  WAITING: "En espera",
-  ATTENDED: "Atendida",
-  NO_SHOW: "No asistió",
-  CANCELED: "Cancelada",
-};
 
 function todayInput() {
   const now = new Date();
@@ -64,14 +50,6 @@ function dayBounds(date: string) {
   const end = new Date(start);
   end.setDate(end.getDate() + 1);
   return { from: start.toISOString(), to: end.toISOString() };
-}
-
-function formatDateTime(value: string, timezone?: string) {
-  return new Intl.DateTimeFormat("es-MX", {
-    dateStyle: "medium",
-    timeStyle: "short",
-    ...(timezone ? { timeZone: timezone } : {}),
-  }).format(new Date(value));
 }
 
 interface AppointmentDraft {
@@ -119,6 +97,7 @@ export function ApiAgendaWorkspace() {
   const catalog = useSchedulerQuery(
     () => schedulerApi.operationalCatalog(),
     [],
+    { queryKey: "operational-catalog" },
   );
   const agenda = useSchedulerQuery(
     async () => {
@@ -135,14 +114,24 @@ export function ApiAgendaWorkspace() {
       return { appointments, blocks };
     },
     [branchId, bounds.from, bounds.to, status],
-    Boolean(branchId),
+    {
+      queryKey: "agenda",
+      branchId,
+      enabled: Boolean(branchId),
+    },
   );
 
   useEffect(() => {
-    if (!branchId && bootstrap?.authorizedBranchIds[0]) {
-      setBranchId(bootstrap.authorizedBranchIds[0]);
+    if (!bootstrap?.authorizedBranchIds.includes(branchId)) {
+      setBranchId(bootstrap?.authorizedBranchIds[0] ?? "");
     }
   }, [bootstrap, branchId]);
+  useEffect(() => {
+    setShowCreate(false);
+    setShowBlock(false);
+    setDraft(emptyDraft);
+    setConflict(null);
+  }, [bootstrap?.user.id]);
   useEffect(() => {
     setBlockDraft((value) => ({
       ...value,
@@ -177,7 +166,11 @@ export function ApiAgendaWorkspace() {
         pageSize: 10,
       }),
     [draft.customerQuery, branchId],
-    draft.customerQuery.trim().length >= 2 && Boolean(branchId),
+    {
+      queryKey: "customers:search",
+      branchId,
+      enabled: draft.customerQuery.trim().length >= 2 && Boolean(branchId),
+    },
   );
 
   const availability = useSchedulerQuery(
@@ -191,8 +184,22 @@ export function ApiAgendaWorkspace() {
           : {}),
       }),
     [branchId, draft.serviceProfileId, draft.professionalProfileId, date],
-    Boolean(branchId && draft.serviceProfileId),
+    {
+      queryKey: "agenda:availability",
+      branchId,
+      enabled: Boolean(branchId && draft.serviceProfileId),
+    },
   );
+
+  const presentation = useMemo(() => {
+    if (!catalog.data || !agenda.data) return null;
+    return buildSchedulerAgendaPresentation({
+      catalog: catalog.data,
+      branchId,
+      appointments: agenda.data.appointments.items,
+      blocks: agenda.data.blocks,
+    });
+  }, [agenda.data, branchId, catalog.data]);
 
   async function mutate(action: () => Promise<unknown>, success: string) {
     setMutationBusy(true);
@@ -203,18 +210,17 @@ export function ApiAgendaWorkspace() {
         setShowCreate(false);
         setShowBlock(false);
         setDraft(emptyDraft);
-        await agenda.reload();
+        // Invalidation below refreshes every consumer of the affected scope.
       },
       onError: toast.error,
       onConflict: (message) => setConflict(message),
+      invalidate: ["agenda"],
     });
     setMutationBusy(false);
   }
 
   function createAppointment() {
-    const service = services.find(
-      (item) => item.id === draft.serviceProfileId,
-    );
+    const service = services.find((item) => item.id === draft.serviceProfileId);
     const slot = availability.data?.slots.find(
       (item) =>
         item.startsAt === draft.startsAt &&
@@ -280,14 +286,15 @@ export function ApiAgendaWorkspace() {
       return;
     }
     void mutate(
-      () => schedulerApi.createScheduleBlock({
-        branchId,
-        startsAt: new Date(blockDraft.startsAt).toISOString(),
-        endsAt: new Date(blockDraft.endsAt).toISOString(),
-        reason: blockDraft.reason.trim(),
-        professionalProfileId: blockDraft.professionalProfileId || null,
-        resourceId: blockDraft.resourceId || null,
-      }),
+      () =>
+        schedulerApi.createScheduleBlock({
+          branchId,
+          startsAt: new Date(blockDraft.startsAt).toISOString(),
+          endsAt: new Date(blockDraft.endsAt).toISOString(),
+          reason: blockDraft.reason.trim(),
+          professionalProfileId: blockDraft.professionalProfileId || null,
+          resourceId: blockDraft.resourceId || null,
+        }),
       "Bloqueo creado.",
     );
   }
@@ -304,10 +311,11 @@ export function ApiAgendaWorkspace() {
       return;
     }
     void mutate(
-      () => schedulerApi.moveAppointment(appointment.id, {
-        startsAt: parsed.toISOString(),
-        expectedVersion: appointment.version,
-      }),
+      () =>
+        schedulerApi.moveAppointment(appointment.id, {
+          startsAt: parsed.toISOString(),
+          expectedVersion: appointment.version,
+        }),
       "Cita movida.",
     );
   }
@@ -321,10 +329,21 @@ export function ApiAgendaWorkspace() {
         actions={
           canWrite ? (
             <div className="flex flex-wrap gap-2">
-              <Button variant="outline" onClick={() => { setShowBlock((value) => !value); setShowCreate(false); }}>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowBlock((value) => !value);
+                  setShowCreate(false);
+                }}
+              >
                 <LockKeyhole className="mr-2 h-4 w-4" /> Nuevo bloqueo
               </Button>
-              <Button onClick={() => { setShowCreate((value) => !value); setShowBlock(false); }}>
+              <Button
+                onClick={() => {
+                  setShowCreate((value) => !value);
+                  setShowBlock(false);
+                }}
+              >
                 <Plus className="mr-2 h-4 w-4" /> Nueva cita
               </Button>
             </div>
@@ -378,7 +397,7 @@ export function ApiAgendaWorkspace() {
                 <SelectItem value="ALL">Todos</SelectItem>
                 {statuses.map((item) => (
                   <SelectItem key={item} value={item}>
-                    {statusLabels[item]}
+                    {schedulerAppointmentStatusLabels[item]}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -420,7 +439,9 @@ export function ApiAgendaWorkspace() {
                         size="sm"
                         type="button"
                         variant={
-                          draft.customerId === customer.id ? "default" : "outline"
+                          draft.customerId === customer.id
+                            ? "default"
+                            : "outline"
                         }
                         onClick={() =>
                           setDraft((value) => ({
@@ -489,16 +510,24 @@ export function ApiAgendaWorkspace() {
                 <Label>Horario disponible</Label>
                 <div className="mt-2 flex max-h-40 flex-wrap gap-2 overflow-y-auto">
                   {availability.loading ? (
-                    <span className="text-sm text-slate-500">Calculando disponibilidad…</span>
+                    <span className="text-sm text-slate-500">
+                      Calculando disponibilidad…
+                    </span>
                   ) : availability.error ? (
-                    <span className="text-sm text-red-600">{availability.error}</span>
+                    <span className="text-sm text-red-600">
+                      {availability.error}
+                    </span>
                   ) : availability.data?.slots.length ? (
                     availability.data.slots.map((slot) => (
                       <Button
                         key={`${slot.startsAt}-${slot.professionalProfileId}`}
                         size="sm"
                         type="button"
-                        variant={draft.startsAt === slot.startsAt ? "default" : "outline"}
+                        variant={
+                          draft.startsAt === slot.startsAt
+                            ? "default"
+                            : "outline"
+                        }
                         onClick={() =>
                           setDraft((value) => ({
                             ...value,
@@ -511,7 +540,8 @@ export function ApiAgendaWorkspace() {
                           hour: "2-digit",
                           minute: "2-digit",
                           timeZone: availability.data?.timezone,
-                        }).format(new Date(slot.startsAt))} · {slot.professionalName}
+                        }).format(new Date(slot.startsAt))}{" "}
+                        · {slot.professionalName}
                       </Button>
                     ))
                   ) : (
@@ -528,7 +558,10 @@ export function ApiAgendaWorkspace() {
                   className="mt-1.5"
                   value={draft.notes}
                   onChange={(event) =>
-                    setDraft((value) => ({ ...value, notes: event.target.value }))
+                    setDraft((value) => ({
+                      ...value,
+                      notes: event.target.value,
+                    }))
                   }
                 />
               </div>
@@ -547,12 +580,112 @@ export function ApiAgendaWorkspace() {
         {showBlock ? (
           <Card className="border-[#ddcdbf]">
             <CardContent className="grid gap-4 pt-6 md:grid-cols-2">
-              <div><Label htmlFor="block-start">Inicio</Label><Input id="block-start" className="mt-1.5" type="datetime-local" value={blockDraft.startsAt} onChange={(event) => setBlockDraft((value) => ({ ...value, startsAt: event.target.value }))} /></div>
-              <div><Label htmlFor="block-end">Fin</Label><Input id="block-end" className="mt-1.5" type="datetime-local" value={blockDraft.endsAt} onChange={(event) => setBlockDraft((value) => ({ ...value, endsAt: event.target.value }))} /></div>
-              <div><Label>Profesional (opcional)</Label><Select value={blockDraft.professionalProfileId || "ALL"} onValueChange={(value) => setBlockDraft((current) => ({ ...current, professionalProfileId: value === "ALL" ? "" : value }))}><SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ALL">Toda la sucursal</SelectItem>{professionals.map((professional) => <SelectItem key={professional.id} value={professional.id}>{professional.name}</SelectItem>)}</SelectContent></Select></div>
-              <div><Label>Recurso (opcional)</Label><Select value={blockDraft.resourceId || "NONE"} onValueChange={(value) => setBlockDraft((current) => ({ ...current, resourceId: value === "NONE" ? "" : value }))}><SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="NONE">Sin recurso específico</SelectItem>{catalog.data?.resources.filter((resource) => resource.branchProfileId === branchProfile?.id && resource.active).map((resource) => <SelectItem key={resource.id} value={resource.id}>{resource.name}</SelectItem>)}</SelectContent></Select></div>
-              <div className="md:col-span-2"><Label htmlFor="block-reason">Motivo</Label><Input id="block-reason" className="mt-1.5" value={blockDraft.reason} onChange={(event) => setBlockDraft((value) => ({ ...value, reason: event.target.value }))} /></div>
-              <div className="flex gap-2 md:col-span-2"><Button disabled={mutationBusy} onClick={createBlock}>Guardar bloqueo</Button><Button variant="outline" onClick={() => setShowBlock(false)}>Cancelar</Button></div>
+              <div>
+                <Label htmlFor="block-start">Inicio</Label>
+                <Input
+                  id="block-start"
+                  className="mt-1.5"
+                  type="datetime-local"
+                  value={blockDraft.startsAt}
+                  onChange={(event) =>
+                    setBlockDraft((value) => ({
+                      ...value,
+                      startsAt: event.target.value,
+                    }))
+                  }
+                />
+              </div>
+              <div>
+                <Label htmlFor="block-end">Fin</Label>
+                <Input
+                  id="block-end"
+                  className="mt-1.5"
+                  type="datetime-local"
+                  value={blockDraft.endsAt}
+                  onChange={(event) =>
+                    setBlockDraft((value) => ({
+                      ...value,
+                      endsAt: event.target.value,
+                    }))
+                  }
+                />
+              </div>
+              <div>
+                <Label>Profesional (opcional)</Label>
+                <Select
+                  value={blockDraft.professionalProfileId || "ALL"}
+                  onValueChange={(value) =>
+                    setBlockDraft((current) => ({
+                      ...current,
+                      professionalProfileId: value === "ALL" ? "" : value,
+                    }))
+                  }
+                >
+                  <SelectTrigger className="mt-1.5">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ALL">Toda la sucursal</SelectItem>
+                    {professionals.map((professional) => (
+                      <SelectItem key={professional.id} value={professional.id}>
+                        {professional.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Recurso (opcional)</Label>
+                <Select
+                  value={blockDraft.resourceId || "NONE"}
+                  onValueChange={(value) =>
+                    setBlockDraft((current) => ({
+                      ...current,
+                      resourceId: value === "NONE" ? "" : value,
+                    }))
+                  }
+                >
+                  <SelectTrigger className="mt-1.5">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="NONE">Sin recurso específico</SelectItem>
+                    {catalog.data?.resources
+                      .filter(
+                        (resource) =>
+                          resource.branchProfileId === branchProfile?.id &&
+                          resource.active,
+                      )
+                      .map((resource) => (
+                        <SelectItem key={resource.id} value={resource.id}>
+                          {resource.name}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="md:col-span-2">
+                <Label htmlFor="block-reason">Motivo</Label>
+                <Input
+                  id="block-reason"
+                  className="mt-1.5"
+                  value={blockDraft.reason}
+                  onChange={(event) =>
+                    setBlockDraft((value) => ({
+                      ...value,
+                      reason: event.target.value,
+                    }))
+                  }
+                />
+              </div>
+              <div className="flex gap-2 md:col-span-2">
+                <Button disabled={mutationBusy} onClick={createBlock}>
+                  Guardar bloqueo
+                </Button>
+                <Button variant="outline" onClick={() => setShowBlock(false)}>
+                  Cancelar
+                </Button>
+              </div>
             </CardContent>
           </Card>
         ) : null}
@@ -560,7 +693,9 @@ export function ApiAgendaWorkspace() {
         <QueryBoundary
           loading={agenda.loading || catalog.loading}
           error={agenda.error ?? catalog.error}
-          empty={!agenda.data?.appointments.items.length && !agenda.data?.blocks.length}
+          empty={
+            !presentation?.appointments.length && !presentation?.blocks.length
+          }
           emptyTitle="Día disponible"
           emptyDescription="No hay citas ni bloqueos canónicos para esta fecha."
           onRetry={() => {
@@ -569,7 +704,7 @@ export function ApiAgendaWorkspace() {
           }}
         >
           <div className="grid gap-3">
-            {agenda.data?.blocks.map((block) => (
+            {presentation?.blocks.map((block) => (
               <article
                 key={block.id}
                 className="flex items-center gap-4 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-4"
@@ -578,13 +713,30 @@ export function ApiAgendaWorkspace() {
                 <div className="min-w-0 flex-1">
                   <p className="font-semibold">Bloqueo · {block.reason}</p>
                   <p className="text-sm text-slate-500">
-                    {formatDateTime(block.startsAt, block.timezone)} – {formatDateTime(block.endsAt, block.timezone)}
+                    {block.localDate} · {block.localStart}–{block.localEnd}
                   </p>
                 </div>
-                {canWrite && block.status === "ACTIVE" ? <Button size="sm" variant="outline" onClick={() => void mutate(() => schedulerApi.cancelScheduleBlock(block.id, { expectedVersion: block.version, reason: "Cancelado desde la agenda" }), "Bloqueo cancelado.")}>Quitar bloqueo</Button> : null}
+                {canWrite && block.status === "ACTIVE" ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      void mutate(
+                        () =>
+                          schedulerApi.cancelScheduleBlock(block.id, {
+                            expectedVersion: block.version,
+                            reason: "Cancelado desde la agenda",
+                          }),
+                        "Bloqueo cancelado.",
+                      )
+                    }
+                  >
+                    Quitar bloqueo
+                  </Button>
+                ) : null}
               </article>
             ))}
-            {agenda.data?.appointments.items.map((appointment) => (
+            {presentation?.appointments.map((appointment) => (
               <article
                 key={appointment.id}
                 className="rounded-2xl border border-[#e7ddd4] bg-white p-5 shadow-sm"
@@ -595,38 +747,54 @@ export function ApiAgendaWorkspace() {
                   </span>
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <p className="font-semibold">{appointment.customerName}</p>
-                      <Badge variant="outline">{statusLabels[appointment.status]}</Badge>
+                      <p className="font-semibold">
+                        {appointment.customerName}
+                      </p>
+                      <Badge variant="outline">{appointment.statusLabel}</Badge>
                     </div>
                     <p className="mt-1 text-sm text-slate-500">
-                      {formatDateTime(appointment.startsAt, appointment.timezone)} · {appointment.services.map((service) => service.serviceName).join(", ")}
+                      {appointment.localDate} · {appointment.localStart}–
+                      {appointment.localEnd} ·{" "}
+                      {appointment.services
+                        .map((service) => service.serviceName)
+                        .join(", ")}
                     </p>
                     <p className="mt-1 text-xs text-slate-400">
-                      {appointment.branchName} · v{appointment.version} · {appointment.origin}
+                      {appointment.branchName} · v{appointment.version} ·{" "}
+                      {appointment.origin}
                     </p>
                   </div>
                   {canWrite && appointment.status !== "CANCELED" ? (
-                    <div className="flex flex-col gap-2 sm:flex-row"><Button size="sm" variant="outline" onClick={() => moveAppointment(appointment)}>Mover</Button><Select
-                      value={appointment.status}
-                      disabled={mutationBusy}
-                      onValueChange={(value) =>
-                        changeStatus(
-                          appointment,
-                          value as SchedulerAppointmentStatus,
-                        )
-                      }
-                    >
-                      <SelectTrigger className="w-full md:w-44">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {statuses.map((item) => (
-                          <SelectItem key={item} value={item}>
-                            {statusLabels[item]}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select></div>
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => moveAppointment(appointment.canonical)}
+                      >
+                        Mover
+                      </Button>
+                      <Select
+                        value={appointment.status}
+                        disabled={mutationBusy}
+                        onValueChange={(value) =>
+                          changeStatus(
+                            appointment.canonical,
+                            value as SchedulerAppointmentStatus,
+                          )
+                        }
+                      >
+                        <SelectTrigger className="w-full md:w-44">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {statuses.map((item) => (
+                            <SelectItem key={item} value={item}>
+                              {schedulerAppointmentStatusLabels[item]}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
                   ) : null}
                 </div>
               </article>

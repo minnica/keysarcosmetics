@@ -124,7 +124,11 @@ export function ApiReportsWorkspace({
         pageSize: 100,
       }),
     [effectiveKey, dateFrom, dateTo, branchIds.join(",")],
-    Boolean(dateFrom && dateTo && branchIds.length && availableKeys.length),
+    {
+      queryKey: "reports",
+      branchId,
+      enabled: Boolean(dateFrom && dateTo && branchIds.length && availableKeys.length),
+    },
   );
   const [exporting, setExporting] = useState(false);
 

@@ -106,7 +106,9 @@ export function ApiSettingsWorkspace() {
   const [saving, setSaving] = useState(false);
   const [conflict, setConflict] = useState<string | null>(null);
 
-  const catalog = useSchedulerQuery(() => schedulerApi.operationalCatalog(), []);
+  const catalog = useSchedulerQuery(() => schedulerApi.operationalCatalog(), [], {
+    queryKey: "operational-catalog",
+  });
   useEffect(() => {
     if (!commerceId && catalog.data?.commerces[0]) setCommerceId(catalog.data.commerces[0].id);
   }, [catalog.data, commerceId]);
@@ -124,7 +126,11 @@ export function ApiSettingsWorkspace() {
       ...(branchProfileId ? { branchProfileId } : {}),
     }),
     [section, commerceId, branchProfileId],
-    Boolean(commerceId),
+    {
+      queryKey: `settings:${section}`,
+      branchId: branchProfileId,
+      enabled: Boolean(commerceId),
+    },
   );
   useEffect(() => {
     if (!resolved.data || dirty) return;

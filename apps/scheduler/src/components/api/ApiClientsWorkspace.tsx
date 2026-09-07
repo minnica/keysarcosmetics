@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type {
   SchedulerCustomerDetailDto,
   SchedulerCustomerFinancialHistoryDto,
@@ -90,9 +90,30 @@ export function ApiClientsWorkspace() {
         pageSize: 50,
       }),
     [query, branchId],
-    query.length >= 2 && Boolean(branchId),
+    {
+      queryKey: "customers:search",
+      branchId,
+      enabled: query.length >= 2 && Boolean(branchId),
+    },
   );
-  const sources = useSchedulerQuery(() => schedulerApi.customerSources(), []);
+  const sources = useSchedulerQuery(() => schedulerApi.customerSources(), [], {
+    queryKey: "customers:sources",
+  });
+
+  useEffect(() => {
+    if (!bootstrap?.authorizedBranchIds.includes(branchId)) {
+      setBranchId(bootstrap?.authorizedBranchIds[0] ?? "");
+    }
+  }, [bootstrap, branchId]);
+
+  useEffect(() => {
+    setRecordCustomer(null);
+    setRecordSecret("");
+    setRecord(null);
+    setRecordError(null);
+    setDialogOpen(false);
+    setDraft(emptyDraft);
+  }, [bootstrap?.user.id]);
 
   function openEdit(customer: SchedulerCustomerSummaryDto) {
     setDraft({
@@ -136,10 +157,11 @@ export function ApiClientsWorkspace() {
           toast.success(draft.id ? "Cliente actualizado." : "Cliente creado.");
           setDialogOpen(false);
           setDraft(emptyDraft);
-          if (query.length >= 2) await results.reload();
+          // The scoped invalidation refreshes any visible customer query.
         },
         onError: toast.error,
         onConflict: setConflict,
+        invalidate: ["customers"],
       },
     );
     setSaving(false);
@@ -374,7 +396,16 @@ export function ApiClientsWorkspace() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={Boolean(recordCustomer)} onOpenChange={(open) => { if (!open) setRecordCustomer(null); }}>
+      <Dialog
+        open={Boolean(recordCustomer)}
+        onOpenChange={(open) => {
+          if (open) return;
+          setRecordCustomer(null);
+          setRecordSecret("");
+          setRecord(null);
+          setRecordError(null);
+        }}
+      >
         <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Expediente de {recordCustomer?.displayName}</DialogTitle>

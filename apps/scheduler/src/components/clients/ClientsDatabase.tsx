@@ -48,9 +48,11 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
-import type { SchedulerClient } from "@/lib/mock-client-data";
+import type { SchedulerClient } from "@/lib/scheduler-client-presentation";
 import {
   bookingStatusOptions,
+} from "@/lib/scheduler-presentation";
+import {
   schedulerBranches,
   schedulerDayBookings,
   schedulerProfessionals,

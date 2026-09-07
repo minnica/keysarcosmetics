@@ -6,7 +6,6 @@ import { Ban, CalendarDays, Plus } from 'lucide-react'
 import { format, isSameDay } from 'date-fns'
 import { es } from 'date-fns/locale'
 import {
-  schedulerWeekBookings,
   bookingStatuses,
   type AvailabilityBlock,
   type Booking,
@@ -14,7 +13,7 @@ import {
   type BookingStatusColors,
   type Professional,
   type SchedulerView,
-} from '@/lib/mock-scheduler-data'
+} from '@/lib/scheduler-presentation'
 import {
   getSchedulerClientAccessKey,
   type SchedulerFinancialAuditEvent,
@@ -56,11 +55,12 @@ interface SchedulerAgendaGridProps {
   commerceOperatingHours: CommerceOperatingHours
   commerceName: string
   weekDays: Date[]
+  weekBookings: Array<Booking & { dayOffset: number }>
   emptySlotAction: EmptySlotAction | null
   onOpenSlotAction: (professionalId: string, startTime: string) => void
   onCloseSlotAction: () => void
   onOpenNewBooking: (professionalId?: string, startTime?: string) => void
-  onMockBlock: (professionalId: string, startTime: string) => void
+  onCreateBlock: (professionalId: string, startTime: string) => void
   onEditBlock: (block: AvailabilityBlock) => void
   onEditBooking: (booking: Booking) => void
   onDeleteBooking: (bookingId: string) => void
@@ -168,11 +168,12 @@ export function SchedulerAgendaGrid({
   commerceOperatingHours,
   commerceName,
   weekDays,
+  weekBookings,
   emptySlotAction,
   onOpenSlotAction,
   onCloseSlotAction,
   onOpenNewBooking,
-  onMockBlock,
+  onCreateBlock,
   onEditBlock,
   onEditBooking,
   onDeleteBooking,
@@ -584,7 +585,7 @@ export function SchedulerAgendaGrid({
                   <button
                     className="scheduler-slot-action-item"
                     onClick={() =>
-                      onMockBlock(slotActionOverlay.professionalId, slotActionOverlay.startTime)
+                      onCreateBlock(slotActionOverlay.professionalId, slotActionOverlay.startTime)
                     }
                     type="button"
                   >
@@ -656,7 +657,7 @@ export function SchedulerAgendaGrid({
                 </div>
               ))}
 
-              {schedulerWeekBookings.map((booking) => {
+              {weekBookings.map((booking) => {
                 const bookingStartMinutes = getMinutesFromTime(booking.start)
                 if (
                   bookingStartMinutes < weekBaseMinutes ||
