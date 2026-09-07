@@ -96,7 +96,7 @@ export default defineConfig({
     },
     {
       name: "scheduler-development",
-      testMatch: /scheduler\.development\.spec\.ts/,
+      testMatch: /scheduler(?:\.development|-administration\.visual)\.spec\.ts/,
       dependencies: ["scheduler-auth-setup"],
       use: {
         baseURL: process.env["SCHEDULER_BASE_URL"],

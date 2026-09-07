@@ -20,6 +20,10 @@ import {
   CardHeader,
   CardTitle,
   DataTable,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
   Input,
   Label,
   MultiCombobox,
@@ -42,6 +46,14 @@ import type {
 } from "@cosmetics/types";
 import { schedulerApi, schedulerApiErrorMessage } from "@/lib/api";
 import { useSchedulerSession } from "@/lib/session";
+import { schedulerAdministrationInvalidations } from "@/lib/scheduler-administration-presentation";
+import { invalidateSchedulerQueries } from "@/components/api/ApiState";
+import { AdministrationRelationsPanel } from "./AdministrationRelationsPanel";
+import {
+  AdministrationCoverageNotice,
+  AdministrationRefreshButton,
+  RestoredAdministrationFrame,
+} from "./RestoredAdministrationFrame";
 
 type OperationalSection = "locals" | "professionals" | "services" | "resources";
 type BranchCandidate = SchedulerOperationalCandidatesDto["branches"][number];
@@ -855,7 +867,13 @@ export function OperationalCatalogWorkspace({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [commerceName, setCommerceName] = useState("");
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [commerceDialogOpen, setCommerceDialogOpen] = useState(false);
+  const [commerceDraft, setCommerceDraft] = useState({
+    id: "",
+    name: "",
+    active: true,
+  });
   const [creatingCommerce, setCreatingCommerce] = useState(false);
   const copy = sectionCopy[section];
   const canAdmin = Boolean(
@@ -887,12 +905,17 @@ export function OperationalCatalogWorkspace({
       setLoading(false);
     }
   }, []);
+  const refreshAfterMutation = useCallback(async () => {
+    invalidateSchedulerQueries(...schedulerAdministrationInvalidations());
+    await load();
+  }, [load]);
 
   useEffect(() => {
     void load();
   }, [load]);
   useEffect(() => {
     setSelectedId(null);
+    setEditorOpen(false);
   }, [section]);
 
   const branchColumns = useMemo<ColumnDef<BranchCandidate>[]>(
@@ -929,7 +952,10 @@ export function OperationalCatalogWorkspace({
           <Button
             variant="outline"
             size="sm"
-            onClick={() => setSelectedId(row.original.id)}
+            onClick={() => {
+              setSelectedId(row.original.id);
+              setEditorOpen(true);
+            }}
           >
             {row.original.profileId ? "Configurar" : "Activar"}
           </Button>
@@ -971,7 +997,10 @@ export function OperationalCatalogWorkspace({
           <Button
             variant="outline"
             size="sm"
-            onClick={() => setSelectedId(row.original.id)}
+            onClick={() => {
+              setSelectedId(row.original.id);
+              setEditorOpen(true);
+            }}
           >
             {row.original.profileId ? "Configurar" : "Activar"}
           </Button>
@@ -1018,7 +1047,10 @@ export function OperationalCatalogWorkspace({
           <Button
             variant="outline"
             size="sm"
-            onClick={() => setSelectedId(row.original.id)}
+            onClick={() => {
+              setSelectedId(row.original.id);
+              setEditorOpen(true);
+            }}
           >
             {row.original.profileId ? "Configurar" : "Activar"}
           </Button>
@@ -1028,20 +1060,30 @@ export function OperationalCatalogWorkspace({
     [],
   );
 
-  async function createCommerce() {
-    const name = commerceName.trim();
+  async function saveCommerce() {
+    const name = commerceDraft.name.trim();
     if (!name) return toast.warning("Escribe el nombre del comercio.");
     setCreatingCommerce(true);
     try {
-      await schedulerApi.createCommerce({ name, active: true });
-      setCommerceName("");
-      toast.success("Comercio creado");
-      await load();
+      if (commerceDraft.id) {
+        await schedulerApi.updateCommerce(commerceDraft.id, {
+          name,
+          active: commerceDraft.active,
+        });
+      } else {
+        await schedulerApi.createCommerce({ name, active: true });
+      }
+      setCommerceDraft({ id: "", name: "", active: true });
+      setCommerceDialogOpen(false);
+      toast.success(
+        commerceDraft.id ? "Comercio actualizado" : "Comercio creado",
+      );
+      await refreshAfterMutation();
     } catch (requestError) {
       toast.error(
         schedulerApiErrorMessage(
           requestError,
-          "No fue posible crear el comercio.",
+          "No fue posible guardar el comercio.",
         ),
       );
     } finally {
@@ -1102,7 +1144,10 @@ export function OperationalCatalogWorkspace({
         <Button
           variant="outline"
           size="sm"
-          onClick={() => setSelectedId(row.original.id)}
+          onClick={() => {
+            setSelectedId(row.original.id);
+            setEditorOpen(true);
+          }}
         >
           Editar
         </Button>
@@ -1110,176 +1155,322 @@ export function OperationalCatalogWorkspace({
     },
   ];
 
+  const editorTitle =
+    section === "locals"
+      ? selectedBranch?.name
+      : section === "professionals"
+        ? selectedEmployee?.name
+        : section === "services"
+          ? selectedService?.name
+          : selectedId
+            ? "Editar recurso"
+            : "Nuevo recurso";
+
   return (
-    <div className="space-y-7 p-5 sm:p-8">
-      <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h1 className="page-title text-wrap-balance">{copy.title}</h1>
-          <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-700">
-            {copy.description}
-          </p>
-        </div>
-        <Button variant="outline" onClick={() => void load()}>
-          <RefreshCw className="mr-2 h-4 w-4" />
-          Actualizar
-        </Button>
-      </header>
-
-      {!canAdmin ? (
-        <div
-          className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-950"
-          role="status"
-        >
-          Tu acceso es de sólo lectura. Puedes revisar candidatos y
-          configuración, pero no guardar cambios.
-        </div>
-      ) : null}
-
-      {section === "locals" ? (
-        <div className="space-y-6">
-          {bootstrap?.user.role === "SUPER_ADMIN" ? (
-            <Card>
-              <CardContent className="flex flex-col gap-3 pt-6 sm:flex-row sm:items-end">
-                <div className="w-full max-w-md">
-                  <Label htmlFor="commerce-name">Nuevo comercio</Label>
-                  <Input
-                    id="commerce-name"
-                    className="mt-2"
-                    value={commerceName}
-                    onChange={(event) => setCommerceName(event.target.value)}
-                    placeholder="Nombre canónico"
-                  />
-                </div>
-                <Button
-                  onClick={() => void createCommerce()}
-                  disabled={creatingCommerce}
+    <RestoredAdministrationFrame
+      section={section}
+      readOnly={!canAdmin}
+      actions={
+        <AdministrationRefreshButton
+          onClick={() => void load()}
+          loading={loading}
+        />
+      }
+    >
+      <div className="space-y-6">
+        {section === "locals" ? (
+          <>
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {catalog.commerces.map((commerce) => (
+                <Card key={commerce.id} className="admin-card">
+                  <CardContent className="flex items-center justify-between gap-4 p-5">
+                    <div>
+                      <p className="font-semibold text-slate-800">
+                        {commerce.name}
+                      </p>
+                      <p className="mt-1 text-xs text-slate-500">
+                        {
+                          catalog.branches.filter(
+                            (branch) => branch.commerceId === commerce.id,
+                          ).length
+                        }{" "}
+                        sucursales
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <StatusBadge active={commerce.active} />
+                      {bootstrap?.user.role === "SUPER_ADMIN" ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setCommerceDraft({
+                              id: commerce.id,
+                              name: commerce.name,
+                              active: commerce.active,
+                            });
+                            setCommerceDialogOpen(true);
+                          }}
+                        >
+                          Editar
+                        </Button>
+                      ) : null}
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+              {bootstrap?.user.role === "SUPER_ADMIN" ? (
+                <button
+                  type="button"
+                  className="min-h-24 rounded-2xl border border-dashed border-[#ccb9a7] bg-white/50 p-5 text-left transition hover:border-[#ad8b67] hover:bg-white"
+                  onClick={() => {
+                    setCommerceDraft({ id: "", name: "", active: true });
+                    setCommerceDialogOpen(true);
+                  }}
                 >
-                  <Plus className="mr-2 h-4 w-4" />
-                  {creatingCommerce ? "Creando…" : "Crear comercio"}
-                </Button>
+                  <Plus className="mb-2 h-5 w-5 text-[#ad8b67]" />
+                  <span className="text-sm font-semibold">Nuevo comercio</span>
+                </button>
+              ) : null}
+            </div>
+            <Card className="admin-card">
+              <CardContent className="p-5 sm:p-6">
+                <div className="mb-4 flex items-center gap-2">
+                  <Building2 className="h-5 w-5 text-[#ad8b67]" />
+                  <h2
+                    id="branch-candidates-title"
+                    className="admin-section-title"
+                  >
+                    Sucursales canónicas
+                  </h2>
+                </div>
+                <DataTable
+                  columns={branchColumns}
+                  data={candidates.branches}
+                  emptyMessage="No hay sucursales autorizadas para configurar."
+                  searchPlaceholder="Buscar sucursal…"
+                />
               </CardContent>
             </Card>
-          ) : null}
-          <section aria-labelledby="branch-candidates-title">
-            <div className="mb-3 flex items-center gap-2">
-              <Building2 className="h-5 w-5 text-[var(--scheduler-accent-strong)]" />
-              <h2 id="branch-candidates-title" className="section-heading">
-                SUCURSALES CANÓNICAS
-              </h2>
-            </div>
-            <DataTable
-              columns={branchColumns}
-              data={candidates.branches}
-              emptyMessage="No hay sucursales autorizadas para configurar."
-              searchPlaceholder="Buscar sucursal…"
+            <AdministrationRelationsPanel
+              section={section}
+              catalog={catalog}
+              canAdmin={canAdmin}
+              onSaved={refreshAfterMutation}
             />
-          </section>
-          {selectedBranch ? (
+            <AdministrationCoverageNotice title="Identidad comercial sin contrato Scheduler">
+              Contacto, domicilio e imagen pertenecen a la entidad canónica de
+              sucursal. RV4 no los simula ni los sobrescribe desde un perfil de
+              agenda.
+            </AdministrationCoverageNotice>
+          </>
+        ) : null}
+
+        {section === "professionals" ? (
+          <>
+            <Card className="admin-card">
+              <CardContent className="p-5 sm:p-6">
+                <div className="mb-4 flex items-center gap-2">
+                  <UserRound className="h-5 w-5 text-[#ad8b67]" />
+                  <h2 className="admin-section-title">Empleados candidatos</h2>
+                </div>
+                <DataTable
+                  columns={employeeColumns}
+                  data={candidates.employees}
+                  emptyMessage="No hay empleados dentro de tu alcance."
+                  searchPlaceholder="Buscar especialista…"
+                />
+              </CardContent>
+            </Card>
+            <AdministrationRelationsPanel
+              section={section}
+              catalog={catalog}
+              canAdmin={canAdmin}
+              onSaved={refreshAfterMutation}
+            />
+          </>
+        ) : null}
+
+        {section === "services" ? (
+          <>
+            <Card className="admin-card">
+              <CardContent className="p-5 sm:p-6">
+                <div className="mb-4 flex items-center gap-2">
+                  <Sparkles className="h-5 w-5 text-[#ad8b67]" />
+                  <h2 className="admin-section-title">
+                    Servicios del catálogo
+                  </h2>
+                </div>
+                <DataTable
+                  columns={serviceColumns}
+                  data={candidates.services}
+                  emptyMessage="No hay servicios canónicos disponibles."
+                  searchPlaceholder="Buscar servicio o SKU…"
+                />
+              </CardContent>
+            </Card>
+            <AdministrationRelationsPanel
+              section={section}
+              catalog={catalog}
+              canAdmin={canAdmin}
+              onSaved={refreshAfterMutation}
+            />
+            <AdministrationCoverageNotice title="Precio y categorías bajo autoridad comercial">
+              Scheduler configura duración, capacidad y disponibilidad. La
+              edición o importación masiva de precios y categorías debe
+              realizarse en POS; aquí no se presenta como una operación
+              soportada.
+            </AdministrationCoverageNotice>
+          </>
+        ) : null}
+
+        {section === "resources" ? (
+          <>
+            <Card className="admin-card">
+              <CardContent className="p-5 sm:p-6">
+                <div className="mb-4 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <Box className="h-5 w-5 text-[#ad8b67]" />
+                    <h2 className="admin-section-title">
+                      Recursos configurados
+                    </h2>
+                  </div>
+                  {canAdmin ? (
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        setSelectedId(null);
+                        setEditorOpen(true);
+                      }}
+                    >
+                      <Plus className="mr-2 h-4 w-4" /> Nuevo recurso
+                    </Button>
+                  ) : null}
+                </div>
+                <DataTable
+                  columns={resourceColumns}
+                  data={catalog.resources}
+                  emptyMessage="Crea la primera cabina, equipo o estación para esta agenda."
+                  searchPlaceholder="Buscar recurso…"
+                />
+              </CardContent>
+            </Card>
+            <AdministrationRelationsPanel
+              section={section}
+              catalog={catalog}
+              canAdmin={canAdmin}
+              onSaved={refreshAfterMutation}
+            />
+          </>
+        ) : null}
+      </div>
+
+      <Dialog open={editorOpen} onOpenChange={setEditorOpen}>
+        <DialogContent className="admin-dialog admin-dialog-wide max-h-[calc(100dvh-2rem)] max-w-4xl overflow-y-auto overflow-x-hidden">
+          <DialogHeader>
+            <DialogTitle>{editorTitle}</DialogTitle>
+          </DialogHeader>
+          {section === "locals" && selectedBranch ? (
             <BranchEditor
               key={`${selectedBranch.id}-${catalog.branches.find((item) => item.branchId === selectedBranch.id)?.version ?? 0}`}
               candidate={selectedBranch}
               catalog={catalog}
-              onSaved={load}
+              onSaved={async () => {
+                await refreshAfterMutation();
+                setEditorOpen(false);
+              }}
               canAdmin={canAdmin}
             />
           ) : null}
-        </div>
-      ) : null}
-
-      {section === "professionals" ? (
-        <div className="space-y-6">
-          <section aria-labelledby="professional-candidates-title">
-            <div className="mb-3 flex items-center gap-2">
-              <UserRound className="h-5 w-5 text-[var(--scheduler-accent-strong)]" />
-              <h2
-                id="professional-candidates-title"
-                className="section-heading"
-              >
-                EMPLEADOS CANDIDATOS
-              </h2>
-            </div>
-            <DataTable
-              columns={employeeColumns}
-              data={candidates.employees}
-              emptyMessage="No hay empleados dentro de tu alcance."
-              searchPlaceholder="Buscar empleado…"
-            />
-          </section>
-          {selectedEmployee ? (
+          {section === "professionals" && selectedEmployee ? (
             <ProfessionalEditor
               key={`${selectedEmployee.id}-${catalog.professionals.find((item) => item.employeeId === selectedEmployee.id)?.version ?? 0}`}
               candidate={selectedEmployee}
               catalog={catalog}
-              onSaved={load}
+              onSaved={async () => {
+                await refreshAfterMutation();
+                setEditorOpen(false);
+              }}
               canAdmin={canAdmin}
             />
           ) : null}
-        </div>
-      ) : null}
-
-      {section === "services" ? (
-        <div className="space-y-6">
-          <section aria-labelledby="service-candidates-title">
-            <div className="mb-3 flex items-center gap-2">
-              <Sparkles className="h-5 w-5 text-[var(--scheduler-accent-strong)]" />
-              <h2 id="service-candidates-title" className="section-heading">
-                SERVICIOS DEL CATÁLOGO
-              </h2>
-            </div>
-            <DataTable
-              columns={serviceColumns}
-              data={candidates.services}
-              emptyMessage="No hay servicios canónicos disponibles."
-              searchPlaceholder="Buscar servicio o SKU…"
-            />
-          </section>
-          {selectedService ? (
+          {section === "services" && selectedService ? (
             <ServiceEditor
               key={`${selectedService.id}-${catalog.services.find((item) => item.catalogItemId === selectedService.id)?.version ?? 0}`}
               candidate={selectedService}
               catalog={catalog}
-              onSaved={load}
+              onSaved={async () => {
+                await refreshAfterMutation();
+                setEditorOpen(false);
+              }}
               canAdmin={canAdmin}
             />
           ) : null}
-        </div>
-      ) : null}
+          {section === "resources" ? (
+            <ResourceEditor
+              key={selectedId ?? "new-resource"}
+              catalog={catalog}
+              resourceId={selectedId}
+              onSaved={async () => {
+                await refreshAfterMutation();
+                setEditorOpen(false);
+              }}
+              canAdmin={canAdmin}
+            />
+          ) : null}
+        </DialogContent>
+      </Dialog>
 
-      {section === "resources" ? (
-        <div className="space-y-6">
-          <section aria-labelledby="resources-title">
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <Box className="h-5 w-5 text-[var(--scheduler-accent-strong)]" />
-                <h2 id="resources-title" className="section-heading">
-                  RECURSOS CONFIGURADOS
-                </h2>
-              </div>
+      <Dialog open={commerceDialogOpen} onOpenChange={setCommerceDialogOpen}>
+        <DialogContent className="admin-dialog max-w-lg overflow-x-hidden">
+          <DialogHeader>
+            <DialogTitle>
+              {commerceDraft.id ? "Editar comercio" : "Nuevo comercio"}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="commerce-name">Nombre canónico</Label>
+              <Input
+                id="commerce-name"
+                className="mt-1.5"
+                value={commerceDraft.name}
+                onChange={(event) =>
+                  setCommerceDraft((current) => ({
+                    ...current,
+                    name: event.target.value,
+                  }))
+                }
+              />
+            </div>
+            {commerceDraft.id ? (
               <Button
-                size="sm"
-                onClick={() => setSelectedId(null)}
-                disabled={!canAdmin}
+                type="button"
+                variant={commerceDraft.active ? "default" : "outline"}
+                onClick={() =>
+                  setCommerceDraft((current) => ({
+                    ...current,
+                    active: !current.active,
+                  }))
+                }
               >
-                <Plus className="mr-2 h-4 w-4" />
-                Nuevo recurso
+                {commerceDraft.active ? "Comercio activo" : "Comercio inactivo"}
+              </Button>
+            ) : null}
+            <div className="flex justify-end">
+              <Button
+                onClick={() => void saveCommerce()}
+                disabled={
+                  creatingCommerce || commerceDraft.name.trim().length < 2
+                }
+              >
+                <Save className="mr-2 h-4 w-4" />{" "}
+                {creatingCommerce ? "Guardando…" : "Guardar comercio"}
               </Button>
             </div>
-            <DataTable
-              columns={resourceColumns}
-              data={catalog.resources}
-              emptyMessage="Crea la primera cabina, equipo o estación para esta agenda."
-              searchPlaceholder="Buscar recurso…"
-            />
-          </section>
-          <ResourceEditor
-            key={selectedId ?? "new-resource"}
-            catalog={catalog}
-            resourceId={selectedId}
-            onSaved={load}
-            canAdmin={canAdmin}
-          />
-        </div>
-      ) : null}
-    </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </RestoredAdministrationFrame>
   );
 }
