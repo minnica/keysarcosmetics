@@ -1,7 +1,7 @@
 # Scheduler RV1: frontera de presentación y datos
 
-Fecha: 6 de septiembre de 2026  
-Rama: `feature/scheduler`  
+Fecha: 6 de septiembre de 2026
+Rama: `feature/scheduler`
 Base de implementación: `b1b4595619f6030c4a81beff486a32da472eccc5`
 
 ## Resultado

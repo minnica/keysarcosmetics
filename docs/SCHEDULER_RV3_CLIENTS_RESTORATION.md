@@ -1,7 +1,7 @@
 # Scheduler RV3: Clientes, expediente e históricos restaurados
 
-Fecha: 6 de septiembre de 2026  
-Rama: `feature/scheduler`  
+Fecha: 6 de septiembre de 2026
+Rama: `feature/scheduler`
 Base de implementación: `735ca6679aa0e8a2b70a279ab0a6330f93474950`
 
 ## Resultado

@@ -1,7 +1,7 @@
 # Scheduler RV2: Agenda restaurada sobre contratos canónicos
 
-Fecha: 6 de septiembre de 2026  
-Rama: `feature/scheduler`  
+Fecha: 6 de septiembre de 2026
+Rama: `feature/scheduler`
 Base de implementación: `0264e11ead656bbd9138ed5231ad25cd77ca50c2`
 
 ## Resultado
@@ -12,13 +12,13 @@ La fase queda **Implementada; validación pendiente**. TypeScript, pruebas unita
 
 ## Arquitectura y datos
 
-| Pieza | Responsabilidad RV2 |
-| --- | --- |
-| `ApiAgendaWorkspace.tsx` | Orquesta alcance autorizado, consultas, filtros, borradores, mutaciones, conflictos y datos sensibles. |
-| `scheduler-agenda-data.ts` | Construye rangos día/semana con guardas UTC, pagina todas las citas y convierte fecha/hora local con zona IANA. |
-| `scheduler-agenda-presentation.ts` | Proyecta catálogo, citas, participantes, recursos, bloqueos, excepciones y horarios canónicos a la presentación aprobada. |
-| `SchedulerAgendaGrid.tsx` / `SchedulerAgendaList.tsx` | Renderizan día, semana y lista con el mismo estado canónico y sin datasets semanales simulados. |
-| `SchedulerCustomerRecordDialog.tsx` | Presenta la ficha autorizada en sólo lectura y purga el detalle al cerrar/cambiar de sesión. |
+| Pieza                                                 | Responsabilidad RV2                                                                                                       |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `ApiAgendaWorkspace.tsx`                              | Orquesta alcance autorizado, consultas, filtros, borradores, mutaciones, conflictos y datos sensibles.                    |
+| `scheduler-agenda-data.ts`                            | Construye rangos día/semana con guardas UTC, pagina todas las citas y convierte fecha/hora local con zona IANA.           |
+| `scheduler-agenda-presentation.ts`                    | Proyecta catálogo, citas, participantes, recursos, bloqueos, excepciones y horarios canónicos a la presentación aprobada. |
+| `SchedulerAgendaGrid.tsx` / `SchedulerAgendaList.tsx` | Renderizan día, semana y lista con el mismo estado canónico y sin datasets semanales simulados.                           |
+| `SchedulerCustomerRecordDialog.tsx`                   | Presenta la ficha autorizada en sólo lectura y purga el detalle al cerrar/cambiar de sesión.                              |
 
 La carga del rango solicita la primera página de 100 citas y, usando `total`, obtiene en paralelo todas las páginas restantes. Los límites UTC incluyen un día de guarda a cada lado; después la presentación filtra por fecha local de la sucursal para cubrir desfases y cruces de medianoche sin mezclar semanas.
 

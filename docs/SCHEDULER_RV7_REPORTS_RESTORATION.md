@@ -1,8 +1,8 @@
 # Scheduler RV7 — restauración de Reportes y exportaciones
 
-> Fecha: 6 de septiembre de 2026  
-> Rama: `feature/scheduler`  
-> Base inspeccionada: `ecd2f63`  
+> Fecha: 6 de septiembre de 2026
+> Rama: `feature/scheduler`
+> Base inspeccionada: `ecd2f63`
 > Estado: implementación local completa; validación visual y recorridos HTTP/PostgreSQL pendientes por B06.
 
 ## Resultado

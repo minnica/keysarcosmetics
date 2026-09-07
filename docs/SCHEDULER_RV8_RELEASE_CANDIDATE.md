@@ -1,8 +1,9 @@
 # Scheduler RV8 — verificación integral y candidata de entrega
 
-> Fecha: 6 de septiembre de 2026  
-> Rama: `feature/scheduler`  
-> Base inspeccionada: `9706a9fd125759d0c2a37b36d76d0738d0d8e1e0`  
+> Fecha: 6 de septiembre de 2026
+> Rama: `feature/scheduler`
+> Base inspeccionada: `9706a9fd125759d0c2a37b36d76d0738d0d8e1e0`
+> Implementación RV8: `a1e68b44957431c716c39d183843aba56085c12a`
 > Estado: implementación local completa; validación visual y recorridos API/PostgreSQL pendientes por B06.
 
 ## Resultado
@@ -62,6 +63,19 @@ pnpm --filter @cosmetics/e2e exec playwright test \
 
 Resultados: 8 suites de Scheduler correctas; type-check correcto; lint correcto con cuatro advertencias históricas de `<img>`; build correcto con 21 páginas; type-check y lint E2E correctos; Playwright descubre 17 pruebas incluyendo dependencias, los cuatro runners visuales y los dos casos RV8. La búsqueda de marcadores en chunks y `git diff --check` son parte del cierre documental.
 
+### Revalidación local previa a PR — 6 de septiembre de 2026
+
+- Se sincronizó la instalación local con el lockfile offline; Turbo pasó de la copia obsoleta `1.13.4` a la versión fijada `2.10.5`, sin cambios en manifests o lockfile.
+- `pnpm lint` terminó con 15/15 tareas correctas y `pnpm type-check` con 18/18. Scheduler conserva únicamente sus cuatro advertencias históricas de `<img>`.
+- `pnpm test:unit` pasó 133/133 pruebas del API. `pnpm test:ui` y `pnpm test:ui:coverage` pasaron 39/39 pruebas; la cobertura global fue 90.31 % de statements y 80.75 % de branches.
+- `pnpm turbo:graph:verify`, los siete contratos `deploy:*:test` requeridos por Production builds y `pnpm ci:build` terminaron correctamente; este último construyó API, los siete frontends Next.js y POS web.
+- Los schemas Prisma están sincronizados y son válidos con URLs técnicas no conectadas; `pnpm migrations:review -- origin/develop` confirmó que la candidata no modifica migraciones.
+- La referencia `e9077dd` se reconstruyó desde cero con 976 paquetes del store offline y generó sus 20 páginas. El intento de captura volvió a fallar antes de producir imágenes porque Chromium termina con `sandbox_host_linux.cc: Operation not permitted` y `SIGTRAP`.
+- El testbed visual compartido construyó correctamente, pero su runner tampoco pudo iniciar porque el sandbox rechaza `listen` sobre `127.0.0.1:3010` con `EPERM`. Podman continúa bloqueado por el filesystem de `/run/user/1000/libpod`; `DATABASE_URL`, las credenciales E2E, el bucket y la URL desplegada de Scheduler no existen en este workspace.
+- Prettier y `git diff --check` sobre el resultado completo contra `develop` quedaron correctos después de actualizar el mapa vigente de Scheduler y retirar whitespace heredado de la documentación RV.
+
+Estos resultados cierran todo lo reproducible en el workspace actual. No sustituyen las capturas, los recorridos browser/API/BD ni la revisión humana enumerados a continuación.
+
 ## Evidencia y validación externa pendiente
 
 En un host con puertos y Chromium disponibles, ejecutar la referencia RV0 y todos los runners restaurados con fecha, zona, fuentes y viewports documentados:
@@ -84,6 +98,6 @@ Hasta que esa evidencia exista, RV0–RV8 conservan el estado **Implementada; va
 
 ## Candidata y reversión frontend
 
-La candidata es el commit que se cree a partir de la base `9706a9fd125759d0c2a37b36d76d0738d0d8e1e0` con los cambios RV8 de este documento. Mientras el working tree no tenga commit no existe un SHA de candidata y no debe inventarse; el despliegue debe verificar `meta[name="keysar-release"]` contra el SHA finalmente creado.
+La implementación RV8 quedó fijada en `a1e68b44957431c716c39d183843aba56085c12a`, a partir de la base `9706a9fd125759d0c2a37b36d76d0738d0d8e1e0`. La candidata de la PR es el `HEAD` que incorpore este cierre documental; GitHub y cualquier despliegue deben usar ese SHA completo real y verificar `meta[name="keysar-release"]` contra él, sin sustituirlo por el SHA de la base o de RV8.
 
 Rollback visual compatible: volver a desplegar **sólo `apps/scheduler`** desde `9706a9fd125759d0c2a37b36d76d0738d0d8e1e0`, confirmar el SHA expuesto y ejecutar el smoke autenticado de sólo lectura. RV8 no cambia API, Prisma, migraciones, datos ni variables, por lo que ese commit conserva el mismo contrato backend. No ejecutar `git reset`, no revertir migraciones, no cambiar `AGENDA_PROVIDER`, no borrar outbox/documentos y no alterar el proveedor POS para corregir una regresión frontend.
