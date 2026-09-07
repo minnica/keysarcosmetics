@@ -4,7 +4,7 @@ import { Badge, Dialog, DialogContent, DialogHeader, DialogTitle, cn } from '@co
 import { CalendarClock, CalendarDays, CheckCircle2, Clock3, UserX, X } from 'lucide-react'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
-import { bookingStatuses, type Booking } from '@/lib/mock-scheduler-data'
+import { bookingStatuses, type Booking } from '@/lib/scheduler-presentation'
 import type { ClientVisitCategory, ClientVisitHistoryEntry } from './scheduler-utils'
 
 interface SchedulerClientHistoryDialogProps {

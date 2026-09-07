@@ -14,7 +14,7 @@ import {
 } from 'lucide-react'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
-import { schedulerLegendItems, type SchedulerView } from '@/lib/mock-scheduler-data'
+import { schedulerLegendItems, type SchedulerView } from '@/lib/scheduler-presentation'
 import { getLegendIcon } from './scheduler-utils'
 
 interface SchedulerHeaderProps {
@@ -29,6 +29,9 @@ interface SchedulerHeaderProps {
   onRefresh: () => void
   onOpenFilters: () => void
   onOpenNewBooking: () => void
+  canWrite?: boolean
+  refreshing?: boolean
+  updatedLabel?: string
 }
 
 export function SchedulerHeader({
@@ -43,6 +46,9 @@ export function SchedulerHeader({
   onRefresh,
   onOpenFilters,
   onOpenNewBooking,
+  canWrite = true,
+  refreshing = false,
+  updatedLabel = 'Datos canónicos',
 }: SchedulerHeaderProps) {
   return (
     <>
@@ -135,12 +141,12 @@ export function SchedulerHeader({
               </PopoverContent>
             </Popover>
 
-            <p className="scheduler-agenda-updated text-sm italic text-slate-400">Actualizado hace 0 min</p>
+            <p className="scheduler-agenda-updated text-sm italic text-slate-400">{updatedLabel}</p>
             <div className="hidden h-6 w-px bg-slate-200 md:block" />
-            <button className="scheduler-toolbar-button" onClick={onRefresh} type="button">
-              <RefreshCcw className="h-4 w-4" />
+            <button aria-label="Actualizar agenda" className="scheduler-toolbar-button" disabled={refreshing} onClick={onRefresh} type="button">
+              <RefreshCcw className={refreshing ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />
             </button>
-            <button className="scheduler-toolbar-button" type="button">
+            <button aria-label="Ajustar ancho (no disponible)" aria-disabled="true" className="scheduler-toolbar-button opacity-40" disabled type="button">
               <ChevronsLeftRight className="h-4 w-4" />
             </button>
             <button
@@ -151,10 +157,10 @@ export function SchedulerHeader({
             >
               <Filter className="h-4 w-4" />
             </button>
-            <button className="scheduler-toolbar-button" type="button">
+            <button aria-label="Duplicar vista (no disponible)" aria-disabled="true" className="scheduler-toolbar-button opacity-40" disabled type="button">
               <Copy className="h-4 w-4" />
             </button>
-            <Button className="scheduler-agenda-new-button scheduler-modal-cta h-[52px] rounded-[20px] px-6 text-base font-medium" onClick={onOpenNewBooking}>
+            <Button className="scheduler-agenda-new-button scheduler-modal-cta h-[52px] rounded-[20px] px-6 text-base font-medium" disabled={!canWrite} onClick={onOpenNewBooking}>
               Nuevo
               <Plus className="ml-3 h-5 w-5" />
             </Button>

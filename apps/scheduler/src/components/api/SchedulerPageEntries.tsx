@@ -1,89 +1,109 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useSchedulerSession } from "@/lib/session";
-import { ApiAgendaWorkspace } from "./ApiAgendaWorkspace";
-import { ApiAdministrationWorkspace } from "./ApiAdministrationWorkspace";
-import { ApiClientsWorkspace } from "./ApiClientsWorkspace";
-import { ApiReportsWorkspace } from "./ApiReportsWorkspace";
-import { ApiSettingsWorkspace } from "./ApiSettingsWorkspace";
 
-const MockAgendaWorkspace = dynamic(
-  () => import("@/components/SchedulerWorkspace").then((module) => module.SchedulerWorkspace),
-  { ssr: false },
+function SchedulerEntryFallback() {
+  return (
+    <main
+      aria-label="Cargando módulo"
+      className="min-h-[50dvh] space-y-5 bg-[var(--bg-primary)] px-5 py-8 sm:px-7 lg:px-10"
+    >
+      <div
+        aria-hidden="true"
+        className="h-10 w-64 max-w-full animate-pulse rounded-xl bg-slate-200/75 motion-reduce:animate-none"
+      />
+      <div
+        aria-hidden="true"
+        className="h-24 w-full animate-pulse rounded-2xl bg-slate-200/75 motion-reduce:animate-none"
+      />
+      <div
+        aria-hidden="true"
+        className="h-64 w-full animate-pulse rounded-2xl bg-slate-200/75 motion-reduce:animate-none"
+      />
+    </main>
+  );
+}
+
+const ApiAgendaWorkspace = dynamic(
+  () =>
+    import("./ApiAgendaWorkspace").then((module) => module.ApiAgendaWorkspace),
+  { loading: SchedulerEntryFallback },
 );
-const MockAdministrationWorkspace = dynamic(
-  () => import("@/components/administration/AdministrationWorkspace").then((module) => module.AdministrationWorkspace),
-  { ssr: false },
+const ApiAdministrationWorkspace = dynamic(
+  () =>
+    import("./ApiAdministrationWorkspace").then(
+      (module) => module.ApiAdministrationWorkspace,
+    ),
+  { loading: SchedulerEntryFallback },
 );
-const MockClientsWorkspace = dynamic(
-  () => import("@/components/clients/ClientsWorkspace").then((module) => module.ClientsWorkspace),
-  { ssr: false },
+const ApiClientsWorkspace = dynamic(
+  () =>
+    import("./ApiClientsWorkspace").then(
+      (module) => module.ApiClientsWorkspace,
+    ),
+  { loading: SchedulerEntryFallback },
 );
-const MockReportsWorkspace = dynamic(
-  () => import("@/components/reports/ReportsWorkspace").then((module) => module.ReportsWorkspace),
-  { ssr: false },
+const ApiReportsWorkspace = dynamic(
+  () =>
+    import("./ApiReportsWorkspace").then(
+      (module) => module.ApiReportsWorkspace,
+    ),
+  { loading: SchedulerEntryFallback },
 );
-const MockReservationReportWorkspace = dynamic(
-  () => import("@/components/reports/ReservationReportWorkspace").then((module) => module.ReservationReportWorkspace),
-  { ssr: false },
-);
-const MockSettingsWorkspace = dynamic(
-  () => import("@/components/settings/SettingsWorkspace").then((module) => module.SettingsWorkspace),
-  { ssr: false },
-);
-const MockSurveyReportWorkspace = dynamic(
-  () => import("@/components/clients/SurveyReportWorkspace").then((module) => module.SurveyReportWorkspace),
-  { ssr: false },
-);
-const MockRemindersWorkspace = dynamic(
-  () => import("@/components/clients/RemindersWorkspace").then((module) => module.RemindersWorkspace),
-  { ssr: false },
+const ApiSettingsWorkspace = dynamic(
+  () =>
+    import("./ApiSettingsWorkspace").then(
+      (module) => module.ApiSettingsWorkspace,
+    ),
+  { loading: SchedulerEntryFallback },
 );
 
+// RV1 keeps one explicit production entry per module. Restored presentation
+// replaces these entries only after its API adapter is ready; fixtures never do.
 export function SchedulerAgendaEntry() {
-  const { bootstrap } = useSchedulerSession();
-  return bootstrap?.mockModeEnabled ? <MockAgendaWorkspace /> : <ApiAgendaWorkspace />;
+  return <ApiAgendaWorkspace />;
 }
 
 export function SchedulerClientsEntry() {
-  const { bootstrap } = useSchedulerSession();
-  return bootstrap?.mockModeEnabled ? <MockClientsWorkspace /> : <ApiClientsWorkspace />;
+  return <ApiClientsWorkspace />;
 }
 
 export function SchedulerAdministrationEntry() {
-  const { bootstrap } = useSchedulerSession();
-  if (bootstrap?.mockModeEnabled) return <MockAdministrationWorkspace />;
   return <ApiAdministrationWorkspace />;
 }
 
 export function SchedulerSettingsEntry() {
-  const { bootstrap } = useSchedulerSession();
-  return bootstrap?.mockModeEnabled ? <MockSettingsWorkspace /> : <ApiSettingsWorkspace />;
+  return <ApiSettingsWorkspace />;
 }
 
 export function SchedulerReportsEntry({
-  initialKey = "APPOINTMENTS",
+  view = "summary",
 }: {
-  initialKey?: "APPOINTMENTS" | "SALES";
+  view?: "summary" | "sales";
 }) {
-  const { bootstrap } = useSchedulerSession();
-  return bootstrap?.mockModeEnabled ? <MockReportsWorkspace /> : <ApiReportsWorkspace initialKey={initialKey} />;
+  return <ApiReportsWorkspace view={view} />;
 }
 
 export function SchedulerReservationReportsEntry({
-  view,
+  view = "reservations",
+  fixedBranchId,
 }: {
-  view?: "history" | "performance";
+  view?:
+    | "reservations"
+    | "history"
+    | "performance"
+    | "locations"
+    | "messaging"
+    | "metrics"
+    | "services"
+    | "services-by-location"
+    | "providers-by-location";
+  fixedBranchId?: string;
 }) {
-  const { bootstrap } = useSchedulerSession();
-  if (bootstrap?.mockModeEnabled) {
-    return view ? <MockReservationReportWorkspace view={view} /> : <MockReservationReportWorkspace />;
-  }
   return (
     <ApiReportsWorkspace
-      compactTitle={view === "performance" ? "Rendimiento de reservas" : "Reporte de reservas"}
-      initialKey={view === "performance" ? "PROFESSIONALS" : "APPOINTMENTS"}
+      view={view}
+      {...(fixedBranchId ? { fixedBranchId } : {})}
     />
   );
 }
@@ -93,14 +113,9 @@ export function SchedulerClientSectionEntry({
 }: {
   section: "reporte-de-encuestas" | "recordatorios";
 }) {
-  const { bootstrap } = useSchedulerSession();
-  if (bootstrap?.mockModeEnabled) {
-    return section === "reporte-de-encuestas" ? <MockSurveyReportWorkspace /> : <MockRemindersWorkspace />;
-  }
   return (
     <ApiReportsWorkspace
-      compactTitle={section === "reporte-de-encuestas" ? "Reporte de encuestas" : "Recordatorios"}
-      initialKey={section === "reporte-de-encuestas" ? "SURVEYS" : "COMMUNICATIONS"}
+      view={section === "reporte-de-encuestas" ? "surveys" : "reminders"}
     />
   );
 }

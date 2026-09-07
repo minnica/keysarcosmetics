@@ -442,7 +442,15 @@ Datos:
 
 ## Estado actual de apps/scheduler
 
-`apps/scheduler` es la app de agenda y administración de reservas. Las Fases 1 a 10 ya implementaron login, bootstrap, permisos, alcance, autorizaciones secundarias, catálogos, clientes compartidos, agenda canónica, integración POS, administración/configuración, comunicaciones/documentos/encuestas, reportes/exportaciones, conexión visual y puertas de calidad/despliegue. Una sesión normal monta exclusivamente los workspaces de `src/components/api/` y no lee ni escribe estado operativo simulado. Los módulos históricos sólo se cargan como chunks dinámicos cuando el bootstrap devuelve `mockModeEnabled`, posibilidad limitada por servidor a `NODE_ENV=development` + `SCHEDULER_ALLOW_MOCKS=true`.
+Plan de restauración visual: `PLAN_RESTAURACION_VISUAL_SCHEDULER.md` (6 de septiembre de 2026). Define fases RV0–RV8 para recuperar la presentación aprobada del commit `e9077ddad945325b1a132962ce0c2fcd9ae7f74a` en todo Scheduler, conservando contratos, seguridad y persistencia del backend actual. RV0–RV8 quedaron implementadas con validación visual/funcional pendiente. `docs/SCHEDULER_VISUAL_RESTORATION_BASELINE.md` y los runbooks `docs/SCHEDULER_RV1_PRESENTATION_BOUNDARY.md` a `docs/SCHEDULER_RV8_RELEASE_CANDIDATE.md` contienen la evidencia y comandos. Los checks locales pasan, pero el sandbox bloquea servidores, Chromium y PostgreSQL desechable; ejecutar los runners documentados en un host compatible antes de validar las fases. No restaurar íntegramente el código mock ni considerar los workspaces API simplificados como referencia visual aprobada.
+
+`apps/scheduler` es la app de agenda y administración de reservas. Las Fases 1 a 10 ya implementaron login, bootstrap, permisos, alcance, autorizaciones secundarias, catálogos, clientes compartidos, agenda canónica, integración POS, administración/configuración, comunicaciones/documentos/encuestas, reportes/exportaciones, conexión visual y puertas de calidad/despliegue. RV2 volvió a montar los componentes aprobados de Agenda, RV3 restauró Clientes, RV4 Administración, RV5 Configuraciones, RV6 engagement y RV7 Reportes/exportaciones sobre contratos reales. RV8 retiró workspaces/mocks sin consumidores, agregó guards de rutas/grafo/persistencia, revalidación de sesión/permisos y chunks dinámicos por módulo. Ninguna entrada productiva lee o escribe estado operativo simulado; los fixtures deterministas viven sólo en E2E.
+
+- RV8 verifica las 19 entradas de App Router mediante `scheduler-rv8-integrity.test.cjs`, descarta respuestas de bootstrap posteriores a logout/cambio de token y revalida permisos cada 30 segundos, al recuperar foco/visibilidad o ante cambios de token entre pestañas. La pérdida de sesión o permisos desmonta el workspace. Se eliminaron 36 archivos históricos sin consumidores y la clave local de horarios; sólo permanecen el JWT y `slotMinutes` visual. Los cinco workspaces se cargan con `next/dynamic`: el JS inicial operativo bajó de 359 kB a 89.7–89.8 kB y los exportadores pesados siguen diferidos. La implementación RV8 quedó fijada en `a1e68b44957431c716c39d183843aba56085c12a`; la candidata de la PR será el `HEAD` que incorpore el cierre documental y el despliegue deberá verificar ese SHA completo. Rollback visual: redesplegar sólo Scheduler desde `9706a9f`, sin revertir migraciones ni cambiar `AGENDA_PROVIDER`. Capturas, E2E y API/PostgreSQL siguen pendientes por B06. Runbook: `docs/SCHEDULER_RV8_RELEASE_CANDIDATE.md`.
+
+- RV7 restaura Resumen, Reservas, Historial, Rendimiento, Ventas, Encuestas, Recordatorios y todos los desgloses profundos sobre los doce datasets canónicos. Pantalla recorre todas las páginas y exportación obtiene el conjunto completo desde `/exports` antes de generar CSV/XLSX/PDF. Las rutas por local validan `branchId` contra el bootstrap; ninguna vista inventa comparación, cuota, ingresos atribuidos o respuestas por pregunta. Capturas y paridad HTTP/PostgreSQL siguen pendientes por B06. Runbook: `docs/SCHEDULER_RV7_REPORTS_RESTORATION.md`.
+
+- RV6 restaura las tres superficies de engagement de Administración. Encuestas versiona preguntas/servicios sin exponer tokens o respuestas; Consentimientos versiona archivos privados, asigna, firma/revoca y abre URLs efímeras con autorización; Comunicaciones administra plantillas multicanal, consentimiento por canal, intenciones idempotentes y estados completos del outbox, donde `SENT` no significa `DELIVERED` y sólo `FAILED` se reintenta manualmente. La ficha de Clientes añade expediente médico cifrado y soportes privados con permisos de `scheduler/settings/records`, autorizaciones independientes y purga temporal. No existe control frontend para activar el proveedor ni se persisten URLs/secretos. Capturas, PostgreSQL, bucket privado y sandbox siguen pendientes por B06. Runbook: `docs/SCHEDULER_RV6_ENGAGEMENT_RESTORATION.md`.
 
 - La Fase 10 quedó implementada en repositorio el 4 de septiembre de 2026 sin nuevas migraciones, seeds, despliegues ni datos operativos. CI reconstruye las 43 migraciones sobre PostgreSQL 16 vacío y ensaya por separado el salto desde el snapshot exacto de las primeras 39 mediante un fixture técnico que sólo admite una base efímera local.
 - La integración HTTP de Scheduler cubre autenticación, bootstrap, replay idempotente, conflicto optimista y la carrera por el último lugar. El gate de carga crea 30 sucursales, 60 profesionales, 60 recursos, horarios de 24 horas y 1,440 citas; exige exportación completa, slots de 15 minutos y un umbral configurable de 30 segundos en CI.
@@ -506,71 +514,71 @@ Datos:
 
 ### Agenda
 
-- La agenda principal (`/`) usa `ApiAgendaWorkspace` en modo normal: filtra por sucursal/fecha/estado, consulta disponibilidad, crea citas idempotentes, mueve/cancela con versión, cambia estados y administra bloqueos. El workspace histórico estilo AgendaPro permanece como fixture visual de desarrollo explícito.
-- El contexto operativo de la agenda se generalizó a `Comercio → Sucursal → Profesional`. `schedulerCommerces` define los comercios disponibles; cada sucursal pertenece a un comercio y cada profesional puede estar asignado a varios comercios y sucursales mediante `commerceIds`/`branchIds`. Al cambiar de comercio, la UI carga solo las sucursales permitidas de ese comercio y después filtra los profesionales disponibles para la sucursal elegida.
-- La fuente efectiva de comercios, sucursales y profesionales combina los catálogos mock con la configuración guardada por Administración. `src/lib/administration-scheduler-config.ts` persiste el conjunto en `scheduler-administration-configuration`, normaliza registros estáticos por nombre y notifica cambios con `scheduler-administration-configuration-change`. Altas, cambios de nombre, asignaciones y activaciones/desactivaciones se reflejan en Agenda sin backend; los elementos inactivos dejan de ofrecerse operativamente.
-- El horario operativo pertenece al comercio, no a cada sucursal. `src/lib/commerce-operating-hours.ts` guarda una agenda semanal o modo 24 horas por comercio, calcula el rango visible de las vistas diaria/semanal y marca como bloqueadas las celdas fuera del servicio. Una reserva activa fuera de ese horario o sobre un bloqueo manual abre una confirmación de dos pasos y exige escribir `RESERVAR`; la excepción aplica solo a esa reserva y no modifica el horario general. Las reservas canceladas no disparan conflictos.
-- Configuraciones de Agenda permite elegir el tamaño visual del slot entre 15, 20, 30, 45 y 60 minutos. Se persiste en `keysar-scheduler-agenda-settings` y `SchedulerWorkspace` escucha el evento `scheduler-agenda-settings-change` y cambios de storage para recalcular filas, tarjetas y línea de hora actual sin recargar. Este tamaño visual no cambia el cálculo de horarios disponibles del modal, que continúa ofreciendo inicios cada 15 minutos.
-- Las reservas y bloqueos nuevos guardan `branchId` para evitar que una agenda compartida entre sucursales muestre el mismo registro en ubicaciones distintas. En el modal de reserva se elige la sucursal y, al cambiarla, se conserva el profesional si pertenece a ella o se asigna el primero disponible para mantener la disponibilidad coherente. Los registros mock anteriores sin `branchId` conservan compatibilidad usando la primera sucursal asignada al profesional.
-- El modal de nueva/edición de reserva calcula horarios disponibles en intervalos de 15 minutos según fecha, profesional y duración del servicio. Oculta cualquier inicio que se traslape total o parcialmente con otra reserva del profesional o con un bloqueo; al editar ignora la propia reserva. `BookingStatus` incluye `canceled`: una reserva cancelada libera su franja y no participa en conflictos, mientras `no-show` conserva la ocupación histórica. Si no queda disponibilidad, los selectores se deshabilitan, se muestra un estado explícito y no se permite guardar una reserva activa.
-- El registro mock de `src/lib/mock-client-data.ts` pertenece sólo al fixture. En modo normal, Agenda y Clientes buscan por la API; teléfono, alias, unicidad y fusión se resuelven transaccionalmente en el backend. El expediente, visitas y finanzas POS nunca se derivan del fixture.
-- La entrada principal es `SchedulerWorkspace`, que compone `SchedulerHeader`, `SchedulerSidebar` y `SchedulerAgendaGrid`, y abre tres diálogos especializados: `SchedulerBookingDialog`, `SchedulerBlockDialog` y `SchedulerDetailDialog`.
-- Los datos salen de `src/lib/mock-scheduler-data.ts` y se manipulan con helpers en `src/components/scheduler/scheduler-utils.tsx`.
+- La agenda principal (`/`) usa `ApiAgendaWorkspace`, que desde RV2 compone la presentación aprobada (`SchedulerHeader`, panel de recursos, `SchedulerAgendaGrid`, `SchedulerAgendaList`, tarjetas y diálogos) sobre contratos reales. RV8 retiró `SchedulerWorkspace` y los archivos `mock-*` del runtime; los fixtures visuales deterministas viven exclusivamente en `apps/e2e/development/fixtures` y nunca son fallback operativo.
+- Comercio y sucursal salen del catálogo y del alcance materializado del bootstrap. Las columnas distinguen profesionales y recursos mediante IDs con namespace y conservan el ID canónico para disponibilidad/mutaciones. No existe cola de pendientes sin asignación mientras el backend exija un profesional por servicio.
+- Día y semana solicitan un rango UTC con guardas, cargan todas las páginas de citas según `total` y filtran después por fecha local IANA. La semana ya no usa `schedulerWeekBookings`; día/semana/lista comparten citas, estados, servicios, participantes, bloqueos y excepciones canónicos.
+- Los límites visibles se derivan de reglas `BRANCH/WORKING` y excepciones del catálogo. El tamaño de slot sigue siendo una preferencia exclusivamente visual; los inicios válidos siempre vienen de `/availability` y se vuelven a consultar después de una mutación.
+- El diálogo busca/selecciona clientes por API y puede crearlos sólo con `clients:WRITE`. Crear una cita conserva una clave de idempotencia durante el reintento; editar, mover, cancelar, transicionar y administrar bloqueos conserva `expectedVersion`, motivos y el manejo común de `401`/`403`/`409`/red.
+- Citas multi-servicio conservan servicios, profesionales, recursos, capacidad y membresías del DTO canónico; el selector único queda bloqueado para no sustituirlas silenciosamente. Cancelar reemplaza la antigua semántica de borrar y exige motivo en un diálogo, nunca `window.prompt`.
+- Teléfono, correo, avatar y precio no se inventan cuando faltan en el DTO de cita. La ficha, visitas y finanzas usan tres autorizaciones independientes, ligadas al cliente y de un solo uso; sus respuestas se purgan al expirar, cerrar o cambiar usuario. Finanzas es de sólo lectura y POS conserva su autoridad.
 - El login usa `POST /api/auth/login`, conserva el JWT compartido y exige un bootstrap válido antes de abrir la agenda.
 - `src/lib/scheduler-access.ts` adapta el bootstrap autoritativo a la navegación: `SchedulerAppSidebar` oculta pantallas no autorizadas, `SchedulerAccessGuard` impide abrir directamente áreas completas sin permiso y Administración descarta secciones no permitidas. El backend vuelve a validar capacidad, sucursal y alcance profesional en cada endpoint; la UI nunca es la frontera de seguridad.
-- En modo normal los colores de estado se leen y escriben mediante `/api/scheduler/administration/status-colors/:commerceId`; guardar exige capacidad `ADMIN` y autorización secundaria ligada al comercio. `scheduler-status-colors-by-commerce` y su evento pertenecen sólo al fixture.
+- En modo normal los colores de estado se leen desde el catálogo administrativo cuando la sesión tiene esa capacidad y se escriben mediante `/api/scheduler/administration/status-colors/:commerceId`; guardar exige `ADMIN` y autorización secundaria ligada al comercio. Sin lectura autorizada, Agenda usa la paleta visual base. `scheduler-status-colors-by-commerce` y su evento pertenecían al fixture histórico y RV8 los retiró del runtime.
 - El historial de visitas y el historial financiero del cliente son flujos separados y de sólo lectura en Scheduler. La UI real emite tres autorizaciones independientes ligadas al cliente; el backend consume una por perfil, visitas y finanzas y audita cada lectura. Scheduler no permite editar ni eliminar movimientos POS.
 
 ### Administración
 
-La ruta `/administracion` monta `ApiAdministrationWorkspace` en modo normal. Comercios/sucursales, Profesionales, Servicios y Recursos reutilizan `OperationalCatalogWorkspace`; Servicios añade paquetes, complementos y horarios de clase. Comisiones, Encuestas, Consentimientos, Comunicaciones, Gift cards y Colores consumen sus contratos reales, respetan capacidades y recargan el catálogo después de mutar. `AdministrationWorkspace.tsx` y `mock-administration-data.ts` son exclusivamente el fixture dinámico de desarrollo y sus cambios nunca se copian al estado canónico.
+La ruta `/administracion` monta `ApiAdministrationWorkspace` en modo normal. Desde RV4, Comercios/sucursales, Profesionales, Servicios, Comisiones, Recursos, Gift cards y Colores recuperan el encabezado, superficies, tablas y diálogos aprobados sobre candidatos, perfiles y catálogos canónicos. Servicios añade paquetes, complementos y horarios de clase; horarios, descansos y excepciones de sucursales/profesionales/recursos usan reemplazos reales. Todas las mutaciones RV4 invalidan catálogos y Agenda. Desde RV6, Encuestas, Consentimientos y Comunicaciones usan componentes restaurados sobre los contratos versionados, privados e idempotentes de engagement; no montan el workspace simplificado de Fase 9. RV8 retiró `AdministrationWorkspace.tsx` y `mock-administration-data.ts`; la evidencia controlada usa únicamente fixtures E2E fuera del grafo productivo.
 
-El fixture conserva una pestaña visual de Comisiones y normalizadores locales para sus escenarios. En modo normal, la sección Comisiones lista y crea políticas versionadas mediante el backend; la validación canónica exige modalidades no repetidas, rangos continuos y valores válidos. Scheduler nunca genera movimientos de pago: Nómina conserva esa autoridad.
+La referencia histórica conserva una pestaña visual de Comisiones y normalizadores locales para sus escenarios. En modo normal, la sección Comisiones lista y crea políticas versionadas mediante el backend; la validación canónica exige modalidades no repetidas, rangos continuos y valores válidos. Scheduler nunca genera movimientos de pago: Nómina conserva esa autoridad.
 
-El fixture de Servicios conserva listados por categoría, edición, opciones avanzadas y carga/descarga visual de precios `.xlsx`; esas funciones no procesan archivos reales. En modo normal, perfiles de servicios, recursos, paquetes, complementos y horarios de clase usan API/Prisma. No interpretar capacidades exclusivas del fixture —como precios masivos— como funciones persistentes.
+La referencia histórica de Servicios conserva listados por categoría, edición, opciones avanzadas y carga/descarga visual de precios `.xlsx`; esas funciones no procesan archivos reales. En modo normal, perfiles de servicios, recursos, paquetes, complementos y horarios de clase usan API/Prisma. RV4 permite editar complementos ya materializados, pero el contrato todavía no publica candidatos para su activación inicial. Precio/categoría e importación/exportación masiva permanecen bajo autoridad comercial/POS; no interpretar capacidades exclusivas de la referencia como funciones persistentes. La validación histórica de uso de un recurso tampoco tiene endpoint administrativo dedicado: Agenda vuelve a validar requisitos al reservar, pero Administración no simula ese resultado.
 
 **Alcance administrativo por módulo:**
 
-| Módulo                 | Alcance funcional                                                                                                               | Estado de definición                                   |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
-| Comercios y sucursales | Comercio como entidad principal con estado, horario semanal/24 horas y entidades asociadas; sucursales con ubicación y contacto | API real; activación explícita y versionada            |
-| Profesionales          | Asignación múltiple a comercios/sucursales, servicios, horarios, descansos, especialidades y grupos                             | API real; perfil explícito sobre `Empleado`            |
-| Servicios              | Servicios, clases, paquetes y adicionales canónicos                                                                             | API real; precios masivos permanecen sólo como fixture |
-| Comisiones             | Por profesional, servicio/producto y valor por defecto; porcentaje o monto                                                      | API real versionada; pago final en Nómina              |
-| Recursos               | Recursos generales y recursos con horario, asignación a servicios y locales                                                     | API real                                               |
-| Encuestas              | Encuestas, preguntas y asociación a servicios                                                                                   | API real; resultados mediante reporte canónico         |
-| Consentimientos        | Catálogo y documentos privados versionados                                                                                      | API real; asignación/firma disponible en backend       |
-| WhatsApp               | Plantillas versionadas, outbox y reintentos por canal                                                                           | API real; proveedor deshabilitado hasta sandbox        |
-| Gift Cards             | Plantilla de servicio o monto, vencimiento, diseño y estado                                                                     | API real; emisión/saldo fuera de alcance               |
-| Colores de status      | Paleta por comercio con control optimista                                                                                       | API real; requiere autorización secundaria             |
-| Planes                 | No se implementa en este proyecto                                                                                               | Fuera de alcance                                       |
+| Módulo                 | Alcance funcional                                                                                                               | Estado de definición                                                 |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| Comercios y sucursales | Comercio como entidad principal con estado, horario semanal/24 horas y entidades asociadas; sucursales con ubicación y contacto | API real; activación explícita y versionada                          |
+| Profesionales          | Asignación múltiple a comercios/sucursales, servicios, horarios, descansos, especialidades y grupos                             | API real; perfil explícito sobre `Empleado`                          |
+| Servicios              | Servicios, clases, paquetes y adicionales canónicos                                                                             | API real; precios masivos permanecen sólo en la referencia histórica |
+| Comisiones             | Por profesional, servicio/producto y valor por defecto; porcentaje o monto                                                      | API real versionada; pago final en Nómina                            |
+| Recursos               | Recursos generales y recursos con horario, asignación a servicios y locales                                                     | API real                                                             |
+| Encuestas              | Encuestas, preguntas y asociación a servicios                                                                                   | API real; resultados mediante reporte canónico                       |
+| Consentimientos        | Catálogo y documentos privados versionados                                                                                      | API real; asignación/firma disponible en backend                     |
+| WhatsApp               | Plantillas versionadas, outbox y reintentos por canal                                                                           | API real; proveedor deshabilitado hasta sandbox                      |
+| Gift Cards             | Plantilla de servicio o monto, vencimiento, diseño y estado                                                                     | API real; emisión/saldo fuera de alcance                             |
+| Colores de status      | Paleta por comercio con control optimista                                                                                       | API real; requiere autorización secundaria                           |
+| Planes                 | No se implementa en este proyecto                                                                                               | Fuera de alcance                                                     |
 
 `Local` y `Profesional` son entidades separadas: las sucursales se administran dentro de Comercios; los profesionales son personas reales y no sustitutos de sucursales.
 
 ### Configuraciones
 
-- La ruta `/configuraciones` monta `ApiSettingsWorkspace` en modo normal; sus secciones se abren desde la sidebar global y conservan `?section=` al navegar.
-- Cada sección obtiene el documento efectivo del backend y escribe una capa versionada `COMMERCE`, `BRANCH` o `USER`. Un `409` conserva el editor y permite recargar; ningún documento operativo se guarda en `localStorage`.
-- Secciones visibles: `Empresa`, `Sitio web`, `Agenda`, `Pagos Keysar`, `Recordatorios`, `Fichas médicas`, `E-mails`, `Integraciones`, `Notificaciones`, `Clientes`, `Encuestas` y `Código personal`. Las once secciones documentales usan el mismo editor persistente; el código personal tiene un formulario propio y exige la contraseña actual.
-- El backend define alcance `COMMERCE → BRANCH → USER`, permisos, versiones, límite de 64 KiB y rechazo de claves de secretos. La UI de Fase 9 ya usa ese contrato sin migrar documentos de `localStorage`; la altura visual de slots sólo sigue local dentro del fixture.
+- La ruta `/configuraciones` monta `ApiSettingsWorkspace` en modo normal; sus secciones se abren desde la sidebar global y conservan `?section=` al navegar. Desde RV5 no existe editor JSON operativo: Empresa, Sitio web, Agenda, Pagos Keysar, Recordatorios, Fichas médicas, E-mails, Integraciones, Notificaciones, Clientes y Encuestas usan formularios estructurados con grupos, estados sólo lectura, campos anidados y listas editables.
+- Cada sección obtiene las capas autorizadas del backend. La respuesta incluye el documento propio de cada capa para resolver la vista sólo hasta `COMMERCE`, `BRANCH` o `USER`; guardar aplica únicamente los paths visibles modificados sobre el documento de esa capa y conserva claves desconocidas. Una edición de Comercio nunca copia valores efectivos de Sucursal/Usuario. `USER` exige `WRITE`; las otras capas exigen `ADMIN`.
+- Cambiar sección, comercio, sucursal o capa con un borrador exige confirmación. Un `409` conserva el formulario y permite recargar. Ningún documento operativo se guarda en `localStorage`; sólo `slotMinutes` permanece como preferencia visual del dispositivo y emite el evento ya consumido por Agenda.
+- Cada formulario muestra el consumidor real. Al cierre de RV5 no se encontraron consumidores operativos de los documentos: persistir preferencias no altera disponibilidad, POS, outbox, expedientes, identidad de clientes ni encuestas. La matriz completa vive en `docs/SCHEDULER_RV5_SETTINGS_RESTORATION.md`; cualquier consumidor futuro requiere contrato y pruebas antes de actualizarla.
+- Pagos no solicita `publicKey` ni `accessToken`, e Integraciones no inventa campos de proveedor: claves, tokens, contraseñas, credenciales y webhook secrets viven sólo en infraestructura y siguen rechazados por el backend. Código personal conserva su formulario separado con contraseña actual y nunca lista códigos ajenos.
 
 ### Reportes
 
-`/reportes`, `/reportes/reservas`, `/reportes/ventas`, Historial, Rendimiento, Reporte de encuestas y Recordatorios montan `ApiReportsWorkspace` en modo normal. La pantalla limita las doce claves según permisos de resumen/reservas/ventas, usa filtros de periodo y sucursales autorizadas y presenta `summary`, columnas y filas devueltas por el servidor. Exportar descarga CSV a partir de `/exports`, no de la página visual; Clientes emite `SENSITIVE_EXPORT` ligado al dataset y el servidor lo consume con la auditoría.
+- Desde RV7, `/reportes`, `/reportes/reservas`, `/reportes/ventas`, Historial, Rendimiento, Reporte de encuestas y Recordatorios montan `ApiReportsWorkspace` con la presentación restaurada en `RestoredReportsWorkspace`. Locales, Mensajería móvil, Métricas y Servicios ya no redirigen; Servicios/Prestadores por local usan rutas dinámicas con `branchId` canónico. El alias histórico `opatra-mexico` vuelve al selector de Locales y nunca se interpreta como identidad.
+- Cada vista declara sus datasets de las doce claves canónicas y limita la consulta a capacidades reales de resumen/reservas/ventas. Periodo, búsqueda, estado/canal y sucursales forman el request; las rutas por local fallan cerradas si el ID no pertenece al bootstrap. Pantalla recorre todas las páginas hasta `total`; tarjetas usan el `summary` completo y gráficos/tablas la unión completa, nunca una primera página presentada como total.
+- Exportar vuelve a solicitar `/exports` y genera CSV, XLSX o PDF desde el conjunto completo auditado, no desde la tabla visual. `CUSTOMERS` usa un diálogo con campo seguro, emite `SENSITIVE_EXPORT` ligado al dataset y consume la autorización de un solo uso. XLSX/PDF se renderizan localmente después de la autorización; fuentes canónica/legado no se mezclan y POS sólo se atribuye por enlaces canónicos. Matriz y límites: `docs/SCHEDULER_RV7_REPORTS_RESTORATION.md`.
 
 ### Navegación y UI
 
 - La navegación primaria de Scheduler usa el Sidebar canónico de `@cosmetics/ui`: `SchedulerLayoutShell` lo monta una sola vez para todo `(dashboard)` y `SchedulerAppSidebar` organiza Principal y los grupos desplegables Reportes, Administración y Configuraciones. Solo un grupo permanece abierto y el correspondiente a la ruta activa se expande automáticamente. En escritorio es persistente, mide `14rem` expandida y se colapsa a iconos de `3.5rem`; en móvil se presenta como Sheet con cierre explícito. Administración, Configuraciones y los desgloses de Reportes ya no renderizan sidebars propias: todas sus secciones viven en la navegación global y sincronizan su estado mediante ruta y `?section=`. En Agenda existe además un panel operativo de `304px` para comercio, sucursal, profesionales, estatus, hora y calendario; administra su propio scroll vertical, su calendario mensual reparte las siete columnas dentro del ancho disponible y en pantallas menores se abre como Sheet derecho desde `Filtros de agenda`.
 - Todo usa componentes de `@cosmetics/ui` y `toast` compartido; las pantallas montan `<Toaster />` en `src/app/layout.tsx`.
-- La interfaz es responsive desde el inicio: navegación compacta en móvil, tarjetas apiladas y tablas con scroll horizontal confinado. En modo normal todas las rutas conservan scroll de documento; el bloqueo de alto de `/` pertenece exclusivamente al fixture de Agenda.
+- La interfaz es responsive desde el inicio: navegación compacta en móvil, tarjetas apiladas y tablas con scroll horizontal confinado. Administración, Clientes, Configuraciones y Reportes conservan scroll de documento; la Agenda operativa `/` usa el alto visible y confina sus scrolls al panel y al grid.
 - Los modales de Scheduler permiten scroll vertical en el cuerpo, pero nunca scroll horizontal. `DialogContent`, `admin-dialog`, `scheduler-dialog` y sus cuerpos bloquean el eje X; pestañas, horarios, tablas editables y escalas de comisión deben envolver o transformarse en layouts apilados al reducir el viewport, sin depender de `min-width` de escritorio ni ocultar campos fuera del área visible.
-- En el fixture, la ruta de Agenda ocupa el alto visible y conserva su grid `09:00–22:00`, densidades y `ResizeObserver`. Estas métricas son visuales y nunca se usan para calcular disponibilidad real; `ApiAgendaWorkspace` usa exclusivamente los slots y zonas IANA del backend.
+- La Agenda operativa ocupa el alto visible y conserva densidades responsive y `ResizeObserver`. Su rango horario sale de las reglas/excepciones de la sucursal; las métricas del grid son visuales y nunca se usan para autorizar disponibilidad.
 - La agenda usa densidad responsive para laptops: en viewports de escritorio de hasta `900px` de alto (o pantallas táctiles de hasta `1100px`) compacta header, filas, tarjetas y columna horaria; por debajo de `780px` y `680px` aplica densidades adicionales. Las columnas se reparten de forma fluida y cuatro profesionales deben caber sin scroll horizontal en los viewports objetivo `1536×864`, `1366×768`, `1280×720` y `1280×600`; solo cuando hay más profesionales el desbordamiento queda confinado al scroll horizontal interno del grid. Los cálculos de posición deben reutilizar `SchedulerAgendaLayoutMetrics` para mantenerse alineados con las filas CSS.
 
 ### Fases de construcción
 
 - **Fase 0 — Contexto y base visual**: consolidar mapa de navegación y decisiones funcionales; mantener identidad Keysar, componentes de `@cosmetics/ui` y patrones de feedback; validar accesibilidad, estados vacíos, loading, errores y responsive.
-- **Fases visuales 1 a 4**: los workspaces históricos siguen como fixtures de desarrollo para capturas y pruebas visuales. La operación equivalente usa contratos reales desde Fase 9; una función que exista sólo en el fixture no se considera persistente.
+- **Fases visuales 1 a 4**: los workspaces históricos se usaron como referencia de desarrollo para capturas y pruebas visuales y RV8 retiró sus implementaciones sin consumidores. La operación equivalente usa contratos reales desde Fase 9; una función que exista sólo en la referencia no se considera persistente.
 - **Fase 5 — Persistencia y conexión con agenda**: el backend/Prisma base de Cliente, Servicio, Cita y BloqueHorario existe por las Fases 1 a 4 de `PLAN_BACKEND_SCHEDULER.md`; la conexión visual quedó implementada en Fase 9 sin convertir mocks en datos operativos. La sustitución del proveedor Agenda usado por POS se ejecutó aparte en la Fase 5 del plan backend.
 - **Fase 6 — Calidad y operación**: pruebas de flujos completos, responsive y accesibilidad; estados de error/reintento y protección contra cambios destructivos; preparar despliegue cuando el comportamiento local esté validado.
 
@@ -1393,34 +1401,37 @@ apps/scheduler/
 │   ├── (auth)/login/              → login JWT y bootstrap real de Scheduler
 │   ├── (dashboard)/page.tsx       → agenda principal (día / semana)
 │   ├── (dashboard)/administracion/ → workspace administrativo completo
-│   ├── (dashboard)/configuraciones/ → configuración versionada real + fixture explícito
-│   ├── (dashboard)/reportes/       → datasets y exportaciones reales + fixture explícito
+│   ├── (dashboard)/configuraciones/ → configuración versionada real
+│   ├── (dashboard)/reportes/       → datasets y exportaciones reales
 │   ├── globals.css                → tokens visuales del scheduler
 │   └── layout.tsx                 → metadata + Toaster global
 ├── src/components/
-│   ├── SchedulerAccessGuard.tsx  → guard por bootstrap y permisos autoritativos
-│   ├── api/                      → workspaces reales de Agenda, Clientes, Administración, Settings y Reportes
+│   ├── SchedulerAccessGuard.tsx   → guard por bootstrap y permisos autoritativos
+│   ├── SchedulerPrimaryNav.tsx    → tipos de navegación compartidos
+│   ├── api/                       → workspaces reales y entrada dinámica por módulo
 │   ├── layout/
 │   │   ├── SchedulerLayoutShell.tsx → shell responsive compartido por las rutas autenticadas
 │   │   └── SchedulerAppSidebar.tsx  → navegación primaria global filtrada por permisos
-│   ├── SchedulerPrimaryNav.tsx    → tipos y menús legacy conservados durante la migración a sidebar
-│   ├── SettingsMenu.tsx           → acceso compartido a Configuraciones y próximos módulos de cuenta
-│   ├── SchedulerWorkspace.tsx     → fixture dinámico de Agenda para desarrollo explícito
-│   ├── scheduler/                 → header, sidebar, grid agenda, tarjetas y diálogos del scheduler
-│   ├── reports/                   → fixtures históricos de reportes
-│   └── settings/                  → fixture histórico de configuración
-├── src/components/administration/ → fixture histórico + catálogo operativo real reutilizado por Fase 9
+│   ├── administration/            → presentación RV4/RV6 y catálogos administrativos reales
+│   ├── clients/                   → engagement y documentos privados de Clientes
+│   ├── reports/                   → presentación restaurada y encabezados de Reportes
+│   └── scheduler/                 → header, filtros, grid, tarjetas y diálogos de Agenda
 └── src/lib/
-    ├── administration-scheduler-config.ts → sincronización local de comercios, sucursales y profesionales
-    ├── commerce-operating-hours.ts → horario operativo y rango visible por comercio
-    ├── mock-client-data.ts        → clientes mock, alias, teléfono único e historial por sucursal
-    ├── mock-scheduler-data.ts     → datos mock de sucursales, profesionales, citas, bloqueos y leyenda
-    ├── scheduler-agenda-settings.ts → intervalo visual de slots persistido localmente
-    ├── scheduler-access.ts        → mapeo frontend del bootstrap real; sin perfiles ni códigos embebidos
-    ├── session.tsx                → sesión JWT, bootstrap, guards y autorizaciones secundarias
-    ├── api.ts                     → cliente tipado de Scheduler
-    ├── mock-administration-data.ts → catálogos mock de locales, profesionales, servicios y módulos administrativos
-    └── mock-report-data.ts        → periodos, KPIs y series mock del resumen de reportes
+    ├── api.ts                              → cliente tipado de Scheduler
+    ├── session.tsx                         → sesión JWT, bootstrap, revalidación y autorizaciones secundarias
+    ├── scheduler-access.ts                 → mapeo del bootstrap autoritativo a rutas/capacidades
+    ├── scheduler-agenda-data.ts            → consultas, rangos e invalidación de Agenda
+    ├── scheduler-agenda-presentation.ts    → adaptadores canónicos de citas, columnas y disponibilidad
+    ├── scheduler-agenda-settings.ts        → preferencia local exclusivamente visual de slots
+    ├── scheduler-client-presentation.ts    → presentación compartida de Clientes
+    ├── scheduler-customer-data.ts          → invalidación compartida Agenda/Clientes
+    ├── scheduler-administration-presentation.ts → horarios, relaciones e invalidación RV4
+    ├── scheduler-engagement-presentation.ts → estados y adaptadores RV6
+    ├── scheduler-settings-presentation.ts  → formularios y escritura aislada por capa RV5
+    ├── scheduler-report-presentation.ts    → datasets, filtros y filas RV7
+    ├── scheduler-report-export.ts          → CSV/XLSX/PDF diferidos
+    ├── scheduler-query-scope.ts            → alcance y descarte de respuestas obsoletas
+    └── scheduler-session-state.ts          → guard contra bootstrap tardío
 ```
 
 ### backend/api
@@ -1546,44 +1557,46 @@ packages/ui/
 
 ## Puntos de entrada frecuentes
 
-| Tarea                        | Archivo                                                                    |
-| ---------------------------- | -------------------------------------------------------------------------- |
-| UI compartida (exports)      | `packages/ui/src/index.ts`                                                 |
-| Componentes shadcn           | `packages/ui/src/components/ui/`                                           |
-| Wrappers custom UI           | `packages/ui/src/components/custom/`                                       |
-| Layout envelope              | `apps/envelope/src/components/layout/`                                     |
-| Rutas envelope frontend      | `apps/envelope/src/app/(dashboard)/`                                       |
-| Hooks envelope               | `apps/envelope/src/hooks/`                                                 |
-| API client envelope          | `apps/envelope/src/lib/api.ts`                                             |
-| Sesión/permisos envelope     | `apps/envelope/src/lib/session.tsx`                                        |
-| Endpoints envelope backend   | `backend/api/src/routes/envelope.routes.ts`                                |
-| Rutas payroll frontend       | `apps/payroll/src/app/(dashboard)/`                                        |
-| Estado/API payroll           | `apps/payroll/src/components/payroll/payroll-data-context.tsx`             |
-| Sesión payroll               | `apps/payroll/src/lib/session.tsx`                                         |
-| Endpoints payroll backend    | `backend/api/src/routes/payroll.routes.ts`                                 |
-| Motor payroll                | `backend/api/src/services/payroll-calculation.ts`                          |
-| Ciclo/snapshots payroll      | `backend/api/src/services/payroll.service.ts`                              |
-| Contratos POS                | `packages/types/src/pos.ts` y `backend/api/src/contracts/`                 |
-| Diagnóstico POS (lectura)    | `backend/api/scripts/diagnose-pos-data.ts`                                 |
-| Diagnóstico Scheduler        | `backend/api/scripts/diagnose-scheduler-data.ts`                           |
-| Auditoría release Scheduler  | `backend/api/scripts/audit-scheduler-release.ts`                           |
-| Gate carga Scheduler         | `backend/api/src/scheduler-load.integration.test.ts`                       |
-| Runbook release Scheduler    | `docs/SCHEDULER_PHASE_10_RELEASE.md`                                       |
-| Normalización clientes       | `backend/api/scripts/normalize-scheduler-customers.ts`                     |
-| Guía de despliegue payroll   | `apps/payroll/PENDIENTES.md`                                               |
-| Guía operativa payroll       | `apps/payroll/GUIA_PRIMERA_NOMINA.md`                                      |
-| Agenda scheduler             | `apps/scheduler/src/app/(dashboard)/page.tsx`                              |
-| Admin scheduler              | `apps/scheduler/src/app/(dashboard)/administracion/page.tsx`               |
-| Configuraciones scheduler    | `apps/scheduler/src/app/(dashboard)/configuraciones/page.tsx`              |
-| Reportes scheduler           | `apps/scheduler/src/app/(dashboard)/reportes/`                             |
-| Workspace scheduler          | `apps/scheduler/src/components/SchedulerWorkspace.tsx`                     |
-| Admin workspace scheduler    | `apps/scheduler/src/components/administration/AdministrationWorkspace.tsx` |
-| Settings workspace scheduler | `apps/scheduler/src/components/settings/SettingsWorkspace.tsx`             |
-| Mock data scheduler          | `apps/scheduler/src/lib/mock-scheduler-data.ts`                            |
-| Prisma schema                | `backend/api/prisma/schema.prisma`                                         |
-| Migraciones                  | `backend/api/prisma/migrations/`                                           |
-| Seed seguro catálogos        | `backend/api/prisma/seed-catalogs.ts`                                      |
-| Tipos compartidos            | `packages/types/src/index.ts`                                              |
+| Tarea                           | Archivo                                                            |
+| ------------------------------- | ------------------------------------------------------------------ |
+| UI compartida (exports)         | `packages/ui/src/index.ts`                                         |
+| Componentes shadcn              | `packages/ui/src/components/ui/`                                   |
+| Wrappers custom UI              | `packages/ui/src/components/custom/`                               |
+| Layout envelope                 | `apps/envelope/src/components/layout/`                             |
+| Rutas envelope frontend         | `apps/envelope/src/app/(dashboard)/`                               |
+| Hooks envelope                  | `apps/envelope/src/hooks/`                                         |
+| API client envelope             | `apps/envelope/src/lib/api.ts`                                     |
+| Sesión/permisos envelope        | `apps/envelope/src/lib/session.tsx`                                |
+| Endpoints envelope backend      | `backend/api/src/routes/envelope.routes.ts`                        |
+| Rutas payroll frontend          | `apps/payroll/src/app/(dashboard)/`                                |
+| Estado/API payroll              | `apps/payroll/src/components/payroll/payroll-data-context.tsx`     |
+| Sesión payroll                  | `apps/payroll/src/lib/session.tsx`                                 |
+| Endpoints payroll backend       | `backend/api/src/routes/payroll.routes.ts`                         |
+| Motor payroll                   | `backend/api/src/services/payroll-calculation.ts`                  |
+| Ciclo/snapshots payroll         | `backend/api/src/services/payroll.service.ts`                      |
+| Contratos POS                   | `packages/types/src/pos.ts` y `backend/api/src/contracts/`         |
+| Diagnóstico POS (lectura)       | `backend/api/scripts/diagnose-pos-data.ts`                         |
+| Diagnóstico Scheduler           | `backend/api/scripts/diagnose-scheduler-data.ts`                   |
+| Auditoría release Scheduler     | `backend/api/scripts/audit-scheduler-release.ts`                   |
+| Gate carga Scheduler            | `backend/api/src/scheduler-load.integration.test.ts`               |
+| Runbook release Scheduler       | `docs/SCHEDULER_PHASE_10_RELEASE.md`                               |
+| Normalización clientes          | `backend/api/scripts/normalize-scheduler-customers.ts`             |
+| Guía de despliegue payroll      | `apps/payroll/PENDIENTES.md`                                       |
+| Guía operativa payroll          | `apps/payroll/GUIA_PRIMERA_NOMINA.md`                              |
+| Agenda scheduler                | `apps/scheduler/src/app/(dashboard)/page.tsx`                      |
+| Admin scheduler                 | `apps/scheduler/src/app/(dashboard)/administracion/page.tsx`       |
+| Configuraciones scheduler       | `apps/scheduler/src/app/(dashboard)/configuraciones/page.tsx`      |
+| Reportes scheduler              | `apps/scheduler/src/app/(dashboard)/reportes/`                     |
+| Entrada de workspaces Scheduler | `apps/scheduler/src/components/api/SchedulerPageEntries.tsx`       |
+| Agenda Scheduler                | `apps/scheduler/src/components/api/ApiAgendaWorkspace.tsx`         |
+| Clientes Scheduler              | `apps/scheduler/src/components/api/ApiClientsWorkspace.tsx`        |
+| Administración Scheduler        | `apps/scheduler/src/components/api/ApiAdministrationWorkspace.tsx` |
+| Configuraciones Scheduler       | `apps/scheduler/src/components/api/ApiSettingsWorkspace.tsx`       |
+| Reportes Scheduler              | `apps/scheduler/src/components/api/ApiReportsWorkspace.tsx`        |
+| Prisma schema                   | `backend/api/prisma/schema.prisma`                                 |
+| Migraciones                     | `backend/api/prisma/migrations/`                                   |
+| Seed seguro catálogos           | `backend/api/prisma/seed-catalogs.ts`                              |
+| Tipos compartidos               | `packages/types/src/index.ts`                                      |
 
 ---
 

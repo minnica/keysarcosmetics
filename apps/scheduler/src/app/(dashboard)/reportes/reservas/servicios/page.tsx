@@ -1,5 +1,5 @@
-import { redirect } from "next/navigation";
+import { SchedulerReservationReportsEntry } from "@/components/api/SchedulerPageEntries";
 
 export default function ReservationServicesPage() {
-  redirect("/reportes/reservas");
+  return <SchedulerReservationReportsEntry view="services" />;
 }

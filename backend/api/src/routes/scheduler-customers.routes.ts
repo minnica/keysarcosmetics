@@ -48,7 +48,13 @@ const pageSchema = z.object({
   branchId: id.optional(),
 });
 const searchSchema = pageSchema
-  .extend({ query: z.string().trim().min(2).max(120) })
+  .extend({
+    query: z.string().trim().min(2).max(120),
+    sourceId: id.optional(),
+  })
+  .strict();
+const fieldDefinitionsQuerySchema = z
+  .object({ branchId: id.optional() })
   .strict();
 const customerSchema = z
   .object({
@@ -610,6 +616,7 @@ router.get(
       AND: [
         { active: true, deletedAt: null },
         schedulerCustomerScopeWhere(access, parsed.data.branchId),
+        ...(parsed.data.sourceId ? [{ sourceId: parsed.data.sourceId }] : []),
         {
           OR: [
             { normalizedName: { contains: needle, mode: "insensitive" } },
@@ -697,8 +704,38 @@ router.get(
   "/field-definitions",
   requireSchedulerCapability("scheduler/clients", "READ"),
   async (req, res) => {
+    const parsed = fieldDefinitionsQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      res.status(400).json({
+        success: false,
+        message: "La sucursal para campos personalizados no es válida",
+        data: parsed.error.flatten().fieldErrors,
+      });
+      return;
+    }
     try {
-      const commerceIds = await accessibleCommerceIds(req);
+      if (
+        parsed.data.branchId &&
+        !hasSchedulerBranchAccess(req.schedulerAccess!, parsed.data.branchId)
+      ) {
+        throw new SchedulerCustomerError(
+          "La sucursal está fuera de tu alcance",
+          403,
+          "BRANCH_FORBIDDEN",
+        );
+      }
+      const commerceIds = parsed.data.branchId
+        ? (
+            await prisma.schedulerBranchProfile.findMany({
+              where: {
+                branchId: parsed.data.branchId,
+                active: true,
+              },
+              distinct: ["commerceId"],
+              select: { commerceId: true },
+            })
+          ).map((row) => row.commerceId)
+        : await accessibleCommerceIds(req);
       const rows = await prisma.schedulerCustomerFieldDefinition.findMany({
         where: {
           commerceId: { in: commerceIds },
@@ -1668,27 +1705,27 @@ router.get(
       const fetchLimit = parsed.data.page * parsed.data.pageSize;
       const [posItems, posTotal, schedulerItems, schedulerTotal] =
         await Promise.all([
-        prisma.posAppointment.findMany({
-          where,
-          include: { branch: { select: { nombre: true } } },
-          orderBy: [{ scheduledAt: "desc" }, { creadoEn: "desc" }],
-          take: fetchLimit,
-        }),
-        prisma.posAppointment.count({ where }),
-        prisma.schedulerAppointment.findMany({
-          where: schedulerWhere,
-          include: {
-            branchProfile: { include: { branch: true } },
-            services: {
-              orderBy: { sequence: "asc" },
-              select: { serviceNameSnapshot: true },
+          prisma.posAppointment.findMany({
+            where,
+            include: { branch: { select: { nombre: true } } },
+            orderBy: [{ scheduledAt: "desc" }, { creadoEn: "desc" }],
+            take: fetchLimit,
+          }),
+          prisma.posAppointment.count({ where }),
+          prisma.schedulerAppointment.findMany({
+            where: schedulerWhere,
+            include: {
+              branchProfile: { include: { branch: true } },
+              services: {
+                orderBy: { sequence: "asc" },
+                select: { serviceNameSnapshot: true },
+              },
             },
-          },
-          orderBy: [{ startsAt: "desc" }, { creadoEn: "desc" }],
-          take: fetchLimit,
-        }),
-        prisma.schedulerAppointment.count({ where: schedulerWhere }),
-      ]);
+            orderBy: [{ startsAt: "desc" }, { creadoEn: "desc" }],
+            take: fetchLimit,
+          }),
+          prisma.schedulerAppointment.count({ where: schedulerWhere }),
+        ]);
       const mergedItems: SchedulerCustomerVisitHistoryDto["items"] = [
         ...schedulerItems.map((item) => ({
           id: item.id,

@@ -1804,6 +1804,7 @@ router.get("/settings/:section/resolved", async (req, res) => {
         scope: row.scope,
         scopeReferenceId: row.scopeReferenceId,
         version: row.version,
+        document: row.document as Record<string, unknown>,
       })),
     };
     res.json({ success: true, message: "OK", data });

@@ -10,6 +10,20 @@ import {
 import { Button, Skeleton } from "@cosmetics/ui";
 import { AlertTriangle, Inbox, RefreshCw } from "lucide-react";
 import { schedulerApiErrorMessage, schedulerApiErrorStatus } from "@/lib/api";
+import { useSchedulerSession } from "@/lib/session";
+import {
+  buildSchedulerQueryScope,
+  schedulerQueryMatchesInvalidation,
+  shouldAcceptSchedulerResponse,
+} from "@/lib/scheduler-query-scope";
+
+const schedulerQueryInvalidationEvent = "scheduler:query-invalidate";
+
+export interface SchedulerQueryOptions {
+  enabled?: boolean;
+  queryKey: string;
+  branchId?: string;
+}
 
 export interface SchedulerQueryState<T> {
   data: T | null;
@@ -22,11 +36,22 @@ export interface SchedulerQueryState<T> {
 export function useSchedulerQuery<T>(
   loader: () => Promise<T>,
   dependencies: readonly unknown[],
-  enabled = true,
+  options: SchedulerQueryOptions,
 ): SchedulerQueryState<T> {
+  const { bootstrap, status } = useSchedulerSession();
+  const enabled = options.enabled ?? true;
+  const sessionKey = bootstrap?.user.id ?? status;
+  const scopeKey = buildSchedulerQueryScope({
+    sessionKey,
+    ...(options.branchId ? { branchId: options.branchId } : {}),
+    queryKey: options.queryKey,
+    dependencies,
+  });
   const loaderRef = useRef(loader);
   loaderRef.current = loader;
   const requestRef = useRef(0);
+  const scopeRef = useRef(scopeKey);
+  scopeRef.current = scopeKey;
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(enabled);
@@ -34,33 +59,84 @@ export function useSchedulerQuery<T>(
   const reload = useCallback(async () => {
     if (!enabled) return;
     const request = ++requestRef.current;
+    const requestScope = scopeKey;
     setLoading(true);
     setError(null);
     try {
       const result = await loaderRef.current();
-      if (request === requestRef.current) setData(result);
+      if (
+        shouldAcceptSchedulerResponse({
+          request,
+          currentRequest: requestRef.current,
+          requestScope,
+          currentScope: scopeRef.current,
+        })
+      ) {
+        setData(result);
+      }
     } catch (cause) {
-      if (request === requestRef.current) {
+      if (
+        shouldAcceptSchedulerResponse({
+          request,
+          currentRequest: requestRef.current,
+          requestScope,
+          currentScope: scopeRef.current,
+        })
+      ) {
         setError(schedulerApiErrorMessage(cause));
       }
     } finally {
-      if (request === requestRef.current) setLoading(false);
+      if (
+        shouldAcceptSchedulerResponse({
+          request,
+          currentRequest: requestRef.current,
+          requestScope,
+          currentScope: scopeRef.current,
+        })
+      ) {
+        setLoading(false);
+      }
     }
-  }, [enabled]);
+  }, [enabled, scopeKey]);
 
   useEffect(() => {
+    requestRef.current += 1;
+    setData(null);
+    setError(null);
     if (enabled) void reload();
     else {
-      requestRef.current += 1;
       setLoading(false);
-      setData(null);
-      setError(null);
     }
-    // dependencies are intentionally controlled by each query owner.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, reload, ...dependencies]);
+  }, [enabled, reload, scopeKey]);
+
+  useEffect(() => {
+    function handleInvalidation(event: Event) {
+      const prefixes = (event as CustomEvent<string[]>).detail;
+      if (schedulerQueryMatchesInvalidation(options.queryKey, prefixes)) {
+        void reload();
+      }
+    }
+    window.addEventListener(
+      schedulerQueryInvalidationEvent,
+      handleInvalidation,
+    );
+    return () =>
+      window.removeEventListener(
+        schedulerQueryInvalidationEvent,
+        handleInvalidation,
+      );
+  }, [options.queryKey, reload]);
 
   return { data, error, loading, reload, setData };
+}
+
+export function invalidateSchedulerQueries(...prefixes: string[]) {
+  if (typeof window === "undefined" || prefixes.length === 0) return;
+  window.dispatchEvent(
+    new CustomEvent<string[]>(schedulerQueryInvalidationEvent, {
+      detail: prefixes,
+    }),
+  );
 }
 
 export function QueryBoundary({
@@ -137,10 +213,14 @@ export async function runSchedulerMutation(
     onSuccess: () => void | Promise<void>;
     onError: (message: string) => void;
     onConflict: (message: string) => void;
+    invalidate?: string[];
   },
 ) {
   try {
     await mutation();
+    if (handlers.invalidate?.length) {
+      invalidateSchedulerQueries(...handlers.invalidate);
+    }
     await handlers.onSuccess();
   } catch (cause) {
     const message = schedulerApiErrorMessage(cause);
@@ -165,12 +245,15 @@ export function WorkspaceHeader({
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="label-caps">{eyebrow}</p>
-          <h1 className="page-title mt-2 text-[clamp(2rem,4vw,3rem)]">{title}</h1>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">{description}</p>
+          <h1 className="page-title mt-2 text-[clamp(2rem,4vw,3rem)]">
+            {title}
+          </h1>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
+            {description}
+          </p>
         </div>
         {actions}
       </div>
     </header>
   );
 }
-

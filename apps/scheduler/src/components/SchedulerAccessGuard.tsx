@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, type ReactNode } from "react";
+import { Fragment, useEffect, type ReactNode } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@cosmetics/ui";
 import type { SchedulerScreenKey } from "@cosmetics/types";
@@ -145,5 +145,5 @@ export function SchedulerAccessGuard({ children }: { children: ReactNode }) {
       </main>
     );
   }
-  return children;
+  return <Fragment key={bootstrap.user.id}>{children}</Fragment>;
 }

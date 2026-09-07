@@ -53,22 +53,22 @@ No se debe crear el índice único parcial mientras `uniquePartialIndexReady` se
 
 Todos viven bajo `/api/scheduler/clients`, exigen JWT compartido, aplican capacidades de `scheduler/clients` o `scheduler/settings/clients` y mantienen `{ success, message, data }`.
 
-| Método     | Ruta                       | Capacidad                            | Uso                                                                            |
-| ---------- | -------------------------- | ------------------------------------ | ------------------------------------------------------------------------------ |
-| `GET`      | `/search`                  | `READ`                               | Búsqueda paginada por nombre, teléfono, correo y alias; mínimo dos caracteres. |
-| `GET`      | `/sources`                 | `READ`                               | Procedencias canónicas de `CustomerSource`.                                    |
-| `GET`      | `/field-definitions`       | `READ`                               | Definiciones vigentes de los comercios alcanzables.                            |
-| `POST/PUT` | `/field-definitions[/:id]` | `ADMIN` en Configuración de clientes | Alta y nueva versión de campos personalizados.                                 |
-| `POST`     | `/`                        | `WRITE`                              | Alta transaccional con perfil, alias, correos, procedencia, cartera y campos.  |
-| `PUT`      | `/:id`                     | `WRITE`                              | Edición con `expectedVersion` y escritura dual del teléfono.                   |
-| `GET`      | `/:id`                     | `READ` + autorización secundaria     | Expediente y metadatos propios de Scheduler.                                   |
-| `GET`      | `/:id/visits`              | `READ` + autorización secundaria     | Historial POS enlazado canónicamente; no infiere `RegistroCita`.               |
-| `GET`      | `/:id/financial-history`   | `READ` + autorización secundaria     | Tickets y pagos POS en modo estrictamente lectura.                             |
-| `POST`     | `/merge`                   | `ADMIN` + autorización secundaria    | Fusión serializable, auditada y con control de versión.                        |
+| Método     | Ruta                       | Capacidad                            | Uso                                                                                                                                              |
+| ---------- | -------------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GET`      | `/search`                  | `READ`                               | Búsqueda paginada por nombre, teléfono, correo y alias; mínimo dos caracteres; `sourceId` filtra en servidor sin reducir sólo la página visible. |
+| `GET`      | `/sources`                 | `READ`                               | Procedencias canónicas de `CustomerSource`.                                                                                                      |
+| `GET`      | `/field-definitions`       | `READ`                               | Definiciones vigentes de los comercios alcanzables; `branchId` opcional las acota al comercio de una sucursal autorizada.                        |
+| `POST/PUT` | `/field-definitions[/:id]` | `ADMIN` en Configuración de clientes | Alta y nueva versión de campos personalizados.                                                                                                   |
+| `POST`     | `/`                        | `WRITE`                              | Alta transaccional con perfil, alias, correos, procedencia, cartera y campos.                                                                    |
+| `PUT`      | `/:id`                     | `WRITE`                              | Edición con `expectedVersion` y escritura dual del teléfono.                                                                                     |
+| `GET`      | `/:id`                     | `READ` + autorización secundaria     | Expediente y metadatos propios de Scheduler.                                                                                                     |
+| `GET`      | `/:id/visits`              | `READ` + autorización secundaria     | Historial POS enlazado canónicamente; no infiere `RegistroCita`.                                                                                 |
+| `GET`      | `/:id/financial-history`   | `READ` + autorización secundaria     | Tickets y pagos POS en modo estrictamente lectura.                                                                                               |
+| `POST`     | `/merge`                   | `ADMIN` + autorización secundaria    | Fusión serializable, auditada y con control de versión.                                                                                          |
 
 Los tokens para expediente, visitas y finanzas se envían en `x-scheduler-authorization`, ligados a `targetType = Customer` y al ID consultado. La fusión usa el propósito `CLIENT_MERGE`, `targetType = CustomerMerge` y `targetId = sourceId:targetId`; el token se consume una vez.
 
-`@cosmetics/types` publica los DTOs y `@cosmetics/api-client` ofrece métodos para todos los endpoints. La pantalla local/mock de Clientes todavía no consume estos métodos: su sustitución progresiva corresponde a la Fase 9 y no debe habilitarse fuera del modo mock hasta conectar sus estados de carga, error y conflicto.
+`@cosmetics/types` publica los DTOs y `@cosmetics/api-client` ofrece métodos para todos los endpoints. Desde RV3 la pantalla operativa de Clientes consume estos contratos con estados de carga, vacío, error y conflicto; Agenda usa el mismo adaptador de identidad e invalidación. La pantalla histórica y `mock-client-data.ts` permanecen sólo como referencia/fixture y nunca son fallback operativo.
 
 ## Alcance y privacidad
 
@@ -109,4 +109,4 @@ No usar `prisma db push`, `migrate reset`, seeds operativos ni una base comparti
 - 103 pruebas unitarias en 20 archivos, incluidas normalización, alcance, campos tipados y conflicto de identidad externa;
 - build del API y type-check de Scheduler.
 
-La reconstrucción, las pruebas HTTP/concurrencia y la ejecución de diagnóstico/backfill real siguen pendientes porque el workspace no dispone de PostgreSQL 16 desechable ni conectividad aprobada a los ambientes. La ausencia de esa evidencia impide aplicar el índice único y habilitar la UI real de Clientes.
+La reconstrucción, las pruebas HTTP/concurrencia y la ejecución de diagnóstico/backfill real siguen pendientes porque el workspace no dispone de PostgreSQL 16 desechable ni conectividad aprobada a los ambientes. La ausencia de esa evidencia impide aplicar el índice único y validar los recorridos mutantes de la UI real de Clientes; no impide compilar ni revisar su integración local.

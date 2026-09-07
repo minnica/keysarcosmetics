@@ -10,7 +10,7 @@ import {
   Input,
 } from "@cosmetics/ui";
 import { KeyRound, ShieldCheck, X } from "lucide-react";
-import type { Booking } from "@/lib/mock-scheduler-data";
+import type { Booking } from "@/lib/scheduler-presentation";
 
 interface SchedulerFinancialAccessDialogProps {
   open: boolean;

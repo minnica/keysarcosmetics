@@ -932,6 +932,7 @@ export interface SchedulerResolvedSettingDto {
     scope: SchedulerSettingScope;
     scopeReferenceId: string;
     version: number;
+    document: Record<string, unknown>;
   }>;
 }
 
@@ -1082,6 +1083,11 @@ export interface SchedulerCustomerSearchRequest {
   query: string;
   page?: number;
   pageSize?: number;
+  branchId?: string;
+  sourceId?: string;
+}
+
+export interface SchedulerCustomerFieldDefinitionRequest {
   branchId?: string;
 }
 
