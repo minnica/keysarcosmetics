@@ -30,6 +30,21 @@ export const restoredAdministrationCopy = {
     description:
       "Controla cabinas, equipos y estaciones necesarios para operar la agenda.",
   },
+  surveys: {
+    title: "Encuestas",
+    description:
+      "Diseña cuestionarios versionados y asócialos a servicios sin exponer tokens ni respuestas individuales.",
+  },
+  consents: {
+    title: "Consentimientos",
+    description:
+      "Administra versiones de documentos privados y su trazabilidad por cliente.",
+  },
+  whatsapp: {
+    title: "Comunicaciones",
+    description:
+      "Prepara plantillas multicanal y supervisa el outbox sin confundir encolado con entrega.",
+  },
   "gift-cards": {
     title: "Gift cards",
     description:

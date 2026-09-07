@@ -74,6 +74,7 @@ import {
   invalidateSchedulerQueries,
   useSchedulerQuery,
 } from "./ApiState";
+import { CustomerEngagementPanel } from "@/components/clients/CustomerEngagementPanel";
 
 type SensitiveSection = "profile" | "visits" | "financial";
 
@@ -1120,6 +1121,7 @@ export function ApiClientsWorkspace() {
       />
 
       <CustomerRecordDialog
+        branchId={branchId}
         configured={Boolean(bootstrap?.secondaryAuthorizationConfigured)}
         detail={detail}
         financial={financial}
@@ -1594,6 +1596,7 @@ function CustomerCustomField({
 }
 
 function CustomerRecordDialog({
+  branchId,
   canWrite,
   configured,
   detail,
@@ -1612,6 +1615,7 @@ function CustomerRecordDialog({
   visits,
   visitPage,
 }: {
+  branchId: string;
   canWrite: boolean;
   configured: boolean;
   detail: SchedulerCustomerDetailDto | null;
@@ -1739,6 +1743,13 @@ function CustomerRecordDialog({
               />
             )}
           </section>
+
+          {recordCustomer ? (
+            <CustomerEngagementPanel
+              branchId={branchId}
+              customerId={recordCustomer.id}
+            />
+          ) : null}
         </div>
       </DialogContent>
     </Dialog>

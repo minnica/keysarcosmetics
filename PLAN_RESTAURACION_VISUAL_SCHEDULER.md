@@ -4,7 +4,7 @@
 > Rama inspeccionada: `feature/scheduler`.
 > Referencia visual aprobada por el PO, indicada por el usuario: `e9077ddad945325b1a132962ce0c2fcd9ae7f74a`.
 > HEAD al redactar el plan: `9784c1b222dc2aa69cb304a5b492eeb1786ac980`.
-> Estado: RV0–RV5 implementadas con validación visual/funcional pendiente; RV6–RV8 pendientes.
+> Estado: RV0–RV6 implementadas con validación visual/funcional pendiente; RV7–RV8 pendientes.
 
 ## 1. Objetivo y acuerdo de alcance
 
@@ -21,6 +21,8 @@ RV3 quedó implementada el 6 de septiembre de 2026: Clientes recupera cabecera, 
 RV4 quedó implementada el 6 de septiembre de 2026: Administración recupera la presentación aprobada para comercios/sucursales, especialistas, servicios, comisiones, recursos, gift cards y colores sobre candidatos y perfiles canónicos. Integra horarios, descansos, excepciones, grupos, especialidades, asignaciones, requisitos, clases, paquetes, complementos, reglas versionadas y autorización reforzada; Agenda se invalida tras cambios. Precio/categoría masivos, identidad de sucursal, alta inicial de complementos, validación anticipada de uso de recursos y operación financiera de gift cards permanecen como brechas explícitas, no simulaciones. Evidencia: `docs/SCHEDULER_RV4_ADMINISTRATION_RESTORATION.md`. Capturas y recorridos HTTP/PostgreSQL permanecen pendientes por B06.
 
 RV5 quedó implementada el 6 de septiembre de 2026: Configuraciones sustituye el editor JSON por formularios estructurados para las once secciones documentales, conserva la presentación aprobada, el código personal seguro, precedencia y permisos. La respuesta resuelta incluye el documento autorizado de cada capa para editar sólo el alcance seleccionado; el frontend aplica únicamente paths modificados y preserva claves desconocidas. Cada campo declara su efecto real y ninguno se presenta como consumidor operativo cuando no existe; secretos permanecen fuera del documento. La densidad visual de Agenda sigue local. Evidencia: `docs/SCHEDULER_RV5_SETTINGS_RESTORATION.md`. Capturas y persistencia HTTP/PostgreSQL permanecen pendientes por B06.
+
+RV6 quedó implementada el 6 de septiembre de 2026: Encuestas, Consentimientos y Comunicaciones recuperan sus paneles aprobados sobre snapshots versionados, servicios canónicos, storage privado, preferencias de contacto y outbox real. Encolado, aceptación del proveedor, entrega y lectura son estados distintos; sólo `FAILED` admite reintento manual y ningún control activa el proveedor. Consentimientos cubre versiones, asignación, firma/revocación y URLs efímeras con autorización; Clientes integra expediente médico cifrado y soportes con autorizaciones independientes y purga temporal. Tokens/respuestas permanecen fuera de Administración y sus métricas continúan en RV7. Evidencia: `docs/SCHEDULER_RV6_ENGAGEMENT_RESTORATION.md`. Capturas, storage, proveedor sandbox y recorridos HTTP/PostgreSQL permanecen pendientes por B06.
 
 Este plan complementa `PLAN_BACKEND_SCHEDULER.md`: sus contratos, seguridad y reglas de negocio siguen vigentes. Corrige la presentación introducida durante su integración frontend. Las fases de este documento usan el prefijo **RV** para diferenciarlas de las fases del plan backend.
 
@@ -63,7 +65,7 @@ El backend devuelve citas, profesionales, recursos, horarios, estados y versione
 | RV3  | Clientes, expediente e históricos                       | RV2 validada | Implementada; validación pendiente |
 | RV4  | Administración y catálogos                              | RV3          | Implementada; validación pendiente |
 | RV5  | Formularios de Configuraciones                          | RV4          | Implementada; validación pendiente |
-| RV6  | Comunicaciones, documentos y encuestas                  | RV5          | Pendiente                          |
+| RV6  | Comunicaciones, documentos y encuestas                  | RV5          | Implementada; validación pendiente |
 | RV7  | Reportes y exportaciones                                | RV6          | Pendiente                          |
 | RV8  | Verificación integral, limpieza y entrega               | RV2–RV7      | Pendiente                          |
 
@@ -200,12 +202,14 @@ Estado RV5 (6 de septiembre de 2026): implementación local completa y checks t�
 
 ### RV6 — Comunicaciones, documentos y encuestas
 
-- [ ] Recuperar paneles de WhatsApp/comunicaciones, plantillas, consentimientos, documentos, encuestas y las acciones aplicables de recordatorios/expediente médico identificadas en RV0.
-- [ ] Integrar plantillas versionadas, outbox, estados/reintentos y preferencias de contacto; diferenciar encolado de entrega confirmada. Mantener idempotencia y consentimiento.
-- [ ] Integrar carga/consulta de documentos privados y autorizaciones para datos sensibles. No persistir URLs firmadas como enlaces permanentes ni exponer rutas internas.
-- [ ] Conectar definiciones y resultados de encuestas según los contratos disponibles; conservar respuestas inmutables y tokens fuera de la presentación general.
-- [ ] Verificar estados con proveedor deshabilitado, error, pendiente y completado mediante entornos de prueba; no activar envíos reales para probar el visual.
-- [ ] Comparar paneles, tablas y modales; coordinar las vistas de métricas con RV7.
+- [x] Recuperar paneles de WhatsApp/comunicaciones, plantillas, consentimientos, documentos, encuestas y las acciones aplicables de recordatorios/expediente médico identificadas en RV0.
+- [x] Integrar plantillas versionadas, outbox, estados/reintentos y preferencias de contacto; diferenciar encolado de entrega confirmada. Mantener idempotencia y consentimiento.
+- [x] Integrar carga/consulta de documentos privados y autorizaciones para datos sensibles. No persistir URLs firmadas como enlaces permanentes ni exponer rutas internas.
+- [x] Conectar definiciones de encuestas según los contratos disponibles; conservar respuestas inmutables y tokens fuera de la presentación general. Los resultados agregados permanecen en RV7.
+- [ ] Verificar estados con proveedor deshabilitado, error, pendiente y completado mediante entornos de prueba; no activar envíos reales para probar el visual. Los estados, retry y mensajes explicativos tienen cobertura local; falta el recorrido HTTP con proveedor disabled/sandbox por B06.
+- [ ] Comparar paneles, tablas y modales; coordinar las vistas de métricas con RV7. El runner determinista cubre tres paneles en escritorio y Comunicaciones móvil; falta ejecutar y revisar capturas por B06.
+
+Estado RV6 (6 de septiembre de 2026): implementación local completa y checks técnicos correctos. Encuestas y plantillas conservan versiones/conflictos; las intenciones son idempotentes; consentimientos, expediente y documentos usan storage/autorizaciones sin persistir URLs; proveedor, tokens y respuestas permanecen fuera de la UI general. No se ejecutaron capturas, bucket privado ni recorridos con API/PostgreSQL/proveedor porque B06 continúa vigente. Ver `docs/SCHEDULER_RV6_ENGAGEMENT_RESTORATION.md`; no marcar `Validada` hasta revisar esas evidencias.
 
 **Criterio de salida:** interfaces de engagement restauradas con estados reales y controles de privacidad; pruebas externas que requieran storage/proveedor se reportan separadamente si aún faltan.
 
@@ -278,7 +282,7 @@ La auditoría identificó estos puntos a verificar, no incompatibilidades visual
 | --- | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
 | B01 | Teléfono, precio, avatar y detalles por tarjeta no están todos en el DTO de cita          | Ficha autorizada bajo demanda; definir contrato agregado para precio/avatar sin N+1                                                                                                                                                                                                         | Parcial RV2; precio/avatar agregados pendientes       |
 | B02 | Pendientes sin profesional/recurso asignado                                               | El validador exige al menos un profesional por servicio; decidir si se amplía el contrato                                                                                                                                                                                                   | RV2 no inventa cola; decisión backend pendiente       |
-| B03 | Formularios administrativos, archivos masivos y capacidades mock sin contrato equivalente | RV4 restaura CRUDs canónicos y registra sin simular identidad de sucursal, precios/categorías masivos, candidatos de complementos, validación anticipada de uso de recursos y operación financiera de gift cards; Clientes mantiene importación/audiencias/fichas y RV6 resuelve engagement | Parcial RV3/RV4; resolver contratos comerciales y RV6 |
+| B03 | Formularios administrativos, archivos masivos y capacidades mock sin contrato equivalente | RV4 restaura CRUDs canónicos y registra sin simular identidad de sucursal, precios/categorías masivos, candidatos de complementos, validación anticipada de uso de recursos y operación financiera de gift cards; Clientes mantiene importación/audiencias/reporte de fichas y RV6 resuelve engagement, expediente médico y documentos | Parcial RV3/RV4/RV6; resolver contratos comerciales |
 | B04 | Persistencia JSON frente a efectos reales de Configuraciones                              | RV5 documenta cada campo, identifica la ausencia de consumidores y la muestra en UI; conectar efectos futuros exige contrato y pruebas propias                                                                                                                                              | Resuelta RV5; consumidores futuros fuera de alcance   |
 | B05 | KPIs, series y formatos históricos frente a los datasets actuales                         | Hay doce datasets y sólo CSV; verificar agrupaciones y formatos                                                                                                                                                                                                                             | Clasificada RV0; resolver RV7                         |
 | B06 | Ambiente reproducible para referencia y pruebas de escritura                              | Build aislado disponible; Chromium, puertos y PostgreSQL desechable no disponibles en sandbox                                                                                                                                                                                               | Diagnóstico RV0; captura/BD pendientes                |
@@ -413,3 +417,17 @@ Solicitud sugerida para otra sesión:
 - **Brechas o validaciones pendientes:** comparar en viewports RV0; recorrer creación/actualización/recarga y conflicto en las tres capas sobre API/PostgreSQL desechables; inspeccionar respuestas/chunks sin secretos. B06 conserva la infraestructura de evidencia.
 - **Estado Git al cerrar:** cambios RV5 y documentación sin commit; no se aplicaron migraciones, seeds, variables, despliegues ni datos operativos.
 - **Siguiente tarea concreta:** ejecutar la evidencia visual/funcional acumulada RV2–RV5 en un host compatible; después iniciar RV6 conectando Comunicaciones, documentos y encuestas sin activar proveedores reales.
+
+### Bitácora RV6 — 6 de septiembre de 2026
+
+- **Fecha y fase:** 6 de septiembre de 2026, RV6.
+- **Rama y HEAD:** `feature/scheduler`, base `21229ccd55eef5cafe58ba30d9829c54d274cc66`.
+- **Estado:** Implementada; validación visual, storage, proveedor y recorridos HTTP/PostgreSQL pendientes por B06.
+- **Tareas completadas:** paneles restaurados de Encuestas, Consentimientos y Comunicaciones; alta/versión/conflicto de encuestas y plantillas; preguntas/servicios/vista previa; preferencias con fuente y versión; intención idempotente; semántica completa del outbox y retry terminal; carga/versionado/asignación/firma/revocación de consentimientos; URLs efímeras con autorización; expediente médico y soportes privados dentro de Clientes con autorizaciones independientes y purga temporal.
+- **Archivos modificados:** entrada y frame de Administración; nuevos componentes `RestoredSurveysSection`, `RestoredConsentsSection`, `RestoredCommunicationsSection` y `CustomerEngagementPanel`; adaptador/prueba `scheduler-engagement-presentation`; fixture/spec visual RV6 y registro en Playwright; `CLAUDE.md`, este plan, baseline y `docs/SCHEDULER_RV6_ENGAGEMENT_RESTORATION.md`.
+- **Pruebas ejecutadas y resultado:** type-check, lint, 8 suites unitarias y build de Scheduler (21 páginas), correctos; type-check y lint E2E correctos; el lint de Scheduler conserva advertencias históricas fuera de RV6. Playwright descubrió los dos casos RV6 y sus dos dependencias de sesión (4 pruebas); `git diff --check` se ejecuta al cierre.
+- **Evidencia visual:** runner `apps/e2e/development/scheduler-engagement.visual.spec.ts`; adjuntos previstos de tres paneles a `1366×768` y Comunicaciones a `390×844`. No se generaron PNG porque B06 impide iniciar servidor/Chromium.
+- **Diferencias funcionales/visuales y decisiones:** no hay borrado contractual de encuestas/plantillas/respuestas; inactivación/versionado prevalece. La plantilla de consentimiento no publica mutación de activo. `SENT` no se etiqueta como entregado. Proveedor/secretos sólo viven en infraestructura. Las métricas agregadas continúan en RV7 y ninguna preferencia documental RV5 se presenta como consumidor automático.
+- **Brechas o validaciones pendientes:** ejecutar comparación en seis viewports; recorrer `409`, replay, opt-in/out, estados/retry, firmas, expiración de URLs y alcance cruzado sobre API/PostgreSQL/storage desechables; probar `disabled` y sandbox sin envíos reales. B06 conserva la infraestructura de evidencia.
+- **Estado Git al cerrar:** cambios RV6 y documentación sin commit; no se modificaron backend, Prisma, migraciones, seeds, variables, despliegues ni datos operativos.
+- **Siguiente tarea concreta:** ejecutar la evidencia visual/funcional acumulada RV2–RV6 en un host compatible; después iniciar RV7 restaurando reportes y exportaciones desde datasets completos.
