@@ -50,6 +50,15 @@ negocio definitiva.
 - Información que necesita mostrar: empleado, sucursal, tipo de nómina, corrida/periodo de primera aplicación, monto, parcialidades, saldo, estatus e historial.
 - Información que captura o modifica: cada movimiento, préstamo o adelanto exige seleccionar explícitamente la nómina afectada y la corrida donde se pagará o comenzará el descuento.
 - Reglas y validaciones observadas: un préstamo autorizado descuenta únicamente en el módulo elegido desde el periodo seleccionado; el arrastre conserva ese tipo de nómina hasta liquidarse; cambiar el destino en edición no reescribe periodos anteriores en el mock.
+
+## Política configurable de préstamos y adelantos
+
+- Información que necesita mostrar: comisión acumulada al día, monto máximo disponible para adelanto, solicitudes usadas en el mes o trimestre, número de cuotas y motivo de bloqueo.
+- Información que captura o modifica: porcentaje máximo del adelanto sobre la comisión, máximo de adelantos mensuales, máximo de cuotas por préstamo y máximo de préstamos trimestrales.
+- Reglas y validaciones observadas: por defecto el adelanto no supera 50% de la comisión acumulada ni dos solicitudes activas por mes; el préstamo no supera seis cuotas ni dos solicitudes activas por trimestre calendario. Las solicitudes rechazadas no consumen el límite. Las reglas se validan al solicitar, editar y autorizar.
+- Estados posibles: dentro de política, fuera de política, pendiente, aprobado y rechazado.
+- Acciones y permisos esperados: el empleado consulta su disponibilidad y solicita; un usuario máster configura límites y autoriza únicamente solicitudes válidas.
+- Dudas por resolver: definir si una solicitud cancelada debe consumir el límite y si el conteo trimestral será calendario o móvil al conectar backend.
 - Excepción de periodos en movimientos: el periodo destino se mantiene bloqueado por defecto; un código máster válido habilita las demás quincenas disponibles para alta o traslado, valida que la fecha pertenezca al nuevo corte y devuelve cualquier edición a borrador para una nueva aprobación.
 - Estados posibles: borrador, pendiente, autorizado, rechazado y liquidado.
 - Acciones y permisos esperados: el destino debe conservarse en la autorización, recibos, consolidado y bitácora; una integración futura deberá impedir que una corrida cerrada sea modificada sin reapertura formal.
@@ -91,3 +100,68 @@ negocio definitiva.
 - Acciones y permisos esperados: consulta, impresión y descarga en PDF/Excel para usuarios autorizados; no inicia transferencias bancarias.
 - Dudas por resolver: fuente validada de nombres separados y CLABE, momento exacto de congelamiento del archivo, firma de autorización y mecanismo de versionado ante una reapertura.
 - Bloqueo de cierre: producción deberá guardar una fotografía inmutable de cada corrida cerrada. Toda reapertura exigirá permiso maestro, segunda autenticación, motivo obligatorio y bitácora con usuario, fecha y versión anterior.
+
+## Catálogo y sincronización de sucursales con POS
+
+- Información que necesita mostrar: identificador interno estable, identificador externo del POS, nombre oficial, ciudad o estado, origen del registro, fecha de alta, última sincronización, fecha de baja, estado y conteos de relaciones históricas.
+- Información que captura o modifica: alta y corrección manual en el portal; alta, cambio de nombre, reactivación o baja recibida desde el POS mediante un evento de integración.
+- Reglas y validaciones observadas: el identificador externo del POS es único e idempotente; un evento repetido actualiza y nunca duplica; toda alta activa la sucursal en nóminas, comisiones, empleados, centros de costo y reportes; la baja es lógica, bloquea nuevas asignaciones y conserva ventas, movimientos, recibos, gerentes y costos históricos.
+- Estados posibles: activa, baja lógica, pendiente de sincronización y error de integración.
+- Acciones y permisos esperados: sólo el usuario máster administra altas manuales o reactivaciones; el POS actúa como fuente automática mediante un webhook autenticado; cada cambio debe guardar origen, actor, fecha, payload/versionado e intento de sincronización.
+- Contrato futuro sugerido: evento `branch.upserted` con `externalPosId`, `name`, `city`, `active` y `updatedAt`; la API de nómina deberá hacer `upsert` transaccional, responder de forma idempotente y publicar el cambio a las vistas dependientes sin reescribir fotografías de periodos cerrados.
+- Dudas por resolver: cuál sistema será la fuente maestra definitiva, mecanismo de autenticación/firma del webhook, política de reintentos, resolución de cambios simultáneos y si una sucursal manual debe poder vincularse después con una clave POS existente.
+
+## Aprobación masiva de movimientos
+
+- Información que necesita mostrar: movimientos pendientes, selección individual, cantidad seleccionada y alcance de los filtros activos.
+- Información que captura o modifica: aprobación simultánea de uno o varios movimientos pendientes desde el listado.
+- Reglas y validaciones observadas: sólo los registros en estado pendiente pueden seleccionarse; seleccionar todos abarca los pendientes del filtro actual aunque estén paginados; una sola acción cambia todos los seleccionados a aprobados y actualiza sus destinos de nómina, sucursal, recibos y reportes.
+- Estados posibles: sin selección, selección parcial, todos los pendientes filtrados y aprobación terminada.
+- Acciones y permisos esperados: requiere permiso de aprobación de nómina; producción deberá ejecutar el lote de forma transaccional, registrar usuario, fecha, ids y resultado individual, y rechazar cualquier movimiento ligado a una corrida cerrada.
+- Dudas por resolver: si un error debe revertir el lote completo o permitir aprobación parcial con reporte de excepciones.
+
+## Ventas brutas y ventas sin IVA en nómina
+
+- Información que necesita mostrar: ventas brutas registradas, ventas netas sin IVA y modo de cálculo aplicado por empleado.
+- Información que captura o modifica: ninguna; ambos importes se derivan de la misma venta y se incluyen en pantalla, impresión, PDF y Excel.
+- Reglas y validaciones observadas: ventas sin IVA equivale a ventas brutas divididas entre 1.16; al calcular con IVA la cifra neta es informativa; al calcular sin IVA la cifra neta se identifica como base aplicada para escala y comisión.
+- Estados posibles: base con IVA y base sin IVA.
+- Acciones y permisos esperados: consulta dentro de cada nómina y sus exportaciones para usuarios autorizados.
+- Dudas por resolver: si el POS entregará ambos importes fiscales o si producción deberá derivar la base neta considerando tasas distintas por producto o concepto.
+
+## Separación de sueldo, comisión y módulos configurables
+
+- Información que necesita mostrar: destino independiente del sueldo y de la comisión por empleado, conceptos habilitados, puestos participantes, empleados asignados, estado del módulo y periodo vigente.
+- Información que captura o modifica: al registrar o editar personal se selecciona la nómina que paga su sueldo y, por separado, la nómina que paga su comisión; el usuario máster puede crear módulos personalizados y elegir sueldo, comisión, bonos, multas, ajustes, préstamos, adelantos y viáticos.
+- Reglas y validaciones observadas: `Salario fijo` suma exclusivamente el sueldo registrado y su prorrateo; no agrega comisión ni movimientos. `Comisiones` admite cualquier puesto con esquema de comisión y nunca suma sueldo base, incluso para puestos mixtos. Un empleado mixto puede tener dos destinos simultáneos sin duplicar importes. Todo módulo requiere nombre, al menos un concepto y al menos un puesto.
+- Cobertura del prototipo: cada módulo nuevo crea su propia configuración quincenal y corrida mock, aparece en el menú de Nómina y reutiliza cálculo, filtros, tabla, impresión, PDF, Excel, recibos, costo social e ISR. Sus conceptos alimentan el consolidado y los reportes generales una sola vez.
+- Estados posibles: módulo base, personalizado activo y personalizado inactivo; la desactivación conserva el historial en memoria.
+- Acciones y permisos esperados: crear, editar o desactivar módulos debe requerir permiso máster; producción necesita asignaciones efectivas por fecha, fotografías inmutables al cerrar una corrida y trazabilidad de quién cambió cada destino.
+- Dudas por resolver: confirmar si un módulo personalizado puede combinar sueldo y comisión en un mismo recibo o si ambos conceptos deberán forzosamente producir recibos separados; definir si los movimientos heredarán el destino de comisión/sueldo o exigirán siempre una asignación explícita; confirmar si asignar un puesto a un módulo debe mover automáticamente a todo el personal actual, como lo hace el prototipo.
+
+## Bandeja de corte e historial anual de recibos
+
+- Información que necesita mostrar: un único recibo personal correspondiente al corte vigente, su estatus, importe y cuenta de pago; historial de recibos personales autorizados del año en curso; un único recibo gerencial correspondiente al último cierre mensual y su historial anual independiente.
+- Información que captura o modifica: autorización o aclaración del recibo vigente por parte del empleado; autorización o aclaración del último recibo mensual por parte de la gerencia.
+- Reglas y validaciones observadas: el empleado no puede seleccionar ni autorizar otra quincena; al autorizar, el recibo sale de la bandeja pendiente y entra al historial anual. La gerencia solo autoriza el último mes cerrado. Los recibos gerenciales de kiosco nunca sustituyen ni se mezclan con los recibos personales de venta. Al cambiar de año, el portal personal muestra únicamente documentos del nuevo año en curso.
+- Estados posibles: pendiente de revisión, aclaración abierta, autorizado y consulta histórica de solo lectura.
+- Acciones y permisos esperados: cada empleado consulta, descarga, aclara y autoriza exclusivamente sus propios recibos; el usuario máster conserva la vista general por periodo. Producción deberá validar la autorización contra la corrida de corte vigente y rechazar periodos arbitrarios desde el servidor.
+- Dudas por resolver: política legal de conservación documental fuera del portal anual, acceso a constancias de ejercicios anteriores y momento exacto en que el cierre mensual gerencial queda disponible.
+
+## Autorización de acceso por módulo
+
+- Información que necesita mostrar: catálogo completo de módulos base y personalizados, acceso activo o inactivo por rol y una indicación explícita de acceso total obligatorio para el usuario máster.
+- Información que captura o modifica: el usuario máster habilita o retira, para cada rol no máster, el acceso individual a cada módulo y las acciones operativas complementarias.
+- Reglas y validaciones observadas: el rol `USUARIO MASTER` accede siempre a todos los módulos sin excepción y sus permisos no pueden desactivarse; los demás roles sólo ven en navegación y pueden abrir por URL los módulos autorizados; todo módulo personalizado genera su propia autorización; las rutas no catalogadas se rechazan por defecto para usuarios no máster.
+- Estados posibles: acceso total protegido, módulo autorizado, módulo sin autorización y acceso directo rechazado.
+- Acciones y permisos esperados: sólo el usuario máster puede administrar Roles y accesos. Producción deberá validar cada permiso también en servidor, consultas, exportaciones y acciones; ocultar el menú no constituye autorización suficiente.
+- Dudas por resolver: definir si se permitirán plantillas de permisos por familia de puestos y si una autorización tendrá vigencia por fecha o sucursal.
+
+## Inclusión fiscal global por periodo
+
+- Información que necesita mostrar: periodo exacto, estado global de costo social e ISR y confirmación de que la regla alcanza nóminas, consolidado, recibos, dispersión y reportes.
+- Información que captura o modifica: encendido o apagado independiente de costo social e ISR para una fecha inicial y final específicas.
+- Reglas y validaciones observadas: el apagado global prevalece sobre cualquier tasa o monto individual y convierte la carga correspondiente en cero en todos los módulos; las vistas mensuales o de reportes heredan inmediatamente la regla vigente que se cruza con su rango; el encendido recupera la configuración fiscal individual sin modificar periodos no relacionados; una corrida cerrada bloquea el cambio.
+- Estados posibles: ambas cargas activas, sólo costo social, sólo ISR o ambas excluidas.
+- Acciones y permisos esperados: sólo un usuario máster configura o vuelve a autorizar la inclusión fiscal del periodo. La fuente central del prototipo rechaza cambios de perfiles no máster aunque intenten ejecutarlos desde otro módulo. Producción deberá persistir la regla con vigencia, usuario, fecha y bitácora, y usarla como entrada única de todos los cálculos y exportaciones.
+- Dudas por resolver: definir si la reapertura con código máster también habilitará esta configuración y si un periodo mensual debe heredar o consolidar reglas distintas de sus dos quincenas.

@@ -18,6 +18,7 @@ Estado vigente desde el 25 de agosto de 2026. Esta fase es exclusivamente fronte
 | Ruta | Función |
 | --- | --- |
 | `/empleados` | Directorio y alta local de personal; los registros nuevos se comparten con Roles y accesos durante la sesión |
+| `/reportes/gastos-por-puesto` | Resumen ejecutivo del costo de nómina y participación porcentual por puesto |
 | `/` | Consolidado quincenal, autorización y pago mock |
 | `/nomina-salario-fijo` | Gerencia y call center con salario fijo |
 | `/nomina-especialistas` | Especialistas con salario fijo |
@@ -53,14 +54,16 @@ Las rutas históricas `/bonos` y `/multas` montan el nuevo módulo independiente
 - La vista mensual consolida ventas, movimientos y viáticos de ambas quincenas y usa el salario mensual exacto configurado.
 - Cambiar un periodo afecta solo ese módulo; las corridas históricas de otros periodos y nóminas no se reescriben.
 - El portal personal muestra importes únicamente si el módulo del empleado tiene un periodo activo y una corrida coincidente.
+- Recibos separa la experiencia por perfil: el usuario master consulta todo el personal, ve `APROBADO POR USUARIO` por recibo y recibe una conciliación verde cuando todos aprobaron o una alerta roja con los nombres pendientes; los demás perfiles solo pueden consultar, aprobar o aclarar su propio recibo.
 - Vendedores calculan comisión con la escala asignada y pueden usar venta con IVA o venta dividida entre `1.16`.
 - Honorarios calcula subtotal de servicio, IVA 16%, retención ISR 10%, retención IVA 10.6667% y neto a pagar con datos mock.
 - Especialistas, gerencia y call center usan sueldo mensual dividido entre dos.
-- Todas las nóminas muestran nómina, costo social, ISR y costo total; las tasas se configuran por empleado.
+- Todas las nóminas muestran nómina, costo social, ISR y costo total. Desde Configuración, costo social e ISR se aplican por tipo de nómina mediante interruptores generales o casillas individuales; una misma nómina puede mezclar empleados gravados y exentos, y el resultado alimenta consolidado, recibos y reportes.
 - Cada empleado conserva una sucursal principal y una distribución independiente de centros de costo. Desde el alta, la edición o Roles y accesos se puede elegir una, varias o todas las sucursales; la nómina, costo social e ISR se reparten en partes iguales entre las seleccionadas sin alterar el total consolidado.
 - Los mocks de gerencia demuestran los dos casos especiales: un gerente distribuido entre todas las sucursales y un gerente regional distribuido entre dos puntos de venta.
 - Cada submenu de nómina termina con métricas, gráfica de dispersión y detalle automático de costo por sucursal.
 - Dashboard por sucursal permite analizar un mes completo, un trimestre o un año disponible; acumula cada mes sin recalcular las comisiones como un único rango y actualiza ventas, costo integral, costo/venta, promedio por empleado, composición fiscal, tendencia mensual y ranking de rendimiento.
+- Gastos por puesto permite filtrar por rango de fechas, nombre y puesto; cada puesto despliega su integración por empleado y compara costo y personal contra el rango equivalente del mes anterior. El detalle filtrado se puede imprimir o descargar en PDF y Excel.
 - Antes de crear una nómina de vendedores se detectan quienes vendieron en más de una sucursal. El usuario puede repartir su nómina en partes iguales o según la participación real de venta; la elección actualiza el consolidado y los reportes por sucursal sin persistencia externa.
 - Dispersión de nómina se habilita solo para corridas autorizadas o pagadas y genera un formato independiente para salario fijo, especialistas, comisiones y honorarios. Ordena por apellidos y nombre, muestra CLABE ficticia completa, pago, ISR, costo social y total, y permite imprimir o exportar a PDF y Excel.
 - Bonos aprobados suman; multas y cuotas de préstamos aprobados descuentan.

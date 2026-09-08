@@ -7,6 +7,8 @@ import {
   CalendarDays,
   Check,
   CheckCheck,
+  ChevronLeft,
+  ChevronRight,
   CircleMinus,
   CirclePlus,
   Edit3,
@@ -56,10 +58,14 @@ import {
   type PayrollAdjustmentType,
   type PayrollModule,
   type PayrollReportTarget,
+  payrollModuleLabel,
   payrollModuleForCategory,
-  payrollModuleLabels,
   usePayrollDemo,
 } from "./payroll-demo-context";
+import {
+  CostBranchSelector,
+  employeeCostBranchIds,
+} from "./payroll-cost-branch-selector";
 
 const money = new Intl.NumberFormat("es-MX", {
   style: "currency",
@@ -89,12 +95,6 @@ const statusLabels: Record<PayrollAdjustmentStatus, string> = {
   APPROVED: "APROBADO",
   CANCELLED: "CANCELADO",
 };
-const payrollModules: Exclude<PayrollModule, "CONSOLIDATED">[] = [
-  "FIXED",
-  "SPECIALIST",
-  "COMMISSION",
-  "CONTRACTOR",
-];
 const reportTargetLabels: Record<PayrollReportTarget, string> = {
   PAYROLL: "NÓMINA DESTINO",
   CONSOLIDATED: "CONSOLIDADO",
@@ -136,8 +136,12 @@ function AdjustmentDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const { state, periodOptions, addPayrollAdjustment, updatePayrollAdjustment } =
-    usePayrollDemo();
+  const {
+    state,
+    periodOptions,
+    addPayrollAdjustment,
+    updatePayrollAdjustment,
+  } = usePayrollDemo();
   const initialEmployeeId =
     adjustment?.employeeId ?? state.employees[0]?.id ?? "";
   const initialEmployee = state.employees.find(
@@ -158,16 +162,21 @@ function AdjustmentDialog({
   const [participantIds, setParticipantIds] = useState<string[]>(
     adjustment?.participantIds ?? [initialEmployeeId],
   );
-  const [branchId, setBranchId] = useState(
-    adjustment?.branchId ??
-      initialEmployee?.branchId ??
-      state.branches[0]?.id ??
-      "",
+  const [costBranchIds, setCostBranchIds] = useState<string[]>(
+    adjustment?.costBranchIds ??
+      (adjustment?.branchId
+        ? [adjustment.branchId]
+        : initialEmployee
+          ? employeeCostBranchIds(initialEmployee, state.branches)
+          : []),
   );
   const [payrollModule, setPayrollModule] =
     useState<Exclude<PayrollModule, "CONSOLIDATED">>(initialModule);
   const [selectedPeriodStart, setSelectedPeriodStart] = useState(
-    adjustment?.periodStart ?? initialRun?.periodStart ?? periodOptions[0]?.start ?? "",
+    adjustment?.periodStart ??
+      initialRun?.periodStart ??
+      periodOptions[0]?.start ??
+      "",
   );
   const [masterCode, setMasterCode] = useState("");
   const [periodUnlocked, setPeriodUnlocked] = useState(false);
@@ -195,10 +204,12 @@ function AdjustmentDialog({
     (period) => period.start === selectedPeriodStart,
   );
   const selectedRun = state.runs.find(
-    (run) => run.module === payrollModule && run.periodStart === selectedPeriodStart,
+    (run) =>
+      run.module === payrollModule && run.periodStart === selectedPeriodStart,
   );
   const masterEmployee = state.employees.find(
-    (employee) => employee.roleId === "role-admin" && employee.secondaryAccessKey,
+    (employee) =>
+      employee.roleId === "role-admin" && employee.secondaryAccessKey,
   );
 
   function selectEmployee(id: string) {
@@ -212,7 +223,8 @@ function AdjustmentDialog({
     setEmployeeId(id);
     setParticipantIds([id]);
     setSharedFine(false);
-    if (employee) setBranchId(employee.branchId);
+    if (employee)
+      setCostBranchIds(employeeCostBranchIds(employee, state.branches));
     setPayrollModule(
       normalizedModule as Exclude<PayrollModule, "CONSOLIDATED">,
     );
@@ -225,7 +237,10 @@ function AdjustmentDialog({
   }
 
   function unlockPeriods() {
-    if (!masterEmployee?.secondaryAccessKey || masterCode !== masterEmployee.secondaryAccessKey) {
+    if (
+      !masterEmployee?.secondaryAccessKey ||
+      masterCode !== masterEmployee.secondaryAccessKey
+    ) {
       toast.error("Código máster incorrecto.");
       setMasterCode("");
       return;
@@ -256,7 +271,7 @@ function AdjustmentDialog({
     const parsedAmount = Number(amount);
     if (
       !employeeId ||
-      !branchId ||
+      costBranchIds.length === 0 ||
       !selectedPeriod ||
       !concept.trim() ||
       parsedAmount <= 0 ||
@@ -282,7 +297,8 @@ function AdjustmentDialog({
       employeeId,
       participantIds:
         type === "FINE" && sharedFine ? participantIds : [employeeId],
-      branchId,
+      branchId: costBranchIds[0] ?? "",
+      costBranchIds,
       payrollModule,
       payrollRunId:
         selectedRun?.id ?? `master-${payrollModule}-${selectedPeriod.start}`,
@@ -417,11 +433,16 @@ function AdjustmentDialog({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {payrollModules.map((module) => (
-                      <SelectItem key={module} value={module}>
-                        {payrollModuleLabels[module]}
-                      </SelectItem>
-                    ))}
+                    {state.payrollModules
+                      .filter(
+                        (module) =>
+                          module.active && module.id !== "CONSOLIDATED",
+                      )
+                      .map((module) => (
+                        <SelectItem key={module.id} value={module.id}>
+                          {module.name}
+                        </SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -431,7 +452,9 @@ function AdjustmentDialog({
                   value={selectedPeriodStart}
                   disabled={!periodUnlocked}
                   onValueChange={(periodStart) => {
-                    const period = periodOptions.find((item) => item.start === periodStart);
+                    const period = periodOptions.find(
+                      (item) => item.start === periodStart,
+                    );
                     setSelectedPeriodStart(periodStart);
                     if (period) setPayrollDate(period.end);
                   }}
@@ -452,8 +475,12 @@ function AdjustmentDialog({
             {!periodUnlocked ? (
               <div className="mt-4 grid gap-3 rounded-xl border border-[color:var(--border-color)] bg-[color:var(--accent-hover)]/25 p-3 sm:grid-cols-[1fr_auto] sm:items-end">
                 <div className="space-y-2">
-                  <Label htmlFor="movement-master-code" className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.08em]">
-                    <LockKeyhole className="h-3.5 w-3.5" /> Código máster para mover a otro periodo
+                  <Label
+                    htmlFor="movement-master-code"
+                    className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.08em]"
+                  >
+                    <LockKeyhole className="h-3.5 w-3.5" /> Código máster para
+                    mover a otro periodo
                   </Label>
                   <Input
                     id="movement-master-code"
@@ -464,7 +491,11 @@ function AdjustmentDialog({
                     data-1p-ignore="true"
                     data-lpignore="true"
                     value={masterCode}
-                    onChange={(event) => setMasterCode(event.target.value.replace(/\D/g, "").slice(0, 4))}
+                    onChange={(event) =>
+                      setMasterCode(
+                        event.target.value.replace(/\D/g, "").slice(0, 4),
+                      )
+                    }
                     placeholder="••••"
                     onKeyDown={(event) => {
                       if (event.key === "Enter") {
@@ -474,22 +505,51 @@ function AdjustmentDialog({
                     }}
                   />
                 </div>
-                <Button type="button" size="sm" variant="outline" onClick={unlockPeriods} disabled={masterCode.length !== 4}>
-                  <LockKeyhole className="mr-1.5 h-3.5 w-3.5" /> Autorizar periodo
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={unlockPeriods}
+                  disabled={masterCode.length !== 4}
+                >
+                  <LockKeyhole className="mr-1.5 h-3.5 w-3.5" /> Autorizar
+                  periodo
                 </Button>
               </div>
             ) : (
               <div className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-emerald-300 bg-emerald-50/70 px-3 py-2 text-xs text-emerald-900 dark:bg-emerald-950/25 dark:text-emerald-100">
-                <span><Check className="mr-1.5 inline h-3.5 w-3.5" />Cambio de periodo autorizado</span>
-                <Button type="button" size="sm" variant="ghost" className="h-7 px-2 text-[10px]" onClick={() => { const currentRun = state.runs.find((run) => run.module === payrollModule); setSelectedPeriodStart(currentRun?.periodStart ?? periodOptions[0]?.start ?? ""); if (currentRun) setPayrollDate(currentRun.periodEnd); setPeriodUnlocked(false); }}>Bloquear</Button>
+                <span>
+                  <Check className="mr-1.5 inline h-3.5 w-3.5" />
+                  Cambio de periodo autorizado
+                </span>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 px-2 text-[10px]"
+                  onClick={() => {
+                    const currentRun = state.runs.find(
+                      (run) => run.module === payrollModule,
+                    );
+                    setSelectedPeriodStart(
+                      currentRun?.periodStart ?? periodOptions[0]?.start ?? "",
+                    );
+                    if (currentRun) setPayrollDate(currentRun.periodEnd);
+                    setPeriodUnlocked(false);
+                  }}
+                >
+                  Bloquear
+                </Button>
               </div>
             )}
             {selectedPeriod && (
               <div className="mt-3 rounded-lg bg-[color:var(--accent-hover)]/40 px-4 py-3 text-sm">
-                <strong>{payrollModuleLabels[payrollModule]}</strong>
+                <strong>{payrollModuleLabel(state, payrollModule)}</strong>
                 <span className="ml-2 text-[color:var(--text-muted)]">
                   Se aplicará en {selectedPeriod.start} — {selectedPeriod.end}
-                  {selectedRun ? ` · ${selectedRun.status}` : " · AUTORIZACIÓN MÁSTER"}
+                  {selectedRun
+                    ? ` · ${selectedRun.status}`
+                    : " · AUTORIZACIÓN MÁSTER"}
                 </span>
               </div>
             )}
@@ -518,20 +578,17 @@ function AdjustmentDialog({
               <div className="space-y-2">
                 <Label>
                   <Building2 className="mr-1 inline h-4 w-4" />
-                  Sucursal que asume el costo
+                  Sucursales que asumen el costo
                 </Label>
-                <Select value={branchId} onValueChange={setBranchId}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {state.branches.map((branch) => (
-                      <SelectItem key={branch.id} value={branch.id}>
-                        {branch.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <CostBranchSelector
+                  branches={state.branches}
+                  selectedIds={costBranchIds}
+                  onChange={setCostBranchIds}
+                />
+                <p className="text-[10px] text-[color:var(--text-muted)]">
+                  Selecciona una, varias o todas; el costo se reparte en partes
+                  iguales.
+                </p>
               </div>
             </div>
             {type === "FINE" && (
@@ -642,6 +699,9 @@ export function PayrollAdjustmentsDemo() {
   const [statusFilter, setStatusFilter] = useState<
     PayrollAdjustmentStatus | "ALL"
   >("ALL");
+  const [pageSize, setPageSize] = useState("20");
+  const [page, setPage] = useState(1);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const rows = useMemo(
     () =>
       state.adjustments
@@ -666,6 +726,23 @@ export function PayrollAdjustmentsDemo() {
         .sort((a, b) => b.payrollDate.localeCompare(a.payrollDate)),
     [search, state.adjustments, state.employees, statusFilter, typeFilter],
   );
+  const effectivePageSize =
+    pageSize === "ALL" ? Math.max(rows.length, 1) : Number(pageSize);
+  const totalPages = Math.max(1, Math.ceil(rows.length / effectivePageSize));
+  const currentPage = Math.min(page, totalPages);
+  const firstVisibleRow =
+    rows.length === 0 ? 0 : (currentPage - 1) * effectivePageSize + 1;
+  const lastVisibleRow = Math.min(currentPage * effectivePageSize, rows.length);
+  const paginatedRows = rows.slice(
+    (currentPage - 1) * effectivePageSize,
+    currentPage * effectivePageSize,
+  );
+  const selectableRows = rows.filter((item) => item.status === "PENDING");
+  const selectedRows = selectableRows.filter((item) =>
+    selectedIds.includes(item.id),
+  );
+  const allSelectableRowsSelected =
+    selectableRows.length > 0 && selectedRows.length === selectableRows.length;
   const pending = state.adjustments.filter(
     (item) => item.status === "PENDING",
   ).length;
@@ -699,6 +776,37 @@ export function PayrollAdjustmentsDemo() {
       );
     if (status === "CANCELLED")
       toast.info("Movimiento cancelado y retirado de todos los cálculos.");
+  }
+
+  function toggleSelected(adjustmentId: string) {
+    setSelectedIds((current) =>
+      current.includes(adjustmentId)
+        ? current.filter((id) => id !== adjustmentId)
+        : [...current, adjustmentId],
+    );
+  }
+
+  function toggleAllSelectable() {
+    setSelectedIds((current) => {
+      const selectableIds = selectableRows.map((item) => item.id);
+      if (allSelectableRowsSelected)
+        return current.filter((id) => !selectableIds.includes(id));
+      return Array.from(new Set([...current, ...selectableIds]));
+    });
+  }
+
+  function approveSelected() {
+    if (selectedRows.length === 0) {
+      toast.info("Selecciona al menos un movimiento pendiente.");
+      return;
+    }
+    selectedRows.forEach((adjustment) =>
+      setPayrollAdjustmentStatus(adjustment.id, "APPROVED"),
+    );
+    toast.success(
+      `${selectedRows.length} ${selectedRows.length === 1 ? "movimiento aprobado" : "movimientos aprobados"} en una sola acción.`,
+    );
+    setSelectedIds([]);
   }
 
   return (
@@ -793,14 +901,20 @@ export function PayrollAdjustmentsDemo() {
             <div className="grid gap-2 sm:grid-cols-3">
               <Input
                 value={search}
-                onChange={(event) => setSearch(event.target.value)}
+                onChange={(event) => {
+                  setSearch(event.target.value);
+                  setPage(1);
+                  setSelectedIds([]);
+                }}
                 placeholder="BUSCAR EMPLEADO"
               />
               <Select
                 value={typeFilter}
-                onValueChange={(value) =>
-                  setTypeFilter(value as PayrollAdjustmentType | "ALL")
-                }
+                onValueChange={(value) => {
+                  setTypeFilter(value as PayrollAdjustmentType | "ALL");
+                  setPage(1);
+                  setSelectedIds([]);
+                }}
               >
                 <SelectTrigger>
                   <SelectValue />
@@ -818,9 +932,11 @@ export function PayrollAdjustmentsDemo() {
               </Select>
               <Select
                 value={statusFilter}
-                onValueChange={(value) =>
-                  setStatusFilter(value as PayrollAdjustmentStatus | "ALL")
-                }
+                onValueChange={(value) => {
+                  setStatusFilter(value as PayrollAdjustmentStatus | "ALL");
+                  setPage(1);
+                  setSelectedIds([]);
+                }}
               >
                 <SelectTrigger>
                   <SelectValue />
@@ -838,10 +954,50 @@ export function PayrollAdjustmentsDemo() {
           </div>
         </CardHeader>
         <CardContent className="p-0">
+          <div className="flex flex-col gap-2 border-t border-[color:var(--border-color)] bg-[color:var(--accent-hover)]/15 px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-2.5">
+              <button
+                type="button"
+                role="checkbox"
+                aria-checked={allSelectableRowsSelected}
+                aria-label="Seleccionar todos los movimientos pendientes filtrados"
+                disabled={selectableRows.length === 0}
+                onClick={toggleAllSelectable}
+                className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40 ${allSelectableRowsSelected ? "border-emerald-600 bg-emerald-600 text-white" : "border-[color:var(--border-color)] bg-[color:var(--bg-card)]"}`}
+              >
+                {allSelectableRowsSelected ? (
+                  <Check className="h-3.5 w-3.5" />
+                ) : null}
+              </button>
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.1em]">
+                  {selectedRows.length > 0
+                    ? `${selectedRows.length} seleccionados`
+                    : "Selección múltiple"}
+                </p>
+                <p className="text-[9px] text-[color:var(--text-muted)]">
+                  {selectableRows.length} pendientes dentro del filtro actual
+                </p>
+              </div>
+            </div>
+            <Button
+              size="sm"
+              className="h-8 self-start rounded-lg px-3 text-[10px] font-semibold uppercase tracking-[0.08em] sm:self-auto"
+              disabled={selectedRows.length === 0}
+              onClick={approveSelected}
+            >
+              <CheckCheck className="mr-1.5 h-3.5 w-3.5" />
+              Aprobar seleccionados
+              {selectedRows.length > 0 ? ` · ${selectedRows.length}` : ""}
+            </Button>
+          </div>
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-10">
+                    <span className="sr-only">Seleccionar</span>
+                  </TableHead>
                   <TableHead>FECHA NÓMINA / REGISTRO</TableHead>
                   <TableHead>TIPO / EMPLEADO</TableHead>
                   <TableHead>NÓMINA / SUCURSAL</TableHead>
@@ -852,13 +1008,20 @@ export function PayrollAdjustmentsDemo() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {rows.map((adjustment) => {
+                {paginatedRows.map((adjustment) => {
                   const employee = state.employees.find(
                     (item) => item.id === adjustment.employeeId,
                   );
-                  const branch = state.branches.find(
-                    (item) => item.id === adjustment.branchId,
-                  );
+                  const adjustmentBranchIds = adjustment.costBranchIds?.length
+                    ? adjustment.costBranchIds
+                    : [adjustment.branchId];
+                  const branchNames = adjustmentBranchIds
+                    .map(
+                      (branchId) =>
+                        state.branches.find((item) => item.id === branchId)
+                          ?.name,
+                    )
+                    .filter(Boolean);
                   const participantNames = adjustment.participantIds
                     .map(
                       (id) =>
@@ -872,6 +1035,21 @@ export function PayrollAdjustmentsDemo() {
                     adjustment.type === "BASE_SALARY";
                   return (
                     <TableRow key={adjustment.id}>
+                      <TableCell className="w-10 pr-0">
+                        <button
+                          type="button"
+                          role="checkbox"
+                          aria-checked={selectedIds.includes(adjustment.id)}
+                          aria-label={`Seleccionar movimiento de ${employee?.name ?? "empleado"}`}
+                          disabled={adjustment.status !== "PENDING"}
+                          onClick={() => toggleSelected(adjustment.id)}
+                          className={`flex h-5 w-5 items-center justify-center rounded-md border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-25 ${selectedIds.includes(adjustment.id) ? "border-emerald-600 bg-emerald-600 text-white" : "border-[color:var(--border-color)] bg-[color:var(--bg-card)]"}`}
+                        >
+                          {selectedIds.includes(adjustment.id) ? (
+                            <Check className="h-3.5 w-3.5" />
+                          ) : null}
+                        </button>
+                      </TableCell>
                       <TableCell>
                         <p className="font-semibold">
                           {adjustment.payrollDate}
@@ -881,7 +1059,10 @@ export function PayrollAdjustmentsDemo() {
                         </p>
                       </TableCell>
                       <TableCell>
-                        <AdjustmentTypeLabel type={adjustment.type} className="text-xs" />
+                        <AdjustmentTypeLabel
+                          type={adjustment.type}
+                          className="text-xs"
+                        />
                         <p className="mt-1 font-semibold">{employee?.name}</p>
                         {participantNames.length > 1 && (
                           <p className="mt-1 text-xs text-[color:var(--text-muted)]">
@@ -890,9 +1071,15 @@ export function PayrollAdjustmentsDemo() {
                         )}
                       </TableCell>
                       <TableCell>
-                        <p>{payrollModuleLabels[adjustment.payrollModule]}</p>
+                        <p>
+                          {payrollModuleLabel(state, adjustment.payrollModule)}
+                        </p>
                         <p className="text-xs text-[color:var(--text-muted)]">
-                          {branch?.name}
+                          {branchNames.length === state.branches.length
+                            ? `TODAS · ${branchNames.length}`
+                            : branchNames.length > 1
+                              ? `${branchNames.length} SUCURSALES`
+                              : (branchNames[0] ?? "SIN SUCURSAL")}
                         </p>
                         <p className="text-[10px] text-[color:var(--text-muted)]">
                           {adjustment.periodStart}
@@ -968,6 +1155,70 @@ export function PayrollAdjustmentsDemo() {
                 })}
               </TableBody>
             </Table>
+          </div>
+          <div className="flex flex-col gap-3 border-t border-[color:var(--border-color)] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-[11px] font-medium text-[color:var(--text-muted)]">
+              Mostrando{" "}
+              <span className="text-[color:var(--text-primary)]">
+                {firstVisibleRow}–{lastVisibleRow}
+              </span>{" "}
+              de{" "}
+              <span className="text-[color:var(--text-primary)]">
+                {rows.length}
+              </span>{" "}
+              movimientos · página{" "}
+              <span className="text-[color:var(--text-primary)]">
+                {currentPage}
+              </span>{" "}
+              de{" "}
+              <span className="text-[color:var(--text-primary)]">
+                {totalPages}
+              </span>
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="label-caps">FILAS</span>
+              <Select
+                value={pageSize}
+                onValueChange={(value) => {
+                  setPageSize(value);
+                  setPage(1);
+                  setSelectedIds([]);
+                }}
+              >
+                <SelectTrigger
+                  className="h-8 w-[92px] rounded-lg text-xs"
+                  aria-label="Movimientos por página"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="20">20</SelectItem>
+                  <SelectItem value="40">40</SelectItem>
+                  <SelectItem value="60">60</SelectItem>
+                  <SelectItem value="ALL">TODAS</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8 px-3 text-[11px]"
+                disabled={currentPage <= 1}
+                onClick={() => setPage(Math.max(1, currentPage - 1))}
+              >
+                <ChevronLeft className="mr-1 h-3.5 w-3.5" />
+                Anterior
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8 px-3 text-[11px]"
+                disabled={currentPage >= totalPages}
+                onClick={() => setPage(Math.min(totalPages, currentPage + 1))}
+              >
+                Siguiente
+                <ChevronRight className="ml-1 h-3.5 w-3.5" />
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>

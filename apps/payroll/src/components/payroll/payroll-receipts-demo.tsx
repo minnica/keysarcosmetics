@@ -1,7 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { Banknote, Download, Eye, FileText, ReceiptText, Send } from "lucide-react";
+import {
+  Banknote,
+  Download,
+  Eye,
+  FileText,
+  ReceiptText,
+  Send,
+} from "lucide-react";
 import {
   Badge,
   Button,
@@ -24,30 +31,495 @@ import {
   Separator,
   toast,
 } from "@cosmetics/ui";
-import { type EmployeePayrollLine, usePayrollDemo } from "./payroll-demo-context";
+import {
+  type EmployeePayrollLine,
+  type PayrollModule,
+  type PayrollModuleConcept,
+  employeeCommissionPayrollModule,
+  employeeSalaryPayrollModule,
+  payrollModuleLabel,
+  usePayrollDemo,
+} from "./payroll-demo-context";
 import { resolveBranchCommission } from "./branch-commission-calculator";
 
-const money = new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" });
+const money = new Intl.NumberFormat("es-MX", {
+  style: "currency",
+  currency: "MXN",
+});
 
-export function Receipt({ line, periodStart, periodEnd }: { line: EmployeePayrollLine; periodStart: string; periodEnd: string }) {
+export function Receipt({
+  line,
+  periodStart,
+  periodEnd,
+  module = "CONSOLIDATED",
+}: {
+  line: EmployeePayrollLine;
+  periodStart: string;
+  periodEnd: string;
+  module?: PayrollModule;
+}) {
   const { state } = usePayrollDemo();
-  const movements = state.movements.filter((movement) => movement.employeeId === line.employee.id && movement.periodStart === periodStart && movement.status === "APPROVED");
-  const adjustments = state.adjustments.filter((adjustment) => adjustment.participantIds.includes(line.employee.id) && adjustment.periodStart === periodStart && adjustment.status === "APPROVED");
-  const viatics = state.viaticsEntries.filter((entry) => entry.employeeId === line.employee.id && entry.periodStart === periodStart && entry.status === "APPROVED");
-  const branch = state.branches.find((item) => item.id === line.employee.branchId);
-  const managerTarget = state.kioskTargets.find((target) => target.branchId === line.employee.branchId);
-  const managerResolution = resolveBranchCommission({ branchId: line.employee.branchId, month: periodEnd.slice(0, 7), schemes: state.branchCommissionSchemes, sales: state.kioskMonthlySales, fallbackTarget: managerTarget });
-  const dualCommission = managerResolution.managerId === line.employee.id && line.rate > 0;
-  return <div className="mx-auto max-w-xl overflow-hidden rounded-2xl border border-[color:var(--border-color)] bg-[color:var(--bg-card)] shadow-xl"><div className="bg-[#4f4a44] px-6 py-5 text-white"><p className="font-brand text-xl tracking-widest">KEYSAR COSMETICS</p><p className="mt-1 text-xs uppercase tracking-[0.16em] text-white/65">Recibo de nómina · demostración</p></div><div className="space-y-5 p-6"><div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><p className="text-xs uppercase tracking-wider text-[color:var(--text-muted)]">Empleado</p><p className="mt-1 font-semibold">{line.employee.name}</p><p className="text-sm text-[color:var(--text-muted)]">{line.employee.position} · {branch?.name}</p></div><div className="flex flex-col items-start gap-2 sm:items-end"><Badge variant="outline">{periodStart} — {periodEnd}</Badge>{line.workedDays < line.periodDays && <Badge className="border-amber-300 bg-amber-50 text-amber-900">{line.workedDays} DE {line.periodDays} DÍAS</Badge>}{dualCommission && <Badge className="border-amber-300 bg-amber-50 text-amber-900">DOBLE COMISIÓN</Badge>}</div></div><Separator /><div className="grid gap-3 sm:grid-cols-2"><div className="rounded-xl bg-[color:var(--accent-hover)]/40 p-4"><p className="text-xs uppercase tracking-wider text-[color:var(--text-muted)]">Ventas compactadas · {line.calculationMode === "WITH_VAT" ? "con IVA" : "sin IVA"}</p><p className="number-display mt-1 text-xl">{money.format(line.sales)}</p></div><div className="rounded-xl bg-[color:var(--accent-hover)]/40 p-4"><p className="text-xs uppercase tracking-wider text-[color:var(--text-muted)]">Tasa / esquema al corte</p><p className="mt-1 font-semibold">{line.rate > 0 ? `${(line.rate * 100).toFixed(1)}%` : "NO APLICA"}</p><p className="text-xs text-[color:var(--text-muted)]">{line.schemeName} · {line.calculationMode === "WITH_VAT" ? "CON IVA" : "SIN IVA"}</p></div></div>{dualCommission && <div className="rounded-xl border border-amber-300/70 bg-amber-50/60 p-4 dark:bg-amber-950/20"><p className="text-xs font-semibold uppercase tracking-wider text-amber-900 dark:text-amber-100">Comisión gerencial separada</p><div className="mt-2 flex items-end justify-between gap-4"><div><p className="text-xs text-[color:var(--text-muted)]">Avance de sucursales · {managerResolution.scheme?.name}</p><p className="number-display mt-1 text-lg">{money.format(managerResolution.salesBase)} · {(managerResolution.rate * 100).toFixed(1)}%</p></div><p className="text-right text-xs text-[color:var(--text-muted)]">Genera recibo extra<br />al cierre mensual</p></div></div>}<div className="space-y-2 text-sm"><div className="flex justify-between"><span>Sueldo fijo{line.workedDays < line.periodDays ? ` · ${line.workedDays}/${line.periodDays} días` : ""}</span><strong>{money.format(line.fixedSalary)}</strong></div><div className="flex justify-between"><span>Comisión personal por ventas</span><strong>{money.format(line.commission)}</strong></div>{movements.map((movement) => <div key={movement.id} className="flex justify-between"><span>{movement.concept}</span><strong className={movement.type === "FINE" ? "text-rose-700 dark:text-rose-300" : "text-emerald-700 dark:text-emerald-300"}>{movement.type === "FINE" ? "−" : "+"}{money.format(movement.amount)}</strong></div>)}{adjustments.filter((adjustment) => adjustment.type !== "BASE_SALARY").map((adjustment) => { const positive = adjustment.type === "PLUS" || adjustment.type === "BONUS" || adjustment.type === "LOAN"; const share = adjustment.amount / Math.max(adjustment.participantIds.length, 1); return <div key={adjustment.id} className="flex justify-between gap-4"><span>{adjustment.comments}</span><strong className={positive ? "text-emerald-700 dark:text-emerald-300" : "text-rose-700 dark:text-rose-300"}>{positive ? "+" : "−"}{money.format(share)}</strong></div>; })}{viatics.map((entry) => { const concept = state.viaticsConcepts.find((item) => item.id === entry.conceptId); const positive = concept?.effect !== "DEDUCT"; return <div key={entry.id} className="flex justify-between gap-4"><span>VIÁTICO · {concept?.name}</span><strong className={positive ? "text-emerald-700 dark:text-emerald-300" : "text-rose-700 dark:text-rose-300"}>{positive ? "+" : "−"}{money.format(entry.amount)}</strong></div>; })}<div className="flex justify-between"><span>Cuota de préstamo</span><strong className="text-rose-700 dark:text-rose-300">−{money.format(line.loanDeduction)}</strong></div></div><Separator /><div className="flex items-end justify-between gap-4"><div><p className="text-xs text-[color:var(--text-muted)]">Pago a {line.employee.bank}</p><p className="text-sm font-medium">{line.employee.account}</p></div><div className="text-right"><p className="text-xs uppercase tracking-wider text-[color:var(--text-muted)]">Total neto</p><p className="number-display text-2xl">{money.format(line.total)}</p></div></div></div></div>;
+  const moduleDefinition = state.payrollModules.find(
+    (item) => item.id === module,
+  );
+  const includesConcept = (concept: PayrollModuleConcept) =>
+    module === "CONSOLIDATED" ||
+    Boolean(moduleDefinition?.concepts.includes(concept));
+  const movementModule =
+    employeeCommissionPayrollModule(line.employee) ??
+    employeeSalaryPayrollModule(line.employee);
+  const movements = state.movements.filter(
+    (movement) =>
+      movement.employeeId === line.employee.id &&
+      movement.periodStart === periodStart &&
+      movement.status === "APPROVED" &&
+      (module === "CONSOLIDATED" || movementModule === module) &&
+      includesConcept(movement.type === "BONUS" ? "BONUS" : "FINE"),
+  );
+  const adjustments = state.adjustments.filter(
+    (adjustment) =>
+      adjustment.participantIds.includes(line.employee.id) &&
+      adjustment.periodStart === periodStart &&
+      adjustment.status === "APPROVED" &&
+      (module === "CONSOLIDATED" || adjustment.payrollModule === module),
+  );
+  const viatics = state.viaticsEntries.filter(
+    (entry) =>
+      entry.employeeId === line.employee.id &&
+      entry.periodStart === periodStart &&
+      entry.status === "APPROVED" &&
+      includesConcept("VIATICS") &&
+      (module === "CONSOLIDATED" || entry.payrollModule === module),
+  );
+  const branch = state.branches.find(
+    (item) => item.id === line.employee.branchId,
+  );
+  const managerTarget = state.kioskTargets.find(
+    (target) => target.branchId === line.employee.branchId,
+  );
+  const managerResolution = resolveBranchCommission({
+    branchId: line.employee.branchId,
+    month: periodEnd.slice(0, 7),
+    schemes: state.branchCommissionSchemes,
+    sales: state.kioskMonthlySales,
+    fallbackTarget: managerTarget,
+  });
+  const showSalary = includesConcept("SALARY");
+  const showCommission = includesConcept("COMMISSION");
+  const showLoans = includesConcept("LOAN") || includesConcept("ADVANCE");
+  const dualCommission =
+    showCommission &&
+    managerResolution.managerId === line.employee.id &&
+    line.rate > 0;
+  return (
+    <div className="mx-auto max-w-xl overflow-hidden rounded-2xl border border-[color:var(--border-color)] bg-[color:var(--bg-card)] shadow-xl">
+      <div className="bg-[#4f4a44] px-6 py-5 text-white">
+        <p className="font-brand text-xl tracking-widest">KEYSAR COSMETICS</p>
+        <p className="mt-1 text-xs uppercase tracking-[0.16em] text-white/65">
+          Recibo de nómina · demostración
+        </p>
+      </div>
+      <div className="space-y-5 p-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <p className="text-xs uppercase tracking-wider text-[color:var(--text-muted)]">
+              Empleado
+            </p>
+            <p className="mt-1 font-semibold">{line.employee.name}</p>
+            <p className="text-sm text-[color:var(--text-muted)]">
+              {line.employee.position} · {branch?.name}
+            </p>
+          </div>
+          <div className="flex flex-col items-start gap-2 sm:items-end">
+            <Badge variant="outline">
+              {periodStart} — {periodEnd}
+            </Badge>
+            {line.workedDays < line.periodDays && (
+              <Badge className="border-amber-300 bg-amber-50 text-amber-900">
+                {line.workedDays} DE {line.periodDays} DÍAS
+              </Badge>
+            )}
+            {dualCommission && (
+              <Badge className="border-amber-300 bg-amber-50 text-amber-900">
+                DOBLE COMISIÓN
+              </Badge>
+            )}
+          </div>
+        </div>
+        <Separator />
+        {showCommission && (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="rounded-xl bg-[color:var(--accent-hover)]/40 p-4">
+              <p className="text-xs uppercase tracking-wider text-[color:var(--text-muted)]">
+                Ventas compactadas ·{" "}
+                {line.calculationMode === "WITH_VAT" ? "con IVA" : "sin IVA"}
+              </p>
+              <p className="number-display mt-1 text-xl">
+                {money.format(line.sales)}
+              </p>
+            </div>
+            <div className="rounded-xl bg-[color:var(--accent-hover)]/40 p-4">
+              <p className="text-xs uppercase tracking-wider text-[color:var(--text-muted)]">
+                Tasa / esquema al corte
+              </p>
+              <p className="mt-1 font-semibold">
+                {line.rate > 0
+                  ? `${(line.rate * 100).toFixed(1)}%`
+                  : "NO APLICA"}
+              </p>
+              <p className="text-xs text-[color:var(--text-muted)]">
+                {line.schemeName} ·{" "}
+                {line.calculationMode === "WITH_VAT" ? "CON IVA" : "SIN IVA"}
+              </p>
+            </div>
+          </div>
+        )}
+        {dualCommission && (
+          <div className="rounded-xl border border-amber-300/70 bg-amber-50/60 p-4 dark:bg-amber-950/20">
+            <p className="text-xs font-semibold uppercase tracking-wider text-amber-900 dark:text-amber-100">
+              Comisión gerencial separada
+            </p>
+            <div className="mt-2 flex items-end justify-between gap-4">
+              <div>
+                <p className="text-xs text-[color:var(--text-muted)]">
+                  Avance de sucursales · {managerResolution.scheme?.name}
+                </p>
+                <p className="number-display mt-1 text-lg">
+                  {money.format(managerResolution.salesBase)} ·{" "}
+                  {(managerResolution.rate * 100).toFixed(1)}%
+                </p>
+              </div>
+              <p className="text-right text-xs text-[color:var(--text-muted)]">
+                Genera recibo extra
+                <br />
+                al cierre mensual
+              </p>
+            </div>
+          </div>
+        )}
+        <div className="space-y-2 text-sm">
+          {showSalary && (
+            <div className="flex justify-between">
+              <span>
+                Sueldo fijo
+                {line.workedDays < line.periodDays
+                  ? ` · ${line.workedDays}/${line.periodDays} días`
+                  : ""}
+              </span>
+              <strong>{money.format(line.fixedSalary)}</strong>
+            </div>
+          )}
+          {showCommission && (
+            <div className="flex justify-between">
+              <span>Comisión personal por ventas</span>
+              <strong>{money.format(line.commission)}</strong>
+            </div>
+          )}
+          {movements.map((movement) => (
+            <div key={movement.id} className="flex justify-between">
+              <span>{movement.concept}</span>
+              <strong
+                className={
+                  movement.type === "FINE"
+                    ? "text-rose-700 dark:text-rose-300"
+                    : "text-emerald-700 dark:text-emerald-300"
+                }
+              >
+                {movement.type === "FINE" ? "−" : "+"}
+                {money.format(movement.amount)}
+              </strong>
+            </div>
+          ))}
+          {adjustments
+            .filter(
+              (adjustment) =>
+                adjustment.type !== "BASE_SALARY" &&
+                ((adjustment.type === "PLUS" &&
+                  includesConcept("ADJUSTMENT_PLUS")) ||
+                  (adjustment.type === "MINUS" &&
+                    includesConcept("ADJUSTMENT_MINUS")) ||
+                  (adjustment.type === "BONUS" && includesConcept("BONUS")) ||
+                  (adjustment.type === "FINE" && includesConcept("FINE")) ||
+                  ((adjustment.type === "LOAN" ||
+                    adjustment.type === "LOAN_PAYMENT") &&
+                    includesConcept("LOAN"))),
+            )
+            .map((adjustment) => {
+              const positive =
+                adjustment.type === "PLUS" ||
+                adjustment.type === "BONUS" ||
+                adjustment.type === "LOAN";
+              const share =
+                adjustment.amount /
+                Math.max(adjustment.participantIds.length, 1);
+              return (
+                <div key={adjustment.id} className="flex justify-between gap-4">
+                  <span>{adjustment.comments}</span>
+                  <strong
+                    className={
+                      positive
+                        ? "text-emerald-700 dark:text-emerald-300"
+                        : "text-rose-700 dark:text-rose-300"
+                    }
+                  >
+                    {positive ? "+" : "−"}
+                    {money.format(share)}
+                  </strong>
+                </div>
+              );
+            })}
+          {viatics.map((entry) => {
+            const concept = state.viaticsConcepts.find(
+              (item) => item.id === entry.conceptId,
+            );
+            const positive = concept?.effect !== "DEDUCT";
+            return (
+              <div key={entry.id} className="flex justify-between gap-4">
+                <span>VIÁTICO · {concept?.name}</span>
+                <strong
+                  className={
+                    positive
+                      ? "text-emerald-700 dark:text-emerald-300"
+                      : "text-rose-700 dark:text-rose-300"
+                  }
+                >
+                  {positive ? "+" : "−"}
+                  {money.format(entry.amount)}
+                </strong>
+              </div>
+            );
+          })}
+          {showLoans && (
+            <div className="flex justify-between">
+              <span>Cuota de préstamo</span>
+              <strong className="text-rose-700 dark:text-rose-300">
+                −{money.format(line.loanDeduction)}
+              </strong>
+            </div>
+          )}
+        </div>
+        <Separator />
+        <div className="flex items-end justify-between gap-4">
+          <div>
+            <p className="text-xs text-[color:var(--text-muted)]">
+              Pago a {line.employee.bank}
+            </p>
+            <p className="text-sm font-medium">{line.employee.account}</p>
+          </div>
+          <div className="text-right">
+            <p className="text-xs uppercase tracking-wider text-[color:var(--text-muted)]">
+              Total neto
+            </p>
+            <p className="number-display text-2xl">
+              {money.format(line.total)}
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export function PayrollReceiptsDemo() {
-  const { state, currentPeriod, periodOptions, payrollLines } = usePayrollDemo();
+  const { state, currentPeriod, periodOptions, payrollLines } =
+    usePayrollDemo();
   const [periodStart, setPeriodStart] = useState(currentPeriod.start);
+  const [module, setModule] = useState<PayrollModule>("CONSOLIDATED");
   const [preview, setPreview] = useState<EmployeePayrollLine | null>(null);
-  const period = periodOptions.find((item) => item.start === periodStart) ?? currentPeriod;
-  const run = state.runs.find((item) => item.periodStart === periodStart);
-  const lines = payrollLines(periodStart, state.calculationMode);
+  const period =
+    periodOptions.find((item) => item.start === periodStart) ?? currentPeriod;
+  const run = state.runs.find(
+    (item) =>
+      item.periodStart === periodStart &&
+      (module === "CONSOLIDATED" || item.module === module),
+  );
+  const lines = payrollLines(
+    periodStart,
+    state.calculationMode,
+    period.end,
+    module,
+  );
 
-  return <div className="space-y-7"><header className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between"><div><div className="mb-2 flex items-center gap-2"><Badge variant="outline">RECIBO COMPACTO</Badge><span className="text-xs text-[color:var(--text-muted)]">Ventas, bonos, multas y movimientos</span></div><h1 className="page-title">Recibos de nómina</h1><p className="mt-1 text-sm text-[color:var(--text-muted)]">Previsualiza el contenido consolidado que recibirá cada empleado.</p></div><div className="w-full max-w-md space-y-2"><Label>Periodo</Label><Select value={periodStart} onValueChange={setPeriodStart}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{periodOptions.map((item) => <SelectItem key={item.start} value={item.start}>{item.label}</SelectItem>)}</SelectContent></Select></div></header><div className="grid gap-4 sm:grid-cols-3"><Card><CardContent className="p-5"><ReceiptText className="h-5 w-5 text-[color:var(--text-secondary)]" /><p className="label-caps mt-4">RECIBOS</p><p className="number-display mt-2 text-2xl">{lines.length}</p></CardContent></Card><Card><CardContent className="p-5"><Banknote className="h-5 w-5 text-emerald-600" /><p className="label-caps mt-4">TOTAL NETO</p><p className="number-display mt-2 text-2xl">{money.format(lines.reduce((sum, line) => sum + line.total, 0))}</p></CardContent></Card><Card><CardContent className="p-5"><FileText className="h-5 w-5 text-sky-600" /><p className="label-caps mt-4">ESTATUS DE CORRIDA</p><p className="mt-2 text-lg font-semibold">{run?.status ?? "SIN CORRIDA"}</p></CardContent></Card></div><Card className="border-[color:var(--border-color)]"><CardHeader><CardTitle className="section-heading uppercase">Empleados del periodo</CardTitle><CardDescription>Las acciones de descarga y envío son simuladas; no generan archivos ni mensajes reales.</CardDescription></CardHeader><CardContent className="grid gap-3 lg:grid-cols-2">{lines.map((line) => { const decision = state.decisions.find((item) => item.employeeId === line.employee.id && item.periodStart === periodStart); return <div key={line.employee.id} className="flex flex-col gap-4 rounded-xl border border-[color:var(--border-color)] p-4 sm:flex-row sm:items-center sm:justify-between"><div><div className="flex flex-wrap items-center gap-2"><p className="font-semibold">{line.employee.name}</p>{decision?.status === "AUTHORIZED" && <Badge className="bg-emerald-600 text-white">VALIDADO</Badge>}</div><p className="text-xs text-[color:var(--text-muted)]">{line.employee.position} · {line.employee.bank}</p><p className="number-display mt-2 text-lg">{money.format(line.total)}</p></div><div className="flex gap-1"><Button size="icon" variant="outline" aria-label="Previsualizar" onClick={() => setPreview(line)}><Eye className="h-4 w-4" /></Button><Button size="icon" variant="outline" aria-label="Descargar" onClick={() => toast.success("Descarga simulada: el backend no fue utilizado.")}><Download className="h-4 w-4" /></Button><Button size="icon" aria-label="Enviar" onClick={() => toast.info("Envío simulado; no se contactó al empleado.")}><Send className="h-4 w-4" /></Button></div></div>; })}</CardContent></Card><Dialog open={Boolean(preview)} onOpenChange={(open) => { if (!open) setPreview(null); }}><DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto"><DialogHeader><DialogTitle>Vista previa del recibo</DialogTitle><DialogDescription>Documento informativo generado desde el estado mock actual.</DialogDescription></DialogHeader>{preview && <Receipt line={preview} periodStart={period.start} periodEnd={period.end} />}</DialogContent></Dialog></div>;
+  return (
+    <div className="space-y-7">
+      <header className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+        <div>
+          <div className="mb-2 flex items-center gap-2">
+            <Badge variant="outline">RECIBO COMPACTO</Badge>
+            <span className="text-xs text-[color:var(--text-muted)]">
+              Ventas, bonos, multas y movimientos
+            </span>
+          </div>
+          <h1 className="page-title">Recibos de nómina</h1>
+          <p className="mt-1 text-sm text-[color:var(--text-muted)]">
+            Previsualiza el contenido consolidado que recibirá cada empleado.
+          </p>
+        </div>
+        <div className="grid w-full max-w-2xl gap-3 sm:grid-cols-2">
+          <div className="space-y-2">
+            <Label>Tipo de nómina</Label>
+            <Select
+              value={module}
+              onValueChange={(value) => {
+                setModule(value as PayrollModule);
+                setPreview(null);
+              }}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {state.payrollModules
+                  .filter((item) => item.active)
+                  .map((item) => (
+                    <SelectItem key={item.id} value={item.id}>
+                      {item.name}
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>Periodo</Label>
+            <Select value={periodStart} onValueChange={setPeriodStart}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {periodOptions.map((item) => (
+                  <SelectItem key={item.start} value={item.start}>
+                    {item.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      </header>
+      <div className="grid gap-4 sm:grid-cols-3">
+        <Card>
+          <CardContent className="p-5">
+            <ReceiptText className="h-5 w-5 text-[color:var(--text-secondary)]" />
+            <p className="label-caps mt-4">RECIBOS</p>
+            <p className="number-display mt-2 text-2xl">{lines.length}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-5">
+            <Banknote className="h-5 w-5 text-emerald-600" />
+            <p className="label-caps mt-4">TOTAL NETO</p>
+            <p className="number-display mt-2 text-2xl">
+              {money.format(lines.reduce((sum, line) => sum + line.total, 0))}
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-5">
+            <FileText className="h-5 w-5 text-sky-600" />
+            <p className="label-caps mt-4">ESTATUS DE CORRIDA</p>
+            <p className="mt-2 text-lg font-semibold">
+              {run?.status ?? "SIN CORRIDA"}
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+      <Card className="border-[color:var(--border-color)]">
+        <CardHeader>
+          <CardTitle className="section-heading uppercase">
+            Empleados · {payrollModuleLabel(state, module)}
+          </CardTitle>
+          <CardDescription>
+            Las acciones de descarga y envío son simuladas; no generan archivos
+            ni mensajes reales.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-3 lg:grid-cols-2">
+          {lines.map((line) => {
+            const decision = state.decisions.find(
+              (item) =>
+                item.employeeId === line.employee.id &&
+                item.periodStart === periodStart,
+            );
+            return (
+              <div
+                key={line.employee.id}
+                className="flex flex-col gap-4 rounded-xl border border-[color:var(--border-color)] p-4 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="font-semibold">{line.employee.name}</p>
+                    {decision?.status === "AUTHORIZED" && (
+                      <Badge className="bg-emerald-600 text-white">
+                        VALIDADO
+                      </Badge>
+                    )}
+                  </div>
+                  <p className="text-xs text-[color:var(--text-muted)]">
+                    {line.employee.position} · {line.employee.bank}
+                  </p>
+                  <p className="number-display mt-2 text-lg">
+                    {money.format(line.total)}
+                  </p>
+                </div>
+                <div className="flex gap-1">
+                  <Button
+                    size="icon"
+                    variant="outline"
+                    aria-label="Previsualizar"
+                    onClick={() => setPreview(line)}
+                  >
+                    <Eye className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant="outline"
+                    aria-label="Descargar"
+                    onClick={() =>
+                      toast.success(
+                        "Descarga simulada: el backend no fue utilizado.",
+                      )
+                    }
+                  >
+                    <Download className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    size="icon"
+                    aria-label="Enviar"
+                    onClick={() =>
+                      toast.info("Envío simulado; no se contactó al empleado.")
+                    }
+                  >
+                    <Send className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            );
+          })}
+        </CardContent>
+      </Card>
+      <Dialog
+        open={Boolean(preview)}
+        onOpenChange={(open) => {
+          if (!open) setPreview(null);
+        }}
+      >
+        <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Vista previa del recibo</DialogTitle>
+            <DialogDescription>
+              Documento informativo generado desde el estado mock actual.
+            </DialogDescription>
+          </DialogHeader>
+          {preview && (
+            <Receipt
+              line={preview}
+              periodStart={period.start}
+              periodEnd={period.end}
+              module={module}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
 }

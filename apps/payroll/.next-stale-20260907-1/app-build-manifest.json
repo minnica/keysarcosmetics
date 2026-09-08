@@ -1,0 +1,125 @@
+{
+  "pages": {
+    "/(dashboard)/puestos/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/(dashboard)/puestos/page.js"
+    ],
+    "/(dashboard)/layout": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/(dashboard)/layout.js"
+    ],
+    "/layout": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/css/app/layout.css",
+      "static/chunks/app/layout.js"
+    ],
+    "/(auth)/login/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/(auth)/login/page.js"
+    ],
+    "/(dashboard)/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/(dashboard)/page.js"
+    ],
+    "/(dashboard)/mi-nomina/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/(dashboard)/mi-nomina/page.js"
+    ],
+    "/(dashboard)/esquemas-sucursal/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/(dashboard)/esquemas-sucursal/page.js"
+    ],
+    "/(dashboard)/movimientos/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/(dashboard)/movimientos/page.js"
+    ],
+    "/(dashboard)/nomina-comisiones/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/(dashboard)/nomina-comisiones/page.js"
+    ],
+    "/(dashboard)/calculo-comisiones/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/(dashboard)/calculo-comisiones/page.js"
+    ],
+    "/(dashboard)/recibos/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/(dashboard)/recibos/page.js"
+    ],
+    "/(dashboard)/reportes/gastos-por-puesto/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/(dashboard)/reportes/gastos-por-puesto/page.js"
+    ],
+    "/(dashboard)/reportes/desglose-sucursal/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/(dashboard)/reportes/desglose-sucursal/page.js"
+    ],
+    "/(dashboard)/nomina-salario-fijo/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/(dashboard)/nomina-salario-fijo/page.js"
+    ],
+    "/(dashboard)/configuracion/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/(dashboard)/configuracion/page.js"
+    ],
+    "/(dashboard)/dispersion-nomina/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/(dashboard)/dispersion-nomina/page.js"
+    ],
+    "/(dashboard)/empleados/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/(dashboard)/empleados/page.js"
+    ],
+    "/(dashboard)/bonos-multas/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/(dashboard)/bonos-multas/page.js"
+    ],
+    "/(dashboard)/recibos-kiosco/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/(dashboard)/recibos-kiosco/page.js"
+    ],
+    "/(dashboard)/nomina-comision-kiosco/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/(dashboard)/nomina-comision-kiosco/page.js"
+    ],
+    "/(dashboard)/nomina-especialistas/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/(dashboard)/nomina-especialistas/page.js"
+    ],
+    "/(dashboard)/sucursales/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/(dashboard)/sucursales/page.js"
+    ],
+    "/(dashboard)/prestamos-adelantos/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/(dashboard)/prestamos-adelantos/page.js"
+    ],
+    "/_not-found/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/_not-found/page.js"
+    ]
+  }
+}

@@ -54,6 +54,7 @@ import {
   type MovementType,
   usePayrollDemo,
 } from "./payroll-demo-context";
+import { CostBranchSelector, employeeCostBranchIds } from "./payroll-cost-branch-selector";
 
 const money = new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" });
 const statusLabels: Record<MovementStatus, string> = {
@@ -82,6 +83,8 @@ function BonusFineDialog({
 }) {
   const { state, currentPeriod, addMovement, updateMovement } = usePayrollDemo();
   const [employeeId, setEmployeeId] = useState(movement?.employeeId ?? state.employees[0]?.id ?? "");
+  const initialEmployee = state.employees.find((employee) => employee.id === (movement?.employeeId ?? state.employees[0]?.id));
+  const [costBranchIds, setCostBranchIds] = useState<string[]>(movement?.costBranchIds ?? (initialEmployee ? employeeCostBranchIds(initialEmployee, state.branches) : []));
   const [type, setType] = useState<MovementType>(movement?.type ?? defaultType);
   const [concept, setConcept] = useState(movement?.concept ?? "");
   const [amount, setAmount] = useState(String(movement?.amount ?? ""));
@@ -93,12 +96,13 @@ function BonusFineDialog({
   function submit() {
     const parsedAmount = Number(amount);
     const parsedThreshold = Number(threshold);
-    if (!employeeId || !concept.trim() || parsedAmount <= 0 || (mode === "SCALE" && parsedThreshold <= 0)) {
-      toast.error("Completa empleado, concepto, monto y regla del movimiento.");
+    if (!employeeId || costBranchIds.length === 0 || !concept.trim() || parsedAmount <= 0 || (mode === "SCALE" && parsedThreshold <= 0)) {
+      toast.error("Completa empleado, sucursales de costo, concepto, monto y regla del movimiento.");
       return;
     }
     const input = {
       employeeId,
+      costBranchIds,
       type,
       mode,
       concept: concept.trim().toLocaleUpperCase("es-MX"),
@@ -126,10 +130,11 @@ function BonusFineDialog({
         <div className="space-y-5 py-2">
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2"><Label>Tipo</Label><Select value={type} onValueChange={(value) => setType(value as MovementType)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="BONUS">BONO</SelectItem><SelectItem value="FINE">MULTA</SelectItem></SelectContent></Select></div>
-            <div className="space-y-2"><Label>Empleado</Label><Select value={employeeId} onValueChange={setEmployeeId}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{state.employees.map((employee) => <SelectItem key={employee.id} value={employee.id}>{employee.name}</SelectItem>)}</SelectContent></Select></div>
+            <div className="space-y-2"><Label>Empleado</Label><Select value={employeeId} onValueChange={(value) => { setEmployeeId(value); const employee = state.employees.find((item) => item.id === value); setCostBranchIds(employee ? employeeCostBranchIds(employee, state.branches) : []); }}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{state.employees.map((employee) => <SelectItem key={employee.id} value={employee.id}>{employee.name}</SelectItem>)}</SelectContent></Select></div>
             <div className="space-y-2"><Label>Periodo de nómina</Label><Select value={periodStart} onValueChange={setPeriodStart}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{periodChoices.map((config) => <SelectItem key={config.periodStart} value={config.periodStart}>{config.periodStart} — {config.periodEnd}</SelectItem>)}</SelectContent></Select></div>
             <div className="space-y-2"><Label>Tipo de cálculo</Label><Select value={mode} onValueChange={(value) => setMode(value as MovementMode)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="FIXED">MONTO FIJO</SelectItem><SelectItem value="SCALE">POR ESCALA DE VENTAS</SelectItem></SelectContent></Select></div>
           </div>
+          <div className="space-y-2"><Label>Sucursales que reciben el costo</Label><CostBranchSelector branches={state.branches} selectedIds={costBranchIds} onChange={setCostBranchIds} /><p className="text-[10px] text-[color:var(--text-muted)]">Elige una, varias o todas; el bono o la multa se distribuye equitativamente entre las seleccionadas.</p></div>
           <div className="space-y-2"><Label htmlFor="bonus-fine-concept">Concepto</Label><Textarea id="bonus-fine-concept" value={concept} onChange={(event) => setConcept(event.target.value)} placeholder={type === "BONUS" ? "BONO DE PRODUCTIVIDAD" : "MULTA POR INCIDENCIA"} /></div>
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2"><Label htmlFor="bonus-fine-amount">Monto</Label><Input id="bonus-fine-amount" type="number" min="0" step="0.01" value={amount} onChange={(event) => setAmount(event.target.value)} /></div>
@@ -174,7 +179,18 @@ export function PayrollBonusesFinesDemo() {
   const pending = state.movements.filter((movement) => movement.status === "DRAFT" || movement.status === "PENDING").length;
   const branchTotals = state.branches.map((branch) => ({
     branch,
-    total: approved.filter((movement) => state.employees.find((employee) => employee.id === movement.employeeId)?.branchId === branch.id).reduce((sum, movement) => sum + movement.amount, 0),
+    total: approved.reduce((sum, movement) => {
+      const employee = state.employees.find((item) => item.id === movement.employeeId);
+      const costBranchIds = movement.costBranchIds?.length
+        ? movement.costBranchIds
+        : employee
+          ? employeeCostBranchIds(employee, state.branches)
+          : [];
+
+      return costBranchIds.includes(branch.id)
+        ? sum + movement.amount / Math.max(costBranchIds.length, 1)
+        : sum;
+    }, 0),
   }));
   const maxBranchTotal = Math.max(...branchTotals.map((item) => item.total), 1);
 

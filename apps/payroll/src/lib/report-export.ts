@@ -169,23 +169,85 @@ export async function exportReportToPdf<T>(
     import("jspdf"),
     import("jspdf-autotable"),
   ]);
+  const columnCount = config.columns.length;
+  const orientation =
+    columnCount >= 7 ? "landscape" : (config.orientation ?? "portrait");
+  const paperFormat = columnCount > 12 ? "a3" : "a4";
   const doc = new jsPDF({
-    orientation: config.orientation ?? "landscape",
+    orientation,
     unit: "pt",
-    format: "a4",
+    format: paperFormat,
   });
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const horizontalMargin = columnCount > 12 ? 24 : 32;
+  const usableWidth = pageWidth - horizontalMargin * 2;
+  const compactFontSize =
+    columnCount > 18 ? 5.5 : columnCount > 12 ? 6.5 : columnCount > 8 ? 7 : 8;
+  const compactPadding = columnCount > 12 ? 2 : 3.5;
+  const columnWeights = config.columns.map((column) => {
+    const requestedWidth = column.width ?? Math.max(column.header.length, 10);
+    if (column.format === "currency") return Math.max(requestedWidth, 21);
+    if (column.format === "number" || column.format === "percent")
+      return Math.max(requestedWidth, 13);
+    return Math.max(requestedWidth, 8);
+  });
+  const totalWeight = columnWeights.reduce((sum, width) => sum + width, 0);
+  const columnStyles = Object.fromEntries(
+    config.columns.map((column, index) => [
+      index,
+      {
+        cellWidth: (usableWidth * (columnWeights[index] ?? 1)) / totalWeight,
+        halign:
+          column.format === "currency" ||
+          column.format === "number" ||
+          column.format === "percent"
+            ? "right"
+            : "left",
+        overflow:
+          column.format === "currency" ||
+          column.format === "number" ||
+          column.format === "percent"
+            ? "hidden"
+            : "linebreak",
+      },
+    ]),
+  ) as NonNullable<UserOptions["columnStyles"]>;
 
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(14);
-  doc.text(config.title, 40, 32);
-  if (config.subtitle) {
+  function drawPageHeaderAndFooter(pageNumber: number) {
+    doc.setTextColor(30, 30, 30);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(pageNumber === 1 ? 14 : 9);
+    doc.text(config.title, horizontalMargin, pageNumber === 1 ? 30 : 24);
+    if (config.subtitle) {
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(pageNumber === 1 ? 9 : 7);
+      doc.text(config.subtitle, horizontalMargin, pageNumber === 1 ? 45 : 36, {
+        maxWidth: usableWidth,
+      });
+    }
+    doc.setDrawColor(205, 191, 177);
+    doc.line(
+      horizontalMargin,
+      pageHeight - 22,
+      pageWidth - horizontalMargin,
+      pageHeight - 22,
+    );
     doc.setFont("helvetica", "normal");
-    doc.setFontSize(9);
-    doc.text(config.subtitle, 40, 48);
+    doc.setFontSize(7);
+    doc.setTextColor(95, 88, 82);
+    doc.text(
+      `PÁGINA ${pageNumber}`,
+      pageWidth - horizontalMargin,
+      pageHeight - 10,
+      { align: "right" },
+    );
   }
 
+  drawPageHeaderAndFooter(1);
+
   const options: UserOptions = {
-    startY: config.subtitle ? 60 : 44,
+    startY: config.subtitle ? 58 : 44,
     head: [config.columns.map((column) => uppercase(column.header))],
     body: config.rows.map((row) =>
       config.columns.map((column) =>
@@ -195,15 +257,19 @@ export async function exportReportToPdf<T>(
     theme: "striped",
     styles: {
       font: "helvetica",
-      fontSize: 7.5,
-      cellPadding: 4,
+      fontSize: compactFontSize,
+      cellPadding: compactPadding,
       overflow: "linebreak",
       valign: "middle",
+      lineColor: [226, 217, 208],
+      lineWidth: 0.35,
     },
     headStyles: {
-      fillColor: [100, 134, 114],
+      fillColor: [58, 48, 40],
       textColor: 255,
       fontStyle: "bold",
+      fontSize: Math.max(compactFontSize - 0.25, 5.25),
+      valign: "middle",
     },
     footStyles: {
       fillColor: [236, 240, 238],
@@ -211,8 +277,19 @@ export async function exportReportToPdf<T>(
       fontStyle: "bold",
     },
     alternateRowStyles: { fillColor: [249, 250, 249] },
-    margin: { top: 72, left: 32, right: 32, bottom: 32 },
-    tableWidth: "auto",
+    margin: {
+      top: config.subtitle ? 48 : 36,
+      left: horizontalMargin,
+      right: horizontalMargin,
+      bottom: 30,
+    },
+    tableWidth: usableWidth,
+    columnStyles,
+    showHead: "everyPage",
+    rowPageBreak: "avoid",
+    didDrawPage: (data) => {
+      if (data.pageNumber > 1) drawPageHeaderAndFooter(data.pageNumber);
+    },
   };
 
   if (config.footerRow) {

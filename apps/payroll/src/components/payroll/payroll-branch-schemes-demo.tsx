@@ -76,9 +76,10 @@ function SchemeDialog({
 }) {
   const { state, addBranchCommissionScheme, updateBranchCommissionScheme } = usePayrollDemo();
   const managers = state.employees.filter((employee) => employee.category === "MANAGEMENT" && employee.active);
+  const selectableBranches = state.branches.filter((branch) => branch.active || scheme?.branchIds.includes(branch.id));
   const [name, setName] = useState(scheme?.name ?? "");
   const [scope, setScope] = useState<BranchCommissionScope>(scheme?.scope ?? "ALL_COMBINED");
-  const [branchIds, setBranchIds] = useState(scheme?.branchIds ?? state.branches.map((branch) => branch.id));
+  const [branchIds, setBranchIds] = useState(scheme?.branchIds ?? selectableBranches.map((branch) => branch.id));
   const [branchSearch, setBranchSearch] = useState("");
   const [managerId, setManagerId] = useState(scheme?.managerId ?? "UNASSIGNED");
   const [effectiveFrom, setEffectiveFrom] = useState(scheme?.effectiveFrom ?? new Date().toISOString().slice(0, 10));
@@ -99,10 +100,10 @@ function SchemeDialog({
   }
 
   const normalizedBranchSearch = branchSearch.trim().toLocaleLowerCase("es-MX");
-  const visibleBranches = state.branches.filter((branch) =>
+  const visibleBranches = selectableBranches.filter((branch) =>
     !normalizedBranchSearch || `${branch.name} ${branch.city}`.toLocaleLowerCase("es-MX").includes(normalizedBranchSearch),
   );
-  const selectedBranchLabel = branchIds.length === state.branches.length
+  const selectedBranchLabel = branchIds.length === selectableBranches.length
     ? "Todas las sucursales"
     : branchIds.length === 1
       ? state.branches.find((branch) => branch.id === branchIds[0])?.name ?? "1 sucursal"
@@ -111,7 +112,7 @@ function SchemeDialog({
   function submit() {
     setAttempted(true);
     const tiers = scaleLevelsToTiers(levels, 20);
-    const selectedBranches = scope === "ALL_COMBINED" ? state.branches.map((branch) => branch.id) : branchIds;
+    const selectedBranches = scope === "ALL_COMBINED" ? selectableBranches.map((branch) => branch.id) : branchIds;
     if (!name.trim() || !effectiveFrom || !selectedBranches.length || (scope === "SINGLE_BRANCH" && selectedBranches.length !== 1) || !tiers) {
       toast.error("Revisa el nombre, sucursales, vigencia, cortes y porcentajes del esquema.");
       return;
@@ -144,7 +145,7 @@ function SchemeDialog({
             <div className="space-y-2"><Label htmlFor="branch-scheme-effective"><CalendarDays className="mr-1 inline h-4 w-4" />Vigente desde</Label><Input id="branch-scheme-effective" type="date" value={effectiveFrom} onChange={(event) => setEffectiveFrom(event.target.value)} aria-invalid={attempted && !effectiveFrom} /><p className="text-xs text-[color:var(--text-muted)]">El cálculo solo afectará este periodo y los posteriores.</p></div>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2"><Label>Tipo de cálculo</Label><Select value={scope} onValueChange={(value) => { const next = value as BranchCommissionScope; setScope(next); if (next === "ALL_COMBINED") setBranchIds(state.branches.map((branch) => branch.id)); if (next === "SINGLE_BRANCH") setBranchIds((current) => [current[0] ?? state.branches[0]?.id ?? ""].filter(Boolean)); }}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="SINGLE_BRANCH">UNA SOLA SUCURSAL</SelectItem><SelectItem value="SELECTED_BRANCHES">VARIAS SUCURSALES COMBINADAS</SelectItem><SelectItem value="ALL_COMBINED">TODAS LAS SUCURSALES COMBINADAS</SelectItem></SelectContent></Select></div>
+            <div className="space-y-2"><Label>Tipo de cálculo</Label><Select value={scope} onValueChange={(value) => { const next = value as BranchCommissionScope; setScope(next); if (next === "ALL_COMBINED") setBranchIds(selectableBranches.map((branch) => branch.id)); if (next === "SINGLE_BRANCH") setBranchIds((current) => [current[0] ?? selectableBranches[0]?.id ?? ""].filter(Boolean)); }}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="SINGLE_BRANCH">UNA SOLA SUCURSAL</SelectItem><SelectItem value="SELECTED_BRANCHES">VARIAS SUCURSALES COMBINADAS</SelectItem><SelectItem value="ALL_COMBINED">TODAS LAS SUCURSALES COMBINADAS</SelectItem></SelectContent></Select></div>
             <div className="space-y-2"><Label>Gerente asociado</Label><Select value={managerId} onValueChange={setManagerId}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="UNASSIGNED">SIN GERENTE</SelectItem>{managers.map((manager) => <SelectItem key={manager.id} value={manager.id}>{manager.name} · {manager.position}</SelectItem>)}</SelectContent></Select><p className="text-[10px] text-[color:var(--text-muted)]">Cada cambio crea una nueva entrada sin reemplazar al gerente anterior.</p></div>
           </div>
           <div className="space-y-2">
@@ -158,9 +159,9 @@ function SchemeDialog({
               </PopoverTrigger>
               <PopoverContent align="start" className="w-[min(420px,calc(100vw-48px))] rounded-2xl border-[color:var(--border-color)] p-0 shadow-xl">
                 <div className="border-b border-[color:var(--border-color)] p-3">
-                  <div className="flex items-center justify-between gap-3"><div><p className="text-xs font-semibold">Seleccionar sucursales</p><p className="text-[10px] text-[color:var(--text-muted)]">{scope === "SINGLE_BRANCH" ? "Elige un solo punto de venta." : scope === "ALL_COMBINED" ? "Este esquema incluye automáticamente todos los puntos." : "Marca los puntos que compartirán la escala."}</p></div><Badge variant="outline" className="shrink-0 text-[9px]">{branchIds.length} / {state.branches.length}</Badge></div>
+                  <div className="flex items-center justify-between gap-3"><div><p className="text-xs font-semibold">Seleccionar sucursales</p><p className="text-[10px] text-[color:var(--text-muted)]">{scope === "SINGLE_BRANCH" ? "Elige un solo punto de venta." : scope === "ALL_COMBINED" ? "Este esquema incluye automáticamente todos los puntos." : "Marca los puntos que compartirán la escala."}</p></div><Badge variant="outline" className="shrink-0 text-[9px]">{branchIds.length} / {selectableBranches.length}</Badge></div>
                   <div className="relative mt-2.5"><Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[color:var(--text-muted)]" /><Input value={branchSearch} onChange={(event) => setBranchSearch(event.target.value)} className="h-8 pl-8 text-[10px]" placeholder="BUSCAR SUCURSAL O CIUDAD" aria-label="Buscar sucursal" /></div>
-                  {scope === "SELECTED_BRANCHES" && <div className="mt-2 flex gap-2"><Button type="button" size="sm" variant="outline" className="h-7 px-2 text-[9px]" onClick={() => setBranchIds(state.branches.map((branch) => branch.id))}>Seleccionar todas</Button><Button type="button" size="sm" variant="ghost" className="h-7 px-2 text-[9px]" onClick={() => setBranchIds([])}>Limpiar</Button></div>}
+                  {scope === "SELECTED_BRANCHES" && <div className="mt-2 flex gap-2"><Button type="button" size="sm" variant="outline" className="h-7 px-2 text-[9px]" onClick={() => setBranchIds(selectableBranches.map((branch) => branch.id))}>Seleccionar todas</Button><Button type="button" size="sm" variant="ghost" className="h-7 px-2 text-[9px]" onClick={() => setBranchIds([])}>Limpiar</Button></div>}
                 </div>
                 <div className="max-h-64 overflow-y-auto p-1.5">
                   {visibleBranches.map((branch) => {

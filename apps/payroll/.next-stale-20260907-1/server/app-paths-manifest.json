@@ -1,0 +1,9 @@
+{
+  "/_not-found/page": "app/_not-found/page.js",
+  "/(auth)/login/page": "app/(auth)/login/page.js",
+  "/(dashboard)/puestos/page": "app/(dashboard)/puestos/page.js",
+  "/(dashboard)/movimientos/page": "app/(dashboard)/movimientos/page.js",
+  "/(dashboard)/nomina-salario-fijo/page": "app/(dashboard)/nomina-salario-fijo/page.js",
+  "/(dashboard)/page": "app/(dashboard)/page.js",
+  "/(dashboard)/nomina-especialistas/page": "app/(dashboard)/nomina-especialistas/page.js"
+}
