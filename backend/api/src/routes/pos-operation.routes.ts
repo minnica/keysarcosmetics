@@ -8,6 +8,7 @@ import {
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import {
+  posAttendanceIdentifySchema,
   posAttendanceClockInSchema,
   posAttendanceClockOutSchema,
   posBusinessDayCloseSchema,
@@ -76,13 +77,11 @@ const asyncRoute =
         error instanceof Prisma.PrismaClientKnownRequestError &&
         error.code === "P2002"
       ) {
-        res
-          .status(409)
-          .json({
-            success: false,
-            message: "La operación ya fue registrada por otra terminal",
-            data: null,
-          });
+        res.status(409).json({
+          success: false,
+          message: "La operación ya fue registrada por otra terminal",
+          data: null,
+        });
         return;
       }
       next(error);
@@ -194,13 +193,11 @@ router.post(
     if (!key) return;
     const parsed = posBusinessDayCountInputSchema.safeParse(req.body);
     if (!parsed.success) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Apertura inválida",
-          data: parsed.error.flatten().fieldErrors,
-        });
+      return res.status(400).json({
+        success: false,
+        message: "Apertura inválida",
+        data: parsed.error.flatten().fieldErrors,
+      });
     }
     const businessDate = currentBusinessDate();
     await respondIdempotent(
@@ -302,13 +299,11 @@ router.post(
     if (!key) return;
     const parsed = posBusinessDayCountInputSchema.safeParse(req.body);
     if (!parsed.success) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Conteo final inválido",
-          data: parsed.error.flatten().fieldErrors,
-        });
+      return res.status(400).json({
+        success: false,
+        message: "Conteo final inválido",
+        data: parsed.error.flatten().fieldErrors,
+      });
     }
     await respondIdempotent(
       res,
@@ -386,13 +381,11 @@ router.post(
     if (!key) return;
     const parsed = posBusinessDayCloseSchema.safeParse(req.body);
     if (!parsed.success)
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Cierre inválido",
-          data: parsed.error.flatten().fieldErrors,
-        });
+      return res.status(400).json({
+        success: false,
+        message: "Cierre inválido",
+        data: parsed.error.flatten().fieldErrors,
+      });
     await respondIdempotent(
       res,
       executePosIdempotent({
@@ -471,7 +464,7 @@ router.post(
               status: "CLOSED",
               clockOutAt: closedAt,
               closeReason: "CLOSE_DAY",
-              closedByCredentialId: req.posUser!.credentialId,
+              closedByCredentialId: authorization.actorCredentialId,
             },
           });
           const updated = await tx.posBusinessDay.update({
@@ -479,7 +472,7 @@ router.post(
             data: {
               status: "CLOSED",
               closeAuthorizationId: authorization.id,
-              closedByCredentialId: req.posUser!.credentialId,
+              closedByCredentialId: authorization.actorCredentialId,
               closedTerminalId: req.posUser!.terminalId,
               closedAt,
               closeSummary,
@@ -490,7 +483,7 @@ router.post(
             data: {
               action: "POS_BUSINESS_DAY_CLOSE",
               outcome: "SUCCESS",
-              actorCredentialId: req.posUser!.credentialId,
+              actorCredentialId: authorization.actorCredentialId,
               terminalId: req.posUser!.terminalId,
               branchId: day.branchId,
               targetType: "PosBusinessDay",
@@ -527,13 +520,11 @@ router.get(
       .pick({ businessDate: true, branchId: true, page: true, pageSize: true })
       .safeParse(req.query);
     if (!parsed.success)
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Consulta inválida",
-          data: parsed.error.flatten().fieldErrors,
-        });
+      return res.status(400).json({
+        success: false,
+        message: "Consulta inválida",
+        data: parsed.error.flatten().fieldErrors,
+      });
     const date = parsed.data.businessDate ?? currentBusinessDate();
     const branchIds = resolvePosDataScope({
       authorizedBranchIds: req.posUser!.authorizedHistoricalBranchIds,
@@ -571,6 +562,66 @@ router.get(
 );
 
 router.post(
+  "/attendance/identify",
+  requireAnyPosPermission("CLOCK_IN_VIEW", "BUSINESS_DAY_OPEN"),
+  asyncRoute(async (req, res) => {
+    const parsed = posAttendanceIdentifySchema.safeParse(req.body);
+    if (!parsed.success)
+      return res.status(400).json({
+        success: false,
+        message: "Código inválido",
+        data: parsed.error.flatten().fieldErrors,
+      });
+    const credential = await prisma.posCredential.findUnique({
+      where: { pinFingerprint: fingerprintSecret(parsed.data.pin, "pin") },
+      include: { employee: true, masterProfile: true },
+    });
+    const matches = await verifyPosSecret(
+      parsed.data.pin,
+      credential?.pinHash ?? POS_DUMMY_BCRYPT_HASH,
+    );
+    if (
+      !credential?.active ||
+      !credential.employee?.activo ||
+      credential.masterProfile?.active ||
+      !matches
+    )
+      throw new PosOperationError(
+        "Código de vendedor incorrecto o inactivo",
+        403,
+      );
+    const branchId = req.posUser!.branchId;
+    assertBranchAuthorized(req.posUser!.authorizedBranchIds, branchId);
+    if (
+      !credential.employee.todasSucursales &&
+      credential.employee.sucursalId !== branchId
+    )
+      throw new PosOperationError(
+        "El vendedor no pertenece a esta sucursal",
+        403,
+      );
+    const attendance = await prisma.posAttendance.findFirst({
+      where: {
+        employeeId: credential.employee.id,
+        branchId,
+        businessDate: new Date(`${currentBusinessDate()}T00:00:00.000Z`),
+        status: "OPEN",
+      },
+      include: attendanceInclude,
+      orderBy: { clockInAt: "desc" },
+    });
+    return res.json({
+      success: true,
+      message: "OK",
+      data: {
+        employeeId: credential.employee.id,
+        openAttendance: attendance ? attendanceDto(attendance) : null,
+      },
+    });
+  }),
+);
+
+router.post(
   "/attendance/clock-in",
   requireAnyPosPermission("CLOCK_IN_VIEW", "BUSINESS_DAY_OPEN"),
   asyncRoute(async (req, res) => {
@@ -578,13 +629,11 @@ router.post(
     if (!key) return;
     const parsed = posAttendanceClockInSchema.safeParse(req.body);
     if (!parsed.success)
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Código inválido",
-          data: parsed.error.flatten().fieldErrors,
-        });
+      return res.status(400).json({
+        success: false,
+        message: "Código inválido",
+        data: parsed.error.flatten().fieldErrors,
+      });
     await respondIdempotent(
       res,
       executePosIdempotent({
@@ -672,13 +721,11 @@ router.post(
     if (!key) return;
     const parsed = posAttendanceClockOutSchema.safeParse(req.body);
     if (!parsed.success)
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Código personal inválido",
-          data: parsed.error.flatten().fieldErrors,
-        });
+      return res.status(400).json({
+        success: false,
+        message: "Código personal inválido",
+        data: parsed.error.flatten().fieldErrors,
+      });
     await respondIdempotent(
       res,
       executePosIdempotent({
@@ -797,26 +844,22 @@ router.post(
   asyncRoute(async (req, res) => {
     const parsed = posExpenseTypeWriteSchema.safeParse(req.body);
     if (!parsed.success)
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Tipo de gasto inválido",
-          data: parsed.error.flatten().fieldErrors,
-        });
+      return res.status(400).json({
+        success: false,
+        message: "Tipo de gasto inválido",
+        data: parsed.error.flatten().fieldErrors,
+      });
     const type = await prisma.posExpenseType.create({
       data: {
         ...parsed.data,
         createdByCredentialId: req.posUser!.credentialId,
       },
     });
-    res
-      .status(201)
-      .json({
-        success: true,
-        message: "Tipo de gasto creado",
-        data: { id: type.id, name: type.name, active: type.active },
-      });
+    res.status(201).json({
+      success: true,
+      message: "Tipo de gasto creado",
+      data: { id: type.id, name: type.name, active: type.active },
+    });
   }),
 );
 
@@ -826,13 +869,11 @@ router.put(
   asyncRoute(async (req, res) => {
     const parsed = posExpenseTypeWriteSchema.safeParse(req.body);
     if (!parsed.success)
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Tipo de gasto inválido",
-          data: parsed.error.flatten().fieldErrors,
-        });
+      return res.status(400).json({
+        success: false,
+        message: "Tipo de gasto inválido",
+        data: parsed.error.flatten().fieldErrors,
+      });
     const type = await prisma.posExpenseType.update({
       where: { id: req.params["id"]! },
       data: parsed.data,
@@ -872,13 +913,11 @@ router.get(
   asyncRoute(async (req, res) => {
     const parsed = posOperationQuerySchema.safeParse(req.query);
     if (!parsed.success)
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Consulta inválida",
-          data: parsed.error.flatten().fieldErrors,
-        });
+      return res.status(400).json({
+        success: false,
+        message: "Consulta inválida",
+        data: parsed.error.flatten().fieldErrors,
+      });
     const branchIds = resolvePosDataScope({
       authorizedBranchIds: req.posUser!.authorizedHistoricalBranchIds,
       requestedBranchIds: parsed.data.branchId
@@ -925,13 +964,11 @@ router.post(
     if (!key) return;
     const parsed = posCashExpenseWriteSchema.safeParse(req.body);
     if (!parsed.success)
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Gasto inválido",
-          data: parsed.error.flatten().fieldErrors,
-        });
+      return res.status(400).json({
+        success: false,
+        message: "Gasto inválido",
+        data: parsed.error.flatten().fieldErrors,
+      });
     await respondIdempotent(
       res,
       executePosIdempotent({
@@ -1024,13 +1061,11 @@ router.put(
     if (!key) return;
     const parsed = posCashExpenseCorrectionSchema.safeParse(req.body);
     if (!parsed.success)
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Corrección inválida",
-          data: parsed.error.flatten().fieldErrors,
-        });
+      return res.status(400).json({
+        success: false,
+        message: "Corrección inválida",
+        data: parsed.error.flatten().fieldErrors,
+      });
     await respondIdempotent(
       res,
       executePosIdempotent({
@@ -1147,13 +1182,11 @@ router.post(
     if (!key) return;
     const parsed = posCashExpenseVoidSchema.safeParse(req.body);
     if (!parsed.success)
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Anulación inválida",
-          data: parsed.error.flatten().fieldErrors,
-        });
+      return res.status(400).json({
+        success: false,
+        message: "Anulación inválida",
+        data: parsed.error.flatten().fieldErrors,
+      });
     await respondIdempotent(
       res,
       executePosIdempotent({
@@ -1252,65 +1285,64 @@ async function operationalSummary(req: Request) {
     cashMovements,
     attendances,
     memberships,
-  ] =
-    await Promise.all([
-      prisma.posBusinessDay.findMany({
-        where: { ...branchWhere, businessDate: dateValue },
-        include: {
-          branch: true,
-          openingCount: { include: { lines: true } },
-          closingCount: { include: { lines: true } },
+  ] = await Promise.all([
+    prisma.posBusinessDay.findMany({
+      where: { ...branchWhere, businessDate: dateValue },
+      include: {
+        branch: true,
+        openingCount: { include: { lines: true } },
+        closingCount: { include: { lines: true } },
+      },
+    }),
+    prisma.posTicket.findMany({
+      where: {
+        ...branchWhere,
+        businessDate: dateValue,
+        status: { in: ["COMPLETED", "LAYAWAY"] },
+      },
+      include: { sellers: true, lines: true },
+    }),
+    prisma.posPaymentOperation.findMany({
+      where: { businessDate: dateValue, ticket: branchWhere },
+      include: { payments: true },
+    }),
+    prisma.inventoryMovement.count({
+      where: {
+        businessDate: dateValue,
+        lines: {
+          some: {
+            OR: [
+              { fromLocation: { branchId: { in: branchIds } } },
+              { toLocation: { branchId: { in: branchIds } } },
+            ],
+          },
         },
-      }),
-      prisma.posTicket.findMany({
-        where: {
+      },
+    }),
+    prisma.posCashMovement.findMany({
+      where: { businessDate: dateValue, expense: branchWhere },
+      select: { amount: true },
+    }),
+    prisma.posAttendance.count({
+      where: { ...branchWhere, businessDate: dateValue, status: "OPEN" },
+    }),
+    prisma.posClientMembership.findMany({
+      where: {
+        // Relación canónica: nunca se reconcilia por nombre o teléfono.
+        ticket: {
           ...branchWhere,
           businessDate: dateValue,
           status: { in: ["COMPLETED", "LAYAWAY"] },
         },
-        include: { sellers: true, lines: true },
-      }),
-      prisma.posPaymentOperation.findMany({
-        where: { businessDate: dateValue, ticket: branchWhere },
-        include: { payments: true },
-      }),
-      prisma.inventoryMovement.count({
-        where: {
-          businessDate: dateValue,
-          lines: {
-            some: {
-              OR: [
-                { fromLocation: { branchId: { in: branchIds } } },
-                { toLocation: { branchId: { in: branchIds } } },
-              ],
-            },
-          },
-        },
-      }),
-      prisma.posCashMovement.findMany({
-        where: { businessDate: dateValue, expense: branchWhere },
-        select: { amount: true },
-      }),
-      prisma.posAttendance.count({
-        where: { ...branchWhere, businessDate: dateValue, status: "OPEN" },
-      }),
-      prisma.posClientMembership.findMany({
-        where: {
-          // Relación canónica: nunca se reconcilia por nombre o teléfono.
-          ticket: {
-            ...branchWhere,
-            businessDate: dateValue,
-            status: { in: ["COMPLETED", "LAYAWAY"] },
-          },
-        },
-        select: {
-          id: true,
-          customerId: true,
-          ticketId: true,
-          purchaseAmount: true,
-        },
-      }),
-    ]);
+      },
+      select: {
+        id: true,
+        customerId: true,
+        ticketId: true,
+        purchaseAmount: true,
+      },
+    }),
+  ]);
   const salesTotal = tickets.reduce(
     (sum, ticket) => sum.plus(ticket.total),
     decimal(0),

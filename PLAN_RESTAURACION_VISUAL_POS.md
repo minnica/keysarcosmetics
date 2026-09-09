@@ -1,7 +1,7 @@
 # Plan por fases: visual aprobado del POS y reutilización del backend
 
 > Fecha: 2026-09-08.
-> Estado: RV0–RV2 completadas; RV3–RV10 pendientes.
+> Estado: RV0–RV2 completadas; RV3 implementada con cierre formal pendiente por B01; RV4–RV10 pendientes.
 > Referencia visual única: `feature/pos` en `12fb8045cc264b565cb6e764d95ad7b2447fbfa1`.
 > Objetivo: reproducir íntegramente esa interfaz, conectar sus operaciones al backend reutilizable y adaptar, sustituir o eliminar las implementaciones incompatibles. Nunca modificar el visual para acomodarlo al backend.
 
@@ -79,7 +79,7 @@ La eliminación autorizada se refiere a implementaciones incompatibles dentro de
 
 ## 5. Fases de ejecución
 
-RV0 y RV1 quedaron completadas el 2026-09-08: RV0 generó 208 capturas canónicas desde la referencia aislada y RV1 documentó la correspondencia interfaz–backend, consumidores y retiros condicionados. RV2 quedó completada el 2026-09-09 sobre el worktree iniciado en `2dabbf24b1347ce0bdbd4ddc1b6fa07ed5696471`; restauró la presentación y comparó 208 escenarios. RV3–RV10 siguen pendientes. Su numeración `RV` es independiente de las fases históricas 0–14. Cada fase registra SHA inicial/final, archivos, operaciones conectadas, evidencia visual, pruebas ejecutadas, pendientes y partes retiradas. La finalización exige tanto fidelidad visual como funcionamiento del alcance de esa fase.
+RV0 y RV1 quedaron completadas el 2026-09-08: RV0 generó 208 capturas canónicas desde la referencia aislada y RV1 documentó la correspondencia interfaz–backend, consumidores y retiros condicionados. RV2 quedó completada el 2026-09-09 sobre el worktree iniciado en `2dabbf24b1347ce0bdbd4ddc1b6fa07ed5696471`; restauró la presentación y comparó 208 escenarios. RV3 quedó implementada el 2026-09-09 sobre `d2eceb9e21271d1eaab0280b738b60b6c78caeef`: sus migraciones, contratos, integración HTTP y matriz visual pasan, pero B01 impide declarar su cierre formal hasta que Producto autorice el texto veraz de Close Day. RV4–RV10 siguen pendientes. Su numeración `RV` es independiente de las fases históricas 0–14. Cada fase registra SHA inicial/final, archivos, operaciones conectadas, evidencia visual, pruebas ejecutadas, pendientes y partes retiradas. La finalización exige tanto fidelidad visual como funcionamiento del alcance de esa fase.
 
 ### RV0 — Congelar la referencia y construir evidencia reproducible
 
@@ -123,13 +123,13 @@ RV0 y RV1 quedaron completadas el 2026-09-08: RV0 generó 208 capturas canónica
 
 ### RV3 — Acceso, permisos, empleados, sucursales y jornada
 
-- [ ] Conectar login, sesión, terminal, bloqueo/desbloqueo y autorizaciones usando exactamente los formularios aprobados.
-- [ ] Adaptar la resolución segura de identidad si la referencia solicita sólo código. No recuperar un código master universal en el cliente ni añadir un campo de alias para evitar adaptar el servidor.
-- [ ] Dar soporte real a los controles de vendedores, roles, credenciales y asignaciones presentes en Employees; reutilizar empleados/puestos canónicos y crear las operaciones faltantes sin duplicar identidades compartidas.
-- [ ] Conectar Clock In/Out, salida sin Close day, apertura, conteos y cierre. Preservar campos, comparativos por permiso, confirmaciones, regreso al menú y pantalla enfocada de cierre.
-- [ ] Probar revocación de sesión, cambio de permisos, autorizaciones vencidas, doble envío y límites por sucursal sin alterar las vistas objetivo.
+- [x] Conectar login, sesión, terminal, bloqueo/desbloqueo y autorizaciones usando exactamente los formularios aprobados.
+- [x] Adaptar la resolución segura de identidad si la referencia solicita sólo código. No recuperar un código master universal en el cliente ni añadir un campo de alias para evitar adaptar el servidor.
+- [x] Dar soporte real a los controles de vendedores, roles, credenciales y asignaciones presentes en Employees; reutilizar empleados/puestos canónicos y crear las operaciones faltantes sin duplicar identidades compartidas.
+- [x] Conectar Clock In/Out, salida sin Close day, apertura, conteos y cierre. Preservar campos, comparativos por permiso, confirmaciones, regreso al menú y pantalla enfocada de cierre.
+- [x] Probar revocación de sesión, cambio de permisos, autorizaciones vencidas, doble envío y límites por sucursal sin alterar las vistas objetivo.
 
-**Cierre:** un recorrido de acceso → apertura → asistencia → salida/reingreso → cierre funciona con datos reales de prueba y conserva el visual. No se esconden acciones aprobadas por carencia de endpoints.
+**Estado de implementación:** completada. Las 44 migraciones se reconstruyeron desde cero en PostgreSQL 16 desechable y la integración HTTP pasó 17/17 pruebas habilitadas; cubre acceso, permisos, alcance, personal, delegación, apertura, asistencia, doble Clock Out, salida sin cierre, conteo/cierre idempotente, cambio/revocación de terminal y revocación inmediata. La matriz Chromium permanece 208/208 `PASS`, sin ocultar controles. El cierre formal queda pendiente únicamente por B01: la referencia imprime “mock/simulación” en Close Day y se preservó intacta hasta recibir texto autorizado por Producto. Evidencia y decisiones: `docs/POS_RV3_ACCESS_WORKFORCE_DAY.md`.
 
 ### RV4 — Catálogo, clientes, inventario, bodega y configuración
 
@@ -292,4 +292,15 @@ pnpm test:ui:visual
 - Seguridad: las copias históricas de acceso no regresan al build API. El acceso visual automatizado sólo existe cuando se compila explícitamente `mock + VITE_POS_VISUAL_FIXTURE=1`; el código master usado por la captura es efímero y el capturador lo recibe por ambiente.
 - Comparación: 208 capturas generadas, 205 exactas con tolerancia cero y tres variaciones de rasterizado aisladas de 34, 21 y 11 píxeles. Con el umbral medido `0.000027`, la matriz termina 208/208 `PASS`; ninguna región de contenido o geometría fue enmascarada.
 - Límite funcional: cancelación delegada de ticket, persistencia de identidad comercial desde el formulario aprobado y el resto de recorridos API de RV3–RV8 no quedan acreditados por esta fase. Permanecen registrados para adaptación funcional sin añadir campos al visual.
-- Estado: RV2 completada; RV3 es la siguiente fase.
+- Estado: RV2 completada; RV3 se documenta por separado en RV-D5.
+
+### RV-D5 — RV3 resuelve código único, delegación auditable y revocación inmediata
+
+- Fecha de implementación: 2026-09-09.
+- Estado de partida: `d2eceb9e21271d1eaab0280b738b60b6c78caeef`.
+- Decisión de acceso: los formularios aprobados que visualmente piden sólo código envían sólo ese código. El servidor resuelve una huella HMAC con dominio separado, verifica bcrypt y emite un token opaco de propósito, entidad, sesión y terminal, corto y de un solo uso. Nunca se expone un catálogo de PIN ni se acepta texto arbitrario como acceso master.
+- Decisión B04: el código compartido se modela como `PosDelegatedMasterCode` con asignaciones nominales `PosDelegatedMasterAssignment`; el actor efectivo es el empleado de la sesión a quien está asignado. La revocación conserva perfiles master nativos mediante `PosMasterCredential.managedByDelegation` y corta sesiones/autorizaciones de inmediato.
+- Identidad compartida: Employees opera sobre `Empleado.positionId`, `Position` y `PosCredential`. La baja conserva históricos y transfiere cartera activa a la empresa canónica dentro de la misma transacción; no crea vendedores paralelos.
+- Jornada: Clock In/Out identifica por código sin descargar credenciales, la salida de sesión no modifica jornada/asistencia y la apertura/conteos/cierre usan confirmaciones existentes. El cierre atribuye actor y auditoría a quien emitió la autorización, no automáticamente al operador de la sesión.
+- Validación: schemas sincronizados y válidos; type-check de types, cliente, API y POS; lint API; build API y Vite/Electron; 25 archivos/135 pruebas unitarias; reconstrucción de 44 migraciones y 17/17 pruebas de integración habilitadas en PostgreSQL 16 desechable; comparación visual 208/208 `PASS` (205 exactas y tres variaciones de antialiasing bajo `0.000027`).
+- Pendiente externo: B01 sigue abierto. No se cambió unilateralmente el texto “mock/simulación”; por ello RV3 está implementada pero no formalmente cerrada. RV4 es la siguiente fase de código, mientras Producto define el texto de Close Day.

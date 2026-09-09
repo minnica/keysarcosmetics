@@ -251,7 +251,8 @@ export interface PosLoginRequestDto {
 }
 
 export interface PosMasterAuthorizationRequestDto {
-  alias: string;
+  /** Alias opcional; se omite cuando el formulario aprobado sólo solicita código. */
+  alias?: string;
   pin: string;
   purpose: string;
   entityType?: string;
@@ -332,9 +333,40 @@ export interface PosEmployeeAccessDto {
 export interface PosRoleAccessDto {
   id: PosId;
   name: string;
+  description: string | null;
   active: boolean;
   permissions: PosPermissionKey[];
   assignedBranchIds: PosId[];
+}
+
+export interface PosRoleWriteDto {
+  name: string;
+  description?: string | null;
+  active: boolean;
+}
+
+export interface PosEmployeeWriteDto {
+  displayName: string;
+  alias: string;
+  pin?: string;
+  active: boolean;
+  positionId?: PosId | null;
+}
+
+export interface PosMasterAccessUpdateDto {
+  employeeIds: PosId[];
+  code: string | null;
+}
+
+export interface PosSelfCredentialUpdateDto {
+  currentPin: string;
+  alias: string;
+  newPin?: string;
+}
+
+export interface PosAttendanceIdentityDto {
+  employeeId: PosId;
+  openAttendance: PosAttendanceDto | null;
 }
 
 export interface PosAccessBootstrapDto {

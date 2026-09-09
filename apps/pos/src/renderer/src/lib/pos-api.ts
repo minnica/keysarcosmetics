@@ -232,7 +232,7 @@ export function accessFromDto(data: PosAccessBootstrapDto): {
   const roles = data.roles.map<EmployeeRole>((role) => ({
     id: role.id,
     name: role.name,
-    description: "Permisos POS administrados por puesto.",
+    description: role.description ?? "Permisos POS administrados por puesto.",
     active: role.active,
     system: false,
     moduleAccess: permissionsToScreens(role.permissions),

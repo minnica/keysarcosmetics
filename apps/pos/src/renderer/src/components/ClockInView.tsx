@@ -44,6 +44,10 @@ interface ClockInViewProps {
     recordId: string,
     accessCode: string,
   ) => boolean | Promise<boolean>;
+  onIdentify?: (accessCode: string) => Promise<{
+    sellerId: string;
+    recordId: string | null;
+  } | null>;
 }
 
 const formatDuration = (
@@ -79,6 +83,7 @@ export function ClockInView({
   records,
   onClockIn,
   onClockOut,
+  onIdentify,
 }: ClockInViewProps) {
   const [accessCode, setAccessCode] = useState("");
   const [branch, setBranch] = useState(activeBranch);
@@ -86,6 +91,11 @@ export function ClockInView({
     canViewAllBranches ? "ALL" : activeBranch,
   );
   const [now, setNow] = useState(() => Date.now());
+  const [remoteIdentity, setRemoteIdentity] = useState<{
+    sellerId: string;
+    recordId: string | null;
+  } | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 30_000);
@@ -130,16 +140,45 @@ export function ClockInView({
     todayRecords.map((record) => record.sellerId),
   );
   const activeSellers = sellers.filter((seller) => seller.active);
-  const identifiedSeller =
+  const locallyIdentifiedSeller =
     accessCode.length === 4
       ? (activeSellers.find((seller) => seller.accessCode === accessCode) ??
         null)
       : null;
+  const identifiedSeller =
+    locallyIdentifiedSeller ??
+    (remoteIdentity
+      ? (activeSellers.find(
+          (seller) => seller.id === remoteIdentity.sellerId,
+        ) ?? null)
+      : null);
   const identifiedOnlineRecord = identifiedSeller
-    ? (allOnlineRecords.find(
-        (record) => record.sellerId === identifiedSeller.id,
+    ? (allOnlineRecords.find((record) =>
+        remoteIdentity?.recordId
+          ? record.id === remoteIdentity.recordId
+          : record.sellerId === identifiedSeller.id,
       ) ?? null)
     : null;
+
+  useEffect(() => {
+    setRemoteIdentity(null);
+    if (!onIdentify || locallyIdentifiedSeller || accessCode.length !== 4)
+      return;
+    let active = true;
+    const timer = window.setTimeout(() => {
+      void onIdentify(accessCode)
+        .then((identity) => {
+          if (active) setRemoteIdentity(identity);
+        })
+        .catch(() => {
+          if (active) setRemoteIdentity(null);
+        });
+    }, 150);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [accessCode, locallyIdentifiedSeller, onIdentify]);
 
   const submitClockIn = async () => {
     if (!accessCode.trim() || !branch) return;
@@ -148,12 +187,18 @@ export function ClockInView({
   };
 
   const submitAttendance = async () => {
-    if (identifiedOnlineRecord) {
-      if (await onClockOut(identifiedOnlineRecord.id, accessCode.trim()))
-        setAccessCode("");
-      return;
+    if (submitting) return;
+    setSubmitting(true);
+    try {
+      if (identifiedOnlineRecord) {
+        if (await onClockOut(identifiedOnlineRecord.id, accessCode.trim()))
+          setAccessCode("");
+        return;
+      }
+      await submitClockIn();
+    } finally {
+      setSubmitting(false);
     }
-    await submitClockIn();
   };
 
   return (
@@ -230,7 +275,9 @@ export function ClockInView({
               className={identifiedOnlineRecord ? "clock-out-button" : ""}
               onClick={() => void submitAttendance()}
               disabled={
-                accessCode.length !== 4 || (!identifiedOnlineRecord && !branch)
+                submitting ||
+                accessCode.length !== 4 ||
+                (!identifiedOnlineRecord && !branch)
               }
             >
               {identifiedOnlineRecord ? (

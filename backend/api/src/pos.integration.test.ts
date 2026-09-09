@@ -218,7 +218,6 @@ integrationDescribe("seguridad y terminales POS", () => {
       json(
         "POST",
         {
-          alias: `master.${suffix}`,
           pin: masterPin,
           purpose: "POSITION_PERMISSIONS_UPDATE",
         },
@@ -267,6 +266,57 @@ integrationDescribe("seguridad y terminales POS", () => {
       ),
     );
     expect(updated.response.status).toBe(200);
+    const reused = await request(
+      `/api/pos/access/positions/${positionId}/permissions`,
+      json(
+        "PUT",
+        { permissions: ["SALE_CREATE"], authorizationToken },
+        masterToken,
+      ),
+    );
+    expect(reused.response.status).toBe(403);
+
+    const expiringAuthorization = await request(
+      "/api/pos/authorizations",
+      json(
+        "POST",
+        {
+          pin: masterPin,
+          purpose: "POSITION_PERMISSIONS_UPDATE",
+          entityType: "Position",
+          entityId: positionId,
+        },
+        masterToken,
+      ),
+    );
+    expect(expiringAuthorization.response.status).toBe(201);
+    const expiringAuthorizationToken = (
+      expiringAuthorization.body["data"] as { authorizationToken: string }
+    ).authorizationToken;
+    const expiringRow = await prisma.masterAuthorization.findFirstOrThrow({
+      where: {
+        purpose: "POSITION_PERMISSIONS_UPDATE",
+        entityId: positionId,
+        usedAt: null,
+      },
+      orderBy: { creadoEn: "desc" },
+    });
+    await prisma.masterAuthorization.update({
+      where: { id: expiringRow.id },
+      data: { expiresAt: new Date(Date.now() - 1_000) },
+    });
+    const expired = await request(
+      `/api/pos/access/positions/${positionId}/permissions`,
+      json(
+        "PUT",
+        {
+          permissions: ["SALE_CREATE"],
+          authorizationToken: expiringAuthorizationToken,
+        },
+        masterToken,
+      ),
+    );
+    expect(expired.response.status).toBe(403);
 
     const employeeLogin = await request(
       "/api/pos/auth/login",
@@ -284,6 +334,175 @@ integrationDescribe("seguridad y terminales POS", () => {
       headers: { authorization: `Bearer ${employeeToken}` },
     });
     expect(forbidden.response.status).toBe(403);
+  });
+
+  it("administra personal y delegación master sin exponer claves", async () => {
+    const role = await request(
+      "/api/pos/access/positions",
+      json(
+        "POST",
+        {
+          name: `Facialista RV3 ${suffix}`,
+          description: "Puesto de integración RV3",
+          active: true,
+        },
+        masterToken,
+      ),
+    );
+    expect(role.response.status).toBe(201);
+    const roleId = (role.body["data"] as { id: string }).id;
+    const roleAuthorization = await request(
+      "/api/pos/authorizations",
+      json(
+        "POST",
+        {
+          pin: masterPin,
+          purpose: "POSITION_PERMISSIONS_UPDATE",
+          entityType: "Position",
+          entityId: roleId,
+        },
+        masterToken,
+      ),
+    );
+    expect(roleAuthorization.response.status).toBe(201);
+    const permissionUpdate = await request(
+      `/api/pos/access/positions/${roleId}/permissions`,
+      json(
+        "PUT",
+        {
+          permissions: ["CLOCK_IN_VIEW"],
+          authorizationToken: (
+            roleAuthorization.body["data"] as {
+              authorizationToken: string;
+            }
+          ).authorizationToken,
+        },
+        masterToken,
+      ),
+    );
+    expect(permissionUpdate.response.status).toBe(200);
+    const pin = "1593";
+    const alias = `rv3.${suffix}`;
+    const employee = await request(
+      "/api/pos/access/employees",
+      json(
+        "POST",
+        {
+          displayName: "Vendedora RV3",
+          alias,
+          pin,
+          active: true,
+          positionId: roleId,
+        },
+        masterToken,
+      ),
+    );
+    expect(employee.response.status).toBe(201);
+    expect(JSON.stringify(employee.body)).not.toContain(pin);
+    const createdEmployeeId = (employee.body["data"] as { id: string }).id;
+
+    const delegatedCode = "8520";
+    const delegated = await request(
+      "/api/pos/access/master-delegations",
+      json(
+        "PUT",
+        { employeeIds: [createdEmployeeId], code: delegatedCode },
+        masterToken,
+      ),
+    );
+    expect(delegated.response.status).toBe(200);
+    expect(JSON.stringify(delegated.body)).not.toContain(delegatedCode);
+    const login = await request(
+      "/api/pos/auth/login",
+      json("POST", {
+        alias,
+        pin,
+        terminalCode: `TERM-${suffix}`,
+        terminalSecret,
+      }),
+    );
+    const token = (login.body["data"] as { accessToken: string }).accessToken;
+    expect(
+      (login.body["data"] as { actor: { isMaster: boolean } }).actor.isMaster,
+    ).toBe(true);
+    const codeOnlyAuthorization = await request(
+      "/api/pos/authorizations",
+      json("POST", { pin: delegatedCode, purpose: "EMPLOYEES_ACCESS" }, token),
+    );
+    expect(codeOnlyAuthorization.response.status).toBe(201);
+    const attributedAuthorization = await request(
+      "/api/pos/authorizations",
+      json(
+        "POST",
+        {
+          alias,
+          pin: delegatedCode,
+          purpose: "BUSINESS_DAY_CLOSE",
+        },
+        token,
+      ),
+    );
+    expect(attributedAuthorization.response.status).toBe(201);
+
+    const revoked = await request(
+      "/api/pos/access/master-delegations",
+      json(
+        "PUT",
+        { employeeIds: [createdEmployeeId], code: null },
+        masterToken,
+      ),
+    );
+    expect(revoked.response.status).toBe(200);
+    expect(
+      (
+        await request("/api/pos/auth/me", {
+          headers: { authorization: `Bearer ${token}` },
+        })
+      ).response.status,
+    ).toBe(401);
+
+    const personalLogin = await request(
+      "/api/pos/auth/login",
+      json("POST", {
+        alias,
+        pin,
+        terminalCode: `TERM-${suffix}`,
+        terminalSecret,
+      }),
+    );
+    const personalToken = (
+      personalLogin.body["data"] as { accessToken: string }
+    ).accessToken;
+    const nextAlias = `rv3.changed.${suffix}`;
+    const selfChanged = await request(
+      "/api/pos/access/me/credential",
+      json(
+        "PUT",
+        { currentPin: pin, alias: nextAlias, newPin: "1594" },
+        personalToken,
+      ),
+    );
+    expect(selfChanged.response.status).toBe(200);
+    expect(
+      (
+        await request("/api/pos/auth/me", {
+          headers: { authorization: `Bearer ${personalToken}` },
+        })
+      ).response.status,
+    ).toBe(401);
+    expect(
+      (
+        await request(
+          "/api/pos/auth/login",
+          json("POST", {
+            alias: nextAlias,
+            pin: "1594",
+            terminalCode: `TERM-${suffix}`,
+            terminalSecret,
+          }),
+        )
+      ).response.status,
+    ).toBe(200);
   });
 
   it("liga autorización personal, alcance y permisos a la sesión vigente", async () => {
@@ -383,8 +602,24 @@ integrationDescribe("seguridad y terminales POS", () => {
     const liveSession = await request("/api/pos/auth/me", {
       headers: { authorization: `Bearer ${employeeToken}` },
     });
-    expect(liveSession.response.status).toBe(200);
-    const liveData = liveSession.body["data"] as {
+    expect(liveSession.response.status).toBe(401);
+    const refreshedEmployeeLogin = await request(
+      "/api/pos/auth/login",
+      json("POST", {
+        alias: `employee.${suffix}`,
+        pin: employeePin,
+        terminalCode: `TERM-${suffix}`,
+        terminalSecret,
+      }),
+    );
+    expect(refreshedEmployeeLogin.response.status).toBe(200);
+    employeeToken = (
+      refreshedEmployeeLogin.body["data"] as { accessToken: string }
+    ).accessToken;
+    const refreshedSession = await request("/api/pos/auth/me", {
+      headers: { authorization: `Bearer ${employeeToken}` },
+    });
+    const liveData = refreshedSession.body["data"] as {
       authorizedBranches: Array<{ id: string }>;
     };
     expect(
@@ -443,7 +678,19 @@ integrationDescribe("seguridad y terminales POS", () => {
       `/api/pos/reports/SALES_DETAIL?dateFrom=${period}&dateTo=${period}`,
       { headers: { authorization: `Bearer ${employeeToken}` } },
     );
-    expect(removedLive.response.status).toBe(403);
+    expect(removedLive.response.status).toBe(401);
+    const relogin = await request(
+      "/api/pos/auth/login",
+      json("POST", {
+        alias: `employee.${suffix}`,
+        pin: employeePin,
+        terminalCode: `TERM-${suffix}`,
+        terminalSecret,
+      }),
+    );
+    expect(relogin.response.status).toBe(200);
+    employeeToken = (relogin.body["data"] as { accessToken: string })
+      .accessToken;
   });
 
   it("hace Clock Out personal e idempotente y sale sin cerrar la jornada", async () => {
@@ -485,6 +732,16 @@ integrationDescribe("seguridad y terminales POS", () => {
       }
     ).items.find((item) => item.status === "OPEN");
     expect(attendance).toBeDefined();
+
+    const identified = await request(
+      "/api/pos/attendance/identify",
+      json("POST", { pin: employeePin }, employeeToken),
+    );
+    expect(identified.response.status).toBe(200);
+    expect(
+      (identified.body["data"] as { openAttendance: { id: string } })
+        .openAttendance.id,
+    ).toBe(attendance!.id);
 
     const forcedSeller = await request(
       `/api/pos/attendance/${attendance!.id}/clock-out`,
@@ -541,6 +798,97 @@ integrationDescribe("seguridad y terminales POS", () => {
         },
       }),
     ).toBeGreaterThan(0);
+  });
+
+  it("registra el conteo final y cierra la jornada con el actor autorizador", async () => {
+    const day = await prisma.posBusinessDay.findFirstOrThrow({
+      where: { branchId, status: "OPEN" },
+      select: { id: true },
+    });
+    const skipAuthorization = await request(
+      "/api/pos/authorizations",
+      json(
+        "POST",
+        {
+          pin: masterPin,
+          purpose: "BUSINESS_DAY_CLOSE_SKIP",
+          entityType: "PosBusinessDay",
+          entityId: day.id,
+        },
+        masterToken,
+      ),
+    );
+    expect(skipAuthorization.response.status).toBe(201);
+    const closingCount = await request(
+      `/api/pos/business-days/${day.id}/closing-count`,
+      mutationJson(
+        "POST",
+        {
+          skipped: true,
+          authorizationToken: (
+            skipAuthorization.body["data"] as {
+              authorizationToken: string;
+            }
+          ).authorizationToken,
+        },
+        masterToken,
+      ),
+    );
+    expect(closingCount.response.status).toBe(201);
+
+    const closeAuthorization = await request(
+      "/api/pos/authorizations",
+      json(
+        "POST",
+        {
+          alias: `master.${suffix}`,
+          pin: masterPin,
+          purpose: "BUSINESS_DAY_CLOSE",
+          entityType: "PosBusinessDay",
+          entityId: day.id,
+        },
+        masterToken,
+      ),
+    );
+    expect(closeAuthorization.response.status).toBe(201);
+    const closeRequest = mutationJson(
+      "POST",
+      {
+        authorizationToken: (
+          closeAuthorization.body["data"] as { authorizationToken: string }
+        ).authorizationToken,
+      },
+      masterToken,
+    );
+    const closed = await request(
+      `/api/pos/business-days/${day.id}/close`,
+      closeRequest,
+    );
+    expect(closed.response.status).toBe(200);
+    const repeated = await request(
+      `/api/pos/business-days/${day.id}/close`,
+      closeRequest,
+    );
+    expect(repeated.response.status).toBe(200);
+    expect(repeated.body["data"]).toEqual(closed.body["data"]);
+    expect(repeated.body["message"]).toBe(closed.body["message"]);
+    expect(repeated.body["replayed"]).toBe(true);
+
+    const masterCredential = await prisma.posCredential.findUniqueOrThrow({
+      where: { userId },
+      select: { id: true },
+    });
+    const persisted = await prisma.posBusinessDay.findUniqueOrThrow({
+      where: { id: day.id },
+      select: {
+        status: true,
+        closedByCredentialId: true,
+        closeSummary: true,
+      },
+    });
+    expect(persisted.status).toBe("CLOSED");
+    expect(persisted.closedByCredentialId).toBe(masterCredential.id);
+    expect(persisted.closeSummary).not.toBeNull();
   });
 
   it("cambia la sucursal una sola vez y revoca las sesiones ligadas a la asignación anterior", async () => {

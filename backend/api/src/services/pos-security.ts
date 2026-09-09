@@ -27,7 +27,10 @@ export function normalizeTerminalCode(value: string): string {
   return value.trim().toLocaleUpperCase("en-US");
 }
 
-export function fingerprintSecret(value: string, purpose: "pin" | "terminal"): string {
+export function fingerprintSecret(
+  value: string,
+  purpose: "pin" | "terminal" | "delegated-master",
+): string {
   return createHmac("sha256", requiredSecret("POS_PIN_PEPPER"))
     .update(`${purpose}:${value}`)
     .digest("hex");
@@ -41,7 +44,10 @@ export async function hashPosSecret(value: string): Promise<string> {
   return bcrypt.hash(value, 12);
 }
 
-export async function verifyPosSecret(value: string, hash: string): Promise<boolean> {
+export async function verifyPosSecret(
+  value: string,
+  hash: string,
+): Promise<boolean> {
   return bcrypt.compare(value, hash);
 }
 

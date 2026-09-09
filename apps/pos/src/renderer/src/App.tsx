@@ -1734,6 +1734,7 @@ function App() {
   const notificationPreferencesWriteRef = useRef<Promise<void>>(
     Promise.resolve(),
   );
+  const dayWorkflowSubmittingRef = useRef(false);
   const [activeScreen, setActiveScreen] = useState<ScreenId>("sale");
   const [saleFocusMode, setSaleFocusMode] = useState(true);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -1769,6 +1770,7 @@ function App() {
     useState("");
   const [closeDayAuthorizationError, setCloseDayAuthorizationError] =
     useState("");
+  const [closeDaySubmitting, setCloseDaySubmitting] = useState(false);
   const [sessionExitOpen, setSessionExitOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [interfaceLanguage] = useState<InterfaceLanguage>("ES");
@@ -1838,7 +1840,7 @@ function App() {
   );
   const isMasterAccessCode = (code: string) =>
     posApiEnabled
-      ? Boolean(apiSession?.actor.isMaster && code.trim())
+      ? false
       : code.trim() === administratorCode ||
         sellers.some(
           (seller) =>
@@ -2151,7 +2153,7 @@ function App() {
       "id" | "recipientUserIds" | "readByUserIds"
     >,
   ) => {
-    if (posApiEnabled) {
+    if (posApiEnabled && !operatingOffline) {
       void loadAllApiPages((page, pageSize) =>
         posApi.notifications({ page, pageSize }),
       )
@@ -3246,7 +3248,8 @@ function App() {
     }
     if (
       session.actor.isMaster ||
-      session.permissions.includes("BUSINESS_DAY_OPEN")
+      session.permissions.includes("BUSINESS_DAY_OPEN") ||
+      session.permissions.includes("CLOCK_IN_VIEW")
     ) {
       const attendance = await loadAllApiPages((page, pageSize) =>
         posApi.attendance({ page, pageSize }),
@@ -3322,10 +3325,31 @@ function App() {
   }): Promise<string | null> => {
     if (posApiEnabled) {
       try {
-        const login = await loginPos(
-          credentials.username,
-          credentials.password,
-        );
+        let login = await loginPos(credentials.username, credentials.password);
+        if (
+          !login.offline &&
+          login.session.actor.isMaster &&
+          credentials.requestedBranch !== login.session.terminal.branch.name
+        ) {
+          const target = login.session.authorizedBranches.find(
+            (branch) => branch.name === credentials.requestedBranch,
+          );
+          if (!target)
+            throw new Error("La sucursal seleccionada no está autorizada.");
+          const authorization = await posApi.createAuthorization({
+            pin: credentials.password,
+            purpose: "TERMINAL_BRANCH_CHANGE",
+            entityType: "PosTerminal",
+            entityId: login.session.terminal.id,
+          });
+          await posApi.changeTerminalBranch(
+            login.session.terminal.id,
+            target.id,
+            authorization.authorizationToken,
+          );
+          posApi.clearSession();
+          login = await loginPos(credentials.username, credentials.password);
+        }
         if (login.bootstrap) {
           setOfflineBootstrap(login.bootstrap);
           void offlineQueueStatus(login.bootstrap).then(setOfflineQueue);
@@ -3546,10 +3570,21 @@ function App() {
         );
       }
     };
+    const refreshWhenActive = () => {
+      if (document.visibilityState === "visible" && navigator.onLine)
+        void refreshSession();
+    };
     const intervalId = window.setInterval(() => void refreshSession(), 15_000);
+    window.addEventListener("focus", refreshWhenActive);
+    window.addEventListener("online", refreshWhenActive);
+    document.addEventListener("visibilitychange", refreshWhenActive);
+    void refreshSession();
     return () => {
       disposed = true;
       window.clearInterval(intervalId);
+      window.removeEventListener("focus", refreshWhenActive);
+      window.removeEventListener("online", refreshWhenActive);
+      document.removeEventListener("visibilitychange", refreshWhenActive);
     };
   }, [apiSession?.actor.id, isOnline, operatingOffline]);
 
@@ -3686,6 +3721,7 @@ function App() {
     lines: InventoryAuditLine[],
     skipped: boolean,
     comment: string,
+    masterCode?: string,
     persisted = false,
     backendDay?: PosBusinessDayDto,
     localDayId?: string,
@@ -3702,15 +3738,11 @@ function App() {
           );
           return;
         }
-        const alias = window.prompt(
-          "Alias master para omitir el conteo inicial:",
-        );
-        const pin = alias ? window.prompt("PIN master:") : null;
-        if (!alias || !pin) return;
+        if (!masterCode || dayWorkflowSubmittingRef.current) return;
+        dayWorkflowSubmittingRef.current = true;
         void posApi
           .createAuthorization({
-            alias,
-            pin,
+            pin: masterCode,
             purpose: "BUSINESS_DAY_OPEN_SKIP",
             entityType: "Sucursal",
             entityId: apiSession.terminal.branch.id,
@@ -3722,13 +3754,18 @@ function App() {
               notes: comment,
             }),
           )
-          .then((day) => completeOpeningCount(lines, true, comment, true, day))
+          .then((day) =>
+            completeOpeningCount(lines, true, comment, undefined, true, day),
+          )
           .catch((error: unknown) => {
             toast.error(
               error instanceof Error
                 ? error.message
                 : "No se pudo abrir la jornada sin conteo.",
             );
+          })
+          .finally(() => {
+            dayWorkflowSubmittingRef.current = false;
           });
         return;
       }
@@ -3738,6 +3775,8 @@ function App() {
         );
         return;
       }
+      if (dayWorkflowSubmittingRef.current) return;
+      dayWorkflowSubmittingRef.current = true;
       void posApi
         .openBusinessDay({
           locationId: location.id,
@@ -3747,14 +3786,19 @@ function App() {
             countedQuantity: line.actualStock.toFixed(2),
           })),
         })
-        .then((day) => completeOpeningCount(lines, skipped, comment, true, day))
+        .then((day) =>
+          completeOpeningCount(lines, skipped, comment, undefined, true, day),
+        )
         .catch((error: unknown) =>
           toast.error(
             error instanceof Error
               ? error.message
               : "No se pudo abrir la jornada.",
           ),
-        );
+        )
+        .finally(() => {
+          dayWorkflowSubmittingRef.current = false;
+        });
       return;
     }
     if (posApiEnabled && !persisted) {
@@ -3796,6 +3840,7 @@ function App() {
             lines,
             false,
             comment,
+            undefined,
             true,
             undefined,
             queued.id,
@@ -3857,6 +3902,11 @@ function App() {
     );
     setSessionStage("OPEN");
     setSidebarCollapsed(true);
+    if (posApiEnabled && backendDay && !operatingOffline) {
+      void loadAllApiPages((page, pageSize) =>
+        posApi.attendance({ page, pageSize }),
+      ).then((items) => setAttendanceRecords(items.map(attendanceFromDto)));
+    }
     toast.success(
       skipped
         ? "Open Day autorizado sin conteo por usuario master."
@@ -3868,6 +3918,7 @@ function App() {
     lines: InventoryAuditLine[],
     skipped: boolean,
     comment: string,
+    masterCode?: string,
     persisted = false,
     backendDay?: PosBusinessDayDto,
   ) => {
@@ -3877,15 +3928,11 @@ function App() {
         (candidate) => candidate.branchName === sessionUser.branch,
       );
       if (skipped) {
-        const alias = window.prompt(
-          "Alias master para omitir el conteo final:",
-        );
-        const pin = alias ? window.prompt("PIN master:") : null;
-        if (!alias || !pin) return;
+        if (!masterCode || dayWorkflowSubmittingRef.current) return;
+        dayWorkflowSubmittingRef.current = true;
         void posApi
           .createAuthorization({
-            alias,
-            pin,
+            pin: masterCode,
             purpose: "BUSINESS_DAY_CLOSE_SKIP",
             entityType: "PosBusinessDay",
             entityId: daySession.id,
@@ -3897,13 +3944,18 @@ function App() {
               notes: comment,
             }),
           )
-          .then((day) => completeClosingCount(lines, true, comment, true, day))
+          .then((day) =>
+            completeClosingCount(lines, true, comment, undefined, true, day),
+          )
           .catch((error: unknown) => {
             toast.error(
               error instanceof Error
                 ? error.message
                 : "No se pudo guardar el conteo final omitido.",
             );
+          })
+          .finally(() => {
+            dayWorkflowSubmittingRef.current = false;
           });
         return;
       }
@@ -3913,6 +3965,8 @@ function App() {
         );
         return;
       }
+      if (dayWorkflowSubmittingRef.current) return;
+      dayWorkflowSubmittingRef.current = true;
       void posApi
         .submitClosingCount(daySession.id, {
           locationId: location.id,
@@ -3922,14 +3976,19 @@ function App() {
             countedQuantity: line.actualStock.toFixed(2),
           })),
         })
-        .then((day) => completeClosingCount(lines, skipped, comment, true, day))
+        .then((day) =>
+          completeClosingCount(lines, skipped, comment, undefined, true, day),
+        )
         .catch((error: unknown) =>
           toast.error(
             error instanceof Error
               ? error.message
               : "No se pudo guardar el conteo final.",
           ),
-        );
+        )
+        .finally(() => {
+          dayWorkflowSubmittingRef.current = false;
+        });
       return;
     }
     if (posApiEnabled && !persisted) {
@@ -3971,7 +4030,7 @@ function App() {
       )
         .then(async () => {
           setOfflineQueue(await offlineQueueStatus(offlineBootstrap));
-          completeClosingCount(lines, false, comment, true);
+          completeClosingCount(lines, false, comment, undefined, true);
         })
         .catch((error: unknown) =>
           toast.error(
@@ -5401,7 +5460,6 @@ function App() {
       }
       try {
         const authorization = await posApi.createAuthorization({
-          alias: apiSession.actor.alias,
           pin: locationSwitchCode,
           purpose: "TERMINAL_BRANCH_CHANGE",
           entityType: "PosTerminal",
@@ -5785,7 +5843,7 @@ function App() {
 
   useEffect(() => {
     if (!isOnline || !sessionUser) return;
-    if (posApiEnabled) {
+    if (posApiEnabled && !operatingOffline) {
       if (
         !offlineBootstrap ||
         offlineSyncingRef.current ||
@@ -6002,15 +6060,11 @@ function App() {
     setSellers(access.sellers);
   };
 
-  const authorizeEmployeeAccess = async (
-    code: string,
-    masterAlias?: string,
-  ) => {
+  const authorizeEmployeeAccess = async (code: string) => {
     if (posApiEnabled) {
       if (!apiSession) return false;
       try {
         const authorization = await posApi.createAuthorization({
-          alias: masterAlias?.trim() ?? "",
           pin: code,
           purpose: "EMPLOYEES_ACCESS",
         });
@@ -6029,20 +6083,33 @@ function App() {
     return authorized;
   };
 
-  const saveEmployeeRole = async (
-    role: EmployeeRole,
-    masterCode?: string,
-    masterAlias?: string,
-  ) => {
+  const saveEmployeeRole = async (role: EmployeeRole, masterCode?: string) => {
     if (posApiEnabled) {
-      if (!apiSession || !masterCode || !masterAlias) return false;
+      if (!apiSession?.actor.isMaster) return false;
       try {
+        const existing = employeeRoles.some(
+          (candidate) => candidate.id === role.id,
+        );
+        if (!existing) {
+          await posApi.createRole({
+            name: role.name,
+            description: role.description,
+            active: role.active,
+          });
+          await reloadPosAccess();
+          return true;
+        }
+        if (!masterCode) return false;
         const authorization = await posApi.createAuthorization({
-          alias: masterAlias,
           pin: masterCode,
           purpose: "POSITION_PERMISSIONS_UPDATE",
           entityType: "Position",
           entityId: role.id,
+        });
+        await posApi.updateRole(role.id, {
+          name: role.name,
+          description: role.description,
+          active: role.active,
         });
         await posApi.updateRolePermissions(
           role.id,
@@ -6082,11 +6149,7 @@ function App() {
     return true;
   };
 
-  const saveEmployeeSeller = async (
-    seller: Seller,
-    masterCode?: string,
-    masterAlias?: string,
-  ) => {
+  const saveEmployeeSeller = async (seller: Seller) => {
     const previousSeller = sellers.find(
       (candidate) => candidate.id === seller.id,
     );
@@ -6102,56 +6165,22 @@ function App() {
       return false;
     }
     if (posApiEnabled) {
-      if (!apiSession || !masterCode || !masterAlias) return false;
-      if (accessCode && !/^\d{4,12}$/.test(accessCode)) {
-        toast.error("El código personal debe contener entre 4 y 12 dígitos.");
+      if (!apiSession?.actor.isMaster) return false;
+      if ((!previousSeller || accessCode) && !/^\d{4}$/.test(accessCode)) {
+        toast.error("El código personal debe contener exactamente 4 dígitos.");
         return false;
       }
       try {
-        const statusChanged = Boolean(
-          previousSeller && previousSeller.active !== seller.active,
-        );
-        let transferredCustomers = 0;
-        if (statusChanged) {
-          const statusAuthorization = await posApi.createAuthorization({
-            alias: masterAlias,
-            pin: masterCode,
-            purpose: "EMPLOYEE_STATUS_UPDATE",
-            entityType: "Empleado",
-            entityId: seller.id,
-          });
-          const statusResult = await posApi.updateEmployeeStatus(seller.id, {
-            active: seller.active,
-            reason: seller.active
-              ? "Reactivación autorizada desde configuración POS"
-              : "Baja autorizada desde configuración POS",
-            authorizationToken: statusAuthorization.authorizationToken,
-          });
-          transferredCustomers = statusResult.transferredCustomers;
-        }
-        const credentialAuthorization = await posApi.createAuthorization({
-          alias: masterAlias,
-          pin: masterCode,
-          purpose: "EMPLOYEE_CREDENTIAL_UPDATE",
-          entityType: "Empleado",
-          entityId: seller.id,
-        });
-        await posApi.updateEmployeeCredential(seller.id, {
+        const input = {
+          displayName: name,
           alias,
           ...(accessCode ? { pin: accessCode } : {}),
           active: seller.active,
-          offlineEnabled: false,
-          isMaster: Boolean(seller.masterAccessCode),
-          authorizationToken: credentialAuthorization.authorizationToken,
-        });
+          positionId: seller.roleId || null,
+        };
+        if (previousSeller) await posApi.updateEmployee(seller.id, input);
+        else await posApi.createEmployee(input);
         await reloadPosAccess();
-        if (statusChanged && !seller.active) {
-          toast.info(
-            transferredCustomers > 0
-              ? `${transferredCustomers} ${transferredCustomers === 1 ? "cliente pasó" : "clientes pasaron"} a la cartera de la empresa. El historial de tickets no cambió.`
-              : "El vendedor quedó inactivo. El historial de tickets no cambió.",
-          );
-        }
         return true;
       } catch (error) {
         await reloadPosAccess().catch(() => undefined);
@@ -6265,17 +6294,41 @@ function App() {
     return true;
   };
 
-  const saveCurrentSellerAccess = (input: {
+  const saveCurrentSellerAccess = async (input: {
     sellerId: string;
     currentCode: string;
     alias: string;
     newCode: string;
-  }): string | null => {
+  }): Promise<string | null> => {
     const seller = sellers.find(
       (candidate) => candidate.id === input.sellerId && candidate.active,
     );
     if (!seller || seller.id !== sessionUser?.id) {
       return "La sesión no está ligada a un vendedor activo.";
+    }
+    if (posApiEnabled) {
+      try {
+        await posApi.updateMyCredential({
+          currentPin: input.currentCode,
+          alias: input.alias,
+          ...(input.newCode ? { newPin: input.newCode } : {}),
+        });
+        setApiSession(null);
+        setApiPermissions([]);
+        setSessionUser(null);
+        setSessionStage("LOGIN");
+        setActiveScreen("sale");
+        toast.info("Acceso actualizado. Inicia sesión nuevamente.");
+        return null;
+      } catch (error) {
+        const response = error as {
+          response?: { data?: { message?: string } };
+        };
+        return (
+          response.response?.data?.message ??
+          "No se pudieron actualizar tus accesos."
+        );
+      }
     }
     if (seller.accessCode !== input.currentCode.trim()) {
       return "La contraseña personal actual es incorrecta.";
@@ -6320,7 +6373,7 @@ function App() {
     return null;
   };
 
-  const toggleEmployeeRole = (roleId: string) => {
+  const toggleEmployeeRole = async (roleId: string) => {
     const role = employeeRoles.find((candidate) => candidate.id === roleId);
     if (!role || role.system) return;
     if (
@@ -6332,6 +6385,25 @@ function App() {
       );
       return;
     }
+    if (posApiEnabled) {
+      try {
+        await posApi.updateRole(role.id, {
+          name: role.name,
+          description: role.description,
+          active: !role.active,
+        });
+        await reloadPosAccess();
+      } catch (error) {
+        const response = error as {
+          response?: { data?: { message?: string } };
+        };
+        toast.error(
+          response.response?.data?.message ??
+            "No se pudo actualizar el puesto.",
+        );
+      }
+      return;
+    }
     setEmployeeRoles((current) =>
       current.map((candidate) =>
         candidate.id === roleId
@@ -6341,13 +6413,35 @@ function App() {
     );
   };
 
-  const assignEmployeeRole = (sellerId: string, roleId: string) => {
+  const assignEmployeeRole = async (sellerId: string, roleId: string) => {
     const role = employeeRoles.find(
       (candidate) =>
         candidate.id === roleId && candidate.active && !candidate.system,
     );
     if (!role) {
       toast.error("El rol seleccionado no está disponible.");
+      return;
+    }
+    const seller = sellers.find((candidate) => candidate.id === sellerId);
+    if (!seller) return;
+    if (posApiEnabled) {
+      try {
+        await posApi.updateEmployee(seller.id, {
+          displayName: seller.name,
+          alias: seller.alias,
+          active: seller.active,
+          positionId: roleId,
+        });
+        await reloadPosAccess();
+        toast.success(`${seller.name} ahora tiene el rol ${role.name}.`);
+      } catch (error) {
+        const response = error as {
+          response?: { data?: { message?: string } };
+        };
+        toast.error(
+          response.response?.data?.message ?? "No se pudo asignar el puesto.",
+        );
+      }
       return;
     }
     setSellers((current) =>
@@ -6361,13 +6455,12 @@ function App() {
           : seller,
       ),
     );
-    const seller = sellers.find((candidate) => candidate.id === sellerId);
     toast.success(
       `${seller?.name ?? "Empleado"} ahora tiene el rol ${role.name}.`,
     );
   };
 
-  const setEmployeeMasterAccess = (
+  const setEmployeeMasterAccess = async (
     sellerIds: string[],
     code: string | null,
   ) => {
@@ -6394,6 +6487,31 @@ function App() {
     if (sellers.some((seller) => selected.has(seller.id) && !seller.active)) {
       toast.error("No se puede asignar acceso master a un empleado de baja.");
       return false;
+    }
+    if (posApiEnabled) {
+      try {
+        await posApi.setMasterAccess({ employeeIds: sellerIds, code });
+        if (sessionUser && sellerIds.includes(sessionUser.id)) {
+          posApi.clearSession();
+          setApiSession(null);
+          setApiPermissions([]);
+          setSessionUser(null);
+          setSessionStage("LOGIN");
+          toast.info("Tu acceso cambió. Inicia sesión nuevamente.");
+          return true;
+        }
+        await reloadPosAccess();
+        return true;
+      } catch (error) {
+        const response = error as {
+          response?: { data?: { message?: string } };
+        };
+        toast.error(
+          response.response?.data?.message ??
+            "No se pudo cambiar el acceso master.",
+        );
+        return false;
+      }
     }
     setSellers((current) =>
       current.map((seller) =>
@@ -6689,6 +6807,27 @@ function App() {
     return true;
   };
 
+  const identifyAttendance = async (accessCode: string) => {
+    if (!posApiEnabled || operatingOffline) return null;
+    try {
+      const identity = await posApi.identifyAttendance(accessCode);
+      if (identity.openAttendance) {
+        const record = attendanceFromDto(identity.openAttendance);
+        setAttendanceRecords((current) =>
+          current.some((item) => item.id === record.id)
+            ? current.map((item) => (item.id === record.id ? record : item))
+            : [record, ...current],
+        );
+      }
+      return {
+        sellerId: identity.employeeId,
+        recordId: identity.openAttendance?.id ?? null,
+      };
+    } catch {
+      return null;
+    }
+  };
+
   const clockOutSeller = async (recordId: string, accessCode: string) => {
     if (posApiEnabled) {
       try {
@@ -6863,7 +7002,7 @@ function App() {
       return;
     }
     const departingUserName = sessionUser.name;
-    if (posApiEnabled) {
+    if (posApiEnabled && !operatingOffline) {
       try {
         await posApi.exitSession();
       } catch (error) {
@@ -6880,6 +7019,11 @@ function App() {
       }
       setApiSession(null);
       setApiPermissions([]);
+      setOfflineBootstrap(null);
+      setOperatingOffline(false);
+    }
+    if (posApiEnabled && operatingOffline) {
+      await window.electronAPI?.posOfflineLogout();
       setOfflineBootstrap(null);
       setOperatingOffline(false);
     }
@@ -6917,6 +7061,7 @@ function App() {
   };
 
   const authorizeCloseDay = () => {
+    if (closeDaySubmitting) return;
     if (posApiEnabled) {
       if (!daySession) {
         setCloseDayAuthorizationError(
@@ -6931,6 +7076,7 @@ function App() {
           );
           return;
         }
+        setCloseDaySubmitting(true);
         void loginPos(
           closeDayAuthorizationUser.trim(),
           closeDayAuthorizationCode.trim(),
@@ -6966,9 +7112,11 @@ function App() {
                 ? error.message
                 : "No se pudo autorizar el cierre offline.",
             );
-          });
+          })
+          .finally(() => setCloseDaySubmitting(false));
         return;
       }
+      setCloseDaySubmitting(true);
       void posApi
         .createAuthorization({
           alias: closeDayAuthorizationUser.trim(),
@@ -6999,7 +7147,8 @@ function App() {
               response.message ??
               "No se pudo cerrar la jornada.",
           );
-        });
+        })
+        .finally(() => setCloseDaySubmitting(false));
       return;
     }
     const normalizedUser = closeDayAuthorizationUser
@@ -17372,16 +17521,14 @@ function App() {
             records={attendanceRecords}
             onClockIn={clockInSeller}
             onClockOut={clockOutSeller}
+            {...(posApiEnabled ? { onIdentify: identifyAttendance } : {})}
           />
         );
       case "employees":
         return (
           <EmployeesView
             authorized={employeeAccessAuthorized}
-            managedByApi={posApiEnabled}
-            defaultMasterAlias={
-              apiSession?.actor.isMaster ? apiSession.actor.alias : ""
-            }
+            showDemoNotice={!posApiEnabled}
             roles={employeeRoles}
             sellers={sellers}
             onAuthorize={authorizeEmployeeAccess}
@@ -17476,6 +17623,7 @@ function App() {
           sellers={sellers}
           language={interfaceLanguage}
           terminalManaged={posApiEnabled}
+          allowMasterBranchSelection
           onLogin={handleSoftwareLogin}
         />
         {renderConnectivityNotice()}
@@ -17638,6 +17786,7 @@ function App() {
                 type="button"
                 onClick={authorizeCloseDay}
                 disabled={
+                  closeDaySubmitting ||
                   !closeDayAuthorizationUser.trim() ||
                   !closeDayAuthorizationCode.trim()
                 }

@@ -51,7 +51,7 @@ export const posLoginRequestSchema = z
 
 export const posMasterAuthorizationRequestSchema = z
   .object({
-    alias: aliasSchema,
+    alias: aliasSchema.optional(),
     pin: z.string().regex(/^\d{4,12}$/, "PIN inválido"),
     purpose: z.string().trim().min(1).max(80),
     entityType: z.string().trim().min(1).max(80).optional(),
@@ -121,6 +121,56 @@ export const posBranchAssignmentsSchema = z
   .object({
     branchIds: z.array(idSchema).max(500),
     authorizationToken: z.string().uuid(),
+  })
+  .strict();
+
+export const posRoleWriteSchema = z
+  .object({
+    name: z.string().trim().min(1).max(120),
+    description: z.string().trim().max(500).nullable().optional(),
+    active: z.boolean().default(true),
+  })
+  .strict();
+
+export const posEmployeeWriteSchema = z
+  .object({
+    displayName: z.string().trim().min(1).max(240),
+    alias: aliasSchema,
+    pin: z
+      .string()
+      .regex(/^\d{4}$/, "El código debe tener 4 dígitos")
+      .optional(),
+    active: z.boolean().default(true),
+    positionId: idSchema.nullable().optional(),
+  })
+  .strict();
+
+export const posMasterAccessUpdateSchema = z
+  .object({
+    employeeIds: z.array(idSchema).min(1).max(500),
+    code: z
+      .string()
+      .regex(/^\d{4}$/, "El código debe tener 4 dígitos")
+      .nullable(),
+  })
+  .strict();
+
+export const posSelfCredentialUpdateSchema = z
+  .object({
+    currentPin: z.string().regex(/^\d{4,12}$/, "PIN actual inválido"),
+    alias: aliasSchema,
+    newPin: z
+      .string()
+      .regex(/^\d{4}$/, "El código debe tener 4 dígitos")
+      .optional(),
+  })
+  .strict();
+
+export const posAttendanceIdentifySchema = z
+  .object({
+    // El formulario RV3 crea códigos de 4 dígitos, pero se aceptan las
+    // credenciales históricas de hasta 12 durante su rotación.
+    pin: z.string().regex(/^\d{4,12}$/, "Código inválido"),
   })
   .strict();
 

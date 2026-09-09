@@ -4,6 +4,11 @@ import {
   posCustomerSearchQuerySchema,
   posCatalogItemWriteSchema,
   posLoginRequestSchema,
+  posMasterAuthorizationRequestSchema,
+  posEmployeeWriteSchema,
+  posMasterAccessUpdateSchema,
+  posSelfCredentialUpdateSchema,
+  posAttendanceIdentifySchema,
   posMutationHeadersSchema,
   posInventoryAdjustmentBatchWriteSchema,
   posWarehouseRequestWriteSchema,
@@ -29,6 +34,52 @@ describe("contratos públicos del POS", () => {
     expect(
       posLoginRequestSchema.safeParse({ ...parsed, ignored: true }).success,
     ).toBe(false);
+  });
+
+  it("autoriza los diálogos RV3 por código sin exigir un alias adicional", () => {
+    expect(
+      posMasterAuthorizationRequestSchema.safeParse({
+        pin: "4826",
+        purpose: "EMPLOYEES_ACCESS",
+      }).success,
+    ).toBe(true);
+    expect(
+      posMasterAuthorizationRequestSchema.safeParse({
+        pin: "48",
+        purpose: "EMPLOYEES_ACCESS",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("valida altas de personal, delegaciones y cambio de acceso propio", () => {
+    expect(
+      posEmployeeWriteSchema.safeParse({
+        displayName: "Ana Torres",
+        alias: "ana.torres",
+        pin: "4826",
+        active: true,
+        positionId: null,
+      }).success,
+    ).toBe(true);
+    expect(
+      posMasterAccessUpdateSchema.safeParse({
+        employeeIds: ["employee-1"],
+        code: "7412",
+      }).success,
+    ).toBe(true);
+    expect(
+      posSelfCredentialUpdateSchema.safeParse({
+        currentPin: "4826",
+        alias: "ana.torres",
+        newPin: "9631",
+      }).success,
+    ).toBe(true);
+    expect(
+      posAttendanceIdentifySchema.safeParse({ pin: "963258" }).success,
+    ).toBe(true);
+    expect(posAttendanceIdentifySchema.safeParse({ pin: "123" }).success).toBe(
+      false,
+    );
   });
 
   it("sólo permite activar o revocar una terminal provisionada", () => {
@@ -79,8 +130,14 @@ describe("contratos públicos del POS", () => {
       unitCost: "40.00",
       taxRate: "16.00",
     };
-    expect(posCatalogItemWriteSchema.safeParse({ ...base, minimumPrice: "101.00" }).success).toBe(false);
-    expect(posCatalogItemWriteSchema.safeParse({ ...base, taxRate: "101.00" }).success).toBe(false);
+    expect(
+      posCatalogItemWriteSchema.safeParse({ ...base, minimumPrice: "101.00" })
+        .success,
+    ).toBe(false);
+    expect(
+      posCatalogItemWriteSchema.safeParse({ ...base, taxRate: "101.00" })
+        .success,
+    ).toBe(false);
     expect(posCatalogItemWriteSchema.safeParse(base).success).toBe(true);
   });
 
@@ -159,22 +216,87 @@ describe("contratos públicos del POS", () => {
 
   it("valida rutas de inventario y cantidades positivas", () => {
     const base = { itemId: "item-1", quantity: "1.00", reason: "Ajuste" };
-    expect(posInventoryAdjustmentBatchWriteSchema.safeParse({ lines: [{ ...base, type: "ADD", toLocationId: "loc-1" }] }).success).toBe(true);
-    expect(posInventoryAdjustmentBatchWriteSchema.safeParse({ lines: [{ ...base, type: "TRANSFER", fromLocationId: "loc-1", toLocationId: "loc-1" }] }).success).toBe(false);
-    expect(posInventoryAdjustmentBatchWriteSchema.safeParse({ lines: [{ ...base, type: "REMOVE", fromLocationId: "loc-1", quantity: "0.00" }] }).success).toBe(false);
+    expect(
+      posInventoryAdjustmentBatchWriteSchema.safeParse({
+        lines: [{ ...base, type: "ADD", toLocationId: "loc-1" }],
+      }).success,
+    ).toBe(true);
+    expect(
+      posInventoryAdjustmentBatchWriteSchema.safeParse({
+        lines: [
+          {
+            ...base,
+            type: "TRANSFER",
+            fromLocationId: "loc-1",
+            toLocationId: "loc-1",
+          },
+        ],
+      }).success,
+    ).toBe(false);
+    expect(
+      posInventoryAdjustmentBatchWriteSchema.safeParse({
+        lines: [
+          {
+            ...base,
+            type: "REMOVE",
+            fromLocationId: "loc-1",
+            quantity: "0.00",
+          },
+        ],
+      }).success,
+    ).toBe(false);
   });
 
   it("separa solicitudes de sucursal y resurtidos de proveedor", () => {
-    expect(posWarehouseRequestWriteSchema.safeParse({ source: "BRANCH", requestType: "PRODUCT", branchId: "branch-1", lines: [{ itemId: "item-1", quantity: "2.00" }] }).success).toBe(true);
-    expect(posWarehouseRequestWriteSchema.safeParse({ source: "SUPPLIER", requestType: "SUPPLY", branchId: "branch-1", lines: [{ itemId: "item-1", quantity: "2.00" }] }).success).toBe(false);
-    expect(posWarehouseRequestWriteSchema.safeParse({ source: "BRANCH", requestType: "TESTER", branchId: "branch-1", lines: [{ itemId: "item-1", quantity: "1.00" }, { itemId: "item-1", quantity: "1.00" }] }).success).toBe(false);
+    expect(
+      posWarehouseRequestWriteSchema.safeParse({
+        source: "BRANCH",
+        requestType: "PRODUCT",
+        branchId: "branch-1",
+        lines: [{ itemId: "item-1", quantity: "2.00" }],
+      }).success,
+    ).toBe(true);
+    expect(
+      posWarehouseRequestWriteSchema.safeParse({
+        source: "SUPPLIER",
+        requestType: "SUPPLY",
+        branchId: "branch-1",
+        lines: [{ itemId: "item-1", quantity: "2.00" }],
+      }).success,
+    ).toBe(false);
+    expect(
+      posWarehouseRequestWriteSchema.safeParse({
+        source: "BRANCH",
+        requestType: "TESTER",
+        branchId: "branch-1",
+        lines: [
+          { itemId: "item-1", quantity: "1.00" },
+          { itemId: "item-1", quantity: "1.00" },
+        ],
+      }).success,
+    ).toBe(false);
   });
 
   it("requiere conteo o autorización master para abrir/cerrar una jornada", () => {
-    expect(posBusinessDayCountInputSchema.safeParse({ skipped: true }).success).toBe(false);
-    expect(posBusinessDayCountInputSchema.safeParse({ locationId: "loc-1", lines: [{ itemId: "item-1", countedQuantity: "1.00" }] }).success).toBe(true);
-    expect(posBusinessDayCountInputSchema.safeParse({ skipped: true, authorizationToken: "6a96e671-c899-43ce-a104-06b1c204927e" }).success).toBe(true);
-    expect(posBusinessDayCloseSchema.safeParse({ authorizationToken: "not-a-token" }).success).toBe(false);
+    expect(
+      posBusinessDayCountInputSchema.safeParse({ skipped: true }).success,
+    ).toBe(false);
+    expect(
+      posBusinessDayCountInputSchema.safeParse({
+        locationId: "loc-1",
+        lines: [{ itemId: "item-1", countedQuantity: "1.00" }],
+      }).success,
+    ).toBe(true);
+    expect(
+      posBusinessDayCountInputSchema.safeParse({
+        skipped: true,
+        authorizationToken: "6a96e671-c899-43ce-a104-06b1c204927e",
+      }).success,
+    ).toBe(true);
+    expect(
+      posBusinessDayCloseSchema.safeParse({ authorizationToken: "not-a-token" })
+        .success,
+    ).toBe(false);
   });
 
   it("exige compensación autorizada para editar un gasto histórico", () => {
@@ -186,8 +308,13 @@ describe("contratos públicos del POS", () => {
       reason: "Corrección de importe",
     };
     expect(posCashExpenseCorrectionSchema.safeParse(base).success).toBe(true);
-    expect(posCashExpenseCorrectionSchema.safeParse({ ...base, reason: "" }).success).toBe(false);
-    expect(posCashExpenseCorrectionSchema.safeParse({ ...base, amount: "125" }).success).toBe(false);
+    expect(
+      posCashExpenseCorrectionSchema.safeParse({ ...base, reason: "" }).success,
+    ).toBe(false);
+    expect(
+      posCashExpenseCorrectionSchema.safeParse({ ...base, amount: "125" })
+        .success,
+    ).toBe(false);
   });
 
   it("acepta sólo lotes offline contiguos y con UUID idempotente", () => {
@@ -200,9 +327,37 @@ describe("contratos públicos del POS", () => {
       createdAt: "2026-09-03T18:00:00.000Z",
       payload: { branchId: "branch-1" },
     };
-    expect(posOfflinePushSchema.safeParse({ operations: [operation, { ...operation, id: "ce58c055-a1ac-4f05-b788-b92c47664f61", idempotencyKey: "1abc8505-73f1-40d9-b6b5-8f75d72daee1", sequence: 8 }] }).success).toBe(true);
-    expect(posOfflinePushSchema.safeParse({ operations: [operation, { ...operation, id: "ce58c055-a1ac-4f05-b788-b92c47664f61", idempotencyKey: "1abc8505-73f1-40d9-b6b5-8f75d72daee1", sequence: 9 }] }).success).toBe(false);
-    expect(posOfflinePushSchema.safeParse({ operations: [{ ...operation, idempotencyKey: "invalid" }] }).success).toBe(false);
+    expect(
+      posOfflinePushSchema.safeParse({
+        operations: [
+          operation,
+          {
+            ...operation,
+            id: "ce58c055-a1ac-4f05-b788-b92c47664f61",
+            idempotencyKey: "1abc8505-73f1-40d9-b6b5-8f75d72daee1",
+            sequence: 8,
+          },
+        ],
+      }).success,
+    ).toBe(true);
+    expect(
+      posOfflinePushSchema.safeParse({
+        operations: [
+          operation,
+          {
+            ...operation,
+            id: "ce58c055-a1ac-4f05-b788-b92c47664f61",
+            idempotencyKey: "1abc8505-73f1-40d9-b6b5-8f75d72daee1",
+            sequence: 9,
+          },
+        ],
+      }).success,
+    ).toBe(false);
+    expect(
+      posOfflinePushSchema.safeParse({
+        operations: [{ ...operation, idempotencyKey: "invalid" }],
+      }).success,
+    ).toBe(false);
   });
 
   it("ordena las dependencias offline y rechaza ciclos locales", () => {
@@ -226,8 +381,19 @@ describe("contratos públicos del POS", () => {
       dependsOn: [firstId],
       idempotencyKey: "1abc8505-73f1-40d9-b6b5-8f75d72daee1",
     };
-    expect(posOfflinePushSchema.safeParse({ operations: [base, attendance] }).success).toBe(true);
-    expect(posOfflinePushSchema.safeParse({ operations: [{ ...base, dependsOn: [secondId] }, attendance] }).success).toBe(false);
-    expect(posOfflinePushSchema.safeParse({ operations: [{ ...base, dependsOn: [firstId] }] }).success).toBe(false);
+    expect(
+      posOfflinePushSchema.safeParse({ operations: [base, attendance] })
+        .success,
+    ).toBe(true);
+    expect(
+      posOfflinePushSchema.safeParse({
+        operations: [{ ...base, dependsOn: [secondId] }, attendance],
+      }).success,
+    ).toBe(false);
+    expect(
+      posOfflinePushSchema.safeParse({
+        operations: [{ ...base, dependsOn: [firstId] }],
+      }).success,
+    ).toBe(false);
   });
 });

@@ -13,10 +13,14 @@ import {
   posAuthorizationVerifyRequestSchema,
   posBranchAssignmentsSchema,
   posCredentialUpsertSchema,
+  posEmployeeWriteSchema,
   posLoginRequestSchema,
   posMasterAuthorizationRequestSchema,
+  posMasterAccessUpdateSchema,
   posPersonalAuthorizationRequestSchema,
   posRolePermissionsSchema,
+  posRoleWriteSchema,
+  posSelfCredentialUpdateSchema,
   posTerminalBranchChangeSchema,
   posTerminalRegistrationSchema,
   posTerminalStatusUpdateSchema,
@@ -118,6 +122,22 @@ function requireEmployeeDirectoryAccess(
   res
     .status(403)
     .json({ success: false, message: "Permiso POS insuficiente", data: null });
+}
+
+function requireMasterPosSession(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): void {
+  if (req.posUser?.isMaster) {
+    next();
+    return;
+  }
+  res.status(403).json({
+    success: false,
+    message: "Se requiere una sesión master vigente",
+    data: null,
+  });
 }
 
 function requestAuditData(req: Request) {
@@ -270,6 +290,37 @@ async function consumePersonalAuthorization(
   });
 }
 
+async function revokeCredentialSessionsAndAuthorizations(
+  tx: Prisma.TransactionClient,
+  credentialIds: string[],
+  reason: string,
+  revokedAt = new Date(),
+) {
+  if (credentialIds.length === 0) return;
+  const sessions = await tx.posSession.findMany({
+    where: { credentialId: { in: credentialIds }, revokedAt: null },
+    select: { id: true },
+  });
+  const sessionIds = sessions.map((session) => session.id);
+  await tx.posSession.updateMany({
+    where: { id: { in: sessionIds }, revokedAt: null },
+    data: { revokedAt, revokeReason: reason },
+  });
+  if (sessionIds.length === 0) return;
+  await tx.posPersonalAuthorization.updateMany({
+    where: {
+      sessionId: { in: sessionIds },
+      usedAt: null,
+      revokedAt: null,
+    },
+    data: { revokedAt },
+  });
+  await tx.masterAuthorization.updateMany({
+    where: { sessionId: { in: sessionIds }, usedAt: null },
+    data: { usedAt: revokedAt },
+  });
+}
+
 async function upsertCredential(input: {
   employeeId?: string;
   userId?: string;
@@ -284,6 +335,16 @@ async function upsertCredential(input: {
     : { userId: input.userId! };
   const existing = await db.posCredential.findFirst({ where: ownerWhere });
   if (!existing && !input.pin) throw new Error("PIN_REQUIRED");
+  if (
+    input.pin &&
+    (await db.posDelegatedMasterCode.findUnique({
+      where: {
+        codeFingerprint: fingerprintSecret(input.pin, "delegated-master"),
+      },
+      select: { id: true },
+    }))
+  )
+    throw new Error("PIN_CONFLICTS_WITH_DELEGATED_MASTER");
 
   const pinData = input.pin
     ? {
@@ -318,10 +379,24 @@ async function upsertCredential(input: {
         },
       });
 
+  const activeDelegation = input.employeeId
+    ? await db.posDelegatedMasterAssignment.findFirst({
+        where: { employeeId: input.employeeId, active: true },
+        select: { id: true },
+      })
+    : null;
+  const effectiveMaster = input.isMaster || Boolean(activeDelegation);
   await db.posMasterCredential.upsert({
     where: { credentialId: credential.id },
-    create: { credentialId: credential.id, active: input.isMaster },
-    update: { active: input.isMaster },
+    create: {
+      credentialId: credential.id,
+      active: effectiveMaster,
+      managedByDelegation: !input.isMaster && Boolean(activeDelegation),
+    },
+    update: {
+      active: effectiveMaster,
+      managedByDelegation: !input.isMaster && Boolean(activeDelegation),
+    },
   });
   return credential;
 }
@@ -346,6 +421,21 @@ function handleMissingPin(error: unknown, res: Response): boolean {
     res.status(400).json({
       success: false,
       message: "El PIN es obligatorio al crear una credencial POS",
+      data: null,
+    });
+    return true;
+  }
+  return false;
+}
+
+function handleDelegatedCodeConflict(error: unknown, res: Response): boolean {
+  if (
+    error instanceof Error &&
+    error.message === "PIN_CONFLICTS_WITH_DELEGATED_MASTER"
+  ) {
+    res.status(409).json({
+      success: false,
+      message: "El código coincide con un acceso master delegado",
       data: null,
     });
     return true;
@@ -415,6 +505,7 @@ router.put(
       });
     } catch (error) {
       if (handleMissingPin(error, res)) return;
+      if (handleDelegatedCodeConflict(error, res)) return;
       if (handleUniqueConflict(error, res)) return;
       console.error("[pos.provision.credential]", error);
       res.status(500).json({
@@ -530,6 +621,24 @@ router.patch(
           branch: { include: { posProfile: { select: { code: true } } } },
         },
       });
+      const changedAt = new Date();
+      await db.$transaction([
+        db.posSession.updateMany({
+          where: { terminalId, revokedAt: null },
+          data: {
+            revokedAt: changedAt,
+            revokeReason: "TERMINAL_STATUS_CHANGED",
+          },
+        }),
+        db.posPersonalAuthorization.updateMany({
+          where: { terminalId, usedAt: null, revokedAt: null },
+          data: { revokedAt: changedAt },
+        }),
+        db.masterAuthorization.updateMany({
+          where: { terminalId, usedAt: null },
+          data: { usedAt: changedAt },
+        }),
+      ]);
       await audit(req, {
         action: "POS_TERMINAL_STATUS_CHANGED",
         outcome: "SUCCESS",
@@ -955,8 +1064,10 @@ router.post("/authorizations", posAuthMiddleware, async (req, res) => {
     return;
   }
   try {
-    const credential = await db.posCredential.findUnique({
-      where: { aliasNormalized: parsed.data.alias },
+    let credential = await db.posCredential.findUnique({
+      where: parsed.data.alias
+        ? { aliasNormalized: parsed.data.alias }
+        : { pinFingerprint: fingerprintSecret(parsed.data.pin, "pin") },
       include: {
         employee: {
           select: {
@@ -984,16 +1095,87 @@ router.post("/authorizations", posAuthMiddleware, async (req, res) => {
         masterProfile: { select: { active: true } },
       },
     });
-    const identity = credential ? credentialIdentity(credential) : null;
-    const locked = Boolean(
+    let identity = credential ? credentialIdentity(credential) : null;
+    let locked = Boolean(
       credential?.lockedUntil && credential.lockedUntil > new Date(),
     );
-    const pinMatches = !locked
+    let pinMatches = !locked
       ? await verifyPosSecret(
           parsed.data.pin,
           credential?.pinHash ?? POS_DUMMY_BCRYPT_HASH,
         )
       : false;
+
+    // Si el formulario no muestra alias, el código delegado sólo puede resolver
+    // al empleado de la sesión. Cuando el visual sí incluye alias (Close Day),
+    // éste selecciona la asignación nominal y conserva la atribución individual.
+    const delegatedEmployeeId = parsed.data.alias
+      ? identity?.employeeId
+      : req.posUser!.employeeId;
+    if (
+      (!credential?.masterProfile?.active || !pinMatches) &&
+      delegatedEmployeeId
+    ) {
+      const delegated = await db.posDelegatedMasterCode.findUnique({
+        where: {
+          codeFingerprint: fingerprintSecret(
+            parsed.data.pin,
+            "delegated-master",
+          ),
+        },
+        include: {
+          assignments: {
+            where: {
+              employeeId: delegatedEmployeeId,
+              active: true,
+              revokedAt: null,
+            },
+            take: 1,
+          },
+        },
+      });
+      const delegatedMatches =
+        delegated?.active && delegated.assignments.length === 1
+          ? await verifyPosSecret(parsed.data.pin, delegated.codeHash)
+          : false;
+      if (delegatedMatches) {
+        if (!parsed.data.alias)
+          credential = await db.posCredential.findUnique({
+            where: { id: req.posUser!.credentialId },
+            include: {
+              employee: {
+                select: {
+                  id: true,
+                  nombreCompleto: true,
+                  activo: true,
+                  positionId: true,
+                },
+              },
+              user: {
+                select: {
+                  id: true,
+                  nombre: true,
+                  activo: true,
+                  empleado: {
+                    select: {
+                      id: true,
+                      nombreCompleto: true,
+                      activo: true,
+                      positionId: true,
+                    },
+                  },
+                },
+              },
+              masterProfile: { select: { active: true } },
+            },
+          });
+        identity = credential ? credentialIdentity(credential) : null;
+        locked = Boolean(
+          credential?.lockedUntil && credential.lockedUntil > new Date(),
+        );
+        pinMatches = true;
+      }
+    }
     if (
       !credential?.active ||
       !identity?.identityActive ||
@@ -1364,6 +1546,24 @@ router.post(
           branch: { include: { posProfile: { select: { code: true } } } },
         },
       });
+      const changedAt = new Date();
+      await db.$transaction([
+        db.posSession.updateMany({
+          where: { terminalId, revokedAt: null },
+          data: {
+            revokedAt: changedAt,
+            revokeReason: "TERMINAL_BRANCH_CHANGED",
+          },
+        }),
+        db.posPersonalAuthorization.updateMany({
+          where: { terminalId, usedAt: null, revokedAt: null },
+          data: { revokedAt: changedAt },
+        }),
+        db.masterAuthorization.updateMany({
+          where: { terminalId, usedAt: null },
+          data: { usedAt: changedAt },
+        }),
+      ]);
       await audit(req, {
         action: "POS_TERMINAL_BRANCH_CHANGED",
         outcome: "SUCCESS",
@@ -1427,6 +1627,7 @@ router.get(
         select: {
           id: true,
           nombre: true,
+          posDescription: true,
           activo: true,
           posPermissions: {
             where: {
@@ -1477,6 +1678,7 @@ router.get(
         roles: roles.map((role) => ({
           id: role.id,
           name: role.nombre,
+          description: role.posDescription,
           active: role.activo,
           permissions: role.posPermissions
             .map((grant) => grant.permissionNode.key)
@@ -1498,6 +1700,722 @@ router.get(
     });
   },
 );
+
+const employeeAccessInclude = {
+  posCredentials: {
+    select: {
+      id: true,
+      employeeId: true,
+      userId: true,
+      aliasNormalized: true,
+      active: true,
+      offlineEnabled: true,
+      lockedUntil: true,
+      masterProfile: { select: { active: true } },
+      posBranchAssignments: { select: { branchId: true } },
+    },
+  },
+} satisfies Prisma.EmpleadoInclude;
+
+function publicEmployeeAccess(
+  employee: Prisma.EmpleadoGetPayload<{
+    include: typeof employeeAccessInclude;
+  }>,
+) {
+  const credential = employee.posCredentials[0] ?? null;
+  return {
+    id: employee.id,
+    displayName: employee.nombreCompleto,
+    active: employee.activo,
+    positionId: employee.positionId,
+    branchId: employee.sucursalId,
+    assignedBranchIds:
+      credential?.posBranchAssignments.map(
+        (assignment) => assignment.branchId,
+      ) ?? [],
+    credential: credential
+      ? {
+          id: credential.id,
+          employeeId: credential.employeeId,
+          userId: credential.userId,
+          alias: credential.aliasNormalized,
+          displayName: employee.nombreCompleto,
+          active: credential.active,
+          offlineEnabled: credential.offlineEnabled,
+          isMaster: Boolean(credential.masterProfile?.active),
+          lockedUntil: credential.lockedUntil?.toISOString() ?? null,
+        }
+      : null,
+  };
+}
+
+function splitEmployeeName(displayName: string) {
+  const parts = displayName.trim().split(/\s+/);
+  return {
+    nombres: parts.length > 1 ? parts.slice(0, -1).join(" ") : parts[0]!,
+    apellidoPaterno: parts.length > 1 ? parts.at(-1)! : ".",
+    apellidoMaterno: "",
+    nombreCompleto: displayName.trim(),
+  };
+}
+
+router.post(
+  "/access/positions",
+  posAuthMiddleware,
+  requirePosPermission("EMPLOYEES_MANAGE"),
+  requireMasterPosSession,
+  async (req, res) => {
+    const parsed = posRoleWriteSchema.safeParse(req.body);
+    if (!parsed.success)
+      return res.status(400).json({
+        success: false,
+        message: "Puesto inválido",
+        data: parsed.error.flatten().fieldErrors,
+      });
+    try {
+      const role = await db.position.create({
+        data: {
+          nombre: parsed.data.name,
+          posDescription: parsed.data.description ?? null,
+          activo: parsed.data.active,
+        },
+      });
+      await audit(req, {
+        action: "POS_POSITION_CREATED",
+        outcome: "SUCCESS",
+        actorCredentialId: req.posUser!.credentialId,
+        terminalId: req.posUser!.terminalId,
+        branchId: req.posUser!.branchId,
+        targetType: "Position",
+        targetId: role.id,
+      });
+      return res.status(201).json({
+        success: true,
+        message: "Puesto creado",
+        data: {
+          id: role.id,
+          name: role.nombre,
+          description: role.posDescription,
+          active: role.activo,
+          permissions: [],
+          assignedBranchIds: [],
+        },
+      });
+    } catch (error) {
+      if (handleUniqueConflict(error, res)) return;
+      throw error;
+    }
+  },
+);
+
+router.put(
+  "/access/positions/:id",
+  posAuthMiddleware,
+  requirePosPermission("EMPLOYEES_MANAGE"),
+  requireMasterPosSession,
+  async (req, res) => {
+    const parsed = posRoleWriteSchema.safeParse(req.body);
+    if (!parsed.success)
+      return res.status(400).json({
+        success: false,
+        message: "Puesto inválido",
+        data: parsed.error.flatten().fieldErrors,
+      });
+    const positionId = req.params["id"]!;
+    if (!parsed.data.active) {
+      const activeEmployees = await db.empleado.count({
+        where: { positionId, activo: true },
+      });
+      if (activeEmployees > 0)
+        return res.status(409).json({
+          success: false,
+          message:
+            "Reasigna a los empleados activos antes de inactivar el puesto",
+          data: null,
+        });
+    }
+    try {
+      const role = await db.position.update({
+        where: { id: positionId },
+        data: {
+          nombre: parsed.data.name,
+          posDescription: parsed.data.description ?? null,
+          activo: parsed.data.active,
+        },
+        include: {
+          posPermissions: {
+            where: { allowed: true, permissionNode: { active: true } },
+            include: { permissionNode: { select: { key: true } } },
+          },
+          posBranchAssignments: { select: { branchId: true } },
+        },
+      });
+      await audit(req, {
+        action: "POS_POSITION_UPDATED",
+        outcome: "SUCCESS",
+        actorCredentialId: req.posUser!.credentialId,
+        terminalId: req.posUser!.terminalId,
+        branchId: req.posUser!.branchId,
+        targetType: "Position",
+        targetId: role.id,
+      });
+      return res.json({
+        success: true,
+        message: "Puesto actualizado",
+        data: {
+          id: role.id,
+          name: role.nombre,
+          description: role.posDescription,
+          active: role.activo,
+          permissions: role.posPermissions.map(
+            (grant) => grant.permissionNode.key,
+          ),
+          assignedBranchIds: role.posBranchAssignments.map(
+            (item) => item.branchId,
+          ),
+        },
+      });
+    } catch (error) {
+      if (handleUniqueConflict(error, res)) return;
+      return res.status(404).json({
+        success: false,
+        message: "Puesto no encontrado",
+        data: null,
+      });
+    }
+  },
+);
+
+router.post(
+  "/access/employees",
+  posAuthMiddleware,
+  requirePosPermission("EMPLOYEES_MANAGE"),
+  requireMasterPosSession,
+  async (req, res) => {
+    const parsed = posEmployeeWriteSchema.safeParse(req.body);
+    if (!parsed.success)
+      return res.status(400).json({
+        success: false,
+        message: "Empleado inválido",
+        data: parsed.error.flatten().fieldErrors,
+      });
+    if (!parsed.data.pin)
+      return res.status(400).json({
+        success: false,
+        message: "El código personal es obligatorio al registrar",
+        data: null,
+      });
+    if (
+      await db.posDelegatedMasterCode.findUnique({
+        where: {
+          codeFingerprint: fingerprintSecret(
+            parsed.data.pin,
+            "delegated-master",
+          ),
+        },
+        select: { id: true },
+      })
+    )
+      return res.status(409).json({
+        success: false,
+        message: "El código coincide con un acceso master delegado",
+        data: null,
+      });
+    const position = parsed.data.positionId
+      ? await db.position.findFirst({
+          where: { id: parsed.data.positionId, activo: true },
+          select: { id: true, nombre: true },
+        })
+      : null;
+    if (parsed.data.positionId && !position)
+      return res.status(400).json({
+        success: false,
+        message: "El puesto seleccionado no está activo",
+        data: null,
+      });
+    try {
+      const pinHash = await hashPosSecret(parsed.data.pin);
+      const employee = await db.$transaction(async (tx) => {
+        const created = await tx.empleado.create({
+          data: {
+            ...splitEmployeeName(parsed.data.displayName),
+            banco: "",
+            numeroCuenta: "",
+            puesto: position?.nombre ?? "",
+            positionId: position?.id ?? null,
+            sucursalId: req.posUser!.branchId,
+            metaIndividual: 0,
+            activo: parsed.data.active,
+          },
+        });
+        await tx.posCredential.create({
+          data: {
+            employeeId: created.id,
+            alias: parsed.data.alias,
+            aliasNormalized: normalizePosAlias(parsed.data.alias),
+            pinHash,
+            pinFingerprint: fingerprintSecret(parsed.data.pin!, "pin"),
+            active: parsed.data.active,
+            offlineEnabled: false,
+          },
+        });
+        return created;
+      });
+      const loaded = await db.empleado.findUniqueOrThrow({
+        where: { id: employee.id },
+        include: employeeAccessInclude,
+      });
+      await audit(req, {
+        action: "POS_EMPLOYEE_CREATED",
+        outcome: "SUCCESS",
+        actorCredentialId: req.posUser!.credentialId,
+        terminalId: req.posUser!.terminalId,
+        branchId: req.posUser!.branchId,
+        targetType: "Empleado",
+        targetId: employee.id,
+      });
+      return res.status(201).json({
+        success: true,
+        message: "Empleado creado",
+        data: publicEmployeeAccess(loaded),
+      });
+    } catch (error) {
+      if (handleUniqueConflict(error, res)) return;
+      throw error;
+    }
+  },
+);
+
+router.put(
+  "/access/employees/:id",
+  posAuthMiddleware,
+  requirePosPermission("EMPLOYEES_MANAGE"),
+  requireMasterPosSession,
+  async (req, res) => {
+    const parsed = posEmployeeWriteSchema.safeParse(req.body);
+    if (!parsed.success)
+      return res.status(400).json({
+        success: false,
+        message: "Empleado inválido",
+        data: parsed.error.flatten().fieldErrors,
+      });
+    const employeeId = req.params["id"]!;
+    if (!parsed.data.active && employeeId === req.posUser!.employeeId)
+      return res.status(409).json({
+        success: false,
+        message: "No puedes inactivar al empleado de la sesión vigente",
+        data: null,
+      });
+    const position = parsed.data.positionId
+      ? await db.position.findFirst({
+          where: { id: parsed.data.positionId, activo: true },
+          select: { id: true, nombre: true },
+        })
+      : null;
+    if (parsed.data.positionId && !position)
+      return res.status(400).json({
+        success: false,
+        message: "El puesto seleccionado no está activo",
+        data: null,
+      });
+    try {
+      if (
+        parsed.data.pin &&
+        (await db.posDelegatedMasterCode.findUnique({
+          where: {
+            codeFingerprint: fingerprintSecret(
+              parsed.data.pin,
+              "delegated-master",
+            ),
+          },
+          select: { id: true },
+        }))
+      )
+        return res.status(409).json({
+          success: false,
+          message: "El código coincide con un acceso master delegado",
+          data: null,
+        });
+      const pinData = parsed.data.pin
+        ? {
+            pinHash: await hashPosSecret(parsed.data.pin),
+            pinFingerprint: fingerprintSecret(parsed.data.pin, "pin"),
+          }
+        : {};
+      await db.$transaction(async (tx) => {
+        const previous = await tx.empleado.findUniqueOrThrow({
+          where: { id: employeeId },
+          include: { posCredentials: { select: { id: true } } },
+        });
+        const credential = previous.posCredentials[0];
+        if (!credential) throw new Error("CREDENTIAL_NOT_FOUND");
+        const roleChanged = previous.positionId !== (position?.id ?? null);
+        const statusChanged = previous.activo !== parsed.data.active;
+        let transferredCustomers = 0;
+        if (previous.activo && !parsed.data.active) {
+          const assignments = await tx.customerPortfolioAssignment.findMany({
+            where: { employeeId, effectiveTo: null },
+          });
+          const company = assignments.length
+            ? await tx.posCommercialCompany.findFirstOrThrow({
+                where: { active: true },
+              })
+            : null;
+          const changedAt = new Date();
+          for (const assignment of assignments) {
+            await tx.customerPortfolioAssignment.update({
+              where: { id: assignment.id },
+              data: {
+                effectiveTo: changedAt,
+                endedReason: "SELLER_INACTIVATED",
+                ownerNameSnapshot: previous.nombreCompleto,
+              },
+            });
+            await tx.customerPortfolioAssignment.create({
+              data: {
+                customerId: assignment.customerId,
+                branchId: assignment.branchId,
+                companyId: company!.id,
+                ownerNameSnapshot: company!.name,
+                ownerCodeSnapshot: company!.salesNumber,
+                createdByCredentialId: req.posUser!.credentialId,
+              },
+            });
+            await tx.posPortfolioTransferEvent.create({
+              data: {
+                customerId: assignment.customerId,
+                branchId: assignment.branchId,
+                sellerId: previous.id,
+                sellerNameSnapshot: previous.nombreCompleto,
+                companyId: company!.id,
+                companyNameSnapshot: company!.name,
+                companyNumberSnapshot: company!.salesNumber,
+                reason: "SELLER_INACTIVATED",
+                actorCredentialId: req.posUser!.credentialId,
+                transferredAt: changedAt,
+              },
+            });
+          }
+          transferredCustomers = assignments.length;
+        }
+        await tx.empleado.update({
+          where: { id: employeeId },
+          data: {
+            ...splitEmployeeName(parsed.data.displayName),
+            puesto: position?.nombre ?? "",
+            positionId: position?.id ?? null,
+            activo: parsed.data.active,
+          },
+        });
+        await tx.posCredential.update({
+          where: { id: credential.id },
+          data: {
+            alias: parsed.data.alias,
+            aliasNormalized: normalizePosAlias(parsed.data.alias),
+            active: parsed.data.active,
+            failedAttempts: 0,
+            lockedUntil: null,
+            version: { increment: 1 },
+            ...pinData,
+          },
+        });
+        const accessChangedAt = new Date();
+        await revokeCredentialSessionsAndAuthorizations(
+          tx,
+          [credential.id],
+          "EMPLOYEE_ACCESS_CHANGED",
+          accessChangedAt,
+        );
+        await tx.auditLog.create({
+          data: {
+            action: "POS_EMPLOYEE_UPDATED",
+            outcome: "SUCCESS",
+            actorCredentialId: req.posUser!.credentialId,
+            terminalId: req.posUser!.terminalId,
+            branchId: req.posUser!.branchId,
+            targetType: "Empleado",
+            targetId: employeeId,
+            metadata: {
+              roleChanged,
+              statusChanged,
+              pinChanged: Boolean(parsed.data.pin),
+              transferredCustomers,
+            },
+            ...requestAuditData(req),
+          },
+        });
+      });
+      const loaded = await db.empleado.findUniqueOrThrow({
+        where: { id: employeeId },
+        include: employeeAccessInclude,
+      });
+      return res.json({
+        success: true,
+        message: "Empleado actualizado",
+        data: publicEmployeeAccess(loaded),
+      });
+    } catch (error) {
+      if (handleUniqueConflict(error, res)) return;
+      const missingCredential =
+        error instanceof Error && error.message === "CREDENTIAL_NOT_FOUND";
+      return res.status(404).json({
+        success: false,
+        message: missingCredential
+          ? "Credencial POS no encontrada"
+          : "Empleado no encontrado",
+        data: null,
+      });
+    }
+  },
+);
+
+router.put(
+  "/access/master-delegations",
+  posAuthMiddleware,
+  requirePosPermission("EMPLOYEES_MANAGE"),
+  requireMasterPosSession,
+  async (req, res) => {
+    const parsed = posMasterAccessUpdateSchema.safeParse(req.body);
+    if (!parsed.success)
+      return res.status(400).json({
+        success: false,
+        message: "Asignación master inválida",
+        data: parsed.error.flatten().fieldErrors,
+      });
+    const employeeIds = [...new Set(parsed.data.employeeIds)];
+    const employees = await db.empleado.findMany({
+      where: { id: { in: employeeIds }, activo: true },
+      include: {
+        posCredentials: {
+          select: {
+            id: true,
+            pinFingerprint: true,
+            masterProfile: {
+              select: { active: true, managedByDelegation: true },
+            },
+          },
+        },
+      },
+    });
+    if (
+      employees.length !== employeeIds.length ||
+      employees.some((employee) => employee.posCredentials.length !== 1)
+    )
+      return res.status(400).json({
+        success: false,
+        message:
+          "La selección contiene empleados inactivos o sin credencial POS",
+        data: null,
+      });
+    if (parsed.data.code) {
+      const fingerprint = fingerprintSecret(
+        parsed.data.code,
+        "delegated-master",
+      );
+      const personalFingerprint = fingerprintSecret(parsed.data.code, "pin");
+      const collides = await db.posCredential.findUnique({
+        where: { pinFingerprint: personalFingerprint },
+        select: { id: true },
+      });
+      if (collides)
+        return res.status(409).json({
+          success: false,
+          message: "El código coincide con una clave personal",
+          data: null,
+        });
+      const codeHash = await hashPosSecret(parsed.data.code);
+      await db.$transaction(async (tx) => {
+        const code = await tx.posDelegatedMasterCode.upsert({
+          where: { codeFingerprint: fingerprint },
+          create: { codeFingerprint: fingerprint, codeHash },
+          update: { codeHash, active: true, version: { increment: 1 } },
+        });
+        const now = new Date();
+        for (const employee of employees) {
+          await tx.posDelegatedMasterAssignment.updateMany({
+            where: { employeeId: employee.id, active: true },
+            data: {
+              active: false,
+              revokedAt: now,
+              revokedByCredentialId: req.posUser!.credentialId,
+            },
+          });
+          await tx.posDelegatedMasterAssignment.create({
+            data: {
+              codeId: code.id,
+              employeeId: employee.id,
+              grantedByCredentialId: req.posUser!.credentialId,
+            },
+          });
+          const credentialId = employee.posCredentials[0]!.id;
+          const masterProfile = employee.posCredentials[0]!.masterProfile;
+          if (!masterProfile?.active) {
+            await tx.posMasterCredential.upsert({
+              where: { credentialId },
+              create: {
+                credentialId,
+                active: true,
+                managedByDelegation: true,
+              },
+              update: { active: true, managedByDelegation: true },
+            });
+          }
+          await tx.posCredential.update({
+            where: { id: credentialId },
+            data: { version: { increment: 1 } },
+          });
+          await revokeCredentialSessionsAndAuthorizations(
+            tx,
+            [credentialId],
+            "MASTER_ACCESS_CHANGED",
+            now,
+          );
+        }
+      });
+    } else {
+      const now = new Date();
+      await db.$transaction(async (tx) => {
+        for (const employee of employees) {
+          await tx.posDelegatedMasterAssignment.updateMany({
+            where: { employeeId: employee.id, active: true },
+            data: {
+              active: false,
+              revokedAt: now,
+              revokedByCredentialId: req.posUser!.credentialId,
+            },
+          });
+          const credentialId = employee.posCredentials[0]!.id;
+          await tx.posMasterCredential.updateMany({
+            where: { credentialId, managedByDelegation: true },
+            data: { active: false, managedByDelegation: false },
+          });
+          await tx.posCredential.update({
+            where: { id: credentialId },
+            data: { version: { increment: 1 } },
+          });
+          await revokeCredentialSessionsAndAuthorizations(
+            tx,
+            [credentialId],
+            "MASTER_ACCESS_CHANGED",
+            now,
+          );
+        }
+      });
+    }
+    await audit(req, {
+      action: parsed.data.code
+        ? "POS_MASTER_ACCESS_ASSIGNED"
+        : "POS_MASTER_ACCESS_REVOKED",
+      outcome: "SUCCESS",
+      actorCredentialId: req.posUser!.credentialId,
+      terminalId: req.posUser!.terminalId,
+      branchId: req.posUser!.branchId,
+      targetType: "Empleado",
+      metadata: { employeeIds },
+    });
+    return res.json({
+      success: true,
+      message: parsed.data.code
+        ? "Acceso master asignado"
+        : "Acceso master revocado",
+      data: { employeeIds },
+    });
+  },
+);
+
+router.put("/access/me/credential", posAuthMiddleware, async (req, res) => {
+  const parsed = posSelfCredentialUpdateSchema.safeParse(req.body);
+  if (!parsed.success)
+    return res.status(400).json({
+      success: false,
+      message: "Datos de acceso inválidos",
+      data: parsed.error.flatten().fieldErrors,
+    });
+  const credential = await db.posCredential.findUnique({
+    where: { id: req.posUser!.credentialId },
+  });
+  const matches = await verifyPosSecret(
+    parsed.data.currentPin,
+    credential?.pinHash ?? POS_DUMMY_BCRYPT_HASH,
+  );
+  if (!credential?.active || !matches)
+    return res.status(403).json({
+      success: false,
+      message: "La contraseña personal actual es incorrecta",
+      data: null,
+    });
+  try {
+    if (
+      parsed.data.newPin &&
+      (await db.posDelegatedMasterCode.findUnique({
+        where: {
+          codeFingerprint: fingerprintSecret(
+            parsed.data.newPin,
+            "delegated-master",
+          ),
+        },
+        select: { id: true },
+      }))
+    )
+      return res.status(409).json({
+        success: false,
+        message: "El código coincide con un acceso master delegado",
+        data: null,
+      });
+    const pinData = parsed.data.newPin
+      ? {
+          pinHash: await hashPosSecret(parsed.data.newPin),
+          pinFingerprint: fingerprintSecret(parsed.data.newPin, "pin"),
+        }
+      : {};
+    const now = new Date();
+    await db.$transaction(async (tx) => {
+      await tx.posCredential.update({
+        where: { id: credential.id },
+        data: {
+          alias: parsed.data.alias,
+          aliasNormalized: normalizePosAlias(parsed.data.alias),
+          version: { increment: 1 },
+          failedAttempts: 0,
+          lockedUntil: null,
+          ...pinData,
+        },
+      });
+      await revokeCredentialSessionsAndAuthorizations(
+        tx,
+        [credential.id],
+        "SELF_CREDENTIAL_CHANGED",
+        now,
+      );
+      await tx.auditLog.create({
+        data: {
+          action: "POS_SELF_CREDENTIAL_UPDATED",
+          outcome: "SUCCESS",
+          actorCredentialId: credential.id,
+          terminalId: req.posUser!.terminalId,
+          branchId: req.posUser!.branchId,
+          targetType: "PosCredential",
+          targetId: credential.id,
+          metadata: {
+            aliasChanged:
+              credential.aliasNormalized !==
+              normalizePosAlias(parsed.data.alias),
+            pinChanged: Boolean(parsed.data.newPin),
+          },
+          ...requestAuditData(req),
+        },
+      });
+    });
+    return res.json({
+      success: true,
+      message: "Acceso actualizado; inicia sesión nuevamente",
+      data: { revokedAt: now.toISOString() },
+    });
+  } catch (error) {
+    if (handleUniqueConflict(error, res)) return;
+    throw error;
+  }
+});
 
 router.put(
   "/access/positions/:id/permissions",
@@ -1573,6 +2491,24 @@ router.put(
             allowed: true,
           })),
         });
+      }
+      const affected = await tx.posCredential.findMany({
+        where: { employee: { positionId } },
+        select: { id: true },
+      });
+      const credentialIds = affected.map((item) => item.id);
+      if (credentialIds.length > 0) {
+        const changedAt = new Date();
+        await tx.posCredential.updateMany({
+          where: { id: { in: credentialIds } },
+          data: { version: { increment: 1 } },
+        });
+        await revokeCredentialSessionsAndAuthorizations(
+          tx,
+          credentialIds,
+          "POSITION_PERMISSIONS_CHANGED",
+          changedAt,
+        );
       }
     });
     await audit(req, {
@@ -1664,6 +2600,22 @@ router.put(
         await tx.posPositionBranchAssignment.createMany({
           data: branchIds.map((branchId) => ({ positionId, branchId })),
         });
+      const affected = await tx.posCredential.findMany({
+        where: { employee: { positionId } },
+        select: { id: true },
+      });
+      const credentialIds = affected.map((item) => item.id);
+      if (credentialIds.length > 0) {
+        await tx.posCredential.updateMany({
+          where: { id: { in: credentialIds } },
+          data: { version: { increment: 1 } },
+        });
+        await revokeCredentialSessionsAndAuthorizations(
+          tx,
+          credentialIds,
+          "POSITION_BRANCH_SCOPE_CHANGED",
+        );
+      }
       await tx.auditLog.create({
         data: {
           action: "POS_POSITION_BRANCH_SCOPE_UPDATED",
@@ -1762,6 +2714,15 @@ router.put(
         await tx.posCredentialBranchAssignment.createMany({
           data: branchIds.map((branchId) => ({ credentialId, branchId })),
         });
+      await tx.posCredential.update({
+        where: { id: credentialId },
+        data: { version: { increment: 1 } },
+      });
+      await revokeCredentialSessionsAndAuthorizations(
+        tx,
+        [credentialId],
+        "CREDENTIAL_BRANCH_SCOPE_CHANGED",
+      );
       await tx.auditLog.create({
         data: {
           action: "POS_CREDENTIAL_BRANCH_SCOPE_UPDATED",
@@ -1862,6 +2823,7 @@ router.put(
       });
     } catch (error) {
       if (handleMissingPin(error, res)) return;
+      if (handleDelegatedCodeConflict(error, res)) return;
       if (handleUniqueConflict(error, res)) return;
       console.error("[pos.access.employee.credential]", error);
       res.status(500).json({

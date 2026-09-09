@@ -3,6 +3,7 @@ import axios, { type AxiosInstance, type AxiosError } from "axios";
 import type {
   ApiResponse,
   PosAccessBootstrapDto,
+  PosAttendanceIdentityDto,
   PosBranchSummaryDto,
   PosCatalogItemDto,
   PosCatalogItemWithCostsDto,
@@ -54,6 +55,12 @@ import type {
   PosBusinessDayDto,
   PosBusinessDayCountInputDto,
   PosAttendanceDto,
+  PosEmployeeAccessDto,
+  PosEmployeeWriteDto,
+  PosMasterAccessUpdateDto,
+  PosRoleAccessDto,
+  PosRoleWriteDto,
+  PosSelfCredentialUpdateDto,
   PosExpenseTypeDto,
   PosCashExpenseDto,
   PosCashExpenseWriteDto,
@@ -969,6 +976,15 @@ export interface PosApiClient {
   me(): Promise<PosSessionDto>;
   branches(): Promise<PosBranchSummaryDto[]>;
   accessBootstrap(): Promise<PosAccessBootstrapDto>;
+  createRole(input: PosRoleWriteDto): Promise<PosRoleAccessDto>;
+  updateRole(id: string, input: PosRoleWriteDto): Promise<PosRoleAccessDto>;
+  createEmployee(input: PosEmployeeWriteDto): Promise<PosEmployeeAccessDto>;
+  updateEmployee(
+    id: string,
+    input: PosEmployeeWriteDto,
+  ): Promise<PosEmployeeAccessDto>;
+  setMasterAccess(input: PosMasterAccessUpdateDto): Promise<void>;
+  updateMyCredential(input: PosSelfCredentialUpdateDto): Promise<void>;
   createAuthorization(
     input: PosMasterAuthorizationRequestDto,
   ): Promise<PosMasterAuthorizationDto>;
@@ -1015,6 +1031,7 @@ export interface PosApiClient {
     branchId: string,
     authorizationToken: string,
   ): Promise<PosTerminalDto>;
+  identifyAttendance(pin: string): Promise<PosAttendanceIdentityDto>;
   catalogItems(input?: {
     query?: string;
     kind?: "PRODUCT" | "SERVICE" | "SUPPLY" | "MACHINE" | "MEMBERSHIP";
@@ -1637,6 +1654,21 @@ export function createPosApiClient(
     branches: () => data<PosBranchSummaryDto[]>(client.get("/branches")),
     accessBootstrap: () =>
       data<PosAccessBootstrapDto>(client.get("/access/bootstrap")),
+    createRole: (input) =>
+      data<PosRoleAccessDto>(client.post("/access/positions", input)),
+    updateRole: (id, input) =>
+      data<PosRoleAccessDto>(client.put(`/access/positions/${id}`, input)),
+    createEmployee: (input) =>
+      data<PosEmployeeAccessDto>(client.post("/access/employees", input)),
+    updateEmployee: (id, input) =>
+      data<PosEmployeeAccessDto>(client.put(`/access/employees/${id}`, input)),
+    async setMasterAccess(input) {
+      await data(client.put("/access/master-delegations", input));
+    },
+    async updateMyCredential(input) {
+      await data(client.put("/access/me/credential", input));
+      setAccessToken(null);
+    },
     createAuthorization: (input) =>
       data<PosMasterAuthorizationDto>(client.post("/authorizations", input)),
     async verifyAuthorization(authorizationToken, purpose) {
@@ -1703,6 +1735,10 @@ export function createPosApiClient(
           branchId,
           authorizationToken,
         }),
+      ),
+    identifyAttendance: (pin) =>
+      data<PosAttendanceIdentityDto>(
+        client.post("/attendance/identify", { pin }),
       ),
     catalogItems: (input = {}) =>
       data(client.get("/catalog/items", { params: input })),

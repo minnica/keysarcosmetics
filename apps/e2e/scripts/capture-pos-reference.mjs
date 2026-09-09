@@ -554,6 +554,17 @@ async function enterLogin(page, { dismissConnectivityNotice = true } = {}) {
 async function enterOperationalSession(page) {
   const historicalMasterCode = await enterLogin(page);
   await page.getByRole("button", { name: /Skip count/ }).click();
+  if (
+    visualMode === "candidate" &&
+    (await page.locator("#inventory-skip-master-code").count()) > 0
+  ) {
+    await page
+      .locator("#inventory-skip-master-code")
+      .fill(historicalMasterCode);
+    await page
+      .getByRole("button", { name: "Confirmar y enviar", exact: true })
+      .click();
+  }
   await page.locator(".pos-app").waitFor();
   return historicalMasterCode;
 }
@@ -610,7 +621,7 @@ async function withWideNavigationViewport(page, callback) {
   }
 }
 
-async function navigateToScreen(page, screenId) {
+async function navigateToScreen(page, screenId, historicalMasterCode) {
   const screen = screens.get(screenId);
   assert(screen, `No existe navegación para ${screenId}.`);
   const navigation = screen.navigation;
@@ -642,6 +653,17 @@ async function navigateToScreen(page, screenId) {
       await page
         .getByRole("button", { name: /Skip count/ })
         .click({ force: true });
+      if (
+        visualMode === "candidate" &&
+        (await page.locator("#inventory-skip-master-code").count()) > 0
+      ) {
+        await page
+          .locator("#inventory-skip-master-code")
+          .fill(historicalMasterCode);
+        await page
+          .getByRole("button", { name: "Confirmar y enviar", exact: true })
+          .click();
+      }
     }
   });
   await page
@@ -818,7 +840,11 @@ async function prepareJob(page, job) {
   }
   historicalMasterCode = await enterOperationalSession(page);
   if (job.screen)
-    await navigateToScreen(page, job.navigationScreen ?? job.screen);
+    await navigateToScreen(
+      page,
+      job.navigationScreen ?? job.screen,
+      historicalMasterCode,
+    );
   await runActions(page, job.actions, historicalMasterCode);
 }
 

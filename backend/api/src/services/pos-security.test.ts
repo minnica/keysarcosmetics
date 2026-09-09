@@ -12,7 +12,8 @@ import {
 
 describe("seguridad POS", () => {
   beforeEach(() => {
-    process.env["POS_PIN_PEPPER"] = "pepper-de-prueba-pos-con-mas-de-32-caracteres";
+    process.env["POS_PIN_PEPPER"] =
+      "pepper-de-prueba-pos-con-mas-de-32-caracteres";
   });
 
   it("normaliza identidades sin conservar el PIN", () => {
@@ -21,6 +22,9 @@ describe("seguridad POS", () => {
     expect(fingerprintSecret("4826", "pin")).toMatch(/^[a-f0-9]{64}$/);
     expect(fingerprintSecret("4826", "pin")).not.toBe(
       fingerprintSecret("4826", "terminal"),
+    );
+    expect(fingerprintSecret("4826", "pin")).not.toBe(
+      fingerprintSecret("4826", "delegated-master"),
     );
   });
 

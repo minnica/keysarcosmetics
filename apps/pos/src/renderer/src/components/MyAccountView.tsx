@@ -79,7 +79,7 @@ interface MyAccountViewProps {
     currentCode: string;
     alias: string;
     newCode: string;
-  }) => string | null;
+  }) => Promise<string | null> | string | null;
 }
 
 interface SellerAccessAccountProps {
@@ -122,13 +122,13 @@ function SellerAccessAccount({ seller, onSave }: SellerAccessAccountProps) {
     currentCode.length === 4 &&
     (!hasNewCode || (newCode.length === 4 && confirmCode === newCode));
 
-  const saveAccess = () => {
+  const saveAccess = async () => {
     setFormError("");
     if (hasNewCode && newCode !== confirmCode) {
       setFormError("La confirmación no coincide con la nueva contraseña.");
       return;
     }
-    const error = onSave({
+    const error = await onSave({
       sellerId: seller.id,
       currentCode,
       alias,
@@ -286,7 +286,11 @@ function SellerAccessAccount({ seller, onSave }: SellerAccessAccountProps) {
             </div>
           )}
           <div className="seller-access-actions">
-            <Button type="button" onClick={saveAccess} disabled={!formIsReady}>
+            <Button
+              type="button"
+              onClick={() => void saveAccess()}
+              disabled={!formIsReady}
+            >
               <Save size={16} /> Guardar cambios
             </Button>
           </div>

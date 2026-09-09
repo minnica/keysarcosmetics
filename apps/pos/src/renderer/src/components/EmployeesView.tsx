@@ -46,28 +46,22 @@ import type {
 
 interface EmployeesViewProps {
   authorized: boolean;
-  managedByApi?: boolean;
-  defaultMasterAlias?: string;
+  showDemoNotice?: boolean;
   roles: EmployeeRole[];
   sellers: Seller[];
-  onAuthorize: (
-    code: string,
-    masterAlias?: string,
-  ) => Promise<boolean> | boolean;
+  onAuthorize: (code: string) => Promise<boolean> | boolean;
   onLock: () => void;
   onSaveRole: (
     role: EmployeeRole,
     masterCode?: string,
-    masterAlias?: string,
   ) => Promise<boolean> | boolean;
-  onSaveSeller: (
-    seller: Seller,
-    masterCode?: string,
-    masterAlias?: string,
+  onSaveSeller: (seller: Seller) => Promise<boolean> | boolean;
+  onToggleRole: (roleId: string) => Promise<void> | void;
+  onAssignRole: (sellerId: string, roleId: string) => Promise<void> | void;
+  onSetMasterAccess: (
+    sellerIds: string[],
+    code: string | null,
   ) => Promise<boolean> | boolean;
-  onToggleRole: (roleId: string) => void;
-  onAssignRole: (sellerId: string, roleId: string) => void;
-  onSetMasterAccess: (sellerIds: string[], code: string | null) => boolean;
 }
 
 const moduleOptions: Array<{
@@ -343,8 +337,7 @@ const cloneRole = (role: EmployeeRole): EmployeeRole => ({
 
 export function EmployeesView({
   authorized,
-  managedByApi = false,
-  defaultMasterAlias = "",
+  showDemoNotice = true,
   roles,
   sellers,
   onAuthorize,
@@ -355,7 +348,6 @@ export function EmployeesView({
   onAssignRole,
   onSetMasterAccess,
 }: EmployeesViewProps) {
-  const [accessAlias, setAccessAlias] = useState(defaultMasterAlias);
   const [accessCode, setAccessCode] = useState("");
   const [accessError, setAccessError] = useState("");
   const [selectedRoleId, setSelectedRoleId] = useState(
@@ -374,10 +366,7 @@ export function EmployeesView({
   >([]);
   const [newMasterCode, setNewMasterCode] = useState("");
   const [sellerDraft, setSellerDraft] = useState<Seller | null>(null);
-  const [roleSaveAlias, setRoleSaveAlias] = useState(defaultMasterAlias);
   const [roleSaveCode, setRoleSaveCode] = useState("");
-  const [sellerSaveAlias, setSellerSaveAlias] = useState(defaultMasterAlias);
-  const [sellerSaveCode, setSellerSaveCode] = useState("");
 
   useEffect(() => {
     if (selectedRole) setRoleDraft(cloneRole(selectedRole));
@@ -407,12 +396,8 @@ export function EmployeesView({
   );
 
   const authorize = async () => {
-    if (managedByApi && !accessAlias.trim()) {
-      setAccessError("Captura el alias del usuario master.");
-      return;
-    }
-    if (!(await onAuthorize(accessCode.trim(), accessAlias.trim()))) {
-      setAccessError("Alias o código master incorrecto.");
+    if (!(await onAuthorize(accessCode.trim()))) {
+      setAccessError("Código master incorrecto.");
       return;
     }
     setAccessCode("");
@@ -428,7 +413,7 @@ export function EmployeesView({
     );
   };
 
-  const assignMasterCode = () => {
+  const assignMasterCode = async () => {
     if (selectedMasterSellerIds.length === 0) {
       toast.error("Selecciona por lo menos un empleado activo.");
       return;
@@ -437,7 +422,8 @@ export function EmployeesView({
       toast.error("El código master debe contener exactamente 4 dígitos.");
       return;
     }
-    if (!onSetMasterAccess(selectedMasterSellerIds, newMasterCode)) return;
+    if (!(await onSetMasterAccess(selectedMasterSellerIds, newMasterCode)))
+      return;
     toast.success(
       `Código master asignado a ${selectedMasterSellerIds.length} empleado${selectedMasterSellerIds.length === 1 ? "" : "s"}.`,
     );
@@ -445,12 +431,12 @@ export function EmployeesView({
     setSelectedMasterSellerIds([]);
   };
 
-  const revokeMasterCode = () => {
+  const revokeMasterCode = async () => {
     if (selectedMasterSellerIds.length === 0) {
       toast.error("Selecciona los empleados cuyo acceso deseas revocar.");
       return;
     }
-    if (!onSetMasterAccess(selectedMasterSellerIds, null)) return;
+    if (!(await onSetMasterAccess(selectedMasterSellerIds, null))) return;
     toast.success("Acceso master revocado para la selección.");
     setSelectedMasterSellerIds([]);
     setNewMasterCode("");
@@ -470,19 +456,10 @@ export function EmployeesView({
             administrados por el usuario master.
           </p>
           <div className="my-account-code-row">
-            {managedByApi && (
-              <Input
-                value={accessAlias}
-                onChange={(event) => setAccessAlias(event.target.value)}
-                placeholder="Alias master"
-                aria-label="Alias master para Employees"
-                autoComplete="username"
-              />
-            )}
             <Input
               type="password"
               inputMode="numeric"
-              maxLength={managedByApi ? 12 : 4}
+              maxLength={4}
               value={accessCode}
               onChange={(event) =>
                 setAccessCode(event.target.value.replace(/\D/g, ""))
@@ -496,10 +473,7 @@ export function EmployeesView({
             <Button
               type="button"
               onClick={() => void authorize()}
-              disabled={
-                (managedByApi && !accessAlias.trim()) ||
-                (managedByApi ? accessCode.length < 4 : accessCode.length !== 4)
-              }
+              disabled={accessCode.length !== 4}
             >
               <ShieldCheck size={16} /> Acceder
             </Button>
@@ -507,7 +481,7 @@ export function EmployeesView({
           {accessError && (
             <span className="my-account-error">{accessError}</span>
           )}
-          {!managedByApi && (
+          {showDemoNotice && (
             <small data-rv-sensitive="true">Modo demostrativo local.</small>
           )}
         </CardContent>
@@ -624,12 +598,8 @@ export function EmployeesView({
       toast.error("Captura el nombre del puesto o rol.");
       return;
     }
-    if (!managedByApi && roleDraft.moduleAccess.length === 0) {
+    if (roleDraft.moduleAccess.length === 0) {
       toast.error("El rol debe conservar acceso por lo menos a un módulo.");
-      return;
-    }
-    if (managedByApi && !roleSaveAlias.trim()) {
-      toast.error("Ingresa el alias del usuario Master.");
       return;
     }
     if (roleSaveCode.length < 4) {
@@ -661,14 +631,13 @@ export function EmployeesView({
         modulePrintAccess: normalizedModulePrintAccess,
       },
       roleSaveCode,
-      roleSaveAlias.trim(),
     );
     if (!saved) return;
     setRoleSaveCode("");
     toast.success(`Permisos de ${roleDraft.name} actualizados.`);
   };
 
-  const createRole = () => {
+  const createRole = async () => {
     const name = newRoleName.trim();
     if (!name) {
       toast.error("Captura el nombre del nuevo rol.");
@@ -696,7 +665,7 @@ export function EmployeesView({
       modulePrintAccess: [],
       configurationAccess: [],
     };
-    void onSaveRole(role);
+    if (!(await onSaveRole(role))) return;
     setSelectedRoleId(role.id);
     setNewRoleName("");
     setNewRoleDescription("");
@@ -721,24 +690,13 @@ export function EmployeesView({
   const saveSeller = async () => {
     if (!sellerDraft) return;
     const editing = sellers.some((seller) => seller.id === sellerDraft.id);
-    if (
-      managedByApi &&
-      (!sellerSaveAlias.trim() || sellerSaveCode.length < 4)
-    ) {
-      toast.error("Ingresa alias y código Master para guardar la credencial.");
-      return;
-    }
-    if (
-      !(await onSaveSeller(sellerDraft, sellerSaveCode, sellerSaveAlias.trim()))
-    )
-      return;
+    if (!(await onSaveSeller(sellerDraft))) return;
     toast.success(
       editing
         ? `${sellerDraft.name.trim()} actualizado.`
         : `${sellerDraft.name.trim()} registrado sin permisos automáticos. Asigna un rol antes de permitir su operación.`,
     );
     setSellerDraft(null);
-    setSellerSaveCode("");
   };
 
   return (
@@ -753,16 +711,12 @@ export function EmployeesView({
           <Button type="button" variant="outline" onClick={onLock}>
             <LockKeyhole size={15} /> Bloquear módulo
           </Button>
-          {!managedByApi && (
-            <Button type="button" variant="outline" onClick={openNewSeller}>
-              <Plus size={15} /> Registrar vendedor
-            </Button>
-          )}
-          {!managedByApi && (
-            <Button type="button" onClick={() => setNewRoleOpen(true)}>
-              <Plus size={15} /> Registrar rol
-            </Button>
-          )}
+          <Button type="button" variant="outline" onClick={openNewSeller}>
+            <Plus size={15} /> Registrar vendedor
+          </Button>
+          <Button type="button" onClick={() => setNewRoleOpen(true)}>
+            <Plus size={15} /> Registrar rol
+          </Button>
         </div>
       </div>
 
@@ -853,11 +807,11 @@ export function EmployeesView({
                     <p>{roleDraft.description}</p>
                   </div>
                   <div>
-                    {!roleDraft.system && !managedByApi && (
+                    {!roleDraft.system && (
                       <Button
                         type="button"
                         variant="outline"
-                        onClick={() => onToggleRole(roleDraft.id)}
+                        onClick={() => void onToggleRole(roleDraft.id)}
                       >
                         <Power size={15} />{" "}
                         {roleDraft.active ? "Inactivar" : "Activar"}
@@ -865,18 +819,6 @@ export function EmployeesView({
                     )}
                     {!roleDraft.system && (
                       <>
-                        {managedByApi && (
-                          <Input
-                            className="employee-role-save-code"
-                            value={roleSaveAlias}
-                            onChange={(event) =>
-                              setRoleSaveAlias(event.target.value)
-                            }
-                            placeholder="Alias Master"
-                            aria-label="Alias Master para guardar permisos"
-                            autoComplete="username"
-                          />
-                        )}
                         <Input
                           className="employee-role-save-code"
                           type="password"
@@ -906,7 +848,7 @@ export function EmployeesView({
                   </div>
                 </div>
 
-                {!roleDraft.system && !managedByApi && (
+                {!roleDraft.system && (
                   <div className="employee-role-name-fields">
                     <div className="field-stack">
                       <Label>Nombre del puesto o rol</Label>
@@ -1154,7 +1096,7 @@ export function EmployeesView({
         </Card>
       </div>
 
-      {!managedByApi && (
+      {
         <Card className="employee-master-access-card">
           <CardContent>
             <div className="employee-role-editor-heading">
@@ -1268,7 +1210,7 @@ export function EmployeesView({
             </div>
           </CardContent>
         </Card>
-      )}
+      }
 
       <Card className="employee-assignment-card">
         <CardContent>
@@ -1328,8 +1270,10 @@ export function EmployeesView({
                   </span>
                   <Select
                     value={seller.roleId}
-                    onValueChange={(roleId) => onAssignRole(seller.id, roleId)}
-                    disabled={!seller.active || managedByApi}
+                    onValueChange={(roleId) =>
+                      void onAssignRole(seller.id, roleId)
+                    }
+                    disabled={!seller.active}
                   >
                     <SelectTrigger aria-label={`Rol de ${seller.name}`}>
                       <SelectValue placeholder="Selecciona rol" />
@@ -1445,41 +1389,10 @@ export function EmployeesView({
                         : current,
                     )
                   }
-                  placeholder={
-                    managedByApi ? "Dejar vacío para conservar" : "4 dígitos"
-                  }
+                  placeholder="4 dígitos"
                   autoComplete="new-password"
                 />
               </div>
-              {managedByApi && (
-                <div className="field-stack">
-                  <Label htmlFor="employee-master-alias">
-                    Alias Master de autorización
-                  </Label>
-                  <Input
-                    id="employee-master-alias"
-                    value={sellerSaveAlias}
-                    onChange={(event) => setSellerSaveAlias(event.target.value)}
-                    placeholder="Alias del usuario master"
-                    autoComplete="username"
-                  />
-                  <Label htmlFor="employee-master-approval">
-                    Código Master de autorización
-                  </Label>
-                  <Input
-                    id="employee-master-approval"
-                    type="password"
-                    inputMode="numeric"
-                    maxLength={12}
-                    value={sellerSaveCode}
-                    onChange={(event) =>
-                      setSellerSaveCode(event.target.value.replace(/\D/g, ""))
-                    }
-                    placeholder="Código del usuario master"
-                    autoComplete="current-password"
-                  />
-                </div>
-              )}
               <div className="field-stack">
                 <Label>Rol o puesto · opcional</Label>
                 <Select
@@ -1547,13 +1460,13 @@ export function EmployeesView({
                 !sellerDraft ||
                 !sellerDraft.name.trim() ||
                 !sellerDraft.alias.trim() ||
-                (!managedByApi && sellerDraft.accessCode.length !== 4) ||
-                (managedByApi &&
-                  (!sellerSaveAlias.trim() || sellerSaveCode.length < 4))
+                (sellers.some((seller) => seller.id === sellerDraft.id)
+                  ? sellerDraft.accessCode.length !== 0 &&
+                    sellerDraft.accessCode.length !== 4
+                  : sellerDraft.accessCode.length !== 4)
               }
             >
-              <Check size={15} />{" "}
-              {managedByApi ? "Guardar credencial" : "Guardar vendedor"}
+              <Check size={15} /> Guardar vendedor
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1597,7 +1510,7 @@ export function EmployeesView({
             >
               Cancelar
             </Button>
-            <Button type="button" onClick={createRole}>
+            <Button type="button" onClick={() => void createRole()}>
               <Plus size={15} /> Registrar rol
             </Button>
           </DialogFooter>
