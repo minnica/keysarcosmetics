@@ -31,6 +31,7 @@ import { prisma } from "../prisma/client";
 import {
   removeCatalogImage,
   uploadCatalogImage,
+  uploadTicketLogo,
   validateCatalogImage,
 } from "../services/pos-asset-storage";
 import {
@@ -38,6 +39,10 @@ import {
   processAgendaSyncEvents,
 } from "../services/pos-agenda";
 import { enqueuePosNotification } from "../services/pos-notifications";
+import {
+  PosOperationError,
+  consumeOperationAuthorization,
+} from "../services/pos-operations";
 import {
   assertBranchAuthorized,
   resolveRequestedBranchIds,
@@ -160,24 +165,38 @@ function catalogDto(
     name: string;
     kind: "PRODUCT" | "SERVICE" | "SUPPLY" | "MACHINE" | "MEMBERSHIP";
     description: string | null;
+    groupName: string | null;
     published: boolean;
+    showInDigitalCatalog: boolean;
+    branchRequestVisible: boolean;
     active: boolean;
     listPrice: Prisma.Decimal;
     minimumPrice: Prisma.Decimal;
     unitCost: Prisma.Decimal;
+    unitCostUsd: Prisma.Decimal;
+    partnerCost: Prisma.Decimal;
     taxRate: Prisma.Decimal;
+    includesVat: boolean;
+    testerOrderEnabled: boolean;
+    presentation: string | null;
+    unitsPerPackage: number;
+    stockMinimum: Prisma.Decimal | null;
+    stockMaximum: Prisma.Decimal | null;
     family: {
       id: string;
       name: string;
+      scope: string;
       active: boolean;
       parentId: string | null;
     } | null;
     category: {
       id: string;
       name: string;
+      scope: string;
       active: boolean;
       parentId: string | null;
     } | null;
+    branchVisibility: Array<{ branchId: string; visible: boolean }>;
     benefits: Array<{ text: string }>;
     assets: Array<{ publicUrl: string; isPrimary: boolean; status: string }>;
     membershipTerms: Array<{
@@ -198,14 +217,26 @@ function catalogDto(
     kind: item.kind,
     family: item.family,
     category: item.category,
+    branchIds: item.branchVisibility
+      .filter((visibility) => visibility.visible)
+      .map((visibility) => visibility.branchId),
     description: item.description,
+    groupName: item.groupName,
     benefits: item.benefits.map((benefit) => benefit.text),
     imageUrl: assetUrl(item.assets),
     published: item.published,
+    showInDigitalCatalog: item.showInDigitalCatalog,
+    branchRequestVisible: item.branchRequestVisible,
     active: item.active,
     listPrice: MONEY(item.listPrice)!,
     minimumPrice: MONEY(item.minimumPrice)!,
     taxRate: MONEY(item.taxRate)!,
+    includesVat: item.includesVat,
+    testerOrderEnabled: item.testerOrderEnabled,
+    presentation: item.presentation,
+    unitsPerPackage: item.unitsPerPackage,
+    stockMinimum: MONEY(item.stockMinimum),
+    stockMaximum: MONEY(item.stockMaximum),
     availableQuantity: null,
     membershipTerms: item.membershipTerms[0]
       ? {
@@ -222,8 +253,98 @@ function catalogDto(
       : null,
   };
   return includeCosts
-    ? { ...publicItem, unitCost: MONEY(item.unitCost)! }
+    ? {
+        ...publicItem,
+        unitCost: MONEY(item.unitCost)!,
+        unitCostUsd: MONEY(item.unitCostUsd)!,
+        partnerCost: MONEY(item.partnerCost)!,
+      }
     : publicItem;
+}
+
+function customerDto(
+  item: {
+    id: string;
+    displayName: string;
+    firstName: string | null;
+    lastName: string | null;
+    birthday: Date | null;
+    gender: string | null;
+    phone: string | null;
+    whatsapp: string | null;
+    email: string | null;
+    companyName: string | null;
+    registrationFolio: string | null;
+    registrationBranchId: string | null;
+    sourceId: string | null;
+    active: boolean;
+    externalClientId: string | null;
+    creadoEn: Date;
+  },
+  portfolio?: {
+    id?: string;
+    employeeId: string | null;
+    companyId: string | null;
+    ownerNameSnapshot: string | null;
+    ownerCodeSnapshot: string | null;
+    employee?: { nombreCompleto: string } | null;
+    company?: { name: string; salesNumber: string } | null;
+  } | null,
+  history: Array<{
+    id: string;
+    branchId: string | null;
+    employeeId: string | null;
+    effectiveFrom: Date;
+    effectiveTo: Date | null;
+    endedReason: string | null;
+    employee?: { nombreCompleto: string } | null;
+  }> = [],
+) {
+  return {
+    id: item.id,
+    displayName: item.displayName,
+    firstName: item.firstName,
+    lastName: item.lastName,
+    birthday: item.birthday?.toISOString().slice(0, 10) ?? null,
+    gender: item.gender,
+    phone: item.phone,
+    whatsapp: item.whatsapp,
+    email: item.email,
+    companyName: item.companyName,
+    registrationFolio: item.registrationFolio,
+    registrationBranchId: item.registrationBranchId,
+    registeredAt: item.creadoEn.toISOString(),
+    sourceId: item.sourceId,
+    active: item.active,
+    agendaLinked: Boolean(item.externalClientId),
+    currentPortfolio: portfolio
+      ? {
+          kind: portfolio.companyId
+            ? ("COMPANY" as const)
+            : ("SELLER" as const),
+          employeeId: portfolio.employeeId,
+          companyId: portfolio.companyId,
+          ownerName:
+            portfolio.ownerNameSnapshot ??
+            portfolio.company?.name ??
+            portfolio.employee?.nombreCompleto ??
+            null,
+          ownerCode:
+            portfolio.ownerCodeSnapshot ??
+            portfolio.company?.salesNumber ??
+            portfolio.employeeId,
+        }
+      : null,
+    portfolioHistory: history.map((entry) => ({
+      id: entry.id,
+      branchId: entry.branchId,
+      employeeId: entry.employeeId,
+      employeeName: entry.employee?.nombreCompleto ?? null,
+      effectiveFrom: entry.effectiveFrom.toISOString(),
+      effectiveTo: entry.effectiveTo?.toISOString() ?? null,
+      endedReason: entry.endedReason,
+    })),
+  };
 }
 
 const membershipTermsInclude = {
@@ -343,6 +464,7 @@ router.get("/catalog/items", requireCatalogRead, async (req, res) => {
       include: {
         family: true,
         category: true,
+        branchVisibility: true,
         benefits: { orderBy: { sortOrder: "asc" } },
         assets: {
           where: { status: "READY" },
@@ -396,12 +518,33 @@ router.post(
             categoryId: input.categoryId,
             supplierId: input.supplierId,
             description: input.description,
+            groupName: input.groupName,
             published: input.published,
+            showInDigitalCatalog: input.showInDigitalCatalog,
+            branchRequestVisible: input.branchRequestVisible,
             active: input.active,
             listPrice: decimal(input.listPrice),
             minimumPrice: decimal(input.minimumPrice),
-            unitCost: decimal(input.unitCost),
+            unitCost: costsAllowed(req)
+              ? decimal(input.unitCost)
+              : decimal("0.00"),
+            unitCostUsd: costsAllowed(req)
+              ? decimal(input.unitCostUsd)
+              : decimal("0.00"),
+            partnerCost: costsAllowed(req)
+              ? decimal(input.partnerCost)
+              : decimal("0.00"),
             taxRate: decimal(input.taxRate),
+            includesVat: input.includesVat,
+            testerOrderEnabled: input.testerOrderEnabled,
+            presentation: input.presentation,
+            unitsPerPackage: input.unitsPerPackage,
+            stockMinimum: input.stockMinimum
+              ? decimal(input.stockMinimum)
+              : null,
+            stockMaximum: input.stockMaximum
+              ? decimal(input.stockMaximum)
+              : null,
             benefits: {
               create: input.benefits.map((text, sortOrder) => ({
                 text,
@@ -432,6 +575,7 @@ router.post(
           include: {
             family: true,
             category: true,
+            branchVisibility: true,
             benefits: true,
             assets: true,
             membershipTerms: membershipTermsInclude,
@@ -502,7 +646,7 @@ router.put(
         const changedPrice =
           !existing.listPrice.equals(input.listPrice) ||
           !existing.minimumPrice.equals(input.minimumPrice) ||
-          !existing.unitCost.equals(input.unitCost) ||
+          (costsAllowed(req) && !existing.unitCost.equals(input.unitCost)) ||
           !existing.taxRate.equals(input.taxRate);
         const updated = await tx.catalogItem.update({
           where: { id },
@@ -520,12 +664,33 @@ router.put(
             categoryId: input.categoryId,
             supplierId: input.supplierId,
             description: input.description,
+            groupName: input.groupName,
             published: input.published,
+            showInDigitalCatalog: input.showInDigitalCatalog,
+            branchRequestVisible: input.branchRequestVisible,
             active: input.active,
             listPrice: decimal(input.listPrice),
             minimumPrice: decimal(input.minimumPrice),
-            unitCost: decimal(input.unitCost),
+            unitCost: costsAllowed(req)
+              ? decimal(input.unitCost)
+              : existing.unitCost,
+            unitCostUsd: costsAllowed(req)
+              ? decimal(input.unitCostUsd)
+              : existing.unitCostUsd,
+            partnerCost: costsAllowed(req)
+              ? decimal(input.partnerCost)
+              : existing.partnerCost,
             taxRate: decimal(input.taxRate),
+            includesVat: input.includesVat,
+            testerOrderEnabled: input.testerOrderEnabled,
+            presentation: input.presentation,
+            unitsPerPackage: input.unitsPerPackage,
+            stockMinimum: input.stockMinimum
+              ? decimal(input.stockMinimum)
+              : null,
+            stockMaximum: input.stockMaximum
+              ? decimal(input.stockMaximum)
+              : null,
             benefits: {
               deleteMany: {},
               create: input.benefits.map((text, sortOrder) => ({
@@ -544,6 +709,7 @@ router.put(
           include: {
             family: true,
             category: true,
+            branchVisibility: true,
             benefits: { orderBy: { sortOrder: "asc" } },
             assets: true,
             membershipTerms: membershipTermsInclude,
@@ -588,6 +754,7 @@ router.put(
               include: {
                 family: true,
                 category: true,
+                branchVisibility: true,
                 benefits: { orderBy: { sortOrder: "asc" } },
                 assets: true,
                 membershipTerms: membershipTermsInclude,
@@ -643,24 +810,60 @@ router.delete(
   },
 );
 
-router.get(
-  "/catalog/taxonomies",
-  requirePosPermission("CATALOG_VIEW"),
-  async (_req, res) => {
-    const items = await db.catalogTaxonomy.findMany({
-      where: { deletedAt: null },
-      orderBy: [{ parentId: "asc" }, { name: "asc" }],
-    });
-    res.json({
-      success: true,
-      message: "OK",
-      data: items.map(({ id, name, active, parentId }) => ({
-        id,
-        name,
-        active,
-        parentId,
-      })),
-    });
+router.get("/catalog/taxonomies", requireCatalogRead, async (_req, res) => {
+  const items = await db.catalogTaxonomy.findMany({
+    where: { deletedAt: null },
+    orderBy: [{ parentId: "asc" }, { name: "asc" }],
+  });
+  res.json({
+    success: true,
+    message: "OK",
+    data: items.map(({ id, name, scope, active, parentId }) => ({
+      id,
+      name,
+      scope,
+      active,
+      parentId,
+    })),
+  });
+});
+router.put(
+  "/catalog/taxonomies/:id",
+  requirePosPermission("CATALOG_MANAGE"),
+  async (req, res) => {
+    const parsed = posTaxonomyUpsertSchema.safeParse(req.body);
+    if (!parsed.success)
+      return res.status(400).json({
+        success: false,
+        message: "Taxonomía inválida",
+        data: parsed.error.flatten().fieldErrors,
+      });
+    if (parsed.data.parentId === req.params["id"])
+      return res.status(400).json({
+        success: false,
+        message: "Una taxonomía no puede ser su propio padre",
+        data: null,
+      });
+    try {
+      const item = await db.catalogTaxonomy.update({
+        where: { id: req.params["id"]! },
+        data: {
+          ...parsed.data,
+          normalizedName: normalize(parsed.data.name),
+        },
+      });
+      res.json({
+        success: true,
+        message: "Taxonomía actualizada",
+        data: item,
+      });
+    } catch {
+      res.status(409).json({
+        success: false,
+        message: "Taxonomía no encontrada o duplicada",
+        data: null,
+      });
+    }
   },
 );
 router.post(
@@ -823,13 +1026,11 @@ router.get("/customers/search", requireCustomerReadOrSale, async (req, res) => {
       where,
       include: {
         portfolios: {
-          where: { effectiveTo: null },
           include: {
             employee: { select: { id: true, nombreCompleto: true } },
             company: { select: { id: true, name: true, salesNumber: true } },
           },
           orderBy: { effectiveFrom: "desc" },
-          take: 1,
         },
       },
       orderBy: { displayName: "asc" },
@@ -843,34 +1044,56 @@ router.get("/customers/search", requireCustomerReadOrSale, async (req, res) => {
     message: "OK",
     data: {
       items: items.map((item) => {
-        const portfolio = item.portfolios[0];
-        return {
-          id: item.id,
-          displayName: item.displayName,
-          phone: item.phone,
-          email: item.email,
-          active: item.active,
-          agendaLinked: Boolean(item.externalClientId),
-          currentPortfolio: portfolio
-            ? {
-                kind: portfolio.companyId
-                  ? ("COMPANY" as const)
-                  : ("SELLER" as const),
-                employeeId: portfolio.employeeId,
-                companyId: portfolio.companyId,
-                ownerName:
-                  portfolio.ownerNameSnapshot ??
-                  portfolio.company?.name ??
-                  portfolio.employee?.nombreCompleto ??
-                  null,
-                ownerCode:
-                  portfolio.ownerCodeSnapshot ??
-                  portfolio.company?.salesNumber ??
-                  portfolio.employeeId,
-              }
-            : null,
-        };
+        const portfolio = item.portfolios.find(
+          (entry) => entry.effectiveTo === null,
+        );
+        return customerDto(item, portfolio, item.portfolios);
       }),
+      page: parsed.data.page,
+      pageSize: parsed.data.pageSize,
+      total,
+    },
+  });
+});
+
+router.get("/customers", requireCustomerReadOrSale, async (req, res) => {
+  const parsed = posPageQuerySchema.safeParse(req.query);
+  if (!parsed.success)
+    return res.status(400).json({
+      success: false,
+      message: "Consulta inválida",
+      data: parsed.error.flatten().fieldErrors,
+    });
+  const where: Prisma.CustomerWhereInput = { deletedAt: null, active: true };
+  const [items, total] = await Promise.all([
+    db.customer.findMany({
+      where,
+      include: {
+        portfolios: {
+          include: {
+            employee: { select: { id: true, nombreCompleto: true } },
+            company: { select: { id: true, name: true, salesNumber: true } },
+          },
+          orderBy: { effectiveFrom: "desc" },
+        },
+      },
+      orderBy: { displayName: "asc" },
+      skip: (parsed.data.page - 1) * parsed.data.pageSize,
+      take: parsed.data.pageSize,
+    }),
+    db.customer.count({ where }),
+  ]);
+  res.json({
+    success: true,
+    message: "OK",
+    data: {
+      items: items.map((item) =>
+        customerDto(
+          item,
+          item.portfolios.find((entry) => entry.effectiveTo === null),
+          item.portfolios,
+        ),
+      ),
       page: parsed.data.page,
       pageSize: parsed.data.pageSize,
       total,
@@ -913,9 +1136,19 @@ router.post(
           data: {
             displayName: input.displayName,
             normalizedName: normalize(input.displayName),
+            firstName: input.firstName,
+            lastName: input.lastName,
+            birthday: input.birthday
+              ? new Date(`${input.birthday}T00:00:00.000Z`)
+              : null,
+            gender: input.gender,
             phone: phoneNormalized,
             phoneNormalized,
+            whatsapp: normalizePhone(input.whatsapp),
             email: input.email?.toLocaleLowerCase("en-US") ?? null,
+            companyName: input.companyName,
+            registrationFolio: input.registrationFolio,
+            registrationBranchId: input.registrationBranchId ?? input.branchId,
             sourceId: input.sourceId,
             notes: input.notes,
             active: input.active,
@@ -938,31 +1171,25 @@ router.post(
       res.status(201).json({
         success: true,
         message: "Cliente creado",
-        data: {
-          id: customer.created.id,
-          displayName: customer.created.displayName,
-          phone: customer.created.phone,
-          email: customer.created.email,
-          active: customer.created.active,
-          agendaLinked: Boolean(customer.created.externalClientId),
-          currentPortfolio: customer.company
+        data: customerDto(
+          customer.created,
+          customer.company
             ? {
-                kind: "COMPANY",
                 employeeId: null,
                 companyId: customer.company.id,
-                ownerName: customer.company.name,
-                ownerCode: customer.company.salesNumber,
+                ownerNameSnapshot: customer.company.name,
+                ownerCodeSnapshot: customer.company.salesNumber,
+                company: customer.company,
               }
             : input.employeeId
               ? {
-                  kind: "SELLER",
                   employeeId: input.employeeId,
                   companyId: null,
-                  ownerName: null,
-                  ownerCode: input.employeeId,
+                  ownerNameSnapshot: null,
+                  ownerCodeSnapshot: input.employeeId,
                 }
               : null,
-        },
+        ),
       });
     } catch (error) {
       res.status(409).json({
@@ -1012,9 +1239,20 @@ router.put(
             data: {
               displayName: input.displayName,
               normalizedName: normalize(input.displayName),
+              firstName: input.firstName,
+              lastName: input.lastName,
+              birthday: input.birthday
+                ? new Date(`${input.birthday}T00:00:00.000Z`)
+                : null,
+              gender: input.gender,
               phone: phoneNormalized,
               phoneNormalized,
+              whatsapp: normalizePhone(input.whatsapp),
               email: input.email?.toLocaleLowerCase("en-US") ?? null,
+              companyName: input.companyName,
+              registrationFolio: input.registrationFolio,
+              registrationBranchId:
+                input.registrationBranchId ?? input.branchId,
               sourceId: input.sourceId,
               notes: input.notes,
               active: input.active,
@@ -1095,32 +1333,7 @@ router.put(
       res.json({
         success: true,
         message: "Cliente actualizado",
-        data: {
-          id: customer.id,
-          displayName: customer.displayName,
-          phone: customer.phone,
-          email: customer.email,
-          active: customer.active,
-          agendaLinked: Boolean(customer.externalClientId),
-          currentPortfolio: portfolio
-            ? {
-                kind: portfolio.companyId
-                  ? ("COMPANY" as const)
-                  : ("SELLER" as const),
-                employeeId: portfolio.employeeId,
-                companyId: portfolio.companyId,
-                ownerName:
-                  portfolio.ownerNameSnapshot ??
-                  portfolio.company?.name ??
-                  portfolio.employee?.nombreCompleto ??
-                  null,
-                ownerCode:
-                  portfolio.ownerCodeSnapshot ??
-                  portfolio.company?.salesNumber ??
-                  portfolio.employeeId,
-              }
-            : null,
-        },
+        data: customerDto(customer, portfolio, portfolio ? [portfolio] : []),
       });
     } catch {
       res.status(404).json({
@@ -1136,19 +1349,140 @@ router.delete(
   "/customers/:id",
   requirePosPermission("CUSTOMERS_MANAGE"),
   async (req, res) => {
-    const result = await db.customer.updateMany({
-      where: { id: req.params["id"]!, deletedAt: null },
-      data: {
-        active: false,
-        deletedAt: new Date(),
-        version: { increment: 1 },
-      },
-    });
-    res.status(result.count ? 200 : 404).json({
-      success: Boolean(result.count),
-      message: result.count ? "Cliente desactivado" : "Cliente no encontrado",
-      data: null,
-    });
+    const parsed = z
+      .object({ authorizationToken: z.string().uuid() })
+      .strict()
+      .safeParse(req.body);
+    if (!parsed.success)
+      return res.status(400).json({
+        success: false,
+        message: "Autorización requerida",
+        data: parsed.error.flatten().fieldErrors,
+      });
+    try {
+      const result = await db.$transaction(async (tx) => {
+        await consumeOperationAuthorization(tx, {
+          token: parsed.data.authorizationToken,
+          purpose: "CUSTOMER_DIRECTORY_ADMIN",
+          terminalId: req.posUser!.terminalId,
+          sessionId: req.posUser!.sessionId,
+        });
+        return tx.customer.updateMany({
+          where: { id: req.params["id"]!, deletedAt: null },
+          data: {
+            active: false,
+            deletedAt: new Date(),
+            version: { increment: 1 },
+          },
+        });
+      });
+      return res.status(result.count ? 200 : 404).json({
+        success: Boolean(result.count),
+        message: result.count ? "Cliente desactivado" : "Cliente no encontrado",
+        data: null,
+      });
+    } catch (error) {
+      if (error instanceof PosOperationError)
+        return res.status(error.status).json({
+          success: false,
+          message: error.message,
+          data: null,
+        });
+      return res.status(500).json({
+        success: false,
+        message: "No se pudo desactivar la clienta",
+        data: null,
+      });
+    }
+  },
+);
+
+router.post(
+  "/customers/bulk-import",
+  requirePosPermission("CUSTOMERS_MANAGE"),
+  async (req, res) => {
+    const parsed = z
+      .object({
+        authorizationToken: z.string().uuid(),
+        customers: z.array(posCustomerWriteSchema).min(1).max(500),
+      })
+      .strict()
+      .safeParse(req.body);
+    if (!parsed.success)
+      return res.status(400).json({
+        success: false,
+        message: "Carga masiva inválida",
+        data: parsed.error.flatten().fieldErrors,
+      });
+    try {
+      const created = await db.$transaction(async (tx) => {
+        await consumeOperationAuthorization(tx, {
+          token: parsed.data.authorizationToken,
+          purpose: "CUSTOMER_DIRECTORY_ADMIN",
+          terminalId: req.posUser!.terminalId,
+          sessionId: req.posUser!.sessionId,
+        });
+        const rows = [];
+        for (const input of parsed.data.customers) {
+          const phoneNormalized = normalizePhone(input.phone);
+          await lockSchedulerCustomerPhone(tx, phoneNormalized);
+          if (await findSchedulerCustomerPhoneDuplicate(tx, phoneNormalized))
+            throw new Error(`PHONE_DUPLICATE:${input.phone ?? ""}`);
+          const customer = await tx.customer.create({
+            data: {
+              displayName: input.displayName,
+              normalizedName: normalize(input.displayName),
+              firstName: input.firstName,
+              lastName: input.lastName,
+              birthday: input.birthday
+                ? new Date(`${input.birthday}T00:00:00.000Z`)
+                : null,
+              gender: input.gender,
+              phone: phoneNormalized,
+              phoneNormalized,
+              whatsapp: normalizePhone(input.whatsapp),
+              email: input.email?.toLocaleLowerCase("en-US") ?? null,
+              companyName: input.companyName,
+              registrationFolio: input.registrationFolio,
+              registrationBranchId:
+                input.registrationBranchId ?? input.branchId,
+              sourceId: input.sourceId,
+              notes: input.notes,
+              active: input.active,
+            },
+          });
+          if (input.branchId || input.employeeId)
+            await tx.customerPortfolioAssignment.create({
+              data: {
+                customerId: customer.id,
+                branchId: input.branchId,
+                employeeId: input.employeeId,
+                ownerCodeSnapshot: input.employeeId,
+                createdByCredentialId: req.posUser!.credentialId,
+              },
+            });
+          rows.push(customerDto(customer));
+        }
+        return rows;
+      });
+      res.status(201).json({
+        success: true,
+        message: `${created.length} clientes importados`,
+        data: created,
+      });
+    } catch (error) {
+      res.status(error instanceof PosOperationError ? error.status : 409).json({
+        success: false,
+        message:
+          error instanceof PosOperationError
+            ? error.message
+            : error instanceof Error &&
+                error.message.startsWith("PHONE_DUPLICATE:")
+              ? `Teléfono duplicado: ${error.message.split(":")[1] ?? ""}`
+              : "La carga masiva no pudo aplicarse completa",
+        data: null,
+      });
+    }
   },
 );
 
@@ -1239,10 +1573,13 @@ router.get(
         businessName: item.businessName,
         contactName: item.contactName,
         rfc: item.rfc,
+        taxRegime: item.taxRegime,
+        businessLine: item.businessLine,
         phone: item.phone,
         email: item.email,
         address: item.address,
         active: item.active,
+        createdAt: item.creadoEn.toISOString(),
       })),
     });
   },
@@ -1304,6 +1641,23 @@ router.put(
         data: null,
       });
     }
+  },
+);
+router.delete(
+  "/suppliers/:id",
+  requireAnyPosPermission("SUPPLIERS_MANAGE", "WAREHOUSE_MANAGE"),
+  async (req, res) => {
+    const result = await db.posSupplier.updateMany({
+      where: { id: req.params["id"]!, deletedAt: null },
+      data: { active: false, deletedAt: new Date() },
+    });
+    res.status(result.count ? 200 : 404).json({
+      success: Boolean(result.count),
+      message: result.count
+        ? "Proveedor inactivado; el histórico permanece"
+        : "Proveedor no encontrado",
+      data: result.count ? { id: req.params["id"]! } : null,
+    });
   },
 );
 
@@ -1459,7 +1813,8 @@ router.get(
       message: "OK",
       data: {
         branchId: req.posUser!.branchId,
-        logoUrl: null,
+        logoUrl: config?.logoUrl ?? null,
+        logoWidth: config?.logoWidth ?? 80,
         companyName: config?.companyName ?? "KEYSAR COSMETICS",
         address: config?.address ?? null,
         footerMessage: config?.footerMessage ?? null,
@@ -1492,8 +1847,34 @@ router.put(
     res.json({
       success: true,
       message: "Configuración actualizada",
-      data: { ...config, logoUrl: null },
+      data: config,
     });
+  },
+);
+router.post(
+  "/settings/ticket/logo",
+  requirePosPermission("SETTINGS_MANAGE"),
+  upload.single("file"),
+  async (req, res) => {
+    if (!req.file)
+      return res
+        .status(400)
+        .json({ success: false, message: "Logo inválido", data: null });
+    try {
+      const stored = await uploadTicketLogo(req.posUser!.branchId, req.file);
+      res.status(201).json({
+        success: true,
+        message: "Logo guardado",
+        data: { publicUrl: stored.publicUrl },
+      });
+    } catch (error) {
+      res.status(503).json({
+        success: false,
+        message:
+          error instanceof Error ? error.message : "No se pudo guardar el logo",
+        data: null,
+      });
+    }
   },
 );
 
@@ -1549,11 +1930,58 @@ router.post(
     }
   },
 );
+router.put(
+  "/settings/vouchers/:id",
+  requirePosPermission("VOUCHERS_MANAGE"),
+  async (req, res) => {
+    const parsed = posVoucherTemplateWriteSchema.safeParse(req.body);
+    if (!parsed.success)
+      return res.status(400).json({
+        success: false,
+        message: "Voucher inválido",
+        data: parsed.error.flatten().fieldErrors,
+      });
+    try {
+      const item = await db.posVoucherTemplate.update({
+        where: { id: req.params["id"]! },
+        data: { ...parsed.data, value: decimal(parsed.data.value) },
+      });
+      res.json({
+        success: true,
+        message: "Plantilla actualizada",
+        data: { ...item, value: MONEY(item.value) },
+      });
+    } catch {
+      res.status(409).json({
+        success: false,
+        message: "Voucher no encontrado o nombre duplicado",
+        data: null,
+      });
+    }
+  },
+);
+router.delete(
+  "/settings/vouchers/:id",
+  requirePosPermission("VOUCHERS_MANAGE"),
+  async (req, res) => {
+    const result = await db.posVoucherTemplate.updateMany({
+      where: { id: req.params["id"]!, deletedAt: null },
+      data: { active: false, deletedAt: new Date() },
+    });
+    res.status(result.count ? 200 : 404).json({
+      success: Boolean(result.count),
+      message: result.count
+        ? "Plantilla retirada; los vouchers emitidos conservan su snapshot"
+        : "Plantilla no encontrada",
+      data: result.count ? { id: req.params["id"]! } : null,
+    });
+  },
+);
 
 router.get("/packages", requirePackageReadOrSale, async (_req, res) => {
   const items = await db.posPackage.findMany({
     where: { deletedAt: null },
-    include: { lines: true },
+    include: { lines: true, branchAssignments: true },
     orderBy: { name: "asc" },
   });
   res.json({
@@ -1568,6 +1996,9 @@ router.get("/packages", requirePackageReadOrSale, async (_req, res) => {
       status: item.status,
       startsAt: item.startsAt?.toISOString() ?? null,
       endsAt: item.endsAt?.toISOString() ?? null,
+      branchIds: item.branchAssignments.map(
+        (assignment) => assignment.branchId,
+      ),
       lines: item.lines.map((line) => ({
         itemId: line.itemId,
         quantity: MONEY(line.quantity),
@@ -1599,6 +2030,10 @@ router.post(
         message: "El paquete contiene artículos inválidos",
         data: null,
       });
+    resolveRequestedBranchIds({
+      authorizedBranchIds: req.posUser!.authorizedBranchIds,
+      requestedBranchIds: parsed.data.branchIds,
+    });
     try {
       const item = await db.posPackage.create({
         data: {
@@ -1611,6 +2046,9 @@ router.post(
             ? new Date(parsed.data.startsAt)
             : null,
           endsAt: parsed.data.endsAt ? new Date(parsed.data.endsAt) : null,
+          branchAssignments: {
+            create: parsed.data.branchIds.map((branchId) => ({ branchId })),
+          },
           lines: {
             create: parsed.data.lines.map((line) => ({
               itemId: line.itemId,
@@ -1618,7 +2056,7 @@ router.post(
             })),
           },
         },
-        include: { lines: true },
+        include: { lines: true, branchAssignments: true },
       });
       res.status(201).json({
         success: true,
@@ -1626,6 +2064,9 @@ router.post(
         data: {
           ...item,
           price: MONEY(item.price),
+          branchIds: item.branchAssignments.map(
+            (assignment) => assignment.branchId,
+          ),
           lines: item.lines.map((line) => ({
             itemId: line.itemId,
             quantity: MONEY(line.quantity),
@@ -1636,6 +2077,78 @@ router.post(
       res.status(409).json({
         success: false,
         message: "SKU de paquete duplicado",
+        data: null,
+      });
+    }
+  },
+);
+router.put(
+  "/packages/:id",
+  requirePosPermission("CATALOG_MANAGE"),
+  async (req, res) => {
+    const parsed = posPackageWriteSchema.safeParse(req.body);
+    if (!parsed.success)
+      return res.status(400).json({
+        success: false,
+        message: "Paquete inválido",
+        data: parsed.error.flatten().fieldErrors,
+      });
+    resolveRequestedBranchIds({
+      authorizedBranchIds: req.posUser!.authorizedBranchIds,
+      requestedBranchIds: parsed.data.branchIds,
+    });
+    try {
+      const item = await db.posPackage.update({
+        where: { id: req.params["id"]! },
+        data: {
+          name: parsed.data.name,
+          sku: normalizeSku(parsed.data.sku),
+          description: parsed.data.description,
+          price: decimal(parsed.data.price),
+          status: parsed.data.status,
+          startsAt: parsed.data.startsAt
+            ? new Date(parsed.data.startsAt)
+            : null,
+          endsAt: parsed.data.endsAt ? new Date(parsed.data.endsAt) : null,
+          lines: {
+            deleteMany: {},
+            create: parsed.data.lines.map((line) => ({
+              itemId: line.itemId,
+              quantity: decimal(line.quantity),
+            })),
+          },
+          branchAssignments: {
+            deleteMany: {},
+            create: parsed.data.branchIds.map((branchId) => ({ branchId })),
+          },
+        },
+        include: { lines: true, branchAssignments: true },
+      });
+      res.json({
+        success: true,
+        message: "Paquete actualizado",
+        data: {
+          id: item.id,
+          name: item.name,
+          sku: item.sku,
+          description: item.description,
+          price: MONEY(item.price),
+          status: item.status,
+          startsAt: item.startsAt?.toISOString() ?? null,
+          endsAt: item.endsAt?.toISOString() ?? null,
+          branchIds: item.branchAssignments.map(
+            (assignment) => assignment.branchId,
+          ),
+          lines: item.lines.map((line) => ({
+            itemId: line.itemId,
+            quantity: MONEY(line.quantity),
+          })),
+        },
+      });
+    } catch {
+      res.status(409).json({
+        success: false,
+        message: "Paquete no encontrado, SKU duplicado o referencias inválidas",
         data: null,
       });
     }
@@ -1661,6 +2174,7 @@ const priceListSchema = z
           .object({
             itemId: z.string().trim().min(1),
             price: z.string().regex(/^(?:0|[1-9]\d*)\.\d{2}$/),
+            priceUsd: z.string().regex(/^(?:0|[1-9]\d*)\.\d{2}$/),
             cost: z
               .string()
               .regex(/^(?:0|[1-9]\d*)\.\d{2}$/)
@@ -1715,9 +2229,11 @@ router.get(
         customerIds: item.customerAssignments.map(
           (assignment) => assignment.customerId,
         ),
+        createdAt: item.creadoEn.toISOString(),
         lines: item.lines.map((line) => ({
           itemId: line.itemId,
           price: MONEY(line.price),
+          priceUsd: MONEY(line.priceUsd),
           ...(costsAllowed(req) ? { cost: MONEY(line.cost) } : {}),
         })),
       })),
@@ -1779,6 +2295,7 @@ router.post(
             create: input.lines.map((line) => ({
               itemId: line.itemId,
               price: decimal(line.price),
+              priceUsd: decimal(line.priceUsd),
               cost: line.cost ? decimal(line.cost) : null,
             })),
           },
@@ -1803,9 +2320,11 @@ router.post(
           name: list.name,
           version: list.version,
           status: list.status,
+          createdAt: list.creadoEn.toISOString(),
           lines: list.lines.map((line) => ({
             itemId: line.itemId,
             price: MONEY(line.price),
+            priceUsd: MONEY(line.priceUsd),
             ...(costsAllowed(req) ? { cost: MONEY(line.cost) } : {}),
           })),
         },
@@ -1817,6 +2336,127 @@ router.post(
         data: null,
       });
     }
+  },
+);
+router.put(
+  "/price-lists/:id",
+  requirePosPermission("WAREHOUSE_MANAGE"),
+  async (req, res) => {
+    const parsed = priceListSchema.safeParse(req.body);
+    if (!parsed.success)
+      return res.status(400).json({
+        success: false,
+        message: "Lista de precios inválida",
+        data: parsed.error.flatten().fieldErrors,
+      });
+    const previous = await db.posPriceList.findFirst({
+      where: { id: req.params["id"]!, deletedAt: null },
+    });
+    if (!previous)
+      return res.status(404).json({
+        success: false,
+        message: "Lista de precios no encontrada",
+        data: null,
+      });
+    const input = parsed.data;
+    resolveRequestedBranchIds({
+      authorizedBranchIds: req.posUser!.authorizedBranchIds,
+      requestedBranchIds: input.branchIds,
+    });
+    try {
+      const list = await db.$transaction(async (tx) => {
+        await tx.posPriceList.update({
+          where: { id: previous.id },
+          data: { status: "INACTIVE", deletedAt: new Date() },
+        });
+        return tx.posPriceList.create({
+          data: {
+            name: input.name,
+            version: previous.version + 1,
+            supplierId: input.supplierId,
+            status: input.status,
+            effectiveFrom: input.effectiveFrom
+              ? new Date(input.effectiveFrom)
+              : null,
+            effectiveTo: input.effectiveTo ? new Date(input.effectiveTo) : null,
+            lines: {
+              create: input.lines.map((line) => ({
+                itemId: line.itemId,
+                price: decimal(line.price),
+                priceUsd: decimal(line.priceUsd),
+                cost: line.cost ? decimal(line.cost) : null,
+              })),
+            },
+            branchAssignments: {
+              create: [...new Set(input.branchIds)].map((branchId) => ({
+                branchId,
+              })),
+            },
+            customerAssignments: {
+              create: [...new Set(input.customerIds)].map((customerId) => ({
+                customerId,
+              })),
+            },
+          },
+          include: {
+            lines: true,
+            branchAssignments: true,
+            customerAssignments: true,
+          },
+        });
+      });
+      res.json({
+        success: true,
+        message:
+          "Lista de precios versionada; la versión anterior permanece histórica",
+        data: {
+          id: list.id,
+          name: list.name,
+          version: list.version,
+          status: list.status,
+          supplierId: list.supplierId,
+          supplierName: null,
+          effectiveFrom: list.effectiveFrom?.toISOString() ?? null,
+          effectiveTo: list.effectiveTo?.toISOString() ?? null,
+          createdAt: list.creadoEn.toISOString(),
+          branchIds: list.branchAssignments.map(
+            (assignment) => assignment.branchId,
+          ),
+          customerIds: list.customerAssignments.map(
+            (assignment) => assignment.customerId,
+          ),
+          lines: list.lines.map((line) => ({
+            itemId: line.itemId,
+            price: MONEY(line.price),
+            priceUsd: MONEY(line.priceUsd),
+            ...(costsAllowed(req) ? { cost: MONEY(line.cost) } : {}),
+          })),
+        },
+      });
+    } catch {
+      res.status(409).json({
+        success: false,
+        message: "No se pudo versionar la lista de precios",
+        data: null,
+      });
+    }
+  },
+);
+router.delete(
+  "/price-lists/:id",
+  requirePosPermission("WAREHOUSE_MANAGE"),
+  async (req, res) => {
+    const result = await db.posPriceList.updateMany({
+      where: { id: req.params["id"]!, deletedAt: null },
+      data: { status: "INACTIVE", deletedAt: new Date() },
+    });
+    res.status(result.count ? 200 : 404).json({
+      success: Boolean(result.count),
+      message: result.count
+        ? "Lista retirada; los pedidos históricos conservan sus snapshots"
+        : "Lista no encontrada",
+      data: result.count ? { id: req.params["id"]! } : null,
+    });
   },
 );
 

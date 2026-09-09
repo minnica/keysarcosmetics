@@ -62,10 +62,11 @@ interface InventoryOrderDialogProps {
   branchInventory: BranchInventory;
   defaultBranches: string[];
   isMasterCode: (code: string) => boolean;
+  authorizationManagedByServer: boolean;
   onCreateOrders: (
     orders: InventoryBranchOrderDraft[],
     authorizationCode: string,
-  ) => InventoryBranchOrderResult[] | null;
+  ) => Promise<InventoryBranchOrderResult[] | null>;
 }
 
 const escapeHtml = (value: string) =>
@@ -83,6 +84,7 @@ export function InventoryOrderDialog({
   branchInventory,
   defaultBranches,
   isMasterCode,
+  authorizationManagedByServer,
   onCreateOrders,
 }: InventoryOrderDialogProps) {
   const branches = useMemo(
@@ -104,7 +106,9 @@ export function InventoryOrderDialog({
   const [selectedBranches, setSelectedBranches] = useState<string[]>([]);
   const [lines, setLines] = useState<InventoryOrderLine[]>([]);
   const [folio, setFolio] = useState("");
-  const [createdOrders, setCreatedOrders] = useState<InventoryBranchOrderResult[]>([]);
+  const [createdOrders, setCreatedOrders] = useState<
+    InventoryBranchOrderResult[]
+  >([]);
   const [approvalCode, setApprovalCode] = useState("");
   const [manualProductId, setManualProductId] = useState("");
   const [manualBranch, setManualBranch] = useState("");
@@ -207,8 +211,7 @@ export function InventoryOrderDialog({
     const currentStock = branchInventory[manualBranch]?.[product.id] ?? 0;
     setLines((current) => {
       const existing = current.find(
-        (line) =>
-          line.productId === product.id && line.branch === manualBranch,
+        (line) => line.productId === product.id && line.branch === manualBranch,
       );
       if (existing) {
         return current.map((line) =>
@@ -240,12 +243,12 @@ export function InventoryOrderDialog({
     toast.success(`${product.name} se añadió manualmente al pedido.`);
   };
 
-  const approveOrder = () => {
+  const approveOrder = async () => {
     if (lines.length === 0) {
       toast.error("El pedido no contiene productos.");
       return;
     }
-    if (!isMasterCode(approvalCode)) {
+    if (!authorizationManagedByServer && !isMasterCode(approvalCode)) {
       toast.error("Código master incorrecto para aprobar el pedido.");
       return;
     }
@@ -260,7 +263,7 @@ export function InventoryOrderDialog({
           })),
       }),
     );
-    const results = onCreateOrders(orders, approvalCode);
+    const results = await onCreateOrders(orders, approvalCode);
     if (!results || results.length !== orders.length) return;
     setCreatedOrders(results);
     setApprovalCode("");
@@ -281,7 +284,11 @@ export function InventoryOrderDialog({
       doc.setFontSize(18);
       doc.text("KEYSAR COSMETICS", 36, 38);
       doc.setFontSize(12);
-      doc.text(`Pedidos de inventario · ${createdOrders.length} folios`, 36, 58);
+      doc.text(
+        `Pedidos de inventario · ${createdOrders.length} folios`,
+        36,
+        58,
+      );
       doc.setFont("helvetica", "normal");
       doc.setFontSize(9);
       doc.text(
@@ -291,9 +298,20 @@ export function InventoryOrderDialog({
       );
       autoTable(doc, {
         startY: 90,
-        head: [["Folio", "SKU", "Producto", "Sucursal", "Actual", "Máximo", "Pedido"]],
+        head: [
+          [
+            "Folio",
+            "SKU",
+            "Producto",
+            "Sucursal",
+            "Actual",
+            "Máximo",
+            "Pedido",
+          ],
+        ],
         body: lines.map((line) => [
-          createdOrders.find((order) => order.branch === line.branch)?.folio ?? folio,
+          createdOrders.find((order) => order.branch === line.branch)?.folio ??
+            folio,
           line.sku,
           line.productName,
           line.branch,
@@ -320,10 +338,13 @@ export function InventoryOrderDialog({
     }
     const rows = lines
       .map(
-        (line) => `<tr><td>${escapeHtml(createdOrders.find((order) => order.branch === line.branch)?.folio ?? folio)}</td><td>${escapeHtml(line.sku)}</td><td>${escapeHtml(line.productName)}</td><td>${escapeHtml(line.branch)}</td><td>${line.currentStock}</td><td>${line.maximumStock}</td><td><strong>${line.quantity}</strong></td></tr>`,
+        (line) =>
+          `<tr><td>${escapeHtml(createdOrders.find((order) => order.branch === line.branch)?.folio ?? folio)}</td><td>${escapeHtml(line.sku)}</td><td>${escapeHtml(line.productName)}</td><td>${escapeHtml(line.branch)}</td><td>${line.currentStock}</td><td>${line.maximumStock}</td><td><strong>${line.quantity}</strong></td></tr>`,
       )
       .join("");
-    printWindow.document.write(`<!doctype html><html><head><title>Pedidos de inventario</title><style>body{font-family:Arial,sans-serif;color:#171513;padding:28px}h1{font-size:22px;margin:0}h2{font-size:15px;margin:6px 0 4px}p{font-size:11px;color:#665f59}table{width:100%;border-collapse:collapse;margin-top:20px;font-size:11px}th,td{border:1px solid #bdb4ac;padding:7px;text-align:left}th{background:#2d2926;color:white}@media print{button{display:none}}</style></head><body><h1>KEYSAR COSMETICS</h1><h2>Pedidos de inventario · ${createdOrders.length} folios</h2><p>${new Date().toLocaleString("es-MX")} · ${totalUnits} piezas · ${totalProducts} productos</p><table><thead><tr><th>Folio</th><th>SKU</th><th>Producto</th><th>Sucursal</th><th>Actual</th><th>Máximo</th><th>Pedido</th></tr></thead><tbody>${rows}</tbody></table><script>window.onload=()=>{window.print();window.close();}</script></body></html>`);
+    printWindow.document.write(
+      `<!doctype html><html><head><title>Pedidos de inventario</title><style>body{font-family:Arial,sans-serif;color:#171513;padding:28px}h1{font-size:22px;margin:0}h2{font-size:15px;margin:6px 0 4px}p{font-size:11px;color:#665f59}table{width:100%;border-collapse:collapse;margin-top:20px;font-size:11px}th,td{border:1px solid #bdb4ac;padding:7px;text-align:left}th{background:#2d2926;color:white}@media print{button{display:none}}</style></head><body><h1>KEYSAR COSMETICS</h1><h2>Pedidos de inventario · ${createdOrders.length} folios</h2><p>${new Date().toLocaleString("es-MX")} · ${totalUnits} piezas · ${totalProducts} productos</p><table><thead><tr><th>Folio</th><th>SKU</th><th>Producto</th><th>Sucursal</th><th>Actual</th><th>Máximo</th><th>Pedido</th></tr></thead><tbody>${rows}</tbody></table><script>window.onload=()=>{window.print();window.close();}</script></body></html>`,
+    );
     printWindow.document.close();
   };
 
@@ -416,7 +437,9 @@ export function InventoryOrderDialog({
           <div className="inventory-order-review">
             <div className="inventory-order-summary">
               <span>
-                <small>{step === "APPROVED" ? "FOLIOS GENERADOS" : "PROPUESTA"}</small>
+                <small>
+                  {step === "APPROVED" ? "FOLIOS GENERADOS" : "PROPUESTA"}
+                </small>
                 <strong>
                   {step === "APPROVED"
                     ? `${createdOrders.length} ${createdOrders.length === 1 ? "solicitud" : "solicitudes"}`
@@ -442,7 +465,9 @@ export function InventoryOrderDialog({
                     <TableRow key={line.id}>
                       <TableCell>
                         <strong>{line.productName}</strong>
-                        <small className="inventory-order-sku">{line.sku}</small>
+                        <small className="inventory-order-sku">
+                          {line.sku}
+                        </small>
                       </TableCell>
                       <TableCell>{line.branch}</TableCell>
                       <TableCell>
@@ -457,7 +482,10 @@ export function InventoryOrderDialog({
                             value={line.quantity}
                             aria-label={`Cantidad de ${line.productName} en ${line.branch}`}
                             onChange={(event) =>
-                              updateLineQuantity(line.id, Number(event.target.value))
+                              updateLineQuantity(
+                                line.id,
+                                Number(event.target.value),
+                              )
                             }
                           />
                         ) : (
@@ -473,7 +501,9 @@ export function InventoryOrderDialog({
                             aria-label={`Borrar ${line.productName} de ${line.branch}`}
                             onClick={() =>
                               setLines((current) =>
-                                current.filter((candidate) => candidate.id !== line.id),
+                                current.filter(
+                                  (candidate) => candidate.id !== line.id,
+                                ),
                               )
                             }
                           >
@@ -510,7 +540,10 @@ export function InventoryOrderDialog({
                         ))}
                       </SelectContent>
                     </Select>
-                    <Select value={manualBranch} onValueChange={setManualBranch}>
+                    <Select
+                      value={manualBranch}
+                      onValueChange={setManualBranch}
+                    >
                       <SelectTrigger aria-label="Sucursal manual">
                         <SelectValue placeholder="Sucursal" />
                       </SelectTrigger>
@@ -528,10 +561,16 @@ export function InventoryOrderDialog({
                       value={manualQuantity}
                       aria-label="Cantidad manual"
                       onChange={(event) =>
-                        setManualQuantity(Math.max(1, Number(event.target.value)))
+                        setManualQuantity(
+                          Math.max(1, Number(event.target.value)),
+                        )
                       }
                     />
-                    <Button type="button" variant="outline" onClick={addManualLine}>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={addManualLine}
+                    >
                       <Plus size={15} /> Añadir
                     </Button>
                   </div>
@@ -539,7 +578,9 @@ export function InventoryOrderDialog({
                 <div className="inventory-order-approval">
                   <ShieldCheck size={20} />
                   <div>
-                    <Label htmlFor="inventory-order-code">Aprobación master</Label>
+                    <Label htmlFor="inventory-order-code">
+                      Aprobación master
+                    </Label>
                     <Input
                       id="inventory-order-code"
                       type="password"
@@ -548,7 +589,11 @@ export function InventoryOrderDialog({
                       placeholder="Código master"
                     />
                   </div>
-                  <Button type="button" onClick={approveOrder} disabled={!approvalCode}>
+                  <Button
+                    type="button"
+                    onClick={approveOrder}
+                    disabled={!approvalCode}
+                  >
                     <CheckCircle2 size={16} /> Aprobar pedido
                   </Button>
                 </div>
@@ -566,7 +611,8 @@ export function InventoryOrderDialog({
                   </small>
                   {createdOrders.map((order) => (
                     <small key={order.folio}>
-                      <strong>{order.folio}</strong> · {order.branch} · SOLICITADO
+                      <strong>{order.folio}</strong> · {order.branch} ·
+                      SOLICITADO
                     </small>
                   ))}
                 </span>
@@ -578,7 +624,11 @@ export function InventoryOrderDialog({
         <DialogFooter>
           {step === "SCOPE" && (
             <>
-              <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => onOpenChange(false)}
+              >
                 Cancelar
               </Button>
               <Button type="button" onClick={generateSuggestedOrder}>
@@ -587,7 +637,11 @@ export function InventoryOrderDialog({
             </>
           )}
           {step === "REVIEW" && (
-            <Button type="button" variant="outline" onClick={() => setStep("SCOPE")}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setStep("SCOPE")}
+            >
               Cambiar alcance
             </Button>
           )}

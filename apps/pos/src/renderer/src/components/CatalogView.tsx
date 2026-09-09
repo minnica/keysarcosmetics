@@ -69,18 +69,19 @@ interface CatalogViewProps {
   families: string[];
   categories: string[];
   groups: string[];
-  onSave: (product: Product) => void;
+  onSave: (product: Product) => boolean | Promise<boolean>;
   onStatusChange: (productId: string, active: boolean) => void;
-  onAddFamily: (name: string) => void;
-  onAddCategory: (name: string) => void;
-  onAddGroup: (name: string) => void;
+  onAddFamily: (name: string) => boolean | Promise<boolean>;
+  onAddCategory: (name: string) => boolean | Promise<boolean>;
+  onAddGroup: (name: string) => boolean | Promise<boolean>;
   costAccessAuthorized: boolean;
-  onAuthorizeCostAccess: (code: string) => boolean;
+  onAuthorizeCostAccess: (code: string) => boolean | Promise<boolean>;
   isMasterCode: (code: string) => boolean;
+  authorizationManagedByServer: boolean;
   onCreateInventoryOrders: (
     orders: InventoryBranchOrderDraft[],
     authorizationCode: string,
-  ) => InventoryBranchOrderResult[] | null;
+  ) => Promise<InventoryBranchOrderResult[] | null>;
   onLockCostAccess: () => void;
   canOpenBranchRequest: boolean;
   onOpenBranchRequest: (requestType: WarehouseRequestType) => void;
@@ -151,14 +152,14 @@ export function CatalogView({
   costAccessAuthorized,
   onAuthorizeCostAccess,
   isMasterCode,
+  authorizationManagedByServer,
   onCreateInventoryOrders,
   onLockCostAccess,
   canOpenBranchRequest,
   onOpenBranchRequest,
 }: CatalogViewProps) {
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] =
-    useState<CatalogStatusFilter>("ALL");
+  const [statusFilter, setStatusFilter] = useState<CatalogStatusFilter>("ALL");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<Product>(createDraft);
@@ -317,12 +318,7 @@ export function CatalogView({
               : {}),
           })),
       ),
-    [
-      branchInventory,
-      costAccessAuthorized,
-      filteredProducts,
-      selectedBranches,
-    ],
+    [branchInventory, costAccessAuthorized, filteredProducts, selectedBranches],
   );
 
   const toggleInventoryBranch = (branch: string) => {
@@ -398,7 +394,11 @@ export function CatalogView({
         import("jspdf-autotable"),
       ]);
       const headers = Object.keys(inventoryExportRows[0] ?? {});
-      const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
+      const doc = new jsPDF({
+        orientation: "landscape",
+        unit: "pt",
+        format: "a4",
+      });
       doc.setTextColor(32, 27, 23);
       doc.setFont("helvetica", "bold");
       doc.setFontSize(18);
@@ -419,7 +419,9 @@ export function CatalogView({
         startY: 76,
         head: [headers],
         body: inventoryExportRows.map((row) =>
-          headers.map((header) => String(row[header as keyof typeof row] ?? "")),
+          headers.map((header) =>
+            String(row[header as keyof typeof row] ?? ""),
+          ),
         ),
         theme: "grid",
         styles: {
@@ -528,12 +530,15 @@ export function CatalogView({
     setAddMenuOpen(false);
   };
 
-  const saveOption = () => {
+  const saveOption = async () => {
     const name = optionName.trim();
     if (!name || !optionDialog) return;
-    if (optionDialog === "family") onAddFamily(name);
-    if (optionDialog === "category") onAddCategory(name);
-    if (optionDialog === "group") onAddGroup(name);
+    const saved = await (optionDialog === "family"
+      ? onAddFamily(name)
+      : optionDialog === "category"
+        ? onAddCategory(name)
+        : onAddGroup(name));
+    if (!saved) return;
     toast.success(`${name} agregado al catálogo.`);
     setOptionDialog(null);
     setOptionName("");
@@ -591,7 +596,7 @@ export function CatalogView({
     reader.readAsDataURL(file);
   };
 
-  const save = () => {
+  const save = async () => {
     const finalSku = skuMode === "AUTO" ? generatedSku : draft.sku.trim();
     const normalizedMinPrice = roundCurrency(draft.minPrice);
     const normalizedMaxPrice = roundCurrency(draft.maxPrice);
@@ -668,7 +673,7 @@ export function CatalogView({
         return;
       }
     }
-    onSave({
+    const saved = await onSave({
       ...draft,
       name: draft.name.trim(),
       sku: finalSku.toUpperCase(),
@@ -684,6 +689,7 @@ export function CatalogView({
       showInDigitalCatalog: draft.showInDigitalCatalog !== false,
       active: editingId ? draft.active : true,
     });
+    if (!saved) return;
     setDialogOpen(false);
     toast.success(editingId ? "Producto actualizado." : "Producto agregado.");
   };
@@ -742,19 +748,59 @@ export function CatalogView({
             </Button>
             {orderMenuOpen && (
               <div className="catalog-order-menu">
-                <button type="button" onClick={() => { setOrderMenuOpen(false); setOrderDialogOpen(true); }}>
-                  <PackagePlus size={16} /><span><strong>Resurtido por stock</strong><small>Completar existencia máxima por sucursal.</small></span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOrderMenuOpen(false);
+                    setOrderDialogOpen(true);
+                  }}
+                >
+                  <PackagePlus size={16} />
+                  <span>
+                    <strong>Resurtido por stock</strong>
+                    <small>Completar existencia máxima por sucursal.</small>
+                  </span>
                 </button>
                 {canOpenBranchRequest && (
                   <>
-                    <button type="button" onClick={() => { setOrderMenuOpen(false); onOpenBranchRequest("PRODUCT"); }}>
-                      <Boxes size={16} /><span><strong>Solicitar productos</strong><small>Pedido de mercancía vendible a bodega.</small></span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOrderMenuOpen(false);
+                        onOpenBranchRequest("PRODUCT");
+                      }}
+                    >
+                      <Boxes size={16} />
+                      <span>
+                        <strong>Solicitar productos</strong>
+                        <small>Pedido de mercancía vendible a bodega.</small>
+                      </span>
                     </button>
-                    <button type="button" onClick={() => { setOrderMenuOpen(false); onOpenBranchRequest("TESTER"); }}>
-                      <FlaskConical size={16} /><span><strong>Solicitar testers</strong><small>Sólo productos autorizados como demo.</small></span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOrderMenuOpen(false);
+                        onOpenBranchRequest("TESTER");
+                      }}
+                    >
+                      <FlaskConical size={16} />
+                      <span>
+                        <strong>Solicitar testers</strong>
+                        <small>Sólo productos autorizados como demo.</small>
+                      </span>
                     </button>
-                    <button type="button" onClick={() => { setOrderMenuOpen(false); onOpenBranchRequest("SUPPLY"); }}>
-                      <ShoppingBasket size={16} /><span><strong>Solicitar insumos</strong><small>Consumibles visibles para sucursales.</small></span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOrderMenuOpen(false);
+                        onOpenBranchRequest("SUPPLY");
+                      }}
+                    >
+                      <ShoppingBasket size={16} />
+                      <span>
+                        <strong>Solicitar insumos</strong>
+                        <small>Consumibles visibles para sucursales.</small>
+                      </span>
                     </button>
                   </>
                 )}
@@ -797,6 +843,7 @@ export function CatalogView({
         branchInventory={branchInventory}
         defaultBranches={selectedBranches}
         isMasterCode={isMasterCode}
+        authorizationManagedByServer={authorizationManagedByServer}
         onCreateOrders={onCreateInventoryOrders}
       />
 
@@ -824,9 +871,7 @@ export function CatalogView({
             <button
               key={branch}
               type="button"
-              className={
-                selectedBranches.includes(branch) ? "is-active" : ""
-              }
+              className={selectedBranches.includes(branch) ? "is-active" : ""}
               onClick={() => toggleInventoryBranch(branch)}
               aria-pressed={selectedBranches.includes(branch)}
             >
@@ -927,130 +972,138 @@ export function CatalogView({
                   : product.stockMax * Math.max(1, selectedStock.length),
               );
               return (
-              <TableRow
-                key={product.id}
-                className={product.active ? "" : "catalog-row-inactive"}
-              >
-                <TableCell>
-                  <div className="catalog-list-product">
-                    <img src={product.image} alt={product.name} />
-                    <span>
-                      <strong>{product.name}</strong>
-                      <small>{product.sku}</small>
-                      {product.kind === "PRODUCT" && (
-                        <small className={`catalog-tester-flag ${product.testerOrderEnabled ? "is-enabled" : ""}`}>
-                          {product.testerOrderEnabled ? "TESTER AUTORIZADO" : "SIN TESTER"}
+                <TableRow
+                  key={product.id}
+                  className={product.active ? "" : "catalog-row-inactive"}
+                >
+                  <TableCell>
+                    <div className="catalog-list-product">
+                      <img src={product.image} alt={product.name} />
+                      <span>
+                        <strong>{product.name}</strong>
+                        <small>{product.sku}</small>
+                        {product.kind === "PRODUCT" && (
+                          <small
+                            className={`catalog-tester-flag ${product.testerOrderEnabled ? "is-enabled" : ""}`}
+                          >
+                            {product.testerOrderEnabled
+                              ? "TESTER AUTORIZADO"
+                              : "SIN TESTER"}
+                          </small>
+                        )}
+                      </span>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="catalog-list-taxonomy">
+                      <strong>{product.family}</strong>
+                      <span>{product.category}</span>
+                      <small>{product.group}</small>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="catalog-list-prices">
+                      <span>Lista {formatCurrency(product.maxPrice)}</span>
+                      {product.includesVat && (
+                        <small className="catalog-vat-summary">
+                          Sin IVA{" "}
+                          {formatCurrency(
+                            calculateIncludedVat(product.maxPrice, true).net,
+                          )}{" "}
+                          · IVA{" "}
+                          {formatCurrency(
+                            calculateIncludedVat(product.maxPrice, true).vat,
+                          )}
                         </small>
                       )}
-                    </span>
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <div className="catalog-list-taxonomy">
-                    <strong>{product.family}</strong>
-                    <span>{product.category}</span>
-                    <small>{product.group}</small>
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <div className="catalog-list-prices">
-                    <span>Lista {formatCurrency(product.maxPrice)}</span>
-                    {product.includesVat && (
-                      <small className="catalog-vat-summary">
-                        Sin IVA {formatCurrency(calculateIncludedVat(product.maxPrice, true).net)} · IVA {formatCurrency(calculateIncludedVat(product.maxPrice, true).vat)}
-                      </small>
-                    )}
-                    <strong className="catalog-minimum-price">
-                      Mínimo {formatCurrency(product.minPrice)}
-                    </strong>
-                    {costAccessAuthorized && product.kind === "PRODUCT" && (
-                      <small className="catalog-protected-cost">
-                        Costo {formatCurrency(product.costMxn)} MXN · $
-                        {product.costUsd.toFixed(2)} USD · Socio {formatCurrency(product.partnerCost ?? product.costMxn)}
-                      </small>
-                    )}
-                  </div>
-                </TableCell>
-                <TableCell>
-                  {product.stock === null ? (
-                    <Badge variant="outline">
-                      {product.kind === "MEMBERSHIP"
-                        ? `${product.membershipSessions ?? 0} SESIONES`
-                        : "SERVICIO"}
-                    </Badge>
-                  ) : (
-                    <div className="catalog-list-stock catalog-branch-stock">
-                      <strong
-                        className={selectedStockTone}
-                      >
-                        {selectedStockTotal}{" "}
-                        <em>total</em>
+                      <strong className="catalog-minimum-price">
+                        Mínimo {formatCurrency(product.minPrice)}
                       </strong>
-                      <span>
-                        {selectedStock.map((item) => (
-                          <small
-                            key={item.branch}
-                            className={item.tone}
-                          >
-                            {item.branch} <b>{item.stock}</b>
-                          </small>
-                        ))}
-                      </span>
-                      <small>
-                        mín {product.stockMin} · máx {product.stockMax}
-                      </small>
-                    </div>
-                  )}
-                </TableCell>
-                <TableCell>
-                  <div className="catalog-branches">
-                    <Store size={14} /> {visibleSelectedBranches.join(" · ")}
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <Badge variant={product.active ? "default" : "outline"}>
-                    {product.active ? "ACTIVO" : "INACTIVO"}
-                  </Badge>
-                </TableCell>
-                <TableCell>
-                  <div className="catalog-admin-actions">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon"
-                      className="icon-action-button"
-                      onClick={() => openEdit(product)}
-                      aria-label={`Editar ${product.name}`}
-                      title="Editar"
-                    >
-                      <Pencil size={16} />
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon"
-                      className="icon-action-button"
-                      aria-label={`${product.active ? "Desactivar" : "Activar"} ${product.name}`}
-                      title={product.active ? "Desactivar" : "Activar"}
-                      onClick={() => {
-                        const nextActive = !product.active;
-                        const message = nextActive
-                          ? `¿Activar ${product.name}? Volverá a mostrarse en las pantallas operativas.`
-                          : `¿Desactivar ${product.name}? Se retirará de las pantallas operativas y del carrito, pero los tickets anteriores se conservarán.`;
-                        if (window.confirm(message)) {
-                          onStatusChange(product.id, nextActive);
-                        }
-                      }}
-                    >
-                      {product.active ? (
-                        <PowerOff size={14} />
-                      ) : (
-                        <Power size={14} />
+                      {costAccessAuthorized && product.kind === "PRODUCT" && (
+                        <small className="catalog-protected-cost">
+                          Costo {formatCurrency(product.costMxn)} MXN · $
+                          {product.costUsd.toFixed(2)} USD · Socio{" "}
+                          {formatCurrency(
+                            product.partnerCost ?? product.costMxn,
+                          )}
+                        </small>
                       )}
-                    </Button>
-                  </div>
-                </TableCell>
-              </TableRow>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    {product.stock === null ? (
+                      <Badge variant="outline">
+                        {product.kind === "MEMBERSHIP"
+                          ? `${product.membershipSessions ?? 0} SESIONES`
+                          : "SERVICIO"}
+                      </Badge>
+                    ) : (
+                      <div className="catalog-list-stock catalog-branch-stock">
+                        <strong className={selectedStockTone}>
+                          {selectedStockTotal} <em>total</em>
+                        </strong>
+                        <span>
+                          {selectedStock.map((item) => (
+                            <small key={item.branch} className={item.tone}>
+                              {item.branch} <b>{item.stock}</b>
+                            </small>
+                          ))}
+                        </span>
+                        <small>
+                          mín {product.stockMin} · máx {product.stockMax}
+                        </small>
+                      </div>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <div className="catalog-branches">
+                      <Store size={14} /> {visibleSelectedBranches.join(" · ")}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={product.active ? "default" : "outline"}>
+                      {product.active ? "ACTIVO" : "INACTIVO"}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <div className="catalog-admin-actions">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        className="icon-action-button"
+                        onClick={() => openEdit(product)}
+                        aria-label={`Editar ${product.name}`}
+                        title="Editar"
+                      >
+                        <Pencil size={16} />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        className="icon-action-button"
+                        aria-label={`${product.active ? "Desactivar" : "Activar"} ${product.name}`}
+                        title={product.active ? "Desactivar" : "Activar"}
+                        onClick={() => {
+                          const nextActive = !product.active;
+                          const message = nextActive
+                            ? `¿Activar ${product.name}? Volverá a mostrarse en las pantallas operativas.`
+                            : `¿Desactivar ${product.name}? Se retirará de las pantallas operativas y del carrito, pero los tickets anteriores se conservarán.`;
+                          if (window.confirm(message)) {
+                            onStatusChange(product.id, nextActive);
+                          }
+                        }}
+                      >
+                        {product.active ? (
+                          <PowerOff size={14} />
+                        ) : (
+                          <Power size={14} />
+                        )}
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
               );
             })}
             {filteredProducts.length === 0 && (
@@ -1073,8 +1126,8 @@ export function CatalogView({
                 : "Alta de producto, servicio o membresía"}
             </DialogTitle>
             <DialogDescription>
-              Los cambios afectan inmediatamente Ventas e Inventario, pero no los
-              tickets históricos.
+              Los cambios afectan inmediatamente Ventas e Inventario, pero no
+              los tickets históricos.
             </DialogDescription>
           </DialogHeader>
 
@@ -1149,7 +1202,9 @@ export function CatalogView({
                       benefits: event.target.value.split("\n"),
                     }))
                   }
-                  placeholder={"Un beneficio por línea\nHidratación prolongada\nLuminosidad visible"}
+                  placeholder={
+                    "Un beneficio por línea\nHidratación prolongada\nLuminosidad visible"
+                  }
                 />
                 <small>Escribe un beneficio por línea.</small>
               </div>
@@ -1161,7 +1216,8 @@ export function CatalogView({
                 onClick={() =>
                   setDraft((current) => ({
                     ...current,
-                    showInDigitalCatalog: current.showInDigitalCatalog === false,
+                    showInDigitalCatalog:
+                      current.showInDigitalCatalog === false,
                   }))
                 }
               >
@@ -1244,7 +1300,10 @@ export function CatalogView({
                         membershipSessions:
                           event.target.value === ""
                             ? undefined
-                            : Math.max(1, Math.trunc(Number(event.target.value))),
+                            : Math.max(
+                                1,
+                                Math.trunc(Number(event.target.value)),
+                              ),
                       }))
                     }
                     placeholder="Ej. 8"
@@ -1273,9 +1332,9 @@ export function CatalogView({
                     {Array.from(new Set([draft.family, ...families]))
                       .filter(Boolean)
                       .map((family) => (
-                      <SelectItem key={family} value={family}>
-                        {family}
-                      </SelectItem>
+                        <SelectItem key={family} value={family}>
+                          {family}
+                        </SelectItem>
                       ))}
                   </SelectContent>
                 </Select>
@@ -1298,9 +1357,9 @@ export function CatalogView({
                     {Array.from(new Set([draft.category, ...categories]))
                       .filter(Boolean)
                       .map((category) => (
-                      <SelectItem key={category} value={category}>
-                        {category}
-                      </SelectItem>
+                        <SelectItem key={category} value={category}>
+                          {category}
+                        </SelectItem>
                       ))}
                   </SelectContent>
                 </Select>
@@ -1374,7 +1433,9 @@ export function CatalogView({
                       : "Activa el switch para desglosar el impuesto incluido en el precio capturado."}
                   </small>
                 </span>
-                <span className={`mock-switch ${draft.includesVat ? "is-on" : ""}`}>
+                <span
+                  className={`mock-switch ${draft.includesVat ? "is-on" : ""}`}
+                >
                   <i />
                 </span>
               </button>
@@ -1385,10 +1446,12 @@ export function CatalogView({
                     className={`catalog-vat-toggle catalog-tester-toggle ${draft.testerOrderEnabled ? "is-active" : ""}`}
                     role="switch"
                     aria-checked={Boolean(draft.testerOrderEnabled)}
-                    onClick={() => setDraft((current) => ({
-                      ...current,
-                      testerOrderEnabled: !current.testerOrderEnabled,
-                    }))}
+                    onClick={() =>
+                      setDraft((current) => ({
+                        ...current,
+                        testerOrderEnabled: !current.testerOrderEnabled,
+                      }))
+                    }
                   >
                     <span>
                       <strong>Autorizar pedido como tester</strong>
@@ -1398,7 +1461,11 @@ export function CatalogView({
                           : "El producto permanecerá oculto en las solicitudes de testers de las sucursales."}
                       </small>
                     </span>
-                    <span className={`mock-switch ${draft.testerOrderEnabled ? "is-on" : ""}`}><i /></span>
+                    <span
+                      className={`mock-switch ${draft.testerOrderEnabled ? "is-on" : ""}`}
+                    >
+                      <i />
+                    </span>
                   </button>
                   <div className="catalog-cost-access-panel">
                     {costAccessAuthorized ? (
@@ -1483,10 +1550,10 @@ export function CatalogView({
                               event.target.value.replace(/\D/g, "").slice(0, 4),
                             )
                           }
-                          onKeyDown={(event) => {
+                          onKeyDown={async (event) => {
                             if (
                               event.key === "Enter" &&
-                              onAuthorizeCostAccess(costAccessCode)
+                              (await onAuthorizeCostAccess(costAccessCode))
                             )
                               setCostAccessCode("");
                           }}
@@ -1496,8 +1563,8 @@ export function CatalogView({
                         <Button
                           type="button"
                           disabled={costAccessCode.length !== 4}
-                          onClick={() => {
-                            if (onAuthorizeCostAccess(costAccessCode))
+                          onClick={async () => {
+                            if (await onAuthorizeCostAccess(costAccessCode))
                               setCostAccessCode("");
                           }}
                         >

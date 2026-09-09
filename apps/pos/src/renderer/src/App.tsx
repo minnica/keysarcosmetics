@@ -88,6 +88,8 @@ import type {
   PosBusinessDayDto,
   PosCashExpenseDto,
   PosCommercialCompanyDto,
+  PosCourtesyConfigurationDto,
+  PosCustomerDto,
   PosExpenseTypeDto,
   PosInventoryLocationDto,
   PosClientMembershipDto,
@@ -95,6 +97,7 @@ import type {
   PosOperationalSummaryDto,
   PosOfflineBootstrapDto,
   PosOfflineOperationResultDto,
+  PosPackageDto,
   PosPermissionKey,
   PosSessionDto,
   PosSalesCompetitionDto,
@@ -287,42 +290,6 @@ const getSaleProductBrand = (product: Product) =>
         ?.replace(" International", "")
         .replace(" México", "") ?? product.family);
 
-const clientFromPosCustomer = (customer: {
-  id: string;
-  displayName: string;
-  phone: string | null;
-  currentPortfolio?: {
-    kind: "SELLER" | "COMPANY";
-    employeeId: string | null;
-    ownerName: string | null;
-  } | null;
-}): Client => {
-  const [firstName = customer.displayName, ...lastNameParts] =
-    customer.displayName.trim().split(/\s+/);
-  return {
-    id: customer.id,
-    registrationFolio: customer.id,
-    registeredAtIso: "",
-    firstName,
-    lastName: lastNameParts.join(" "),
-    birthday: "",
-    gender: "",
-    phone: customer.phone ?? "",
-    whatsapp: customer.phone ?? "",
-    source: "",
-    sourceLabel: "Directorio central",
-    companyName:
-      customer.currentPortfolio?.kind === "COMPANY"
-        ? (customer.currentPortfolio.ownerName ?? "Keysar Cosmetics")
-        : "",
-    companyLocked: customer.currentPortfolio?.kind === "COMPANY",
-    ownerId: customer.currentPortfolio?.employeeId ?? null,
-    saleSellerIds: customer.currentPortfolio?.employeeId
-      ? [customer.currentPortfolio.employeeId]
-      : [],
-  };
-};
-
 /** Adapta el DTO público al componente existente sin reintroducir costos. */
 const productFromPosCatalog = (
   item: {
@@ -332,23 +299,37 @@ const productFromPosCatalog = (
     kind: string;
     family: { name: string } | null;
     category: { name: string } | null;
+    branchIds: string[];
     description: string | null;
+    groupName: string | null;
     benefits: string[];
     imageUrl: string | null;
+    published: boolean;
+    active: boolean;
+    showInDigitalCatalog: boolean;
+    branchRequestVisible: boolean;
     listPrice: string;
     minimumPrice: string;
     taxRate: string;
     unitCost?: string;
+    unitCostUsd?: string;
+    partnerCost?: string;
+    includesVat: boolean;
+    testerOrderEnabled: boolean;
+    presentation: string | null;
+    unitsPerPackage: number;
+    stockMinimum: string | null;
+    stockMaximum: string | null;
     membershipTerms?: { totalSessions: number } | null;
   },
-  branch: string,
+  branches: string | PosBranchSummaryDto[],
 ): Product => ({
   id: item.id,
   sku: item.sku,
   name: item.name,
   family: item.family?.name ?? "Sin familia",
   category: item.category?.name ?? "Sin categoría",
-  group: item.family?.name ?? "General",
+  group: item.groupName ?? item.family?.name ?? "General",
   kind:
     item.kind === "SERVICE"
       ? "SERVICE"
@@ -358,17 +339,27 @@ const productFromPosCatalog = (
   image: item.imageUrl ?? "./products/placeholder.png",
   ...(item.description ? { description: item.description } : {}),
   benefits: item.benefits,
-  showInDigitalCatalog: true,
+  showInDigitalCatalog: item.showInDigitalCatalog && item.published,
   minPrice: Number(item.minimumPrice),
   maxPrice: Number(item.listPrice),
-  includesVat: Number(item.taxRate) > 0,
-  costUsd: 0,
+  includesVat: item.includesVat,
+  costUsd: Number(item.unitCostUsd ?? "0.00"),
   costMxn: Number(item.unitCost ?? "0.00"),
+  partnerCost: Number(item.partnerCost ?? "0.00"),
+  testerOrderEnabled: item.testerOrderEnabled,
+  ...(item.presentation ? { presentation: item.presentation } : {}),
+  unitsPerPackage: item.unitsPerPackage,
   stock: item.kind === "SERVICE" || item.kind === "MEMBERSHIP" ? null : 0,
-  stockMin: null,
-  stockMax: null,
-  branches: [branch],
-  active: true,
+  stockMin: item.stockMinimum === null ? null : Number(item.stockMinimum),
+  stockMax: item.stockMaximum === null ? null : Number(item.stockMaximum),
+  branches:
+    typeof branches === "string"
+      ? [branches]
+      : (item.branchIds.length === 0
+          ? branches
+          : branches.filter((branch) => item.branchIds.includes(branch.id))
+        ).map((branch) => branch.name),
+  active: item.active,
   ...(item.membershipTerms
     ? { membershipSessions: item.membershipTerms.totalSessions }
     : {}),
@@ -425,6 +416,60 @@ const membershipFromDto = (dto: PosClientMembershipDto): ClientMembership => ({
     reason: change.reason,
   })),
 });
+
+const clientFromPosCustomer = (
+  customer: PosCustomerDto,
+  branches: PosBranchSummaryDto[],
+  sources: ClientSourceOption[],
+): Client => {
+  const [fallbackFirstName, ...fallbackLastName] =
+    customer.displayName.split(/\s+/);
+  const source = sources.find((item) => item.id === customer.sourceId);
+  return {
+    id: customer.id,
+    registrationFolio: customer.registrationFolio ?? customer.id,
+    registeredAtIso: customer.registeredAt,
+    firstName: customer.firstName ?? fallbackFirstName ?? "Cliente",
+    lastName: customer.lastName ?? fallbackLastName.join(" "),
+    birthday: customer.birthday ?? "",
+    gender: customer.gender ?? "",
+    phone: customer.phone ?? "",
+    whatsapp: customer.whatsapp ?? customer.phone ?? "",
+    source: customer.sourceId ?? "",
+    sourceLabel: source?.label ?? "Sin procedencia",
+    companyName:
+      customer.companyName ??
+      (customer.currentPortfolio?.kind === "COMPANY"
+        ? (customer.currentPortfolio.ownerName ?? "")
+        : ""),
+    companyLocked: customer.currentPortfolio?.kind === "COMPANY",
+    ownerId:
+      customer.currentPortfolio?.kind === "SELLER"
+        ? customer.currentPortfolio.employeeId
+        : null,
+    ownershipHistory: customer.portfolioHistory
+      .filter((entry) => entry.effectiveTo)
+      .map((entry) => ({
+        id: entry.id,
+        sellerId: entry.employeeId ?? "",
+        sellerName: entry.employeeName ?? "Empresa",
+        endedAtIso: entry.effectiveTo!,
+        reason:
+          entry.endedReason === "SELLER_INACTIVATED"
+            ? "SELLER_INACTIVATED"
+            : entry.employeeId
+              ? "REASSIGNED"
+              : "COMPANY_TRANSFER",
+      })),
+    saleSellerIds: customer.currentPortfolio?.employeeId
+      ? [customer.currentPortfolio.employeeId]
+      : [],
+    registrationBranch:
+      branches.find((branch) => branch.id === customer.registrationBranchId)
+        ?.name ?? "",
+    ...(customer.agendaLinked ? { agendaSyncStatus: "SYNCED" } : {}),
+  };
+};
 
 const agendaSlotFromDto = (slot: PosAgendaSlotDto): AgendaSlot => ({
   id: slot.id,
@@ -2665,6 +2710,7 @@ function App() {
         showVatBreakdown: configuration.showVatBreakdown,
         showSpareCoverageMessage: configuration.showSpareCoverageMessage,
         logoUrl: configuration.logoUrl ?? current.logoUrl,
+        logoWidth: configuration.logoWidth,
         branchName: `Sucursal ${branchName}`,
       }));
     }
@@ -2716,6 +2762,28 @@ function App() {
     );
     const branches = await posApi.branches();
     setApiBranches(branches);
+    if (
+      session.actor.isMaster ||
+      session.permissions.includes("SETTINGS_MANAGE")
+    ) {
+      const managedBranches = await posApi.managedBranches();
+      setBillingLocations(
+        managedBranches.map((branch) => ({
+          id: branch.id,
+          name: branch.name,
+          costUsd: 0,
+          status: branch.active ? "ACTIVE" : "INACTIVE",
+          billingStartDate: "",
+          nextBillingDate: "",
+          paymentCardId: null,
+        })),
+      );
+      setBranchAddresses(
+        Object.fromEntries(
+          managedBranches.map((branch) => [branch.name, branch.address ?? ""]),
+        ),
+      );
+    }
     setBranchInventory((current) => ({
       ...current,
       ...Object.fromEntries(
@@ -2758,6 +2826,7 @@ function App() {
       showVatBreakdown: ticketConfiguration.showVatBreakdown,
       showSpareCoverageMessage: ticketConfiguration.showSpareCoverageMessage,
       logoUrl: ticketConfiguration.logoUrl ?? "./logo.svg",
+      logoWidth: ticketConfiguration.logoWidth,
       branchName: `Sucursal ${branchName}`,
     }));
     const fieldByKey = new Map(
@@ -2787,29 +2856,66 @@ function App() {
         ].includes(permission),
       )
     ) {
-      loadedCatalog = await loadAllApiPages((page, pageSize) =>
-        posApi.catalogItems({ page, pageSize }),
-      );
+      const [catalogItems, taxonomies] = await Promise.all([
+        loadAllApiPages((page, pageSize) =>
+          posApi.catalogItems({ page, pageSize }),
+        ),
+        posApi.catalogTaxonomies(),
+      ]);
+      loadedCatalog = catalogItems;
       const products = loadedCatalog
         .filter((item) => item.kind !== "SUPPLY")
-        .map((item) => productFromPosCatalog(item, branchName));
+        .map((item) => productFromPosCatalog(item, branches));
       setCatalogProducts(products);
+      const familyNames = new Set(products.map((product) => product.family));
+      const categoryNames = new Set(
+        products.map((product) => product.category),
+      );
       const families = Array.from(
-        new Set(products.map((product) => product.family)),
+        new Set([
+          ...familyNames,
+          ...taxonomies
+            .filter((taxonomy) => taxonomy.scope === "FAMILY")
+            .map((taxonomy) => taxonomy.name),
+        ]),
       );
       const categories = Array.from(
-        new Set(products.map((product) => product.category)),
+        new Set([
+          ...categoryNames,
+          ...taxonomies
+            .filter((taxonomy) => taxonomy.scope === "CATEGORY")
+            .map((taxonomy) => taxonomy.name),
+        ]),
       );
       setCatalogFamilies(families);
       setCatalogFamilyStatus(
-        Object.fromEntries(families.map((family) => [family, true])),
+        Object.fromEntries(
+          families.map((family) => [
+            family,
+            taxonomies.find((taxonomy) => taxonomy.name === family)?.active ??
+              true,
+          ]),
+        ),
       );
       setCatalogCategories(categories);
       setCatalogCategoryStatus(
-        Object.fromEntries(categories.map((category) => [category, true])),
+        Object.fromEntries(
+          categories.map((category) => [
+            category,
+            taxonomies.find((taxonomy) => taxonomy.name === category)?.active ??
+              true,
+          ]),
+        ),
       );
       setCatalogGroups(
-        Array.from(new Set(products.map((product) => product.group))),
+        Array.from(
+          new Set([
+            ...products.map((product) => product.group),
+            ...taxonomies
+              .filter((taxonomy) => taxonomy.scope === "GROUP")
+              .map((taxonomy) => taxonomy.name),
+          ]),
+        ),
       );
     }
     if (
@@ -2864,11 +2970,7 @@ function App() {
             product.kind === "PRODUCT"
               ? (nextBranchInventory[branchName]?.[product.id] ?? 0)
               : null,
-          branches: locations
-            .filter(
-              (location) => location.type === "BRANCH" && location.branchName,
-            )
-            .map((location) => location.branchName!),
+          branches: product.branches,
         })),
       );
       setInventoryMovements(inventoryMovementsFromDto(movements));
@@ -2903,7 +3005,7 @@ function App() {
             supplierId: null,
             supplierName: null,
             active: item.active,
-            branchVisible: true,
+            branchVisible: item.branchRequestVisible,
           })),
       );
     } else {
@@ -2990,7 +3092,11 @@ function App() {
       session.actor.isMaster ||
       session.permissions.includes("WAREHOUSE_MANAGE")
     ) {
-      const suppliers = await posApi.suppliers();
+      const [suppliers, priceLists, concepts] = await Promise.all([
+        posApi.suppliers(),
+        posApi.priceLists(),
+        posApi.inventoryConcepts(),
+      ]);
       setWarehouseSuppliers(
         suppliers.map((supplier) => ({
           id: supplier.id,
@@ -2998,14 +3104,52 @@ function App() {
           businessName: supplier.businessName,
           contactName: supplier.contactName ?? "",
           rfc: supplier.rfc ?? "",
-          taxRegime: "",
-          businessLine: "",
+          taxRegime: supplier.taxRegime ?? "",
+          businessLine: supplier.businessLine ?? "",
           phone: supplier.phone ?? "",
           email: supplier.email ?? "",
           address: supplier.address ?? "",
           active: supplier.active,
-          createdAtIso: new Date().toISOString(),
+          createdAtIso: supplier.createdAt,
         })),
+      );
+      setWarehousePriceLists(
+        priceLists.map((list) => ({
+          id: list.id,
+          name: list.name,
+          active: list.status === "ACTIVE",
+          branchNames: list.branchIds.flatMap((branchId) => {
+            const branch = branches.find((item) => item.id === branchId);
+            return branch ? [branch.name] : [];
+          }),
+          clientIds: list.customerIds,
+          items: list.lines.map((line) => ({
+            productId: line.itemId,
+            priceMxn: Number(line.price),
+            priceUsd: Number(line.priceUsd),
+          })),
+          createdAtIso: list.createdAt,
+        })),
+      );
+      setWarehouseCategories(
+        concepts
+          .filter((concept) => concept.kind === "WAREHOUSE_CATEGORY")
+          .map((concept) => ({
+            id: concept.id,
+            name: concept.name,
+            active: concept.active,
+            createdAtIso: concept.createdAt,
+          })),
+      );
+      setInventoryMovementReasons(
+        concepts
+          .filter((concept) => concept.kind === "MOVEMENT_REASON")
+          .map((concept) => ({
+            id: concept.id,
+            name: concept.name,
+            active: concept.active,
+            createdAtIso: concept.createdAt,
+          })),
       );
     }
     if (
@@ -3085,7 +3229,9 @@ function App() {
             productId: line.itemId,
             quantity: Number(line.quantity),
           })),
-          branches: branches.map((branch) => branch.name),
+          branches: branches
+            .filter((branch) => item.branchIds.includes(branch.id))
+            .map((branch) => branch.name),
           startDate: item.startsAt?.slice(0, 10) ?? "",
           endDate: item.endsAt?.slice(0, 10) ?? "",
           status: item.status,
@@ -3167,9 +3313,15 @@ function App() {
           permission === "CUSTOMERS_VIEW",
       )
     ) {
-      const ticketItems = await loadAllApiPages((page, pageSize) =>
-        posApi.tickets({ page, pageSize }),
-      );
+      const [ticketItems, customerItems, directorySources] = await Promise.all([
+        loadAllApiPages((page, pageSize) => posApi.tickets({ page, pageSize })),
+        session.actor.isMaster || session.permissions.includes("CUSTOMERS_VIEW")
+          ? loadAllApiPages((page, pageSize) =>
+              posApi.customers({ page, pageSize }),
+            )
+          : Promise.resolve([]),
+        posApi.customerSources(),
+      ]);
       const realTickets = ticketItems.map(ticketFromDto);
       setTickets(realTickets);
       setLayaways(
@@ -3219,7 +3371,18 @@ function App() {
             }),
         ),
       );
-      const knownClients = new Map<string, Client>();
+      const mappedDirectorySources = directorySources.map((source) => ({
+        id: source.id,
+        label: source.name,
+        active: source.active,
+        locksCompany: source.companyOwnedByDefault,
+      }));
+      const knownClients = new Map<string, Client>(
+        customerItems.map((customer) => [
+          customer.id,
+          clientFromPosCustomer(customer, branches, mappedDirectorySources),
+        ]),
+      );
       for (const ticket of ticketItems) {
         if (!ticket.customerId || knownClients.has(ticket.customerId)) continue;
         const [firstName, ...lastName] = (
@@ -3674,7 +3837,23 @@ function App() {
       );
   };
 
-  const authorizeCatalogExit = (alias: string, code: string) => {
+  const authorizeCatalogExit = async (alias: string, code: string) => {
+    if (posApiEnabled) {
+      try {
+        const purpose = "CATALOG_PRESENTATION_EXIT";
+        const authorization = await posApi.createAuthorization({
+          alias: alias.trim(),
+          pin: code.trim(),
+          purpose,
+        });
+        return posApi.verifyAuthorization(
+          authorization.authorizationToken,
+          purpose,
+        );
+      } catch {
+        return false;
+      }
+    }
     const normalizedAlias = alias.trim().toLocaleLowerCase("es-MX");
     const normalizedCode = code.trim();
     const isMasterAlias =
@@ -4136,7 +4315,24 @@ function App() {
     await refreshApiInventory();
   };
 
-  const createWarehouseEntry = (
+  const authorizeWarehouseRequest = async (
+    id: string,
+    action:
+      | "approve-creation"
+      | "approve-send"
+      | "receive"
+      | "return-to-requested"
+      | "cancel",
+    code: string,
+  ) =>
+    posApi.createAuthorization({
+      pin: code,
+      purpose: `WAREHOUSE_${action.replaceAll("-", "_").toUpperCase()}`,
+      entityType: "WarehouseRequest",
+      entityId: id,
+    });
+
+  const createWarehouseEntry = async (
     lines: WarehouseMovementLine[],
     comment: string,
     code: string,
@@ -4149,8 +4345,8 @@ function App() {
         toast.error("No existe la ubicación de bodega matriz.");
         return false;
       }
-      void posApi
-        .createInventoryAdjustmentBatch({
+      try {
+        const batch = await posApi.createInventoryAdjustmentBatch({
           notes: comment,
           lines: lines.map((line) => ({
             itemId: line.productId,
@@ -4161,20 +4357,28 @@ function App() {
             reason: "INGRESO_BODEGA",
             notes: comment || null,
           })),
-        })
-        .then((batch) => posApi.approveInventoryAdjustmentBatch(batch.id))
-        .then(async () => {
-          await refreshApiInventory();
-          toast.success("Ingreso confirmado en el ledger de bodega.");
-        })
-        .catch((error: unknown) =>
-          toast.error(
-            error instanceof Error
-              ? error.message
-              : "No se pudo registrar el ingreso.",
-          ),
+        });
+        const authorization = await posApi.createAuthorization({
+          pin: code,
+          purpose: "INVENTORY_ADJUSTMENT_APPROVE",
+          entityType: "InventoryAdjustmentBatch",
+          entityId: batch.id,
+        });
+        await posApi.approveInventoryAdjustmentBatch(
+          batch.id,
+          authorization.authorizationToken,
         );
-      return true;
+        await refreshApiInventory();
+        toast.success("Ingreso confirmado en el ledger de bodega.");
+        return true;
+      } catch (error) {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "No se pudo registrar el ingreso.",
+        );
+        return false;
+      }
     }
     const actor = warehouseAuthorizationActor(code);
     if (!actor) {
@@ -4227,7 +4431,7 @@ function App() {
     return true;
   };
 
-  const createWarehouseMovement = (
+  const createWarehouseMovement = async (
     kind: "SHIPMENT" | "BRANCH_REQUEST",
     requestType: WarehouseRequestType,
     categoryId: string,
@@ -4246,8 +4450,8 @@ function App() {
         );
         return false;
       }
-      void posApi
-        .createWarehouseRequest({
+      try {
+        const request = await posApi.createWarehouseRequest({
           source: "BRANCH",
           requestType,
           branchId,
@@ -4258,24 +4462,23 @@ function App() {
             itemId: line.productId,
             quantity: line.quantity.toFixed(2),
           })),
-        })
-        .then(async (request) => {
-          setWarehouseMovements((current) => [
-            warehouseMovementFromDto(request),
-            ...current,
-          ]);
-          toast.success(
-            `${request.folio} creado; no se modificaron existencias.`,
-          );
-        })
-        .catch((error: unknown) =>
-          toast.error(
-            error instanceof Error
-              ? error.message
-              : "No se pudo crear la solicitud.",
-          ),
+        });
+        setWarehouseMovements((current) => [
+          warehouseMovementFromDto(request),
+          ...current,
+        ]);
+        toast.success(
+          `${request.folio} creado; no se modificaron existencias.`,
         );
-      return true;
+        return true;
+      } catch (error) {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "No se pudo crear la solicitud.",
+        );
+        return false;
+      }
     }
     const category = warehouseCategories.find(
       (candidate) => candidate.id === categoryId && candidate.active,
@@ -4354,49 +4557,62 @@ function App() {
     return true;
   };
 
-  const createInventoryBranchOrders = (
+  const createInventoryBranchOrders = async (
     orders: InventoryBranchOrderDraft[],
     authorizationCode: string,
-  ): InventoryBranchOrderResult[] | null => {
+  ): Promise<InventoryBranchOrderResult[] | null> => {
     if (posApiEnabled) {
       if (!canCreateWarehouseRequest || orders.length === 0) return null;
-      void Promise.all(
-        orders.map((order) => {
-          const branchId = apiBranches.find(
-            (branch) => branch.name === order.branch,
-          )?.id;
-          if (!branchId)
-            throw new Error(`Sucursal no disponible: ${order.branch}`);
-          return posApi.createWarehouseRequest({
-            source: "BRANCH",
-            requestType: "PRODUCT",
-            branchId,
-            notes:
-              "Pedido generado desde Inventory para completar stock máximo.",
-            lines: order.lines.map((line) => ({
-              itemId: line.productId,
-              quantity: line.quantity.toFixed(2),
-            })),
-          });
-        }),
-      )
-        .then(async (requests) => {
-          await refreshApiWarehouse();
-          toast.success(
-            `${requests.length} ${requests.length === 1 ? "folio enviado" : "folios enviados"} a bodega matriz.`,
-          );
-        })
-        .catch((error: unknown) =>
-          toast.error(
-            error instanceof Error
-              ? error.message
-              : "No se pudieron generar los pedidos.",
-          ),
+      try {
+        const authorization = await posApi.createAuthorization({
+          pin: authorizationCode,
+          purpose: "WAREHOUSE_BULK_CREATE",
+          entityType: "PosTerminal",
+          entityId: apiSession!.terminal.id,
+        });
+        const verified = await posApi.verifyAuthorization(
+          authorization.authorizationToken,
+          "WAREHOUSE_BULK_CREATE",
         );
-      return orders.map((order) => ({
-        branch: order.branch,
-        folio: "Generando folio…",
-      }));
+        if (!verified) return null;
+        const requests = await Promise.all(
+          orders.map((order) => {
+            const branchId = apiBranches.find(
+              (branch) => branch.name === order.branch,
+            )?.id;
+            if (!branchId)
+              throw new Error(`Sucursal no disponible: ${order.branch}`);
+            return posApi.createWarehouseRequest({
+              source: "BRANCH",
+              requestType: "PRODUCT",
+              branchId,
+              notes:
+                "Pedido generado desde Inventory para completar stock máximo.",
+              lines: order.lines.map((line) => ({
+                itemId: line.productId,
+                quantity: line.quantity.toFixed(2),
+              })),
+            });
+          }),
+        );
+        await refreshApiWarehouse();
+        toast.success(
+          `${requests.length} ${requests.length === 1 ? "folio enviado" : "folios enviados"} a bodega matriz.`,
+        );
+        return requests.map((request) => ({
+          branch:
+            apiBranches.find((branch) => branch.id === request.branchId)
+              ?.name ?? "Sucursal",
+          folio: request.folio,
+        }));
+      } catch (error) {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "No se pudieron generar los pedidos.",
+        );
+        return null;
+      }
     }
     if (!isMasterAccessCode(authorizationCode) || !canCreateWarehouseRequest) {
       toast.error("Se requiere autorización master para generar los pedidos.");
@@ -4493,7 +4709,7 @@ function App() {
     return validPrepared.map((item) => item.result);
   };
 
-  const editWarehouseMovement = (
+  const editWarehouseMovement = async (
     id: string,
     categoryId: string,
     branch: string,
@@ -4502,10 +4718,49 @@ function App() {
     pricing: WarehousePricingSelection,
   ) => {
     if (posApiEnabled) {
-      toast.info(
-        "La solicitud real conserva su snapshot; cancélala y crea una nueva para cambiar sus partidas.",
+      const movement = warehouseMovements.find(
+        (candidate) => candidate.id === id,
       );
-      return false;
+      const branchId = apiBranches.find(
+        (candidate) => candidate.name === branch,
+      )?.id;
+      if (!movement || !movement.backendVersion) {
+        toast.error("No se encontró la versión vigente de la solicitud.");
+        return false;
+      }
+      try {
+        const updated = await posApi.updateWarehouseRequest(id, {
+          source: movement.kind === "PURCHASE_ORDER" ? "SUPPLIER" : "BRANCH",
+          requestType: movement.requestType ?? "PRODUCT",
+          branchId:
+            movement.kind === "PURCHASE_ORDER" ? null : (branchId ?? null),
+          supplierId: movement.supplierId ?? null,
+          priceListId: pricing.priceListId,
+          customerId: pricing.customerId,
+          notes: comment,
+          lines: lines.map((line) => ({
+            itemId: line.productId,
+            quantity: line.quantity.toFixed(2),
+          })),
+          expectedVersion: movement.backendVersion,
+        });
+        setWarehouseMovements((current) =>
+          current.map((candidate) =>
+            candidate.id === id ? warehouseMovementFromDto(updated) : candidate,
+          ),
+        );
+        toast.success(
+          `${updated.folio} actualizado; la revisión anterior quedó en auditoría.`,
+        );
+        return true;
+      } catch (error) {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "No se pudo actualizar la solicitud.",
+        );
+        return false;
+      }
     }
     if (!canManageWarehouse) return false;
     const movement = warehouseMovements.find(
@@ -4587,14 +4842,14 @@ function App() {
     return true;
   };
 
-  const createWarehouseRestockOrder = (
+  const createWarehouseRestockOrder = async (
     supplierId: string,
     lines: WarehouseMovementLine[],
     comment: string,
   ) => {
     if (posApiEnabled) {
-      void posApi
-        .createWarehouseRequest({
+      try {
+        const request = await posApi.createWarehouseRequest({
           source: "SUPPLIER",
           requestType: "PRODUCT",
           supplierId,
@@ -4603,24 +4858,23 @@ function App() {
             itemId: line.productId,
             quantity: line.quantity.toFixed(2),
           })),
-        })
-        .then((request) => {
-          setWarehouseMovements((current) => [
-            warehouseMovementFromDto(request),
-            ...current,
-          ]);
-          toast.success(
-            `${request.folio} generado; requiere dos aprobaciones distintas.`,
-          );
-        })
-        .catch((error: unknown) =>
-          toast.error(
-            error instanceof Error
-              ? error.message
-              : "No se pudo crear el resurtido.",
-          ),
+        });
+        setWarehouseMovements((current) => [
+          warehouseMovementFromDto(request),
+          ...current,
+        ]);
+        toast.success(
+          `${request.folio} generado; requiere dos aprobaciones distintas.`,
         );
-      return true;
+        return true;
+      } catch (error) {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "No se pudo crear el resurtido.",
+        );
+        return false;
+      }
     }
     const supplier = warehouseSuppliers.find(
       (candidate) => candidate.id === supplierId && candidate.active,
@@ -4666,22 +4920,29 @@ function App() {
     return true;
   };
 
-  const approveWarehouseCreation = (id: string, code: string) => {
+  const approveWarehouseCreation = async (id: string, code: string) => {
     if (posApiEnabled) {
-      void posApi
-        .warehouseRequestAction(id, "approve-creation")
-        .then(async () => {
-          await refreshApiWarehouse();
-          toast.success(
-            "Primera aprobación registrada con la identidad de la sesión.",
-          );
-        })
-        .catch((error: unknown) =>
-          toast.error(
-            error instanceof Error ? error.message : "No se pudo aprobar.",
-          ),
+      try {
+        const authorization = await authorizeWarehouseRequest(
+          id,
+          "approve-creation",
+          code,
         );
-      return true;
+        await posApi.warehouseRequestAction(
+          id,
+          "approve-creation",
+          null,
+          authorization.authorizationToken,
+        );
+        await refreshApiWarehouse();
+        toast.success("Primera aprobación registrada con el actor autorizado.");
+        return true;
+      } catch (error) {
+        toast.error(
+          error instanceof Error ? error.message : "No se pudo aprobar.",
+        );
+        return false;
+      }
     }
     const actor = warehouseAuthorizationActor(code);
     const movement = warehouseMovements.find(
@@ -4711,22 +4972,31 @@ function App() {
     return true;
   };
 
-  const approveWarehouseSend = (id: string, code: string) => {
+  const approveWarehouseSend = async (id: string, code: string) => {
     if (posApiEnabled) {
-      void posApi
-        .warehouseRequestAction(id, "approve-send")
-        .then(async () => {
-          await refreshApiWarehouse();
-          toast.success("Segunda aprobación y envío confirmados.");
-        })
-        .catch((error: unknown) =>
-          toast.error(
-            error instanceof Error
-              ? error.message
-              : "La segunda aprobación debe realizarla otro usuario.",
-          ),
+      try {
+        const authorization = await authorizeWarehouseRequest(
+          id,
+          "approve-send",
+          code,
         );
-      return true;
+        await posApi.warehouseRequestAction(
+          id,
+          "approve-send",
+          null,
+          authorization.authorizationToken,
+        );
+        await refreshApiWarehouse();
+        toast.success("Segunda aprobación y envío confirmados.");
+        return true;
+      } catch (error) {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "La segunda aprobación debe realizarla otro usuario.",
+        );
+        return false;
+      }
     }
     const actor = warehouseAuthorizationActor(code);
     const movement = warehouseMovements.find(
@@ -4778,22 +5048,31 @@ function App() {
     return true;
   };
 
-  const receiveWarehouseMovement = (id: string, code: string) => {
+  const receiveWarehouseMovement = async (id: string, code: string) => {
     if (posApiEnabled) {
-      void posApi
-        .warehouseRequestAction(id, "receive")
-        .then(async () => {
-          await refreshApiWarehouse();
-          toast.success("Recepción confirmada atómicamente.");
-        })
-        .catch((error: unknown) =>
-          toast.error(
-            error instanceof Error
-              ? error.message
-              : "No se pudo recibir el pedido.",
-          ),
+      try {
+        const authorization = await authorizeWarehouseRequest(
+          id,
+          "receive",
+          code,
         );
-      return true;
+        await posApi.warehouseRequestAction(
+          id,
+          "receive",
+          null,
+          authorization.authorizationToken,
+        );
+        await refreshApiWarehouse();
+        toast.success("Recepción confirmada atómicamente.");
+        return true;
+      } catch (error) {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "No se pudo recibir el pedido.",
+        );
+        return false;
+      }
     }
     const actor = warehouseAuthorizationActor(code);
     if (!canManageWarehouse || !actor) {
@@ -4995,31 +5274,36 @@ function App() {
     }
   };
 
-  const cancelWarehouseMovement = (id: string, code: string) => {
+  const cancelWarehouseMovement = async (id: string, code: string) => {
     if (posApiEnabled) {
       const movement = warehouseMovements.find(
         (candidate) => candidate.id === id,
       );
       const action =
         movement?.status === "SENT" ? "return-to-requested" : "cancel";
-      void posApi
-        .warehouseRequestAction(id, action)
-        .then(async () => {
-          await refreshApiWarehouse();
-          toast.success(
-            action === "cancel"
-              ? "Solicitud cancelada."
-              : "Envío regresado a pedidos y existencias restauradas.",
-          );
-        })
-        .catch((error: unknown) =>
-          toast.error(
-            error instanceof Error
-              ? error.message
-              : "No se pudo actualizar la solicitud.",
-          ),
+      try {
+        const authorization = await authorizeWarehouseRequest(id, action, code);
+        await posApi.warehouseRequestAction(
+          id,
+          action,
+          null,
+          authorization.authorizationToken,
         );
-      return true;
+        await refreshApiWarehouse();
+        toast.success(
+          action === "cancel"
+            ? "Solicitud cancelada."
+            : "Envío regresado a pedidos y existencias restauradas.",
+        );
+        return true;
+      } catch (error) {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "No se pudo actualizar la solicitud.",
+        );
+        return false;
+      }
     }
     const actor = warehouseAuthorizationActor(code);
     const movement = warehouseMovements.find(
@@ -5099,7 +5383,7 @@ function App() {
     return true;
   };
 
-  const saveWarehouseCategory = (id: string | null, name: string) => {
+  const saveWarehouseCategory = async (id: string | null, name: string) => {
     if (!canManageWarehouse) return false;
     const normalized = name.trim();
     if (
@@ -5113,6 +5397,58 @@ function App() {
     ) {
       toast.error("El concepto ya existe o no es válido.");
       return false;
+    }
+    if (posApiEnabled) {
+      try {
+        const saved = id
+          ? await posApi.updateInventoryConcept(id, {
+              name: normalized,
+              kind: "WAREHOUSE_CATEGORY",
+              active:
+                warehouseCategories.find((item) => item.id === id)?.active ??
+                true,
+            })
+          : await posApi.createInventoryConcept({
+              name: normalized,
+              kind: "WAREHOUSE_CATEGORY",
+              active: true,
+            });
+        setWarehouseCategories((current) =>
+          id
+            ? current.map((item) =>
+                item.id === id
+                  ? {
+                      id: saved.id,
+                      name: saved.name,
+                      active: saved.active,
+                      createdAtIso: saved.createdAt,
+                    }
+                  : item,
+              )
+            : [
+                ...current,
+                {
+                  id: saved.id,
+                  name: saved.name,
+                  active: saved.active,
+                  createdAtIso: saved.createdAt,
+                },
+              ],
+        );
+        toast.success(
+          id
+            ? "Concepto de almacén actualizado."
+            : "Concepto de almacén agregado.",
+        );
+        return true;
+      } catch (error) {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "No se pudo guardar el concepto.",
+        );
+        return false;
+      }
     }
     if (id)
       setWarehouseCategories((current) =>
@@ -5138,6 +5474,30 @@ function App() {
 
   const toggleWarehouseCategory = (id: string) => {
     if (!canManageWarehouse) return;
+    const category = warehouseCategories.find((item) => item.id === id);
+    if (posApiEnabled && category) {
+      void posApi
+        .updateInventoryConcept(id, {
+          name: category.name,
+          kind: "WAREHOUSE_CATEGORY",
+          active: !category.active,
+        })
+        .then((saved) =>
+          setWarehouseCategories((current) =>
+            current.map((item) =>
+              item.id === id ? { ...item, active: saved.active } : item,
+            ),
+          ),
+        )
+        .catch((error: unknown) =>
+          toast.error(
+            error instanceof Error
+              ? error.message
+              : "No se pudo actualizar el concepto.",
+          ),
+        );
+      return;
+    }
     setWarehouseCategories((current) =>
       current.map((category) =>
         category.id === id
@@ -5149,6 +5509,24 @@ function App() {
 
   const deleteWarehouseCategory = (id: string) => {
     if (!canManageWarehouse) return;
+    if (posApiEnabled) {
+      void posApi
+        .deleteInventoryConcept(id)
+        .then(() => {
+          setWarehouseCategories((current) =>
+            current.filter((item) => item.id !== id),
+          );
+          toast.success("Concepto retirado; el histórico no cambia.");
+        })
+        .catch((error: unknown) =>
+          toast.error(
+            error instanceof Error
+              ? error.message
+              : "No se pudo retirar el concepto.",
+          ),
+        );
+      return;
+    }
     const used = warehouseMovements.some(
       (movement) => movement.categoryId === id,
     );
@@ -5168,6 +5546,14 @@ function App() {
 
   const toggleWarehouseSupplyVisibility = (id: string) => {
     if (!canManageWarehouse) return;
+    const supply = warehouseSupplies.find((item) => item.id === id);
+    if (posApiEnabled && supply) {
+      void saveWarehouseSupply({
+        ...supply,
+        branchVisible: !supply.branchVisible,
+      });
+      return;
+    }
     setWarehouseSupplies((current) =>
       current.map((supply) =>
         supply.id === id
@@ -5180,7 +5566,7 @@ function App() {
     );
   };
 
-  const saveWarehouseSupplier = (supplier: WarehouseSupplier) => {
+  const saveWarehouseSupplier = async (supplier: WarehouseSupplier) => {
     const folio = supplier.folio.trim().toLocaleUpperCase("es-MX");
     const rfc = supplier.rfc.trim().toLocaleUpperCase("es-MX");
     const duplicate = warehouseSuppliers.some(
@@ -5205,12 +5591,51 @@ function App() {
     const exists = warehouseSuppliers.some(
       (candidate) => candidate.id === supplier.id,
     );
-    const normalized = {
+    let normalized = {
       ...supplier,
       folio,
       rfc,
       businessName: supplier.businessName.trim(),
     };
+    if (posApiEnabled) {
+      try {
+        const input = {
+          folio: normalized.folio,
+          businessName: normalized.businessName,
+          contactName: normalized.contactName || null,
+          rfc: normalized.rfc || null,
+          taxRegime: normalized.taxRegime || null,
+          businessLine: normalized.businessLine || null,
+          phone: normalized.phone || null,
+          email: normalized.email || null,
+          address: normalized.address || null,
+          active: normalized.active,
+        };
+        const saved = exists
+          ? await posApi.updateSupplier(normalized.id, input)
+          : await posApi.createSupplier(input);
+        normalized = {
+          id: saved.id,
+          folio: saved.folio,
+          businessName: saved.businessName,
+          contactName: saved.contactName ?? "",
+          rfc: saved.rfc ?? "",
+          taxRegime: saved.taxRegime ?? "",
+          businessLine: saved.businessLine ?? "",
+          phone: saved.phone ?? "",
+          email: saved.email ?? "",
+          address: saved.address ?? "",
+          active: saved.active,
+          createdAtIso: saved.createdAt,
+        };
+      } catch (error) {
+        toast.error(
+          (error as { response?: { data?: { message?: string } } }).response
+            ?.data?.message ?? "No se pudo guardar el proveedor.",
+        );
+        return false;
+      }
+    }
     setWarehouseSuppliers((current) =>
       exists
         ? current.map((candidate) =>
@@ -5242,6 +5667,11 @@ function App() {
 
   const toggleWarehouseSupplier = (id: string) => {
     if (!canManageWarehouse) return;
+    const supplier = warehouseSuppliers.find((item) => item.id === id);
+    if (posApiEnabled && supplier) {
+      void saveWarehouseSupplier({ ...supplier, active: !supplier.active });
+      return;
+    }
     setWarehouseSuppliers((current) =>
       current.map((supplier) =>
         supplier.id === id
@@ -5253,6 +5683,26 @@ function App() {
 
   const deleteWarehouseSupplier = (id: string) => {
     if (!canManageWarehouse) return;
+    if (posApiEnabled) {
+      void posApi
+        .deleteSupplier(id)
+        .then(() => {
+          setWarehouseSuppliers((current) =>
+            current.map((supplier) =>
+              supplier.id === id ? { ...supplier, active: false } : supplier,
+            ),
+          );
+          toast.success("Proveedor inactivado; el histórico permanece.");
+        })
+        .catch((error: unknown) =>
+          toast.error(
+            error instanceof Error
+              ? error.message
+              : "No se pudo retirar el proveedor.",
+          ),
+        );
+      return;
+    }
     const used =
       warehouseSupplies.some((item) => item.supplierId === id) ||
       catalogProducts.some((product) => product.supplierId === id) ||
@@ -5275,7 +5725,8 @@ function App() {
     );
   };
 
-  const saveWarehouseSupply = (item: WarehouseSupplyItem) => {
+  const saveWarehouseSupply = async (draftItem: WarehouseSupplyItem) => {
+    let item = draftItem;
     const duplicate =
       warehouseSupplies.some(
         (candidate) => candidate.id !== item.id && candidate.sku === item.sku,
@@ -5300,12 +5751,124 @@ function App() {
     const exists = warehouseSupplies.some(
       (candidate) => candidate.id === item.id,
     );
-    const normalized = {
+    let normalized = {
       ...item,
       name: item.name.trim(),
       sku: item.sku.trim().toLocaleUpperCase("es-MX"),
       supplierName: supplier?.businessName ?? null,
     };
+    if (posApiEnabled) {
+      try {
+        const taxonomies = await posApi.catalogTaxonomies();
+        let family = taxonomies.find(
+          (taxonomy) =>
+            taxonomy.scope === "FAMILY" &&
+            taxonomy.name.toLocaleLowerCase("es-MX") ===
+              normalized.family.toLocaleLowerCase("es-MX"),
+        );
+        if (!family)
+          family = await posApi.createCatalogTaxonomy({
+            name: normalized.family,
+            scope: "FAMILY",
+            parentId: null,
+            active: true,
+          });
+        let category = taxonomies.find(
+          (taxonomy) =>
+            taxonomy.scope === "CATEGORY" &&
+            taxonomy.name.toLocaleLowerCase("es-MX") ===
+              normalized.category.toLocaleLowerCase("es-MX"),
+        );
+        if (!category)
+          category = await posApi.createCatalogTaxonomy({
+            name: normalized.category,
+            scope: "CATEGORY",
+            parentId: family.id,
+            active: true,
+          });
+        let saved = exists
+          ? await posApi.updateCatalogItem(normalized.id, {
+              sku: normalized.sku,
+              name: normalized.name,
+              kind: "SUPPLY",
+              familyId: family.id,
+              categoryId: category.id,
+              supplierId: normalized.supplierId,
+              description: null,
+              groupName: "Insumos",
+              benefits: [],
+              branchIds: apiBranches.map((branch) => branch.id),
+              published: false,
+              showInDigitalCatalog: false,
+              branchRequestVisible: normalized.branchVisible,
+              active: normalized.active,
+              listPrice: normalized.retailPrice.toFixed(2),
+              minimumPrice: normalized.retailPrice.toFixed(2),
+              unitCost: normalized.costMxn.toFixed(2),
+              unitCostUsd: normalized.costUsd.toFixed(2),
+              partnerCost: normalized.partnerCost.toFixed(2),
+              taxRate: "0.00",
+              includesVat: false,
+              testerOrderEnabled: false,
+              presentation: normalized.presentation,
+              unitsPerPackage: normalized.unitsPerPackage,
+              stockMinimum: normalized.stockMin.toFixed(2),
+              stockMaximum: normalized.stockMax.toFixed(2),
+              membershipSessions: null,
+            })
+          : await posApi.createCatalogItem({
+              sku: normalized.sku,
+              name: normalized.name,
+              kind: "SUPPLY",
+              familyId: family.id,
+              categoryId: category.id,
+              supplierId: normalized.supplierId,
+              description: null,
+              groupName: "Insumos",
+              benefits: [],
+              branchIds: apiBranches.map((branch) => branch.id),
+              published: false,
+              showInDigitalCatalog: false,
+              branchRequestVisible: normalized.branchVisible,
+              active: normalized.active,
+              listPrice: normalized.retailPrice.toFixed(2),
+              minimumPrice: normalized.retailPrice.toFixed(2),
+              unitCost: normalized.costMxn.toFixed(2),
+              unitCostUsd: normalized.costUsd.toFixed(2),
+              partnerCost: normalized.partnerCost.toFixed(2),
+              taxRate: "0.00",
+              includesVat: false,
+              testerOrderEnabled: false,
+              presentation: normalized.presentation,
+              unitsPerPackage: normalized.unitsPerPackage,
+              stockMinimum: normalized.stockMin.toFixed(2),
+              stockMaximum: normalized.stockMax.toFixed(2),
+              membershipSessions: null,
+            });
+        if (normalized.image.startsWith("data:")) {
+          const form = new FormData();
+          form.append(
+            "file",
+            await (await fetch(normalized.image)).blob(),
+            `${normalized.sku}.png`,
+          );
+          form.append("isPrimary", "true");
+          const asset = await posApi.uploadCatalogItemAsset(saved.id, form);
+          saved = { ...saved, imageUrl: asset.publicUrl };
+        }
+        normalized = {
+          ...normalized,
+          id: saved.id,
+          image: saved.imageUrl ?? normalized.image,
+        };
+      } catch (error) {
+        toast.error(
+          (error as { response?: { data?: { message?: string } } }).response
+            ?.data?.message ?? "No se pudo guardar el artículo de bodega.",
+        );
+        return false;
+      }
+    }
     setWarehouseSupplies((current) =>
       exists
         ? current.map((candidate) =>
@@ -5339,6 +5902,28 @@ function App() {
 
   const deleteWarehouseSupply = (id: string) => {
     if (!canManageWarehouse) return;
+    if (posApiEnabled) {
+      void posApi
+        .deleteCatalogItem(id)
+        .then(() => {
+          setWarehouseSupplies((current) =>
+            current.map((item) =>
+              item.id === id
+                ? { ...item, active: false, branchVisible: false }
+                : item,
+            ),
+          );
+          toast.success("Artículo inactivado; el historial permanece intacto.");
+        })
+        .catch((error: unknown) =>
+          toast.error(
+            error instanceof Error
+              ? error.message
+              : "No se pudo retirar el artículo.",
+          ),
+        );
+      return;
+    }
     const used = warehouseMovements.some((movement) =>
       movement.lines.some((line) => line.productId === id),
     );
@@ -5365,7 +5950,7 @@ function App() {
     );
   };
 
-  const saveWarehousePriceList = (list: WarehousePriceList) => {
+  const saveWarehousePriceList = async (list: WarehousePriceList) => {
     const normalizedBranches = [...new Set(list.branchNames)].filter((branch) =>
       operationalBranches.includes(branch),
     );
@@ -5382,12 +5967,56 @@ function App() {
       toast.error("Revisa nombre, sucursales y precios de la lista.");
       return false;
     }
-    const normalizedList = {
+    let normalizedList = {
       ...list,
       name: list.name.trim(),
       branchNames: normalizedBranches,
       clientIds: normalizedClients,
     };
+    if (posApiEnabled) {
+      try {
+        const input = {
+          name: normalizedList.name,
+          supplierId: null,
+          status: normalizedList.active
+            ? ("ACTIVE" as const)
+            : ("INACTIVE" as const),
+          effectiveFrom: null,
+          effectiveTo: null,
+          branchIds: normalizedBranches.flatMap((name) => {
+            const branch = apiBranches.find((item) => item.name === name);
+            return branch ? [branch.id] : [];
+          }),
+          customerIds: normalizedClients,
+          lines: normalizedList.items.map((item) => ({
+            itemId: item.productId,
+            price: item.priceMxn.toFixed(2),
+            priceUsd: item.priceUsd.toFixed(2),
+            cost: null,
+          })),
+        };
+        const exists = warehousePriceLists.some((item) => item.id === list.id);
+        const saved = exists
+          ? await posApi.updatePriceList(list.id, input)
+          : await posApi.createPriceList(input);
+        normalizedList = {
+          ...normalizedList,
+          id: saved.id,
+          createdAtIso: saved.createdAt,
+        };
+        if (exists)
+          setWarehousePriceLists((current) =>
+            current.filter((item) => item.id !== list.id),
+          );
+      } catch (error) {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "No se pudo versionar la lista de precios.",
+        );
+        return false;
+      }
+    }
     setWarehousePriceLists((current) =>
       current.some((candidate) => candidate.id === list.id)
         ? current.map((candidate) =>
@@ -5401,6 +6030,14 @@ function App() {
 
   const toggleWarehousePriceList = (id: string) => {
     if (!canManageWarehouse) return;
+    const currentList = warehousePriceLists.find((list) => list.id === id);
+    if (posApiEnabled && currentList) {
+      void saveWarehousePriceList({
+        ...currentList,
+        active: !currentList.active,
+      });
+      return;
+    }
     setWarehousePriceLists((current) =>
       current.map((list) =>
         list.id === id ? { ...list, active: !list.active } : list,
@@ -5410,6 +6047,26 @@ function App() {
 
   const deleteWarehousePriceList = (id: string) => {
     if (!canManageWarehouse) return;
+    if (posApiEnabled) {
+      void posApi
+        .deletePriceList(id)
+        .then(() => {
+          setWarehousePriceLists((current) =>
+            current.filter((list) => list.id !== id),
+          );
+          toast.success(
+            "Lista retirada; los pedidos históricos conservaron sus precios.",
+          );
+        })
+        .catch((error: unknown) =>
+          toast.error(
+            error instanceof Error
+              ? error.message
+              : "No se pudo retirar la lista.",
+          ),
+        );
+      return;
+    }
     const used = warehouseMovements.some(
       (movement) => movement.priceListId === id,
     );
@@ -6048,7 +6705,23 @@ function App() {
     };
   }, [masterSessionActive]);
 
-  const authorizeDealAccess = (code: string) => {
+  const authorizeDealAccess = async (code: string) => {
+    if (posApiEnabled) {
+      try {
+        const authorization = await posApi.createAuthorization({
+          pin: code,
+          purpose: "PACKAGES_ACCESS",
+        });
+        const authorized = await posApi.verifyAuthorization(
+          authorization.authorizationToken,
+          "PACKAGES_ACCESS",
+        );
+        if (authorized) setDealAccessAuthorized(true);
+        return authorized;
+      } catch {
+        return false;
+      }
+    }
     const authorized = isMasterAccessCode(code);
     if (authorized) setDealAccessAuthorized(true);
     return authorized;
@@ -6523,7 +7196,74 @@ function App() {
     return true;
   };
 
-  const saveDeal = (deal: RetailDeal) => {
+  const dealToApi = (deal: RetailDeal) => ({
+    name: deal.name,
+    sku: deal.sku,
+    description: deal.description || null,
+    price: deal.price.toFixed(2),
+    status: deal.status,
+    startsAt: deal.startDate
+      ? new Date(`${deal.startDate}T00:00:00-06:00`).toISOString()
+      : null,
+    endsAt: deal.endDate
+      ? new Date(`${deal.endDate}T23:59:59-06:00`).toISOString()
+      : null,
+    branchIds: deal.branches.flatMap((name) => {
+      const branch = apiBranches.find((item) => item.name === name);
+      return branch ? [branch.id] : [];
+    }),
+    lines: deal.lines.map((line) => ({
+      itemId: line.productId,
+      quantity: line.quantity.toFixed(2),
+    })),
+  });
+
+  const dealFromApi = (item: PosPackageDto): RetailDeal => ({
+    id: item.id,
+    name: item.name,
+    sku: item.sku,
+    description: item.description ?? "",
+    price: Number(item.price),
+    status: item.status,
+    startDate: item.startsAt?.slice(0, 10) ?? "",
+    endDate: item.endsAt?.slice(0, 10) ?? "",
+    branches: apiBranches
+      .filter((branch) => item.branchIds.includes(branch.id))
+      .map((branch) => branch.name),
+    lines: item.lines.map((line) => ({
+      productId: line.itemId,
+      quantity: Number(line.quantity),
+    })),
+    createdAtIso: item.startsAt ?? new Date().toISOString(),
+    publishedAtIso: item.status === "PUBLISHED" ? item.startsAt : null,
+    authorizedBy: null,
+  });
+
+  const saveDeal = async (deal: RetailDeal) => {
+    if (posApiEnabled) {
+      try {
+        const exists = deals.some((candidate) => candidate.id === deal.id);
+        const saved = exists
+          ? await posApi.updatePackage(deal.id, dealToApi(deal))
+          : await posApi.createPackage(dealToApi(deal));
+        const normalized = dealFromApi(saved);
+        setDeals((current) =>
+          exists
+            ? current.map((candidate) =>
+                candidate.id === deal.id ? normalized : candidate,
+              )
+            : [normalized, ...current],
+        );
+        return true;
+      } catch (error) {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "No se pudo guardar el paquete.",
+        );
+        return false;
+      }
+    }
     setDeals((current) =>
       current.some((candidate) => candidate.id === deal.id)
         ? current.map((candidate) =>
@@ -6531,10 +7271,11 @@ function App() {
           )
         : [deal, ...current],
     );
+    return true;
   };
 
-  const publishDeal = (dealId: string, code: string) => {
-    if (!isMasterAccessCode(code)) return false;
+  const publishDeal = async (dealId: string, code: string) => {
+    if (!posApiEnabled && !isMasterAccessCode(code)) return false;
     const deal = deals.find((candidate) => candidate.id === dealId);
     if (!deal) return false;
     const costTotal = deal.lines.reduce((sum, line) => {
@@ -6544,6 +7285,40 @@ function App() {
       return sum + (product?.costMxn ?? 0) * line.quantity;
     }, 0);
     if (deal.price < costTotal || deal.lines.length < 2) return false;
+    if (posApiEnabled) {
+      try {
+        const authorization = await posApi.createAuthorization({
+          pin: code,
+          purpose: "PACKAGE_PUBLISH",
+          entityType: "PosPackage",
+          entityId: dealId,
+        });
+        if (
+          !(await posApi.verifyAuthorization(
+            authorization.authorizationToken,
+            "PACKAGE_PUBLISH",
+          ))
+        )
+          return false;
+        const saved = await posApi.updatePackage(dealId, {
+          ...dealToApi(deal),
+          status: "PUBLISHED",
+        });
+        setDeals((current) =>
+          current.map((candidate) =>
+            candidate.id === dealId ? dealFromApi(saved) : candidate,
+          ),
+        );
+        return true;
+      } catch (error) {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "No se pudo publicar el paquete.",
+        );
+        return false;
+      }
+    }
     setDeals((current) =>
       current.map((candidate) =>
         candidate.id === dealId
@@ -6560,6 +7335,17 @@ function App() {
   };
 
   const deactivateDeal = (dealId: string) => {
+    if (posApiEnabled) {
+      const deal = deals.find((candidate) => candidate.id === dealId);
+      if (!deal) return;
+      void saveDeal({ ...deal, status: "INACTIVE" }).then((saved) => {
+        if (saved)
+          toast.info(
+            "Paquete inactivado. Los tickets históricos conservaron su registro.",
+          );
+      });
+      return;
+    }
     setDeals((current) =>
       current.map((deal) =>
         deal.id === dealId ? { ...deal, status: "INACTIVE" } : deal,
@@ -6570,7 +7356,237 @@ function App() {
     );
   };
 
-  const authorizeCompetitionSettings = (code: string) => {
+  const applyCourtesyConfiguration = (
+    configuration: PosCourtesyConfigurationDto,
+  ) =>
+    setCourtesySettings({
+      required: configuration.required,
+      defaultPackage: configuration.defaultPackageId ?? "",
+      enabledPackages: configuration.packages
+        .filter((item) => item.active)
+        .map((item) => item.id),
+      products: configuration.products.map((item) => ({
+        id: item.id,
+        name: item.name,
+        category: item.type,
+        active: item.active,
+      })),
+      packages: configuration.packages.map((item) => ({
+        id: item.id,
+        name: item.name,
+        serviceIds: item.productIds,
+        active: item.active,
+      })),
+    });
+
+  const persistCourtesySettings = async (next: CourtesySettings) => {
+    if (!posApiEnabled) {
+      setCourtesySettings(next);
+      return true;
+    }
+    try {
+      const productIds = new Map<string, string>();
+      for (const product of next.products) {
+        const previous = courtesySettings.products.find(
+          (item) => item.id === product.id,
+        );
+        if (!previous) {
+          const saved = await posApi.createCourtesyProduct({
+            name: product.name,
+            type: product.category,
+            active: product.active,
+          });
+          productIds.set(product.id, saved.id);
+        } else if (
+          previous.name !== product.name ||
+          previous.category !== product.category ||
+          previous.active !== product.active
+        ) {
+          await posApi.updateCourtesyProduct(product.id, {
+            name: product.name,
+            type: product.category,
+            active: product.active,
+          });
+        }
+      }
+      const packageIds = new Map<string, string>();
+      for (const option of next.packages) {
+        const previous = courtesySettings.packages.find(
+          (item) => item.id === option.id,
+        );
+        const productIdsForPackage = option.serviceIds.map(
+          (id) => productIds.get(id) ?? id,
+        );
+        if (!previous) {
+          const saved = await posApi.createCourtesyPackage({
+            name: option.name,
+            productIds: productIdsForPackage,
+            active: option.active,
+          });
+          packageIds.set(option.id, saved.id);
+        } else if (
+          previous.name !== option.name ||
+          previous.active !== option.active ||
+          previous.serviceIds.join("|") !== option.serviceIds.join("|")
+        ) {
+          await posApi.updateCourtesyPackage(option.id, {
+            name: option.name,
+            productIds: productIdsForPackage,
+            active: option.active,
+          });
+        }
+      }
+      await posApi.updateCourtesyConfiguration({
+        required: next.required,
+        defaultPackageId: next.defaultPackage
+          ? (packageIds.get(next.defaultPackage) ?? next.defaultPackage)
+          : null,
+      });
+      applyCourtesyConfiguration(await posApi.courtesyConfiguration());
+      return true;
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "No se pudo guardar la configuración de cortesías.",
+      );
+      return false;
+    }
+  };
+
+  const authorizeVoucherSettings = async (code: string) => {
+    if (!posApiEnabled) return isMasterAccessCode(code) ? "local" : null;
+    try {
+      const authorization = await posApi.createAuthorization({
+        pin: code,
+        purpose: "VOUCHER_REDEEM",
+      });
+      return authorization.authorizationToken;
+    } catch {
+      return null;
+    }
+  };
+
+  const saveVoucherTemplate = async (template: VoucherTemplate) => {
+    if (!posApiEnabled) {
+      setVoucherTemplates((current) =>
+        current.some((item) => item.id === template.id)
+          ? current.map((item) => (item.id === template.id ? template : item))
+          : [template, ...current],
+      );
+      return true;
+    }
+    try {
+      const input = {
+        name: template.name,
+        kind: template.kind,
+        value: template.value.toFixed(2),
+        message: template.message,
+        active: template.active,
+        visibleToSellers: template.visibleToSellers,
+      };
+      const exists = voucherTemplates.some((item) => item.id === template.id);
+      const saved = exists
+        ? await posApi.updateVoucherTemplate(template.id, input)
+        : await posApi.createVoucherTemplate(input);
+      const normalized = { ...saved, value: Number(saved.value) };
+      setVoucherTemplates((current) =>
+        exists
+          ? current.map((item) => (item.id === template.id ? normalized : item))
+          : [normalized, ...current],
+      );
+      return true;
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "No se pudo guardar el voucher.",
+      );
+      return false;
+    }
+  };
+
+  const deleteVoucherTemplate = async (id: string) => {
+    if (!posApiEnabled) {
+      setVoucherTemplates((current) =>
+        current.filter((item) => item.id !== id),
+      );
+      return true;
+    }
+    try {
+      await posApi.deleteVoucherTemplate(id);
+      setVoucherTemplates((current) =>
+        current.filter((item) => item.id !== id),
+      );
+      return true;
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "No se pudo retirar el voucher.",
+      );
+      return false;
+    }
+  };
+
+  const redeemVoucherIssue = async (id: string, authorizationToken: string) => {
+    if (!posApiEnabled) {
+      setVoucherIssues((current) =>
+        current.map((item) =>
+          item.id === id
+            ? {
+                ...item,
+                status: "REDEEMED",
+                redeemedAtIso: new Date().toISOString(),
+              }
+            : item,
+        ),
+      );
+      return true;
+    }
+    try {
+      const redeemed = await posApi.redeemVoucher(id, authorizationToken);
+      setVoucherIssues((current) =>
+        current.map((item) =>
+          item.id === id
+            ? {
+                ...item,
+                status: "REDEEMED",
+                ...(redeemed.redeemedAt
+                  ? { redeemedAtIso: redeemed.redeemedAt }
+                  : {}),
+              }
+            : item,
+        ),
+      );
+      return true;
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "No se pudo canjear el voucher.",
+      );
+      return false;
+    }
+  };
+
+  const authorizeCompetitionSettings = async (code: string) => {
+    if (posApiEnabled) {
+      try {
+        const authorization = await posApi.createAuthorization({
+          pin: code,
+          purpose: "COMPETITION_SETTINGS",
+        });
+        const authorized = await posApi.verifyAuthorization(
+          authorization.authorizationToken,
+          "COMPETITION_SETTINGS",
+        );
+        if (authorized) setCompetitionSettingsAuthorized(true);
+        return authorized;
+      } catch {
+        return false;
+      }
+    }
     const authorized = isMasterAccessCode(code);
     if (authorized) setCompetitionSettingsAuthorized(true);
     return authorized;
@@ -7184,7 +8200,7 @@ function App() {
     const previousClient = clients.find(
       (client) => client.id === updatedClient.id,
     );
-    if (!previousClient) return;
+    if (!previousClient) return false;
     const previousName = `${previousClient.firstName} ${previousClient.lastName}`;
     const updatedName =
       `${updatedClient.firstName.trim()} ${updatedClient.lastName.trim()}`.trim();
@@ -7198,13 +8214,24 @@ function App() {
         toast.error(
           "Editar clientas y cartera requiere conexión; no se cambió el expediente local.",
         );
-        return;
+        return false;
       }
       try {
         const saved = await posApi.updateCustomer(updatedClient.id, {
           displayName: updatedName,
+          firstName: updatedClient.firstName,
+          lastName: updatedClient.lastName,
+          birthday: updatedClient.birthday || null,
+          gender: updatedClient.gender || null,
           phone: updatedClient.phone || null,
+          whatsapp: updatedClient.whatsapp || updatedClient.phone || null,
           email: null,
+          companyName: updatedClient.companyName || null,
+          registrationFolio: updatedClient.registrationFolio || null,
+          registrationBranchId:
+            apiBranches.find(
+              (branch) => branch.name === updatedClient.registrationBranch,
+            )?.id ?? null,
           sourceId: clientSources.some(
             (source) => source.id === updatedClient.source,
           )
@@ -7241,7 +8268,7 @@ function App() {
           (error as { response?: { data?: { message?: string } } }).response
             ?.data?.message ?? "No se pudo actualizar la clienta.",
         );
-        return;
+        return false;
       }
     } else if (previousClient.agendaClientId) {
       if (isOnline) {
@@ -7257,7 +8284,7 @@ function App() {
           toast.error(
             "Agenda no pudo actualizar la ficha. Los cambios no fueron guardados.",
           );
-          return;
+          return false;
         }
       } else {
         synchronizedClient = {
@@ -7333,17 +8360,177 @@ function App() {
           : record,
       ),
     );
+    return true;
   };
 
-  const deleteClientRecord = (clientId: string) => {
+  const authorizeCustomerAccess = async (code: string) => {
+    try {
+      const authorization = await posApi.createAuthorization({
+        pin: code,
+        purpose: "CUSTOMER_DIRECTORY_VIEW",
+      });
+      await posApi.verifyAuthorization(
+        authorization.authorizationToken,
+        "CUSTOMER_DIRECTORY_VIEW",
+      );
+      return {
+        kind: "MASTER" as const,
+        sellerId: null,
+      };
+    } catch {
+      try {
+        const identity = await posApi.identifyAttendance(code);
+        return {
+          kind: "SELLER" as const,
+          sellerId: identity.employeeId,
+        };
+      } catch {
+        return null;
+      }
+    }
+  };
+
+  const deleteClientRecord = async (clientId: string, code: string) => {
+    if (posApiEnabled) {
+      try {
+        const token = (
+          await posApi.createAuthorization({
+            pin: code,
+            purpose: "CUSTOMER_DIRECTORY_ADMIN",
+          })
+        ).authorizationToken;
+        await posApi.deleteCustomer(clientId, token);
+      } catch (error) {
+        toast.error(
+          (error as { response?: { data?: { message?: string } } }).response
+            ?.data?.message ?? "No se pudo retirar la clienta.",
+        );
+        return false;
+      }
+    }
     setClients((current) => current.filter((client) => client.id !== clientId));
+    return true;
   };
 
-  const importClientRecords = (importedClients: Client[]) => {
+  const importClientRecords = async (
+    importedClients: Client[],
+    code: string,
+  ) => {
+    if (posApiEnabled) {
+      try {
+        const token = (
+          await posApi.createAuthorization({
+            pin: code,
+            purpose: "CUSTOMER_DIRECTORY_ADMIN",
+          })
+        ).authorizationToken;
+        const saved = await posApi.bulkImportCustomers(
+          importedClients.map((client) => ({
+            displayName: `${client.firstName} ${client.lastName}`.trim(),
+            firstName: client.firstName,
+            lastName: client.lastName,
+            birthday: client.birthday || null,
+            gender: client.gender || null,
+            phone: client.phone || null,
+            whatsapp: client.whatsapp || client.phone || null,
+            email: null,
+            companyName: client.companyName || null,
+            registrationFolio: client.registrationFolio || null,
+            registrationBranchId:
+              apiBranches.find(
+                (branch) => branch.name === client.registrationBranch,
+              )?.id ?? null,
+            sourceId:
+              clientSources.find(
+                (source) =>
+                  source.id === client.source ||
+                  source.label.toLocaleLowerCase("es-MX") ===
+                    client.sourceLabel.toLocaleLowerCase("es-MX"),
+              )?.id ?? null,
+            active: true,
+            branchId:
+              apiBranches.find(
+                (branch) => branch.name === client.registrationBranch,
+              )?.id ??
+              apiSession?.terminal.branch.id ??
+              null,
+            employeeId: client.ownerId,
+          })),
+          token,
+        );
+        setClients((current) => [
+          ...saved.map((client) =>
+            clientFromPosCustomer(client, apiBranches, clientSources),
+          ),
+          ...current,
+        ]);
+        return true;
+      } catch (error) {
+        toast.error(
+          (error as { response?: { data?: { message?: string } } }).response
+            ?.data?.message ?? "No se pudo aplicar la carga masiva.",
+        );
+        return false;
+      }
+    }
     setClients((current) => [...importedClients, ...current]);
+    return true;
   };
 
-  const handleReceiptLogoUpload = (event: ChangeEvent<HTMLInputElement>) => {
+  const persistReceiptConfiguration = async (next = receiptSettings) => {
+    if (!posApiEnabled) {
+      setReceiptSettings(next);
+      return true;
+    }
+    try {
+      const [configuration] = await Promise.all([
+        posApi.updateTicketConfiguration({
+          logoUrl: /^https?:\/\//i.test(next.logoUrl) ? next.logoUrl : null,
+          logoWidth: next.logoWidth,
+          companyName: next.companyName,
+          address: next.address || null,
+          footerMessage: next.footerMessage || null,
+          policies: next.policies || null,
+          showClientName: next.showClientName,
+          showClientPhone: next.showClientPhone,
+          showSellerName: next.showSellerName,
+          showVatBreakdown: next.showVatBreakdown,
+          showSpareCoverageMessage: next.showSpareCoverageMessage,
+        }),
+        posApi.updateCommercialCompany({
+          name: next.companyName,
+          salesNumber: next.companySalesNumber,
+          active: true,
+        }),
+      ]);
+      setReceiptSettings((current) => ({
+        ...current,
+        logoUrl: configuration.logoUrl ?? "",
+        logoWidth: configuration.logoWidth,
+        companyName: configuration.companyName,
+        address: configuration.address ?? "",
+        footerMessage: configuration.footerMessage ?? "",
+        policies: configuration.policies ?? "",
+        showClientName: configuration.showClientName,
+        showClientPhone: configuration.showClientPhone,
+        showSellerName: configuration.showSellerName,
+        showVatBreakdown: configuration.showVatBreakdown,
+        showSpareCoverageMessage: configuration.showSpareCoverageMessage,
+      }));
+      return true;
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "No se pudo guardar el diseño del ticket.",
+      );
+      return false;
+    }
+  };
+
+  const handleReceiptLogoUpload = async (
+    event: ChangeEvent<HTMLInputElement>,
+  ) => {
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
@@ -7353,6 +8540,24 @@ function App() {
     }
     if (file.size > 2 * 1024 * 1024) {
       toast.error("El logo no debe superar 2 MB.");
+      return;
+    }
+    if (posApiEnabled) {
+      try {
+        const form = new FormData();
+        form.append("file", file);
+        const stored = await posApi.uploadTicketLogo(form);
+        const next = { ...receiptSettings, logoUrl: stored.publicUrl };
+        setReceiptSettings(next);
+        if (await persistReceiptConfiguration(next))
+          toast.success("Logo guardado y ajustado al formato de impresión.");
+      } catch (error) {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "No fue posible guardar la imagen.",
+        );
+      }
       return;
     }
     const reader = new FileReader();
@@ -7368,7 +8573,26 @@ function App() {
     reader.readAsDataURL(file);
   };
 
-  const authorizeCostAccess = (code: string) => {
+  const authorizeCostAccess = async (code: string) => {
+    if (posApiEnabled) {
+      try {
+        const authorization = await posApi.createAuthorization({
+          pin: code,
+          purpose: "COSTS_VIEW",
+        });
+        const authorized = await posApi.verifyAuthorization(
+          authorization.authorizationToken,
+          "COSTS_VIEW",
+        );
+        if (!authorized) return false;
+        setCostAccessAuthorized(true);
+        toast.success("Costos y reportes mensuales desbloqueados.");
+        return true;
+      } catch {
+        toast.error("Los costos sólo se desbloquean con un código Master.");
+        return false;
+      }
+    }
     const authorized = isMasterAccessCode(code);
     if (!authorized) {
       toast.error("Los costos sólo se desbloquean con un código Master.");
@@ -9324,7 +10548,16 @@ function App() {
     toast.success("Tarjeta eliminada de la sesión mock.");
   };
 
-  const activateBillingLocation = (
+  const branchCodeFromName = (name: string) =>
+    name
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-zA-Z0-9]+/g, "-")
+      .replace(/^-|-$/g, "")
+      .slice(0, 40)
+      .toLocaleUpperCase("en-US");
+
+  const activateBillingLocation = async (
     locationId: string,
     cardId: string,
     billingStartDate: string,
@@ -9332,7 +10565,31 @@ function App() {
   ) => {
     const location = billingLocations.find((item) => item.id === locationId);
     const card = billingCards.find((item) => item.id === cardId);
-    if (!location || !card) return;
+    if (!location || !card) return false;
+    if (posApiEnabled) {
+      try {
+        const saved = await posApi.updateManagedBranch(location.id, {
+          name: location.name,
+          code:
+            apiBranches.find((branch) => branch.id === location.id)?.code ??
+            branchCodeFromName(location.name),
+          address: branchAddresses[location.name] || null,
+          active: true,
+        });
+        setApiBranches((current) =>
+          current.some((branch) => branch.id === saved.id)
+            ? current.map((branch) => (branch.id === saved.id ? saved : branch))
+            : [...current, saved],
+        );
+      } catch (error) {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "No se pudo activar la sucursal.",
+        );
+        return false;
+      }
+    }
     if (!branchInventory[location.name]) {
       setBranchInventory((current) => ({
         ...current,
@@ -9387,9 +10644,10 @@ function App() {
       },
       ...current,
     ]);
+    return true;
   };
 
-  const addBillingLocation = (name: string, costUsd: number) => {
+  const addBillingLocation = async (name: string, costUsd: number) => {
     const normalizedName = name.trim();
     if (
       billingLocations.some(
@@ -9402,7 +10660,7 @@ function App() {
       toast.error("Ya existe una sucursal con ese nombre.");
       return false;
     }
-    const location: BillingLocation = {
+    let location: BillingLocation = {
       id: `billing-location-${crypto.randomUUID()}`,
       name: normalizedName,
       costUsd,
@@ -9411,6 +10669,24 @@ function App() {
       nextBillingDate: "",
       paymentCardId: null,
     };
+    if (posApiEnabled) {
+      try {
+        const saved = await posApi.createManagedBranch({
+          name: normalizedName,
+          code: branchCodeFromName(normalizedName),
+          address: "Dirección pendiente de configurar",
+          active: false,
+        });
+        location = { ...location, id: saved.id };
+      } catch (error) {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "No se pudo crear la sucursal.",
+        );
+        return false;
+      }
+    }
     setBillingLocations((current) => [...current, location]);
     setBranchAddresses((current) => ({
       ...current,
@@ -9435,12 +10711,34 @@ function App() {
     return true;
   };
 
-  const deactivateBillingLocation = (locationId: string) => {
+  const deactivateBillingLocation = async (locationId: string) => {
     const location = billingLocations.find((item) => item.id === locationId);
     if (!location) return false;
     if (Object.keys(branchInventory).length <= 1) {
       toast.error("La empresa debe conservar al menos una sucursal operativa.");
       return false;
+    }
+    if (posApiEnabled) {
+      try {
+        await posApi.updateManagedBranch(location.id, {
+          name: location.name,
+          code:
+            apiBranches.find((branch) => branch.id === location.id)?.code ??
+            branchCodeFromName(location.name),
+          address: branchAddresses[location.name] || null,
+          active: false,
+        });
+        setApiBranches((current) =>
+          current.filter((branch) => branch.id !== location.id),
+        );
+      } catch (error) {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "No se pudo desactivar la sucursal.",
+        );
+        return false;
+      }
     }
     const remainingBranches = Object.keys(branchInventory).filter(
       (branch) => branch !== location.name,
@@ -9489,7 +10787,8 @@ function App() {
     return true;
   };
 
-  const saveCatalogProduct = (product: Product) => {
+  const saveCatalogProduct = async (draftProduct: Product) => {
+    let product = draftProduct;
     const previousProduct = catalogProducts.find(
       (item) => item.id === product.id,
     );
@@ -9499,7 +10798,159 @@ function App() {
     );
     if (duplicateSku) {
       toast.error("El SKU base ya está registrado.");
-      return;
+      return false;
+    }
+    if (posApiEnabled) {
+      if (operatingOffline) {
+        toast.error("Administrar el catálogo requiere conexión.");
+        return false;
+      }
+      try {
+        const taxonomies = await posApi.catalogTaxonomies();
+        let family = taxonomies.find(
+          (item) =>
+            item.name.toLocaleLowerCase("es-MX") ===
+              product.family.toLocaleLowerCase("es-MX") &&
+            item.scope === "FAMILY",
+        );
+        if (!family)
+          family = await posApi.createCatalogTaxonomy({
+            name: product.family,
+            scope: "FAMILY",
+            parentId: null,
+            active: true,
+          });
+        let category = taxonomies.find(
+          (item) =>
+            item.name.toLocaleLowerCase("es-MX") ===
+              product.category.toLocaleLowerCase("es-MX") &&
+            item.scope === "CATEGORY",
+        );
+        if (!category)
+          category = await posApi.createCatalogTaxonomy({
+            name: product.category,
+            scope: "CATEGORY",
+            parentId: family.id,
+            active: true,
+          });
+        if (
+          !taxonomies.some(
+            (item) =>
+              item.scope === "GROUP" &&
+              item.name.toLocaleLowerCase("es-MX") ===
+                product.group.toLocaleLowerCase("es-MX"),
+          )
+        )
+          await posApi.createCatalogTaxonomy({
+            name: product.group,
+            scope: "GROUP",
+            parentId: null,
+            active: true,
+          });
+        const branchIds = product.branches.flatMap((name) => {
+          const branch = apiBranches.find((item) => item.name === name);
+          return branch ? [branch.id] : [];
+        });
+        const input = {
+          sku: product.sku,
+          name: product.name,
+          kind: product.kind,
+          familyId: family.id,
+          categoryId: category.id,
+          supplierId: product.supplierId ?? null,
+          description: product.description ?? null,
+          groupName: product.group,
+          benefits: product.benefits ?? [],
+          branchIds,
+          published: product.showInDigitalCatalog !== false,
+          showInDigitalCatalog: product.showInDigitalCatalog !== false,
+          branchRequestVisible: true,
+          active: product.active,
+          listPrice: product.maxPrice.toFixed(2),
+          minimumPrice: product.minPrice.toFixed(2),
+          unitCost: product.costMxn.toFixed(2),
+          unitCostUsd: product.costUsd.toFixed(2),
+          partnerCost: (product.partnerCost ?? 0).toFixed(2),
+          taxRate: product.includesVat ? "16.00" : "0.00",
+          includesVat: product.includesVat,
+          testerOrderEnabled: product.testerOrderEnabled ?? false,
+          presentation: product.presentation ?? null,
+          unitsPerPackage: product.unitsPerPackage ?? 1,
+          stockMinimum:
+            product.stockMin === null ? null : product.stockMin.toFixed(2),
+          stockMaximum:
+            product.stockMax === null ? null : product.stockMax.toFixed(2),
+          membershipSessions:
+            product.kind === "MEMBERSHIP"
+              ? (product.membershipSessions ?? null)
+              : null,
+          membershipRenewalThreshold: Math.min(
+            2,
+            product.membershipSessions ?? 2,
+          ),
+          membershipConditions: null,
+        } as const;
+        let saved = exists
+          ? await posApi.updateCatalogItem(product.id, input)
+          : await posApi.createCatalogItem(input);
+        if (product.image.startsWith("data:")) {
+          const form = new FormData();
+          form.append(
+            "file",
+            await (await fetch(product.image)).blob(),
+            `${product.sku}.png`,
+          );
+          form.append("isPrimary", "true");
+          const asset = await posApi.uploadCatalogItemAsset(saved.id, form);
+          saved = { ...saved, imageUrl: asset.publicUrl };
+        }
+        product = {
+          ...productFromPosCatalog(saved, apiBranches),
+          stock: draftProduct.stock,
+        };
+        if (product.kind === "PRODUCT") {
+          const location = apiInventoryLocations.find(
+            (item) => item.branchName === activeBranch,
+          );
+          const previousStock = previousProduct?.stock ?? 0;
+          const nextStock = draftProduct.stock ?? 0;
+          const difference = nextStock - previousStock;
+          if (location && difference !== 0) {
+            const batch = await posApi.createInventoryAdjustmentBatch({
+              notes: exists
+                ? "Ajuste desde catálogo"
+                : "Existencia inicial de catálogo",
+              lines: [
+                difference > 0
+                  ? {
+                      itemId: saved.id,
+                      type: "ADD",
+                      fromLocationId: null,
+                      toLocationId: location.id,
+                      quantity: Math.abs(difference).toFixed(2),
+                      reason: "CATALOGO",
+                    }
+                  : {
+                      itemId: saved.id,
+                      type: "REMOVE",
+                      fromLocationId: location.id,
+                      toLocationId: null,
+                      quantity: Math.abs(difference).toFixed(2),
+                      reason: "CATALOGO",
+                    },
+              ],
+            });
+            await posApi.approveInventoryAdjustmentBatch(batch.id);
+            await refreshApiInventory();
+          }
+        }
+      } catch (error) {
+        toast.error(
+          (error as { response?: { data?: { message?: string } } }).response
+            ?.data?.message ?? "No se pudo guardar el artículo.",
+        );
+        return false;
+      }
     }
     setCatalogProducts((current) =>
       exists
@@ -9535,7 +10986,7 @@ function App() {
             {
               ...stock,
               [product.id]: product.branches.includes(branch)
-                ? branch === "Polanco"
+                ? branch === activeBranch
                   ? (product.stock ?? 0)
                   : (stock[product.id] ?? 0)
                 : 0,
@@ -9566,9 +11017,23 @@ function App() {
         createdAtIso: new Date().toISOString(),
       });
     }
+    return true;
   };
 
   const setCatalogProductStatus = (productId: string, active: boolean) => {
+    if (posApiEnabled) {
+      const product = catalogProducts.find((item) => item.id === productId);
+      if (!product) return;
+      void saveCatalogProduct({ ...product, active }).then((saved) => {
+        if (saved)
+          toast.info(
+            active
+              ? "Producto activado en las pantallas operativas."
+              : "Producto desactivado. Los tickets históricos se conservaron.",
+          );
+      });
+      return;
+    }
     setCatalogProducts((current) =>
       current.map((product) =>
         product.id === productId ? { ...product, active } : product,
@@ -9605,7 +11070,7 @@ function App() {
     );
   };
 
-  const renameCatalogFamily = (currentName: string, nextName: string) => {
+  const renameCatalogFamily = async (currentName: string, nextName: string) => {
     const name = nextName.trim();
     if (!name || name === currentName) return;
     if (
@@ -9617,6 +11082,27 @@ function App() {
     ) {
       toast.error("Ya existe una familia con ese nombre.");
       return;
+    }
+    if (posApiEnabled) {
+      try {
+        const taxonomy = (await posApi.catalogTaxonomies()).find(
+          (item) => item.name === currentName,
+        );
+        if (!taxonomy) throw new Error("Familia no encontrada");
+        await posApi.updateCatalogTaxonomy(taxonomy.id, {
+          name,
+          scope: taxonomy.scope,
+          parentId: taxonomy.parentId,
+          active: taxonomy.active,
+        });
+      } catch (error) {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "No se pudo renombrar la familia.",
+        );
+        return;
+      }
     }
     setCatalogFamilies((current) =>
       current.map((family) => (family === currentName ? name : family)),
@@ -9652,7 +11138,10 @@ function App() {
     );
   };
 
-  const renameCatalogCategory = (currentName: string, nextName: string) => {
+  const renameCatalogCategory = async (
+    currentName: string,
+    nextName: string,
+  ) => {
     const name = nextName.trim();
     if (!name || name === currentName) return;
     if (
@@ -9665,6 +11154,27 @@ function App() {
     ) {
       toast.error("Ya existe una categoría con ese nombre.");
       return;
+    }
+    if (posApiEnabled) {
+      try {
+        const taxonomy = (await posApi.catalogTaxonomies()).find(
+          (item) => item.name === currentName,
+        );
+        if (!taxonomy) throw new Error("Categoría no encontrada");
+        await posApi.updateCatalogTaxonomy(taxonomy.id, {
+          name,
+          scope: taxonomy.scope,
+          parentId: taxonomy.parentId,
+          active: taxonomy.active,
+        });
+      } catch (error) {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "No se pudo renombrar la categoría.",
+        );
+        return;
+      }
     }
     setCatalogCategories((current) =>
       current.map((category) => (category === currentName ? name : category)),
@@ -9711,6 +11221,15 @@ function App() {
     const product = catalogProducts.find((item) => item.id === productId);
     if (!product || !name || product.name === name) return;
     const oldName = product.name;
+    if (posApiEnabled) {
+      void saveCatalogProduct({ ...product, name }).then((saved) => {
+        if (saved)
+          toast.success(
+            `${oldName} se actualizó a ${name} en todos sus registros.`,
+          );
+      });
+      return;
+    }
     setCatalogProducts((current) =>
       current.map((item) => (item.id === productId ? { ...item, name } : item)),
     );
@@ -9791,6 +11310,45 @@ function App() {
     name: string,
     active: boolean,
   ) => {
+    if (posApiEnabled) {
+      void posApi
+        .catalogTaxonomies()
+        .then((taxonomies) => {
+          const taxonomy = taxonomies.find((item) => item.name === name);
+          if (!taxonomy) throw new Error("Taxonomía no encontrada");
+          return posApi.updateCatalogTaxonomy(taxonomy.id, {
+            name: taxonomy.name,
+            scope: taxonomy.scope,
+            parentId: taxonomy.parentId,
+            active,
+          });
+        })
+        .then(() => {
+          if (type === "FAMILY")
+            setCatalogFamilyStatus((current) => ({
+              ...current,
+              [name]: active,
+            }));
+          else
+            setCatalogCategoryStatus((current) => ({
+              ...current,
+              [name]: active,
+            }));
+          toast.info(
+            active
+              ? `${type === "FAMILY" ? "Familia" : "Categoría"} activada en las pantallas operativas.`
+              : `${type === "FAMILY" ? "Familia" : "Categoría"} inactivada sin borrar el historial.`,
+          );
+        })
+        .catch((error: unknown) =>
+          toast.error(
+            error instanceof Error
+              ? error.message
+              : "No se pudo actualizar la taxonomía.",
+          ),
+        );
+      return;
+    }
     if (type === "FAMILY")
       setCatalogFamilyStatus((current) => ({ ...current, [name]: active }));
     else
@@ -11262,7 +12820,7 @@ function App() {
     );
   };
 
-  const addInventoryMovementReason = () => {
+  const addInventoryMovementReason = async () => {
     const name = newMovementReason.trim();
     if (!name) return;
     if (
@@ -11274,6 +12832,29 @@ function App() {
     ) {
       toast.error("Ese motivo ya existe.");
       return;
+    }
+    if (posApiEnabled) {
+      try {
+        const saved = await posApi.createInventoryConcept({
+          name,
+          kind: "MOVEMENT_REASON",
+          active: true,
+        });
+        setInventoryMovementReasons((current) => [
+          ...current,
+          { id: saved.id, name: saved.name, active: saved.active },
+        ]);
+        setNewMovementReason("");
+        toast.success(`${name} agregado a movimientos de inventario.`);
+        return;
+      } catch (error) {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "No se pudo agregar el motivo.",
+        );
+        return;
+      }
     }
     setInventoryMovementReasons((current) => [
       ...current,
@@ -11295,11 +12876,66 @@ function App() {
       toast.error("Debe permanecer al menos un motivo de movimiento activo.");
       return;
     }
+    if (posApiEnabled) {
+      void posApi
+        .deleteInventoryConcept(reasonId)
+        .then(() => {
+          setInventoryMovementReasons((current) =>
+            current.filter((item) => item.id !== reasonId),
+          );
+          toast.success(
+            `${reason.name} se retiró de nuevos movimientos. El historial permanece intacto.`,
+          );
+        })
+        .catch((error: unknown) =>
+          toast.error(
+            error instanceof Error
+              ? error.message
+              : "No se pudo retirar el motivo.",
+          ),
+        );
+      return;
+    }
     setInventoryMovementReasons((current) =>
       current.filter((item) => item.id !== reasonId),
     );
     toast.success(
       `${reason.name} se borró de nuevos movimientos. El historial permanece intacto.`,
+    );
+  };
+
+  const toggleInventoryMovementReason = (reasonId: string) => {
+    const reason = inventoryMovementReasons.find(
+      (item) => item.id === reasonId,
+    );
+    if (!reason) return;
+    if (posApiEnabled) {
+      void posApi
+        .updateInventoryConcept(reasonId, {
+          name: reason.name,
+          kind: "MOVEMENT_REASON",
+          active: !reason.active,
+        })
+        .then((saved) =>
+          setInventoryMovementReasons((current) =>
+            current.map((item) =>
+              item.id === reasonId ? { ...item, active: saved.active } : item,
+            ),
+          ),
+        )
+        .catch((error: unknown) =>
+          toast.error(
+            error instanceof Error
+              ? error.message
+              : "No se pudo actualizar el motivo.",
+          ),
+        );
+      return;
+    }
+    setInventoryMovementReasons((current) =>
+      current.map((item) =>
+        item.id === reasonId ? { ...item, active: !item.active } : item,
+      ),
     );
   };
 
@@ -15015,7 +16651,7 @@ function App() {
       <CourtesySettingsManager
         settings={courtesySettings}
         canManage={canEditActiveModule}
-        onChange={setCourtesySettings}
+        onChange={persistCourtesySettings}
       />
       <Card className="settings-card client-required-settings-card">
         <CardContent>
@@ -15233,6 +16869,7 @@ function App() {
                     logoUrl: event.target.value,
                   }))
                 }
+                onBlur={() => void persistReceiptConfiguration()}
               />
             </div>
             <div className="field-stack receipt-logo-size-field">
@@ -15249,6 +16886,8 @@ function App() {
                     logoWidth: Number(event.target.value),
                   }))
                 }
+                onMouseUp={() => void persistReceiptConfiguration()}
+                onTouchEnd={() => void persistReceiptConfiguration()}
                 aria-label="Tamaño del logo en tickets"
               />
               <small>
@@ -15266,6 +16905,7 @@ function App() {
                     companyName: event.target.value,
                   }))
                 }
+                onBlur={() => void persistReceiptConfiguration()}
               />
             </div>
             <div className="field-stack">
@@ -15279,6 +16919,7 @@ function App() {
                     companySalesNumber: event.target.value,
                   }))
                 }
+                onBlur={() => void persistReceiptConfiguration()}
                 placeholder="EMPRESA-001"
               />
               <small>
@@ -15308,6 +16949,7 @@ function App() {
                     [activeBranch]: address,
                   }));
                 }}
+                onBlur={() => void persistReceiptConfiguration()}
               />
             </div>
             <div className="field-stack receipt-settings-wide">
@@ -15320,6 +16962,7 @@ function App() {
                     footerMessage: event.target.value,
                   }))
                 }
+                onBlur={() => void persistReceiptConfiguration()}
               />
             </div>
             <div className="field-stack receipt-settings-wide">
@@ -15332,6 +16975,7 @@ function App() {
                     policies: event.target.value,
                   }))
                 }
+                onBlur={() => void persistReceiptConfiguration()}
               />
             </div>
           </div>
@@ -15354,12 +16998,14 @@ function App() {
                 className="setting-row"
                 role="switch"
                 aria-checked={receiptSettings[field]}
-                onClick={() =>
-                  setReceiptSettings((current) => ({
-                    ...current,
-                    [field]: !current[field],
-                  }))
-                }
+                onClick={() => {
+                  const next = {
+                    ...receiptSettings,
+                    [field]: !receiptSettings[field],
+                  };
+                  setReceiptSettings(next);
+                  void persistReceiptConfiguration(next);
+                }}
               >
                 <span>
                   <strong>{label}</strong>
@@ -15588,15 +17234,7 @@ function App() {
                   className="setting-row"
                   role="switch"
                   aria-checked={reason.active}
-                  onClick={() =>
-                    setInventoryMovementReasons((current) =>
-                      current.map((item) =>
-                        item.id === reason.id
-                          ? { ...item, active: !item.active }
-                          : item,
-                      ),
-                    )
-                  }
+                  onClick={() => toggleInventoryMovementReason(reason.id)}
                 >
                   <span>
                     <strong>{reason.name}</strong>
@@ -15647,9 +17285,10 @@ function App() {
       <VoucherSettings
         templates={voucherTemplates}
         issues={voucherIssues}
-        isMasterCode={isMasterAccessCode}
-        onChangeTemplates={setVoucherTemplates}
-        onChangeIssues={setVoucherIssues}
+        onAuthorize={authorizeVoucherSettings}
+        onSaveTemplate={saveVoucherTemplate}
+        onDeleteTemplate={deleteVoucherTemplate}
+        onRedeemIssue={redeemVoucherIssue}
       />
     </div>
   );
@@ -17064,6 +18703,10 @@ function App() {
             }
             sessionIsMaster={sessionUser?.isMaster ?? false}
             isMasterCode={isMasterAccessCode}
+            authorizationManagedByServer={posApiEnabled}
+            {...(posApiEnabled
+              ? { onAuthorizeAccessCode: authorizeCustomerAccess }
+              : {})}
             onUpdateClient={updateClientRecord}
             onDeleteClient={deleteClientRecord}
             onBulkImportClients={importClientRecords}
@@ -17122,24 +18765,81 @@ function App() {
             groups={catalogGroups}
             onSave={saveCatalogProduct}
             onStatusChange={setCatalogProductStatus}
-            onAddFamily={(name) => {
+            onAddFamily={async (name) => {
+              if (posApiEnabled) {
+                try {
+                  await posApi.createCatalogTaxonomy({
+                    name,
+                    scope: "FAMILY",
+                    parentId: null,
+                    active: true,
+                  });
+                } catch (error) {
+                  toast.error(
+                    error instanceof Error
+                      ? error.message
+                      : "No se pudo crear la familia.",
+                  );
+                  return false;
+                }
+              }
               addCatalogOption(setCatalogFamilies, name);
               setCatalogFamilyStatus((current) => ({
                 ...current,
                 [name]: true,
               }));
+              return true;
             }}
-            onAddCategory={(name) => {
+            onAddCategory={async (name) => {
+              if (posApiEnabled) {
+                try {
+                  await posApi.createCatalogTaxonomy({
+                    name,
+                    scope: "CATEGORY",
+                    parentId: null,
+                    active: true,
+                  });
+                } catch (error) {
+                  toast.error(
+                    error instanceof Error
+                      ? error.message
+                      : "No se pudo crear la categoría.",
+                  );
+                  return false;
+                }
+              }
               addCatalogOption(setCatalogCategories, name);
               setCatalogCategoryStatus((current) => ({
                 ...current,
                 [name]: true,
               }));
+              return true;
             }}
-            onAddGroup={(name) => addCatalogOption(setCatalogGroups, name)}
+            onAddGroup={async (name) => {
+              if (posApiEnabled) {
+                try {
+                  await posApi.createCatalogTaxonomy({
+                    name,
+                    scope: "GROUP",
+                    parentId: null,
+                    active: true,
+                  });
+                } catch (error) {
+                  toast.error(
+                    error instanceof Error
+                      ? error.message
+                      : "No se pudo crear el grupo.",
+                  );
+                  return false;
+                }
+              }
+              addCatalogOption(setCatalogGroups, name);
+              return true;
+            }}
             costAccessAuthorized={costAccessAuthorized}
             onAuthorizeCostAccess={authorizeCostAccess}
             isMasterCode={isMasterAccessCode}
+            authorizationManagedByServer={posApiEnabled}
             onCreateInventoryOrders={createInventoryBranchOrders}
             onLockCostAccess={() => setCostAccessAuthorized(false)}
             canOpenBranchRequest={canCreateWarehouseRequest}
@@ -18125,7 +19825,9 @@ function App() {
           ? {
               onSearchClients: async (query: string) => {
                 const response = await posApi.customerSearch(query, 1, 20);
-                return response.items.map(clientFromPosCustomer);
+                return response.items.map((customer) =>
+                  clientFromPosCustomer(customer, apiBranches, clientSources),
+                );
               },
             }
           : {})}

@@ -103,9 +103,21 @@ interface CustomersViewProps {
   sessionSellerId: string | null;
   sessionIsMaster: boolean;
   isMasterCode: (code: string) => boolean;
-  onUpdateClient: (client: Client) => void;
-  onDeleteClient: (clientId: string) => void;
-  onBulkImportClients: (clients: Client[]) => void;
+  authorizationManagedByServer?: boolean;
+  onAuthorizeAccessCode?: (code: string) => Promise<{
+    kind: "MASTER" | "SELLER";
+    sellerId: string | null;
+    authorizationToken?: string;
+  } | null>;
+  onUpdateClient: (client: Client) => boolean | Promise<boolean>;
+  onDeleteClient: (
+    clientId: string,
+    code: string,
+  ) => boolean | Promise<boolean>;
+  onBulkImportClients: (
+    clients: Client[],
+    code: string,
+  ) => boolean | Promise<boolean>;
   onRegisterLayawayPayment: (
     layawayId: string,
     payments: PaymentEntry[],
@@ -320,6 +332,8 @@ export function CustomersView({
   sessionSellerId,
   sessionIsMaster,
   isMasterCode,
+  authorizationManagedByServer = false,
+  onAuthorizeAccessCode,
   onUpdateClient,
   onDeleteClient,
   onBulkImportClients,
@@ -572,7 +586,21 @@ export function CustomersView({
       : null;
   };
 
-  const authorizeSeller = () => {
+  const authorizeSeller = async () => {
+    if (authorizationManagedByServer && onAuthorizeAccessCode) {
+      const access = await onAuthorizeAccessCode(accessCode);
+      if (!access) {
+        setAuthorizedSellerId("");
+        setAccessError("Clave inválida o vendedor inactivo.");
+        return;
+      }
+      setMasterAuthorized(access.kind === "MASTER");
+      setAuthorizedSellerId(access.sellerId ?? "");
+      setDebtOnly(false);
+      setAccessError("");
+      setAccessCode("");
+      return;
+    }
     if (isMasterCode(accessCode)) {
       setMasterAuthorized(true);
       setDebtOnly(false);
@@ -648,32 +676,33 @@ export function CustomersView({
     popup.document.close();
   };
 
-  const saveClientEdit = () => {
+  const saveClientEdit = async () => {
     if (!editingClient) return;
     if (!editingClient.firstName.trim() || !editingClient.phone.trim()) {
       toast.error("Nombre y teléfono son obligatorios.");
       return;
     }
-    onUpdateClient(editingClient);
+    if (!(await onUpdateClient(editingClient))) return;
     setEditingClient(null);
     toast.success("Registro del cliente actualizado.");
   };
 
-  const confirmClientDeletion = () => {
+  const confirmClientDeletion = async () => {
     if (!deletingClient) return;
     if (deleteFolio.trim() !== deletingClient.registrationFolio) {
       toast.error("La primera validación no coincide con el folio.");
       return;
     }
-    if (!isMasterCode(deleteMasterCode)) {
+    if (!authorizationManagedByServer && !isMasterCode(deleteMasterCode)) {
       toast.error("La segunda validación requiere el código master.");
       return;
     }
-    onDeleteClient(deletingClient.id);
+    if (!(await onDeleteClient(deletingClient.id, deleteMasterCode))) return;
     setExpandedClientId("");
     setDeletingClient(null);
     setDeleteFolio("");
     setDeleteMasterCode("");
+    if (authorizationManagedByServer) setMasterAuthorized(false);
     toast.success(
       "Cliente borrado del directorio activo; el histórico se conserva.",
     );
@@ -865,8 +894,13 @@ export function CustomersView({
     }
   };
 
-  const confirmBulkImport = () => {
-    if (!masterAuthorized && !isMasterCode(bulkMasterCode)) {
+  const confirmBulkImport = async () => {
+    if (
+      (authorizationManagedByServer || !masterAuthorized) &&
+      (authorizationManagedByServer
+        ? bulkMasterCode.length !== 4
+        : !isMasterCode(bulkMasterCode))
+    ) {
       toast.error("La carga masiva requiere el código master.");
       return;
     }
@@ -874,13 +908,14 @@ export function CustomersView({
       toast.error("Selecciona un archivo con clientes válidos.");
       return;
     }
-    onBulkImportClients(bulkImportRows);
+    if (!(await onBulkImportClients(bulkImportRows, bulkMasterCode))) return;
     toast.success(`${bulkImportRows.length} clientes agregados al directorio.`);
     setBulkImportOpen(false);
     setBulkMasterCode("");
     setBulkFilename("");
     setBulkImportRows([]);
     setBulkImportErrors([]);
+    if (authorizationManagedByServer) setMasterAuthorized(false);
   };
 
   const birthdayScope = useMemo(() => {
@@ -2181,7 +2216,7 @@ export function CustomersView({
               </div>
             </div>
           )}
-          {!masterAuthorized && (
+          {(!masterAuthorized || authorizationManagedByServer) && (
             <div className="field-stack">
               <Label>Código master para confirmar la carga</Label>
               <Input
@@ -2206,7 +2241,10 @@ export function CustomersView({
               type="button"
               disabled={
                 bulkImportRows.length === 0 ||
-                (!masterAuthorized && !isMasterCode(bulkMasterCode))
+                ((!masterAuthorized || authorizationManagedByServer) &&
+                  (authorizationManagedByServer
+                    ? bulkMasterCode.length !== 4
+                    : !isMasterCode(bulkMasterCode)))
               }
               onClick={confirmBulkImport}
             >
@@ -2565,7 +2603,9 @@ export function CustomersView({
               disabled={
                 !deletingClient ||
                 deleteFolio.trim() !== deletingClient.registrationFolio ||
-                !isMasterCode(deleteMasterCode)
+                (authorizationManagedByServer
+                  ? deleteMasterCode.length !== 4
+                  : !isMasterCode(deleteMasterCode))
               }
               onClick={confirmClientDeletion}
             >

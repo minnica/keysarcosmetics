@@ -1,12 +1,5 @@
 import { useMemo, useState } from "react";
-import {
-  Gift,
-  Minus,
-  Pencil,
-  Plus,
-  Power,
-  PowerOff,
-} from "lucide-react";
+import { Gift, Minus, Pencil, Plus, Power, PowerOff } from "lucide-react";
 import {
   Button,
   Card,
@@ -35,7 +28,7 @@ import type {
 interface CourtesySettingsManagerProps {
   settings: CourtesySettings;
   canManage: boolean;
-  onChange: (settings: CourtesySettings) => void;
+  onChange: (settings: CourtesySettings) => boolean | Promise<boolean>;
 }
 
 type ProductDraft = Pick<CourtesyProductOption, "name" | "category"> & {
@@ -59,7 +52,9 @@ export function CourtesySettingsManager({
 
   const activeProducts = settings.products.filter((product) => product.active);
   const availablePackages = useMemo(() => {
-    const activeProductIds = new Set(activeProducts.map((product) => product.id));
+    const activeProductIds = new Set(
+      activeProducts.map((product) => product.id),
+    );
     return settings.packages.filter(
       (option) =>
         option.active &&
@@ -74,16 +69,18 @@ export function CourtesySettingsManager({
     settings.products.find((product) => product.id === productId)?.name ??
     "Producto inactivo";
 
-  const setRequired = () => {
+  const setRequired = async () => {
     if (!canManage) return;
     if (!settings.required && availablePackages.length === 0) {
-      toast.error("Activa al menos un paquete válido antes de exigir cortesía.");
+      toast.error(
+        "Activa al menos un paquete válido antes de exigir cortesía.",
+      );
       return;
     }
-    onChange({ ...settings, required: !settings.required });
+    await onChange({ ...settings, required: !settings.required });
   };
 
-  const saveProduct = () => {
+  const saveProduct = async () => {
     if (!productDraft || !canManage) return;
     const name = productDraft.name.trim();
     if (!name) {
@@ -115,22 +112,31 @@ export function CourtesySettingsManager({
             active: true,
           },
         ];
-    onChange({ ...settings, products });
+    if (!(await onChange({ ...settings, products }))) return;
     setProductDraft(null);
-    toast.success(productDraft.id ? "Producto actualizado." : "Producto añadido.");
+    toast.success(
+      productDraft.id ? "Producto actualizado." : "Producto añadido.",
+    );
   };
 
-  const toggleProduct = (productId: string) => {
+  const toggleProduct = async (productId: string) => {
     if (!canManage) return;
-    const product = settings.products.find((candidate) => candidate.id === productId);
+    const product = settings.products.find(
+      (candidate) => candidate.id === productId,
+    );
     if (!product) return;
     if (!product.active) {
-      onChange({
-        ...settings,
-        products: settings.products.map((candidate) =>
-          candidate.id === productId ? { ...candidate, active: true } : candidate,
-        ),
-      });
+      if (
+        !(await onChange({
+          ...settings,
+          products: settings.products.map((candidate) =>
+            candidate.id === productId
+              ? { ...candidate, active: true }
+              : candidate,
+          ),
+        }))
+      )
+        return;
       toast.success("Producto de cortesía activado.");
       return;
     }
@@ -148,17 +154,22 @@ export function CourtesySettingsManager({
     );
     const defaultPackage = enabledPackages.includes(settings.defaultPackage)
       ? settings.defaultPackage
-      : enabledPackages[0] ?? "";
-    onChange({
-      ...settings,
-      required: enabledPackages.length > 0 ? settings.required : false,
-      products: settings.products.map((candidate) =>
-        candidate.id === productId ? { ...candidate, active: false } : candidate,
-      ),
-      packages,
-      enabledPackages,
-      defaultPackage,
-    });
+      : (enabledPackages[0] ?? "");
+    if (
+      !(await onChange({
+        ...settings,
+        required: enabledPackages.length > 0 ? settings.required : false,
+        products: settings.products.map((candidate) =>
+          candidate.id === productId
+            ? { ...candidate, active: false }
+            : candidate,
+        ),
+        packages,
+        enabledPackages,
+        defaultPackage,
+      }))
+    )
+      return;
     toast.info(
       affectedPackageIds.size > 0
         ? `Producto inactivado junto con ${affectedPackageIds.size} paquete(s) relacionado(s).`
@@ -184,20 +195,26 @@ export function CourtesySettingsManager({
     });
   };
 
-  const savePackage = () => {
+  const savePackage = async () => {
     if (!packageDraft || !canManage) return;
     const name = packageDraft.name.trim();
     if (!name) {
       toast.error("Escribe el nombre del paquete.");
       return;
     }
-    if (packageDraft.serviceIds.length < 1 || packageDraft.serviceIds.length > 2) {
+    if (
+      packageDraft.serviceIds.length < 1 ||
+      packageDraft.serviceIds.length > 2
+    ) {
       toast.error("El paquete debe contener uno o dos servicios.");
       return;
     }
     if (
       packageDraft.serviceIds.some(
-        (id) => !settings.products.some((product) => product.id === id && product.active),
+        (id) =>
+          !settings.products.some(
+            (product) => product.id === id && product.active,
+          ),
       )
     ) {
       toast.error("Todos los productos del paquete deben estar activos.");
@@ -231,54 +248,79 @@ export function CourtesySettingsManager({
         ? settings.enabledPackages
         : [...settings.enabledPackages, id]
       : settings.enabledPackages.filter((packageId) => packageId !== id);
-    onChange({
-      ...settings,
-      packages,
-      enabledPackages,
-      defaultPackage:
-        settings.defaultPackage || (packageIsActive ? id : ""),
-    });
+    if (
+      !(await onChange({
+        ...settings,
+        packages,
+        enabledPackages,
+        defaultPackage: settings.defaultPackage || (packageIsActive ? id : ""),
+      }))
+    )
+      return;
     setPackageDraft(null);
-    toast.success(packageDraft.id ? "Paquete actualizado." : "Paquete añadido.");
+    toast.success(
+      packageDraft.id ? "Paquete actualizado." : "Paquete añadido.",
+    );
   };
 
-  const togglePackage = (packageId: string) => {
+  const togglePackage = async (packageId: string) => {
     if (!canManage) return;
-    const option = settings.packages.find((candidate) => candidate.id === packageId);
+    const option = settings.packages.find(
+      (candidate) => candidate.id === packageId,
+    );
     if (!option) return;
     if (!option.active) {
       if (
         option.serviceIds.some(
-          (id) => !settings.products.some((product) => product.id === id && product.active),
+          (id) =>
+            !settings.products.some(
+              (product) => product.id === id && product.active,
+            ),
         )
       ) {
-        toast.error("Activa primero todos los productos incluidos en este paquete.");
+        toast.error(
+          "Activa primero todos los productos incluidos en este paquete.",
+        );
         return;
       }
-      onChange({
-        ...settings,
-        packages: settings.packages.map((candidate) =>
-          candidate.id === packageId ? { ...candidate, active: true } : candidate,
-        ),
-        enabledPackages: [...new Set([...settings.enabledPackages, packageId])],
-        defaultPackage: settings.defaultPackage || packageId,
-      });
+      if (
+        !(await onChange({
+          ...settings,
+          packages: settings.packages.map((candidate) =>
+            candidate.id === packageId
+              ? { ...candidate, active: true }
+              : candidate,
+          ),
+          enabledPackages: [
+            ...new Set([...settings.enabledPackages, packageId]),
+          ],
+          defaultPackage: settings.defaultPackage || packageId,
+        }))
+      )
+        return;
       toast.success("Paquete de cortesía activado.");
       return;
     }
-    const enabledPackages = settings.enabledPackages.filter((id) => id !== packageId);
-    onChange({
-      ...settings,
-      required: enabledPackages.length > 0 ? settings.required : false,
-      packages: settings.packages.map((candidate) =>
-        candidate.id === packageId ? { ...candidate, active: false } : candidate,
-      ),
-      enabledPackages,
-      defaultPackage:
-        settings.defaultPackage === packageId
-          ? enabledPackages[0] ?? ""
-          : settings.defaultPackage,
-    });
+    const enabledPackages = settings.enabledPackages.filter(
+      (id) => id !== packageId,
+    );
+    if (
+      !(await onChange({
+        ...settings,
+        required: enabledPackages.length > 0 ? settings.required : false,
+        packages: settings.packages.map((candidate) =>
+          candidate.id === packageId
+            ? { ...candidate, active: false }
+            : candidate,
+        ),
+        enabledPackages,
+        defaultPackage:
+          settings.defaultPackage === packageId
+            ? (enabledPackages[0] ?? "")
+            : settings.defaultPackage,
+      }))
+    )
+      return;
     toast.info("Paquete de cortesía inactivado.");
   };
 
@@ -291,7 +333,8 @@ export function CourtesySettingsManager({
               <span className="section-kicker">VENTA · CLIENTE NUEVO</span>
               <h2>Paquetes y productos de cortesía</h2>
               <p>
-                Administra los servicios y combinaciones disponibles durante Checkout.
+                Administra los servicios y combinaciones disponibles durante
+                Checkout.
               </p>
             </div>
             {!canManage && <small>Acceso de consulta</small>}
@@ -339,12 +382,15 @@ export function CourtesySettingsManager({
               </header>
               <div className="courtesy-admin-list">
                 {settings.products.map((product) => (
-                  <article key={product.id} className={product.active ? "" : "is-inactive"}>
+                  <article
+                    key={product.id}
+                    className={product.active ? "" : "is-inactive"}
+                  >
                     <span>
                       <strong>{product.name}</strong>
                       <small>
-                        {product.category === "FACIAL" ? "Facial" : "Corporal"} ·{" "}
-                        {product.active ? "Activo" : "Inactivo"}
+                        {product.category === "FACIAL" ? "Facial" : "Corporal"}{" "}
+                        · {product.active ? "Activo" : "Inactivo"}
                       </small>
                     </span>
                     <div>
@@ -372,7 +418,11 @@ export function CourtesySettingsManager({
                         onClick={() => toggleProduct(product.id)}
                         aria-label={`${product.active ? "Inactivar" : "Activar"} ${product.name}`}
                       >
-                        {product.active ? <PowerOff size={14} /> : <Power size={14} />}
+                        {product.active ? (
+                          <PowerOff size={14} />
+                        ) : (
+                          <Power size={14} />
+                        )}
                       </Button>
                     </div>
                   </article>
@@ -394,7 +444,9 @@ export function CourtesySettingsManager({
                   onClick={() =>
                     setPackageDraft({
                       name: "",
-                      serviceIds: activeProducts[0] ? [activeProducts[0].id] : [],
+                      serviceIds: activeProducts[0]
+                        ? [activeProducts[0].id]
+                        : [],
                     })
                   }
                 >
@@ -403,7 +455,10 @@ export function CourtesySettingsManager({
               </header>
               <div className="courtesy-admin-list">
                 {settings.packages.map((option) => (
-                  <article key={option.id} className={option.active ? "" : "is-inactive"}>
+                  <article
+                    key={option.id}
+                    className={option.active ? "" : "is-inactive"}
+                  >
                     <span>
                       <strong>{option.name}</strong>
                       <small>
@@ -436,7 +491,11 @@ export function CourtesySettingsManager({
                         onClick={() => togglePackage(option.id)}
                         aria-label={`${option.active ? "Inactivar" : "Activar"} ${option.name}`}
                       >
-                        {option.active ? <PowerOff size={14} /> : <Power size={14} />}
+                        {option.active ? (
+                          <PowerOff size={14} />
+                        ) : (
+                          <Power size={14} />
+                        )}
                       </Button>
                     </div>
                   </article>
@@ -451,7 +510,7 @@ export function CourtesySettingsManager({
               value={settings.defaultPackage}
               disabled={!canManage || availablePackages.length === 0}
               onValueChange={(value) =>
-                onChange({ ...settings, defaultPackage: value })
+                void onChange({ ...settings, defaultPackage: value })
               }
             >
               <SelectTrigger aria-label="Paquete de cortesía por defecto">
@@ -469,10 +528,15 @@ export function CourtesySettingsManager({
         </CardContent>
       </Card>
 
-      <Dialog open={Boolean(productDraft)} onOpenChange={(open) => !open && setProductDraft(null)}>
+      <Dialog
+        open={Boolean(productDraft)}
+        onOpenChange={(open) => !open && setProductDraft(null)}
+      >
         <DialogContent className="sm:max-w-[520px]">
           <DialogHeader>
-            <DialogTitle>{productDraft?.id ? "Editar producto" : "Añadir producto"}</DialogTitle>
+            <DialogTitle>
+              {productDraft?.id ? "Editar producto" : "Añadir producto"}
+            </DialogTitle>
             <DialogDescription>
               Este nombre será el servicio que aparecerá en la cita y el ticket.
             </DialogDescription>
@@ -486,7 +550,9 @@ export function CourtesySettingsManager({
                   value={productDraft.name}
                   onChange={(event) =>
                     setProductDraft((current) =>
-                      current ? { ...current, name: event.target.value } : current,
+                      current
+                        ? { ...current, name: event.target.value }
+                        : current,
                     )
                   }
                   placeholder="Ej. Facial calmante de cortesía"
@@ -501,13 +567,16 @@ export function CourtesySettingsManager({
                       current
                         ? {
                             ...current,
-                            category: category as CourtesyProductOption["category"],
+                            category:
+                              category as CourtesyProductOption["category"],
                           }
                         : current,
                     )
                   }
                 >
-                  <SelectTrigger id="courtesy-product-category"><SelectValue /></SelectTrigger>
+                  <SelectTrigger id="courtesy-product-category">
+                    <SelectValue />
+                  </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="FACIAL">Facial</SelectItem>
                     <SelectItem value="BODY">Corporal</SelectItem>
@@ -517,18 +586,32 @@ export function CourtesySettingsManager({
             </div>
           )}
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setProductDraft(null)}>Cancelar</Button>
-            <Button type="button" onClick={saveProduct}>Guardar producto</Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setProductDraft(null)}
+            >
+              Cancelar
+            </Button>
+            <Button type="button" onClick={saveProduct}>
+              Guardar producto
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      <Dialog open={Boolean(packageDraft)} onOpenChange={(open) => !open && setPackageDraft(null)}>
+      <Dialog
+        open={Boolean(packageDraft)}
+        onOpenChange={(open) => !open && setPackageDraft(null)}
+      >
         <DialogContent className="sm:max-w-[560px]">
           <DialogHeader>
-            <DialogTitle>{packageDraft?.id ? "Editar paquete" : "Añadir paquete"}</DialogTitle>
+            <DialogTitle>
+              {packageDraft?.id ? "Editar paquete" : "Añadir paquete"}
+            </DialogTitle>
             <DialogDescription>
-              Combina uno o dos servicios. Puedes repetir un producto para crear un paquete doble.
+              Combina uno o dos servicios. Puedes repetir un producto para crear
+              un paquete doble.
             </DialogDescription>
           </DialogHeader>
           {packageDraft && (
@@ -540,7 +623,9 @@ export function CourtesySettingsManager({
                   value={packageDraft.name}
                   onChange={(event) =>
                     setPackageDraft((current) =>
-                      current ? { ...current, name: event.target.value } : current,
+                      current
+                        ? { ...current, name: event.target.value }
+                        : current,
                     )
                   }
                   placeholder="Ej. Doble facial premium"
@@ -550,17 +635,23 @@ export function CourtesySettingsManager({
                 {settings.products
                   .filter(
                     (product) =>
-                      product.active || packageDraft.serviceIds.includes(product.id),
+                      product.active ||
+                      packageDraft.serviceIds.includes(product.id),
                   )
                   .map((product) => {
                     const quantity = packageDraft.serviceIds.filter(
                       (id) => id === product.id,
                     ).length;
                     return (
-                      <article key={product.id} className={product.active ? "" : "is-inactive"}>
+                      <article
+                        key={product.id}
+                        className={product.active ? "" : "is-inactive"}
+                      >
                         <span>
                           <strong>{product.name}</strong>
-                          <small>{product.active ? "Disponible" : "Inactivo"}</small>
+                          <small>
+                            {product.active ? "Disponible" : "Inactivo"}
+                          </small>
                         </span>
                         <div>
                           <Button
@@ -568,7 +659,9 @@ export function CourtesySettingsManager({
                             size="icon"
                             variant="outline"
                             disabled={quantity === 0}
-                            onClick={() => updatePackageProductQuantity(product.id, -1)}
+                            onClick={() =>
+                              updatePackageProductQuantity(product.id, -1)
+                            }
                           >
                             <Minus size={14} />
                           </Button>
@@ -577,8 +670,13 @@ export function CourtesySettingsManager({
                             type="button"
                             size="icon"
                             variant="outline"
-                            disabled={!product.active || packageDraft.serviceIds.length >= 2}
-                            onClick={() => updatePackageProductQuantity(product.id, 1)}
+                            disabled={
+                              !product.active ||
+                              packageDraft.serviceIds.length >= 2
+                            }
+                            onClick={() =>
+                              updatePackageProductQuantity(product.id, 1)
+                            }
                           >
                             <Plus size={14} />
                           </Button>
@@ -590,8 +688,16 @@ export function CourtesySettingsManager({
             </div>
           )}
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setPackageDraft(null)}>Cancelar</Button>
-            <Button type="button" onClick={savePackage}>Guardar paquete</Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setPackageDraft(null)}
+            >
+              Cancelar
+            </Button>
+            <Button type="button" onClick={savePackage}>
+              Guardar paquete
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

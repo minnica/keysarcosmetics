@@ -71,9 +71,9 @@ interface MyAccountViewProps {
     cardId: string,
     billingStartDate: string,
     nextBillingDate: string,
-  ) => void;
-  onAddLocation: (name: string, costUsd: number) => boolean;
-  onDeactivateLocation: (locationId: string) => boolean;
+  ) => boolean | Promise<boolean>;
+  onAddLocation: (name: string, costUsd: number) => boolean | Promise<boolean>;
+  onDeactivateLocation: (locationId: string) => boolean | Promise<boolean>;
   onSaveSellerAccess: (input: {
     sellerId: string;
     currentCode: string;
@@ -512,22 +512,25 @@ export function MyAccountView({
     setActivationStartDate(new Date().toISOString().slice(0, 10));
   };
 
-  const activateLocation = () => {
+  const activateLocation = async () => {
     if (!activationLocationId || !activationCardId || !activationStartDate)
       return;
-    onActivateLocation(
-      activationLocationId,
-      activationCardId,
-      activationStartDate,
-      addMonth(activationStartDate),
-    );
+    if (
+      !(await onActivateLocation(
+        activationLocationId,
+        activationCardId,
+        activationStartDate,
+        addMonth(activationStartDate),
+      ))
+    )
+      return;
     setActivationLocationId("");
     setActivationCardId("");
     setActivationStartDate("");
     toast.success("Ubicación activada con facturación mensual automática.");
   };
 
-  const addLocation = () => {
+  const addLocation = async () => {
     const name = newLocationName.trim();
     const costUsd = Number(newLocationCostUsd);
     if (!name || !Number.isFinite(costUsd) || costUsd <= 0) {
@@ -544,7 +547,7 @@ export function MyAccountView({
       toast.error("Ya existe una sucursal con ese nombre.");
       return;
     }
-    if (!onAddLocation(name, costUsd)) return;
+    if (!(await onAddLocation(name, costUsd))) return;
     setNewLocationName("");
     setNewLocationCostUsd("69");
     setNewLocationOpen(false);
@@ -553,8 +556,8 @@ export function MyAccountView({
     );
   };
 
-  const deactivateLocation = (location: BillingLocation) => {
-    if (!onDeactivateLocation(location.id)) return;
+  const deactivateLocation = async (location: BillingLocation) => {
+    if (!(await onDeactivateLocation(location.id))) return;
     setActivationLocationId("");
     setDeactivationLocationId("");
     toast.info(

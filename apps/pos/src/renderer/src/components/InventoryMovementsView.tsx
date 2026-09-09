@@ -93,7 +93,7 @@ interface InventoryMovementsViewProps {
   ) => void;
   onFulfillOwedProduct: (owedProductId: string) => void;
   costAccessAuthorized: boolean;
-  onAuthorizeCostAccess: (code: string) => boolean;
+  onAuthorizeCostAccess: (code: string) => boolean | Promise<boolean>;
   onLockCostAccess: () => void;
 }
 
@@ -455,7 +455,9 @@ export function InventoryMovementsView({
         case "folio":
           return `${group.createdAtIso} ${group.folio}`;
         case "product":
-          return uniqueText(group.movements.map((movement) => movement.productName));
+          return uniqueText(
+            group.movements.map((movement) => movement.productName),
+          );
         case "direction":
           return uniqueText(
             group.movements.map(
@@ -664,25 +666,24 @@ export function InventoryMovementsView({
     return {
       tickets: saleTickets.length,
       totalRevenue,
-      averageTicket: saleTickets.length
-        ? totalRevenue / saleTickets.length
-        : 0,
-      topProduct:
-        rankedItems.find((item) => item.kind === "PRODUCT") ?? null,
-      topService:
-        rankedItems.find((item) => item.kind === "SERVICE") ?? null,
+      averageTicket: saleTickets.length ? totalRevenue / saleTickets.length : 0,
+      topProduct: rankedItems.find((item) => item.kind === "PRODUCT") ?? null,
+      topService: rankedItems.find((item) => item.kind === "SERVICE") ?? null,
       highestSeller: sellerRates[0] ?? null,
       lowestSeller: sellerRates.at(-1) ?? null,
     };
   }, [products, reportBranch, reportMonth, sellers, tickets]);
   const monthlySalesStrategy = useMemo(() => {
-    const topProduct = monthlySalesDashboard.topProduct?.name ??
+    const topProduct =
+      monthlySalesDashboard.topProduct?.name ??
       "el producto con mayor rotación";
-    const topService = monthlySalesDashboard.topService?.name ??
-      "un facial de seguimiento";
-    const highSeller = monthlySalesDashboard.highestSeller?.name ??
+    const topService =
+      monthlySalesDashboard.topService?.name ?? "un facial de seguimiento";
+    const highSeller =
+      monthlySalesDashboard.highestSeller?.name ??
       "el vendedor con mejor resultado";
-    const lowSeller = monthlySalesDashboard.lowestSeller?.name ??
+    const lowSeller =
+      monthlySalesDashboard.lowestSeller?.name ??
       "el vendedor con menor participación";
     const highestCostBranch = [...monthlyBranchCosts].sort(
       (a, b) => b[1].mxn - a[1].mxn,
@@ -806,10 +807,7 @@ export function InventoryMovementsView({
   };
 
   const saveBatchAdjustment = (batch: InventoryAdjustmentBatch) => {
-    if (
-      !editingBatchAdjustment ||
-      editingBatchAdjustment.batchId !== batch.id
-    )
+    if (!editingBatchAdjustment || editingBatchAdjustment.batchId !== batch.id)
       return;
     const { index, draft } = editingBatchAdjustment;
     if (draft.quantity < 1) {
@@ -857,7 +855,8 @@ export function InventoryMovementsView({
         : reportBranch.toLowerCase().replace(/[^a-z0-9]+/g, "-");
     const summaryRows = monthlyBranchCosts
       .map(
-        ([branch, totals]) => `<tr><td>${spreadsheetEscape(branch)}</td><td>${totals.movements}</td><td>${totals.usd.toFixed(2)}</td><td>${totals.mxn.toFixed(2)}</td></tr>`,
+        ([branch, totals]) =>
+          `<tr><td>${spreadsheetEscape(branch)}</td><td>${totals.movements}</td><td>${totals.usd.toFixed(2)}</td><td>${totals.mxn.toFixed(2)}</td></tr>`,
       )
       .join("");
     const detailRows = monthlyCostMovements
@@ -883,7 +882,8 @@ export function InventoryMovementsView({
       .join("");
     const categoryRows = monthlyCategoryCosts
       .map(
-        ([category, totals]) => `<tr><td>${spreadsheetEscape(movementCategoryLabels[category])}</td><td>${totals.movements}</td><td>${totals.usd.toFixed(2)}</td><td>${totals.mxn.toFixed(2)}</td></tr>`,
+        ([category, totals]) =>
+          `<tr><td>${spreadsheetEscape(movementCategoryLabels[category])}</td><td>${totals.movements}</td><td>${totals.usd.toFixed(2)}</td><td>${totals.mxn.toFixed(2)}</td></tr>`,
       )
       .join("");
     const workbook = `<!doctype html><html><head><meta charset="utf-8"></head><body>
@@ -926,11 +926,7 @@ export function InventoryMovementsView({
     }
     const scopeLabel =
       reportBranch === "ALL" ? "Todas las sucursales" : reportBranch;
-    const printWindow = window.open(
-      "",
-      "_blank",
-      "width=1280,height=850",
-    );
+    const printWindow = window.open("", "_blank", "width=1280,height=850");
     if (!printWindow) {
       toast.error("Permite ventanas emergentes para generar el PDF.");
       return;
@@ -946,7 +942,8 @@ export function InventoryMovementsView({
     );
     const summaryRows = monthlyBranchCosts
       .map(
-        ([branch, totals]) => `<tr><td>${spreadsheetEscape(branch)}</td><td>${totals.movements}</td><td>$${totals.usd.toFixed(2)}</td><td>${new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(totals.mxn)}</td></tr>`,
+        ([branch, totals]) =>
+          `<tr><td>${spreadsheetEscape(branch)}</td><td>${totals.movements}</td><td>$${totals.usd.toFixed(2)}</td><td>${new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(totals.mxn)}</td></tr>`,
       )
       .join("");
     const detailRows = monthlyCostMovements
@@ -970,10 +967,12 @@ export function InventoryMovementsView({
       .join("");
     const categoryRows = monthlyCategoryCosts
       .map(
-        ([category, totals]) => `<tr><td>${spreadsheetEscape(movementCategoryLabels[category])}</td><td>${totals.movements}</td><td>$${totals.usd.toFixed(2)}</td><td>${new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(totals.mxn)}</td></tr>`,
+        ([category, totals]) =>
+          `<tr><td>${spreadsheetEscape(movementCategoryLabels[category])}</td><td>${totals.movements}</td><td>$${totals.usd.toFixed(2)}</td><td>${new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(totals.mxn)}</td></tr>`,
       )
       .join("");
-    printWindow.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Reporte de costos ${spreadsheetEscape(reportMonth)}</title><style>
+    printWindow.document
+      .write(`<!doctype html><html><head><meta charset="utf-8"><title>Reporte de costos ${spreadsheetEscape(reportMonth)}</title><style>
       @page{size:landscape;margin:10mm}*{box-sizing:border-box}body{font-family:Arial,sans-serif;color:#171717;margin:0}header{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2px solid #171717;padding-bottom:12px;margin-bottom:18px}h1{font-size:22px;margin:0 0 5px}h2{font-size:14px;margin:18px 0 8px}.meta{font-size:10px;color:#555}.totals{display:flex;gap:10px}.total{min-width:150px;border:1px solid #bbb;padding:9px}.total span{display:block;font-size:8px;color:#666}.total strong{display:block;margin-top:3px;font-size:15px}table{width:100%;border-collapse:collapse;font-size:8px}th{background:#eee;text-align:left}th,td{border:1px solid #bbb;padding:5px;vertical-align:top}tbody tr:nth-child(even){background:#fafafa}.footer{margin-top:12px;font-size:8px;color:#666}
     </style></head><body>
       <header><div><h1>Reporte mensual de costos de inventario</h1><div class="meta">KEYSAR COSMETICS · Periodo ${spreadsheetEscape(reportMonth)} · Alcance ${spreadsheetEscape(scopeLabel)} · Generado ${new Date().toLocaleString("es-MX")}</div></div><div class="totals"><div class="total"><span>COSTO TOTAL USD</span><strong>$${totalUsd.toFixed(2)}</strong></div><div class="total"><span>COSTO TOTAL MXN</span><strong>${new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(totalMxn)}</strong></div></div></header>
@@ -1217,7 +1216,8 @@ export function InventoryMovementsView({
                     </SelectItem>
                     {eligibleSettlementDebts.map((record) => (
                       <SelectItem key={record.id} value={record.id}>
-                        {record.clientName} · {record.clientPhone} · debe {record.quantity - record.deliveredQuantity}
+                        {record.clientName} · {record.clientPhone} · debe{" "}
+                        {record.quantity - record.deliveredQuantity}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -1241,9 +1241,7 @@ export function InventoryMovementsView({
             {direction === "TRANSFER" && (
               <span>
                 {destinationBranch}:{" "}
-                <strong
-                  className={destinationResult < 0 ? "is-negative" : ""}
-                >
+                <strong className={destinationResult < 0 ? "is-negative" : ""}>
                   {availableDestination} → {destinationResult}
                 </strong>
               </span>
@@ -1329,7 +1327,9 @@ export function InventoryMovementsView({
                         : ""}
                     </TableCell>
                     <TableCell>{row.quantity}</TableCell>
-                    <TableCell className={row.newStock < 0 ? "is-negative" : ""}>
+                    <TableCell
+                      className={row.newStock < 0 ? "is-negative" : ""}
+                    >
                       {row.previousStock} → {row.newStock}
                       {row.destinationPreviousStock !== null
                         ? ` / destino ${row.destinationPreviousStock} → ${row.destinationNewStock}`
@@ -1422,17 +1422,25 @@ export function InventoryMovementsView({
                       onClick={() => toggleBatch(batch.id)}
                       aria-expanded={expanded}
                     >
-                      {expanded ? <ChevronUp size={17} /> : <ChevronDown size={17} />}
+                      {expanded ? (
+                        <ChevronUp size={17} />
+                      ) : (
+                        <ChevronDown size={17} />
+                      )}
                       <span>
                         <strong>{batch.folio}</strong>
                         <small>
-                          {batch.createdAt} · {batch.adjustments.length} producto
-                          {batch.adjustments.length === 1 ? "" : "s"} en una partida
+                          {batch.createdAt} · {batch.adjustments.length}{" "}
+                          producto
+                          {batch.adjustments.length === 1 ? "" : "s"} en una
+                          partida
                         </small>
                       </span>
                     </button>
                     <Badge
-                      variant={batch.status === "APPROVED" ? "default" : "outline"}
+                      variant={
+                        batch.status === "APPROVED" ? "default" : "outline"
+                      }
                     >
                       {batch.status === "PENDING"
                         ? "ESPERA DE APROBACIÓN"
@@ -1472,9 +1480,10 @@ export function InventoryMovementsView({
                                       destinationBranch:
                                         draft.direction === "TRANSFER" &&
                                         draft.destinationBranch === branch
-                                          ? branches.find(
-                                              (candidate) => candidate !== branch,
-                                            ) ?? null
+                                          ? (branches.find(
+                                              (candidate) =>
+                                                candidate !== branch,
+                                            ) ?? null)
                                           : draft.destinationBranch,
                                     },
                                   })
@@ -1511,7 +1520,8 @@ export function InventoryMovementsView({
                                   <SelectContent>
                                     {branches
                                       .filter(
-                                        (branch) => branch !== draft.sourceBranch,
+                                        (branch) =>
+                                          branch !== draft.sourceBranch,
                                       )
                                       .map((branch) => (
                                         <SelectItem key={branch} value={branch}>
@@ -1548,7 +1558,9 @@ export function InventoryMovementsView({
                                   type="button"
                                   size="sm"
                                   variant="ghost"
-                                  onClick={() => setEditingBatchAdjustment(null)}
+                                  onClick={() =>
+                                    setEditingBatchAdjustment(null)
+                                  }
                                 >
                                   Cancelar
                                 </Button>
@@ -1573,7 +1585,8 @@ export function InventoryMovementsView({
                               </small>
                             </span>
                             <Badge variant="outline">
-                              {movementLabels[adjustment.direction]} · {adjustment.quantity}
+                              {movementLabels[adjustment.direction]} ·{" "}
+                              {adjustment.quantity}
                             </Badge>
                             {batch.status === "PENDING" && (
                               <div className="movement-draft-actions">
@@ -1717,10 +1730,10 @@ export function InventoryMovementsView({
                     event.target.value.replace(/\D/g, "").slice(0, 4),
                   )
                 }
-                onKeyDown={(event) => {
+                onKeyDown={async (event) => {
                   if (
                     event.key === "Enter" &&
-                    onAuthorizeCostAccess(costAccessCode)
+                    (await onAuthorizeCostAccess(costAccessCode))
                   )
                     setCostAccessCode("");
                 }}
@@ -1730,8 +1743,8 @@ export function InventoryMovementsView({
               <Button
                 type="button"
                 disabled={costAccessCode.length !== 4}
-                onClick={() => {
-                  if (onAuthorizeCostAccess(costAccessCode))
+                onClick={async () => {
+                  if (await onAuthorizeCostAccess(costAccessCode))
                     setCostAccessCode("");
                 }}
               >
@@ -2000,17 +2013,11 @@ export function InventoryMovementsView({
                     .reduce(
                       (sum, item) =>
                         sum +
-                        Math.max(
-                          0,
-                          item.quantity - item.deliveredQuantity,
-                        ),
+                        Math.max(0, item.quantity - item.deliveredQuantity),
                       0,
                     );
                   const assignable = record.inventoryCommitted
-                    ? Math.max(
-                        0,
-                        pendingCommitted - Math.max(0, -available),
-                      )
+                    ? Math.max(0, pendingCommitted - Math.max(0, -available))
                     : Math.max(available, 0);
                   const remaining = Math.max(
                     0,
@@ -2025,7 +2032,9 @@ export function InventoryMovementsView({
                         </small>
                       </TableCell>
                       <TableCell>
-                        <strong>{record.sellerNames.join(" / ") || "Empresa"}</strong>
+                        <strong>
+                          {record.sellerNames.join(" / ") || "Empresa"}
+                        </strong>
                         <small className="seller-payment-methods">
                           Seguimiento de entrega
                         </small>
@@ -2050,7 +2059,8 @@ export function InventoryMovementsView({
                           {remaining} pendiente{remaining === 1 ? "" : "s"}
                         </strong>
                         <small className="seller-payment-methods">
-                          {record.deliveredQuantity} de {record.quantity} entregado(s)
+                          {record.deliveredQuantity} de {record.quantity}{" "}
+                          entregado(s)
                         </small>
                       </TableCell>
                       <TableCell>
@@ -2113,9 +2123,7 @@ export function InventoryMovementsView({
             <CalendarDays size={17} />
             <DatePicker
               value={filterDate}
-              onChange={(date) =>
-                setFilterDate(date || movementBusinessToday)
-              }
+              onChange={(date) => setFilterDate(date || movementBusinessToday)}
               placeholder="Fecha del historial"
             />
           </div>
@@ -2155,7 +2163,9 @@ export function InventoryMovementsView({
               <SelectContent>
                 <SelectItem value="ALL">Todas las sucursales</SelectItem>
                 {branches.map((branch) => (
-                  <SelectItem key={branch} value={branch}>{branch}</SelectItem>
+                  <SelectItem key={branch} value={branch}>
+                    {branch}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -2266,9 +2276,7 @@ export function InventoryMovementsView({
                     ),
                   );
                   const reasons = Array.from(
-                    new Set(
-                      group.movements.map((movement) => movement.reason),
-                    ),
+                    new Set(group.movements.map((movement) => movement.reason)),
                   );
                   const participants = Array.from(
                     new Set(

@@ -256,6 +256,7 @@ const optionalMoneySchema = moneySchema.nullable().optional().default(null);
 export const posTaxonomyUpsertSchema = z
   .object({
     name: z.string().trim().min(1).max(160),
+    scope: z.enum(["FAMILY", "CATEGORY", "GROUP"]).default("FAMILY"),
     parentId: nullableIdSchema,
     active: z.boolean().default(true),
   })
@@ -270,14 +271,25 @@ export const posCatalogItemWriteSchema = z
     categoryId: nullableIdSchema,
     supplierId: nullableIdSchema,
     description: z.string().trim().max(4_000).nullable().default(null),
+    groupName: z.string().trim().max(160).nullable().default(null),
     benefits: z.array(z.string().trim().min(1).max(500)).max(30).default([]),
     branchIds: z.array(idSchema).max(500).default([]),
     published: z.boolean().default(false),
+    showInDigitalCatalog: z.boolean().default(true),
+    branchRequestVisible: z.boolean().default(true),
     active: z.boolean().default(true),
     listPrice: moneySchema,
     minimumPrice: moneySchema,
     unitCost: moneySchema,
+    unitCostUsd: moneySchema.default("0.00"),
+    partnerCost: moneySchema.default("0.00"),
     taxRate: moneySchema,
+    includesVat: z.boolean().default(false),
+    testerOrderEnabled: z.boolean().default(false),
+    presentation: z.string().trim().max(160).nullable().default(null),
+    unitsPerPackage: z.number().int().min(1).max(100_000).default(1),
+    stockMinimum: optionalMoneySchema,
+    stockMaximum: optionalMoneySchema,
     membershipSessions: z
       .number()
       .int()
@@ -302,6 +314,17 @@ export const posCatalogItemWriteSchema = z
         code: z.ZodIssueCode.custom,
         message: "IVA inválido",
         path: ["taxRate"],
+      });
+    }
+    if (
+      item.stockMinimum !== null &&
+      item.stockMaximum !== null &&
+      Number(item.stockMinimum) > Number(item.stockMaximum)
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "El stock mínimo no puede exceder el máximo",
+        path: ["stockMaximum"],
       });
     }
     if (item.published && (!item.description || item.benefits.length === 0)) {
@@ -340,8 +363,16 @@ export const posCatalogItemWriteSchema = z
 export const posCustomerWriteSchema = z
   .object({
     displayName: z.string().trim().min(2).max(240),
+    firstName: z.string().trim().max(120).nullable().default(null),
+    lastName: z.string().trim().max(120).nullable().default(null),
+    birthday: businessDateSchema.nullable().default(null),
+    gender: z.string().trim().max(80).nullable().default(null),
     phone: z.string().trim().min(7).max(32).nullable().default(null),
+    whatsapp: z.string().trim().min(7).max(32).nullable().default(null),
     email: z.string().trim().email().max(320).nullable().default(null),
+    companyName: z.string().trim().max(240).nullable().default(null),
+    registrationFolio: z.string().trim().max(80).nullable().default(null),
+    registrationBranchId: nullableIdSchema,
     sourceId: nullableIdSchema,
     notes: z.string().trim().max(4_000).nullable().default(null),
     active: z.boolean().default(true),
@@ -402,6 +433,8 @@ export const posPaymentPolicyWriteSchema = z
 export const posTicketConfigurationWriteSchema = z
   .object({
     logoAssetId: nullableIdSchema,
+    logoUrl: z.string().trim().url().max(2_000).nullable().default(null),
+    logoWidth: z.number().int().min(40).max(140).default(80),
     companyName: z.string().trim().min(2).max(160),
     address: z.string().trim().max(1_000).nullable().default(null),
     footerMessage: z.string().trim().max(1_000).nullable().default(null),
@@ -438,6 +471,7 @@ export const posPackageWriteSchema = z
     status: z.enum(["DRAFT", "PUBLISHED", "INACTIVE"]).default("DRAFT"),
     startsAt: isoUtcSchema.nullable().default(null),
     endsAt: isoUtcSchema.nullable().default(null),
+    branchIds: z.array(idSchema).max(500).default([]),
     lines: z
       .array(z.object({ itemId: idSchema, quantity: moneySchema }).strict())
       .min(1)
@@ -470,6 +504,7 @@ export const posTaxonomySchema = z
   .object({
     id: idSchema,
     name: z.string().min(1).max(160),
+    scope: z.enum(["FAMILY", "CATEGORY", "GROUP"]),
     active: z.boolean(),
     parentId: idSchema.nullable(),
   })
@@ -483,14 +518,24 @@ export const posCatalogItemResponseSchema = z
     kind: z.enum(["PRODUCT", "SERVICE", "SUPPLY", "MACHINE", "MEMBERSHIP"]),
     family: posTaxonomySchema.nullable(),
     category: posTaxonomySchema.nullable(),
+    branchIds: z.array(idSchema),
     description: z.string().max(4_000).nullable(),
+    groupName: z.string().max(160).nullable(),
     benefits: z.array(z.string().min(1).max(500)),
     imageUrl: z.string().url().nullable(),
     published: z.boolean(),
+    showInDigitalCatalog: z.boolean(),
+    branchRequestVisible: z.boolean(),
     active: z.boolean(),
     listPrice: moneySchema,
     minimumPrice: moneySchema,
     taxRate: moneySchema,
+    includesVat: z.boolean(),
+    testerOrderEnabled: z.boolean(),
+    presentation: z.string().max(160).nullable(),
+    unitsPerPackage: z.number().int().min(1),
+    stockMinimum: moneySchema.nullable(),
+    stockMaximum: moneySchema.nullable(),
     availableQuantity: signedMoneySchema.nullable(),
     membershipTerms: z
       .object({
@@ -518,8 +563,18 @@ export const posCustomerResponseSchema = z
   .object({
     id: idSchema,
     displayName: z.string().min(1).max(240),
+    firstName: z.string().max(120).nullable(),
+    lastName: z.string().max(120).nullable(),
+    birthday: businessDateSchema.nullable(),
+    gender: z.string().max(80).nullable(),
     phone: z.string().min(1).max(32).nullable(),
+    whatsapp: z.string().min(1).max(32).nullable(),
     email: z.string().email().nullable(),
+    companyName: z.string().max(240).nullable(),
+    registrationFolio: z.string().max(80).nullable(),
+    registrationBranchId: idSchema.nullable(),
+    registeredAt: isoUtcSchema,
+    sourceId: idSchema.nullable(),
     active: z.boolean(),
   })
   .strict();
@@ -662,6 +717,29 @@ export const posWarehouseRequestWriteSchema = z
 export const posWarehouseActionSchema = z
   .object({
     notes: z.string().trim().max(1_000).nullable().optional().default(null),
+    authorizationToken: z.string().uuid().optional(),
+  })
+  .strict();
+
+export const posInventoryConceptWriteSchema = z
+  .object({
+    name: z.string().trim().min(2).max(160),
+    kind: z.enum(["WAREHOUSE_CATEGORY", "MOVEMENT_REASON"]),
+    active: z.boolean().default(true),
+  })
+  .strict();
+
+export const posBranchManagementWriteSchema = z
+  .object({
+    name: z.string().trim().min(2).max(160),
+    code: z
+      .string()
+      .trim()
+      .min(2)
+      .max(32)
+      .regex(/^[A-Za-z0-9_-]+$/),
+    address: z.string().trim().max(1_000).nullable().default(null),
+    active: z.boolean().default(false),
   })
   .strict();
 

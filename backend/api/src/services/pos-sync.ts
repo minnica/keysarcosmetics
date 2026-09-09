@@ -25,10 +25,7 @@ import {
   signPosOfflineGrant,
   verifyPosOfflineGrant,
 } from "./pos-auth";
-import {
-  executePosIdempotent,
-  findPosIdempotentReplay,
-} from "./pos-inventory";
+import { executePosIdempotent, findPosIdempotentReplay } from "./pos-inventory";
 import { enqueuePosNotification } from "./pos-notifications";
 import {
   compensatePreparedAgendaTicket,
@@ -212,20 +209,31 @@ function catalogDto(item: {
   name: string;
   kind: "PRODUCT" | "SERVICE" | "SUPPLY" | "MACHINE" | "MEMBERSHIP";
   description: string | null;
+  groupName: string | null;
   published: boolean;
+  showInDigitalCatalog: boolean;
+  branchRequestVisible: boolean;
   active: boolean;
   listPrice: Prisma.Decimal;
   minimumPrice: Prisma.Decimal;
   taxRate: Prisma.Decimal;
+  includesVat: boolean;
+  testerOrderEnabled: boolean;
+  presentation: string | null;
+  unitsPerPackage: number;
+  stockMinimum: Prisma.Decimal | null;
+  stockMaximum: Prisma.Decimal | null;
   family: {
     id: string;
     name: string;
+    scope: string;
     active: boolean;
     parentId: string | null;
   } | null;
   category: {
     id: string;
     name: string;
+    scope: string;
     active: boolean;
     parentId: string | null;
   } | null;
@@ -249,16 +257,36 @@ function catalogDto(item: {
     sku: item.sku,
     name: item.name,
     kind: item.kind,
-    family: item.family,
-    category: item.category,
+    family: item.family
+      ? {
+          ...item.family,
+          scope: item.family.scope as "FAMILY" | "CATEGORY" | "GROUP",
+        }
+      : null,
+    category: item.category
+      ? {
+          ...item.category,
+          scope: item.category.scope as "FAMILY" | "CATEGORY" | "GROUP",
+        }
+      : null,
+    branchIds: [],
     description: item.description,
+    groupName: item.groupName,
     benefits: item.benefits.map((benefit) => benefit.text),
     imageUrl: image?.publicUrl ?? null,
     published: item.published,
+    showInDigitalCatalog: item.showInDigitalCatalog,
+    branchRequestVisible: item.branchRequestVisible,
     active: item.active,
     listPrice: money(item.listPrice),
     minimumPrice: money(item.minimumPrice),
     taxRate: money(item.taxRate),
+    includesVat: item.includesVat,
+    testerOrderEnabled: item.testerOrderEnabled,
+    presentation: item.presentation,
+    unitsPerPackage: item.unitsPerPackage,
+    stockMinimum: item.stockMinimum ? money(item.stockMinimum) : null,
+    stockMaximum: item.stockMaximum ? money(item.stockMaximum) : null,
     availableQuantity: item.inventoryBalances[0]
       ? money(item.inventoryBalances[0].availableQuantity)
       : null,
@@ -366,10 +394,16 @@ export async function createOfflineBootstrap(
       where: {
         deletedAt: null,
         status: "PUBLISHED",
-        OR: [{ startsAt: null }, { startsAt: { lte: now } }],
-        AND: [{ OR: [{ endsAt: null }, { endsAt: { gte: now } }] }],
+        OR: [
+          { branchAssignments: { none: {} } },
+          { branchAssignments: { some: { branchId: actor.grant.branchId } } },
+        ],
+        AND: [
+          { OR: [{ startsAt: null }, { startsAt: { lte: now } }] },
+          { OR: [{ endsAt: null }, { endsAt: { gte: now } }] },
+        ],
       },
-      include: { lines: true },
+      include: { lines: true, branchAssignments: true },
       orderBy: { name: "asc" },
     }),
     prisma.metodoPago.findMany({
@@ -591,6 +625,9 @@ export async function createOfflineBootstrap(
       status: item.status,
       startsAt: item.startsAt?.toISOString() ?? null,
       endsAt: item.endsAt?.toISOString() ?? null,
+      branchIds: item.branchAssignments.map(
+        (assignment) => assignment.branchId,
+      ),
       lines: item.lines.map((line) => ({
         itemId: line.itemId,
         quantity: money(line.quantity),
@@ -694,7 +731,8 @@ export async function createOfflineBootstrap(
     ticketConfiguration: ticketConfiguration
       ? {
           branchId: ticketConfiguration.branchId,
-          logoUrl: null,
+          logoUrl: ticketConfiguration.logoUrl,
+          logoWidth: ticketConfiguration.logoWidth,
           companyName: ticketConfiguration.companyName,
           address: ticketConfiguration.address,
           footerMessage: ticketConfiguration.footerMessage,

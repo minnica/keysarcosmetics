@@ -1,12 +1,20 @@
 import { useState } from "react";
-import { Archive, Pencil, Plus, Power, PowerOff, Trash2, Warehouse } from "lucide-react";
+import {
+  Archive,
+  Pencil,
+  Plus,
+  Power,
+  PowerOff,
+  Trash2,
+  Warehouse,
+} from "lucide-react";
 import { Badge, Button, Card, CardContent, Input } from "@cosmetics/ui";
 import type { WarehouseMovementCategory } from "../types";
 
 interface WarehouseSettingsProps {
   categories: WarehouseMovementCategory[];
   canManage: boolean;
-  onSave: (id: string | null, name: string) => boolean;
+  onSave: (id: string | null, name: string) => boolean | Promise<boolean>;
   onToggle: (id: string) => void;
   onDelete: (id: string) => void;
 }
@@ -21,8 +29,8 @@ export function WarehouseSettings({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState("");
 
-  const submit = () => {
-    if (!name.trim() || !onSave(editingId, name.trim())) return;
+  const submit = async () => {
+    if (!name.trim() || !(await onSave(editingId, name.trim()))) return;
     setEditingId(null);
     setName("");
   };
@@ -45,12 +53,16 @@ export function WarehouseSettings({
         <div className="warehouse-settings-list">
           {categories.map((category) => (
             <div key={category.id}>
-              <span className="warehouse-setting-icon"><Archive size={16} /></span>
+              <span className="warehouse-setting-icon">
+                <Archive size={16} />
+              </span>
               <span>
                 <strong>{category.name}</strong>
                 <small>Disponible en envíos de bodega</small>
               </span>
-              <Badge variant="outline">{category.active ? "ACTIVO" : "INACTIVO"}</Badge>
+              <Badge variant="outline">
+                {category.active ? "ACTIVO" : "INACTIVO"}
+              </Badge>
               {canManage && (
                 <div>
                   <Button
@@ -67,10 +79,30 @@ export function WarehouseSettings({
                   >
                     <Pencil size={15} />
                   </Button>
-                  <Button type="button" size="icon" variant="outline" className="icon-action-button" onClick={() => onToggle(category.id)} aria-label={`${category.active ? "Inactivar" : "Activar"} ${category.name}`} title={category.active ? "Inactivar" : "Activar"}>
-                    {category.active ? <PowerOff size={15} /> : <Power size={15} />}
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="outline"
+                    className="icon-action-button"
+                    onClick={() => onToggle(category.id)}
+                    aria-label={`${category.active ? "Inactivar" : "Activar"} ${category.name}`}
+                    title={category.active ? "Inactivar" : "Activar"}
+                  >
+                    {category.active ? (
+                      <PowerOff size={15} />
+                    ) : (
+                      <Power size={15} />
+                    )}
                   </Button>
-                  <Button type="button" size="icon" variant="outline" className="icon-action-button is-danger" onClick={() => onDelete(category.id)} aria-label={`Borrar ${category.name}`} title="Borrar">
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="outline"
+                    className="icon-action-button is-danger"
+                    onClick={() => onDelete(category.id)}
+                    aria-label={`Borrar ${category.name}`}
+                    title="Borrar"
+                  >
                     <Trash2 size={15} />
                   </Button>
                 </div>
@@ -94,14 +126,22 @@ export function WarehouseSettings({
               {editingId ? "Guardar cambio" : "Agregar concepto"}
             </Button>
             {editingId && (
-              <Button type="button" variant="outline" onClick={() => { setEditingId(null); setName(""); }}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setEditingId(null);
+                  setName("");
+                }}
+              >
                 Cancelar
               </Button>
             )}
           </div>
         ) : (
           <div className="warehouse-settings-protected">
-            Sólo un usuario con permiso de movimientos de almacén puede modificar estos conceptos.
+            Sólo un usuario con permiso de movimientos de almacén puede
+            modificar estos conceptos.
           </div>
         )}
       </CardContent>

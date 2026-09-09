@@ -630,7 +630,11 @@ export interface InventoryAdjustmentBatch {
   resolvedAt: string | null;
 }
 
-export type WarehouseMovementKind = "ENTRY" | "SHIPMENT" | "BRANCH_REQUEST" | "PURCHASE_ORDER";
+export type WarehouseMovementKind =
+  | "ENTRY"
+  | "SHIPMENT"
+  | "BRANCH_REQUEST"
+  | "PURCHASE_ORDER";
 export type WarehouseRequestType = "PRODUCT" | "TESTER" | "SUPPLY";
 
 export type WarehouseMovementStatus =
@@ -668,6 +672,7 @@ export interface WarehouseMovementLine {
 }
 
 export interface WarehouseMovement {
+  backendVersion?: number;
   id: string;
   folio: string;
   kind: WarehouseMovementKind;
@@ -899,11 +904,7 @@ export interface TicketSellerSale {
   participantCode?: string;
 }
 
-export type AgendaSlotStatus =
-  | "AVAILABLE"
-  | "CANCELLED"
-  | "BOOKED"
-  | "BLOCKED";
+export type AgendaSlotStatus = "AVAILABLE" | "CANCELLED" | "BOOKED" | "BLOCKED";
 
 export interface AgendaSlot {
   id: string;
@@ -955,18 +956,19 @@ export interface Appointment extends AppointmentDraft {
   sellerIds: string[];
   recordedAt: string;
   recordedAtIso: string;
-  status:
-    | "SCHEDULED"
-    | "PENDING"
-    | "ATTENDED"
-    | "CANCELLED"
-    | "NO_SHOW";
+  status: "SCHEDULED" | "PENDING" | "ATTENDED" | "CANCELLED" | "NO_SHOW";
   membershipId?: string;
   membershipSessionConsumedAtIso?: string;
   agendaClientId?: string;
   agendaReservationId?: string;
   externalAppointmentId?: string;
-  agendaSyncStatus?: "RESERVED" | "ATTENDED" | "PENDING_SYNC" | "CONFLICT" | "CANCELLED" | "NO_SHOW";
+  agendaSyncStatus?:
+    | "RESERVED"
+    | "ATTENDED"
+    | "PENDING_SYNC"
+    | "CONFLICT"
+    | "CANCELLED"
+    | "NO_SHOW";
   agendaSyncedAtIso?: string;
 }
 

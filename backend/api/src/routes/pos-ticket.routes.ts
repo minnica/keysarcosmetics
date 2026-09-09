@@ -6,6 +6,7 @@ import {
   type Router as ExpressRouter,
 } from "express";
 import { Prisma } from "@prisma/client";
+import { z } from "zod";
 import {
   posLayawayPaymentRequestSchema,
   posMutationHeadersSchema,
@@ -53,6 +54,7 @@ import {
   prepareAgendaTicketSaga,
   PosAgendaError,
 } from "../services/pos-agenda";
+import { consumeOperationAuthorization } from "../services/pos-operations";
 
 const router: ExpressRouter = Router();
 const asyncRoute =
@@ -728,6 +730,57 @@ router.post(
           message: "Impresión registrada",
           data: await printVoucher(tx, req.params["id"]!, saleContext(req)),
         }),
+      }),
+    );
+  }),
+);
+
+router.post(
+  "/vouchers/:id/redeem",
+  requirePosPermission("VOUCHERS_MANAGE"),
+  asyncRoute(async (req, res) => {
+    const key = idempotencyKey(req, res);
+    if (!key) return;
+    const parsed = z
+      .object({ authorizationToken: z.string().uuid() })
+      .strict()
+      .safeParse(req.body);
+    if (!parsed.success)
+      return res.status(400).json({
+        success: false,
+        message: "Autorización requerida",
+        data: parsed.error.flatten().fieldErrors,
+      });
+    await respondIdempotent(
+      res,
+      executePosIdempotent({
+        key,
+        actorCredentialId: req.posUser!.credentialId,
+        operation: `POS_VOUCHER_REDEEM:${req.params["id"]}`,
+        payload: { issueId: req.params["id"] },
+        execute: async (tx) => {
+          await consumeOperationAuthorization(tx, {
+            token: parsed.data.authorizationToken,
+            purpose: "VOUCHER_REDEEM",
+            terminalId: req.posUser!.terminalId,
+            sessionId: req.posUser!.sessionId,
+          });
+          const updated = await tx.posVoucherIssue.updateMany({
+            where: { id: req.params["id"]!, status: "ISSUED" },
+            data: { status: "REDEEMED", redeemedAt: new Date() },
+          });
+          if (updated.count !== 1)
+            throw new PosTicketError("El voucher no está disponible", 409);
+          const issue = await tx.posVoucherIssue.findUniqueOrThrow({
+            where: { id: req.params["id"]! },
+            include: { _count: { select: { printEvents: true } } },
+          });
+          return {
+            status: 200,
+            message: "Voucher canjeado",
+            data: voucherDto(issue),
+          };
+        },
       }),
     );
   }),

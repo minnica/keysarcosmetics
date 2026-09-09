@@ -45,7 +45,7 @@ interface DigitalCatalogViewProps {
   products: Product[];
   companyName: string;
   logoUrl: string;
-  authorizeExit: (alias: string, code: string) => boolean;
+  authorizeExit: (alias: string, code: string) => boolean | Promise<boolean>;
 }
 
 const catalogThemes: CatalogTheme[] = [
@@ -82,8 +82,16 @@ const fallbackDescription = (product: Product) =>
 
 const fallbackBenefits = (product: Product) =>
   product.kind === "SERVICE"
-    ? ["Atención personalizada", "Protocolo profesional", "Resultado de apariencia natural"]
-    : ["Experiencia sensorial premium", `Especialidad en ${product.category}`, "Ideal para una rutina de cuidado consciente"];
+    ? [
+        "Atención personalizada",
+        "Protocolo profesional",
+        "Resultado de apariencia natural",
+      ]
+    : [
+        "Experiencia sensorial premium",
+        `Especialidad en ${product.category}`,
+        "Ideal para una rutina de cuidado consciente",
+      ];
 
 export function DigitalCatalogView({
   products,
@@ -93,7 +101,9 @@ export function DigitalCatalogView({
 }: DigitalCatalogViewProps) {
   const [theme, setTheme] = useState<CatalogThemeId>("IVORY");
   const [pageIndex, setPageIndex] = useState(0);
-  const [pageTurnDirection, setPageTurnDirection] = useState<"NEXT" | "PREVIOUS">("NEXT");
+  const [pageTurnDirection, setPageTurnDirection] = useState<
+    "NEXT" | "PREVIOUS"
+  >("NEXT");
   const [pageTurnKey, setPageTurnKey] = useState(0);
   const [presentationMode, setPresentationMode] = useState(false);
   const [unlockOpen, setUnlockOpen] = useState(false);
@@ -197,8 +207,8 @@ export function DigitalCatalogView({
     setPageIndex(0);
   };
 
-  const unlockCatalog = () => {
-    if (!authorizeExit(unlockAlias, unlockCode)) {
+  const unlockCatalog = async () => {
+    if (!(await authorizeExit(unlockAlias, unlockCode))) {
       setUnlockError("Usuario o código incorrecto. Usa un acceso activo.");
       return;
     }
@@ -234,7 +244,10 @@ export function DigitalCatalogView({
         </div>
       </section>
 
-      <section className="digital-catalog-theme-picker" aria-label="Estilo del catálogo">
+      <section
+        className="digital-catalog-theme-picker"
+        aria-label="Estilo del catálogo"
+      >
         {catalogThemes.map((option) => (
           <button
             key={option.id}
@@ -250,8 +263,13 @@ export function DigitalCatalogView({
         ))}
       </section>
 
-      <section className="digital-catalog-family-index" aria-label="Índice por familia">
-        <span><Layers3 size={15} /> ÍNDICE</span>
+      <section
+        className="digital-catalog-family-index"
+        aria-label="Índice por familia"
+      >
+        <span>
+          <Layers3 size={15} /> ÍNDICE
+        </span>
         <div>
           {familyPageIndexes.map((entry) => (
             <button
@@ -312,7 +330,9 @@ export function DigitalCatalogView({
                     <span>K</span>
                   )}
                 </div>
-                <span className="digital-catalog-edition">COLECCIÓN · 2026</span>
+                <span className="digital-catalog-edition">
+                  COLECCIÓN · 2026
+                </span>
                 <h3>{companyName}</h3>
                 <p>Cosmética · rituales · bienestar</p>
                 <div className="digital-catalog-cover-rule" />
@@ -331,8 +351,10 @@ export function DigitalCatalogView({
                   <h3>{currentPage.family}</h3>
                   <p>
                     Una selección curada de {currentPage.products.length}{" "}
-                    {currentPage.products.length === 1 ? "experiencia" : "experiencias"}
-                    {" "}para descubrir con calma.
+                    {currentPage.products.length === 1
+                      ? "experiencia"
+                      : "experiencias"}{" "}
+                    para descubrir con calma.
                   </p>
                 </div>
                 <div className="digital-catalog-family-mosaic">
@@ -354,8 +376,15 @@ export function DigitalCatalogView({
                 </div>
                 <div className="digital-catalog-product-layout">
                   <div className="digital-catalog-product-visual">
-                    <span>{currentPage.product.kind === "SERVICE" ? "SERVICIO" : "PRODUCTO"}</span>
-                    <img src={currentPage.product.image} alt={currentPage.product.name} />
+                    <span>
+                      {currentPage.product.kind === "SERVICE"
+                        ? "SERVICIO"
+                        : "PRODUCTO"}
+                    </span>
+                    <img
+                      src={currentPage.product.image}
+                      alt={currentPage.product.name}
+                    />
                   </div>
                   <div className="digital-catalog-product-copy">
                     <span className="digital-catalog-category">
@@ -379,7 +408,9 @@ export function DigitalCatalogView({
                     </div>
                     <div className="digital-catalog-price">
                       <small>PRECIO DE VENTA</small>
-                      <strong>{formatCurrency(currentPage.product.maxPrice)}</strong>
+                      <strong>
+                        {formatCurrency(currentPage.product.maxPrice)}
+                      </strong>
                       <span>MXN · IVA incluido cuando aplica</span>
                     </div>
                   </div>
@@ -420,7 +451,9 @@ export function DigitalCatalogView({
       </section>
 
       <div className="digital-catalog-progress">
-        <span>PÁGINA {pageIndex + 1} / {pages.length}</span>
+        <span>
+          PÁGINA {pageIndex + 1} / {pages.length}
+        </span>
         <div>
           <i style={{ width: `${((pageIndex + 1) / pages.length) * 100}%` }} />
         </div>
@@ -459,7 +492,9 @@ export function DigitalCatalogView({
                 maxLength={4}
                 value={unlockCode}
                 onChange={(event) => {
-                  setUnlockCode(event.target.value.replace(/\D/g, "").slice(0, 4));
+                  setUnlockCode(
+                    event.target.value.replace(/\D/g, "").slice(0, 4),
+                  );
                   setUnlockError("");
                 }}
                 onKeyDown={(event) => {

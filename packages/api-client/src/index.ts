@@ -6,9 +6,11 @@ import type {
   PosAttendanceIdentityDto,
   PosBranchSummaryDto,
   PosCatalogItemDto,
+  PosCatalogItemWriteDto,
   PosCatalogItemWithCostsDto,
   PosCredentialSummaryDto,
   PosCustomerDto,
+  PosCustomerWriteDto,
   PosCustomerRequiredFieldDto,
   PosCustomerSourceDto,
   PosLoginRequestDto,
@@ -44,6 +46,10 @@ import type {
   PosCourtesyPackageDto,
   PosCommercialCompanyDto,
   PosPackageDto,
+  PosPriceListDto,
+  PosInventoryConceptDto,
+  PosManagedBranchDto,
+  PosWarehouseRequestUpdateDto,
   PosTicketCreateRequestDto,
   PosTicketDto,
   PosTicketEventDto,
@@ -1043,6 +1049,40 @@ export interface PosApiClient {
     pageSize: number;
     total: number;
   }>;
+  catalogTaxonomies(): Promise<import("@cosmetics/types").PosTaxonomyDto[]>;
+  createCatalogTaxonomy(input: {
+    name: string;
+    scope?: "FAMILY" | "CATEGORY" | "GROUP";
+    parentId?: string | null;
+    active?: boolean;
+  }): Promise<import("@cosmetics/types").PosTaxonomyDto>;
+  updateCatalogTaxonomy(
+    id: string,
+    input: {
+      name: string;
+      scope?: "FAMILY" | "CATEGORY" | "GROUP";
+      parentId?: string | null;
+      active?: boolean;
+    },
+  ): Promise<import("@cosmetics/types").PosTaxonomyDto>;
+  createCatalogItem(
+    input: PosCatalogItemWriteDto,
+  ): Promise<PosCatalogItemDto | PosCatalogItemWithCostsDto>;
+  updateCatalogItem(
+    id: string,
+    input: PosCatalogItemWriteDto,
+  ): Promise<PosCatalogItemDto | PosCatalogItemWithCostsDto>;
+  deleteCatalogItem(id: string): Promise<void>;
+  uploadCatalogItemAsset(
+    id: string,
+    form: FormData,
+  ): Promise<{ id: string; publicUrl: string }>;
+  customers(input?: { page?: number; pageSize?: number }): Promise<{
+    items: PosCustomerDto[];
+    page: number;
+    pageSize: number;
+    total: number;
+  }>;
   customerSearch(
     query: string,
     page?: number,
@@ -1053,29 +1093,16 @@ export interface PosApiClient {
     pageSize: number;
     total: number;
   }>;
-  createCustomer(input: {
-    displayName: string;
-    phone?: string | null;
-    email?: string | null;
-    sourceId?: string | null;
-    notes?: string | null;
-    active?: boolean;
-    branchId?: string | null;
-    employeeId?: string | null;
-  }): Promise<PosCustomerDto>;
+  createCustomer(input: PosCustomerWriteDto): Promise<PosCustomerDto>;
   updateCustomer(
     id: string,
-    input: {
-      displayName: string;
-      phone?: string | null;
-      email?: string | null;
-      sourceId?: string | null;
-      notes?: string | null;
-      active?: boolean;
-      branchId?: string | null;
-      employeeId?: string | null;
-    },
+    input: PosCustomerWriteDto,
   ): Promise<PosCustomerDto>;
+  deleteCustomer(id: string, authorizationToken: string): Promise<void>;
+  bulkImportCustomers(
+    customers: PosCustomerWriteDto[],
+    authorizationToken: string,
+  ): Promise<PosCustomerDto[]>;
   customerSources(): Promise<PosCustomerSourceDto[]>;
   createCustomerSource(input: {
     name: string;
@@ -1091,7 +1118,21 @@ export interface PosApiClient {
     },
   ): Promise<PosCustomerSourceDto>;
   suppliers(): Promise<PosSupplierDto[]>;
+  createSupplier(
+    input: Omit<PosSupplierDto, "id" | "createdAt">,
+  ): Promise<PosSupplierDto>;
+  updateSupplier(
+    id: string,
+    input: Omit<PosSupplierDto, "id" | "createdAt">,
+  ): Promise<PosSupplierDto>;
+  deleteSupplier(id: string): Promise<{ id: string }>;
   ticketConfiguration(): Promise<PosTicketConfigurationDto>;
+  updateTicketConfiguration(
+    input: Omit<PosTicketConfigurationDto, "branchId"> & {
+      logoAssetId?: string | null;
+    },
+  ): Promise<PosTicketConfigurationDto>;
+  uploadTicketLogo(form: FormData): Promise<{ publicUrl: string }>;
   customerRequiredFields(): Promise<PosCustomerRequiredFieldDto[]>;
   updateCustomerRequiredField(
     key: string,
@@ -1103,6 +1144,14 @@ export interface PosApiClient {
     },
   ): Promise<PosCustomerRequiredFieldDto>;
   voucherTemplates(): Promise<PosVoucherTemplateDto[]>;
+  createVoucherTemplate(
+    input: Omit<PosVoucherTemplateDto, "id">,
+  ): Promise<PosVoucherTemplateDto>;
+  updateVoucherTemplate(
+    id: string,
+    input: Omit<PosVoucherTemplateDto, "id">,
+  ): Promise<PosVoucherTemplateDto>;
+  deleteVoucherTemplate(id: string): Promise<{ id: string }>;
   paymentMethods(): Promise<PosPaymentMethodDto[]>;
   createPaymentMethod(input: {
     name: string;
@@ -1217,6 +1266,42 @@ export interface PosApiClient {
     transferredCustomers: number;
   }>;
   packages(): Promise<PosPackageDto[]>;
+  createPackage(input: Omit<PosPackageDto, "id">): Promise<PosPackageDto>;
+  updatePackage(
+    id: string,
+    input: Omit<PosPackageDto, "id">,
+  ): Promise<PosPackageDto>;
+  priceLists(): Promise<PosPriceListDto[]>;
+  createPriceList(
+    input: Omit<
+      PosPriceListDto,
+      "id" | "version" | "supplierName" | "createdAt"
+    >,
+  ): Promise<PosPriceListDto>;
+  updatePriceList(
+    id: string,
+    input: Omit<
+      PosPriceListDto,
+      "id" | "version" | "supplierName" | "createdAt"
+    >,
+  ): Promise<PosPriceListDto>;
+  deletePriceList(id: string): Promise<{ id: string }>;
+  managedBranches(): Promise<PosManagedBranchDto[]>;
+  createManagedBranch(input: {
+    name: string;
+    code: string;
+    address?: string | null;
+    active?: boolean;
+  }): Promise<PosManagedBranchDto>;
+  updateManagedBranch(
+    id: string,
+    input: {
+      name: string;
+      code: string;
+      address?: string | null;
+      active?: boolean;
+    },
+  ): Promise<PosManagedBranchDto>;
   competitions(): Promise<PosSalesCompetitionDto[]>;
   createCompetition(
     input: Omit<PosSalesCompetitionDto, "id" | "creadoEn">,
@@ -1231,6 +1316,21 @@ export interface PosApiClient {
     customerId?: string;
   }): Promise<PosSaleSellerDto[]>;
   inventoryLocations(): Promise<PosInventoryLocationDto[]>;
+  inventoryConcepts(): Promise<PosInventoryConceptDto[]>;
+  createInventoryConcept(input: {
+    name: string;
+    kind: "WAREHOUSE_CATEGORY" | "MOVEMENT_REASON";
+    active?: boolean;
+  }): Promise<PosInventoryConceptDto>;
+  updateInventoryConcept(
+    id: string,
+    input: {
+      name: string;
+      kind: "WAREHOUSE_CATEGORY" | "MOVEMENT_REASON";
+      active?: boolean;
+    },
+  ): Promise<PosInventoryConceptDto>;
+  deleteInventoryConcept(id: string): Promise<{ id: string }>;
   inventoryBalances(locationId?: string): Promise<PosInventoryBalanceDto[]>;
   inventoryMovements(input?: {
     locationId?: string;
@@ -1261,6 +1361,7 @@ export interface PosApiClient {
   ): Promise<PosInventoryAdjustmentBatchDto>;
   approveInventoryAdjustmentBatch(
     id: string,
+    authorizationToken?: string,
     idempotencyKey?: string,
   ): Promise<PosInventoryAdjustmentBatchDto>;
   cancelInventoryAdjustmentBatch(
@@ -1292,6 +1393,11 @@ export interface PosApiClient {
     input: PosWarehouseRequestCreateDto,
     idempotencyKey?: string,
   ): Promise<PosWarehouseRequestDto>;
+  updateWarehouseRequest(
+    id: string,
+    input: PosWarehouseRequestUpdateDto,
+    idempotencyKey?: string,
+  ): Promise<PosWarehouseRequestDto>;
   warehouseRequestAction(
     id: string,
     action:
@@ -1300,7 +1406,8 @@ export interface PosApiClient {
       | "receive"
       | "return-to-requested"
       | "cancel",
-    notes?: string | null,
+    notes: string | null,
+    authorizationToken: string,
     idempotencyKey?: string,
   ): Promise<PosWarehouseRequestDto>;
   notifications(input?: {
@@ -1416,6 +1523,11 @@ export interface PosApiClient {
     issueId: string,
     idempotencyKey?: string,
   ): Promise<{ issueId: string; copyNumber: number; printedAt: string }>;
+  redeemVoucher(
+    issueId: string,
+    authorizationToken: string,
+    idempotencyKey?: string,
+  ): Promise<PosVoucherIssueDto>;
   memberships(input: PosMembershipListRequest): Promise<{
     scope: PosDataScopeDto;
     identityResolution: {
@@ -1652,6 +1764,12 @@ export function createPosApiClient(
     },
     me: () => data<PosSessionDto>(client.get("/auth/me")),
     branches: () => data<PosBranchSummaryDto[]>(client.get("/branches")),
+    managedBranches: () =>
+      data<PosManagedBranchDto[]>(client.get("/settings/branches")),
+    createManagedBranch: (input) =>
+      data<PosManagedBranchDto>(client.post("/settings/branches", input)),
+    updateManagedBranch: (id, input) =>
+      data<PosManagedBranchDto>(client.put(`/settings/branches/${id}`, input)),
     accessBootstrap: () =>
       data<PosAccessBootstrapDto>(client.get("/access/bootstrap")),
     createRole: (input) =>
@@ -1742,6 +1860,23 @@ export function createPosApiClient(
       ),
     catalogItems: (input = {}) =>
       data(client.get("/catalog/items", { params: input })),
+    catalogTaxonomies: () => data(client.get("/catalog/taxonomies")),
+    createCatalogTaxonomy: (input) =>
+      data(client.post("/catalog/taxonomies", input)),
+    updateCatalogTaxonomy: (id, input) =>
+      data(client.put(`/catalog/taxonomies/${id}`, input)),
+    createCatalogItem: (input) => data(client.post("/catalog/items", input)),
+    updateCatalogItem: (id, input) =>
+      data(client.put(`/catalog/items/${id}`, input)),
+    deleteCatalogItem: (id) => data(client.delete(`/catalog/items/${id}`)),
+    uploadCatalogItemAsset: (id, form) =>
+      data(
+        client.post(`/catalog/items/${id}/assets`, form, {
+          headers: { "Content-Type": "multipart/form-data" },
+        }),
+      ),
+    customers: (input = {}) =>
+      data(client.get("/customers", { params: input })),
     customerSearch: (query, page, pageSize) =>
       data(
         client.get("/customers/search", { params: { query, page, pageSize } }),
@@ -1750,6 +1885,15 @@ export function createPosApiClient(
       data<PosCustomerDto>(client.post("/customers", input)),
     updateCustomer: (id, input) =>
       data<PosCustomerDto>(client.put(`/customers/${id}`, input)),
+    deleteCustomer: (id, authorizationToken) =>
+      data(client.delete(`/customers/${id}`, { data: { authorizationToken } })),
+    bulkImportCustomers: (customers, authorizationToken) =>
+      data<PosCustomerDto[]>(
+        client.post("/customers/bulk-import", {
+          customers,
+          authorizationToken,
+        }),
+      ),
     customerSources: () =>
       data<PosCustomerSourceDto[]>(client.get("/customers/sources")),
     createCustomerSource: (input) =>
@@ -1757,8 +1901,22 @@ export function createPosApiClient(
     updateCustomerSource: (id, input) =>
       data<PosCustomerSourceDto>(client.put(`/customers/sources/${id}`, input)),
     suppliers: () => data<PosSupplierDto[]>(client.get("/suppliers")),
+    createSupplier: (input) =>
+      data<PosSupplierDto>(client.post("/suppliers", input)),
+    updateSupplier: (id, input) =>
+      data<PosSupplierDto>(client.put(`/suppliers/${id}`, input)),
+    deleteSupplier: (id) =>
+      data<{ id: string }>(client.delete(`/suppliers/${id}`)),
     ticketConfiguration: () =>
       data<PosTicketConfigurationDto>(client.get("/settings/ticket")),
+    updateTicketConfiguration: (input) =>
+      data<PosTicketConfigurationDto>(client.put("/settings/ticket", input)),
+    uploadTicketLogo: (form) =>
+      data<{ publicUrl: string }>(
+        client.post("/settings/ticket/logo", form, {
+          headers: { "Content-Type": "multipart/form-data" },
+        }),
+      ),
     customerRequiredFields: () =>
       data<PosCustomerRequiredFieldDto[]>(
         client.get("/settings/customer-fields"),
@@ -1772,6 +1930,14 @@ export function createPosApiClient(
       ),
     voucherTemplates: () =>
       data<PosVoucherTemplateDto[]>(client.get("/settings/vouchers")),
+    createVoucherTemplate: (input) =>
+      data<PosVoucherTemplateDto>(client.post("/settings/vouchers", input)),
+    updateVoucherTemplate: (id, input) =>
+      data<PosVoucherTemplateDto>(
+        client.put(`/settings/vouchers/${id}`, input),
+      ),
+    deleteVoucherTemplate: (id) =>
+      data<{ id: string }>(client.delete(`/settings/vouchers/${id}`)),
     paymentMethods: () =>
       data<PosPaymentMethodDto[]>(client.get("/settings/payment-methods")),
     createPaymentMethod: (input) =>
@@ -1837,6 +2003,17 @@ export function createPosApiClient(
     updateEmployeeStatus: (employeeId, input) =>
       data(client.put(`/access/employees/${employeeId}/status`, input)),
     packages: () => data<PosPackageDto[]>(client.get("/packages")),
+    createPackage: (input) =>
+      data<PosPackageDto>(client.post("/packages", input)),
+    updatePackage: (id, input) =>
+      data<PosPackageDto>(client.put(`/packages/${id}`, input)),
+    priceLists: () => data<PosPriceListDto[]>(client.get("/price-lists")),
+    createPriceList: (input) =>
+      data<PosPriceListDto>(client.post("/price-lists", input)),
+    updatePriceList: (id, input) =>
+      data<PosPriceListDto>(client.put(`/price-lists/${id}`, input)),
+    deletePriceList: (id) =>
+      data<{ id: string }>(client.delete(`/price-lists/${id}`)),
     competitions: () =>
       data<PosSalesCompetitionDto[]>(client.get("/competitions")),
     createCompetition: (input) =>
@@ -1849,6 +2026,16 @@ export function createPosApiClient(
       data<PosSaleSellerDto[]>(client.get("/sale/sellers", { params: input })),
     inventoryLocations: () =>
       data<PosInventoryLocationDto[]>(client.get("/inventory/locations")),
+    inventoryConcepts: () =>
+      data<PosInventoryConceptDto[]>(client.get("/inventory/concepts")),
+    createInventoryConcept: (input) =>
+      data<PosInventoryConceptDto>(client.post("/inventory/concepts", input)),
+    updateInventoryConcept: (id, input) =>
+      data<PosInventoryConceptDto>(
+        client.put(`/inventory/concepts/${id}`, input),
+      ),
+    deleteInventoryConcept: (id) =>
+      data<{ id: string }>(client.delete(`/inventory/concepts/${id}`)),
     inventoryBalances: (locationId) =>
       data<PosInventoryBalanceDto[]>(
         client.get("/inventory/balances", { params: { locationId } }),
@@ -1873,11 +2060,11 @@ export function createPosApiClient(
           headers: mutationHeaders(key),
         }),
       ),
-    approveInventoryAdjustmentBatch: (id, key) =>
+    approveInventoryAdjustmentBatch: (id, authorizationToken, key) =>
       data<PosInventoryAdjustmentBatchDto>(
         client.post(
           `/inventory/adjustment-batches/${id}/approve`,
-          {},
+          authorizationToken ? { authorizationToken } : {},
           { headers: mutationHeaders(key) },
         ),
       ),
@@ -1905,11 +2092,17 @@ export function createPosApiClient(
           headers: mutationHeaders(key),
         }),
       ),
-    warehouseRequestAction: (id, action, notes = null, key) =>
+    updateWarehouseRequest: (id, input, key) =>
+      data<PosWarehouseRequestDto>(
+        client.put(`/warehouse/requests/${id}`, input, {
+          headers: mutationHeaders(key),
+        }),
+      ),
+    warehouseRequestAction: (id, action, notes, authorizationToken, key) =>
       data<PosWarehouseRequestDto>(
         client.post(
           `/warehouse/requests/${id}/${action}`,
-          { notes },
+          { notes, authorizationToken },
           { headers: mutationHeaders(key) },
         ),
       ),
@@ -2005,6 +2198,14 @@ export function createPosApiClient(
         client.post(
           `/vouchers/${issueId}/print`,
           {},
+          { headers: mutationHeaders(key) },
+        ),
+      ),
+    redeemVoucher: (issueId, authorizationToken, key) =>
+      data<PosVoucherIssueDto>(
+        client.post(
+          `/vouchers/${issueId}/redeem`,
+          { authorizationToken },
           { headers: mutationHeaders(key) },
         ),
       ),

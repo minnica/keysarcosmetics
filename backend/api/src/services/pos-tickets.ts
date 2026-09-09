@@ -2404,6 +2404,7 @@ export function voucherDto(issue: {
   ticketId: string;
   customerId: string | null;
   status: string;
+  redeemedAt: Date | null;
   creadoEn: Date;
   _count: { printEvents: number };
 }) {
@@ -2418,6 +2419,7 @@ export function voucherDto(issue: {
     ticketId: issue.ticketId,
     customerId: issue.customerId,
     status: issue.status,
+    redeemedAt: issue.redeemedAt?.toISOString() ?? null,
     printCount: issue._count.printEvents,
     issuedAt: issue.creadoEn.toISOString(),
   };

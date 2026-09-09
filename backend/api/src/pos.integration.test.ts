@@ -693,6 +693,113 @@ integrationDescribe("seguridad y terminales POS", () => {
       .accessToken;
   });
 
+  it("persiste catálogo y clientes RV4 sin exponer costos ni reutilizar autorizaciones", async () => {
+    const sku = `RV4-${suffix}`.toUpperCase();
+    const createdItem = await request(
+      "/api/pos/catalog/items",
+      json(
+        "POST",
+        {
+          sku,
+          name: `Producto RV4 ${suffix}`,
+          kind: "PRODUCT",
+          description: "Producto persistente para integración RV4",
+          benefits: ["Persistencia comprobable"],
+          branchIds: [branchId],
+          published: true,
+          listPrice: "199.00",
+          minimumPrice: "179.00",
+          unitCost: "81.00",
+          unitCostUsd: "4.50",
+          partnerCost: "99.00",
+          taxRate: "16.00",
+        },
+        masterToken,
+      ),
+    );
+    expect(createdItem.response.status).toBe(201);
+    expect((createdItem.body["data"] as { unitCost: string }).unitCost).toBe(
+      "81.00",
+    );
+
+    const employeeCatalog = await request(
+      `/api/pos/catalog/items?query=${encodeURIComponent(sku)}&page=1&pageSize=20`,
+      { headers: { authorization: `Bearer ${employeeToken}` } },
+    );
+    expect(employeeCatalog.response.status).toBe(200);
+    const employeeItem = (
+      employeeCatalog.body["data"] as {
+        items: Array<Record<string, unknown>>;
+      }
+    ).items[0];
+    expect(employeeItem?.["sku"]).toBe(sku);
+    expect(employeeItem).not.toHaveProperty("unitCost");
+    expect(employeeItem).not.toHaveProperty("partnerCost");
+
+    const customerPhone = `55${Date.now().toString().slice(-8)}`;
+    const createdCustomer = await request(
+      "/api/pos/customers",
+      json(
+        "POST",
+        {
+          displayName: `Clienta RV4 ${suffix}`,
+          firstName: "Clienta",
+          lastName: "RV4",
+          birthday: "1990-09-09",
+          phone: customerPhone,
+          whatsapp: customerPhone,
+          registrationFolio: `CLI-${suffix}`,
+          registrationBranchId: branchId,
+          branchId,
+        },
+        masterToken,
+      ),
+    );
+    expect(createdCustomer.response.status).toBe(201);
+    const customerId = (createdCustomer.body["data"] as { id: string }).id;
+
+    const reloadedCustomers = await request(
+      "/api/pos/customers?page=1&pageSize=100",
+      { headers: { authorization: `Bearer ${masterToken}` } },
+    );
+    expect(reloadedCustomers.response.status).toBe(200);
+    expect(
+      (
+        reloadedCustomers.body["data"] as {
+          items: Array<{ id: string; registrationFolio: string | null }>;
+        }
+      ).items,
+    ).toContainEqual(
+      expect.objectContaining({
+        id: customerId,
+        registrationFolio: `CLI-${suffix}`,
+      }),
+    );
+
+    const authorization = await request(
+      "/api/pos/authorizations",
+      json(
+        "POST",
+        { pin: masterPin, purpose: "CUSTOMER_DIRECTORY_ADMIN" },
+        masterToken,
+      ),
+    );
+    expect(authorization.response.status).toBe(201);
+    const authorizationToken = (
+      authorization.body["data"] as { authorizationToken: string }
+    ).authorizationToken;
+    const removed = await request(
+      `/api/pos/customers/${customerId}`,
+      json("DELETE", { authorizationToken }, masterToken),
+    );
+    expect(removed.response.status).toBe(200);
+    const reused = await request(
+      `/api/pos/customers/${customerId}`,
+      json("DELETE", { authorizationToken }, masterToken),
+    );
+    expect(reused.response.status).toBe(403);
+  });
+
   it("hace Clock Out personal e idempotente y sale sin cerrar la jornada", async () => {
     const openingAuthorization = await request(
       "/api/pos/authorizations",

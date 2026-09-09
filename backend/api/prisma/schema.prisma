@@ -98,6 +98,7 @@ model Sucursal {
   catalogVisibility                CatalogItemBranchVisibility[]
   customerPortfolios               CustomerPortfolioAssignment[]
   priceListAssignments             PriceListBranchAssignment[]
+  packageAssignments               PosPackageBranchAssignment[]
   salesCompetitions                PosSalesCompetition[]
   inventoryLocations               InventoryLocation[]
   warehouseRequests                WarehouseRequest[]
@@ -348,6 +349,7 @@ model PosCredential {
   warehouseRequestsReceived            WarehouseRequest[]                  @relation("WarehouseRequestReceived")
   warehouseRequestsCanceled            WarehouseRequest[]                  @relation("WarehouseRequestCanceled")
   warehouseRequestEvents               WarehouseRequestEvent[]
+  warehouseRequestRevisions            WarehouseRequestRevision[]
   posNotificationsCreated              PosNotification[]
   posNotificationReads                 PosNotificationRead[]
   posNotificationPreferences           PosNotificationPreference[]
@@ -2116,6 +2118,7 @@ model CatalogTaxonomy {
   id                String            @id @default(cuid())
   name              String            @db.VarChar(160)
   normalizedName    String            @db.VarChar(180)
+  scope             String            @default("FAMILY") @db.VarChar(20)
   parentId          String?
   parent            CatalogTaxonomy?  @relation("CatalogTaxonomyTree", fields: [parentId], references: [id], onDelete: Restrict)
   children          CatalogTaxonomy[] @relation("CatalogTaxonomyTree")
@@ -2141,14 +2144,25 @@ model CatalogItem {
   categoryId                  String?
   category                    CatalogTaxonomy?               @relation("CatalogItemCategory", fields: [categoryId], references: [id], onDelete: Restrict)
   description                 String?
+  groupName                   String?                        @db.VarChar(160)
   benefits                    CatalogItemBenefit[]
   published                   Boolean                        @default(false)
+  showInDigitalCatalog        Boolean                        @default(true)
+  branchRequestVisible        Boolean                        @default(true)
   active                      Boolean                        @default(true)
   deletedAt                   DateTime?
   listPrice                   Decimal                        @default(0) @db.Decimal(14, 2)
   minimumPrice                Decimal                        @default(0) @db.Decimal(14, 2)
   unitCost                    Decimal                        @default(0) @db.Decimal(14, 2)
+  unitCostUsd                 Decimal                        @default(0) @db.Decimal(14, 2)
+  partnerCost                 Decimal                        @default(0) @db.Decimal(14, 2)
   taxRate                     Decimal                        @default(0) @db.Decimal(8, 2)
+  includesVat                 Boolean                        @default(false)
+  testerOrderEnabled          Boolean                        @default(false)
+  presentation                String?                        @db.VarChar(160)
+  unitsPerPackage             Int                            @default(1)
+  stockMinimum                Decimal?                       @db.Decimal(14, 2)
+  stockMaximum                Decimal?                       @db.Decimal(14, 2)
   supplierId                  String?
   supplier                    PosSupplier?                   @relation(fields: [supplierId], references: [id], onDelete: Restrict)
   assets                      CatalogAsset[]
@@ -2252,9 +2266,17 @@ model Customer {
   id                       String                            @id @default(cuid())
   displayName              String                            @db.VarChar(240)
   normalizedName           String                            @db.VarChar(260)
+  firstName                String?                           @db.VarChar(120)
+  lastName                 String?                           @db.VarChar(120)
+  birthday                 DateTime?                         @db.Date
+  gender                   String?                           @db.VarChar(80)
   phone                    String?                           @unique @db.VarChar(32)
   phoneNormalized          String?                           @db.VarChar(32)
+  whatsapp                 String?                           @db.VarChar(32)
   email                    String?                           @db.VarChar(320)
+  companyName              String?                           @db.VarChar(240)
+  registrationFolio        String?                           @unique @db.VarChar(80)
+  registrationBranchId     String?
   externalClientId         String?                           @unique @db.VarChar(160)
   sourceId                 String?
   source                   CustomerSource?                   @relation(fields: [sourceId], references: [id], onDelete: Restrict)
@@ -2545,6 +2567,8 @@ model PosTicketConfiguration {
   id                       String   @id @default(cuid())
   branchId                 String?  @unique
   logoAssetId              String?
+  logoUrl                  String?
+  logoWidth                Int      @default(80)
   companyName              String   @default("KEYSAR COSMETICS") @db.VarChar(160)
   address                  String?
   footerMessage            String?
@@ -2646,6 +2670,7 @@ model PosPriceListLine {
   itemId      String
   item        CatalogItem  @relation(fields: [itemId], references: [id], onDelete: Restrict)
   price       Decimal      @db.Decimal(14, 2)
+  priceUsd    Decimal      @default(0) @db.Decimal(14, 2)
   cost        Decimal?     @db.Decimal(14, 2)
   creadoEn    DateTime     @default(now())
 
@@ -2682,6 +2707,7 @@ model PosPackage {
   startsAt         DateTime?
   endsAt           DateTime?
   lines            PosPackageLine[]
+  branchAssignments PosPackageBranchAssignment[]
   deletedAt        DateTime?
   creadoEn         DateTime                 @default(now())
   actualizadoEn    DateTime                 @updatedAt
@@ -2689,6 +2715,17 @@ model PosPackage {
   schedulerProfile SchedulerPackageProfile?
 
   @@index([status, startsAt, endsAt])
+}
+
+model PosPackageBranchAssignment {
+  id        String     @id @default(cuid())
+  packageId String
+  package   PosPackage @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  branchId  String
+  branch    Sucursal   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@unique([packageId, branchId])
+  @@index([branchId])
 }
 
 model PosPackageLine {
@@ -2987,6 +3024,7 @@ model WarehouseRequest {
   source                         WarehouseRequestSource
   requestType                    WarehouseRequestType
   status                         WarehouseRequestStatus  @default(REQUESTED)
+  version                        Int                     @default(1)
   branchId                       String?
   branch                         Sucursal?               @relation(fields: [branchId], references: [id], onDelete: Restrict)
   supplierId                     String?
@@ -3017,6 +3055,7 @@ model WarehouseRequest {
   canceledAt                     DateTime?
   lines                          WarehouseRequestLine[]
   events                         WarehouseRequestEvent[]
+  revisions                      WarehouseRequestRevision[]
   movements                      InventoryMovement[]
   notifications                  PosNotification[]
   creadoEn                       DateTime                @default(now())
@@ -3025,6 +3064,34 @@ model WarehouseRequest {
   @@index([status, creadoEn])
   @@index([branchId, status])
   @@index([supplierId, status])
+}
+
+model WarehouseRequestRevision {
+  id                String           @id @default(cuid())
+  requestId         String
+  request           WarehouseRequest @relation(fields: [requestId], references: [id], onDelete: Restrict)
+  version           Int
+  snapshot          Json
+  actorCredentialId String
+  actorCredential   PosCredential    @relation(fields: [actorCredentialId], references: [id], onDelete: Restrict)
+  creadoEn          DateTime         @default(now())
+
+  @@unique([requestId, version])
+  @@index([requestId, creadoEn])
+}
+
+model PosInventoryConcept {
+  id             String    @id @default(cuid())
+  name           String    @db.VarChar(160)
+  normalizedName String    @db.VarChar(180)
+  kind           String    @default("WAREHOUSE_CATEGORY") @db.VarChar(40)
+  active         Boolean   @default(true)
+  deletedAt      DateTime?
+  creadoEn       DateTime  @default(now())
+  actualizadoEn  DateTime  @updatedAt
+
+  @@unique([kind, normalizedName])
+  @@index([kind, active, normalizedName])
 }
 
 model WarehouseRequestLine {

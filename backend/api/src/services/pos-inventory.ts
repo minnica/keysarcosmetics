@@ -26,7 +26,9 @@ const stableValue = (value: unknown): unknown => {
 };
 
 const requestHash = (value: unknown) =>
-  createHash("sha256").update(JSON.stringify(stableValue(value))).digest("hex");
+  createHash("sha256")
+    .update(JSON.stringify(stableValue(value)))
+    .digest("hex");
 
 export async function findPosIdempotentReplay<T>(input: {
   key: string;
@@ -68,29 +70,35 @@ export async function executePosIdempotent<T>(input: {
 
   const { prisma } = await import("../prisma/client");
   try {
-    return await prisma.$transaction(async (tx) => {
-      await tx.posIdempotencyRecord.create({
-        data: {
-          key: input.key,
-          actorCredentialId: input.actorCredentialId,
-          operation: input.operation,
-          requestHash: hash,
-          responseStatus: 102,
-          responseBody: { status: 102, message: "Procesando", data: null },
-        },
-      });
-      const response = await input.execute(tx);
-      await tx.posIdempotencyRecord.update({
-        where: { key: input.key },
-        data: {
-          responseStatus: response.status,
-          responseBody: response as unknown as Prisma.InputJsonValue,
-        },
-      });
-      return { ...response, replayed: false };
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    return await prisma.$transaction(
+      async (tx) => {
+        await tx.posIdempotencyRecord.create({
+          data: {
+            key: input.key,
+            actorCredentialId: input.actorCredentialId,
+            operation: input.operation,
+            requestHash: hash,
+            responseStatus: 102,
+            responseBody: { status: 102, message: "Procesando", data: null },
+          },
+        });
+        const response = await input.execute(tx);
+        await tx.posIdempotencyRecord.update({
+          where: { key: input.key },
+          data: {
+            responseStatus: response.status,
+            responseBody: response as unknown as Prisma.InputJsonValue,
+          },
+        });
+        return { ...response, replayed: false };
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
   } catch (error) {
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2002"
+    ) {
       const concurrentReplay = await replay();
       if (concurrentReplay) return concurrentReplay;
     }
@@ -98,14 +106,22 @@ export async function executePosIdempotent<T>(input: {
   }
 }
 
-export const money = (value: Prisma.Decimal | string | number | null | undefined) =>
-  value === null || value === undefined ? null : new Prisma.Decimal(value).toFixed(2);
+export const money = (
+  value: Prisma.Decimal | string | number | null | undefined,
+) =>
+  value === null || value === undefined
+    ? null
+    : new Prisma.Decimal(value).toFixed(2);
 
-export const businessDateValue = (value: string) => new Date(`${value}T00:00:00.000Z`);
+export const businessDateValue = (value: string) =>
+  new Date(`${value}T00:00:00.000Z`);
 
 export async function nextPosFolio(
   tx: Transaction,
-  sequence: "InventoryMovementFolioSeq" | "InventoryAdjustmentFolioSeq" | "WarehouseRequestFolioSeq",
+  sequence:
+    | "InventoryMovementFolioSeq"
+    | "InventoryAdjustmentFolioSeq"
+    | "WarehouseRequestFolioSeq",
   prefix: string,
 ) {
   const rows = await tx.$queryRaw<Array<{ value: string }>>(
@@ -135,17 +151,21 @@ export async function changeInventoryBalance(
   const availableDelta = input.availableDelta ?? new Prisma.Decimal(0);
   const reservedDelta = input.reservedDelta ?? new Prisma.Decimal(0);
   await tx.inventoryBalance.upsert({
-    where: { locationId_itemId: { locationId: input.locationId, itemId: input.itemId } },
+    where: {
+      locationId_itemId: { locationId: input.locationId, itemId: input.itemId },
+    },
     create: { locationId: input.locationId, itemId: input.itemId },
     update: {},
   });
-  const rows = await tx.$queryRaw<Array<{
-    before: Prisma.Decimal;
-    after: Prisma.Decimal;
-    reservedBefore: Prisma.Decimal;
-    reservedAfter: Prisma.Decimal;
-    version: number;
-  }>>(Prisma.sql`
+  const rows = await tx.$queryRaw<
+    Array<{
+      before: Prisma.Decimal;
+      after: Prisma.Decimal;
+      reservedBefore: Prisma.Decimal;
+      reservedAfter: Prisma.Decimal;
+      version: number;
+    }>
+  >(Prisma.sql`
     UPDATE "InventoryBalance"
     SET
       "availableQuantity" = "availableQuantity" + ${availableDelta},
@@ -166,7 +186,11 @@ export async function changeInventoryBalance(
       "reservedQuantity" AS "reservedAfter",
       "version"
   `);
-  if (!rows[0]) throw new PosInventoryError("Existencia disponible insuficiente o reserva concurrente", 409);
+  if (!rows[0])
+    throw new PosInventoryError(
+      "Existencia disponible insuficiente o reserva concurrente",
+      409,
+    );
   return rows[0];
 }
 
@@ -260,7 +284,9 @@ export async function createInventoryLedgerMovement(
   });
 }
 
-export const locationInclude = { branch: { select: { nombre: true } } } as const;
+export const locationInclude = {
+  branch: { select: { nombre: true } },
+} as const;
 export const movementInclude = {
   lines: {
     include: {
@@ -273,7 +299,17 @@ export const movementInclude = {
 
 export const warehouseRequestInclude = {
   lines: true,
-  events: { orderBy: { creadoEn: "asc" as const } },
+  events: {
+    orderBy: { creadoEn: "asc" as const },
+    include: {
+      actorCredential: {
+        include: {
+          employee: { select: { nombreCompleto: true } },
+          user: { select: { nombre: true } },
+        },
+      },
+    },
+  },
   destinationLocation: { include: locationInclude },
   sourceLocation: { include: locationInclude },
 } as const;
@@ -299,7 +335,9 @@ export function inventoryLocationDto(location: {
 }
 
 export function inventoryMovementDto(
-  movement: Prisma.InventoryMovementGetPayload<{ include: typeof movementInclude }>,
+  movement: Prisma.InventoryMovementGetPayload<{
+    include: typeof movementInclude;
+  }>,
   includeCosts: boolean,
 ) {
   return {
@@ -319,20 +357,28 @@ export function inventoryMovementDto(
       itemId: line.itemId,
       itemName: line.item.name,
       sku: line.item.sku,
-      fromLocation: line.fromLocation ? inventoryLocationDto(line.fromLocation) : null,
-      toLocation: line.toLocation ? inventoryLocationDto(line.toLocation) : null,
+      fromLocation: line.fromLocation
+        ? inventoryLocationDto(line.fromLocation)
+        : null,
+      toLocation: line.toLocation
+        ? inventoryLocationDto(line.toLocation)
+        : null,
       quantity: money(line.quantity)!,
       fromQuantityBefore: money(line.fromQuantityBefore),
       fromQuantityAfter: money(line.fromQuantityAfter),
       toQuantityBefore: money(line.toQuantityBefore),
       toQuantityAfter: money(line.toQuantityAfter),
-      ...(includeCosts ? { unitCostSnapshot: money(line.unitCostSnapshot) } : {}),
+      ...(includeCosts
+        ? { unitCostSnapshot: money(line.unitCostSnapshot) }
+        : {}),
     })),
   };
 }
 
 export function warehouseRequestDto(
-  request: Prisma.WarehouseRequestGetPayload<{ include: typeof warehouseRequestInclude }> & {
+  request: Prisma.WarehouseRequestGetPayload<{
+    include: typeof warehouseRequestInclude;
+  }> & {
     branchName?: string | null;
     supplierName?: string | null;
   },
@@ -344,8 +390,10 @@ export function warehouseRequestDto(
     source: request.source,
     requestType: request.requestType,
     status: request.status,
+    version: request.version,
     branchId: request.branchId,
-    branchName: request.branchName ?? request.destinationLocation.branch?.nombre ?? null,
+    branchName:
+      request.branchName ?? request.destinationLocation.branch?.nombre ?? null,
     supplierId: request.supplierId,
     supplierName: request.supplierName ?? null,
     priceListId: request.priceListId,
@@ -368,7 +416,9 @@ export function warehouseRequestDto(
       priceSnapshot: money(line.priceSnapshot),
       priceListNameSnapshot: line.priceListNameSnapshot,
       customerNameSnapshot: line.customerNameSnapshot,
-      ...(includeCosts ? { unitCostSnapshot: money(line.unitCostSnapshot) } : {}),
+      ...(includeCosts
+        ? { unitCostSnapshot: money(line.unitCostSnapshot) }
+        : {}),
     })),
     events: request.events.map((event) => ({
       id: event.id,
@@ -376,6 +426,10 @@ export function warehouseRequestDto(
       toStatus: event.toStatus,
       action: event.action,
       actorCredentialId: event.actorCredentialId,
+      actorName:
+        event.actorCredential.employee?.nombreCompleto ??
+        event.actorCredential.user?.nombre ??
+        event.actorCredential.alias,
       notes: event.notes,
       createdAt: event.creadoEn.toISOString(),
     })),

@@ -386,6 +386,7 @@ export interface PosAccessBootstrapDto {
 export interface PosTaxonomyDto {
   id: PosId;
   name: string;
+  scope: "FAMILY" | "CATEGORY" | "GROUP";
   active: boolean;
   parentId: PosId | null;
 }
@@ -397,14 +398,24 @@ export interface PosCatalogItemDto {
   kind: PosCatalogItemKind;
   family: PosTaxonomyDto | null;
   category: PosTaxonomyDto | null;
+  branchIds: PosId[];
   description: string | null;
+  groupName: string | null;
   benefits: string[];
   imageUrl: string | null;
   published: boolean;
+  showInDigitalCatalog: boolean;
+  branchRequestVisible: boolean;
   active: boolean;
   listPrice: Money;
   minimumPrice: Money;
   taxRate: Money;
+  includesVat: boolean;
+  testerOrderEnabled: boolean;
+  presentation: string | null;
+  unitsPerPackage: number;
+  stockMinimum: Money | null;
+  stockMaximum: Money | null;
   availableQuantity: Money | null;
   membershipTerms: PosMembershipTermsDto | null;
 }
@@ -412,6 +423,40 @@ export interface PosCatalogItemDto {
 /** Sólo para respuestas autorizadas por REPORTS_COSTS o un grant master. */
 export interface PosCatalogItemWithCostsDto extends PosCatalogItemDto {
   unitCost: Money;
+  unitCostUsd: Money;
+  partnerCost: Money;
+}
+
+export interface PosCatalogItemWriteDto {
+  sku: string;
+  name: string;
+  kind: PosCatalogItemKind;
+  familyId?: PosId | null;
+  categoryId?: PosId | null;
+  supplierId?: PosId | null;
+  description?: string | null;
+  groupName?: string | null;
+  benefits?: string[];
+  branchIds?: PosId[];
+  published?: boolean;
+  showInDigitalCatalog?: boolean;
+  branchRequestVisible?: boolean;
+  active?: boolean;
+  listPrice: Money;
+  minimumPrice: Money;
+  unitCost: Money;
+  unitCostUsd?: Money;
+  partnerCost?: Money;
+  taxRate: Money;
+  includesVat?: boolean;
+  testerOrderEnabled?: boolean;
+  presentation?: string | null;
+  unitsPerPackage?: number;
+  stockMinimum?: Money | null;
+  stockMaximum?: Money | null;
+  membershipSessions?: number | null;
+  membershipRenewalThreshold?: number;
+  membershipConditions?: Record<string, unknown> | null;
 }
 
 export interface PosMembershipTermsDto {
@@ -441,8 +486,18 @@ export interface PosCustomerSourceDto {
 export interface PosCustomerDto {
   id: PosId;
   displayName: string;
+  firstName: string | null;
+  lastName: string | null;
+  birthday: BusinessDate | null;
+  gender: string | null;
   phone: string | null;
+  whatsapp: string | null;
   email: string | null;
+  companyName: string | null;
+  registrationFolio: string | null;
+  registrationBranchId: PosId | null;
+  registeredAt: IsoUtcDateTime;
+  sourceId: PosId | null;
   active: boolean;
   agendaLinked: boolean;
   currentPortfolio: {
@@ -452,6 +507,34 @@ export interface PosCustomerDto {
     ownerName: string | null;
     ownerCode: string | null;
   } | null;
+  portfolioHistory: Array<{
+    id: PosId;
+    branchId: PosId | null;
+    employeeId: PosId | null;
+    employeeName: string | null;
+    effectiveFrom: IsoUtcDateTime;
+    effectiveTo: IsoUtcDateTime | null;
+    endedReason: string | null;
+  }>;
+}
+
+export interface PosCustomerWriteDto {
+  displayName: string;
+  firstName?: string | null;
+  lastName?: string | null;
+  birthday?: BusinessDate | null;
+  gender?: string | null;
+  phone?: string | null;
+  whatsapp?: string | null;
+  email?: string | null;
+  companyName?: string | null;
+  registrationFolio?: string | null;
+  registrationBranchId?: PosId | null;
+  sourceId?: PosId | null;
+  notes?: string | null;
+  active?: boolean;
+  branchId?: PosId | null;
+  employeeId?: PosId | null;
 }
 
 export interface PosSupplierDto {
@@ -460,10 +543,13 @@ export interface PosSupplierDto {
   businessName: string;
   contactName: string | null;
   rfc: string | null;
+  taxRegime: string | null;
+  businessLine: string | null;
   phone: string | null;
   email: string | null;
   address: string | null;
   active: boolean;
+  createdAt: IsoUtcDateTime;
 }
 
 export interface PosPaymentMethodDto {
@@ -550,6 +636,7 @@ export interface PosCourtesyConfigurationDto {
 export interface PosTicketConfigurationDto {
   branchId: PosId | null;
   logoUrl: string | null;
+  logoWidth: number;
   companyName: string;
   address: string | null;
   footerMessage: string | null;
@@ -580,6 +667,7 @@ export interface PosPackageDto {
   status: "DRAFT" | "PUBLISHED" | "INACTIVE";
   startsAt: IsoUtcDateTime | null;
   endsAt: IsoUtcDateTime | null;
+  branchIds: PosId[];
   lines: Array<{ itemId: PosId; quantity: Money }>;
 }
 
@@ -718,6 +806,7 @@ export interface PosWarehouseRequestEventDto {
   toStatus: PosWarehouseRequestStatus;
   action: string;
   actorCredentialId: PosId;
+  actorName: string;
   notes: string | null;
   createdAt: IsoUtcDateTime;
 }
@@ -728,6 +817,7 @@ export interface PosWarehouseRequestDto {
   source: "BRANCH" | "SUPPLIER";
   requestType: "PRODUCT" | "TESTER" | "SUPPLY";
   status: PosWarehouseRequestStatus;
+  version: number;
   branchId: PosId | null;
   branchName: string | null;
   supplierId: PosId | null;
@@ -758,6 +848,42 @@ export interface PosWarehouseRequestCreateDto {
   customerId?: PosId | null;
   notes?: string | null;
   lines: Array<{ itemId: PosId; quantity: Money }>;
+}
+
+export interface PosWarehouseRequestUpdateDto extends PosWarehouseRequestCreateDto {
+  expectedVersion: number;
+}
+
+export interface PosPriceListDto {
+  id: PosId;
+  name: string;
+  version: number;
+  status: "DRAFT" | "ACTIVE" | "INACTIVE";
+  supplierId: PosId | null;
+  supplierName: string | null;
+  effectiveFrom: IsoUtcDateTime | null;
+  effectiveTo: IsoUtcDateTime | null;
+  branchIds: PosId[];
+  customerIds: PosId[];
+  createdAt: IsoUtcDateTime;
+  lines: Array<{
+    itemId: PosId;
+    price: Money;
+    priceUsd: Money;
+    cost?: Money | null;
+  }>;
+}
+
+export interface PosInventoryConceptDto {
+  id: PosId;
+  name: string;
+  kind: "WAREHOUSE_CATEGORY" | "MOVEMENT_REASON";
+  active: boolean;
+  createdAt: IsoUtcDateTime;
+}
+
+export interface PosManagedBranchDto extends PosBranchSummaryDto {
+  address: string | null;
 }
 
 export interface PosNotificationDto {
@@ -1263,6 +1389,7 @@ export interface PosVoucherIssueDto {
   status: "ISSUED" | "REDEEMED" | "CANCELED";
   printCount: number;
   issuedAt: IsoUtcDateTime;
+  redeemedAt: IsoUtcDateTime | null;
 }
 
 export interface PosMembershipAttendanceDto {

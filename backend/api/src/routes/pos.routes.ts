@@ -12,6 +12,7 @@ import { z } from "zod";
 import {
   posAuthorizationVerifyRequestSchema,
   posBranchAssignmentsSchema,
+  posBranchManagementWriteSchema,
   posCredentialUpsertSchema,
   posEmployeeWriteSchema,
   posLoginRequestSchema,
@@ -1472,6 +1473,184 @@ router.get("/branches", posAuthMiddleware, async (req, res) => {
     })),
   });
 });
+
+router.get(
+  "/settings/branches",
+  posAuthMiddleware,
+  requirePosPermission("SETTINGS_MANAGE"),
+  async (_req, res) => {
+    const branches = await db.sucursal.findMany({
+      orderBy: { nombre: "asc" },
+      include: { posProfile: true, inventoryLocations: true },
+    });
+    res.json({
+      success: true,
+      message: "OK",
+      data: branches.map((branch) => ({
+        id: branch.id,
+        name: branch.nombre,
+        code: branch.posProfile?.code ?? null,
+        address: branch.posProfile?.address ?? null,
+        active: branch.activa,
+      })),
+    });
+  },
+);
+router.post(
+  "/settings/branches",
+  posAuthMiddleware,
+  requirePosPermission("SETTINGS_MANAGE"),
+  async (req, res) => {
+    const parsed = posBranchManagementWriteSchema.safeParse(req.body);
+    if (!parsed.success)
+      return res.status(400).json({
+        success: false,
+        message: "Sucursal inválida",
+        data: parsed.error.flatten().fieldErrors,
+      });
+    const duplicate = await db.sucursal.findFirst({
+      where: { nombre: { equals: parsed.data.name, mode: "insensitive" } },
+      select: { id: true },
+    });
+    if (duplicate)
+      return res.status(409).json({
+        success: false,
+        message: "Ya existe una sucursal con ese nombre",
+        data: null,
+      });
+    try {
+      const branch = await db.sucursal.create({
+        data: {
+          nombre: parsed.data.name,
+          activa: parsed.data.active,
+          desactivadaEn: parsed.data.active ? null : new Date(),
+          posProfile: {
+            create: {
+              code: parsed.data.code.toLocaleUpperCase("es-MX"),
+              address: parsed.data.address,
+              activo: parsed.data.active,
+            },
+          },
+          inventoryLocations: {
+            create: {
+              code: `BR-${parsed.data.code.toLocaleUpperCase("es-MX")}`,
+              name: parsed.data.name,
+              type: "BRANCH",
+              active: parsed.data.active,
+            },
+          },
+        },
+        include: { posProfile: true },
+      });
+      res.status(201).json({
+        success: true,
+        message: "Sucursal creada",
+        data: {
+          id: branch.id,
+          name: branch.nombre,
+          code: branch.posProfile?.code ?? null,
+          address: branch.posProfile?.address ?? null,
+          active: branch.activa,
+        },
+      });
+    } catch {
+      res.status(409).json({
+        success: false,
+        message: "Código de sucursal duplicado",
+        data: null,
+      });
+    }
+  },
+);
+router.put(
+  "/settings/branches/:id",
+  posAuthMiddleware,
+  requirePosPermission("SETTINGS_MANAGE"),
+  async (req, res) => {
+    const parsed = posBranchManagementWriteSchema.safeParse(req.body);
+    if (!parsed.success)
+      return res.status(400).json({
+        success: false,
+        message: "Sucursal inválida",
+        data: parsed.error.flatten().fieldErrors,
+      });
+    if (!parsed.data.active) {
+      const activeCount = await db.sucursal.count({ where: { activa: true } });
+      const current = await db.sucursal.findUnique({
+        where: { id: req.params["id"]! },
+        select: { activa: true },
+      });
+      if (current?.activa && activeCount <= 1)
+        return res.status(409).json({
+          success: false,
+          message: "La empresa debe conservar al menos una sucursal activa",
+          data: null,
+        });
+    }
+    try {
+      const branch = await db.$transaction(async (tx) => {
+        const updated = await tx.sucursal.update({
+          where: { id: req.params["id"]! },
+          data: {
+            nombre: parsed.data.name,
+            activa: parsed.data.active,
+            desactivadaEn: parsed.data.active ? null : new Date(),
+            posProfile: {
+              upsert: {
+                create: {
+                  code: parsed.data.code.toLocaleUpperCase("es-MX"),
+                  address: parsed.data.address,
+                  activo: parsed.data.active,
+                },
+                update: {
+                  code: parsed.data.code.toLocaleUpperCase("es-MX"),
+                  address: parsed.data.address,
+                  activo: parsed.data.active,
+                },
+              },
+            },
+          },
+          include: { posProfile: true },
+        });
+        await tx.inventoryLocation.upsert({
+          where: { branchId: updated.id },
+          create: {
+            branchId: updated.id,
+            code: `BR-${parsed.data.code.toLocaleUpperCase("es-MX")}`,
+            name: updated.nombre,
+            type: "BRANCH",
+            active: parsed.data.active,
+          },
+          update: {
+            code: `BR-${parsed.data.code.toLocaleUpperCase("es-MX")}`,
+            name: updated.nombre,
+            active: parsed.data.active,
+          },
+        });
+        return updated;
+      });
+      res.json({
+        success: true,
+        message: parsed.data.active
+          ? "Sucursal activada"
+          : "Sucursal inactivada",
+        data: {
+          id: branch.id,
+          name: branch.nombre,
+          code: branch.posProfile?.code ?? null,
+          address: branch.posProfile?.address ?? null,
+          active: branch.activa,
+        },
+      });
+    } catch {
+      res.status(409).json({
+        success: false,
+        message: "Sucursal no encontrada o datos duplicados",
+        data: null,
+      });
+    }
+  },
+);
 
 router.get(
   "/terminals",

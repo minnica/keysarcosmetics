@@ -52,7 +52,7 @@ interface CompetitionSettingsProps {
   products: Product[];
   branches: string[];
   onOpenChange: (open: boolean) => void;
-  onAuthorize: (code: string) => boolean;
+  onAuthorize: (code: string) => boolean | Promise<boolean>;
   onLock: () => void;
   onSave: (competition: SalesCompetition) => void;
   onToggle: (competitionId: string) => void;
@@ -133,8 +133,8 @@ export function CompetitionSettings({
     );
   }, [branches]);
 
-  const authorize = () => {
-    if (onAuthorize(accessCode.trim())) {
+  const authorize = async () => {
+    if (await onAuthorize(accessCode.trim())) {
       setAccessCode("");
       toast.success("Configuración de competiciones desbloqueada.");
       return;

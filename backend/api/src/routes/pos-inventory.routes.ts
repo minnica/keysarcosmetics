@@ -14,6 +14,7 @@ import {
 import { z } from "zod";
 import {
   posInventoryAdjustmentBatchWriteSchema,
+  posInventoryConceptWriteSchema,
   posInventoryCountRequestSchema,
   posInventoryQuerySchema,
   posMutationHeadersSchema,
@@ -47,6 +48,10 @@ import {
   POS_NOTIFICATION_KINDS,
 } from "../services/pos-notifications";
 import { resolvePosDataScope } from "../services/pos-scope";
+import {
+  PosOperationError,
+  consumeOperationAuthorization,
+} from "../services/pos-operations";
 
 const router: ExpressRouter = Router();
 const db = prisma;
@@ -65,6 +70,19 @@ const auditAllowed = (req: Request) =>
     req.posUser?.isMaster ||
     req.posUser?.permissions.includes("INVENTORY_AUDIT"),
   );
+const inventoryConceptDto = (item: {
+  id: string;
+  name: string;
+  kind: string;
+  active: boolean;
+  creadoEn: Date;
+}) => ({
+  id: item.id,
+  name: item.name,
+  kind: item.kind,
+  active: item.active,
+  createdAt: item.creadoEn.toISOString(),
+});
 const warehouseAllowed = (req: Request) =>
   Boolean(
     req.posUser?.isMaster ||
@@ -179,9 +197,10 @@ async function findLocationForScope(
   if (!location) throw new PosInventoryError("Ubicación no encontrada", 404);
   if (
     location.branchId &&
-    !(includeHistoricalBranches
-      ? req.posUser!.authorizedHistoricalBranchIds
-      : req.posUser!.authorizedBranchIds
+    !(
+      includeHistoricalBranches
+        ? req.posUser!.authorizedHistoricalBranchIds
+        : req.posUser!.authorizedBranchIds
     ).includes(location.branchId)
   ) {
     throw new PosInventoryError(
@@ -274,6 +293,7 @@ async function applyAdjustmentBatch(
   tx: Prisma.TransactionClient,
   req: Request,
   batchId: string,
+  actorCredentialId = req.posUser!.credentialId,
 ) {
   const batch = await tx.inventoryAdjustmentBatch.findUnique({
     where: { id: batchId },
@@ -292,7 +312,7 @@ async function applyAdjustmentBatch(
     reason: "LOTE_AJUSTE",
     notes: batch.notes,
     businessDate: businessDateNow(),
-    actorCredentialId: req.posUser!.credentialId,
+    actorCredentialId,
     terminalId: req.posUser!.terminalId,
     adjustmentBatchId: batch.id,
     lines: batch.lines.map((line) => ({
@@ -320,7 +340,7 @@ async function applyAdjustmentBatch(
     message: `${batch.lines.length} partida${batch.lines.length === 1 ? "" : "s"} confirmada${batch.lines.length === 1 ? "" : "s"}`,
     branchId: req.posUser!.branchId,
     audiencePermission: "INVENTORY_VIEW",
-    createdByCredentialId: req.posUser!.credentialId,
+    createdByCredentialId: actorCredentialId,
     sourceType: "InventoryMovement",
     sourceId: movement.id,
   });
@@ -330,7 +350,7 @@ async function applyAdjustmentBatch(
       data: {
         status: "APPLIED",
         resolvedAt: new Date(),
-        resolvedByCredentialId: req.posUser!.credentialId,
+        resolvedByCredentialId: actorCredentialId,
       },
       include: adjustmentBatchInclude,
     })
@@ -405,10 +425,7 @@ router.get(
     const locations = await db.inventoryLocation.findMany({
       where: {
         active: true,
-        OR: [
-          { branchId: null },
-          { branchId: { in: scope.branchIds } },
-        ],
+        OR: [{ branchId: null }, { branchId: { in: scope.branchIds } }],
       },
       include: locationInclude,
       orderBy: [{ type: "asc" }, { name: "asc" }],
@@ -417,6 +434,102 @@ router.get(
       success: true,
       message: "OK",
       data: locations.map(inventoryLocationDto),
+    });
+  }),
+);
+
+router.get(
+  "/inventory/concepts",
+  requireInventoryAccess,
+  asyncRoute(async (_req, res) => {
+    const items = await db.posInventoryConcept.findMany({
+      where: { deletedAt: null },
+      orderBy: { name: "asc" },
+    });
+    res.json({
+      success: true,
+      message: "OK",
+      data: items.map(inventoryConceptDto),
+    });
+  }),
+);
+router.post(
+  "/inventory/concepts",
+  requirePosPermission("INVENTORY_MANAGE"),
+  asyncRoute(async (req, res) => {
+    const parsed = posInventoryConceptWriteSchema.safeParse(req.body);
+    if (!parsed.success)
+      return res.status(400).json({
+        success: false,
+        message: "Concepto inválido",
+        data: parsed.error.flatten().fieldErrors,
+      });
+    try {
+      const item = await db.posInventoryConcept.create({
+        data: {
+          ...parsed.data,
+          normalizedName: parsed.data.name.toLocaleLowerCase("es-MX"),
+        },
+      });
+      res.status(201).json({
+        success: true,
+        message: "Concepto creado",
+        data: inventoryConceptDto(item),
+      });
+    } catch {
+      res
+        .status(409)
+        .json({ success: false, message: "Concepto duplicado", data: null });
+    }
+  }),
+);
+router.put(
+  "/inventory/concepts/:id",
+  requirePosPermission("INVENTORY_MANAGE"),
+  asyncRoute(async (req, res) => {
+    const parsed = posInventoryConceptWriteSchema.safeParse(req.body);
+    if (!parsed.success)
+      return res.status(400).json({
+        success: false,
+        message: "Concepto inválido",
+        data: parsed.error.flatten().fieldErrors,
+      });
+    try {
+      const item = await db.posInventoryConcept.update({
+        where: { id: req.params["id"]! },
+        data: {
+          ...parsed.data,
+          normalizedName: parsed.data.name.toLocaleLowerCase("es-MX"),
+        },
+      });
+      res.json({
+        success: true,
+        message: "Concepto actualizado",
+        data: inventoryConceptDto(item),
+      });
+    } catch {
+      res.status(409).json({
+        success: false,
+        message: "Concepto no encontrado o duplicado",
+        data: null,
+      });
+    }
+  }),
+);
+router.delete(
+  "/inventory/concepts/:id",
+  requirePosPermission("INVENTORY_MANAGE"),
+  asyncRoute(async (req, res) => {
+    const result = await db.posInventoryConcept.updateMany({
+      where: { id: req.params["id"]!, deletedAt: null },
+      data: { active: false, deletedAt: new Date() },
+    });
+    res.status(result.count ? 200 : 404).json({
+      success: Boolean(result.count),
+      message: result.count
+        ? "Concepto retirado; el histórico no cambia"
+        : "Concepto no encontrado",
+      data: result.count ? { id: req.params["id"]! } : null,
     });
   }),
 );
@@ -444,10 +557,7 @@ router.get(
       where: {
         active: true,
         ...(parsed.data.locationId ? { id: parsed.data.locationId } : {}),
-        OR: [
-          { branchId: null },
-          { branchId: { in: scope.branchIds } },
-        ],
+        OR: [{ branchId: null }, { branchId: { in: scope.branchIds } }],
       },
       include: locationInclude,
     });
@@ -699,6 +809,16 @@ router.post(
   "/inventory/adjustment-batches/:id/approve",
   requirePosPermission("INVENTORY_ADJUST"),
   asyncRoute(async (req, res) => {
+    const parsed = z
+      .object({ authorizationToken: z.string().trim().min(1).optional() })
+      .strict()
+      .safeParse(req.body);
+    if (!parsed.success)
+      return res.status(400).json({
+        success: false,
+        message: "Autorización inválida",
+        data: parsed.error.flatten().fieldErrors,
+      });
     const key = idempotencyKey(req, res);
     if (!key) return;
     await respondIdempotent(
@@ -709,10 +829,21 @@ router.post(
         operation: `INVENTORY_BATCH_APPROVE:${req.params["id"]}`,
         payload: { id: req.params["id"] },
         execute: async (tx) => {
+          const authorization = parsed.data.authorizationToken
+            ? await consumeOperationAuthorization(tx, {
+                token: parsed.data.authorizationToken,
+                purpose: "INVENTORY_ADJUSTMENT_APPROVE",
+                terminalId: req.posUser!.terminalId,
+                sessionId: req.posUser!.sessionId,
+                entityType: "InventoryAdjustmentBatch",
+                entityId: req.params["id"]!,
+              })
+            : null;
           const { updated } = await applyAdjustmentBatch(
             tx,
             req,
             req.params["id"]!,
+            authorization?.actorCredentialId,
           );
           return {
             status: 200,
@@ -1291,6 +1422,269 @@ router.post(
   }),
 );
 
+router.put(
+  "/warehouse/requests/:id",
+  requireWarehouseAccess,
+  asyncRoute(async (req, res) => {
+    const key = idempotencyKey(req, res);
+    if (!key) return;
+    const envelope = z
+      .object({ expectedVersion: z.number().int().min(1) })
+      .passthrough()
+      .safeParse(req.body);
+    if (!envelope.success)
+      return res.status(400).json({
+        success: false,
+        message: "Versión de solicitud inválida",
+        data: envelope.error.flatten().fieldErrors,
+      });
+    const { expectedVersion, ...candidate } = envelope.data;
+    const parsed = posWarehouseRequestWriteSchema.safeParse(candidate);
+    if (!parsed.success)
+      return res.status(400).json({
+        success: false,
+        message: "Solicitud inválida",
+        data: parsed.error.flatten().fieldErrors,
+      });
+    const input = parsed.data;
+    if (
+      input.branchId &&
+      !req.posUser!.authorizedBranchIds.includes(input.branchId)
+    )
+      return res.status(403).json({
+        success: false,
+        message: "Sucursal fuera del alcance de la terminal",
+        data: null,
+      });
+    await respondIdempotent(
+      res,
+      executePosIdempotent({
+        key,
+        actorCredentialId: req.posUser!.credentialId,
+        operation: `WAREHOUSE_REQUEST_UPDATE:${req.params["id"]}`,
+        payload: { expectedVersion, ...input },
+        execute: async (tx) => {
+          const current = await tx.warehouseRequest.findUnique({
+            where: { id: req.params["id"]! },
+            include: { lines: true },
+          });
+          if (!current)
+            throw new PosInventoryError("Solicitud no encontrada", 404);
+          if (current.status !== "REQUESTED")
+            throw new PosInventoryError(
+              "La solicitud ya no admite edición",
+              409,
+            );
+          if (current.version !== expectedVersion)
+            throw new PosInventoryError(
+              "La solicitud cambió; recarga antes de editar",
+              409,
+            );
+          const [
+            matrix,
+            branchLocation,
+            catalogItems,
+            priceList,
+            customer,
+            supplier,
+          ] = await Promise.all([
+            tx.inventoryLocation.findFirst({
+              where: { type: "WAREHOUSE", active: true },
+            }),
+            input.branchId
+              ? tx.inventoryLocation.findFirst({
+                  where: { branchId: input.branchId, active: true },
+                })
+              : null,
+            tx.catalogItem.findMany({
+              where: {
+                id: { in: input.lines.map((line) => line.itemId) },
+                active: true,
+                deletedAt: null,
+              },
+              select: {
+                id: true,
+                name: true,
+                sku: true,
+                kind: true,
+                unitCost: true,
+                supplierId: true,
+              },
+            }),
+            input.priceListId
+              ? tx.posPriceList.findFirst({
+                  where: {
+                    id: input.priceListId,
+                    status: "ACTIVE",
+                    deletedAt: null,
+                  },
+                  include: {
+                    lines: true,
+                    branchAssignments: true,
+                    customerAssignments: true,
+                  },
+                })
+              : null,
+            input.customerId
+              ? tx.customer.findFirst({
+                  where: {
+                    id: input.customerId,
+                    active: true,
+                    deletedAt: null,
+                  },
+                  select: { displayName: true },
+                })
+              : null,
+            input.supplierId
+              ? tx.posSupplier.findFirst({
+                  where: {
+                    id: input.supplierId,
+                    active: true,
+                    deletedAt: null,
+                  },
+                  select: { id: true },
+                })
+              : null,
+          ]);
+          if (!matrix || (input.source === "BRANCH" && !branchLocation))
+            throw new PosInventoryError(
+              "No están configuradas las ubicaciones requeridas",
+              409,
+            );
+          const expectedKind =
+            input.requestType === "SUPPLY" ? "SUPPLY" : "PRODUCT";
+          if (
+            catalogItems.length !== input.lines.length ||
+            catalogItems.some((item) => item.kind !== expectedKind) ||
+            (input.source === "SUPPLIER" &&
+              catalogItems.some((item) => item.supplierId !== input.supplierId))
+          )
+            throw new PosInventoryError(
+              "La solicitud contiene artículos inválidos",
+            );
+          if (input.priceListId && !priceList)
+            throw new PosInventoryError("Lista de precios inválida");
+          if (input.supplierId && !supplier)
+            throw new PosInventoryError("Proveedor inválido");
+          if (
+            priceList &&
+            input.branchId &&
+            !priceList.branchAssignments.some(
+              (assignment) => assignment.branchId === input.branchId,
+            )
+          )
+            throw new PosInventoryError(
+              "La lista de precios no aplica a la sucursal",
+            );
+          if (input.customerId && !customer)
+            throw new PosInventoryError("Cliente inválido");
+          if (
+            priceList &&
+            priceList.customerAssignments.length > 0 &&
+            (!input.customerId ||
+              !priceList.customerAssignments.some(
+                (assignment) => assignment.customerId === input.customerId,
+              ))
+          )
+            throw new PosInventoryError(
+              "La lista de precios no aplica al cliente",
+            );
+          const itemMap = new Map(catalogItems.map((item) => [item.id, item]));
+          await tx.warehouseRequestRevision.create({
+            data: {
+              requestId: current.id,
+              version: current.version,
+              actorCredentialId: req.posUser!.credentialId,
+              snapshot: {
+                source: current.source,
+                requestType: current.requestType,
+                branchId: current.branchId,
+                supplierId: current.supplierId,
+                priceListId: current.priceListId,
+                customerId: current.customerId,
+                notes: current.notes,
+                lines: current.lines.map((line) => ({
+                  itemId: line.itemId,
+                  quantity: money(line.quantity),
+                  itemName: line.itemNameSnapshot,
+                  sku: line.skuSnapshot,
+                  unitCost: money(line.unitCostSnapshot),
+                  price: money(line.priceSnapshot),
+                })),
+              },
+            },
+          });
+          const updated = await tx.warehouseRequest.updateMany({
+            where: {
+              id: current.id,
+              version: expectedVersion,
+              status: "REQUESTED",
+            },
+            data: {
+              source: input.source,
+              requestType: input.requestType,
+              branchId: input.branchId,
+              supplierId: input.supplierId,
+              priceListId: input.priceListId,
+              customerId: input.customerId,
+              sourceLocationId: input.source === "BRANCH" ? matrix.id : null,
+              destinationLocationId:
+                input.source === "BRANCH" ? branchLocation!.id : matrix.id,
+              notes: input.notes,
+              version: { increment: 1 },
+            },
+          });
+          if (updated.count !== 1)
+            throw new PosInventoryError(
+              "La solicitud cambió; recarga antes de editar",
+              409,
+            );
+          await tx.warehouseRequestLine.deleteMany({
+            where: { requestId: current.id },
+          });
+          await tx.warehouseRequestLine.createMany({
+            data: input.lines.map((line) => {
+              const item = itemMap.get(line.itemId)!;
+              const price = priceList?.lines.find(
+                (candidateLine) => candidateLine.itemId === line.itemId,
+              );
+              return {
+                requestId: current.id,
+                itemId: line.itemId,
+                quantity: decimal(line.quantity),
+                itemNameSnapshot: item.name,
+                skuSnapshot: item.sku,
+                unitCostSnapshot: item.unitCost,
+                priceSnapshot: price?.price ?? null,
+                priceListNameSnapshot: priceList?.name ?? null,
+                customerNameSnapshot: customer?.displayName ?? null,
+              };
+            }),
+          });
+          await tx.warehouseRequestEvent.create({
+            data: {
+              requestId: current.id,
+              fromStatus: current.status,
+              toStatus: current.status,
+              action: "EDIT",
+              actorCredentialId: req.posUser!.credentialId,
+              notes: input.notes,
+            },
+          });
+          return {
+            status: 200,
+            message: `Solicitud actualizada sin cambiar el folio ${current.folio}`,
+            data: warehouseRequestDto(
+              await hydratedWarehouseRequest(current.id, tx),
+              costsAllowed(req),
+            ),
+          };
+        },
+      }),
+    );
+  }),
+);
+
 async function warehouseAction(
   req: Request,
   res: Response,
@@ -1310,6 +1704,12 @@ async function warehouseAction(
       message: "Acción inválida",
       data: parsed.error.flatten().fieldErrors,
     });
+  if (!parsed.data.authorizationToken)
+    return res.status(400).json({
+      success: false,
+      message: "La acción requiere el código visible de autorización",
+      data: null,
+    });
   if (
     ["approve-creation", "approve-send"].includes(action) &&
     !warehouseAllowed(req)
@@ -1325,8 +1725,17 @@ async function warehouseAction(
       key,
       actorCredentialId: req.posUser!.credentialId,
       operation: `WAREHOUSE_${action.toUpperCase()}:${req.params["id"]}`,
-      payload: parsed.data,
+      payload: { action, notes: parsed.data.notes },
       execute: async (tx) => {
+        const authorization = await consumeOperationAuthorization(tx, {
+          token: parsed.data.authorizationToken!,
+          purpose: `WAREHOUSE_${action.replaceAll("-", "_").toUpperCase()}`,
+          terminalId: req.posUser!.terminalId,
+          sessionId: req.posUser!.sessionId,
+          entityType: "WarehouseRequest",
+          entityId: req.params["id"]!,
+        });
+        const actorCredentialId = authorization.actorCredentialId;
         const request = await tx.warehouseRequest.findUnique({
           where: { id: req.params["id"]! },
           include: warehouseRequestInclude,
@@ -1362,7 +1771,7 @@ async function warehouseAction(
           notificationMessage = "Primera aprobación registrada";
           update = {
             status: toStatus,
-            creationApprovedByCredentialId: req.posUser!.credentialId,
+            creationApprovedByCredentialId: actorCredentialId,
             creationApprovedAt: new Date(),
           };
         } else if (action === "approve-send") {
@@ -1371,9 +1780,7 @@ async function warehouseAction(
               "La solicitud no espera segunda aprobación",
               409,
             );
-          if (
-            request.creationApprovedByCredentialId === req.posUser!.credentialId
-          )
+          if (request.creationApprovedByCredentialId === actorCredentialId)
             throw new PosInventoryError(
               "La segunda aprobación debe pertenecer a otro actor",
               409,
@@ -1391,7 +1798,7 @@ async function warehouseAction(
               reason: request.folio,
               notes: parsed.data.notes,
               businessDate: businessDateNow(),
-              actorCredentialId: req.posUser!.credentialId,
+              actorCredentialId,
               terminalId: req.posUser!.terminalId,
               warehouseRequestId: request.id,
               lines: request.lines.map((line) => ({
@@ -1413,7 +1820,7 @@ async function warehouseAction(
               : "Solicitud aprobada y enviada";
           update = {
             status: toStatus,
-            sendApprovedByCredentialId: req.posUser!.credentialId,
+            sendApprovedByCredentialId: actorCredentialId,
             sendApprovedAt: new Date(),
             shippedAt: new Date(),
           };
@@ -1423,7 +1830,7 @@ async function warehouseAction(
               fromStatus,
               toStatus: "SEND_APPROVED",
               action: "APPROVE_SEND",
-              actorCredentialId: req.posUser!.credentialId,
+              actorCredentialId,
               notes: parsed.data.notes,
             },
           });
@@ -1442,7 +1849,7 @@ async function warehouseAction(
               reason: request.folio,
               notes: parsed.data.notes,
               businessDate: businessDateNow(),
-              actorCredentialId: req.posUser!.credentialId,
+              actorCredentialId,
               terminalId: req.posUser!.terminalId,
               warehouseRequestId: request.id,
               lines: request.lines.map((line) => ({
@@ -1460,7 +1867,7 @@ async function warehouseAction(
             : "Consumo operativo recibido sin sumar inventario vendible";
           update = {
             status: toStatus,
-            receivedByCredentialId: req.posUser!.credentialId,
+            receivedByCredentialId: actorCredentialId,
             receivedAt: new Date(),
           };
         } else if (action === "return-to-requested") {
@@ -1489,7 +1896,7 @@ async function warehouseAction(
               reason: `RETORNO_${request.folio}`,
               notes: parsed.data.notes,
               businessDate: businessDateNow(),
-              actorCredentialId: req.posUser!.credentialId,
+              actorCredentialId,
               terminalId: req.posUser!.terminalId,
               warehouseRequestId: request.id,
               reversalOfId: original.id,
@@ -1529,7 +1936,7 @@ async function warehouseAction(
           notificationMessage = "Solicitud cancelada sin impacto pendiente";
           update = {
             status: toStatus,
-            canceledByCredentialId: req.posUser!.credentialId,
+            canceledByCredentialId: actorCredentialId,
             canceledAt: new Date(),
           };
         }
@@ -1543,7 +1950,7 @@ async function warehouseAction(
             fromStatus,
             toStatus,
             action: action.toUpperCase(),
-            actorCredentialId: req.posUser!.credentialId,
+            actorCredentialId,
             notes: parsed.data.notes,
           },
         });
@@ -1556,7 +1963,7 @@ async function warehouseAction(
           audiencePermission: request.branchId
             ? "WAREHOUSE_BRANCH_REQUEST"
             : "WAREHOUSE_MANAGE",
-          actorCredentialId: req.posUser!.credentialId,
+          actorCredentialId,
         });
         return {
           status: 200,
@@ -1986,7 +2393,10 @@ router.put(
 
 router.use(
   (error: unknown, _req: Request, res: Response, next: NextFunction) => {
-    if (error instanceof PosInventoryError)
+    if (
+      error instanceof PosInventoryError ||
+      error instanceof PosOperationError
+    )
       return res
         .status(error.status)
         .json({ success: false, message: error.message, data: null });

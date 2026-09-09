@@ -57,10 +57,10 @@ interface DealsViewProps {
   branches: string[];
   authorized: boolean;
   canViewCosts: boolean;
-  onAuthorize: (code: string) => boolean;
+  onAuthorize: (code: string) => boolean | Promise<boolean>;
   onLock: () => void;
-  onSave: (deal: RetailDeal) => void;
-  onPublish: (dealId: string, code: string) => boolean;
+  onSave: (deal: RetailDeal) => boolean | Promise<boolean>;
+  onPublish: (dealId: string, code: string) => boolean | Promise<boolean>;
   onDeactivate: (dealId: string) => void;
 }
 
@@ -279,8 +279,8 @@ export function DealsView({
       .slice(0, 4);
   }, [monthlyTickets, products]);
 
-  const authorizeModule = () => {
-    if (!onAuthorize(accessCode.trim())) {
+  const authorizeModule = async () => {
+    if (!(await onAuthorize(accessCode.trim()))) {
       toast.error("Código master incorrecto.");
       return;
     }
@@ -337,7 +337,7 @@ export function DealsView({
     }));
   };
 
-  const saveDeal = () => {
+  const saveDeal = async () => {
     const price = Number(form.price);
     if (!form.name.trim() || !form.sku.trim()) {
       toast.error("Nombre y SKU son obligatorios.");
@@ -361,7 +361,7 @@ export function DealsView({
       toast.error("Selecciona al menos una sucursal.");
       return;
     }
-    onSave({
+    const saved = await onSave({
       id: form.id || `deal-${crypto.randomUUID()}`,
       name: form.name.trim(),
       sku: form.sku.trim().toUpperCase(),
@@ -376,6 +376,7 @@ export function DealsView({
       publishedAtIso: null,
       authorizedBy: null,
     });
+    if (!saved) return;
     setEditorOpen(false);
     toast.success(
       form.id
@@ -384,9 +385,9 @@ export function DealsView({
     );
   };
 
-  const confirmPublish = () => {
+  const confirmPublish = async () => {
     if (!publishDeal) return;
-    if (!onPublish(publishDeal.id, publishCode.trim())) {
+    if (!(await onPublish(publishDeal.id, publishCode.trim()))) {
       toast.error(
         "No fue posible publicar. Revisa el código y que el precio cubra el costo.",
       );
