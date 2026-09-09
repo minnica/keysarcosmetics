@@ -20,11 +20,7 @@ import {
   Label,
   Textarea,
 } from "@cosmetics/ui";
-import {
-  administratorCode,
-  formatCurrency,
-  getSellerSku,
-} from "../mock-data";
+import { administratorCode, formatCurrency, getSellerSku } from "../mock-data";
 import type { CartItem, Product } from "../types";
 
 interface ProductDialogProps {
@@ -35,6 +31,8 @@ interface ProductDialogProps {
   open: boolean;
   showSpareCoverageMessage: boolean;
   isMasterCode: (code: string) => boolean;
+  authorizationManagedByServer?: boolean;
+  onAuthorizeAdminCode?: (code: string) => Promise<boolean>;
   onOpenChange: (open: boolean) => void;
   onSubmit: (item: CartItem) => void;
   onRemove?: (itemId: string) => void;
@@ -48,6 +46,8 @@ export function ProductDialog({
   open,
   showSpareCoverageMessage,
   isMasterCode,
+  authorizationManagedByServer = false,
+  onAuthorizeAdminCode,
   onOpenChange,
   onSubmit,
   onRemove,
@@ -56,6 +56,8 @@ export function ProductDialog({
   const [priceInput, setPriceInput] = useState("");
   const [comment, setComment] = useState("");
   const [adminCode, setAdminCode] = useState("");
+  const [serverAuthorized, setServerAuthorized] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const price = priceInput === "" ? null : Number(priceInput);
 
   useEffect(() => {
@@ -64,6 +66,7 @@ export function ProductDialog({
     setPriceInput(String(cartItem?.unitPrice ?? product.maxPrice));
     setComment(cartItem?.comment ?? "");
     setAdminCode(cartItem?.adminAuthorized ? administratorCode : "");
+    setServerAuthorized(false);
   }, [cartItem, open, product]);
 
   const priceState = useMemo(() => {
@@ -83,7 +86,7 @@ export function ProductDialog({
       belowLineMinimum: difference < 0,
       ticketCovered: !authorizationRequired,
       authorizationRequired,
-      authorized: isMasterCode(adminCode),
+      authorized: isMasterCode(adminCode) || serverAuthorized,
     };
   }, [
     adminCode,
@@ -93,6 +96,7 @@ export function ProductDialog({
     price,
     product,
     quantity,
+    serverAuthorized,
   ]);
 
   if (!product) return null;
@@ -102,10 +106,25 @@ export function ProductDialog({
     price !== null &&
     Number.isFinite(price) &&
     price >= 0 &&
-    (!priceState.authorizationRequired || priceState.authorized);
+    (!priceState.authorizationRequired ||
+      priceState.authorized ||
+      (authorizationManagedByServer && /^\d{4,12}$/.test(adminCode)));
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!canSubmit || price === null) return;
+    if (
+      priceState.authorizationRequired &&
+      !priceState.authorized &&
+      authorizationManagedByServer
+    ) {
+      if (!onAuthorizeAdminCode) return;
+      setSubmitting(true);
+      const authorized = await onAuthorizeAdminCode(adminCode).finally(() =>
+        setSubmitting(false),
+      );
+      if (!authorized) return;
+      setServerAuthorized(true);
+    }
     onSubmit({
       id: cartItem?.id ?? `${product.id}-${Date.now()}`,
       product,
@@ -151,7 +170,9 @@ export function ProductDialog({
               <strong aria-label="SKU operativo codificado">
                 {getSellerSku(product)}
               </strong>
-              <p>{product.family} · {product.category}</p>
+              <p>
+                {product.family} · {product.category}
+              </p>
             </div>
             <div className="product-dialog-executive-price">
               <span>PRECIO DE LISTA</span>
@@ -172,7 +193,9 @@ export function ProductDialog({
                 CONFIGURACIÓN DE LÍNEA
               </span>
               <DialogTitle>
-                {cartItem ? "Editar venta personalizada" : "Venta personalizada"}
+                {cartItem
+                  ? "Editar venta personalizada"
+                  : "Venta personalizada"}
               </DialogTitle>
               <DialogDescription className="product-dialog-description">
                 Captura ejecutiva con validación automática de precio y ticket.
@@ -321,8 +344,8 @@ export function ProductDialog({
                 </Button>
                 <Button
                   type="button"
-                  onClick={handleSubmit}
-                  disabled={!canSubmit}
+                  onClick={() => void handleSubmit()}
+                  disabled={!canSubmit || submitting}
                 >
                   {cartItem ? <Save size={17} /> : <ShoppingBag size={17} />}
                   {cartItem ? "Guardar cambios" : "Añadir al carrito"}

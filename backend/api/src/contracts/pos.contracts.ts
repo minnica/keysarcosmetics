@@ -898,7 +898,31 @@ const posTicketCustomerSchema = z
     create: z
       .object({
         displayName: z.string().trim().min(2).max(240),
+        firstName: z
+          .string()
+          .trim()
+          .max(120)
+          .nullable()
+          .optional()
+          .default(null),
+        lastName: z
+          .string()
+          .trim()
+          .max(120)
+          .nullable()
+          .optional()
+          .default(null),
+        birthday: businessDateSchema.nullable().optional().default(null),
+        gender: z.string().trim().max(80).nullable().optional().default(null),
         phone: z
+          .string()
+          .trim()
+          .min(7)
+          .max(32)
+          .nullable()
+          .optional()
+          .default(null),
+        whatsapp: z
           .string()
           .trim()
           .min(7)
@@ -914,6 +938,21 @@ const posTicketCustomerSchema = z
           .nullable()
           .optional()
           .default(null),
+        companyName: z
+          .string()
+          .trim()
+          .max(240)
+          .nullable()
+          .optional()
+          .default(null),
+        registrationFolio: z
+          .string()
+          .trim()
+          .max(80)
+          .nullable()
+          .optional()
+          .default(null),
+        registrationBranchId: nullableIdSchema,
         sourceId: nullableIdSchema,
         notes: z.string().trim().max(4_000).nullable().optional().default(null),
         ownerEmployeeId: nullableIdSchema,

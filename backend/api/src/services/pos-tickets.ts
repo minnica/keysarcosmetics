@@ -429,16 +429,25 @@ export async function consumeTicketAuthorization(
   const authorization = await tx.masterAuthorization.findUnique({
     where: { tokenHash: hashOpaqueToken(token) },
   });
+  const receiptAdministrationPurpose =
+    authorization?.purpose === "RECEIPT_HISTORY_ADMIN" &&
+    (purpose === "TICKET_REVISION" || purpose === "TICKET_CANCELLATION");
+  const purposeMatches =
+    authorization?.purpose === purpose || receiptAdministrationPurpose;
+  const targetMatches =
+    !target ||
+    (receiptAdministrationPurpose
+      ? authorization?.entityType === null && authorization.entityId === null
+      : authorization?.entityType === target.entityType &&
+        authorization.entityId === target.entityId);
   const valid =
     authorization &&
-    authorization.purpose === purpose &&
+    purposeMatches &&
     authorization.terminalId === terminalId &&
     (sessionId === undefined || authorization.sessionId === sessionId) &&
     authorization.usedAt === null &&
     authorization.expiresAt > new Date() &&
-    (!target ||
-      (authorization.entityType === target.entityType &&
-        authorization.entityId === target.entityId));
+    targetMatches;
   if (!valid) return null;
   const consumed = await tx.masterAuthorization.updateMany({
     where: { id: authorization.id, usedAt: null },
@@ -1178,9 +1187,20 @@ export async function createTicket(
       data: {
         displayName: input.customer.create.displayName,
         normalizedName: normalize(input.customer.create.displayName),
+        firstName: input.customer.create.firstName ?? null,
+        lastName: input.customer.create.lastName ?? null,
+        birthday: input.customer.create.birthday
+          ? businessDateValue(input.customer.create.birthday)
+          : null,
+        gender: input.customer.create.gender ?? null,
         phone: phoneNormalized,
         phoneNormalized,
+        whatsapp: normalizePhone(input.customer.create.whatsapp),
         email: input.customer.create.email ?? null,
+        companyName: input.customer.create.companyName ?? null,
+        registrationFolio: input.customer.create.registrationFolio ?? null,
+        registrationBranchId:
+          input.customer.create.registrationBranchId ?? context.branchId,
         externalClientId: agenda?.externalClientId ?? null,
         sourceId: input.customer.create.sourceId ?? null,
         notes: input.customer.create.notes ?? null,

@@ -840,6 +840,183 @@ integrationDescribe("seguridad y terminales POS", () => {
     ).items.find((item) => item.status === "OPEN");
     expect(attendance).toBeDefined();
 
+    const service = await request(
+      "/api/pos/catalog/items",
+      json(
+        "POST",
+        {
+          sku: `RV5-SVC-${suffix}`.toUpperCase(),
+          name: `Servicio RV5 ${suffix}`,
+          kind: "SERVICE",
+          description: "Servicio persistente para checkout RV5",
+          benefits: ["Flujo de venta integrado"],
+          branchIds: [branchId],
+          published: true,
+          listPrice: "199.00",
+          minimumPrice: "179.00",
+          unitCost: "40.00",
+          unitCostUsd: "0.00",
+          partnerCost: "0.00",
+          taxRate: "16.00",
+        },
+        masterToken,
+      ),
+    );
+    expect(service.response.status).toBe(201);
+    const serviceId = (service.body["data"] as { id: string }).id;
+    const [cash, transfer] = await prisma.$transaction([
+      prisma.metodoPago.create({
+        data: {
+          nombre: `Efectivo RV5 ${suffix}`,
+          tipo: "EFECTIVO",
+          posPolicy: { create: { activeForPos: true } },
+        },
+      }),
+      prisma.metodoPago.create({
+        data: {
+          nombre: `Otro RV5 ${suffix}`,
+          tipo: "OTRO",
+          posPolicy: { create: { activeForPos: true } },
+        },
+      }),
+    ]);
+    const checkout = await request(
+      "/api/pos/tickets",
+      mutationJson(
+        "POST",
+        {
+          branchId,
+          customer: {
+            create: {
+              displayName: "Clienta Checkout RV5",
+              firstName: "Clienta",
+              lastName: "Checkout",
+              birthday: "1991-04-12",
+              gender: "MUJER",
+              phone: `56${Date.now().toString().slice(-8)}`,
+              whatsapp: `57${Date.now().toString().slice(-8)}`,
+              companyName: "Keysar Cosmetics",
+              registrationFolio: `CLI-RV5-${suffix}`,
+              registrationBranchId: branchId,
+              ownerEmployeeId: employeeId,
+            },
+          },
+          lines: [
+            {
+              itemId: serviceId,
+              quantity: "1.00",
+              unitPrice: "199.00",
+              delivered: true,
+            },
+          ],
+          sellers: [{ employeeId, share: "199.00" }],
+          payments: [
+            { methodId: cash.id, amount: "100.00" },
+            { methodId: transfer.id, amount: "99.00" },
+          ],
+        },
+        employeeToken,
+      ),
+    );
+    expect(checkout.response.status).toBe(201);
+    const checkoutData = checkout.body["data"] as {
+      id: string;
+      customerId: string;
+      total: string;
+      amountReceived: string;
+      paymentOperations: Array<{ payments: unknown[] }>;
+    };
+    expect(checkoutData.total).toBe("199.00");
+    expect(checkoutData.amountReceived).toBe("199.00");
+    expect(checkoutData.paymentOperations[0]?.payments).toHaveLength(2);
+    await expect(
+      prisma.customer.findUniqueOrThrow({
+        where: { id: checkoutData.customerId },
+        select: {
+          firstName: true,
+          lastName: true,
+          birthday: true,
+          whatsapp: true,
+          companyName: true,
+          registrationFolio: true,
+          registrationBranchId: true,
+        },
+      }),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        firstName: "Clienta",
+        lastName: "Checkout",
+        companyName: "Keysar Cosmetics",
+        registrationFolio: `CLI-RV5-${suffix}`,
+        registrationBranchId: branchId,
+      }),
+    );
+
+    const receiptsAuthorization = await request(
+      "/api/pos/authorizations",
+      json(
+        "POST",
+        { pin: masterPin, purpose: "RECEIPT_HISTORY_ADMIN" },
+        masterToken,
+      ),
+    );
+    const receiptsAuthorizationToken = (
+      receiptsAuthorization.body["data"] as { authorizationToken: string }
+    ).authorizationToken;
+    const revision = await request(
+      `/api/pos/tickets/${checkoutData.id}/revisions`,
+      mutationJson(
+        "POST",
+        {
+          reason: "Corrección de prueba RV5",
+          revision: { clientName: "Clienta Checkout RV5" },
+          authorizationToken: receiptsAuthorizationToken,
+        },
+        masterToken,
+      ),
+    );
+    expect(revision.response.status).toBe(201);
+    const rejectedReuse = await request(
+      `/api/pos/tickets/${checkoutData.id}/cancellations`,
+      mutationJson(
+        "POST",
+        {
+          reason: "No debe reutilizar la autorización",
+          refundAmount: "199.00",
+          returnedLines: [],
+          authorizationToken: receiptsAuthorizationToken,
+        },
+        masterToken,
+      ),
+    );
+    expect(rejectedReuse.response.status).toBe(403);
+    const cancellationAuthorization = await request(
+      "/api/pos/authorizations",
+      json(
+        "POST",
+        { pin: masterPin, purpose: "RECEIPT_HISTORY_ADMIN" },
+        masterToken,
+      ),
+    );
+    const cancellation = await request(
+      `/api/pos/tickets/${checkoutData.id}/cancellations`,
+      mutationJson(
+        "POST",
+        {
+          reason: "Cancelación compensada RV5",
+          refundAmount: "199.00",
+          returnedLines: [],
+          authorizationToken: (
+            cancellationAuthorization.body["data"] as {
+              authorizationToken: string;
+            }
+          ).authorizationToken,
+        },
+        masterToken,
+      ),
+    );
+    expect(cancellation.response.status).toBe(201);
+
     const identified = await request(
       "/api/pos/attendance/identify",
       json("POST", { pin: employeePin }, employeeToken),

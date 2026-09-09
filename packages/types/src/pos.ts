@@ -1156,8 +1156,16 @@ export interface PosTicketCustomerInputDto {
   id?: PosId;
   create?: {
     displayName: string;
+    firstName?: string | null;
+    lastName?: string | null;
+    birthday?: BusinessDate | null;
+    gender?: string | null;
     phone?: string | null;
+    whatsapp?: string | null;
     email?: string | null;
+    companyName?: string | null;
+    registrationFolio?: string | null;
+    registrationBranchId?: PosId | null;
     sourceId?: PosId | null;
     notes?: string | null;
     ownerEmployeeId?: PosId | null;

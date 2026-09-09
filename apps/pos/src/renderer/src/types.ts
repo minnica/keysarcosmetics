@@ -473,8 +473,6 @@ export interface TicketCancellationRequest {
   returnedProducts: TicketInventoryLine[];
   nonReturnedProducts: TicketNonReturnLine[];
   reason: string;
-  authorizationAlias: string;
-  authorizationCode: string;
 }
 
 export interface TicketEditProductInput {
@@ -494,7 +492,6 @@ export interface TicketEditRequest {
   paymentMethodId: PaymentMethod;
   payments: PaymentEntry[];
   authorizationCode: string;
-  authorizationAlias: string;
 }
 
 export type VoucherKind =

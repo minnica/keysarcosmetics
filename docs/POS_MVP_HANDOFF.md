@@ -1,49 +1,37 @@
 # Relevo de implementación del MVP POS
 
-> Documento vivo. Actualizar antes de cada commit de respaldo y antes de terminar una sesión.
+> Documento vivo. Actualizado antes del checkpoint final del 2026-09-09.
 > Rama: `feature/pos-frontend-clean`.
-> Referencia visual inmutable: `12fb8045cc264b565cb6e764d95ad7b2447fbfa1`.
-> Objetivo vigente: MVP online funcional para revisión del PO; RV8 y endurecimiento post-MVP están en backlog.
+> Referencia: `12fb8045cc264b565cb6e764d95ad7b2447fbfa1`.
 
-## Estado actual
+## Estado al relevo
 
-- RV0–RV2: completadas.
-- RV3: implementada; cierre formal pendiente sólo por B01 (texto histórico de Close Day).
-- RV4: completada y documentada.
-- RV5–RV7: pendientes.
-- RV8: fuera del camino crítico; backlog post-MVP.
-- RV9: pendiente, limitada a limpieza bloqueante y cierre de migraciones del MVP.
-- RV10: pendiente, entrega acotada del MVP online al PO.
+- MVP online RV0–RV7 y RV9 bloqueante: implementado.
+- RV10 técnica: 208/208 visual, builds, tipos, lint, unitarias e integración PostgreSQL en `PASS`.
+- Pendiente externo: aceptación del PO; RV3 conserva B01.
+- Backlog: RV8/offline, hardware/piloto/escala, revisión compleja multi-proyección, Agenda externa exhaustiva y limpieza no bloqueante.
 
-## RV4 ya implementado
+## Última evidencia
 
-- Contratos, tipos, cliente HTTP y persistencia para catálogo, clientes, proveedores, insumos, paquetes, vouchers, listas de precios, conceptos de inventario, pedidos de bodega, sucursales y configuración de ticket.
-- Migración aditiva `20260909010000_pos_rv4_catalog_inventory_settings` y ambos schemas Prisma sincronizados.
-- Autorizaciones de servidor para costos, clientes, vouchers, promociones, competencias y acciones sensibles de bodega.
-- Edición de pedidos conserva folio, incrementa versión y registra revisiones append-only.
-- Los diálogos conectados esperan la confirmación del servidor antes de cerrar o mostrar éxito.
-- La carga inicial paraleliza consultas independientes.
+- PostgreSQL 16, base desechable `keysar_mvp_mvp3`: 45 migraciones y 18/18 pruebas habilitadas.
+- API: 25 archivos/135 pruebas unitarias y lint en `PASS`.
+- Type-check: types, API client, API y POS en `PASS`.
+- Build POS Vite en `PASS`.
+- Visual: `/tmp/keysar-pos-mvp-final-candidate-2`; comparación `/tmp/keysar-pos-mvp-final-diff-2/comparison.json`, 208/208 `PASS`, máximo `0.000026235` bajo `0.000027`.
 
-## Evidencia aprobada hasta este punto
+## Qué cambió después de RV4
 
-- Type-check: `@cosmetics/types`, `@cosmetics/api-client`, `@cosmetics/api` y `@cosmetics/pos` en PASS.
-- API: lint en PASS; 25 archivos y 135 pruebas unitarias en PASS.
-- PostgreSQL 16: reconstrucción limpia de 45 migraciones en PASS.
-- Integración HTTP/BD: 18/18 pruebas habilitadas en PASS; una prueba de carga permanece tras su gate independiente.
-- Build web POS en PASS.
-- Manifiesto visual: 208 escenarios.
-- Comparación RV4: 208/208 PASS con tolerancia de rasterizado `0.000027`; 206 exactas y dos diferencias de antialiasing de 34 y 20 píxeles. El baseline no se modificó.
+- Autorizaciones reales sin alterar la UI aprobada en Producto, Receipts, Settings y X-Report.
+- Token de Receipts consumible para revisión/cancelación y rechazo de reutilización.
+- Identidad completa de clienta creada en Checkout.
+- Traducción correcta de Visa/Mastercard entre etiqueta visual e ID del backend.
+- Reconstrucción correcta de entrega inicial en apartados desde adeudos.
+- Prueba integrada de venta mixta, identidad y cancelación.
 
-## Pendientes inmediatos
+## Para continuar desde otra computadora
 
-1. Crear el commit de respaldo remoto de RV4.
-2. Implementar el recorrido online MVP de RV5: venta, checkout, pagos, ticket y consulta/cancelación principal.
-3. Implementar recorridos principales RV6 y RV7; ejecutar RV9 bloqueante y la verificación final RV10.
-
-## Reglas para retomar
-
-- No regenerar ni actualizar el baseline visual para aceptar diferencias del candidato.
-- No reintroducir datos operativos mock ni confirmaciones antes de persistir.
-- No borrar trabajo local ni reescribir migraciones aplicadas.
-- Mantener fuera de alcance RV8, hardware, piloto productivo, escala extrema y pruebas offline; están documentados en el backlog del plan.
-- Antes de cerrar otra sesión: actualizar este archivo, ejecutar las verificaciones posibles y hacer `git add`, `git commit` y `git push origin feature/pos-frontend-clean`.
+1. Bajar `feature/pos-frontend-clean` desde `origin`.
+2. Leer `CLAUDE.md`, `PLAN_RESTAURACION_VISUAL_POS.md` y `docs/POS_MVP_ONLINE_DELIVERY.md`.
+3. No modificar el baseline ni presentar el MVP como listo para producción.
+4. Para la revisión del PO usar el build online y fixtures sintéticos; no depender de los directorios `/tmp` de este equipo.
+5. Retomar pendientes sólo desde el backlog explícito y con la decisión de Producto correspondiente.

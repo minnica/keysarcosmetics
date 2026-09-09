@@ -54,9 +54,10 @@ interface TicketEditDialogProps {
   bankCatalog: BankCatalogEntry[];
   installmentOptions: number[];
   onOpenChange: (open: boolean) => void;
-  backendMode?: boolean;
-  defaultAuthorizationAlias?: string;
-  onSave: (ticketId: string, changes: TicketEditRequest) => boolean | Promise<boolean>;
+  onSave: (
+    ticketId: string,
+    changes: TicketEditRequest,
+  ) => boolean | Promise<boolean>;
 }
 
 export function TicketEditDialog({
@@ -69,8 +70,6 @@ export function TicketEditDialog({
   installmentOptions,
   onOpenChange,
   onSave,
-  backendMode = false,
-  defaultAuthorizationAlias = "",
 }: TicketEditDialogProps) {
   const [clientName, setClientName] = useState("");
   const [clientPhone, setClientPhone] = useState("");
@@ -80,7 +79,6 @@ export function TicketEditDialog({
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>("PAID");
   const [payments, setPayments] = useState<PaymentEntry[]>([]);
   const [authorizationCode, setAuthorizationCode] = useState("");
-  const [authorizationAlias, setAuthorizationAlias] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -92,7 +90,8 @@ export function TicketEditDialog({
     setPaymentStatus(
       ticket.ticketType === "LAYAWAY_PAYMENT" ? "PAID" : ticket.paymentStatus,
     );
-    const fallbackMethod = paymentMethods.find((method) => method.active)?.id ?? "";
+    const fallbackMethod =
+      paymentMethods.find((method) => method.active)?.id ?? "";
     setPayments(
       ticket.payments.length > 0
         ? ticket.payments.map((payment) => ({ ...payment }))
@@ -110,7 +109,6 @@ export function TicketEditDialog({
           : [],
     );
     setAuthorizationCode("");
-    setAuthorizationAlias(defaultAuthorizationAlias);
     const recordedProductTotal = ticket.products.reduce(
       (sum, line) => sum + line.total,
       0,
@@ -124,13 +122,12 @@ export function TicketEditDialog({
         quantity: line.quantity,
         unitPrice:
           line.quantity > 0
-            ? Math.round(
-                ((line.total * subtotalScale) / line.quantity) * 100,
-              ) / 100
+            ? Math.round(((line.total * subtotalScale) / line.quantity) * 100) /
+              100
             : 0,
       })),
     );
-  }, [defaultAuthorizationAlias, open, paymentMethods, ticket]);
+  }, [open, paymentMethods, ticket]);
 
   const productById = useMemo(
     () => new Map(products.map((product) => [product.id, product])),
@@ -159,13 +156,21 @@ export function TicketEditDialog({
     paymentStatus === "PAID" && Math.abs(enteredPaymentTotal - total) > 0.01;
   const needsPaymentMethod = paymentStatus !== "PENDING";
   const paymentIsCard = (methodId: string) => {
-    const method = paymentMethods.find((candidate) => candidate.id === methodId);
-    const identity = `${methodId} ${method?.label ?? ""}`.toLocaleLowerCase("es-MX");
+    const method = paymentMethods.find(
+      (candidate) => candidate.id === methodId,
+    );
+    const identity = `${methodId} ${method?.label ?? ""}`.toLocaleLowerCase(
+      "es-MX",
+    );
     return identity.includes("card") || identity.includes("tarjeta");
   };
   const paymentNeedsAuthorization = (methodId: string) => {
-    const method = paymentMethods.find((candidate) => candidate.id === methodId);
-    const identity = `${methodId} ${method?.label ?? ""}`.toLocaleLowerCase("es-MX");
+    const method = paymentMethods.find(
+      (candidate) => candidate.id === methodId,
+    );
+    const identity = `${methodId} ${method?.label ?? ""}`.toLocaleLowerCase(
+      "es-MX",
+    );
     return !identity.includes("cash") && !identity.includes("efectivo");
   };
   const paymentReferencesAreValid = payments.every(
@@ -202,7 +207,9 @@ export function TicketEditDialog({
         (method) =>
           method.active &&
           !payments.some((payment) => payment.methodId === method.id),
-      )?.id ?? paymentMethods.find((method) => method.active)?.id ?? "";
+      )?.id ??
+      paymentMethods.find((method) => method.active)?.id ??
+      "";
     if (!methodId) return;
     const remaining = Math.max(0, total - enteredPaymentTotal);
     setPayments((current) => {
@@ -214,11 +221,9 @@ export function TicketEditDialog({
       }
       const donorIndex = current.findIndex((payment) => payment.amount > 0.01);
       if (donorIndex < 0)
-        return [
-          ...current,
-          { id: crypto.randomUUID(), methodId, amount: 0 },
-        ];
-      const dividedAmount = Math.round((current[donorIndex]!.amount / 2) * 100) / 100;
+        return [...current, { id: crypto.randomUUID(), methodId, amount: 0 }];
+      const dividedAmount =
+        Math.round((current[donorIndex]!.amount / 2) * 100) / 100;
       return [
         ...current.map((payment, index) =>
           index === donorIndex
@@ -260,7 +265,13 @@ export function TicketEditDialog({
       "";
     if (status === "PAID" && defaultMethod) {
       setPayments((current) => [
-        { ...(current[0] ?? { id: crypto.randomUUID(), methodId: defaultMethod }), amount: total },
+        {
+          ...(current[0] ?? {
+            id: crypto.randomUUID(),
+            methodId: defaultMethod,
+          }),
+          amount: total,
+        },
       ]);
     }
     if (status === "PENDING") setPayments([]);
@@ -349,14 +360,19 @@ export function TicketEditDialog({
                     key={sale.sellerId}
                     className="ticket-edit-company-seller is-selected"
                   >
-                    <span><Building2 size={14} /></span>
+                    <span>
+                      <Building2 size={14} />
+                    </span>
                     <span>
                       <strong>{sale.sellerName}</strong>
                       <small>
                         Empresa · {sale.participantCode ?? "EMPRESA-001"}
                       </small>
                     </span>
-                    <LockKeyhole size={12} aria-label="Participación obligatoria" />
+                    <LockKeyhole
+                      size={12}
+                      aria-label="Participación obligatoria"
+                    />
                   </div>
                 ))}
               {sellers
@@ -374,10 +390,7 @@ export function TicketEditDialog({
                   >
                     <span>{seller.initials}</span>
                     {seller.name}
-                    <i
-                      className="ticket-edit-seller-action"
-                      aria-hidden="true"
-                    >
+                    <i className="ticket-edit-seller-action" aria-hidden="true">
                       {sellerIds.includes(seller.id) ? (
                         <Minus size={12} />
                       ) : (
@@ -388,8 +401,8 @@ export function TicketEditDialog({
                 ))}
             </div>
             <small>
-              El total se dividirá en partes iguales entre los participantes.
-              La empresa permanece incluida cuando la clienta pertenece a su
+              El total se dividirá en partes iguales entre los participantes. La
+              empresa permanece incluida cuando la clienta pertenece a su
               cartera.
             </small>
           </section>
@@ -414,90 +427,90 @@ export function TicketEditDialog({
                   (product) => product.id === line.productId,
                 );
                 return (
-                <div key={line.id} className="ticket-edit-line">
-                  <div className="field-stack ticket-edit-product-field">
-                    <Label>Producto o servicio</Label>
-                    <Select
-                      value={line.productId}
-                      onValueChange={(productId) => {
-                        const product = productById.get(productId);
-                        updateLine(line.id, {
-                          productId,
-                          unitPrice: product?.maxPrice ?? line.unitPrice,
-                        });
-                      }}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {!hasCatalogProduct && historicalProduct && (
-                          <SelectItem value={line.productId}>
-                            {historicalProduct.name}
-                          </SelectItem>
-                        )}
-                        {products
-                          .filter(
-                            (product) =>
-                              product.active || product.id === line.productId,
-                          )
-                          .map((product) => (
-                            <SelectItem key={product.id} value={product.id}>
-                              {product.name}
+                  <div key={line.id} className="ticket-edit-line">
+                    <div className="field-stack ticket-edit-product-field">
+                      <Label>Producto o servicio</Label>
+                      <Select
+                        value={line.productId}
+                        onValueChange={(productId) => {
+                          const product = productById.get(productId);
+                          updateLine(line.id, {
+                            productId,
+                            unitPrice: product?.maxPrice ?? line.unitPrice,
+                          });
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {!hasCatalogProduct && historicalProduct && (
+                            <SelectItem value={line.productId}>
+                              {historicalProduct.name}
                             </SelectItem>
-                          ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="field-stack">
-                    <Label>Cantidad</Label>
-                    <Input
-                      type="number"
-                      min="1"
-                      step="1"
-                      value={line.quantity}
-                      onChange={(event) =>
-                        updateLine(line.id, {
-                          quantity: Number(event.target.value),
-                        })
+                          )}
+                          {products
+                            .filter(
+                              (product) =>
+                                product.active || product.id === line.productId,
+                            )
+                            .map((product) => (
+                              <SelectItem key={product.id} value={product.id}>
+                                {product.name}
+                              </SelectItem>
+                            ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="field-stack">
+                      <Label>Cantidad</Label>
+                      <Input
+                        type="number"
+                        min="1"
+                        step="1"
+                        value={line.quantity}
+                        onChange={(event) =>
+                          updateLine(line.id, {
+                            quantity: Number(event.target.value),
+                          })
+                        }
+                      />
+                    </div>
+                    <div className="field-stack">
+                      <Label>Precio unitario</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={line.unitPrice}
+                        onChange={(event) =>
+                          updateLine(line.id, {
+                            unitPrice: Number(event.target.value),
+                          })
+                        }
+                      />
+                    </div>
+                    <div className="ticket-edit-line-total">
+                      <span>Total</span>
+                      <strong>
+                        {formatCurrency(line.quantity * line.unitPrice)}
+                      </strong>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      aria-label="Quitar producto"
+                      disabled={lines.length === 1}
+                      onClick={() =>
+                        setLines((current) =>
+                          current.filter((item) => item.id !== line.id),
+                        )
                       }
-                    />
+                    >
+                      <Minus size={15} />
+                    </Button>
                   </div>
-                  <div className="field-stack">
-                    <Label>Precio unitario</Label>
-                    <Input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={line.unitPrice}
-                      onChange={(event) =>
-                        updateLine(line.id, {
-                          unitPrice: Number(event.target.value),
-                        })
-                      }
-                    />
-                  </div>
-                  <div className="ticket-edit-line-total">
-                    <span>Total</span>
-                    <strong>
-                      {formatCurrency(line.quantity * line.unitPrice)}
-                    </strong>
-                  </div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    aria-label="Quitar producto"
-                    disabled={lines.length === 1}
-                    onClick={() =>
-                      setLines((current) =>
-                        current.filter((item) => item.id !== line.id),
-                      )
-                    }
-                  >
-                    <Minus size={15} />
-                  </Button>
-                </div>
                 );
               })}
             </div>
@@ -511,7 +524,11 @@ export function TicketEditDialog({
                 <strong>Estado, método y saldo del ticket</strong>
               </div>
             </div>
-            <div className="ticket-edit-payment-status" role="group" aria-label="Estado de cobro">
+            <div
+              className="ticket-edit-payment-status"
+              role="group"
+              aria-label="Estado de cobro"
+            >
               {(
                 [
                   ["PAID", "Pagado"],
@@ -533,7 +550,12 @@ export function TicketEditDialog({
             <div className="ticket-edit-payments-heading">
               <span>FORMAS DE PAGO REGISTRADAS</span>
               {paymentStatus !== "PENDING" && (
-                <Button type="button" variant="outline" size="sm" onClick={addPayment}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={addPayment}
+                >
                   <Plus size={14} /> Agregar método
                 </Button>
               )}
@@ -569,7 +591,9 @@ export function TicketEditDialog({
                           )
                         }
                       >
-                        <SelectTrigger aria-label={`Método editado ${index + 1}`}>
+                        <SelectTrigger
+                          aria-label={`Método editado ${index + 1}`}
+                        >
                           <SelectValue placeholder="Selecciona método" />
                         </SelectTrigger>
                         <SelectContent>
@@ -599,7 +623,10 @@ export function TicketEditDialog({
                           setPayments((current) =>
                             current.map((item) =>
                               item.id === payment.id
-                                ? { ...item, amount: Number(event.target.value) }
+                                ? {
+                                    ...item,
+                                    amount: Number(event.target.value),
+                                  }
                                 : item,
                             ),
                           )
@@ -640,7 +667,11 @@ export function TicketEditDialog({
                   </div>
                 ))}
                 {paymentStatus !== "PENDING" && payments.length === 0 && (
-                  <button type="button" className="ticket-edit-empty-payment" onClick={addPayment}>
+                  <button
+                    type="button"
+                    className="ticket-edit-empty-payment"
+                    onClick={addPayment}
+                  >
                     <Plus size={15} /> Agregar el primer método de pago
                   </button>
                 )}
@@ -661,7 +692,8 @@ export function TicketEditDialog({
             </div>
             {invalidPaid && (
               <small className="is-negative">
-                Los métodos de pago deben sumar exactamente {formatCurrency(total)}.
+                Los métodos de pago deben sumar exactamente{" "}
+                {formatCurrency(total)}.
               </small>
             )}
             {invalidLayaway && (
@@ -676,8 +708,9 @@ export function TicketEditDialog({
             )}
             {!paymentReferencesAreValid && (
               <small className="is-negative">
-                Los cobros no efectivos requieren banco y cuatro dígitos de autorización;
-                las tarjetas también requieren crédito/débito y Visa/Mastercard.
+                Los cobros no efectivos requieren banco y cuatro dígitos de
+                autorización; las tarjetas también requieren crédito/débito y
+                Visa/Mastercard.
               </small>
             )}
           </section>
@@ -713,22 +746,15 @@ export function TicketEditDialog({
               Cobrado: {formatCurrency(normalizedAmountPaid)}
             </Badge>
           </section>
-          {(backendMode || requiresAuthorization) && (
+          {requiresAuthorization && (
             <section className="ticket-edit-authorization">
               <div>
                 <strong>Autorización administrativa requerida</strong>
                 <small>
-                  {requiresAuthorization
-                    ? "La nueva venta profundiza el importe autorizado bajo el mínimo combinado."
-                    : "Las revisiones del ticket requieren autorización master y conservan el original."}
+                  La nueva venta profundiza el importe autorizado bajo el mínimo
+                  combinado.
                 </small>
               </div>
-              <Input
-                value={authorizationAlias}
-                onChange={(event) => setAuthorizationAlias(event.target.value)}
-                placeholder="Alias master"
-                aria-label="Alias master para revisar ticket"
-              />
               <Input
                 type="password"
                 inputMode="numeric"
@@ -768,29 +794,32 @@ export function TicketEditDialog({
                     (payment) => !payment.methodId || payment.amount <= 0,
                   ))) ||
               saving ||
-              (backendMode && (!authorizationAlias.trim() || !authorizationCode))
+              (requiresAuthorization && !authorizationCode)
             }
             onClick={() => {
               setSaving(true);
-              void Promise.resolve(onSave(ticket.id, {
-                clientName: clientName.trim(),
-                clientPhone: clientPhone.trim(),
-                sellerIds,
-                products: lines.map(({ productId, quantity, unitPrice }) => ({
-                  productId,
-                  quantity,
-                  unitPrice,
-                })),
-                discountAmount: normalizedDiscount,
-                paymentStatus,
-                amountPaid: normalizedAmountPaid,
-                paymentMethodId: payments[0]?.methodId ?? "",
-                payments: payments.map((payment) => ({ ...payment })),
-                authorizationCode,
-                authorizationAlias: authorizationAlias.trim(),
-              })).then((saved) => {
-                if (saved) onOpenChange(false);
-              }).finally(() => setSaving(false));
+              void Promise.resolve(
+                onSave(ticket.id, {
+                  clientName: clientName.trim(),
+                  clientPhone: clientPhone.trim(),
+                  sellerIds,
+                  products: lines.map(({ productId, quantity, unitPrice }) => ({
+                    productId,
+                    quantity,
+                    unitPrice,
+                  })),
+                  discountAmount: normalizedDiscount,
+                  paymentStatus,
+                  amountPaid: normalizedAmountPaid,
+                  paymentMethodId: payments[0]?.methodId ?? "",
+                  payments: payments.map((payment) => ({ ...payment })),
+                  authorizationCode,
+                }),
+              )
+                .then((saved) => {
+                  if (saved) onOpenChange(false);
+                })
+                .finally(() => setSaving(false));
             }}
           >
             <Save size={16} /> Guardar y actualizar registros

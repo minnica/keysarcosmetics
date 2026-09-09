@@ -16,8 +16,14 @@ const dateLabel = (iso: string) =>
     minute: "2-digit",
   }).format(new Date(iso));
 
-const supportedCardNetwork = (value: string | null): CardNetwork | undefined =>
-  value === "VISA" || value === "MASTERCARD" ? value : undefined;
+const supportedCardNetwork = (
+  value: string | null,
+): CardNetwork | undefined => {
+  const normalized = value?.trim().toLocaleUpperCase("es-MX");
+  return normalized === "VISA" || normalized === "MASTERCARD"
+    ? normalized
+    : undefined;
+};
 
 export function ticketFromDto(dto: PosTicketDto): Ticket {
   // Bootstraps cifrados emitidos antes de Fase 12 no incluían participantes.
@@ -53,8 +59,12 @@ export function ticketFromDto(dto: PosTicketDto): Ticket {
       ...(payment.bankId ? { bankId: payment.bankId } : {}),
       ...(payment.bankName ? { bankName: payment.bankName } : {}),
       ...(payment.cardType ? { cardType: payment.cardType } : {}),
-      ...(supportedCardNetwork(payment.cardNetworkId)
-        ? { cardNetwork: supportedCardNetwork(payment.cardNetworkId)! }
+      ...(supportedCardNetwork(payment.cardNetworkName ?? payment.cardNetworkId)
+        ? {
+            cardNetwork: supportedCardNetwork(
+              payment.cardNetworkName ?? payment.cardNetworkId,
+            )!,
+          }
         : {}),
       ...(payment.installmentMonths
         ? { installmentMonths: payment.installmentMonths }
@@ -146,7 +156,16 @@ export function layawayFromDto(dto: PosTicketDto): LayawayRecord | null {
         productName: line.itemName,
         kind: "PRODUCT",
         quantity: Number(line.quantity),
-        deliveredQuantity: Number(line.quantity),
+        deliveredQuantity: Math.max(
+          0,
+          Number(line.quantity) -
+            dto.owedProducts
+              .filter((owed) => owed.ticketLineId === line.id)
+              .reduce(
+                (pending, owed) => pending + Number(owed.pendingQuantity),
+                0,
+              ),
+        ),
       })),
     payments: dto.paymentOperations.map((operation) => ({
       id: operation.id,
@@ -168,8 +187,14 @@ export function layawayFromDto(dto: PosTicketDto): LayawayRecord | null {
         ...(payment.bankId ? { bankId: payment.bankId } : {}),
         ...(payment.bankName ? { bankName: payment.bankName } : {}),
         ...(payment.cardType ? { cardType: payment.cardType } : {}),
-        ...(supportedCardNetwork(payment.cardNetworkId)
-          ? { cardNetwork: supportedCardNetwork(payment.cardNetworkId)! }
+        ...(supportedCardNetwork(
+          payment.cardNetworkName ?? payment.cardNetworkId,
+        )
+          ? {
+              cardNetwork: supportedCardNetwork(
+                payment.cardNetworkName ?? payment.cardNetworkId,
+              )!,
+            }
           : {}),
         ...(payment.installmentMonths
           ? { installmentMonths: payment.installmentMonths }

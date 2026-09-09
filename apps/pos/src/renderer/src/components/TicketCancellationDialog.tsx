@@ -39,8 +39,6 @@ interface TicketCancellationDialogProps {
   ticket: Ticket | null;
   returnableProducts: TicketInventoryLine[];
   onOpenChange: (open: boolean) => void;
-  authorizationRequired?: boolean;
-  defaultAuthorizationAlias?: string;
   onConfirm: (request: TicketCancellationRequest) => void | Promise<void>;
 }
 
@@ -50,7 +48,6 @@ export function TicketCancellationDialog({
   returnableProducts,
   onOpenChange,
   onConfirm,
-  defaultAuthorizationAlias = "",
 }: TicketCancellationDialogProps) {
   const [returnMode, setReturnMode] = useState<ReturnMode>("ALL");
   const [refundAmount, setRefundAmount] = useState(0);
@@ -269,8 +266,6 @@ export function TicketCancellationDialog({
                   returnedProducts,
                   nonReturnedProducts,
                   reason: `Cancelación solicitada desde Receipts para ${ticket.id}`,
-                  authorizationAlias: defaultAuthorizationAlias,
-                  authorizationCode: "",
                 }),
               ).finally(() => setSubmitting(false));
             }}

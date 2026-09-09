@@ -188,6 +188,7 @@ import type {
   BillingCard,
   BillingHistoryEntry,
   BillingLocation,
+  CardNetwork,
   BillingProfile,
   BranchInventory,
   CashExpense,
@@ -1870,9 +1871,6 @@ function App() {
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [authoritativeQuote, setAuthoritativeQuote] =
     useState<PosTicketQuoteDto | null>(null);
-  const [saleAuthorizationOpen, setSaleAuthorizationOpen] = useState(false);
-  const [saleAuthorizationAlias, setSaleAuthorizationAlias] = useState("");
-  const [saleAuthorizationCode, setSaleAuthorizationCode] = useState("");
   const [saleAuthorizationToken, setSaleAuthorizationToken] = useState<
     string | null
   >(null);
@@ -2072,6 +2070,10 @@ function App() {
   const [receiptHistoryCode, setReceiptHistoryCode] = useState("");
   const [receiptHistoryAuthorized, setReceiptHistoryAuthorized] =
     useState(false);
+  const [
+    receiptHistoryAuthorizationToken,
+    setReceiptHistoryAuthorizationToken,
+  ] = useState<string | null>(null);
   const [xReportAccessCode, setXReportAccessCode] = useState("");
   const [xReportAuthorized, setXReportAuthorized] = useState(false);
   const [attendanceRecords, setAttendanceRecords] = useState<
@@ -2093,6 +2095,12 @@ function App() {
   );
   const [bankCatalog, setBankCatalog] =
     useState<BankCatalogEntry[]>(initialBankCatalog);
+  const [cardNetworkIds, setCardNetworkIds] = useState<
+    Record<CardNetwork, string>
+  >({
+    VISA: "VISA",
+    MASTERCARD: "MASTERCARD",
+  });
   const [installmentOptions, setInstallmentOptions] = useState([
     1, 3, 6, 9, 12, 18, 24,
   ]);
@@ -2627,6 +2635,16 @@ function App() {
         }),
         source: bank.sourceName === "ABM" ? "ABM" : "CUSTOM",
       })),
+    );
+    setCardNetworkIds(
+      Object.fromEntries(
+        bootstrap.paymentCatalogs.cardNetworks.flatMap((network) => {
+          const name = network.name.toLocaleUpperCase("es-MX");
+          return name === "VISA" || name === "MASTERCARD"
+            ? [[name, network.id]]
+            : [];
+        }),
+      ) as Record<CardNetwork, string>,
     );
     setInstallmentOptions(
       bootstrap.paymentCatalogs.installmentOptions.map((item) => item.months),
@@ -3277,6 +3295,16 @@ function App() {
           cardNetworks: ["VISA", "MASTERCARD"],
           source: bank.sourceName === "ABM" ? "ABM" : "CUSTOM",
         })),
+      );
+      setCardNetworkIds(
+        Object.fromEntries(
+          paymentCatalogs.cardNetworks.flatMap((network) => {
+            const name = network.name.toLocaleUpperCase("es-MX");
+            return name === "VISA" || name === "MASTERCARD"
+              ? [[name, network.id]]
+              : [];
+          }),
+        ) as Record<CardNetwork, string>,
       );
       setInstallmentOptions(
         paymentCatalogs.installmentOptions
@@ -6667,6 +6695,7 @@ function App() {
       setMyAccountAuthorized(false);
       setCostAccessAuthorized(false);
       setReceiptHistoryAuthorized(false);
+      setReceiptHistoryAuthorizationToken(null);
       setReceiptDate("");
       setReceiptBranch("ALL");
       setReceiptSearch("");
@@ -8825,6 +8854,24 @@ function App() {
     toast.success(`${item.product.name} se añadió al carrito.`);
   };
 
+  const authorizeSaleMinimum = async (code: string) => {
+    if (!posApiEnabled) return isMasterAccessCode(code);
+    try {
+      const authorization = await posApi.createAuthorization({
+        pin: code,
+        purpose: "SALE_BELOW_MINIMUM",
+      });
+      setSaleAuthorizationToken(authorization.authorizationToken);
+      return true;
+    } catch (error) {
+      toast.error(
+        (error as { response?: { data?: { message?: string } } }).response?.data
+          ?.message ?? "Autorización master inválida.",
+      );
+      return false;
+    }
+  };
+
   const addDealToCart = (deal: RetailDeal, dealQuantity: number) => {
     const dealProducts = deal.lines.flatMap((line) => {
       const product = catalogProducts.find(
@@ -8969,13 +9016,10 @@ function App() {
           : {}),
       });
       setAuthoritativeQuote(quote);
-      setSaleAuthorizationToken(null);
-      if (quote.requiresAuthorization) {
-        setSaleAuthorizationAlias(
-          apiSession.actor.isMaster ? apiSession.actor.alias : "",
+      if (quote.requiresAuthorization && !saleAuthorizationToken) {
+        toast.error(
+          "El total requiere autorización master. Abre un producto ajustado e ingresa el código en el campo aprobado.",
         );
-        setSaleAuthorizationCode("");
-        setSaleAuthorizationOpen(true);
         return;
       }
       setCheckoutOpen(true);
@@ -8983,25 +9027,6 @@ function App() {
       toast.error(
         (error as { response?: { data?: { message?: string } } }).response?.data
           ?.message ?? "No se pudo validar el total del ticket.",
-      );
-    }
-  };
-
-  const confirmSaleAuthorization = async () => {
-    if (!apiSession || !authoritativeQuote) return;
-    try {
-      const authorization = await posApi.createAuthorization({
-        alias: saleAuthorizationAlias.trim(),
-        pin: saleAuthorizationCode,
-        purpose: "SALE_BELOW_MINIMUM",
-      });
-      setSaleAuthorizationToken(authorization.authorizationToken);
-      setSaleAuthorizationOpen(false);
-      setCheckoutOpen(true);
-    } catch (error) {
-      toast.error(
-        (error as { response?: { data?: { message?: string } } }).response?.data
-          ?.message ?? "Autorización master inválida.",
       );
     }
   };
@@ -9114,15 +9139,21 @@ function App() {
                 create: {
                   displayName:
                     `${result.client.firstName} ${result.client.lastName}`.trim(),
+                  firstName: result.client.firstName || null,
+                  lastName: result.client.lastName || null,
+                  birthday: result.client.birthday || null,
+                  gender: result.client.gender || null,
                   phone: result.client.phone || null,
+                  whatsapp: result.client.whatsapp || null,
+                  companyName: result.client.companyName || null,
+                  registrationFolio: result.client.registrationFolio || null,
+                  registrationBranchId: apiSession.terminal.branch.id,
                   sourceId: clientSources.some(
                     (source) => source.id === result.client.source,
                   )
                     ? result.client.source
                     : null,
-                  notes: result.client.whatsapp
-                    ? `WhatsApp: ${result.client.whatsapp}`
-                    : null,
+                  notes: null,
                   ownerEmployeeId: result.client.ownerId,
                 },
               }
@@ -9165,7 +9196,10 @@ function App() {
             ...(payment.cardOrBank ? { institution: payment.cardOrBank } : {}),
             ...(payment.cardType ? { cardType: payment.cardType } : {}),
             ...(payment.cardNetwork
-              ? { cardNetworkId: payment.cardNetwork }
+              ? {
+                  cardNetworkId:
+                    cardNetworkIds[payment.cardNetwork] ?? payment.cardNetwork,
+                }
               : {}),
             ...(payment.bankId ? { bankId: payment.bankId } : {}),
             ...(payment.installmentMonths
@@ -9275,15 +9309,21 @@ function App() {
                 create: {
                   displayName:
                     `${result.client.firstName} ${result.client.lastName}`.trim(),
+                  firstName: result.client.firstName || null,
+                  lastName: result.client.lastName || null,
+                  birthday: result.client.birthday || null,
+                  gender: result.client.gender || null,
                   phone: result.client.phone || null,
+                  whatsapp: result.client.whatsapp || null,
+                  companyName: result.client.companyName || null,
+                  registrationFolio: result.client.registrationFolio || null,
+                  registrationBranchId: apiSession.terminal.branch.id,
                   sourceId: clientSources.some(
                     (source) => source.id === result.client.source,
                   )
                     ? result.client.source
                     : null,
-                  notes: result.client.whatsapp
-                    ? `WhatsApp: ${result.client.whatsapp}`
-                    : null,
+                  notes: null,
                   ownerEmployeeId: result.client.ownerId,
                 },
               }
@@ -9326,7 +9366,10 @@ function App() {
             ...(payment.cardOrBank ? { institution: payment.cardOrBank } : {}),
             ...(payment.cardType ? { cardType: payment.cardType } : {}),
             ...(payment.cardNetwork
-              ? { cardNetworkId: payment.cardNetwork }
+              ? {
+                  cardNetworkId:
+                    cardNetworkIds[payment.cardNetwork] ?? payment.cardNetwork,
+                }
               : {}),
             ...(payment.bankId ? { bankId: payment.bankId } : {}),
             ...(payment.installmentMonths
@@ -10028,14 +10071,32 @@ function App() {
     }
   };
 
-  const authorizePaymentSettings = () => {
-    if (!isMasterAccessCode(paymentSettingsCode)) {
-      toast.error("Código master incorrecto.");
-      return;
+  const authorizePaymentSettings = async () => {
+    try {
+      if (posApiEnabled) {
+        const authorization = await posApi.createAuthorization({
+          pin: paymentSettingsCode,
+          purpose: "PAYMENT_SETTINGS_ACCESS",
+        });
+        await posApi.verifyAuthorization(
+          authorization.authorizationToken,
+          "PAYMENT_SETTINGS_ACCESS",
+        );
+      } else if (!isMasterAccessCode(paymentSettingsCode)) {
+        throw new Error("Código master incorrecto.");
+      }
+      setPaymentSettingsAuthorized(true);
+      setPaymentSettingsCode("");
+      toast.success("Configuración de cobros desbloqueada.");
+    } catch (error) {
+      toast.error(
+        (error as { response?: { data?: { message?: string } } }).response?.data
+          ?.message ??
+          (error instanceof Error
+            ? error.message
+            : "Código master incorrecto."),
+      );
     }
-    setPaymentSettingsAuthorized(true);
-    setPaymentSettingsCode("");
-    toast.success("Configuración de cobros desbloqueada.");
   };
 
   const paymentMethodPolicyInput = (
@@ -13985,16 +14046,23 @@ function App() {
         return false;
       }
       try {
-        const authorization = await posApi.createAuthorization({
-          alias: changes.authorizationAlias,
-          pin: changes.authorizationCode,
-          purpose: "TICKET_REVISION",
-          entityType: "PosTicket",
-          entityId: ticket.backendId,
-        });
+        let authorizationToken = receiptHistoryAuthorizationToken;
+        if (changes.authorizationCode) {
+          const authorization = await posApi.createAuthorization({
+            pin: changes.authorizationCode,
+            purpose: "TICKET_REVISION",
+            entityType: "PosTicket",
+            entityId: ticket.backendId,
+          });
+          authorizationToken = authorization.authorizationToken;
+        }
+        if (!authorizationToken) {
+          toast.error("Desbloquea primero las acciones master de Receipts.");
+          return false;
+        }
         await posApi.reviseTicket(ticket.backendId, {
           reason: `Corrección solicitada para ${ticket.id}`,
-          authorizationToken: authorization.authorizationToken,
+          authorizationToken,
           revision: {
             clientName: changes.clientName,
             clientPhone: changes.clientPhone,
@@ -14006,6 +14074,8 @@ function App() {
             payments: changes.payments,
           },
         });
+        setReceiptHistoryAuthorized(false);
+        setReceiptHistoryAuthorizationToken(null);
         toast.success(
           `Revisión de ${ticket.id} registrada sin alterar el ticket original.`,
         );
@@ -14863,19 +14933,16 @@ function App() {
         return;
       }
       try {
-        const authorization = await posApi.createAuthorization({
-          alias: request.authorizationAlias,
-          pin: request.authorizationCode,
-          purpose: "TICKET_CANCELLATION",
-          entityType: "PosTicket",
-          entityId: ticket.backendId,
-        });
+        if (!receiptHistoryAuthorizationToken) {
+          toast.error("Desbloquea primero las acciones master de Receipts.");
+          return;
+        }
         await posApi.cancelTicket(ticket.backendId, {
           reason: request.reason,
           refundAmount: request.refundAmount.toFixed(2),
           returnedLines,
           revision: { nonReturnedProducts: request.nonReturnedProducts },
-          authorizationToken: authorization.authorizationToken,
+          authorizationToken: receiptHistoryAuthorizationToken,
         });
         setTickets((current) =>
           current.map((item) =>
@@ -14907,6 +14974,8 @@ function App() {
         setCancellingTicket(null);
         setReceiptPreviewOpen(false);
         setTicketEditOpen(false);
+        setReceiptHistoryAuthorized(false);
+        setReceiptHistoryAuthorizationToken(null);
         toast.success(
           `Cancelación de ${ticket.id} registrada con compensaciones append-only.`,
         );
@@ -15944,18 +16013,33 @@ function App() {
         : currentMonthTicketCount > 0
           ? 100
           : 0;
-    const authorizeReceiptHistory = () => {
-      if (!isMasterAccessCode(receiptHistoryCode)) {
-        toast.error("Código master incorrecto.");
-        return;
+    const authorizeReceiptHistory = async () => {
+      try {
+        if (posApiEnabled) {
+          const authorization = await posApi.createAuthorization({
+            pin: receiptHistoryCode,
+            purpose: "RECEIPT_HISTORY_ADMIN",
+          });
+          setReceiptHistoryAuthorizationToken(authorization.authorizationToken);
+        } else if (!isMasterAccessCode(receiptHistoryCode)) {
+          throw new Error("Código master incorrecto.");
+        }
+        setReceiptHistoryAuthorized(true);
+        setReceiptHistoryCode("");
+        setReceiptDate("");
+        setReceiptBranch("ALL");
+        toast.success(
+          "Historial completo y acciones administrativas habilitados.",
+        );
+      } catch (error) {
+        toast.error(
+          (error as { response?: { data?: { message?: string } } }).response
+            ?.data?.message ??
+            (error instanceof Error
+              ? error.message
+              : "Código master incorrecto."),
+        );
       }
-      setReceiptHistoryAuthorized(true);
-      setReceiptHistoryCode("");
-      setReceiptDate("");
-      setReceiptBranch("ALL");
-      toast.success(
-        "Historial completo y acciones administrativas habilitados.",
-      );
     };
     return (
       <div className="view-stack">
@@ -15987,6 +16071,7 @@ function App() {
                 variant="outline"
                 onClick={() => {
                   setReceiptHistoryAuthorized(false);
+                  setReceiptHistoryAuthorizationToken(null);
                   setReceiptDate("");
                   setReceiptBranch("ALL");
                   setReceiptSearch("");
@@ -16005,14 +16090,14 @@ function App() {
                     setReceiptHistoryCode(event.target.value)
                   }
                   onKeyDown={(event) => {
-                    if (event.key === "Enter") authorizeReceiptHistory();
+                    if (event.key === "Enter") void authorizeReceiptHistory();
                   }}
                   placeholder="Código master"
                   aria-label="Código master para historial de Receipts"
                 />
                 <Button
                   type="button"
-                  onClick={authorizeReceiptHistory}
+                  onClick={() => void authorizeReceiptHistory()}
                   disabled={!receiptHistoryCode}
                 >
                   <ShieldCheck size={15} /> Ver historial
@@ -17091,14 +17176,14 @@ function App() {
                 value={paymentSettingsCode}
                 onChange={(event) => setPaymentSettingsCode(event.target.value)}
                 onKeyDown={(event) => {
-                  if (event.key === "Enter") authorizePaymentSettings();
+                  if (event.key === "Enter") void authorizePaymentSettings();
                 }}
                 placeholder="Código master"
                 aria-label="Código master para métodos de pago"
               />
               <Button
                 type="button"
-                onClick={authorizePaymentSettings}
+                onClick={() => void authorizePaymentSettings()}
                 disabled={paymentSettingsCode.length !== 4}
               >
                 <ShieldCheck size={15} /> Desbloquear
@@ -17295,14 +17380,32 @@ function App() {
 
   const renderXReport = () => {
     if (!xReportAuthorized) {
-      const authorizeReport = () => {
-        if (!isMasterAccessCode(xReportAccessCode)) {
-          toast.error("Código administrativo incorrecto.");
-          return;
+      const authorizeReport = async () => {
+        try {
+          if (posApiEnabled) {
+            const authorization = await posApi.createAuthorization({
+              pin: xReportAccessCode,
+              purpose: "X_REPORT_ACCESS",
+            });
+            await posApi.verifyAuthorization(
+              authorization.authorizationToken,
+              "X_REPORT_ACCESS",
+            );
+          } else if (!isMasterAccessCode(xReportAccessCode)) {
+            throw new Error("Código administrativo incorrecto.");
+          }
+          setXReportAuthorized(true);
+          setXReportAccessCode("");
+          toast.success("Reporte administrativo desbloqueado.");
+        } catch (error) {
+          toast.error(
+            (error as { response?: { data?: { message?: string } } }).response
+              ?.data?.message ??
+              (error instanceof Error
+                ? error.message
+                : "Código administrativo incorrecto."),
+          );
         }
-        setXReportAuthorized(true);
-        setXReportAccessCode("");
-        toast.success("Reporte administrativo desbloqueado.");
       };
 
       return (
@@ -17326,14 +17429,14 @@ function App() {
                 value={xReportAccessCode}
                 onChange={(event) => setXReportAccessCode(event.target.value)}
                 onKeyDown={(event) => {
-                  if (event.key === "Enter") authorizeReport();
+                  if (event.key === "Enter") void authorizeReport();
                 }}
                 placeholder="Código administrativo"
                 aria-label="Código para reporte administrativo"
               />
               <Button
                 type="button"
-                onClick={authorizeReport}
+                onClick={() => void authorizeReport()}
                 disabled={xReportAccessCode.length !== 4}
               >
                 <ShieldCheck size={16} /> Desbloquear
@@ -19790,11 +19893,16 @@ function App() {
       <ProductDialog
         product={selectedProduct}
         cartItem={editingCartItem}
-        otherItemsSubtotal={dialogOtherItemsSubtotal}
+        otherItemsSubtotal={Math.max(
+          0,
+          dialogOtherItemsSubtotal - ticketDiscountAmount,
+        )}
         otherItemsMinimumTotal={dialogOtherItemsMinimumTotal}
         open={productDialogOpen}
         showSpareCoverageMessage={receiptSettings.showSpareCoverageMessage}
         isMasterCode={isMasterAccessCode}
+        authorizationManagedByServer={posApiEnabled}
+        onAuthorizeAdminCode={authorizeSaleMinimum}
         onOpenChange={handleProductDialogOpenChange}
         onSubmit={submitCartItem}
         onRemove={removeCartItem}
@@ -19834,63 +19942,6 @@ function App() {
         onOpenChange={setCheckoutOpen}
         onComplete={completeTicket}
       />
-      <Dialog
-        open={saleAuthorizationOpen}
-        onOpenChange={setSaleAuthorizationOpen}
-      >
-        <DialogContent className="sm:max-w-[480px]">
-          <DialogHeader>
-            <DialogTitle>Autorizar venta bajo mínimo</DialogTitle>
-            <DialogDescription>
-              El total autoritativo es{" "}
-              {formatCurrency(Number(authoritativeQuote?.total ?? 0))} y el
-              mínimo combinado es{" "}
-              {formatCurrency(Number(authoritativeQuote?.minimumTotal ?? 0))}.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="form-grid two-columns">
-            <div className="field-stack">
-              <span>Alias master</span>
-              <Input
-                value={saleAuthorizationAlias}
-                onChange={(event) =>
-                  setSaleAuthorizationAlias(event.target.value)
-                }
-                autoComplete="username"
-              />
-            </div>
-            <div className="field-stack">
-              <span>PIN master</span>
-              <Input
-                type="password"
-                value={saleAuthorizationCode}
-                onChange={(event) =>
-                  setSaleAuthorizationCode(event.target.value)
-                }
-                autoComplete="off"
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setSaleAuthorizationOpen(false)}
-            >
-              Cancelar
-            </Button>
-            <Button
-              type="button"
-              disabled={
-                !saleAuthorizationAlias.trim() || !saleAuthorizationCode
-              }
-              onClick={() => void confirmSaleAuthorization()}
-            >
-              <ShieldCheck size={16} /> Autorizar y continuar
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
       <DealPickerDialog
         open={dealPickerOpen}
         deals={deals}
@@ -19932,10 +19983,6 @@ function App() {
         paymentMethods={paymentMethods}
         bankCatalog={bankCatalog}
         installmentOptions={installmentOptions}
-        backendMode={posApiEnabled}
-        defaultAuthorizationAlias={
-          apiSession?.actor.isMaster ? apiSession.actor.alias : ""
-        }
         onOpenChange={setTicketEditOpen}
         onSave={saveTicketChanges}
       />
@@ -19943,10 +19990,6 @@ function App() {
         open={ticketCancellationOpen}
         ticket={cancellingTicket}
         returnableProducts={cancellationReturnableProducts}
-        authorizationRequired={posApiEnabled}
-        defaultAuthorizationAlias={
-          apiSession?.actor.isMaster ? apiSession.actor.alias : ""
-        }
         onOpenChange={(open) => {
           setTicketCancellationOpen(open);
           if (!open) setCancellingTicket(null);

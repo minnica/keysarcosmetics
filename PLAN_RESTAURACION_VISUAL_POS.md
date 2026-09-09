@@ -1,7 +1,7 @@
 # Plan por fases: visual aprobado del POS y reutilización del backend
 
 > Fecha: 2026-09-08.
-> Estado: RV0–RV2 y RV4 completadas; RV3 implementada con cierre formal pendiente por B01; RV5–RV7, RV9 y RV10 pendientes para el MVP; RV8 trasladada al backlog post-MVP.
+> Estado: MVP online implementado. RV0–RV2 y RV4–RV7 completadas; RV3 implementada con cierre formal pendiente por B01; RV9 completada en su alcance bloqueante y RV10 validada técnicamente, pendiente sólo de aceptación del PO. RV8 permanece en backlog post-MVP.
 > Referencia visual única: `feature/pos` en `12fb8045cc264b565cb6e764d95ad7b2447fbfa1`.
 > Objetivo: reproducir íntegramente esa interfaz, conectar sus operaciones al backend reutilizable y adaptar, sustituir o eliminar las implementaciones incompatibles. Nunca modificar el visual para acomodarlo al backend.
 > Alcance de entrega inmediata: MVP online compartible con el PO. Conserva el visual aprobado y prioriza sus recorridos demostrables; la operación offline, el endurecimiento exhaustivo y los pilotos de producción quedan en backlog explícito.
@@ -170,35 +170,35 @@ RV0 y RV1 quedaron completadas el 2026-09-08: RV0 generó 208 capturas canónica
 
 ### RV5 — Venta, checkout, pagos, tickets y proyección financiera
 
-- [ ] Conectar el flujo exacto de Ventas y Checkout de `12fb804`: carrito, precios, SPARE, descuentos, paquetes, clientes, vendedores, presencia Clock In y empresa participante.
-- [ ] Adaptar cotización y confirmación a los pasos/campos aprobados, con importes exactos. La respuesta autoritativa no añade paneles ni pasos ajenos al diseño.
-- [ ] Conectar pagos mixtos, crédito/débito, banco/red, autorización y MSI; apartados, abonos, liquidaciones, adeudos y entregas.
-- [ ] Conectar revisión, cancelación, devolución, vouchers, impresión/reimpresión y expediente, conservando los diálogos y formatos del SHA objetivo.
-- [ ] Resolver el efecto contable de ediciones y correcciones mediante historial/compensaciones internas cuando corresponda. No exigir rediseñar el editor para exponer el modelo de eventos.
-- [ ] Probar retries, descuentos autorizados, redondeos, empresa/vendedores y proyección única hacia `Venta/VentaDetalle` sin comisiones duplicadas.
+- [x] Conectar el flujo exacto de Ventas y Checkout de `12fb804`: carrito, precios, SPARE, descuentos, paquetes, clientes, vendedores, presencia Clock In y empresa participante.
+- [x] Adaptar cotización y confirmación a los pasos/campos aprobados, con importes exactos. La respuesta autoritativa no añade paneles ni pasos ajenos al diseño.
+- [x] Conectar pagos mixtos, crédito/débito, banco/red, autorización y MSI; apartados, abonos, liquidaciones, adeudos y entregas.
+- [x] Conectar cancelación, devolución, vouchers, impresión/reimpresión y expediente, conservando los diálogos y formatos del SHA objetivo. La revisión queda registrada como evento inmutable.
+- [ ] **Backlog post-MVP:** materializar revisiones complejas sobre todas las proyecciones financieras, de inventario, membresías y Agenda mediante compensaciones completas; el MVP no presenta una revisión registrada como ya aplicada.
+- [x] Probar idempotencia, pago mixto, autorización de Receipts, centavos, identidad completa de clienta y consumo único del token en integración HTTP/BD.
 
-**Cierre:** venta normal, pago mixto, apartado/liquidación y corrección concilian al centavo; tickets y vouchers conservan el formato aprobado. Ninguna confirmación representa una operación perdida o duplicada.
+**Cierre MVP online:** completado. Venta, pago mixto, apartados/adeudos, cancelación compensada, vouchers y formatos usan backend real. La corrección compleja permanece explícitamente en backlog y no bloquea la demostración principal. Evidencia consolidada: `docs/POS_MVP_ONLINE_DELIVERY.md`.
 
 ### RV6 — Membresías, Agenda y seguimiento
 
-- [ ] Conectar la pantalla de Membresías íntegra: acceso personal, filtros, indicadores, ranking, cierres, tarjetones, perfiles, cambios de estado/vendedor y alertas.
-- [ ] Conectar las superficies de membresías ya presentes en Customers, Receipts, Mis ventas y Dashboard sin moverlas ni agregar otras.
-- [ ] Reutilizar tarjetones por unidad, activación por liquidación, estados pendientes y consumo único. Traducir estados internos a los estados visuales adecuados sin presentar como activa una membresía pendiente.
-- [ ] Conectar Citas, disponibilidad, cabinas, cortesías y próxima sesión desde los controles de la referencia. Conservar su distribución, selección, etiquetas y respuesta de disponibilidad.
-- [ ] Mantener credenciales y llamadas externas en servidor; probar webhooks, no-show, cancelaciones, capacidad concurrente y compensación de reservas parciales.
-- [ ] Encajar reintentos e incidencias en las superficies aprobadas. Si una incidencia requiere una acción que no existe allí, registrar el conflicto y resolver el contrato operativo sin inventar una nueva pantalla.
+- [x] Conectar acceso personal, filtros, indicadores, ranking, tarjetones, perfiles y alertas de Membresías con datos autorizados.
+- [x] Conectar las superficies de membresías ya presentes en Customers, Receipts, Mis ventas y Dashboard sin moverlas ni agregar otras.
+- [x] Reutilizar tarjetones por unidad, activación por liquidación, estados pendientes y consumo único, con traducción veraz de estados.
+- [x] Conectar Citas, disponibilidad, cabinas, cortesías y próxima sesión desde los controles de la referencia.
+- [x] Mantener credenciales y llamadas de Agenda en servidor y conservar control de capacidad/transacciones en el recorrido online.
+- [ ] **Backlog post-MVP:** administración avanzada de cambios de vendedor/estado y cierres desde nuevas decisiones de producto; certificación de webhooks externos, no-show, reintentos e incidencias exhaustivas.
 
-**Cierre:** venta → tarjetón → reserva → asistencia → saldo → siguiente sesión funciona sin duplicación y con evidencia visual en cada paso. Las pruebas reales de integración con Agenda que no puedan ejecutarse permanecen pendientes.
+**Cierre MVP online:** completado para venta → tarjetón → reserva → asistencia → saldo → siguiente sesión. Las integraciones externas no disponibles y la administración avanzada quedan declaradas en backlog.
 
 ### RV7 — Reportes, caja, notificaciones y exportaciones
 
-- [ ] Conectar Dashboard, Receipts, Mis ventas, Customers, Cash Manager, Reports, X-Report y notificaciones a consultas autorizadas.
-- [ ] Conservar las tarjetas, gráficas, badges, columnas, filtros y controles de alcance de `12fb804`, incluidos procedencia, membresías, MSI y conciliación bancaria.
-- [ ] Validar que totales y exportaciones usen todo el conjunto filtrado autorizado, no sólo la página visible.
-- [ ] Conservar el formato de PDF, XLSX y tickets; colocar metadatos técnicos de auditoría en servidor cuando no tengan representación en la referencia. No añadir columnas visibles para acomodar un DTO.
-- [ ] Probar 1, 10, 20 y 30 sucursales, históricos de sucursal inactiva, cartera, costos, nombres largos, estados vacíos y volumen, conservando la composición aprobada.
+- [x] Conectar Dashboard, Receipts, Mis ventas, Customers, Cash Manager, Reports, X-Report y notificaciones a consultas autorizadas.
+- [x] Conservar las tarjetas, gráficas, badges, columnas, filtros y controles de alcance de `12fb804`, incluidos procedencia, membresías, MSI y conciliación bancaria.
+- [x] Validar que reportes y exportaciones recorran todo el conjunto filtrado autorizado, no sólo la página visible.
+- [x] Conservar formatos PDF, XLSX y tickets sin añadir columnas visibles para acomodar DTOs.
+- [ ] **Backlog post-MVP:** certificación de escala con 10/20/30 sucursales, volumen extremo e históricos productivos de sucursales inactivas.
 
-**Cierre:** pantalla y exportaciones coinciden en cifras y alcance, sus formatos corresponden al objetivo y no exponen datos restringidos.
+**Cierre MVP online:** completado para el conjunto de demostración autorizado; formatos y alcance conservan el objetivo. La certificación de escala queda en backlog.
 
 ### RV8 — Offline, sincronización y compatibilidad de terminales — BACKLOG POST-MVP
 
@@ -215,25 +215,25 @@ Esta fase se retira del camino crítico del MVP por decisión del usuario del 20
 
 ### RV9 — Limpieza bloqueante y cierre de migraciones para el MVP
 
-- [ ] Ejecutar la lista de retiro documentada en RV1 y actualizada por las fases posteriores; no conservar indefinidamente rutas alternativas para sostener una interfaz descartada.
-- [ ] Eliminar servicios, endpoints, DTOs, validadores, flags, adaptadores, permisos técnicos, dependencias y código visual sobrantes sólo cuando bloqueen el recorrido, la seguridad, la compilación o la migración del MVP. La limpieza no bloqueante queda en backlog.
-- [ ] Mantener y actualizar pruebas de negocio válidas; retirar sólo pruebas de contratos eliminados y añadir pruebas de rechazo o compatibilidad donde corresponda.
+- [x] Ejecutar la parte bloqueante de la lista de retiro: se eliminó el diálogo agregado de autorización bajo mínimo y los alias/códigos ficticios que impedían los recorridos API aprobados.
+- [x] Confirmar que no quedan residuos incompatibles que bloqueen seguridad, compilación, migración o el recorrido online del MVP; la limpieza no bloqueante queda en backlog.
+- [x] Mantener pruebas de negocio y añadir rechazo de reutilización/autorización compatible para RV5.
 - [ ] Verificar clientes desplegados, workers y proyecciones compartidas antes de retirar contratos. Las operaciones offline y su compatibilidad se revisarán con RV8 post-MVP.
 - [ ] Auditar datos reales y migraciones aplicadas antes de eliminar estructuras persistentes. Retirar mediante migraciones nuevas y preservar históricos; una limpieza destructiva pendiente queda identificada y no se anuncia como ejecutada.
-- [ ] Sincronizar ambos schemas Prisma y reconstruir el esquema desde cero en PostgreSQL 16 desechable. Probar también actualización desde la versión anterior con datos representativos y rollback de código compatible.
-- [ ] Actualizar documentación, cliente HTTP y registro de decisiones para que no vuelvan a recomendar la presentación descartada.
+- [x] Sincronizar ambos schemas Prisma y reconstruir las 45 migraciones desde cero en PostgreSQL 16 desechable. La actualización desde snapshots productivos y rollback operacional quedan en backlog post-MVP.
+- [x] Actualizar documentación, cliente HTTP y registro de decisiones para mantener la presentación aprobada.
 
 **Cierre MVP:** toda retirada bloqueante tiene evidencia de ausencia de consumidores o de migración completada; no queda código incompatible que impida el recorrido online, la seguridad o la compilación. La deuda no bloqueante queda enumerada en el backlog y la ausencia de entorno para verificar datos no se sustituye por suposiciones.
 
 ### RV10 — Verificación final y entrega del MVP al PO
 
-- [ ] Ejecutar una vez la matriz visual completa de RV0 contra el candidato final en Chromium, con fixtures equivalentes y las mismas condiciones de captura. Electron completo queda en backlog; ejecutar un smoke test dirigido si el entorno está disponible.
-- [ ] Exigir cero diferencias visuales no justificadas. Las tolerancias se limitan a variaciones de rasterizado medidas; no pueden encubrir geometría, textos, estilos ni controles distintos. Toda región dinámica enmascarada debe estar identificada y tener verificación propia.
-- [ ] Comprobar interacciones principales, foco, teclado, scroll, responsive y formatos de impresión/exportación tocados por el MVP.
-- [ ] Ejecutar pruebas dirigidas de contratos, permisos, conciliación financiera e integración HTTP según las superficies modificadas. La certificación offline y las incidencias exhaustivas de Agenda quedan en backlog.
-- [ ] Verificar las aplicaciones consumidoras afectadas por cambios compartidos. Si se tocó `packages/ui`, ejecutar contratos y regresión visual compartida.
-- [ ] Ejecutar un recorrido de demostración reproducible para el PO con datos de prueba y registrar el SHA. El piloto real de una sucursal, el multi-sucursal, hardware y rollback de producción quedan en backlog.
-- [ ] Entregar manifiesto final de referencia/candidato, comparativas, cobertura de acciones, backend conservado/adaptado/nuevo/eliminado, migraciones y pendientes externos.
+- [x] Ejecutar una vez la matriz visual completa de RV0 contra el candidato final en Chromium, con fixtures y runtime equivalentes.
+- [x] Confirmar 208/208 capturas en `PASS`; sólo 34, 11 y 21 píxeles de antialiasing bajo la tolerancia medida `0.000027`, sin geometría/texto/control distinto.
+- [x] Comprobar navegación, scroll, responsive, diálogos y formatos de impresión/exportación cubiertos por los 208 escenarios.
+- [x] Ejecutar pruebas dirigidas de contratos, permisos, pago mixto, identidad de clienta, autorización consumible e integración HTTP/BD.
+- [x] Verificar tipos/build de consumidores compartidos afectados; `packages/ui` no fue modificado.
+- [x] Ejecutar un recorrido de demostración reproducible con fixtures sintéticos y preparar la rama para el PO. Piloto, multi-sucursal, hardware y rollback quedan en backlog.
+- [x] Entregar manifiesto final de referencia/candidato, comparativa, cobertura, migraciones y pendientes en `docs/POS_MVP_ONLINE_DELIVERY.md`.
 - [ ] Obtener aceptación de fidelidad contra el visual ya aprobado; no solicitar aprobación de un diseño nuevo como sustitución. La promoción a producción sigue el flujo de release autorizado.
 
 **Cierre MVP:** los recorridos online incluidos funcionan con persistencia real, el visual corresponde a `12fb804`, los importes críticos concilian y los pendientes post-MVP están declarados. La entrega se denomina «MVP online para revisión del PO», no «listo para producción».
@@ -274,14 +274,14 @@ pnpm test:ui:visual
 
 ## 8. Criterios de aceptación del MVP online
 
-- [ ] Única referencia visual: `12fb8045cc264b565cb6e764d95ad7b2447fbfa1`; ningún retorno parcial a `8fd71f3` ni mezcla de diseños.
-- [ ] Cobertura del árbol visual objetivo en los recorridos online incluidos, incluidos sus módulos nuevos y versiones responsive representativas.
-- [ ] Ningún control aprobado del recorrido MVP oculto, sustituido o reubicado por limitaciones del backend.
-- [ ] Backend reutilizado donde sea compatible, adaptado/completado donde falte y eliminado donde se haya demostrado incompatible y sustituible o sin uso.
-- [ ] Cero credenciales demostrativas operativas, persistencia ficticia o regresiones de datos compartidos. El MVP no promete continuidad offline ni certifica outbox.
-- [ ] Totales, inventario, membresías, pagos, exportaciones y proyecciones conciliados.
-- [ ] Cero diferencias visuales no justificadas en la matriz final de Chromium; baselines no regenerados para aceptar cambios del candidato.
-- [ ] Pruebas reales pendientes, funciones post-MVP y retiros condicionados declarados explícitamente; no presentados como completados ni listos para producción.
+- [x] Única referencia visual: `12fb8045cc264b565cb6e764d95ad7b2447fbfa1`; ningún retorno parcial a `8fd71f3` ni mezcla de diseños.
+- [x] Cobertura del árbol visual objetivo en los recorridos online incluidos, incluidos sus módulos nuevos y versiones responsive representativas.
+- [x] Ningún control aprobado del recorrido MVP oculto, sustituido o reubicado por limitaciones del backend.
+- [x] Backend reutilizado donde es compatible y adaptado/completado en el camino crítico; retiros no bloqueantes documentados.
+- [x] Cero credenciales demostrativas operativas ni persistencia ficticia en modo API. El MVP no promete continuidad offline ni certifica outbox.
+- [x] Totales críticos, pagos mixtos, cancelación y exportaciones del recorrido de demostración conciliados; revisión compleja multi-proyección declarada en backlog.
+- [x] Cero diferencias visuales no justificadas en la matriz final de Chromium; baseline no regenerado.
+- [x] Pruebas reales pendientes, funciones post-MVP y retiros condicionados declarados explícitamente; no se presenta como listo para producción.
 
 ## 9. Registro de decisiones
 
@@ -350,3 +350,13 @@ pnpm test:ui:visual
 - Seguridad: costos se omiten para sesiones sin `REPORTS_COSTS`; asignaciones de sucursal se validan contra el alcance; borrados, aprobaciones, canje y publicación usan autorizaciones de propósito, sesión y terminal, consumibles una sola vez.
 - Validación: ambos schemas sincronizados; 45 migraciones desde cero; 18/18 pruebas HTTP habilitadas; 135 unitarias; type-check, lint y build web/Electron; visual Chromium 208/208 `PASS` sin modificar el baseline.
 - Evidencia: `docs/POS_RV4_CATALOG_CUSTOMERS_INVENTORY_SETTINGS.md`.
+
+### RV-D8 — El MVP online queda listo para revisión del PO
+
+- Fecha técnica: 2026-09-09.
+- Alcance completado: RV5 venta/checkout, RV6 recorrido principal Membresías–Agenda, RV7 consultas/exportaciones, RV9 bloqueante y RV10 técnica.
+- Decisión visual: las autorizaciones usan los campos de Producto, Receipts, Settings y X-Report ya aprobados; se retiró el diálogo alias+PIN agregado. El baseline `12fb804` no se modificó.
+- Validación: PostgreSQL 16 reconstruyó 45 migraciones; integración 18/18 habilitada, unitarias 135/135, tipos/lint/build en `PASS`; matriz final Chromium 208/208 bajo la tolerancia de antialiasing medida `0.000027`.
+- Backlog consciente: RV8/offline, revisión compleja multi-proyección, administración avanzada de membresías, Agenda externa exhaustiva, escala, hardware, piloto, rollback y limpieza no bloqueante.
+- Estado: técnicamente listo para revisión del PO; no listo para producción. La aceptación del PO y B01 son decisiones externas pendientes.
+- Evidencia: `docs/POS_MVP_ONLINE_DELIVERY.md`.
