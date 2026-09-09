@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build && electron-builder",
+    "build:web": "tsc && vite build",
     "preview": "vite preview",
     "lint": "echo 'no lint configured'",
     "type-check": "tsc --noEmit"

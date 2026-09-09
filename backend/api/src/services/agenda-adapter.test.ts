@@ -3,12 +3,61 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   AgendaAdapterError,
   HttpAgendaAdapter,
+  agendaAdapterFromEnvironment,
+  agendaProviderFromEnvironment,
   verifyAgendaWebhookSignature,
 } from "./agenda-adapter";
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
+});
 
 describe("Agenda adapter security and contract", () => {
+  it("uses Scheduler internally by default without HTTP and keeps HTTP as explicit rollback", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const internal = agendaAdapterFromEnvironment();
+    expect(internal.provider).toBe("internal");
+    await expect(
+      internal.upsertClient(
+        {
+          localClientKey: "customer-1",
+          externalClientId: null,
+          displayName: "Clienta",
+          phone: null,
+          email: null,
+        },
+        "internal-client-key",
+      ),
+    ).resolves.toEqual({ externalClientId: "scheduler-client:customer-1" });
+    await expect(
+      internal.updateClient(
+        {
+          localClientKey: "customer-1",
+          externalClientId: null,
+          displayName: "Clienta",
+          phone: null,
+          email: null,
+        },
+        "internal-update-key",
+      ),
+    ).resolves.toBeUndefined();
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    vi.stubEnv("AGENDA_PROVIDER", "http");
+    vi.stubEnv("AGENDA_API_URL", "https://agenda.invalid");
+    vi.stubEnv("AGENDA_API_TOKEN", "server-token");
+    expect(agendaAdapterFromEnvironment()).toBeInstanceOf(HttpAgendaAdapter);
+    expect(agendaProviderFromEnvironment("HTTP")).toBe("http");
+  });
+
+  it("fails closed for an unknown provider", () => {
+    expect(() => agendaProviderFromEnvironment("mirror")).toThrowError(
+      AgendaAdapterError,
+    );
+  });
+
   it("accepts a fresh HMAC signature and rejects replayed timestamps", () => {
     const rawBody = Buffer.from('{"eventId":"evt-1"}');
     const timestamp = "1788541200";

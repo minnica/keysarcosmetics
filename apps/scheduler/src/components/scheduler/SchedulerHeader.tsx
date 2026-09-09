@@ -14,7 +14,7 @@ import {
 } from 'lucide-react'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
-import { schedulerLegendItems, type SchedulerView } from '@/lib/mock-scheduler-data'
+import { schedulerLegendItems, type SchedulerView } from '@/lib/scheduler-presentation'
 import { getLegendIcon } from './scheduler-utils'
 
 interface SchedulerHeaderProps {
@@ -29,6 +29,9 @@ interface SchedulerHeaderProps {
   onRefresh: () => void
   onOpenFilters: () => void
   onOpenNewBooking: () => void
+  canWrite?: boolean
+  refreshing?: boolean
+  updatedLabel?: string
 }
 
 export function SchedulerHeader({
@@ -43,13 +46,16 @@ export function SchedulerHeader({
   onRefresh,
   onOpenFilters,
   onOpenNewBooking,
+  canWrite = true,
+  refreshing = false,
+  updatedLabel = 'Datos canónicos',
 }: SchedulerHeaderProps) {
   return (
     <>
-      <div className="mb-0 border-b border-[rgba(236,209,200,0.8)] bg-[linear-gradient(180deg,rgba(255,255,255,0.94)_0%,rgba(251,248,244,0.9)_100%)] px-5 py-5 shadow-[0_12px_30px_rgba(15,23,42,0.05)] sm:px-6">
-        <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
-          <div className="space-y-2.5">
-            <div className="flex flex-wrap items-center gap-3">
+      <div className="scheduler-agenda-header mb-0 border-b border-[rgba(236,209,200,0.8)] bg-[linear-gradient(180deg,rgba(255,255,255,0.94)_0%,rgba(251,248,244,0.9)_100%)] px-5 py-5 shadow-[0_12px_30px_rgba(15,23,42,0.05)] sm:px-6">
+        <div className="scheduler-agenda-header-layout flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+          <div className="scheduler-agenda-header-primary space-y-2.5">
+            <div className="scheduler-agenda-view-controls flex flex-wrap items-center gap-3">
               <div className="inline-flex overflow-hidden rounded-full border border-[rgba(236,209,200,0.8)] bg-white p-1 shadow-sm">
                 <button
                   className={
@@ -91,8 +97,8 @@ export function SchedulerHeader({
               </div>
             </div>
 
-            <div>
-              <h1 className="page-title text-[clamp(2rem,3.2vw,2.72rem)] text-[var(--scheduler-ink-strong)]">
+            <div className="scheduler-agenda-date-context">
+              <h1 className="scheduler-agenda-title page-title text-[clamp(2rem,3.2vw,2.72rem)] text-[var(--scheduler-ink-strong)]">
                 {currentView === 'day'
                   ? format(selectedDate, "EEEE, d 'de' MMMM 'de' yyyy", { locale: es })
                   : `${format(weekDays[0] ?? selectedDate, "EEEE, d 'de' MMMM", { locale: es })} - ${format(
@@ -101,7 +107,7 @@ export function SchedulerHeader({
                       { locale: es },
                     )}`}
               </h1>
-              <div className="mt-1.5 inline-flex items-center gap-2 rounded-full bg-[rgba(244,234,221,0.62)] px-4 py-1.5 text-sm font-medium text-slate-500">
+              <div className="scheduler-agenda-location mt-1.5 inline-flex items-center gap-2 rounded-full bg-[rgba(244,234,221,0.62)] px-4 py-1.5 text-sm font-medium text-slate-500">
                 <MapPinned className="h-4 w-4" />
                 <span>{selectedCommerceName}</span>
                 <span aria-hidden="true" className="text-slate-300">·</span>
@@ -110,7 +116,7 @@ export function SchedulerHeader({
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3 xl:justify-end">
+          <div className="scheduler-agenda-actions flex flex-wrap items-center gap-3 xl:justify-end">
             <Popover>
               <PopoverTrigger asChild>
                 <button className="scheduler-toolbar-button scheduler-toolbar-button-large" type="button">
@@ -135,12 +141,12 @@ export function SchedulerHeader({
               </PopoverContent>
             </Popover>
 
-            <p className="text-sm italic text-slate-400">Actualizado hace 0 min</p>
+            <p className="scheduler-agenda-updated text-sm italic text-slate-400">{updatedLabel}</p>
             <div className="hidden h-6 w-px bg-slate-200 md:block" />
-            <button className="scheduler-toolbar-button" onClick={onRefresh} type="button">
-              <RefreshCcw className="h-4 w-4" />
+            <button aria-label="Actualizar agenda" className="scheduler-toolbar-button" disabled={refreshing} onClick={onRefresh} type="button">
+              <RefreshCcw className={refreshing ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />
             </button>
-            <button className="scheduler-toolbar-button" type="button">
+            <button aria-label="Ajustar ancho (no disponible)" aria-disabled="true" className="scheduler-toolbar-button opacity-40" disabled type="button">
               <ChevronsLeftRight className="h-4 w-4" />
             </button>
             <button
@@ -151,10 +157,10 @@ export function SchedulerHeader({
             >
               <Filter className="h-4 w-4" />
             </button>
-            <button className="scheduler-toolbar-button" type="button">
+            <button aria-label="Duplicar vista (no disponible)" aria-disabled="true" className="scheduler-toolbar-button opacity-40" disabled type="button">
               <Copy className="h-4 w-4" />
             </button>
-            <Button className="scheduler-modal-cta h-[52px] rounded-[20px] px-6 text-base font-medium" onClick={onOpenNewBooking}>
+            <Button className="scheduler-agenda-new-button scheduler-modal-cta h-[52px] rounded-[20px] px-6 text-base font-medium" disabled={!canWrite} onClick={onOpenNewBooking}>
               Nuevo
               <Plus className="ml-3 h-5 w-5" />
             </Button>

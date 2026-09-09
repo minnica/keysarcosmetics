@@ -1,5 +1,5 @@
-import { ReportsWorkspace } from "@/components/reports/ReportsWorkspace";
+import { SchedulerReportsEntry } from "@/components/api/SchedulerPageEntries";
 
 export default function ReportsPage() {
-  return <ReportsWorkspace />;
+  return <SchedulerReportsEntry />;
 }

@@ -921,7 +921,7 @@ export type PosAgendaSlotStatus =
 
 export interface PosAgendaSlotDto {
   id: PosId;
-  externalSystem: "AGENDA_CRM";
+  externalSystem: "SCHEDULER_INTERNAL" | "AGENDA_CRM";
   externalCalendarId: string | null;
   externalSlotId: string;
   branchId: PosId;

@@ -1,5 +1,6 @@
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
+import { InternalAgendaAdapter } from "./internal-agenda-adapter";
 
 export class AgendaAdapterError extends Error {
   constructor(
@@ -54,6 +55,7 @@ export interface AgendaReservationLegResult {
 }
 
 export interface AgendaAdapter {
+  readonly provider?: AgendaProvider;
   listAvailability(input: {
     branchCode: string;
     from: string;
@@ -78,6 +80,8 @@ export interface AgendaAdapter {
     idempotencyKey: string,
   ): Promise<void>;
 }
+
+export type AgendaProvider = "internal" | "http";
 
 const slotSchema = z
   .object({
@@ -108,6 +112,7 @@ const reservationSchema = z.object({
 });
 
 export class HttpAgendaAdapter implements AgendaAdapter {
+  readonly provider = "http" as const;
   constructor(
     private readonly baseUrl: string,
     private readonly token: string,
@@ -283,11 +288,28 @@ export function setAgendaAdapterForTests(adapter: AgendaAdapter | null) {
 
 export function agendaAdapterFromEnvironment(): AgendaAdapter {
   if (testAdapter) return testAdapter;
+  const provider = agendaProviderFromEnvironment();
+  if (provider === "internal") {
+    return new InternalAgendaAdapter();
+  }
   const timeout = Number(process.env["AGENDA_TIMEOUT_MS"] ?? "10000");
   return new HttpAgendaAdapter(
     process.env["AGENDA_API_URL"] ?? "",
     process.env["AGENDA_API_TOKEN"] ?? "",
     Number.isFinite(timeout) ? timeout : 10_000,
+  );
+}
+
+export function agendaProviderFromEnvironment(
+  value = process.env["AGENDA_PROVIDER"],
+): AgendaProvider {
+  const normalized = (value ?? "internal").trim().toLowerCase();
+  if (normalized === "internal" || normalized === "http") return normalized;
+  throw new AgendaAdapterError(
+    "El proveedor de Agenda es inválido",
+    "AGENDA_INVALID_PROVIDER",
+    503,
+    false,
   );
 }
 

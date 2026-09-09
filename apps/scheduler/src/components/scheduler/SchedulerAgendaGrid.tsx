@@ -1,12 +1,28 @@
-'use client'
+"use client";
 
-import { useMemo, type CSSProperties } from 'react'
-import { Badge, Card, CardContent, Dialog, DialogContent, DialogTrigger, Popover, PopoverContent, PopoverTrigger, cn } from '@cosmetics/ui'
-import { Ban, CalendarDays, Plus } from 'lucide-react'
-import { format, isSameDay } from 'date-fns'
-import { es } from 'date-fns/locale'
 import {
-  schedulerWeekBookings,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
+import {
+  Badge,
+  Card,
+  CardContent,
+  Dialog,
+  DialogContent,
+  DialogTrigger,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+  cn,
+} from "@cosmetics/ui";
+import { Ban, CalendarDays, Plus } from "lucide-react";
+import { format, isSameDay } from "date-fns";
+import { es } from "date-fns/locale";
+import {
   bookingStatuses,
   type AvailabilityBlock,
   type Booking,
@@ -14,12 +30,12 @@ import {
   type BookingStatusColors,
   type Professional,
   type SchedulerView,
-} from '@/lib/mock-scheduler-data'
+} from "@/lib/scheduler-presentation";
 import {
   getSchedulerClientAccessKey,
   type SchedulerFinancialAuditEvent,
   type SchedulerFinancialProfile,
-} from '@/lib/scheduler-access'
+} from "@/lib/scheduler-access";
 import {
   addMinutesToTime,
   getAppointmentStyle,
@@ -29,67 +45,146 @@ import {
   getMinutesFromTime,
   getSchedulerCardTop,
   getSingleCellAppointmentStyle,
+  schedulerComfortableLayout,
+  schedulerCompactLayout,
+  schedulerDenseLayout,
+  schedulerUltraDenseLayout,
+  type ClientPaymentHistoryEntry,
+  type ClientPurchaseAccount,
+  type SchedulerAgendaLayoutMetrics,
   type EmptySlotAction,
-} from './scheduler-utils'
+} from "./scheduler-utils";
 import {
-  getCommerceCalendarRange,
-  isOutsideCommerceOperatingHours,
-  type CommerceOperatingHours,
-} from '@/lib/commerce-operating-hours'
-import { SchedulerBookingCard } from './SchedulerBookingCard'
-import { SchedulerAvatar } from './SchedulerAvatar'
+  getSchedulerCalendarRange,
+  isOutsideSchedulerOperatingHours,
+  type SchedulerOperatingHours,
+} from "@/lib/scheduler-agenda-presentation";
+import { SchedulerBookingCard } from "./SchedulerBookingCard";
+import { SchedulerAvatar } from "./SchedulerAvatar";
 
 interface SchedulerAgendaGridProps {
-  currentView: SchedulerView
-  slotMinutes: number
-  visibleProfessionals: Professional[]
-  visibleBookings: Booking[]
-  statusColors: BookingStatusColors
-  allBookings: Booking[]
-  visibleBlocks: AvailabilityBlock[]
-  selectedDate: Date
-  commerceOperatingHours: CommerceOperatingHours
-  commerceName: string
-  weekDays: Date[]
-  emptySlotAction: EmptySlotAction | null
-  onOpenSlotAction: (professionalId: string, startTime: string) => void
-  onCloseSlotAction: () => void
-  onOpenNewBooking: (professionalId?: string, startTime?: string) => void
-  onMockBlock: (professionalId: string, startTime: string) => void
-  onEditBlock: (block: AvailabilityBlock) => void
-  onEditBooking: (booking: Booking) => void
-  onDeleteBooking: (bookingId: string) => void
-  onUpdateBookingStatus: (bookingId: string, status: BookingStatus) => void
-  onPurchaseDecision: (booking: Booking, purchased: boolean) => void
-  onOpenBookingDetail: (booking: Booking, view: 'payment' | 'record') => void
-  onOpenClientHistory: (booking: Booking) => void
-  financialAccessByClient: Record<string, SchedulerFinancialProfile>
-  financialAuditEvents: SchedulerFinancialAuditEvent[]
-  onRequestFinancialAccess: (booking: Booking) => void
-  onRevokeFinancialAccess: (booking: Booking) => void
+  currentView: SchedulerView;
+  slotMinutes: number;
+  visibleProfessionals: Professional[];
+  visibleBookings: Booking[];
+  statusColors: BookingStatusColors;
+  allBookings: Booking[];
+  visibleBlocks: AvailabilityBlock[];
+  selectedDate: Date;
+  commerceOperatingHours: SchedulerOperatingHours;
+  commerceName: string;
+  weekDays: Date[];
+  weekBookings: Array<Booking & { dayOffset: number }>;
+  weekBlocks?: Array<AvailabilityBlock & { dayOffset: number }>;
+  emptySlotAction: EmptySlotAction | null;
+  onOpenSlotAction: (professionalId: string, startTime: string) => void;
+  onCloseSlotAction: () => void;
+  onOpenNewBooking: (professionalId?: string, startTime?: string) => void;
+  onCreateBlock: (professionalId: string, startTime: string) => void;
+  onEditBlock: (block: AvailabilityBlock) => void;
+  onEditBooking: (booking: Booking) => void;
+  onDeleteBooking: (bookingId: string) => void;
+  onUpdateBookingStatus: (bookingId: string, status: BookingStatus) => void;
+  onPurchaseDecision: (booking: Booking, purchased: boolean) => void;
+  onOpenBookingDetail: (booking: Booking, view: "payment" | "record") => void;
+  onOpenClientHistory: (booking: Booking) => void;
+  financialAccessByClient: Record<string, SchedulerFinancialProfile>;
+  financialAuditEvents: SchedulerFinancialAuditEvent[];
+  onRequestFinancialAccess: (booking: Booking) => void;
+  onRevokeFinancialAccess: (booking: Booking) => void;
   onUpdatePaymentHistory: (
     clientBooking: Booking,
     paymentBookingId: string,
     amount: number,
     tentativeAmount?: number,
-  ) => void
-  onDeletePaymentHistory: (clientBooking: Booking, paymentBookingId: string) => void
+  ) => void;
+  onDeletePaymentHistory: (
+    clientBooking: Booking,
+    paymentBookingId: string,
+  ) => void;
+  canWrite?: boolean;
+  financialHistoryReadOnly?: boolean;
+  clientAccountsByClient?: Record<string, ClientPurchaseAccount>;
+  paymentHistoryByClient?: Record<string, ClientPaymentHistoryEntry[]>;
 }
 
 interface DayOverlayBooking {
-  booking: Booking
-  style: CSSProperties
+  booking: Booking;
+  style: CSSProperties;
 }
 
 interface DayOverlayBlock {
-  block: AvailabilityBlock
-  style: CSSProperties
+  block: AvailabilityBlock;
+  style: CSSProperties;
 }
 
 interface SlotActionOverlay {
-  professionalId: string
-  startTime: string
-  style: CSSProperties
+  professionalId: string;
+  startTime: string;
+  style: CSSProperties;
+}
+
+const compactAgendaMediaQuery = [
+  "(min-width: 1024px) and (max-height: 900px)",
+  "(min-width: 1024px) and (any-pointer: coarse) and (max-height: 1100px)",
+].join(", ");
+const denseAgendaMediaQuery = "(min-width: 1024px) and (max-height: 780px)";
+const ultraDenseAgendaMediaQuery =
+  "(min-width: 1024px) and (max-height: 680px)";
+const maxFittedTimeSlots = 13;
+
+function useAgendaLayoutMetrics(): SchedulerAgendaLayoutMetrics {
+  const [layout, setLayout] = useState<SchedulerAgendaLayoutMetrics>(
+    schedulerComfortableLayout,
+  );
+
+  useEffect(() => {
+    const compactQuery = window.matchMedia(compactAgendaMediaQuery);
+    const denseQuery = window.matchMedia(denseAgendaMediaQuery);
+    const ultraDenseQuery = window.matchMedia(ultraDenseAgendaMediaQuery);
+    const updateLayout = () => {
+      setLayout(
+        ultraDenseQuery.matches
+          ? schedulerUltraDenseLayout
+          : denseQuery.matches
+            ? schedulerDenseLayout
+            : compactQuery.matches
+              ? schedulerCompactLayout
+              : schedulerComfortableLayout,
+      );
+    };
+
+    updateLayout();
+    compactQuery.addEventListener("change", updateLayout);
+    denseQuery.addEventListener("change", updateLayout);
+    ultraDenseQuery.addEventListener("change", updateLayout);
+
+    return () => {
+      compactQuery.removeEventListener("change", updateLayout);
+      denseQuery.removeEventListener("change", updateLayout);
+      ultraDenseQuery.removeEventListener("change", updateLayout);
+    };
+  }, []);
+
+  return layout;
+}
+
+function getOverlayHorizontalStyle(
+  columnIndex: number,
+  columnCount: number,
+  layout: SchedulerAgendaLayoutMetrics,
+  horizontalInset = layout.cardHorizontalInset,
+): Pick<CSSProperties, "left" | "width"> {
+  const columnFraction = columnIndex / columnCount;
+  const columnPercent = 100 / columnCount;
+  const leftTimeOffset = layout.timeColumnWidth * (1 - columnFraction);
+  const widthOffset =
+    layout.timeColumnWidth / columnCount + horizontalInset * 2;
+
+  return {
+    left: `calc(${columnFraction * 100}% + ${leftTimeOffset + horizontalInset}px)`,
+    width: `calc(${columnPercent}% - ${widthOffset}px)`,
+  };
 }
 
 export function SchedulerAgendaGrid({
@@ -104,11 +199,13 @@ export function SchedulerAgendaGrid({
   commerceOperatingHours,
   commerceName,
   weekDays,
+  weekBookings,
+  weekBlocks = [],
   emptySlotAction,
   onOpenSlotAction,
   onCloseSlotAction,
   onOpenNewBooking,
-  onMockBlock,
+  onCreateBlock,
   onEditBlock,
   onEditBooking,
   onDeleteBooking,
@@ -122,58 +219,122 @@ export function SchedulerAgendaGrid({
   onRevokeFinancialAccess,
   onUpdatePaymentHistory,
   onDeletePaymentHistory,
+  canWrite = true,
+  financialHistoryReadOnly = false,
+  clientAccountsByClient = {},
+  paymentHistoryByClient = {},
 }: SchedulerAgendaGridProps) {
+  const baseAgendaLayout = useAgendaLayoutMetrics();
+  const gridViewportRef = useRef<HTMLDivElement>(null);
+  const [gridViewportHeight, setGridViewportHeight] = useState(0);
   const dayCalendarRange = useMemo(
-    () => getCommerceCalendarRange(commerceOperatingHours, [selectedDate], slotMinutes),
+    () =>
+      getSchedulerCalendarRange(
+        commerceOperatingHours,
+        [selectedDate],
+        slotMinutes,
+      ),
     [commerceOperatingHours, selectedDate, slotMinutes],
-  )
+  );
   const weekCalendarRange = useMemo(
-    () => getCommerceCalendarRange(commerceOperatingHours, weekDays, slotMinutes),
+    () =>
+      getSchedulerCalendarRange(commerceOperatingHours, weekDays, slotMinutes),
     [commerceOperatingHours, slotMinutes, weekDays],
-  )
-  const dayBaseMinutes = dayCalendarRange?.startMinutes ?? 0
-  const dayClosingMinutes = dayCalendarRange?.endMinutes ?? 0
-  const dayTimeSlots = dayCalendarRange?.slots ?? []
-  const weekBaseMinutes = weekCalendarRange?.startMinutes ?? 0
-  const weekClosingMinutes = weekCalendarRange?.endMinutes ?? 0
-  const weekTimeSlots = weekCalendarRange?.slots ?? []
-  const activeCalendarRange = currentView === 'day' ? dayCalendarRange : weekCalendarRange
-  const professionalCount = Math.max(visibleProfessionals.length, 1)
-  const dayColumnWidth =
-    professionalCount <= 2
-      ? 330
-      : professionalCount === 3
-        ? 270
-      : professionalCount === 4
-          ? 230
-          : professionalCount === 5
-            ? 205
-            : professionalCount === 6
-              ? 184
-              : 172
-  const dayGridMinWidth = 96 + professionalCount * dayColumnWidth
-  const dayGridStyle: CSSProperties & Record<'--scheduler-column-width', string> = {
-    gridTemplateColumns: `96px repeat(${professionalCount}, var(--scheduler-column-width))`,
+  );
+  const dayBaseMinutes = dayCalendarRange?.startMinutes ?? 0;
+  const dayClosingMinutes = dayCalendarRange?.endMinutes ?? 0;
+  const dayTimeSlots = useMemo(
+    () => dayCalendarRange?.slots ?? [],
+    [dayCalendarRange],
+  );
+  const weekBaseMinutes = weekCalendarRange?.startMinutes ?? 0;
+  const weekClosingMinutes = weekCalendarRange?.endMinutes ?? 0;
+  const weekTimeSlots = useMemo(
+    () => weekCalendarRange?.slots ?? [],
+    [weekCalendarRange],
+  );
+  const activeCalendarRange =
+    currentView === "day" ? dayCalendarRange : weekCalendarRange;
+  const activeTimeSlotCount =
+    currentView === "day" ? dayTimeSlots.length : weekTimeSlots.length;
+  const calendarNeedsVerticalScroll = activeTimeSlotCount > maxFittedTimeSlots;
+  const agendaLayout = useMemo(() => {
+    if (gridViewportHeight <= 0 || activeTimeSlotCount <= 0)
+      return baseAgendaLayout;
+
+    const availableRowsHeight =
+      gridViewportHeight - baseAgendaLayout.headerOffset;
+    const fittedSlotCount = Math.min(activeTimeSlotCount, maxFittedTimeSlots);
+    const fittedRowHeight = Math.floor(availableRowsHeight / fittedSlotCount);
+
+    return {
+      ...baseAgendaLayout,
+      rowHeight: Math.min(
+        baseAgendaLayout.maxRowHeight,
+        Math.max(baseAgendaLayout.minRowHeight, fittedRowHeight),
+      ),
+    };
+  }, [activeTimeSlotCount, baseAgendaLayout, gridViewportHeight]);
+
+  useEffect(() => {
+    const viewport = gridViewportRef.current;
+    if (!viewport || typeof ResizeObserver === "undefined") return;
+
+    const updateHeight = () => {
+      const nextHeight = Math.floor(viewport.getBoundingClientRect().height);
+      setGridViewportHeight((currentHeight) =>
+        currentHeight === nextHeight ? currentHeight : nextHeight,
+      );
+    };
+    const observer = new ResizeObserver(updateHeight);
+
+    updateHeight();
+    observer.observe(viewport);
+
+    return () => observer.disconnect();
+  }, [activeCalendarRange, currentView]);
+  const professionalCount = Math.max(visibleProfessionals.length, 1);
+  const dayGridMinWidth =
+    agendaLayout.timeColumnWidth +
+    professionalCount * agendaLayout.minColumnWidth;
+  const dayGridStyle: CSSProperties & Record<string, string> = {
+    gridTemplateColumns: `${agendaLayout.timeColumnWidth}px repeat(${professionalCount}, minmax(${agendaLayout.minColumnWidth}px, 1fr))`,
     minWidth: `${dayGridMinWidth}px`,
-    width: '100%',
-    '--scheduler-column-width': `${dayColumnWidth}px`,
-  }
+    width: "100%",
+    "--scheduler-grid-header-height": `${agendaLayout.headerOffset}px`,
+    "--scheduler-grid-row-height": `${agendaLayout.rowHeight}px`,
+    "--scheduler-time-column-width": `${agendaLayout.timeColumnWidth}px`,
+    "--scheduler-column-width": `${agendaLayout.minColumnWidth}px`,
+  };
+  const weekGridStyle: CSSProperties & Record<string, string> = {
+    gridTemplateColumns: `${agendaLayout.timeColumnWidth}px repeat(7, minmax(${agendaLayout.minColumnWidth}px, 1fr))`,
+    minWidth: `${agendaLayout.timeColumnWidth + 7 * agendaLayout.minColumnWidth}px`,
+    width: "100%",
+    "--scheduler-grid-header-height": `${agendaLayout.headerOffset}px`,
+    "--scheduler-grid-row-height": `${agendaLayout.rowHeight}px`,
+    "--scheduler-time-column-width": `${agendaLayout.timeColumnWidth}px`,
+    "--scheduler-column-width": `${agendaLayout.minColumnWidth}px`,
+  };
 
   const professionalIndexMap = useMemo(() => {
-    return new Map(visibleProfessionals.map((professional, index) => [professional.id, index]))
-  }, [visibleProfessionals])
+    return new Map(
+      visibleProfessionals.map((professional, index) => [
+        professional.id,
+        index,
+      ]),
+    );
+  }, [visibleProfessionals]);
 
   const dayAppointments = useMemo(() => {
-    const overlays: Array<DayOverlayBooking | null> = visibleBookings.map((booking) => {
+    const overlays: Array<DayOverlayBooking | null> = visibleBookings.map(
+      (booking) => {
         if (
           getMinutesFromTime(booking.end) <= dayBaseMinutes ||
           getMinutesFromTime(booking.start) >= dayClosingMinutes
-        ) return null
-        const columnIndex = professionalIndexMap.get(booking.professionalId)
-        if (columnIndex == null) return null
-        const left = 96 + columnIndex * dayColumnWidth + 12
-        const width = dayColumnWidth - 24
-
+        )
+          return null;
+        const columnIndex = professionalIndexMap.get(booking.professionalId);
+        if (columnIndex == null) return null;
         return {
           booking,
           style: {
@@ -183,27 +344,41 @@ export function SchedulerAgendaGrid({
               dayBaseMinutes,
               dayClosingMinutes,
               slotMinutes,
+              agendaLayout,
             ),
-            left: `${left}px`,
-            width: `${width}px`,
+            ...getOverlayHorizontalStyle(
+              columnIndex,
+              professionalCount,
+              agendaLayout,
+            ),
           },
-        }
-      })
+        };
+      },
+    );
 
-    return overlays.filter((value): value is DayOverlayBooking => value !== null)
-  }, [dayBaseMinutes, dayClosingMinutes, dayColumnWidth, professionalIndexMap, slotMinutes, visibleBookings])
+    return overlays.filter(
+      (value): value is DayOverlayBooking => value !== null,
+    );
+  }, [
+    agendaLayout,
+    dayBaseMinutes,
+    dayClosingMinutes,
+    professionalCount,
+    professionalIndexMap,
+    slotMinutes,
+    visibleBookings,
+  ]);
 
   const dayBlocks = useMemo(() => {
-    const overlays: Array<DayOverlayBlock | null> = visibleBlocks.map((block) => {
+    const overlays: Array<DayOverlayBlock | null> = visibleBlocks.map(
+      (block) => {
         if (
           getMinutesFromTime(block.end) <= dayBaseMinutes ||
           getMinutesFromTime(block.start) >= dayClosingMinutes
-        ) return null
-        const columnIndex = professionalIndexMap.get(block.professionalId)
-        if (columnIndex == null) return null
-        const left = 96 + columnIndex * dayColumnWidth + 12
-        const width = dayColumnWidth - 24
-
+        )
+          return null;
+        const columnIndex = professionalIndexMap.get(block.professionalId);
+        if (columnIndex == null) return null;
         return {
           block,
           style: {
@@ -213,22 +388,35 @@ export function SchedulerAgendaGrid({
               dayBaseMinutes,
               dayClosingMinutes,
               slotMinutes,
+              agendaLayout,
             ),
-            left: `${left}px`,
-            width: `${width}px`,
+            ...getOverlayHorizontalStyle(
+              columnIndex,
+              professionalCount,
+              agendaLayout,
+            ),
           },
-        }
-      })
+        };
+      },
+    );
 
-    return overlays.filter((value): value is DayOverlayBlock => value !== null)
-  }, [dayBaseMinutes, dayClosingMinutes, dayColumnWidth, professionalIndexMap, slotMinutes, visibleBlocks])
+    return overlays.filter((value): value is DayOverlayBlock => value !== null);
+  }, [
+    agendaLayout,
+    dayBaseMinutes,
+    dayClosingMinutes,
+    professionalCount,
+    professionalIndexMap,
+    slotMinutes,
+    visibleBlocks,
+  ]);
 
   const occupiedDaySlots = useMemo(() => {
-    const occupied = new Set<string>()
+    const occupied = new Set<string>();
 
     dayTimeSlots.forEach((slot) => {
-      const slotStart = getMinutesFromTime(slot)
-      const slotEnd = slotStart + slotMinutes
+      const slotStart = getMinutesFromTime(slot);
+      const slotEnd = slotStart + slotMinutes;
 
       visibleProfessionals.forEach((professional) => {
         const bookingOccupiesSlot = visibleBookings.some(
@@ -236,75 +424,106 @@ export function SchedulerAgendaGrid({
             booking.professionalId === professional.id &&
             getMinutesFromTime(booking.start) < slotEnd &&
             getMinutesFromTime(booking.end) > slotStart,
-        )
+        );
         const blockOccupiesSlot = visibleBlocks.some(
           (block) =>
             block.professionalId === professional.id &&
             getMinutesFromTime(block.start) < slotEnd &&
             getMinutesFromTime(block.end) > slotStart,
-        )
+        );
 
         if (bookingOccupiesSlot || blockOccupiesSlot) {
-          occupied.add(`${slot}-${professional.id}`)
+          occupied.add(`${slot}-${professional.id}`);
         }
-      })
-    })
+      });
+    });
 
-    return occupied
-  }, [dayTimeSlots, slotMinutes, visibleBlocks, visibleBookings, visibleProfessionals])
+    return occupied;
+  }, [
+    dayTimeSlots,
+    slotMinutes,
+    visibleBlocks,
+    visibleBookings,
+    visibleProfessionals,
+  ]);
 
   const slotActionOverlay = useMemo(() => {
-    if (!emptySlotAction) return null
+    if (!emptySlotAction) return null;
 
-    const columnIndex = professionalIndexMap.get(emptySlotAction.professionalId)
-    if (columnIndex == null) return null
+    const columnIndex = professionalIndexMap.get(
+      emptySlotAction.professionalId,
+    );
+    if (columnIndex == null) return null;
 
-    const startMinutes = getMinutesFromTime(emptySlotAction.startTime)
+    const startMinutes = getMinutesFromTime(emptySlotAction.startTime);
     const startCellIndex = Math.max(
       0,
       Math.floor((startMinutes - dayBaseMinutes) / slotMinutes),
-    )
-    const top = getSchedulerCardTop(startCellIndex)
+    );
+    const top = getSchedulerCardTop(startCellIndex, agendaLayout);
+    const horizontalStyle = getOverlayHorizontalStyle(
+      columnIndex,
+      professionalCount,
+      agendaLayout,
+    );
 
     return {
       professionalId: emptySlotAction.professionalId,
       startTime: emptySlotAction.startTime,
       style: {
         top: `${top}px`,
-        left: `${96 + columnIndex * dayColumnWidth + 8}px`,
-        width: `${Math.min(dayColumnWidth - 16, 260)}px`,
+        left: horizontalStyle.left,
+        width: `min(${horizontalStyle.width}, 260px)`,
       },
-    } satisfies SlotActionOverlay
-  }, [dayBaseMinutes, dayColumnWidth, emptySlotAction, professionalIndexMap, slotMinutes])
+    } satisfies SlotActionOverlay;
+  }, [
+    agendaLayout,
+    dayBaseMinutes,
+    emptySlotAction,
+    professionalCount,
+    professionalIndexMap,
+    slotMinutes,
+  ]);
 
-  const now = new Date()
-  const currentTimeLabel = `${now.getHours().toString().padStart(2, '0')}:${now
+  const now = new Date();
+  const currentTimeLabel = `${now.getHours().toString().padStart(2, "0")}:${now
     .getMinutes()
     .toString()
-    .padStart(2, '0')}`
-  const currentTimeMinutes = getMinutesFromTime(currentTimeLabel)
+    .padStart(2, "0")}`;
+  const currentTimeMinutes = getMinutesFromTime(currentTimeLabel);
   const showCurrentTimeLine =
-    currentView === 'day' &&
+    currentView === "day" &&
     isSameDay(selectedDate, now) &&
     currentTimeMinutes >= dayBaseMinutes &&
-    currentTimeMinutes <= dayClosingMinutes
+    currentTimeMinutes <= dayClosingMinutes;
 
   return (
-    <Card className="overflow-hidden rounded-[34px] border-white/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.86)_0%,rgba(255,255,255,0.76)_100%)] shadow-[0_30px_80px_rgba(15,23,42,0.1)] backdrop-blur">
-      <CardContent className="p-0">
+    <Card className="scheduler-agenda-card flex h-full min-h-0 flex-col overflow-hidden rounded-[34px] border-white/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.86)_0%,rgba(255,255,255,0.76)_100%)] shadow-[0_30px_80px_rgba(15,23,42,0.1)] backdrop-blur">
+      <CardContent className="flex min-h-0 flex-1 flex-col p-0">
         {!activeCalendarRange ? (
           <div className="flex min-h-[320px] flex-col items-center justify-center gap-3 px-6 text-center">
             <CalendarDays className="h-9 w-9 text-slate-300" />
             <div>
               <p className="font-semibold text-slate-700">Comercio cerrado</p>
               <p className="mt-1 text-sm text-slate-500">
-                No hay horarios de servicio definidos para {currentView === 'day' ? 'este día' : 'esta semana'}.
+                No hay horarios de servicio definidos para{" "}
+                {currentView === "day" ? "este día" : "esta semana"}.
               </p>
             </div>
           </div>
-        ) : currentView === 'day' ? (
-          <div className="scheduler-grid-wrapper scheduler-grid-wrapper-day overflow-x-auto">
-            <div className="scheduler-grid scheduler-grid-day" style={dayGridStyle}>
+        ) : currentView === "day" ? (
+          <div
+            ref={gridViewportRef}
+            className={cn(
+              "scheduler-grid-wrapper scheduler-grid-wrapper-day overflow-x-auto",
+              calendarNeedsVerticalScroll &&
+                "scheduler-grid-wrapper-scrollable-y",
+            )}
+          >
+            <div
+              className="scheduler-grid scheduler-grid-day"
+              style={dayGridStyle}
+            >
               <div className="scheduler-grid-corner" />
               {visibleProfessionals.map((professional) => (
                 <div key={professional.id} className="scheduler-column-header">
@@ -316,8 +535,12 @@ export function SchedulerAgendaGrid({
                     size="header"
                   />
                   <div className="min-w-0">
-                    <p className="truncate text-[0.88rem] font-semibold tracking-[-0.02em] text-slate-800">{professional.name}</p>
-                    <p className="text-[0.66rem] uppercase tracking-[0.16em] text-slate-400">Cabina lista</p>
+                    <p className="scheduler-professional-name truncate text-[0.88rem] font-semibold tracking-[-0.02em] text-slate-800">
+                      {professional.name}
+                    </p>
+                    <p className="scheduler-professional-status text-[0.66rem] uppercase tracking-[0.16em] text-slate-400">
+                      Cabina lista
+                    </p>
                   </div>
                 </div>
               ))}
@@ -326,28 +549,32 @@ export function SchedulerAgendaGrid({
                 <div key={slot} className="contents">
                   <div className="scheduler-time-cell">{slot}</div>
                   {visibleProfessionals.map((professional) => {
-                    const isOccupied = occupiedDaySlots.has(`${slot}-${professional.id}`)
+                    const isOccupied = occupiedDaySlots.has(
+                      `${slot}-${professional.id}`,
+                    );
 
                     return (
                       <div
                         key={`${slot}-${professional.id}`}
                         className={cn(
-                          'scheduler-body-cell',
+                          "scheduler-body-cell",
                           isOccupied
-                            ? 'scheduler-body-cell-occupied'
-                            : 'scheduler-body-cell-interactive',
+                            ? "scheduler-body-cell-occupied"
+                            : "scheduler-body-cell-interactive",
                         )}
                       >
-                        {isOccupied ? null : (
+                        {isOccupied || !canWrite ? null : (
                           <button
                             aria-label={`Abrir acciones para ${professional.name} a las ${slot}`}
                             className="scheduler-cell-hitbox"
                             type="button"
-                            onClick={() => onOpenSlotAction(professional.id, slot)}
+                            onClick={() =>
+                              onOpenSlotAction(professional.id, slot)
+                            }
                           />
                         )}
                       </div>
-                    )
+                    );
                   })}
                 </div>
               ))}
@@ -357,17 +584,20 @@ export function SchedulerAgendaGrid({
                   key={block.id}
                   aria-label={`Editar disponibilidad de ${block.start} a ${block.end}`}
                   className={cn(
-                    'scheduler-appointment scheduler-appointment-contained cursor-pointer text-left transition hover:-translate-y-0.5 hover:shadow-[0_18px_34px_rgba(15,23,42,0.1)]',
-                    block.variant === 'blocked'
-                      ? 'scheduler-appointment-blocked'
-                      : 'scheduler-appointment-unavailable',
+                    "scheduler-appointment scheduler-appointment-contained cursor-pointer text-left transition hover:-translate-y-0.5 hover:shadow-[0_18px_34px_rgba(15,23,42,0.1)]",
+                    block.variant === "blocked"
+                      ? "scheduler-appointment-blocked"
+                      : "scheduler-appointment-unavailable",
                   )}
                   style={style}
                   type="button"
                   onClick={() => onEditBlock(block)}
+                  disabled={!canWrite}
                 >
-                  <p className="truncate text-[0.9rem] font-semibold">{block.label}</p>
-                  <p className="text-[0.72rem] uppercase tracking-[0.16em]">
+                  <p className="scheduler-appointment-title truncate text-[0.9rem] font-semibold">
+                    {block.label}
+                  </p>
+                  <p className="scheduler-appointment-detail text-[0.72rem] uppercase tracking-[0.16em]">
                     {block.start} - {block.end}
                   </p>
                 </button>
@@ -387,19 +617,21 @@ export function SchedulerAgendaGrid({
                         }}
                         type="button"
                       >
-                        <div className="mb-1 flex items-center gap-2">
+                        <div className="scheduler-appointment-meta mb-1 flex items-center gap-2">
                           <span
                             className="h-2.5 w-2.5 rounded-full"
-                            style={{ backgroundColor: statusColors[booking.status] }}
+                            style={{
+                              backgroundColor: statusColors[booking.status],
+                            }}
                           />
                           <span className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] opacity-70">
                             {booking.start}
                           </span>
                         </div>
-                        <p className="line-clamp-2 text-[0.96rem] font-semibold tracking-[-0.02em]">
+                        <p className="scheduler-appointment-title line-clamp-2 text-[0.96rem] font-semibold tracking-[-0.02em]">
                           {booking.customerName}
                         </p>
-                        <p className="mt-1 truncate text-[0.74rem] uppercase tracking-[0.12em] opacity-75">
+                        <p className="scheduler-appointment-detail mt-1 truncate text-[0.74rem] uppercase tracking-[0.12em] opacity-75">
                           {booking.serviceName}
                         </p>
                       </button>
@@ -414,15 +646,48 @@ export function SchedulerAgendaGrid({
                       <SchedulerBookingCard
                         booking={booking}
                         commerceName={commerceName}
-                        clientAccount={getClientPurchaseAccount(allBookings, booking)}
-                        paymentHistory={financialAccessByClient[getSchedulerClientAccessKey(booking.clientId, booking.phone)]
-                          ? getClientPaymentHistory(allBookings, booking)
-                          : []}
-                        {...(financialAccessByClient[getSchedulerClientAccessKey(booking.clientId, booking.phone)]
-                          ? { financialProfile: financialAccessByClient[getSchedulerClientAccessKey(booking.clientId, booking.phone)] }
+                        clientAccount={
+                          (booking.clientId
+                            ? clientAccountsByClient[booking.clientId]
+                            : undefined) ??
+                          getClientPurchaseAccount(allBookings, booking)
+                        }
+                        paymentHistory={
+                          (booking.clientId
+                            ? paymentHistoryByClient[booking.clientId]
+                            : undefined) ??
+                          (financialAccessByClient[
+                            getSchedulerClientAccessKey(
+                              booking.clientId,
+                              booking.phone,
+                            )
+                          ]
+                            ? getClientPaymentHistory(allBookings, booking)
+                            : [])
+                        }
+                        {...(financialAccessByClient[
+                          getSchedulerClientAccessKey(
+                            booking.clientId,
+                            booking.phone,
+                          )
+                        ]
+                          ? {
+                              financialProfile:
+                                financialAccessByClient[
+                                  getSchedulerClientAccessKey(
+                                    booking.clientId,
+                                    booking.phone,
+                                  )
+                                ],
+                            }
                           : {})}
                         financialAuditEvents={financialAuditEvents.filter(
-                          (event) => event.clientKey === getSchedulerClientAccessKey(booking.clientId, booking.phone),
+                          (event) =>
+                            event.clientKey ===
+                            getSchedulerClientAccessKey(
+                              booking.clientId,
+                              booking.phone,
+                            ),
                         )}
                         selectedDate={selectedDate}
                         statusColors={statusColors}
@@ -434,18 +699,34 @@ export function SchedulerAgendaGrid({
                         onPurchaseDecision={onPurchaseDecision}
                         onRequestFinancialAccess={onRequestFinancialAccess}
                         onRevokeFinancialAccess={onRevokeFinancialAccess}
-                        onUpdatePaymentHistory={(paymentBookingId, amount, tentativeAmount) =>
-                          onUpdatePaymentHistory(booking, paymentBookingId, amount, tentativeAmount)}
+                        onUpdatePaymentHistory={(
+                          paymentBookingId,
+                          amount,
+                          tentativeAmount,
+                        ) =>
+                          onUpdatePaymentHistory(
+                            booking,
+                            paymentBookingId,
+                            amount,
+                            tentativeAmount,
+                          )
+                        }
                         onDeletePaymentHistory={(paymentBookingId) =>
-                          onDeletePaymentHistory(booking, paymentBookingId)}
+                          onDeletePaymentHistory(booking, paymentBookingId)
+                        }
+                        canWrite={canWrite}
+                        financialHistoryReadOnly={financialHistoryReadOnly}
                       />
                     </DialogContent>
                   </Dialog>
-                )
+                );
               })}
 
-              {slotActionOverlay ? (
-                <div className="scheduler-slot-action" style={slotActionOverlay.style}>
+              {slotActionOverlay && canWrite ? (
+                <div
+                  className="scheduler-slot-action"
+                  style={slotActionOverlay.style}
+                >
                   <div className="scheduler-slot-action-header">
                     <button
                       className="flex h-8 w-8 items-center justify-center rounded-full text-[var(--scheduler-ink-strong)] transition hover:bg-[rgba(195,165,131,0.14)]"
@@ -453,7 +734,9 @@ export function SchedulerAgendaGrid({
                     >
                       <Plus className="h-5 w-5" />
                     </button>
-                    <span className="text-[0.96rem] font-medium text-slate-500">Agregar</span>
+                    <span className="text-[0.96rem] font-medium text-slate-500">
+                      Agregar
+                    </span>
                     <button
                       className="ml-auto flex h-8 w-8 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
                       onClick={onCloseSlotAction}
@@ -466,7 +749,10 @@ export function SchedulerAgendaGrid({
                   <button
                     className="scheduler-slot-action-item"
                     onClick={() =>
-                      onOpenNewBooking(slotActionOverlay.professionalId, slotActionOverlay.startTime)
+                      onOpenNewBooking(
+                        slotActionOverlay.professionalId,
+                        slotActionOverlay.startTime,
+                      )
                     }
                     type="button"
                   >
@@ -477,7 +763,10 @@ export function SchedulerAgendaGrid({
                   <button
                     className="scheduler-slot-action-item"
                     onClick={() =>
-                      onMockBlock(slotActionOverlay.professionalId, slotActionOverlay.startTime)
+                      onCreateBlock(
+                        slotActionOverlay.professionalId,
+                        slotActionOverlay.startTime,
+                      )
                     }
                     type="button"
                   >
@@ -490,36 +779,48 @@ export function SchedulerAgendaGrid({
               {showCurrentTimeLine ? (
                 <div
                   className="scheduler-current-time-line"
-                  style={getCurrentTimeLineStyle(currentTimeLabel, dayBaseMinutes, slotMinutes)}
+                  style={getCurrentTimeLineStyle(
+                    currentTimeLabel,
+                    dayBaseMinutes,
+                    slotMinutes,
+                    agendaLayout,
+                  )}
                 >
-                  <span className="scheduler-current-time-pill">{currentTimeLabel}</span>
+                  <span className="scheduler-current-time-pill">
+                    {currentTimeLabel}
+                  </span>
                 </div>
               ) : null}
             </div>
           </div>
         ) : (
-          <div className="scheduler-grid-wrapper overflow-x-auto">
-            <div
-              className="scheduler-grid"
-              style={{
-                gridTemplateColumns: '96px repeat(7, var(--scheduler-column-width))',
-                minWidth: '1776px',
-                width: '100%',
-              }}
-            >
+          <div
+            ref={gridViewportRef}
+            className={cn(
+              "scheduler-grid-wrapper scheduler-grid-wrapper-calendar overflow-x-auto",
+              calendarNeedsVerticalScroll &&
+                "scheduler-grid-wrapper-scrollable-y",
+            )}
+          >
+            <div className="scheduler-grid" style={weekGridStyle}>
               <div className="scheduler-grid-corner flex items-center justify-center">
                 <Badge className="rounded-full bg-slate-100 px-4 py-1 text-slate-500">
-                  {visibleProfessionals[0]?.name ?? 'Especialista'}
+                  {visibleProfessionals[0]?.name ?? "Especialista"}
                 </Badge>
               </div>
               {weekDays.map((day) => (
-                <div key={day.toISOString()} className="scheduler-column-header">
+                <div
+                  key={day.toISOString()}
+                  className="scheduler-column-header"
+                >
                   <div>
                     <p className="text-base font-semibold capitalize text-slate-800">
-                      {format(day, 'EEEE dd/MM', { locale: es })}
+                      {format(day, "EEEE dd/MM", { locale: es })}
                     </p>
                     <p className="text-xs uppercase tracking-[0.18em] text-slate-400">
-                      {isSameDay(day, selectedDate) ? 'Fecha activa' : 'Disponible'}
+                      {isSameDay(day, selectedDate)
+                        ? "Fecha activa"
+                        : "Disponible"}
                     </p>
                   </div>
                 </div>
@@ -532,55 +833,212 @@ export function SchedulerAgendaGrid({
                     <div
                       key={`${slot}-${day.toISOString()}`}
                       className={cn(
-                        'scheduler-body-cell',
-                        isOutsideCommerceOperatingHours(
+                        "scheduler-body-cell",
+                        isOutsideSchedulerOperatingHours(
                           commerceOperatingHours,
                           day,
                           slot,
                           addMinutesToTime(slot, slotMinutes),
                         )
-                          ? 'scheduler-body-cell-commerce-closed'
-                          : '',
+                          ? "scheduler-body-cell-commerce-closed"
+                          : "",
                       )}
                     />
                   ))}
                 </div>
               ))}
 
-              {schedulerWeekBookings.map((booking) => {
-                const bookingStartMinutes = getMinutesFromTime(booking.start)
+              {weekBookings.map((booking) => {
+                const bookingStartMinutes = getMinutesFromTime(booking.start);
                 if (
                   bookingStartMinutes < weekBaseMinutes ||
                   bookingStartMinutes >= weekClosingMinutes
-                ) return null
+                )
+                  return null;
                 const style = getSingleCellAppointmentStyle(
                   booking.start,
                   weekBaseMinutes,
                   weekClosingMinutes,
                   slotMinutes,
-                )
+                  agendaLayout,
+                );
+                const horizontalStyle = getOverlayHorizontalStyle(
+                  booking.dayOffset,
+                  7,
+                  agendaLayout,
+                );
 
                 return (
-                  <div
-                    key={booking.id}
-                    className="scheduler-appointment scheduler-appointment-blocked text-left"
-                    style={{
-                      ...style,
-                      left: `calc(96px + ${booking.dayOffset} * var(--scheduler-column-width) + 10px)`,
-                      width: 'calc(var(--scheduler-column-width) - 20px)',
-                    }}
-                  >
-                    <p className="truncate text-sm font-semibold">{booking.customerName}</p>
-                    <p className="text-xs uppercase tracking-[0.12em]">
-                      {booking.start} - {booking.end}
-                    </p>
-                  </div>
+                  <Dialog key={booking.id}>
+                    <DialogTrigger asChild>
+                      <button
+                        className="scheduler-appointment scheduler-appointment-contained scheduler-appointment-booking text-left transition hover:-translate-y-0.5"
+                        style={{
+                          ...style,
+                          ...horizontalStyle,
+                          backgroundColor: `color-mix(in srgb, ${statusColors[booking.status]} 8%, white)`,
+                          borderColor: `color-mix(in srgb, ${statusColors[booking.status]} 25%, white)`,
+                          color: `color-mix(in srgb, ${statusColors[booking.status]} 70%, #364152)`,
+                        }}
+                        type="button"
+                      >
+                        <div className="scheduler-appointment-meta mb-1 flex items-center gap-2">
+                          <span
+                            className="h-2.5 w-2.5 rounded-full"
+                            style={{
+                              backgroundColor: statusColors[booking.status],
+                            }}
+                          />
+                          <span className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] opacity-70">
+                            {booking.start}
+                          </span>
+                        </div>
+                        <p className="scheduler-appointment-title line-clamp-2 text-[0.9rem] font-semibold">
+                          {booking.customerName}
+                        </p>
+                        <p className="scheduler-appointment-detail mt-1 truncate text-[0.7rem] uppercase tracking-[0.12em] opacity-75">
+                          {booking.serviceName}
+                        </p>
+                      </button>
+                    </DialogTrigger>
+                    <DialogContent
+                      className="w-[min(560px,calc(100vw-2rem))] max-h-[90vh] overflow-y-auto rounded-[20px] border p-3.5 shadow-[0_18px_42px_rgba(79,61,43,0.14)]"
+                      style={{
+                        backgroundColor: `color-mix(in srgb, ${statusColors[booking.status]} 8%, white)`,
+                        borderColor: `color-mix(in srgb, ${statusColors[booking.status]} 25%, white)`,
+                      }}
+                    >
+                      <SchedulerBookingCard
+                        booking={booking}
+                        commerceName={commerceName}
+                        clientAccount={
+                          (booking.clientId
+                            ? clientAccountsByClient[booking.clientId]
+                            : undefined) ??
+                          getClientPurchaseAccount(allBookings, booking)
+                        }
+                        paymentHistory={
+                          (booking.clientId
+                            ? paymentHistoryByClient[booking.clientId]
+                            : undefined) ??
+                          (financialAccessByClient[
+                            getSchedulerClientAccessKey(
+                              booking.clientId,
+                              booking.phone,
+                            )
+                          ]
+                            ? getClientPaymentHistory(allBookings, booking)
+                            : [])
+                        }
+                        {...(financialAccessByClient[
+                          getSchedulerClientAccessKey(
+                            booking.clientId,
+                            booking.phone,
+                          )
+                        ]
+                          ? {
+                              financialProfile:
+                                financialAccessByClient[
+                                  getSchedulerClientAccessKey(
+                                    booking.clientId,
+                                    booking.phone,
+                                  )
+                                ],
+                            }
+                          : {})}
+                        financialAuditEvents={financialAuditEvents.filter(
+                          (event) =>
+                            event.clientKey ===
+                            getSchedulerClientAccessKey(
+                              booking.clientId,
+                              booking.phone,
+                            ),
+                        )}
+                        selectedDate={
+                          new Date(
+                            `${booking.date ?? format(selectedDate, "yyyy-MM-dd")}T12:00:00`,
+                          )
+                        }
+                        statusColors={statusColors}
+                        onDelete={onDeleteBooking}
+                        onEdit={onEditBooking}
+                        onOpenDetail={onOpenBookingDetail}
+                        onOpenClientHistory={onOpenClientHistory}
+                        onStatusChange={onUpdateBookingStatus}
+                        onPurchaseDecision={onPurchaseDecision}
+                        onRequestFinancialAccess={onRequestFinancialAccess}
+                        onRevokeFinancialAccess={onRevokeFinancialAccess}
+                        onUpdatePaymentHistory={(
+                          paymentBookingId,
+                          amount,
+                          tentativeAmount,
+                        ) =>
+                          onUpdatePaymentHistory(
+                            booking,
+                            paymentBookingId,
+                            amount,
+                            tentativeAmount,
+                          )
+                        }
+                        onDeletePaymentHistory={(paymentBookingId) =>
+                          onDeletePaymentHistory(booking, paymentBookingId)
+                        }
+                        canWrite={canWrite}
+                        financialHistoryReadOnly={financialHistoryReadOnly}
+                      />
+                    </DialogContent>
+                  </Dialog>
+                );
+              })}
+
+              {weekBlocks.map((block) => {
+                const blockStartMinutes = getMinutesFromTime(block.start);
+                if (
+                  blockStartMinutes < weekBaseMinutes ||
+                  blockStartMinutes >= weekClosingMinutes
                 )
+                  return null;
+                const style = getSingleCellAppointmentStyle(
+                  block.start,
+                  weekBaseMinutes,
+                  weekClosingMinutes,
+                  slotMinutes,
+                  agendaLayout,
+                );
+                const horizontalStyle = getOverlayHorizontalStyle(
+                  block.dayOffset,
+                  7,
+                  agendaLayout,
+                );
+
+                return (
+                  <button
+                    key={block.id}
+                    aria-label={`${block.label}, ${block.start} a ${block.end}`}
+                    className={cn(
+                      "scheduler-appointment scheduler-appointment-contained text-left",
+                      block.variant === "blocked"
+                        ? "scheduler-appointment-blocked"
+                        : "scheduler-appointment-unavailable",
+                    )}
+                    disabled={!canWrite || block.variant === "unavailable"}
+                    onClick={() => onEditBlock(block)}
+                    style={{ ...style, ...horizontalStyle }}
+                    type="button"
+                  >
+                    <p className="truncate text-sm font-semibold">
+                      {block.label}
+                    </p>
+                    <p className="text-xs uppercase tracking-[0.12em]">
+                      {block.start} - {block.end}
+                    </p>
+                  </button>
+                );
               })}
             </div>
           </div>
         )}
       </CardContent>
     </Card>
-  )
+  );
 }

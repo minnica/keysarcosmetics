@@ -3,6 +3,8 @@
 > Documento de planeación creado el 2 de septiembre de 2026.
 > Esta es la línea base funcional y técnica acordada para construir el backend, las bases de datos y la conexión real de `apps/pos`. Debe mantenerse como documento vivo: cada cambio solicitado por Producto debe registrar qué decisión reemplaza, por qué cambia y desde qué fase aplica.
 
+> **Actualización 2026-09-08:** la restauración e integración siguientes se rigen por [PLAN_RESTAURACION_VISUAL_POS.md](PLAN_RESTAURACION_VISUAL_POS.md). El visual obligatorio es el árbol completo de `feature/pos` en `12fb8045cc264b565cb6e764d95ad7b2447fbfa1`. Las fases 0–14 permanecen como historial; se reutiliza/adapta su backend y se retira lo incompatible, sin modificar esa interfaz para acomodar contratos existentes. Ver Cambio 2 al final del documento.
+
 ## 1. Resumen y decisiones arquitectónicas
 
 El POS se implementará como módulos dentro de `backend/api`, usando:
@@ -451,6 +453,8 @@ Todo requisito de las secciones 20–46 queda así asignado. La presencia de una
 
 ### Fase 11 — Integración transaccional con Agenda CRM
 
+> **Autoridad actual (4 de septiembre de 2026):** la Fase 5 de `PLAN_BACKEND_SCHEDULER.md` sustituyó el proveedor efectivo por Scheduler interno. Esta sección conserva el contrato HTTP y la saga como rollback temporal; `AGENDA_PROVIDER=internal` es el default, las nuevas citas se enlazan mediante `PosAppointment.schedulerAppointmentId` y Agenda CRM ya no es la autoridad final. Ver `docs/SCHEDULER_PHASE_5_POS_INTEGRATION.md`.
+
 - [x] Definir un adaptador backend de Agenda; URL, token y secretos viven sólo en servidor. El renderer nunca llama directamente al CRM ni recibe sus credenciales.
 - [x] Mapear `Customer` a `externalClientId` estable y conservar `externalReservationId`, `externalAppointmentId`, recurso, slot, versión, capacidad y snapshot horario en la cita local.
 - [x] Consultar disponibilidad por sucursal/rango y aceptar únicamente slots elegibles con capacidad. La confirmación revalida en Agenda y usa una clave idempotente estable derivada de la operación local.
@@ -722,3 +726,16 @@ No reescribir silenciosamente este registro: conservar siempre la trazabilidad e
 - Datos o migraciones requeridos: sólo migraciones aditivas posteriores a `20260903060000_add_pos_notifications_reports`; no se migran los estados mock del frontend como datos operativos.
 - Compatibilidad y riesgos: Agenda no comparte una transacción ACID con PostgreSQL y exige saga/compensación; los nuevos participantes no deben duplicar proyecciones de nómina; bancos y membresías deben preservar snapshots; el alcance debe aplicarse antes de agregar o exportar.
 - Criterio de aceptación actualizado: las fases 9–14 y su segundo piloto deben quedar en `PASS` antes de considerar cubierto el `archivo.md` vigente.
+
+### Cambio 2 — Visual obligatorio en `12fb804` y backend subordinado a su contrato de interfaz
+
+- Fecha: 2026-09-08.
+- Solicitado por: usuario, quien identifica el visual aprobado por el PO.
+- Decisión anterior afectada: decisiones 1 y 4 y Cambio 1, en cuanto a la libertad de modificar presentación durante la conexión del POS. También sustituye la propuesta conversacional de restaurar `8fd71f3` y sumar módulos selectivamente.
+- Contexto nuevo: el usuario exige conservar íntegramente el visual de `feature/pos` en `12fb8045cc264b565cb6e764d95ad7b2447fbfa1`, incluidos sus módulos nuevos. No acepta una interfaz inventada ni modificada para satisfacer el backend existente.
+- Nueva decisión: ejecutar `PLAN_RESTAURACION_VISUAL_POS.md` mediante RV0–RV10. Reutilizar backend compatible, adaptar o desarrollar soporte para los controles aprobados y eliminar las implementaciones incompatibles una vez verificadas sus dependencias y su sustitución cuando corresponda.
+- Fases/modelos/endpoints afectados: auditar la integración de las fases 0–14 sin reescribir su historial; la matriz RV1 define cambios concretos y evita eliminaciones especulativas.
+- Datos o migraciones requeridos: se determinan tras inventariar consumidores, datos y migraciones realmente aplicadas. No se autoriza borrar históricos operativos, reescribir migraciones aplicadas ni afectar datos de otras aplicaciones por el solo retiro de una implementación POS.
+- Compatibilidad y riesgos: conservar proyecciones financieras, identidades compartidas, seguridad y operaciones offline pendientes. La fidelidad del renderer y componentes compartidos debe demostrarse con capturas y recorridos de la referencia fija.
+- Criterio de aceptación actualizado: visual e interacción correspondientes a `12fb804`, operaciones POS conectadas y verificadas, backend incompatible retirado con trazabilidad y gates de integración/piloto realmente ejecutados. El build por sí solo no acredita fidelidad visual ni cierre funcional.
+- Estado: decisión y plan documentados; restauración, retirada de backend, migraciones y despliegue aún no ejecutados.

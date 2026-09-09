@@ -130,6 +130,14 @@ jobs:
           node-version: 22.23.2
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: pnpm turbo:graph:verify
+      - run: pnpm deploy:impact:test
+      - run: pnpm deploy:pilot:test
+      - run: pnpm deploy:development:test
+      - run: pnpm deploy:production-shadow:test
+      - run: pnpm deploy:production:test
+      - run: pnpm deploy:operations:test
+      - run: pnpm deploy:release-manifest:test
       - run: pnpm ci:build
 
   database-integration:
@@ -162,7 +170,18 @@ jobs:
       - run: pnpm --filter @cosmetics/api prisma:schemas
       - run: pnpm --filter @cosmetics/api prisma:validate
       - run: pnpm --filter @cosmetics/api db:migrate:deploy
+      - name: Verify the Scheduler upgrade from the 39-migration snapshot
+        env:
+          SCHEDULER_MIGRATION_FIXTURE_CONFIRMATION: EPHEMERAL_ONLY
+          SCHEDULER_UPGRADE_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/cosmetics_ci?schema=scheduler_upgrade_ci
+        run: scripts/verify-scheduler-migration-path.sh
       - run: pnpm test:integration
         env:
           RUN_DATABASE_TESTS: true
+          JWT_SECRET: integration-test-secret-with-adequate-length
+      - name: Run the Scheduler 30-branch load gate
+        run: pnpm --filter @cosmetics/api test:scheduler:load
+        env:
+          RUN_SCHEDULER_LOAD_TESTS: true
+          SCHEDULER_LOAD_MAX_MS: 30000
           JWT_SECRET: integration-test-secret-with-adequate-length

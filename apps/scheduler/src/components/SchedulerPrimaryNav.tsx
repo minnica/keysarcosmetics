@@ -22,9 +22,9 @@ import {
   WalletCards,
 } from "lucide-react";
 import {
-  canAccessSchedulerScreen,
   type SchedulerScreenId,
 } from "@/lib/scheduler-access";
+import { useSchedulerSession } from "@/lib/session";
 import { clientNavigationItems } from "@/lib/client-navigation";
 
 export type SchedulerNavArea = "agenda" | "clients" | "reports" | "administration" | "settings";
@@ -94,8 +94,9 @@ export function ReportsNavMenu({
   compact?: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const canViewSummary = canAccessSchedulerScreen("reports.summary");
-  const canViewReservations = canAccessSchedulerScreen("reports.reservations");
+  const { canAccess } = useSchedulerSession();
+  const canViewSummary = canAccess("reports.summary");
+  const canViewReservations = canAccess("reports.reservations");
 
   if (!canViewSummary && !canViewReservations) return null;
 
@@ -169,11 +170,12 @@ export function AdministrationNavMenu({
   onSelect?: ((section: AdministrationSectionId) => void) | undefined;
 }) {
   const [open, setOpen] = useState(false);
+  const { canAccess } = useSchedulerSession();
   const visibleGroups = administrationGroups
     .map((group) => ({
       ...group,
       items: group.items.filter((item) =>
-        canAccessSchedulerScreen(getAdministrationScreenId(item.id)),
+        canAccess(getAdministrationScreenId(item.id)),
       ),
     }))
     .filter((group) => group.items.length > 0);
@@ -253,8 +255,9 @@ export function AdministrationNavMenu({
 export function ClientsNavMenu() {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
+  const { canAccess } = useSchedulerSession();
 
-  if (!canAccessSchedulerScreen("clients")) return null;
+  if (!canAccess("clients")) return null;
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -297,9 +300,10 @@ export function SchedulerPrimaryNav({
   activeReport?: SchedulerReportPage;
   onAdministrationSelect?: (section: AdministrationSectionId) => void;
 }) {
+  const { canAccess } = useSchedulerSession();
   return (
     <nav className="hidden items-center gap-1 xl:flex">
-      {canAccessSchedulerScreen("agenda") ? (
+      {canAccess("agenda") ? (
         <Link className={activeArea === "agenda" ? "report-nav-active" : "report-nav-link"} href="/">
           Agenda
         </Link>

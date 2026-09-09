@@ -102,6 +102,9 @@ el diseño y el autocuidado.
 
 ## Estado actual de `apps/pos`
 
+- **Decisión vigente de presentación (2026-09-08):** la única referencia visual aprobada por el usuario es el árbol completo de `feature/pos` en `12fb8045cc264b565cb6e764d95ad7b2447fbfa1`, incluidos sus módulos nuevos. `8fd71f3` es sólo histórico. El plan de ejecución está en `PLAN_RESTAURACION_VISUAL_POS.md` (RV0–RV10, pendientes): conservar exactamente esa presentación e interacción, reutilizar/adaptar/completar backend y retirar las implementaciones incompatibles verificando consumidores y preservando datos. No inventar pantallas, añadir campos ni ocultar acciones para acomodar contratos existentes. Esta decisión prevalece sobre descripciones visuales históricas de este archivo y del plan anterior. La creación del plan no ejecutó la restauración ni eliminó backend o datos.
+- La Fase 5 de `PLAN_BACKEND_SCHEDULER.md` sustituyó en repositorio a Agenda CRM como autoridad final de citas del POS. `AGENDA_PROVIDER=internal` es el default y trabaja sólo con Prisma/Scheduler; `http` conserva temporalmente el adaptador anterior como rollback. En modo interno, disponibilidad se deriva de catálogos, horarios, bloqueos, profesionales, recursos y citas canónicas; la confirmación de `SchedulerAppointment(origin = POS)`, ticket y `PosAppointment.schedulerAppointmentId` ocurre en una sola transacción serializable.
+- `ATTENDED`, `CANCELED` y `NO_SHOW` de una cita enlazada emiten `AgendaSyncEvent` internos idempotentes. Sólo asistencia consume una membresía bajo bloqueo y crea como máximo un registro POS; cancelación libera beneficios reservados. `Agenda*` permanece como proyección/bitácora legacy y el webhook externo responde `410` en modo interno. El corte real requiere diagnóstico, PostgreSQL 16, provisión explícita y pruebas POS/Scheduler; guía: `docs/SCHEDULER_PHASE_5_POS_INTEGRATION.md`.
 - La Fase 14 de `PLAN_BACKEND_POS.md` quedó implementada en repositorio el 2026-09-04 mediante la migración aditiva `20260904050000_extend_pos_offline_pilot`; agrega dos kinds al enum offline y `PosSyncOperation.dependencyIds`, refuerza la inmutabilidad del envelope y no crea ni modifica datos operativos. Ambos schemas Prisma deben permanecer sincronizados. El contrato cifrado pasa a `schemaVersion: 2`: SQLite/IndexedDB invalidan cachés anteriores y requieren un nuevo login online.
 - El bootstrap offline incluye sólo catálogo publicado, métodos y catálogos de cobro activos, cortesías válidas, empresa activa, membresías dentro de sucursal/cartera y slots disponibles como snapshot de 31 días. Settings, permisos, catálogos, cartera, empresa y cierres comerciales siguen siendo exclusivamente online. La edición de clienta ya persiste por `PUT /api/pos/customers/:id` cuando hay conexión.
 - El outbox resuelve la cadena ticket/membresía → reservación → asistencia mediante UUID de dependencias anteriores de la misma terminal. Una reserva offline nunca promete capacidad ni incrementa el slot local: permanece `PENDING_SYNC`, cambia a `RESERVED` al recibir el ID canónico de Agenda o a `CONFLICT` sin borrar el payload cifrado. La asistencia dependiente no descuenta sesiones hasta la conciliación transaccional; una liquidación activa los tarjetones dentro del servicio canónico de pagos.
@@ -274,7 +277,7 @@ Las reglas visuales y operativas siguientes conservan la referencia necesaria pa
 
 ## Stack actual
 
-- **Monorepo**: Turborepo + pnpm workspaces
+- **Monorepo**: Turborepo `2.10.5` + pnpm workspaces
 - **Frontend**: Next.js 14 (App Router) + TypeScript strict
 - **UI**: shadcn/ui desde `@cosmetics/ui` + Tailwind CSS
 - **Motion web**: GSAP + `@gsap/react` para secuencias puntuales con cleanup y `prefers-reduced-motion`; las transiciones simples permanecen en CSS
@@ -331,7 +334,7 @@ La regresión visual de los componentes de alto riesgo usa `apps/ui-testbed`, un
 
 El E2E funcional autenticado de development vive en `apps/e2e/development` y se ejecuta con `pnpm test:e2e:development` o mediante **Authenticated development E2E**. Usa cuentas técnicas distintas y de mínimo privilegio, genera `storageState` temporal bajo `apps/e2e/.auth`, y cubre ocho recorridos de solo lectura por app; ambos incluyen calendarios reales, tablas, selects, navegación móvil y logout. Un fixture falla ante cualquier método distinto de `GET`, `HEAD` u `OPTIONS`. Los proyectos autenticados desactivan traces, screenshots y video para que JWT, bypass secrets y datos operativos no entren en artefactos; solo se conserva siete días el reporte HTML seguro. Antes de los recorridos, los alias Vercel deben exponer el SHA indicado en `meta[name="keysar-release"]` y `/health.release` debe coincidir con el SHA de API indicado. La preparación de cuentas, permisos, variables y diagnóstico está en `apps/e2e/README.md`. La Fase 4 de `PLAN_PRUEBAS_UI_COMPARTIDA_Y_E2E.md` quedó implementada el 2026-08-27.
 
-El smoke autenticado productivo vive en `apps/e2e/production` y solo se ejecuta después de los cinco smokes públicos mediante **Environment smoke tests** sobre el environment protegido `production`. Usa cuentas productivas separadas: Envelope recibe exclusivamente `dashboard` y `reportes/total-general` con `selfDataOnly`; Payroll recibe únicamente `payroll/esquemas` con `canWrite = false`. Cada app tiene tres recorridos y el mismo guard bloquea escrituras. El reporte total general de Envelope acepta como resultados sanos tanto la tabla como el estado vacío autorizado para la cuenta de alcance propio; el logout acepta `/login` con o sin el parámetro `next` que conserva la ruta de retorno. La configuración productiva usa cero retries, desactiva traces/screenshots/video, no publica reporte HTML y elimina sesiones/resultados incluso al fallar. El workflow exige los SHA exactos de frontends/API y registra duración, intento y resultado en el resumen. Las cuentas, los cuatro secrets `PRODUCTION_MONITOR_*` y la observación de cinco promociones son activación administrativa externa; no crear seeds ni credenciales en el repositorio. La implementación de la Fase 5 concluyó en repositorio el 2026-08-27.
+El smoke autenticado productivo vive en `apps/e2e/production` y solo se ejecuta después de los ocho smokes públicos productivos mediante **Environment smoke tests** sobre el environment protegido `production`. Usa cuentas productivas separadas: Envelope recibe exclusivamente `dashboard` y `reportes/total-general` con `selfDataOnly`; Payroll recibe únicamente `payroll/esquemas` con `canWrite = false`. Cada app tiene tres recorridos y el mismo guard bloquea escrituras. El reporte total general de Envelope acepta como resultados sanos tanto la tabla como el estado vacío autorizado para la cuenta de alcance propio; el logout acepta `/login` con o sin el parámetro `next` que conserva la ruta de retorno. La configuración productiva usa cero retries, desactiva traces/screenshots/video, no publica reporte HTML y elimina sesiones/resultados incluso al fallar. Desde la Fase 7, el workflow productivo verifica Envelope, Finance, HR, Payroll, Scheduler y API con SHA independientes; Finance y HR sólo agregan sus shells públicos, no recorridos autenticados. Las cuentas, los cuatro secrets `PRODUCTION_MONITOR_*` y la observación de cinco promociones son activación administrativa externa; no crear seeds ni credenciales en el repositorio.
 
 Componentes shadcn canónicos en `packages/ui/src/components/ui`:
 
@@ -404,7 +407,7 @@ Módulos implementados:
 - **puestos** — CRUD propio con catálogo `Position`
 - **reportes** — múltiples subvistas: total-general, detalle-metodo-pago, metodo-pago-por-dia, ventas-por-vendedor, ventas-por-vendedor-dia y citas; leen endpoints agregados en backend y exportan PDF/Excel desde esos datos usando `report-export.ts` + `ReportExportButtons` con imports dinámicos para las librerías pesadas. `reportes/citas` abre en la quincena vigente, filtra por rango, facialista y sucursal, y suma citas, faciales sencillos/dobles atendidos, estatus, conceptos de compra y bonos por facialista+sucursal desde `GET /api/envelope/reportes/citas`; PDF y Excel incluyen el mismo desglose agregado. `ventas-por-vendedor` pivota las sucursales en columnas dinámicas, conserva las métricas por empleado, permite buscar vendedores por nombre con el mismo patrón de búsqueda de `DataTable` y aplica las coincidencias también a totales y exportaciones; además muestra/exporta una fila final con los totales visibles de cada sucursal. La vista `ventas-por-vendedor-dia` muestra `Días sin venta` y `Monto día aproximado` al final de la tabla, antes del total, calcula ese monto como `venta total del mes / días con venta` por vendedor, y cuando consulta el mes en curso solo renderiza días transcurridos hasta hoy
 - **metas por sucursal** — `reportes/metas-sucursal` consume `GET /api/envelope/reportes/metas-sucursal`, que agrega en backend únicamente el mes vigente según la fecha de negocio de `America/Mexico_City`, mezcla sucursales activas con sucursales históricas presentes en las ventas y completa con cero los días/sucursales sin venta. La pantalla tiene pestañas semanal y mensual, exportación PDF/Excel y una sola matriz comparativa de escritorio: cada sucursal aparece una vez como columna, las ventas ocupan el cuerpo, el total acumulado cierra el período y las métricas de meta continúan debajo como un segundo footer alineado a las mismas columnas, incluidos los inputs de vendedores. En la vista mensual de escritorio, la matriz usa un área vertical acotada y mantiene sticky el encabezado completo durante el desplazamiento para conservar el contexto de cada sucursal. Las exportaciones reproducen tanto el total por sucursal como todas las filas de ese segundo footer y conservan como números los importes, días y vendedores. En móvil sustituye por completo la tabla y el scroll horizontal por una jerarquía de cards: resumen de meta, totales por período y una card por sucursal con avance, cálculos, vendedores y desglose temporal plegable. La vista mensual compara la meta mensual contra el acumulado del footer; la semanal divide la meta mensual entre los lunes que inician dentro del mes, muestra semanas lunes-domingo iniciadas en el mes y calcula el faltante usando solo la semana actual. Los días restantes excluyen hoy; si ya no quedan días y aún falta meta, el monto diario y por vendedor se presentan sin importe para evitar dividir entre cero. Esta pantalla usa el permiso independiente `reportes/metas-sucursal` y respeta `selfDataOnly`.
-- **rankings de ventas** — `reportes/ranking-vendedores` y `reportes/ranking-sucursales` abren por defecto desde el día 1 hasta el día actual del mes, permiten cualquier rango válido de hasta 366 días y consumen endpoints SQL agregados propios. Ambas vistas muestran podio, participación, operaciones, promedio y ranking completo, permiten buscar por nombre sin modificar el podio y exportan a PDF/Excel únicamente las filas visibles del filtro usando los componentes canónicos. Ambos rankings respetan `selfDataOnly` y `reportes/ver-datos-keysar-home`. Cada pantalla tiene permiso independiente y usa GSAP únicamente al actualizar el rango, nunca para ocultar el contenido inicial y siempre desactivado con `prefers-reduced-motion`.
+- **rankings de ventas** — `reportes/ranking-vendedores` y `reportes/ranking-sucursales` abren por defecto desde el día 1 hasta el día actual del mes, permiten cualquier rango válido de hasta 366 días y consumen endpoints SQL agregados propios. Ambas vistas muestran podio, participación, operaciones, promedio y ranking completo, permiten buscar por nombre sin modificar el podio y exportan a PDF/Excel únicamente las filas visibles del filtro usando los componentes canónicos. El ranking de vendedores respeta `selfDataOnly` y `reportes/ver-datos-keysar-home`; el ranking de sucursales respeta `selfDataOnly`. Cada pantalla tiene permiso independiente y usa GSAP únicamente al actualizar el rango, nunca para ocultar el contenido inicial y siempre desactivado con `prefers-reduced-motion`.
   En móvil, `total-general` usa tarjetas por día con todas las sucursales —incluidas las que no tuvieron venta, marcadas con badge de importe cero—, el total diario y una tarjeta final con los totales acumulados por sucursal; desde `md` conserva la tabla completa para comparar días y sucursales.
   Los importes exactamente en cero de los reportes de ventas se presentan como un badge destructivo rojo con el valor formateado, en lugar de un guion o texto atenuado; reutilizar el mismo tratamiento visual al agregar nuevas celdas monetarias de reporte.
 - **esquemas** — demo mock en cliente separada en dos capas: catálogo de esquemas por rangos `De / Hasta / Tasa` y asignación de esquema a empleado. No persiste en backend ni BD todavía.
@@ -440,79 +443,144 @@ Datos:
 
 ## Estado actual de apps/scheduler
 
-`apps/scheduler` es la app de agenda y administración de reservas. Sigue en fase local/mock, sin backend real ni Prisma. Parte de la configuración se conserva en `localStorage`, pero todavía no existe persistencia compartida entre usuarios ni validación de servidor. No se modifican backend, Prisma ni variables de entorno en esta etapa. La agenda, la administración, las configuraciones y los reportes viven local/mock; toda la información técnica de esta app está concentrada en esta sección.
+Plan de restauración visual: `PLAN_RESTAURACION_VISUAL_SCHEDULER.md` (6 de septiembre de 2026). Define fases RV0–RV8 para recuperar la presentación aprobada del commit `e9077ddad945325b1a132962ce0c2fcd9ae7f74a` en todo Scheduler, conservando contratos, seguridad y persistencia del backend actual. RV0–RV8 quedaron implementadas con validación visual/funcional pendiente. `docs/SCHEDULER_VISUAL_RESTORATION_BASELINE.md` y los runbooks `docs/SCHEDULER_RV1_PRESENTATION_BOUNDARY.md` a `docs/SCHEDULER_RV8_RELEASE_CANDIDATE.md` contienen la evidencia y comandos. Los checks locales pasan, pero el sandbox bloquea servidores, Chromium y PostgreSQL desechable; ejecutar los runners documentados en un host compatible antes de validar las fases. No restaurar íntegramente el código mock ni considerar los workspaces API simplificados como referencia visual aprobada.
+
+`apps/scheduler` es la app de agenda y administración de reservas. Las Fases 1 a 10 ya implementaron login, bootstrap, permisos, alcance, autorizaciones secundarias, catálogos, clientes compartidos, agenda canónica, integración POS, administración/configuración, comunicaciones/documentos/encuestas, reportes/exportaciones, conexión visual y puertas de calidad/despliegue. RV2 volvió a montar los componentes aprobados de Agenda, RV3 restauró Clientes, RV4 Administración, RV5 Configuraciones, RV6 engagement y RV7 Reportes/exportaciones sobre contratos reales. RV8 retiró workspaces/mocks sin consumidores, agregó guards de rutas/grafo/persistencia, revalidación de sesión/permisos y chunks dinámicos por módulo. Ninguna entrada productiva lee o escribe estado operativo simulado; los fixtures deterministas viven sólo en E2E.
+
+- RV8 verifica las 19 entradas de App Router mediante `scheduler-rv8-integrity.test.cjs`, descarta respuestas de bootstrap posteriores a logout/cambio de token y revalida permisos cada 30 segundos, al recuperar foco/visibilidad o ante cambios de token entre pestañas. La pérdida de sesión o permisos desmonta el workspace. Se eliminaron 36 archivos históricos sin consumidores y la clave local de horarios; sólo permanecen el JWT y `slotMinutes` visual. Los cinco workspaces se cargan con `next/dynamic`: el JS inicial operativo bajó de 359 kB a 89.7–89.8 kB y los exportadores pesados siguen diferidos. La implementación RV8 quedó fijada en `a1e68b44957431c716c39d183843aba56085c12a`; la candidata de la PR será el `HEAD` que incorpore el cierre documental y el despliegue deberá verificar ese SHA completo. Rollback visual: redesplegar sólo Scheduler desde `9706a9f`, sin revertir migraciones ni cambiar `AGENDA_PROVIDER`. Capturas, E2E y API/PostgreSQL siguen pendientes por B06. Runbook: `docs/SCHEDULER_RV8_RELEASE_CANDIDATE.md`.
+
+- RV7 restaura Resumen, Reservas, Historial, Rendimiento, Ventas, Encuestas, Recordatorios y todos los desgloses profundos sobre los doce datasets canónicos. Pantalla recorre todas las páginas y exportación obtiene el conjunto completo desde `/exports` antes de generar CSV/XLSX/PDF. Las rutas por local validan `branchId` contra el bootstrap; ninguna vista inventa comparación, cuota, ingresos atribuidos o respuestas por pregunta. Capturas y paridad HTTP/PostgreSQL siguen pendientes por B06. Runbook: `docs/SCHEDULER_RV7_REPORTS_RESTORATION.md`.
+
+- RV6 restaura las tres superficies de engagement de Administración. Encuestas versiona preguntas/servicios sin exponer tokens o respuestas; Consentimientos versiona archivos privados, asigna, firma/revoca y abre URLs efímeras con autorización; Comunicaciones administra plantillas multicanal, consentimiento por canal, intenciones idempotentes y estados completos del outbox, donde `SENT` no significa `DELIVERED` y sólo `FAILED` se reintenta manualmente. La ficha de Clientes añade expediente médico cifrado y soportes privados con permisos de `scheduler/settings/records`, autorizaciones independientes y purga temporal. No existe control frontend para activar el proveedor ni se persisten URLs/secretos. Capturas, PostgreSQL, bucket privado y sandbox siguen pendientes por B06. Runbook: `docs/SCHEDULER_RV6_ENGAGEMENT_RESTORATION.md`.
+
+- La Fase 10 quedó implementada en repositorio el 4 de septiembre de 2026 sin nuevas migraciones, seeds, despliegues ni datos operativos. CI reconstruye las 43 migraciones sobre PostgreSQL 16 vacío y ensaya por separado el salto desde el snapshot exacto de las primeras 39 mediante un fixture técnico que sólo admite una base efímera local.
+- La integración HTTP de Scheduler cubre autenticación, bootstrap, replay idempotente, conflicto optimista y la carrera por el último lugar. El gate de carga crea 30 sucursales, 60 profesionales, 60 recursos, horarios de 24 horas y 1,440 citas; exige exportación completa, slots de 15 minutos y un umbral configurable de 30 segundos en CI.
+- Scheduler participa en smoke público y E2E autenticado de development con una identidad exclusivamente `READ` y guard contra escrituras. `Deploy API` puede activar `AGENDA_PROVIDER=internal` sólo después de migración, API/readiness, SHA del frontend, backup/PITR productivo y confirmación literal; después genera diagnóstico y auditoría agregada `READ ONLY`.
+- `pnpm --filter @cosmetics/api scheduler:release:audit` observa estados de citas, outbox, eventos `AgendaSyncEvent`, auditoría, locks vencidos, reintentos agotados y round-trip de base sin PII ni secretos. El cierre local pasó type-check/lint de API y E2E, pruebas unitarias, build de API/Scheduler, schemas Prisma y `git diff --check`; PostgreSQL 16/CI y los ambientes reales siguen siendo gates externos porque Podman no puede usar su runtime en este workspace. Runbook: `docs/SCHEDULER_PHASE_10_RELEASE.md`.
+
+- La Fase 9 quedó implementada en repositorio el 4 de septiembre de 2026 sin modelos, migraciones, seeds ni cambios de datos. `SchedulerPageEntries.tsx` aísla los fixtures de desarrollo; `ApiState.tsx` unifica carga, vacío, error/reintento, descarte de respuestas obsoletas, invalidación y conflictos `409`.
+- Agenda consume catálogo, disponibilidad, citas y bloqueos canónicos; permite crear/mover/cancelar, cambiar estado y crear/cancelar bloqueos según permisos. Clientes consume búsqueda/alta/edición y abre perfil, visitas y finanzas con tres autorizaciones independientes de un solo uso.
+- Administración conecta catálogos base, paquetes, complementos, clases, comisiones, encuestas, consentimientos privados, plantillas/outbox, gift cards y colores. Configuraciones usa capas versionadas `COMMERCE → BRANCH → USER`; Reportes limita datasets por permiso y genera CSV desde `/exports`.
+- El cierre local de Fase 9 pasó type-check, lint y build de Scheduler más `git diff --check`. Las advertencias de imágenes/hooks pertenecen a fixtures preexistentes. Las pruebas HTTP/E2E, PostgreSQL 16, diagnóstico/provisión, storage privado, sandbox de mensajería y paridad real de reportes siguen siendo gates antes de activar. Runbook: `docs/SCHEDULER_PHASE_9_FRONTEND.md`.
+
+- La Fase 8 quedó implementada en repositorio el 4 de septiembre de 2026 mediante la migración exclusivamente aditiva `20260904120000_add_scheduler_reporting_indexes`; no se aplicó a development ni production, no crea/backfillea datos y ambos schemas Prisma permanecen sincronizados. Agrega cuatro índices para reportar estados, políticas de comisión, outbox y encuestas.
+- `/api/scheduler/reports/:key` y `/exports/:key` publican doce datasets desde un único constructor: citas, ocupación, cancelaciones, no-show, clientes, servicios, profesionales, comisiones, encuestas, comunicaciones, ventas y pagos. El servidor exige `READ`/`EXPORT`, materializa sucursales, aplica `selfProfessionalOnly`, pagina sólo pantalla y registra cada exportación. Clientes requiere además `SENSITIVE_EXPORT` de un solo uso, consumido atómicamente con el audit log.
+- La ocupación usa minutos realmente disponibles después de intersectar horarios de sucursal/profesional y descontar descansos, excepciones y bloqueos. Los reemplazos nuevos de horarios/excepciones cierran `effectiveTo`; no se inventan cortes para filas antiguas sin evidencia. Los periodos son `[inicio, fin)`, con la zona IANA del perfil. `RegistroCita` sólo participa como fuente legado explícita y separada; nunca se une por nombres ni se suma automáticamente al núcleo. Ventas/pagos usan POS canónico y no `Venta*`; Nómina conserva la liquidación final de comisiones.
+- El contrato vive en `packages/types/src/scheduler.ts` y `@cosmetics/api-client` expone `report()`/`exportReport()`. La UI de Fase 9 ya consume ambos contratos; la exportación se genera desde el conjunto completo devuelto por el servidor. El cierre local de Fase 8 validó schemas, contratos, lint/type-check/build del API, 133 pruebas unitarias en 25 archivos y type-check/build de Scheduler. PostgreSQL 16, integración HTTP, paridad real, zonas históricas y volumen de 30 sucursales permanecen pendientes antes de activar. Runbook: `docs/SCHEDULER_PHASE_8_REPORTING.md`.
+
+- La Fase 7 quedó implementada en repositorio el 4 de septiembre de 2026 mediante la migración exclusivamente aditiva `20260904110000_add_scheduler_engagement`; no se aplicó a development ni production, no importa mocks/seeds ni crea mensajes, documentos, expedientes o encuestas. Ambos schemas Prisma permanecen sincronizados. Agrega plantillas/versiones, preferencias por canal, outbox/eventos, consentimientos/documentos, expedientes cifrados, encuestas/tokens/respuestas y protecciones append-only.
+- `/api/scheduler/communications*`, `/documents*`, `/medical-records*` y `/surveys*` aplican permisos, sucursales materializadas, alcance profesional propio, control optimista y auditoría. Los webhooks HMAC y la respuesta de encuesta por token son las únicas rutas públicas; se montan antes del router JWT y no exponen PII, rutas de storage, hashes o ciphertext.
+- El outbox exige `Idempotency-Key`, conserva hash de solicitud, cifra destinos con AES-256-GCM, usa `FOR UPDATE SKIP LOCKED`, recupera locks y reintenta con backoff hasta ocho intentos. `SCHEDULER_MESSAGING_PROVIDER=disabled` es el default; `http` requiere secretos sólo de servidor y en production exige `SCHEDULER_MESSAGING_SANDBOX_VERIFIED=true`. El worker se ejecuta con `pnpm --filter @cosmetics/api scheduler:messages:worker`.
+- Cambiar o mover una cita cancela sus recordatorios pendientes dentro del mismo commit y crea intenciones nuevas sólo si la cita continúa vigente. Documentos viven en `SCHEDULER_PRIVATE_STORAGE_BUCKET` privado y se abren con URLs firmadas de 300 segundos después de autorización secundaria; el expediente se guarda cifrado y toda lectura/cambio sensible se audita.
+- Tokens de encuesta contienen 32 bytes aleatorios y sólo persisten como SHA-256. Caducan, se consumen bajo lock una vez y escriben respuesta/answers inmutables en una transacción serializable. El cierre local valida schemas, contratos, lint/type-check/build del API, 127 pruebas unitarias en 24 archivos y lint/type-check/build de Scheduler; permanecen sólo sus advertencias preexistentes de imágenes/hooks. PostgreSQL 16, storage privado, integración HTTP y sandbox real siguen pendientes. Runbook: `docs/SCHEDULER_PHASE_7_ENGAGEMENT.md`.
+
+- La Fase 6 quedó implementada en repositorio el 4 de septiembre de 2026 mediante la migración exclusivamente aditiva `20260904100000_add_scheduler_administration`; no se aplicó a development ni production, no importa mocks/seeds ni modifica datos operativos y ambos schemas Prisma permanecen sincronizados. Agrega perfiles Scheduler sobre `PosPackage` y `CatalogItem`, horarios de clases, comisiones versionadas, plantillas de gift card, colores de estado y configuraciones versionadas por comercio, sucursal y usuario.
+- `/api/scheduler/administration/*` publica el catálogo materializado y mutaciones de paquetes, complementos, clases, comisiones, gift cards, colores y settings. Todas aplican permisos por pantalla, alcance materializado, auditoría y control optimista; una mutación global requiere alcance completo del comercio. `@cosmetics/api-client` expone el contrato tipado.
+- Las clases sólo se ofrecen y confirman en horarios persistidos para servicio/profesional/sucursal, con la capacidad específica de la franja. Las comisiones conservan versiones/reglas/niveles, pero Nómina mantiene la autoridad de pago. Métodos, políticas, tickets y paquetes POS se consultan en sólo lectura y no se duplican.
+- Settings resuelve precedencia `COMMERCE → BRANCH → USER` dentro del comercio, conserva cada versión, limita documentos a 64 KiB y rechaza claves que parezcan secretos. Los colores consumen una autorización secundaria ligada al comercio dentro de la transacción. La altura visual de slots sigue local; gift cards sólo son plantillas y la emisión/saldo/redención queda fuera de esta fase.
+- El cierre local de Fase 6 valida schemas, contratos, lint/type-check/build del API, 121 pruebas unitarias en 23 archivos y lint/type-check/build de Scheduler. La conexión visual quedó implementada en Fase 9. PostgreSQL 16, integración HTTP/concurrencia, diagnóstico real y provisión siguen pendientes. Runbook: `docs/SCHEDULER_PHASE_6_ADMINISTRATION.md`.
+
+- La Fase 5 quedó implementada en repositorio el 4 de septiembre de 2026 sin una migración nueva ni cambios de datos. `InternalAgendaAdapter` conserva el contrato POS, usa exclusivamente el motor y la base compartida, y proyecta compatibilidad en `AgendaResource`, `AgendaSlot`, `AgendaReservation` y `AgendaSyncEvent`. `AGENDA_PROVIDER=internal|http` selecciona la implementación; la ausencia resuelve a `internal`, valores desconocidos fallan cerrados y sólo `http` usa secretos/HTTP/webhooks externos.
+- Una venta o próxima sesión interna vuelve a validar servicio, profesional, recursos, horarios, bloqueos, capacidad y membresía dentro del commit serializable; crea `SchedulerAppointment(origin = POS)` y enlaza cada `PosAppointment.schedulerAppointmentId`. La credencial POS debe resolver un `Usuario` para conservar el actor del historial Scheduler; no se crean usuarios técnicos ni seeds implícitos.
+- La conciliación offline de `TICKET_CREATE` ejecuta la misma preparación interna antes del commit; la terminal no promete capacidad y un rechazo no deja ticket/cita parcial. `AGENDA_MEMBERSHIP_RESERVATION` conserva el mismo enlace canónico al sincronizar.
+- Los estados terminales se propagan mediante eventos internos con `providerEventId` único. `ATTENDED` crea como máximo una asistencia y actualiza `usedSessions` bajo lock; `CANCELED` libera reservas y `NO_SHOW` no consume. El webhook HMAC queda disponible sólo para rollback `http` y responde `410` en modo interno.
+- El cierre local de Fase 5 valida lint/type-check/build del API, contratos compartidos y 114 pruebas unitarias en 22 archivos. PostgreSQL 16, integración HTTP/concurrencia, diagnóstico real, provisión y corte controlado siguen pendientes. No se creó importador porque aún no existe evidencia aprobada de citas externas futuras por convertir. Runbook: `docs/SCHEDULER_PHASE_5_POS_INTEGRATION.md`.
+
+- La Fase 4 quedó implementada en repositorio el 4 de septiembre de 2026 mediante la migración exclusivamente aditiva `20260904090000_add_scheduler_appointments`; no se aplicó a development ni production, no crea/importa citas o seeds y ambos schemas Prisma permanecen sincronizados. Agrega citas multi-servicio, participantes, recursos, bloqueos, snapshots, estados, historial append-only, idempotencia, reservas de membresía y `PosAppointment.schedulerAppointmentId`.
+- `/api/scheduler/availability`, `/appointments*` y `/blocks*` aplican JWT, capacidades y sucursales/profesional propio. El cálculo usa UTC + zona IANA, intervalos de 15 minutos y evalúa jornada, excepciones, bloqueos, citas, capacidad del servicio y recursos. Las mutaciones usan `expectedVersion`; las excepciones consumen `AVAILABILITY_OVERRIDE` y conservan motivo/auditoría.
+- Crear exige `Idempotency-Key`. La confirmación usa advisory locks ordenados por día/sucursal/profesional/recurso y transacciones `SERIALIZABLE`; la integración opt-in prueba que dos solicitudes por el último lugar producen un `201` y un `409`. Beneficios de membresía se reservan/consumen/liberan en el ledger de Scheduler sin alterar todavía `usedSessions` ni fabricar una asistencia POS; esa propagación pertenece a Fase 5.
+- El cierre local de Fase 4 valida schemas, lint/type-check/build del API, contratos compartidos y 109 pruebas unitarias en 21 archivos. PostgreSQL 16, integración HTTP/concurrencia, diagnóstico real y aplicación/provisión continúan como gates obligatorios. Runbook: `docs/SCHEDULER_PHASE_4_APPOINTMENTS.md`.
+
+- La Fase 3 quedó implementada progresivamente en repositorio el 4 de septiembre de 2026 mediante la migración exclusivamente aditiva `20260904080000_add_scheduler_customers`; no se aplicó a development ni production, no hace backfill/fusiones/seeds y ambos schemas Prisma permanecen sincronizados. Agrega `Customer.phoneNormalized` nullable y `version`, perfiles Scheduler, alias de nombre/teléfono, correos, campos personalizados versionados y eventos inmutables de fusión.
+- Scheduler y los escritores POS mantienen escritura dual del teléfono. `/api/scheduler/clients*` ofrece búsqueda paginada por nombre/teléfono/correo/alias, procedencias `CustomerSource`, campos por comercio, alta/edición con alcance y versión, expediente, visitas, finanzas POS de sólo lectura y fusión `SERIALIZABLE`. El alcance profesional propio exige cartera vigente o participación en una cita canónica de la sucursal; `RegistroCita` nunca se enlaza por nombre.
+- Expediente, visitas, finanzas y fusiones consumen autorizaciones secundarias ligadas a objetivo; `CLIENT_MERGE` exige `ADMIN`. La fusión rechaza identidades externas distintas, reasigna relaciones compartidas, conserva snapshots financieros, registra `SchedulerCustomerMergeEvent`/`AuditLog` y desactiva el origen sin borrar `Customer`. Scheduler no corrige tickets/pagos; las correcciones siguen siendo compensaciones de POS.
+- `scheduler:diagnose` ahora mide materialización/duplicados sin PII y `scheduler:customers:normalize` inicia en `DRY_RUN`, es reejecutable y sólo deriva `phoneNormalized`. Production exige confirmación exacta y PITR. El índice único parcial permanece deliberadamente pendiente hasta que la evidencia real indique `uniquePartialIndexReady = true`. Runbook: `docs/SCHEDULER_PHASE_3_CUSTOMERS.md`.
+- El cierre local de Fase 3 valida schemas, migración aditiva, lint/type-check/build del API, paquetes compartidos, Scheduler y 103 pruebas unitarias en 20 archivos. PostgreSQL 16, integración HTTP/concurrencia, diagnóstico/materialización real e índice parcial siguen siendo gates antes de activar Clientes.
+
+- La Fase 2 quedó implementada en repositorio el 4 de septiembre de 2026 mediante la migración exclusivamente aditiva `20260904070000_add_scheduler_operational_catalogs`; no se aplicó a development ni production, no crea seeds, perfiles ni datos operativos y ambos schemas Prisma permanecen sincronizados. Agrega comercios, perfiles uno-a-uno sobre `Sucursal`, `Empleado` y `CatalogItem SERVICE`, asignaciones, servicios/clases, especialidades, grupos, recursos, compatibilidades, horarios recurrentes y excepciones con vigencia y baja lógica.
+- `/api/scheduler/operations/candidates` y `/catalog` materializan únicamente las sucursales autorizadas y omiten bloques sin permiso. Las mutaciones de comercios, perfiles, servicios, recursos, grupos, compatibilidades y horarios exigen `ADMIN`, validan IDs/alcance, registran `AuditLog.application = SCHEDULER` y usan `expectedVersion` en perfiles y recursos. Sólo `SUPER_ADMIN` administra comercios; un administrador parcial no puede alterar perfiles compartidos fuera de su alcance.
+- Un profesional se activa explícitamente desde un `Empleado`; un servicio sólo parte de `CatalogItem.kind = SERVICE`, exige duración y sucursal; `CLASS` representa clases con capacidad; cabinas/equipos/estaciones son recursos físicos. Una sucursal no puede activar `bookingEnabled` hasta tener horario general, profesional y servicio activos. `OperationalCatalogWorkspace` conecta candidatos/configuración base y Fase 9 agrega las extensiones administrativas reales. Los mocks no se migran. Runbook: `docs/SCHEDULER_PHASE_2_OPERATIONAL_CATALOGS.md`.
+- El cierre local de Fase 2 valida schemas, lint/type-check/build del API, contratos compartidos, Scheduler y pruebas unitarias. PostgreSQL 16 e integración HTTP permanecen pendientes porque Podman no puede iniciar su runtime en este workspace; el diagnóstico real de Fase 0 y la aprobación del inventario continúan siendo gates antes de aplicar/provisionar.
+
+- La Fase 1 quedó implementada en repositorio el 4 de septiembre de 2026 mediante la migración exclusivamente aditiva `20260904060000_add_scheduler_security`; no se aplicó a development ni production y no concede permisos, crea seeds o modifica datos operativos. Agrega permisos de pantalla con capacidades `READ/WRITE/ADMIN/EXPORT/EXCEPTION`, asignaciones explícitas de sucursal, alcance profesional propio, credenciales secundarias y autorizaciones de uso único. Ambos schemas Prisma deben permanecer sincronizados.
+- Scheduler usa `POST /api/auth/login` y el JWT compartido. `GET /api/scheduler/bootstrap` materializa usuario, grants, sucursales y alcance profesional; sólo `SUPER_ADMIN` recibe todas las sucursales activas. Un puesto usa sus asignaciones explícitas o, si no existen, únicamente la sucursal canónica de su usuario/empleado; un conjunto vacío nunca significa acceso global.
+- Los códigos mock fueron retirados del flujo activo y no se conservan en `localStorage`. Cada usuario rota su código personal confirmando la contraseña actual; se guarda con bcrypt, se bloquea 15 minutos tras cinco fallos y emite tokens SHA-256 ligados a actor/propósito/alcance que caducan en dos minutos y se consumen una sola vez. Abrir la configuración elimina el documento legacy `keysar-scheduler-authorizations-settings`.
+- `AuditLog` ahora admite `application` y `actorUserId`: Scheduler registra emisión/consumo/denegación de autorización, rotación de código y cambios de permisos/sucursales con origen `SCHEDULER` y `Usuario` como actor, sin contraseñas, códigos o tokens. Contratos: `packages/types/src/scheduler.ts`; servicio: `backend/api/src/services/scheduler-access.ts`; runbook: `docs/SCHEDULER_PHASE_1_SECURITY.md`.
+- El cierre local de Fase 1 pasó schemas Prisma, lint/type-check/build del API, type-check de paquetes compartidos, 93 pruebas unitarias en 18 archivos y lint/type-check/build de Scheduler. La reconstrucción de migraciones y las pruebas HTTP sobre PostgreSQL 16 efímero, el diagnóstico real de Fase 0 y la aplicación por ambiente siguen pendientes y son obligatorios antes de activar.
+
+- La Fase 0 quedó implementada en repositorio el 4 de septiembre de 2026 con `pnpm --filter @cosmetics/api scheduler:diagnose`. El comando compara migraciones locales con `_prisma_migrations`, detecta tablas disponibles antes de consultarlas e inventaría conteos, perfiles/duraciones pendientes, candidatos profesionales, duplicados de teléfono normalizado, relaciones incompletas y datos de `RegistroCita`, `PosAppointment` y `Agenda*`.
+- El diagnóstico ejecuta todas las consultas dentro de una transacción PostgreSQL `READ ONLY`, sólo emite agregados y redacta errores para no exponer personas, secretos o detalles de conexión. Exige declarar `SCHEDULER_DIAGNOSE_ENVIRONMENT`; production requiere además `SCHEDULER_DIAGNOSE_PRODUCTION_CONFIRMATION=PRODUCCION_SOLO_LECTURA` y autorización humana previa.
+- No se modificaron los schemas Prisma porque la fase es diagnóstica. La corrida con `.env.dev` no pudo alcanzar el pooler desde este workspace; no se conectó a production. El inventario real y la estrategia de backfill todavía deben aprobarse antes de iniciar migraciones de Scheduler. Runbook: `docs/SCHEDULER_PHASE_0_DIAGNOSIS.md`.
+- El cierre local de la Fase 0 pasó lint, type-check y build del API, sincronía/validación de ambos schemas Prisma y 89 pruebas unitarias en 17 archivos.
 
 ### Agenda
 
-- La agenda principal (`/`) modela una agenda operativa estilo AgendaPro con vistas `day` y `week`, filtro por sucursal, selección de profesionales, filtro de estatus, búsqueda rápida por hora, calendario mensual y acciones directas sobre slots vacíos.
-- El contexto operativo de la agenda se generalizó a `Comercio → Sucursal → Profesional`. `schedulerCommerces` define los comercios disponibles; cada sucursal pertenece a un comercio y cada profesional puede estar asignado a varios comercios y sucursales mediante `commerceIds`/`branchIds`. Al cambiar de comercio, la UI carga solo las sucursales permitidas de ese comercio y después filtra los profesionales disponibles para la sucursal elegida.
-- La fuente efectiva de comercios, sucursales y profesionales combina los catálogos mock con la configuración guardada por Administración. `src/lib/administration-scheduler-config.ts` persiste el conjunto en `scheduler-administration-configuration`, normaliza registros estáticos por nombre y notifica cambios con `scheduler-administration-configuration-change`. Altas, cambios de nombre, asignaciones y activaciones/desactivaciones se reflejan en Agenda sin backend; los elementos inactivos dejan de ofrecerse operativamente.
-- El horario operativo pertenece al comercio, no a cada sucursal. `src/lib/commerce-operating-hours.ts` guarda una agenda semanal o modo 24 horas por comercio, calcula el rango visible de las vistas diaria/semanal y marca como bloqueadas las celdas fuera del servicio. Una reserva activa fuera de ese horario o sobre un bloqueo manual abre una confirmación de dos pasos y exige escribir `RESERVAR`; la excepción aplica solo a esa reserva y no modifica el horario general. Las reservas canceladas no disparan conflictos.
-- Configuraciones de Agenda permite elegir el tamaño visual del slot entre 15, 20, 30, 45 y 60 minutos. Se persiste en `keysar-scheduler-agenda-settings` y `SchedulerWorkspace` escucha el evento `scheduler-agenda-settings-change` y cambios de storage para recalcular filas, tarjetas y línea de hora actual sin recargar. Este tamaño visual no cambia el cálculo de horarios disponibles del modal, que continúa ofreciendo inicios cada 15 minutos.
-- Las reservas y bloqueos nuevos guardan `branchId` para evitar que una agenda compartida entre sucursales muestre el mismo registro en ubicaciones distintas. En el modal de reserva se elige la sucursal y, al cambiarla, se conserva el profesional si pertenece a ella o se asigna el primero disponible para mantener la disponibilidad coherente. Los registros mock anteriores sin `branchId` conservan compatibilidad usando la primera sucursal asignada al profesional.
-- El modal de nueva/edición de reserva calcula horarios disponibles en intervalos de 15 minutos según fecha, profesional y duración del servicio. Oculta cualquier inicio que se traslape total o parcialmente con otra reserva del profesional o con un bloqueo; al editar ignora la propia reserva. `BookingStatus` incluye `canceled`: una reserva cancelada libera su franja y no participa en conflictos, mientras `no-show` conserva la ocupación histórica. Si no queda disponibilidad, los selectores se deshabilitan, se muestra un estado explícito y no se permite guardar una reserva activa.
-- El registro mock de clientes vive en `src/lib/mock-client-data.ts` y es transversal a comercios/sucursales. Antes de abrir `Nuevo cliente`, el único input `Cliente` funciona como buscador combinado: acepta letras o números y consulta nombre completo, alias o cualquier segmento del teléfono normalizado; seleccionar una coincidencia completa nombre, teléfono y correo y vincula la reserva mediante `clientId`. El campo `Teléfono` solo aparece dentro del formulario `Nuevo cliente`; en clientes existentes se reutiliza el dato vinculado. El teléfono es obligatorio, se compara sin espacios/signos y debe ser único. Si se intenta guardar otro nombre con un teléfono existente, la UI pide confirmar la unificación: conserva el nombre/correo canónicos, guarda variantes como alias/correos alternativos y agrega la visita al mismo historial con `branchId`, fecha y `bookingId`. Esta lógica es local/mock; la futura API deberá repetir la restricción única y la unificación dentro de una transacción.
-- La entrada principal es `SchedulerWorkspace`, que compone `SchedulerHeader`, `SchedulerSidebar` y `SchedulerAgendaGrid`, y abre tres diálogos especializados: `SchedulerBookingDialog`, `SchedulerBlockDialog` y `SchedulerDetailDialog`.
-- Los datos salen de `src/lib/mock-scheduler-data.ts` y se manipulan con helpers en `src/components/scheduler/scheduler-utils.tsx`.
-- El login temporal solo redirige a la agenda principal; no hay flujo auth real para esta app todavía.
-- `src/lib/scheduler-access.ts` concentra el perfil de acceso mock actual: pantallas permitidas y alcance por comercio, sucursal y profesional. `SchedulerAppSidebar` oculta pantallas no autorizadas, `SchedulerAccessGuard` impide abrir directamente áreas completas sin permiso y Administración descarta secciones no permitidas. Esta capa sigue siendo demostrativa/local; la autorización real deberá validarse también en backend durante la fase de persistencia.
-- La agenda usa colores de estatus configurables por comercio desde Administración. La paleta se guarda en `scheduler-status-colors-by-commerce`, requiere desbloqueo mediante un código mock de perfil autorizado y actualiza puntos, selectores y tarjetas al emitir `scheduler-status-colors-change`.
-- El historial de visitas y el historial financiero del cliente son flujos separados. Consultar información sensible exige un código personal mock; los perfiles `master` y `admin` pueden editar o eliminar movimientos de pago, mientras un vendedor solo puede consultar clientes asignados. Las consultas y mutaciones generan auditoría local. Los códigos incluidos en `scheduler-access.ts` son exclusivamente demostrativos: en producción deben validarse en backend y nunca enviarse en el bundle del navegador.
+- La agenda principal (`/`) usa `ApiAgendaWorkspace`, que desde RV2 compone la presentación aprobada (`SchedulerHeader`, panel de recursos, `SchedulerAgendaGrid`, `SchedulerAgendaList`, tarjetas y diálogos) sobre contratos reales. RV8 retiró `SchedulerWorkspace` y los archivos `mock-*` del runtime; los fixtures visuales deterministas viven exclusivamente en `apps/e2e/development/fixtures` y nunca son fallback operativo.
+- Comercio y sucursal salen del catálogo y del alcance materializado del bootstrap. Las columnas distinguen profesionales y recursos mediante IDs con namespace y conservan el ID canónico para disponibilidad/mutaciones. No existe cola de pendientes sin asignación mientras el backend exija un profesional por servicio.
+- Día y semana solicitan un rango UTC con guardas, cargan todas las páginas de citas según `total` y filtran después por fecha local IANA. La semana ya no usa `schedulerWeekBookings`; día/semana/lista comparten citas, estados, servicios, participantes, bloqueos y excepciones canónicos.
+- Los límites visibles se derivan de reglas `BRANCH/WORKING` y excepciones del catálogo. El tamaño de slot sigue siendo una preferencia exclusivamente visual; los inicios válidos siempre vienen de `/availability` y se vuelven a consultar después de una mutación.
+- El diálogo busca/selecciona clientes por API y puede crearlos sólo con `clients:WRITE`. Crear una cita conserva una clave de idempotencia durante el reintento; editar, mover, cancelar, transicionar y administrar bloqueos conserva `expectedVersion`, motivos y el manejo común de `401`/`403`/`409`/red.
+- Citas multi-servicio conservan servicios, profesionales, recursos, capacidad y membresías del DTO canónico; el selector único queda bloqueado para no sustituirlas silenciosamente. Cancelar reemplaza la antigua semántica de borrar y exige motivo en un diálogo, nunca `window.prompt`.
+- Teléfono, correo, avatar y precio no se inventan cuando faltan en el DTO de cita. La ficha, visitas y finanzas usan tres autorizaciones independientes, ligadas al cliente y de un solo uso; sus respuestas se purgan al expirar, cerrar o cambiar usuario. Finanzas es de sólo lectura y POS conserva su autoridad.
+- El login usa `POST /api/auth/login`, conserva el JWT compartido y exige un bootstrap válido antes de abrir la agenda.
+- `src/lib/scheduler-access.ts` adapta el bootstrap autoritativo a la navegación: `SchedulerAppSidebar` oculta pantallas no autorizadas, `SchedulerAccessGuard` impide abrir directamente áreas completas sin permiso y Administración descarta secciones no permitidas. El backend vuelve a validar capacidad, sucursal y alcance profesional en cada endpoint; la UI nunca es la frontera de seguridad.
+- En modo normal los colores de estado se leen desde el catálogo administrativo cuando la sesión tiene esa capacidad y se escriben mediante `/api/scheduler/administration/status-colors/:commerceId`; guardar exige `ADMIN` y autorización secundaria ligada al comercio. Sin lectura autorizada, Agenda usa la paleta visual base. `scheduler-status-colors-by-commerce` y su evento pertenecían al fixture histórico y RV8 los retiró del runtime.
+- El historial de visitas y el historial financiero del cliente son flujos separados y de sólo lectura en Scheduler. La UI real emite tres autorizaciones independientes ligadas al cliente; el backend consume una por perfil, visitas y finanzas y audita cada lectura. Scheduler no permite editar ni eliminar movimientos POS.
 
 ### Administración
 
-La ruta `/administracion` contiene el workspace administrativo completo, local/mock y sin conexión a backend. Incluye Comercios y sus sucursales, Profesionales, Grupos personalizados, Servicios, Clases, Paquetes, Adicionales, Comisiones, Recursos, Encuestas, Consentimientos, WhatsApp, Gift cards y Colores de status. Los listados, formularios, filtros, estados, modales, confirmaciones y feedback están implementados en `AdministrationWorkspace.tsx` y comparten catálogos desde `mock-administration-data.ts`. El comercio es la entidad principal y concentra su estado y horario operativo; cada `LocalRecord` incluye `commerceId` y administra ubicación/contacto, no un horario independiente. `ProfessionalRecord` usa `commerceIds` y `localIds` para asignaciones múltiples, manteniendo `localId` como referencia principal legacy mientras se adaptan los flujos mock que todavía requieren una sola sucursal. Tras hidratar el workspace, los cambios de esos tres catálogos se guardan automáticamente y se sincronizan con Agenda.
+La ruta `/administracion` monta `ApiAdministrationWorkspace` en modo normal. Desde RV4, Comercios/sucursales, Profesionales, Servicios, Comisiones, Recursos, Gift cards y Colores recuperan el encabezado, superficies, tablas y diálogos aprobados sobre candidatos, perfiles y catálogos canónicos. Servicios añade paquetes, complementos y horarios de clase; horarios, descansos y excepciones de sucursales/profesionales/recursos usan reemplazos reales. Todas las mutaciones RV4 invalidan catálogos y Agenda. Desde RV6, Encuestas, Consentimientos y Comunicaciones usan componentes restaurados sobre los contratos versionados, privados e idempotentes de engagement; no montan el workspace simplificado de Fase 9. RV8 retiró `AdministrationWorkspace.tsx` y `mock-administration-data.ts`; la evidencia controlada usa únicamente fixtures E2E fuera del grafo productivo.
 
-El alta y la edición de Profesionales incluyen una pestaña `Comisiones`. Cada profesional define explícitamente si genera comisiones; al activarlas son obligatorios al menos una modalidad, el periodo y todos los valores correspondientes. Las modalidades son combinables: monto fijo por cita, monto fijo independiente solo por cita con estatus Asiste, porcentaje sobre monto de venta y esquema personalizado por venta acumulada de sucursal. La periodicidad compartida puede ser diaria, semanal, quincenal o mensual. El esquema personalizado exige rangos continuos desde cero, porcentajes entre 0 y 100 y un último nivel sin límite. `normalizeProfessionalCommission` migra automáticamente el campo legacy de modalidad única a `modes[]` y el antiguo monto fijo compartido a los dos importes de cita. Esta configuración se conserva dentro de `ProfessionalRecord` y `localStorage`, pero todavía no ejecuta un cálculo real de comisiones ni genera movimientos de pago.
+La referencia histórica conserva una pestaña visual de Comisiones y normalizadores locales para sus escenarios. En modo normal, la sección Comisiones lista y crea políticas versionadas mediante el backend; la validación canónica exige modalidades no repetidas, rangos continuos y valores válidos. Scheduler nunca genera movimientos de pago: Nómina conserva esa autoridad.
 
-El catálogo de Servicios incluye listados por categoría, búsqueda, estados y edición; servicios individuales y con sesiones; clases con capacidad y horario por día; paquetes con selección de servicios y precio personalizado; adicionales; categorías; servicio destacado; nombres alternativos; sitio web con pago en línea; opciones avanzadas (modalidad, comisión por porcentaje o moneda, recursos y horario especial); y carga/descarga masiva de precios `.xlsx` en modo mock (no procesa archivos reales ni persiste). La carga/descarga masiva y la subida de plantillas son flujos visuales/mock: todavía no procesan archivos reales ni persisten información. La prioridad inmediata de Servicios es terminar la revisión visual e interacción de `Opciones avanzadas`; la conexión con API y Prisma queda para la fase de persistencia.
+La referencia histórica de Servicios conserva listados por categoría, edición, opciones avanzadas y carga/descarga visual de precios `.xlsx`; esas funciones no procesan archivos reales. En modo normal, perfiles de servicios, recursos, paquetes, complementos y horarios de clase usan API/Prisma. RV4 permite editar complementos ya materializados, pero el contrato todavía no publica candidatos para su activación inicial. Precio/categoría e importación/exportación masiva permanecen bajo autoridad comercial/POS; no interpretar capacidades exclusivas de la referencia como funciones persistentes. La validación histórica de uso de un recurso tampoco tiene endpoint administrativo dedicado: Agenda vuelve a validar requisitos al reservar, pero Administración no simula ese resultado.
 
 **Alcance administrativo por módulo:**
 
-| Módulo                 | Alcance funcional                                                                                                                                                                  | Estado de definición                                                         |
-| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| Comercios y sucursales | Comercio como entidad principal con estado, horario semanal/24 horas y entidades asociadas; sucursales con ubicación y contacto                                                    | Implementado local/mock y sincronizado con Agenda mediante `localStorage`    |
-| Profesionales          | Asignación múltiple a comercios/sucursales, datos básicos, servicios, horario, descansos, perfil, grupos personalizados y configuración obligatoria de comisiones cuando se activa | Implementado local/mock                                                      |
-| Servicios              | Servicios, clases, paquetes, adicionales, categorías, precios masivos                                                                                                              | Definido por capturas                                                        |
-| Comisiones             | Por profesional, servicio/producto y valor por defecto; porcentaje o monto                                                                                                         | Definido por capturas                                                        |
-| Recursos               | Recursos generales y recursos con horario, asignación a servicios y locales                                                                                                        | Definido por capturas                                                        |
-| Encuestas              | Encuestas, preguntas de apreciación/comentario, asociación a servicios y preview vivo con estrellas                                                                                | Parcial; falta flujo de resultados                                           |
-| Consentimientos        | Nombre, carga visual de archivo PDF/DOC/DOCX, tabla con búsqueda, edición y eliminación                                                                                            | Catálogo local/mock; falta firma, flujo operativo y persistencia             |
-| WhatsApp               | Catálogo con 13 mensajes operativos precargados, plantillas prediseñadas, variables agrupadas y preview estilo WhatsApp                                                            | Implementado local/mock; falta conexión del canal, envío real y persistencia |
-| Gift Cards             | Gift card de servicio o monto, vencimiento, diseño, borrador/activar                                                                                                               | Definido por capturas                                                        |
-| Colores de status      | Paleta por comercio para los estados de reserva, restauración de valores originales y desbloqueo por código                                                                        | Implementado local/mock; falta autorización real de servidor                 |
-| Planes                 | No se implementa en este proyecto                                                                                                                                                  | Fuera de alcance                                                             |
+| Módulo                 | Alcance funcional                                                                                                               | Estado de definición                                                 |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| Comercios y sucursales | Comercio como entidad principal con estado, horario semanal/24 horas y entidades asociadas; sucursales con ubicación y contacto | API real; activación explícita y versionada                          |
+| Profesionales          | Asignación múltiple a comercios/sucursales, servicios, horarios, descansos, especialidades y grupos                             | API real; perfil explícito sobre `Empleado`                          |
+| Servicios              | Servicios, clases, paquetes y adicionales canónicos                                                                             | API real; precios masivos permanecen sólo en la referencia histórica |
+| Comisiones             | Por profesional, servicio/producto y valor por defecto; porcentaje o monto                                                      | API real versionada; pago final en Nómina                            |
+| Recursos               | Recursos generales y recursos con horario, asignación a servicios y locales                                                     | API real                                                             |
+| Encuestas              | Encuestas, preguntas y asociación a servicios                                                                                   | API real; resultados mediante reporte canónico                       |
+| Consentimientos        | Catálogo y documentos privados versionados                                                                                      | API real; asignación/firma disponible en backend                     |
+| WhatsApp               | Plantillas versionadas, outbox y reintentos por canal                                                                           | API real; proveedor deshabilitado hasta sandbox                      |
+| Gift Cards             | Plantilla de servicio o monto, vencimiento, diseño y estado                                                                     | API real; emisión/saldo fuera de alcance                             |
+| Colores de status      | Paleta por comercio con control optimista                                                                                       | API real; requiere autorización secundaria                           |
+| Planes                 | No se implementa en este proyecto                                                                                               | Fuera de alcance                                                     |
 
 `Local` y `Profesional` son entidades separadas: las sucursales se administran dentro de Comercios; los profesionales son personas reales y no sustitutos de sucursales.
 
 ### Configuraciones
 
-- La ruta `/configuraciones` monta `SettingsWorkspace`; sus secciones se abren desde el grupo desplegable `Configuraciones` de la sidebar global y conservan `?section=` al navegar.
-- El workspace ya no renderiza una sidebar propia. Detecta cambios sin guardar y pide confirmación antes de cambiar de sección desde la navegación global. Cada panel implementado guarda su propio documento local y ofrece feedback con `toast`; esto es una maqueta funcional local, no configuración multiusuario.
-- Secciones visibles implementadas: `Empresa` (identidad, logo, URL de reservas, LinkPro, redes y datos públicos), `Agenda` (slot visual, reglas de reservas, límites, horario extendido y campos adicionales), `Pagos Keysar` (datos bancarios, link y proveedor externo), `Recordatorios` (email/WhatsApp), `Fichas médicas`, `E-mails`, `Clientes` (categorías, campos, opciones y filtros), `Encuestas` y `Códigos de autorización`.
-- `Sitio web`, `Integraciones` y `Notificaciones` aparecen en la navegación con estado pendiente. Existe un panel de configuración de caja en el código, pero actualmente no tiene entrada visible en el sidebar; no tratarlo como un flujo expuesto hasta conectarlo a la navegación.
-- Salvo el tamaño visual de slots descrito en Agenda, las opciones guardadas en estos paneles todavía no gobiernan reservas, pagos, mensajes ni sitios reales. Al conectar backend se deberá definir alcance por comercio/sucursal, permisos, validación de secretos y migración de los documentos existentes en `localStorage`.
+- La ruta `/configuraciones` monta `ApiSettingsWorkspace` en modo normal; sus secciones se abren desde la sidebar global y conservan `?section=` al navegar. Desde RV5 no existe editor JSON operativo: Empresa, Sitio web, Agenda, Pagos Keysar, Recordatorios, Fichas médicas, E-mails, Integraciones, Notificaciones, Clientes y Encuestas usan formularios estructurados con grupos, estados sólo lectura, campos anidados y listas editables.
+- Cada sección obtiene las capas autorizadas del backend. La respuesta incluye el documento propio de cada capa para resolver la vista sólo hasta `COMMERCE`, `BRANCH` o `USER`; guardar aplica únicamente los paths visibles modificados sobre el documento de esa capa y conserva claves desconocidas. Una edición de Comercio nunca copia valores efectivos de Sucursal/Usuario. `USER` exige `WRITE`; las otras capas exigen `ADMIN`.
+- Cambiar sección, comercio, sucursal o capa con un borrador exige confirmación. Un `409` conserva el formulario y permite recargar. Ningún documento operativo se guarda en `localStorage`; sólo `slotMinutes` permanece como preferencia visual del dispositivo y emite el evento ya consumido por Agenda.
+- Cada formulario muestra el consumidor real. Al cierre de RV5 no se encontraron consumidores operativos de los documentos: persistir preferencias no altera disponibilidad, POS, outbox, expedientes, identidad de clientes ni encuestas. La matriz completa vive en `docs/SCHEDULER_RV5_SETTINGS_RESTORATION.md`; cualquier consumidor futuro requiere contrato y pruebas antes de actualizarla.
+- Pagos no solicita `publicKey` ni `accessToken`, e Integraciones no inventa campos de proveedor: claves, tokens, contraseñas, credenciales y webhook secrets viven sólo en infraestructura y siguen rechazados por el backend. Código personal conserva su formulario separado con contraseña actual y nunca lista códigos ajenos.
 
 ### Reportes
 
-La ruta `/reportes` contiene la primera fase local/mock de reportes: resumen ejecutivo con selector de periodo, KPIs comparativos y desgloses; `/reportes/reservas` implementa la vista General del reporte de reservas con rango de fechas, filtros, KPIs, ranking de servicios, distribución semanal y demanda por hora, más subvistas de Historial, Métricas, Locales, Servicios, Mensajería móvil y desgloses por local. El reporte de ventas todavía no está implementado. Los desgloses de Servicios por local y Prestadores por local cubren los 53 servicios de OPATRA MEXICO en el orden del reporte operativo.
+- Desde RV7, `/reportes`, `/reportes/reservas`, `/reportes/ventas`, Historial, Rendimiento, Reporte de encuestas y Recordatorios montan `ApiReportsWorkspace` con la presentación restaurada en `RestoredReportsWorkspace`. Locales, Mensajería móvil, Métricas y Servicios ya no redirigen; Servicios/Prestadores por local usan rutas dinámicas con `branchId` canónico. El alias histórico `opatra-mexico` vuelve al selector de Locales y nunca se interpreta como identidad.
+- Cada vista declara sus datasets de las doce claves canónicas y limita la consulta a capacidades reales de resumen/reservas/ventas. Periodo, búsqueda, estado/canal y sucursales forman el request; las rutas por local fallan cerradas si el ID no pertenece al bootstrap. Pantalla recorre todas las páginas hasta `total`; tarjetas usan el `summary` completo y gráficos/tablas la unión completa, nunca una primera página presentada como total.
+- Exportar vuelve a solicitar `/exports` y genera CSV, XLSX o PDF desde el conjunto completo auditado, no desde la tabla visual. `CUSTOMERS` usa un diálogo con campo seguro, emite `SENSITIVE_EXPORT` ligado al dataset y consume la autorización de un solo uso. XLSX/PDF se renderizan localmente después de la autorización; fuentes canónica/legado no se mezclan y POS sólo se atribuye por enlaces canónicos. Matriz y límites: `docs/SCHEDULER_RV7_REPORTS_RESTORATION.md`.
 
 ### Navegación y UI
 
-- La navegación primaria de Scheduler usa el Sidebar canónico de `@cosmetics/ui`: `SchedulerLayoutShell` lo monta una sola vez para todo `(dashboard)` y `SchedulerAppSidebar` organiza Principal y los grupos desplegables Reportes, Administración y Configuraciones. Solo un grupo permanece abierto y el correspondiente a la ruta activa se expande automáticamente. En escritorio es persistente y colapsable a iconos con tooltips; en móvil se presenta como Sheet con cierre explícito. Administración, Configuraciones y los desgloses de Reportes ya no renderizan sidebars propias: todas sus secciones viven en la navegación global y sincronizan su estado mediante ruta y `?section=`. Agenda tampoco mantiene una segunda columna lateral: sus filtros operativos de comercio, sucursal, profesionales, estatus, hora y calendario se abren en un Sheet derecho desde el botón `Filtros de agenda` del toolbar.
+- La navegación primaria de Scheduler usa el Sidebar canónico de `@cosmetics/ui`: `SchedulerLayoutShell` lo monta una sola vez para todo `(dashboard)` y `SchedulerAppSidebar` organiza Principal y los grupos desplegables Reportes, Administración y Configuraciones. Solo un grupo permanece abierto y el correspondiente a la ruta activa se expande automáticamente. En escritorio es persistente, mide `14rem` expandida y se colapsa a iconos de `3.5rem`; en móvil se presenta como Sheet con cierre explícito. Administración, Configuraciones y los desgloses de Reportes ya no renderizan sidebars propias: todas sus secciones viven en la navegación global y sincronizan su estado mediante ruta y `?section=`. En Agenda existe además un panel operativo de `304px` para comercio, sucursal, profesionales, estatus, hora y calendario; administra su propio scroll vertical, su calendario mensual reparte las siete columnas dentro del ancho disponible y en pantallas menores se abre como Sheet derecho desde `Filtros de agenda`.
 - Todo usa componentes de `@cosmetics/ui` y `toast` compartido; las pantallas montan `<Toaster />` en `src/app/layout.tsx`.
-- La interfaz es responsive desde el inicio: navegación compacta en móvil, tarjetas apiladas, formularios de pantalla completa y tablas que se convierten en bloques legibles.
+- La interfaz es responsive desde el inicio: navegación compacta en móvil, tarjetas apiladas y tablas con scroll horizontal confinado. Administración, Clientes, Configuraciones y Reportes conservan scroll de documento; la Agenda operativa `/` usa el alto visible y confina sus scrolls al panel y al grid.
 - Los modales de Scheduler permiten scroll vertical en el cuerpo, pero nunca scroll horizontal. `DialogContent`, `admin-dialog`, `scheduler-dialog` y sus cuerpos bloquean el eje X; pestañas, horarios, tablas editables y escalas de comisión deben envolver o transformarse en layouts apilados al reducir el viewport, sin depender de `min-width` de escritorio ni ocultar campos fuera del área visible.
-- En la vista diaria, el grid limita su altura al viewport y maneja su propio scroll vertical; la esquina, los encabezados de profesionales y la columna de horas permanecen sticky. Las tarjetas y la línea de hora actual se posicionan proporcionalmente al intervalo visual configurado.
+- La Agenda operativa ocupa el alto visible y conserva densidades responsive y `ResizeObserver`. Su rango horario sale de las reglas/excepciones de la sucursal; las métricas del grid son visuales y nunca se usan para autorizar disponibilidad.
+- La agenda usa densidad responsive para laptops: en viewports de escritorio de hasta `900px` de alto (o pantallas táctiles de hasta `1100px`) compacta header, filas, tarjetas y columna horaria; por debajo de `780px` y `680px` aplica densidades adicionales. Las columnas se reparten de forma fluida y cuatro profesionales deben caber sin scroll horizontal en los viewports objetivo `1536×864`, `1366×768`, `1280×720` y `1280×600`; solo cuando hay más profesionales el desbordamiento queda confinado al scroll horizontal interno del grid. Los cálculos de posición deben reutilizar `SchedulerAgendaLayoutMetrics` para mantenerse alineados con las filas CSS.
 
 ### Fases de construcción
 
 - **Fase 0 — Contexto y base visual**: consolidar mapa de navegación y decisiones funcionales; mantener identidad Keysar, componentes de `@cosmetics/ui` y patrones de feedback; validar accesibilidad, estados vacíos, loading, errores y responsive.
-- **Fase 1 — Shell administrativo**: navegación visible desde la agenda; pantalla `/administracion` con los módulos definidos; definir rutas, layouts y componentes compartidos sin inventar datos persistentes. Completada en modo local/mock; la prioridad actual es terminar `Opciones avanzadas`, validar todos los modales y cerrar el acabado visual antes de conectar backend.
-- **Fase 2 — Catálogos base**: implementar Comercios/sucursales, Profesionales y Servicios con listado, búsqueda/filtros, crear, editar, activar/desactivar y confirmaciones. Implementada en local/mock.
-- **Fase 3 — Reglas operativas**: implementar Comisiones, Recursos y Gift Cards; integrar horarios, descansos, recursos, categorías y restricciones de reserva; cubrir flujos alternativos de gift card de servicio y de monto. Implementada en local/mock.
-- **Fase 4 — Comunicación y documentos**: conectar WhatsApp real, envío de mensajes y persistencia de plantillas; implementar Consentimientos como catálogo de documentos; definir antes de construir el flujo de resultados de Encuestas y el uso de Consentimientos dentro de una cita. Catálogo y configuración implementados en local/mock; Consentimientos ya incluye nombre, archivo, validación de 5 MB, tabla CRUD y confirmación de eliminación; firma, uso dentro de una cita y persistencia siguen fuera de alcance.
-- **Fase 5 — Persistencia y conexión con agenda**: modelar y validar `Cliente`, `Servicio`, `Cita`, `BloqueHorario` y las entidades administrativas necesarias; crear endpoints `/api/scheduler` y conectar el frontend sin romper el mock actual; aplicar permisos por rol y reglas de sucursal. Pendiente: no iniciar hasta cerrar el acabado visual y recibir autorización explícita para modificar backend/Prisma.
+- **Fases visuales 1 a 4**: los workspaces históricos se usaron como referencia de desarrollo para capturas y pruebas visuales y RV8 retiró sus implementaciones sin consumidores. La operación equivalente usa contratos reales desde Fase 9; una función que exista sólo en la referencia no se considera persistente.
+- **Fase 5 — Persistencia y conexión con agenda**: el backend/Prisma base de Cliente, Servicio, Cita y BloqueHorario existe por las Fases 1 a 4 de `PLAN_BACKEND_SCHEDULER.md`; la conexión visual quedó implementada en Fase 9 sin convertir mocks en datos operativos. La sustitución del proveedor Agenda usado por POS se ejecutó aparte en la Fase 5 del plan backend.
 - **Fase 6 — Calidad y operación**: pruebas de flujos completos, responsive y accesibilidad; estados de error/reintento y protección contra cambios destructivos; preparar despliegue cuando el comportamiento local esté validado.
 
 **Criterios para cada módulo**: antes de marcar un módulo como terminado deben existir listado, estado vacío, búsqueda o filtro cuando aplique, alta, edición, validaciones, confirmación para eliminar/desactivar, feedback de éxito/error, comportamiento móvil y documentación de las decisiones no visibles en las capturas.
@@ -1053,9 +1121,177 @@ La migración en Supabase dev, el backend `cosmetics-api-dev`, el login `SUPER_A
 
 **Notas importantes:**
 
-- Frontend en Vercel se despliega automáticamente por push a `master`/`develop`.
+- Los cinco proyectos frontend actualmente conectados al monorepo en Vercel
+  (Envelope, Payroll, Scheduler, Finance y HR) crean deployments automáticamente
+  por integración Git en cualquier rama, no sólo en `master`/`develop`. CRM,
+  POS y `apps/landing` no tienen proyecto Vercel; `keysar-landing` pertenece a
+  otro repositorio.
 - Backend en Fly.io se despliega mediante el workflow manual protegido `.github/workflows/deploy-api.yml`; no se despliega automáticamente por push.
 - Migraciones de BD se aplican dentro del workflow manual protegido y con revisión previa; nunca por un push automático.
+- La Fase 0 del plan de despliegues selectivos se completó el 4 de septiembre de
+  2026 sin cambiar configuraciones operativas. El inventario verificó cinco
+  proyectos Vercel conectados al monorepo y tres apps sin proyecto. En la línea
+  base hubo 356 deployments del monorepo; 314 (88.2%) provinieron de ramas
+  distintas de `develop`/`master`, todos iniciados por Git. Ningún workflow ni
+  deployment hook inicia esos frontends. También se documentaron el desfase de
+  Node remoto y la variable faltante de Scheduler. La evidencia, configuración
+  efectiva y puntos de rollback viven en `docs/VERCEL_PHASE_0_AUDIT.md`; la
+  Esa auditoría fue la entrada de la Fase 1 y producción permanece sin cambios.
+- La Fase 1 del plan de despliegues selectivos se completó el 4 de septiembre de
+  2026 sin invocar Vercel ni modificar workflows o ambientes. El detector
+  fail-closed vive en `scripts/detect-vercel-impact.mjs`, reconstruye el grafo
+  desde los manifests del SHA objetivo, analiza `pnpm-lock.yaml` v9 por
+  importador y cierre transitivo, y emite JSON por stdout más resumen humano por
+  stderr. En ramas desplegables exige `--base-sha` diagnóstico o un archivo
+  `--deployment-state` ordenado con el último estado `READY`; historia Git,
+  grafo, lockfile o rutas ambiguas producen exit code no cero sin listas vacías.
+  `pnpm deploy:impact:test` valida 31 casos y `pnpm deploy:impact:history` repite
+  cinco diagnósticos históricos. Contrato y evidencia:
+  `docs/VERCEL_PHASE_1_DETECTOR.md`. La integración Git automática actual sigue
+  activa hasta las fases posteriores y producción permanece sin cambios.
+- La Fase 2 se integró en `develop` el 5 de septiembre de 2026 mediante la
+  PR #88, con CI y previews de Vercel en verde. Turbo está fijado en
+  `2.10.5`, `turbo.json` usa `tasks` y las invalidaciones globales se limitan a
+  `.nvmrc`, `pnpm-workspace.yaml` y `tsconfig.json`; `.eslintrc.cjs` sólo
+  participa en `lint`. `pnpm turbo:graph:verify` compara el grafo de build con
+  los manifests y exige las ocho apps más el API. `auth` y `api-client` declaran
+  ahora `types` como dependencia directa para que `^build` represente la arista
+  real. `Production builds` ejecuta ese gate, la matriz del detector, el
+  contrato de manifiesto multiversión y los nueve builds; POS usa `build:web` y
+  no ejecuta `electron-builder`. Evidencia y
+  límites locales: `docs/VERCEL_PHASE_2_TURBO.md`. Durante la validación se
+  corrigió en Vercel el Build Command de Envelope para usar el nombre exacto
+  `--filter=@cosmetics/envelope`; no se desplegó manualmente a producción.
+- La Fase 3 quedó implementada en repositorio el 5 de septiembre de 2026 y
+  permanece pendiente de validar los workflows sobre aliases reales con SHAs
+  distintos. Envelope, Payroll y Scheduler exponen
+  `meta[name="keysar-release"]`; los smokes reciben un SHA independiente para
+  cada app y para API, validan la matriz antes de autenticar y publican por 30
+  días un manifiesto JSON sin URLs ni secretos. `Deploy API` ya no exige el
+  mismo commit para Scheduler y API al activar el proveedor interno: recibe
+  `scheduler_frontend_sha`, verifica ambos releases y registra la combinación
+  aprobada. Contrato, pruebas y rollback:
+  `docs/VERCEL_PHASE_3_RELEASE_IDENTITY.md`. No se modificó configuración remota
+  ni producción.
+- La Fase 4 quedó implementada en repositorio el 5 de septiembre de 2026 y
+  permanece pendiente de observar varios merges reales. El workflow
+  `.github/workflows/vercel-impact-diagnostic.yml` se dispara después de una CI
+  exitosa de un push a `develop` o `master`, consulta en sólo lectura el último
+  deployment `READY` anterior y ancestro de cada uno de los cinco proyectos
+  activos, ejecuta el detector fail-closed y publica matriz, razones y
+  comparación contra la integración Git actual. El SHA objetivo nunca se usa
+  como su propia base. La selección sigue siendo de sólo lectura; desde la Fase
+  6 los cinco frontends activos de `development` pueden consumirla, cada uno
+  cerrado por su propio feature flag y secret de deployment. `master` conserva
+  sólo el diagnóstico. La primera corrida remota requiere el secret dedicado
+  `VERCEL_TOKEN_READ_ONLY`; contrato y evidencia:
+  `docs/VERCEL_PHASE_4_DIAGNOSTIC_WORKFLOW.md`.
+- La Fase 5 de `PLAN_DEPLOYS_SELECTIVOS_VERCEL.md` quedó implementada en
+  repositorio el 5 de septiembre de 2026 con HR como piloto, sin cambios
+  remotos. HR fue elegida porque no consume API ni variables de ambiente y opera
+  con mocks locales. `Vercel HR pilot operations` permite crear un Preview del
+  SHA exacto sin alias, publicar un deployment `READY` ya verificado o regresar
+  el alias mediante confirmaciones literales. El job automático de
+  `.github/workflows/vercel-impact-diagnostic.yml` consumía sólo la decisión HR
+  en `develop`; la Fase 6 sustituyó el flag histórico
+  `VERCEL_HR_PILOT_ENABLED` por `VERCEL_HR_SELECTIVE_ENABLED` y generalizó el
+  job.
+- Los deployments CLI del piloto fijan Node.js `22.23.2`, pnpm `10.0.0` y
+  Vercel CLI `59.11.2`, construyen con `--prebuilt`, envían procedencia Git
+  explícita y verifican project ID, target Preview, estado `READY`, SHA y
+  `meta[name="keysar-release"]` detrás de Deployment Protection antes de mover
+  el alias. Un rerun reutiliza el deployment observado `READY`; antes de
+  publicar se exige que `origin/develop` siga en el SHA autorizado. Credenciales,
+  normalización remota de Node, despliegues manuales, feature flag, retiro del
+  iniciador Git y casos de aceptación/rollback reales siguen pendientes. Guía:
+  `docs/VERCEL_PHASE_5_HR_PILOT.md`.
+- El cierre local de la Fase 5 valida 12 contratos del piloto, 36 del detector,
+  cinco casos históricos, cuatro contratos multiversión, el grafo Turbo, lint y
+  type-check completos, el build de HR con SHA inyectado y `ci:build` para API,
+  ocho frontends y POS web. Estas pruebas no sustituyen Node.js 22 en CI, las
+  credenciales ni los deployments/aliases reales.
+- La Fase 6 de `PLAN_DEPLOYS_SELECTIVOS_VERCEL.md` quedó implementada en
+  repositorio el 5 de septiembre de 2026; la migración administrativa y la
+  evidencia remota siguen pendientes. `Vercel selective frontends and production shadow`
+  consume la selección fail-closed para Envelope, Finance, HR, Payroll y
+  Scheduler sólo en `develop`, con un flag, token, project ID, bypass, alias y
+  grupo de concurrencia por app. La matriz limita a dos builds simultáneos,
+  reutiliza un `READY` del mismo SHA y consulta `origin/develop` inmediatamente
+  antes de publicar para bloquear jobs obsoletos.
+- Antes de construir, el workflow compara por API Root Directory, framework,
+  Node `22.x`, Install/Build/Output commands y los nombres de variables Preview
+  sin descifrar valores. Finance ya expone `keysar-release`; los smokes y el
+  manifiesto multiversión cubren los cinco frontends más API. El smoke
+  automático sólo se abre cuando los cinco flags individuales y
+  `VERCEL_DEVELOPMENT_SMOKES_ENABLED` están activos. Scheduler exige
+  `NEXT_PUBLIC_API_URL` antes de poder migrarse. Configuración, orden, alta
+  posterior de CRM/POS/Landing y rollback:
+  `docs/VERCEL_PHASE_6_DEVELOPMENT.md`. Producción permanece sin cambios.
+- La Fase 7 de `PLAN_DEPLOYS_SELECTIVOS_VERCEL.md` quedó implementada en
+  repositorio el 5 de septiembre de 2026 como sombra productiva de sólo lectura;
+  requiere al menos tres promociones representativas y aprobación explícita
+  antes de habilitar la Fase 8. Después de una CI verde en `master`, el job
+  `Rehearse selective production without mutations` reutiliza la evidencia del
+  detector, lee `/health.release`, compara el SHA actual del API con el objetivo
+  y publica orden API/BD/frontend, fan-out amplio evitable, manifiesto teórico de
+  cinco frontends más API y un deployment `READY` anterior por rollback.
+- La política productiva no exige igualdad artificial entre SHA frontend y API:
+  Envelope/Payroll requieren compatibilidad hacia atrás, Finance/HR permanecen
+  independientes mientras sigan con mocks y Scheduler exige una pareja
+  explícita verificada aunque los SHA sean distintos. El reporte declara cero
+  mutaciones, usa el environment protegido `production` y se conserva 90 días.
+  Finance y HR ya forman parte del smoke/manifiesto productivo. Contrato,
+  activación y rollback: `docs/VERCEL_PHASE_7_PRODUCTION_SHADOW.md`. Producción
+  selectiva sigue desactivada.
+- El cierre local de la Fase 7 valida 7 contratos de sombra, 36 del detector, 13
+  del deployment, cuatro de configuración, cinco del manifiesto, grafo Turbo,
+  lint de 15 workspaces, 18 tareas de type-check, 133 unitarias del API y los
+  builds de API, siete frontends Next.js y POS web. Esto no sustituye el
+  historial Vercel, la aprobación del environment ni las promociones remotas
+  requeridas.
+- La Fase 8 de `PLAN_DEPLOYS_SELECTIVOS_VERCEL.md` quedó implementada en
+  repositorio el 5 de septiembre de 2026 sin activar producción. La sombra
+  productiva ahora deriva un plan gradual y sólo entrega a la matriz las apps
+  afectadas cuyo `VERCEL_<APP>_PRODUCTION_SELECTIVE_ENABLED` vale `true`; todos
+  los flags deben permanecer inicialmente en `false` y HR es el primer
+  candidato después de completar la evidencia remota de Fase 7.
+- Cada job productivo usa el environment protegido `production`, concurrencia
+  no cancelable por app, credencial y dominio propios. Valida configuración y
+  nombres de variables sin descifrarlas, exige API/readiness y gates explícitos
+  de Prisma/compatibilidad cuando aplican, construye con `vercel build --prod`,
+  crea un deployment `--prod --skip-domain`, verifica target `production`,
+  `READY`, proyecto, metadata `master` y `keysar-release`, y vuelve a consultar
+  el head de `master` antes de mover el dominio.
+- `Vercel production frontend operations` separa ensayo sin dominio,
+  publicación y rollback mediante confirmaciones literales. Tras una
+  publicación automática se ejecutan los ocho smokes públicos, los recorridos
+  productivos autenticados de sólo lectura y tres comprobaciones adicionales
+  durante 15 minutos; el manifiesto de cinco frontends más API y las duraciones
+  se conservan 90 días. Credenciales, flags, retiro del iniciador Git, ensayos,
+  smokes y rollback reales siguen pendientes. Contrato y orden:
+  `docs/VERCEL_PHASE_8_PRODUCTION.md`.
+- El check requerido `Production builds` ejecuta
+  `pnpm deploy:production:test` para bloquear cambios que eliminen flags,
+  gates, build Production, promoción verificada, observación o rollback.
+- La Fase 9 de `PLAN_DEPLOYS_SELECTIVOS_VERCEL.md` quedó implementada en
+  repositorio el 5 de septiembre de 2026; el cierre remoto permanece pendiente
+  de completar las Fases 5–8. `Vercel operations audit` corre semanalmente y a
+  demanda, usa sólo `GET`, valida por ambiente manifests, Root Directories,
+  rutas estables, ramas y exactamente un iniciador automático por proyecto.
+  Devuelve `transition` mientras una app conserve Vercel Git, `ready` cuando
+  las cinco usen Actions como iniciador único y `blocked` ante drift, cero/dos
+  iniciadores o un falso negativo sin resolver.
+- La auditoría mide sobre una ventana de 7, 30 o 90 días el fan-out evitado
+  contra cinco deployments por CI verde, duplicados, ramas de trabajo, fallos
+  del detector y revisiones confirmadas de
+  `docs/vercel-detector-reviews.json`. Sus artefactos sanitizados duran 90
+  días. El contrato y el cierre administrativo están en
+  `docs/VERCEL_PHASE_9_OPERATIONS.md`; `Production builds` ejecuta también
+  `pnpm deploy:operations:test`.
+- Los workflows manuales de development/production son además el mecanismo de
+  redeploy por variables: construyen un deployment nuevo del mismo SHA antes
+  de publicar y exigen `change_reference`. No crear commits vacíos ni usar un
+  build Preview en producción.
 - No subir `.env` ni `.env.local` al repositorio.
 - `apps/envelope/.env.local` es solo local y no debe commitearse.
 - `apps/payroll/.env.local` también es solo local y no debe commitearse; las variables de Vercel se configuran por proyecto y ambiente.
@@ -1067,9 +1303,9 @@ La migración en Supabase dev, el backend `cosmetics-api-dev`, el login `SUPER_A
 - `.github/workflows/ci.yml` valida PRs y pushes a `develop`/`master` con los checks independientes `Shared UI contracts` y `UI regression canaries`, lint, TypeScript, unit tests, builds productivos, sincronía de schemas Prisma, aplicación completa de migraciones sobre PostgreSQL 16 efímero e integración HTTP real de login/sesión. `Shared UI contracts` ejecuta la suite de `@cosmetics/ui` con sus umbrales obligatorios de cobertura; `UI regression canaries` compara los snapshots del testbed en Chromium.
 - Los scripts `type-check`, `test:unit` y `test:integration` de `@cosmetics/api` ejecutan previamente `prisma generate`; esto es obligatorio porque un runner limpio todavía no tiene los tipos y enums generados de `@prisma/client`.
 - Envelope conserva temporalmente un presupuesto máximo de 8 warnings ESLint y Payroll de 7; CI bloquea cualquier incremento mientras se reduce esa deuda en cambios separados.
-- `.github/workflows/deploy-api.yml` solo se ejecuta manualmente. Fija el SHA de la rama `develop` o `master` antes de la aprobación, usa el environment `development` o `production`, aplica `prisma migrate deploy`, despliega exactamente ese commit y espera `/ready`. Producción exige escribir `PRODUCCION_RESPALDADA`; esta confirmación no sustituye verificar backup/PITR ni la aprobación del environment.
-- `.github/workflows/staging-smoke.yml` exige los SHA completos servidos y ejecuta cinco smoke tests Playwright públicos de solo lectura contra API, Envelope y Payroll en el environment elegido. En producción encadena además `Authenticated production smoke`, con tres recorridos por app, cuentas de monitoreo, cero retries y sin artefactos sensibles. Los previews protegidos usan `ENVELOPE_VERCEL_BYPASS_SECRET` y `PAYROLL_VERCEL_BYPASS_SECRET`, generados por separado en cada proyecto Vercel; todas las suites de ambiente desactivan traces, screenshots y video.
-- `.github/workflows/development-e2e.yml` ejecuta manualmente 16 recorridos autenticados de solo lectura (8 Envelope + 8 Payroll) únicamente en el environment `development`. Requiere las cuatro credenciales `E2E_*`, los bypass de Vercel y los SHA completos de frontend/API; compara la identidad desplegada antes de probar y elimina los `storageState` antes de adjuntar el reporte seguro.
+- `.github/workflows/deploy-api.yml` solo se ejecuta manualmente. Fija el SHA de la rama `develop` o `master` antes de la aprobación, usa el environment `development` o `production`, aplica `prisma migrate deploy`, despliega exactamente ese commit y exige que `/health.release` coincida además de esperar `/ready`. La activación interna de Scheduler recibe y verifica por separado `scheduler_frontend_sha`, conserva la confirmación literal y registra la pareja compatible. Producción exige escribir `PRODUCCION_RESPALDADA`; esta confirmación no sustituye verificar backup/PITR ni la aprobación del environment.
+- `.github/workflows/staging-smoke.yml` exige en development y production SHAs completos independientes para API y los cinco frontends, y ejecuta ocho smoke tests Playwright públicos de solo lectura. Una matriz verificada produce un manifiesto JSON seguro por 30 días; en producción encadena además `Authenticated production smoke`, con tres recorridos por app para Envelope/Payroll, cuentas de monitoreo, cero retries y sin artefactos sensibles. Los previews protegidos usan bypass secrets separados por proyecto; todas las suites de ambiente desactivan traces, screenshots y video.
+- `.github/workflows/development-e2e.yml` ejecuta manualmente 19 recorridos autenticados de solo lectura (8 Envelope + 8 Payroll + 3 Scheduler) únicamente en el environment `development`. Requiere seis credenciales `E2E_*`, cinco bypass de Vercel y seis SHAs independientes; compara los cinco frontends y el API antes de crear sesiones, registra el manifiesto multiversión y elimina los `storageState` antes de adjuntar el reporte seguro.
 - `.github/workflows/pos-pilot.yml` implementa la puerta manual **POS pilot gate** sobre el environment `development`. Primero reconstruye todas las migraciones y ejecuta integración HTTP en PostgreSQL 16 efímero; después verifica el SHA/readiness desplegado, `prisma migrate status`, diagnóstico y conciliación `READ ONLY` de una sucursal/fecha. La confirmación `PILOTO_CONCILIADO` representa la aprobación humana y no se usa para crear datos ni credenciales.
 - El API separa `src/app.ts` (Express importable) de `src/index.ts` (listener y cierre ordenado). `/health` verifica el proceso y `/ready` verifica conectividad PostgreSQL; Fly enruta mediante el segundo.
 - Las migraciones Prisma dejaron de estar ignoradas por Git. `scripts/check-migration-safety.mjs` bloquea SQL nuevo potencialmente destructivo salvo revisión explícita documentada con `-- migration-safety: reviewed`.
@@ -1163,34 +1399,40 @@ apps/scheduler/
 │   ├── logo.svg                   → logo compartido Keysar
 │   └── fonts/                     → Emofera + Gilroy para identidad visual
 ├── src/app/
-│   ├── (auth)/login/              → acceso temporal/mock al scheduler
+│   ├── (auth)/login/              → login JWT y bootstrap real de Scheduler
 │   ├── (dashboard)/page.tsx       → agenda principal (día / semana)
 │   ├── (dashboard)/administracion/ → workspace administrativo completo
-│   ├── (dashboard)/configuraciones/ → configuración visual/local del scheduler
-│   ├── (dashboard)/reportes/       → resumen ejecutivo + reporte general de reservas (mock)
+│   ├── (dashboard)/configuraciones/ → configuración versionada real
+│   ├── (dashboard)/reportes/       → datasets y exportaciones reales
 │   ├── globals.css                → tokens visuales del scheduler
 │   └── layout.tsx                 → metadata + Toaster global
 ├── src/components/
-│   ├── SchedulerAccessGuard.tsx  → guard local/mock por permisos de pantalla
+│   ├── SchedulerAccessGuard.tsx   → guard por bootstrap y permisos autoritativos
+│   ├── SchedulerPrimaryNav.tsx    → tipos de navegación compartidos
+│   ├── api/                       → workspaces reales y entrada dinámica por módulo
 │   ├── layout/
 │   │   ├── SchedulerLayoutShell.tsx → shell responsive compartido por las rutas autenticadas
 │   │   └── SchedulerAppSidebar.tsx  → navegación primaria global filtrada por permisos
-│   ├── SchedulerPrimaryNav.tsx    → tipos y menús legacy conservados durante la migración a sidebar
-│   ├── SettingsMenu.tsx           → acceso compartido a Configuraciones y próximos módulos de cuenta
-│   ├── SchedulerWorkspace.tsx     → shell principal con estado local, filtros y modales
-│   ├── scheduler/                 → header, sidebar, grid agenda, tarjetas y diálogos del scheduler
-│   ├── reports/                   → dashboards y contenidos de reportes; navegación en la sidebar global
-│   └── settings/                  → workspace y paneles locales; navegación en la sidebar global
-├── src/components/administration/ → contenidos y CRUDs mock; navegación en la sidebar global
+│   ├── administration/            → presentación RV4/RV6 y catálogos administrativos reales
+│   ├── clients/                   → engagement y documentos privados de Clientes
+│   ├── reports/                   → presentación restaurada y encabezados de Reportes
+│   └── scheduler/                 → header, filtros, grid, tarjetas y diálogos de Agenda
 └── src/lib/
-    ├── administration-scheduler-config.ts → sincronización local de comercios, sucursales y profesionales
-    ├── commerce-operating-hours.ts → horario operativo y rango visible por comercio
-    ├── mock-client-data.ts        → clientes mock, alias, teléfono único e historial por sucursal
-    ├── mock-scheduler-data.ts     → datos mock de sucursales, profesionales, citas, bloqueos y leyenda
-    ├── scheduler-agenda-settings.ts → intervalo visual de slots persistido localmente
-    ├── scheduler-access.ts        → alcance mock por comercio, sucursal, profesional y pantalla
-    ├── mock-administration-data.ts → catálogos mock de locales, profesionales, servicios y módulos administrativos
-    └── mock-report-data.ts        → periodos, KPIs y series mock del resumen de reportes
+    ├── api.ts                              → cliente tipado de Scheduler
+    ├── session.tsx                         → sesión JWT, bootstrap, revalidación y autorizaciones secundarias
+    ├── scheduler-access.ts                 → mapeo del bootstrap autoritativo a rutas/capacidades
+    ├── scheduler-agenda-data.ts            → consultas, rangos e invalidación de Agenda
+    ├── scheduler-agenda-presentation.ts    → adaptadores canónicos de citas, columnas y disponibilidad
+    ├── scheduler-agenda-settings.ts        → preferencia local exclusivamente visual de slots
+    ├── scheduler-client-presentation.ts    → presentación compartida de Clientes
+    ├── scheduler-customer-data.ts          → invalidación compartida Agenda/Clientes
+    ├── scheduler-administration-presentation.ts → horarios, relaciones e invalidación RV4
+    ├── scheduler-engagement-presentation.ts → estados y adaptadores RV6
+    ├── scheduler-settings-presentation.ts  → formularios y escritura aislada por capa RV5
+    ├── scheduler-report-presentation.ts    → datasets, filtros y filas RV7
+    ├── scheduler-report-export.ts          → CSV/XLSX/PDF diferidos
+    ├── scheduler-query-scope.ts            → alcance y descarte de respuestas obsoletas
+    └── scheduler-session-state.ts          → guard contra bootstrap tardío
 ```
 
 ### backend/api
@@ -1208,7 +1450,14 @@ backend/api/
 │   │   ├── 20260813020000_add_payroll_expense_categories/ → catálogo y backfill de categorías de gasto
 │   │   ├── 20260813030000_link_payroll_expense_categories/ → referencias de catálogo con snapshots históricos
 │   │   ├── 20260822000000_add_payroll_access_control/ → acceso independiente de Payroll por puesto y pantalla
-│   │   └── 20260823000000_add_payroll_read_only_access/ → nivel de escritura por permiso de pantalla
+│   │   ├── 20260823000000_add_payroll_read_only_access/ → nivel de escritura por permiso de pantalla
+│   │   ├── 20260904060000_add_scheduler_security/ → seguridad, alcance y auditoría de Scheduler
+│   │   ├── 20260904070000_add_scheduler_operational_catalogs/ → perfiles, recursos y horarios de Scheduler
+│   │   ├── 20260904080000_add_scheduler_customers/ → clientes compartidos, metadatos y fusiones de Scheduler
+│   │   ├── 20260904090000_add_scheduler_appointments/ → disponibilidad, citas, bloqueos e idempotencia
+│   │   ├── 20260904100000_add_scheduler_administration/ → paquetes, clases, comisiones, gift cards y settings
+│   │   ├── 20260904110000_add_scheduler_engagement/ → mensajes, documentos, expediente y encuestas
+│   │   └── 20260904120000_add_scheduler_reporting_indexes/ → índices de reportes/exportaciones Scheduler
 │   ├── seed.ts                    → seed general/demo, usar con cuidado
 │   └── seed-catalogs.ts           → seed seguro para Bank/Position
 └── src/
@@ -1228,11 +1477,29 @@ backend/api/
     │   ├── payroll-access.routes.ts → permisos y credenciales administrativas de Payroll
     │   ├── payroll.routes.ts
     │   ├── pos.routes.ts        → auth POS, terminales, sucursales, permisos, credenciales y auditoría de Fase 1
-    │   └── scheduler.routes.ts
+    │   ├── scheduler.routes.ts    → bootstrap, código secundario, autorizaciones y administración de accesos
+    │   ├── scheduler-operations.routes.ts → candidatos y catálogos operativos de Scheduler
+    │   ├── scheduler-customers.routes.ts → clientes compartidos, expedientes, históricos y fusiones
+    │   ├── scheduler-appointments.routes.ts → disponibilidad, citas, estados y bloqueos canónicos
+    │   ├── scheduler-administration.routes.ts → administración avanzada, referencias POS y configuración
+    │   ├── scheduler-engagement.routes.ts → comunicaciones, documentos, expediente y encuestas autenticadas
+    │   ├── scheduler-report.routes.ts → datasets y exportaciones auditadas de Scheduler
+    │   └── scheduler-public.routes.ts → webhooks HMAC y respuesta pública por token
     ├── services/
     │   ├── payroll-calculation.ts → motor puro de cálculo
     │   ├── payroll.service.ts     → corridas, reservas y snapshots
     │   ├── pos-pilot-reconciliation.ts → conciliación de sólo lectura para el piloto POS
+    │   ├── scheduler-access.ts    → permisos, alcance, tokens de uso único y auditoría de Scheduler
+    │   ├── scheduler-operations.ts → reglas puras de catálogos, vigencia y horarios de Scheduler
+    │   ├── scheduler-customers.ts → normalización, alcance y reglas de identidad/fusión
+    │   ├── scheduler-appointments.ts → zonas IANA, intervalos, clases, estados, membresías e idempotencia
+    │   ├── scheduler-administration.ts → validación de comisiones, clases, secretos y precedencia
+    │   ├── scheduler-engagement.ts → cifrado, plantillas, webhooks, recordatorios y encuestas
+    │   ├── scheduler-reporting.ts → periodos, intervalos, paginación y cálculo reproducible de reportes
+    │   ├── scheduler-messaging.ts → adaptador y worker idempotente del outbox
+    │   ├── scheduler-private-storage.ts → documentos privados y URLs firmadas
+    │   ├── internal-agenda-adapter.ts → disponibilidad Scheduler compatible con el contrato Agenda de POS
+    │   ├── scheduler-pos-events.ts → propagación idempotente de estados Scheduler hacia citas/membresías POS
     │   └── payroll-storage.ts     → comprobantes en bucket privado
     ├── types/
     │   ├── express.d.ts           → extensión de tipos de Express
@@ -1244,9 +1511,10 @@ backend/api/
 
 ```text
 apps/e2e/
-├── playwright.config.ts                     → proyectos smoke API, Envelope y Payroll
+├── playwright.config.ts                     → proyectos smoke API, Envelope, Payroll y Scheduler
 ├── playwright.development.config.ts         → E2E autenticado seguro de development
-├── development/                             → setup de sesión, guard de escritura y 16 recorridos
+├── helpers/release-identity.ts               → contrato y manifiesto multiversión compartido
+├── development/                             → setups aislados, guard de escritura y 19 recorridos
 ├── tests/                                   → smoke tests públicos por ambiente
 └── README.md                                → cuentas, permisos, secrets y diagnóstico
 
@@ -1255,7 +1523,11 @@ apps/e2e/
 ├── deploy-api.yml                → migración + deploy manual protegido
 ├── development-e2e.yml           → E2E autenticado por SHA, solo development
 ├── pos-pilot.yml                 → migraciones efímeras + conciliación protegida del piloto POS
-└── staging-smoke.yml             → smoke tests manuales development/production
+├── staging-smoke.yml             → smoke tests manuales development/production
+├── vercel-impact-diagnostic.yml  → selección y deploy gradual de development/production después de CI
+├── vercel-development-manual.yml → deployment sin alias, publicación y rollback de development
+├── vercel-production-manual.yml  → ensayo sin dominio, publicación y rollback de production
+└── vercel-operations-audit.yml   → auditoría periódica de configuración, iniciadores y métricas
 ```
 
 ### packages/ui
@@ -1286,39 +1558,46 @@ packages/ui/
 
 ## Puntos de entrada frecuentes
 
-| Tarea                        | Archivo                                                                    |
-| ---------------------------- | -------------------------------------------------------------------------- |
-| UI compartida (exports)      | `packages/ui/src/index.ts`                                                 |
-| Componentes shadcn           | `packages/ui/src/components/ui/`                                           |
-| Wrappers custom UI           | `packages/ui/src/components/custom/`                                       |
-| Layout envelope              | `apps/envelope/src/components/layout/`                                     |
-| Rutas envelope frontend      | `apps/envelope/src/app/(dashboard)/`                                       |
-| Hooks envelope               | `apps/envelope/src/hooks/`                                                 |
-| API client envelope          | `apps/envelope/src/lib/api.ts`                                             |
-| Sesión/permisos envelope     | `apps/envelope/src/lib/session.tsx`                                        |
-| Endpoints envelope backend   | `backend/api/src/routes/envelope.routes.ts`                                |
-| Rutas payroll frontend       | `apps/payroll/src/app/(dashboard)/`                                        |
-| Estado/API payroll           | `apps/payroll/src/components/payroll/payroll-data-context.tsx`             |
-| Sesión payroll               | `apps/payroll/src/lib/session.tsx`                                         |
-| Endpoints payroll backend    | `backend/api/src/routes/payroll.routes.ts`                                 |
-| Motor payroll                | `backend/api/src/services/payroll-calculation.ts`                          |
-| Ciclo/snapshots payroll      | `backend/api/src/services/payroll.service.ts`                              |
-| Contratos POS                | `packages/types/src/pos.ts` y `backend/api/src/contracts/`                 |
-| Diagnóstico POS (lectura)    | `backend/api/scripts/diagnose-pos-data.ts`                                 |
-| Guía de despliegue payroll   | `apps/payroll/PENDIENTES.md`                                               |
-| Guía operativa payroll       | `apps/payroll/GUIA_PRIMERA_NOMINA.md`                                      |
-| Agenda scheduler             | `apps/scheduler/src/app/(dashboard)/page.tsx`                              |
-| Admin scheduler              | `apps/scheduler/src/app/(dashboard)/administracion/page.tsx`               |
-| Configuraciones scheduler    | `apps/scheduler/src/app/(dashboard)/configuraciones/page.tsx`              |
-| Reportes scheduler           | `apps/scheduler/src/app/(dashboard)/reportes/`                             |
-| Workspace scheduler          | `apps/scheduler/src/components/SchedulerWorkspace.tsx`                     |
-| Admin workspace scheduler    | `apps/scheduler/src/components/administration/AdministrationWorkspace.tsx` |
-| Settings workspace scheduler | `apps/scheduler/src/components/settings/SettingsWorkspace.tsx`             |
-| Mock data scheduler          | `apps/scheduler/src/lib/mock-scheduler-data.ts`                            |
-| Prisma schema                | `backend/api/prisma/schema.prisma`                                         |
-| Migraciones                  | `backend/api/prisma/migrations/`                                           |
-| Seed seguro catálogos        | `backend/api/prisma/seed-catalogs.ts`                                      |
-| Tipos compartidos            | `packages/types/src/index.ts`                                              |
+| Tarea                           | Archivo                                                            |
+| ------------------------------- | ------------------------------------------------------------------ |
+| UI compartida (exports)         | `packages/ui/src/index.ts`                                         |
+| Componentes shadcn              | `packages/ui/src/components/ui/`                                   |
+| Wrappers custom UI              | `packages/ui/src/components/custom/`                               |
+| Layout envelope                 | `apps/envelope/src/components/layout/`                             |
+| Rutas envelope frontend         | `apps/envelope/src/app/(dashboard)/`                               |
+| Hooks envelope                  | `apps/envelope/src/hooks/`                                         |
+| API client envelope             | `apps/envelope/src/lib/api.ts`                                     |
+| Sesión/permisos envelope        | `apps/envelope/src/lib/session.tsx`                                |
+| Endpoints envelope backend      | `backend/api/src/routes/envelope.routes.ts`                        |
+| Rutas payroll frontend          | `apps/payroll/src/app/(dashboard)/`                                |
+| Estado/API payroll              | `apps/payroll/src/components/payroll/payroll-data-context.tsx`     |
+| Sesión payroll                  | `apps/payroll/src/lib/session.tsx`                                 |
+| Endpoints payroll backend       | `backend/api/src/routes/payroll.routes.ts`                         |
+| Motor payroll                   | `backend/api/src/services/payroll-calculation.ts`                  |
+| Ciclo/snapshots payroll         | `backend/api/src/services/payroll.service.ts`                      |
+| Contratos POS                   | `packages/types/src/pos.ts` y `backend/api/src/contracts/`         |
+| Diagnóstico POS (lectura)       | `backend/api/scripts/diagnose-pos-data.ts`                         |
+| Diagnóstico Scheduler           | `backend/api/scripts/diagnose-scheduler-data.ts`                   |
+| Auditoría release Scheduler     | `backend/api/scripts/audit-scheduler-release.ts`                   |
+| Gate carga Scheduler            | `backend/api/src/scheduler-load.integration.test.ts`               |
+| Runbook release Scheduler       | `docs/SCHEDULER_PHASE_10_RELEASE.md`                               |
+| Normalización clientes          | `backend/api/scripts/normalize-scheduler-customers.ts`             |
+| Guía de despliegue payroll      | `apps/payroll/PENDIENTES.md`                                       |
+| Guía operativa payroll          | `apps/payroll/GUIA_PRIMERA_NOMINA.md`                              |
+| Agenda scheduler                | `apps/scheduler/src/app/(dashboard)/page.tsx`                      |
+| Admin scheduler                 | `apps/scheduler/src/app/(dashboard)/administracion/page.tsx`       |
+| Configuraciones scheduler       | `apps/scheduler/src/app/(dashboard)/configuraciones/page.tsx`      |
+| Reportes scheduler              | `apps/scheduler/src/app/(dashboard)/reportes/`                     |
+| Entrada de workspaces Scheduler | `apps/scheduler/src/components/api/SchedulerPageEntries.tsx`       |
+| Agenda Scheduler                | `apps/scheduler/src/components/api/ApiAgendaWorkspace.tsx`         |
+| Clientes Scheduler              | `apps/scheduler/src/components/api/ApiClientsWorkspace.tsx`        |
+| Administración Scheduler        | `apps/scheduler/src/components/api/ApiAdministrationWorkspace.tsx` |
+| Configuraciones Scheduler       | `apps/scheduler/src/components/api/ApiSettingsWorkspace.tsx`       |
+| Reportes Scheduler              | `apps/scheduler/src/components/api/ApiReportsWorkspace.tsx`        |
+| Prisma schema                   | `backend/api/prisma/schema.prisma`                                 |
+| Migraciones                     | `backend/api/prisma/migrations/`                                   |
+| Seed seguro catálogos           | `backend/api/prisma/seed-catalogs.ts`                              |
+| Tipos compartidos               | `packages/types/src/index.ts`                                      |
 
 ---
 
@@ -1366,20 +1645,48 @@ El scheduler usa `.next-dev` para `next dev` y `.next` para `next build`. Esta s
 pnpm --filter @cosmetics/api prisma:schemas
 pnpm --filter @cosmetics/api prisma:validate
 pnpm --filter @cosmetics/api pos:diagnose # sólo lectura; requiere DATABASE_URL
+SCHEDULER_DIAGNOSE_ENVIRONMENT=development pnpm --filter @cosmetics/api scheduler:diagnose # sólo lectura
+SCHEDULER_DIAGNOSE_ENVIRONMENT=development SCHEDULER_CUSTOMER_NORMALIZATION_MODE=DRY_RUN pnpm --filter @cosmetics/api scheduler:customers:normalize
+pnpm --filter @cosmetics/api scheduler:messages:worker # outbox; proveedor disabled por default
+SCHEDULER_RELEASE_AUDIT_ENVIRONMENT=development pnpm --filter @cosmetics/api scheduler:release:audit # agregado y READ ONLY
+RUN_SCHEDULER_LOAD_TESTS=true pnpm --filter @cosmetics/api test:scheduler:load # sólo PostgreSQL efímera
 pnpm --filter @cosmetics/api pos:reconcile # sólo lectura; requiere alcance del piloto
 pnpm migrations:review -- origin/develop
 pnpm test:integration  # requiere RUN_DATABASE_TESTS=true + PostgreSQL desechable
 pnpm test:smoke        # requiere URLs de ambiente o servicios locales activos
 pnpm test:e2e:development # requiere development desplegado, cuentas E2E y SHA exactos
 pnpm test:e2e:production  # diagnóstico administrado; solo cuentas de monitoreo productivas
+pnpm turbo:graph:verify   # valida el grafo de build de las ocho apps y el API
+pnpm deploy:impact:test   # matriz local del detector selectivo, sin invocar Vercel
+pnpm deploy:impact:history # cinco diagnósticos históricos reproducibles
+pnpm deploy:pilot:test # contrato fail-closed del deployment y alias piloto HR
+pnpm deploy:development:test # contrato remoto esperado de los cinco proyectos
+pnpm deploy:production-shadow:test # coordinación, manifiesto y rollback productivos en seco
+pnpm deploy:production:test # activación gradual, gates y workflows productivos
+pnpm deploy:operations:test # auditoría operativa, iniciador único y métricas
+pnpm deploy:release-manifest:test # contrato multiversión y alias desfasados
 ```
+
+La recolección remota de las Fases 4–9 se ejecuta desde
+`Vercel selective frontends and production shadow` después de CI. La selección usa
+`VERCEL_TOKEN_READ_ONLY`, escribe evidencia sanitizada y no descarga variables.
+Cada uno de los cinco proyectos sólo puede pasar a deployment en `develop` si
+su variable `VERCEL_<APP>_SELECTIVE_ENABLED` vale `true`; usa una credencial de
+deployment propia y separada del token de lectura. El workflow manual comparte
+el environment y el grupo de concurrencia por app. En production se usan flags
+`VERCEL_<APP>_PRODUCTION_SELECTIVE_ENABLED` separados; el build y la publicación
+siguen apagados hasta completar Fase 7 y habilitar cada proyecto. Ver
+`docs/VERCEL_PHASE_8_PRODUCTION.md`. La auditoría semanal usa el mismo token de
+lectura y los environments existentes; no instala Vercel CLI ni muta proyectos.
 
 ### Deploy backend
 
 Ejecutar manualmente el workflow de GitHub Actions `Deploy API` y elegir el
 environment `development` o `production`. Producción requiere aprobación del
-environment y escribir `PRODUCCION_RESPALDADA`; no desplegar directamente con
-Fly desde una terminal local. La primera habilitación POS requiere antes un
+environment, escribir `PRODUCCION_RESPALDADA` y registrar el instante ISO UTC
+de verificación de backup/PITR; no desplegar directamente con Fly desde una
+terminal local. El primer corte Scheduler requiere además
+`SCHEDULER_INTERNO_VALIDADO` y sigue `docs/SCHEDULER_PHASE_10_RELEASE.md`. La primera habilitación POS requiere antes un
 resultado verde de `POS pilot gate`; ver `docs/POS_PILOT_RUNBOOK.md` y
 `docs/RELEASE_RUNBOOK.md`.
 

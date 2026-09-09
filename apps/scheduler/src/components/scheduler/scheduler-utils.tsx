@@ -18,11 +18,11 @@ import {
   type BookingPurchaseType,
   type BookingStatus,
   schedulerLegendItems,
-  schedulerProfessionals,
-  schedulerReferenceDateKey,
-  schedulerServices,
   type Professional,
-} from '@/lib/mock-scheduler-data'
+  type ServiceOption,
+} from '@/lib/scheduler-presentation'
+
+const fallbackDateKey = '1970-01-01'
 
 export const schedulerOpeningHour = 0
 export const schedulerClosingHour = 24
@@ -41,14 +41,82 @@ export const minuteOptions = ['00', '15', '30', '45']
 export const schedulerHeaderOffset = 124
 export const schedulerRowHeight = 78
 export const schedulerSlotMinutes = 60
-export const schedulerCardTopInset = 12
-export const schedulerCardBottomInset = 12
+export const schedulerCardTopInset = 4
+export const schedulerCardBottomInset = 4
 export const schedulerCardHeight = schedulerRowHeight - schedulerCardTopInset - schedulerCardBottomInset
 export const schedulerBaseMinutes = schedulerOpeningHour * 60
 export const schedulerClosingMinutes = schedulerClosingHour * 60
 
-export function getSchedulerCardTop(startCellIndex: number): number {
-  return schedulerHeaderOffset + startCellIndex * schedulerRowHeight + schedulerCardTopInset
+export interface SchedulerAgendaLayoutMetrics {
+  headerOffset: number
+  rowHeight: number
+  minRowHeight: number
+  maxRowHeight: number
+  cardTopInset: number
+  cardBottomInset: number
+  cardHorizontalInset: number
+  minCardHeight: number
+  timeColumnWidth: number
+  minColumnWidth: number
+}
+
+export const schedulerComfortableLayout: SchedulerAgendaLayoutMetrics = {
+  headerOffset: schedulerHeaderOffset,
+  rowHeight: schedulerRowHeight,
+  minRowHeight: 44,
+  maxRowHeight: 78,
+  cardTopInset: schedulerCardTopInset,
+  cardBottomInset: schedulerCardBottomInset,
+  cardHorizontalInset: 12,
+  minCardHeight: 34,
+  timeColumnWidth: 96,
+  minColumnWidth: 172,
+}
+
+export const schedulerCompactLayout: SchedulerAgendaLayoutMetrics = {
+  headerOffset: 76,
+  rowHeight: 44,
+  minRowHeight: 36,
+  maxRowHeight: 56,
+  cardTopInset: 4,
+  cardBottomInset: 4,
+  cardHorizontalInset: 5,
+  minCardHeight: 32,
+  timeColumnWidth: 64,
+  minColumnWidth: 150,
+}
+
+export const schedulerDenseLayout: SchedulerAgendaLayoutMetrics = {
+  headerOffset: 68,
+  rowHeight: 38,
+  minRowHeight: 32,
+  maxRowHeight: 48,
+  cardTopInset: 3,
+  cardBottomInset: 3,
+  cardHorizontalInset: 4,
+  minCardHeight: 30,
+  timeColumnWidth: 60,
+  minColumnWidth: 130,
+}
+
+export const schedulerUltraDenseLayout: SchedulerAgendaLayoutMetrics = {
+  headerOffset: 60,
+  rowHeight: 32,
+  minRowHeight: 28,
+  maxRowHeight: 40,
+  cardTopInset: 2,
+  cardBottomInset: 2,
+  cardHorizontalInset: 3,
+  minCardHeight: 26,
+  timeColumnWidth: 54,
+  minColumnWidth: 124,
+}
+
+export function getSchedulerCardTop(
+  startCellIndex: number,
+  layout: SchedulerAgendaLayoutMetrics = schedulerComfortableLayout,
+): number {
+  return layout.headerOffset + startCellIndex * layout.rowHeight + layout.cardTopInset
 }
 
 export interface BookingDraft {
@@ -111,6 +179,7 @@ export function getAppointmentStyle(
   baseMinutes = schedulerBaseMinutes,
   closingMinutes = schedulerClosingMinutes,
   slotMinutes = schedulerSlotMinutes,
+  layout: SchedulerAgendaLayoutMetrics = schedulerComfortableLayout,
 ): { top: string; height: string } {
   const startMinutes = getMinutesFromTime(start)
   const endMinutes = getMinutesFromTime(end)
@@ -120,8 +189,8 @@ export function getAppointmentStyle(
   const durationInSlots = (clampedEnd - clampedStart) / slotMinutes
 
   return {
-    top: `${schedulerHeaderOffset + startOffset * schedulerRowHeight + schedulerCardTopInset}px`,
-    height: `${Math.max(durationInSlots * schedulerRowHeight - schedulerCardTopInset - schedulerCardBottomInset, 34)}px`,
+    top: `${layout.headerOffset + startOffset * layout.rowHeight + layout.cardTopInset}px`,
+    height: `${Math.max(durationInSlots * layout.rowHeight - layout.cardTopInset - layout.cardBottomInset, layout.minCardHeight)}px`,
   }
 }
 
@@ -130,14 +199,15 @@ export function getSingleCellAppointmentStyle(
   baseMinutes = schedulerBaseMinutes,
   closingMinutes = schedulerClosingMinutes,
   slotMinutes = schedulerSlotMinutes,
+  layout: SchedulerAgendaLayoutMetrics = schedulerComfortableLayout,
 ): { top: string; height: string } {
   const startMinutes = getMinutesFromTime(start)
   const clampedStart = Math.max(baseMinutes, Math.min(startMinutes, closingMinutes))
   const startOffset = (clampedStart - baseMinutes) / slotMinutes
 
   return {
-    top: `${schedulerHeaderOffset + startOffset * schedulerRowHeight + schedulerCardTopInset}px`,
-    height: `${schedulerCardHeight}px`,
+    top: `${layout.headerOffset + startOffset * layout.rowHeight + layout.cardTopInset}px`,
+    height: `${Math.max(layout.rowHeight - layout.cardTopInset - layout.cardBottomInset, layout.minCardHeight)}px`,
   }
 }
 
@@ -145,12 +215,13 @@ export function getCurrentTimeLineStyle(
   value: string,
   baseMinutes = schedulerBaseMinutes,
   slotMinutes = schedulerSlotMinutes,
+  layout: SchedulerAgendaLayoutMetrics = schedulerComfortableLayout,
 ): { top: string } {
   const currentMinutes = getMinutesFromTime(value)
-  const pixelsPerMinute = schedulerRowHeight / slotMinutes
+  const pixelsPerMinute = layout.rowHeight / slotMinutes
 
   return {
-    top: `${schedulerHeaderOffset + (currentMinutes - baseMinutes) * pixelsPerMinute}px`,
+    top: `${layout.headerOffset + (currentMinutes - baseMinutes) * pixelsPerMinute}px`,
   }
 }
 
@@ -186,7 +257,7 @@ export function getClientVisitHistory(
     })
     .map((booking): ClientVisitHistoryEntry => ({
       bookingId: booking.id,
-      date: booking.date ?? schedulerReferenceDateKey,
+      date: booking.date ?? fallbackDateKey,
       start: booking.start,
       end: booking.end,
       serviceName: booking.serviceName,
@@ -225,7 +296,7 @@ export function getAvailableBookingStartTimes({
   if (!professionalId || durationMinutes <= 0) return []
 
   const occupiedBookings = bookings.filter((booking) => {
-    const bookingDateKey = booking.date ?? schedulerReferenceDateKey
+    const bookingDateKey = booking.date ?? fallbackDateKey
     return (
       booking.id !== editingBookingId &&
       booking.status !== 'canceled' &&
@@ -234,7 +305,7 @@ export function getAvailableBookingStartTimes({
     )
   })
   const occupiedBlocks = availabilityBlocks.filter((block) => {
-    const blockDateKey = block.date ?? schedulerReferenceDateKey
+    const blockDateKey = block.date ?? fallbackDateKey
     return blockDateKey === dateKey && block.professionalId === professionalId
   })
 
@@ -266,6 +337,7 @@ export function createDraft(
   professionals: Professional[],
   professionalId?: string,
   startTime = '11:00',
+  services: readonly ServiceOption[] = [],
 ): BookingDraft {
   const [hour = '11', minute = '00'] = startTime.split(':')
 
@@ -273,7 +345,7 @@ export function createDraft(
     clientId: null,
     customerName: '',
     customerEmail: '',
-    serviceId: schedulerServices[0]?.id ?? '',
+    serviceId: services[0]?.id ?? '',
     professionalId: professionalId ?? professionals[0]?.id ?? '',
     date: selectedDate,
     hour,
@@ -286,17 +358,21 @@ export function createDraft(
   }
 }
 
-export function createDraftFromBooking(booking: Booking, selectedDate: Date): BookingDraft {
+export function createDraftFromBooking(
+  booking: Booking,
+  selectedDate: Date,
+  services: readonly ServiceOption[] = [],
+): BookingDraft {
   const [hour = '11', minute = '00'] = booking.start.split(':')
-  const matchedService = getServiceByName(booking.serviceName)
-  const bookingDate = new Date(`${booking.date ?? schedulerReferenceDateKey}T12:00:00`)
+  const matchedService = getServiceByName(booking.serviceName, services)
+  const bookingDate = new Date(`${booking.date ?? fallbackDateKey}T12:00:00`)
 
   return {
     bookingId: booking.id,
     clientId: booking.clientId ?? null,
     customerName: booking.customerName,
     customerEmail: booking.customerEmail ?? '',
-    serviceId: matchedService?.id ?? schedulerServices[0]?.id ?? '',
+    serviceId: matchedService?.id ?? services[0]?.id ?? '',
     professionalId: booking.professionalId,
     date: Number.isNaN(bookingDate.getTime()) ? selectedDate : bookingDate,
     hour,
@@ -334,7 +410,7 @@ export function createBlockDraft(
 export function createBlockDraftFromBlock(block: AvailabilityBlock, selectedDate: Date): BlockDraft {
   const [startHour = '11', startMinute = '00'] = block.start.split(':')
   const [endHour = '12', endMinute = '00'] = block.end.split(':')
-  const blockDate = new Date(`${block.date ?? schedulerReferenceDateKey}T12:00:00`)
+  const blockDate = new Date(`${block.date ?? fallbackDateKey}T12:00:00`)
 
   return {
     blockId: block.id,
@@ -392,11 +468,11 @@ export function getClientPurchaseAccount(
   clientBooking: Booking,
   excludedBookingId?: string,
 ): ClientPurchaseAccount {
-  const currentBookingDateTime = `${clientBooking.date ?? schedulerReferenceDateKey}T${clientBooking.start}`
+  const currentBookingDateTime = `${clientBooking.date ?? fallbackDateKey}T${clientBooking.start}`
   const previousVisits = bookings.filter((booking) => {
     if (booking.id === clientBooking.id || !belongsToClient(booking, clientBooking)) return false
 
-    const bookingDateTime = `${booking.date ?? schedulerReferenceDateKey}T${booking.start}`
+    const bookingDateTime = `${booking.date ?? fallbackDateKey}T${booking.start}`
     return bookingDateTime < currentBookingDateTime
   }).length
   const purchaseRecords = bookings.filter(
@@ -462,7 +538,7 @@ export function getClientPaymentHistory(
     )
     .map((booking) => ({
       bookingId: booking.id,
-      date: booking.date ?? schedulerReferenceDateKey,
+      date: booking.date ?? fallbackDateKey,
       purchaseType: booking.purchaseType as BookingPurchaseType,
       amount: booking.purchaseAmount ?? 0,
       ...(booking.tentativePurchaseAmount
@@ -500,9 +576,12 @@ export function getLegendIcon(icon: (typeof schedulerLegendItems)[number]['icon'
   }
 }
 
-export function getProfessionalName(professionalId: string): string {
+export function getProfessionalName(
+  professionalId: string,
+  professionals: readonly Professional[] = [],
+): string {
   return (
-    schedulerProfessionals.find((professional) => professional.id === professionalId)?.name ??
+    professionals.find((professional) => professional.id === professionalId)?.name ??
     'Sin especialista asignado'
   )
 }
@@ -513,8 +592,11 @@ export function bookingRequiresMultipleSpecialists(booking: Booking): boolean {
   return resourceName.includes('DOBLE') || serviceName.includes('DOBLE')
 }
 
-export function getServiceByName(serviceName: string) {
-  return schedulerServices.find((service) => service.name === serviceName)
+export function getServiceByName(
+  serviceName: string,
+  services: readonly ServiceOption[] = [],
+) {
+  return services.find((service) => service.name === serviceName)
 }
 
 export function getProfessionalInitials(value: string): string {

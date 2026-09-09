@@ -1,6 +1,7 @@
 // Tipos compartidos del sistema de cosméticos
 
 export * from "./pos";
+export * from "./scheduler";
 
 export type Rol = "SUPER_ADMIN" | "GERENTE" | "CAPTURISTA";
 

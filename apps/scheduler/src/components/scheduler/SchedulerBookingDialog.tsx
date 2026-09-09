@@ -26,18 +26,19 @@ import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import {
   bookingStatuses,
-  schedulerServices,
   type AvailabilityBlock,
   type Booking,
   type BookingStatus,
   type BookingStatusColors,
   type BranchOption,
-} from '@/lib/mock-scheduler-data'
+  type Professional,
+  type ServiceOption,
+} from '@/lib/scheduler-presentation'
 import {
   findSchedulerClients,
   normalizeClientPhone,
   type SchedulerClient,
-} from '@/lib/mock-client-data'
+} from '@/lib/scheduler-client-presentation'
 import {
   formatMoney,
   getAvailableBookingStartTimes,
@@ -53,10 +54,22 @@ interface SchedulerBookingDialogProps {
   bookings: Booking[]
   availabilityBlocks: AvailabilityBlock[]
   clients: SchedulerClient[]
+  services: ServiceOption[]
+  columns?: Professional[]
   draft: BookingDraft
   statusColors: BookingStatusColors
   onDraftChange: (draft: BookingDraft) => void
   onSave: () => void
+  availableStartTimes?: string[]
+  availabilityLoading?: boolean
+  availabilityError?: string | null
+  onClientSearchQueryChange?: (query: string) => void
+  allowedStatuses?: BookingStatus[]
+  showCommercialFields?: boolean
+  showInternalNote?: boolean
+  serviceLocked?: boolean
+  saving?: boolean
+  canCreateClient?: boolean
 }
 
 export function SchedulerBookingDialog({
@@ -68,12 +81,24 @@ export function SchedulerBookingDialog({
   bookings,
   availabilityBlocks,
   clients,
+  services,
+  columns = [],
   draft,
   statusColors,
   onDraftChange,
   onSave,
+  availableStartTimes: canonicalStartTimes,
+  availabilityLoading = false,
+  availabilityError = null,
+  onClientSearchQueryChange,
+  allowedStatuses,
+  showCommercialFields = true,
+  showInternalNote = true,
+  serviceLocked = false,
+  saving = false,
+  canCreateClient = true,
 }: SchedulerBookingDialogProps) {
-  const selectedService = schedulerServices.find((service) => service.id === draft.serviceId)
+  const selectedService = services.find((service) => service.id === draft.serviceId)
   const isEditing = Boolean(draft.bookingId)
   const [isNewClientOpen, setIsNewClientOpen] = useState(false)
   const [isAdditionalInfoOpen, setIsAdditionalInfoOpen] = useState(false)
@@ -82,7 +107,7 @@ export function SchedulerBookingDialog({
   const [clientSearchQuery, setClientSearchQuery] = useState('')
   const [clientSuggestionsOpen, setClientSuggestionsOpen] = useState(false)
   const selectedDateKey = format(draft.date, 'yyyy-MM-dd')
-  const availableStartTimes = useMemo(
+  const localStartTimes = useMemo(
     () =>
       getAvailableBookingStartTimes({
         bookings,
@@ -102,6 +127,7 @@ export function SchedulerBookingDialog({
       selectedService?.durationMinutes,
     ],
   )
+  const availableStartTimes = canonicalStartTimes ?? localStartTimes
   const availableHourOptions = useMemo(
     () => [...new Set(availableStartTimes.map((time) => time.split(':')[0] ?? ''))],
     [availableStartTimes],
@@ -138,7 +164,7 @@ export function SchedulerBookingDialog({
     } else {
       setClientSearchQuery(draft.customerName)
     }
-  }, [open])
+  }, [draft.customerName, open])
 
   useEffect(() => {
     if (
@@ -191,6 +217,7 @@ export function SchedulerBookingDialog({
 
   function handleClientSearchChange(value: string) {
     setClientSearchQuery(value)
+    onClientSearchQueryChange?.(value)
     setClientSuggestionsOpen(findSchedulerClients(clients, value).length > 0)
     if (draft.clientId) {
       patchDraft({
@@ -262,7 +289,7 @@ export function SchedulerBookingDialog({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="scheduler-modal-select-content">
-                    {Object.entries(bookingStatuses).map(([value, meta]) => (
+                    {Object.entries(bookingStatuses).filter(([value]) => !allowedStatuses || allowedStatuses.includes(value as BookingStatus)).map(([value, meta]) => (
                       <SelectItem key={value} className="scheduler-modal-select-item" value={value}>
                         <div className="flex items-center gap-3">
                           <span
@@ -369,18 +396,28 @@ export function SchedulerBookingDialog({
                   <Button
                     variant="ghost"
                     className="mb-1 rounded-2xl text-base text-[var(--scheduler-ink-strong)] underline-offset-4 hover:bg-transparent hover:text-[var(--scheduler-accent-strong)] hover:underline"
+                    disabled
+                    title="Las reservas recurrentes aún no tienen contrato operativo."
                   >
                     Repetir
                   </Button>
                 </div>
               </div>
-              {!hasAvailableTimes && draft.status !== 'canceled' ? (
+              {availabilityLoading ? (
+                <p className="mt-3 text-sm font-medium text-slate-600" role="status">
+                  Consultando disponibilidad real…
+                </p>
+              ) : availabilityError ? (
+                <p className="mt-3 text-sm font-medium text-rose-700" role="alert">
+                  {availabilityError}
+                </p>
+              ) : !hasAvailableTimes && draft.status !== 'canceled' ? (
                 <p className="mt-3 text-sm font-medium text-rose-700" role="status">
                   No hay horarios disponibles para este especialista, fecha y duración de servicio.
                 </p>
               ) : (
                 <p className="mt-3 text-sm text-slate-500" role="status">
-                  Se muestran horarios sin otra reserva. Las franjas bloqueadas requieren doble validación al guardar.
+                  Los horarios disponibles ya consideran jornada, bloqueos, capacidad y recursos en el servidor.
                 </p>
               )}
 
@@ -440,7 +477,7 @@ export function SchedulerBookingDialog({
                       </p>
                     ) : null}
                   </div>
-                  <div className="flex items-end">
+                  {canCreateClient ? <div className="flex items-end">
                     <Button
                       className="scheduler-modal-cta px-5"
                       onClick={openNewClientForm}
@@ -450,10 +487,10 @@ export function SchedulerBookingDialog({
                       Nuevo cliente
                       {isNewClientOpen ? <ChevronUp className="ml-2 h-4 w-4" /> : <ChevronDown className="ml-2 h-4 w-4" />}
                     </Button>
-                  </div>
+                  </div> : null}
                 </div>
 
-                {isNewClientOpen ? (
+                {canCreateClient && isNewClientOpen ? (
                   <div className="rounded-[22px] border border-[rgba(236,209,200,0.88)] bg-[rgba(255,255,255,0.78)] p-4">
                     <div className="mb-3">
                       <p className="text-[0.82rem] uppercase tracking-[0.16em] text-slate-400">Nuevo cliente</p>
@@ -490,7 +527,7 @@ export function SchedulerBookingDialog({
                         />
                         {exactPhoneMatch && draft.clientId !== exactPhoneMatch.id ? (
                           <p className="text-sm font-medium text-amber-800" role="status">
-                            Este teléfono ya pertenece a {exactPhoneMatch.fullName}. Selecciona el registro o confirma la unificación al guardar.
+                            Este teléfono ya pertenece a {exactPhoneMatch.fullName}. Selecciona ese registro antes de guardar.
                           </p>
                         ) : null}
                       </div>
@@ -528,7 +565,13 @@ export function SchedulerBookingDialog({
                     </Select>
                   </div>
                   <div className="flex items-end">
-                    <Button variant="outline" className="scheduler-modal-secondary px-4 text-[var(--scheduler-accent)]">
+                    <Button
+                      aria-label="Duplicar reserva en otra sucursal"
+                      variant="outline"
+                      className="scheduler-modal-secondary px-4 text-[var(--scheduler-accent)]"
+                      disabled
+                      title="La duplicación entre sucursales aún no tiene contrato operativo."
+                    >
                       <Copy className="h-5 w-5" />
                     </Button>
                   </div>
@@ -536,12 +579,12 @@ export function SchedulerBookingDialog({
 
                 <div className="space-y-2">
                   <label className="scheduler-modal-label">Servicios</label>
-                  <Select value={draft.serviceId} onValueChange={(value) => patchDraft({ serviceId: value })}>
+                  <Select disabled={serviceLocked} value={draft.serviceId} onValueChange={(value) => patchDraft({ serviceId: value })}>
                     <SelectTrigger className="scheduler-modal-select-trigger">
                       <SelectValue placeholder="Busca un servicio" />
                     </SelectTrigger>
                     <SelectContent className="scheduler-modal-select-content max-h-[320px]">
-                      {schedulerServices.map((service) => (
+                      {services.map((service) => (
                         <SelectItem key={service.id} className="scheduler-modal-select-item" value={service.id}>
                           {service.name}
                         </SelectItem>
@@ -554,7 +597,30 @@ export function SchedulerBookingDialog({
                       Duracion estimada: {selectedService.durationMinutes} min
                     </div>
                   ) : null}
+                  {serviceLocked ? (
+                    <p className="text-sm text-slate-500">
+                      Esta cita conserva varios servicios canónicos; edita aquí fecha, cliente, estado o notas sin reemplazar sus servicios.
+                    </p>
+                  ) : null}
                 </div>
+
+                {columns.length ? (
+                  <div className="space-y-2">
+                    <label className="scheduler-modal-label">Profesional o recurso</label>
+                    <Select value={draft.professionalId} onValueChange={(value) => patchDraft({ professionalId: value })}>
+                      <SelectTrigger className="scheduler-modal-select-trigger">
+                        <SelectValue placeholder="Selecciona" />
+                      </SelectTrigger>
+                      <SelectContent className="scheduler-modal-select-content max-h-[320px]">
+                        {columns.map((column) => (
+                          <SelectItem key={column.id} className="scheduler-modal-select-item" value={column.id}>
+                            {column.name} · {column.kind === 'RESOURCE' ? 'Recurso' : 'Profesional'}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ) : null}
               </div>
               </div>
 
@@ -582,7 +648,7 @@ export function SchedulerBookingDialog({
 
                 {isAdditionalInfoOpen ? (
                   <div className="mt-5 grid gap-5 lg:grid-cols-[1fr_1fr]">
-                    <div className="space-y-2">
+                    {showCommercialFields ? <div className="space-y-2">
                       <label className="scheduler-modal-label">Precio</label>
                       <Input
                         className="scheduler-modal-input"
@@ -590,8 +656,8 @@ export function SchedulerBookingDialog({
                         value={selectedService ? formatMoney(selectedService.price) : ''}
                         readOnly
                       />
-                    </div>
-                    <div className="space-y-2">
+                    </div> : null}
+                    {showCommercialFields ? <div className="space-y-2">
                       <label className="scheduler-modal-label">Pagado</label>
                       <div className="flex h-14 items-center gap-6 rounded-[22px] border border-[rgba(236,209,200,0.95)] bg-white px-4">
                         <label className="flex items-center gap-2 text-base text-[var(--scheduler-ink-strong)]">
@@ -615,23 +681,25 @@ export function SchedulerBookingDialog({
                           No
                         </label>
                       </div>
-                    </div>
+                    </div> : null}
                     <div className="space-y-2 lg:col-span-2">
-                      <label className="scheduler-modal-label">Notas compartidas con el cliente</label>
+                      <label className="scheduler-modal-label">
+                        {showInternalNote ? 'Notas compartidas con el cliente' : 'Notas de la cita'}
+                      </label>
                       <Textarea
                         className="scheduler-modal-textarea min-h-32"
                         value={draft.notes}
                         onChange={(event) => patchDraft({ notes: event.target.value })}
                       />
                     </div>
-                    <div className="space-y-2 lg:col-span-2">
+                    {showInternalNote ? <div className="space-y-2 lg:col-span-2">
                       <label className="scheduler-modal-label">Nota interna</label>
                       <Textarea
                         className="scheduler-modal-textarea min-h-32"
                         value={draft.internalNote}
                         onChange={(event) => patchDraft({ internalNote: event.target.value })}
                       />
-                    </div>
+                    </div> : null}
                   </div>
                 ) : null}
               </div>
@@ -641,9 +709,9 @@ export function SchedulerBookingDialog({
               <Button variant="outline" className="scheduler-modal-secondary" onClick={() => onOpenChange(false)}>
                 Cancelar
               </Button>
-              <Button className="scheduler-modal-cta" disabled={!canSaveAtSelectedTime} onClick={() => onSave()}>
+              <Button className="scheduler-modal-cta" disabled={!canSaveAtSelectedTime || availabilityLoading || saving} onClick={() => onSave()}>
                 <UserRoundPlus className="mr-2 h-5 w-5" />
-                {isEditing ? 'Guardar cambios' : 'Guardar reserva'}
+                {saving ? 'Guardando…' : isEditing ? 'Guardar cambios' : 'Guardar reserva'}
               </Button>
             </div>
           </div>

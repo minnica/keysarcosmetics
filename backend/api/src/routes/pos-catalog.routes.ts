@@ -42,6 +42,10 @@ import {
   assertBranchAuthorized,
   resolveRequestedBranchIds,
 } from "../services/pos-scope";
+import {
+  findSchedulerCustomerPhoneDuplicate,
+  lockSchedulerCustomerPhone,
+} from "../services/scheduler-customers";
 
 const router: ExpressRouter = Router();
 const upload = multer({
@@ -777,7 +781,41 @@ router.get("/customers/search", requireCustomerReadOrSale, async (req, res) => {
     active: true,
     OR: [
       { normalizedName: { contains: needle, mode: "insensitive" } },
-      ...(phone ? [{ phone: { contains: phone } }] : []),
+      { email: { contains: parsed.data.query, mode: "insensitive" } },
+      ...(phone
+        ? [
+            { phoneNormalized: { contains: phone } },
+            { phone: { contains: phone } },
+            {
+              schedulerAliases: {
+                some: {
+                  kind: "PHONE" as const,
+                  normalizedValue: { contains: phone },
+                  active: true,
+                },
+              },
+            },
+          ]
+        : []),
+      {
+        schedulerAliases: {
+          some: {
+            kind: "NAME",
+            normalizedValue: { contains: needle },
+            active: true,
+          },
+        },
+      },
+      {
+        schedulerEmails: {
+          some: {
+            normalizedEmail: {
+              contains: parsed.data.query.toLocaleLowerCase("en-US"),
+            },
+            active: true,
+          },
+        },
+      },
     ],
   };
   const [items, total] = await Promise.all([
@@ -867,11 +905,16 @@ router.post(
           : null;
         if (source?.companyOwnedByDefault && !company)
           throw new Error("ACTIVE_COMPANY_REQUIRED");
+        const phoneNormalized = normalizePhone(input.phone);
+        await lockSchedulerCustomerPhone(tx, phoneNormalized);
+        if (await findSchedulerCustomerPhoneDuplicate(tx, phoneNormalized))
+          throw new Error("PHONE_DUPLICATE");
         const created = await tx.customer.create({
           data: {
             displayName: input.displayName,
             normalizedName: normalize(input.displayName),
-            phone: normalizePhone(input.phone),
+            phone: phoneNormalized,
+            phoneNormalized,
             email: input.email?.toLocaleLowerCase("en-US") ?? null,
             sourceId: input.sourceId,
             notes: input.notes,
@@ -954,16 +997,28 @@ router.put(
     try {
       const { customer, portfolio, agendaEventId } = await db.$transaction(
         async (tx) => {
+          const phoneNormalized = normalizePhone(input.phone);
+          await lockSchedulerCustomerPhone(tx, phoneNormalized);
+          if (
+            await findSchedulerCustomerPhoneDuplicate(
+              tx,
+              phoneNormalized,
+              req.params["id"]!,
+            )
+          )
+            throw new Error("PHONE_DUPLICATE");
           const updated = await tx.customer.update({
             where: { id: req.params["id"]! },
             data: {
               displayName: input.displayName,
               normalizedName: normalize(input.displayName),
-              phone: normalizePhone(input.phone),
+              phone: phoneNormalized,
+              phoneNormalized,
               email: input.email?.toLocaleLowerCase("en-US") ?? null,
               sourceId: input.sourceId,
               notes: input.notes,
               active: input.active,
+              version: { increment: 1 },
             },
           });
           const event = updated.externalClientId
@@ -1083,7 +1138,11 @@ router.delete(
   async (req, res) => {
     const result = await db.customer.updateMany({
       where: { id: req.params["id"]!, deletedAt: null },
-      data: { active: false, deletedAt: new Date() },
+      data: {
+        active: false,
+        deletedAt: new Date(),
+        version: { increment: 1 },
+      },
     });
     res.status(result.count ? 200 : 404).json({
       success: Boolean(result.count),

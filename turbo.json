@@ -1,7 +1,7 @@
 {
-  "$schema": "https://turbo.build/schema.json",
-  "globalDependencies": ["**/.env.*", ".env", ".eslintrc.cjs"],
-  "pipeline": {
+  "$schema": "https://turborepo.com/schema.json",
+  "globalDependencies": [".nvmrc", "pnpm-workspace.yaml", "tsconfig.json"],
+  "tasks": {
     "build": {
       "dependsOn": ["^build"],
       "outputs": [".next/**", "!.next/cache/**", "dist/**"]
@@ -11,6 +11,7 @@
       "persistent": true
     },
     "lint": {
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/.eslintrc.cjs"],
       "outputs": []
     },
     "test": {

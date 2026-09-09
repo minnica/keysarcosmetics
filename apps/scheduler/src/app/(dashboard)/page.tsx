@@ -1,5 +1,5 @@
-import { SchedulerWorkspace } from '@/components/SchedulerWorkspace'
+import { SchedulerAgendaEntry } from '@/components/api/SchedulerPageEntries'
 
 export default function DashboardPage() {
-  return <SchedulerWorkspace />
+  return <SchedulerAgendaEntry />
 }

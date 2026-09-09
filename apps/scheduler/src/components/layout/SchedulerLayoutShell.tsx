@@ -1,17 +1,18 @@
 "use client";
 
 import type { CSSProperties, ReactNode } from "react";
-import {
-  SidebarInset,
-  SidebarProvider,
-  SidebarTrigger,
-} from "@cosmetics/ui";
+import { SidebarInset, SidebarProvider, SidebarTrigger } from "@cosmetics/ui";
 import { SchedulerAppSidebar } from "./SchedulerAppSidebar";
 
 export function SchedulerLayoutShell({ children }: { children: ReactNode }) {
   return (
     <SidebarProvider
-      style={{ "--sidebar-width-icon": "4rem" } as CSSProperties}
+      style={
+        {
+          "--sidebar-width": "14rem",
+          "--sidebar-width-icon": "3.5rem",
+        } as CSSProperties
+      }
     >
       <SchedulerAppSidebar />
       <SidebarInset className="min-w-0 overflow-x-hidden bg-[var(--bg-primary)]">

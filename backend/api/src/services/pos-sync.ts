@@ -25,9 +25,16 @@ import {
   signPosOfflineGrant,
   verifyPosOfflineGrant,
 } from "./pos-auth";
-import { executePosIdempotent } from "./pos-inventory";
+import {
+  executePosIdempotent,
+  findPosIdempotentReplay,
+} from "./pos-inventory";
 import { enqueuePosNotification } from "./pos-notifications";
-import { reserveMembershipNextSession } from "./pos-agenda";
+import {
+  compensatePreparedAgendaTicket,
+  prepareAgendaTicketSaga,
+  reserveMembershipNextSession,
+} from "./pos-agenda";
 import {
   consumeMembershipAttendance,
   membershipDto,
@@ -843,18 +850,38 @@ async function executeOperation(
   };
   if (resolvedOperation.kind === "TICKET_CREATE") {
     const input = posTicketCreateRequestSchema.parse(resolvedOperation.payload);
-    const result = await executePosIdempotent({
+    const replay = await findPosIdempotentReplay({
       key: operation.idempotencyKey,
       actorCredentialId: context.credentialId,
       operation: "POS_TICKET_CREATE",
       payload: input,
-      execute: async (tx) => ({
-        status: 201,
-        message: "Ticket offline conciliado",
-        data: ticketDto(await createTicket(tx, input, context)),
-      }),
     });
-    return result;
+    if (replay) return replay;
+    const agenda = await prepareAgendaTicketSaga({
+      operationKey: operation.idempotencyKey,
+      ticket: input,
+      authorizedBranchIds: membershipContext.authorizedBranchIds,
+    });
+    try {
+      return await executePosIdempotent({
+        key: operation.idempotencyKey,
+        actorCredentialId: context.credentialId,
+        operation: "POS_TICKET_CREATE",
+        payload: input,
+        execute: async (tx) => ({
+          status: 201,
+          message: "Ticket offline conciliado",
+          data: ticketDto(await createTicket(tx, input, context, agenda)),
+        }),
+      });
+    } catch (error) {
+      if (agenda)
+        await compensatePreparedAgendaTicket(
+          operation.idempotencyKey,
+          "Falló la conciliación local del ticket offline",
+        );
+      throw error;
+    }
   }
   if (resolvedOperation.kind === "LAYAWAY_PAYMENT") {
     if (!resolvedOperation.entityId)
