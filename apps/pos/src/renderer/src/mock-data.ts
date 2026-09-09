@@ -343,7 +343,8 @@ export const initialDeals: RetailDeal[] = [
     id: "deal-glow-ritual",
     name: "Glow Ritual",
     sku: "DEAL-GLW-001",
-    description: "Renovación facial y definición de ceja en una sola experiencia.",
+    description:
+      "Renovación facial y definición de ceja en una sola experiencia.",
     price: 990,
     lines: [
       { productId: "prod-serum-renewal", quantity: 1 },
@@ -493,7 +494,8 @@ export const initialEmployeeRoles: EmployeeRole[] = [
   {
     id: "role-master",
     name: "Master",
-    description: "Control total del sistema, usuarios, sucursales y configuración.",
+    description:
+      "Control total del sistema, usuarios, sucursales y configuración.",
     active: true,
     system: true,
     moduleAccess: [
@@ -524,13 +526,41 @@ export const initialEmployeeRoles: EmployeeRole[] = [
       "my-account",
     ],
     moduleEditAccess: [
-      "dashboard", "sale", "seller-sales", "receipts", "customers",
-      "appointments", "memberships", "inventory", "warehouse", "branch-inventory", "suppliers",
-      "inventory-movements", "deals", "catalog", "settings", "x-report",
-      "reports", "cash-manager", "clock-in", "close-day", "employees",
-      "competition", "websites", "data-update", "my-account",
+      "dashboard",
+      "sale",
+      "seller-sales",
+      "receipts",
+      "customers",
+      "appointments",
+      "memberships",
+      "inventory",
+      "warehouse",
+      "branch-inventory",
+      "suppliers",
+      "inventory-movements",
+      "deals",
+      "catalog",
+      "settings",
+      "x-report",
+      "reports",
+      "cash-manager",
+      "clock-in",
+      "close-day",
+      "employees",
+      "competition",
+      "websites",
+      "data-update",
+      "my-account",
     ],
-    modulePrintAccess: ["sale", "seller-sales", "receipts", "customers", "memberships", "x-report", "close-day"],
+    modulePrintAccess: [
+      "sale",
+      "seller-sales",
+      "receipts",
+      "customers",
+      "memberships",
+      "x-report",
+      "close-day",
+    ],
     configurationAccess: [
       "TICKET",
       "INVENTORY_CATALOG",
@@ -550,7 +580,8 @@ export const initialEmployeeRoles: EmployeeRole[] = [
   {
     id: "role-manager",
     name: "Gerente de sucursal",
-    description: "Supervisa venta, clientes, inventario, cierres y reportes de su operación.",
+    description:
+      "Supervisa venta, clientes, inventario, cierres y reportes de su operación.",
     active: true,
     system: false,
     moduleAccess: [
@@ -576,11 +607,31 @@ export const initialEmployeeRoles: EmployeeRole[] = [
       "data-update",
     ],
     moduleEditAccess: [
-      "sale", "seller-sales", "receipts", "customers", "appointments",
-      "inventory", "warehouse", "branch-inventory", "inventory-movements", "catalog", "settings",
-      "cash-manager", "clock-in", "close-day", "data-update",
+      "sale",
+      "seller-sales",
+      "receipts",
+      "customers",
+      "appointments",
+      "inventory",
+      "warehouse",
+      "branch-inventory",
+      "inventory-movements",
+      "catalog",
+      "settings",
+      "cash-manager",
+      "clock-in",
+      "close-day",
+      "data-update",
     ],
-    modulePrintAccess: ["sale", "seller-sales", "receipts", "customers", "memberships", "x-report", "close-day"],
+    modulePrintAccess: [
+      "sale",
+      "seller-sales",
+      "receipts",
+      "customers",
+      "memberships",
+      "x-report",
+      "close-day",
+    ],
     configurationAccess: [
       "TICKET",
       "INVENTORY_CATALOG",
@@ -591,7 +642,8 @@ export const initialEmployeeRoles: EmployeeRole[] = [
   {
     id: "role-seller",
     name: "Vendedor retail",
-    description: "Opera ventas, consulta su cartera, registra citas y revisa sus resultados.",
+    description:
+      "Opera ventas, consulta su cartera, registra citas y revisa sus resultados.",
     active: true,
     system: false,
     moduleAccess: [
@@ -604,7 +656,11 @@ export const initialEmployeeRoles: EmployeeRole[] = [
       "competition",
     ],
     moduleEditAccess: [
-      "sale", "seller-sales", "customers", "appointments", "clock-in",
+      "sale",
+      "seller-sales",
+      "customers",
+      "appointments",
+      "clock-in",
     ],
     modulePrintAccess: ["sale", "seller-sales", "customers", "memberships"],
     configurationAccess: [],
@@ -612,7 +668,8 @@ export const initialEmployeeRoles: EmployeeRole[] = [
   {
     id: "role-inventory",
     name: "Encargado de inventario",
-    description: "Administra existencias, movimientos, pedidos y catálogo operativo.",
+    description:
+      "Administra existencias, movimientos, pedidos y catálogo operativo.",
     active: true,
     system: false,
     moduleAccess: [
@@ -627,11 +684,22 @@ export const initialEmployeeRoles: EmployeeRole[] = [
       "clock-in",
     ],
     moduleEditAccess: [
-      "inventory", "warehouse", "branch-inventory", "suppliers", "inventory-movements",
-      "catalog", "data-update", "clock-in",
+      "inventory",
+      "warehouse",
+      "branch-inventory",
+      "suppliers",
+      "inventory-movements",
+      "catalog",
+      "data-update",
+      "clock-in",
     ],
     modulePrintAccess: [],
-    configurationAccess: ["INVENTORY_CATALOG", "INVENTORY_AUDIT", "INVENTORY_MOVEMENTS", "WAREHOUSE_MOVEMENTS"],
+    configurationAccess: [
+      "INVENTORY_CATALOG",
+      "INVENTORY_AUDIT",
+      "INVENTORY_MOVEMENTS",
+      "WAREHOUSE_MOVEMENTS",
+    ],
   },
 ];
 
@@ -640,7 +708,11 @@ export const masterUser: MasterUser = {
   name: "Master Keysar",
   initials: "MK",
   active: true,
-  accessCode: "",
+  accessCode:
+    import.meta.env.VITE_POS_DATA_MODE === "mock" &&
+    import.meta.env.VITE_POS_VISUAL_FIXTURE === "1"
+      ? (import.meta.env.VITE_POS_VISUAL_FIXTURE_MASTER_CODE ?? "")
+      : "",
   role: "MASTER",
 };
 

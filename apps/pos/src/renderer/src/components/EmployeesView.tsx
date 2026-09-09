@@ -249,20 +249,13 @@ const modulePermissionGroups: Array<{
 ];
 
 const printableModuleIds = new Set<ScreenId>([
+  "sale",
   "seller-sales",
   "receipts",
   "customers",
-  "appointments",
   "memberships",
-  "inventory",
-  "inventory-movements",
-  "warehouse",
-  "branch-inventory",
-  "suppliers",
-  "deals",
-  "cash-manager",
   "x-report",
-  "reports",
+  "close-day",
 ]);
 
 const configurationOptions: Array<{
@@ -514,7 +507,9 @@ export function EmployeesView({
           {accessError && (
             <span className="my-account-error">{accessError}</span>
           )}
-          {!managedByApi && <small>Modo demostrativo local.</small>}
+          {!managedByApi && (
+            <small data-rv-sensitive="true">Modo demostrativo local.</small>
+          )}
         </CardContent>
       </Card>
     );

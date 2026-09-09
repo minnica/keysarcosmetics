@@ -102,10 +102,15 @@ function SellerAccessAccount({ seller, onSave }: SellerAccessAccountProps) {
     return (
       <Card className="my-account-gate">
         <CardContent>
-          <div className="my-account-gate-icon"><AlertTriangle size={27} /></div>
+          <div className="my-account-gate-icon">
+            <AlertTriangle size={27} />
+          </div>
           <span className="section-kicker">CUENTA NO DISPONIBLE</span>
           <h2>No encontramos tu perfil</h2>
-          <p>La sesión no está ligada a un vendedor activo. Solicita apoyo a administración.</p>
+          <p>
+            La sesión no está ligada a un vendedor activo. Solicita apoyo a
+            administración.
+          </p>
         </CardContent>
       </Card>
     );
@@ -147,9 +152,13 @@ function SellerAccessAccount({ seller, onSave }: SellerAccessAccountProps) {
           <div>
             <span className="section-kicker">CUENTA PERSONAL</span>
             <h2>{seller.name}</h2>
-            <p>Este nombre seguirá apareciendo en tickets, ventas y reportes.</p>
+            <p>
+              Este nombre seguirá apareciendo en tickets, ventas y reportes.
+            </p>
           </div>
-          <Badge variant="outline"><ShieldCheck size={13} /> ACCESO PERSONAL</Badge>
+          <Badge variant="outline">
+            <ShieldCheck size={13} /> ACCESO PERSONAL
+          </Badge>
         </CardContent>
       </Card>
 
@@ -159,7 +168,10 @@ function SellerAccessAccount({ seller, onSave }: SellerAccessAccountProps) {
             <div>
               <span className="section-kicker">SEGURIDAD DE LA CUENTA</span>
               <h2>Alias y contraseña personal</h2>
-              <p>Los cambios se aplicarán a cualquier pantalla que solicite tu usuario o clave.</p>
+              <p>
+                Los cambios se aplicarán a cualquier pantalla que solicite tu
+                usuario o clave.
+              </p>
             </div>
             <UserRoundCheck size={25} />
           </div>
@@ -173,18 +185,27 @@ function SellerAccessAccount({ seller, onSave }: SellerAccessAccountProps) {
                   id="seller-account-alias"
                   value={alias}
                   onChange={(event) => {
-                    setAlias(event.target.value.toLocaleLowerCase("es-MX").replace(/\s+/g, ""));
+                    setAlias(
+                      event.target.value
+                        .toLocaleLowerCase("es-MX")
+                        .replace(/\s+/g, ""),
+                    );
                     setFormError("");
                   }}
                   placeholder="Tu alias"
                   autoComplete="username"
                 />
               </div>
-              <small>Único, de 3 a 24 caracteres; acepta letras, números, punto, guion y guion bajo.</small>
+              <small>
+                Único, de 3 a 24 caracteres; acepta letras, números, punto,
+                guion y guion bajo.
+              </small>
             </div>
 
             <div className="field-stack">
-              <Label htmlFor="seller-account-current-code">Contraseña personal actual</Label>
+              <Label htmlFor="seller-account-current-code">
+                Contraseña personal actual
+              </Label>
               <div className="account-input-icon">
                 <LockKeyhole size={16} />
                 <Input
@@ -201,11 +222,15 @@ function SellerAccessAccount({ seller, onSave }: SellerAccessAccountProps) {
                   autoComplete="current-password"
                 />
               </div>
-              <small>Confirma tu identidad antes de guardar cualquier modificación.</small>
+              <small>
+                Confirma tu identidad antes de guardar cualquier modificación.
+              </small>
             </div>
 
             <div className="field-stack">
-              <Label htmlFor="seller-account-new-code">Nueva contraseña personal</Label>
+              <Label htmlFor="seller-account-new-code">
+                Nueva contraseña personal
+              </Label>
               <div className="account-input-icon">
                 <LockKeyhole size={16} />
                 <Input
@@ -226,7 +251,9 @@ function SellerAccessAccount({ seller, onSave }: SellerAccessAccountProps) {
             </div>
 
             <div className="field-stack">
-              <Label htmlFor="seller-account-confirm-code">Confirmar nueva contraseña</Label>
+              <Label htmlFor="seller-account-confirm-code">
+                Confirmar nueva contraseña
+              </Label>
               <div className="account-input-icon">
                 <ShieldCheck size={16} />
                 <Input
@@ -248,9 +275,16 @@ function SellerAccessAccount({ seller, onSave }: SellerAccessAccountProps) {
 
           <div className="seller-access-security-note">
             <LockKeyhole size={16} />
-            <span>La clave anterior dejará de funcionar inmediatamente después de guardar.</span>
+            <span>
+              La clave anterior dejará de funcionar inmediatamente después de
+              guardar.
+            </span>
           </div>
-          {formError && <div className="seller-access-error"><AlertTriangle size={15} /> {formError}</div>}
+          {formError && (
+            <div className="seller-access-error">
+              <AlertTriangle size={15} /> {formError}
+            </div>
+          )}
           <div className="seller-access-actions">
             <Button type="button" onClick={saveAccess} disabled={!formIsReady}>
               <Save size={16} /> Guardar cambios
@@ -332,7 +366,9 @@ export function MyAccountView({
   const billingPagination = useHistoryPagination(history, "billing-history");
 
   if (!isMasterSession) {
-    return <SellerAccessAccount seller={currentSeller} onSave={onSaveSellerAccess} />;
+    return (
+      <SellerAccessAccount seller={currentSeller} onSave={onSaveSellerAccess} />
+    );
   }
 
   const authorize = () => {
@@ -382,8 +418,12 @@ export function MyAccountView({
               <ShieldCheck size={16} /> Acceder
             </Button>
           </div>
-          {accessError && <span className="my-account-error">{accessError}</span>}
-          <small>La autorización master se valida en el servidor.</small>
+          {accessError && (
+            <span className="my-account-error">{accessError}</span>
+          )}
+          <small data-rv-sensitive="true">
+            La autorización master se valida en el servidor.
+          </small>
         </CardContent>
       </Card>
     );
@@ -559,7 +599,8 @@ export function MyAccountView({
               <span className="section-kicker">PAGO PRÓXIMO</span>
               <h2>El periodo de facturación está por terminar</h2>
               <p>
-                Se enviará un recordatorio a {profile.notificationEmails.join(", ")}.
+                Se enviará un recordatorio a{" "}
+                {profile.notificationEmails.join(", ")}.
               </p>
             </div>
             <div>
@@ -586,7 +627,9 @@ export function MyAccountView({
           </div>
           <div className="account-profile-grid">
             <div className="field-stack">
-              <Label htmlFor="account-personal-name">Nombre de la persona</Label>
+              <Label htmlFor="account-personal-name">
+                Nombre de la persona
+              </Label>
               <div className="account-input-icon">
                 <UserRound size={16} />
                 <Input
@@ -606,7 +649,9 @@ export function MyAccountView({
                   onChange={(event) => setCompanyName(event.target.value)}
                 />
               </div>
-              <small>También actualiza el encabezado y los tickets futuros.</small>
+              <small>
+                También actualiza el encabezado y los tickets futuros.
+              </small>
             </div>
           </div>
           <div className="account-email-section">
@@ -726,9 +771,7 @@ export function MyAccountView({
                   maxLength={4}
                   value={authorizationCode}
                   onChange={(event) =>
-                    setAuthorizationCode(
-                      event.target.value.replace(/\D/g, ""),
-                    )
+                    setAuthorizationCode(event.target.value.replace(/\D/g, ""))
                   }
                   placeholder="•••"
                 />
@@ -736,8 +779,8 @@ export function MyAccountView({
               <div className="billing-security-note billing-card-wide">
                 <ShieldCheck size={15} />
                 <span>
-                  En este frontend de prueba sólo se conserva la terminación;
-                  el número y código completos se descartan.
+                  En este frontend de prueba sólo se conserva la terminación; el
+                  número y código completos se descartan.
                 </span>
               </div>
               <Button
@@ -751,7 +794,10 @@ export function MyAccountView({
             </div>
             <div className="saved-billing-cards">
               {cards.map((card) => (
-                <article key={card.id} className={card.isDefault ? "is-default" : ""}>
+                <article
+                  key={card.id}
+                  className={card.isDefault ? "is-default" : ""}
+                >
                   <header>
                     <CreditCard size={20} />
                     <strong>{card.brand}</strong>
@@ -760,7 +806,9 @@ export function MyAccountView({
                   <h3>•••• •••• •••• {card.last4}</h3>
                   <p>{card.holderName}</p>
                   <footer>
-                    <span>VENCE {card.expiryMonth}/{card.expiryYear}</span>
+                    <span>
+                      VENCE {card.expiryMonth}/{card.expiryYear}
+                    </span>
                     <div>
                       {!card.isDefault && (
                         <Button
@@ -880,10 +928,16 @@ export function MyAccountView({
                   }
                 >
                   <header>
-                    <span><MapPin size={18} /></span>
+                    <span>
+                      <MapPin size={18} />
+                    </span>
                     <div>
                       <h3>{location.name}</h3>
-                      <Badge variant={location.status === "ACTIVE" ? "default" : "outline"}>
+                      <Badge
+                        variant={
+                          location.status === "ACTIVE" ? "default" : "outline"
+                        }
+                      >
                         {location.status === "ACTIVE"
                           ? "ACTIVA"
                           : location.status === "INACTIVE"
@@ -891,14 +945,32 @@ export function MyAccountView({
                             : "PENDIENTE"}
                       </Badge>
                     </div>
-                    <strong>{formatUsd(location.costUsd)}<small>/mes</small></strong>
+                    <strong>
+                      {formatUsd(location.costUsd)}
+                      <small>/mes</small>
+                    </strong>
                   </header>
                   {location.status === "ACTIVE" ? (
                     <div className="billing-location-details">
-                      <span><CalendarClock size={14} /> Inicio: {location.billingStartDate}</span>
-                      <span><CreditCard size={14} /> {paymentCard ? `${paymentCard.brand} •••• ${paymentCard.last4}` : "Sin tarjeta"}</span>
-                      <span className={remaining !== null && remaining <= 7 ? "is-reminder" : ""}>
-                        <BellRing size={14} /> Próximo cobro: {location.nextBillingDate}
+                      <span>
+                        <CalendarClock size={14} /> Inicio:{" "}
+                        {location.billingStartDate}
+                      </span>
+                      <span>
+                        <CreditCard size={14} />{" "}
+                        {paymentCard
+                          ? `${paymentCard.brand} •••• ${paymentCard.last4}`
+                          : "Sin tarjeta"}
+                      </span>
+                      <span
+                        className={
+                          remaining !== null && remaining <= 7
+                            ? "is-reminder"
+                            : ""
+                        }
+                      >
+                        <BellRing size={14} /> Próximo cobro:{" "}
+                        {location.nextBillingDate}
                       </span>
                       <Button
                         type="button"
@@ -924,7 +996,10 @@ export function MyAccountView({
                       </div>
                       <div className="field-stack">
                         <Label>Método de pago</Label>
-                        <Select value={activationCardId} onValueChange={setActivationCardId}>
+                        <Select
+                          value={activationCardId}
+                          onValueChange={setActivationCardId}
+                        >
                           <SelectTrigger>
                             <SelectValue placeholder="Selecciona tarjeta" />
                           </SelectTrigger>
@@ -938,10 +1013,18 @@ export function MyAccountView({
                         </Select>
                       </div>
                       <div>
-                        <Button type="button" onClick={activateLocation} disabled={!activationCardId || !activationStartDate}>
+                        <Button
+                          type="button"
+                          onClick={activateLocation}
+                          disabled={!activationCardId || !activationStartDate}
+                        >
                           <CheckCircle2 size={15} /> Confirmar activación
                         </Button>
-                        <Button type="button" variant="ghost" onClick={() => setActivationLocationId("")}>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          onClick={() => setActivationLocationId("")}
+                        >
                           Cancelar
                         </Button>
                       </div>
@@ -958,8 +1041,15 @@ export function MyAccountView({
                           ? "Esta sucursal ya no aparece en la operación actual. Su historia permanece intacta."
                           : "El pago inicial aún no se ha configurado."}
                       </p>
-                      <Button type="button" onClick={() => startActivation(location)} disabled={cards.length === 0}>
-                        <Power size={15} /> {location.status === "INACTIVE" ? "Reactivar sucursal" : "Activar ubicación"}
+                      <Button
+                        type="button"
+                        onClick={() => startActivation(location)}
+                        disabled={cards.length === 0}
+                      >
+                        <Power size={15} />{" "}
+                        {location.status === "INACTIVE"
+                          ? "Reactivar sucursal"
+                          : "Activar ubicación"}
                       </Button>
                       {location.status !== "INACTIVE" && (
                         <Button
@@ -967,9 +1057,7 @@ export function MyAccountView({
                           variant="ghost"
                           size="icon"
                           className="icon-action-button"
-                          onClick={() =>
-                            setDeactivationLocationId(location.id)
-                          }
+                          onClick={() => setDeactivationLocationId(location.id)}
                           aria-label={`Inactivar sucursal ${location.name}`}
                           title="Inactivar"
                         >
@@ -982,7 +1070,9 @@ export function MyAccountView({
                     <div className="billing-location-deactivation">
                       <HeartCrack size={23} />
                       <span>
-                        <strong>Nos da nostalgia despedirnos de {location.name}.</strong>
+                        <strong>
+                          Nos da nostalgia despedirnos de {location.name}.
+                        </strong>
                         <small>
                           Sus tickets, clientes, citas y movimientos históricos
                           permanecerán. Sólo dejará de aparecer en la operación
@@ -1039,16 +1129,32 @@ export function MyAccountView({
               <TableBody>
                 {billingPagination.paginatedItems.map((entry) => (
                   <TableRow key={entry.id}>
-                    <TableCell><strong>{entry.invoiceNumber}</strong></TableCell>
+                    <TableCell>
+                      <strong>{entry.invoiceNumber}</strong>
+                    </TableCell>
                     <TableCell>{entry.locationName}</TableCell>
                     <TableCell>{entry.period}</TableCell>
                     <TableCell>{entry.billedAt}</TableCell>
                     <TableCell>{entry.paidAt ?? "Pendiente"}</TableCell>
-                    <TableCell>{entry.cardLast4 ? `•••• ${entry.cardLast4}` : "Sin método"}</TableCell>
-                    <TableCell><strong>{formatUsd(entry.totalUsd)}</strong></TableCell>
                     <TableCell>
-                      <Badge variant={entry.status === "PAID" ? "default" : "outline"}>
-                        {entry.status === "PAID" ? "PAGADA" : entry.status === "PENDING" ? "PENDIENTE" : "FALLIDA"}
+                      {entry.cardLast4
+                        ? `•••• ${entry.cardLast4}`
+                        : "Sin método"}
+                    </TableCell>
+                    <TableCell>
+                      <strong>{formatUsd(entry.totalUsd)}</strong>
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        variant={
+                          entry.status === "PAID" ? "default" : "outline"
+                        }
+                      >
+                        {entry.status === "PAID"
+                          ? "PAGADA"
+                          : entry.status === "PENDING"
+                            ? "PENDIENTE"
+                            : "FALLIDA"}
                       </Badge>
                     </TableCell>
                   </TableRow>

@@ -131,7 +131,9 @@ const getBusinessDate = (iso: string) =>
 const getDealTotals = (deal: Pick<RetailDeal, "lines">, products: Product[]) =>
   deal.lines.reduce(
     (totals, line) => {
-      const product = products.find((candidate) => candidate.id === line.productId);
+      const product = products.find(
+        (candidate) => candidate.id === line.productId,
+      );
       if (!product) return totals;
       totals.list += product.maxPrice * line.quantity;
       totals.minimum += product.minPrice * line.quantity;
@@ -185,17 +187,25 @@ export function DealsView({
   );
   const monthlyDealCount = monthlyTickets.reduce(
     (sum, ticket) =>
-      sum + (ticket.deals ?? []).reduce((dealSum, deal) => dealSum + deal.quantity, 0),
+      sum +
+      (ticket.deals ?? []).reduce(
+        (dealSum, deal) => dealSum + deal.quantity,
+        0,
+      ),
     0,
   );
   const monthlyDealRevenue = monthlyTickets.reduce(
     (sum, ticket) =>
-      sum + (ticket.deals ?? []).reduce((dealSum, deal) => dealSum + deal.total, 0),
+      sum +
+      (ticket.deals ?? []).reduce((dealSum, deal) => dealSum + deal.total, 0),
     0,
   );
 
   const recommendations = useMemo<DealRecommendation[]>(() => {
-    const combinations = new Map<string, { productIds: string[]; occurrences: number }>();
+    const combinations = new Map<
+      string,
+      { productIds: string[]; occurrences: number }
+    >();
     monthlyTickets.forEach((ticket) => {
       const ids = Array.from(
         new Set(
@@ -225,13 +235,26 @@ export function DealsView({
           const product = products.find((candidate) => candidate.id === id);
           return product ? [product] : [];
         });
-        const listTotal = combinationProducts.reduce((sum, product) => sum + product.maxPrice, 0);
-        const minimumTotal = combinationProducts.reduce((sum, product) => sum + product.minPrice, 0);
-        const costTotal = combinationProducts.reduce((sum, product) => sum + product.costMxn, 0);
+        const listTotal = combinationProducts.reduce(
+          (sum, product) => sum + product.maxPrice,
+          0,
+        );
+        const minimumTotal = combinationProducts.reduce(
+          (sum, product) => sum + product.minPrice,
+          0,
+        );
+        const costTotal = combinationProducts.reduce(
+          (sum, product) => sum + product.costMxn,
+          0,
+        );
         const profitableFloor = costTotal > 0 ? costTotal * 1.35 : 0;
-        const suggestedPrice = Math.ceil(
-          Math.min(listTotal, Math.max(profitableFloor, minimumTotal * 0.92)) / 10,
-        ) * 10;
+        const suggestedPrice =
+          Math.ceil(
+            Math.min(
+              listTotal,
+              Math.max(profitableFloor, minimumTotal * 0.92),
+            ) / 10,
+          ) * 10;
         return {
           id,
           productIds: combination.productIds,
@@ -291,18 +314,23 @@ export function DealsView({
     setForm({
       ...emptyForm(branches),
       name: `Paquete ${recommendation.productNames.join(" + ")}`,
-      description: "Sugerencia generada desde las combinaciones vendidas este mes.",
+      description:
+        "Sugerencia generada desde las combinaciones vendidas este mes.",
       price: recommendation.suggestedPrice.toString(),
       startDate: range.start,
       endDate: range.end,
       branches: [...branches],
-      lines: recommendation.productIds.map((productId) => ({ productId, quantity: 1 })),
+      lines: recommendation.productIds.map((productId) => ({
+        productId,
+        quantity: 1,
+      })),
     });
     setEditorOpen(true);
   };
 
   const addProductLine = (productId: string) => {
-    if (!productId || form.lines.some((line) => line.productId === productId)) return;
+    if (!productId || form.lines.some((line) => line.productId === productId))
+      return;
     setForm((current) => ({
       ...current,
       lines: [...current.lines, { productId, quantity: 1 }],
@@ -316,7 +344,9 @@ export function DealsView({
       return;
     }
     if (form.lines.length < 2) {
-      toast.error("Un paquete debe contener al menos dos productos o servicios.");
+      toast.error(
+        "Un paquete debe contener al menos dos productos o servicios.",
+      );
       return;
     }
     if (!Number.isFinite(price) || price <= 0) {
@@ -357,7 +387,9 @@ export function DealsView({
   const confirmPublish = () => {
     if (!publishDeal) return;
     if (!onPublish(publishDeal.id, publishCode.trim())) {
-      toast.error("No fue posible publicar. Revisa el código y que el precio cubra el costo.");
+      toast.error(
+        "No fue posible publicar. Revisa el código y que el precio cubra el costo.",
+      );
       return;
     }
     toast.success(`${publishDeal.name} quedó publicado en Ventas.`);
@@ -369,8 +401,12 @@ export function DealsView({
     return (
       <Card className="deal-access-card">
         <CardContent>
-          <div className="deal-access-icon"><PackagePlus size={31} /></div>
-          <span className="section-kicker">PAQUETES Y PROMOCIONES · ACCESO MASTER</span>
+          <div className="deal-access-icon">
+            <PackagePlus size={31} />
+          </div>
+          <span className="section-kicker">
+            PAQUETES Y PROMOCIONES · ACCESO MASTER
+          </span>
           <h2>Configura paquetes sin modificar el catálogo</h2>
           <p>
             Los precios especiales pertenecen al paquete. Productos, servicios,
@@ -390,11 +426,17 @@ export function DealsView({
               placeholder="Código master"
               aria-label="Código master para Paquetes y promociones"
             />
-            <Button type="button" onClick={authorizeModule} disabled={accessCode.length !== 4}>
+            <Button
+              type="button"
+              onClick={authorizeModule}
+              disabled={accessCode.length !== 4}
+            >
               <LockKeyhole size={15} /> Desbloquear
             </Button>
           </div>
-          <small>La autorización master se valida en el servidor.</small>
+          <small data-rv-sensitive="true">
+            La autorización master se valida en el servidor.
+          </small>
         </CardContent>
       </Card>
     );
@@ -419,7 +461,8 @@ export function DealsView({
             <h2>Paquetes con precio propio</h2>
             <p>
               Combina productos y servicios. El paquete puede quedar debajo del
-              mínimo conjunto, pero su publicación se bloquea si no cubre el costo.
+              mínimo conjunto, pero su publicación se bloquea si no cubre el
+              costo.
             </p>
           </div>
           <div className="deals-hero-actions">
@@ -434,42 +477,93 @@ export function DealsView({
       </Card>
 
       <div className="deals-metrics">
-        <Card><CardContent><PackageCheck size={19} /><span>Paquetes publicados</span><strong>{deals.filter((deal) => deal.status === "PUBLISHED").length}</strong></CardContent></Card>
-        <Card><CardContent><BarChart3 size={19} /><span>Paquetes vendidos · mes</span><strong>{monthlyDealCount}</strong></CardContent></Card>
-        <Card><CardContent><TrendingUp size={19} /><span>Ingreso por paquetes · mes</span><strong>{formatCurrency(monthlyDealRevenue)}</strong></CardContent></Card>
-        <Card><CardContent><Lightbulb size={19} /><span>Recomendaciones</span><strong>{recommendations.length}</strong></CardContent></Card>
+        <Card>
+          <CardContent>
+            <PackageCheck size={19} />
+            <span>Paquetes publicados</span>
+            <strong>
+              {deals.filter((deal) => deal.status === "PUBLISHED").length}
+            </strong>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent>
+            <BarChart3 size={19} />
+            <span>Paquetes vendidos · mes</span>
+            <strong>{monthlyDealCount}</strong>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent>
+            <TrendingUp size={19} />
+            <span>Ingreso por paquetes · mes</span>
+            <strong>{formatCurrency(monthlyDealRevenue)}</strong>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent>
+            <Lightbulb size={19} />
+            <span>Recomendaciones</span>
+            <strong>{recommendations.length}</strong>
+          </CardContent>
+        </Card>
       </div>
 
       <Card className="deal-recommendations-card">
         <CardContent>
           <div className="deals-section-heading">
             <div>
-              <span className="section-kicker">RECOMENDACIÓN DINÁMICA · {monthLabel.toUpperCase()}</span>
+              <span className="section-kicker">
+                RECOMENDACIÓN DINÁMICA · {monthLabel.toUpperCase()}
+              </span>
               <h2>Paquetes sugeridos por historial de venta</h2>
-              <p>Prioriza artículos comprados juntos y calcula un precio que nunca baja del costo registrado.</p>
+              <p>
+                Prioriza artículos comprados juntos y calcula un precio que
+                nunca baja del costo registrado.
+              </p>
             </div>
             <Sparkles size={24} />
           </div>
           <div className="deal-recommendations-grid">
             {recommendations.map((recommendation) => (
               <article key={recommendation.id}>
-                <div className="deal-recommendation-icon"><Lightbulb size={18} /></div>
+                <div className="deal-recommendation-icon">
+                  <Lightbulb size={18} />
+                </div>
                 <div>
                   <strong>{recommendation.productNames.join(" + ")}</strong>
-                  <span>{recommendation.occurrences} coincidencia{recommendation.occurrences === 1 ? "" : "s"} en tickets del mes</span>
+                  <span>
+                    {recommendation.occurrences} coincidencia
+                    {recommendation.occurrences === 1 ? "" : "s"} en tickets del
+                    mes
+                  </span>
                 </div>
                 <div className="deal-recommendation-pricing">
                   <span>Lista {formatCurrency(recommendation.listTotal)}</span>
-                  <strong>Sugerido {formatCurrency(recommendation.suggestedPrice)}</strong>
-                  <small>{canViewCosts ? `Costo ${formatCurrency(recommendation.costTotal)} · utilidad estimada ${formatCurrency(recommendation.suggestedPrice - recommendation.costTotal)}` : "Análisis protegido · requiere permiso para visualizar costos"}</small>
+                  <strong>
+                    Sugerido {formatCurrency(recommendation.suggestedPrice)}
+                  </strong>
+                  <small>
+                    {canViewCosts
+                      ? `Costo ${formatCurrency(recommendation.costTotal)} · utilidad estimada ${formatCurrency(recommendation.suggestedPrice - recommendation.costTotal)}`
+                      : "Análisis protegido · requiere permiso para visualizar costos"}
+                  </small>
                 </div>
-                <Button type="button" variant="outline" size="sm" onClick={() => useRecommendation(recommendation)}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => useRecommendation(recommendation)}
+                >
                   Usar sugerencia
                 </Button>
               </article>
             ))}
             {recommendations.length === 0 && (
-              <div className="deal-recommendation-empty">Se necesitan tickets con al menos dos artículos para generar recomendaciones del mes.</div>
+              <div className="deal-recommendation-empty">
+                Se necesitan tickets con al menos dos artículos para generar
+                recomendaciones del mes.
+              </div>
             )}
           </div>
         </CardContent>
@@ -483,7 +577,9 @@ export function DealsView({
               <h2>Paquetes configurados</h2>
             </div>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger aria-label="Filtrar paquetes por estado"><SelectValue /></SelectTrigger>
+              <SelectTrigger aria-label="Filtrar paquetes por estado">
+                <SelectValue />
+              </SelectTrigger>
               <SelectContent>
                 <SelectItem value="ALL">Todos los estados</SelectItem>
                 <SelectItem value="PUBLISHED">Publicados</SelectItem>
@@ -506,50 +602,127 @@ export function DealsView({
                 0,
               );
               return (
-                <article key={deal.id} className={`deal-record is-${deal.status.toLowerCase()}`}>
+                <article
+                  key={deal.id}
+                  className={`deal-record is-${deal.status.toLowerCase()}`}
+                >
                   <div className="deal-record-top">
-                    <div className="deal-record-mark"><PackageCheck size={21} /></div>
+                    <div className="deal-record-mark">
+                      <PackageCheck size={21} />
+                    </div>
                     <div>
                       <span>{deal.sku}</span>
                       <h3>{deal.name}</h3>
                       <p>{deal.description || "Sin descripción"}</p>
                     </div>
-                    <Badge variant={deal.status === "PUBLISHED" ? "default" : "outline"}>{statusLabels[deal.status]}</Badge>
+                    <Badge
+                      variant={
+                        deal.status === "PUBLISHED" ? "default" : "outline"
+                      }
+                    >
+                      {statusLabels[deal.status]}
+                    </Badge>
                   </div>
                   <div className="deal-record-products">
                     {deal.lines.map((line) => {
-                      const product = products.find((candidate) => candidate.id === line.productId);
-                      return product ? <span key={line.productId}>{line.quantity} × {product.name}</span> : null;
+                      const product = products.find(
+                        (candidate) => candidate.id === line.productId,
+                      );
+                      return product ? (
+                        <span key={line.productId}>
+                          {line.quantity} × {product.name}
+                        </span>
+                      ) : null;
                     })}
                   </div>
                   <div className="deal-record-numbers">
-                    <span><small>PRECIO DEL PAQUETE</small><strong>{formatCurrency(deal.price)}</strong></span>
-                    <span><small>MÍNIMO CONJUNTO</small><strong>{formatCurrency(totals.minimum)}</strong></span>
-                    {canViewCosts && <span><small>COSTO MXN</small><strong>{formatCurrency(totals.costMxn)}</strong></span>}
-                    <span><small>VENDIDOS</small><strong>{salesCount}</strong></span>
+                    <span>
+                      <small>PRECIO DEL PAQUETE</small>
+                      <strong>{formatCurrency(deal.price)}</strong>
+                    </span>
+                    <span>
+                      <small>MÍNIMO CONJUNTO</small>
+                      <strong>{formatCurrency(totals.minimum)}</strong>
+                    </span>
+                    {canViewCosts && (
+                      <span>
+                        <small>COSTO MXN</small>
+                        <strong>{formatCurrency(totals.costMxn)}</strong>
+                      </span>
+                    )}
+                    <span>
+                      <small>VENDIDOS</small>
+                      <strong>{salesCount}</strong>
+                    </span>
                   </div>
                   <div className="deal-record-footer">
-                    <span><CalendarRange size={14} /> {deal.startDate} — {deal.endDate}</span>
-                    <span><Store size={14} /> {deal.branches.join(", ")}</span>
+                    <span>
+                      <CalendarRange size={14} /> {deal.startDate} —{" "}
+                      {deal.endDate}
+                    </span>
+                    <span>
+                      <Store size={14} /> {deal.branches.join(", ")}
+                    </span>
                     <div>
-                      <Button type="button" variant="ghost" size="icon" className="icon-action-button" onClick={() => editDeal(deal)} aria-label={`Editar ${deal.name}`} title="Editar"><Edit3 size={15} /></Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="icon-action-button"
+                        onClick={() => editDeal(deal)}
+                        aria-label={`Editar ${deal.name}`}
+                        title="Editar"
+                      >
+                        <Edit3 size={15} />
+                      </Button>
                       {deal.status !== "PUBLISHED" ? (
-                        <Button type="button" size="sm" onClick={() => { setPublishDeal(deal); setPublishCode(""); }}><ShieldCheck size={14} /> Autorizar y publicar</Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={() => {
+                            setPublishDeal(deal);
+                            setPublishCode("");
+                          }}
+                        >
+                          <ShieldCheck size={14} /> Autorizar y publicar
+                        </Button>
                       ) : (
                         <AlertDialog>
                           <AlertDialogTrigger asChild>
-                            <Button type="button" variant="outline" size="icon" className="icon-action-button" aria-label={`Inactivar ${deal.name}`} title="Inactivar"><PowerOff size={15} /></Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="icon"
+                              className="icon-action-button"
+                              aria-label={`Inactivar ${deal.name}`}
+                              title="Inactivar"
+                            >
+                              <PowerOff size={15} />
+                            </Button>
                           </AlertDialogTrigger>
                           <AlertDialogContent>
                             <AlertDialogHeader>
-                              <AlertDialogTitle>¿Inactivar {deal.name}?</AlertDialogTitle>
+                              <AlertDialogTitle>
+                                ¿Inactivar {deal.name}?
+                              </AlertDialogTitle>
                               <AlertDialogDescription>
-                                Dejará de aparecer en Ventas. Los tickets, conteos, costos y movimientos históricos conservarán el paquete.
+                                Dejará de aparecer en Ventas. Los tickets,
+                                conteos, costos y movimientos históricos
+                                conservarán el paquete.
                               </AlertDialogDescription>
                             </AlertDialogHeader>
                             <AlertDialogFooter>
-                              <AlertDialogCancel>Conservar publicado</AlertDialogCancel>
-                              <AlertDialogAction className="icon-action-button" onClick={() => onDeactivate(deal.id)} aria-label={`Inactivar ${deal.name}`} title="Inactivar"><PowerOff size={15} /></AlertDialogAction>
+                              <AlertDialogCancel>
+                                Conservar publicado
+                              </AlertDialogCancel>
+                              <AlertDialogAction
+                                className="icon-action-button"
+                                onClick={() => onDeactivate(deal.id)}
+                                aria-label={`Inactivar ${deal.name}`}
+                                title="Inactivar"
+                              >
+                                <PowerOff size={15} />
+                              </AlertDialogAction>
                             </AlertDialogFooter>
                           </AlertDialogContent>
                         </AlertDialog>
@@ -566,54 +739,344 @@ export function DealsView({
       <Dialog open={editorOpen} onOpenChange={setEditorOpen}>
         <DialogContent className="deal-editor-dialog sm:max-w-[920px]">
           <DialogHeader>
-            <DialogTitle>{form.id ? "Editar paquete" : "Nuevo paquete"}</DialogTitle>
-            <DialogDescription>Guardar cambios crea un borrador; la publicación requiere una autorización master independiente.</DialogDescription>
+            <DialogTitle>
+              {form.id ? "Editar paquete" : "Nuevo paquete"}
+            </DialogTitle>
+            <DialogDescription>
+              Guardar cambios crea un borrador; la publicación requiere una
+              autorización master independiente.
+            </DialogDescription>
           </DialogHeader>
           <div className="deal-editor-grid">
             <section>
               <div className="deal-editor-fields">
-                <div className="field-stack"><Label>Nombre</Label><Input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} placeholder="Ej. Ritual de hidratación" /></div>
-                <div className="field-stack"><Label>SKU del paquete</Label><Input value={form.sku} onChange={(event) => setForm((current) => ({ ...current, sku: event.target.value }))} /></div>
-                <div className="field-stack is-wide"><Label>Descripción</Label><Input value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} placeholder="Beneficio o mensaje comercial" /></div>
-                <div className="field-stack"><Label>Precio del paquete</Label><Input type="number" min="0" value={form.price} onChange={(event) => setForm((current) => ({ ...current, price: event.target.value }))} /></div>
-                <div className="field-stack"><Label>Agregar producto o servicio</Label><Select value="" onValueChange={addProductLine}><SelectTrigger><SelectValue placeholder="Seleccionar" /></SelectTrigger><SelectContent>{activeProducts.filter((product) => !form.lines.some((line) => line.productId === product.id)).map((product) => <SelectItem key={product.id} value={product.id}>{product.name} · {product.sku}</SelectItem>)}</SelectContent></Select></div>
-                <div className="field-stack"><Label>Inicio</Label><DatePicker value={form.startDate} onChange={(startDate) => setForm((current) => ({ ...current, startDate }))} /></div>
-                <div className="field-stack"><Label>Fin</Label><DatePicker value={form.endDate} onChange={(endDate) => setForm((current) => ({ ...current, endDate }))} /></div>
+                <div className="field-stack">
+                  <Label>Nombre</Label>
+                  <Input
+                    value={form.name}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        name: event.target.value,
+                      }))
+                    }
+                    placeholder="Ej. Ritual de hidratación"
+                  />
+                </div>
+                <div className="field-stack">
+                  <Label>SKU del paquete</Label>
+                  <Input
+                    value={form.sku}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        sku: event.target.value,
+                      }))
+                    }
+                  />
+                </div>
+                <div className="field-stack is-wide">
+                  <Label>Descripción</Label>
+                  <Input
+                    value={form.description}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        description: event.target.value,
+                      }))
+                    }
+                    placeholder="Beneficio o mensaje comercial"
+                  />
+                </div>
+                <div className="field-stack">
+                  <Label>Precio del paquete</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    value={form.price}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        price: event.target.value,
+                      }))
+                    }
+                  />
+                </div>
+                <div className="field-stack">
+                  <Label>Agregar producto o servicio</Label>
+                  <Select value="" onValueChange={addProductLine}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Seleccionar" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {activeProducts
+                        .filter(
+                          (product) =>
+                            !form.lines.some(
+                              (line) => line.productId === product.id,
+                            ),
+                        )
+                        .map((product) => (
+                          <SelectItem key={product.id} value={product.id}>
+                            {product.name} · {product.sku}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="field-stack">
+                  <Label>Inicio</Label>
+                  <DatePicker
+                    value={form.startDate}
+                    onChange={(startDate) =>
+                      setForm((current) => ({ ...current, startDate }))
+                    }
+                  />
+                </div>
+                <div className="field-stack">
+                  <Label>Fin</Label>
+                  <DatePicker
+                    value={form.endDate}
+                    onChange={(endDate) =>
+                      setForm((current) => ({ ...current, endDate }))
+                    }
+                  />
+                </div>
               </div>
               <div className="deal-branch-picker">
                 <Label>Sucursales donde se puede vender</Label>
-                <div>{branches.map((branch) => { const selected = form.branches.includes(branch); return <button key={branch} type="button" className={selected ? "is-selected" : ""} onClick={() => setForm((current) => ({ ...current, branches: selected ? current.branches.filter((item) => item !== branch) : [...current.branches, branch] }))}>{selected && <CheckCircle2 size={14} />}{branch}</button>; })}</div>
+                <div>
+                  {branches.map((branch) => {
+                    const selected = form.branches.includes(branch);
+                    return (
+                      <button
+                        key={branch}
+                        type="button"
+                        className={selected ? "is-selected" : ""}
+                        onClick={() =>
+                          setForm((current) => ({
+                            ...current,
+                            branches: selected
+                              ? current.branches.filter(
+                                  (item) => item !== branch,
+                                )
+                              : [...current.branches, branch],
+                          }))
+                        }
+                      >
+                        {selected && <CheckCircle2 size={14} />}
+                        {branch}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
               <div className="deal-editor-lines">
-                <div><span className="section-kicker">CONTENIDO DEL PAQUETE</span><Badge variant="outline">{form.lines.length} artículos</Badge></div>
+                <div>
+                  <span className="section-kicker">CONTENIDO DEL PAQUETE</span>
+                  <Badge variant="outline">{form.lines.length} artículos</Badge>
+                </div>
                 {form.lines.map((line) => {
-                  const product = products.find((candidate) => candidate.id === line.productId);
+                  const product = products.find(
+                    (candidate) => candidate.id === line.productId,
+                  );
                   if (!product) return null;
-                  return <article key={line.productId}><img src={product.image} alt="" /><div><strong>{product.name}</strong><span>{product.kind === "SERVICE" ? "Servicio" : "Producto"} · {product.sku}</span></div><Input type="number" min="1" value={line.quantity} onChange={(event) => setForm((current) => ({ ...current, lines: current.lines.map((currentLine) => currentLine.productId === line.productId ? { ...currentLine, quantity: Math.max(1, Number(event.target.value)) } : currentLine) }))} aria-label={`Cantidad de ${product.name}`} /><Button type="button" size="icon" variant="ghost" onClick={() => setForm((current) => ({ ...current, lines: current.lines.filter((currentLine) => currentLine.productId !== line.productId) }))} aria-label={`Quitar ${product.name}`}><X size={15} /></Button></article>;
+                  return (
+                    <article key={line.productId}>
+                      <img src={product.image} alt="" />
+                      <div>
+                        <strong>{product.name}</strong>
+                        <span>
+                          {product.kind === "SERVICE" ? "Servicio" : "Producto"}{" "}
+                          · {product.sku}
+                        </span>
+                      </div>
+                      <Input
+                        type="number"
+                        min="1"
+                        value={line.quantity}
+                        onChange={(event) =>
+                          setForm((current) => ({
+                            ...current,
+                            lines: current.lines.map((currentLine) =>
+                              currentLine.productId === line.productId
+                                ? {
+                                    ...currentLine,
+                                    quantity: Math.max(
+                                      1,
+                                      Number(event.target.value),
+                                    ),
+                                  }
+                                : currentLine,
+                            ),
+                          }))
+                        }
+                        aria-label={`Cantidad de ${product.name}`}
+                      />
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="ghost"
+                        onClick={() =>
+                          setForm((current) => ({
+                            ...current,
+                            lines: current.lines.filter(
+                              (currentLine) =>
+                                currentLine.productId !== line.productId,
+                            ),
+                          }))
+                        }
+                        aria-label={`Quitar ${product.name}`}
+                      >
+                        <X size={15} />
+                      </Button>
+                    </article>
+                  );
                 })}
               </div>
             </section>
             <aside className="deal-profit-preview">
               <span className="section-kicker">CONTROL DE RENTABILIDAD</span>
               <h3>Vista financiera</h3>
-              <div><span>Precio de lista</span><strong>{formatCurrency(formTotals.list)}</strong></div>
-              <div><span>Mínimo conjunto</span><strong>{formatCurrency(formTotals.minimum)}</strong></div>
-              {canViewCosts && <div><span>Costo MXN</span><strong>{formatCurrency(formTotals.costMxn)}</strong></div>}
-              {canViewCosts && <div><span>Costo USD</span><strong>US${formTotals.costUsd.toFixed(2)}</strong></div>}
-              {canViewCosts && <div className={formProfit >= 0 ? "is-profit" : "is-loss"}><span>Utilidad estimada</span><strong>{formatCurrency(formProfit)}</strong></div>}
-              <p>{canViewCosts ? (formProfit >= 0 ? "El precio cubre el costo registrado. Puede enviarse a autorización." : "Este precio representa pérdida y no podrá publicarse.") : "Los costos y la utilidad están protegidos por rol."}</p>
-              {Number(form.price || 0) < formTotals.minimum && <Badge variant="outline">Debajo del mínimo conjunto · permitido sólo como paquete</Badge>}
+              <div>
+                <span>Precio de lista</span>
+                <strong>{formatCurrency(formTotals.list)}</strong>
+              </div>
+              <div>
+                <span>Mínimo conjunto</span>
+                <strong>{formatCurrency(formTotals.minimum)}</strong>
+              </div>
+              {canViewCosts && (
+                <div>
+                  <span>Costo MXN</span>
+                  <strong>{formatCurrency(formTotals.costMxn)}</strong>
+                </div>
+              )}
+              {canViewCosts && (
+                <div>
+                  <span>Costo USD</span>
+                  <strong>US${formTotals.costUsd.toFixed(2)}</strong>
+                </div>
+              )}
+              {canViewCosts && (
+                <div className={formProfit >= 0 ? "is-profit" : "is-loss"}>
+                  <span>Utilidad estimada</span>
+                  <strong>{formatCurrency(formProfit)}</strong>
+                </div>
+              )}
+              <p>
+                {canViewCosts
+                  ? formProfit >= 0
+                    ? "El precio cubre el costo registrado. Puede enviarse a autorización."
+                    : "Este precio representa pérdida y no podrá publicarse."
+                  : "Los costos y la utilidad están protegidos por rol."}
+              </p>
+              {Number(form.price || 0) < formTotals.minimum && (
+                <Badge variant="outline">
+                  Debajo del mínimo conjunto · permitido sólo como paquete
+                </Badge>
+              )}
             </aside>
           </div>
-          <DialogFooter><Button type="button" variant="outline" onClick={() => setEditorOpen(false)}>Cancelar</Button><Button type="button" onClick={saveDeal}><PackagePlus size={15} /> Guardar borrador</Button></DialogFooter>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setEditorOpen(false)}
+            >
+              Cancelar
+            </Button>
+            <Button type="button" onClick={saveDeal}>
+              <PackagePlus size={15} /> Guardar borrador
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      <Dialog open={Boolean(publishDeal)} onOpenChange={(open) => { if (!open) { setPublishDeal(null); setPublishCode(""); } }}>
+      <Dialog
+        open={Boolean(publishDeal)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPublishDeal(null);
+            setPublishCode("");
+          }
+        }}
+      >
         <DialogContent className="sm:max-w-[520px]">
-          <DialogHeader><DialogTitle>Autorizar publicación</DialogTitle><DialogDescription>El paquete aparecerá en Ventas únicamente después de validar rentabilidad y código master.</DialogDescription></DialogHeader>
-          {publishDeal && (() => { const totals = getDealTotals(publishDeal, products); return <div className="deal-publish-confirm"><div><PackageCheck size={21} /><span><strong>{publishDeal.name}</strong><small>{publishDeal.sku}</small></span></div><div><span>Precio del paquete</span><strong>{formatCurrency(publishDeal.price)}</strong></div>{canViewCosts && <div><span>Costo registrado</span><strong>{formatCurrency(totals.costMxn)}</strong></div>}{canViewCosts && <div><span>Utilidad estimada</span><strong className={publishDeal.price >= totals.costMxn ? "is-positive" : "is-negative"}>{formatCurrency(publishDeal.price - totals.costMxn)}</strong></div>}<div className="deal-publish-code"><KeyRound size={16} /><Input type="password" inputMode="numeric" maxLength={4} value={publishCode} onChange={(event) => setPublishCode(event.target.value)} placeholder="Código master" aria-label="Código para publicar paquete" /></div></div>; })()}
-          <DialogFooter><Button type="button" variant="outline" onClick={() => setPublishDeal(null)}>Cancelar</Button><Button type="button" onClick={confirmPublish} disabled={publishCode.length !== 4}><ShieldCheck size={15} /> Publicar en Ventas</Button></DialogFooter>
+          <DialogHeader>
+            <DialogTitle>Autorizar publicación</DialogTitle>
+            <DialogDescription>
+              El paquete aparecerá en Ventas únicamente después de validar
+              rentabilidad y código master.
+            </DialogDescription>
+          </DialogHeader>
+          {publishDeal &&
+            (() => {
+              const totals = getDealTotals(publishDeal, products);
+              return (
+                <div className="deal-publish-confirm">
+                  <div>
+                    <PackageCheck size={21} />
+                    <span>
+                      <strong>{publishDeal.name}</strong>
+                      <small>{publishDeal.sku}</small>
+                    </span>
+                  </div>
+                  <div>
+                    <span>Precio del paquete</span>
+                    <strong>{formatCurrency(publishDeal.price)}</strong>
+                  </div>
+                  {canViewCosts && (
+                    <div>
+                      <span>Costo registrado</span>
+                      <strong>{formatCurrency(totals.costMxn)}</strong>
+                    </div>
+                  )}
+                  {canViewCosts && (
+                    <div>
+                      <span>Utilidad estimada</span>
+                      <strong
+                        className={
+                          publishDeal.price >= totals.costMxn
+                            ? "is-positive"
+                            : "is-negative"
+                        }
+                      >
+                        {formatCurrency(publishDeal.price - totals.costMxn)}
+                      </strong>
+                    </div>
+                  )}
+                  <div className="deal-publish-code">
+                    <KeyRound size={16} />
+                    <Input
+                      type="password"
+                      inputMode="numeric"
+                      maxLength={4}
+                      value={publishCode}
+                      onChange={(event) => setPublishCode(event.target.value)}
+                      placeholder="Código master"
+                      aria-label="Código para publicar paquete"
+                    />
+                  </div>
+                </div>
+              );
+            })()}
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setPublishDeal(null)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              onClick={confirmPublish}
+              disabled={publishCode.length !== 4}
+            >
+              <ShieldCheck size={15} /> Publicar en Ventas
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

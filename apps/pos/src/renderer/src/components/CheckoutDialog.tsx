@@ -1169,6 +1169,10 @@ export function CheckoutDialog({
                         setNewClient((current) => ({ ...current, birthday }))
                       }
                       placeholder="Selecciona cumpleaños"
+                      calendarLocale="es"
+                      quickMonthYearNavigation
+                      fromYear={1920}
+                      toYear={new Date().getFullYear()}
                     />
                   </div>
                   <div className="field-stack">

@@ -252,7 +252,9 @@ function CustomerMembershipPreview({
           <CreditCard size={16} />
           <span>
             <strong>Membresías de {clientName}</strong>
-            <small>{summary.active} activas · {summary.total} compradas</small>
+            <small>
+              {summary.active} activas · {summary.total} compradas
+            </small>
           </span>
         </div>
         {orderedMemberships.length > 0 ? (
@@ -272,13 +274,20 @@ function CustomerMembershipPreview({
                 <article key={membership.id}>
                   <span>
                     <strong>{membership.membershipName}</strong>
-                    <small>{membership.branch} · {membership.purchaseDateIso.slice(0, 10)}</small>
+                    <small>
+                      {membership.branch} ·{" "}
+                      {membership.purchaseDateIso.slice(0, 10)}
+                    </small>
                   </span>
                   <span>
-                    <b className={`is-${membership.status.toLocaleLowerCase("es-MX")}`}>
+                    <b
+                      className={`is-${membership.status.toLocaleLowerCase("es-MX")}`}
+                    >
                       {statusLabel}
                     </b>
-                    <small>{remaining}/{membership.totalSessions} sesiones</small>
+                    <small>
+                      {remaining}/{membership.totalSessions} sesiones
+                    </small>
                   </span>
                 </article>
               );
@@ -339,10 +348,10 @@ export function CustomersView({
   const [bulkImportRows, setBulkImportRows] = useState<Client[]>([]);
   const [bulkImportErrors, setBulkImportErrors] = useState<string[]>([]);
   const [birthdayClient, setBirthdayClient] = useState<Client | null>(null);
-  const [selectedBirthdayDesignId, setSelectedBirthdayDesignId] = useState("gold");
-  const [birthdayMessages, setBirthdayMessages] = useState<BirthdayMessage[]>(
-    loadBirthdayMessages,
-  );
+  const [selectedBirthdayDesignId, setSelectedBirthdayDesignId] =
+    useState("gold");
+  const [birthdayMessages, setBirthdayMessages] =
+    useState<BirthdayMessage[]>(loadBirthdayMessages);
   const [selectedBirthdayMessageId, setSelectedBirthdayMessageId] = useState(
     initialBirthdayMessages[0]!.id,
   );
@@ -353,21 +362,18 @@ export function CustomersView({
   );
   const membershipSummaryByClientId = useMemo(
     () =>
-      memberships.reduce(
-        (summary, membership) => {
-          const current = summary.get(membership.clientId) ?? {
-            active: 0,
-            total: 0,
-            memberships: [],
-          };
-          current.total += 1;
-          if (membership.status === "ACTIVE") current.active += 1;
-          current.memberships.push(membership);
-          summary.set(membership.clientId, current);
-          return summary;
-        },
-        new Map<string, ClientMembershipSummary>(),
-      ),
+      memberships.reduce((summary, membership) => {
+        const current = summary.get(membership.clientId) ?? {
+          active: 0,
+          total: 0,
+          memberships: [],
+        };
+        current.total += 1;
+        if (membership.status === "ACTIVE") current.active += 1;
+        current.memberships.push(membership);
+        summary.set(membership.clientId, current);
+        return summary;
+      }, new Map<string, ClientMembershipSummary>()),
     [memberships],
   );
   const clientMembershipSummary = (clientId: string) =>
@@ -447,7 +453,8 @@ export function CustomersView({
     appointments.filter(
       (appointment) =>
         appointment.clientId === client.id ||
-        normalizePhone(appointment.clientPhone) === normalizePhone(client.phone),
+        normalizePhone(appointment.clientPhone) ===
+          normalizePhone(client.phone),
     );
 
   const clientVouchers = (client: Client) => {
@@ -476,10 +483,10 @@ export function CustomersView({
         ? masterAuthorized
           ? clients
           : authorizedSellerId
-          ? clients.filter((client) =>
-              client.saleSellerIds.includes(authorizedSellerId),
-            )
-          : []
+            ? clients.filter((client) =>
+                client.saleSellerIds.includes(authorizedSellerId),
+              )
+            : []
         : searchIsReady
           ? clients
           : [];
@@ -544,8 +551,8 @@ export function CustomersView({
   };
 
   const getPreviousClientOwner = (client: Client) => {
-    const historyEntry = [...(client.ownershipHistory ?? [])].sort((left, right) =>
-      right.endedAtIso.localeCompare(left.endedAtIso),
+    const historyEntry = [...(client.ownershipHistory ?? [])].sort(
+      (left, right) => right.endedAtIso.localeCompare(left.endedAtIso),
     )[0];
     if (historyEntry) {
       const seller = sellers.find(
@@ -558,9 +565,7 @@ export function CustomersView({
       };
     }
     const legacyInactiveSeller = client.ownerId
-      ? sellers.find(
-          (seller) => seller.id === client.ownerId && !seller.active,
-        )
+      ? sellers.find((seller) => seller.id === client.ownerId && !seller.active)
       : null;
     return legacyInactiveSeller
       ? { name: legacyInactiveSeller.name, active: false, endedAtIso: "" }
@@ -636,7 +641,8 @@ export function CustomersView({
             .join("")
         : "<p>Sin vouchers entregados.</p>"
     }`;
-    popup.document.write(`<!doctype html><html lang="es"><head><title>${escapeHtml(client.registrationFolio)}</title><style>
+    popup.document
+      .write(`<!doctype html><html lang="es"><head><title>${escapeHtml(client.registrationFolio)}</title><style>
       body{font-family:Arial,sans-serif;color:#111;margin:32px}header{text-align:center;border-bottom:2px solid #111;padding-bottom:18px}header img{display:block;max-width:${receiptSettings.logoWidth}px;max-height:72px;object-fit:contain;margin:0 auto 10px}h1{font-size:20px;margin:5px 0}h2{font-size:14px;margin-top:24px}.meta{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:18px}.meta div,article{border:1px solid #bbb;padding:9px}small{color:#666}article{margin:7px 0}article strong{display:block}@media print{body{margin:8mm}}
     </style></head><body><header>${logo}<h1>${escapeHtml(receiptSettings.companyName)}</h1><strong>EXPEDIENTE DE CLIENTE</strong></header><div class="meta"><div><small>FOLIO</small><br><strong>${escapeHtml(client.registrationFolio)}</strong></div><div><small>CLIENTE</small><br><strong>${escapeHtml(`${client.firstName} ${client.lastName}`)}</strong></div><div><small>TELÉFONO</small><br>${escapeHtml(client.phone || "Sin registro")}</div><div><small>PROPIETARIO ACTUAL</small><br>${escapeHtml(getClientOwner(client) || "Empresa")}</div>${previousOwner ? `<div><small>VENDEDOR ANTERIOR</small><br><strong>${escapeHtml(previousOwner.name)}</strong><br><small>${previousOwner.active ? "Cuenta reactivada · relación anterior" : "Inactivo"}${previousOwner.endedAtIso ? ` · transferencia ${escapeHtml(new Date(previousOwner.endedAtIso).toLocaleDateString("es-MX"))}` : ""}</small></div>` : ""}<div><small>CUMPLEAÑOS</small><br>${escapeHtml(client.birthday || "Sin registro")}</div><div><small>PROCEDENCIA</small><br>${escapeHtml(client.sourceLabel)}</div><div><small>MEMBRESÍAS</small><br><strong>${membershipSummary.active} activas · ${membershipSummary.total} compradas</strong></div></div><h2>HISTORIAL DE COMPRA</h2>${purchases.length ? purchases.map((ticket) => `<article><strong>${escapeHtml(ticket.id)} · ${escapeHtml(formatCurrency(ticket.total))}</strong><small>${escapeHtml(ticket.createdAt)} · ${escapeHtml(ticket.branchName ?? "Polanco")}</small><br>${escapeHtml(ticket.products.map((product) => `${product.quantity} × ${product.name}`).join(" · "))}</article>`).join("") : "<p>Sin compras registradas.</p>"}<h2>CITAS Y CORTESÍAS</h2>${customerAppointments.length ? customerAppointments.map((appointment) => `<article><strong>${escapeHtml(appointment.service)}</strong><small>${escapeHtml(`${appointment.date} · ${appointment.time} · ${appointment.branch}`)}</small></article>`).join("") : "<p>Sin citas registradas.</p>"}${voucherHistoryHtml}<script>window.onload=()=>window.print();</script></body></html>`);
     popup.document.close();
@@ -668,7 +674,9 @@ export function CustomersView({
     setDeletingClient(null);
     setDeleteFolio("");
     setDeleteMasterCode("");
-    toast.success("Cliente borrado del directorio activo; el histórico se conserva.");
+    toast.success(
+      "Cliente borrado del directorio activo; el histórico se conserva.",
+    );
   };
 
   const exportClientsToExcel = async () => {
@@ -701,7 +709,10 @@ export function CustomersView({
         "Sucursal de registro": client.registrationBranch ?? "",
         "Membresías activas": membershipSummary.active,
         "Membresías compradas": membershipSummary.total,
-        "Compra total": purchases.reduce((sum, ticket) => sum + ticket.total, 0),
+        "Compra total": purchases.reduce(
+          (sum, ticket) => sum + ticket.total,
+          0,
+        ),
       };
     });
     const worksheet = XLSX.utils.json_to_sheet(rows);
@@ -745,7 +756,9 @@ export function CustomersView({
       return value.toISOString().slice(0, 10);
     if (typeof value === "number") {
       const date = new Date(Math.round((value - 25_569) * 86_400_000));
-      return Number.isNaN(date.getTime()) ? "" : date.toISOString().slice(0, 10);
+      return Number.isNaN(date.getTime())
+        ? ""
+        : date.toISOString().slice(0, 10);
     }
     const text = String(value ?? "").trim();
     if (!text) return "";
@@ -774,14 +787,19 @@ export function CustomersView({
       if (!firstSheetName) throw new Error("El archivo no contiene hojas.");
       const worksheet = workbook.Sheets[firstSheetName];
       if (!worksheet) throw new Error("No fue posible leer la primera hoja.");
-      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(worksheet, {
-        defval: "",
-        raw: true,
-        range: 3,
-      });
+      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(
+        worksheet,
+        {
+          defval: "",
+          raw: true,
+          range: 3,
+        },
+      );
       const imported: Client[] = [];
       const errors: string[] = [];
-      const knownPhones = new Set(clients.map((client) => normalizePhone(client.phone)));
+      const knownPhones = new Set(
+        clients.map((client) => normalizePhone(client.phone)),
+      );
       rows.forEach((row, index) => {
         const line = index + 5;
         const firstName = String(row["nombre*"] ?? "").trim();
@@ -789,20 +807,28 @@ export function CustomersView({
         const phone = String(row["telefono*"] ?? "").trim();
         const normalizedImportedPhone = normalizePhone(phone);
         if (!firstName || !lastName || normalizedImportedPhone.length < 7) {
-          errors.push(`Fila ${line}: nombre, apellido y teléfono válido son obligatorios.`);
+          errors.push(
+            `Fila ${line}: nombre, apellido y teléfono válido son obligatorios.`,
+          );
           return;
         }
         if (knownPhones.has(normalizedImportedPhone)) {
-          errors.push(`Fila ${line}: el teléfono ${phone} ya está registrado o repetido.`);
+          errors.push(
+            `Fila ${line}: el teléfono ${phone} ya está registrado o repetido.`,
+          );
           return;
         }
         knownPhones.add(normalizedImportedPhone);
-        const sourceLabel = String(row.procedencia ?? "Abordaje").trim() || "Abordaje";
+        const sourceLabel =
+          String(row.procedencia ?? "Abordaje").trim() || "Abordaje";
         const normalizedSource = normalize(sourceLabel);
         const companyLocked =
-          normalizedSource.includes("lead") || normalizedSource.includes("redes");
+          normalizedSource.includes("lead") ||
+          normalizedSource.includes("redes");
         const requestedOwnerId = String(row.vendedor_id ?? "").trim();
-        const owner = activeSellers.find((seller) => seller.id === requestedOwnerId);
+        const owner = activeSellers.find(
+          (seller) => seller.id === requestedOwnerId,
+        );
         const createdAt = new Date();
         imported.push({
           id: `client-bulk-${createdAt.getTime()}-${index}-${crypto.randomUUID().slice(0, 8)}`,
@@ -811,7 +837,8 @@ export function CustomersView({
           firstName,
           lastName,
           birthday: formatImportedBirthday(row.cumpleanos),
-          gender: String(row.genero ?? "Sin especificar").trim() || "Sin especificar",
+          gender:
+            String(row.genero ?? "Sin especificar").trim() || "Sin especificar",
           phone,
           whatsapp: String(row.whatsapp ?? phone).trim() || phone,
           source: sourceLabel.toLocaleUpperCase("es-MX").replaceAll(" ", "_"),
@@ -831,7 +858,9 @@ export function CustomersView({
         toast.error("El archivo no contiene clientes válidos para importar.");
       else toast.success(`${imported.length} clientes listos para importar.`);
     } catch {
-      setBulkImportErrors(["No fue posible leer el archivo. Usa la plantilla XLSX descargable."]);
+      setBulkImportErrors([
+        "No fue posible leer el archivo. Usa la plantilla XLSX descargable.",
+      ]);
       toast.error("Archivo inválido para carga masiva.");
     }
   };
@@ -885,8 +914,9 @@ export function CustomersView({
     .filter((client) => birthdayParts(client)[1] === today.getMonth() + 1)
     .sort((a, b) => (birthdayParts(a)[2] ?? 0) - (birthdayParts(b)[2] ?? 0));
   const selectedBirthdayMessage =
-    birthdayMessages.find((message) => message.id === selectedBirthdayMessageId) ??
-    birthdayMessages[0];
+    birthdayMessages.find(
+      (message) => message.id === selectedBirthdayMessageId,
+    ) ?? birthdayMessages[0];
   const selectedBirthdayDesign =
     birthdayDesigns.find((design) => design.id === selectedBirthdayDesignId) ??
     birthdayDesigns[0];
@@ -895,7 +925,9 @@ export function CustomersView({
     if (!selectedBirthdayMessage) return;
     setBirthdayMessages((current) =>
       current.map((message) =>
-        message.id === selectedBirthdayMessage.id ? { ...message, text } : message,
+        message.id === selectedBirthdayMessage.id
+          ? { ...message, text }
+          : message,
       ),
     );
   };
@@ -904,7 +936,11 @@ export function CustomersView({
     const id = `message-${Date.now()}`;
     setBirthdayMessages((current) => [
       ...current,
-      { id, name: `Mensaje ${current.length + 1}`, text: "Escribe aquí tu felicitación personalizada." },
+      {
+        id,
+        name: `Mensaje ${current.length + 1}`,
+        text: "Escribe aquí tu felicitación personalizada.",
+      },
     ]);
     setSelectedBirthdayMessageId(id);
   };
@@ -965,7 +1001,10 @@ export function CustomersView({
             window.clearTimeout(timeout);
             reject(new Error("No se pudo cargar el logo."));
           };
-          image.src = new URL(receiptSettings.logoUrl, window.location.href).href;
+          image.src = new URL(
+            receiptSettings.logoUrl,
+            window.location.href,
+          ).href;
         });
         const ratio = Math.min(190 / logo.width, 120 / logo.height);
         context.drawImage(
@@ -1004,9 +1043,9 @@ export function CustomersView({
       } else line = candidate;
     });
     if (line) lines.push(line);
-    lines.slice(0, 5).forEach((text, index) =>
-      context.fillText(text, 540, 700 + index * 45),
-    );
+    lines
+      .slice(0, 5)
+      .forEach((text, index) => context.fillText(text, 540, 700 + index * 45));
     context.fillStyle = accent;
     context.font = "700 25px Arial";
     context.fillText(`Con cariño, ${receiptSettings.companyName}`, 540, 950);
@@ -1046,13 +1085,17 @@ export function CustomersView({
       return;
     }
     await downloadBirthdayCard();
-    const phone = normalizePhone(birthdayClient.whatsapp || birthdayClient.phone);
+    const phone = normalizePhone(
+      birthdayClient.whatsapp || birthdayClient.phone,
+    );
     window.open(
       `https://wa.me/${phone}?text=${encodeURIComponent(shareData.text)}`,
       "_blank",
       "noopener,noreferrer",
     );
-    toast.info("Se descargó la tarjeta; adjúntala en la conversación de WhatsApp.");
+    toast.info(
+      "Se descargó la tarjeta; adjúntala en la conversación de WhatsApp.",
+    );
   };
 
   const toggleBranch = (branch: string) => {
@@ -1086,7 +1129,9 @@ export function CustomersView({
               </p>
             </div>
             <div className="customer-directory-actions">
-              <span className="customer-security-icon"><ShieldCheck size={24} /></span>
+              <span className="customer-security-icon">
+                <ShieldCheck size={24} />
+              </span>
               <Button
                 type="button"
                 variant="outline"
@@ -1151,13 +1196,15 @@ export function CustomersView({
               </div>
               <span
                 className={
-                  accessError
-                    ? "customer-access-error"
-                    : "customer-access-note"
+                  accessError ? "customer-access-error" : "customer-access-note"
                 }
               >
                 {accessError ||
-                  "Usa el alias y código personal autorizado."}
+                  (import.meta.env.VITE_POS_DATA_MODE === "mock" &&
+                  import.meta.env.VITE_POS_VISUAL_FIXTURE === "1"
+                    ? import.meta.env
+                        .VITE_POS_VISUAL_FIXTURE_CUSTOMER_ACCESS_COPY
+                    : "Usa el alias y código personal autorizado.")}
               </span>
             </div>
           ) : (
@@ -1325,7 +1372,9 @@ export function CustomersView({
                 <TableBody>
                   {customerPagination.paginatedItems.map((client) => {
                     const purchases = clientTickets(client);
-                    const membershipSummary = clientMembershipSummary(client.id);
+                    const membershipSummary = clientMembershipSummary(
+                      client.id,
+                    );
                     const customerAppointments = clientAppointments(client);
                     const customerVouchers = clientVouchers(client);
                     const customerProductDebts = owedProducts.filter(
@@ -1367,12 +1416,15 @@ export function CustomersView({
                               </strong>
                               {outstandingBalance > 0.01 && (
                                 <span className="customer-debt-badge">
-                                  <AlertTriangle size={12} /> Adeudo {formatCurrency(outstandingBalance)}
+                                  <AlertTriangle size={12} /> Adeudo{" "}
+                                  {formatCurrency(outstandingBalance)}
                                 </span>
                               )}
                             </div>
                           </TableCell>
-                          <TableCell>{client.phone || "Sin teléfono"}</TableCell>
+                          <TableCell>
+                            {client.phone || "Sin teléfono"}
+                          </TableCell>
                           <TableCell>
                             {client.birthday || "Sin registro"}
                           </TableCell>
@@ -1421,7 +1473,9 @@ export function CustomersView({
                                     size="icon"
                                     aria-label={`Editar cliente ${client.firstName}`}
                                     title="Editar"
-                                    onClick={() => setEditingClient({ ...client })}
+                                    onClick={() =>
+                                      setEditingClient({ ...client })
+                                    }
                                   >
                                     <Pencil size={15} />
                                   </Button>
@@ -1453,9 +1507,16 @@ export function CustomersView({
                                   <div className="customer-debt-alert">
                                     <AlertTriangle size={21} />
                                     <span>
-                                      <strong>Cliente con saldo pendiente</strong>
+                                      <strong>
+                                        Cliente con saldo pendiente
+                                      </strong>
                                       <small>
-                                        {outstandingTickets.length} {outstandingTickets.length === 1 ? "ticket pendiente" : "tickets pendientes"} · Total por cobrar {formatCurrency(outstandingBalance)}
+                                        {outstandingTickets.length}{" "}
+                                        {outstandingTickets.length === 1
+                                          ? "ticket pendiente"
+                                          : "tickets pendientes"}{" "}
+                                        · Total por cobrar{" "}
+                                        {formatCurrency(outstandingBalance)}
                                       </small>
                                     </span>
                                   </div>
@@ -1465,7 +1526,9 @@ export function CustomersView({
                                     <ReceiptText size={17} />
                                     <span>
                                       <small>REGISTRO</small>
-                                      <strong>{client.registrationFolio}</strong>
+                                      <strong>
+                                        {client.registrationFolio}
+                                      </strong>
                                     </span>
                                   </div>
                                   <div>
@@ -1520,9 +1583,14 @@ export function CustomersView({
                                     <span>
                                       <small>MEMBRESÍAS</small>
                                       <strong>
-                                        {membershipSummary.active} {membershipSummary.active === 1 ? "activa" : "activas"}
+                                        {membershipSummary.active}{" "}
+                                        {membershipSummary.active === 1
+                                          ? "activa"
+                                          : "activas"}
                                       </strong>
-                                      <em>{membershipSummary.total} compradas</em>
+                                      <em>
+                                        {membershipSummary.total} compradas
+                                      </em>
                                     </span>
                                   </div>
                                 </div>
@@ -1534,13 +1602,18 @@ export function CustomersView({
                                           TICKETS Y PAGOS
                                         </span>
                                         <h3>
-                                          <CreditCard size={16} /> Apartados liquidados y Add payment
+                                          <CreditCard size={16} /> Apartados
+                                          liquidados y Add payment
                                         </h3>
                                       </div>
                                       <Badge variant="outline">
-                                        {customerLayaways.filter(
-                                          (layaway) => layaway.status === "ACTIVE",
-                                        ).length} activos
+                                        {
+                                          customerLayaways.filter(
+                                            (layaway) =>
+                                              layaway.status === "ACTIVE",
+                                          ).length
+                                        }{" "}
+                                        activos
                                       </Badge>
                                     </div>
                                     {customerLayaways.map((layaway) => {
@@ -1566,7 +1639,8 @@ export function CustomersView({
                                                   {layaway.originalTicketId}
                                                 </strong>
                                                 <small>
-                                                  {layaway.createdAt} · {layaway.branch}
+                                                  {layaway.createdAt} ·{" "}
+                                                  {layaway.branch}
                                                 </small>
                                               </span>
                                               <span>
@@ -1605,45 +1679,68 @@ export function CustomersView({
                                             <div className="layaway-products-summary">
                                               {layaway.items.map((item) => (
                                                 <span key={item.cartItemId}>
-                                                  {item.productName}: {item.deliveredQuantity}/{item.quantity} entregado(s)
+                                                  {item.productName}:{" "}
+                                                  {item.deliveredQuantity}/
+                                                  {item.quantity} entregado(s)
                                                 </span>
                                               ))}
                                             </div>
                                             <div className="layaway-payment-history">
-                                              {layaway.payments.map((payment) => (
-                                                <div key={payment.id}>
-                                                  <span>
-                                                    <strong>{payment.folio}</strong>
-                                                    <small>{payment.createdAt}</small>
-                                                  </span>
-                                                  <span>
-                                                    {(payment.payments ?? [{
-                                                      id: payment.id,
-                                                      methodId: payment.methodId,
-                                                      amount: payment.amount,
-                                                    }])
-                                                      .map(
-                                                        (entry) =>
-                                                          `${paymentLabel(entry.methodId)}${entry.cardNetwork ? ` · ${cardNetworkLabels[entry.cardNetwork]}` : ""}${entry.cardOrBank ? ` · ${entry.cardOrBank}` : ""}${entry.authorizationCode ? ` · Aut. ${entry.authorizationCode}` : ""} ${formatCurrency(entry.amount)}`,
-                                                      )
-                                                      .join(" + ")}
-                                                    {typeof payment.balanceAfter === "number" && (
+                                              {layaway.payments.map(
+                                                (payment) => (
+                                                  <div key={payment.id}>
+                                                    <span>
+                                                      <strong>
+                                                        {payment.folio}
+                                                      </strong>
                                                       <small>
-                                                        Saldo {formatCurrency(payment.balanceAfter)}
+                                                        {payment.createdAt}
                                                       </small>
-                                                    )}
-                                                  </span>
-                                                </div>
-                                              ))}
+                                                    </span>
+                                                    <span>
+                                                      {(
+                                                        payment.payments ?? [
+                                                          {
+                                                            id: payment.id,
+                                                            methodId:
+                                                              payment.methodId,
+                                                            amount:
+                                                              payment.amount,
+                                                          },
+                                                        ]
+                                                      )
+                                                        .map(
+                                                          (entry) =>
+                                                            `${paymentLabel(entry.methodId)}${entry.cardNetwork ? ` · ${cardNetworkLabels[entry.cardNetwork]}` : ""}${entry.cardOrBank ? ` · ${entry.cardOrBank}` : ""}${entry.authorizationCode ? ` · Aut. ${entry.authorizationCode}` : ""} ${formatCurrency(entry.amount)}`,
+                                                        )
+                                                        .join(" + ")}
+                                                      {typeof payment.balanceAfter ===
+                                                        "number" && (
+                                                        <small>
+                                                          Saldo{" "}
+                                                          {formatCurrency(
+                                                            payment.balanceAfter,
+                                                          )}
+                                                        </small>
+                                                      )}
+                                                    </span>
+                                                  </div>
+                                                ),
+                                              )}
                                             </div>
                                             {layaway.status === "ACTIVE" && (
                                               <LayawayPaymentDialog
                                                 layaway={layaway}
                                                 paymentMethods={paymentMethods}
                                                 bankCatalog={bankCatalog}
-                                                installmentOptions={installmentOptions}
+                                                installmentOptions={
+                                                  installmentOptions
+                                                }
                                                 sellerId={sellerId}
-                                                onRegister={(payments, deliveryIds) =>
+                                                onRegister={(
+                                                  payments,
+                                                  deliveryIds,
+                                                ) =>
                                                   onRegisterLayawayPayment(
                                                     layaway.id,
                                                     payments,
@@ -1691,7 +1788,8 @@ export function CustomersView({
                                                 {paymentLabel(payment.methodId)}
                                                 {payment.cardType === "CREDIT"
                                                   ? payment.installmentMonths &&
-                                                    payment.installmentMonths > 1
+                                                    payment.installmentMonths >
+                                                      1
                                                     ? ` · ${payment.installmentMonths} MSI`
                                                     : " · una exhibición"
                                                   : payment.cardType === "DEBIT"
@@ -1737,7 +1835,8 @@ export function CustomersView({
                                           </Badge>
                                         </div>
                                         <p>
-                                          {appointment.date} · {appointment.time}
+                                          {appointment.date} ·{" "}
+                                          {appointment.time}
                                         </p>
                                         <footer>
                                           <span>
@@ -1756,7 +1855,8 @@ export function CustomersView({
                                   </section>
                                   <section>
                                     <h3>
-                                      <AlertTriangle size={16} /> Productos por entregar
+                                      <AlertTriangle size={16} /> Productos por
+                                      entregar
                                     </h3>
                                     {customerProductDebts.map((record) => (
                                       <article
@@ -1774,17 +1874,29 @@ export function CustomersView({
                                           </Badge>
                                         </div>
                                         <p>
-                                          Debe {record.quantity - record.deliveredQuantity} · Entregado {record.deliveredQuantity} de {record.quantity}
+                                          Debe{" "}
+                                          {record.quantity -
+                                            record.deliveredQuantity}{" "}
+                                          · Entregado {record.deliveredQuantity}{" "}
+                                          de {record.quantity}
                                         </p>
                                         <footer>
-                                          <span><Store size={13} /> {record.branch}</span>
-                                          <span>{record.sellerNames.join(" / ") || "Empresa"}</span>
+                                          <span>
+                                            <Store size={13} /> {record.branch}
+                                          </span>
+                                          <span>
+                                            {record.sellerNames.join(" / ") ||
+                                              "Empresa"}
+                                          </span>
                                         </footer>
-                                        {record.deliveryHistory.map((delivery) => (
-                                          <small key={delivery.id}>
-                                            Entrega: {delivery.quantity} pza · {delivery.deliveredAt}
-                                          </small>
-                                        ))}
+                                        {record.deliveryHistory.map(
+                                          (delivery) => (
+                                            <small key={delivery.id}>
+                                              Entrega: {delivery.quantity} pza ·{" "}
+                                              {delivery.deliveredAt}
+                                            </small>
+                                          ),
+                                        )}
                                       </article>
                                     ))}
                                     {customerProductDebts.length === 0 && (
@@ -1801,16 +1913,21 @@ export function CustomersView({
                                       </Badge>
                                     </h3>
                                     {customerVouchers.map((voucher) => {
-                                      const promotionCount = customerVouchers.filter(
-                                        (issue) => issue.voucherId === voucher.voucherId,
-                                      ).length;
+                                      const promotionCount =
+                                        customerVouchers.filter(
+                                          (issue) =>
+                                            issue.voucherId ===
+                                            voucher.voucherId,
+                                        ).length;
                                       return (
                                         <article
                                           key={voucher.id}
                                           className="customer-history-item"
                                         >
                                           <div>
-                                            <strong>{voucher.voucherName}</strong>
+                                            <strong>
+                                              {voucher.voucherName}
+                                            </strong>
                                             <Badge variant="outline">
                                               {voucher.status === "ISSUED"
                                                 ? "ENTREGADO"
@@ -1820,14 +1937,17 @@ export function CustomersView({
                                             </Badge>
                                           </div>
                                           <p>
-                                            {voucher.folio} · Esta promoción se ha
-                                            entregado {promotionCount} {promotionCount === 1
+                                            {voucher.folio} · Esta promoción se
+                                            ha entregado {promotionCount}{" "}
+                                            {promotionCount === 1
                                               ? "vez"
-                                              : "veces"} a la clienta.
+                                              : "veces"}{" "}
+                                            a la clienta.
                                           </p>
                                           <footer>
                                             <span>
-                                              <Store size={13} /> {voucher.branch}
+                                              <Store size={13} />{" "}
+                                              {voucher.branch}
                                             </span>
                                             <span>
                                               {new Date(
@@ -1895,18 +2015,26 @@ export function CustomersView({
             <div className="birthday-lists-grid">
               <section className="birthday-list-card is-today">
                 <header>
-                  <span><Gift size={17} /> CUMPLEAÑOS DE HOY</span>
+                  <span>
+                    <Gift size={17} /> CUMPLEAÑOS DE HOY
+                  </span>
                   <Badge>{todayBirthdays.length}</Badge>
                 </header>
                 <div>
                   {todayBirthdays.map((client) => (
                     <article key={client.id}>
                       <span className="birthday-client-avatar">
-                        {client.firstName.charAt(0)}{client.lastName.charAt(0)}
+                        {client.firstName.charAt(0)}
+                        {client.lastName.charAt(0)}
                       </span>
                       <div>
-                        <strong>{client.firstName} {client.lastName}</strong>
-                        <small>{client.whatsapp || client.phone} · {getClientOwner(client)}</small>
+                        <strong>
+                          {client.firstName} {client.lastName}
+                        </strong>
+                        <small>
+                          {client.whatsapp || client.phone} ·{" "}
+                          {getClientOwner(client)}
+                        </small>
                       </div>
                       <Button
                         type="button"
@@ -1918,13 +2046,17 @@ export function CustomersView({
                     </article>
                   ))}
                   {todayBirthdays.length === 0 && (
-                    <p className="empty-inline">No hay cumpleaños registrados para hoy.</p>
+                    <p className="empty-inline">
+                      No hay cumpleaños registrados para hoy.
+                    </p>
                   )}
                 </div>
               </section>
               <section className="birthday-list-card">
                 <header>
-                  <span><CalendarDays size={17} /> CUMPLEAÑOS DEL MES</span>
+                  <span>
+                    <CalendarDays size={17} /> CUMPLEAÑOS DEL MES
+                  </span>
                   <Badge variant="outline">{monthlyBirthdays.length}</Badge>
                 </header>
                 <div>
@@ -1932,9 +2064,13 @@ export function CustomersView({
                     const [, , birthdayDay] = birthdayParts(client);
                     return (
                       <article key={client.id}>
-                        <span className="birthday-day-badge">{String(birthdayDay).padStart(2, "0")}</span>
+                        <span className="birthday-day-badge">
+                          {String(birthdayDay).padStart(2, "0")}
+                        </span>
                         <div>
-                          <strong>{client.firstName} {client.lastName}</strong>
+                          <strong>
+                            {client.firstName} {client.lastName}
+                          </strong>
                           <small>{client.whatsapp || client.phone}</small>
                         </div>
                         <Button
@@ -1949,7 +2085,9 @@ export function CustomersView({
                     );
                   })}
                   {monthlyBirthdays.length === 0 && (
-                    <p className="empty-inline">No hay cumpleaños registrados este mes.</p>
+                    <p className="empty-inline">
+                      No hay cumpleaños registrados este mes.
+                    </p>
                   )}
                 </div>
               </section>
@@ -1959,7 +2097,10 @@ export function CustomersView({
               <ShieldCheck size={22} />
               <span>
                 <strong>Información protegida</strong>
-                <small>Busca una clienta o ingresa la clave del vendedor/master para consultar cumpleaños.</small>
+                <small>
+                  Busca una clienta o ingresa la clave del vendedor/master para
+                  consultar cumpleaños.
+                </small>
               </span>
             </div>
           )}
@@ -1982,7 +2123,8 @@ export function CustomersView({
           <DialogHeader>
             <DialogTitle>Carga masiva de clientes</DialogTitle>
             <DialogDescription>
-              Descarga la plantilla, completa una clienta por fila y vuelve a cargar el archivo XLSX.
+              Descarga la plantilla, completa una clienta por fila y vuelve a
+              cargar el archivo XLSX.
             </DialogDescription>
           </DialogHeader>
           <div className="bulk-import-steps">
@@ -1990,9 +2132,15 @@ export function CustomersView({
               <span className="bulk-step-number">1</span>
               <div>
                 <strong>Descargar plantilla</strong>
-                <small>Incluye ejemplo, campos obligatorios y catálogos permitidos.</small>
+                <small>
+                  Incluye ejemplo, campos obligatorios y catálogos permitidos.
+                </small>
               </div>
-              <Button type="button" variant="outline" onClick={downloadBulkTemplate}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={downloadBulkTemplate}
+              >
                 <FileSpreadsheet size={15} /> Descargar XLSX
               </Button>
             </section>
@@ -2017,11 +2165,19 @@ export function CustomersView({
             <div className="bulk-import-result">
               <div>
                 <CheckCircle2 size={17} />
-                <span><strong>{bulkImportRows.length} válidos</strong><small>Listos para agregar</small></span>
+                <span>
+                  <strong>{bulkImportRows.length} válidos</strong>
+                  <small>Listos para agregar</small>
+                </span>
               </div>
               <div className={bulkImportErrors.length > 0 ? "has-errors" : ""}>
                 <AlertTriangle size={17} />
-                <span><strong>{bulkImportErrors.length} observaciones</strong><small>{bulkImportErrors.slice(0, 3).join(" · ") || "Sin errores"}</small></span>
+                <span>
+                  <strong>{bulkImportErrors.length} observaciones</strong>
+                  <small>
+                    {bulkImportErrors.slice(0, 3).join(" · ") || "Sin errores"}
+                  </small>
+                </span>
               </div>
             </div>
           )}
@@ -2039,7 +2195,11 @@ export function CustomersView({
             </div>
           )}
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setBulkImportOpen(false)}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setBulkImportOpen(false)}
+            >
               Cancelar
             </Button>
             <Button
@@ -2056,12 +2216,16 @@ export function CustomersView({
         </DialogContent>
       </Dialog>
 
-      <Dialog open={birthdayClient !== null} onOpenChange={(open) => !open && setBirthdayClient(null)}>
+      <Dialog
+        open={birthdayClient !== null}
+        onOpenChange={(open) => !open && setBirthdayClient(null)}
+      >
         <DialogContent className="birthday-card-dialog sm:max-w-[900px]">
           <DialogHeader>
             <DialogTitle>Tarjeta de cumpleaños</DialogTitle>
             <DialogDescription>
-              Elige un diseño de temporada, personaliza el mensaje y descarga o comparte la tarjeta.
+              Elige un diseño de temporada, personaliza el mensaje y descarga o
+              comparte la tarjeta.
             </DialogDescription>
           </DialogHeader>
           {birthdayClient && selectedBirthdayMessage && (
@@ -2074,10 +2238,18 @@ export function CustomersView({
                       <button
                         key={design.id}
                         type="button"
-                        className={selectedBirthdayDesignId === design.id ? "is-selected" : ""}
+                        className={
+                          selectedBirthdayDesignId === design.id
+                            ? "is-selected"
+                            : ""
+                        }
                         onClick={() => setSelectedBirthdayDesignId(design.id)}
                       >
-                        <span style={{ background: `linear-gradient(135deg, ${design.colors[0]}, ${design.colors[1]})` }} />
+                        <span
+                          style={{
+                            background: `linear-gradient(135deg, ${design.colors[0]}, ${design.colors[1]})`,
+                          }}
+                        />
                         <strong>{design.name}</strong>
                         <small>{design.season}</small>
                       </button>
@@ -2086,27 +2258,56 @@ export function CustomersView({
                 </div>
                 <div className="field-stack">
                   <Label>Mensaje</Label>
-                  <Select value={selectedBirthdayMessageId} onValueChange={setSelectedBirthdayMessageId}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
+                  <Select
+                    value={selectedBirthdayMessageId}
+                    onValueChange={setSelectedBirthdayMessageId}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
                     <SelectContent>
                       {birthdayMessages.map((message) => (
-                        <SelectItem key={message.id} value={message.id}>{message.name}</SelectItem>
+                        <SelectItem key={message.id} value={message.id}>
+                          {message.name}
+                        </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                   <textarea
                     className="birthday-message-editor"
                     value={selectedBirthdayMessage.text}
-                    onChange={(event) => updateSelectedBirthdayMessage(event.target.value)}
+                    onChange={(event) =>
+                      updateSelectedBirthdayMessage(event.target.value)
+                    }
                   />
                   <div className="birthday-message-actions">
-                    <Button type="button" variant="outline" size="sm" onClick={addBirthdayMessage}>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={addBirthdayMessage}
+                    >
                       <Plus size={14} /> Nuevo
                     </Button>
-                    <Button type="button" variant="outline" size="sm" onClick={() => toast.success("Mensaje guardado para esta sesión.")}>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        toast.success("Mensaje guardado para esta sesión.")
+                      }
+                    >
                       <Save size={14} /> Guardar
                     </Button>
-                    <Button type="button" variant="outline" size="icon" className="icon-action-button is-danger" onClick={deleteBirthdayMessage} aria-label="Borrar mensaje" title="Borrar">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className="icon-action-button is-danger"
+                      onClick={deleteBirthdayMessage}
+                      aria-label="Borrar mensaje"
+                      title="Borrar"
+                    >
                       <Trash2 size={15} />
                     </Button>
                   </div>
@@ -2114,15 +2315,22 @@ export function CustomersView({
               </div>
               <article
                 className={`birthday-card-preview design-${selectedBirthdayDesign.id}`}
-                style={{
-                  "--birthday-bg": selectedBirthdayDesign.colors[0],
-                  "--birthday-accent": selectedBirthdayDesign.colors[1],
-                  "--birthday-ink": selectedBirthdayDesign.colors[2],
-                } as CSSProperties}
+                style={
+                  {
+                    "--birthday-bg": selectedBirthdayDesign.colors[0],
+                    "--birthday-accent": selectedBirthdayDesign.colors[1],
+                    "--birthday-ink": selectedBirthdayDesign.colors[2],
+                  } as CSSProperties
+                }
               >
                 <i className="birthday-orb orb-one" />
                 <i className="birthday-orb orb-two" />
-                {receiptSettings.logoUrl && <img src={receiptSettings.logoUrl} alt={receiptSettings.companyName} />}
+                {receiptSettings.logoUrl && (
+                  <img
+                    src={receiptSettings.logoUrl}
+                    alt={receiptSettings.companyName}
+                  />
+                )}
                 <small>{receiptSettings.companyName}</small>
                 <span>Una celebración para ti</span>
                 <strong>{birthdayClient.firstName}</strong>
@@ -2133,10 +2341,18 @@ export function CustomersView({
             </div>
           )}
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setBirthdayClient(null)}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setBirthdayClient(null)}
+            >
               Cerrar
             </Button>
-            <Button type="button" variant="outline" onClick={downloadBirthdayCard}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={downloadBirthdayCard}
+            >
               <ImageDown size={16} /> Descargar PNG
             </Button>
             <Button type="button" onClick={shareBirthdayCard}>
@@ -2156,7 +2372,8 @@ export function CustomersView({
           <DialogHeader>
             <DialogTitle>Editar registro de cliente</DialogTitle>
             <DialogDescription>
-              Acceso master. Los datos vigentes se actualizarán en los módulos relacionados.
+              Acceso master. Los datos vigentes se actualizarán en los módulos
+              relacionados.
             </DialogDescription>
           </DialogHeader>
           {editingClient && (
@@ -2166,7 +2383,10 @@ export function CustomersView({
                 <Input
                   value={editingClient.firstName}
                   onChange={(event) =>
-                    setEditingClient({ ...editingClient, firstName: event.target.value })
+                    setEditingClient({
+                      ...editingClient,
+                      firstName: event.target.value,
+                    })
                   }
                 />
               </div>
@@ -2175,7 +2395,10 @@ export function CustomersView({
                 <Input
                   value={editingClient.lastName}
                   onChange={(event) =>
-                    setEditingClient({ ...editingClient, lastName: event.target.value })
+                    setEditingClient({
+                      ...editingClient,
+                      lastName: event.target.value,
+                    })
                   }
                 />
               </div>
@@ -2184,7 +2407,10 @@ export function CustomersView({
                 <Input
                   value={editingClient.phone}
                   onChange={(event) =>
-                    setEditingClient({ ...editingClient, phone: event.target.value })
+                    setEditingClient({
+                      ...editingClient,
+                      phone: event.target.value,
+                    })
                   }
                 />
               </div>
@@ -2193,7 +2419,10 @@ export function CustomersView({
                 <Input
                   value={editingClient.whatsapp}
                   onChange={(event) =>
-                    setEditingClient({ ...editingClient, whatsapp: event.target.value })
+                    setEditingClient({
+                      ...editingClient,
+                      whatsapp: event.target.value,
+                    })
                   }
                 />
               </div>
@@ -2203,7 +2432,10 @@ export function CustomersView({
                   type="date"
                   value={editingClient.birthday}
                   onChange={(event) =>
-                    setEditingClient({ ...editingClient, birthday: event.target.value })
+                    setEditingClient({
+                      ...editingClient,
+                      birthday: event.target.value,
+                    })
                   }
                 />
               </div>
@@ -2211,14 +2443,20 @@ export function CustomersView({
                 <Label>Género</Label>
                 <Select
                   value={editingClient.gender || "Sin especificar"}
-                  onValueChange={(gender) => setEditingClient({ ...editingClient, gender })}
+                  onValueChange={(gender) =>
+                    setEditingClient({ ...editingClient, gender })
+                  }
                 >
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="Femenino">Femenino</SelectItem>
                     <SelectItem value="Masculino">Masculino</SelectItem>
                     <SelectItem value="No binario">No binario</SelectItem>
-                    <SelectItem value="Sin especificar">Sin especificar</SelectItem>
+                    <SelectItem value="Sin especificar">
+                      Sin especificar
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -2234,11 +2472,15 @@ export function CustomersView({
                     })
                   }
                 >
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="COMPANY">Keysar Cosmetics</SelectItem>
                     {activeSellers.map((seller) => (
-                      <SelectItem key={seller.id} value={seller.id}>{seller.name}</SelectItem>
+                      <SelectItem key={seller.id} value={seller.id}>
+                        {seller.name}
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -2246,10 +2488,16 @@ export function CustomersView({
             </div>
           )}
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setEditingClient(null)}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setEditingClient(null)}
+            >
               Cancelar
             </Button>
-            <Button type="button" onClick={saveClientEdit}>Guardar cambios</Button>
+            <Button type="button" onClick={saveClientEdit}>
+              Guardar cambios
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -2264,14 +2512,20 @@ export function CustomersView({
           <DialogHeader>
             <DialogTitle>Doble validación para borrar</DialogTitle>
             <DialogDescription>
-              El cliente saldrá del directorio activo. Sus tickets e historial no se eliminan.
+              El cliente saldrá del directorio activo. Sus tickets e historial
+              no se eliminan.
             </DialogDescription>
           </DialogHeader>
           {deletingClient && (
             <div className="customer-delete-validation">
               <div className="customer-delete-warning">
                 <AlertTriangle size={18} />
-                <span><strong>{deletingClient.firstName} {deletingClient.lastName}</strong><small>{deletingClient.registrationFolio}</small></span>
+                <span>
+                  <strong>
+                    {deletingClient.firstName} {deletingClient.lastName}
+                  </strong>
+                  <small>{deletingClient.registrationFolio}</small>
+                </span>
               </div>
               <div className="field-stack">
                 <Label>1. Escribe el folio del cliente</Label>
@@ -2295,7 +2549,11 @@ export function CustomersView({
             </div>
           )}
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setDeletingClient(null)}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setDeletingClient(null)}
+            >
               Conservar cliente
             </Button>
             <Button

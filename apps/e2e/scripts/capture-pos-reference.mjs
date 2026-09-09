@@ -418,7 +418,10 @@ async function redactSensitiveContent(page) {
     ];
     for (const element of document.querySelectorAll("small")) {
       const text = (element.textContent ?? "").toLocaleLowerCase("es-MX");
-      if (sensitivePhrases.some((phrase) => text.includes(phrase))) {
+      if (
+        element.classList.contains("software-login-demo") ||
+        sensitivePhrases.some((phrase) => text.includes(phrase))
+      ) {
         element.setAttribute("data-rv-sensitive", "true");
       }
     }
@@ -499,6 +502,14 @@ async function loadReference(page) {
 }
 
 async function discoverHistoricalMasterCode(page) {
+  if (visualMode === "candidate") {
+    const fixtureCode = process.env.POS_VISUAL_FIXTURE_MASTER_CODE;
+    assert(
+      /^\d{4}$/.test(fixtureCode ?? ""),
+      "Define POS_VISUAL_FIXTURE_MASTER_CODE con la credencial efímera de cuatro dígitos usada al compilar el candidato.",
+    );
+    return fixtureCode;
+  }
   const demoCopy = await page.locator(".software-login-demo").innerText();
   const code = demoCopy.match(/\b\d{4}\b/)?.[0];
   assert(
@@ -555,19 +566,20 @@ async function ensureSidebarExpanded(page) {
       .click({ force: true });
     await sidebar.waitFor();
   }
-  if (
-    await sidebar.evaluate((element) =>
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const collapsed = await sidebar.evaluate((element) =>
       element.classList.contains("is-collapsed"),
-    )
-  ) {
-    await sidebar.locator(".sidebar-toggle").click({ force: true });
-    await page.waitForFunction(
-      () =>
-        document
-          .querySelector(".pos-sidebar")
-          ?.classList.contains("is-collapsed") === false,
     );
+    if (!collapsed) return;
+    await sidebar.locator(".sidebar-toggle").click({ force: true });
+    await page.waitForTimeout(150);
   }
+  assert(
+    !(await sidebar.evaluate((element) =>
+      element.classList.contains("is-collapsed"),
+    )),
+    "No fue posible expandir el menú lateral.",
+  );
 }
 
 async function openSidebarGroup(page, groupIndex) {

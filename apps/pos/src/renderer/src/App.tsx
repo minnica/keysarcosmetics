@@ -1952,7 +1952,6 @@ function App() {
   >(posApiEnabled ? {} : initialBranchAddresses);
   const [locationSwitchOpen, setLocationSwitchOpen] = useState(false);
   const [locationSwitchTarget, setLocationSwitchTarget] = useState("");
-  const [locationSwitchAlias, setLocationSwitchAlias] = useState("");
   const [locationSwitchCode, setLocationSwitchCode] = useState("");
   const [owedProducts, setOwedProducts] = useState<OwedProductRecord[]>([]);
   const [newMovementReason, setNewMovementReason] = useState("");
@@ -5387,9 +5386,6 @@ function App() {
       operationalBranches.find((branch) => branch !== activeBranch) ??
         activeBranch,
     );
-    setLocationSwitchAlias(
-      apiSession?.actor.isMaster ? apiSession.actor.alias : "",
-    );
     setLocationSwitchCode("");
     setLocationSwitchOpen(true);
   };
@@ -5405,7 +5401,7 @@ function App() {
       }
       try {
         const authorization = await posApi.createAuthorization({
-          alias: locationSwitchAlias.trim(),
+          alias: apiSession.actor.alias,
           pin: locationSwitchCode,
           purpose: "TERMINAL_BRANCH_CHANGE",
           entityType: "PosTerminal",
@@ -5422,7 +5418,6 @@ function App() {
         setSessionUser(null);
         setSessionStage("LOGIN");
         setLocationSwitchOpen(false);
-        setLocationSwitchAlias("");
         setLocationSwitchCode("");
         toast.success(
           "Sucursal actualizada. Inicia sesión nuevamente en la terminal.",
@@ -15018,7 +15013,9 @@ function App() {
           <div className="admin-code-preview">
             <span>CÓDIGO MOCK</span>
             <strong>••••</strong>
-            <small>La autorización real se valida en el servidor.</small>
+            <small data-rv-sensitive="true">
+              La autorización real se valida en el servidor.
+            </small>
           </div>
           <div className="rule-list">
             <span>
@@ -15138,19 +15135,6 @@ function App() {
               <small>
                 Identificador comercial de la empresa en divisiones y reportes.
               </small>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={
-                  !receiptSettings.companyName.trim() ||
-                  !receiptSettings.companySalesNumber.trim() ||
-                  (posApiEnabled && operatingOffline)
-                }
-                onClick={saveCommercialCompany}
-              >
-                <CheckCircle2 size={15} /> Guardar empresa comercial
-              </Button>
             </div>
             <div className="field-stack">
               <span>Sucursal fija de esta computadora</span>
@@ -15324,7 +15308,9 @@ function App() {
               >
                 <ShieldCheck size={15} /> Desbloquear
               </Button>
-              <small>La autorización real se valida en el servidor.</small>
+              <small data-rv-sensitive="true">
+                La autorización real se valida en el servidor.
+              </small>
             </div>
           )}
           {paymentSettingsOpen && paymentSettingsAuthorized && (
@@ -15565,7 +15551,9 @@ function App() {
                 <ShieldCheck size={16} /> Desbloquear
               </Button>
             </div>
-            <small>La autorización real se valida en el servidor.</small>
+            <small data-rv-sensitive="true">
+              La autorización real se valida en el servidor.
+            </small>
           </CardContent>
         </Card>
       );
@@ -17856,7 +17844,6 @@ function App() {
         onOpenChange={(open) => {
           setLocationSwitchOpen(open);
           if (!open) {
-            setLocationSwitchAlias("");
             setLocationSwitchCode("");
           }
         }}
@@ -17908,15 +17895,6 @@ function App() {
               </Select>
             </div>
             <div className="field-stack">
-              <span>Alias del usuario master</span>
-              <Input
-                value={locationSwitchAlias}
-                onChange={(event) => setLocationSwitchAlias(event.target.value)}
-                placeholder="Alias master"
-                autoComplete="username"
-              />
-            </div>
-            <div className="field-stack">
               <span>Código de autorización master</span>
               <Input
                 type="password"
@@ -17953,11 +17931,7 @@ function App() {
             <Button
               type="button"
               onClick={() => void confirmLocationSwitch()}
-              disabled={
-                !locationSwitchTarget ||
-                (posApiEnabled && !locationSwitchAlias.trim()) ||
-                !locationSwitchCode.trim()
-              }
+              disabled={!locationSwitchTarget || !locationSwitchCode.trim()}
             >
               <ShieldCheck size={16} /> Autorizar y fijar sucursal
             </Button>

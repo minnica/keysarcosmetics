@@ -1,7 +1,7 @@
 # Plan por fases: visual aprobado del POS y reutilización del backend
 
 > Fecha: 2026-09-08.
-> Estado: RV0–RV1 completadas; RV2–RV10 pendientes.
+> Estado: RV0–RV2 completadas; RV3–RV10 pendientes.
 > Referencia visual única: `feature/pos` en `12fb8045cc264b565cb6e764d95ad7b2447fbfa1`.
 > Objetivo: reproducir íntegramente esa interfaz, conectar sus operaciones al backend reutilizable y adaptar, sustituir o eliminar las implementaciones incompatibles. Nunca modificar el visual para acomodarlo al backend.
 
@@ -79,7 +79,7 @@ La eliminación autorizada se refiere a implementaciones incompatibles dentro de
 
 ## 5. Fases de ejecución
 
-RV0 y RV1 quedaron completadas el 2026-09-08: RV0 generó 208 capturas canónicas desde la referencia aislada y RV1 documentó la correspondencia interfaz–backend, consumidores y retiros condicionados. RV2–RV10 siguen pendientes. Su numeración `RV` es independiente de las fases históricas 0–14. Cada fase registra SHA inicial/final, archivos, operaciones conectadas, evidencia visual, pruebas ejecutadas, pendientes y partes retiradas. La finalización exige tanto fidelidad visual como funcionamiento del alcance de esa fase.
+RV0 y RV1 quedaron completadas el 2026-09-08: RV0 generó 208 capturas canónicas desde la referencia aislada y RV1 documentó la correspondencia interfaz–backend, consumidores y retiros condicionados. RV2 quedó completada el 2026-09-09 sobre el worktree iniciado en `2dabbf24b1347ce0bdbd4ddc1b6fa07ed5696471`; restauró la presentación y comparó 208 escenarios. RV3–RV10 siguen pendientes. Su numeración `RV` es independiente de las fases históricas 0–14. Cada fase registra SHA inicial/final, archivos, operaciones conectadas, evidencia visual, pruebas ejecutadas, pendientes y partes retiradas. La finalización exige tanto fidelidad visual como funcionamiento del alcance de esa fase.
 
 ### RV0 — Congelar la referencia y construir evidencia reproducible
 
@@ -112,14 +112,14 @@ RV0 y RV1 quedaron completadas el 2026-09-08: RV0 generó 208 capturas canónica
 
 ### RV2 — Recuperar la presentación completa y sus componentes compartidos
 
-- [ ] Recuperar markup, CSS, textos, assets y composición del renderer de `12fb804`. Conservar el código de integración útil detrás de interfaces de datos y comandos.
-- [ ] Reproducir todas las vistas incluidas en ese árbol, tanto las preexistentes como Membresías y las ampliaciones de Settings, Checkout, clientes y reportes.
-- [ ] Conservar Catálogo dentro de Ventas, tamaño compacto de la sección Sistema, salida sin Close day y las reglas responsive del SHA objetivo; no volver a la navegación de `8fd71f3`.
-- [ ] Incorporar fielmente el calendario con español y navegación mes/año de cumpleaños. Resolver diferencias de los primitivos compartidos mediante variantes delimitadas si hacen falta, sin cambios visibles en POS ni regresiones en otras apps.
-- [ ] Preservar las rutas relativas de assets para HTTP y `file://`. Mantener el IPC, aislamiento del renderer y repositorio offline seguro del runtime actual.
-- [ ] Ejecutar toda la matriz visual con fixtures y establecer comparación automatizada contra RV0. Registrar por separado las operaciones todavía no conectadas.
+- [x] Recuperar markup, CSS, textos, assets y composición del renderer de `12fb804`. Conservar el código de integración útil detrás de interfaces de datos y comandos.
+- [x] Reproducir todas las vistas incluidas en ese árbol, tanto las preexistentes como Membresías y las ampliaciones de Settings, Checkout, clientes y reportes.
+- [x] Conservar Catálogo dentro de Ventas, tamaño compacto de la sección Sistema, salida sin Close day y las reglas responsive del SHA objetivo; no volver a la navegación de `8fd71f3`.
+- [x] Incorporar fielmente el calendario con español y navegación mes/año de cumpleaños. Resolver diferencias de los primitivos compartidos mediante variantes delimitadas si hacen falta, sin cambios visibles en POS ni regresiones en otras apps.
+- [x] Preservar las rutas relativas de assets para HTTP y `file://`. Mantener el IPC, aislamiento del renderer y repositorio offline seguro del runtime actual.
+- [x] Ejecutar toda la matriz visual con fixtures y establecer comparación automatizada contra RV0. Registrar por separado las operaciones todavía no conectadas.
 
-**Cierre:** la presentación coincide con la referencia en los escenarios inventariados. Esta fase acredita presentación, no una operación real completa. Los fixtures no pueden convertirse en fallback silencioso ante fallos de API.
+**Cierre:** completada. Chromium `148.0.7778.96` capturó 208/208 escenarios del candidato con las mismas condiciones de RV0. La comparación resultó 205/208 idéntica píxel a píxel y 208/208 aprobada con un umbral explícito de `0.000027`: las tres variaciones medidas fueron de 34, 21 y 11 píxeles antialiasados sobre 1,296,000, sin diferencias de geometría, texto, estilo o controles. El comparador cuenta ahora píxeles binarios reales bajo ImageMagick HDRI. Los fixtures visuales requieren `VITE_POS_DATA_MODE=mock` y `VITE_POS_VISUAL_FIXTURE=1`; el build normal conserva `api` como modo por defecto y no hace fallback a mock. Esta fase acredita presentación, no operación real completa. Evidencia, límites y comandos: `docs/POS_RV2_PRESENTATION_RESTORATION.md`.
 
 ### RV3 — Acceso, permisos, empleados, sucursales y jornada
 
@@ -283,3 +283,13 @@ pnpm test:ui:visual
 - Retiros: las 17 propuestas son gates, no borrados autorizados de inmediato. Cada una exige reemplazo operativo, migración de consumidores, preservación de datos y prueba de aceptación antes de eliminar código o contratos.
 - Alcance separado: My Account conserva la presentación de suscripción/tarjetas/facturas y Websites conserva su pantalla, pero los cobros SaaS y la integración externa continúan fuera del backend POS hasta una iniciativa explícita.
 - Estado: RV1 completada. Los cinco conflictos abiertos están documentados y no bloquean iniciar RV2, aunque sí bloquean cerrar la fase funcional que los contiene.
+
+### RV-D4 — RV2 restaura la presentación sin reintroducir el runtime demo
+
+- Fecha de cierre: 2026-09-09.
+- Estado de partida: `2dabbf24b1347ce0bdbd4ddc1b6fa07ed5696471`; la evidencia candidata identifica el worktree previo a su commit final como `2dabbf24b1347ce0bdbd4ddc1b6fa07ed5696471-worktree`.
+- Decisión: restaurar únicamente markup, controles y comportamiento visual que divergían; conservar CSS, assets, main/preload, IPC, repositorio offline y clientes API actuales. `DatePicker` recupera locale español y navegación rápida como una variante compatible, y Checkout la activa sólo para cumpleaños para no cambiar otras apps.
+- Seguridad: las copias históricas de acceso no regresan al build API. El acceso visual automatizado sólo existe cuando se compila explícitamente `mock + VITE_POS_VISUAL_FIXTURE=1`; el código master usado por la captura es efímero y el capturador lo recibe por ambiente.
+- Comparación: 208 capturas generadas, 205 exactas con tolerancia cero y tres variaciones de rasterizado aisladas de 34, 21 y 11 píxeles. Con el umbral medido `0.000027`, la matriz termina 208/208 `PASS`; ninguna región de contenido o geometría fue enmascarada.
+- Límite funcional: cancelación delegada de ticket, persistencia de identidad comercial desde el formulario aprobado y el resto de recorridos API de RV3–RV8 no quedan acreditados por esta fase. Permanecen registrados para adaptación funcional sin añadir campos al visual.
+- Estado: RV2 completada; RV3 es la siguiente fase.

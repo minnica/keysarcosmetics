@@ -71,6 +71,24 @@ describe('DatePicker', () => {
     )
   })
 
+  it('ofrece navegación rápida por mes y año sólo cuando se solicita', async () => {
+    const { user } = renderWithUser(
+      <DatePicker
+        value="2025-08-10"
+        onChange={vi.fn()}
+        quickMonthYearNavigation
+        fromYear={1920}
+        toYear={2026}
+        calendarLocale="es"
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: /10\/08\/2025/ }))
+
+    expect(screen.getByRole('combobox', { name: 'Mes' })).toHaveValue('7')
+    expect(screen.getByRole('combobox', { name: 'Año' })).toBeInTheDocument()
+  })
+
   it('actualiza el valor cuando se usa como componente controlado', async () => {
     const { user } = renderWithUser(
       <ControlledDatePicker initialValue="2025-08-10" />,

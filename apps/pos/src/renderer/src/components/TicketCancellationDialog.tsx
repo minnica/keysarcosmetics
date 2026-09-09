@@ -50,7 +50,6 @@ export function TicketCancellationDialog({
   returnableProducts,
   onOpenChange,
   onConfirm,
-  authorizationRequired = false,
   defaultAuthorizationAlias = "",
 }: TicketCancellationDialogProps) {
   const [returnMode, setReturnMode] = useState<ReturnMode>("ALL");
@@ -58,24 +57,18 @@ export function TicketCancellationDialog({
   const [productDecisions, setProductDecisions] = useState<
     Record<string, ProductDecision>
   >({});
-  const [reason, setReason] = useState("");
-  const [authorizationAlias, setAuthorizationAlias] = useState("");
-  const [authorizationCode, setAuthorizationCode] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     if (!open || !ticket) return;
     setReturnMode(returnableProducts.length > 0 ? "ALL" : "NONE");
     setRefundAmount(ticket.amountPaid);
-    setReason("");
-    setAuthorizationAlias(defaultAuthorizationAlias);
-    setAuthorizationCode("");
     setProductDecisions(
       Object.fromEntries(
         returnableProducts.map((line) => [line.productId, "RETURN"]),
       ),
     );
-  }, [defaultAuthorizationAlias, open, returnableProducts, ticket]);
+  }, [open, returnableProducts, ticket]);
 
   const returnedProducts = useMemo(() => {
     if (returnMode === "NONE") return [];
@@ -166,7 +159,9 @@ export function TicketCancellationDialog({
                 <div key={`${line.branch}-${line.productId}`}>
                   <span>
                     <strong>{line.productName}</strong>
-                    <small>{line.branch} · entregado {line.quantity}</small>
+                    <small>
+                      {line.branch} · entregado {line.quantity}
+                    </small>
                   </span>
                   <Badge variant="outline">{line.quantity} unidades</Badge>
                 </div>
@@ -229,30 +224,6 @@ export function TicketCancellationDialog({
 
         <section className="ticket-cancellation-section">
           <div className="field-stack">
-            <Label htmlFor="ticket-cancellation-reason">Motivo</Label>
-            <Input
-              id="ticket-cancellation-reason"
-              value={reason}
-              onChange={(event) => setReason(event.target.value)}
-              placeholder="Motivo de la cancelación o devolución"
-            />
-          </div>
-          {authorizationRequired && (
-            <div className="form-grid two-columns">
-              <div className="field-stack">
-                <Label htmlFor="ticket-cancellation-alias">Alias master</Label>
-                <Input id="ticket-cancellation-alias" value={authorizationAlias} onChange={(event) => setAuthorizationAlias(event.target.value)} />
-              </div>
-              <div className="field-stack">
-                <Label htmlFor="ticket-cancellation-code">PIN master</Label>
-                <Input id="ticket-cancellation-code" type="password" value={authorizationCode} onChange={(event) => setAuthorizationCode(event.target.value)} />
-              </div>
-            </div>
-          )}
-        </section>
-
-        <section className="ticket-cancellation-section">
-          <div className="field-stack">
             <Label htmlFor="ticket-refund-amount">Monto a cancelar</Label>
             <Input
               id="ticket-refund-amount"
@@ -286,22 +257,22 @@ export function TicketCancellationDialog({
               refundAmount < 0 ||
               refundAmount > ticket.amountPaid ||
               submitting ||
-              reason.trim().length < 3 ||
-              (authorizationRequired && (!authorizationAlias.trim() || !authorizationCode)) ||
               (returnMode === "SELECT" &&
                 returnedProducts.length === 0 &&
                 nonReturnedProducts.length === 0)
             }
             onClick={() => {
               setSubmitting(true);
-              void Promise.resolve(onConfirm({
-                refundAmount,
-                returnedProducts,
-                nonReturnedProducts,
-                reason: reason.trim(),
-                authorizationAlias: authorizationAlias.trim(),
-                authorizationCode,
-              })).finally(() => setSubmitting(false));
+              void Promise.resolve(
+                onConfirm({
+                  refundAmount,
+                  returnedProducts,
+                  nonReturnedProducts,
+                  reason: `Cancelación solicitada desde Receipts para ${ticket.id}`,
+                  authorizationAlias: defaultAuthorizationAlias,
+                  authorizationCode: "",
+                }),
+              ).finally(() => setSubmitting(false));
             }}
           >
             <XCircle size={16} /> Confirmar cancelación

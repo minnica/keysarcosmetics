@@ -110,7 +110,11 @@ const normalizeAccessUser = (value: string) =>
 
 const matchesAccessUser = (name: string, id: string, input: string) => {
   const normalizedName = normalizeAccessUser(name);
-  return [normalizedName, normalizedName.split(" ")[0], normalizeAccessUser(id)].includes(input);
+  return [
+    normalizedName,
+    normalizedName.split(" ")[0],
+    normalizeAccessUser(id),
+  ].includes(input);
 };
 
 interface CashManagerViewProps {
@@ -154,9 +158,13 @@ export function CashManagerView({
   const [reminderOpen, setReminderOpen] = useState(false);
   const [movementCode, setMovementCode] = useState("");
   const [formOpen, setFormOpen] = useState(false);
-  const [editingExpense, setEditingExpense] = useState<CashExpense | null>(null);
+  const [editingExpense, setEditingExpense] = useState<CashExpense | null>(
+    null,
+  );
   const [form, setForm] = useState(emptyForm);
-  const [selectedExpense, setSelectedExpense] = useState<CashExpense | null>(null);
+  const [selectedExpense, setSelectedExpense] = useState<CashExpense | null>(
+    null,
+  );
   const [dateFilter, setDateFilter] = useState(today);
   const [typeFilter, setTypeFilter] = useState("ALL");
   const [sellerFilter, setSellerFilter] = useState("ALL");
@@ -241,9 +249,16 @@ export function CashManagerView({
           (expense.expenseDate === today && expense.branch === activeBranch),
       )
       .filter((expense) => !dateFilter || expense.expenseDate === dateFilter)
-      .filter((expense) => typeFilter === "ALL" || expense.typeId === typeFilter)
-      .filter((expense) => sellerFilter === "ALL" || expense.sellerId === sellerFilter)
-      .filter((expense) => branchFilter === "ALL" || expense.branch === branchFilter)
+      .filter(
+        (expense) => typeFilter === "ALL" || expense.typeId === typeFilter,
+      )
+      .filter(
+        (expense) =>
+          sellerFilter === "ALL" || expense.sellerId === sellerFilter,
+      )
+      .filter(
+        (expense) => branchFilter === "ALL" || expense.branch === branchFilter,
+      )
       .filter((expense) => minimum === null || expense.amount >= minimum)
       .filter((expense) => maximum === null || expense.amount <= maximum)
       .filter((expense) => {
@@ -257,7 +272,9 @@ export function CashManagerView({
           expense.comment,
         ].some((value) => value.toLocaleLowerCase("es-MX").includes(query));
       })
-      .sort((left, right) => right.createdAtIso.localeCompare(left.createdAtIso));
+      .sort((left, right) =>
+        right.createdAtIso.localeCompare(left.createdAtIso),
+      );
   }, [
     amountFrom,
     amountTo,
@@ -354,7 +371,9 @@ export function CashManagerView({
     setMasterAuthorized(true);
     setMasterCode("");
     setBranchFilter("ALL");
-    toast.success("Historial y acciones administrativas habilitadas por 3 minutos.");
+    toast.success(
+      "Historial y acciones administrativas habilitadas por 3 minutos.",
+    );
   };
 
   const openNewExpense = () => {
@@ -416,9 +435,17 @@ export function CashManagerView({
     const seller =
       sellers.find((item) => item.id === form.sellerId) ??
       (form.sellerId === masterUser.id ? masterUser : undefined) ??
-      (apiManaged && loggedSeller?.id === form.sellerId ? loggedSeller : undefined);
+      (apiManaged && loggedSeller?.id === form.sellerId
+        ? loggedSeller
+        : undefined);
     const type = expenseTypes.find((item) => item.id === form.typeId);
-    if (!seller || !type || !form.branch || !form.concept.trim() || amount <= 0) {
+    if (
+      !seller ||
+      !type ||
+      !form.branch ||
+      !form.concept.trim() ||
+      amount <= 0
+    ) {
       toast.error("Completa tipo, monto, sucursal, usuario y concepto.");
       return;
     }
@@ -488,7 +515,9 @@ export function CashManagerView({
     const logo = logoUrl
       ? `<img src="${escapeHtml(logoUrl)}" alt="" style="max-width:92px;max-height:62px"/>`
       : "";
-    popup.document.write(`<!doctype html><html><head><title>${escapeHtml(expense.folio)}</title><style>body{font-family:Arial,sans-serif;margin:28px;color:#171717}header{text-align:center;border-bottom:2px solid #171717;padding-bottom:14px}h1{font-size:20px;letter-spacing:3px;margin:8px 0}section{margin:18px 0}div{display:flex;justify-content:space-between;gap:18px;border-bottom:1px dotted #aaa;padding:9px 0}span{color:#666;font-size:12px}strong{font-size:13px;text-align:right}.total{border:2px solid #111;padding:13px;margin-top:18px;font-size:18px}footer{text-align:center;margin-top:25px;font-size:10px}</style></head><body><header>${logo}<h1>${escapeHtml(companyName)}</h1><strong>COMPROBANTE DE GASTO</strong></header><section><div><span>Folio</span><strong>${escapeHtml(expense.folio)}</strong></div><div><span>Fecha</span><strong>${escapeHtml(expense.createdAt)}</strong></div><div><span>Tipo</span><strong>${escapeHtml(expense.typeName)}</strong></div><div><span>Sucursal</span><strong>${escapeHtml(expense.branch)}</strong></div><div><span>Usuario</span><strong>${escapeHtml(expense.sellerName)}</strong></div><div><span>Concepto</span><strong>${escapeHtml(expense.concept)}</strong></div><div><span>Comentario</span><strong>${escapeHtml(expense.comment || "Sin comentario")}</strong></div><div><span>Autorización</span><strong>${escapeHtml(expense.authorizedBy)}</strong></div><div class="total"><span>TOTAL</span><strong>${escapeHtml(formatCurrency(expense.amount))}</strong></div></section><footer>REGISTRO MOCK · CASH MANAGER</footer><script>window.onload=()=>window.print();</script></body></html>`);
+    popup.document.write(
+      `<!doctype html><html><head><title>${escapeHtml(expense.folio)}</title><style>body{font-family:Arial,sans-serif;margin:28px;color:#171717}header{text-align:center;border-bottom:2px solid #171717;padding-bottom:14px}h1{font-size:20px;letter-spacing:3px;margin:8px 0}section{margin:18px 0}div{display:flex;justify-content:space-between;gap:18px;border-bottom:1px dotted #aaa;padding:9px 0}span{color:#666;font-size:12px}strong{font-size:13px;text-align:right}.total{border:2px solid #111;padding:13px;margin-top:18px;font-size:18px}footer{text-align:center;margin-top:25px;font-size:10px}</style></head><body><header>${logo}<h1>${escapeHtml(companyName)}</h1><strong>COMPROBANTE DE GASTO</strong></header><section><div><span>Folio</span><strong>${escapeHtml(expense.folio)}</strong></div><div><span>Fecha</span><strong>${escapeHtml(expense.createdAt)}</strong></div><div><span>Tipo</span><strong>${escapeHtml(expense.typeName)}</strong></div><div><span>Sucursal</span><strong>${escapeHtml(expense.branch)}</strong></div><div><span>Usuario</span><strong>${escapeHtml(expense.sellerName)}</strong></div><div><span>Concepto</span><strong>${escapeHtml(expense.concept)}</strong></div><div><span>Comentario</span><strong>${escapeHtml(expense.comment || "Sin comentario")}</strong></div><div><span>Autorización</span><strong>${escapeHtml(expense.authorizedBy)}</strong></div><div class="total"><span>TOTAL</span><strong>${escapeHtml(formatCurrency(expense.amount))}</strong></div></section><footer>REGISTRO MOCK · CASH MANAGER</footer><script>window.onload=()=>window.print();</script></body></html>`,
+    );
     popup.document.close();
   };
 
@@ -516,9 +545,13 @@ export function CashManagerView({
         XLSX.utils.json_to_sheet(rows),
         "Gastos",
       );
-      XLSX.writeFile(workbook, `cash-manager-${dateFilter || "historico"}.xlsx`, {
-        compression: true,
-      });
+      XLSX.writeFile(
+        workbook,
+        `cash-manager-${dateFilter || "historico"}.xlsx`,
+        {
+          compression: true,
+        },
+      );
       toast.success("Reporte de gastos descargado en Excel.");
     } catch {
       toast.error("No fue posible generar el archivo Excel.");
@@ -535,17 +568,40 @@ export function CashManagerView({
         import("jspdf"),
         import("jspdf-autotable"),
       ]);
-      const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
+      const doc = new jsPDF({
+        orientation: "landscape",
+        unit: "pt",
+        format: "a4",
+      });
       doc.setFont("helvetica", "bold");
       doc.setFontSize(18);
       doc.text(`${companyName} · Cash Manager`, 38, 42);
       doc.setFontSize(9);
       doc.setFont("helvetica", "normal");
-      doc.text(`Periodo: ${dateFilter || "Histórico completo"} · ${visibleExpenses.length} registros`, 38, 59);
-      doc.text(`Gasto vigente: ${formatCurrency(totalAmount)} · Promedio: ${formatCurrency(averageAmount)}`, 38, 73);
+      doc.text(
+        `Periodo: ${dateFilter || "Histórico completo"} · ${visibleExpenses.length} registros`,
+        38,
+        59,
+      );
+      doc.text(
+        `Gasto vigente: ${formatCurrency(totalAmount)} · Promedio: ${formatCurrency(averageAmount)}`,
+        38,
+        73,
+      );
       autoTable(doc, {
         startY: 89,
-        head: [["Folio", "Fecha", "Tipo", "Sucursal", "Usuario", "Concepto", "Monto", "Estado"]],
+        head: [
+          [
+            "Folio",
+            "Fecha",
+            "Tipo",
+            "Sucursal",
+            "Usuario",
+            "Concepto",
+            "Monto",
+            "Estado",
+          ],
+        ],
         body: visibleExpenses.map((expense) => [
           expense.folio,
           expense.expenseDate,
@@ -572,15 +628,22 @@ export function CashManagerView({
     return (
       <Card className="cash-access-card">
         <CardContent>
-          <div className="cash-access-icon"><WalletCards size={32} /></div>
+          <div className="cash-access-icon">
+            <WalletCards size={32} />
+          </div>
           <span className="section-kicker">ACCESO POR EMPLEADO</span>
           <h2>Identifica al responsable de caja</h2>
-          <p>Cada movimiento quedará ligado al usuario y código personal que autorice el registro.</p>
+          <p>
+            Cada movimiento quedará ligado al usuario y código personal que
+            autorice el registro.
+          </p>
           <div className="cash-access-fields">
             <Input
               value={loginSellerId}
               onChange={(event) => setLoginSellerId(event.target.value)}
-              onKeyDown={(event) => { if (event.key === "Enter") login(); }}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") login();
+              }}
               placeholder="Escribe tu alias"
               aria-label="Alias de acceso de Cash Manager"
               autoComplete="username"
@@ -591,15 +654,26 @@ export function CashManagerView({
               maxLength={4}
               value={loginCode}
               onChange={(event) => setLoginCode(event.target.value)}
-              onKeyDown={(event) => { if (event.key === "Enter") login(); }}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") login();
+              }}
               placeholder="Código de empleado"
               aria-label="Código de empleado para Cash Manager"
             />
-            <Button type="button" onClick={login} disabled={!loginSellerId.trim() || loginCode.length !== 4}>
+            <Button
+              type="button"
+              onClick={login}
+              disabled={!loginSellerId.trim() || loginCode.length !== 4}
+            >
               <UserRoundCheck size={16} /> Ingresar
             </Button>
           </div>
-          <small>Usa una credencial personal autorizada.</small>
+          <small data-rv-sensitive="true">
+            {import.meta.env.VITE_POS_DATA_MODE === "mock" &&
+            import.meta.env.VITE_POS_VISUAL_FIXTURE === "1"
+              ? import.meta.env.VITE_POS_VISUAL_FIXTURE_CASH_ACCESS_COPY
+              : "Usa una credencial personal autorizada."}
+          </small>
         </CardContent>
       </Card>
     );
@@ -611,55 +685,269 @@ export function CashManagerView({
         <CardContent>
           <div className="cash-manager-heading">
             <div>
-              <span className="section-kicker">CAJA · {masterAuthorized ? "ACCESO MASTER" : "OPERACIÓN DEL DÍA"}</span>
+              <span className="section-kicker">
+                CAJA ·{" "}
+                {masterAuthorized ? "ACCESO MASTER" : "OPERACIÓN DEL DÍA"}
+              </span>
               <h2>Gastos de operación</h2>
-              <p>{loggedSeller?.name ?? "Operador POS"} · {masterAuthorized ? "historial y edición habilitados" : "consulta vigente sin edición"}</p>
+              <p>
+                {loggedSeller?.name ?? "Operador POS"} ·{" "}
+                {masterAuthorized
+                  ? "historial y edición habilitados"
+                  : "consulta vigente sin edición"}
+              </p>
             </div>
             <div className="cash-manager-actions">
-              <Button type="button" onClick={openNewExpense}><Plus size={16} /> Registrar gasto</Button>
-              <Button type="button" variant="outline" onClick={() => {
-                setLoggedSellerId("");
-                setMasterAuthorized(false);
-                setLoginSellerId("");
-              }}><LockKeyhole size={15} /> Cerrar usuario</Button>
+              <Button type="button" onClick={openNewExpense}>
+                <Plus size={16} /> Registrar gasto
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setLoggedSellerId("");
+                  setMasterAuthorized(false);
+                  setLoginSellerId("");
+                }}
+              >
+                <LockKeyhole size={15} /> Cerrar usuario
+              </Button>
             </div>
           </div>
           {!masterAuthorized && (
             <div className="cash-master-unlock">
               <ShieldCheck size={18} />
-              <span><strong>Historial protegido</strong><small>Desbloquea fechas anteriores, edición, impresión y descargas.</small></span>
-              <Input type="password" inputMode="numeric" maxLength={4} value={masterCode} onChange={(event) => setMasterCode(event.target.value)} placeholder="Código master" aria-label="Código master de Cash Manager" />
-              <Button type="button" variant="outline" onClick={unlockMaster} disabled={masterCode.length !== 4}>Desbloquear</Button>
+              <span>
+                <strong>Historial protegido</strong>
+                <small>
+                  Desbloquea fechas anteriores, edición, impresión y descargas.
+                </small>
+              </span>
+              <Input
+                type="password"
+                inputMode="numeric"
+                maxLength={4}
+                value={masterCode}
+                onChange={(event) => setMasterCode(event.target.value)}
+                placeholder="Código master"
+                aria-label="Código master de Cash Manager"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                onClick={unlockMaster}
+                disabled={masterCode.length !== 4}
+              >
+                Desbloquear
+              </Button>
             </div>
           )}
         </CardContent>
       </Card>
 
       <section className="cash-metric-grid" aria-label="Dashboard de gastos">
-        <Card><CardContent><CircleDollarSign size={20} /><span>GASTO VIGENTE</span><strong>{formatCurrency(totalAmount)}</strong><small>Según filtros activos</small></CardContent></Card>
-        <Card><CardContent><ReceiptText size={20} /><span>MOVIMIENTOS</span><strong>{activeVisibleExpenses.length}</strong><small>{visibleExpenses.length - activeVisibleExpenses.length} anulados</small></CardContent></Card>
-        <Card><CardContent><BarChart3 size={20} /><span>GASTO PROMEDIO</span><strong>{formatCurrency(averageAmount)}</strong><small>Por movimiento vigente</small></CardContent></Card>
-        <Card><CardContent><AlertTriangle size={20} /><span>MAYOR GASTO</span><strong>{formatCurrency(largestExpense)}</strong><small>Registro de mayor importe</small></CardContent></Card>
+        <Card>
+          <CardContent>
+            <CircleDollarSign size={20} />
+            <span>GASTO VIGENTE</span>
+            <strong>{formatCurrency(totalAmount)}</strong>
+            <small>Según filtros activos</small>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent>
+            <ReceiptText size={20} />
+            <span>MOVIMIENTOS</span>
+            <strong>{activeVisibleExpenses.length}</strong>
+            <small>
+              {visibleExpenses.length - activeVisibleExpenses.length} anulados
+            </small>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent>
+            <BarChart3 size={20} />
+            <span>GASTO PROMEDIO</span>
+            <strong>{formatCurrency(averageAmount)}</strong>
+            <small>Por movimiento vigente</small>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent>
+            <AlertTriangle size={20} />
+            <span>MAYOR GASTO</span>
+            <strong>{formatCurrency(largestExpense)}</strong>
+            <small>Registro de mayor importe</small>
+          </CardContent>
+        </Card>
       </section>
 
       <Card className="cash-filter-card">
         <CardContent>
           <div className="cash-filter-heading">
-            <span><Filter size={17} /><strong>Filtros avanzados</strong></span>
+            <span>
+              <Filter size={17} />
+              <strong>Filtros avanzados</strong>
+            </span>
             <div>
-              {masterAuthorized && <Button type="button" variant="outline" onClick={exportExcel} disabled={Boolean(exporting)}><FileSpreadsheet size={15} /> {exporting === "EXCEL" ? "Generando…" : "Excel"}</Button>}
-              {masterAuthorized && <Button type="button" variant="outline" onClick={exportPdf} disabled={Boolean(exporting)}><Download size={15} /> {exporting === "PDF" ? "Generando…" : "PDF"}</Button>}
-              <Button type="button" variant="ghost" onClick={resetFilters}><RotateCcw size={15} /> Limpiar</Button>
+              {masterAuthorized && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={exportExcel}
+                  disabled={Boolean(exporting)}
+                >
+                  <FileSpreadsheet size={15} />{" "}
+                  {exporting === "EXCEL" ? "Generando…" : "Excel"}
+                </Button>
+              )}
+              {masterAuthorized && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={exportPdf}
+                  disabled={Boolean(exporting)}
+                >
+                  <Download size={15} />{" "}
+                  {exporting === "PDF" ? "Generando…" : "PDF"}
+                </Button>
+              )}
+              <Button type="button" variant="ghost" onClick={resetFilters}>
+                <RotateCcw size={15} /> Limpiar
+              </Button>
             </div>
           </div>
           <div className="cash-filter-grid">
-            <label><span><Search size={14} /> Buscar</span><Input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder="Folio, concepto o comentario" /></label>
-            <label><span><CalendarDays size={14} /> Fecha</span>{masterAuthorized ? <DatePicker value={dateFilter} onChange={(value) => { setDateFilter(value); setPage(1); }} placeholder="Todo el historial" /> : <Input value={today} readOnly />}</label>
-            <label><span>Tipo de gasto</span><Select value={typeFilter} onValueChange={(value) => { setTypeFilter(value); setPage(1); }}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ALL">Todos los tipos</SelectItem>{expenseTypes.map((type) => <SelectItem key={type.id} value={type.id}>{type.name}</SelectItem>)}</SelectContent></Select></label>
-            <label><span>Usuario</span><Select value={sellerFilter} onValueChange={(value) => { setSellerFilter(value); setPage(1); }}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ALL">Todos los usuarios</SelectItem>{activeSellers.map((seller) => <SelectItem key={seller.id} value={seller.id}>{seller.name}</SelectItem>)}</SelectContent></Select></label>
-            <label><span>Sucursal</span>{masterAuthorized ? <Select value={branchFilter} onValueChange={(value) => { setBranchFilter(value); setPage(1); }}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ALL">Todas las sucursales</SelectItem>{branches.map((branch) => <SelectItem key={branch} value={branch}>{branch}</SelectItem>)}</SelectContent></Select> : <Input value={activeBranch} readOnly aria-label="Sucursal fija de Cash Manager" />}</label>
-            <label><span>Monto desde</span><Input type="number" min="0" value={amountFrom} onChange={(event) => { setAmountFrom(event.target.value); setPage(1); }} placeholder="$0.00" /></label>
-            <label><span>Monto hasta</span><Input type="number" min="0" value={amountTo} onChange={(event) => { setAmountTo(event.target.value); setPage(1); }} placeholder="Sin límite" /></label>
+            <label>
+              <span>
+                <Search size={14} /> Buscar
+              </span>
+              <Input
+                value={search}
+                onChange={(event) => {
+                  setSearch(event.target.value);
+                  setPage(1);
+                }}
+                placeholder="Folio, concepto o comentario"
+              />
+            </label>
+            <label>
+              <span>
+                <CalendarDays size={14} /> Fecha
+              </span>
+              {masterAuthorized ? (
+                <DatePicker
+                  value={dateFilter}
+                  onChange={(value) => {
+                    setDateFilter(value);
+                    setPage(1);
+                  }}
+                  placeholder="Todo el historial"
+                />
+              ) : (
+                <Input value={today} readOnly />
+              )}
+            </label>
+            <label>
+              <span>Tipo de gasto</span>
+              <Select
+                value={typeFilter}
+                onValueChange={(value) => {
+                  setTypeFilter(value);
+                  setPage(1);
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">Todos los tipos</SelectItem>
+                  {expenseTypes.map((type) => (
+                    <SelectItem key={type.id} value={type.id}>
+                      {type.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </label>
+            <label>
+              <span>Usuario</span>
+              <Select
+                value={sellerFilter}
+                onValueChange={(value) => {
+                  setSellerFilter(value);
+                  setPage(1);
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">Todos los usuarios</SelectItem>
+                  {activeSellers.map((seller) => (
+                    <SelectItem key={seller.id} value={seller.id}>
+                      {seller.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </label>
+            <label>
+              <span>Sucursal</span>
+              {masterAuthorized ? (
+                <Select
+                  value={branchFilter}
+                  onValueChange={(value) => {
+                    setBranchFilter(value);
+                    setPage(1);
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ALL">Todas las sucursales</SelectItem>
+                    {branches.map((branch) => (
+                      <SelectItem key={branch} value={branch}>
+                        {branch}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Input
+                  value={activeBranch}
+                  readOnly
+                  aria-label="Sucursal fija de Cash Manager"
+                />
+              )}
+            </label>
+            <label>
+              <span>Monto desde</span>
+              <Input
+                type="number"
+                min="0"
+                value={amountFrom}
+                onChange={(event) => {
+                  setAmountFrom(event.target.value);
+                  setPage(1);
+                }}
+                placeholder="$0.00"
+              />
+            </label>
+            <label>
+              <span>Monto hasta</span>
+              <Input
+                type="number"
+                min="0"
+                value={amountTo}
+                onChange={(event) => {
+                  setAmountTo(event.target.value);
+                  setPage(1);
+                }}
+                placeholder="Sin límite"
+              />
+            </label>
           </div>
         </CardContent>
       </Card>
@@ -667,67 +955,504 @@ export function CashManagerView({
       <div className="cash-manager-content">
         <Card className="data-card cash-expense-table-card">
           <CardContent>
-            <div className="data-card-heading"><div><span>{masterAuthorized ? "HISTORIAL AUTORIZADO" : "MOVIMIENTOS DEL DÍA"}</span><h2>Registro de gastos</h2></div><Badge variant="outline">{visibleExpenses.length} folios</Badge></div>
+            <div className="data-card-heading">
+              <div>
+                <span>
+                  {masterAuthorized
+                    ? "HISTORIAL AUTORIZADO"
+                    : "MOVIMIENTOS DEL DÍA"}
+                </span>
+                <h2>Registro de gastos</h2>
+              </div>
+              <Badge variant="outline">{visibleExpenses.length} folios</Badge>
+            </div>
             <div className="table-scroll">
               <Table>
-                <TableHeader><TableRow><TableHead>Folio / fecha</TableHead><TableHead>Tipo</TableHead><TableHead>Usuario</TableHead><TableHead>Sucursal</TableHead><TableHead>Concepto</TableHead><TableHead>Monto</TableHead><TableHead>Estado</TableHead><TableHead>Acciones</TableHead></TableRow></TableHeader>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Folio / fecha</TableHead>
+                    <TableHead>Tipo</TableHead>
+                    <TableHead>Usuario</TableHead>
+                    <TableHead>Sucursal</TableHead>
+                    <TableHead>Concepto</TableHead>
+                    <TableHead>Monto</TableHead>
+                    <TableHead>Estado</TableHead>
+                    <TableHead>Acciones</TableHead>
+                  </TableRow>
+                </TableHeader>
                 <TableBody>
                   {paginatedExpenses.map((expense) => (
-                    <TableRow key={expense.id} className={expense.status === "VOIDED" ? "is-voided" : ""}>
-                      <TableCell><strong>{expense.folio}</strong><small>{expense.createdAt}</small></TableCell>
+                    <TableRow
+                      key={expense.id}
+                      className={expense.status === "VOIDED" ? "is-voided" : ""}
+                    >
+                      <TableCell>
+                        <strong>{expense.folio}</strong>
+                        <small>{expense.createdAt}</small>
+                      </TableCell>
                       <TableCell>{expense.typeName}</TableCell>
                       <TableCell>{expense.sellerName}</TableCell>
                       <TableCell>{expense.branch}</TableCell>
-                      <TableCell><strong>{expense.concept}</strong><small>{expense.comment || "Sin comentario"}</small></TableCell>
-                      <TableCell><strong>{formatCurrency(expense.amount)}</strong></TableCell>
-                      <TableCell><Badge variant={expense.status === "ACTIVE" ? "outline" : "destructive"}>{expense.status === "ACTIVE" ? "Vigente" : "Anulado"}</Badge></TableCell>
-                      <TableCell><div className="cash-row-actions"><Button type="button" variant="ghost" size="icon" onClick={() => setSelectedExpense(expense)} aria-label={`Visualizar ${expense.folio}`}><Eye size={16} /></Button>{masterAuthorized && <Button type="button" variant="ghost" size="icon" onClick={() => printExpense(expense)} aria-label={`Imprimir ${expense.folio}`}><Printer size={16} /></Button>}{masterAuthorized && expense.status === "ACTIVE" && <Button type="button" variant="ghost" size="icon" onClick={() => openEditExpense(expense)} aria-label={`Editar ${expense.folio}`}><Pencil size={16} /></Button>}{masterAuthorized && expense.status === "ACTIVE" && <Button type="button" variant="ghost" size="icon" onClick={() => { if (window.confirm(`¿Anular el gasto ${expense.folio}?`)) onVoidExpense(expense.id); }} aria-label={`Borrar ${expense.folio}`}><Trash2 size={16} /></Button>}</div></TableCell>
+                      <TableCell>
+                        <strong>{expense.concept}</strong>
+                        <small>{expense.comment || "Sin comentario"}</small>
+                      </TableCell>
+                      <TableCell>
+                        <strong>{formatCurrency(expense.amount)}</strong>
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={
+                            expense.status === "ACTIVE"
+                              ? "outline"
+                              : "destructive"
+                          }
+                        >
+                          {expense.status === "ACTIVE" ? "Vigente" : "Anulado"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <div className="cash-row-actions">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => setSelectedExpense(expense)}
+                            aria-label={`Visualizar ${expense.folio}`}
+                          >
+                            <Eye size={16} />
+                          </Button>
+                          {masterAuthorized && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => printExpense(expense)}
+                              aria-label={`Imprimir ${expense.folio}`}
+                            >
+                              <Printer size={16} />
+                            </Button>
+                          )}
+                          {masterAuthorized && expense.status === "ACTIVE" && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => openEditExpense(expense)}
+                              aria-label={`Editar ${expense.folio}`}
+                            >
+                              <Pencil size={16} />
+                            </Button>
+                          )}
+                          {masterAuthorized && expense.status === "ACTIVE" && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => {
+                                if (
+                                  window.confirm(
+                                    `¿Anular el gasto ${expense.folio}?`,
+                                  )
+                                )
+                                  onVoidExpense(expense.id);
+                              }}
+                              aria-label={`Borrar ${expense.folio}`}
+                            >
+                              <Trash2 size={16} />
+                            </Button>
+                          )}
+                        </div>
+                      </TableCell>
                     </TableRow>
                   ))}
-                  {paginatedExpenses.length === 0 && <TableRow><TableCell colSpan={8}><div className="cash-empty-state"><ReceiptText size={26} /><strong>Sin gastos para los filtros seleccionados</strong><span>Los nuevos registros aparecerán aquí con su folio único.</span></div></TableCell></TableRow>}
+                  {paginatedExpenses.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={8}>
+                        <div className="cash-empty-state">
+                          <ReceiptText size={26} />
+                          <strong>
+                            Sin gastos para los filtros seleccionados
+                          </strong>
+                          <span>
+                            Los nuevos registros aparecerán aquí con su folio
+                            único.
+                          </span>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  )}
                 </TableBody>
               </Table>
             </div>
-            <HistoryPagination total={visibleExpenses.length} page={safePage} pageSize={pageSize} pageCount={pageCount} onPageChange={setPage} onPageSizeChange={(size) => { setPageSize(size); setPage(1); }} />
+            <HistoryPagination
+              total={visibleExpenses.length}
+              page={safePage}
+              pageSize={pageSize}
+              pageCount={pageCount}
+              onPageChange={setPage}
+              onPageSizeChange={(size) => {
+                setPageSize(size);
+                setPage(1);
+              }}
+            />
           </CardContent>
         </Card>
 
-        <Card className="cash-breakdown-card"><CardContent><span className="section-kicker">DASHBOARD ANALÍTICO</span><h2>Distribución por tipo</h2><div className="cash-breakdown-list">{byType.map((item) => <div key={item.name}><span><strong>{item.name}</strong><small>{item.count} movimientos</small></span><div><i style={{ width: `${totalAmount ? Math.max(5, item.amount / totalAmount * 100) : 0}%` }} /></div><b>{formatCurrency(item.amount)}</b></div>)}{byType.length === 0 && <p>Sin importes vigentes en el periodo.</p>}</div></CardContent></Card>
+        <Card className="cash-breakdown-card">
+          <CardContent>
+            <span className="section-kicker">DASHBOARD ANALÍTICO</span>
+            <h2>Distribución por tipo</h2>
+            <div className="cash-breakdown-list">
+              {byType.map((item) => (
+                <div key={item.name}>
+                  <span>
+                    <strong>{item.name}</strong>
+                    <small>{item.count} movimientos</small>
+                  </span>
+                  <div>
+                    <i
+                      style={{
+                        width: `${totalAmount ? Math.max(5, (item.amount / totalAmount) * 100) : 0}%`,
+                      }}
+                    />
+                  </div>
+                  <b>{formatCurrency(item.amount)}</b>
+                </div>
+              ))}
+              {byType.length === 0 && (
+                <p>Sin importes vigentes en el periodo.</p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       <Dialog open={reminderOpen} onOpenChange={setReminderOpen}>
         <DialogContent className="cash-reminder-dialog sm:max-w-[520px]">
-          <DialogHeader><DialogTitle>Movimiento sujeto a autorización</DialogTitle><DialogDescription>Antes de continuar, confirma que Administración autorizó este gasto.</DialogDescription></DialogHeader>
-          <div className="cash-reminder-body"><div><ShieldCheck size={28} /></div><span><small>AUTORIZACIÓN ADMINISTRATIVA</small><strong>Recuerda que todos los movimientos deben ser autorizados por Administración.</strong><p>El registro quedará automáticamente ligado a {loggedSeller?.name ?? "el operador POS"} y a la sucursal fija de la terminal.</p></span></div>
-          <label className="cash-reminder-code"><KeyRound size={17} /><Input type="password" inputMode="numeric" maxLength={4} value={movementCode} onChange={(event) => setMovementCode(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") authorizeMovement(); }} placeholder="Código de autorización" /></label>
-          <DialogFooter><Button type="button" variant="outline" onClick={() => setReminderOpen(false)}>Cancelar</Button><Button type="button" className="cash-continue-button" onClick={authorizeMovement} disabled={movementCode.length !== 4}><CheckCircle2 size={16} /> Continuar</Button></DialogFooter>
+          <DialogHeader>
+            <DialogTitle>Movimiento sujeto a autorización</DialogTitle>
+            <DialogDescription>
+              Antes de continuar, confirma que Administración autorizó este
+              gasto.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="cash-reminder-body">
+            <div>
+              <ShieldCheck size={28} />
+            </div>
+            <span>
+              <small>AUTORIZACIÓN ADMINISTRATIVA</small>
+              <strong>
+                Recuerda que todos los movimientos deben ser autorizados por
+                Administración.
+              </strong>
+              <p>
+                El registro quedará automáticamente ligado a{" "}
+                {loggedSeller?.name ?? "el operador POS"} y a la sucursal fija
+                de la terminal.
+              </p>
+            </span>
+          </div>
+          <label className="cash-reminder-code">
+            <KeyRound size={17} />
+            <Input
+              type="password"
+              inputMode="numeric"
+              maxLength={4}
+              value={movementCode}
+              onChange={(event) => setMovementCode(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") authorizeMovement();
+              }}
+              placeholder="Código de autorización"
+            />
+          </label>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setReminderOpen(false)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              className="cash-continue-button"
+              onClick={authorizeMovement}
+              disabled={movementCode.length !== 4}
+            >
+              <CheckCircle2 size={16} /> Continuar
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
       <Dialog open={formOpen} onOpenChange={setFormOpen}>
         <DialogContent className="cash-expense-dialog sm:max-w-[760px]">
-          <DialogHeader><DialogTitle>{editingExpense ? `Editar ${editingExpense.folio}` : "Registrar gasto"}</DialogTitle><DialogDescription>Captura el detalle que se reflejará en Cash Manager y Close Day.</DialogDescription></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>
+              {editingExpense
+                ? `Editar ${editingExpense.folio}`
+                : "Registrar gasto"}
+            </DialogTitle>
+            <DialogDescription>
+              Captura el detalle que se reflejará en Cash Manager y Close Day.
+            </DialogDescription>
+          </DialogHeader>
           <div className="cash-expense-form">
-            <label><span>Tipo de gasto</span><Select value={form.typeId} onValueChange={(value) => setForm((current) => ({ ...current, typeId: value }))}><SelectTrigger><SelectValue placeholder="Selecciona un tipo" /></SelectTrigger><SelectContent>{expenseTypes.filter((type) => type.active || type.id === form.typeId).map((type) => <SelectItem key={type.id} value={type.id}>{type.name}</SelectItem>)}</SelectContent></Select></label>
-            <label><span>Monto</span><Input type="number" min="0.01" step="0.01" value={form.amount} onChange={(event) => setForm((current) => ({ ...current, amount: event.target.value }))} placeholder="$0.00" /></label>
-            <label><span>Fecha</span><DatePicker value={form.expenseDate} onChange={(value) => setForm((current) => ({ ...current, expenseDate: value }))} /></label>
-            <label><span>Sucursal</span><Select value={form.branch} disabled={!masterAuthorized} onValueChange={(value) => setForm((current) => ({ ...current, branch: value }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{branches.map((branch) => <SelectItem key={branch} value={branch}>{branch}</SelectItem>)}</SelectContent></Select><small>{masterAuthorized ? "Acceso master: puedes seleccionar cualquier sucursal." : `Sucursal fija de esta terminal: ${activeBranch}.`}</small></label>
-            <label><span>Usuario responsable</span><Select value={form.sellerId} disabled={!editingExpense} onValueChange={(value) => setForm((current) => ({ ...current, sellerId: value }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{activeSellers.map((seller) => <SelectItem key={seller.id} value={seller.id}>{seller.name}</SelectItem>)}</SelectContent></Select></label>
-            <label className="cash-form-wide"><span>Concepto</span><Input value={form.concept} onChange={(event) => setForm((current) => ({ ...current, concept: event.target.value }))} placeholder="Ej. Compra de insumos para sucursal" /></label>
-            <label className="cash-form-wide"><span>Comentarios importantes</span><textarea value={form.comment} onChange={(event) => setForm((current) => ({ ...current, comment: event.target.value }))} placeholder="Agrega proveedor, motivo, autorización o cualquier detalle relevante…" /></label>
+            <label>
+              <span>Tipo de gasto</span>
+              <Select
+                value={form.typeId}
+                onValueChange={(value) =>
+                  setForm((current) => ({ ...current, typeId: value }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecciona un tipo" />
+                </SelectTrigger>
+                <SelectContent>
+                  {expenseTypes
+                    .filter((type) => type.active || type.id === form.typeId)
+                    .map((type) => (
+                      <SelectItem key={type.id} value={type.id}>
+                        {type.name}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </label>
+            <label>
+              <span>Monto</span>
+              <Input
+                type="number"
+                min="0.01"
+                step="0.01"
+                value={form.amount}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    amount: event.target.value,
+                  }))
+                }
+                placeholder="$0.00"
+              />
+            </label>
+            <label>
+              <span>Fecha</span>
+              <DatePicker
+                value={form.expenseDate}
+                onChange={(value) =>
+                  setForm((current) => ({ ...current, expenseDate: value }))
+                }
+              />
+            </label>
+            <label>
+              <span>Sucursal</span>
+              <Select
+                value={form.branch}
+                disabled={!masterAuthorized}
+                onValueChange={(value) =>
+                  setForm((current) => ({ ...current, branch: value }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {branches.map((branch) => (
+                    <SelectItem key={branch} value={branch}>
+                      {branch}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <small>
+                {masterAuthorized
+                  ? "Acceso master: puedes seleccionar cualquier sucursal."
+                  : `Sucursal fija de esta terminal: ${activeBranch}.`}
+              </small>
+            </label>
+            <label>
+              <span>Usuario responsable</span>
+              <Select
+                value={form.sellerId}
+                disabled={!editingExpense}
+                onValueChange={(value) =>
+                  setForm((current) => ({ ...current, sellerId: value }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {activeSellers.map((seller) => (
+                    <SelectItem key={seller.id} value={seller.id}>
+                      {seller.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </label>
+            <label className="cash-form-wide">
+              <span>Concepto</span>
+              <Input
+                value={form.concept}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    concept: event.target.value,
+                  }))
+                }
+                placeholder="Ej. Compra de insumos para sucursal"
+              />
+            </label>
+            <label className="cash-form-wide">
+              <span>Comentarios importantes</span>
+              <textarea
+                value={form.comment}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    comment: event.target.value,
+                  }))
+                }
+                placeholder="Agrega proveedor, motivo, autorización o cualquier detalle relevante…"
+              />
+            </label>
           </div>
-          <DialogFooter><Button type="button" variant="outline" onClick={() => setFormOpen(false)}>Cancelar</Button><Button type="button" onClick={saveExpense}>{editingExpense ? <Pencil size={16} /> : <Plus size={16} />}{editingExpense ? "Guardar cambios" : "Registrar movimiento"}</Button></DialogFooter>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setFormOpen(false)}
+            >
+              Cancelar
+            </Button>
+            <Button type="button" onClick={saveExpense}>
+              {editingExpense ? <Pencil size={16} /> : <Plus size={16} />}
+              {editingExpense ? "Guardar cambios" : "Registrar movimiento"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      <Dialog open={Boolean(selectedExpense)} onOpenChange={(open) => { if (!open) setSelectedExpense(null); }}>
+      <Dialog
+        open={Boolean(selectedExpense)}
+        onOpenChange={(open) => {
+          if (!open) setSelectedExpense(null);
+        }}
+      >
         <DialogContent className="cash-report-dialog sm:max-w-[720px]">
-          {selectedExpense && (() => {
-            const dailyActive = expenses.filter((expense) => expense.status === "ACTIVE" && expense.expenseDate === selectedExpense.expenseDate);
-            const dailyTotal = dailyActive.reduce((sum, expense) => sum + expense.amount, 0);
-            const sellerTotal = dailyActive.filter((expense) => expense.sellerId === selectedExpense.sellerId).reduce((sum, expense) => sum + expense.amount, 0);
-            return <><DialogHeader><DialogTitle>Reporte ejecutivo · {selectedExpense.folio}</DialogTitle><DialogDescription>Detalle individual y contexto operativo del movimiento.</DialogDescription></DialogHeader><section className="cash-report-metrics"><div><span>MONTO</span><strong>{formatCurrency(selectedExpense.amount)}</strong></div><div><span>% DEL DÍA</span><strong>{dailyTotal ? `${(selectedExpense.amount / dailyTotal * 100).toFixed(1)}%` : "0%"}</strong></div><div><span>GASTO DEL USUARIO</span><strong>{formatCurrency(sellerTotal)}</strong></div><div><span>MOVIMIENTOS DEL DÍA</span><strong>{dailyActive.length}</strong></div></section><div className="cash-report-detail"><div><span>Fecha y hora</span><strong>{selectedExpense.createdAt}</strong></div><div><span>Tipo</span><strong>{selectedExpense.typeName}</strong></div><div><span>Sucursal</span><strong>{selectedExpense.branch}</strong></div><div><span>Usuario</span><strong>{selectedExpense.sellerName}</strong></div><div><span>Concepto</span><strong>{selectedExpense.concept}</strong></div><div><span>Comentario</span><strong>{selectedExpense.comment || "Sin comentario"}</strong></div><div><span>Autorización</span><strong>{selectedExpense.authorizedBy}</strong></div><div><span>Estado</span><strong>{selectedExpense.status === "ACTIVE" ? "Vigente" : "Anulado"}</strong></div></div><DialogFooter><Button type="button" variant="outline" onClick={() => setSelectedExpense(null)}>Cerrar</Button>{masterAuthorized && <Button type="button" onClick={() => printExpense(selectedExpense)}><Printer size={16} /> Imprimir</Button>}</DialogFooter></>;
-          })()}
+          {selectedExpense &&
+            (() => {
+              const dailyActive = expenses.filter(
+                (expense) =>
+                  expense.status === "ACTIVE" &&
+                  expense.expenseDate === selectedExpense.expenseDate,
+              );
+              const dailyTotal = dailyActive.reduce(
+                (sum, expense) => sum + expense.amount,
+                0,
+              );
+              const sellerTotal = dailyActive
+                .filter(
+                  (expense) => expense.sellerId === selectedExpense.sellerId,
+                )
+                .reduce((sum, expense) => sum + expense.amount, 0);
+              return (
+                <>
+                  <DialogHeader>
+                    <DialogTitle>
+                      Reporte ejecutivo · {selectedExpense.folio}
+                    </DialogTitle>
+                    <DialogDescription>
+                      Detalle individual y contexto operativo del movimiento.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <section className="cash-report-metrics">
+                    <div>
+                      <span>MONTO</span>
+                      <strong>{formatCurrency(selectedExpense.amount)}</strong>
+                    </div>
+                    <div>
+                      <span>% DEL DÍA</span>
+                      <strong>
+                        {dailyTotal
+                          ? `${((selectedExpense.amount / dailyTotal) * 100).toFixed(1)}%`
+                          : "0%"}
+                      </strong>
+                    </div>
+                    <div>
+                      <span>GASTO DEL USUARIO</span>
+                      <strong>{formatCurrency(sellerTotal)}</strong>
+                    </div>
+                    <div>
+                      <span>MOVIMIENTOS DEL DÍA</span>
+                      <strong>{dailyActive.length}</strong>
+                    </div>
+                  </section>
+                  <div className="cash-report-detail">
+                    <div>
+                      <span>Fecha y hora</span>
+                      <strong>{selectedExpense.createdAt}</strong>
+                    </div>
+                    <div>
+                      <span>Tipo</span>
+                      <strong>{selectedExpense.typeName}</strong>
+                    </div>
+                    <div>
+                      <span>Sucursal</span>
+                      <strong>{selectedExpense.branch}</strong>
+                    </div>
+                    <div>
+                      <span>Usuario</span>
+                      <strong>{selectedExpense.sellerName}</strong>
+                    </div>
+                    <div>
+                      <span>Concepto</span>
+                      <strong>{selectedExpense.concept}</strong>
+                    </div>
+                    <div>
+                      <span>Comentario</span>
+                      <strong>
+                        {selectedExpense.comment || "Sin comentario"}
+                      </strong>
+                    </div>
+                    <div>
+                      <span>Autorización</span>
+                      <strong>{selectedExpense.authorizedBy}</strong>
+                    </div>
+                    <div>
+                      <span>Estado</span>
+                      <strong>
+                        {selectedExpense.status === "ACTIVE"
+                          ? "Vigente"
+                          : "Anulado"}
+                      </strong>
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setSelectedExpense(null)}
+                    >
+                      Cerrar
+                    </Button>
+                    {masterAuthorized && (
+                      <Button
+                        type="button"
+                        onClick={() => printExpense(selectedExpense)}
+                      >
+                        <Printer size={16} /> Imprimir
+                      </Button>
+                    )}
+                  </DialogFooter>
+                </>
+              );
+            })()}
         </DialogContent>
       </Dialog>
     </div>
@@ -742,7 +1467,13 @@ interface ExpenseTypeSettingsProps {
   onDelete: (id: string) => void;
 }
 
-export function ExpenseTypeSettings({ types, isMasterCode, onSave, onToggle, onDelete }: ExpenseTypeSettingsProps) {
+export function ExpenseTypeSettings({
+  types,
+  isMasterCode,
+  onSave,
+  onToggle,
+  onDelete,
+}: ExpenseTypeSettingsProps) {
   const [authorized, setAuthorized] = useState(false);
   const [code, setCode] = useState("");
   const [name, setName] = useState("");
@@ -757,14 +1488,166 @@ export function ExpenseTypeSettings({ types, isMasterCode, onSave, onToggle, onD
   const save = () => {
     const normalized = name.trim();
     if (!normalized) return;
-    const duplicate = types.some((type) => type.id !== editingId && type.name.toLocaleLowerCase("es-MX") === normalized.toLocaleLowerCase("es-MX"));
-    if (duplicate) { toast.error("Ese tipo de gasto ya existe."); return; }
+    const duplicate = types.some(
+      (type) =>
+        type.id !== editingId &&
+        type.name.toLocaleLowerCase("es-MX") ===
+          normalized.toLocaleLowerCase("es-MX"),
+    );
+    if (duplicate) {
+      toast.error("Ese tipo de gasto ya existe.");
+      return;
+    }
     const current = types.find((type) => type.id === editingId);
-    onSave(current ? { ...current, name: normalized } : { id: `expense-${crypto.randomUUID().slice(0, 8)}`, name: normalized, active: true });
+    onSave(
+      current
+        ? { ...current, name: normalized }
+        : {
+            id: `expense-${crypto.randomUUID().slice(0, 8)}`,
+            name: normalized,
+            active: true,
+          },
+    );
     setName("");
     setEditingId("");
-    toast.success(current ? "Tipo de gasto actualizado." : "Tipo de gasto agregado.");
+    toast.success(
+      current ? "Tipo de gasto actualizado." : "Tipo de gasto agregado.",
+    );
   };
 
-  return <Card className="settings-card expense-type-settings-card"><CardContent><div className="expense-settings-heading"><div><span className="section-kicker">CASH MANAGER</span><h2>Tipos de gastos</h2></div><WalletCards size={24} /></div><p>Administra las opciones disponibles al registrar movimientos. Los gastos históricos conservan el nombre capturado.</p>{!authorized ? <div className="expense-settings-gate"><LockKeyhole size={17} /><Input type="password" inputMode="numeric" maxLength={4} value={code} onChange={(event) => setCode(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && isMasterCode(code)) { setAuthorized(true); setCode(""); } }} placeholder="Código master" /><Button type="button" variant="outline" onClick={() => { if (!isMasterCode(code)) { toast.error("Código master incorrecto."); return; } setAuthorized(true); setCode(""); }} disabled={code.length !== 4}><ShieldCheck size={15} /> Configurar</Button></div> : <><div className="expense-type-editor"><Input value={name} onChange={(event) => setName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") save(); }} placeholder={editingId ? "Editar tipo de gasto" : "Nuevo tipo de gasto"} /><Button type="button" onClick={save} disabled={!name.trim()}>{editingId ? <Pencil size={15} /> : <Plus size={15} />}{editingId ? "Guardar" : "Agregar"}</Button>{editingId && <Button type="button" variant="ghost" size="icon" onClick={() => { setEditingId(""); setName(""); }}><X size={15} /></Button>}</div><div className="expense-type-list">{types.map((type) => <div key={type.id} className={type.active ? "" : "is-inactive"}><span><strong>{type.name}</strong><small>{type.active ? "Disponible en Cash Manager" : "Inactivo · visible sólo en históricos"}</small></span><button type="button" className={`mock-switch ${type.active ? "is-on" : ""}`} role="switch" aria-checked={type.active} onClick={() => onToggle(type.id)}><i /></button><Button type="button" variant="ghost" size="icon" onClick={() => { setEditingId(type.id); setName(type.name); }} aria-label={`Editar ${type.name}`}><Pencil size={15} /></Button><Button type="button" variant="ghost" size="icon" onClick={() => onDelete(type.id)} aria-label={`Borrar ${type.name}`}><Trash2 size={15} /></Button></div>)}</div><Button type="button" variant="outline" size="sm" onClick={() => setAuthorized(false)}><LockKeyhole size={14} /> Bloquear</Button></>}</CardContent></Card>;
+  return (
+    <Card className="settings-card expense-type-settings-card">
+      <CardContent>
+        <div className="expense-settings-heading">
+          <div>
+            <span className="section-kicker">CASH MANAGER</span>
+            <h2>Tipos de gastos</h2>
+          </div>
+          <WalletCards size={24} />
+        </div>
+        <p>
+          Administra las opciones disponibles al registrar movimientos. Los
+          gastos históricos conservan el nombre capturado.
+        </p>
+        {!authorized ? (
+          <div className="expense-settings-gate">
+            <LockKeyhole size={17} />
+            <Input
+              type="password"
+              inputMode="numeric"
+              maxLength={4}
+              value={code}
+              onChange={(event) => setCode(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && isMasterCode(code)) {
+                  setAuthorized(true);
+                  setCode("");
+                }
+              }}
+              placeholder="Código master"
+            />
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                if (!isMasterCode(code)) {
+                  toast.error("Código master incorrecto.");
+                  return;
+                }
+                setAuthorized(true);
+                setCode("");
+              }}
+              disabled={code.length !== 4}
+            >
+              <ShieldCheck size={15} /> Configurar
+            </Button>
+          </div>
+        ) : (
+          <>
+            <div className="expense-type-editor">
+              <Input
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") save();
+                }}
+                placeholder={
+                  editingId ? "Editar tipo de gasto" : "Nuevo tipo de gasto"
+                }
+              />
+              <Button type="button" onClick={save} disabled={!name.trim()}>
+                {editingId ? <Pencil size={15} /> : <Plus size={15} />}
+                {editingId ? "Guardar" : "Agregar"}
+              </Button>
+              {editingId && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => {
+                    setEditingId("");
+                    setName("");
+                  }}
+                >
+                  <X size={15} />
+                </Button>
+              )}
+            </div>
+            <div className="expense-type-list">
+              {types.map((type) => (
+                <div key={type.id} className={type.active ? "" : "is-inactive"}>
+                  <span>
+                    <strong>{type.name}</strong>
+                    <small>
+                      {type.active
+                        ? "Disponible en Cash Manager"
+                        : "Inactivo · visible sólo en históricos"}
+                    </small>
+                  </span>
+                  <button
+                    type="button"
+                    className={`mock-switch ${type.active ? "is-on" : ""}`}
+                    role="switch"
+                    aria-checked={type.active}
+                    onClick={() => onToggle(type.id)}
+                  >
+                    <i />
+                  </button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => {
+                      setEditingId(type.id);
+                      setName(type.name);
+                    }}
+                    aria-label={`Editar ${type.name}`}
+                  >
+                    <Pencil size={15} />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => onDelete(type.id)}
+                    aria-label={`Borrar ${type.name}`}
+                  >
+                    <Trash2 size={15} />
+                  </Button>
+                </div>
+              ))}
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setAuthorized(false)}
+            >
+              <LockKeyhole size={14} /> Bloquear
+            </Button>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
 }

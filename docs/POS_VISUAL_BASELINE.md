@@ -194,6 +194,7 @@ POS_VISUAL_MODE=candidate \
 POS_VISUAL_ROOT="$PWD" \
 POS_CANDIDATE_SHA="$(git rev-parse HEAD)" \
 POS_VISUAL_OUTPUT="$PWD/docs/artifacts/pos-visual-baseline/candidate/$(git rev-parse HEAD)" \
+POS_VISUAL_FIXTURE_MASTER_CODE="<codigo-efimero-usado-al-compilar>" \
 pnpm pos:visual:capture
 
 POS_BASELINE_REFERENCE="$PWD/docs/artifacts/pos-visual-baseline/12fb8045cc264b565cb6e764d95ad7b2447fbfa1/reference" \
@@ -205,10 +206,12 @@ pnpm pos:visual:compare
 La comparación requiere ImageMagick, exige el mismo navegador y versión,
 Playwright, Node, gestor de paquetes, escala, fecha, locale, zona, esquema,
 movimiento reducido y hashes de fixture/manifiesto; después usa píxeles
-diferentes absolutos (`AE`), rechaza un directorio de diffs con contenido y
-aplica tolerancia cero por default. Una tolerancia distinta sólo puede registrar
-variación de rasterizado medida; no autoriza geometría, texto, estilos o
-controles diferentes.
+diferentes binarios, rechaza un directorio de diffs con contenido y aplica
+tolerancia cero por default. El conteo binario evita confundir la magnitud `AE`
+de builds HDRI de ImageMagick con un número entero de píxeles. Una tolerancia
+distinta sólo puede registrar variación de rasterizado medida; no autoriza
+geometría, texto, estilos o controles diferentes. RV2 documenta su build
+aislado, resultado y umbral en `docs/POS_RV2_PRESENTATION_RESTORATION.md`.
 
 ## 8. Evidencia ejecutada en RV0
 

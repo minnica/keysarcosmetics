@@ -131,9 +131,30 @@ for (const capture of referenceIndex.captures) {
       comparison.stderr || `ImageMagick falló para ${capture.file}.`,
     );
   }
-  const differentPixels = Number.parseFloat(
-    comparison.stderr.trim().split(/\s+/)[0] ?? "NaN",
+  const pixelCount = spawnSync(
+    "magick",
+    [
+      referenceFile,
+      candidateFile,
+      "-compose",
+      "difference",
+      "-composite",
+      "-colorspace",
+      "gray",
+      "-threshold",
+      "0",
+      "-format",
+      "%[fx:mean*w*h]",
+      "info:",
+    ],
+    { encoding: "utf8" },
   );
+  if (pixelCount.status !== 0) {
+    throw new Error(
+      pixelCount.stderr || `No se pudo contar el diff de ${capture.file}.`,
+    );
+  }
+  const differentPixels = Number.parseFloat(pixelCount.stdout.trim());
   if (!Number.isFinite(differentPixels)) {
     throw new Error(`No se pudo interpretar la métrica de ${capture.file}.`);
   }
