@@ -63,6 +63,8 @@ playwright-report-development/
 test-results/
 apps/e2e/.auth/
 apps/e2e/release-manifest*.json
+docs/artifacts/pos-visual-baseline/candidate/
+docs/artifacts/pos-visual-baseline/diff/
 vercel-deployment-evidence.json
 vercel-impact.json
 vercel-hr-pilot-result.json

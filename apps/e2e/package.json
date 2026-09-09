@@ -13,7 +13,10 @@
     "test:production:headed": "playwright test -c playwright.production.config.ts --headed",
     "test:ui:visual": "playwright test -c playwright.visual.config.ts",
     "test:ui:visual:update": "playwright test -c playwright.visual.config.ts --update-snapshots",
-    "capture:scheduler:reference": "node scripts/capture-scheduler-reference.mjs"
+    "capture:scheduler:reference": "node scripts/capture-scheduler-reference.mjs",
+    "pos:visual:manifest": "POS_BASELINE_LIST_ONLY=1 node scripts/capture-pos-reference.mjs",
+    "capture:pos:visual": "node scripts/capture-pos-reference.mjs",
+    "compare:pos:visual": "node scripts/compare-pos-baseline.mjs"
   },
   "devDependencies": {
     "@types/node": "^20.14.9",

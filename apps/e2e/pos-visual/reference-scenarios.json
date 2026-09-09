@@ -1,0 +1,777 @@
+{
+  "schemaVersion": 1,
+  "referenceSha": "12fb8045cc264b565cb6e764d95ad7b2447fbfa1",
+  "coreViewports": [
+    { "id": "desktop", "width": 1440, "height": 900 },
+    { "id": "tablet", "width": 920, "height": 900 },
+    { "id": "mobile", "width": 390, "height": 844 },
+    { "id": "minimum", "width": 320, "height": 844 }
+  ],
+  "breakpointViewports": [
+    { "id": "sidebar-above", "width": 921, "height": 900 },
+    { "id": "sidebar-below", "width": 919, "height": 900 },
+    { "id": "compact-above", "width": 721, "height": 844 },
+    { "id": "compact-at", "width": 720, "height": 844 },
+    { "id": "compact-below", "width": 719, "height": 844 },
+    { "id": "narrow-above", "width": 641, "height": 844 },
+    { "id": "narrow-at", "width": 640, "height": 844 },
+    { "id": "narrow-below", "width": 639, "height": 844 },
+    { "id": "phone-above", "width": 421, "height": 844 },
+    { "id": "phone-at", "width": 420, "height": 844 },
+    { "id": "phone-below", "width": 419, "height": 844 },
+    { "id": "short-above", "width": 1440, "height": 761 },
+    { "id": "short-at", "width": 1440, "height": 760 },
+    { "id": "short-below", "width": 1440, "height": 759 }
+  ],
+  "accessScenarios": [
+    {
+      "id": "access.login.default",
+      "stage": "LOGIN",
+      "viewports": ["desktop", "tablet", "mobile", "minimum"]
+    },
+    {
+      "id": "access.login.error",
+      "stage": "LOGIN_ERROR",
+      "viewports": ["desktop", "mobile"]
+    },
+    {
+      "id": "access.connectivity.online",
+      "stage": "CONNECTIVITY_NOTICE",
+      "networkState": "online",
+      "viewports": ["desktop", "mobile"]
+    },
+    {
+      "id": "access.connectivity.offline",
+      "stage": "CONNECTIVITY_NOTICE",
+      "networkState": "offline",
+      "viewports": ["desktop", "mobile"]
+    },
+    {
+      "id": "access.opening-count.default",
+      "stage": "OPENING_COUNT",
+      "viewports": ["desktop", "tablet", "mobile", "minimum"]
+    },
+    {
+      "id": "access.opening-count.confirmation",
+      "stage": "OPENING_COUNT_CONFIRMATION",
+      "viewports": ["desktop", "mobile"]
+    },
+    {
+      "id": "access.closing-count.default",
+      "stage": "CLOSING_COUNT",
+      "viewports": ["desktop", "tablet", "mobile", "minimum"]
+    }
+  ],
+  "screens": [
+    {
+      "id": "dashboard",
+      "title": "Dashboard",
+      "navigation": { "kind": "direct", "label": "Dashboard" }
+    },
+    {
+      "id": "sale",
+      "title": "Ventas",
+      "navigation": { "kind": "sale", "label": "Ventas" }
+    },
+    {
+      "id": "seller-sales",
+      "title": "Mis ventas",
+      "navigation": { "kind": "sale", "label": "Mis ventas" }
+    },
+    {
+      "id": "receipts",
+      "title": "Receipts",
+      "navigation": { "kind": "sale", "label": "Receipts" }
+    },
+    {
+      "id": "customers",
+      "title": "Customers",
+      "navigation": { "kind": "sale", "label": "Customers" }
+    },
+    {
+      "id": "appointments",
+      "title": "Citas",
+      "navigation": { "kind": "direct", "label": "Citas" }
+    },
+    {
+      "id": "memberships",
+      "title": "Membresías",
+      "navigation": { "kind": "direct", "label": "Membresías" }
+    },
+    {
+      "id": "inventory",
+      "title": "Inventory",
+      "navigation": { "kind": "inventory", "label": "Inventario" }
+    },
+    {
+      "id": "warehouse",
+      "title": "Pedido sucursales",
+      "navigation": { "kind": "inventory", "label": "Pedido sucursales" }
+    },
+    {
+      "id": "branch-inventory",
+      "title": "Almacén matriz",
+      "navigation": { "kind": "inventory", "label": "Almacén matriz" }
+    },
+    {
+      "id": "suppliers",
+      "title": "Proveedores",
+      "navigation": { "kind": "inventory", "label": "Proveedores" }
+    },
+    {
+      "id": "inventory-movements",
+      "title": "Movimientos de inventario",
+      "navigation": { "kind": "inventory", "label": "Movimientos" }
+    },
+    {
+      "id": "deals",
+      "title": "Paquetes y promociones",
+      "navigation": { "kind": "inventory", "label": "Paquetes y promociones" }
+    },
+    {
+      "id": "catalog",
+      "title": "Catálogo digital",
+      "navigation": { "kind": "sale", "label": "Catálogo" }
+    },
+    {
+      "id": "settings",
+      "title": "Settings",
+      "navigation": { "kind": "direct", "label": "Settings" }
+    },
+    {
+      "id": "x-report",
+      "title": "X-Report",
+      "navigation": { "kind": "direct", "label": "X-Report" }
+    },
+    {
+      "id": "reports",
+      "title": "Reports",
+      "navigation": { "kind": "direct", "label": "Reports" }
+    },
+    {
+      "id": "cash-manager",
+      "title": "Cash manager",
+      "navigation": { "kind": "direct", "label": "Cash manager" }
+    },
+    {
+      "id": "clock-in",
+      "title": "Clock In",
+      "navigation": { "kind": "direct", "label": "Clock In" }
+    },
+    {
+      "id": "close-day",
+      "title": "Close Day",
+      "navigation": { "kind": "sale", "label": "Close day" }
+    },
+    {
+      "id": "employees",
+      "title": "Employees",
+      "navigation": { "kind": "direct", "label": "Employees" }
+    },
+    {
+      "id": "competition",
+      "title": "Competition",
+      "navigation": { "kind": "direct", "label": "Competition" }
+    },
+    {
+      "id": "websites",
+      "title": "Websites",
+      "navigation": { "kind": "direct", "label": "Websites" }
+    },
+    {
+      "id": "data-update",
+      "title": "Data update",
+      "navigation": { "kind": "direct", "label": "Data update" }
+    },
+    {
+      "id": "my-account",
+      "title": "My Account",
+      "navigation": { "kind": "account", "label": "My Account" }
+    }
+  ],
+  "settingsSections": [
+    "Notificaciones",
+    "Inventario y catálogos",
+    "Tipos de gastos",
+    "Competiciones",
+    "Clientes y procedencias",
+    "Cortesías de bienvenida",
+    "Precios y autorización",
+    "Diseño de ticket",
+    "Métodos de pago",
+    "Vouchers promocionales"
+  ],
+  "reportDefinitions": [
+    { "group": "Reportes de ventas", "label": "Detalle de ventas" },
+    { "group": "Reportes de ventas", "label": "Conciliación bancaria" },
+    { "group": "Reportes de ventas", "label": "Productos vendidos" },
+    { "group": "Reportes de ventas", "label": "Ventas por empleados" },
+    { "group": "Reportes de ventas", "label": "Movimientos de efectivo" },
+    { "group": "Reportes de mercancía", "label": "Resumen de mercancía" },
+    {
+      "group": "Reportes de mercancía",
+      "label": "Altas, bajas y transferencias"
+    },
+    { "group": "Reportes de mercancía", "label": "Rentabilidad y demanda" },
+    { "group": "Reportes de empleados", "label": "Desempeño por vendedor" },
+    { "group": "Reportes de empleados", "label": "Días y productividad" },
+    { "group": "Reportes de clientes", "label": "Comportamiento de clientes" }
+  ],
+  "warehouseTabs": [
+    { "screen": "warehouse", "label": "Inventario en bodega" },
+    { "screen": "warehouse", "label": "Pedidos a proveedores" },
+    { "screen": "warehouse", "label": "Ingreso de mercancía" },
+    { "screen": "warehouse", "label": "Solicitudes de sucursales" },
+    { "screen": "warehouse", "label": "Envíos" },
+    { "screen": "warehouse", "label": "Listas de precios" },
+    { "screen": "warehouse", "label": "Reporte general" },
+    { "screen": "branch-inventory", "label": "Solicitar productos" },
+    { "screen": "branch-inventory", "label": "Solicitar testers" },
+    { "screen": "branch-inventory", "label": "Solicitar insumos" }
+  ],
+  "variants": [
+    {
+      "id": "shell.sidebar.collapsed",
+      "screen": "dashboard",
+      "viewport": "desktop",
+      "actions": [{ "kind": "click", "selector": ".sidebar-toggle" }]
+    },
+    {
+      "id": "shell.sidebar.pinned",
+      "screen": "dashboard",
+      "viewport": "desktop",
+      "actions": [{ "kind": "click", "selector": ".sidebar-pin" }]
+    },
+    {
+      "id": "shell.notifications.open",
+      "screen": "dashboard",
+      "viewport": "desktop",
+      "actions": [
+        { "kind": "click", "selector": ".header-notification-button" }
+      ]
+    },
+    {
+      "id": "shell.session-exit.dialog",
+      "screen": "dashboard",
+      "viewport": "desktop",
+      "actions": [
+        { "kind": "click", "selector": ".sidebar-session-exit-button" }
+      ]
+    },
+    {
+      "id": "shell.location-switch.dialog",
+      "screen": "dashboard",
+      "viewport": "desktop",
+      "actions": [{ "kind": "click", "selector": ".sidebar-location-switch" }]
+    },
+    {
+      "id": "sale.product.dialog",
+      "screen": "sale",
+      "viewport": "desktop",
+      "actions": [{ "kind": "click", "selector": ".product-card", "index": 0 }]
+    },
+    {
+      "id": "sale.cart.populated",
+      "screen": "sale",
+      "viewport": "desktop",
+      "actions": [
+        { "kind": "click", "selector": ".product-card", "index": 0 },
+        { "kind": "clickText", "text": "Añadir al carrito" }
+      ]
+    },
+    {
+      "id": "sale.checkout.dialog",
+      "screen": "sale",
+      "viewport": "desktop",
+      "actions": [
+        { "kind": "click", "selector": ".product-card", "index": 0 },
+        { "kind": "clickText", "text": "Añadir al carrito" },
+        { "kind": "clickText", "text": "Finalizar ticket" }
+      ]
+    },
+    {
+      "id": "sale.discount.dialog",
+      "screen": "sale",
+      "viewport": "desktop",
+      "actions": [
+        { "kind": "click", "selector": ".product-card", "index": 0 },
+        { "kind": "clickText", "text": "Añadir al carrito" },
+        {
+          "kind": "clickLabel",
+          "label": "Abrir descuento promocional"
+        }
+      ]
+    },
+    {
+      "id": "sale.deals.dialog",
+      "screen": "sale",
+      "viewport": "desktop",
+      "actions": [
+        { "kind": "clickLabel", "label": "Abrir paquetes disponibles" }
+      ]
+    },
+    {
+      "id": "sale.search.empty",
+      "screen": "sale",
+      "viewport": "mobile",
+      "actions": [
+        {
+          "kind": "fillLabel",
+          "label": "Buscar producto por nombre o SKU",
+          "value": "SIN-COINCIDENCIAS-RV0"
+        }
+      ]
+    },
+    {
+      "id": "seller-sales.clients",
+      "screen": "seller-sales",
+      "viewport": "desktop",
+      "actions": [
+        {
+          "kind": "fillSellerSecret",
+          "label": "Clave para consultar ventas del vendedor"
+        },
+        { "kind": "clickText", "text": "Consultar" },
+        { "kind": "clickText", "text": "Mis clientes e historial" }
+      ]
+    },
+    {
+      "id": "receipts.preview.dialog",
+      "screen": "receipts",
+      "viewport": "desktop",
+      "actions": [{ "kind": "clickPrefixLabel", "label": "Visualizar ticket" }]
+    },
+    {
+      "id": "receipts.edit.dialog",
+      "screen": "receipts",
+      "viewport": "desktop",
+      "actions": [
+        {
+          "kind": "fillSecret",
+          "label": "Código master para historial de Receipts"
+        },
+        { "kind": "clickText", "text": "Ver historial" },
+        { "kind": "clickPrefixLabel", "label": "Editar ticket" }
+      ]
+    },
+    {
+      "id": "receipts.cancel.dialog",
+      "screen": "receipts",
+      "viewport": "desktop",
+      "actions": [
+        {
+          "kind": "fillSecret",
+          "label": "Código master para historial de Receipts"
+        },
+        { "kind": "clickText", "text": "Ver historial" },
+        { "kind": "clickPrefixLabel", "label": "Cancelar ticket" }
+      ]
+    },
+    {
+      "id": "receipts.print-media",
+      "screen": "receipts",
+      "viewport": "desktop",
+      "media": "print",
+      "actions": [{ "kind": "clickPrefixLabel", "label": "Visualizar ticket" }]
+    },
+    {
+      "id": "customers.seller-gate",
+      "screen": "customers",
+      "viewport": "desktop",
+      "actions": [{ "kind": "clickText", "text": "Vendedor o master" }]
+    },
+    {
+      "id": "customers.bulk-import.dialog",
+      "screen": "customers",
+      "viewport": "desktop",
+      "actions": [{ "kind": "clickText", "text": "Carga masiva" }]
+    },
+    {
+      "id": "appointments.courtesies",
+      "screen": "appointments",
+      "viewport": "desktop",
+      "actions": [
+        {
+          "kind": "clickText",
+          "text": "Cortesías",
+          "selector": ".appointment-filter-tabs button"
+        }
+      ]
+    },
+    {
+      "id": "appointments.next-sessions",
+      "screen": "appointments",
+      "viewport": "desktop",
+      "actions": [
+        {
+          "kind": "clickText",
+          "text": "Próximas sesiones",
+          "selector": ".appointment-filter-tabs button"
+        }
+      ]
+    },
+    {
+      "id": "appointments.empty",
+      "screen": "appointments",
+      "viewport": "desktop",
+      "actions": [
+        {
+          "kind": "clickText",
+          "text": "Sin cita",
+          "selector": ".appointment-filter-tabs button"
+        }
+      ]
+    },
+    {
+      "id": "catalog.theme.noir",
+      "screen": "catalog",
+      "viewport": "desktop",
+      "actions": [
+        {
+          "kind": "clickText",
+          "text": "Noir",
+          "selector": ".digital-catalog-theme-picker button"
+        }
+      ]
+    },
+    {
+      "id": "catalog.theme.mineral",
+      "screen": "catalog",
+      "viewport": "desktop",
+      "actions": [
+        {
+          "kind": "clickText",
+          "text": "Galería Mineral",
+          "selector": ".digital-catalog-theme-picker button"
+        }
+      ]
+    },
+    {
+      "id": "catalog.theme.rose",
+      "screen": "catalog",
+      "viewport": "desktop",
+      "actions": [
+        {
+          "kind": "clickText",
+          "text": "Maison Rosé",
+          "selector": ".digital-catalog-theme-picker button"
+        }
+      ]
+    },
+    {
+      "id": "catalog.page.next",
+      "screen": "catalog",
+      "viewport": "desktop",
+      "actions": [{ "kind": "clickLabel", "label": "Página siguiente" }]
+    },
+    {
+      "id": "catalog.presentation.locked",
+      "screen": "catalog",
+      "viewport": "desktop",
+      "actions": [{ "kind": "clickText", "text": "Presentar y bloquear" }]
+    },
+    {
+      "id": "catalog.presentation.unlock-dialog",
+      "screen": "catalog",
+      "viewport": "desktop",
+      "actions": [
+        { "kind": "clickText", "text": "Presentar y bloquear" },
+        { "kind": "clickLabel", "label": "Desbloquear catálogo" }
+      ]
+    },
+    {
+      "id": "inventory.product.dialog",
+      "screen": "inventory",
+      "viewport": "desktop",
+      "actions": [
+        {
+          "kind": "clickText",
+          "selector": ".catalog-add-menu-wrap > button",
+          "text": "Agregar"
+        },
+        {
+          "kind": "clickText",
+          "selector": ".catalog-add-menu button",
+          "text": "Producto o servicio"
+        }
+      ]
+    },
+    {
+      "id": "inventory.order.menu",
+      "screen": "inventory",
+      "viewport": "desktop",
+      "actions": [{ "kind": "clickText", "text": "Generar pedido" }]
+    },
+    {
+      "id": "suppliers.new.dialog",
+      "screen": "suppliers",
+      "viewport": "desktop",
+      "actions": [{ "kind": "clickText", "text": "Nuevo proveedor" }]
+    },
+    {
+      "id": "deals.new.dialog",
+      "screen": "deals",
+      "viewport": "desktop",
+      "actions": [
+        {
+          "kind": "fillSecret",
+          "label": "Código master para Paquetes y promociones"
+        },
+        { "kind": "clickText", "text": "Desbloquear" },
+        { "kind": "clickText", "text": "Nuevo paquete" }
+      ]
+    },
+    {
+      "id": "employees.authorized",
+      "screen": "employees",
+      "viewport": "desktop",
+      "actions": [
+        { "kind": "fillSecret", "label": "Código master para Employees" },
+        { "kind": "clickText", "text": "Acceder" }
+      ]
+    },
+    {
+      "id": "employees.new-seller.dialog",
+      "screen": "employees",
+      "viewport": "desktop",
+      "actions": [
+        { "kind": "fillSecret", "label": "Código master para Employees" },
+        { "kind": "clickText", "text": "Acceder" },
+        { "kind": "clickText", "text": "Registrar vendedor" }
+      ]
+    },
+    {
+      "id": "employees.new-role.dialog",
+      "screen": "employees",
+      "viewport": "desktop",
+      "actions": [
+        { "kind": "fillSecret", "label": "Código master para Employees" },
+        { "kind": "clickText", "text": "Acceder" },
+        { "kind": "clickText", "text": "Registrar rol" }
+      ]
+    },
+    {
+      "id": "competition.settings.dialog",
+      "screen": "competition",
+      "viewport": "desktop",
+      "actions": [{ "kind": "clickText", "text": "Configurar" }]
+    },
+    {
+      "id": "close-day.authorization.dialog",
+      "screen": "close-day",
+      "viewport": "desktop",
+      "actions": [{ "kind": "clickText", "text": "Cerrar día" }]
+    },
+    {
+      "id": "close-day.print-media",
+      "screen": "close-day",
+      "viewport": "desktop",
+      "media": "print",
+      "actions": []
+    },
+    {
+      "id": "cash-manager.authorization-reminder",
+      "screen": "cash-manager",
+      "viewport": "desktop",
+      "actions": [
+        {
+          "kind": "fillLabel",
+          "label": "Alias de acceso de Cash Manager",
+          "value": "master"
+        },
+        {
+          "kind": "fillSecret",
+          "label": "Código de empleado para Cash Manager"
+        },
+        { "kind": "clickText", "text": "Ingresar" },
+        { "kind": "clickText", "text": "Registrar gasto" }
+      ]
+    },
+    {
+      "id": "my-account.default",
+      "screen": "my-account",
+      "viewport": "mobile",
+      "actions": []
+    },
+    {
+      "id": "settings.scroll-end",
+      "screen": "settings",
+      "viewport": "desktop",
+      "actions": [{ "kind": "scrollEnd" }]
+    },
+    {
+      "id": "reports.scroll-end",
+      "screen": "reports",
+      "viewport": "desktop",
+      "actions": [{ "kind": "scrollEnd" }]
+    },
+    {
+      "id": "customers.scroll-end",
+      "screen": "customers",
+      "viewport": "mobile",
+      "actions": [{ "kind": "scrollEnd" }]
+    }
+  ],
+  "breakpointScenarios": [
+    {
+      "id": "breakpoint.sidebar.above",
+      "screen": "dashboard",
+      "viewport": "sidebar-above"
+    },
+    {
+      "id": "breakpoint.sidebar.at",
+      "screen": "dashboard",
+      "viewport": "tablet"
+    },
+    {
+      "id": "breakpoint.sidebar.below",
+      "screen": "dashboard",
+      "viewport": "sidebar-below"
+    },
+    {
+      "id": "breakpoint.compact.above",
+      "stage": "LOGIN",
+      "viewport": "compact-above"
+    },
+    {
+      "id": "breakpoint.compact.at",
+      "stage": "LOGIN",
+      "viewport": "compact-at"
+    },
+    {
+      "id": "breakpoint.compact.below",
+      "stage": "LOGIN",
+      "viewport": "compact-below"
+    },
+    {
+      "id": "breakpoint.narrow.above",
+      "screen": "catalog",
+      "viewport": "narrow-above"
+    },
+    {
+      "id": "breakpoint.narrow.at",
+      "screen": "catalog",
+      "viewport": "narrow-at"
+    },
+    {
+      "id": "breakpoint.narrow.below",
+      "screen": "catalog",
+      "viewport": "narrow-below"
+    },
+    {
+      "id": "breakpoint.phone.above",
+      "screen": "customers",
+      "viewport": "phone-above"
+    },
+    {
+      "id": "breakpoint.phone.at",
+      "screen": "customers",
+      "viewport": "phone-at"
+    },
+    {
+      "id": "breakpoint.phone.below",
+      "screen": "customers",
+      "viewport": "phone-below"
+    },
+    {
+      "id": "breakpoint.short.above",
+      "screen": "sale",
+      "viewport": "short-above"
+    },
+    { "id": "breakpoint.short.at", "screen": "sale", "viewport": "short-at" },
+    {
+      "id": "breakpoint.short.below",
+      "screen": "sale",
+      "viewport": "short-below"
+    }
+  ],
+  "interactionTimings": [
+    {
+      "id": "sidebar-collapse",
+      "trigger": ".sidebar-toggle",
+      "durationMs": 220,
+      "verification": "geometry-and-focus"
+    },
+    {
+      "id": "sidebar-auto-collapse",
+      "trigger": "pointer-idle",
+      "durationMs": 20000,
+      "verification": "state-after-time"
+    },
+    {
+      "id": "catalog-page-turn",
+      "trigger": "Página siguiente",
+      "durationMs": 560,
+      "verification": "start-mid-end"
+    },
+    {
+      "id": "dialog-open",
+      "trigger": "dialog-action",
+      "durationMs": 200,
+      "verification": "focus-trap-and-overlay"
+    },
+    {
+      "id": "master-timeout",
+      "trigger": "protected-module-idle",
+      "durationMs": 180000,
+      "verification": "locked-state"
+    },
+    {
+      "id": "data-sync-countdown",
+      "trigger": "session-open",
+      "durationMs": 300000,
+      "verification": "fixed-clock-manual-tick"
+    }
+  ],
+  "nonScreenshotArtifacts": [
+    {
+      "id": "print.ticket",
+      "source": "ReceiptTicketDialog",
+      "format": "thermal-print-css",
+      "phase": "RV0",
+      "status": "scenario-assigned"
+    },
+    {
+      "id": "print.close-day",
+      "source": "renderCloseDay",
+      "format": "print-css",
+      "phase": "RV0",
+      "status": "scenario-assigned"
+    },
+    {
+      "id": "print.customer-file",
+      "source": "CustomersView",
+      "format": "popup-html",
+      "phase": "RV0",
+      "status": "scenario-assigned"
+    },
+    {
+      "id": "export.reports",
+      "source": "ReportsView",
+      "format": "PDF/XLSX",
+      "phase": "RV0",
+      "status": "scenario-assigned"
+    },
+    {
+      "id": "export.memberships",
+      "source": "MembershipsView",
+      "format": "PDF/XLSX",
+      "phase": "RV0",
+      "status": "scenario-assigned"
+    },
+    {
+      "id": "export.inventory",
+      "source": "CatalogView/WarehouseView/InventoryMovementsView",
+      "format": "PDF/XLSX/print",
+      "phase": "RV0",
+      "status": "scenario-assigned"
+    },
+    {
+      "id": "export.customer-birthday",
+      "source": "CustomersView",
+      "format": "PNG",
+      "phase": "RV0",
+      "status": "scenario-assigned"
+    }
+  ]
+}

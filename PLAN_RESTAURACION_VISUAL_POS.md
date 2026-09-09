@@ -1,7 +1,7 @@
 # Plan por fases: visual aprobado del POS y reutilización del backend
 
 > Fecha: 2026-09-08.
-> Estado: planeación; ninguna fase de implementación ejecutada por la creación de este documento.
+> Estado: RV0 completada con baseline canónico de 208 capturas; RV1–RV10 pendientes.
 > Referencia visual única: `feature/pos` en `12fb8045cc264b565cb6e764d95ad7b2447fbfa1`.
 > Objetivo: reproducir íntegramente esa interfaz, conectar sus operaciones al backend reutilizable y adaptar, sustituir o eliminar las implementaciones incompatibles. Nunca modificar el visual para acomodarlo al backend.
 
@@ -21,13 +21,13 @@ Este documento gobierna la restauración y prevalece sobre recomendaciones visua
 
 ## 2. Referencias y hallazgos de partida
 
-| Referencia | Uso |
-| --- | --- |
-| `12fb8045cc264b565cb6e764d95ad7b2447fbfa1` | Fuente visual y de interacción obligatoria; rama `feature/pos` verificada mediante MCP de GitHub el 2026-09-08. |
+| Referencia                                 | Uso                                                                                                                                     |
+| ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `12fb8045cc264b565cb6e764d95ad7b2447fbfa1` | Fuente visual y de interacción obligatoria; rama `feature/pos` verificada mediante MCP de GitHub el 2026-09-08.                         |
 | `6097a4b9a4d5bce38042fc9a5380a008f4a22478` | Estado de backend/integración analizado en `feature/pos-frontend-clean`; registrar el SHA efectivo nuevamente al comenzar la ejecución. |
-| `070e62f252736d50ed8134a4f6908231534f1f63` | Integró las novedades de `feature/pos` hasta `866ff7e`; sirve para rastrear diferencias, no como baseline visual. |
-| `PLAN_BACKEND_POS.md` | Historial de fases 0–14, contratos, entidades y verificaciones pendientes. |
-| `apps/pos/archivo.md` en `12fb804` | Referencia funcional complementaria; el renderizado del SHA objetivo determina la presentación. |
+| `070e62f252736d50ed8134a4f6908231534f1f63` | Integró las novedades de `feature/pos` hasta `866ff7e`; sirve para rastrear diferencias, no como baseline visual.                       |
+| `PLAN_BACKEND_POS.md`                      | Historial de fases 0–14, contratos, entidades y verificaciones pendientes.                                                              |
+| `apps/pos/archivo.md` en `12fb804`         | Referencia funcional complementaria; el renderizado del SHA objetivo determina la presentación.                                         |
 
 Hallazgos comprobados durante el análisis previo:
 
@@ -64,14 +64,14 @@ Separar, cuando sea necesario y sin alterar el DOM visible, la carga de datos, c
 
 Cada capacidad debe clasificarse con evidencia:
 
-| Clasificación | Decisión |
-| --- | --- |
-| Reutilizable | Conservar contrato/servicio y conectarlo al control original. |
-| Adaptable | Cambiar DTO, servicio, endpoint o adaptador para que la operación funcione con los campos y flujo aprobados. |
-| Faltante | Implementar el soporte necesario para una operación existente en la interfaz objetivo. |
-| Incompatible y reemplazable | Implementar el reemplazo, migrar consumidores y retirar la implementación anterior. |
-| Incompatible y sin uso | Eliminar código, rutas, tipos, permisos técnicos y dependencias exclusivamente sobrantes después de comprobar consumidores y datos. |
-| Conflicto sin solución definida | Registrar el impedimento específico; no modificar el visual para ocultarlo ni cerrar la fase. |
+| Clasificación                   | Decisión                                                                                                                            |
+| ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| Reutilizable                    | Conservar contrato/servicio y conectarlo al control original.                                                                       |
+| Adaptable                       | Cambiar DTO, servicio, endpoint o adaptador para que la operación funcione con los campos y flujo aprobados.                        |
+| Faltante                        | Implementar el soporte necesario para una operación existente en la interfaz objetivo.                                              |
+| Incompatible y reemplazable     | Implementar el reemplazo, migrar consumidores y retirar la implementación anterior.                                                 |
+| Incompatible y sin uso          | Eliminar código, rutas, tipos, permisos técnicos y dependencias exclusivamente sobrantes después de comprobar consumidores y datos. |
+| Conflicto sin solución definida | Registrar el impedimento específico; no modificar el visual para ocultarlo ni cerrar la fase.                                       |
 
 No tener representación visual no convierte automáticamente una pieza en incompatible. Auditoría, idempotencia, conciliación, aislamiento de sucursales, protección de costos y proyecciones financieras pueden ser necesarias detrás de una pantalla idéntica.
 
@@ -79,21 +79,21 @@ La eliminación autorizada se refiere a implementaciones incompatibles dentro de
 
 ## 5. Fases de ejecución
 
-Todas las fases siguientes están pendientes. Su numeración `RV` es independiente de las fases históricas 0–14. Cada fase registra SHA inicial/final, archivos, operaciones conectadas, evidencia visual, pruebas ejecutadas, pendientes y partes retiradas. La finalización exige tanto fidelidad visual como funcionamiento del alcance de esa fase.
+RV0 quedó completada el 2026-09-08 con 208 capturas canónicas generadas desde la referencia aislada; RV1–RV10 siguen pendientes. Su numeración `RV` es independiente de las fases históricas 0–14. Cada fase registra SHA inicial/final, archivos, operaciones conectadas, evidencia visual, pruebas ejecutadas, pendientes y partes retiradas. La finalización exige tanto fidelidad visual como funcionamiento del alcance de esa fase.
 
 ### RV0 — Congelar la referencia y construir evidencia reproducible
 
-- [ ] Confirmar mediante MCP de GitHub el SHA objetivo, su árbol y antecedentes; fijar el SHA efectivo del backend de partida.
-- [ ] Preparar referencia aislada y candidato con versiones registradas de Node, pnpm, navegador/Electron, lockfile, fuentes y assets. Identificar diferencias de runtime que puedan afectar renderizado.
-- [ ] Inventariar todas las pantallas y variantes de `12fb804`, incluidos accesos protegidos, estados vacíos, formularios, modales y salidas impresas. Asignar un identificador a cada escenario.
-- [ ] Crear datos sintéticos reproducibles, reloj y configuración fijos. Aislar estos fixtures de cualquier BD operativa y de la compilación productiva.
-- [ ] Capturar referencias iniciales en escritorio `1440×900`, tablet `920×900`, móvil `390×844` y ancho mínimo `320px`; añadir anchos a ambos lados de breakpoints relevantes y los anchos reales de terminal que se conozcan.
-- [ ] Registrar recorridos de interacción y tiempos para navegación, animaciones y catálogo. Las capturas estáticas no sustituyen esas comprobaciones.
-- [ ] Versionar el manifiesto de escenarios y las capturas con el SHA de procedencia; no generarlas desde el candidato restaurado.
+- [x] Confirmar mediante MCP de GitHub el SHA objetivo, su árbol y antecedentes; fijar el SHA efectivo del backend de partida.
+- [x] Preparar referencia aislada y candidato con versiones registradas de Node, pnpm, navegador/Electron, lockfile, fuentes y assets. Identificar diferencias de runtime que puedan afectar renderizado.
+- [x] Inventariar todas las pantallas y variantes de `12fb804`, incluidos accesos protegidos, estados vacíos, formularios, modales y salidas impresas. Asignar un identificador a cada escenario.
+- [x] Crear datos sintéticos reproducibles, reloj y configuración fijos. Aislar estos fixtures de cualquier BD operativa y de la compilación productiva.
+- [x] Capturar referencias iniciales en escritorio `1440×900`, tablet `920×900`, móvil `390×844` y ancho mínimo `320px`; añadir anchos a ambos lados de breakpoints relevantes y los anchos reales de terminal que se conozcan. Se generaron 208 capturas, incluidas sondas adyacentes a `920`, `720`, `640` y `420` px y a `760` px de alto. Los tamaños físicos de terminal aún no conocidos se añadirán cuando Operación los entregue.
+- [x] Registrar recorridos de interacción y tiempos para navegación, animaciones y catálogo. Las capturas estáticas no sustituyen esas comprobaciones.
+- [x] Versionar el manifiesto de escenarios y las capturas con el SHA de procedencia; no generarlas desde el candidato restaurado. Los 208 PNG y `capture-index.json` se publicaron atómicamente bajo el SHA completo `12fb8045cc264b565cb6e764d95ad7b2447fbfa1`.
 
-**Entregables:** `docs/POS_VISUAL_BASELINE.md`, inventario y evidencia de referencia, arnés reproducible de comparación. Estos archivos y pruebas se crearán al ejecutar la fase.
+**Entregables:** `docs/POS_VISUAL_BASELINE.md`, los manifiestos en `apps/e2e/pos-visual`, el capturador/validador/comparador en `apps/e2e/scripts` y el baseline completo en `docs/artifacts/pos-visual-baseline/12fb8045cc264b565cb6e764d95ad7b2447fbfa1/reference`.
 
-**Cierre:** la referencia puede reproducirse y cada pantalla objetivo tiene escenario asignado. Si el snapshot no compila, documentar la causa y cualquier corrección técnica mínima necesaria para ejecutarlo; no «corregir» su diseño ni declarar una captura inexistente como validada.
+**Cierre:** completada. La referencia compiló sin correcciones y Chromium `148.0.7778.96` produjo 208/208 capturas con Node `22.23.2`; el índice registra SHA, runtime, dimensiones y hash individual, y la verificación posterior confirmó cero hashes inválidos. Cada pantalla objetivo tiene escenario asignado y el arnés falla de forma cerrada si la fuente no corresponde al SHA. La validación Electron y los tamaños físicos de terminal permanecen como gates posteriores de hardware/operación, no como bloqueantes del baseline RV0.
 
 ### RV1 — Auditar la correspondencia interfaz–backend y las incompatibilidades
 
@@ -263,3 +263,12 @@ pnpm test:ui:visual
 - Nueva decisión: preservar íntegramente el visual de `12fb8045cc264b565cb6e764d95ad7b2447fbfa1`, con todas sus pantallas y ampliaciones ya incluidas.
 - Impacto: adaptar el backend al visual; reutilizar lo compatible, desarrollar lo necesario y retirar lo incompatible. No inventar otro diseño ni forzar formularios para ajustarlos a contratos existentes.
 - Alcance de esta entrega: documento de fases y actualización de referencias de proyecto. No implementa la restauración, no elimina backend, no aplica migraciones ni despliega.
+
+### RV-D2 — RV0 usa evidencia atómica y fail-closed
+
+- Fecha: 2026-09-08.
+- Backend de partida efectivo: `e57b9ee9d48519cb762ca2d9294496abe93ce81e` en `feature/pos-frontend-clean`.
+- Decisión: extraer `12fb804` con `git archive`, compilarlo offline y validar blobs/hashes antes de capturar. El fixture congela reloj, zona, locale, aleatoriedad y red; las credenciales demostrativas históricas se descubren sólo en memoria y se redactan de la evidencia.
+- Cobertura: 25 pantallas, 10 secciones de Settings, 11 reportes, 10 vistas de bodega, estados protegidos/impresos y matriz base `1440×900`, `920×900`, `390×844`, `320×844`, más sondas adyacentes a breakpoints críticos.
+- Resultado local: type-check y build Vite correctos. Los intentos iniciales en la sesión restringida bloquearon Chromium/Google Chrome antes de abrir una página y no publicaron evidencia parcial; al reiniciar con Full Access, Chromium `148.0.7778.96` completó y publicó atómicamente las 208 capturas.
+- Estado: RV0 completada. RV2 ya dispone del conjunto canónico versionado bajo el SHA aprobado para comparar el candidato.

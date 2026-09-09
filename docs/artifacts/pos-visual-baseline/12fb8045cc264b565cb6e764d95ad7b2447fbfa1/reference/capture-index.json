@@ -1,0 +1,2103 @@
+{
+  "schemaVersion": 1,
+  "mode": "reference",
+  "sourceSha": "12fb8045cc264b565cb6e764d95ad7b2447fbfa1",
+  "referenceSha": "12fb8045cc264b565cb6e764d95ad7b2447fbfa1",
+  "fixedInstant": "2026-09-08T17:00:00.000Z",
+  "locale": "es-MX",
+  "timezone": "America/Mexico_City",
+  "browser": "chromium",
+  "browserVersion": "148.0.7778.96",
+  "playwright": "1.60.0",
+  "nodeVersion": "v22.23.2",
+  "packageManager": "pnpm/10.0.0 npm/? node/v22.23.2 linux x64",
+  "deviceScaleFactor": 1,
+  "colorScheme": "light",
+  "reducedMotion": "reduce",
+  "fixtureSha256": "58c55240a2565d6a06929f0060089313fbb35ed6d6b383b618701ee28a4f30be",
+  "scenarioManifestSha256": "3cc0090c4892f1739d11d0559de644d32b08309d96f523276423e590ea0fb851",
+  "referenceSourceSnapshotSha256": "f521555a6a409cc20a433ff94741febfce51dfbbe27dac583d2a727b1b49a937",
+  "sensitiveContentRedacted": true,
+  "captures": [
+    {
+      "id": "access.login.default",
+      "screen": null,
+      "stage": "LOGIN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "access.login.default--desktop.png",
+      "sha256": "50fbe7fa6e86fcfacaea92e5cd88038ca149adfcee9041510ebfe940cd99da4c"
+    },
+    {
+      "id": "access.login.default",
+      "screen": null,
+      "stage": "LOGIN",
+      "viewport": "tablet",
+      "width": 920,
+      "height": 900,
+      "file": "access.login.default--tablet.png",
+      "sha256": "ad92e74162526f3aac2686a12dd2df9b5f84998296e87d47d8de34b5acbc3dd5"
+    },
+    {
+      "id": "access.login.default",
+      "screen": null,
+      "stage": "LOGIN",
+      "viewport": "mobile",
+      "width": 390,
+      "height": 844,
+      "file": "access.login.default--mobile.png",
+      "sha256": "0776ef4ac4594d213d0310418916d2f5f960c7899e075da4cf40844d30a4fca1"
+    },
+    {
+      "id": "access.login.default",
+      "screen": null,
+      "stage": "LOGIN",
+      "viewport": "minimum",
+      "width": 320,
+      "height": 844,
+      "file": "access.login.default--minimum.png",
+      "sha256": "7bf40e826f1f5e3c6fe0c6907a3de50b91169a3a39a00673b843851b8906a106"
+    },
+    {
+      "id": "access.login.error",
+      "screen": null,
+      "stage": "LOGIN_ERROR",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "access.login.error--desktop.png",
+      "sha256": "5245d1067a4f50224f795b29caccea37cc3a1f9167e67d151730128b9f3a335d"
+    },
+    {
+      "id": "access.login.error",
+      "screen": null,
+      "stage": "LOGIN_ERROR",
+      "viewport": "mobile",
+      "width": 390,
+      "height": 844,
+      "file": "access.login.error--mobile.png",
+      "sha256": "7237f87c0a2cfc8755c2a4b65dc5d20c26c6f294185f010d01e4127614fa4573"
+    },
+    {
+      "id": "access.connectivity.online",
+      "screen": null,
+      "stage": "CONNECTIVITY_NOTICE",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "access.connectivity.online--desktop.png",
+      "sha256": "d34fefb5792b49119b4b494d32e6c55416f9d0b8ce093c0da7e14f64e77b902d"
+    },
+    {
+      "id": "access.connectivity.online",
+      "screen": null,
+      "stage": "CONNECTIVITY_NOTICE",
+      "viewport": "mobile",
+      "width": 390,
+      "height": 844,
+      "file": "access.connectivity.online--mobile.png",
+      "sha256": "4b1f9e55bba4f69860aeded3d2d8d5cfdfb9216cc901179261d922fd3e310f4e"
+    },
+    {
+      "id": "access.connectivity.offline",
+      "screen": null,
+      "stage": "CONNECTIVITY_NOTICE",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "access.connectivity.offline--desktop.png",
+      "sha256": "9ce6a07750aceffb2ccbf40cc4ab1a96e1702e5c51830eb5d8341749fe8999c2"
+    },
+    {
+      "id": "access.connectivity.offline",
+      "screen": null,
+      "stage": "CONNECTIVITY_NOTICE",
+      "viewport": "mobile",
+      "width": 390,
+      "height": 844,
+      "file": "access.connectivity.offline--mobile.png",
+      "sha256": "3574168bf9d944b987f12bbbea42ae434aeffe5e4951caad5b4c1ce8f170938c"
+    },
+    {
+      "id": "access.opening-count.default",
+      "screen": null,
+      "stage": "OPENING_COUNT",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "access.opening-count.default--desktop.png",
+      "sha256": "f64a97512366ae3be233b95d042fa9d65b0bc9502b28aff87441f5efb7183694"
+    },
+    {
+      "id": "access.opening-count.default",
+      "screen": null,
+      "stage": "OPENING_COUNT",
+      "viewport": "tablet",
+      "width": 920,
+      "height": 900,
+      "file": "access.opening-count.default--tablet.png",
+      "sha256": "bdad7eb86153ad3e7ee70cd94acc9dc4f6d50a10ddbaef91b958b7bc75400b0c"
+    },
+    {
+      "id": "access.opening-count.default",
+      "screen": null,
+      "stage": "OPENING_COUNT",
+      "viewport": "mobile",
+      "width": 390,
+      "height": 844,
+      "file": "access.opening-count.default--mobile.png",
+      "sha256": "b19d60afadce8ff8114bc72f44fd11565f51049958412004ef7642742893f503"
+    },
+    {
+      "id": "access.opening-count.default",
+      "screen": null,
+      "stage": "OPENING_COUNT",
+      "viewport": "minimum",
+      "width": 320,
+      "height": 844,
+      "file": "access.opening-count.default--minimum.png",
+      "sha256": "d24fb3af637d11a465972eedc564cf9df4542cdf5b218dc0709b193ddc57d5f9"
+    },
+    {
+      "id": "access.opening-count.confirmation",
+      "screen": null,
+      "stage": "OPENING_COUNT_CONFIRMATION",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "access.opening-count.confirmation--desktop.png",
+      "sha256": "1251b739a4f762490b2f367b0a230b176757863960e9776bc49a98b582a055b6"
+    },
+    {
+      "id": "access.opening-count.confirmation",
+      "screen": null,
+      "stage": "OPENING_COUNT_CONFIRMATION",
+      "viewport": "mobile",
+      "width": 390,
+      "height": 844,
+      "file": "access.opening-count.confirmation--mobile.png",
+      "sha256": "36a4f27c5ec26c07b17a85685badf35bf5b24937d50a0a3bd9a6f1d7ad641155"
+    },
+    {
+      "id": "access.closing-count.default",
+      "screen": null,
+      "stage": "CLOSING_COUNT",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "access.closing-count.default--desktop.png",
+      "sha256": "b46927afee5a26c1a120cacb1e44cfdc3e458545ce1c71eb464d5c50b28a4fbf"
+    },
+    {
+      "id": "access.closing-count.default",
+      "screen": null,
+      "stage": "CLOSING_COUNT",
+      "viewport": "tablet",
+      "width": 920,
+      "height": 900,
+      "file": "access.closing-count.default--tablet.png",
+      "sha256": "4bbc324bf3d344fc3ff27fae25bd99bc960ec97e592447221ef5739f51f31301"
+    },
+    {
+      "id": "access.closing-count.default",
+      "screen": null,
+      "stage": "CLOSING_COUNT",
+      "viewport": "mobile",
+      "width": 390,
+      "height": 844,
+      "file": "access.closing-count.default--mobile.png",
+      "sha256": "5d0851ed924256ec17e6c81246bc49a0e0213a8f2c70f7d1a39ff72f58c5d5fb"
+    },
+    {
+      "id": "access.closing-count.default",
+      "screen": null,
+      "stage": "CLOSING_COUNT",
+      "viewport": "minimum",
+      "width": 320,
+      "height": 844,
+      "file": "access.closing-count.default--minimum.png",
+      "sha256": "57558d3534ab56ddc38933f0fe5b20be258458503f8db23697943b9466a9b0ac"
+    },
+    {
+      "id": "screen.dashboard.default",
+      "screen": "dashboard",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "screen.dashboard.default--desktop.png",
+      "sha256": "507026a27cd1f7d56d214021b2e3a0bec8bd43ae26f73fca62f6d71ef0c830a1"
+    },
+    {
+      "id": "screen.dashboard.default",
+      "screen": "dashboard",
+      "stage": "OPEN",
+      "viewport": "tablet",
+      "width": 920,
+      "height": 900,
+      "file": "screen.dashboard.default--tablet.png",
+      "sha256": "716ca0add94bb4148711c2d5329973b0561994d8e6a3c5620aa047c333af351d"
+    },
+    {
+      "id": "screen.dashboard.default",
+      "screen": "dashboard",
+      "stage": "OPEN",
+      "viewport": "mobile",
+      "width": 390,
+      "height": 844,
+      "file": "screen.dashboard.default--mobile.png",
+      "sha256": "703f83f46d89c12ecb5c3bba9ce54ba4b5ed6ea6c88f1bf9b4926154fed6322f"
+    },
+    {
+      "id": "screen.dashboard.default",
+      "screen": "dashboard",
+      "stage": "OPEN",
+      "viewport": "minimum",
+      "width": 320,
+      "height": 844,
+      "file": "screen.dashboard.default--minimum.png",
+      "sha256": "fec1dfbdc1e3506db03aeef77dd6e462c6db7aae55fc14a231f2892917a29c9c"
+    },
+    {
+      "id": "screen.sale.default",
+      "screen": "sale",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "screen.sale.default--desktop.png",
+      "sha256": "7adaae44125a0bf3ee18c848f19d84867dea4e4388719c611c7d799893845838"
+    },
+    {
+      "id": "screen.sale.default",
+      "screen": "sale",
+      "stage": "OPEN",
+      "viewport": "tablet",
+      "width": 920,
+      "height": 900,
+      "file": "screen.sale.default--tablet.png",
+      "sha256": "76d2c04d7db1812b4f3df77b2e5d8e9476b624ce86d0d4fa490ff083405a896d"
+    },
+    {
+      "id": "screen.sale.default",
+      "screen": "sale",
+      "stage": "OPEN",
+      "viewport": "mobile",
+      "width": 390,
+      "height": 844,
+      "file": "screen.sale.default--mobile.png",
+      "sha256": "9c2632c0ae7977a10b112e28e39cb59e2648a5354f8f352c5eb4d23caadc31ce"
+    },
+    {
+      "id": "screen.sale.default",
+      "screen": "sale",
+      "stage": "OPEN",
+      "viewport": "minimum",
+      "width": 320,
+      "height": 844,
+      "file": "screen.sale.default--minimum.png",
+      "sha256": "f90a887f21f947d092f5290ed2eaa419acba590939ead386af85777124d61d1e"
+    },
+    {
+      "id": "screen.seller-sales.default",
+      "screen": "seller-sales",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "screen.seller-sales.default--desktop.png",
+      "sha256": "f1434bdc2ad5a7ad7d0e6c8701c50aed8bdfbbe5fdd4c7e39183ac3d0e03acb8"
+    },
+    {
+      "id": "screen.seller-sales.default",
+      "screen": "seller-sales",
+      "stage": "OPEN",
+      "viewport": "tablet",
+      "width": 920,
+      "height": 900,
+      "file": "screen.seller-sales.default--tablet.png",
+      "sha256": "151efb06ebfbf196f5a235d3227dcb1c98fc1c62635bbcabb1f6b66e9ef4dbc0"
+    },
+    {
+      "id": "screen.seller-sales.default",
+      "screen": "seller-sales",
+      "stage": "OPEN",
+      "viewport": "mobile",
+      "width": 390,
+      "height": 844,
+      "file": "screen.seller-sales.default--mobile.png",
+      "sha256": "652633b6d4f47d403ff15324710f96f10d7f936e5ba6b68189cb483e97e37daa"
+    },
+    {
+      "id": "screen.seller-sales.default",
+      "screen": "seller-sales",
+      "stage": "OPEN",
+      "viewport": "minimum",
+      "width": 320,
+      "height": 844,
+      "file": "screen.seller-sales.default--minimum.png",
+      "sha256": "2f7671f73e55f3b3926659735e527642f0f06c8a008a2cfc2e28d96d48232cd9"
+    },
+    {
+      "id": "screen.receipts.default",
+      "screen": "receipts",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "screen.receipts.default--desktop.png",
+      "sha256": "96ac50322d1dca1cccba353b9dff37a1f699d9ed6abd16268b51eebd0977c677"
+    },
+    {
+      "id": "screen.receipts.default",
+      "screen": "receipts",
+      "stage": "OPEN",
+      "viewport": "tablet",
+      "width": 920,
+      "height": 900,
+      "file": "screen.receipts.default--tablet.png",
+      "sha256": "19686c29e437ae15e865f037401674e8b85c03229c9dbf3389a5f135f9bbea12"
+    },
+    {
+      "id": "screen.receipts.default",
+      "screen": "receipts",
+      "stage": "OPEN",
+      "viewport": "mobile",
+      "width": 390,
+      "height": 844,
+      "file": "screen.receipts.default--mobile.png",
+      "sha256": "eee850d9479f834ab963e26d444e89dd8e9faf0fe990a5506335b55d12c7aea9"
+    },
+    {
+      "id": "screen.receipts.default",
+      "screen": "receipts",
+      "stage": "OPEN",
+      "viewport": "minimum",
+      "width": 320,
+      "height": 844,
+      "file": "screen.receipts.default--minimum.png",
+      "sha256": "6fc406fa232e3e0f2d544f759976d3527b83c73c5a295cadd127e6c1a54dabc6"
+    },
+    {
+      "id": "screen.customers.default",
+      "screen": "customers",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "screen.customers.default--desktop.png",
+      "sha256": "6285b6e9e312920dbfcc8836f783d324a70b9b8aa22b5d5954759cfc35f45127"
+    },
+    {
+      "id": "screen.customers.default",
+      "screen": "customers",
+      "stage": "OPEN",
+      "viewport": "tablet",
+      "width": 920,
+      "height": 900,
+      "file": "screen.customers.default--tablet.png",
+      "sha256": "da3ef5574fc74ec01a057479010258b136ed80051c54c75ddee6b44e8823b04a"
+    },
+    {
+      "id": "screen.customers.default",
+      "screen": "customers",
+      "stage": "OPEN",
+      "viewport": "mobile",
+      "width": 390,
+      "height": 844,
+      "file": "screen.customers.default--mobile.png",
+      "sha256": "3f6a9424c4d10299b36483dd8696fe0a73ca806fc9dd4442b3e18dc9ef915805"
+    },
+    {
+      "id": "screen.customers.default",
+      "screen": "customers",
+      "stage": "OPEN",
+      "viewport": "minimum",
+      "width": 320,
+      "height": 844,
+      "file": "screen.customers.default--minimum.png",
+      "sha256": "5dd529943b5efdd71741a036a8eb1354df6efe96d128db90124ea70694b8fbe9"
+    },
+    {
+      "id": "screen.appointments.default",
+      "screen": "appointments",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "screen.appointments.default--desktop.png",
+      "sha256": "3b6b898354dd57a2379e1e45ac25fdb9f1a85a67a369fbfa47f80407db27f312"
+    },
+    {
+      "id": "screen.appointments.default",
+      "screen": "appointments",
+      "stage": "OPEN",
+      "viewport": "tablet",
+      "width": 920,
+      "height": 900,
+      "file": "screen.appointments.default--tablet.png",
+      "sha256": "75b516eff492ac60b99c067e892c8005f84f6a26f6890ef3ebb0cb0b0e3a6adf"
+    },
+    {
+      "id": "screen.appointments.default",
+      "screen": "appointments",
+      "stage": "OPEN",
+      "viewport": "mobile",
+      "width": 390,
+      "height": 844,
+      "file": "screen.appointments.default--mobile.png",
+      "sha256": "11b0fc21bbcf66e996837b618b746980ba54310750933a63e543510a5c5e660f"
+    },
+    {
+      "id": "screen.appointments.default",
+      "screen": "appointments",
+      "stage": "OPEN",
+      "viewport": "minimum",
+      "width": 320,
+      "height": 844,
+      "file": "screen.appointments.default--minimum.png",
+      "sha256": "c65bdfcd5036924a4477b8915e441321cd6d64bda38a36c0be19e5ceb1051c28"
+    },
+    {
+      "id": "screen.memberships.default",
+      "screen": "memberships",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "screen.memberships.default--desktop.png",
+      "sha256": "9b562d4636a5a0178d266ac046c7d315c16f54f249507eb99396467a7c634390"
+    },
+    {
+      "id": "screen.memberships.default",
+      "screen": "memberships",
+      "stage": "OPEN",
+      "viewport": "tablet",
+      "width": 920,
+      "height": 900,
+      "file": "screen.memberships.default--tablet.png",
+      "sha256": "118d9d631dc694fe7edeb1ebe1db48ecafdfb634bced01525097437648829636"
+    },
+    {
+      "id": "screen.memberships.default",
+      "screen": "memberships",
+      "stage": "OPEN",
+      "viewport": "mobile",
+      "width": 390,
+      "height": 844,
+      "file": "screen.memberships.default--mobile.png",
+      "sha256": "6052f1af7e6f364d6604d348c3aeade2fe1cd0ad9053a34f85107f04e9137c95"
+    },
+    {
+      "id": "screen.memberships.default",
+      "screen": "memberships",
+      "stage": "OPEN",
+      "viewport": "minimum",
+      "width": 320,
+      "height": 844,
+      "file": "screen.memberships.default--minimum.png",
+      "sha256": "0cd49746c57b07e418cd26afe820b3de6fd22c150f5c714af192827ba6c75086"
+    },
+    {
+      "id": "screen.inventory.default",
+      "screen": "inventory",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "screen.inventory.default--desktop.png",
+      "sha256": "efc6b4edf5f993b95254ad5c79b83f848f39fcf67f945217acb40b252d57ba2a"
+    },
+    {
+      "id": "screen.inventory.default",
+      "screen": "inventory",
+      "stage": "OPEN",
+      "viewport": "tablet",
+      "width": 920,
+      "height": 900,
+      "file": "screen.inventory.default--tablet.png",
+      "sha256": "fd1ada70ffa7f4084692a5a092eed8793717915526bbfcfcf5de4d50e74d7854"
+    },
+    {
+      "id": "screen.inventory.default",
+      "screen": "inventory",
+      "stage": "OPEN",
+      "viewport": "mobile",
+      "width": 390,
+      "height": 844,
+      "file": "screen.inventory.default--mobile.png",
+      "sha256": "b8d21adc1dd116a8926a6384f95de1b1b3348e095cec34b84cd101d21ee96cfb"
+    },
+    {
+      "id": "screen.inventory.default",
+      "screen": "inventory",
+      "stage": "OPEN",
+      "viewport": "minimum",
+      "width": 320,
+      "height": 844,
+      "file": "screen.inventory.default--minimum.png",
+      "sha256": "a5b1eee9759c487a818dfcf5d0061171c02df18d2b80a08075dd371c38eee7d7"
+    },
+    {
+      "id": "screen.warehouse.default",
+      "screen": "warehouse",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "screen.warehouse.default--desktop.png",
+      "sha256": "75b1640d6e22d25a225fa9b4e5c8cec989f7e60265e32798c5095fad93da990c"
+    },
+    {
+      "id": "screen.warehouse.default",
+      "screen": "warehouse",
+      "stage": "OPEN",
+      "viewport": "tablet",
+      "width": 920,
+      "height": 900,
+      "file": "screen.warehouse.default--tablet.png",
+      "sha256": "0c1c4fb6dddb0ff029b553fe5303deef899346dcdb193cdc87e20f5094484616"
+    },
+    {
+      "id": "screen.warehouse.default",
+      "screen": "warehouse",
+      "stage": "OPEN",
+      "viewport": "mobile",
+      "width": 390,
+      "height": 844,
+      "file": "screen.warehouse.default--mobile.png",
+      "sha256": "b1a1cd9d42c2d5f882ba1a05e314a38793ab89fc3ff3d8676c397ef250e545b1"
+    },
+    {
+      "id": "screen.warehouse.default",
+      "screen": "warehouse",
+      "stage": "OPEN",
+      "viewport": "minimum",
+      "width": 320,
+      "height": 844,
+      "file": "screen.warehouse.default--minimum.png",
+      "sha256": "3b87d776f9455c93e8a0763c19f3b8232927614f3ee79500c05afc9ac15218ec"
+    },
+    {
+      "id": "screen.branch-inventory.default",
+      "screen": "branch-inventory",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "screen.branch-inventory.default--desktop.png",
+      "sha256": "eb0186e4267a31b82e432d906202ddec92a4995807ba67d6d0a1bc9d9b81645e"
+    },
+    {
+      "id": "screen.branch-inventory.default",
+      "screen": "branch-inventory",
+      "stage": "OPEN",
+      "viewport": "tablet",
+      "width": 920,
+      "height": 900,
+      "file": "screen.branch-inventory.default--tablet.png",
+      "sha256": "9069f93494aea05161d37ab6ab7f989b2e02c06c3f9dec0e4cc258a0e3d274ea"
+    },
+    {
+      "id": "screen.branch-inventory.default",
+      "screen": "branch-inventory",
+      "stage": "OPEN",
+      "viewport": "mobile",
+      "width": 390,
+      "height": 844,
+      "file": "screen.branch-inventory.default--mobile.png",
+      "sha256": "9b63e980dd25d85001be4895bf21dd989b39f3104e53d32f396bb45b7e38dfde"
+    },
+    {
+      "id": "screen.branch-inventory.default",
+      "screen": "branch-inventory",
+      "stage": "OPEN",
+      "viewport": "minimum",
+      "width": 320,
+      "height": 844,
+      "file": "screen.branch-inventory.default--minimum.png",
+      "sha256": "0e5713d7af2adab7024efe92e70ca40a8b9103448ed7bd1d8434723a8845f964"
+    },
+    {
+      "id": "screen.suppliers.default",
+      "screen": "suppliers",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "screen.suppliers.default--desktop.png",
+      "sha256": "df0c3b4bdb0c754757528bf367e2b88d6b948c7051e68f7253631e0ac4a7730c"
+    },
+    {
+      "id": "screen.suppliers.default",
+      "screen": "suppliers",
+      "stage": "OPEN",
+      "viewport": "tablet",
+      "width": 920,
+      "height": 900,
+      "file": "screen.suppliers.default--tablet.png",
+      "sha256": "0acca83e52d2c4aaa253a88c20b0103d2809554ddaa6fc8c6760a8e74a65f1c6"
+    },
+    {
+      "id": "screen.suppliers.default",
+      "screen": "suppliers",
+      "stage": "OPEN",
+      "viewport": "mobile",
+      "width": 390,
+      "height": 844,
+      "file": "screen.suppliers.default--mobile.png",
+      "sha256": "af0e54d4443752f77f49783c6f228af77573bd181151ae18f59e4c1f491f85cf"
+    },
+    {
+      "id": "screen.suppliers.default",
+      "screen": "suppliers",
+      "stage": "OPEN",
+      "viewport": "minimum",
+      "width": 320,
+      "height": 844,
+      "file": "screen.suppliers.default--minimum.png",
+      "sha256": "57fe042b899ea174ab411a4687fd94d9442aeaef869644216be3516cc290dfb0"
+    },
+    {
+      "id": "screen.inventory-movements.default",
+      "screen": "inventory-movements",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "screen.inventory-movements.default--desktop.png",
+      "sha256": "89d37b4fe99db937ca523e86e275b3fb0bd72798cad47743d616a89749c34df4"
+    },
+    {
+      "id": "screen.inventory-movements.default",
+      "screen": "inventory-movements",
+      "stage": "OPEN",
+      "viewport": "tablet",
+      "width": 920,
+      "height": 900,
+      "file": "screen.inventory-movements.default--tablet.png",
+      "sha256": "e43e5f999bb762e05d027f8c51447eb04083f81af14210dfe2fc5ac415542546"
+    },
+    {
+      "id": "screen.inventory-movements.default",
+      "screen": "inventory-movements",
+      "stage": "OPEN",
+      "viewport": "mobile",
+      "width": 390,
+      "height": 844,
+      "file": "screen.inventory-movements.default--mobile.png",
+      "sha256": "4747f5c99a22de0f3c86b27b4bc7af6cd35b58c0abb9255844e1fd98704e9d4f"
+    },
+    {
+      "id": "screen.inventory-movements.default",
+      "screen": "inventory-movements",
+      "stage": "OPEN",
+      "viewport": "minimum",
+      "width": 320,
+      "height": 844,
+      "file": "screen.inventory-movements.default--minimum.png",
+      "sha256": "93602f5e141ff9602ad98de6dc285502c9afd689a0d6ef54d42762d7ce0f3c64"
+    },
+    {
+      "id": "screen.deals.default",
+      "screen": "deals",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "screen.deals.default--desktop.png",
+      "sha256": "25844aa264efec44e5f587de950af9c0b3aa82ee28ba0f353e60835cadda2fee"
+    },
+    {
+      "id": "screen.deals.default",
+      "screen": "deals",
+      "stage": "OPEN",
+      "viewport": "tablet",
+      "width": 920,
+      "height": 900,
+      "file": "screen.deals.default--tablet.png",
+      "sha256": "4174b6cd5681d600784a06478a14771d291c55d2f16f24d3fd2fa07fe9993d13"
+    },
+    {
+      "id": "screen.deals.default",
+      "screen": "deals",
+      "stage": "OPEN",
+      "viewport": "mobile",
+      "width": 390,
+      "height": 844,
+      "file": "screen.deals.default--mobile.png",
+      "sha256": "cb594207616d1e28b1674f55a61331fe7d3f99ec5aec34647841f638f913d978"
+    },
+    {
+      "id": "screen.deals.default",
+      "screen": "deals",
+      "stage": "OPEN",
+      "viewport": "minimum",
+      "width": 320,
+      "height": 844,
+      "file": "screen.deals.default--minimum.png",
+      "sha256": "dbd38eb78901411b6619e81fe324ac9dd999af7cd7ed90bccd3725a21a3f4439"
+    },
+    {
+      "id": "screen.catalog.default",
+      "screen": "catalog",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "screen.catalog.default--desktop.png",
+      "sha256": "12f78a31a1d321c53893a5129afac2024d6dc7523ac07116729c938cc2cc06ed"
+    },
+    {
+      "id": "screen.catalog.default",
+      "screen": "catalog",
+      "stage": "OPEN",
+      "viewport": "tablet",
+      "width": 920,
+      "height": 900,
+      "file": "screen.catalog.default--tablet.png",
+      "sha256": "a50c95d3dd31edbc34cda33c8cc1fe9d9beb555bdb88b7c561b51fafa17f3eb8"
+    },
+    {
+      "id": "screen.catalog.default",
+      "screen": "catalog",
+      "stage": "OPEN",
+      "viewport": "mobile",
+      "width": 390,
+      "height": 844,
+      "file": "screen.catalog.default--mobile.png",
+      "sha256": "49f1a8587147e4c796a6de4a735ccb7aeab25b151a49f1abbc404da14b028739"
+    },
+    {
+      "id": "screen.catalog.default",
+      "screen": "catalog",
+      "stage": "OPEN",
+      "viewport": "minimum",
+      "width": 320,
+      "height": 844,
+      "file": "screen.catalog.default--minimum.png",
+      "sha256": "fc270fac05eb7ad30510f3044357058199c8d4bbd3b93b959921db26f01a2f52"
+    },
+    {
+      "id": "screen.settings.default",
+      "screen": "settings",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "screen.settings.default--desktop.png",
+      "sha256": "f629f8be693532a95adb820b7af5860cdc86e44ceba0ca3e2f5a9744c28ec7ae"
+    },
+    {
+      "id": "screen.settings.default",
+      "screen": "settings",
+      "stage": "OPEN",
+      "viewport": "tablet",
+      "width": 920,
+      "height": 900,
+      "file": "screen.settings.default--tablet.png",
+      "sha256": "f34abc98b761e9f6d0ed916b77b0cf1753a2f03fcbc88d19eaf691df9a49b970"
+    },
+    {
+      "id": "screen.settings.default",
+      "screen": "settings",
+      "stage": "OPEN",
+      "viewport": "mobile",
+      "width": 390,
+      "height": 844,
+      "file": "screen.settings.default--mobile.png",
+      "sha256": "54abeea13a19546369f62f3c8ea93369ae3f34461c6d7b15d6809ae0cc9b29ad"
+    },
+    {
+      "id": "screen.settings.default",
+      "screen": "settings",
+      "stage": "OPEN",
+      "viewport": "minimum",
+      "width": 320,
+      "height": 844,
+      "file": "screen.settings.default--minimum.png",
+      "sha256": "d5bd332d2b158d9f10f50f0aece5df1b4ce1879d63b9f9a60de111fb0d63498b"
+    },
+    {
+      "id": "screen.x-report.default",
+      "screen": "x-report",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "screen.x-report.default--desktop.png",
+      "sha256": "72ad39003c5af146400e24ed84da7116343fef458121de6954dbee6daf793caa"
+    },
+    {
+      "id": "screen.x-report.default",
+      "screen": "x-report",
+      "stage": "OPEN",
+      "viewport": "tablet",
+      "width": 920,
+      "height": 900,
+      "file": "screen.x-report.default--tablet.png",
+      "sha256": "30505fa6796cad3f0174c48e614b73c0294f99a9d5bf9bba659d5cbfe5b87196"
+    },
+    {
+      "id": "screen.x-report.default",
+      "screen": "x-report",
+      "stage": "OPEN",
+      "viewport": "mobile",
+      "width": 390,
+      "height": 844,
+      "file": "screen.x-report.default--mobile.png",
+      "sha256": "0a2e80ca33536c0930066794aa8cae61062767b4e7be0b55e167097355ca71ad"
+    },
+    {
+      "id": "screen.x-report.default",
+      "screen": "x-report",
+      "stage": "OPEN",
+      "viewport": "minimum",
+      "width": 320,
+      "height": 844,
+      "file": "screen.x-report.default--minimum.png",
+      "sha256": "500bf0d2058f77db91b537e17589d006df0924ec2d2a169e6a343a6a73dcfbfd"
+    },
+    {
+      "id": "screen.reports.default",
+      "screen": "reports",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "screen.reports.default--desktop.png",
+      "sha256": "74404598f2835e30656b4df42dbbeda6be8dc49f15e8b4d4eda45817750aa3ca"
+    },
+    {
+      "id": "screen.reports.default",
+      "screen": "reports",
+      "stage": "OPEN",
+      "viewport": "tablet",
+      "width": 920,
+      "height": 900,
+      "file": "screen.reports.default--tablet.png",
+      "sha256": "37532d4e5aef57693c2160696b570ee34ebbe9cc1d3bc1dc5ebea7b26df66caa"
+    },
+    {
+      "id": "screen.reports.default",
+      "screen": "reports",
+      "stage": "OPEN",
+      "viewport": "mobile",
+      "width": 390,
+      "height": 844,
+      "file": "screen.reports.default--mobile.png",
+      "sha256": "d38f26269c8bbd8655ecc22eab25620aca258e8170bbe4b778901a44252fa0f8"
+    },
+    {
+      "id": "screen.reports.default",
+      "screen": "reports",
+      "stage": "OPEN",
+      "viewport": "minimum",
+      "width": 320,
+      "height": 844,
+      "file": "screen.reports.default--minimum.png",
+      "sha256": "5dd358d875d6a455a949a9ba0860fec1df34f9887ce086c11827f11cbc71ca09"
+    },
+    {
+      "id": "screen.cash-manager.default",
+      "screen": "cash-manager",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "screen.cash-manager.default--desktop.png",
+      "sha256": "15993f206e31bf1f72952c43e49be76f4db881f04d67d41af328ddaed449eae5"
+    },
+    {
+      "id": "screen.cash-manager.default",
+      "screen": "cash-manager",
+      "stage": "OPEN",
+      "viewport": "tablet",
+      "width": 920,
+      "height": 900,
+      "file": "screen.cash-manager.default--tablet.png",
+      "sha256": "7b7de2186d14ab6446a406c5e0e7aa86ee43626afccb8060bfea7e9397da6b66"
+    },
+    {
+      "id": "screen.cash-manager.default",
+      "screen": "cash-manager",
+      "stage": "OPEN",
+      "viewport": "mobile",
+      "width": 390,
+      "height": 844,
+      "file": "screen.cash-manager.default--mobile.png",
+      "sha256": "9bca569cdaf67df55874a4ff359bd2c3e941684a73319def88dffda383ef2338"
+    },
+    {
+      "id": "screen.cash-manager.default",
+      "screen": "cash-manager",
+      "stage": "OPEN",
+      "viewport": "minimum",
+      "width": 320,
+      "height": 844,
+      "file": "screen.cash-manager.default--minimum.png",
+      "sha256": "64be12c33532a48083d31664a19f864c0bec3a1ed99481dc388c766a85978352"
+    },
+    {
+      "id": "screen.clock-in.default",
+      "screen": "clock-in",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "screen.clock-in.default--desktop.png",
+      "sha256": "a1cb4c7efb2ce5496095de5c333e5043cff107ec7ee069498c06727c3064c369"
+    },
+    {
+      "id": "screen.clock-in.default",
+      "screen": "clock-in",
+      "stage": "OPEN",
+      "viewport": "tablet",
+      "width": 920,
+      "height": 900,
+      "file": "screen.clock-in.default--tablet.png",
+      "sha256": "a25c58804c4d1d0de72e914163c1976e4c170eefbfadd6dfc84573822e5537cb"
+    },
+    {
+      "id": "screen.clock-in.default",
+      "screen": "clock-in",
+      "stage": "OPEN",
+      "viewport": "mobile",
+      "width": 390,
+      "height": 844,
+      "file": "screen.clock-in.default--mobile.png",
+      "sha256": "f319e0bc6670beee78e2be12d7e97138cbc55e7ffcfdfa19c740f57e8ba37c07"
+    },
+    {
+      "id": "screen.clock-in.default",
+      "screen": "clock-in",
+      "stage": "OPEN",
+      "viewport": "minimum",
+      "width": 320,
+      "height": 844,
+      "file": "screen.clock-in.default--minimum.png",
+      "sha256": "dfd0232400682cf32321d0a020f92c56b34285a7d3d9f6aabd2be181e2afc1e2"
+    },
+    {
+      "id": "screen.close-day.default",
+      "screen": "close-day",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "screen.close-day.default--desktop.png",
+      "sha256": "90b7df2292564345befd3e1ff6726576d2e0aeffbdd5c81d6d070ec5ae4fed4f"
+    },
+    {
+      "id": "screen.close-day.default",
+      "screen": "close-day",
+      "stage": "OPEN",
+      "viewport": "tablet",
+      "width": 920,
+      "height": 900,
+      "file": "screen.close-day.default--tablet.png",
+      "sha256": "69af3e4b959f156ce091200efdc58fc7bae1c17eee9c133bbb29d6cef144c1cb"
+    },
+    {
+      "id": "screen.close-day.default",
+      "screen": "close-day",
+      "stage": "OPEN",
+      "viewport": "mobile",
+      "width": 390,
+      "height": 844,
+      "file": "screen.close-day.default--mobile.png",
+      "sha256": "64f202fcf5887394d768fac9d34085e0d7915546f60fc3ab06b816ba06ef20e8"
+    },
+    {
+      "id": "screen.close-day.default",
+      "screen": "close-day",
+      "stage": "OPEN",
+      "viewport": "minimum",
+      "width": 320,
+      "height": 844,
+      "file": "screen.close-day.default--minimum.png",
+      "sha256": "d33f2755d0281e5ff1987df3fde510124976e1dc4e8474912e184a50a1710606"
+    },
+    {
+      "id": "screen.employees.default",
+      "screen": "employees",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "screen.employees.default--desktop.png",
+      "sha256": "8943f7ea4328ebf8452ae19904db559ca575279f43184bcd8f0c9a00b5761991"
+    },
+    {
+      "id": "screen.employees.default",
+      "screen": "employees",
+      "stage": "OPEN",
+      "viewport": "tablet",
+      "width": 920,
+      "height": 900,
+      "file": "screen.employees.default--tablet.png",
+      "sha256": "d25a2f7b8eec7562e29c6b5e1ef30e0258beb39276439b56edea015c7652e92c"
+    },
+    {
+      "id": "screen.employees.default",
+      "screen": "employees",
+      "stage": "OPEN",
+      "viewport": "mobile",
+      "width": 390,
+      "height": 844,
+      "file": "screen.employees.default--mobile.png",
+      "sha256": "c7bb628c6c9b89fae6803dd3257fd4c4fdee59c0b0f2967cc8dd92c9829f36de"
+    },
+    {
+      "id": "screen.employees.default",
+      "screen": "employees",
+      "stage": "OPEN",
+      "viewport": "minimum",
+      "width": 320,
+      "height": 844,
+      "file": "screen.employees.default--minimum.png",
+      "sha256": "7df8c5d94ce161eb09d6c5bc6fe1421b4c611787df46ee31108f56e06bd9b604"
+    },
+    {
+      "id": "screen.competition.default",
+      "screen": "competition",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "screen.competition.default--desktop.png",
+      "sha256": "68dd5d1273397b17add105b83b4900c5fc2730f023fb64bb898e5402529f058e"
+    },
+    {
+      "id": "screen.competition.default",
+      "screen": "competition",
+      "stage": "OPEN",
+      "viewport": "tablet",
+      "width": 920,
+      "height": 900,
+      "file": "screen.competition.default--tablet.png",
+      "sha256": "9325e1d37339396672d5b85fa28a220f129cde5e722ee85e4642eedf9cc107a1"
+    },
+    {
+      "id": "screen.competition.default",
+      "screen": "competition",
+      "stage": "OPEN",
+      "viewport": "mobile",
+      "width": 390,
+      "height": 844,
+      "file": "screen.competition.default--mobile.png",
+      "sha256": "b4645eb8c2b963b4a49d03e82429590498fd1e0f4c557211574ef61ab6ce42e9"
+    },
+    {
+      "id": "screen.competition.default",
+      "screen": "competition",
+      "stage": "OPEN",
+      "viewport": "minimum",
+      "width": 320,
+      "height": 844,
+      "file": "screen.competition.default--minimum.png",
+      "sha256": "e69b673004cc6a14b7596baf3ee3b97276f2370d6878fc8187599f5a5c4b7c97"
+    },
+    {
+      "id": "screen.websites.default",
+      "screen": "websites",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "screen.websites.default--desktop.png",
+      "sha256": "ad29c85f558f6efccff49ab04b3895d97a969e7f31e04d551398f199b6a6f63c"
+    },
+    {
+      "id": "screen.websites.default",
+      "screen": "websites",
+      "stage": "OPEN",
+      "viewport": "tablet",
+      "width": 920,
+      "height": 900,
+      "file": "screen.websites.default--tablet.png",
+      "sha256": "9617a4429a4742b6b86e2269f2ca64637dbddc6993d211ce1a3b27b8d0daef9f"
+    },
+    {
+      "id": "screen.websites.default",
+      "screen": "websites",
+      "stage": "OPEN",
+      "viewport": "mobile",
+      "width": 390,
+      "height": 844,
+      "file": "screen.websites.default--mobile.png",
+      "sha256": "62eec071b1050112935d6d603a2f03f82f24d31e24cc453ed8066b05cae01593"
+    },
+    {
+      "id": "screen.websites.default",
+      "screen": "websites",
+      "stage": "OPEN",
+      "viewport": "minimum",
+      "width": 320,
+      "height": 844,
+      "file": "screen.websites.default--minimum.png",
+      "sha256": "0fce2c155ed395bcbb1950e494fc6262939c8db3aab85b9bcf8ab5f88f949ca4"
+    },
+    {
+      "id": "screen.data-update.default",
+      "screen": "data-update",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "screen.data-update.default--desktop.png",
+      "sha256": "c058185dfe42981489a073939e7aebfc8881356e3d19ebc813c20469c62a2b6b"
+    },
+    {
+      "id": "screen.data-update.default",
+      "screen": "data-update",
+      "stage": "OPEN",
+      "viewport": "tablet",
+      "width": 920,
+      "height": 900,
+      "file": "screen.data-update.default--tablet.png",
+      "sha256": "c14edd5d4c9fd3289d4df70351654e8bf3a723a906fd58e03b2a0f3ea2519018"
+    },
+    {
+      "id": "screen.data-update.default",
+      "screen": "data-update",
+      "stage": "OPEN",
+      "viewport": "mobile",
+      "width": 390,
+      "height": 844,
+      "file": "screen.data-update.default--mobile.png",
+      "sha256": "93a03385ad57f84f0796d5233daab2b66d253353aff0a09652767f8a33dabcce"
+    },
+    {
+      "id": "screen.data-update.default",
+      "screen": "data-update",
+      "stage": "OPEN",
+      "viewport": "minimum",
+      "width": 320,
+      "height": 844,
+      "file": "screen.data-update.default--minimum.png",
+      "sha256": "4d3b456322a8e28c8fd6ec30ee6ee10c9c42e29b3e049fdc3662ac10e61bb951"
+    },
+    {
+      "id": "screen.my-account.default",
+      "screen": "my-account",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "screen.my-account.default--desktop.png",
+      "sha256": "a48b410b6a2c667bec9657e0f056cb3c670195b0d498099304a68c9bfe2667d0"
+    },
+    {
+      "id": "screen.my-account.default",
+      "screen": "my-account",
+      "stage": "OPEN",
+      "viewport": "tablet",
+      "width": 920,
+      "height": 900,
+      "file": "screen.my-account.default--tablet.png",
+      "sha256": "fb5df00ecdb8ba7b3e81fef8948ccd9e7a263fababe98c33f435ba56674dfa6f"
+    },
+    {
+      "id": "screen.my-account.default",
+      "screen": "my-account",
+      "stage": "OPEN",
+      "viewport": "mobile",
+      "width": 390,
+      "height": 844,
+      "file": "screen.my-account.default--mobile.png",
+      "sha256": "5e7937c9d470f47c82cecd7f2c95a27142da0d6a9fae0cfd1459697e17b8c137"
+    },
+    {
+      "id": "screen.my-account.default",
+      "screen": "my-account",
+      "stage": "OPEN",
+      "viewport": "minimum",
+      "width": 320,
+      "height": 844,
+      "file": "screen.my-account.default--minimum.png",
+      "sha256": "f19e45858dc5fa2750c84e8ae69bfe9fcbf45ec1945ae83e5e6451dfd7ebee1c"
+    },
+    {
+      "id": "settings.notificaciones",
+      "screen": "settings",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "settings.notificaciones--desktop.png",
+      "sha256": "770ca224668afc821872306ef2bff7df7bacd98078c0fe7750c353ca2f48c16f"
+    },
+    {
+      "id": "settings.inventario-y-cat-logos",
+      "screen": "settings",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "settings.inventario-y-cat-logos--desktop.png",
+      "sha256": "59f3b39bf2b1a092ab7f8cfb20ff1704d8a8f5a23d0a4ef3de1eb3e7c2b357dd"
+    },
+    {
+      "id": "settings.tipos-de-gastos",
+      "screen": "settings",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "settings.tipos-de-gastos--desktop.png",
+      "sha256": "7a6802cfe91ef1fcb95b94154cd663615e2e8d7ac97eab686f7d75d07c2820fe"
+    },
+    {
+      "id": "settings.competiciones",
+      "screen": "settings",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "settings.competiciones--desktop.png",
+      "sha256": "6f9f4caa78ffce610a477e12e944d45d441dff815cdbbff697e873d7183d6728"
+    },
+    {
+      "id": "settings.clientes-y-procedencias",
+      "screen": "settings",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "settings.clientes-y-procedencias--desktop.png",
+      "sha256": "c3f4bdf15d895d3a67998b0c08fb388de47d17a765a879e339f4569ec303aa05"
+    },
+    {
+      "id": "settings.cortes-as-de-bienvenida",
+      "screen": "settings",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "settings.cortes-as-de-bienvenida--desktop.png",
+      "sha256": "40c69efcdf7508cecb425a09795933be388ca4369d0a4d389ca63c59e88b2359"
+    },
+    {
+      "id": "settings.precios-y-autorizaci-n",
+      "screen": "settings",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "settings.precios-y-autorizaci-n--desktop.png",
+      "sha256": "3663e5eb6f2309b1aabc7fc00e2af5aa49d137a43a6d78ff4c5d37af85071be3"
+    },
+    {
+      "id": "settings.dise-o-de-ticket",
+      "screen": "settings",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "settings.dise-o-de-ticket--desktop.png",
+      "sha256": "97786173b0cbe75675fb3397db31b92fa8447c0ba522132c2aba6d15cbf68704"
+    },
+    {
+      "id": "settings.m-todos-de-pago",
+      "screen": "settings",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "settings.m-todos-de-pago--desktop.png",
+      "sha256": "19ac616551dc7b3d1b29f5dc3bd3777578a10c18ba8ff796ced4c4316e6ecd4f"
+    },
+    {
+      "id": "settings.vouchers-promocionales",
+      "screen": "settings",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "settings.vouchers-promocionales--desktop.png",
+      "sha256": "b9afc89edbab667c5159a9a8f4d49aa87f3b5340e76d281556453cd105d69241"
+    },
+    {
+      "id": "reports.detalle-de-ventas",
+      "screen": "reports",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "reports.detalle-de-ventas--desktop.png",
+      "sha256": "3780245e832bddb2e75ebbbbeeff87feb56db7d01ce0f7716565acf25d77d292"
+    },
+    {
+      "id": "reports.conciliaci-n-bancaria",
+      "screen": "reports",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "reports.conciliaci-n-bancaria--desktop.png",
+      "sha256": "6ed7a805823e58750bac858dbd1cffa5ed07343ac22c764ea315f2f389cbdb2d"
+    },
+    {
+      "id": "reports.productos-vendidos",
+      "screen": "reports",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "reports.productos-vendidos--desktop.png",
+      "sha256": "3abad8958db9eb52908bbe48eaaf6d4fc26f942f37f587b07c22857d33bf2983"
+    },
+    {
+      "id": "reports.ventas-por-empleados",
+      "screen": "reports",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "reports.ventas-por-empleados--desktop.png",
+      "sha256": "25664a4f13e378b4ab4e4f93f54bdfbcf5d8dc3b3dd1b367fddeceeb19da6d90"
+    },
+    {
+      "id": "reports.movimientos-de-efectivo",
+      "screen": "reports",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "reports.movimientos-de-efectivo--desktop.png",
+      "sha256": "afe27f021b32a042832cf8bee25cd8ef335b6e3af73cd6715984711953729f80"
+    },
+    {
+      "id": "reports.resumen-de-mercanc-a",
+      "screen": "reports",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "reports.resumen-de-mercanc-a--desktop.png",
+      "sha256": "a2ca2e0c3cd7d98e9e0d01797825cfad3eed33af9f7c0c01975a0d18bebf9311"
+    },
+    {
+      "id": "reports.altas-bajas-y-transferencias",
+      "screen": "reports",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "reports.altas-bajas-y-transferencias--desktop.png",
+      "sha256": "baadee42ce00f10a54bf1d8a88a561aee5720e097a280c34534f516741a9bb1b"
+    },
+    {
+      "id": "reports.rentabilidad-y-demanda",
+      "screen": "reports",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "reports.rentabilidad-y-demanda--desktop.png",
+      "sha256": "f7149f3eb94fdb1054d00373a25f9c78fc6ebe6d702235c40ee382b2d30bb99e"
+    },
+    {
+      "id": "reports.desempe-o-por-vendedor",
+      "screen": "reports",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "reports.desempe-o-por-vendedor--desktop.png",
+      "sha256": "9b4acf8853a6bd0bd3aea432696a8bc1388e4b1beea19db2f28f1570100e70d4"
+    },
+    {
+      "id": "reports.d-as-y-productividad",
+      "screen": "reports",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "reports.d-as-y-productividad--desktop.png",
+      "sha256": "9ef64e5a0466103ee6837f21ffd018b2989b99fd0ee34036eec4f16953711df3"
+    },
+    {
+      "id": "reports.comportamiento-de-clientes",
+      "screen": "reports",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "reports.comportamiento-de-clientes--desktop.png",
+      "sha256": "147fcc0d3d1f3e7107d5ad7f74ef60e010b11b4baac5e0ba6683f0d21b301bbd"
+    },
+    {
+      "id": "warehouse.inventario-en-bodega",
+      "screen": "warehouse",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "warehouse.inventario-en-bodega--desktop.png",
+      "sha256": "75b1640d6e22d25a225fa9b4e5c8cec989f7e60265e32798c5095fad93da990c"
+    },
+    {
+      "id": "warehouse.pedidos-a-proveedores",
+      "screen": "warehouse",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "warehouse.pedidos-a-proveedores--desktop.png",
+      "sha256": "727c53e687533f5e56332d5507f54d3b48e4dc82f5a568907ad6611fea9265fb"
+    },
+    {
+      "id": "warehouse.ingreso-de-mercanc-a",
+      "screen": "warehouse",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "warehouse.ingreso-de-mercanc-a--desktop.png",
+      "sha256": "78699c12c9a971164046c2d1363ff248da79dfc304af9a5fee922edd097867df"
+    },
+    {
+      "id": "warehouse.solicitudes-de-sucursales",
+      "screen": "warehouse",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "warehouse.solicitudes-de-sucursales--desktop.png",
+      "sha256": "b46ce18c19fd251b385a02a4b33a4cb7fed267e0d832fe59f5bf816314c44eda"
+    },
+    {
+      "id": "warehouse.env-os",
+      "screen": "warehouse",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "warehouse.env-os--desktop.png",
+      "sha256": "114fa7eb6c78f6708202b401a4c196011682f1b8ba345e6b42d2fd1fb986ed4a"
+    },
+    {
+      "id": "warehouse.listas-de-precios",
+      "screen": "warehouse",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "warehouse.listas-de-precios--desktop.png",
+      "sha256": "e1060fc87019dc3fed8050fa10bba6d25f876ff482104f0bfa925380aedd0655"
+    },
+    {
+      "id": "warehouse.reporte-general",
+      "screen": "warehouse",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "warehouse.reporte-general--desktop.png",
+      "sha256": "0f28fb4b69a5a4a602448f654077be45a598b4c3f8843a34fbbab338ee80b640"
+    },
+    {
+      "id": "branch-inventory.solicitar-productos",
+      "screen": "branch-inventory",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "branch-inventory.solicitar-productos--desktop.png",
+      "sha256": "eb0186e4267a31b82e432d906202ddec92a4995807ba67d6d0a1bc9d9b81645e"
+    },
+    {
+      "id": "branch-inventory.solicitar-testers",
+      "screen": "branch-inventory",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "branch-inventory.solicitar-testers--desktop.png",
+      "sha256": "a4fa572beab7fd3f1adac597819929067a033f9a67abc52387c44ae4b8ddc754"
+    },
+    {
+      "id": "branch-inventory.solicitar-insumos",
+      "screen": "branch-inventory",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "branch-inventory.solicitar-insumos--desktop.png",
+      "sha256": "a93f433fca698dc749d610b8427b0c46b459b280a2bcc86e48e439ae26d1e6d9"
+    },
+    {
+      "id": "shell.sidebar.collapsed",
+      "screen": "dashboard",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "shell.sidebar.collapsed--desktop.png",
+      "sha256": "d14d2b7f65ceee32d1d4f09219a38c2cfdd992d31f1d6343de51f52bad7eebcc"
+    },
+    {
+      "id": "shell.sidebar.pinned",
+      "screen": "dashboard",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "shell.sidebar.pinned--desktop.png",
+      "sha256": "26df5ac73f0508ead5f1278ede1ec388b3743d2ed93bafd0f2c85940f1b1f39f"
+    },
+    {
+      "id": "shell.notifications.open",
+      "screen": "dashboard",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "shell.notifications.open--desktop.png",
+      "sha256": "c043309252bc261672e50c274a5f9381eecc8870c9c6a2a0166cd29a9f1a01db"
+    },
+    {
+      "id": "shell.session-exit.dialog",
+      "screen": "dashboard",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "shell.session-exit.dialog--desktop.png",
+      "sha256": "6c94e43385b13456a33d07df3ef2cd030c6db921f54eeb61c404a57c55f27bb2"
+    },
+    {
+      "id": "shell.location-switch.dialog",
+      "screen": "dashboard",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "shell.location-switch.dialog--desktop.png",
+      "sha256": "f3aae891ad1c43aa7845cde39cc5ba8342c8ae725c0c2f57e9237d2cbc97aa9d"
+    },
+    {
+      "id": "sale.product.dialog",
+      "screen": "sale",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "sale.product.dialog--desktop.png",
+      "sha256": "0a7a26edd9f499f1254819ab47fc5efdf7fca065a58de08c9a4ffc6fdb8696b5"
+    },
+    {
+      "id": "sale.cart.populated",
+      "screen": "sale",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "sale.cart.populated--desktop.png",
+      "sha256": "3dc740035ae1a383a29d7912c068605cbf04c538c37589e70b45fc7a22594818"
+    },
+    {
+      "id": "sale.checkout.dialog",
+      "screen": "sale",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "sale.checkout.dialog--desktop.png",
+      "sha256": "3b193e6bbe238af9cc4ddf7965cacb0eeaf46770fa8135311e763c3135aa813c"
+    },
+    {
+      "id": "sale.discount.dialog",
+      "screen": "sale",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "sale.discount.dialog--desktop.png",
+      "sha256": "140217da6bba99b4055089d35688d390c4d1d5eaebb7bd9b17056e27520c2f5e"
+    },
+    {
+      "id": "sale.deals.dialog",
+      "screen": "sale",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "sale.deals.dialog--desktop.png",
+      "sha256": "4c305bd92cc3c77a20b7eb31b861cea969750332ecd79e2ec8274e3693a532af"
+    },
+    {
+      "id": "sale.search.empty",
+      "screen": "sale",
+      "stage": "OPEN",
+      "viewport": "mobile",
+      "width": 390,
+      "height": 844,
+      "file": "sale.search.empty--mobile.png",
+      "sha256": "528717f5ddec36e2a4c754ab1d34bec6495d477d3662549fe1b3429342eb0033"
+    },
+    {
+      "id": "seller-sales.clients",
+      "screen": "seller-sales",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "seller-sales.clients--desktop.png",
+      "sha256": "ef58451867082de2cdf84787ce4ad7f14fb84d29ba5523dfafbeffbc7a3f2258"
+    },
+    {
+      "id": "receipts.preview.dialog",
+      "screen": "receipts",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "receipts.preview.dialog--desktop.png",
+      "sha256": "fa142a0a6a66a7008c0ea236a606f2f29338563072b95ac9a0d9859aee3e5a1c"
+    },
+    {
+      "id": "receipts.edit.dialog",
+      "screen": "receipts",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "receipts.edit.dialog--desktop.png",
+      "sha256": "246bcd73a5d32ecc5969906bd7f67dd3dcadcb2fb2851b0926a78b47ba386ad8"
+    },
+    {
+      "id": "receipts.cancel.dialog",
+      "screen": "receipts",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "receipts.cancel.dialog--desktop.png",
+      "sha256": "5faac6b8094b2698ecccba91167ee7939c6304fdbbe011a30d7ad88a4dd1ce5e"
+    },
+    {
+      "id": "receipts.print-media",
+      "screen": "receipts",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "receipts.print-media--desktop.png",
+      "sha256": "ea999956a45cd6537ceb4701360ac539256ee9fa13aa5d874870c1db62f4dd3f"
+    },
+    {
+      "id": "customers.seller-gate",
+      "screen": "customers",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "customers.seller-gate--desktop.png",
+      "sha256": "084843072dd2715719041d1626873ff1463a27ab58ce4ff48c00c8ef204a0faa"
+    },
+    {
+      "id": "customers.bulk-import.dialog",
+      "screen": "customers",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "customers.bulk-import.dialog--desktop.png",
+      "sha256": "33d352e04941759dc3b0c25dfe180fcd64cd16c43fa925d9f76861de61601ea6"
+    },
+    {
+      "id": "appointments.courtesies",
+      "screen": "appointments",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "appointments.courtesies--desktop.png",
+      "sha256": "9e4fc2c3b503358e33bda87eb2387a9bae6e5a0109dc5cbc0e49cea7f618691c"
+    },
+    {
+      "id": "appointments.next-sessions",
+      "screen": "appointments",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "appointments.next-sessions--desktop.png",
+      "sha256": "f8b2521901b192d91ab0000756c81665eabf1189255202947115c8c086c9e8d8"
+    },
+    {
+      "id": "appointments.empty",
+      "screen": "appointments",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "appointments.empty--desktop.png",
+      "sha256": "3e2c9c6b0f87bd53e8d0e94f5932d05349e6f8b18c48243ac02579253fc8ac08"
+    },
+    {
+      "id": "catalog.theme.noir",
+      "screen": "catalog",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "catalog.theme.noir--desktop.png",
+      "sha256": "81a9310ae6e2ce201ba3c544ea0ef3ff1c852adb5b001ac5b86510ccf2aec1eb"
+    },
+    {
+      "id": "catalog.theme.mineral",
+      "screen": "catalog",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "catalog.theme.mineral--desktop.png",
+      "sha256": "a675b174259bd8b18b8ae8f9d1683530e7726c771de197932810853cca2bb9aa"
+    },
+    {
+      "id": "catalog.theme.rose",
+      "screen": "catalog",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "catalog.theme.rose--desktop.png",
+      "sha256": "c9fa914a1de5604c069a22b0ca3419de39d831ef11e75f56a4e1f3892598e6f1"
+    },
+    {
+      "id": "catalog.page.next",
+      "screen": "catalog",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "catalog.page.next--desktop.png",
+      "sha256": "bec176fa4f3780bd63b23b15273b9d7a49f682c132b07947e7c4cd1f05845b88"
+    },
+    {
+      "id": "catalog.presentation.locked",
+      "screen": "catalog",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "catalog.presentation.locked--desktop.png",
+      "sha256": "15a60ddbcd6eb077d3de62bdabfc17629dbdc4417a11716c28bd5eacb5358c52"
+    },
+    {
+      "id": "catalog.presentation.unlock-dialog",
+      "screen": "catalog",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "catalog.presentation.unlock-dialog--desktop.png",
+      "sha256": "15a60ddbcd6eb077d3de62bdabfc17629dbdc4417a11716c28bd5eacb5358c52"
+    },
+    {
+      "id": "inventory.product.dialog",
+      "screen": "inventory",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "inventory.product.dialog--desktop.png",
+      "sha256": "8881f2544ab9ebd2f420b2b5a37862875972a1f707238f6dcc4c4d42eb3db3be"
+    },
+    {
+      "id": "inventory.order.menu",
+      "screen": "inventory",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "inventory.order.menu--desktop.png",
+      "sha256": "2f6c34ceffd13d448b5879a5f9a2b57b3b4f758176db1a4ff169207e1697c5e8"
+    },
+    {
+      "id": "suppliers.new.dialog",
+      "screen": "suppliers",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "suppliers.new.dialog--desktop.png",
+      "sha256": "99e353fd8c4783ca07fbd43d6c7f7b1d1f0eef3d72c0caacf15c59812dd7d6f9"
+    },
+    {
+      "id": "deals.new.dialog",
+      "screen": "deals",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "deals.new.dialog--desktop.png",
+      "sha256": "8794c81a58e6aa3c080530f9bd55d4731e9e2d0aa2dfae5ad0d65f4092e663d1"
+    },
+    {
+      "id": "employees.authorized",
+      "screen": "employees",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "employees.authorized--desktop.png",
+      "sha256": "5d1909a8812c9a50b619a1045b4bea3a4a3dfd38148d7e5055fa992c3196053c"
+    },
+    {
+      "id": "employees.new-seller.dialog",
+      "screen": "employees",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "employees.new-seller.dialog--desktop.png",
+      "sha256": "623429773bc0cc26fd96d13f52c610a1a02ad8f35de46a4c9c64461e4936d6b5"
+    },
+    {
+      "id": "employees.new-role.dialog",
+      "screen": "employees",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "employees.new-role.dialog--desktop.png",
+      "sha256": "e5e3a038149e9dccaa09fb53a5a562d38e8e3d68a48cb9126e9cc7a80992e301"
+    },
+    {
+      "id": "competition.settings.dialog",
+      "screen": "competition",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "competition.settings.dialog--desktop.png",
+      "sha256": "088717c801764ca2d85d9d89d3c8e8d482c1fa651f7d2cab9c348a66e79cddec"
+    },
+    {
+      "id": "close-day.authorization.dialog",
+      "screen": "close-day",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "close-day.authorization.dialog--desktop.png",
+      "sha256": "ee1e822b85412c6edf06f72d7847a379bae11b2f0d16494fd1f43a1bf363ad2f"
+    },
+    {
+      "id": "close-day.print-media",
+      "screen": "close-day",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "close-day.print-media--desktop.png",
+      "sha256": "bf42e27f56621f26a514dfa28a583ba299c29d8c8caf94edc5ebb8e7eb1111f9"
+    },
+    {
+      "id": "cash-manager.authorization-reminder",
+      "screen": "cash-manager",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "cash-manager.authorization-reminder--desktop.png",
+      "sha256": "d0ecb8bf63960e31660295b386ddbf5cd32ac0e198827321bc87b9cdf49f6588"
+    },
+    {
+      "id": "my-account.default",
+      "screen": "my-account",
+      "stage": "OPEN",
+      "viewport": "mobile",
+      "width": 390,
+      "height": 844,
+      "file": "my-account.default--mobile.png",
+      "sha256": "5e7937c9d470f47c82cecd7f2c95a27142da0d6a9fae0cfd1459697e17b8c137"
+    },
+    {
+      "id": "settings.scroll-end",
+      "screen": "settings",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "settings.scroll-end--desktop.png",
+      "sha256": "f629f8be693532a95adb820b7af5860cdc86e44ceba0ca3e2f5a9744c28ec7ae"
+    },
+    {
+      "id": "reports.scroll-end",
+      "screen": "reports",
+      "stage": "OPEN",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "file": "reports.scroll-end--desktop.png",
+      "sha256": "74404598f2835e30656b4df42dbbeda6be8dc49f15e8b4d4eda45817750aa3ca"
+    },
+    {
+      "id": "customers.scroll-end",
+      "screen": "customers",
+      "stage": "OPEN",
+      "viewport": "mobile",
+      "width": 390,
+      "height": 844,
+      "file": "customers.scroll-end--mobile.png",
+      "sha256": "3f6a9424c4d10299b36483dd8696fe0a73ca806fc9dd4442b3e18dc9ef915805"
+    },
+    {
+      "id": "breakpoint.sidebar.above",
+      "screen": "dashboard",
+      "stage": "OPEN",
+      "viewport": "sidebar-above",
+      "width": 921,
+      "height": 900,
+      "file": "breakpoint.sidebar.above--sidebar-above.png",
+      "sha256": "a0f4e8b4195f9cdf961e7c181fbce0e99e22a088141bfef1d74bf493f17f317e"
+    },
+    {
+      "id": "breakpoint.sidebar.at",
+      "screen": "dashboard",
+      "stage": "OPEN",
+      "viewport": "tablet",
+      "width": 920,
+      "height": 900,
+      "file": "breakpoint.sidebar.at--tablet.png",
+      "sha256": "716ca0add94bb4148711c2d5329973b0561994d8e6a3c5620aa047c333af351d"
+    },
+    {
+      "id": "breakpoint.sidebar.below",
+      "screen": "dashboard",
+      "stage": "OPEN",
+      "viewport": "sidebar-below",
+      "width": 919,
+      "height": 900,
+      "file": "breakpoint.sidebar.below--sidebar-below.png",
+      "sha256": "e92f43fab46f6d59950667944899aeaedbbb8391f99dbff13187652492e48af6"
+    },
+    {
+      "id": "breakpoint.compact.above",
+      "screen": null,
+      "stage": "LOGIN",
+      "viewport": "compact-above",
+      "width": 721,
+      "height": 844,
+      "file": "breakpoint.compact.above--compact-above.png",
+      "sha256": "055d218300f3bfceb8c94b0c150dae297c3f6aec1a16619cb1d02476d17a3afd"
+    },
+    {
+      "id": "breakpoint.compact.at",
+      "screen": null,
+      "stage": "LOGIN",
+      "viewport": "compact-at",
+      "width": 720,
+      "height": 844,
+      "file": "breakpoint.compact.at--compact-at.png",
+      "sha256": "ddac55671c1ed10b3a3d55f32d86c0064d7a67898778fc8e54528d0ff212f0da"
+    },
+    {
+      "id": "breakpoint.compact.below",
+      "screen": null,
+      "stage": "LOGIN",
+      "viewport": "compact-below",
+      "width": 719,
+      "height": 844,
+      "file": "breakpoint.compact.below--compact-below.png",
+      "sha256": "a94f6565145ef41e440b2812a895f8aa40fb01f45068630d1d65ae1f9169d822"
+    },
+    {
+      "id": "breakpoint.narrow.above",
+      "screen": "catalog",
+      "stage": "OPEN",
+      "viewport": "narrow-above",
+      "width": 641,
+      "height": 844,
+      "file": "breakpoint.narrow.above--narrow-above.png",
+      "sha256": "50181bdd0c86333ba20b4c3dd14cc42ee1b206f2db82e324d0103d8bd89a2a56"
+    },
+    {
+      "id": "breakpoint.narrow.at",
+      "screen": "catalog",
+      "stage": "OPEN",
+      "viewport": "narrow-at",
+      "width": 640,
+      "height": 844,
+      "file": "breakpoint.narrow.at--narrow-at.png",
+      "sha256": "8ac97b73bc64a23d4d97317079db81cd954d018b8a041ed438ea5ca2ca009b26"
+    },
+    {
+      "id": "breakpoint.narrow.below",
+      "screen": "catalog",
+      "stage": "OPEN",
+      "viewport": "narrow-below",
+      "width": 639,
+      "height": 844,
+      "file": "breakpoint.narrow.below--narrow-below.png",
+      "sha256": "4fe1c544c7b8185054d8a3cb8b04f20463b9591a99e058430a92cdf18ba31c1b"
+    },
+    {
+      "id": "breakpoint.phone.above",
+      "screen": "customers",
+      "stage": "OPEN",
+      "viewport": "phone-above",
+      "width": 421,
+      "height": 844,
+      "file": "breakpoint.phone.above--phone-above.png",
+      "sha256": "c984aff3ccd67178a8019732a5c0d83742a5dd09a68c0652e8a2968c417bb10c"
+    },
+    {
+      "id": "breakpoint.phone.at",
+      "screen": "customers",
+      "stage": "OPEN",
+      "viewport": "phone-at",
+      "width": 420,
+      "height": 844,
+      "file": "breakpoint.phone.at--phone-at.png",
+      "sha256": "825fc4c7ef779a0b918d15a03611ab7ea74b8070317d5683c056d4176d9a1bfb"
+    },
+    {
+      "id": "breakpoint.phone.below",
+      "screen": "customers",
+      "stage": "OPEN",
+      "viewport": "phone-below",
+      "width": 419,
+      "height": 844,
+      "file": "breakpoint.phone.below--phone-below.png",
+      "sha256": "6a9954c5dd8d7975db65df76523118882326b226b6854098b40489d6f819b5e6"
+    },
+    {
+      "id": "breakpoint.short.above",
+      "screen": "sale",
+      "stage": "OPEN",
+      "viewport": "short-above",
+      "width": 1440,
+      "height": 761,
+      "file": "breakpoint.short.above--short-above.png",
+      "sha256": "eaf680d62e6068d7a7c67fe91622e09878f09cd91c0bf1b17bb8aaabb6ad948c"
+    },
+    {
+      "id": "breakpoint.short.at",
+      "screen": "sale",
+      "stage": "OPEN",
+      "viewport": "short-at",
+      "width": 1440,
+      "height": 760,
+      "file": "breakpoint.short.at--short-at.png",
+      "sha256": "9b690a989c798b026a57126152f2c1383a90ca067b94d1a67095abf9d77917e4"
+    },
+    {
+      "id": "breakpoint.short.below",
+      "screen": "sale",
+      "stage": "OPEN",
+      "viewport": "short-below",
+      "width": 1440,
+      "height": 759,
+      "file": "breakpoint.short.below--short-below.png",
+      "sha256": "5ef0f527930d889420f39fb00b4fbf17b2cdb6e5750e181826d4e61d4a4ae060"
+    }
+  ]
+}

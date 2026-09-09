@@ -1,0 +1,83 @@
+{
+  "schemaVersion": 1,
+  "reference": {
+    "sha": "12fb8045cc264b565cb6e764d95ad7b2447fbfa1",
+    "parentSha": "866ff7e5eda6ab79194181486f9c27566541391f",
+    "posTreeSha": "799db3868f280fb969f335536e53999e48e3445e",
+    "rendererTreeSha": "e1afb4e4e52f121d601d3c1f7c4bd6deb5daaf1a",
+    "uiTreeSha": "1512e2df7ee16b99461c4b0f8df2fcb16e492b96",
+    "lockfileBlobSha": "9929c585331aef2992c1ae04b9e9469d7fe116b1",
+    "lockfileSha256": "4fd20463aa4e2108f8347aaee1e90ceded275c9930f30655a26b9158a1ce34ff",
+    "sourceSnapshotSha256": "f521555a6a409cc20a433ff94741febfce51dfbbe27dac583d2a727b1b49a937"
+  },
+  "backendStart": {
+    "branch": "feature/pos-frontend-clean",
+    "sha": "e57b9ee9d48519cb762ca2d9294496abe93ce81e"
+  },
+  "clock": {
+    "instant": "2026-09-08T17:00:00.000Z",
+    "timezone": "America/Mexico_City",
+    "locale": "es-MX"
+  },
+  "rendering": {
+    "browser": "chromium",
+    "playwright": "1.60.0",
+    "deviceScaleFactor": 1,
+    "colorScheme": "light",
+    "reducedMotion": "reduce",
+    "animations": "disabled-after-load"
+  },
+  "referenceRuntime": {
+    "nodeEngine": ">=20",
+    "pnpm": "10.0.0",
+    "react": "18.3.1",
+    "vite": "5.4.21",
+    "tailwindcss": "3.4.19",
+    "electronLocked": "31.7.7",
+    "typescript": "5.9.3"
+  },
+  "candidateRuntime": {
+    "nodePinned": "22.23.2",
+    "nodeObservedDuringRv0": "24.18.0",
+    "pnpm": "10.0.0",
+    "react": "18.3.1",
+    "vite": "5.4.21",
+    "tailwindcss": "3.4.19",
+    "electronLocked": "35.7.5",
+    "playwright": "1.60.0"
+  },
+  "networkPolicy": {
+    "allowDatabase": false,
+    "allowApi": false,
+    "allowExternalRequests": false,
+    "sourceData": "historical-mock-data-from-reference-sha"
+  },
+  "determinism": {
+    "freezeDate": true,
+    "seedMathRandom": 120804,
+    "deterministicRandomUuid": true,
+    "discoverHistoricalLoginCodeAtRuntime": true,
+    "persistCredentials": false
+  },
+  "sensitiveVisualPolicy": {
+    "redactHistoricalDemoCredentials": true,
+    "preserveElementGeometry": true,
+    "selectorAttribute": "data-rv-sensitive",
+    "reason": "La referencia contiene claves demostrativas visibles; la evidencia no las versiona."
+  },
+  "essentialBlobs": {
+    "apps/pos/src/renderer/src/App.tsx": "bd3b1282c23e6b33cc1f44774653bc1b8cd58990",
+    "apps/pos/src/renderer/src/index.css": "109140d9d0ad71263a7bc1238af40b64bc11eccd",
+    "apps/pos/src/renderer/src/mock-data.ts": "8efb7e3037566684fe4ba32404fb3a31dc4cb576",
+    "apps/pos/package.json": "ed40f7fcd54405452e842ecc1fbd718b5e90ae63",
+    "packages/ui/src/components/ui/date-picker.tsx": "8c2dffb44ad24da978300204e3105bc9602c17b6"
+  },
+  "assetSha256": {
+    "apps/pos/public/fonts/Emofera-Regular.woff2": "c098ae461b0fcf8cc827942d818b0555d8106a051765ed4dc99189c0d951edcf",
+    "apps/pos/public/fonts/Gilroy-Bold.woff2": "28825488e2b9fd5a5726d678ae9d8974f0f54f1c4cb0a554822447913f237951",
+    "apps/pos/public/fonts/Gilroy-Medium.woff2": "2c3ca409f054112e17b66de66282be8afb0cf229d24ade67f1960f686483e4b0",
+    "apps/pos/public/fonts/Gilroy-Regular.woff2": "24803edf601f23f0f69aa40734eeeea0896a867fbdf6f11efb7206d8932acbe9",
+    "apps/pos/public/fonts/Gilroy-SemiBold.woff2": "049a2332115666f981b52e23fcaae01f59ab235c12729c539fbbeccec61afa16",
+    "apps/pos/public/logo.svg": "9e79b388457ea03e877a8c7873f8529ce795edbd47fa4aba752a7b86be6d7b1d"
+  }
+}
