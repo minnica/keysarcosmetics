@@ -1,7 +1,7 @@
 # Plan por fases: visual aprobado del POS y reutilización del backend
 
 > Fecha: 2026-09-08.
-> Estado: RV0 completada con baseline canónico de 208 capturas; RV1–RV10 pendientes.
+> Estado: RV0–RV1 completadas; RV2–RV10 pendientes.
 > Referencia visual única: `feature/pos` en `12fb8045cc264b565cb6e764d95ad7b2447fbfa1`.
 > Objetivo: reproducir íntegramente esa interfaz, conectar sus operaciones al backend reutilizable y adaptar, sustituir o eliminar las implementaciones incompatibles. Nunca modificar el visual para acomodarlo al backend.
 
@@ -79,7 +79,7 @@ La eliminación autorizada se refiere a implementaciones incompatibles dentro de
 
 ## 5. Fases de ejecución
 
-RV0 quedó completada el 2026-09-08 con 208 capturas canónicas generadas desde la referencia aislada; RV1–RV10 siguen pendientes. Su numeración `RV` es independiente de las fases históricas 0–14. Cada fase registra SHA inicial/final, archivos, operaciones conectadas, evidencia visual, pruebas ejecutadas, pendientes y partes retiradas. La finalización exige tanto fidelidad visual como funcionamiento del alcance de esa fase.
+RV0 y RV1 quedaron completadas el 2026-09-08: RV0 generó 208 capturas canónicas desde la referencia aislada y RV1 documentó la correspondencia interfaz–backend, consumidores y retiros condicionados. RV2–RV10 siguen pendientes. Su numeración `RV` es independiente de las fases históricas 0–14. Cada fase registra SHA inicial/final, archivos, operaciones conectadas, evidencia visual, pruebas ejecutadas, pendientes y partes retiradas. La finalización exige tanto fidelidad visual como funcionamiento del alcance de esa fase.
 
 ### RV0 — Congelar la referencia y construir evidencia reproducible
 
@@ -97,16 +97,18 @@ RV0 quedó completada el 2026-09-08 con 208 capturas canónicas generadas desde 
 
 ### RV1 — Auditar la correspondencia interfaz–backend y las incompatibilidades
 
-- [ ] Mapear cada acción del inventario a componentes de `12fb804`, campos visibles, permisos, endpoint, servicio, entidades, efecto offline e impresión/exportación.
-- [ ] Clasificar cada capacidad según la sección 4, con evidencia de reutilización o motivo de sustitución/eliminación.
-- [ ] Auditar especialmente altas de vendedores/roles, autorizaciones por código, cambios de sucursal, edición/cancelación de tickets, pagos y reservas. Identificar dónde el backend actual añadió u ocultó controles.
-- [ ] Auditar consumidores compartidos: Envelope, Payroll, Scheduler, tipos, cliente HTTP, workers y binarios POS/offline anteriores. Distinguir dependencias operativas de simples imports.
-- [ ] Comparar dependencias y componentes de `packages/ui` entre ambas referencias. Definir qué comportamiento necesita POS sin revertir correcciones ni borrar pruebas de otras apps.
-- [ ] Inventariar los controles de My Account y Websites. Conservar su visual; separar operación POS de cobros SaaS o integraciones externas que el plan anterior excluyó. Registrar faltantes explícitos, sin simular cobros reales ni ampliar silenciosamente ese alcance.
+- [x] Mapear cada acción del inventario a componentes de `12fb804`, campos visibles, permisos, endpoint, servicio, entidades, efecto offline e impresión/exportación.
+- [x] Clasificar cada capacidad según la sección 4, con evidencia de reutilización o motivo de sustitución/eliminación.
+- [x] Auditar especialmente altas de vendedores/roles, autorizaciones por código, cambios de sucursal, edición/cancelación de tickets, pagos y reservas. Identificar dónde el backend actual añadió u ocultó controles.
+- [x] Auditar consumidores compartidos: Envelope, Payroll, Scheduler, tipos, cliente HTTP, workers y binarios POS/offline anteriores. Distinguir dependencias operativas de simples imports.
+- [x] Comparar dependencias y componentes de `packages/ui` entre ambas referencias. Definir qué comportamiento necesita POS sin revertir correcciones ni borrar pruebas de otras apps.
+- [x] Inventariar los controles de My Account y Websites. Conservar su visual; separar operación POS de cobros SaaS o integraciones externas que el plan anterior excluyó. Registrar faltantes explícitos, sin simular cobros reales ni ampliar silenciosamente ese alcance.
 
 **Entregable:** `docs/POS_UI_BACKEND_COMPATIBILITY.md`, con una fila por operación y por retirada propuesta: evidencia, decisión, consumidores, datos afectados, fase y prueba de aceptación.
 
 **Cierre:** todas las operaciones visibles tienen destino técnico definido; las incompatibilidades están descritas sin propuestas de rediseño. Las discrepancias funcionales pendientes no se confunden con soporte ya implementado.
+
+**Resultado:** completada. `docs/POS_UI_BACKEND_COMPATIBILITY.md` registra 101 capacidades visibles, 17 retiros condicionados, los consumidores compartidos y las diferencias de `packages/ui`. Los conflictos de copy operativo, autorización delegada, edición de pedidos de bodega, facturación SaaS y Websites permanecen explícitos y asignados a fases posteriores; RV1 no alteró código ejecutable, datos ni migraciones.
 
 ### RV2 — Recuperar la presentación completa y sus componentes compartidos
 
@@ -272,3 +274,12 @@ pnpm test:ui:visual
 - Cobertura: 25 pantallas, 10 secciones de Settings, 11 reportes, 10 vistas de bodega, estados protegidos/impresos y matriz base `1440×900`, `920×900`, `390×844`, `320×844`, más sondas adyacentes a breakpoints críticos.
 - Resultado local: type-check y build Vite correctos. Los intentos iniciales en la sesión restringida bloquearon Chromium/Google Chrome antes de abrir una página y no publicaron evidencia parcial; al reiniciar con Full Access, Chromium `148.0.7778.96` completó y publicó atómicamente las 208 capturas.
 - Estado: RV0 completada. RV2 ya dispone del conjunto canónico versionado bajo el SHA aprobado para comparar el candidato.
+
+### RV-D3 — RV1 adapta la operación al visual y condiciona todo retiro
+
+- Fecha: 2026-09-08.
+- Evidencia: `docs/POS_UI_BACKEND_COMPATIBILITY.md` cruza las 25 pantallas y sus variantes con componentes, campos, permisos, API, entidades, offline, salidas y consumidores compartidos.
+- Decisión: conservar los servicios canónicos compatibles; adaptar contratos detrás de los controles aprobados; implementar los faltantes en su fase; no mantener campos visibles añadidos para alias/PIN ni ocultar acciones por carencia de endpoint.
+- Retiros: las 17 propuestas son gates, no borrados autorizados de inmediato. Cada una exige reemplazo operativo, migración de consumidores, preservación de datos y prueba de aceptación antes de eliminar código o contratos.
+- Alcance separado: My Account conserva la presentación de suscripción/tarjetas/facturas y Websites conserva su pantalla, pero los cobros SaaS y la integración externa continúan fuera del backend POS hasta una iniciativa explícita.
+- Estado: RV1 completada. Los cinco conflictos abiertos están documentados y no bloquean iniciar RV2, aunque sí bloquean cerrar la fase funcional que los contiene.
