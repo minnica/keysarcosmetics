@@ -8,13 +8,21 @@
 
 - MVP online RV0–RV7 y RV9 bloqueante: implementado.
 - RV10 técnica: 208/208 visual, builds, tipos, lint, unitarias e integración PostgreSQL en `PASS`.
-- Checkpoint actual: `RV6-P1`, parcial. El perfilamiento aprobado quedó comprobado por HTTP/BD y la tarjeta `CIERRE MENSUAL · TOP 3 VENDEDORES` consume el cierre canónico versionado del último mes para el alcance master, sin añadir controles ni cambiar su presentación. Snapshots idénticos ya no crean otra versión; un cambio real sí.
-- Siguiente trabajo: RV6-P1 sólo puede continuar cuando Producto defina una superficie para reasignar vendedor o cambiar estado manualmente; `12fb804` muestra esos eventos únicamente como historial. Sin esa decisión no llamar `/seller` ni `/status` desde el renderer. Puede avanzarse de forma independiente con RV6-P2. RV5-P1 conserva aparte sus bloqueos de altas/bajas/sustituciones, Agenda, paquetes/cortesías, empresa y adeudos ambiguos.
+- Checkpoint actual: `RV6-P1`, bloqueado después de completar el trabajo independiente en el checkpoint anterior. La reapertura desde `cab1138` reconfirmó por fuente que `12fb804` no contiene controles aprobados para reasignar vendedor ni cambiar manualmente el estado. No hubo una decisión nueva de Producto, por lo que esta ejecución sólo actualiza documentación y no invoca `/seller` ni `/status` desde el renderer.
+- Siguiente trabajo: continuar con RV6-P2, que es independiente. RV6-P1 sólo puede reanudarse cuando Producto defina selector/destino, motivo, estados permitidos y confirmación compatibles con la referencia. El perfilamiento y cierre mensual canónicos ya publicados conservan su evidencia HTTP/BD histórica. RV5-P1 mantiene aparte sus bloqueos de altas/bajas/sustituciones, Agenda, paquetes/cortesías, empresa y adeudos ambiguos.
 - Pendiente visual explícito: RV3-B01 (copy de cierre/gasto). RV7-P1/R03 quedó cerrado sin modificar `REGISTRO MOCK · CASH MANAGER`. No equiparar 208 capturas históricas con cobertura universal del modo API.
 - Backlog: cierre multi-proyección de revisiones complejas, administración avanzada de membresías e incidencias Scheduler, RV8/offline, hardware/escala, migraciones/consumidores/limpieza y OP01–OP06 (piloto, respaldo, rollback y release). Agenda externa sólo si se habilita el proveedor HTTP o se conserva como rollback.
 - Referencia reconfirmada por GitHub MCP el 2026-09-16: `feature/pos` sigue en `12fb8045cc264b565cb6e764d95ad7b2447fbfa1`. La presentación aprobada gobierna la adaptación del backend; no se rediseña para ajustar contratos.
 
-## Checkpoint RV6-P1 (2026-09-16, ejecución actual — administración representada)
+## Checkpoint RV6-P1 (2026-09-16, ejecución actual — bloqueo documental)
+
+- SHA inicial verificado: `cab113815e63d08cf9e519fe6101a35c34fd8ebc`; referencia: árbol completo `12fb8045cc264b565cb6e764d95ad7b2447fbfa1`.
+- `git show` reconfirmó que las props de `MembershipsView` incluyen `onUpdateProfile`, consumo de sesión, agenda y apertura de ticket, pero no una acción de reasignación o cambio manual de estado. `VENDEDOR ACTUAL`, `sellerChanges` y `statusChanges` sólo se renderizan como campos e historial.
+- El renderer vigente tampoco invoca los endpoints `/memberships/:id/seller` o `/memberships/:id/status`. Los servicios, rutas, auditoría e historiales backend se conservan; retirarlos o conectarlos sin controles aprobados violaría el alcance.
+- Resultado `blocked`: no se recibió decisión nueva de Producto y el contrato prohíbe inventarla. No se modificaron código, contratos, Prisma, baseline, manifiestos, capturador ni comparador; no se ejecutaron pruebas de API/BD, tipos, build o visuales porque el checkpoint es exclusivamente documental.
+- No se consultó al PO, no se atribuyó aprobación humana y B01–B03 permanecen sin cambios. No se iniciaron servidores, contenedores o procesos, ni se accedió a `.env`, credenciales o bases de datos. Informe: `docs/pos-automation/runs/2026-09-16T19-33-53-941Z-RV6-P1.md`.
+
+## Checkpoint RV6-P1 (2026-09-16, evidencia histórica anterior — administración representada)
 
 - Inventario contra el árbol completo `12fb804`: el detalle ofrece `Perfilamiento comercial`, asistencia, próxima cita y acceso al ticket; muestra `VENDEDOR ACTUAL` y las listas `sellerChanges`/`statusChanges` sólo como trazabilidad. No contiene selector de nuevo vendedor, motivo, cambio manual de estado ni confirmación para esas mutaciones. La tarjeta de podio sí declara cierre mensual automático.
 - En modo API, `MembershipsView` solicita a `App.tsx` el cierre del último mes para `Todas las sucursales` o la sucursal master seleccionada. `App.tsx` traduce nombres a IDs autorizados y reutiliza `createMembershipClosure` con el token personal ya exigido por el módulo. En mock no existe callback y la referencia conserva el cálculo local y el mismo DOM.

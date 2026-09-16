@@ -212,77 +212,42 @@
     },
     "RV6-P1": {
       "id": "RV6-P1",
-      "runId": "2026-09-16T19-15-50-093Z-RV6-P1",
-      "base": "1c4b1f6f90a14a9df7154ed85de8946e0440bc60",
-      "status": "partial",
-      "attempts": 1,
-      "summary": "Conectado el cierre mensual canónico a la tarjeta aprobada sin alterar el DOM. Los snapshots idénticos reutilizan versión; cambios reales generan una nueva. El perfilamiento quedó validado por HTTP/BD. Reasignación de vendedor y estado manual permanecen bloqueados porque 12fb804 no contiene controles aprobados.",
+      "runId": "2026-09-16T19-33-53-941Z-RV6-P1",
+      "base": "cab113815e63d08cf9e519fe6101a35c34fd8ebc",
+      "status": "blocked",
+      "attempts": 2,
+      "summary": "Se reconfirmó que 12fb804 no incluye controles aprobados para reasignar vendedor ni cambiar manualmente el estado. Conforme al contrato, sólo se actualizaron plan, handoff e informe; no se modificó código.",
       "checks": [
         {
-          "command": "DATABASE_URL=<PostgreSQL-16-local-desechable> DIRECT_URL=<misma-BD> pnpm --filter @cosmetics/api exec prisma migrate deploy",
+          "command": "git rev-parse HEAD && git status --short",
           "result": "passed",
-          "evidence": "46/46 migraciones aplicadas desde cero en la BD local dedicada."
+          "evidence": "SHA inicial cab113815e63d08cf9e519fe6101a35c34fd8ebc y árbol inicialmente limpio."
         },
         {
-          "command": "RUN_DATABASE_TESTS=true DATABASE_URL=<local-desechable> DIRECT_URL=<misma-BD> pnpm --filter @cosmetics/api exec vitest run src/pos-memberships.integration.test.ts",
+          "command": "git show 12fb8045cc264b565cb6e764d95ad7b2447fbfa1:apps/pos/src/renderer/src/components/MembershipsView.tsx | rg -n -C 4 \"Perfilamiento comercial|VENDEDOR ACTUAL|sellerChanges|statusChanges|CIERRE MENSUAL|onUpdate|on.*Seller|on.*Status\"",
           "result": "passed",
-          "evidence": "1/1: deduplicación, versión 2 ante cambios y rechazo 403 no-master."
+          "evidence": "La referencia contiene onUpdateProfile, pero vendedor y estado sólo aparecen como valores e historial, sin acciones manuales."
         },
         {
-          "command": "RUN_DATABASE_TESTS=true DATABASE_URL=<local-desechable> DIRECT_URL=<misma-BD> pnpm --filter @cosmetics/api exec vitest run src/pos.integration.test.ts",
+          "command": "if rg -n 'memberships/.+(seller|status)|changeMembership(Seller|Status)' apps/pos/src/renderer/src; then exit 1; else echo 'PASS'; fi",
           "result": "passed",
-          "evidence": "10/10 casos; perfilamiento persistente y replay idempotente incluidos."
+          "evidence": "El renderer vigente no invoca las mutaciones bloqueadas."
         },
         {
-          "command": "pnpm --filter @cosmetics/api lint && pnpm --filter @cosmetics/api test:unit",
+          "command": "git diff --check",
           "result": "passed",
-          "evidence": "Lint sin warnings; 25 archivos y 136/136 pruebas."
-        },
-        {
-          "command": "pnpm --filter @cosmetics/types type-check && pnpm --filter @cosmetics/api-client type-check && pnpm --filter @cosmetics/api type-check && pnpm --filter @cosmetics/pos type-check && pnpm --filter @cosmetics/api build && pnpm --filter @cosmetics/pos build:web",
-          "result": "passed",
-          "evidence": "Contratos, cliente, API, renderer, main y preload compilaron."
-        },
-        {
-          "command": "pnpm --filter @cosmetics/api prisma:schemas && pnpm --filter @cosmetics/api prisma:validate && pnpm pos:visual:manifest && git diff --check",
-          "result": "passed",
-          "evidence": "Schemas sincronizados/válidos; referencia 12fb804 intacta con 208 capturas programadas; diff válido."
+          "evidence": "Los tres cambios documentales no presentan errores de whitespace; RV6-P1 permanece sin marcar y enlaza el informe obligatorio."
         }
       ],
-      "independentChecks": [
-        {
-          "command": "pnpm --filter @cosmetics/pos type-check",
-          "result": "passed"
-        },
-        {
-          "command": "pnpm --filter @cosmetics/pos build:web",
-          "result": "passed"
-        },
-        {
-          "command": "pnpm --filter @cosmetics/api prisma:schemas",
-          "result": "passed"
-        },
-        {
-          "command": "pnpm --filter @cosmetics/api type-check",
-          "result": "passed"
-        },
-        {
-          "command": "pnpm --filter @cosmetics/api lint",
-          "result": "passed"
-        },
-        {
-          "command": "pnpm --filter @cosmetics/api test:unit",
-          "result": "passed"
-        }
-      ],
+      "independentChecks": [],
       "remaining": [
-        "Producto debe definir controles aprobados para reasignar vendedor y cambiar manualmente el estado; el renderer no invoca esos endpoints.",
-        "RV6-P1 permanece sin marcar; el informe está en docs/pos-automation/runs/2026-09-16T19-15-50-093Z-RV6-P1.md.",
-        "RV6-P2 puede continuar independientemente."
+        "Producto debe definir controles aprobados para destino, motivo, estados permitidos y confirmación antes de conectar /seller o /status.",
+        "RV6-P1 permanece [ ]; el bloqueo no constituye una exclusión aprobada.",
+        "No se ejecutaron tipos, builds, pruebas HTTP/BD ni visuales porque esta ejecución bloqueada sólo modificó documentación."
       ],
-      "nextStep": "Si RV6-P1 se reabre sin una decisión nueva de Producto, registrar el bloqueo documental sin modificar código; después continuar con RV6-P2.",
-      "report": "docs/pos-automation/runs/2026-09-16T19-15-50-093Z-RV6-P1.md",
-      "updatedAt": "2026-09-16T19:33:50.380Z"
+      "nextStep": "Continuar con RV6-P2. Reabrir RV6-P1 para código únicamente después de una decisión visual trazable de Producto.",
+      "report": "docs/pos-automation/runs/2026-09-16T19-33-53-941Z-RV6-P1.md",
+      "updatedAt": "2026-09-16T19:37:11.818Z"
     }
   },
   "history": [
@@ -735,6 +700,45 @@
       "nextStep": "Si RV6-P1 se reabre sin una decisión nueva de Producto, registrar el bloqueo documental sin modificar código; después continuar con RV6-P2.",
       "report": "docs/pos-automation/runs/2026-09-16T19-15-50-093Z-RV6-P1.md",
       "updatedAt": "2026-09-16T19:33:50.380Z"
+    },
+    {
+      "id": "RV6-P1",
+      "runId": "2026-09-16T19-33-53-941Z-RV6-P1",
+      "base": "cab113815e63d08cf9e519fe6101a35c34fd8ebc",
+      "status": "blocked",
+      "attempts": 2,
+      "summary": "Se reconfirmó que 12fb804 no incluye controles aprobados para reasignar vendedor ni cambiar manualmente el estado. Conforme al contrato, sólo se actualizaron plan, handoff e informe; no se modificó código.",
+      "checks": [
+        {
+          "command": "git rev-parse HEAD && git status --short",
+          "result": "passed",
+          "evidence": "SHA inicial cab113815e63d08cf9e519fe6101a35c34fd8ebc y árbol inicialmente limpio."
+        },
+        {
+          "command": "git show 12fb8045cc264b565cb6e764d95ad7b2447fbfa1:apps/pos/src/renderer/src/components/MembershipsView.tsx | rg -n -C 4 \"Perfilamiento comercial|VENDEDOR ACTUAL|sellerChanges|statusChanges|CIERRE MENSUAL|onUpdate|on.*Seller|on.*Status\"",
+          "result": "passed",
+          "evidence": "La referencia contiene onUpdateProfile, pero vendedor y estado sólo aparecen como valores e historial, sin acciones manuales."
+        },
+        {
+          "command": "if rg -n 'memberships/.+(seller|status)|changeMembership(Seller|Status)' apps/pos/src/renderer/src; then exit 1; else echo 'PASS'; fi",
+          "result": "passed",
+          "evidence": "El renderer vigente no invoca las mutaciones bloqueadas."
+        },
+        {
+          "command": "git diff --check",
+          "result": "passed",
+          "evidence": "Los tres cambios documentales no presentan errores de whitespace; RV6-P1 permanece sin marcar y enlaza el informe obligatorio."
+        }
+      ],
+      "independentChecks": [],
+      "remaining": [
+        "Producto debe definir controles aprobados para destino, motivo, estados permitidos y confirmación antes de conectar /seller o /status.",
+        "RV6-P1 permanece [ ]; el bloqueo no constituye una exclusión aprobada.",
+        "No se ejecutaron tipos, builds, pruebas HTTP/BD ni visuales porque esta ejecución bloqueada sólo modificó documentación."
+      ],
+      "nextStep": "Continuar con RV6-P2. Reabrir RV6-P1 para código únicamente después de una decisión visual trazable de Producto.",
+      "report": "docs/pos-automation/runs/2026-09-16T19-33-53-941Z-RV6-P1.md",
+      "updatedAt": "2026-09-16T19:37:11.818Z"
     }
   ]
 }
