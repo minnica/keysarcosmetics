@@ -1523,6 +1523,233 @@ integrationDescribe("seguridad y terminales POS", () => {
     expect(revisionBalance.availableQuantity.toFixed(2)).toBe("7.00");
     expect(projectionSum._sum.amount?.toFixed(2)).toBe("120.00");
 
+    const companyCustomerPhone = `58${Date.now().toString().slice(-8)}`;
+    const [commercialCompany, alternateCommercialCompany, companyCustomer] =
+      await prisma.$transaction([
+        prisma.posCommercialCompany.create({
+          data: {
+            salesNumber: `EMP-RV5-${suffix}`,
+            name: `Empresa RV5 ${suffix}`,
+          },
+        }),
+        prisma.posCommercialCompany.create({
+          data: {
+            salesNumber: `EMP-RV5-ALT-${suffix}`,
+            name: `Empresa alterna RV5 ${suffix}`,
+          },
+        }),
+        prisma.customer.create({
+          data: {
+            displayName: `Clienta Empresa RV5 ${suffix}`,
+            normalizedName: `clienta empresa rv5 ${suffix}`,
+            phone: companyCustomerPhone,
+            phoneNormalized: companyCustomerPhone,
+          },
+        }),
+      ]);
+    await prisma.customerPortfolioAssignment.create({
+      data: {
+        customerId: companyCustomer.id,
+        branchId,
+        companyId: commercialCompany.id,
+        ownerNameSnapshot: commercialCompany.name,
+        ownerCodeSnapshot: commercialCompany.salesNumber,
+      },
+    });
+    const companyCheckout = await request(
+      "/api/pos/tickets",
+      mutationJson(
+        "POST",
+        {
+          branchId,
+          customer: { id: companyCustomer.id },
+          lines: [
+            {
+              itemId: serviceId,
+              quantity: "1.00",
+              unitPrice: "200.00",
+              delivered: true,
+            },
+          ],
+          sellers: [{ employeeId, share: "100.00" }],
+          participants: [
+            {
+              kind: "COMPANY",
+              companyId: commercialCompany.id,
+              share: "100.00",
+            },
+            { kind: "SELLER", employeeId, share: "100.00" },
+          ],
+          payments: [{ methodId: cash.id, amount: "200.00" }],
+        },
+        employeeToken,
+      ),
+    );
+    expect(companyCheckout.response.status).toBe(201);
+    const companyTicket = companyCheckout.body["data"] as {
+      id: string;
+      participants: Array<{
+        id: string;
+        kind: "SELLER" | "COMPANY";
+        companyId: string | null;
+        shareAmount: string;
+      }>;
+    };
+    const originalCompanyParticipant = companyTicket.participants.find(
+      (participant) => participant.kind === "COMPANY",
+    )!;
+    const companyRevisionAuthorization = await request(
+      "/api/pos/authorizations",
+      json(
+        "POST",
+        { pin: masterPin, purpose: "RECEIPT_HISTORY_ADMIN" },
+        masterToken,
+      ),
+    );
+    const companyAuthorizationToken = (
+      companyRevisionAuthorization.body["data"] as {
+        authorizationToken: string;
+      }
+    ).authorizationToken;
+    const companyRevision = (companyId: string) => ({
+      reason: "Conservar participación comercial RV5-P1",
+      authorizationToken: companyAuthorizationToken,
+      revision: {
+        clientName: `Clienta Empresa RV5 ${suffix} Corregida`,
+        clientPhone: companyCustomer.phone ?? "",
+        sellerIds: [companyId, employeeId],
+        products: [
+          {
+            itemId: serviceId,
+            quantity: "1.00",
+            unitPrice: "220.00",
+          },
+        ],
+        discountAmount: "0.00",
+        paymentStatus: "PAID" as const,
+        amountPaid: "220.00",
+        payments: [{ methodId: cash.id, amount: "220.00" }],
+      },
+    });
+    const rejectedCompanySubstitution = await request(
+      `/api/pos/tickets/${companyTicket.id}/revisions`,
+      mutationJson(
+        "POST",
+        companyRevision(alternateCommercialCompany.id),
+        masterToken,
+      ),
+    );
+    expect(rejectedCompanySubstitution.response.status).toBe(409);
+    const companyRevisionKey = randomUUID();
+    const postCompanyRevision = () =>
+      request(`/api/pos/tickets/${companyTicket.id}/revisions`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${masterToken}`,
+          "idempotency-key": companyRevisionKey,
+        },
+        body: JSON.stringify(companyRevision(commercialCompany.id)),
+      });
+    const appliedCompanyRevision = await postCompanyRevision();
+    expect(appliedCompanyRevision.response.status).toBe(201);
+    const replayedCompanyRevision = await postCompanyRevision();
+    expect(replayedCompanyRevision.response.status).toBe(201);
+    expect(replayedCompanyRevision.body["data"]).toEqual(
+      appliedCompanyRevision.body["data"],
+    );
+    const reloadedCompanyTicket = await request(
+      `/api/pos/tickets/${companyTicket.id}`,
+      { headers: { authorization: `Bearer ${masterToken}` } },
+    );
+    expect(reloadedCompanyTicket.response.status).toBe(200);
+    expect(reloadedCompanyTicket.body["data"]).toEqual(
+      expect.objectContaining({
+        total: "220.00",
+        amountReceived: "220.00",
+        sellers: [expect.objectContaining({ shareAmount: "110.00" })],
+        participants: [
+          expect.objectContaining({
+            id: originalCompanyParticipant.id,
+            kind: "COMPANY",
+            companyId: commercialCompany.id,
+            shareAmount: "110.00",
+          }),
+          expect.objectContaining({
+            kind: "SELLER",
+            employeeId,
+            shareAmount: "110.00",
+          }),
+        ],
+      }),
+    );
+    const [
+      companyEvents,
+      companyOperations,
+      companyProjections,
+      persistedCompany,
+    ] = await Promise.all([
+      prisma.posTicketEvent.findMany({
+        where: { ticketId: companyTicket.id, type: "REVISION" },
+      }),
+      prisma.posPaymentOperation.findMany({
+        where: { ticketId: companyTicket.id },
+        orderBy: { creadoEn: "asc" },
+      }),
+      prisma.posLegacySaleProjection.findMany({
+        where: { operation: { ticketId: companyTicket.id } },
+        orderBy: { creadoEn: "asc" },
+      }),
+      prisma.posTicketParticipant.findUniqueOrThrow({
+        where: { id: originalCompanyParticipant.id },
+      }),
+    ]);
+    expect(companyEvents).toHaveLength(1);
+    expect(companyEvents[0]?.snapshot).toEqual(
+      expect.objectContaining({
+        effects: expect.objectContaining({
+          companyParticipantPreservations: [
+            expect.objectContaining({
+              before: expect.objectContaining({
+                id: originalCompanyParticipant.id,
+                shareAmount: "100.00",
+              }),
+              after: expect.objectContaining({
+                id: originalCompanyParticipant.id,
+                shareAmount: "110.00",
+              }),
+            }),
+          ],
+        }),
+      }),
+    );
+    expect(companyOperations.map((operation) => operation.kind)).toEqual([
+      "SALE",
+      "REFUND",
+      "REVISION",
+    ]);
+    expect(
+      companyOperations.map((operation) => operation.amount.toFixed(2)),
+    ).toEqual(["200.00", "200.00", "220.00"]);
+    expect(
+      companyProjections.map((projection) => projection.amount.toFixed(2)),
+    ).toEqual(["100.00", "-100.00", "110.00"]);
+    expect(
+      companyProjections
+        .reduce(
+          (total, projection) => total + Number(projection.amount.toFixed(2)),
+          0,
+        )
+        .toFixed(2),
+    ).toBe("110.00");
+    expect(persistedCompany).toEqual(
+      expect.objectContaining({
+        id: originalCompanyParticipant.id,
+        companyId: commercialCompany.id,
+      }),
+    );
+    expect(persistedCompany.shareAmount.toFixed(2)).toBe("100.00");
+
     const preservedPackage = await prisma.posPackage.create({
       data: {
         name: `Paquete revisable RV5 ${suffix}`,

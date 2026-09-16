@@ -2618,16 +2618,68 @@ export async function appendTicketRevision(
       "El estado de pago no coincide con el total y el importe cobrado",
     );
 
-  const sellerIds = [...new Set(input.revision.sellerIds)];
-  if (sellerIds.length !== input.revision.sellerIds.length)
-    throw new PosTicketError("La revisión contiene vendedores duplicados");
+  const participantIds = [...new Set(input.revision.sellerIds)];
+  if (participantIds.length !== input.revision.sellerIds.length)
+    throw new PosTicketError("La revisión contiene participantes duplicados");
+  const currentCompanyParticipants = current.participants.filter(
+    (participant) => participant.kind === "COMPANY",
+  );
+  const originalCompanyParticipants = ticket.participants.filter(
+    (participant) => participant.kind === "COMPANY",
+  );
   if (
-    current.participants.some((participant) => participant.kind === "COMPANY")
+    currentCompanyParticipants.length !== originalCompanyParticipants.length ||
+    currentCompanyParticipants.length > 1
   )
     throw new PosTicketError(
-      "La revisión de tickets con participación de empresa requiere el motor comercial pendiente",
+      "La proyección vigente no conserva la identidad comercial original",
       409,
     );
+  const currentCompanyParticipant = currentCompanyParticipants[0] ?? null;
+  const originalCompanyParticipant = originalCompanyParticipants[0] ?? null;
+  if (
+    currentCompanyParticipant &&
+    (!originalCompanyParticipant ||
+      !currentCompanyParticipant.companyId ||
+      currentCompanyParticipant.id !== originalCompanyParticipant.id ||
+      currentCompanyParticipant.companyId !==
+        originalCompanyParticipant.companyId ||
+      currentCompanyParticipant.code !==
+        originalCompanyParticipant.participantCodeSnapshot ||
+      currentCompanyParticipant.name !==
+        originalCompanyParticipant.participantNameSnapshot)
+  )
+    throw new PosTicketError(
+      "La proyección vigente no conserva la identidad comercial original",
+      409,
+    );
+  const requestedCompanies = await tx.posCommercialCompany.findMany({
+    where: { id: { in: participantIds } },
+    select: { id: true },
+  });
+  if (
+    currentCompanyParticipant
+      ? requestedCompanies.length !== 1 ||
+        requestedCompanies[0]!.id !== currentCompanyParticipant.companyId
+      : requestedCompanies.length > 0
+  )
+    throw new PosTicketError(
+      "La revisión no puede agregar, retirar ni sustituir la participación de empresa",
+      409,
+    );
+  if (currentCompanyParticipant) {
+    const locked = await tx.$queryRaw<Array<{ id: string }>>(
+      Prisma.sql`SELECT "id" FROM "PosCommercialCompany" WHERE "id" = ${currentCompanyParticipant.companyId} FOR UPDATE`,
+    );
+    if (locked.length !== 1)
+      throw new PosTicketError(
+        "La empresa original ya no tiene una identidad canónica",
+        409,
+      );
+  }
+  const sellerIds = participantIds.filter(
+    (participantId) => participantId !== currentCompanyParticipant?.companyId,
+  );
   const employees = await tx.empleado.findMany({
     where: {
       id: { in: sellerIds },
@@ -2655,42 +2707,64 @@ export async function appendTicketRevision(
   const attendanceByEmployee = new Map(
     openAttendances.map((attendance) => [attendance.employeeId, attendance]),
   );
-  const sellerShares = allocateLargestRemainder(
+  const participantShares = allocateLargestRemainder(
     quote.totalCents,
-    sellerIds.map(() => 1),
+    participantIds.map(() => 1),
   );
-  const sellerPercentUnits = allocateLargestRemainder(
+  const participantPercentUnits = allocateLargestRemainder(
     1_000_000,
-    sellerIds.map(() => 1),
+    participantIds.map(() => 1),
   );
-  const nextSellers: PosTicketDto["sellers"] = sellerIds.map(
-    (employeeId, index) => {
-      const attendance = attendanceByEmployee.get(employeeId);
+  const nextSellers: PosTicketDto["sellers"] = sellerIds.map((employeeId) => {
+    const participantIndex = participantIds.indexOf(employeeId);
+    const attendance = attendanceByEmployee.get(employeeId);
+    return {
+      employeeId,
+      name: employeeById.get(employeeId)!.nombreCompleto,
+      shareAmount: fromCents(participantShares[participantIndex]!),
+      sharePercent: (
+        participantPercentUnits[participantIndex]! / 10_000
+      ).toFixed(4),
+      clockedIn: Boolean(attendance),
+      presenceBranchId: attendance?.branchId ?? null,
+      attendanceId: attendance?.id ?? null,
+    };
+  });
+  const nextSellerById = new Map(
+    nextSellers.map((seller) => [seller.employeeId, seller]),
+  );
+  const currentSellerParticipantById = new Map(
+    current.participants.flatMap((participant) =>
+      participant.kind === "SELLER" && participant.employeeId
+        ? [[participant.employeeId, participant] as const]
+        : [],
+    ),
+  );
+  const nextParticipants: PosTicketDto["participants"] = participantIds.map(
+    (participantId, index) => {
+      if (participantId === currentCompanyParticipant?.companyId)
+        return {
+          ...currentCompanyParticipant,
+          shareAmount: fromCents(participantShares[index]!),
+          sharePercent: (participantPercentUnits[index]! / 10_000).toFixed(4),
+        };
+      const seller = nextSellerById.get(participantId)!;
       return {
-        employeeId,
-        name: employeeById.get(employeeId)!.nombreCompleto,
-        shareAmount: fromCents(sellerShares[index]!),
-        sharePercent: (sellerPercentUnits[index]! / 10_000).toFixed(4),
-        clockedIn: Boolean(attendance),
-        presenceBranchId: attendance?.branchId ?? null,
-        attendanceId: attendance?.id ?? null,
+        id:
+          currentSellerParticipantById.get(participantId)?.id ??
+          `revision-${ticket.version + 1}-${index + 1}`,
+        kind: "SELLER",
+        employeeId: seller.employeeId,
+        companyId: null,
+        code: seller.employeeId,
+        name: seller.name,
+        shareAmount: seller.shareAmount,
+        sharePercent: seller.sharePercent,
+        clockedIn: seller.clockedIn,
+        presenceBranchId: seller.presenceBranchId,
+        attendanceId: seller.attendanceId,
       };
     },
-  );
-  const nextParticipants: PosTicketDto["participants"] = nextSellers.map(
-    (seller, index) => ({
-      id: `revision-${ticket.version + 1}-${index + 1}`,
-      kind: "SELLER",
-      employeeId: seller.employeeId,
-      companyId: null,
-      code: seller.employeeId,
-      name: seller.name,
-      shareAmount: seller.shareAmount,
-      sharePercent: seller.sharePercent,
-      clockedIn: seller.clockedIn,
-      presenceBranchId: seller.presenceBranchId,
-      attendanceId: seller.attendanceId,
-    }),
   );
   let quotedLineIndex = 0;
   const nextLines: PosTicketDto["lines"] = revisionLinePlans.map(
@@ -2941,6 +3015,10 @@ export async function appendTicketRevision(
       },
     });
     compensationOperationId = operation.id;
+    const currentSellerShareCents = current.sellers.reduce(
+      (total, seller) => total + toCents(seller.shareAmount),
+      0,
+    );
     await projectPaymentOperation(tx, {
       operationId: operation.id,
       branchId: context.branchId,
@@ -2951,11 +3029,15 @@ export async function appendTicketRevision(
         employeeId: seller.employeeId,
         weightCents: toCents(seller.shareAmount),
       })),
-      payments: currentOperations.flatMap((currentOperation) =>
-        currentOperation.payments.map((payment) => ({
-          methodId: payment.paymentMethodId,
-          amountCents: toCents(payment.amount),
-        })),
+      payments: sellerProjectionPayments(
+        currentOperations.flatMap((currentOperation) =>
+          currentOperation.payments.map((payment) => ({
+            methodId: payment.paymentMethodId,
+            amountCents: toCents(payment.amount),
+          })),
+        ),
+        currentSellerShareCents,
+        toCents(current.total),
       ),
     });
   }
@@ -2994,6 +3076,10 @@ export async function appendTicketRevision(
       },
     });
     revisionOperationId = operation.id;
+    const nextSellerShareCents = nextSellers.reduce(
+      (total, seller) => total + toCents(seller.shareAmount),
+      0,
+    );
     await projectPaymentOperation(tx, {
       operationId: operation.id,
       branchId: context.branchId,
@@ -3003,10 +3089,14 @@ export async function appendTicketRevision(
         employeeId: seller.employeeId,
         weightCents: toCents(seller.shareAmount),
       })),
-      payments: validatedPayments.map(({ payment, method }) => ({
-        methodId: method.id,
-        amountCents: toCents(payment.amount),
-      })),
+      payments: sellerProjectionPayments(
+        validatedPayments.map(({ payment, method }) => ({
+          methodId: method.id,
+          amountCents: toCents(payment.amount),
+        })),
+        nextSellerShareCents,
+        quote.totalCents,
+      ),
     });
   }
 
@@ -3256,6 +3346,16 @@ export async function appendTicketRevision(
           appointmentPreservations: preservedAppointments,
           courtesyPreservations: preservedCourtesies,
           packagePreservations: preservedPackages,
+          companyParticipantPreservations: currentCompanyParticipant
+            ? [
+                {
+                  before: currentCompanyParticipant,
+                  after: nextParticipants.find(
+                    (participant) => participant.kind === "COMPANY",
+                  )!,
+                },
+              ]
+            : [],
         },
       } as unknown as Prisma.InputJsonValue,
       actorCredentialId: context.credentialId,
