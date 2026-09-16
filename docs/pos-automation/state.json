@@ -315,6 +315,78 @@
       "nextStep": "El ejecutor puede validar, guardar, hacer commit y publicar el checkpoint; después debe evaluar RV6-P3 únicamente si el proveedor HTTP continúa habilitado o como rollback.",
       "report": "docs/pos-automation/runs/2026-09-16T19-37-14-982Z-RV6-P2.md",
       "updatedAt": "2026-09-16T20:00:52.123Z"
+    },
+    "RV7-P2": {
+      "id": "RV7-P2",
+      "runId": "2026-09-16T20-00-55-973Z-RV7-P2",
+      "base": "7c1f69a4310acd55dd25185e813ccbfdf92eefc7",
+      "status": "completed",
+      "attempts": 1,
+      "summary": "Certificación técnica completada con datos sintéticos locales: 1/10/20/30 sucursales, hasta 12,000 tickets, 24,000 líneas y 366 días. Pantalla, reporte y exportación conciliaron; aprobaron umbrales, históricos inactivos, protección de costos y auditoría. Informe: docs/pos-automation/runs/2026-09-16T20-00-55-973Z-RV7-P2.md.",
+      "checks": [
+        {
+          "command": "DATABASE_URL=<local-desechable> DIRECT_URL=<misma-BD> pnpm --filter @cosmetics/api exec prisma migrate deploy",
+          "result": "passed",
+          "evidence": "46/46 migraciones aplicadas desde cero en PostgreSQL 16 local dedicado."
+        },
+        {
+          "command": "RUN_POS_REPORT_LOAD_TESTS=true DATABASE_URL=<local-desechable> DIRECT_URL=<misma-BD> pnpm --filter @cosmetics/api exec vitest run src/pos-report-load.integration.test.ts --reporter=verbose",
+          "result": "passed",
+          "evidence": "2/2 en 60.25 s. A 30 sucursales: 12,000 filas, hidratación 6,640.67 ms, reporte 7,097.17 ms y exportación 2,401.79 ms; todos bajo los umbrales."
+        },
+        {
+          "command": "RUN_DATABASE_TESTS=true DATABASE_URL=<regresion-local> DIRECT_URL=<misma-BD> pnpm --filter @cosmetics/api test:integration",
+          "result": "passed",
+          "evidence": "5 archivos y 21/21 pruebas; los gates de carga opt-in se omitieron por defecto."
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api lint && pnpm --filter @cosmetics/api test:unit",
+          "result": "passed",
+          "evidence": "ESLint sin warnings; 25 archivos y 136/136 pruebas unitarias."
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api type-check && pnpm --filter @cosmetics/api build",
+          "result": "passed",
+          "evidence": "TypeScript, Prisma Client y build API completados."
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api prisma:schemas && pnpm --filter @cosmetics/api prisma:validate",
+          "result": "passed",
+          "evidence": "Schemas Prisma sincronizados y válidos."
+        },
+        {
+          "command": "pnpm --filter @cosmetics/pos type-check && pnpm --filter @cosmetics/pos build:web && pnpm pos:visual:manifest",
+          "result": "passed",
+          "evidence": "POS web/Electron compiló; referencia 12fb804 intacta con 208 capturas programadas."
+        },
+        {
+          "command": "pnpm exec prettier --check backend/api/src/pos-report-load.integration.test.ts PLAN_RESTAURACION_VISUAL_POS.md docs/POS_MVP_HANDOFF.md CLAUDE.md docs/pos-automation/runs/2026-09-16T20-00-55-973Z-RV7-P2.md && git diff --check",
+          "result": "passed",
+          "evidence": "Formato y whitespace correctos; el contenedor temporal quedó detenido y los datos sintéticos se conservaron."
+        }
+      ],
+      "independentChecks": [
+        {
+          "command": "pnpm --filter @cosmetics/api prisma:schemas",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api type-check",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api lint",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api test:unit",
+          "result": "passed"
+        }
+      ],
+      "remaining": [],
+      "nextStep": "Continuar con RV6-P3 sólo si AGENDA_PROVIDER=http se conserva como proveedor o rollback; mantener piloto, hardware, SLA y aceptación operativa fuera de lo acreditado por RV7-P2.",
+      "report": "docs/pos-automation/runs/2026-09-16T20-00-55-973Z-RV7-P2.md",
+      "updatedAt": "2026-09-16T20:27:44.033Z"
     }
   },
   "history": [
@@ -873,6 +945,78 @@
       "nextStep": "El ejecutor puede validar, guardar, hacer commit y publicar el checkpoint; después debe evaluar RV6-P3 únicamente si el proveedor HTTP continúa habilitado o como rollback.",
       "report": "docs/pos-automation/runs/2026-09-16T19-37-14-982Z-RV6-P2.md",
       "updatedAt": "2026-09-16T20:00:52.123Z"
+    },
+    {
+      "id": "RV7-P2",
+      "runId": "2026-09-16T20-00-55-973Z-RV7-P2",
+      "base": "7c1f69a4310acd55dd25185e813ccbfdf92eefc7",
+      "status": "completed",
+      "attempts": 1,
+      "summary": "Certificación técnica completada con datos sintéticos locales: 1/10/20/30 sucursales, hasta 12,000 tickets, 24,000 líneas y 366 días. Pantalla, reporte y exportación conciliaron; aprobaron umbrales, históricos inactivos, protección de costos y auditoría. Informe: docs/pos-automation/runs/2026-09-16T20-00-55-973Z-RV7-P2.md.",
+      "checks": [
+        {
+          "command": "DATABASE_URL=<local-desechable> DIRECT_URL=<misma-BD> pnpm --filter @cosmetics/api exec prisma migrate deploy",
+          "result": "passed",
+          "evidence": "46/46 migraciones aplicadas desde cero en PostgreSQL 16 local dedicado."
+        },
+        {
+          "command": "RUN_POS_REPORT_LOAD_TESTS=true DATABASE_URL=<local-desechable> DIRECT_URL=<misma-BD> pnpm --filter @cosmetics/api exec vitest run src/pos-report-load.integration.test.ts --reporter=verbose",
+          "result": "passed",
+          "evidence": "2/2 en 60.25 s. A 30 sucursales: 12,000 filas, hidratación 6,640.67 ms, reporte 7,097.17 ms y exportación 2,401.79 ms; todos bajo los umbrales."
+        },
+        {
+          "command": "RUN_DATABASE_TESTS=true DATABASE_URL=<regresion-local> DIRECT_URL=<misma-BD> pnpm --filter @cosmetics/api test:integration",
+          "result": "passed",
+          "evidence": "5 archivos y 21/21 pruebas; los gates de carga opt-in se omitieron por defecto."
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api lint && pnpm --filter @cosmetics/api test:unit",
+          "result": "passed",
+          "evidence": "ESLint sin warnings; 25 archivos y 136/136 pruebas unitarias."
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api type-check && pnpm --filter @cosmetics/api build",
+          "result": "passed",
+          "evidence": "TypeScript, Prisma Client y build API completados."
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api prisma:schemas && pnpm --filter @cosmetics/api prisma:validate",
+          "result": "passed",
+          "evidence": "Schemas Prisma sincronizados y válidos."
+        },
+        {
+          "command": "pnpm --filter @cosmetics/pos type-check && pnpm --filter @cosmetics/pos build:web && pnpm pos:visual:manifest",
+          "result": "passed",
+          "evidence": "POS web/Electron compiló; referencia 12fb804 intacta con 208 capturas programadas."
+        },
+        {
+          "command": "pnpm exec prettier --check backend/api/src/pos-report-load.integration.test.ts PLAN_RESTAURACION_VISUAL_POS.md docs/POS_MVP_HANDOFF.md CLAUDE.md docs/pos-automation/runs/2026-09-16T20-00-55-973Z-RV7-P2.md && git diff --check",
+          "result": "passed",
+          "evidence": "Formato y whitespace correctos; el contenedor temporal quedó detenido y los datos sintéticos se conservaron."
+        }
+      ],
+      "independentChecks": [
+        {
+          "command": "pnpm --filter @cosmetics/api prisma:schemas",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api type-check",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api lint",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api test:unit",
+          "result": "passed"
+        }
+      ],
+      "remaining": [],
+      "nextStep": "Continuar con RV6-P3 sólo si AGENDA_PROVIDER=http se conserva como proveedor o rollback; mantener piloto, hardware, SLA y aceptación operativa fuera de lo acreditado por RV7-P2.",
+      "report": "docs/pos-automation/runs/2026-09-16T20-00-55-973Z-RV7-P2.md",
+      "updatedAt": "2026-09-16T20:27:44.033Z"
     }
   ]
 }
