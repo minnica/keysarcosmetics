@@ -5,6 +5,8 @@
 > Referencia visual inmutable: `12fb8045cc264b565cb6e764d95ad7b2447fbfa1`.
 > Alcance: MVP online; no equivale a listo para producción.
 
+> Aclaración de seguimiento (2026-09-16): esta entrega conserva la evidencia técnica histórica. El inventario vigente está en `PLAN_RESTAURACION_VISUAL_POS.md`: RV10-P1–P8 cubren el entorno funcional y aceptación del PO; RV3-B01 y RV7-P1 cubren el copy de cierre/gasto y los prompts de corrección/anulación de gastos pendientes en modo API. Los 208 escenarios visuales con fixtures no certifican todos los recorridos API. Scheduler interno es el proveedor vigente; las pruebas externas sólo aplican si se habilita HTTP o su rollback. El objetivo sigue siendo el árbol aprobado `12fb804`, con máxima reutilización del backend.
+
 ## Resultado
 
 El camino técnico RV0–RV7, RV9 bloqueante y RV10 está implementado. El renderer conserva las 25 pantallas, diez secciones de Settings, once reportes, diez vistas de Bodega y los estados/diálogos del diseño aprobado. El backend real cubre sesión y jornada, catálogo/clientas/inventario/configuración, venta y pagos, membresías/Agenda, reportes, caja y notificaciones.
