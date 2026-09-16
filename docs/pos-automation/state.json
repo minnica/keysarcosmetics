@@ -387,6 +387,72 @@
       "nextStep": "Continuar con RV6-P3 sólo si AGENDA_PROVIDER=http se conserva como proveedor o rollback; mantener piloto, hardware, SLA y aceptación operativa fuera de lo acreditado por RV7-P2.",
       "report": "docs/pos-automation/runs/2026-09-16T20-00-55-973Z-RV7-P2.md",
       "updatedAt": "2026-09-16T20:27:44.033Z"
+    },
+    "RV9-P3": {
+      "id": "RV9-P3",
+      "runId": "2026-09-16T20-27-47-323Z-RV9-P3",
+      "base": "c1fbb602b5f4dcb37f6d33f6d6f1bc1fa5bc0f27",
+      "status": "completed",
+      "attempts": 1,
+      "summary": "Migración desde snapshot sintético y recuperación completadas. Dos respaldos de 45 migraciones actualizaron a 46 preservando datos, auditoría, outbox y consumidores POS; se añadió un gate local opt-in con guardas estrictas.",
+      "checks": [
+        {
+          "command": "scripts/verify-pos-migration-recovery.sh",
+          "result": "passed",
+          "evidence": "Respaldo de 825751 bytes, SHA-256 5c03cacb3187c5bf7fdeb0de3b3b799e00c1f6802da835af9eb3c664dbc75b93; dos restauraciones y upgrades 45→46 correctos."
+        },
+        {
+          "command": "RUN_DATABASE_TESTS=true DATABASE_URL=<local-desechable> DIRECT_URL=<misma-BD> pnpm --filter @cosmetics/api exec vitest run src/pos.integration.test.ts --reporter=verbose",
+          "result": "passed",
+          "evidence": "46/46 migraciones desde cero y 10/10 pruebas HTTP/BD POS."
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api type-check; pnpm --filter @cosmetics/api lint; pnpm --filter @cosmetics/api test:unit; pnpm --filter @cosmetics/api build",
+          "result": "passed",
+          "evidence": "Tipos y build correctos, lint limpio y 136/136 pruebas unitarias."
+        },
+        {
+          "command": "pnpm --filter @cosmetics/pos type-check && pnpm --filter @cosmetics/pos build:web && pnpm pos:visual:manifest",
+          "result": "passed",
+          "evidence": "POS web/main/preload compiló; referencia 12fb804 y 208 capturas programadas intactas."
+        },
+        {
+          "command": "pnpm exec prettier --check backend/api/scripts/pos-migration-recovery-fixture.ts PLAN_RESTAURACION_VISUAL_POS.md docs/POS_MVP_HANDOFF.md CLAUDE.md docs/pos-automation/runs/2026-09-16T20-27-47-323Z-RV9-P3.md && git diff --check",
+          "result": "passed",
+          "evidence": "Formato y whitespace correctos; plan, handoff, CLAUDE e informe actualizados."
+        },
+        {
+          "command": "podman stop keysar-rv9-p3-pg-20260916-202747",
+          "result": "passed",
+          "evidence": "Contenedor detenido; conserva únicamente bases sintéticas locales y el archivo temporal del secreto fue retirado."
+        }
+      ],
+      "independentChecks": [
+        {
+          "command": "bash -n scripts/verify-pos-migration-recovery.sh",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api prisma:schemas",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api type-check",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api lint",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api test:unit",
+          "result": "passed"
+        }
+      ],
+      "remaining": [],
+      "nextStep": "Continuar con RV9-P4: auditar R01–R17 y ejecutar sólo limpieza local con reemplazo y consumidores demostrados.",
+      "report": "docs/pos-automation/runs/2026-09-16T20-27-47-323Z-RV9-P3.md",
+      "updatedAt": "2026-09-16T21:05:23.346Z"
     }
   },
   "history": [
@@ -1017,6 +1083,72 @@
       "nextStep": "Continuar con RV6-P3 sólo si AGENDA_PROVIDER=http se conserva como proveedor o rollback; mantener piloto, hardware, SLA y aceptación operativa fuera de lo acreditado por RV7-P2.",
       "report": "docs/pos-automation/runs/2026-09-16T20-00-55-973Z-RV7-P2.md",
       "updatedAt": "2026-09-16T20:27:44.033Z"
+    },
+    {
+      "id": "RV9-P3",
+      "runId": "2026-09-16T20-27-47-323Z-RV9-P3",
+      "base": "c1fbb602b5f4dcb37f6d33f6d6f1bc1fa5bc0f27",
+      "status": "completed",
+      "attempts": 1,
+      "summary": "Migración desde snapshot sintético y recuperación completadas. Dos respaldos de 45 migraciones actualizaron a 46 preservando datos, auditoría, outbox y consumidores POS; se añadió un gate local opt-in con guardas estrictas.",
+      "checks": [
+        {
+          "command": "scripts/verify-pos-migration-recovery.sh",
+          "result": "passed",
+          "evidence": "Respaldo de 825751 bytes, SHA-256 5c03cacb3187c5bf7fdeb0de3b3b799e00c1f6802da835af9eb3c664dbc75b93; dos restauraciones y upgrades 45→46 correctos."
+        },
+        {
+          "command": "RUN_DATABASE_TESTS=true DATABASE_URL=<local-desechable> DIRECT_URL=<misma-BD> pnpm --filter @cosmetics/api exec vitest run src/pos.integration.test.ts --reporter=verbose",
+          "result": "passed",
+          "evidence": "46/46 migraciones desde cero y 10/10 pruebas HTTP/BD POS."
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api type-check; pnpm --filter @cosmetics/api lint; pnpm --filter @cosmetics/api test:unit; pnpm --filter @cosmetics/api build",
+          "result": "passed",
+          "evidence": "Tipos y build correctos, lint limpio y 136/136 pruebas unitarias."
+        },
+        {
+          "command": "pnpm --filter @cosmetics/pos type-check && pnpm --filter @cosmetics/pos build:web && pnpm pos:visual:manifest",
+          "result": "passed",
+          "evidence": "POS web/main/preload compiló; referencia 12fb804 y 208 capturas programadas intactas."
+        },
+        {
+          "command": "pnpm exec prettier --check backend/api/scripts/pos-migration-recovery-fixture.ts PLAN_RESTAURACION_VISUAL_POS.md docs/POS_MVP_HANDOFF.md CLAUDE.md docs/pos-automation/runs/2026-09-16T20-27-47-323Z-RV9-P3.md && git diff --check",
+          "result": "passed",
+          "evidence": "Formato y whitespace correctos; plan, handoff, CLAUDE e informe actualizados."
+        },
+        {
+          "command": "podman stop keysar-rv9-p3-pg-20260916-202747",
+          "result": "passed",
+          "evidence": "Contenedor detenido; conserva únicamente bases sintéticas locales y el archivo temporal del secreto fue retirado."
+        }
+      ],
+      "independentChecks": [
+        {
+          "command": "bash -n scripts/verify-pos-migration-recovery.sh",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api prisma:schemas",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api type-check",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api lint",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api test:unit",
+          "result": "passed"
+        }
+      ],
+      "remaining": [],
+      "nextStep": "Continuar con RV9-P4: auditar R01–R17 y ejecutar sólo limpieza local con reemplazo y consumidores demostrados.",
+      "report": "docs/pos-automation/runs/2026-09-16T20-27-47-323Z-RV9-P3.md",
+      "updatedAt": "2026-09-16T21:05:23.346Z"
     }
   ]
 }
