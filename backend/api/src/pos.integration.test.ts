@@ -1084,6 +1084,344 @@ integrationDescribe("seguridad y terminales POS", () => {
     ).toBeGreaterThan(0);
   });
 
+  it("persiste correcciones y anulaciones de gastos con autorización consumible", async () => {
+    const employeeLogin = await request(
+      "/api/pos/auth/login",
+      json("POST", {
+        alias: `employee.${suffix}`,
+        pin: employeePin,
+        terminalCode: `TERM-${suffix}`,
+        terminalSecret,
+      }),
+    );
+    expect(employeeLogin.response.status).toBe(200);
+    const employeeWithoutCashPermission = (
+      employeeLogin.body["data"] as { accessToken: string }
+    ).accessToken;
+    const forbiddenExpense = await request(
+      "/api/pos/expenses",
+      mutationJson(
+        "POST",
+        {
+          expenseTypeId: randomUUID(),
+          amount: "10.00",
+          concept: "Gasto sin permiso",
+        },
+        employeeWithoutCashPermission,
+      ),
+    );
+    expect(forbiddenExpense.response.status).toBe(403);
+
+    const expenseType = await request(
+      "/api/pos/expense-types",
+      json(
+        "POST",
+        { name: `Insumos RV7 ${suffix}`, active: true },
+        masterToken,
+      ),
+    );
+    expect(expenseType.response.status).toBe(201);
+    const expenseTypeId = (expenseType.body["data"] as { id: string }).id;
+
+    const deniedUnlock = await request(
+      "/api/pos/authorizations",
+      json(
+        "POST",
+        { pin: "0000", purpose: "CASH_MANAGER_ACCESS" },
+        masterToken,
+      ),
+    );
+    expect(deniedUnlock.response.status).toBe(403);
+    const unlock = await request(
+      "/api/pos/authorizations",
+      json(
+        "POST",
+        { pin: masterPin, purpose: "CASH_MANAGER_ACCESS" },
+        masterToken,
+      ),
+    );
+    expect(unlock.response.status).toBe(201);
+    const unlockToken = (unlock.body["data"] as { authorizationToken: string })
+      .authorizationToken;
+    const verifiedUnlock = await request(
+      "/api/pos/auth/verify",
+      json(
+        "POST",
+        {
+          authorizationToken: unlockToken,
+          purpose: "CASH_MANAGER_ACCESS",
+        },
+        masterToken,
+      ),
+    );
+    expect(verifiedUnlock.response.status).toBe(200);
+    const reusedUnlock = await request(
+      "/api/pos/auth/verify",
+      json(
+        "POST",
+        {
+          authorizationToken: unlockToken,
+          purpose: "CASH_MANAGER_ACCESS",
+        },
+        masterToken,
+      ),
+    );
+    expect(reusedUnlock.response.status).toBe(403);
+
+    const createExpenseRequest = mutationJson(
+      "POST",
+      {
+        expenseTypeId,
+        amount: "125.40",
+        concept: `Consumibles RV7 ${suffix}`,
+        comment: "Alta para validar corrección persistente",
+      },
+      masterToken,
+    );
+    const createdExpense = await request(
+      "/api/pos/expenses",
+      createExpenseRequest,
+    );
+    expect(createdExpense.response.status).toBe(201);
+    const expenseId = (createdExpense.body["data"] as { id: string }).id;
+    const replayedCreate = await request(
+      "/api/pos/expenses",
+      createExpenseRequest,
+    );
+    expect(replayedCreate.response.status).toBe(201);
+    expect((replayedCreate.body["data"] as { id: string }).id).toBe(expenseId);
+
+    const correctionAuthorization = await request(
+      "/api/pos/authorizations",
+      json(
+        "POST",
+        {
+          pin: masterPin,
+          purpose: "CASH_EXPENSE_EDIT",
+          entityType: "PosCashExpense",
+          entityId: expenseId,
+        },
+        masterToken,
+      ),
+    );
+    expect(correctionAuthorization.response.status).toBe(201);
+    const correctionToken = (
+      correctionAuthorization.body["data"] as {
+        authorizationToken: string;
+      }
+    ).authorizationToken;
+    const correctionRequest = mutationJson(
+      "PUT",
+      {
+        expenseTypeId,
+        amount: "140.55",
+        concept: `Consumibles corregidos RV7 ${suffix}`,
+        comment: "Importe corregido",
+        reason: "Corrección dirigida RV7-P1",
+        authorizationToken: correctionToken,
+      },
+      masterToken,
+    );
+    const correctedExpense = await request(
+      `/api/pos/expenses/${expenseId}`,
+      correctionRequest,
+    );
+    expect(correctedExpense.response.status).toBe(200);
+    const replacementId = (
+      correctedExpense.body["data"] as {
+        id: string;
+        amount: string;
+        correctsExpenseId: string;
+      }
+    ).id;
+    expect(correctedExpense.body["data"]).toEqual(
+      expect.objectContaining({
+        amount: "140.55",
+        correctsExpenseId: expenseId,
+        status: "ACTIVE",
+      }),
+    );
+    const replayedCorrection = await request(
+      `/api/pos/expenses/${expenseId}`,
+      correctionRequest,
+    );
+    expect(replayedCorrection.response.status).toBe(200);
+    expect((replayedCorrection.body["data"] as { id: string }).id).toBe(
+      replacementId,
+    );
+    const reusedCorrection = await request(
+      `/api/pos/expenses/${replacementId}`,
+      mutationJson(
+        "PUT",
+        {
+          expenseTypeId,
+          amount: "150.00",
+          concept: `Reutilización rechazada RV7 ${suffix}`,
+          comment: null,
+          reason: "No debe reutilizar el token",
+          authorizationToken: correctionToken,
+        },
+        masterToken,
+      ),
+    );
+    expect(reusedCorrection.response.status).toBe(403);
+
+    const voidAuthorization = await request(
+      "/api/pos/authorizations",
+      json(
+        "POST",
+        {
+          pin: masterPin,
+          purpose: "CASH_EXPENSE_VOID",
+          entityType: "PosCashExpense",
+          entityId: replacementId,
+        },
+        masterToken,
+      ),
+    );
+    expect(voidAuthorization.response.status).toBe(201);
+    const voidToken = (
+      voidAuthorization.body["data"] as { authorizationToken: string }
+    ).authorizationToken;
+    const voidRequest = mutationJson(
+      "POST",
+      {
+        authorizationToken: voidToken,
+        reason: "Anulación dirigida RV7-P1",
+      },
+      masterToken,
+    );
+    const voidedExpense = await request(
+      `/api/pos/expenses/${replacementId}/void`,
+      voidRequest,
+    );
+    expect(voidedExpense.response.status).toBe(200);
+    expect(voidedExpense.body["data"]).toEqual(
+      expect.objectContaining({ id: replacementId, status: "VOIDED" }),
+    );
+    const replayedVoid = await request(
+      `/api/pos/expenses/${replacementId}/void`,
+      voidRequest,
+    );
+    expect(replayedVoid.response.status).toBe(200);
+
+    const secondExpense = await request(
+      "/api/pos/expenses",
+      mutationJson(
+        "POST",
+        {
+          expenseTypeId,
+          amount: "25.00",
+          concept: `Segundo gasto RV7 ${suffix}`,
+          comment: null,
+        },
+        masterToken,
+      ),
+    );
+    expect(secondExpense.response.status).toBe(201);
+    const secondExpenseId = (secondExpense.body["data"] as { id: string }).id;
+    const reusedVoid = await request(
+      `/api/pos/expenses/${secondExpenseId}/void`,
+      mutationJson(
+        "POST",
+        {
+          authorizationToken: voidToken,
+          reason: "No debe reutilizar el token",
+        },
+        masterToken,
+      ),
+    );
+    expect(reusedVoid.response.status).toBe(403);
+
+    const persistedExpenses = await prisma.posCashExpense.findMany({
+      where: { id: { in: [expenseId, replacementId, secondExpenseId] } },
+      select: {
+        id: true,
+        status: true,
+        amount: true,
+        correctsExpenseId: true,
+        voidAuthorizationId: true,
+      },
+    });
+    expect(persistedExpenses).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: expenseId,
+          status: "VOIDED",
+          correctsExpenseId: null,
+        }),
+        expect.objectContaining({
+          id: replacementId,
+          status: "VOIDED",
+          correctsExpenseId: expenseId,
+        }),
+        expect.objectContaining({
+          id: secondExpenseId,
+          status: "ACTIVE",
+          correctsExpenseId: null,
+        }),
+      ]),
+    );
+    expect(
+      persistedExpenses
+        .find((expense) => expense.id === expenseId)
+        ?.amount.toFixed(2),
+    ).toBe("125.40");
+    expect(
+      persistedExpenses
+        .find((expense) => expense.id === replacementId)
+        ?.amount.toFixed(2),
+    ).toBe("140.55");
+    expect(
+      persistedExpenses.find((expense) => expense.id === replacementId)
+        ?.voidAuthorizationId,
+    ).not.toBeNull();
+
+    const compensatedMovements = await prisma.posCashMovement.findMany({
+      where: { expenseId: { in: [expenseId, replacementId] } },
+      orderBy: { creadoEn: "asc" },
+      select: { expenseId: true, kind: true, amount: true },
+    });
+    expect(compensatedMovements).toHaveLength(4);
+    expect(
+      compensatedMovements.map((movement) => ({
+        expenseId: movement.expenseId,
+        kind: movement.kind,
+        amount: movement.amount.toFixed(2),
+      })),
+    ).toEqual(
+      expect.arrayContaining([
+        { expenseId, kind: "EXPENSE", amount: "125.40" },
+        { expenseId, kind: "VOID", amount: "-125.40" },
+        { expenseId: replacementId, kind: "CORRECTION", amount: "140.55" },
+        { expenseId: replacementId, kind: "VOID", amount: "-140.55" },
+      ]),
+    );
+    expect(
+      compensatedMovements
+        .reduce((total, movement) => total + movement.amount.toNumber(), 0)
+        .toFixed(2),
+    ).toBe("0.00");
+
+    const reloadedExpenses = await request(
+      "/api/pos/expenses?page=1&pageSize=100",
+      { headers: { authorization: `Bearer ${masterToken}` } },
+    );
+    expect(reloadedExpenses.response.status).toBe(200);
+    const reloadedItems = (
+      reloadedExpenses.body["data"] as {
+        items: Array<{ id: string; status: string }>;
+      }
+    ).items;
+    expect(reloadedItems).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: expenseId, status: "VOIDED" }),
+        expect.objectContaining({ id: replacementId, status: "VOIDED" }),
+        expect.objectContaining({ id: secondExpenseId, status: "ACTIVE" }),
+      ]),
+    );
+  });
+
   it("registra el conteo final y cierra la jornada con el actor autorizador", async () => {
     const day = await prisma.posBusinessDay.findFirstOrThrow({
       where: { branchId, status: "OPEN" },
