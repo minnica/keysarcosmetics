@@ -3742,6 +3742,7 @@ model PosTicketEvent {
   authorizationId     String?
   inventoryMovementId String?            @unique
   inventoryMovement   InventoryMovement? @relation(fields: [inventoryMovementId], references: [id], onDelete: Restrict)
+  membershipRevisionProjections PosMembershipRevisionProjection[]
   creadoEn            DateTime           @default(now())
 
   @@index([ticketId, creadoEn])
@@ -3809,6 +3810,7 @@ model PosClientMembership {
   appointments               PosAppointment[]
   sellerChanges              PosMembershipSellerChange[]
   statusChanges              PosMembershipStatusChange[]
+  revisionProjections        PosMembershipRevisionProjection[]
   schedulerBenefits          SchedulerAppointmentMembershipBenefit[]
   creadoEn                   DateTime                                @default(now())
   actualizadoEn              DateTime                                @updatedAt
@@ -3820,6 +3822,24 @@ model PosClientMembership {
   @@index([purchaseBranchId, status, purchasedAt])
   @@index([currentSellerId, status, purchasedAt])
   @@index([originalSellerId, purchasedAt])
+}
+
+model PosMembershipRevisionProjection {
+  id                    String              @id @default(uuid()) @db.Uuid
+  membershipId          String              @db.Uuid
+  membership            PosClientMembership @relation(fields: [membershipId], references: [id], onDelete: Restrict)
+  ticketEventId         String              @db.Uuid
+  ticketEvent           PosTicketEvent      @relation(fields: [ticketEventId], references: [id], onDelete: Restrict)
+  version               Int
+  purchaseAmount        Decimal             @db.Decimal(14, 2)
+  customerNameSnapshot  String              @db.VarChar(240)
+  customerPhoneSnapshot String?             @db.VarChar(32)
+  creadoEn              DateTime            @default(now())
+
+  @@unique([membershipId, version])
+  @@unique([ticketEventId, membershipId])
+  @@index([membershipId, creadoEn])
+  @@index([ticketEventId])
 }
 
 model PosMembershipAttendance {

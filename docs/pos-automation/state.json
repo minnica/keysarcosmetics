@@ -137,51 +137,41 @@
     },
     "RV5-P1": {
       "id": "RV5-P1",
-      "runId": "2026-09-16T18-35-30-033Z-RV5-P1",
-      "base": "36ea05d6706f27bd9e4de4091210fedf3364caa3",
+      "runId": "2026-09-16T18-49-58-408Z-RV5-P1",
+      "base": "08ed2cf20ba73c1e4247cee77150bebeee3871f4",
       "status": "partial",
-      "attempts": 2,
-      "summary": "Checkpoint 2 implementado: las revisiones de adeudos no ambiguos conservan entregas append-only, rechazan reducciones por debajo de lo entregado, concilian pagos/proyección legacy e inventario físico, y permiten entregas posteriores sin duplicar movimientos. RV5-P1 permanece abierto para proyecciones complejas.",
+      "attempts": 3,
+      "summary": "Checkpoint 3 implementado. Las revisiones con composición de membresías invariable conservan tarjetón y asistencias originales, agregan proyecciones append-only por versión, concilian vendedor, pagos, X-Report y exportación, y rechazan cambios ambiguos antes de consumir autorización. Informe: docs/pos-automation/runs/2026-09-16T18-49-58-408Z-RV5-P1.md.",
       "checks": [
         {
           "command": "pnpm --filter @cosmetics/types type-check && pnpm --filter @cosmetics/types build && pnpm --filter @cosmetics/api-client type-check && pnpm --filter @cosmetics/api type-check && pnpm --filter @cosmetics/pos type-check",
           "result": "passed",
-          "evidence": "Contratos compartidos, cliente, API y POS compilaron correctamente."
+          "evidence": "Contratos, cliente, API y POS compilaron secuencialmente."
         },
         {
           "command": "pnpm --filter @cosmetics/api lint && pnpm --filter @cosmetics/api test:unit",
           "result": "passed",
-          "evidence": "ESLint sin warnings; 25 archivos y 136/136 pruebas unitarias aprobadas."
+          "evidence": "ESLint sin warnings; 25 archivos y 136/136 pruebas aprobadas."
         },
         {
-          "command": "pnpm --filter @cosmetics/api prisma:schemas && DATABASE_URL=<local-no-operativa> DIRECT_URL=<local-no-operativa> pnpm --filter @cosmetics/api prisma:validate",
+          "command": "pnpm --filter @cosmetics/api prisma:schemas && DATABASE_URL=<local-no-operativa> DIRECT_URL=<misma-BD> pnpm --filter @cosmetics/api prisma:validate",
           "result": "passed",
-          "evidence": "Schemas Prisma sincronizados y válidos; no fue necesaria una migración."
+          "evidence": "Ambos schemas Prisma están sincronizados y son válidos."
         },
         {
           "command": "DATABASE_URL=<PostgreSQL-16-local-desechable> DIRECT_URL=<misma-BD> pnpm --filter @cosmetics/api exec prisma migrate deploy && RUN_DATABASE_TESTS=true DATABASE_URL=<misma-BD> DIRECT_URL=<misma-BD> pnpm --filter @cosmetics/api exec vitest run src/pos.integration.test.ts",
           "result": "passed",
-          "evidence": "Tres bases nuevas recibieron 45/45 migraciones y pasaron 10/10 casos. La corrida final verificó rechazo sin consumir token, replay sin duplicados, entregas 1/2/1, SALE/REFUND/REVISION 300/300/400, legacy neto 400.00 e inventario conciliado."
+          "evidence": "46/46 migraciones desde cero y 10/10 casos. Se verificaron rechazos sin consumir token, replay, segunda revisión, sesión preservada, proyecciones 450.00/425.00, pagos compensatorios, recarga, X-Report y exportación."
         },
         {
-          "command": "pnpm --filter @cosmetics/api build && pnpm --filter @cosmetics/pos build:web",
+          "command": "pnpm --filter @cosmetics/api build && pnpm --filter @cosmetics/pos build:web && pnpm pos:visual:manifest && pnpm exec prettier --check packages/types/src/pos.ts backend/api/src/services/pos-memberships.ts backend/api/src/services/pos-tickets.ts backend/api/src/routes/pos-operation.routes.ts backend/api/src/pos.integration.test.ts && git diff --check",
           "result": "passed",
-          "evidence": "API y renderer/main/preload construidos; Vite sólo emitió su advertencia histórica de tamaño de chunk."
-        },
-        {
-          "command": "pnpm exec prettier --check packages/types/src/pos.ts backend/api/src/services/pos-tickets.ts backend/api/src/pos.integration.test.ts && git diff --check",
-          "result": "passed",
-          "evidence": "Archivos modificados con formato correcto y diff sin errores de whitespace."
-        },
-        {
-          "command": "pnpm pos:visual:manifest",
-          "result": "passed",
-          "evidence": "Referencia 12fb804 intacta; 25 pantallas, 10 secciones Settings, 11 reportes, 10 vistas de bodega y 208 capturas programadas."
+          "evidence": "API y POS construidos; referencia 12fb804 intacta con 208 capturas programadas; formato y whitespace correctos."
         },
         {
           "command": "pnpm pos:visual:capture && pnpm pos:visual:compare",
           "result": "not_run",
-          "evidence": "No cambió renderer, markup, CSS ni fixtures; conforme al plan se validó únicamente el manifiesto de la superficie visual no alterada."
+          "evidence": "No cambió renderer, markup, CSS ni fixtures visuales; se ejecutó únicamente el manifiesto proporcional al cambio backend."
         }
       ],
       "independentChecks": [
@@ -211,14 +201,14 @@
         }
       ],
       "remaining": [
-        "Compensar membresías y sesiones mediante sus motores canónicos.",
-        "Coordinar revisiones de citas con Scheduler/Agenda y su capacidad durable.",
+        "Resolver altas, bajas o sustituciones de tarjetones sólo cuando exista identificación inequívoca de unidades.",
+        "Coordinar revisiones de citas con Scheduler interno y capacidad durable.",
         "Incorporar paquetes, cortesías y participantes COMPANY sin inventar controles.",
-        "Resolver adeudos duplicados ambiguos y certificar segundas revisiones, saldos, reportes y exportaciones."
+        "Resolver adeudos duplicados ambiguos y completar la certificación transversal de reportes/exportaciones."
       ],
-      "nextStep": "Continuar RV5-P1 desde docs/pos-automation/runs/2026-09-16T18-35-30-033Z-RV5-P1.md, empezando por membresías y sesiones consumidas; conservar los bloqueos 409 previos a autorización para combinaciones aún no soportadas.",
-      "report": "docs/pos-automation/runs/2026-09-16T18-35-30-033Z-RV5-P1.md",
-      "updatedAt": "2026-09-16T18:49:55.206Z"
+      "nextStep": "Continuar RV5-P1 desde el informe nuevo, inspeccionando PosAppointment y Scheduler interno para soportar primero revisiones que preserven íntegramente cita, servicio y capacidad; mantener 409 previo al token para cualquier cambio no derivable del diálogo aprobado.",
+      "report": "docs/pos-automation/runs/2026-09-16T18-49-58-408Z-RV5-P1.md",
+      "updatedAt": "2026-09-16T19:15:46.584Z"
     }
   },
   "history": [
@@ -522,6 +512,81 @@
       "nextStep": "Continuar RV5-P1 desde docs/pos-automation/runs/2026-09-16T18-35-30-033Z-RV5-P1.md, empezando por membresías y sesiones consumidas; conservar los bloqueos 409 previos a autorización para combinaciones aún no soportadas.",
       "report": "docs/pos-automation/runs/2026-09-16T18-35-30-033Z-RV5-P1.md",
       "updatedAt": "2026-09-16T18:49:55.206Z"
+    },
+    {
+      "id": "RV5-P1",
+      "runId": "2026-09-16T18-49-58-408Z-RV5-P1",
+      "base": "08ed2cf20ba73c1e4247cee77150bebeee3871f4",
+      "status": "partial",
+      "attempts": 3,
+      "summary": "Checkpoint 3 implementado. Las revisiones con composición de membresías invariable conservan tarjetón y asistencias originales, agregan proyecciones append-only por versión, concilian vendedor, pagos, X-Report y exportación, y rechazan cambios ambiguos antes de consumir autorización. Informe: docs/pos-automation/runs/2026-09-16T18-49-58-408Z-RV5-P1.md.",
+      "checks": [
+        {
+          "command": "pnpm --filter @cosmetics/types type-check && pnpm --filter @cosmetics/types build && pnpm --filter @cosmetics/api-client type-check && pnpm --filter @cosmetics/api type-check && pnpm --filter @cosmetics/pos type-check",
+          "result": "passed",
+          "evidence": "Contratos, cliente, API y POS compilaron secuencialmente."
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api lint && pnpm --filter @cosmetics/api test:unit",
+          "result": "passed",
+          "evidence": "ESLint sin warnings; 25 archivos y 136/136 pruebas aprobadas."
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api prisma:schemas && DATABASE_URL=<local-no-operativa> DIRECT_URL=<misma-BD> pnpm --filter @cosmetics/api prisma:validate",
+          "result": "passed",
+          "evidence": "Ambos schemas Prisma están sincronizados y son válidos."
+        },
+        {
+          "command": "DATABASE_URL=<PostgreSQL-16-local-desechable> DIRECT_URL=<misma-BD> pnpm --filter @cosmetics/api exec prisma migrate deploy && RUN_DATABASE_TESTS=true DATABASE_URL=<misma-BD> DIRECT_URL=<misma-BD> pnpm --filter @cosmetics/api exec vitest run src/pos.integration.test.ts",
+          "result": "passed",
+          "evidence": "46/46 migraciones desde cero y 10/10 casos. Se verificaron rechazos sin consumir token, replay, segunda revisión, sesión preservada, proyecciones 450.00/425.00, pagos compensatorios, recarga, X-Report y exportación."
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api build && pnpm --filter @cosmetics/pos build:web && pnpm pos:visual:manifest && pnpm exec prettier --check packages/types/src/pos.ts backend/api/src/services/pos-memberships.ts backend/api/src/services/pos-tickets.ts backend/api/src/routes/pos-operation.routes.ts backend/api/src/pos.integration.test.ts && git diff --check",
+          "result": "passed",
+          "evidence": "API y POS construidos; referencia 12fb804 intacta con 208 capturas programadas; formato y whitespace correctos."
+        },
+        {
+          "command": "pnpm pos:visual:capture && pnpm pos:visual:compare",
+          "result": "not_run",
+          "evidence": "No cambió renderer, markup, CSS ni fixtures visuales; se ejecutó únicamente el manifiesto proporcional al cambio backend."
+        }
+      ],
+      "independentChecks": [
+        {
+          "command": "pnpm --filter @cosmetics/pos type-check",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/pos build:web",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api prisma:schemas",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api type-check",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api lint",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api test:unit",
+          "result": "passed"
+        }
+      ],
+      "remaining": [
+        "Resolver altas, bajas o sustituciones de tarjetones sólo cuando exista identificación inequívoca de unidades.",
+        "Coordinar revisiones de citas con Scheduler interno y capacidad durable.",
+        "Incorporar paquetes, cortesías y participantes COMPANY sin inventar controles.",
+        "Resolver adeudos duplicados ambiguos y completar la certificación transversal de reportes/exportaciones."
+      ],
+      "nextStep": "Continuar RV5-P1 desde el informe nuevo, inspeccionando PosAppointment y Scheduler interno para soportar primero revisiones que preserven íntegramente cita, servicio y capacidad; mantener 409 previo al token para cualquier cambio no derivable del diálogo aprobado.",
+      "report": "docs/pos-automation/runs/2026-09-16T18-49-58-408Z-RV5-P1.md",
+      "updatedAt": "2026-09-16T19:15:46.584Z"
     }
   ]
 }

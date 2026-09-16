@@ -49,6 +49,7 @@ import {
   registerAttendanceIfMissing,
 } from "../services/pos-operations";
 import { enqueuePosNotification } from "../services/pos-notifications";
+import { effectiveMembershipPurchaseAmount } from "../services/pos-memberships";
 import {
   assertBranchAuthorized,
   hydratePosDataScope,
@@ -1340,6 +1341,11 @@ async function operationalSummary(req: Request) {
         customerId: true,
         ticketId: true,
         purchaseAmount: true,
+        revisionProjections: {
+          orderBy: [{ version: "desc" }, { creadoEn: "desc" }],
+          take: 1,
+          select: { purchaseAmount: true },
+        },
       },
     }),
   ]);
@@ -1438,7 +1444,8 @@ async function operationalSummary(req: Request) {
     membershipCount: memberships.length,
     membershipSalesTotal: memberships
       .reduce(
-        (sum, membership) => sum.plus(membership.purchaseAmount),
+        (sum, membership) =>
+          sum.plus(effectiveMembershipPurchaseAmount(membership)),
         decimal(0),
       )
       .toFixed(2),

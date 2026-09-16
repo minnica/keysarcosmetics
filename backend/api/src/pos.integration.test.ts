@@ -4,6 +4,7 @@ import bcrypt from "bcryptjs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { app } from "./app";
 import { prisma } from "./prisma/client";
+import { consumeMembershipAttendance } from "./services/pos-memberships";
 
 const enabled = process.env["RUN_DATABASE_TESTS"] === "true";
 const integrationDescribe = enabled ? describe : describe.skip;
@@ -1520,6 +1521,439 @@ integrationDescribe("seguridad y terminales POS", () => {
     ).toEqual(["100.00", "100.00", "120.00"]);
     expect(revisionBalance.availableQuantity.toFixed(2)).toBe("7.00");
     expect(projectionSum._sum.amount?.toFixed(2)).toBe("120.00");
+
+    const membershipItem = await request(
+      "/api/pos/catalog/items",
+      json(
+        "POST",
+        {
+          sku: `RV5-MEM-${suffix}`.toUpperCase(),
+          name: `Membresía revisable RV5 ${suffix}`,
+          kind: "MEMBERSHIP",
+          description: "Tarjetón para revisión compensatoria",
+          benefits: ["Dos sesiones canónicas"],
+          branchIds: [branchId],
+          published: true,
+          listPrice: "500.00",
+          minimumPrice: "400.00",
+          unitCost: "0.00",
+          unitCostUsd: "0.00",
+          partnerCost: "0.00",
+          taxRate: "16.00",
+          membershipSessions: 2,
+          membershipRenewalThreshold: 1,
+        },
+        masterToken,
+      ),
+    );
+    expect(membershipItem.response.status).toBe(201);
+    const membershipItemId = (membershipItem.body["data"] as { id: string }).id;
+    const alternateSeller = await prisma.empleado.create({
+      data: {
+        nombres: "Alterna",
+        apellidoPaterno: "Revision",
+        apellidoMaterno: "RV5",
+        nombreCompleto: `Vendedora Alterna RV5 ${suffix}`,
+        banco: "TEST",
+        numeroCuenta: `ALT-${suffix}`,
+        puesto: "TEST",
+        metaIndividual: 0,
+        sucursalId: branchId,
+      },
+    });
+    const membershipCheckout = await request(
+      "/api/pos/tickets",
+      mutationJson(
+        "POST",
+        {
+          branchId,
+          customer: { id: checkoutData.customerId },
+          lines: [
+            {
+              itemId: membershipItemId,
+              quantity: "1.00",
+              unitPrice: "500.00",
+              delivered: true,
+            },
+          ],
+          sellers: [{ employeeId, share: "500.00" }],
+          payments: [{ methodId: cash.id, amount: "500.00" }],
+        },
+        employeeToken,
+      ),
+    );
+    expect(membershipCheckout.response.status).toBe(201);
+    const membershipTicket = membershipCheckout.body["data"] as {
+      id: string;
+      businessDate: string;
+      memberships: Array<{ id: string; status: string }>;
+    };
+    expect(membershipTicket.memberships).toHaveLength(1);
+    const membershipId = membershipTicket.memberships[0]!.id;
+    const employeeCredential = await prisma.posCredential.findFirstOrThrow({
+      where: { employeeId },
+    });
+    const attendanceTicket = await prisma.posTicket.create({
+      data: {
+        folio: `MEM-ATTENDANCE-${suffix}`,
+        terminalSequence: BigInt(Date.now() + 100_000),
+        status: "COMPLETED",
+        settlementStatus: "PAID",
+        businessDate: new Date("2026-09-16T00:00:00.000Z"),
+        branchId,
+        terminalId,
+        createdByCredentialId: employeeCredential.id,
+        customerId: checkoutData.customerId,
+        customerNameSnapshot: "Clienta Checkout RV5",
+        subtotal: "0.00",
+        minimumTotal: "0.00",
+        spareTotal: "0.00",
+        discountTotal: "0.00",
+        taxTotal: "0.00",
+        total: "0.00",
+        amountPaid: "0.00",
+        pendingAmount: "0.00",
+      },
+    });
+    const membershipAppointment = await prisma.posAppointment.create({
+      data: {
+        ticketId: attendanceTicket.id,
+        customerId: checkoutData.customerId,
+        kind: "NEXT_SESSION",
+        status: "SCHEDULED",
+        scheduledAt: new Date("2026-09-17T18:00:00.000Z"),
+        serviceNameSnapshot: "Sesión consumida antes de la revisión",
+        branchId,
+        sellerId: employeeId,
+        membershipId,
+        createdByCredentialId: employeeCredential.id,
+      },
+    });
+    await prisma.$transaction((tx) =>
+      consumeMembershipAttendance(
+        tx,
+        {
+          membershipId,
+          appointmentId: membershipAppointment.id,
+          event: "ATTENDED",
+          branchId,
+          signatureStatus: "PENDING",
+        },
+        {
+          credentialId: employeeCredential.id,
+          terminalId,
+          sessionId: randomUUID(),
+          employeeId,
+          isMaster: false,
+          authorizedBranchIds: [branchId],
+        },
+      ),
+    );
+    const membershipRevisionAuthorization = await request(
+      "/api/pos/authorizations",
+      json(
+        "POST",
+        { pin: masterPin, purpose: "RECEIPT_HISTORY_ADMIN" },
+        masterToken,
+      ),
+    );
+    const membershipRevisionAuthorizationToken = (
+      membershipRevisionAuthorization.body["data"] as {
+        authorizationToken: string;
+      }
+    ).authorizationToken;
+    const rejectedMembershipUnitChange = await request(
+      `/api/pos/tickets/${membershipTicket.id}/revisions`,
+      mutationJson(
+        "POST",
+        {
+          reason: "No agregar un tarjetón sin identificar su unidad",
+          authorizationToken: membershipRevisionAuthorizationToken,
+          revision: {
+            clientName: "Clienta Checkout RV5",
+            clientPhone: "5512345678",
+            sellerIds: [alternateSeller.id],
+            products: [
+              {
+                itemId: membershipItemId,
+                quantity: "2.00",
+                unitPrice: "450.00",
+              },
+            ],
+            discountAmount: "0.00",
+            paymentStatus: "PAID",
+            amountPaid: "900.00",
+            payments: [{ methodId: cash.id, amount: "900.00" }],
+          },
+        },
+        masterToken,
+      ),
+    );
+    expect(rejectedMembershipUnitChange.response.status).toBe(409);
+    const rejectedMembershipDowngrade = await request(
+      `/api/pos/tickets/${membershipTicket.id}/revisions`,
+      mutationJson(
+        "POST",
+        {
+          reason: "No desactivar una membresía con sesión consumida",
+          authorizationToken: membershipRevisionAuthorizationToken,
+          revision: {
+            clientName: "Clienta Checkout RV5",
+            clientPhone: "5512345678",
+            sellerIds: [alternateSeller.id],
+            products: [
+              {
+                itemId: membershipItemId,
+                quantity: "1.00",
+                unitPrice: "450.00",
+              },
+            ],
+            discountAmount: "0.00",
+            paymentStatus: "LAYAWAY",
+            amountPaid: "100.00",
+            payments: [{ methodId: cash.id, amount: "100.00" }],
+          },
+        },
+        masterToken,
+      ),
+    );
+    expect(rejectedMembershipDowngrade.response.status).toBe(409);
+
+    const membershipRevisionKey = randomUUID();
+    const membershipRevisionPayload = {
+      reason: "Conciliar membresía preservando sesión consumida",
+      authorizationToken: membershipRevisionAuthorizationToken,
+      revision: {
+        clientName: "Clienta Membresía RV5 Corregida",
+        clientPhone: "5512345678",
+        sellerIds: [alternateSeller.id],
+        products: [
+          {
+            itemId: membershipItemId,
+            quantity: "1.00",
+            unitPrice: "450.00",
+          },
+        ],
+        discountAmount: "0.00",
+        paymentStatus: "PAID" as const,
+        amountPaid: "450.00",
+        payments: [{ methodId: cash.id, amount: "450.00" }],
+      },
+    };
+    const postMembershipRevision = () =>
+      request(`/api/pos/tickets/${membershipTicket.id}/revisions`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${masterToken}`,
+          "idempotency-key": membershipRevisionKey,
+        },
+        body: JSON.stringify(membershipRevisionPayload),
+      });
+    const appliedMembershipRevision = await postMembershipRevision();
+    expect(appliedMembershipRevision.response.status).toBe(201);
+    expect(appliedMembershipRevision.body["data"]).toEqual(
+      expect.objectContaining({
+        version: 2,
+        differences: expect.arrayContaining([
+          expect.objectContaining({ field: "MEMBERSHIPS" }),
+        ]),
+      }),
+    );
+    const replayedMembershipRevision = await postMembershipRevision();
+    expect(replayedMembershipRevision.response.status).toBe(201);
+    expect(replayedMembershipRevision.body["data"]).toEqual(
+      appliedMembershipRevision.body["data"],
+    );
+
+    const secondMembershipAuthorization = await request(
+      "/api/pos/authorizations",
+      json(
+        "POST",
+        { pin: masterPin, purpose: "RECEIPT_HISTORY_ADMIN" },
+        masterToken,
+      ),
+    );
+    const secondMembershipRevision = await request(
+      `/api/pos/tickets/${membershipTicket.id}/revisions`,
+      mutationJson(
+        "POST",
+        {
+          reason: "Segunda conciliación de membresía RV5-P1",
+          authorizationToken: (
+            secondMembershipAuthorization.body["data"] as {
+              authorizationToken: string;
+            }
+          ).authorizationToken,
+          revision: {
+            ...membershipRevisionPayload.revision,
+            products: [
+              {
+                itemId: membershipItemId,
+                quantity: "1.00",
+                unitPrice: "425.00",
+              },
+            ],
+            amountPaid: "425.00",
+            payments: [{ methodId: cash.id, amount: "425.00" }],
+          },
+        },
+        masterToken,
+      ),
+    );
+    expect(secondMembershipRevision.response.status).toBe(201);
+    const [reloadedMembershipTicket, reconciledMembership, membershipEvents] =
+      await Promise.all([
+        request(`/api/pos/tickets/${membershipTicket.id}`, {
+          headers: { authorization: `Bearer ${masterToken}` },
+        }),
+        prisma.posClientMembership.findUniqueOrThrow({
+          where: { id: membershipId },
+          include: {
+            attendance: true,
+            sellerChanges: true,
+            statusChanges: true,
+            revisionProjections: { orderBy: { version: "asc" } },
+          },
+        }),
+        prisma.posTicketEvent.findMany({
+          where: { ticketId: membershipTicket.id, type: "REVISION" },
+          orderBy: { creadoEn: "asc" },
+        }),
+      ]);
+    expect(reloadedMembershipTicket.response.status).toBe(200);
+    expect(reloadedMembershipTicket.body["data"]).toEqual(
+      expect.objectContaining({
+        customerName: "Clienta Membresía RV5 Corregida",
+        total: "425.00",
+      }),
+    );
+    expect(reconciledMembership).toEqual(
+      expect.objectContaining({
+        customerNameSnapshot: "Clienta Checkout RV5",
+        currentSellerId: alternateSeller.id,
+        usedSessions: 1,
+        status: "ACTIVE",
+      }),
+    );
+    expect(reconciledMembership.purchaseAmount.toFixed(2)).toBe("500.00");
+    expect(reconciledMembership.attendance).toHaveLength(1);
+    expect(reconciledMembership.sellerChanges).toHaveLength(1);
+    expect(reconciledMembership.revisionProjections).toEqual([
+      expect.objectContaining({
+        version: 2,
+        customerNameSnapshot: "Clienta Membresía RV5 Corregida",
+      }),
+      expect.objectContaining({
+        version: 3,
+        customerNameSnapshot: "Clienta Membresía RV5 Corregida",
+      }),
+    ]);
+    expect(
+      reconciledMembership.revisionProjections.map((projection) =>
+        projection.purchaseAmount.toFixed(2),
+      ),
+    ).toEqual(["450.00", "425.00"]);
+    expect(membershipEvents).toHaveLength(2);
+    expect(membershipEvents[1]?.snapshot).toEqual(
+      expect.objectContaining({
+        appliedVersion: 3,
+        effects: expect.objectContaining({
+          membershipChanges: [expect.objectContaining({ id: membershipId })],
+        }),
+      }),
+    );
+    const membershipOperations = await prisma.posPaymentOperation.findMany({
+      where: { ticketId: membershipTicket.id },
+      orderBy: { creadoEn: "asc" },
+    });
+    expect(membershipOperations.map((operation) => operation.kind)).toEqual([
+      "SALE",
+      "REFUND",
+      "REVISION",
+      "REFUND",
+      "REVISION",
+    ]);
+    expect(
+      membershipOperations.map((operation) => operation.amount.toFixed(2)),
+    ).toEqual(["500.00", "500.00", "450.00", "450.00", "425.00"]);
+    const membershipXReport = await request(
+      `/api/pos/reports/x-report?businessDate=${membershipTicket.businessDate}&branchId=${branchId}`,
+      { headers: { authorization: `Bearer ${masterToken}` } },
+    );
+    expect(membershipXReport.response.status).toBe(200);
+    expect(membershipXReport.body["data"]).toEqual(
+      expect.objectContaining({
+        membershipCount: 1,
+        membershipSalesTotal: "425.00",
+      }),
+    );
+
+    const membershipAccess = await request(
+      "/api/pos/personal-authorizations",
+      json(
+        "POST",
+        { pin: masterPin, purpose: "MEMBERSHIPS_ACCESS" },
+        masterToken,
+      ),
+    );
+    expect(membershipAccess.response.status).toBe(201);
+    const membershipAccessToken = (
+      membershipAccess.body["data"] as { authorizationToken: string }
+    ).authorizationToken;
+    const membershipDataset = await request(
+      `/api/pos/memberships?branchIds=${branchId}&purchaseTicketId=${membershipTicket.id}&page=1&pageSize=20`,
+      {
+        headers: {
+          authorization: `Bearer ${masterToken}`,
+          "x-pos-personal-authorization": membershipAccessToken,
+        },
+      },
+    );
+    expect(membershipDataset.response.status).toBe(200);
+    expect(
+      (
+        membershipDataset.body["data"] as {
+          items: Array<{
+            id: string;
+            purchaseAmount: string;
+            usedSessions: number;
+            currentSellerId: string;
+            attendance: unknown[];
+          }>;
+        }
+      ).items,
+    ).toEqual([
+      expect.objectContaining({
+        id: membershipId,
+        purchaseAmount: "425.00",
+        usedSessions: 1,
+        currentSellerId: alternateSeller.id,
+        attendance: [expect.objectContaining({ id: expect.any(String) })],
+      }),
+    ]);
+    const membershipExport = await request(
+      "/api/pos/memberships/export",
+      json(
+        "POST",
+        {
+          branchIds: [branchId],
+          purchaseTicketId: membershipTicket.id,
+          personalAuthorizationToken: membershipAccessToken,
+        },
+        masterToken,
+      ),
+    );
+    expect(membershipExport.response.status).toBe(200);
+    expect(
+      (
+        membershipExport.body["data"] as {
+          items: Array<{ id: string; purchaseAmount: string }>;
+        }
+      ).items,
+    ).toEqual([
+      expect.objectContaining({ id: membershipId, purchaseAmount: "425.00" }),
+    ]);
 
     const receiptsAuthorization = await request(
       "/api/pos/authorizations",

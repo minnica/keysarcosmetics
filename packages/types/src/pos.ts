@@ -1414,6 +1414,7 @@ export interface PosTicketRevisionDifferenceDto {
     | "SELLERS"
     | "LINES"
     | "OWED_PRODUCTS"
+    | "MEMBERSHIPS"
     | "TOTALS"
     | "PAYMENTS";
   before: unknown;

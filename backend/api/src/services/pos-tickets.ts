@@ -18,9 +18,13 @@ import {
 } from "./pos-inventory";
 import { enqueuePosNotification } from "./pos-notifications";
 import {
+  applyTicketMembershipRevision,
   activateMembershipsForTicket,
   cancelMembershipsForTicket,
   createMembershipsForTicket,
+  planTicketMembershipRevision,
+  PosMembershipError,
+  type PosTicketMembershipRevisionSnapshot,
 } from "./pos-memberships";
 import {
   confirmPreparedInternalAgenda,
@@ -941,6 +945,7 @@ interface AppliedTicketRevisionSnapshot {
     itemKinds: Record<string, string>;
     unitCosts: Record<string, string>;
     owedProducts?: AppliedOwedProductSnapshot[];
+    memberships?: PosTicketMembershipRevisionSnapshot[];
   };
   differences: PosTicketRevisionDifferenceDto[];
   effects: Record<string, unknown>;
@@ -2146,11 +2151,6 @@ export async function appendTicketRevision(
   const previousApplied = appliedTicketRevisionSnapshot(
     ticket.events[0]?.snapshot,
   );
-  if (ticket.clientMemberships.length > 0)
-    throw new PosTicketError(
-      "La revisión de tickets con membresías requiere el motor compensatorio de membresías pendiente",
-      409,
-    );
   if (ticket.appointments.length > 0)
     throw new PosTicketError(
       "La revisión de tickets con citas requiere el motor compensatorio de Agenda pendiente",
@@ -2300,6 +2300,33 @@ export async function appendTicketRevision(
       fromCents(line.item.unitCostCents),
     ]),
   );
+  let membershipPlan: Awaited<ReturnType<typeof planTicketMembershipRevision>>;
+  try {
+    membershipPlan = await planTicketMembershipRevision(tx, {
+      ticketId: ticket.id,
+      customerName: input.revision.clientName,
+      customerPhone: input.revision.clientPhone || null,
+      seller: nextSellers[0]
+        ? { id: nextSellers[0].employeeId, name: nextSellers[0].name }
+        : null,
+      settlementStatus: input.revision.paymentStatus,
+      lines: quote.lines.flatMap((line) =>
+        line.item.kind === "MEMBERSHIP"
+          ? [
+              {
+                itemId: line.item.id,
+                quantity: line.quantity,
+                totalCents: line.totalCents,
+              },
+            ]
+          : [],
+      ),
+    });
+  } catch (error) {
+    if (error instanceof PosMembershipError)
+      throw new PosTicketError(error.message, error.status);
+    throw error;
+  }
   const currentOwedProducts: AppliedOwedProductSnapshot[] =
     ticket.owedProducts.map((owed) => ({
       id: owed.id,
@@ -2651,6 +2678,7 @@ export async function appendTicketRevision(
     itemKinds: nextItemKinds,
     unitCosts: nextUnitCosts,
     owedProducts: nextOwedProducts,
+    memberships: membershipPlan?.after,
   };
   const differences: PosTicketRevisionDifferenceDto[] = [];
   const addDifference = (
@@ -2679,6 +2707,8 @@ export async function appendTicketRevision(
     comparableLines(nextLines),
   );
   addDifference("OWED_PRODUCTS", currentOwedProducts, nextOwedProducts);
+  if (membershipPlan)
+    addDifference("MEMBERSHIPS", membershipPlan.before, membershipPlan.after);
   addDifference(
     "TOTALS",
     {
@@ -2732,6 +2762,17 @@ export async function appendTicketRevision(
               status: change.after.status,
             },
           })),
+          membershipChanges: membershipPlan
+            ? membershipPlan.after.flatMap((after) => {
+                const before = membershipPlan.before.find(
+                  (entry) => entry.id === after.id,
+                );
+                return before &&
+                  JSON.stringify(before) !== JSON.stringify(after)
+                  ? [{ id: after.id, before, after }]
+                  : [];
+              })
+            : [],
         },
       } as unknown as Prisma.InputJsonValue,
       actorCredentialId: context.credentialId,
@@ -2739,6 +2780,14 @@ export async function appendTicketRevision(
       inventoryMovementId,
     },
   });
+  if (membershipPlan)
+    await applyTicketMembershipRevision(tx, {
+      plan: membershipPlan,
+      credentialId: context.credentialId,
+      sourceId: event.id,
+      version: nextVersion,
+      reason: input.reason,
+    });
   await tx.posTicket.update({
     where: { id: ticket.id },
     data: {

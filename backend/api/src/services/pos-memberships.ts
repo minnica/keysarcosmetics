@@ -85,6 +85,10 @@ export const membershipInclude = {
   },
   sellerChanges: { orderBy: { cambiadoEn: "asc" as const } },
   statusChanges: { orderBy: { cambiadoEn: "asc" as const } },
+  revisionProjections: {
+    orderBy: [{ version: "desc" as const }, { creadoEn: "desc" as const }],
+    take: 1,
+  },
 } satisfies Prisma.PosClientMembershipInclude;
 
 type MembershipPayload = Prisma.PosClientMembershipGetPayload<{
@@ -103,6 +107,7 @@ const credentialName = (credential: {
 export function membershipDto(
   membership: MembershipPayload,
 ): PosClientMembershipDto {
+  const revision = membership.revisionProjections[0];
   return {
     id: membership.id,
     folio: membership.folio,
@@ -111,8 +116,10 @@ export function membershipDto(
     ticketLineId: membership.ticketLineId,
     unitOrdinal: membership.unitOrdinal,
     customerId: membership.customerId,
-    customerName: membership.customerNameSnapshot,
-    customerPhone: membership.customerPhoneSnapshot,
+    customerName:
+      revision?.customerNameSnapshot ?? membership.customerNameSnapshot,
+    customerPhone:
+      revision?.customerPhoneSnapshot ?? membership.customerPhoneSnapshot,
     membershipItemId: membership.membershipItemId,
     membershipName: membership.membershipNameSnapshot,
     membershipSku: membership.membershipSkuSnapshot,
@@ -122,7 +129,9 @@ export function membershipDto(
     usedSessions: membership.usedSessions,
     remainingSessions: membership.totalSessions - membership.usedSessions,
     renewalThreshold: membership.renewalThreshold,
-    purchaseAmount: money(membership.purchaseAmount)!,
+    purchaseAmount: money(
+      revision?.purchaseAmount ?? membership.purchaseAmount,
+    )!,
     purchaseBranchId: membership.purchaseBranchId,
     purchaseBranchName: membership.purchaseBranchNameSnapshot,
     originalSellerId: membership.originalSellerId,
@@ -165,6 +174,13 @@ export function membershipDto(
     })),
   };
 }
+
+export const effectiveMembershipPurchaseAmount = (membership: {
+  purchaseAmount: Prisma.Decimal;
+  revisionProjections: Array<{ purchaseAmount: Prisma.Decimal }>;
+}) =>
+  membership.revisionProjections[0]?.purchaseAmount ??
+  membership.purchaseAmount;
 
 export function membershipScopeWhere(
   context: PosMembershipContext,
@@ -231,6 +247,307 @@ export function allocateMembershipUnitCents(
     { length: quantity },
     (_, index) => baseCents + (index < remainder ? 1 : 0),
   );
+}
+
+export interface PosTicketMembershipRevisionSnapshot {
+  id: string;
+  membershipItemId: string;
+  unitOrdinal: number;
+  purchaseAmount: string;
+  customerName: string;
+  customerPhone: string | null;
+  currentSellerId: string | null;
+  currentSellerName: string;
+  status: PosMembershipStatus;
+  usedSessions: number;
+  totalSessions: number;
+  attendanceIds: string[];
+}
+
+export interface PosTicketMembershipRevisionPlan {
+  ticketId: string;
+  activatePending: boolean;
+  before: PosTicketMembershipRevisionSnapshot[];
+  after: PosTicketMembershipRevisionSnapshot[];
+  changes: Array<{
+    id: string;
+    purchaseAmount: string;
+    customerName: string;
+    customerPhone: string | null;
+    currentSellerId: string;
+    currentSellerName: string;
+    sellerChanged: boolean;
+    projectionChanged: boolean;
+  }>;
+}
+
+const ticketMembershipSnapshot = (membership: {
+  id: string;
+  membershipItemId: string;
+  unitOrdinal: number;
+  purchaseAmount: Prisma.Decimal;
+  customerNameSnapshot: string;
+  customerPhoneSnapshot: string | null;
+  currentSellerId: string | null;
+  currentSellerNameSnapshot: string;
+  status: PosMembershipStatus;
+  usedSessions: number;
+  totalSessions: number;
+  attendance: Array<{ id: string }>;
+  revisionProjections: Array<{
+    purchaseAmount: Prisma.Decimal;
+    customerNameSnapshot: string;
+    customerPhoneSnapshot: string | null;
+  }>;
+}): PosTicketMembershipRevisionSnapshot => ({
+  id: membership.id,
+  membershipItemId: membership.membershipItemId,
+  unitOrdinal: membership.unitOrdinal,
+  purchaseAmount: money(
+    membership.revisionProjections[0]?.purchaseAmount ??
+      membership.purchaseAmount,
+  )!,
+  customerName:
+    membership.revisionProjections[0]?.customerNameSnapshot ??
+    membership.customerNameSnapshot,
+  customerPhone:
+    membership.revisionProjections[0]?.customerPhoneSnapshot ??
+    membership.customerPhoneSnapshot,
+  currentSellerId: membership.currentSellerId,
+  currentSellerName: membership.currentSellerNameSnapshot,
+  status: membership.status,
+  usedSessions: membership.usedSessions,
+  totalSessions: membership.totalSessions,
+  attendanceIds: membership.attendance.map((entry) => entry.id),
+});
+
+/**
+ * Construye bajo bloqueo el cambio inequívoco de las proyecciones de membresía.
+ * Las altas/bajas de unidades permanecen fuera de este motor porque el diálogo
+ * de revisión no identifica el tarjetón que debe conservarse o compensarse.
+ */
+export async function planTicketMembershipRevision(
+  tx: Transaction,
+  input: {
+    ticketId: string;
+    customerName: string;
+    customerPhone: string | null;
+    seller: { id: string; name: string } | null;
+    settlementStatus: "PAID" | "LAYAWAY" | "PENDING";
+    lines: Array<{ itemId: string; quantity: number; totalCents: number }>;
+  },
+): Promise<PosTicketMembershipRevisionPlan | null> {
+  await tx.$queryRaw(
+    Prisma.sql`SELECT "id" FROM "PosClientMembership" WHERE "ticketId" = ${input.ticketId}::uuid FOR UPDATE`,
+  );
+  const memberships = await tx.posClientMembership.findMany({
+    where: { ticketId: input.ticketId },
+    include: {
+      attendance: {
+        select: { id: true },
+        orderBy: { sessionNumber: "asc" },
+      },
+      revisionProjections: {
+        orderBy: [{ version: "desc" }, { creadoEn: "desc" }],
+        take: 1,
+      },
+    },
+    orderBy: [
+      { membershipItemId: "asc" },
+      { unitOrdinal: "asc" },
+      { id: "asc" },
+    ],
+  });
+  if (memberships.length === 0 && input.lines.length === 0) return null;
+  if (!input.seller)
+    throw new PosMembershipError(
+      "La revisión de membresías requiere un vendedor responsable",
+      409,
+    );
+
+  const effectiveMemberships = memberships.filter(
+    (membership) => membership.status !== "CANCELED",
+  );
+  const desiredByItem = new Map<
+    string,
+    { quantity: number; totalCents: number }
+  >();
+  for (const line of input.lines) {
+    const current = desiredByItem.get(line.itemId) ?? {
+      quantity: 0,
+      totalCents: 0,
+    };
+    current.quantity += line.quantity;
+    current.totalCents += line.totalCents;
+    desiredByItem.set(line.itemId, current);
+  }
+  const currentCountByItem = new Map<string, number>();
+  for (const membership of effectiveMemberships)
+    currentCountByItem.set(
+      membership.membershipItemId,
+      (currentCountByItem.get(membership.membershipItemId) ?? 0) + 1,
+    );
+  const membershipItemIds = new Set([
+    ...currentCountByItem.keys(),
+    ...desiredByItem.keys(),
+  ]);
+  if (
+    [...membershipItemIds].some(
+      (itemId) =>
+        (currentCountByItem.get(itemId) ?? 0) !==
+        (desiredByItem.get(itemId)?.quantity ?? 0),
+    )
+  )
+    throw new PosMembershipError(
+      "La revisión no puede agregar, retirar ni sustituir tarjetones sin identificar sus unidades",
+      409,
+    );
+  if (
+    input.settlementStatus !== "PAID" &&
+    effectiveMemberships.some((membership) =>
+      ["ACTIVE", "EXHAUSTED"].includes(membership.status),
+    )
+  )
+    throw new PosMembershipError(
+      "Una membresía activa o con sesiones consumidas no puede volver a un ticket pendiente",
+      409,
+    );
+
+  const allocatedAmountById = new Map<string, string>();
+  for (const itemId of membershipItemIds) {
+    const itemMemberships = effectiveMemberships.filter(
+      (membership) => membership.membershipItemId === itemId,
+    );
+    const desired = desiredByItem.get(itemId);
+    if (!desired || itemMemberships.length === 0) continue;
+    const unitAmounts = allocateMembershipUnitCents(
+      desired.totalCents,
+      itemMemberships.length,
+    );
+    itemMemberships.forEach((membership, index) =>
+      allocatedAmountById.set(
+        membership.id,
+        (unitAmounts[index]! / 100).toFixed(2),
+      ),
+    );
+  }
+
+  const before = memberships.map(ticketMembershipSnapshot);
+  const after = memberships.map((membership) => {
+    const snapshot = ticketMembershipSnapshot(membership);
+    if (membership.status === "CANCELED") return snapshot;
+    return {
+      ...snapshot,
+      purchaseAmount:
+        allocatedAmountById.get(membership.id) ?? snapshot.purchaseAmount,
+      customerName: input.customerName,
+      customerPhone: input.customerPhone,
+      currentSellerId: input.seller!.id,
+      currentSellerName: input.seller!.name,
+      status:
+        input.settlementStatus === "PAID" && membership.status === "PENDING"
+          ? "ACTIVE"
+          : membership.status,
+    };
+  });
+  const afterById = new Map(
+    after.map((membership) => [membership.id, membership]),
+  );
+  const changes = effectiveMemberships.flatMap((membership) => {
+    const current = ticketMembershipSnapshot(membership);
+    const next = afterById.get(membership.id)!;
+    const projectionChanged =
+      current.purchaseAmount !== next.purchaseAmount ||
+      current.customerName !== next.customerName ||
+      current.customerPhone !== next.customerPhone;
+    const sellerChanged =
+      membership.currentSellerId !== input.seller!.id ||
+      membership.currentSellerNameSnapshot !== input.seller!.name;
+    const changed = projectionChanged || sellerChanged;
+    return changed
+      ? [
+          {
+            id: membership.id,
+            purchaseAmount: next.purchaseAmount,
+            customerName: next.customerName,
+            customerPhone: next.customerPhone,
+            currentSellerId: input.seller!.id,
+            currentSellerName: input.seller!.name,
+            sellerChanged,
+            projectionChanged,
+          },
+        ]
+      : [];
+  });
+  return {
+    ticketId: input.ticketId,
+    activatePending:
+      input.settlementStatus === "PAID" &&
+      effectiveMemberships.some(
+        (membership) => membership.status === "PENDING",
+      ),
+    before,
+    after,
+    changes,
+  };
+}
+
+export async function applyTicketMembershipRevision(
+  tx: Transaction,
+  input: {
+    plan: PosTicketMembershipRevisionPlan;
+    credentialId: string;
+    sourceId: string;
+    version: number;
+    reason: string;
+  },
+) {
+  for (const change of input.plan.changes) {
+    if (change.sellerChanged)
+      await tx.posMembershipSellerChange.create({
+        data: {
+          membershipId: change.id,
+          fromSellerId:
+            input.plan.before.find((entry) => entry.id === change.id)
+              ?.currentSellerId ?? null,
+          fromSellerNameSnapshot:
+            input.plan.before.find((entry) => entry.id === change.id)
+              ?.currentSellerName ?? "KEYSAR COSMETICS",
+          toSellerId: change.currentSellerId,
+          toSellerNameSnapshot: change.currentSellerName,
+          reason: input.reason,
+          actorCredentialId: input.credentialId,
+        },
+      });
+    if (change.sellerChanged)
+      await tx.posClientMembership.update({
+        where: { id: change.id },
+        data: {
+          currentSellerId: change.currentSellerId,
+          currentSellerNameSnapshot: change.currentSellerName,
+        },
+      });
+    if (change.projectionChanged)
+      await tx.posMembershipRevisionProjection.create({
+        data: {
+          membershipId: change.id,
+          ticketEventId: input.sourceId,
+          version: input.version,
+          purchaseAmount: new Prisma.Decimal(change.purchaseAmount),
+          customerNameSnapshot: change.customerName,
+          customerPhoneSnapshot: change.customerPhone,
+        },
+      });
+  }
+  if (input.plan.activatePending)
+    await activateMembershipsForTicket(
+      tx,
+      input.plan.ticketId,
+      input.credentialId,
+      input.sourceId,
+      "PosTicketEvent",
+      input.reason,
+    );
 }
 
 export async function createMembershipsForTicket(
@@ -342,6 +659,8 @@ export async function activateMembershipsForTicket(
   ticketId: string,
   credentialId: string,
   sourceId: string,
+  sourceType = "PosPaymentOperation",
+  reason = "Apartado liquidado",
 ) {
   await tx.$queryRaw(
     Prisma.sql`SELECT "id" FROM "PosClientMembership" WHERE "ticketId" = ${ticketId}::uuid FOR UPDATE`,
@@ -357,9 +676,9 @@ export async function activateMembershipsForTicket(
         membershipId: membership.id,
         fromStatus: "PENDING",
         toStatus: "ACTIVE",
-        reason: "Apartado liquidado",
+        reason,
         actorCredentialId: credentialId,
-        sourceType: "PosPaymentOperation",
+        sourceType,
         sourceId,
       },
     });
@@ -720,6 +1039,11 @@ export async function createMembershipClosure(
       originalSellerId: true,
       originalSellerNameSnapshot: true,
       purchaseAmount: true,
+      revisionProjections: {
+        orderBy: [{ version: "desc" }, { creadoEn: "desc" }],
+        take: 1,
+        select: { purchaseAmount: true },
+      },
     },
   });
   const grouped = new Map<
@@ -742,7 +1066,9 @@ export async function createMembershipClosure(
       amount: new Prisma.Decimal(0),
     };
     current.quantity += 1;
-    current.amount = current.amount.plus(membership.purchaseAmount);
+    current.amount = current.amount.plus(
+      effectiveMembershipPurchaseAmount(membership),
+    );
     grouped.set(key, current);
   }
   const rankings = [...grouped.values()].sort(
@@ -759,7 +1085,8 @@ export async function createMembershipClosure(
       version: (latest?.version ?? 0) + 1,
       membershipCount: memberships.length,
       totalAmount: memberships.reduce(
-        (sum, membership) => sum.plus(membership.purchaseAmount),
+        (sum, membership) =>
+          sum.plus(effectiveMembershipPurchaseAmount(membership)),
         new Prisma.Decimal(0),
       ),
       createdByCredentialId: context.credentialId,
