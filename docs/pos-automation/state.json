@@ -59,6 +59,81 @@
       "nextStep": "Continuar con RV5-P2 según la cola técnica; corregir las fechas vencidas de Scheduler dentro de RV6-P2.",
       "report": "docs/pos-automation/runs/2026-09-16T09-28-04-169Z-RV7-P1.md",
       "updatedAt": "2026-09-16T10:55:00.000Z"
+    },
+    "RV5-P2": {
+      "id": "RV5-P2",
+      "runId": "2026-09-16T17-12-01-729Z-RV5-P2",
+      "base": "b1ade07d6b87f095317ce2af011b785470bfd317",
+      "status": "completed",
+      "attempts": 1,
+      "summary": "Historial canónico de entregas completado. Receipts, expediente e inventario recuperan tras recarga cantidades, fechas y actores persistidos, conservando los controles aprobados.",
+      "checks": [
+        {
+          "command": "RUN_DATABASE_TESTS=true DATABASE_URL=<PostgreSQL-16-local-desechable> DIRECT_URL=<misma-BD> pnpm --filter @cosmetics/api exec vitest run src/pos.integration.test.ts",
+          "result": "passed",
+          "evidence": "45 migraciones desde cero y 10/10 casos POS; entrega parcial/final, replay idempotente y paridad entre detalle, lista y BD."
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api test:unit && pnpm --filter @cosmetics/api lint",
+          "result": "passed",
+          "evidence": "135/135 pruebas unitarias y ESLint sin warnings."
+        },
+        {
+          "command": "pnpm --filter @cosmetics/types type-check && pnpm --filter @cosmetics/types build && pnpm --filter @cosmetics/api-client type-check && pnpm --filter @cosmetics/pos type-check",
+          "result": "passed",
+          "evidence": "Contratos compartidos, cliente HTTP y POS compilaron correctamente."
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api type-check && pnpm --filter @cosmetics/api build",
+          "result": "passed",
+          "evidence": "API, rutas, servicio de tickets y bootstrap sync compilaron."
+        },
+        {
+          "command": "pnpm --filter @cosmetics/pos build:web",
+          "result": "passed",
+          "evidence": "Renderer, main y preload construidos correctamente."
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api prisma:schemas && pnpm --filter @cosmetics/api prisma:validate",
+          "result": "passed",
+          "evidence": "Schemas Prisma sincronizados y válidos; no se requirió migración nueva."
+        },
+        {
+          "command": "pnpm pos:visual:manifest && git diff --check",
+          "result": "passed",
+          "evidence": "Referencia 12fb804 intacta, 208 capturas programadas y diff sin errores de whitespace."
+        }
+      ],
+      "independentChecks": [
+        {
+          "command": "pnpm --filter @cosmetics/pos type-check",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/pos build:web",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api prisma:schemas",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api type-check",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api lint",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api test:unit",
+          "result": "passed"
+        }
+      ],
+      "remaining": [],
+      "nextStep": "Continuar con RV5-P1; el informe quedó en docs/pos-automation/runs/2026-09-16T17-12-01-729Z-RV5-P2.md.",
+      "report": "docs/pos-automation/runs/2026-09-16T17-12-01-729Z-RV5-P2.md",
+      "updatedAt": "2026-09-16T17:33:20.000Z"
     }
   },
   "history": [
@@ -123,6 +198,81 @@
       "nextStep": "Continuar con RV5-P2; atender las pruebas fechadas en RV6-P2.",
       "report": "docs/pos-automation/runs/2026-09-16T09-28-04-169Z-RV7-P1.md",
       "updatedAt": "2026-09-16T10:55:00.000Z"
+    },
+    {
+      "id": "RV5-P2",
+      "runId": "2026-09-16T17-12-01-729Z-RV5-P2",
+      "base": "b1ade07d6b87f095317ce2af011b785470bfd317",
+      "status": "completed",
+      "attempts": 1,
+      "summary": "Historial canónico de entregas completado. Receipts, expediente e inventario recuperan tras recarga cantidades, fechas y actores persistidos, conservando los controles aprobados.",
+      "checks": [
+        {
+          "command": "RUN_DATABASE_TESTS=true DATABASE_URL=<PostgreSQL-16-local-desechable> DIRECT_URL=<misma-BD> pnpm --filter @cosmetics/api exec vitest run src/pos.integration.test.ts",
+          "result": "passed",
+          "evidence": "45 migraciones desde cero y 10/10 casos POS; entrega parcial/final, replay idempotente y paridad entre detalle, lista y BD."
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api test:unit && pnpm --filter @cosmetics/api lint",
+          "result": "passed",
+          "evidence": "135/135 pruebas unitarias y ESLint sin warnings."
+        },
+        {
+          "command": "pnpm --filter @cosmetics/types type-check && pnpm --filter @cosmetics/types build && pnpm --filter @cosmetics/api-client type-check && pnpm --filter @cosmetics/pos type-check",
+          "result": "passed",
+          "evidence": "Contratos compartidos, cliente HTTP y POS compilaron correctamente."
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api type-check && pnpm --filter @cosmetics/api build",
+          "result": "passed",
+          "evidence": "API, rutas, servicio de tickets y bootstrap sync compilaron."
+        },
+        {
+          "command": "pnpm --filter @cosmetics/pos build:web",
+          "result": "passed",
+          "evidence": "Renderer, main y preload construidos correctamente."
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api prisma:schemas && pnpm --filter @cosmetics/api prisma:validate",
+          "result": "passed",
+          "evidence": "Schemas Prisma sincronizados y válidos; no se requirió migración nueva."
+        },
+        {
+          "command": "pnpm pos:visual:manifest && git diff --check",
+          "result": "passed",
+          "evidence": "Referencia 12fb804 intacta, 208 capturas programadas y diff sin errores de whitespace."
+        }
+      ],
+      "independentChecks": [
+        {
+          "command": "pnpm --filter @cosmetics/pos type-check",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/pos build:web",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api prisma:schemas",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api type-check",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api lint",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api test:unit",
+          "result": "passed"
+        }
+      ],
+      "remaining": [],
+      "nextStep": "Continuar con RV5-P1; el informe quedó en docs/pos-automation/runs/2026-09-16T17-12-01-729Z-RV5-P2.md.",
+      "report": "docs/pos-automation/runs/2026-09-16T17-12-01-729Z-RV5-P2.md",
+      "updatedAt": "2026-09-16T17:33:20.000Z"
     }
   ]
 }

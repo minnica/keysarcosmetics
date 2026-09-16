@@ -805,6 +805,7 @@ export interface OwedProductDelivery {
   quantity: number;
   deliveredAt: string;
   deliveredAtIso: string;
+  actorName: string;
   branch: string;
   movementId: string | null;
 }

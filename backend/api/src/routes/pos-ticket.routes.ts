@@ -45,6 +45,7 @@ import {
   issueVoucher,
   printVoucher,
   quoteDto,
+  ticketInclude,
   ticketDto,
   voucherDto,
 } from "../services/pos-tickets";
@@ -380,45 +381,7 @@ router.get(
     const [items, total] = await Promise.all([
       prisma.posTicket.findMany({
         where,
-        include: {
-          branch: { select: { nombre: true } },
-          customer: { select: { id: true } },
-          lines: {
-            include: { item: { select: { kind: true } } },
-            orderBy: { creadoEn: "asc" },
-          },
-          sellers: { orderBy: { creadoEn: "asc" } },
-          participants: { orderBy: { creadoEn: "asc" } },
-          paymentOperations: {
-            include: { payments: true },
-            orderBy: { creadoEn: "asc" },
-          },
-          layaway: true,
-          owedProducts: {
-            include: { item: { select: { name: true } } },
-            orderBy: { creadoEn: "asc" },
-          },
-          appointments: {
-            include: {
-              branch: { select: { nombre: true } },
-              agendaResource: { select: { nameSnapshot: true } },
-            },
-            orderBy: { creadoEn: "asc" },
-          },
-          clientMemberships: {
-            select: {
-              id: true,
-              folio: true,
-              customerId: true,
-              ticketId: true,
-              membershipItemId: true,
-              membershipNameSnapshot: true,
-              unitOrdinal: true,
-              status: true,
-            },
-            orderBy: { unitOrdinal: "asc" },
-          },
-        },
+        include: ticketInclude,
         orderBy: { creadoEn: "desc" },
         skip: (parsed.data.page - 1) * parsed.data.pageSize,
         take: parsed.data.pageSize,

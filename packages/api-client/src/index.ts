@@ -36,6 +36,7 @@ import type {
   PosWarehouseRequestDto,
   PosNotificationDto,
   PosNotificationPreferenceDto,
+  PosOwedProductDeliveryDto,
   PosPaymentMethodDto,
   PosPaymentCatalogsDto,
   PosBankDto,
@@ -1492,12 +1493,7 @@ export interface PosApiClient {
     id: string,
     quantity: string,
     idempotencyKey?: string,
-  ): Promise<{
-    id: string;
-    folio: string;
-    businessDate: string;
-    createdAt: string;
-  }>;
+  ): Promise<PosOwedProductDeliveryDto>;
   reviseTicket(
     id: string,
     input: PosTicketEventRequestDto,
@@ -2165,7 +2161,7 @@ export function createPosApiClient(
         ),
       ),
     deliverOwedProduct: (id, quantity, key) =>
-      data(
+      data<PosOwedProductDeliveryDto>(
         client.post(
           `/owed-products/${id}/deliveries`,
           { quantity },

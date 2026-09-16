@@ -8,13 +8,23 @@
 
 - MVP online RV0–RV7 y RV9 bloqueante: implementado.
 - RV10 técnica: 208/208 visual, builds, tipos, lint, unitarias e integración PostgreSQL en `PASS`.
-- Checkpoint actual: `RV7-P1`, completado. Los prompts alias/PIN de corrección/anulación ya no existen en el renderer; ambas operaciones reutilizan el campo aprobado `Código master` y las autorizaciones consumibles del servidor. La integración dirigida comprobó persistencia, permisos, importes/compensaciones, idempotencia y rechazo de reutilización sobre PostgreSQL 16 desechable.
-- Siguiente trabajo: seguir RV5-P2/P1 y RV6-P1/P2 según la sección 6 del plan, completando primero el trabajo técnico independiente. La revisión del PO y sus decisiones quedan aplazadas; `12fb804` basta como dirección visual.
+- Checkpoint actual: `RV5-P2`, completado. Las entregas parciales/finales ya se proyectan desde `PosOwedProductDelivery`/`Line` con fecha, cantidad y actor en el detalle, lista y bootstrap; Receipts, expediente y seguimiento de inventario conservan los controles aprobados y recuperan el historial después de recargar.
+- Siguiente trabajo: seguir RV5-P1 y RV6-P1/P2 según la sección 6 del plan, completando primero el trabajo técnico independiente. La revisión del PO y sus decisiones quedan aplazadas; `12fb804` basta como dirección visual.
 - Pendiente visual explícito: RV3-B01 (copy de cierre/gasto). RV7-P1/R03 quedó cerrado sin modificar `REGISTRO MOCK · CASH MANAGER`. No equiparar 208 capturas históricas con cobertura universal del modo API.
-- Backlog: revisiones complejas/historial de entregas, administración avanzada de membresías e incidencias Scheduler, RV8/offline, hardware/escala, migraciones/consumidores/limpieza y OP01–OP06 (piloto, respaldo, rollback y release). Agenda externa sólo si se habilita el proveedor HTTP o se conserva como rollback.
+- Backlog: revisiones complejas, administración avanzada de membresías e incidencias Scheduler, RV8/offline, hardware/escala, migraciones/consumidores/limpieza y OP01–OP06 (piloto, respaldo, rollback y release). Agenda externa sólo si se habilita el proveedor HTTP o se conserva como rollback.
 - Referencia reconfirmada por GitHub MCP el 2026-09-16: `feature/pos` sigue en `12fb8045cc264b565cb6e764d95ad7b2447fbfa1`. La presentación aprobada gobierna la adaptación del backend; no se rediseña para ajustar contratos.
 
-## Checkpoint RV7-P1 (2026-09-16, ejecución actual)
+## Checkpoint RV5-P2 (2026-09-16, ejecución actual)
+
+- Se añadió el contrato compatible `PosOwedProductDto.deliveries`; es opcional únicamente para bootstraps offline anteriores. Cada evento nuevo contiene folio, fecha operativa e instante, cantidad, `actorCredentialId`, nombre canónico del actor e `inventoryMovementId`. No cambiaron Prisma, migraciones, la versión offline ni datos existentes.
+- `backend/api/src/services/pos-tickets.ts` reutiliza una sola inclusión de ticket para detalle, lista y bootstrap. El historial se arma desde `PosOwedProductDeliveryLine`, ordenado por fecha/ID, sin consultas por fila ni reconstrucción desde cantidades agregadas. El endpoint de entrega devuelve el mismo evento autoritativo.
+- `owedProductsFromDto` dejó de vaciar el historial. El diálogo existente de ticket en Receipts agrega una sección condicional con producto, cantidad, fecha y actor usando la clase ya aprobada de historial; Customers e Inventory amplían sus líneas existentes con el actor. Los fixtures del baseline no contienen entregas y no cambian su DOM visible.
+- Verificación de esta ejecución: tipos de `types`, API client, API y POS; build de API y POS; lint y 135/135 unitarias del API; schemas Prisma sincronizados/válidos; manifiesto visual 25/10/11/10 y 208 capturas; `git diff --check`, todos en `PASS`.
+- La integración dirigida creó una PostgreSQL 16 desechable nueva, aplicó 45/45 migraciones y pasó 10/10 casos POS. El caso RV5-P2 registró 1.00 y 2.00 piezas, repitió la primera solicitud con la misma llave sin duplicarla, confirmó estado final `DELIVERED`, actores/fechas/movimientos y paridad entre detalle, lista y filas persistidas.
+- Dos corridas previas sobre bases nuevas detectaron exclusivamente carencias del fixture añadido (ubicación de inventario ausente y lectura con un actor sin `RECEIPTS_VIEW`); se corrigió el fixture para crear su ubicación sintética y consultar con el master autorizado. La tercera base nueva pasó completa. Los tres contenedores `keysar-rv5-p2-pg-20260916-171201`, `keysar-rv5-p2-pg-20260916-attempt2` y `keysar-rv5-p2-pg-20260916-attempt3` quedaron detenidos y conservan sus datos locales; no se usó `.env`, seed general ni una BD compartida.
+- No se solicitó ni atribuyó aprobación al PO. B01–B03, RV5-P1 y el resto del backlog permanecen sin cambios. Informe: `docs/pos-automation/runs/2026-09-16T17-12-01-729Z-RV5-P2.md`.
+
+## Checkpoint RV7-P1 (2026-09-16, evidencia histórica anterior)
 
 - Se modificaron `App.tsx` y `CashManagerView.tsx`. En modo API, el control visible `Código master` valida primero un token efímero `CASH_MANAGER_ACCESS`; el código queda sólo en memoria durante el desbloqueo de tres minutos y se usa para solicitar tokens nuevos `CASH_EXPENSE_EDIT` o `CASH_EXPENSE_VOID`, ligados al `PosCashExpense` exacto. No se agregó alias, diálogo ni otro DOM.
 - La corrección ahora espera la respuesta del API antes de cerrar el formulario. Si autorización o persistencia fallan, conserva el formulario y muestra el error del servidor. Anulación mantiene la confirmación aprobada y actualiza estado sólo desde el DTO persistido.

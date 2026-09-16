@@ -1928,7 +1928,8 @@ export function CustomersView({
                                           (delivery) => (
                                             <small key={delivery.id}>
                                               Entrega: {delivery.quantity} pza ·{" "}
-                                              {delivery.deliveredAt}
+                                              {delivery.deliveredAt} ·{" "}
+                                              {delivery.actorName}
                                             </small>
                                           ),
                                         )}

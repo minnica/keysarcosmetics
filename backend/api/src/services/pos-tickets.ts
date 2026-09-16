@@ -1,5 +1,6 @@
 import { Prisma, type MetodoPagoTipo } from "@prisma/client";
 import type {
+  PosOwedProductDeliveryDto,
   PosTicketCreateRequestDto,
   PosTicketDto,
   PosTicketParticipantInputDto,
@@ -906,7 +907,16 @@ export function sellerProjectionPayments(
   );
 }
 
-const ticketInclude = {
+const deliveryCredentialInclude = {
+  employee: { select: { nombreCompleto: true } },
+  user: { select: { nombre: true } },
+} as const;
+
+const deliveryInclude = {
+  actorCredential: { include: deliveryCredentialInclude },
+} as const;
+
+export const ticketInclude = {
   branch: { select: { nombre: true } },
   customer: { select: { id: true } },
   lines: {
@@ -921,7 +931,12 @@ const ticketInclude = {
   },
   layaway: true,
   owedProducts: {
-    include: { item: { select: { name: true } } },
+    include: {
+      item: { select: { name: true } },
+      deliveryLines: {
+        include: { delivery: { include: deliveryInclude } },
+      },
+    },
     orderBy: { creadoEn: "asc" as const },
   },
   appointments: {
@@ -1041,17 +1056,39 @@ export function ticketDto(ticket: TicketPayload): PosTicketDto {
       presenceBranchId: participant.presenceBranchIdSnapshot,
       attendanceId: participant.attendanceIdSnapshot,
     })),
-    owedProducts: ticket.owedProducts.map((owed) => ({
-      id: owed.id,
-      ticketLineId: owed.ticketLineId,
-      itemId: owed.itemId,
-      itemName: owed.item.name,
-      quantity: money(owed.quantity)!,
-      deliveredQuantity: money(owed.deliveredQuantity)!,
-      pendingQuantity: owed.quantity.minus(owed.deliveredQuantity).toFixed(2),
-      inventoryCommitted: owed.inventoryCommitted,
-      status: owed.status,
-    })),
+    owedProducts: ticket.owedProducts.map((owed) => {
+      const deliveries: PosOwedProductDeliveryDto[] = owed.deliveryLines
+        .map(({ quantity, delivery }) => ({
+          id: delivery.id,
+          folio: delivery.folio,
+          businessDate: delivery.businessDate.toISOString().slice(0, 10),
+          deliveredAt: delivery.creadoEn.toISOString(),
+          quantity: money(quantity)!,
+          actorCredentialId: delivery.actorCredentialId,
+          actorName:
+            delivery.actorCredential.employee?.nombreCompleto ??
+            delivery.actorCredential.user?.nombre ??
+            delivery.actorCredential.alias,
+          inventoryMovementId: delivery.inventoryMovementId,
+        }))
+        .sort(
+          (left, right) =>
+            left.deliveredAt.localeCompare(right.deliveredAt) ||
+            left.id.localeCompare(right.id),
+        );
+      return {
+        id: owed.id,
+        ticketLineId: owed.ticketLineId,
+        itemId: owed.itemId,
+        itemName: owed.item.name,
+        quantity: money(owed.quantity)!,
+        deliveredQuantity: money(owed.deliveredQuantity)!,
+        pendingQuantity: owed.quantity.minus(owed.deliveredQuantity).toFixed(2),
+        inventoryCommitted: owed.inventoryCommitted,
+        status: owed.status,
+        deliveries,
+      };
+    }),
     appointments: ticket.appointments.map((appointment) => ({
       id: appointment.id,
       kind: appointment.kind,
@@ -1965,7 +2002,7 @@ export async function deliverOwedProduct(
         create: [{ owedProductId: owed.id, itemId: owed.itemId, quantity }],
       },
     },
-    include: { lines: true },
+    include: { lines: true, ...deliveryInclude },
   });
   const deliveredQuantity = owed.deliveredQuantity.plus(quantity);
   await tx.posOwedProduct.update({
@@ -1979,7 +2016,14 @@ export async function deliverOwedProduct(
     id: delivery.id,
     folio: delivery.folio,
     businessDate: delivery.businessDate.toISOString().slice(0, 10),
-    createdAt: delivery.creadoEn.toISOString(),
+    deliveredAt: delivery.creadoEn.toISOString(),
+    quantity: money(quantity)!,
+    actorCredentialId: delivery.actorCredentialId,
+    actorName:
+      delivery.actorCredential.employee?.nombreCompleto ??
+      delivery.actorCredential.user?.nombre ??
+      delivery.actorCredential.alias,
+    inventoryMovementId: delivery.inventoryMovementId,
     lines: delivery.lines.map((line) => ({
       owedProductId: line.owedProductId,
       itemId: line.itemId,

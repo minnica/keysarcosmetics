@@ -1307,6 +1307,19 @@ export interface PosOwedProductDto {
   pendingQuantity: Money;
   inventoryCommitted: boolean;
   status: "PENDING" | "DELIVERED" | "CANCELED";
+  /** Optional only for compatibility with encrypted offline bootstraps emitted before RV5-P2. */
+  deliveries?: PosOwedProductDeliveryDto[];
+}
+
+export interface PosOwedProductDeliveryDto {
+  id: PosId;
+  folio: string;
+  businessDate: BusinessDate;
+  deliveredAt: IsoUtcDateTime;
+  quantity: Money;
+  actorCredentialId: PosId;
+  actorName: string;
+  inventoryMovementId: PosId;
 }
 
 export interface PosAppointmentDto {

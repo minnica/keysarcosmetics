@@ -19,6 +19,7 @@ import { cardNetworkLabels } from "../bank-catalog";
 import { getTicketTaxSummary } from "../tax";
 import type {
   LayawayRecord,
+  OwedProductRecord,
   PaymentMethodOption,
   ReceiptSettings,
   Ticket,
@@ -30,6 +31,7 @@ interface ReceiptTicketDialogProps {
   open: boolean;
   ticket: Ticket | null;
   layaway: LayawayRecord | null;
+  owedProducts: OwedProductRecord[];
   settings: ReceiptSettings;
   branchAddresses: Record<string, string>;
   paymentMethods: PaymentMethodOption[];
@@ -39,11 +41,11 @@ interface ReceiptTicketDialogProps {
   onPrintVoucher: (issue: VoucherIssue) => Promise<void>;
   onOpenChange: (open: boolean) => void;
 }
-
 export function ReceiptTicketDialog({
   open,
   ticket,
   layaway,
+  owedProducts,
   settings,
   branchAddresses,
   paymentMethods,
@@ -92,6 +94,19 @@ export function ReceiptTicketDialog({
     ticket.branchAddress ||
     (ticketBranchKey ? branchAddresses[ticketBranchKey] : "") ||
     settings.address;
+  const deliveryHistory = owedProducts
+    .filter((record) => record.ticketId === ticket.id)
+    .flatMap((record) =>
+      record.deliveryHistory.map((delivery) => ({
+        ...delivery,
+        productName: record.productName,
+      })),
+    )
+    .sort(
+      (left, right) =>
+        left.deliveredAtIso.localeCompare(right.deliveredAtIso) ||
+        left.id.localeCompare(right.id),
+    );
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -325,6 +340,24 @@ export function ReceiptTicketDialog({
                     <small>{formatCurrency(layaway.balanceDue)}</small>
                   </span>
                 </div>
+              </section>
+            )}
+
+            {deliveryHistory.length > 0 && (
+              <section className="customer-ticket-payment-history">
+                <h3>HISTORIAL DE ENTREGAS</h3>
+                {deliveryHistory.map((delivery) => (
+                  <div key={delivery.id}>
+                    <span>
+                      <strong>{delivery.productName}</strong>
+                      <small>{delivery.deliveredAt}</small>
+                      <small>Entregó {delivery.actorName}</small>
+                    </span>
+                    <span>
+                      <strong>{delivery.quantity} pza</strong>
+                    </span>
+                  </div>
+                ))}
               </section>
             )}
 

@@ -11554,6 +11554,7 @@ function App() {
                 quantity: settledQuantity,
                 deliveredAt: formattedDate,
                 deliveredAtIso: createdAt.toISOString(),
+                actorName: sessionUser?.name ?? masterUser.name,
                 branch: debt.branch,
                 movementId,
               },
@@ -12228,10 +12229,11 @@ function App() {
                           year: "numeric",
                           hour: "2-digit",
                           minute: "2-digit",
-                        }).format(new Date(delivery.createdAt)),
-                        deliveredAtIso: delivery.createdAt,
+                        }).format(new Date(delivery.deliveredAt)),
+                        deliveredAtIso: delivery.deliveredAt,
+                        actorName: delivery.actorName,
                         branch: item.branch,
-                        movementId: delivery.id,
+                        movementId: delivery.inventoryMovementId,
                       },
                     ],
                   },
@@ -12296,6 +12298,7 @@ function App() {
                   quantity: deliveredNow,
                   deliveredAt: createdAtLabel,
                   deliveredAtIso: createdAt.toISOString(),
+                  actorName: sessionUser?.name ?? masterUser.name,
                   branch: item.branch,
                   movementId,
                 },
@@ -12617,6 +12620,7 @@ function App() {
                 quantity: deliveredFromDebt,
                 deliveredAt: createdAtLabel,
                 deliveredAtIso: createdAt.toISOString(),
+                actorName: sessionUser?.name ?? masterUser.name,
                 branch: layaway.branch,
                 movementId,
               },
@@ -19963,6 +19967,7 @@ function App() {
       <ReceiptTicketDialog
         open={receiptPreviewOpen}
         ticket={selectedReceiptTicket}
+        owedProducts={owedProducts}
         layaway={
           selectedReceiptTicket
             ? (layaways.find(

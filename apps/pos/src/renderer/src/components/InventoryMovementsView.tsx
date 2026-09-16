@@ -2080,7 +2080,7 @@ export function InventoryMovementsView({
                             ? record.deliveryHistory
                                 .map(
                                   (delivery) =>
-                                    `${delivery.quantity} pza · ${delivery.deliveredAt}`,
+                                    `${delivery.quantity} pza · ${delivery.deliveredAt} · ${delivery.actorName}`,
                                 )
                                 .join(" | ")
                             : "Sin entrega registrada"}

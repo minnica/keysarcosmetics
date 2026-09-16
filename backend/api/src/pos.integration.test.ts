@@ -952,6 +952,178 @@ integrationDescribe("seguridad y terminales POS", () => {
       }),
     );
 
+    const owedItem = await request(
+      "/api/pos/catalog/items",
+      json(
+        "POST",
+        {
+          sku: `RV5-DEL-${suffix}`.toUpperCase(),
+          name: `Producto entregable RV5 ${suffix}`,
+          kind: "PRODUCT",
+          description: "Producto para historial canónico de entregas",
+          benefits: ["Entrega parcial y final"],
+          branchIds: [branchId],
+          published: true,
+          listPrice: "100.00",
+          minimumPrice: "90.00",
+          unitCost: "40.00",
+          unitCostUsd: "0.00",
+          partnerCost: "50.00",
+          taxRate: "16.00",
+        },
+        masterToken,
+      ),
+    );
+    expect(owedItem.response.status).toBe(201);
+    const owedItemId = (owedItem.body["data"] as { id: string }).id;
+    const branchLocation = await prisma.inventoryLocation.upsert({
+      where: { branchId },
+      create: {
+        code: `RV5-BRANCH-${suffix}`.toUpperCase(),
+        name: `Ubicación RV5 ${suffix}`,
+        type: "BRANCH",
+        branchId,
+      },
+      update: {},
+    });
+    await prisma.inventoryBalance.upsert({
+      where: {
+        locationId_itemId: {
+          locationId: branchLocation.id,
+          itemId: owedItemId,
+        },
+      },
+      create: {
+        locationId: branchLocation.id,
+        itemId: owedItemId,
+        availableQuantity: 3,
+      },
+      update: { availableQuantity: 3 },
+    });
+    const owedCheckout = await request(
+      "/api/pos/tickets",
+      mutationJson(
+        "POST",
+        {
+          branchId,
+          customer: { id: checkoutData.customerId },
+          lines: [
+            {
+              itemId: owedItemId,
+              quantity: "3.00",
+              unitPrice: "100.00",
+              delivered: false,
+            },
+          ],
+          sellers: [{ employeeId, share: "300.00" }],
+          payments: [{ methodId: cash.id, amount: "300.00" }],
+        },
+        employeeToken,
+      ),
+    );
+    expect(owedCheckout.response.status).toBe(201);
+    const owedTicket = owedCheckout.body["data"] as {
+      id: string;
+      owedProducts: Array<{ id: string; deliveries?: unknown[] }>;
+    };
+    expect(owedTicket.owedProducts).toHaveLength(1);
+    expect(owedTicket.owedProducts[0]?.deliveries).toEqual([]);
+    const owedProductId = owedTicket.owedProducts[0]!.id;
+    const partialDeliveryKey = randomUUID();
+    const postDelivery = (quantity: string, idempotencyKey: string) =>
+      request(`/api/pos/owed-products/${owedProductId}/deliveries`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${employeeToken}`,
+          "idempotency-key": idempotencyKey,
+        },
+        body: JSON.stringify({ quantity }),
+      });
+    const partialDelivery = await postDelivery("1.00", partialDeliveryKey);
+    expect(partialDelivery.response.status).toBe(201);
+    const partialDeliveryReplay = await postDelivery(
+      "1.00",
+      partialDeliveryKey,
+    );
+    expect(partialDeliveryReplay.response.status).toBe(201);
+    expect(partialDeliveryReplay.body["data"]).toEqual(
+      partialDelivery.body["data"],
+    );
+    const finalDelivery = await postDelivery("2.00", randomUUID());
+    expect(finalDelivery.response.status).toBe(201);
+
+    const ticketAfterDeliveries = await request(
+      `/api/pos/tickets/${owedTicket.id}`,
+      { headers: { authorization: `Bearer ${masterToken}` } },
+    );
+    expect(ticketAfterDeliveries.response.status).toBe(200);
+    const deliveredOwed = (
+      ticketAfterDeliveries.body["data"] as {
+        owedProducts: Array<{
+          id: string;
+          status: string;
+          deliveredQuantity: string;
+          deliveries: Array<{
+            id: string;
+            quantity: string;
+            deliveredAt: string;
+            actorCredentialId: string;
+            actorName: string;
+            inventoryMovementId: string;
+          }>;
+        }>;
+      }
+    ).owedProducts[0]!;
+    expect(deliveredOwed.status).toBe("DELIVERED");
+    expect(deliveredOwed.deliveredQuantity).toBe("3.00");
+    expect(deliveredOwed.deliveries.map((item) => item.quantity)).toEqual([
+      "1.00",
+      "2.00",
+    ]);
+    expect(deliveredOwed.deliveries.map((item) => item.actorName)).toEqual([
+      `POS Integration Employee ${suffix}`,
+      `POS Integration Employee ${suffix}`,
+    ]);
+    expect(
+      deliveredOwed.deliveries.every(
+        (item) =>
+          Boolean(item.actorCredentialId) &&
+          Boolean(item.inventoryMovementId) &&
+          Number.isFinite(Date.parse(item.deliveredAt)),
+      ),
+    ).toBe(true);
+    const deliveryRows = await prisma.posOwedProductDeliveryLine.findMany({
+      where: { owedProductId },
+      include: { delivery: true },
+      orderBy: { delivery: { creadoEn: "asc" } },
+    });
+    expect(deliveryRows).toHaveLength(2);
+    expect(deliveryRows.map((row) => row.quantity.toFixed(2))).toEqual([
+      "1.00",
+      "2.00",
+    ]);
+    expect(deliveredOwed.deliveries.map((item) => item.id)).toEqual(
+      deliveryRows.map((row) => row.deliveryId),
+    );
+
+    const ticketListAfterDeliveries = await request(
+      `/api/pos/tickets?customerId=${checkoutData.customerId}&page=1&pageSize=20`,
+      { headers: { authorization: `Bearer ${masterToken}` } },
+    );
+    expect(ticketListAfterDeliveries.response.status).toBe(200);
+    const listedOwedTicket = (
+      ticketListAfterDeliveries.body["data"] as {
+        items: Array<{
+          id: string;
+          owedProducts: Array<{ deliveries: unknown[] }>;
+        }>;
+      }
+    ).items.find((item) => item.id === owedTicket.id);
+    expect(listedOwedTicket?.owedProducts[0]?.deliveries).toEqual(
+      deliveredOwed.deliveries,
+    );
+
     const receiptsAuthorization = await request(
       "/api/pos/authorizations",
       json(
