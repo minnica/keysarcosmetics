@@ -181,6 +181,11 @@ test("protege baseline, secretos, ejecutor y manifests", () => {
     allowedPath("apps/pos/src/renderer/src/App.tsx", "report.md"),
     true,
   );
+  assert.equal(
+    allowedPath("scripts/verify-pos-migration-recovery.sh", "report.md"),
+    true,
+  );
+  assert.equal(allowedPath("scripts/verify-scheduler.sh", "report.md"), false);
 });
 test("rechaza documentación incompleta, pruebas fallidas y cierre de otro check", () => {
   const report = "docs/pos-automation/runs/test.md";

@@ -183,6 +183,12 @@ export function allowedPath(file, report) {
     file.startsWith("apps/e2e/pos-visual/")
   )
     return false;
+  if (
+    /^scripts\/(?:verify|prepare|provision|audit|check|seed)-pos-[a-z0-9-]+\.(?:sh|mjs|ts)$/.test(
+      file,
+    )
+  )
+    return true;
   if (file.startsWith("docs/pos-automation/")) return file === report;
   return (
     [

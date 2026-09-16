@@ -45,6 +45,8 @@ node scripts/run-pos-plan.mjs --dry-run
 
 Las pruebas simulan sesiones y usan remotos Git locales temporales: no consumen modelos ni publican al GitHub real. `--dry-run` no modifica archivos y muestra la cola; no certifica conectividad/autenticación ni permite iniciar con cambios sin guardar. Antes de arrancar, la preparación del ejecutor debe estar ya en un commit publicado.
 
+Una tarea automática puede añadir un helper raíz sólo si es específico del POS y usa `scripts/{verify,prepare,provision,audit,check,seed}-pos-*` con extensión `.sh`, `.mjs` o `.ts`. Se prefiere `backend/api/scripts/` cuando el consumidor es únicamente el API. El propio ejecutor, sus pruebas, scripts generales, artefactos visuales, manifests y secretos permanecen protegidos por la allowlist.
+
 Para publicar esta preparación una sola vez, después de revisar `git diff` y confirmar la rama:
 
 ```bash
