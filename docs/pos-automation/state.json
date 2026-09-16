@@ -248,6 +248,73 @@
       "nextStep": "Continuar con RV6-P2. Reabrir RV6-P1 para código únicamente después de una decisión visual trazable de Producto.",
       "report": "docs/pos-automation/runs/2026-09-16T19-33-53-941Z-RV6-P1.md",
       "updatedAt": "2026-09-16T19:37:11.818Z"
+    },
+    "RV6-P2": {
+      "id": "RV6-P2",
+      "runId": "2026-09-16T19-37-14-982Z-RV6-P2",
+      "base": "b54288c902f914c3a2c95f130fc7ecb3845ab34f",
+      "status": "completed",
+      "attempts": 1,
+      "summary": "Scheduler interno quedó validado y corregido como autoridad de capacidad, citas y saldo de membresías. Se cubrieron concurrencia, clientas, cortesías, próxima sesión, cancelación, ATTENDED, NO_SHOW, reintentos y consumo único. El contenedor PostgreSQL desechable quedó detenido y sus datos sintéticos se conservaron.",
+      "checks": [
+        {
+          "command": "pnpm --filter @cosmetics/api prisma migrate deploy",
+          "result": "passed",
+          "evidence": "46/46 migraciones aplicadas desde cero sobre PostgreSQL 16 local dedicado."
+        },
+        {
+          "command": "RUN_DATABASE_TESTS=true pnpm --filter @cosmetics/api exec vitest run src/pos-scheduler.integration.test.ts src/scheduler-appointments.integration.test.ts",
+          "result": "passed",
+          "evidence": "2 archivos y 5/5 pruebas; verificó atomicidad de cortesía doble, último lugar concurrente y conciliación de estados/saldos."
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api test:integration",
+          "result": "passed",
+          "evidence": "5 archivos y 21/21 pruebas; la prueba de carga quedó omitida por su guarda explícita."
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api prisma:schemas && pnpm --filter @cosmetics/api prisma:validate && pnpm --filter @cosmetics/api lint && pnpm --filter @cosmetics/api test:unit",
+          "result": "passed",
+          "evidence": "Schemas sincronizados y válidos, lint limpio y 25 archivos/136 pruebas unitarias aprobadas."
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api type-check && pnpm --filter @cosmetics/api build && pnpm --filter @cosmetics/pos type-check && pnpm --filter @cosmetics/pos build:web",
+          "result": "passed",
+          "evidence": "Tipos y builds de API, POS web y Electron completaron correctamente."
+        },
+        {
+          "command": "pnpm pos:visual:manifest && pnpm exec prettier --check backend/api/src/routes/scheduler-appointments.routes.ts backend/api/src/scheduler-appointments.integration.test.ts backend/api/src/services/pos-agenda.ts backend/api/src/pos-scheduler.integration.test.ts PLAN_RESTAURACION_VISUAL_POS.md docs/POS_MVP_HANDOFF.md CLAUDE.md docs/pos-automation/runs/2026-09-16T19-37-14-982Z-RV6-P2.md && git diff --check",
+          "result": "passed",
+          "evidence": "Manifiesto de 208 capturas confirmado; formato y diff sin errores."
+        },
+        {
+          "command": "git show 12fb8045cc264b565cb6e764d95ad7b2447fbfa1:apps/pos/src/renderer/src/components/AppointmentsView.tsx | rg 'ASISTIÓ · SESIÓN APLICADA|NO LLEGÓ|CANCELADA|AGENDADA'",
+          "result": "passed",
+          "evidence": "La interfaz aprobada representa los cuatro estados requeridos sin cambios visuales."
+        }
+      ],
+      "independentChecks": [
+        {
+          "command": "pnpm --filter @cosmetics/api prisma:schemas",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api type-check",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api lint",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api test:unit",
+          "result": "passed"
+        }
+      ],
+      "remaining": [],
+      "nextStep": "El ejecutor puede validar, guardar, hacer commit y publicar el checkpoint; después debe evaluar RV6-P3 únicamente si el proveedor HTTP continúa habilitado o como rollback.",
+      "report": "docs/pos-automation/runs/2026-09-16T19-37-14-982Z-RV6-P2.md",
+      "updatedAt": "2026-09-16T20:00:52.123Z"
     }
   },
   "history": [
@@ -739,6 +806,73 @@
       "nextStep": "Continuar con RV6-P2. Reabrir RV6-P1 para código únicamente después de una decisión visual trazable de Producto.",
       "report": "docs/pos-automation/runs/2026-09-16T19-33-53-941Z-RV6-P1.md",
       "updatedAt": "2026-09-16T19:37:11.818Z"
+    },
+    {
+      "id": "RV6-P2",
+      "runId": "2026-09-16T19-37-14-982Z-RV6-P2",
+      "base": "b54288c902f914c3a2c95f130fc7ecb3845ab34f",
+      "status": "completed",
+      "attempts": 1,
+      "summary": "Scheduler interno quedó validado y corregido como autoridad de capacidad, citas y saldo de membresías. Se cubrieron concurrencia, clientas, cortesías, próxima sesión, cancelación, ATTENDED, NO_SHOW, reintentos y consumo único. El contenedor PostgreSQL desechable quedó detenido y sus datos sintéticos se conservaron.",
+      "checks": [
+        {
+          "command": "pnpm --filter @cosmetics/api prisma migrate deploy",
+          "result": "passed",
+          "evidence": "46/46 migraciones aplicadas desde cero sobre PostgreSQL 16 local dedicado."
+        },
+        {
+          "command": "RUN_DATABASE_TESTS=true pnpm --filter @cosmetics/api exec vitest run src/pos-scheduler.integration.test.ts src/scheduler-appointments.integration.test.ts",
+          "result": "passed",
+          "evidence": "2 archivos y 5/5 pruebas; verificó atomicidad de cortesía doble, último lugar concurrente y conciliación de estados/saldos."
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api test:integration",
+          "result": "passed",
+          "evidence": "5 archivos y 21/21 pruebas; la prueba de carga quedó omitida por su guarda explícita."
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api prisma:schemas && pnpm --filter @cosmetics/api prisma:validate && pnpm --filter @cosmetics/api lint && pnpm --filter @cosmetics/api test:unit",
+          "result": "passed",
+          "evidence": "Schemas sincronizados y válidos, lint limpio y 25 archivos/136 pruebas unitarias aprobadas."
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api type-check && pnpm --filter @cosmetics/api build && pnpm --filter @cosmetics/pos type-check && pnpm --filter @cosmetics/pos build:web",
+          "result": "passed",
+          "evidence": "Tipos y builds de API, POS web y Electron completaron correctamente."
+        },
+        {
+          "command": "pnpm pos:visual:manifest && pnpm exec prettier --check backend/api/src/routes/scheduler-appointments.routes.ts backend/api/src/scheduler-appointments.integration.test.ts backend/api/src/services/pos-agenda.ts backend/api/src/pos-scheduler.integration.test.ts PLAN_RESTAURACION_VISUAL_POS.md docs/POS_MVP_HANDOFF.md CLAUDE.md docs/pos-automation/runs/2026-09-16T19-37-14-982Z-RV6-P2.md && git diff --check",
+          "result": "passed",
+          "evidence": "Manifiesto de 208 capturas confirmado; formato y diff sin errores."
+        },
+        {
+          "command": "git show 12fb8045cc264b565cb6e764d95ad7b2447fbfa1:apps/pos/src/renderer/src/components/AppointmentsView.tsx | rg 'ASISTIÓ · SESIÓN APLICADA|NO LLEGÓ|CANCELADA|AGENDADA'",
+          "result": "passed",
+          "evidence": "La interfaz aprobada representa los cuatro estados requeridos sin cambios visuales."
+        }
+      ],
+      "independentChecks": [
+        {
+          "command": "pnpm --filter @cosmetics/api prisma:schemas",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api type-check",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api lint",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api test:unit",
+          "result": "passed"
+        }
+      ],
+      "remaining": [],
+      "nextStep": "El ejecutor puede validar, guardar, hacer commit y publicar el checkpoint; después debe evaluar RV6-P3 únicamente si el proveedor HTTP continúa habilitado o como rollback.",
+      "report": "docs/pos-automation/runs/2026-09-16T19-37-14-982Z-RV6-P2.md",
+      "updatedAt": "2026-09-16T20:00:52.123Z"
     }
   ]
 }

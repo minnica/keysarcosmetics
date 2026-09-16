@@ -839,6 +839,12 @@ export async function confirmPreparedInternalAgenda(
         409,
         "SERVICE_NOT_AVAILABLE",
       );
+    if (internalResource.serviceProfileId !== serviceProfile.id)
+      throw new PosAgendaError(
+        "El servicio del slot interno no coincide con la cita solicitada",
+        409,
+        "SLOT_SERVICE_MISMATCH",
+      );
     const startsAt = prepared.startsAt;
     const branch = await resolveBranchProfile(tx, requested.branchId, startsAt);
     if (internalResource.branchProfileId !== branch.id)
@@ -1086,6 +1092,41 @@ export async function reserveMembershipNextSession(input: {
     );
   const adapter = input.adapter ?? agendaAdapterFromEnvironment();
   const provider = adapter.provider ?? "http";
+  let serviceItemId = membership.membershipItemId;
+  let serviceName = membership.membershipNameSnapshot;
+  if (provider === "internal") {
+    const internalResource = parseInternalAgendaResourceId(
+      slot.resource.externalResourceId,
+    );
+    if (!internalResource)
+      throw new PosAgendaError(
+        "El slot no pertenece al proveedor interno",
+        409,
+        "AGENDA_SLOT_PROVIDER_MISMATCH",
+      );
+    const service = await prisma.schedulerServiceProfile.findFirst({
+      where: {
+        id: internalResource.serviceProfileId,
+        active: true,
+        catalogItem: { active: true, kind: "SERVICE" },
+        branchAssignments: {
+          some: {
+            branchProfileId: internalResource.branchProfileId,
+            active: true,
+          },
+        },
+      },
+      include: { catalogItem: { select: { id: true, name: true } } },
+    });
+    if (!service)
+      throw new PosAgendaError(
+        "El servicio del slot ya no está disponible",
+        409,
+        "SERVICE_NOT_AVAILABLE",
+      );
+    serviceItemId = service.catalogItem.id;
+    serviceName = service.catalogItem.name;
+  }
   const client = {
     localClientKey: membership.customer.id,
     externalClientId: membership.customer.externalClientId,
@@ -1222,8 +1263,8 @@ export async function reserveMembershipNextSession(input: {
         ],
         services: [
           {
-            name: membership.membershipNameSnapshot,
-            localServiceId: membership.membershipItemId,
+            name: serviceName,
+            localServiceId: serviceItemId,
           },
         ],
         source: "MEMBERSHIP",
@@ -1284,8 +1325,8 @@ export async function reserveMembershipNextSession(input: {
         appointments: [
           {
             kind: "NEXT_SESSION",
-            serviceItemId: membership.membershipItemId,
-            serviceName: membership.membershipNameSnapshot,
+            serviceItemId,
+            serviceName,
             branchId: slot.resource.branchId,
             sellerId: input.sellerId ?? membership.currentSellerId ?? undefined,
             scheduledAt: slot.startsAt.toISOString(),
@@ -1315,8 +1356,8 @@ export async function reserveMembershipNextSession(input: {
           customerId: membership.customerId,
           kind: "NEXT_SESSION",
           status: "SCHEDULED",
-          serviceItemId: membership.membershipItemId,
-          serviceNameSnapshot: membership.membershipNameSnapshot,
+          serviceItemId,
+          serviceNameSnapshot: serviceName,
           branchId: slot.resource.branchId,
           sellerId: input.sellerId ?? membership.currentSellerId,
           scheduledAt: slot.startsAt,

@@ -8,11 +8,20 @@
 
 - MVP online RV0–RV7 y RV9 bloqueante: implementado.
 - RV10 técnica: 208/208 visual, builds, tipos, lint, unitarias e integración PostgreSQL en `PASS`.
-- Checkpoint actual: `RV6-P1`, bloqueado después de completar el trabajo independiente en el checkpoint anterior. La reapertura desde `cab1138` reconfirmó por fuente que `12fb804` no contiene controles aprobados para reasignar vendedor ni cambiar manualmente el estado. No hubo una decisión nueva de Producto, por lo que esta ejecución sólo actualiza documentación y no invoca `/seller` ni `/status` desde el renderer.
-- Siguiente trabajo: continuar con RV6-P2, que es independiente. RV6-P1 sólo puede reanudarse cuando Producto defina selector/destino, motivo, estados permitidos y confirmación compatibles con la referencia. El perfilamiento y cierre mensual canónicos ya publicados conservan su evidencia HTTP/BD histórica. RV5-P1 mantiene aparte sus bloqueos de altas/bajas/sustituciones, Agenda, paquetes/cortesías, empresa y adeudos ambiguos.
+- Checkpoint actual: `RV6-P2`, completado sobre PostgreSQL 16 local desechable. Scheduler interno quedó comprobado como autoridad para capacidad/citas, incluidas carrera por el último lugar, cortesías, próxima sesión y conciliación de `ATTENDED`, `NO_SHOW` y cancelación con consumo único.
+- Siguiente trabajo técnico: RV6-P3, condicionado a que `AGENDA_PROVIDER=http` se use o conserve como rollback. RV6-P1 sigue bloqueado hasta que Producto defina controles aprobados para reasignar vendedor y cambiar estado manualmente; RV5-P1 mantiene aparte sus bloqueos de revisiones complejas.
 - Pendiente visual explícito: RV3-B01 (copy de cierre/gasto). RV7-P1/R03 quedó cerrado sin modificar `REGISTRO MOCK · CASH MANAGER`. No equiparar 208 capturas históricas con cobertura universal del modo API.
 - Backlog: cierre multi-proyección de revisiones complejas, administración avanzada de membresías e incidencias Scheduler, RV8/offline, hardware/escala, migraciones/consumidores/limpieza y OP01–OP06 (piloto, respaldo, rollback y release). Agenda externa sólo si se habilita el proveedor HTTP o se conserva como rollback.
 - Referencia reconfirmada por GitHub MCP el 2026-09-16: `feature/pos` sigue en `12fb8045cc264b565cb6e764d95ad7b2447fbfa1`. La presentación aprobada gobierna la adaptación del backend; no se rediseña para ajustar contratos.
+
+## Checkpoint RV6-P2 (2026-09-16, ejecución actual)
+
+- SHA inicial verificado: `b54288c902f914c3a2c95f130fc7ecb3845ab34f`; referencia: árbol completo `12fb8045cc264b565cb6e764d95ad7b2447fbfa1`.
+- `backend/api/src/pos-scheduler.integration.test.ts` prepara únicamente datos sintéticos y valida disponibilidad, capacidad dos, clienta nueva/existente, cortesía simple/doble simultánea, próxima sesión idempotente, cancelación, asistencia y no-show. La integración Scheduler existente usa viernes futuros y vuelve a comprobar replay/conflicto optimista y carrera por el último profesional.
+- `confirmPreparedInternalAgenda` comprueba que el servicio del slot coincide con el solicitado. `reserveMembershipNextSession` deriva del slot interno el `SchedulerServiceProfile` y artículo `SERVICE` reales, por lo que ya no guarda el artículo `MEMBERSHIP` como servicio de cita. Un `NO_SHOW` libera el beneficio reservado; sólo `ATTENDED` lo consume e incrementa el saldo usado una vez.
+- La matriz dirigida pasó 5/5 sobre una base fresca. La suite integral pasó 21/21 en cinco archivos; `scheduler-load.integration.test.ts` quedó omitida por su guarda explícita. También pasaron 46/46 migraciones, schemas sincronizados/válidos, lint, 136/136 unitarias, tipos/build de API y POS y manifiesto visual de 208 capturas.
+- La comparación por fuente con `12fb804` confirma los estados visibles `AGENDADA`, `ASISTIÓ · SESIÓN APLICADA`, `NO LLEGÓ` y `CANCELADA`. No se modificaron renderer, CSS, contratos compartidos, Prisma, migraciones, baseline, manifiestos, capturador o comparador; no se atribuyó aprobación al PO y B01–B03 siguen intactos.
+- Recurso local conservado y detenido al cierre: `keysar-rv6-p2-pg-20260916-193714`, ligado durante pruebas sólo a `127.0.0.1:55453`, con las bases sintéticas `keysar_rv6_p2`, `keysar_rv6_p2_final` y `keysar_rv6_p2_all`. El secreto fue generado localmente y no se imprimió/versionó; no se leyó `.env`, no se ejecutó seed general ni se tocó una BD compartida. Informe: `docs/pos-automation/runs/2026-09-16T19-37-14-982Z-RV6-P2.md`.
 
 ## Checkpoint RV6-P1 (2026-09-16, ejecución actual — bloqueo documental)
 

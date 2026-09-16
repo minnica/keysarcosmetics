@@ -9,6 +9,15 @@ const enabled = process.env["RUN_DATABASE_TESTS"] === "true";
 const integrationDescribe = enabled ? describe : describe.skip;
 const suffix = `${process.pid}-${Date.now()}`;
 const password = "Scheduler-Integration-2026";
+const futureFridayAtUtc = (hour: number) => {
+  const date = new Date();
+  date.setUTCDate(date.getUTCDate() + 7);
+  date.setUTCDate(date.getUTCDate() + ((5 - date.getUTCDay() + 7) % 7));
+  date.setUTCHours(hour, 0, 0, 0);
+  return date.toISOString();
+};
+const replayStartsAt = futureFridayAtUtc(18);
+const concurrentStartsAt = futureFridayAtUtc(16);
 let server: Server;
 let baseUrl: string;
 let token: string;
@@ -157,7 +166,7 @@ integrationDescribe("Scheduler appointment concurrency with PostgreSQL", () => {
     const body = {
       branchId,
       customerId,
-      startsAt: "2026-09-11T18:00:00.000Z",
+      startsAt: replayStartsAt,
       services: [
         { serviceProfileId, professionalProfileIds: [professionalProfileId] },
       ],
@@ -218,7 +227,7 @@ integrationDescribe("Scheduler appointment concurrency with PostgreSQL", () => {
     const body = {
       branchId,
       customerId,
-      startsAt: "2026-09-11T16:00:00.000Z",
+      startsAt: concurrentStartsAt,
       services: [
         { serviceProfileId, professionalProfileIds: [professionalProfileId] },
       ],

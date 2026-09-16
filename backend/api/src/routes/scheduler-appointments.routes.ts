@@ -1226,23 +1226,19 @@ function sendError(res: Response, error: unknown) {
     error instanceof Prisma.PrismaClientKnownRequestError &&
     error.code === "P2002"
   ) {
-    res
-      .status(409)
-      .json({
-        success: false,
-        message: "La operación ya fue registrada",
-        data: { code: "CONFLICT" },
-      });
+    res.status(409).json({
+      success: false,
+      message: "La operación ya fue registrada",
+      data: { code: "CONFLICT" },
+    });
     return;
   }
   console.error("[scheduler.appointments]", error);
-  res
-    .status(500)
-    .json({
-      success: false,
-      message: "No fue posible completar la operación de agenda",
-      data: null,
-    });
+  res.status(500).json({
+    success: false,
+    message: "No fue posible completar la operación de agenda",
+    data: null,
+  });
 }
 
 function requireBranch(req: Request, branchId: string) {
@@ -1330,13 +1326,11 @@ router.get(
       })
       .safeParse(req.query);
     if (!parsed.success) {
-      res
-        .status(400)
-        .json({
-          success: false,
-          message: "Filtros de disponibilidad inválidos",
-          data: parsed.error.flatten().fieldErrors,
-        });
+      res.status(400).json({
+        success: false,
+        message: "Filtros de disponibilidad inválidos",
+        data: parsed.error.flatten().fieldErrors,
+      });
       return;
     }
     try {
@@ -1545,13 +1539,11 @@ router.get(
       })
       .safeParse(req.query);
     if (!parsed.success) {
-      res
-        .status(400)
-        .json({
-          success: false,
-          message: "Filtros de citas inválidos",
-          data: parsed.error.flatten().fieldErrors,
-        });
+      res.status(400).json({
+        success: false,
+        message: "Filtros de citas inválidos",
+        data: parsed.error.flatten().fieldErrors,
+      });
       return;
     }
     try {
@@ -1709,13 +1701,11 @@ router.post(
             409,
             "IDEMPOTENCY_CONFLICT",
           );
-        res
-          .status(200)
-          .json({
-            success: true,
-            message: "Cita ya registrada",
-            data: existingKey.response,
-          });
+        res.status(200).json({
+          success: true,
+          message: "Cita ya registrada",
+          data: existingKey.response,
+        });
         return;
       }
       const data = await withSerializableRetry(() =>
@@ -2048,13 +2038,11 @@ router.put(
   async (req, res) => {
     const parsed = updateSchema.safeParse(req.body);
     if (!parsed.success) {
-      res
-        .status(400)
-        .json({
-          success: false,
-          message: "Datos de cita inválidos",
-          data: parsed.error.flatten().fieldErrors,
-        });
+      res.status(400).json({
+        success: false,
+        message: "Datos de cita inválidos",
+        data: parsed.error.flatten().fieldErrors,
+      });
       return;
     }
     try {
@@ -2072,13 +2060,11 @@ router.post(
   async (req, res) => {
     const parsed = moveSchema.safeParse(req.body);
     if (!parsed.success) {
-      res
-        .status(400)
-        .json({
-          success: false,
-          message: "Datos de movimiento inválidos",
-          data: parsed.error.flatten().fieldErrors,
-        });
+      res.status(400).json({
+        success: false,
+        message: "Datos de movimiento inválidos",
+        data: parsed.error.flatten().fieldErrors,
+      });
       return;
     }
     try {
@@ -2194,7 +2180,7 @@ async function changeStatus(
             updatedByUserId: req.schedulerAccess!.userId,
           },
         });
-        if (nextStatus === "CANCELED") {
+        if (["CANCELED", "NO_SHOW"].includes(nextStatus)) {
           await tx.schedulerAppointmentMembershipBenefit.updateMany({
             where: {
               appointmentService: { appointmentId: current.id },
@@ -2272,13 +2258,11 @@ router.post(
   async (req, res) => {
     const parsed = statusSchema.safeParse(req.body);
     if (!parsed.success) {
-      res
-        .status(400)
-        .json({
-          success: false,
-          message: "Cambio de estado inválido",
-          data: parsed.error.flatten().fieldErrors,
-        });
+      res.status(400).json({
+        success: false,
+        message: "Cambio de estado inválido",
+        data: parsed.error.flatten().fieldErrors,
+      });
       return;
     }
     try {
@@ -2302,13 +2286,11 @@ router.post(
   async (req, res) => {
     const parsed = cancelSchema.safeParse(req.body);
     if (!parsed.success) {
-      res
-        .status(400)
-        .json({
-          success: false,
-          message: "La cancelación requiere versión y motivo",
-          data: parsed.error.flatten().fieldErrors,
-        });
+      res.status(400).json({
+        success: false,
+        message: "La cancelación requiere versión y motivo",
+        data: parsed.error.flatten().fieldErrors,
+      });
       return;
     }
     try {
@@ -2334,13 +2316,11 @@ router.get(
       .object({ branchId: identifier, from: instant, to: instant })
       .safeParse(req.query);
     if (!parsed.success) {
-      res
-        .status(400)
-        .json({
-          success: false,
-          message: "Filtros de bloqueos inválidos",
-          data: parsed.error.flatten().fieldErrors,
-        });
+      res.status(400).json({
+        success: false,
+        message: "Filtros de bloqueos inválidos",
+        data: parsed.error.flatten().fieldErrors,
+      });
       return;
     }
     try {
@@ -2384,13 +2364,11 @@ router.post(
       .superRefine(validateBlockOwners)
       .safeParse(req.body);
     if (!parsed.success) {
-      res
-        .status(400)
-        .json({
-          success: false,
-          message: "Datos de bloqueo inválidos",
-          data: parsed.error.flatten().fieldErrors,
-        });
+      res.status(400).json({
+        success: false,
+        message: "Datos de bloqueo inválidos",
+        data: parsed.error.flatten().fieldErrors,
+      });
       return;
     }
     try {
@@ -2446,13 +2424,11 @@ router.post(
         });
         return created;
       });
-      res
-        .status(201)
-        .json({
-          success: true,
-          message: "Bloqueo creado",
-          data: blockDto(row),
-        });
+      res.status(201).json({
+        success: true,
+        message: "Bloqueo creado",
+        data: blockDto(row),
+      });
     } catch (error) {
       sendError(res, error);
     }
@@ -2468,13 +2444,11 @@ router.put(
       .superRefine(validateBlockOwners)
       .safeParse(req.body);
     if (!parsed.success) {
-      res
-        .status(400)
-        .json({
-          success: false,
-          message: "Datos de bloqueo inválidos",
-          data: parsed.error.flatten().fieldErrors,
-        });
+      res.status(400).json({
+        success: false,
+        message: "Datos de bloqueo inválidos",
+        data: parsed.error.flatten().fieldErrors,
+      });
       return;
     }
     try {
@@ -2589,13 +2563,11 @@ router.post(
   async (req, res) => {
     const parsed = cancelSchema.safeParse(req.body);
     if (!parsed.success) {
-      res
-        .status(400)
-        .json({
-          success: false,
-          message: "Cancelación de bloqueo inválida",
-          data: parsed.error.flatten().fieldErrors,
-        });
+      res.status(400).json({
+        success: false,
+        message: "Cancelación de bloqueo inválida",
+        data: parsed.error.flatten().fieldErrors,
+      });
       return;
     }
     try {
