@@ -137,85 +137,53 @@
     },
     "RV5-P1": {
       "id": "RV5-P1",
-      "runId": "2026-09-16T22-31-16-196Z-RV5-P1",
-      "base": "1f9e9dd8de63cb5989eb4ba0a405ad260ecf0b45",
-      "status": "partial",
-      "attempts": 8,
-      "summary": "Checkpoint 8 implementado. La segunda revisión, recarga, reportes, exportaciones y conciliación bancaria consumen la última proyección inmutable; la ruta sin revisiones conserva su rendimiento paginado. Informe: docs/pos-automation/runs/2026-09-16T22-31-16-196Z-RV5-P1.md.",
+      "runId": "2026-09-16T22-46-34-049Z-RV5-P1",
+      "base": "ab2d49eeeb739025c6dd1f45302c2f5c747e200b",
+      "status": "blocked",
+      "attempts": 9,
+      "summary": "Reauditoría completada contra 12fb804. No existe un control aprobado que identifique inequívocamente las operaciones restantes; las guardas vigentes ya las rechazan antes de consumir autorización. Sólo se actualizaron el plan, el handoff y el informe obligatorio; RV5-P1 permanece abierto.",
       "checks": [
         {
+          "command": "git show 12fb8045cc264b565cb6e764d95ad7b2447fbfa1:apps/pos/src/renderer/src/components/TicketEditDialog.tsx | rg -n 'CLIENTE Y VENTA|DIVISIÓN DE VENTA|PRODUCTOS Y SERVICIOS|COBRO Y APARTADO|Agregar|Quitar producto|Código master|appointment|cita|membership|membres|package|paquete|courtesy|cortes|company|Empresa'",
+          "result": "passed",
+          "evidence": "Confirmó únicamente controles generales; COMPANY está bloqueada y no existen selectores específicos de tarjetón, composición protegida o Agenda."
+        },
+        {
+          "command": "rg -n 'no puede agregar|sin identificar|recuperación durable|no coincide con las líneas originales|empresa.*revisión|identidad de la empresa|adeudos.*misma línea' backend/api/src/services/pos-memberships.ts backend/api/src/services/pos-tickets.ts backend/api/src/pos.integration.test.ts",
+          "result": "passed",
+          "evidence": "Localizó las guardas y pruebas existentes para rechazar operaciones ambiguas con 409 antes del token."
+        },
+        {
+          "command": "pnpm exec prettier --check PLAN_RESTAURACION_VISUAL_POS.md docs/POS_MVP_HANDOFF.md docs/pos-automation/runs/2026-09-16T22-46-34-049Z-RV5-P1.md && git diff --check",
+          "result": "passed",
+          "evidence": "Los tres documentos tienen formato correcto y el diff no contiene errores de whitespace."
+        },
+        {
           "command": "pnpm --filter @cosmetics/api type-check && pnpm --filter @cosmetics/api test:unit",
-          "result": "passed",
-          "evidence": "TypeScript aprobado; 25 archivos y 136/136 pruebas unitarias pasaron."
+          "result": "not_run",
+          "evidence": "Checkpoint bloqueado exclusivamente documental; no cambió código ejecutable. Los resultados del checkpoint 8 se conservaron sólo como evidencia histórica."
         },
         {
-          "command": "DATABASE_URL=<PostgreSQL-16-local-desechable> DIRECT_URL=<misma-BD> pnpm --filter @cosmetics/api exec prisma migrate deploy && RUN_DATABASE_TESTS=true DATABASE_URL=<misma-BD> DIRECT_URL=<misma-BD> pnpm --filter @cosmetics/api exec vitest run src/pos.integration.test.ts src/pos-scheduler.integration.test.ts --reporter=verbose",
-          "result": "passed",
-          "evidence": "46/46 migraciones y 13/13 casos. Segunda revisión versión 3, replay único, inventario 6.00, proyección neta 160.00 y paridad de reportes/exportaciones."
-        },
-        {
-          "command": "RUN_POS_REPORT_LOAD_TESTS=true DATABASE_URL=<PostgreSQL-16-local-desechable> DIRECT_URL=<misma-BD> pnpm --filter @cosmetics/api exec vitest run src/pos-report-load.integration.test.ts --reporter=verbose",
-          "result": "passed",
-          "evidence": "2/2 casos con 12,000 tickets y 24,000 líneas; página máxima 1,097.22 ms y exportación de escala 2,433.30 ms, dentro de los umbrales técnicos."
-        },
-        {
-          "command": "pnpm --filter @cosmetics/api prisma:schemas && DATABASE_URL=postgresql://postgres:local-only@127.0.0.1:1/validation DIRECT_URL=postgresql://postgres:local-only@127.0.0.1:1/validation pnpm --filter @cosmetics/api prisma:validate && pnpm --filter @cosmetics/api lint && pnpm --filter @cosmetics/api build",
-          "result": "passed",
-          "evidence": "Schemas sincronizados y válidos, ESLint sin warnings y build API aprobado."
-        },
-        {
-          "command": "pnpm --filter @cosmetics/types type-check && pnpm --filter @cosmetics/api-client type-check && pnpm --filter @cosmetics/pos type-check && pnpm --filter @cosmetics/pos build:web && pnpm pos:visual:manifest",
-          "result": "passed",
-          "evidence": "Tipos compartidos, cliente y POS compilaron; renderer/main/preload construidos y manifiesto intacto de 208 capturas para 12fb804."
-        },
-        {
-          "command": "git show 12fb8045cc264b565cb6e764d95ad7b2447fbfa1:apps/pos/src/renderer/src/components/ReportsView.tsx | rg -n 'Detalle de ventas|Productos vendidos|Ventas por empleados|Conciliación bancaria|Exportar|PDF|Excel'",
-          "result": "passed",
-          "evidence": "Se conservaron los reportes y controles de exportación aprobados; no hubo cambios de renderer."
-        },
-        {
-          "command": "pnpm exec prettier --check backend/api/src/services/pos-tickets.ts backend/api/src/routes/pos-report.routes.ts backend/api/src/pos.integration.test.ts CLAUDE.md PLAN_RESTAURACION_VISUAL_POS.md docs/POS_MVP_HANDOFF.md docs/pos-automation/runs/2026-09-16T22-31-16-196Z-RV5-P1.md && git diff --check",
-          "result": "passed",
-          "evidence": "Formato correcto y sin errores de whitespace."
-        },
-        {
-          "command": "podman stop keysar-rv5-p1-pg-20260916-reports && podman inspect --format '{{.State.Status}}' keysar-rv5-p1-pg-20260916-reports",
-          "result": "passed",
-          "evidence": "El contenedor PostgreSQL local devolvió exited; conserva únicamente fixtures sintéticos."
+          "command": "RUN_DATABASE_TESTS=true DATABASE_URL=<PostgreSQL-local-desechable> DIRECT_URL=<misma-BD> pnpm --filter @cosmetics/api exec vitest run src/pos.integration.test.ts src/pos-scheduler.integration.test.ts",
+          "result": "not_run",
+          "evidence": "No cambió código, schema, migración, fixture o contrato y no se inició ni mutó una base de datos."
         },
         {
           "command": "pnpm pos:visual:capture && pnpm pos:visual:compare",
           "result": "not_run",
-          "evidence": "No cambiaron JSX, CSS, assets, fixtures ni baseline; se ejecutaron build y manifiesto proporcionales."
+          "evidence": "No cambió renderer, CSS, assets, fixtures ni baseline; la superficie se auditó directamente contra el árbol fijo."
         }
       ],
-      "independentChecks": [
-        {
-          "command": "pnpm --filter @cosmetics/api prisma:schemas",
-          "result": "passed"
-        },
-        {
-          "command": "pnpm --filter @cosmetics/api type-check",
-          "result": "passed"
-        },
-        {
-          "command": "pnpm --filter @cosmetics/api lint",
-          "result": "passed"
-        },
-        {
-          "command": "pnpm --filter @cosmetics/api test:unit",
-          "result": "passed"
-        }
-      ],
+      "independentChecks": [],
       "remaining": [
-        "Mantener bloqueados dos adeudos que compartan una identidad de línea.",
-        "Mantener bloqueadas altas, bajas o sustituciones de membresías, paquetes, cortesías o identidad COMPANY sin controles aprobados inequívocos.",
-        "Resolver reprogramación y Agenda HTTP únicamente mediante controles aprobados y recuperación durable.",
+        "Dos adeudos que comparten un ticketLineId requieren una identidad aprobada adicional.",
+        "Altas, bajas o sustituciones de tarjetones, paquetes, cortesías o COMPANY requieren controles o reglas aprobadas inequívocas.",
+        "Reprogramación y Agenda HTTP requieren controles aprobados y recuperación durable.",
         "B01–B03, Windows/hardware, RV8 y aceptación del PO permanecen diferidos."
       ],
-      "nextStep": "Reauditar RV5-P1 contra 12fb804; si no existe un nuevo control o trabajo técnico independiente verificable, registrar el bloqueo documental sin implementar operaciones por inferencia.",
-      "report": "docs/pos-automation/runs/2026-09-16T22-31-16-196Z-RV5-P1.md",
-      "updatedAt": "2026-09-16T22:46:30.934Z"
+      "nextStep": "Reanudar RV5-P1 sólo cuando Producto apruebe una identidad/regla de compensación inequívoca y, para Agenda HTTP, un mecanismo durable de recuperación; mientras tanto conservar los rechazos 409 antes del token.",
+      "report": "docs/pos-automation/runs/2026-09-16T22-46-34-049Z-RV5-P1.md",
+      "updatedAt": "2026-09-16T22:51:23.672Z"
     },
     "RV6-P1": {
       "id": "RV6-P1",
@@ -1549,6 +1517,56 @@
       "nextStep": "Reauditar RV5-P1 contra 12fb804; si no existe un nuevo control o trabajo técnico independiente verificable, registrar el bloqueo documental sin implementar operaciones por inferencia.",
       "report": "docs/pos-automation/runs/2026-09-16T22-31-16-196Z-RV5-P1.md",
       "updatedAt": "2026-09-16T22:46:30.934Z"
+    },
+    {
+      "id": "RV5-P1",
+      "runId": "2026-09-16T22-46-34-049Z-RV5-P1",
+      "base": "ab2d49eeeb739025c6dd1f45302c2f5c747e200b",
+      "status": "blocked",
+      "attempts": 9,
+      "summary": "Reauditoría completada contra 12fb804. No existe un control aprobado que identifique inequívocamente las operaciones restantes; las guardas vigentes ya las rechazan antes de consumir autorización. Sólo se actualizaron el plan, el handoff y el informe obligatorio; RV5-P1 permanece abierto.",
+      "checks": [
+        {
+          "command": "git show 12fb8045cc264b565cb6e764d95ad7b2447fbfa1:apps/pos/src/renderer/src/components/TicketEditDialog.tsx | rg -n 'CLIENTE Y VENTA|DIVISIÓN DE VENTA|PRODUCTOS Y SERVICIOS|COBRO Y APARTADO|Agregar|Quitar producto|Código master|appointment|cita|membership|membres|package|paquete|courtesy|cortes|company|Empresa'",
+          "result": "passed",
+          "evidence": "Confirmó únicamente controles generales; COMPANY está bloqueada y no existen selectores específicos de tarjetón, composición protegida o Agenda."
+        },
+        {
+          "command": "rg -n 'no puede agregar|sin identificar|recuperación durable|no coincide con las líneas originales|empresa.*revisión|identidad de la empresa|adeudos.*misma línea' backend/api/src/services/pos-memberships.ts backend/api/src/services/pos-tickets.ts backend/api/src/pos.integration.test.ts",
+          "result": "passed",
+          "evidence": "Localizó las guardas y pruebas existentes para rechazar operaciones ambiguas con 409 antes del token."
+        },
+        {
+          "command": "pnpm exec prettier --check PLAN_RESTAURACION_VISUAL_POS.md docs/POS_MVP_HANDOFF.md docs/pos-automation/runs/2026-09-16T22-46-34-049Z-RV5-P1.md && git diff --check",
+          "result": "passed",
+          "evidence": "Los tres documentos tienen formato correcto y el diff no contiene errores de whitespace."
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api type-check && pnpm --filter @cosmetics/api test:unit",
+          "result": "not_run",
+          "evidence": "Checkpoint bloqueado exclusivamente documental; no cambió código ejecutable. Los resultados del checkpoint 8 se conservaron sólo como evidencia histórica."
+        },
+        {
+          "command": "RUN_DATABASE_TESTS=true DATABASE_URL=<PostgreSQL-local-desechable> DIRECT_URL=<misma-BD> pnpm --filter @cosmetics/api exec vitest run src/pos.integration.test.ts src/pos-scheduler.integration.test.ts",
+          "result": "not_run",
+          "evidence": "No cambió código, schema, migración, fixture o contrato y no se inició ni mutó una base de datos."
+        },
+        {
+          "command": "pnpm pos:visual:capture && pnpm pos:visual:compare",
+          "result": "not_run",
+          "evidence": "No cambió renderer, CSS, assets, fixtures ni baseline; la superficie se auditó directamente contra el árbol fijo."
+        }
+      ],
+      "independentChecks": [],
+      "remaining": [
+        "Dos adeudos que comparten un ticketLineId requieren una identidad aprobada adicional.",
+        "Altas, bajas o sustituciones de tarjetones, paquetes, cortesías o COMPANY requieren controles o reglas aprobadas inequívocas.",
+        "Reprogramación y Agenda HTTP requieren controles aprobados y recuperación durable.",
+        "B01–B03, Windows/hardware, RV8 y aceptación del PO permanecen diferidos."
+      ],
+      "nextStep": "Reanudar RV5-P1 sólo cuando Producto apruebe una identidad/regla de compensación inequívoca y, para Agenda HTTP, un mecanismo durable de recuperación; mientras tanto conservar los rechazos 409 antes del token.",
+      "report": "docs/pos-automation/runs/2026-09-16T22-46-34-049Z-RV5-P1.md",
+      "updatedAt": "2026-09-16T22:51:23.672Z"
     }
   ]
 }
