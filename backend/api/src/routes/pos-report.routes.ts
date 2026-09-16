@@ -22,21 +22,34 @@ import {
   redactPosReportCosts,
   resolvePosReportBranchScope,
 } from "../services/pos-report-policy";
-import { hydratePosDataScope, resolvePosDataScope } from "../services/pos-scope";
+import {
+  hydratePosDataScope,
+  resolvePosDataScope,
+} from "../services/pos-scope";
 import {
   exportFilterMetadata,
   paginateReportRows,
   resolvePosReportPeriod,
   signedPaymentAmount,
 } from "../services/pos-reporting";
+import { appliedTicketRevisionSnapshot } from "../services/pos-tickets";
 
 const router: ExpressRouter = Router();
 const reportKeySchema = z.enum(POS_REPORT_KEYS);
 const querySchema = z
   .object({
-    dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-    dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-    month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/).optional(),
+    dateFrom: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .optional(),
+    dateTo: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .optional(),
+    month: z
+      .string()
+      .regex(/^\d{4}-(0[1-9]|1[0-2])$/)
+      .optional(),
     branchIds: z.string().optional(),
     sellerId: z.string().optional(),
     paymentMethodId: z.string().optional(),
@@ -113,11 +126,229 @@ async function salesRows(
   search?: string,
   forExport = false,
 ): Promise<ReportPage> {
-  const skip = (page - 1) * pageSize;
   const ticketWhere: Prisma.PosTicketWhereInput = {
     branchId: { in: branchIds },
     businessDate: { gte: from, lte: to },
     status: { in: ["COMPLETED", "LAYAWAY", "REFUNDED", "CANCELED"] },
+  };
+  const revisionCount = await prisma.posTicketEvent.count({
+    where: { type: "REVISION", ticket: ticketWhere },
+  });
+  if (revisionCount === 0)
+    return unrevisedSalesRows(
+      key,
+      ticketWhere,
+      sellerId,
+      paymentMethodId,
+      includeCosts,
+      page,
+      pageSize,
+      search,
+      forExport,
+    );
+  const tickets = await prisma.posTicket.findMany({
+    where: ticketWhere,
+    include: {
+      branch: { select: { id: true, nombre: true } },
+      lines: { orderBy: { creadoEn: "asc" } },
+      sellers: { orderBy: { creadoEn: "asc" } },
+      paymentOperations: {
+        include: { payments: true },
+        orderBy: { creadoEn: "asc" },
+      },
+      events: {
+        where: { type: "REVISION" },
+        select: { snapshot: true },
+        orderBy: [{ creadoEn: "desc" }, { id: "desc" }],
+        take: 1,
+      },
+    },
+    orderBy: [{ businessDate: "desc" }, { creadoEn: "desc" }],
+  });
+  const normalizedSearch = search?.trim().toLocaleLowerCase("es-MX");
+  const effectiveTickets = tickets.flatMap((ticket) => {
+    const applied = appliedTicketRevisionSnapshot(ticket.events[0]?.snapshot);
+    const lines =
+      applied?.after.lines ??
+      ticket.lines.map((line) => ({
+        id: line.id,
+        kind: line.kind,
+        itemId: line.itemId,
+        itemName: line.itemNameSnapshot,
+        sku: line.skuSnapshot,
+        quantity: line.quantity.toFixed(2),
+        unitPrice: line.unitPrice.toFixed(2),
+        unitListPrice: line.unitListPrice.toFixed(2),
+        unitMinimumPrice: line.unitMinimumPrice.toFixed(2),
+        subtotal: line.subtotal.toFixed(2),
+        discountTotal: line.discountTotal.toFixed(2),
+        taxTotal: line.taxTotal.toFixed(2),
+        total: line.total.toFixed(2),
+        packageId: line.packageId,
+        packageName: line.packageNameSnapshot,
+        notes: line.notes,
+      }));
+    const sellers =
+      applied?.after.sellers ??
+      ticket.sellers.map((seller) => ({
+        employeeId: seller.employeeId,
+        name: seller.sellerNameSnapshot,
+        shareAmount: seller.shareAmount.toFixed(2),
+        sharePercent: seller.sharePercent.toFixed(4),
+        clockedIn: seller.clockedInSnapshot,
+        presenceBranchId: seller.presenceBranchIdSnapshot,
+        attendanceId: seller.attendanceIdSnapshot,
+      }));
+    const effectiveOperationIds = applied
+      ? new Set(applied.after.effectivePaymentOperationIds)
+      : null;
+    const paymentOperations = ticket.paymentOperations.filter(
+      (operation) =>
+        !effectiveOperationIds || effectiveOperationIds.has(operation.id),
+    );
+    if (sellerId && !sellers.some((seller) => seller.employeeId === sellerId))
+      return [];
+    if (
+      paymentMethodId &&
+      !paymentOperations.some((operation) =>
+        operation.payments.some(
+          (payment) => payment.paymentMethodId === paymentMethodId,
+        ),
+      )
+    )
+      return [];
+    if (normalizedSearch) {
+      const values = [
+        ticket.folio,
+        ticket.customerNameSnapshot ?? "",
+        ...lines.flatMap((line) => [line.itemName, line.sku]),
+        ...sellers.map((seller) => seller.name),
+      ];
+      if (
+        !values.some((value) =>
+          value.toLocaleLowerCase("es-MX").includes(normalizedSearch),
+        )
+      )
+        return [];
+    }
+    return [{ ticket, applied, lines, sellers, paymentOperations }];
+  });
+
+  let rows: ReportRow[];
+  if (key === "SALES_DETAIL") {
+    rows = effectiveTickets.map<ReportRow>(
+      ({ ticket, lines, sellers, paymentOperations }) => ({
+        Fecha: ticket.businessDate.toISOString().slice(0, 10),
+        Folio: ticket.folio,
+        branch_id: ticket.branch.id,
+        Sucursal: ticket.branch.nombre,
+        Cliente: ticket.customerNameSnapshot ?? "Público general",
+        Vendedor: sellers.map((seller) => seller.name).join(" / "),
+        Productos: lines
+          .reduce((sum, line) => sum.plus(line.quantity), new Prisma.Decimal(0))
+          .toFixed(2),
+        Venta: money(ticket.total),
+        "Venta sin IVA": ticket.total.minus(ticket.taxTotal).toFixed(2),
+        IVA: money(ticket.taxTotal),
+        SPARE: money(ticket.spareTotal),
+        Descuento: money(ticket.discountTotal),
+        Cobrado: money(ticket.amountPaid),
+        Saldo: money(ticket.pendingAmount),
+        Estado: ticket.status,
+        "Forma de pago": paymentOperations
+          .flatMap((operation) => operation.payments)
+          .filter(
+            (payment) =>
+              !paymentMethodId || payment.paymentMethodId === paymentMethodId,
+          )
+          .map((payment) => payment.methodNameSnapshot)
+          .join(" / "),
+      }),
+    );
+  } else if (key === "SOLD_PRODUCTS" || key === "MERCHANDISE_PROFITABILITY") {
+    rows = effectiveTickets.flatMap(({ ticket, applied, lines }) => {
+      const originalLineById = new Map(
+        ticket.lines.map((line) => [line.id, line]),
+      );
+      return lines.map<ReportRow>((line) => {
+        const original = originalLineById.get(line.id);
+        const metadata = line.itemId
+          ? applied?.after.itemMetadata?.[line.itemId]
+          : undefined;
+        const quantity = new Prisma.Decimal(line.quantity);
+        const total = new Prisma.Decimal(line.total);
+        const taxTotal = new Prisma.Decimal(line.taxTotal);
+        const unitCost = new Prisma.Decimal(
+          (line.itemId ? applied?.after.unitCosts[line.itemId] : null) ??
+            original?.unitCostSnapshot ??
+            0,
+        );
+        return {
+          Fecha: ticket.businessDate.toISOString().slice(0, 10),
+          Folio: ticket.folio,
+          branch_id: ticket.branch.id,
+          Sucursal: ticket.branch.nombre,
+          SKU: line.sku,
+          Producto: line.itemName,
+          Familia: metadata?.familyName ?? original?.familySnapshot ?? null,
+          Categoría:
+            metadata?.categoryName ?? original?.categorySnapshot ?? null,
+          Unidades: quantity.toFixed(2),
+          Venta: total.toFixed(2),
+          "Venta sin IVA": total.minus(taxTotal).toFixed(2),
+          IVA: taxTotal.toFixed(2),
+          SPARE: new Prisma.Decimal(line.unitListPrice)
+            .minus(line.unitMinimumPrice)
+            .times(quantity)
+            .toFixed(2),
+          ...(includeCosts
+            ? {
+                Costo: unitCost.times(quantity).toFixed(2),
+                Utilidad: total
+                  .minus(taxTotal)
+                  .minus(unitCost.times(quantity))
+                  .toFixed(2),
+              }
+            : {}),
+        };
+      });
+    });
+  } else {
+    rows = effectiveTickets.flatMap(({ ticket, sellers }) =>
+      sellers
+        .filter((seller) => !sellerId || seller.employeeId === sellerId)
+        .map<ReportRow>((seller) => ({
+          Fecha: ticket.businessDate.toISOString().slice(0, 10),
+          Folio: ticket.folio,
+          branch_id: ticket.branch.id,
+          Sucursal: ticket.branch.nombre,
+          Vendedor: seller.name,
+          Venta: new Prisma.Decimal(seller.shareAmount).toFixed(2),
+          Participación: new Prisma.Decimal(seller.sharePercent).toFixed(2),
+          Estado: ticket.status,
+        })),
+    );
+  }
+  return {
+    rows: paginateReportRows(rows, page, pageSize, forExport),
+    total: rows.length,
+  };
+}
+
+async function unrevisedSalesRows(
+  key: PosReportKey,
+  baseWhere: Prisma.PosTicketWhereInput,
+  sellerId?: string,
+  paymentMethodId?: string,
+  includeCosts = false,
+  page = 1,
+  pageSize = 50,
+  search?: string,
+  forExport = false,
+): Promise<ReportPage> {
+  const skip = (page - 1) * pageSize;
+  const ticketWhere: Prisma.PosTicketWhereInput = {
+    ...baseWhere,
     ...(sellerId ? { sellers: { some: { employeeId: sellerId } } } : {}),
     ...(paymentMethodId
       ? {
@@ -617,9 +848,7 @@ async function customerRows(
         },
       },
       orderBy: { creadoEn: "desc" },
-      ...(forExport
-        ? {}
-        : { skip: (page - 1) * pageSize, take: pageSize }),
+      ...(forExport ? {} : { skip: (page - 1) * pageSize, take: pageSize }),
     }),
     prisma.customer.count({ where }),
   ]);
@@ -642,7 +871,8 @@ async function customerRows(
       Teléfono: customer.phone,
       Procedencia: customer.source?.name ?? "—",
       branch_id: ticketBranches.length === 1 ? ticketBranches[0]!.id : null,
-      Sucursal: ticketBranches.map((branch) => branch.nombre).join(" / ") || "—",
+      Sucursal:
+        ticketBranches.map((branch) => branch.nombre).join(" / ") || "—",
       Propietario:
         customer.portfolios[0]?.employee?.nombreCompleto ?? "Cartera empresa",
       Visitas: customer.posTickets.length,
@@ -681,7 +911,9 @@ async function customerSourceRows(input: {
       ...(input.paymentMethodId
         ? {
             paymentOperations: {
-              some: { payments: { some: { paymentMethodId: input.paymentMethodId } } },
+              some: {
+                payments: { some: { paymentMethodId: input.paymentMethodId } },
+              },
             },
           }
         : {}),
@@ -766,8 +998,9 @@ async function customerSourceRows(input: {
         Citas: source.appointments,
       };
     })
-    .sort((left, right) =>
-      Number(right["Venta completada"]) - Number(left["Venta completada"]),
+    .sort(
+      (left, right) =>
+        Number(right["Venta completada"]) - Number(left["Venta completada"]),
     );
   return {
     rows: paginateReportRows(
@@ -785,10 +1018,7 @@ async function customerSourceRows(input: {
       "Venta completada": filteredSources
         .reduce((sum, source) => sum.plus(source.sales), new Prisma.Decimal(0))
         .toFixed(2),
-      Visitas: filteredSources.reduce(
-        (sum, source) => sum + source.visits,
-        0,
-      ),
+      Visitas: filteredSources.reduce((sum, source) => sum + source.visits, 0),
       Citas: filteredSources.reduce(
         (sum, source) => sum + source.appointments,
         0,
@@ -813,7 +1043,9 @@ async function bankReconciliationRows(input: {
   forExport: boolean;
 }): Promise<ReportPage> {
   const where: Prisma.PosPaymentWhereInput = {
-    ...(input.paymentMethodId ? { paymentMethodId: input.paymentMethodId } : {}),
+    ...(input.paymentMethodId
+      ? { paymentMethodId: input.paymentMethodId }
+      : {}),
     ...(input.bankId ? { bankId: input.bankId } : {}),
     ...(input.cardType ? { cardType: input.cardType } : {}),
     ...(input.installmentMonths
@@ -832,13 +1064,26 @@ async function bankReconciliationRows(input: {
     ...(input.search
       ? {
           OR: [
-            { bankNameSnapshot: { contains: input.search, mode: "insensitive" } },
-            { methodNameSnapshot: { contains: input.search, mode: "insensitive" } },
+            {
+              bankNameSnapshot: { contains: input.search, mode: "insensitive" },
+            },
+            {
+              methodNameSnapshot: {
+                contains: input.search,
+                mode: "insensitive",
+              },
+            },
             { reference: { contains: input.search, mode: "insensitive" } },
-            { operation: { folio: { contains: input.search, mode: "insensitive" } } },
             {
               operation: {
-                ticket: { folio: { contains: input.search, mode: "insensitive" } },
+                folio: { contains: input.search, mode: "insensitive" },
+              },
+            },
+            {
+              operation: {
+                ticket: {
+                  folio: { contains: input.search, mode: "insensitive" },
+                },
               },
             },
           ],
@@ -882,7 +1127,9 @@ async function bankReconciliationRows(input: {
     const collectedThroughOperation =
       payment.operation.ticket.paymentOperations.reduce((sum, operation) => {
         if (reachedOperation) return sum;
-        const next = sum.plus(signedPaymentAmount(operation.amount, operation.kind));
+        const next = sum.plus(
+          signedPaymentAmount(operation.amount, operation.kind),
+        );
         if (operation.id === payment.operation.id) reachedOperation = true;
         return next;
       }, new Prisma.Decimal(0));
@@ -919,12 +1166,7 @@ async function bankReconciliationRows(input: {
     };
   });
   return {
-    rows: paginateReportRows(
-      rows,
-      input.page,
-      input.pageSize,
-      input.forExport,
-    ),
+    rows: paginateReportRows(rows, input.page, input.pageSize, input.forExport),
     total: rows.length,
     summary: {
       Movimientos: rows.length,
@@ -961,7 +1203,13 @@ async function inventoryCountRows(input: {
       },
       include: {
         location: { select: { branchId: true } },
-        lines: { include: { item: { select: { id: true, sku: true, name: true, unitCost: true } } } },
+        lines: {
+          include: {
+            item: {
+              select: { id: true, sku: true, name: true, unitCost: true },
+            },
+          },
+        },
       },
       orderBy: [{ businessDate: "asc" }, { creadoEn: "asc" }],
     }),
@@ -999,7 +1247,10 @@ async function inventoryCountRows(input: {
     closing: Prisma.Decimal | null;
   };
   const byBranch = new Map<string, Map<string, CountValue>>();
-  const valueFor = (branchId: string, item: { id: string; sku: string; name: string; unitCost: Prisma.Decimal }) => {
+  const valueFor = (
+    branchId: string,
+    item: { id: string; sku: string; name: string; unitCost: Prisma.Decimal },
+  ) => {
     const itemMap = byBranch.get(branchId) ?? new Map<string, CountValue>();
     byBranch.set(branchId, itemMap);
     const value = itemMap.get(item.id) ?? {
@@ -1045,7 +1296,11 @@ async function inventoryCountRows(input: {
       balance.availableQuantity;
   }
   const branchById = new Map(branches.map((branch) => [branch.id, branch]));
-  const branchRows: Array<{ branchId: string; value: CountValue; row: ReportRow }> = [];
+  const branchRows: Array<{
+    branchId: string;
+    value: CountValue;
+    row: ReportRow;
+  }> = [];
   for (const branchId of input.branchIds) {
     const branch = branchById.get(branchId);
     for (const value of byBranch.get(branchId)?.values() ?? []) {
@@ -1073,9 +1328,8 @@ async function inventoryCountRows(input: {
           ...(input.includeCosts
             ? {
                 "Costo unitario": value.unitCost.toFixed(2),
-                "Valor inventario": value.existence
-                  ?.times(value.unitCost)
-                  .toFixed(2) ?? null,
+                "Valor inventario":
+                  value.existence?.times(value.unitCost).toFixed(2) ?? null,
               }
             : {}),
         },
@@ -1106,26 +1360,27 @@ async function inventoryCountRows(input: {
         : (current.closing ?? new Prisma.Decimal(0)).plus(value.closing);
     consolidated.set(value.itemId, current);
   }
-  const consolidatedRows = [...consolidated.values()].map<ReportRow>((value) => ({
-    Nivel: "CONSOLIDADO",
-    branch_id: null,
-    Sucursal: "Consolidado autorizado",
-    Activa: null,
-    SKU: value.sku,
-    Producto: value.name,
-    Apertura: value.opening?.toFixed(2) ?? null,
-    Movimientos: value.movement.toFixed(2),
-    Existencia: value.existence?.toFixed(2) ?? null,
-    Cierre: value.closing?.toFixed(2) ?? null,
-    ...(input.includeCosts
-      ? {
-          "Costo unitario": null,
-          "Valor inventario": value.existence
-            ?.times(value.unitCost)
-            .toFixed(2) ?? null,
-        }
-      : {}),
-  }));
+  const consolidatedRows = [...consolidated.values()].map<ReportRow>(
+    (value) => ({
+      Nivel: "CONSOLIDADO",
+      branch_id: null,
+      Sucursal: "Consolidado autorizado",
+      Activa: null,
+      SKU: value.sku,
+      Producto: value.name,
+      Apertura: value.opening?.toFixed(2) ?? null,
+      Movimientos: value.movement.toFixed(2),
+      Existencia: value.existence?.toFixed(2) ?? null,
+      Cierre: value.closing?.toFixed(2) ?? null,
+      ...(input.includeCosts
+        ? {
+            "Costo unitario": null,
+            "Valor inventario":
+              value.existence?.times(value.unitCost).toFixed(2) ?? null,
+          }
+        : {}),
+    }),
+  );
   const rows = [...branchRows.map((entry) => entry.row), ...consolidatedRows];
   return {
     rows: paginateReportRows(rows, input.page, input.pageSize, input.forExport),
@@ -1159,10 +1414,7 @@ async function createDataset(
       { status: 400 },
     );
   }
-  const requestedBranchIds = await reportBranchIds(
-    req,
-    parsed.data.branchIds,
-  );
+  const requestedBranchIds = await reportBranchIds(req, parsed.data.branchIds);
   const scope = await hydratePosDataScope(
     resolvePosDataScope({
       authorizedBranchIds: req.posUser!.authorizedHistoricalBranchIds,
@@ -1318,8 +1570,7 @@ async function auditReportExport(
       outcome: "SUCCESS",
       actorCredentialId: req.posUser!.credentialId,
       terminalId: req.posUser!.terminalId,
-      branchId:
-        dataset.branchIds.length === 1 ? dataset.branchIds[0] : null,
+      branchId: dataset.branchIds.length === 1 ? dataset.branchIds[0] : null,
       targetType: "PosReport",
       targetId: key,
       ipAddress: req.ip,

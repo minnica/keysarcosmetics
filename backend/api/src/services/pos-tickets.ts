@@ -922,7 +922,7 @@ const deliveryInclude = {
   actorCredential: { include: deliveryCredentialInclude },
 } as const;
 
-interface AppliedTicketRevisionSnapshot {
+export interface AppliedTicketRevisionSnapshot {
   schemaVersion: 1;
   appliedVersion: number;
   before: Record<string, unknown>;
@@ -944,6 +944,10 @@ interface AppliedTicketRevisionSnapshot {
     effectivePaymentOperationIds: string[];
     itemKinds: Record<string, string>;
     unitCosts: Record<string, string>;
+    itemMetadata?: Record<
+      string,
+      { familyName: string | null; categoryName: string | null }
+    >;
     owedProducts?: AppliedOwedProductSnapshot[];
     memberships?: PosTicketMembershipRevisionSnapshot[];
     appointments?: PreservedTicketAppointmentSnapshot[];
@@ -965,7 +969,7 @@ interface AppliedOwedProductSnapshot {
   deliveryIds: string[];
 }
 
-function appliedTicketRevisionSnapshot(
+export function appliedTicketRevisionSnapshot(
   value: Prisma.JsonValue | null | undefined,
 ): AppliedTicketRevisionSnapshot | null {
   if (!isRecord(value)) return null;
@@ -2840,6 +2844,18 @@ export async function appendTicketRevision(
       ]),
     ),
   };
+  const nextItemMetadata = {
+    ...(previousApplied?.after.itemMetadata ?? {}),
+    ...Object.fromEntries(
+      quote.lines.map((line) => [
+        line.item.id,
+        {
+          familyName: line.item.familyName,
+          categoryName: line.item.categoryName,
+        },
+      ]),
+    ),
+  };
   const originalLineById = new Map(ticket.lines.map((line) => [line.id, line]));
   const preservedPackages: PreservedTicketPackageSnapshot[] = packageIds.map(
     (packageId) => {
@@ -2989,6 +3005,23 @@ export async function appendTicketRevision(
     Object.fromEntries(
       ticket.lines.flatMap((line) =>
         line.itemId ? [[line.itemId, line.unitCostSnapshot.toFixed(2)]] : [],
+      ),
+    );
+  const currentItemMetadata =
+    previousApplied?.after.itemMetadata ??
+    Object.fromEntries(
+      ticket.lines.flatMap((line) =>
+        line.itemId
+          ? [
+              [
+                line.itemId,
+                {
+                  familyName: line.familySnapshot,
+                  categoryName: line.categorySnapshot,
+                },
+              ],
+            ]
+          : [],
       ),
     );
   const comparableLines = (lines: PosTicketDto["lines"]) =>
@@ -3260,6 +3293,7 @@ export async function appendTicketRevision(
     effectivePaymentOperationIds: [...currentOperationIds],
     itemKinds: currentItemKinds,
     unitCosts: currentUnitCosts,
+    itemMetadata: currentItemMetadata,
     owedProducts: currentOwedProducts,
     appointments: preservedAppointments,
     courtesies: preservedCourtesies,
@@ -3285,6 +3319,7 @@ export async function appendTicketRevision(
       : [],
     itemKinds: nextItemKinds,
     unitCosts: nextUnitCosts,
+    itemMetadata: nextItemMetadata,
     owedProducts: nextOwedProducts,
     memberships: membershipPlan?.after,
     appointments: preservedAppointments,

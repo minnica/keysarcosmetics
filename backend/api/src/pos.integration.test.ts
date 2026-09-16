@@ -1182,6 +1182,7 @@ integrationDescribe("seguridad y terminales POS", () => {
     const revisableTicket = revisableCheckout.body["data"] as {
       id: string;
       folio: string;
+      businessDate: string;
     };
     const revisionAuthorization = await request(
       "/api/pos/authorizations",
@@ -1852,6 +1853,212 @@ integrationDescribe("seguridad y terminales POS", () => {
     ).toEqual(["100.00", "100.00", "120.00"]);
     expect(revisionBalance.availableQuantity.toFixed(2)).toBe("7.00");
     expect(projectionSum._sum.amount?.toFixed(2)).toBe("120.00");
+
+    const secondRevisionAuthorization = await request(
+      "/api/pos/authorizations",
+      json(
+        "POST",
+        { pin: masterPin, purpose: "RECEIPT_HISTORY_ADMIN" },
+        masterToken,
+      ),
+    );
+    const secondRevisionAuthorizationToken = (
+      secondRevisionAuthorization.body["data"] as {
+        authorizationToken: string;
+      }
+    ).authorizationToken;
+    const secondRevisionKey = randomUUID();
+    const secondRevisionPayload = {
+      reason: "Segunda corrección y certificación transversal RV5-P1",
+      authorizationToken: secondRevisionAuthorizationToken,
+      revision: {
+        clientName: "Clienta Checkout RV5 Corregida dos veces",
+        clientPhone: "5512345678",
+        sellerIds: [employeeId],
+        products: [
+          {
+            itemId: revisionItemId,
+            quantity: "4.00",
+            unitPrice: "40.00",
+          },
+        ],
+        discountAmount: "0.00",
+        paymentStatus: "PAID" as const,
+        amountPaid: "160.00",
+        payments: [{ methodId: cash.id, amount: "160.00" }],
+      },
+    };
+    const postSecondRevision = () =>
+      request(`/api/pos/tickets/${revisableTicket.id}/revisions`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${masterToken}`,
+          "idempotency-key": secondRevisionKey,
+        },
+        body: JSON.stringify(secondRevisionPayload),
+      });
+    const appliedSecondRevision = await postSecondRevision();
+    expect(appliedSecondRevision.response.status).toBe(201);
+    expect(appliedSecondRevision.body["data"]).toEqual(
+      expect.objectContaining({ version: 3 }),
+    );
+    const replayedSecondRevision = await postSecondRevision();
+    expect(replayedSecondRevision.response.status).toBe(201);
+    expect(replayedSecondRevision.body["data"]).toEqual(
+      appliedSecondRevision.body["data"],
+    );
+    const secondRevisionReload = await request(
+      `/api/pos/tickets/${revisableTicket.id}`,
+      { headers: { authorization: `Bearer ${masterToken}` } },
+    );
+    expect(secondRevisionReload.response.status).toBe(200);
+    expect(secondRevisionReload.body["data"]).toEqual(
+      expect.objectContaining({
+        customerName: "Clienta Checkout RV5 Corregida dos veces",
+        total: "160.00",
+        amountReceived: "160.00",
+        pendingAmount: "0.00",
+        lines: [
+          expect.objectContaining({
+            itemId: revisionItemId,
+            quantity: "4.00",
+            unitPrice: "40.00",
+          }),
+        ],
+        paymentOperations: [
+          expect.objectContaining({ kind: "REVISION", amount: "160.00" }),
+        ],
+      }),
+    );
+    const [
+      secondRevisionEvents,
+      secondRevisionOperations,
+      secondRevisionBalance,
+      secondProjectionSum,
+    ] = await Promise.all([
+      prisma.posTicketEvent.findMany({
+        where: { ticketId: revisableTicket.id, type: "REVISION" },
+        orderBy: { creadoEn: "asc" },
+      }),
+      prisma.posPaymentOperation.findMany({
+        where: { ticketId: revisableTicket.id },
+        orderBy: { creadoEn: "asc" },
+      }),
+      prisma.inventoryBalance.findUniqueOrThrow({
+        where: {
+          locationId_itemId: {
+            locationId: branchLocation.id,
+            itemId: revisionItemId,
+          },
+        },
+      }),
+      prisma.posLegacySaleProjection.aggregate({
+        where: { operation: { ticketId: revisableTicket.id } },
+        _sum: { amount: true },
+      }),
+    ]);
+    expect(secondRevisionEvents).toHaveLength(2);
+    expect(
+      secondRevisionEvents.map(
+        (event) =>
+          (event.snapshot as { appliedVersion: number }).appliedVersion,
+      ),
+    ).toEqual([2, 3]);
+    expect(secondRevisionOperations.map((operation) => operation.kind)).toEqual(
+      ["SALE", "REFUND", "REVISION", "REFUND", "REVISION"],
+    );
+    expect(
+      secondRevisionOperations.map((operation) => operation.amount.toFixed(2)),
+    ).toEqual(["100.00", "100.00", "120.00", "120.00", "160.00"]);
+    expect(secondRevisionBalance.availableQuantity.toFixed(2)).toBe("6.00");
+    expect(secondProjectionSum._sum.amount?.toFixed(2)).toBe("160.00");
+
+    const reportQuery = new URLSearchParams({
+      dateFrom: revisableTicket.businessDate,
+      dateTo: revisableTicket.businessDate,
+      branchIds: branchId,
+      search: revisableTicket.folio,
+    }).toString();
+    const expectedRows = {
+      SALES_DETAIL: expect.objectContaining({
+        Folio: revisableTicket.folio,
+        Cliente: "Clienta Checkout RV5 Corregida dos veces",
+        Productos: "4.00",
+        Venta: "160.00",
+        Cobrado: "160.00",
+        Saldo: "0.00",
+        "Forma de pago": cash.nombre,
+      }),
+      SOLD_PRODUCTS: expect.objectContaining({
+        Folio: revisableTicket.folio,
+        SKU: `RV5-REV-${suffix}`.toUpperCase(),
+        Unidades: "4.00",
+        Venta: "160.00",
+        Costo: "80.00",
+      }),
+      SALES_BY_EMPLOYEE: expect.objectContaining({
+        Folio: revisableTicket.folio,
+        Vendedor: `POS Integration Employee ${suffix}`,
+        Venta: "160.00",
+        Participación: "100.00",
+      }),
+    } as const;
+    for (const [key, expectedRow] of Object.entries(expectedRows)) {
+      const report = await request(`/api/pos/reports/${key}?${reportQuery}`, {
+        headers: { authorization: `Bearer ${masterToken}` },
+      });
+      expect(report.response.status).toBe(200);
+      const reportData = report.body["data"] as {
+        rows: Array<Record<string, unknown>>;
+        total: number;
+      };
+      expect(reportData.total).toBe(1);
+      expect(reportData.rows).toEqual([expectedRow]);
+      const exported = await request(`/api/pos/exports/${key}?${reportQuery}`, {
+        headers: { authorization: `Bearer ${masterToken}` },
+      });
+      expect(exported.response.status).toBe(200);
+      expect((exported.body["data"] as { rows: unknown[] }).rows).toEqual(
+        reportData.rows,
+      );
+    }
+    const bankReport = await request(
+      `/api/pos/reports/BANK_RECONCILIATION?${reportQuery}`,
+      { headers: { authorization: `Bearer ${masterToken}` } },
+    );
+    expect(bankReport.response.status).toBe(200);
+    const bankData = bankReport.body["data"] as {
+      rows: Array<{ Movimiento: string; Importe: string }>;
+      summary: { Neto: string };
+    };
+    expect(bankData.rows.map((row) => row.Movimiento).sort()).toEqual(
+      ["SALE", "REFUND", "REVISION", "REFUND", "REVISION"].sort(),
+    );
+    expect(bankData.summary.Neto).toBe("160.00");
+    const bankExport = await request(
+      `/api/pos/exports/BANK_RECONCILIATION?${reportQuery}`,
+      { headers: { authorization: `Bearer ${masterToken}` } },
+    );
+    expect(bankExport.response.status).toBe(200);
+    expect((bankExport.body["data"] as { rows: unknown[] }).rows).toEqual(
+      bankData.rows,
+    );
+    expect(
+      await prisma.auditLog.count({
+        where: {
+          action: "POS_REPORT_EXPORT",
+          targetId: {
+            in: [
+              "SALES_DETAIL",
+              "SOLD_PRODUCTS",
+              "SALES_BY_EMPLOYEE",
+              "BANK_RECONCILIATION",
+            ],
+          },
+        },
+      }),
+    ).toBeGreaterThanOrEqual(4);
 
     const companyCustomerPhone = `58${Date.now().toString().slice(-8)}`;
     const [commercialCompany, alternateCommercialCompany, companyCustomer] =
