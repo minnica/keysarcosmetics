@@ -5,6 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { app } from "./app";
 import { prisma } from "./prisma/client";
 import { consumeMembershipAttendance } from "./services/pos-memberships";
+import { hashOpaqueToken } from "./services/pos-security";
 
 const enabled = process.env["RUN_DATABASE_TESTS"] === "true";
 const integrationDescribe = enabled ? describe : describe.skip;
@@ -1521,6 +1522,171 @@ integrationDescribe("seguridad y terminales POS", () => {
     ).toEqual(["100.00", "100.00", "120.00"]);
     expect(revisionBalance.availableQuantity.toFixed(2)).toBe("7.00");
     expect(projectionSum._sum.amount?.toFixed(2)).toBe("120.00");
+
+    const preservedPackage = await prisma.posPackage.create({
+      data: {
+        name: `Paquete revisable RV5 ${suffix}`,
+        sku: `RV5-PKG-${suffix}`.toUpperCase(),
+        description: "Composición preservada durante la revisión",
+        price: "150.00",
+        status: "PUBLISHED",
+        branchAssignments: { create: [{ branchId }] },
+        lines: { create: [{ itemId: serviceId, quantity: "1.00" }] },
+      },
+    });
+    const packageCheckout = await request(
+      "/api/pos/tickets",
+      mutationJson(
+        "POST",
+        {
+          branchId,
+          customer: { id: checkoutData.customerId },
+          lines: [
+            {
+              itemId: serviceId,
+              packageId: preservedPackage.id,
+              quantity: "1.00",
+              unitPrice: "150.00",
+              delivered: true,
+            },
+          ],
+          sellers: [{ employeeId, share: "150.00" }],
+          payments: [{ methodId: cash.id, amount: "150.00" }],
+        },
+        employeeToken,
+      ),
+    );
+    expect(packageCheckout.response.status).toBe(201);
+    const packageTicket = packageCheckout.body["data"] as {
+      id: string;
+      lines: Array<{ id: string; packageId: string | null }>;
+    };
+    const packageLineId = packageTicket.lines[0]!.id;
+    const packageRevisionAuthorization = await request(
+      "/api/pos/authorizations",
+      json(
+        "POST",
+        { pin: masterPin, purpose: "RECEIPT_HISTORY_ADMIN" },
+        masterToken,
+      ),
+    );
+    const packageAuthorizationToken = (
+      packageRevisionAuthorization.body["data"] as {
+        authorizationToken: string;
+      }
+    ).authorizationToken;
+    const packageRevision = (quantity: string, unitPrice: string) => ({
+      reason: "Conservar composición del paquete RV5-P1",
+      authorizationToken: packageAuthorizationToken,
+      revision: {
+        clientName: "Clienta Paquete RV5 Corregida",
+        clientPhone: "5512345678",
+        sellerIds: [employeeId],
+        products: [{ itemId: serviceId, quantity, unitPrice }],
+        discountAmount: "0.00",
+        paymentStatus: "PAID",
+        amountPaid: "150.00",
+        payments: [{ methodId: cash.id, amount: "150.00" }],
+      },
+    });
+    const rejectedPackageChange = await request(
+      `/api/pos/tickets/${packageTicket.id}/revisions`,
+      mutationJson("POST", packageRevision("2.00", "75.00"), masterToken),
+    );
+    expect(rejectedPackageChange.response.status).toBe(409);
+    await expect(
+      prisma.masterAuthorization.findUniqueOrThrow({
+        where: { tokenHash: hashOpaqueToken(packageAuthorizationToken) },
+      }),
+    ).resolves.toMatchObject({ usedAt: null });
+    const packageRevisionKey = randomUUID();
+    const postPackageRevision = () =>
+      request(`/api/pos/tickets/${packageTicket.id}/revisions`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${masterToken}`,
+          "idempotency-key": packageRevisionKey,
+        },
+        body: JSON.stringify(packageRevision("1.00", "150.00")),
+      });
+    const appliedPackageRevision = await postPackageRevision();
+    expect(appliedPackageRevision.response.status).toBe(201);
+    const replayedPackageRevision = await postPackageRevision();
+    expect(replayedPackageRevision.response.status).toBe(201);
+    expect(replayedPackageRevision.body["data"]).toEqual(
+      appliedPackageRevision.body["data"],
+    );
+    const [
+      reloadedPackageTicket,
+      packageRevisionEvent,
+      packageOperations,
+      packageProjectionSum,
+    ] = await Promise.all([
+      request(`/api/pos/tickets/${packageTicket.id}`, {
+        headers: { authorization: `Bearer ${masterToken}` },
+      }),
+      prisma.posTicketEvent.findFirstOrThrow({
+        where: { ticketId: packageTicket.id, type: "REVISION" },
+      }),
+      prisma.posPaymentOperation.findMany({
+        where: { ticketId: packageTicket.id },
+        orderBy: { creadoEn: "asc" },
+      }),
+      prisma.posLegacySaleProjection.aggregate({
+        where: { operation: { ticketId: packageTicket.id } },
+        _sum: { amount: true },
+      }),
+    ]);
+    expect(reloadedPackageTicket.body["data"]).toEqual(
+      expect.objectContaining({
+        customerName: "Clienta Paquete RV5 Corregida",
+        total: "150.00",
+        lines: [
+          expect.objectContaining({
+            id: packageLineId,
+            packageId: preservedPackage.id,
+            quantity: "1.00",
+            unitPrice: "150.00",
+          }),
+        ],
+      }),
+    );
+    expect(packageRevisionEvent.snapshot).toEqual(
+      expect.objectContaining({
+        before: expect.objectContaining({
+          packages: [
+            expect.objectContaining({
+              id: preservedPackage.id,
+              lines: [expect.objectContaining({ ticketLineId: packageLineId })],
+            }),
+          ],
+        }),
+        after: expect.objectContaining({
+          packages: [expect.objectContaining({ id: preservedPackage.id })],
+        }),
+        effects: expect.objectContaining({
+          inventoryMovementId: null,
+          packagePreservations: [
+            expect.objectContaining({ id: preservedPackage.id }),
+          ],
+        }),
+      }),
+    );
+    await expect(
+      prisma.posTicketEvent.count({
+        where: { ticketId: packageTicket.id, type: "REVISION" },
+      }),
+    ).resolves.toBe(1);
+    expect(packageOperations.map((operation) => operation.kind)).toEqual([
+      "SALE",
+      "REFUND",
+      "REVISION",
+    ]);
+    expect(
+      packageOperations.map((operation) => operation.amount.toFixed(2)),
+    ).toEqual(["150.00", "150.00", "150.00"]);
+    expect(packageProjectionSum._sum.amount?.toFixed(2)).toBe("150.00");
 
     const membershipItem = await request(
       "/api/pos/catalog/items",

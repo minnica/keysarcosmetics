@@ -525,8 +525,10 @@ integrationDescribe("POS con proveedor Scheduler interno", () => {
         agendaReservationMode: "SINGLE",
       },
     ]);
-    input.courtesies = [];
     const ticket = await createCourtesyTicket(input);
+    const courtesyBefore = await prisma.posCourtesy.findFirstOrThrow({
+      where: { ticketId: ticket.id },
+    });
     const appointment = await prisma.posAppointment.findFirstOrThrow({
       where: { ticketId: ticket.id },
     });
@@ -568,6 +570,47 @@ integrationDescribe("POS con proveedor Scheduler interno", () => {
       where: { id: customerId },
     });
 
+    await expect(
+      prisma.$transaction((tx) =>
+        appendTicketRevision(
+          tx,
+          {
+            ticketId: ticket.id,
+            reason: "No retirar la cortesía sin una identidad aprobada",
+            authorizationToken,
+            revision: {
+              clientName: `${customer.displayName} corregida`,
+              clientPhone: customer.phone ?? "",
+              sellerIds: [employeeId],
+              products: [
+                {
+                  itemId: serviceItemId,
+                  quantity: "1.00",
+                  unitPrice: "110.00",
+                },
+              ],
+              discountAmount: "0.00",
+              paymentStatus: "PAID",
+              amountPaid: "110.00",
+              payments: [{ methodId: paymentMethodId, amount: "110.00" }],
+            },
+          },
+          {
+            credentialId,
+            terminalId,
+            branchId,
+            businessDate,
+            isMaster: true,
+          },
+        ),
+      ),
+    ).rejects.toMatchObject({ status: 409 });
+    await expect(
+      prisma.masterAuthorization.findUniqueOrThrow({
+        where: { id: authorization.id },
+      }),
+    ).resolves.toMatchObject({ usedAt: null });
+
     const revision = await prisma.$transaction((tx) =>
       appendTicketRevision(
         tx,
@@ -584,6 +627,11 @@ integrationDescribe("POS con proveedor Scheduler interno", () => {
                 itemId: serviceItemId,
                 quantity: "1.00",
                 unitPrice: "110.00",
+              },
+              {
+                itemId: serviceItemId,
+                quantity: "1.00",
+                unitPrice: "0.00",
               },
             ],
             discountAmount: "0.00",
@@ -610,6 +658,9 @@ integrationDescribe("POS con proveedor Scheduler interno", () => {
       storedAuthorization,
       revisionEvent,
       reloadedTicket,
+      courtesyAfter,
+      revisionOperations,
+      projectionSum,
     ] = await Promise.all([
       prisma.posAppointment.findUniqueOrThrow({
         where: { id: appointment.id },
@@ -636,6 +687,15 @@ integrationDescribe("POS con proveedor Scheduler interno", () => {
         where: { id: revision.id },
       }),
       prisma.posTicket.findUniqueOrThrow({ where: { id: ticket.id } }),
+      prisma.posCourtesy.findFirstOrThrow({ where: { ticketId: ticket.id } }),
+      prisma.posPaymentOperation.findMany({
+        where: { ticketId: ticket.id },
+        orderBy: { creadoEn: "asc" },
+      }),
+      prisma.posLegacySaleProjection.aggregate({
+        where: { operation: { ticketId: ticket.id } },
+        _sum: { amount: true },
+      }),
     ]);
     expect(appointmentAfter).toEqual(appointmentBefore);
     expect(schedulerAfter).toEqual(schedulerBefore);
@@ -643,13 +703,31 @@ integrationDescribe("POS con proveedor Scheduler interno", () => {
     expect(storedAuthorization.usedAt).not.toBeNull();
     expect(reloadedTicket.version).toBe(2);
     expect(reloadedTicket.total.toFixed(2)).toBe("110.00");
+    expect(courtesyAfter).toEqual(courtesyBefore);
+    expect(revisionOperations.map((operation) => operation.kind)).toEqual([
+      "SALE",
+      "REFUND",
+      "REVISION",
+    ]);
+    expect(
+      revisionOperations.map((operation) => operation.amount.toFixed(2)),
+    ).toEqual(["100.00", "100.00", "110.00"]);
+    expect(projectionSum._sum.amount?.toFixed(2)).toBe("110.00");
     expect(revisionEvent.snapshot).toEqual(
       expect.objectContaining({
         before: expect.objectContaining({
           appointments: [expect.objectContaining({ id: appointment.id })],
+          courtesies: [
+            expect.objectContaining({
+              id: courtesyBefore.id,
+              ticketLineId: courtesyBefore.ticketLineId,
+              appointmentId: appointment.id,
+            }),
+          ],
         }),
         after: expect.objectContaining({
           appointments: [expect.objectContaining({ id: appointment.id })],
+          courtesies: [expect.objectContaining({ id: courtesyBefore.id })],
         }),
         effects: expect.objectContaining({
           appointmentPreservations: [
@@ -664,6 +742,12 @@ integrationDescribe("POS con proveedor Scheduler interno", () => {
                   expect.objectContaining({ id: firstProfessionalId }),
                 ],
               }),
+            }),
+          ],
+          courtesyPreservations: [
+            expect.objectContaining({
+              id: courtesyBefore.id,
+              ticketLineId: courtesyBefore.ticketLineId,
             }),
           ],
         }),
@@ -681,6 +765,9 @@ integrationDescribe("POS con proveedor Scheduler interno", () => {
       prisma.schedulerAppointment.count({
         where: { id: schedulerAppointmentId },
       }),
+    ).resolves.toBe(1);
+    await expect(
+      prisma.posCourtesy.count({ where: { ticketId: ticket.id } }),
     ).resolves.toBe(1);
 
     const externalTicketInput = ticketInput({ id: customerId }, []);

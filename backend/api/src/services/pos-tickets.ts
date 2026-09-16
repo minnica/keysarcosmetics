@@ -947,6 +947,8 @@ interface AppliedTicketRevisionSnapshot {
     owedProducts?: AppliedOwedProductSnapshot[];
     memberships?: PosTicketMembershipRevisionSnapshot[];
     appointments?: PreservedTicketAppointmentSnapshot[];
+    courtesies?: PreservedTicketCourtesySnapshot[];
+    packages?: PreservedTicketPackageSnapshot[];
   };
   differences: PosTicketRevisionDifferenceDto[];
   effects: Record<string, unknown>;
@@ -1124,6 +1126,34 @@ interface PreservedTicketAppointmentSnapshot {
   } | null;
 }
 
+interface PreservedTicketCourtesySnapshot {
+  id: string;
+  ticketLineId: string;
+  appointmentId: string | null;
+  policyId: string | null;
+  policyName: string;
+  authorizationId: string | null;
+  courtesyProductId: string | null;
+  productName: string | null;
+  productType: string | null;
+  courtesyPackageId: string | null;
+  packageVersion: number | null;
+  packageName: string | null;
+}
+
+interface PreservedTicketPackageSnapshot {
+  id: string;
+  name: string;
+  version: number | null;
+  lines: Array<{
+    ticketLineId: string;
+    itemId: string;
+    quantity: string;
+    unitPrice: string;
+    total: string;
+  }>;
+}
+
 const schedulerStatusMatchesPos = (
   posStatus: PreservedTicketAppointmentSnapshot["status"],
   schedulerStatus: string,
@@ -1292,6 +1322,59 @@ async function preserveInternalTicketAppointments(
             }
           : null,
       },
+    };
+  });
+}
+
+async function preserveTicketCourtesies(
+  tx: Transaction,
+  ticket: TicketPayload,
+): Promise<PreservedTicketCourtesySnapshot[]> {
+  const giftLines = ticket.lines.filter((line) => line.kind === "GIFT");
+  const locked = await tx.$queryRaw<Array<{ id: string }>>(
+    Prisma.sql`SELECT "id" FROM "PosCourtesy" WHERE "ticketId" = ${ticket.id}::uuid ORDER BY "id" FOR UPDATE`,
+  );
+  if (giftLines.length === 0 && locked.length === 0) return [];
+  const courtesies = await tx.posCourtesy.findMany({
+    where: { ticketId: ticket.id },
+    include: { ticketLine: true },
+    orderBy: { creadoEn: "asc" },
+  });
+  if (
+    courtesies.length !== locked.length ||
+    courtesies.length !== giftLines.length
+  )
+    throw new PosTicketError(
+      "Las cortesías no coinciden con las líneas originales del ticket",
+      409,
+    );
+  const appointmentIds = new Set(
+    ticket.appointments.map((appointment) => appointment.id),
+  );
+  return courtesies.map((courtesy) => {
+    if (
+      courtesy.ticketLine.ticketId !== ticket.id ||
+      courtesy.ticketLine.kind !== "GIFT" ||
+      (courtesy.appointmentId !== null &&
+        !appointmentIds.has(courtesy.appointmentId))
+    )
+      throw new PosTicketError(
+        "La cortesía perdió su relación canónica con el ticket o la cita",
+        409,
+      );
+    return {
+      id: courtesy.id,
+      ticketLineId: courtesy.ticketLineId,
+      appointmentId: courtesy.appointmentId,
+      policyId: courtesy.policyId,
+      policyName: courtesy.policyNameSnapshot,
+      authorizationId: courtesy.authorizationId,
+      courtesyProductId: courtesy.courtesyProductId,
+      productName: courtesy.productNameSnapshot,
+      productType: courtesy.productTypeSnapshot,
+      courtesyPackageId: courtesy.courtesyPackageId,
+      packageVersion: courtesy.packageVersionSnapshot,
+      packageName: courtesy.packageNameSnapshot,
     };
   });
 }
@@ -2415,15 +2498,83 @@ export async function appendTicketRevision(
   const previousApplied = appliedTicketRevisionSnapshot(
     ticket.events[0]?.snapshot,
   );
+  const preservedCourtesies = await preserveTicketCourtesies(tx, ticket);
+  const courtesyLineIds = new Set(
+    preservedCourtesies.map((courtesy) => courtesy.ticketLineId),
+  );
   if (
     current.lines.some(
-      (line) => line.kind === "GIFT" || line.packageId !== null,
+      (line) => line.kind === "GIFT" && !courtesyLineIds.has(line.id),
+    ) ||
+    preservedCourtesies.some(
+      (courtesy) =>
+        !current.lines.some(
+          (line) => line.kind === "GIFT" && line.id === courtesy.ticketLineId,
+        ),
     )
   )
     throw new PosTicketError(
-      "La revisión de paquetes o cortesías requiere su motor compensatorio pendiente",
+      "La proyección vigente no conserva la identidad de las cortesías",
       409,
     );
+  const hasPreservedComposition = current.lines.some(
+    (line) => line.kind === "GIFT" || line.packageId !== null,
+  );
+  if (
+    hasPreservedComposition &&
+    current.lines.length !== input.revision.products.length
+  )
+    throw new PosTicketError(
+      "La revisión no puede agregar ni retirar líneas de paquetes o cortesías",
+      409,
+    );
+  const revisionLinePlans = input.revision.products.map((line, index) => {
+    const currentLine = hasPreservedComposition
+      ? current.lines[index]
+      : undefined;
+    if (!currentLine) return { line, currentLine: null, gift: false };
+    if (currentLine.kind === "GIFT") {
+      if (
+        currentLine.itemId === null ||
+        line.itemId !== currentLine.itemId ||
+        !new Prisma.Decimal(line.quantity).equals(currentLine.quantity) ||
+        !new Prisma.Decimal(line.unitPrice).equals(currentLine.unitPrice)
+      )
+        throw new PosTicketError(
+          "La revisión no puede sustituir ni modificar una cortesía",
+          409,
+        );
+      return { line, currentLine, gift: true };
+    }
+    if (
+      currentLine.packageId &&
+      (line.itemId !== currentLine.itemId ||
+        !new Prisma.Decimal(line.quantity).equals(currentLine.quantity) ||
+        !new Prisma.Decimal(line.unitPrice).equals(currentLine.unitPrice))
+    )
+      throw new PosTicketError(
+        "La revisión no puede sustituir ni modificar la composición de un paquete",
+        409,
+      );
+    return { line, currentLine, gift: false };
+  });
+  const packageIds = [
+    ...new Set(
+      revisionLinePlans.flatMap(({ currentLine }) =>
+        currentLine?.packageId ? [currentLine.packageId] : [],
+      ),
+    ),
+  ].sort((left, right) => left.localeCompare(right));
+  for (const packageId of packageIds) {
+    const locked = await tx.$queryRaw<Array<{ id: string }>>(
+      Prisma.sql`SELECT "id" FROM "PosPackage" WHERE "id" = ${packageId} FOR UPDATE`,
+    );
+    if (locked.length !== 1)
+      throw new PosTicketError(
+        "El paquete original ya no tiene una identidad canónica",
+        409,
+      );
+  }
   const revisionPaymentsInput = input.revision.payments;
   assertNoSensitivePaymentData(revisionPaymentsInput);
   const validatedPayments = await validatePayments(tx, revisionPaymentsInput);
@@ -2432,12 +2583,21 @@ export async function appendTicketRevision(
     {
       branchId: context.branchId,
       customerId: ticket.customerId ?? undefined,
-      lines: input.revision.products.map((line) => ({
-        itemId: line.itemId,
-        quantity: line.quantity,
-        unitPrice: line.unitPrice,
-        delivered: true,
-      })),
+      lines: revisionLinePlans.flatMap(({ line, currentLine, gift }) =>
+        gift
+          ? []
+          : [
+              {
+                itemId: line.itemId,
+                quantity: line.quantity,
+                unitPrice: line.unitPrice,
+                ...(currentLine?.packageId
+                  ? { packageId: currentLine.packageId }
+                  : {}),
+                delivered: true,
+              },
+            ],
+      ),
       sellers: [],
       payments: revisionPaymentsInput,
       discount: { kind: "FIXED", value: input.revision.discountAmount },
@@ -2532,32 +2692,80 @@ export async function appendTicketRevision(
       attendanceId: seller.attendanceId,
     }),
   );
-  const nextLines: PosTicketDto["lines"] = quote.lines.map((line, index) => ({
-    id: `revision-${ticket.version + 1}-${index + 1}`,
-    kind: "SALE",
-    itemId: line.item.id,
-    itemName: line.item.name,
-    sku: line.item.sku,
-    quantity: line.quantityDecimal,
-    unitPrice: fromCents(line.unitPriceCents),
-    unitListPrice: fromCents(line.item.listPriceCents),
-    unitMinimumPrice: fromCents(line.item.minimumPriceCents),
-    subtotal: fromCents(line.subtotalCents),
-    discountTotal: fromCents(line.discountCents),
-    taxTotal: fromCents(line.taxCents),
-    total: fromCents(line.totalCents),
-    packageId: line.packageId,
-    packageName: line.packageName,
-    notes: line.notes,
-  }));
-  const nextItemKinds = Object.fromEntries(
-    quote.lines.map((line) => [line.item.id, line.item.kind]),
+  let quotedLineIndex = 0;
+  const nextLines: PosTicketDto["lines"] = revisionLinePlans.map(
+    ({ currentLine, gift }, index) => {
+      if (gift) return { ...currentLine! };
+      const line = quote.lines[quotedLineIndex++]!;
+      return {
+        id:
+          currentLine?.packageId !== null &&
+          currentLine?.packageId !== undefined
+            ? currentLine.id
+            : `revision-${ticket.version + 1}-${index + 1}`,
+        kind: "SALE",
+        itemId: line.item.id,
+        itemName: currentLine?.packageId
+          ? currentLine.itemName
+          : line.item.name,
+        sku: currentLine?.packageId ? currentLine.sku : line.item.sku,
+        quantity: line.quantityDecimal,
+        unitPrice: fromCents(line.unitPriceCents),
+        unitListPrice: currentLine?.packageId
+          ? currentLine.unitListPrice
+          : fromCents(line.item.listPriceCents),
+        unitMinimumPrice: fromCents(line.item.minimumPriceCents),
+        subtotal: fromCents(line.subtotalCents),
+        discountTotal: fromCents(line.discountCents),
+        taxTotal: fromCents(line.taxCents),
+        total: fromCents(line.totalCents),
+        packageId: currentLine?.packageId ?? line.packageId,
+        packageName: currentLine?.packageId
+          ? currentLine.packageName
+          : line.packageName,
+        notes: line.notes,
+      };
+    },
   );
-  const nextUnitCosts = Object.fromEntries(
-    quote.lines.map((line) => [
-      line.item.id,
-      fromCents(line.item.unitCostCents),
-    ]),
+  const nextItemKinds = {
+    ...(previousApplied?.after.itemKinds ?? {}),
+    ...Object.fromEntries(
+      quote.lines.map((line) => [line.item.id, line.item.kind]),
+    ),
+  };
+  const nextUnitCosts = {
+    ...(previousApplied?.after.unitCosts ?? {}),
+    ...Object.fromEntries(
+      quote.lines.map((line) => [
+        line.item.id,
+        fromCents(line.item.unitCostCents),
+      ]),
+    ),
+  };
+  const originalLineById = new Map(ticket.lines.map((line) => [line.id, line]));
+  const preservedPackages: PreservedTicketPackageSnapshot[] = packageIds.map(
+    (packageId) => {
+      const lines = nextLines.filter((line) => line.packageId === packageId);
+      const sourceLines = lines.map((line) => originalLineById.get(line.id));
+      if (sourceLines.some((line) => !line || line.packageId !== packageId))
+        throw new PosTicketError(
+          "La proyección vigente no conserva la identidad del paquete",
+          409,
+        );
+      return {
+        id: packageId,
+        name:
+          lines[0]!.packageName ?? sourceLines[0]!.packageNameSnapshot ?? "",
+        version: sourceLines[0]!.packageVersionSnapshot,
+        lines: lines.map((line) => ({
+          ticketLineId: line.id,
+          itemId: line.itemId!,
+          quantity: line.quantity,
+          unitPrice: line.unitPrice,
+          total: line.total,
+        })),
+      };
+    },
   );
   let membershipPlan: Awaited<ReturnType<typeof planTicketMembershipRevision>>;
   try {
@@ -2670,7 +2878,9 @@ export async function appendTicketRevision(
     );
   const comparableLines = (lines: PosTicketDto["lines"]) =>
     lines.map((line) => ({
+      kind: line.kind,
       itemId: line.itemId,
+      packageId: line.packageId,
       quantity: line.quantity,
       unitPrice: line.unitPrice,
       total: line.total,
@@ -2807,7 +3017,12 @@ export async function appendTicketRevision(
   ) => {
     const values = new Map<string, Prisma.Decimal>();
     for (const line of lines) {
-      if (!line.itemId || kinds[line.itemId] !== "PRODUCT") continue;
+      if (
+        line.kind !== "SALE" ||
+        !line.itemId ||
+        kinds[line.itemId] !== "PRODUCT"
+      )
+        continue;
       values.set(
         line.itemId,
         (values.get(line.itemId) ?? new Prisma.Decimal(0)).plus(line.quantity),
@@ -2916,6 +3131,8 @@ export async function appendTicketRevision(
     unitCosts: currentUnitCosts,
     owedProducts: currentOwedProducts,
     appointments: preservedAppointments,
+    courtesies: preservedCourtesies,
+    packages: preservedPackages,
   };
   const afterSnapshot: AppliedTicketRevisionSnapshot["after"] = {
     customerName: input.revision.clientName,
@@ -2940,6 +3157,8 @@ export async function appendTicketRevision(
     owedProducts: nextOwedProducts,
     memberships: membershipPlan?.after,
     appointments: preservedAppointments,
+    courtesies: preservedCourtesies,
+    packages: preservedPackages,
   };
   const differences: PosTicketRevisionDifferenceDto[] = [];
   const addDifference = (
@@ -3035,6 +3254,8 @@ export async function appendTicketRevision(
               })
             : [],
           appointmentPreservations: preservedAppointments,
+          courtesyPreservations: preservedCourtesies,
+          packagePreservations: preservedPackages,
         },
       } as unknown as Prisma.InputJsonValue,
       actorCredentialId: context.credentialId,
