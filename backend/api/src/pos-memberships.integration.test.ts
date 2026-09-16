@@ -5,6 +5,7 @@ import { executePosIdempotent } from "./services/pos-inventory";
 import {
   activateMembershipsForTicket,
   consumeMembershipAttendance,
+  createMembershipClosure,
   createMembershipsForTicket,
   type PosMembershipContext,
 } from "./services/pos-memberships";
@@ -290,5 +291,70 @@ integrationDescribe("membresías POS con PostgreSQL", () => {
         where: { appointmentId: appointment.id },
       }),
     ).toBe(1);
+
+    const month = new Date().toISOString().slice(0, 7);
+    const masterContext = { ...context, isMaster: true };
+    const firstClosure = await prisma.$transaction((tx) =>
+      createMembershipClosure(
+        tx,
+        { month, branchIds: [branch.id] },
+        masterContext,
+      ),
+    );
+    const repeatedClosure = await prisma.$transaction((tx) =>
+      createMembershipClosure(
+        tx,
+        { month, branchIds: [branch.id] },
+        masterContext,
+      ),
+    );
+    expect(repeatedClosure.id).toBe(firstClosure.id);
+    expect(repeatedClosure.version).toBe(1);
+    expect(
+      await prisma.posMembershipSalesClosure.count({
+        where: {
+          month: new Date(`${month}-01T00:00:00.000Z`),
+          branchIds: { equals: [branch.id] },
+        },
+      }),
+    ).toBe(1);
+    const laterTicket = await createTicket(
+      "COMPLETED",
+      1,
+      "500.01",
+      BigInt(Date.now() + 2),
+    );
+    await prisma.$transaction((tx) =>
+      createMembershipsForTicket(tx, {
+        ticketId: laterTicket.id,
+        credentialId: credential.id,
+        activate: true,
+      }),
+    );
+    const revisedClosure = await prisma.$transaction((tx) =>
+      createMembershipClosure(
+        tx,
+        { month, branchIds: [branch.id] },
+        masterContext,
+      ),
+    );
+    expect(revisedClosure.id).not.toBe(firstClosure.id);
+    expect(revisedClosure.version).toBe(2);
+    expect(revisedClosure.membershipCount).toBe(
+      firstClosure.membershipCount + 1,
+    );
+    expect(
+      await prisma.posMembershipSalesClosure.count({
+        where: {
+          month: new Date(`${month}-01T00:00:00.000Z`),
+          branchIds: { equals: [branch.id] },
+        },
+      }),
+    ).toBe(2);
+    await expect(
+      prisma.$transaction((tx) =>
+        createMembershipClosure(tx, { month, branchIds: [branch.id] }, context),
+      ),
+    ).rejects.toMatchObject({ status: 403 });
   });
 });

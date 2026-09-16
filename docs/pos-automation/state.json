@@ -209,6 +209,80 @@
       "nextStep": "Continuar RV5-P1 desde el informe nuevo, inspeccionando PosAppointment y Scheduler interno para soportar primero revisiones que preserven íntegramente cita, servicio y capacidad; mantener 409 previo al token para cualquier cambio no derivable del diálogo aprobado.",
       "report": "docs/pos-automation/runs/2026-09-16T18-49-58-408Z-RV5-P1.md",
       "updatedAt": "2026-09-16T19:15:46.584Z"
+    },
+    "RV6-P1": {
+      "id": "RV6-P1",
+      "runId": "2026-09-16T19-15-50-093Z-RV6-P1",
+      "base": "1c4b1f6f90a14a9df7154ed85de8946e0440bc60",
+      "status": "partial",
+      "attempts": 1,
+      "summary": "Conectado el cierre mensual canónico a la tarjeta aprobada sin alterar el DOM. Los snapshots idénticos reutilizan versión; cambios reales generan una nueva. El perfilamiento quedó validado por HTTP/BD. Reasignación de vendedor y estado manual permanecen bloqueados porque 12fb804 no contiene controles aprobados.",
+      "checks": [
+        {
+          "command": "DATABASE_URL=<PostgreSQL-16-local-desechable> DIRECT_URL=<misma-BD> pnpm --filter @cosmetics/api exec prisma migrate deploy",
+          "result": "passed",
+          "evidence": "46/46 migraciones aplicadas desde cero en la BD local dedicada."
+        },
+        {
+          "command": "RUN_DATABASE_TESTS=true DATABASE_URL=<local-desechable> DIRECT_URL=<misma-BD> pnpm --filter @cosmetics/api exec vitest run src/pos-memberships.integration.test.ts",
+          "result": "passed",
+          "evidence": "1/1: deduplicación, versión 2 ante cambios y rechazo 403 no-master."
+        },
+        {
+          "command": "RUN_DATABASE_TESTS=true DATABASE_URL=<local-desechable> DIRECT_URL=<misma-BD> pnpm --filter @cosmetics/api exec vitest run src/pos.integration.test.ts",
+          "result": "passed",
+          "evidence": "10/10 casos; perfilamiento persistente y replay idempotente incluidos."
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api lint && pnpm --filter @cosmetics/api test:unit",
+          "result": "passed",
+          "evidence": "Lint sin warnings; 25 archivos y 136/136 pruebas."
+        },
+        {
+          "command": "pnpm --filter @cosmetics/types type-check && pnpm --filter @cosmetics/api-client type-check && pnpm --filter @cosmetics/api type-check && pnpm --filter @cosmetics/pos type-check && pnpm --filter @cosmetics/api build && pnpm --filter @cosmetics/pos build:web",
+          "result": "passed",
+          "evidence": "Contratos, cliente, API, renderer, main y preload compilaron."
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api prisma:schemas && pnpm --filter @cosmetics/api prisma:validate && pnpm pos:visual:manifest && git diff --check",
+          "result": "passed",
+          "evidence": "Schemas sincronizados/válidos; referencia 12fb804 intacta con 208 capturas programadas; diff válido."
+        }
+      ],
+      "independentChecks": [
+        {
+          "command": "pnpm --filter @cosmetics/pos type-check",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/pos build:web",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api prisma:schemas",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api type-check",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api lint",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api test:unit",
+          "result": "passed"
+        }
+      ],
+      "remaining": [
+        "Producto debe definir controles aprobados para reasignar vendedor y cambiar manualmente el estado; el renderer no invoca esos endpoints.",
+        "RV6-P1 permanece sin marcar; el informe está en docs/pos-automation/runs/2026-09-16T19-15-50-093Z-RV6-P1.md.",
+        "RV6-P2 puede continuar independientemente."
+      ],
+      "nextStep": "Si RV6-P1 se reabre sin una decisión nueva de Producto, registrar el bloqueo documental sin modificar código; después continuar con RV6-P2.",
+      "report": "docs/pos-automation/runs/2026-09-16T19-15-50-093Z-RV6-P1.md",
+      "updatedAt": "2026-09-16T19:33:50.380Z"
     }
   },
   "history": [
@@ -587,6 +661,80 @@
       "nextStep": "Continuar RV5-P1 desde el informe nuevo, inspeccionando PosAppointment y Scheduler interno para soportar primero revisiones que preserven íntegramente cita, servicio y capacidad; mantener 409 previo al token para cualquier cambio no derivable del diálogo aprobado.",
       "report": "docs/pos-automation/runs/2026-09-16T18-49-58-408Z-RV5-P1.md",
       "updatedAt": "2026-09-16T19:15:46.584Z"
+    },
+    {
+      "id": "RV6-P1",
+      "runId": "2026-09-16T19-15-50-093Z-RV6-P1",
+      "base": "1c4b1f6f90a14a9df7154ed85de8946e0440bc60",
+      "status": "partial",
+      "attempts": 1,
+      "summary": "Conectado el cierre mensual canónico a la tarjeta aprobada sin alterar el DOM. Los snapshots idénticos reutilizan versión; cambios reales generan una nueva. El perfilamiento quedó validado por HTTP/BD. Reasignación de vendedor y estado manual permanecen bloqueados porque 12fb804 no contiene controles aprobados.",
+      "checks": [
+        {
+          "command": "DATABASE_URL=<PostgreSQL-16-local-desechable> DIRECT_URL=<misma-BD> pnpm --filter @cosmetics/api exec prisma migrate deploy",
+          "result": "passed",
+          "evidence": "46/46 migraciones aplicadas desde cero en la BD local dedicada."
+        },
+        {
+          "command": "RUN_DATABASE_TESTS=true DATABASE_URL=<local-desechable> DIRECT_URL=<misma-BD> pnpm --filter @cosmetics/api exec vitest run src/pos-memberships.integration.test.ts",
+          "result": "passed",
+          "evidence": "1/1: deduplicación, versión 2 ante cambios y rechazo 403 no-master."
+        },
+        {
+          "command": "RUN_DATABASE_TESTS=true DATABASE_URL=<local-desechable> DIRECT_URL=<misma-BD> pnpm --filter @cosmetics/api exec vitest run src/pos.integration.test.ts",
+          "result": "passed",
+          "evidence": "10/10 casos; perfilamiento persistente y replay idempotente incluidos."
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api lint && pnpm --filter @cosmetics/api test:unit",
+          "result": "passed",
+          "evidence": "Lint sin warnings; 25 archivos y 136/136 pruebas."
+        },
+        {
+          "command": "pnpm --filter @cosmetics/types type-check && pnpm --filter @cosmetics/api-client type-check && pnpm --filter @cosmetics/api type-check && pnpm --filter @cosmetics/pos type-check && pnpm --filter @cosmetics/api build && pnpm --filter @cosmetics/pos build:web",
+          "result": "passed",
+          "evidence": "Contratos, cliente, API, renderer, main y preload compilaron."
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api prisma:schemas && pnpm --filter @cosmetics/api prisma:validate && pnpm pos:visual:manifest && git diff --check",
+          "result": "passed",
+          "evidence": "Schemas sincronizados/válidos; referencia 12fb804 intacta con 208 capturas programadas; diff válido."
+        }
+      ],
+      "independentChecks": [
+        {
+          "command": "pnpm --filter @cosmetics/pos type-check",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/pos build:web",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api prisma:schemas",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api type-check",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api lint",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api test:unit",
+          "result": "passed"
+        }
+      ],
+      "remaining": [
+        "Producto debe definir controles aprobados para reasignar vendedor y cambiar manualmente el estado; el renderer no invoca esos endpoints.",
+        "RV6-P1 permanece sin marcar; el informe está en docs/pos-automation/runs/2026-09-16T19-15-50-093Z-RV6-P1.md.",
+        "RV6-P2 puede continuar independientemente."
+      ],
+      "nextStep": "Si RV6-P1 se reabre sin una decisión nueva de Producto, registrar el bloqueo documental sin modificar código; después continuar con RV6-P2.",
+      "report": "docs/pos-automation/runs/2026-09-16T19-15-50-093Z-RV6-P1.md",
+      "updatedAt": "2026-09-16T19:33:50.380Z"
     }
   ]
 }

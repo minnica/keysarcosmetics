@@ -1024,11 +1024,6 @@ export async function createMembershipClosure(
   await tx.$executeRaw(
     Prisma.sql`SELECT pg_advisory_xact_lock(hashtext(${`pos-membership-closure:${input.month}:${scopeHash}`}))`,
   );
-  const latest = await tx.posMembershipSalesClosure.findFirst({
-    where: { month: from, scopeHash },
-    orderBy: { version: "desc" },
-    select: { version: true },
-  });
   const memberships = await tx.posClientMembership.findMany({
     where: {
       purchaseBranchId: { in: branchIds },
@@ -1077,6 +1072,32 @@ export async function createMembershipClosure(
       right.amount.comparedTo(left.amount) ||
       left.sellerName.localeCompare(right.sellerName, "es-MX"),
   );
+  const totalAmount = memberships.reduce(
+    (sum, membership) =>
+      sum.plus(effectiveMembershipPurchaseAmount(membership)),
+    new Prisma.Decimal(0),
+  );
+  const latest = await tx.posMembershipSalesClosure.findFirst({
+    where: { month: from, scopeHash },
+    orderBy: { version: "desc" },
+    include: closureInclude,
+  });
+  const unchanged =
+    latest?.membershipCount === memberships.length &&
+    latest.totalAmount.equals(totalAmount) &&
+    latest.rankings.length === rankings.length &&
+    latest.rankings.every((snapshot, index) => {
+      const current = rankings[index];
+      return (
+        current !== undefined &&
+        snapshot.rank === index + 1 &&
+        snapshot.originalSellerId === current.sellerId &&
+        snapshot.sellerNameSnapshot === current.sellerName &&
+        snapshot.quantity === current.quantity &&
+        snapshot.amount.equals(current.amount)
+      );
+    });
+  if (latest && unchanged) return latest;
   const closure = await tx.posMembershipSalesClosure.create({
     data: {
       month: from,
@@ -1084,11 +1105,7 @@ export async function createMembershipClosure(
       branchIds,
       version: (latest?.version ?? 0) + 1,
       membershipCount: memberships.length,
-      totalAmount: memberships.reduce(
-        (sum, membership) =>
-          sum.plus(effectiveMembershipPurchaseAmount(membership)),
-        new Prisma.Decimal(0),
-      ),
+      totalAmount,
       createdByCredentialId: context.credentialId,
       rankings: {
         create: rankings.map((ranking, index) => ({

@@ -1932,6 +1932,32 @@ integrationDescribe("seguridad y terminales POS", () => {
         attendance: [expect.objectContaining({ id: expect.any(String) })],
       }),
     ]);
+    const profileIdempotencyKey = randomUUID();
+    const updateMembershipProfile = () =>
+      request(`/api/pos/memberships/${membershipId}/profile`, {
+        ...json(
+          "POST",
+          {
+            profile: "VIP",
+            personalAuthorizationToken: membershipAccessToken,
+          },
+          masterToken,
+        ),
+        headers: {
+          ...json("POST", {}, masterToken).headers,
+          "idempotency-key": profileIdempotencyKey,
+        },
+      });
+    const updatedMembershipProfile = await updateMembershipProfile();
+    expect(updatedMembershipProfile.response.status).toBe(200);
+    expect(updatedMembershipProfile.body["data"]).toEqual(
+      expect.objectContaining({ id: membershipId, profile: "VIP" }),
+    );
+    const replayedMembershipProfile = await updateMembershipProfile();
+    expect(replayedMembershipProfile.response.status).toBe(200);
+    expect(replayedMembershipProfile.body["data"]).toEqual(
+      expect.objectContaining({ id: membershipId, profile: "VIP" }),
+    );
     const membershipExport = await request(
       "/api/pos/memberships/export",
       json(

@@ -46,6 +46,7 @@ import {
   SelectValue,
   toast,
 } from "@cosmetics/ui";
+import type { PosMembershipSalesClosureDto } from "@cosmetics/types";
 import { formatCurrency } from "../mock-data";
 import {
   availableAgendaSeats,
@@ -81,6 +82,10 @@ interface MembershipsViewProps {
     agendaSlotId: string,
   ) => Promise<boolean>;
   onOpenTicket: (ticketId: string) => void;
+  onEnsureMonthlyClosure?: (
+    month: string,
+    branches: string[],
+  ) => Promise<PosMembershipSalesClosureDto | null>;
   requirePersonalAuthorization?: boolean;
   onAuthorizePersonalAccess?: (pin: string) => Promise<boolean>;
   onClosePersonalAccess?: () => void;
@@ -123,7 +128,6 @@ interface MembershipSalesSummary {
   sales: number;
   revenue: number;
 }
-
 const monthKeyFromDate = (date: Date) =>
   `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
 
@@ -176,6 +180,7 @@ export function MembershipsView({
   onConsumeSession,
   onScheduleNextAppointment,
   onOpenTicket,
+  onEnsureMonthlyClosure,
   requirePersonalAuthorization = false,
   onAuthorizePersonalAccess,
   onClosePersonalAccess,
@@ -203,6 +208,10 @@ export function MembershipsView({
   const [analysisYear, setAnalysisYear] = useState(
     String(lastClosedMonth.getFullYear()),
   );
+  const [monthlyClosure, setMonthlyClosure] = useState<{
+    scope: string;
+    value: PosMembershipSalesClosureDto;
+  } | null>(null);
 
   const viewerSeller = sellers.find(
     (seller) => seller.id === viewer.id && seller.active,
@@ -268,6 +277,37 @@ export function MembershipsView({
       viewer.isMaster,
     ],
   );
+  const closureBranches = branchFilter === "ALL" ? branches : [branchFilter];
+  const closureScope = `${lastClosedMonthKey}:${closureBranches.join("|")}`;
+
+  useEffect(() => {
+    if (
+      !viewer.isMaster ||
+      !hasMembershipAccess ||
+      !onEnsureMonthlyClosure ||
+      closureBranches.length === 0
+    ) {
+      setMonthlyClosure(null);
+      return;
+    }
+    let active = true;
+    void onEnsureMonthlyClosure(lastClosedMonthKey, closureBranches).then(
+      (closure) => {
+        if (!active) return;
+        setMonthlyClosure(
+          closure ? { scope: closureScope, value: closure } : null,
+        );
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [
+    closureScope,
+    hasMembershipAccess,
+    onEnsureMonthlyClosure,
+    viewer.isMaster,
+  ]);
   const sellerHistoryMemberships = useMemo(
     () =>
       viewer.isMaster
@@ -575,7 +615,7 @@ export function MembershipsView({
   const knownSellerNames = Array.from(
     new Set(reportableMemberships.map((membership) => membership.originalSellerName)),
   );
-  const closedMonthPodium = knownSellerNames
+  const computedClosedMonthPodium = knownSellerNames
     .map(
       (name) =>
         closedMonthSellerSales.find((seller) => seller.name === name) ?? {
@@ -589,6 +629,15 @@ export function MembershipsView({
         right.sales - left.sales || right.revenue - left.revenue,
     )
     .slice(0, 3);
+  const authoritativeClosure =
+    monthlyClosure?.scope === closureScope ? monthlyClosure.value : null;
+  const closedMonthPodium = authoritativeClosure
+    ? authoritativeClosure.rankings.slice(0, 3).map((ranking) => ({
+        name: ranking.sellerName,
+        sales: ranking.quantity,
+        revenue: Number(ranking.amount),
+      }))
+    : computedClosedMonthPodium;
 
   const openMembership = (membership: ClientMembership) => {
     setSelectedId(membership.id);

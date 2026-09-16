@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useCallback,
   useMemo,
   useRef,
   useState,
@@ -93,6 +94,7 @@ import type {
   PosExpenseTypeDto,
   PosInventoryLocationDto,
   PosClientMembershipDto,
+  PosMembershipSalesClosureDto,
   PosNotificationDto,
   PosOperationalSummaryDto,
   PosOfflineBootstrapDto,
@@ -13237,6 +13239,52 @@ function App() {
     toast.success("Perfilamiento de la clienta actualizado.");
   };
 
+  const ensureMembershipMonthlyClosure = useCallback(
+    async (
+      month: string,
+      branchNames: string[],
+    ): Promise<PosMembershipSalesClosureDto | null> => {
+      if (
+        !posApiEnabled ||
+        operatingOffline ||
+        !isOnline ||
+        !sessionUser?.isMaster ||
+        !membershipAuthorizationToken
+      )
+        return null;
+      const branchIds = branchNames.map(
+        (name) => apiBranches.find((branch) => branch.name === name)?.id,
+      );
+      if (branchIds.some((id) => !id)) {
+        toast.error(
+          "El cierre de membresías incluye una sucursal no autorizada.",
+        );
+        return null;
+      }
+      try {
+        return await posApi.createMembershipClosure({
+          month,
+          branchIds: branchIds as string[],
+          personalAuthorizationToken: membershipAuthorizationToken,
+        });
+      } catch (error) {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "No se pudo recuperar el cierre mensual de membresías.",
+        );
+        return null;
+      }
+    },
+    [
+      apiBranches,
+      isOnline,
+      membershipAuthorizationToken,
+      operatingOffline,
+      sessionUser?.isMaster,
+    ],
+  );
+
   const consumeMembershipSession = async (
     membershipId: string,
     appointmentId: string,
@@ -18901,7 +18949,10 @@ function App() {
             onOpenTicket={openMembershipTicket}
             requirePersonalAuthorization={posApiEnabled}
             {...(posApiEnabled
-              ? { onAuthorizePersonalAccess: authorizeMembershipAccess }
+              ? {
+                  onAuthorizePersonalAccess: authorizeMembershipAccess,
+                  onEnsureMonthlyClosure: ensureMembershipMonthlyClosure,
+                }
               : {})}
             onClosePersonalAccess={() => {
               setMembershipAuthorizationToken(null);
