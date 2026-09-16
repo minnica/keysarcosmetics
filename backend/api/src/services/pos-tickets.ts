@@ -940,9 +940,21 @@ interface AppliedTicketRevisionSnapshot {
     effectivePaymentOperationIds: string[];
     itemKinds: Record<string, string>;
     unitCosts: Record<string, string>;
+    owedProducts?: AppliedOwedProductSnapshot[];
   };
   differences: PosTicketRevisionDifferenceDto[];
   effects: Record<string, unknown>;
+}
+
+interface AppliedOwedProductSnapshot {
+  id: string;
+  ticketLineId: string;
+  itemId: string;
+  quantity: string;
+  deliveredQuantity: string;
+  inventoryCommitted: boolean;
+  status: "PENDING" | "DELIVERED" | "CANCELED";
+  deliveryIds: string[];
 }
 
 function appliedTicketRevisionSnapshot(
@@ -2134,11 +2146,6 @@ export async function appendTicketRevision(
   const previousApplied = appliedTicketRevisionSnapshot(
     ticket.events[0]?.snapshot,
   );
-  if (ticket.owedProducts.length > 0)
-    throw new PosTicketError(
-      "La revisión de tickets con adeudos o entregas requiere el motor compensatorio pendiente",
-      409,
-    );
   if (ticket.clientMemberships.length > 0)
     throw new PosTicketError(
       "La revisión de tickets con membresías requiere el motor compensatorio de membresías pendiente",
@@ -2293,6 +2300,74 @@ export async function appendTicketRevision(
       fromCents(line.item.unitCostCents),
     ]),
   );
+  const currentOwedProducts: AppliedOwedProductSnapshot[] =
+    ticket.owedProducts.map((owed) => ({
+      id: owed.id,
+      ticketLineId: owed.ticketLineId,
+      itemId: owed.itemId,
+      quantity: owed.quantity.toFixed(2),
+      deliveredQuantity: owed.deliveredQuantity.toFixed(2),
+      inventoryCommitted: owed.inventoryCommitted,
+      status: owed.status,
+      deliveryIds: owed.deliveryLines
+        .map((line) => line.deliveryId)
+        .sort((left, right) => left.localeCompare(right)),
+    }));
+  const nextOwedProducts = currentOwedProducts.map((owed) => ({ ...owed }));
+  const owedChanges: Array<{
+    id: string;
+    before: AppliedOwedProductSnapshot;
+    after: AppliedOwedProductSnapshot;
+  }> = [];
+  for (const currentOwed of currentOwedProducts) {
+    const duplicateOwed = currentOwedProducts.filter(
+      (candidate) => candidate.itemId === currentOwed.itemId,
+    );
+    const currentMatchingLines = current.lines.filter(
+      (line) => line.itemId === currentOwed.itemId,
+    );
+    const nextMatchingLines = nextLines.filter(
+      (line) => line.itemId === currentOwed.itemId,
+    );
+    if (
+      duplicateOwed.length !== 1 ||
+      currentMatchingLines.length > 1 ||
+      (currentMatchingLines.length === 0 &&
+        !new Prisma.Decimal(currentOwed.quantity).isZero()) ||
+      nextMatchingLines.length > 1
+    )
+      throw new PosTicketError(
+        "La revisión contiene adeudos duplicados que requieren conciliación manual",
+        409,
+      );
+    const desiredQuantity = nextMatchingLines[0]
+      ? new Prisma.Decimal(nextMatchingLines[0].quantity)
+      : new Prisma.Decimal(0);
+    const deliveredQuantity = new Prisma.Decimal(currentOwed.deliveredQuantity);
+    if (desiredQuantity.lessThan(deliveredQuantity))
+      throw new PosTicketError(
+        "La revisión no puede reducir una cantidad que ya fue entregada",
+        409,
+      );
+    const nextOwed = nextOwedProducts.find(
+      (candidate) => candidate.id === currentOwed.id,
+    )!;
+    nextOwed.quantity = desiredQuantity.toFixed(2);
+    nextOwed.status = desiredQuantity.isZero()
+      ? "CANCELED"
+      : desiredQuantity.equals(deliveredQuantity)
+        ? "DELIVERED"
+        : "PENDING";
+    if (
+      nextOwed.quantity !== currentOwed.quantity ||
+      nextOwed.status !== currentOwed.status
+    )
+      owedChanges.push({
+        id: currentOwed.id,
+        before: currentOwed,
+        after: nextOwed,
+      });
+  }
   const currentItemKinds =
     previousApplied?.after.itemKinds ??
     Object.fromEntries(
@@ -2439,9 +2514,10 @@ export async function appendTicketRevision(
     });
   }
 
-  const quantitiesByItem = (
+  const physicalQuantitiesByItem = (
     lines: PosTicketDto["lines"],
     kinds: Record<string, string>,
+    owedProducts: AppliedOwedProductSnapshot[],
   ) => {
     const values = new Map<string, Prisma.Decimal>();
     for (const line of lines) {
@@ -2451,10 +2527,28 @@ export async function appendTicketRevision(
         (values.get(line.itemId) ?? new Prisma.Decimal(0)).plus(line.quantity),
       );
     }
+    for (const owed of owedProducts) {
+      if (owed.inventoryCommitted) continue;
+      const pending = new Prisma.Decimal(owed.quantity).minus(
+        owed.deliveredQuantity,
+      );
+      values.set(
+        owed.itemId,
+        (values.get(owed.itemId) ?? new Prisma.Decimal(0)).minus(pending),
+      );
+    }
     return values;
   };
-  const previousQuantities = quantitiesByItem(current.lines, currentItemKinds);
-  const nextQuantities = quantitiesByItem(nextLines, nextItemKinds);
+  const previousQuantities = physicalQuantitiesByItem(
+    current.lines,
+    currentItemKinds,
+    currentOwedProducts,
+  );
+  const nextQuantities = physicalQuantitiesByItem(
+    nextLines,
+    nextItemKinds,
+    nextOwedProducts,
+  );
   const changedItemIds = [
     ...new Set([...previousQuantities.keys(), ...nextQuantities.keys()]),
   ].filter(
@@ -2505,6 +2599,16 @@ export async function appendTicketRevision(
     inventoryMovementId = movement.id;
   }
 
+  for (const change of owedChanges) {
+    await tx.posOwedProduct.update({
+      where: { id: change.id },
+      data: {
+        quantity: new Prisma.Decimal(change.after.quantity),
+        status: change.after.status,
+      },
+    });
+  }
+
   const nextVersion = ticket.version + 1;
   const beforeSnapshot = {
     customerName: current.customerName ?? "",
@@ -2524,6 +2628,7 @@ export async function appendTicketRevision(
     effectivePaymentOperationIds: [...currentOperationIds],
     itemKinds: currentItemKinds,
     unitCosts: currentUnitCosts,
+    owedProducts: currentOwedProducts,
   };
   const afterSnapshot: AppliedTicketRevisionSnapshot["after"] = {
     customerName: input.revision.clientName,
@@ -2545,6 +2650,7 @@ export async function appendTicketRevision(
       : [],
     itemKinds: nextItemKinds,
     unitCosts: nextUnitCosts,
+    owedProducts: nextOwedProducts,
   };
   const differences: PosTicketRevisionDifferenceDto[] = [];
   const addDifference = (
@@ -2572,6 +2678,7 @@ export async function appendTicketRevision(
     comparableLines(current.lines),
     comparableLines(nextLines),
   );
+  addDifference("OWED_PRODUCTS", currentOwedProducts, nextOwedProducts);
   addDifference(
     "TOTALS",
     {
@@ -2614,6 +2721,17 @@ export async function appendTicketRevision(
           compensationOperationId,
           revisionOperationId,
           inventoryMovementId,
+          owedProductChanges: owedChanges.map((change) => ({
+            id: change.id,
+            before: {
+              quantity: change.before.quantity,
+              status: change.before.status,
+            },
+            after: {
+              quantity: change.after.quantity,
+              status: change.after.status,
+            },
+          })),
         },
       } as unknown as Prisma.InputJsonValue,
       actorCredentialId: context.credentialId,

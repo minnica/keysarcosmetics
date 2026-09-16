@@ -1192,12 +1192,12 @@ integrationDescribe("seguridad y terminales POS", () => {
     const revisionAuthorizationToken = (
       revisionAuthorization.body["data"] as { authorizationToken: string }
     ).authorizationToken;
-    const blockedOwedRevision = await request(
+    const rejectedDeliveredReduction = await request(
       `/api/pos/tickets/${owedTicket.id}/revisions`,
       mutationJson(
         "POST",
         {
-          reason: "No materializar adeudo sin motor compensatorio",
+          reason: "No reducir una entrega ya materializada",
           authorizationToken: revisionAuthorizationToken,
           revision: {
             clientName: "Clienta Checkout RV5",
@@ -1206,24 +1206,203 @@ integrationDescribe("seguridad y terminales POS", () => {
             products: [
               {
                 itemId: owedItemId,
-                quantity: "3.00",
+                quantity: "2.00",
                 unitPrice: "100.00",
               },
             ],
             discountAmount: "0.00",
             paymentStatus: "PAID",
-            amountPaid: "300.00",
-            payments: [{ methodId: cash.id, amount: "300.00" }],
+            amountPaid: "200.00",
+            payments: [{ methodId: cash.id, amount: "200.00" }],
           },
         },
         masterToken,
       ),
     );
-    expect(blockedOwedRevision.response.status).toBe(409);
+    expect(rejectedDeliveredReduction.response.status).toBe(409);
+    const owedRevisionKey = randomUUID();
+    const owedRevisionPayload = {
+      reason: "Ampliar adeudo conservando entregas RV5-P1",
+      authorizationToken: revisionAuthorizationToken,
+      revision: {
+        clientName: "Clienta Checkout RV5",
+        clientPhone: "5512345678",
+        sellerIds: [employeeId],
+        products: [
+          {
+            itemId: owedItemId,
+            quantity: "4.00",
+            unitPrice: "100.00",
+          },
+        ],
+        discountAmount: "0.00",
+        paymentStatus: "PAID" as const,
+        amountPaid: "400.00",
+        payments: [{ methodId: cash.id, amount: "400.00" }],
+      },
+    };
+    const postOwedRevision = () =>
+      request(`/api/pos/tickets/${owedTicket.id}/revisions`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${masterToken}`,
+          "idempotency-key": owedRevisionKey,
+        },
+        body: JSON.stringify(owedRevisionPayload),
+      });
+    const appliedOwedRevision = await postOwedRevision();
+    expect(appliedOwedRevision.response.status).toBe(201);
+    expect(appliedOwedRevision.body["data"]).toEqual(
+      expect.objectContaining({
+        version: 2,
+        differences: expect.arrayContaining([
+          expect.objectContaining({ field: "OWED_PRODUCTS" }),
+        ]),
+      }),
+    );
+    const replayedOwedRevision = await postOwedRevision();
+    expect(replayedOwedRevision.response.status).toBe(201);
+    expect(replayedOwedRevision.body["data"]).toEqual(
+      appliedOwedRevision.body["data"],
+    );
+    const owedAfterRevision = await request(
+      `/api/pos/tickets/${owedTicket.id}`,
+      { headers: { authorization: `Bearer ${masterToken}` } },
+    );
+    expect(owedAfterRevision.response.status).toBe(200);
+    const owedAfterRevisionData = owedAfterRevision.body["data"] as {
+      lines: Array<{ itemId: string; quantity: string }>;
+      owedProducts: Array<{
+        quantity: string;
+        deliveredQuantity: string;
+        pendingQuantity: string;
+        status: string;
+        deliveries: Array<{ id: string; quantity: string }>;
+      }>;
+    };
+    expect(owedAfterRevisionData.lines).toEqual([
+      expect.objectContaining({ itemId: owedItemId, quantity: "4.00" }),
+    ]);
+    expect(owedAfterRevisionData.owedProducts).toEqual([
+      expect.objectContaining({
+        quantity: "4.00",
+        deliveredQuantity: "3.00",
+        pendingQuantity: "1.00",
+        status: "PENDING",
+        deliveries: deliveredOwed.deliveries,
+      }),
+    ]);
+    const [
+      owedRevisionEvents,
+      owedRevisionOperations,
+      owedRevisionBalance,
+      owedProjectionSum,
+    ] = await Promise.all([
+      prisma.posTicketEvent.findMany({
+        where: { ticketId: owedTicket.id, type: "REVISION" },
+      }),
+      prisma.posPaymentOperation.findMany({
+        where: { ticketId: owedTicket.id },
+        orderBy: { creadoEn: "asc" },
+      }),
+      prisma.inventoryBalance.findUniqueOrThrow({
+        where: {
+          locationId_itemId: {
+            locationId: branchLocation.id,
+            itemId: owedItemId,
+          },
+        },
+      }),
+      prisma.posLegacySaleProjection.aggregate({
+        where: { operation: { ticketId: owedTicket.id } },
+        _sum: { amount: true },
+      }),
+    ]);
+    expect(owedRevisionEvents).toHaveLength(1);
+    expect(owedRevisionEvents[0]?.snapshot).toEqual(
+      expect.objectContaining({
+        effects: expect.objectContaining({
+          inventoryMovementId: null,
+          owedProductChanges: [
+            expect.objectContaining({
+              id: owedProductId,
+              before: { quantity: "3.00", status: "DELIVERED" },
+              after: { quantity: "4.00", status: "PENDING" },
+            }),
+          ],
+        }),
+      }),
+    );
+    expect(owedRevisionOperations.map((operation) => operation.kind)).toEqual([
+      "SALE",
+      "REFUND",
+      "REVISION",
+    ]);
+    expect(
+      owedRevisionOperations.map((operation) => operation.amount.toFixed(2)),
+    ).toEqual(["300.00", "300.00", "400.00"]);
+    expect(owedRevisionBalance.availableQuantity.toFixed(2)).toBe("0.00");
+    expect(owedProjectionSum._sum.amount?.toFixed(2)).toBe("400.00");
+    await prisma.inventoryBalance.update({
+      where: {
+        locationId_itemId: {
+          locationId: branchLocation.id,
+          itemId: owedItemId,
+        },
+      },
+      data: { availableQuantity: { increment: 1 } },
+    });
+    const deliveredAfterRevision = await postDelivery("1.00", randomUUID());
+    expect(deliveredAfterRevision.response.status).toBe(201);
+    const owedAfterFinalDelivery = await request(
+      `/api/pos/tickets/${owedTicket.id}`,
+      { headers: { authorization: `Bearer ${masterToken}` } },
+    );
+    expect(owedAfterFinalDelivery.response.status).toBe(200);
+    expect(
+      (
+        owedAfterFinalDelivery.body["data"] as {
+          owedProducts: Array<{
+            quantity: string;
+            deliveredQuantity: string;
+            pendingQuantity: string;
+            status: string;
+            deliveries: Array<{ quantity: string }>;
+          }>;
+        }
+      ).owedProducts[0],
+    ).toEqual(
+      expect.objectContaining({
+        quantity: "4.00",
+        deliveredQuantity: "4.00",
+        pendingQuantity: "0.00",
+        status: "DELIVERED",
+        deliveries: [
+          expect.objectContaining({ quantity: "1.00" }),
+          expect.objectContaining({ quantity: "2.00" }),
+          expect.objectContaining({ quantity: "1.00" }),
+        ],
+      }),
+    );
+
+    const retailRevisionAuthorization = await request(
+      "/api/pos/authorizations",
+      json(
+        "POST",
+        { pin: masterPin, purpose: "RECEIPT_HISTORY_ADMIN" },
+        masterToken,
+      ),
+    );
+    const retailRevisionAuthorizationToken = (
+      retailRevisionAuthorization.body["data"] as {
+        authorizationToken: string;
+      }
+    ).authorizationToken;
     const revisionKey = randomUUID();
     const revisionPayload = {
       reason: "Ajuste de cantidad y precio RV5-P1",
-      authorizationToken: revisionAuthorizationToken,
+      authorizationToken: retailRevisionAuthorizationToken,
       revision: {
         clientName: "Clienta Checkout RV5 Corregida",
         clientPhone: "5512345678",

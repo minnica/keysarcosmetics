@@ -1409,7 +1409,13 @@ export interface PosTicketRevisionRequestDto {
 }
 
 export interface PosTicketRevisionDifferenceDto {
-  field: "CUSTOMER" | "SELLERS" | "LINES" | "TOTALS" | "PAYMENTS";
+  field:
+    | "CUSTOMER"
+    | "SELLERS"
+    | "LINES"
+    | "OWED_PRODUCTS"
+    | "TOTALS"
+    | "PAYMENTS";
   before: unknown;
   after: unknown;
 }
