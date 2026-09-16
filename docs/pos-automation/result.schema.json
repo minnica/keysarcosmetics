@@ -1,0 +1,38 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "taskId",
+    "outcome",
+    "summary",
+    "checks",
+    "remaining",
+    "nextStep"
+  ],
+  "properties": {
+    "taskId": { "type": "string" },
+    "outcome": {
+      "type": "string",
+      "enum": ["completed", "partial", "blocked"]
+    },
+    "summary": { "type": "string" },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["command", "result", "evidence"],
+        "properties": {
+          "command": { "type": "string" },
+          "result": {
+            "type": "string",
+            "enum": ["passed", "failed", "not_run"]
+          },
+          "evidence": { "type": "string" }
+        }
+      }
+    },
+    "remaining": { "type": "array", "items": { "type": "string" } },
+    "nextStep": { "type": "string" }
+  }
+}

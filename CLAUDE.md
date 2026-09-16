@@ -2,6 +2,13 @@
 
 > Fuente principal de contexto del proyecto. Leer antes de hacer cambios.
 
+## Ejecución autónoma del plan POS (2026-09-16)
+
+- Guía: `EJECUTOR_PLAN_POS.md`. Estado/cola: `docs/pos-automation/`; relevo humano: `docs/POS_MVP_HANDOFF.md`. Consultar primero el plan vigente y esos archivos, no depender del historial de chat.
+- `node scripts/run-pos-plan.mjs --dry-run` muestra la siguiente tarea; `node --test scripts/run-pos-plan.test.mjs` prueba el ejecutor con sesiones simuladas y remotos Git temporales; `node scripts/run-pos-plan.mjs --steps 1 --effort high` ejecuta un checkpoint real.
+- Cada checkpoint abre una sesión nueva, actualiza plan/handoff/informe, verifica cambios y hace commit/push exclusivamente a `feature/pos-frontend-clean`. Requiere checkout limpio y sincronizado. `--recover-push` recupera una publicación fallida sin repetir la implementación.
+- El PO está aplazado: implementar contra el árbol aprobado `12fb8045cc264b565cb6e764d95ad7b2447fbfa1`, reutilizar backend y registrar decisiones humanas pendientes sin inventarlas. RV8/offline sigue excluida del MVP; no desplegar ni mutar BD compartidas. Un bloqueo externo no detiene tareas técnicas independientes.
+
 ---
 
 ## Descripción del proyecto

@@ -6,6 +6,7 @@
 > Referencia visual única: `feature/pos` en `12fb8045cc264b565cb6e764d95ad7b2447fbfa1`.
 > Objetivo rector: recuperar y conservar íntegramente la presentación e interacción aprobadas por el PO en ese árbol; hacer funcionar sus controles reutilizando al máximo el backend existente y refactorizando sólo lo necesario para adaptarlo. Nunca modificar el visual para acomodarlo al backend.
 > Alcance de entrega inmediata: MVP online compartible con el PO. Conserva el visual aprobado y prioriza sus recorridos demostrables; la operación offline, el endurecimiento exhaustivo y los pilotos de producción quedan en backlog explícito.
+> Prioridad actual (2026-09-16): avanzar el trabajo técnico independiente sin intervención del PO. Su revisión/aceptación se pospone; la referencia aprobada basta para dirigir la implementación. Ejecución y relevo: sección 6.3 y `EJECUTOR_PLAN_POS.md`.
 
 ## 1. Decisión vigente y precedencia
 
@@ -109,7 +110,7 @@ La repetición de toda la matriz visual en cada fase se elimina del procedimient
 
 ### 4.2 Prioridades y límites del refinamiento
 
-1. **Prioridad inmediata — visual aprobado funcionando online:** preparar el entorno del PO, comprobar la misma interfaz en modo API, corregir diferencias de controles/interacción y obtener aceptación contra `12fb804`. Una captura en mock no prueba el comportamiento en API.
+1. **Prioridad inmediata — visual aprobado funcionando online, sin esperar al PO:** corregir diferencias de controles/interacción y comprobar la misma interfaz en modo API contra `12fb804`. Preparar localmente un entorno reproducible; posponer el recorrido y aceptación humanos. Una captura en mock no prueba el comportamiento en API.
 2. **Completar operaciones aplazadas:** cerrar los pendientes funcionales de RV5–RV7 que correspondan a acciones existentes en la referencia. Cada nueva necesidad sin control aprobado se registra como decisión de Producto y queda fuera de la restauración hasta definir su alcance.
 3. **Endurecimiento operativo:** RV8, escala, hardware, migraciones sobre datos existentes, limpieza y piloto. Se conservan como tareas explícitas; este refinamiento no vuelve a exigir validación exhaustiva offline o visual en cada fase del MVP.
 
@@ -287,12 +288,13 @@ RV8-P6 incluye construir el instalable Windows desde un SHA identificado, instal
 
 Secuencia histórica del MVP: `RV0 → RV1 → RV2 → RV3 → RV4 → RV5 → RV6 → RV7 → RV9 → RV10 técnica`. No repetir fases cerradas sin una regresión identificada.
 
-Orden vigente para retomar:
+Orden vigente para retomar (sustituye la prioridad anterior de pedir primero la revisión del PO):
 
-1. RV10-P1–P4: entorno funcional online en Windows; en paralelo al trabajo de preparación, resolver el copy RV3-B01, las decisiones B02/B03 y los prompts de gastos RV7-P1.
-2. RV10-P5–P8: recorrido, correcciones dirigidas, entrega reproducible y aceptación de fidelidad del PO.
-3. Priorizar RV5-P1/P2 y RV6-P1/P2 para completar las operaciones aplazadas que el alcance del piloto necesite. Una función aplazada que resulte bloqueante durante la revisión se atiende antes de aceptar ese recorrido.
-4. Ejecutar RV9-P1–P3 y OP01–OP03 para preparar la operación piloto; realizar OP04 y elegir la expansión según resultados. RV8 y RV7-P2 se programan de acuerdo con offline, hardware y escala requeridos. RV6-P3 sólo aplica con proveedor externo; RV9-P4 no retrasa la revisión visual salvo incompatibilidad comprobada.
+1. RV7-P1: corregir los prompts de gastos usando el flujo aprobado, sin cambiar el copy B01.
+2. RV5-P2/P1 y RV6-P1/P2: entregas, revisiones de tickets, administración representada en la referencia e incidencias del Scheduler interno. Completar lo independiente y registrar bloqueos concretos sin inventar nuevos controles.
+3. RV7-P2, RV9-P3/P4: avanzar mediciones sintéticas acotadas, migraciones desde un snapshot sintético y limpieza local demostrable; nunca intervenir datos compartidos ni retirar consumidores cuyo uso no se haya verificado.
+4. RV10-P1–P4/P7: preparar y probar localmente entorno API/BD, datos sintéticos, terminal y documentación Windows. Si falta Windows, infraestructura o intervención humana para cumplir el criterio completo, publicar preparación parcial y dejar el check abierto.
+5. Diferir RV3-B01, RV4-B02/B03, RV10-P5/P6/P8 hasta retomar al PO; RV6-P3, RV9-P1/P2 y OP01–OP06 hasta disponer de alcance/infraestructura operativos autorizados. RV8 completa continúa en backlog por la exclusión previa del MVP. No pedir nuevas aprobaciones visuales para implementar lo ya definido en `12fb804`.
 
 La retirada de una implementación puede adelantarse cuando reemplazo, consumidores y datos estén verificados. Toda corrección preserva `12fb804`; una excepción autorizada, como el texto B01, se registra por superficie sin cambiar la referencia global.
 
@@ -316,6 +318,16 @@ Estos checks pertenecen al cierre operativo de RV9/RV10 y al backlog de la secci
 - En Windows/Electron comprobar de forma dirigida navegación, fuentes, DPI, scroll, formularios, diálogos e impresión de los recorridos de la demo. La comparación por píxel usa el mismo motor/runtime del baseline; diferencias entre sistemas se investigan antes de atribuirlas al diseño.
 - La matriz completa del MVP ya pasó el 2026-09-09. Repetir una única comparación completa al consolidar un nuevo candidato que cambie presentación o componentes compartidos, o ante una regresión amplia sin resolver; no repetirla por cambios documentales ni ajustar tolerancias para ocultar diferencias.
 - Conservar manifiesto y resumen de resultados en el repositorio o artefacto durable accesible. Si una evidencia temporal ya no existe, registrarlo y recuperar sólo lo necesario para la entrega, sin afirmar una nueva validación.
+
+### 6.3 Ejecutor secuencial y contexto entre sesiones
+
+- `scripts/run-pos-plan.mjs` abre una sesión nueva de Codex por tarea/checkpoint identificado, no una sesión interminable por todo el plan. Una fase grande puede necesitar varios checkpoints; sólo se cierra el check cuando se satisface su criterio completo.
+- `docs/pos-automation/queue.json` contiene los 34 IDs: 13 habilitados para trabajo técnico y 21 diferidos (incluidos los seis de RV8). Los habilitados no prometen cierre automático de requisitos externos; su alcance local está delimitado en la cola.
+- Cada sesión lee este plan, `CLAUDE.md`, `docs/POS_MVP_HANDOFF.md`, `docs/pos-automation/state.json` y el informe anterior. Antes de terminar actualiza plan/handoff y escribe un informe durable en `docs/pos-automation/runs/`; actualiza CLAUDE cuando cambia contratos o comandos.
+- El ejecutor comprueba documentación, checks, archivos autorizados y pruebas mínimas según cambios; guarda estado y realiza commit/push a `feature/pos-frontend-clean`. Verifica el SHA remoto antes de abrir la siguiente sesión. No hace force-push ni resuelve divergencias automáticamente.
+- Estados: `completed` cierra sólo el check asignado; `partial` publica trabajo útil probado con pendientes; `blocked` publica sólo documentación del impedimento y permite continuar tareas independientes. Los bloqueos no cuentan como completados. Tres checkpoints por tarea es el límite automático predeterminado; después se requiere revisión/reintento explícito.
+- Si falla una prueba, la sesión, la cuota o la publicación, se detiene sin descartar archivos. No promete commit de código incompleto al agotarse los tokens ni mide el porcentaje restante de la cuenta. Instrucciones de arranque, parada y recuperación: `EJECUTOR_PLAN_POS.md`.
+- Preparar el ejecutor no ejecuta fases ni constituye evidencia funcional nueva del POS. La aceptación del PO y los gates operativos siguen abiertos; pruebas locales no los sustituyen.
 
 ## 7. Comandos y evidencia de validación
 
@@ -445,3 +457,11 @@ Para declarar **restauración visual y funcional aceptada**, deben quedar cerrad
 - Ajustes basados en inspección: Scheduler interno es el proveedor vigente y la certificación externa es condicionada; `window.prompt` de gastos sigue pendiente en modo API (RV7-P1/R03). Por ello el cierre técnico MVP no se equipara a fidelidad funcional universal ni a disponibilidad de un entorno del PO.
 - Validación proporcionada: conservar la evidencia previa, revisar superficies cambiadas y reservar la matriz completa para la consolidación de cambios visuales. No reincorporar pruebas offline exhaustivas al camino inmediato del MVP.
 - Alcance de este refinamiento: planificación y sincronización documental. No implementa estos checks, no provisiona accesos, no despliega ni aplica migraciones; cada check se cierra con su evidencia al ejecutarse.
+
+### RV-D10 — Trabajo técnico autónomo y revisión del PO aplazada
+
+- Fecha: 2026-09-16, por solicitud del usuario.
+- La dirección visual ya está aprobada en `12fb804`; avanzar implementaciones independientes reutilizando el backend sin pedir al PO repetir esa decisión. Posponer su revisión, feedback, aceptación y decisiones B01–B03, sin declararlas resueltas.
+- Preservar la exclusión de RV8/offline del MVP. No reincorporar certificación offline ni comparación visual exhaustiva por cada sesión. Avanzar preparación técnica local posible; no desplegar ni intervenir datos operativos.
+- Relevo durable por tarea/checkpoint, actualización documental y commit/push verificado antes de continuar. El estado versionado complementa el plan: no reemplaza sus criterios ni convierte un bloqueo en cierre.
+- Entregable de preparación: `EJECUTOR_PLAN_POS.md`, ejecutor, cola, prompt, schema, estado inicial y pruebas aisladas del flujo Git. Ningún check funcional se cierra por crear estas herramientas.

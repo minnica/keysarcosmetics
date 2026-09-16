@@ -1,0 +1,211 @@
+{
+  "branch": "feature/pos-frontend-clean",
+  "remote": "origin",
+  "reference": "12fb8045cc264b565cb6e764d95ad7b2447fbfa1",
+  "tasks": [
+    {
+      "id": "RV7-P1",
+      "mode": "automatic",
+      "dependsOn": [],
+      "scope": "Sustituir los prompts de gastos por el flujo de autorización ya aprobado, con persistencia y validación dirigida. No cambiar el copy B01."
+    },
+    {
+      "id": "RV5-P2",
+      "mode": "automatic",
+      "dependsOn": [],
+      "scope": "Completar historial de entregas desde datos canónicos en los controles existentes."
+    },
+    {
+      "id": "RV5-P1",
+      "mode": "automatic",
+      "dependsOn": [],
+      "scope": "Implementar revisiones compensatorias de tickets de forma incremental. Empezar por la transacción y proyecciones existentes; hacer checkpoints parciales si no cabe el cierre completo."
+    },
+    {
+      "id": "RV6-P1",
+      "mode": "automatic",
+      "dependsOn": [],
+      "scope": "Conectar sólo operaciones administrativas ya representadas en 12fb804. Documentar como bloqueada cualquier parte que exija una nueva decisión visual; no consultar al PO durante esta ejecución."
+    },
+    {
+      "id": "RV6-P2",
+      "mode": "automatic",
+      "dependsOn": [],
+      "scope": "Validar y corregir incidencias de Scheduler interno con PostgreSQL local desechable y pruebas dirigidas."
+    },
+    {
+      "id": "RV7-P2",
+      "mode": "automatic",
+      "dependsOn": [],
+      "scope": "Medir escala con datos sintéticos locales 1/10/20/30, registrar umbrales técnicos y resultados. No acceder a datos productivos ni inventar aceptación operativa."
+    },
+    {
+      "id": "RV8-P1",
+      "mode": "deferred",
+      "dependsOn": [],
+      "scope": "RV8 excluida previamente del MVP: conexión Data update/caché/outbox pendiente de reactivación explícita."
+    },
+    {
+      "id": "RV8-P2",
+      "mode": "deferred",
+      "dependsOn": ["RV8-P1"],
+      "scope": "RV8 excluida del MVP: flujos offline con el visual aprobado."
+    },
+    {
+      "id": "RV8-P3",
+      "mode": "deferred",
+      "dependsOn": ["RV8-P1"],
+      "scope": "RV8 excluida del MVP: dependencias y estados pendientes offline."
+    },
+    {
+      "id": "RV8-P5",
+      "mode": "deferred",
+      "dependsOn": ["RV8-P1"],
+      "scope": "RV8 excluida del MVP: compatibilidad y recuperación de caché/outbox."
+    },
+    {
+      "id": "RV8-P4",
+      "mode": "deferred",
+      "dependsOn": ["RV8-P2", "RV8-P3", "RV8-P5"],
+      "scope": "RV8 excluida del MVP: certificación de interrupciones y recuperación offline."
+    },
+    {
+      "id": "RV8-P6",
+      "mode": "deferred",
+      "dependsOn": [],
+      "scope": "RV8 excluida del MVP: instalable y certificación completa de Windows/periféricos. La preparación de demo online pertenece a RV10-P4."
+    },
+    {
+      "id": "RV9-P3",
+      "mode": "automatic",
+      "dependsOn": [],
+      "scope": "Ensayar migración desde snapshot sintético anterior en BD local aislada. No copiar ni escribir datos de ambientes compartidos."
+    },
+    {
+      "id": "RV9-P4",
+      "mode": "automatic",
+      "dependsOn": [],
+      "scope": "Auditar R01–R17, hacer limpieza local de reemplazos demostrados y conservar dependencias. Dejar condicionados retiros que requieran inventario real de despliegues."
+    },
+    {
+      "id": "RV10-P1",
+      "mode": "automatic",
+      "dependsOn": [],
+      "scope": "Preparar y probar API/BD locales reproducibles y sus comandos. No desplegar ni exponer puertos a Internet. Si falta acceso desde Windows del PO, registrar preparación parcial y bloqueo externo."
+    },
+    {
+      "id": "RV10-P2",
+      "mode": "automatic",
+      "dependsOn": [],
+      "scope": "Crear provisionamiento de datos sintéticos opt-in con guardas que restrinjan su uso a una BD local dedicada. Probarlo en esa BD; no usar seed general ni base compartida."
+    },
+    {
+      "id": "RV10-P3",
+      "mode": "automatic",
+      "dependsOn": ["RV10-P2"],
+      "scope": "Preparar/probar provisionamiento de terminal y credenciales sintéticas locales, sin publicar secretos. La entrega/validación con el PO sigue aplazada; no cerrar ese alcance sin evidencia."
+    },
+    {
+      "id": "RV10-P4",
+      "mode": "automatic",
+      "dependsOn": [],
+      "scope": "Preparar instrucciones/configuración Windows sin secretos y probar lo posible localmente. La comprobación en el equipo Windows es externa si no está disponible."
+    },
+    {
+      "id": "RV10-P7",
+      "mode": "automatic",
+      "dependsOn": [],
+      "scope": "Actualizar guías de visual/API y evidencia durable según lo realmente disponible. Indicar bloqueos del entorno y no prometer que el PO ya puede ejecutar algo no probado."
+    },
+    {
+      "id": "RV3-B01",
+      "mode": "deferred",
+      "dependsOn": [],
+      "scope": "Decisión de copy de Producto aplazada; conservar referencia y documentar limitación."
+    },
+    {
+      "id": "RV4-B02",
+      "mode": "deferred",
+      "dependsOn": [],
+      "scope": "Decisión SaaS de Producto aplazada."
+    },
+    {
+      "id": "RV4-B03",
+      "mode": "deferred",
+      "dependsOn": [],
+      "scope": "Decisión Websites de Producto aplazada."
+    },
+    {
+      "id": "RV6-P3",
+      "mode": "deferred",
+      "dependsOn": [],
+      "scope": "Proveedor externo condicionado a configuración/credenciales y decisión operativa; usar Scheduler interno."
+    },
+    {
+      "id": "RV9-P1",
+      "mode": "deferred",
+      "dependsOn": [],
+      "scope": "Inventario real de clientes y workers desplegados requiere acceso/alcance operativo."
+    },
+    {
+      "id": "RV9-P2",
+      "mode": "deferred",
+      "dependsOn": [],
+      "scope": "Auditoría de datos reales requiere ambiente y alcance autorizados."
+    },
+    {
+      "id": "RV10-P5",
+      "mode": "deferred",
+      "dependsOn": [],
+      "scope": "Recorrido con el PO aplazado; las pruebas técnicas se realizan en los bloques automáticos."
+    },
+    {
+      "id": "RV10-P6",
+      "mode": "deferred",
+      "dependsOn": [],
+      "scope": "Feedback del PO aplazado; registrar/corregir defectos técnicos descubiertos en el bloque correspondiente."
+    },
+    {
+      "id": "RV10-P8",
+      "mode": "deferred",
+      "dependsOn": [],
+      "scope": "Aceptación humana aplazada; no emitir aprobación en nombre del PO."
+    },
+    {
+      "id": "OP01",
+      "mode": "deferred",
+      "dependsOn": [],
+      "scope": "Alcance del piloto con Operación/Producto."
+    },
+    {
+      "id": "OP02",
+      "mode": "deferred",
+      "dependsOn": [],
+      "scope": "Despliegue y diagnóstico del ambiente compartido."
+    },
+    {
+      "id": "OP03",
+      "mode": "deferred",
+      "dependsOn": [],
+      "scope": "Respaldo/PITR y rollback operativo requieren acceso al ambiente; el ensayo local pertenece a RV9-P3."
+    },
+    {
+      "id": "OP04",
+      "mode": "deferred",
+      "dependsOn": [],
+      "scope": "Piloto real y conciliación humana."
+    },
+    {
+      "id": "OP05",
+      "mode": "deferred",
+      "dependsOn": [],
+      "scope": "Expansión operativa/hardware real; escala sintética se cubre en RV7-P2."
+    },
+    {
+      "id": "OP06",
+      "mode": "deferred",
+      "dependsOn": [],
+      "scope": "Release productivo y aprobaciones operativas."
+    }
+  ]
+}

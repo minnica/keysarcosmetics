@@ -68,3 +68,6 @@ docs/artifacts/pos-visual-baseline/diff/
 vercel-deployment-evidence.json
 vercel-impact.json
 vercel-hr-pilot-result.json
+
+# Ejecutor POS: logs/respuestas/journal locales, pueden contener datos sensibles.
+.pos-runner/
