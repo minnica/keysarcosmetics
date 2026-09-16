@@ -46,6 +46,24 @@ function command(root, executable, args, options = {}) {
 function git(root, ...args) {
   return command(root, "git", args).trim();
 }
+export function isTimeoutError(error) {
+  return error?.code === "ETIMEDOUT" || /ETIMEDOUT/.test(error?.message ?? "");
+}
+export function retryTimedOut(operation, label, attempts = 3) {
+  let lastError;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      return operation();
+    } catch (error) {
+      lastError = error;
+      if (!isTimeoutError(error) || attempt === attempts) throw error;
+      console.log(
+        `[POS] ${label} agotó el tiempo local; reintento ${attempt + 1}/${attempts}.`,
+      );
+    }
+  }
+  throw lastError;
+}
 function read(root, file) {
   return readFileSync(path.join(root, file), "utf8");
 }
@@ -331,26 +349,57 @@ function ensureBranch(root, queue) {
   );
 }
 function remoteHead(root, queue) {
-  const lines = git(
-    root,
-    "ls-remote",
-    "--heads",
-    queue.remote,
-    `refs/heads/${queue.branch}`,
+  const lines = retryTimedOut(
+    () =>
+      git(
+        root,
+        "ls-remote",
+        "--heads",
+        queue.remote,
+        `refs/heads/${queue.branch}`,
+      ),
+    "La consulta del SHA remoto",
   );
   assert(lines, "La rama remota no existe.");
   return lines.split(/\s+/)[0];
 }
-function publish(root, queue, sha, base) {
-  const current = remoteHead(root, queue);
+export function publish(root, queue, sha, base, operations = {}) {
+  const resolveRemoteHead = operations.remoteHead ?? remoteHead;
+  const push =
+    operations.push ??
+    (() => git(root, "push", queue.remote, `HEAD:refs/heads/${queue.branch}`));
+  const current = resolveRemoteHead(root, queue);
   assert(
     current === base || current === sha,
     "El remoto avanzó o divergió; no se hará force-push ni merge automático.",
   );
-  if (current !== sha)
-    git(root, "push", queue.remote, `HEAD:refs/heads/${queue.branch}`);
+  if (current !== sha) {
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        push();
+        break;
+      } catch (error) {
+        if (!isTimeoutError(error)) throw error;
+        const confirmed = resolveRemoteHead(root, queue);
+        if (confirmed === sha) {
+          console.log(
+            "[POS] El push agotó la espera local, pero el SHA quedó confirmado en el remoto.",
+          );
+          return;
+        }
+        assert(
+          confirmed === base,
+          "El remoto avanzó o divergió durante un push; detener para revisar.",
+        );
+        if (attempt === 3) throw error;
+        console.log(
+          `[POS] El push agotó el tiempo sin publicar; reintento ${attempt + 1}/3.`,
+        );
+      }
+    }
+  }
   assert(
-    remoteHead(root, queue) === sha,
+    resolveRemoteHead(root, queue) === sha,
     "No se pudo confirmar el SHA remoto.",
   );
 }

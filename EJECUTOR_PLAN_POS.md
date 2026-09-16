@@ -12,7 +12,7 @@ Cada iteración:
 2. Abre Codex con el alcance concreto, SHA inicial, contexto documental y tiempo máximo.
 3. Exige actualización del plan, handoff e informe durable; CLAUDE cuando cambian contratos/comandos.
 4. Verifica salida, archivos permitidos, check asignado, diff y pruebas mínimas según los archivos cambiados.
-5. Guarda estado, hace commit y push a `origin/feature/pos-frontend-clean` y confirma el SHA remoto.
+5. Guarda estado, hace commit y push a `origin/feature/pos-frontend-clean` y confirma el SHA remoto; los timeouts Git transitorios se reintentan de forma acotada.
 6. Sólo entonces abre la siguiente sesión, que lee el contexto ya actualizado.
 
 Una fase grande puede requerir varios checkpoints. Un avance parcial conserva el check abierto; un bloqueo queda documentado y no impide intentar otra tarea independiente. No se garantiza terminar una fase por sesión ni cerrar todas las tareas sin requisitos externos.
@@ -133,6 +133,8 @@ node scripts/run-pos-plan.mjs --recover-push
 
 Comprueba el journal y el commit esperado, publica sin force-push y verifica el SHA remoto. No repite la implementación. Después ejecutar de nuevo el comando normal. Si el remoto avanzó, resolver la divergencia mediante revisión humana; no sobrescribirlo.
 
+Las consultas del SHA remoto se reintentan hasta tres veces cuando Git devuelve `ETIMEDOUT`. Si el `push` agota la espera local, el ejecutor consulta inmediatamente la rama: continúa sin intervención cuando encuentra exactamente el SHA esperado; si todavía encuentra la base anterior, reintenta el `push` hasta tres veces; cualquier otro SHA se trata como divergencia. Así, un push ya recibido por GitHub no corta la jornada, pero un fallo real no se oculta.
+
 Si **la sesión/verificación falló antes del commit**:
 
 1. Leer `.pos-runner/journal.json`, el log correspondiente y `git status`/`git diff`. Conservar todo el trabajo.
@@ -154,4 +156,4 @@ El controlador vuelve a correr tipos/build web de POS cuando cambian POS/paquete
 
 Las guardas comprueban estructura y resultados, no demuestran por sí solas fidelidad visual ni sustituyen revisión de código. Preparar/probar este ejecutor no ejecuta los pendientes funcionales, no provisiona el entorno y no declara aceptación del PO ni disponibilidad productiva.
 
-Validación inicial de esta preparación (2026-09-16): 18/18 pruebas del ejecutor aprobadas; `git diff --check` sin errores. El primer ciclo real publicó el checkpoint parcial de RV7-P1. En el segundo ciclo, RV7-P1 pasó sus pruebas dirigidas pero una suite amplia falló en dos casos Scheduler con fechas fijas vencidas; el ejecutor preservó correctamente los archivos, aunque se detuvo porque el schema no distinguía fallas ajenas. El checkpoint fue recuperado y publicado después de repetir 10/10 casos POS en una base nueva. Desde este incidente, `failed_unrelated` exige evidencia concreta y al menos una prueba pertinente aprobada; un `failed` real continúa deteniendo el proceso. La revisión del contrato actualizado pasa 19/19 pruebas, incluida publicación simulada con una falla amplia ajena.
+Validación inicial de esta preparación (2026-09-16): 18/18 pruebas del ejecutor aprobadas; `git diff --check` sin errores. El primer ciclo real publicó el checkpoint parcial de RV7-P1. En el segundo ciclo, RV7-P1 pasó sus pruebas dirigidas pero una suite amplia falló en dos casos Scheduler con fechas fijas vencidas; el ejecutor preservó correctamente los archivos, aunque se detuvo porque el schema no distinguía fallas ajenas. El checkpoint fue recuperado y publicado después de repetir 10/10 casos POS en una base nueva. Desde este incidente, `failed_unrelated` exige evidencia concreta y al menos una prueba pertinente aprobada; un `failed` real continúa deteniendo el proceso. RV5-P2 se publicó correctamente en `69880e3`, pero la confirmación Git excedió 120 segundos y el proceso se detuvo después del commit. Se recuperó el journal al comprobar que local y remoto ya coincidían. La revisión vigente pasa 21/21 pruebas, incluidos reintentos exclusivos para timeouts y la continuación después de un timeout de push sólo cuando el remoto contiene el SHA esperado.

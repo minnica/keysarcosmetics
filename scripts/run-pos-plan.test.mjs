@@ -20,6 +20,8 @@ import {
   validateResult,
   allowedPath,
   verificationCommands,
+  publish,
+  retryTimedOut,
   PLAN,
   HANDOFF,
   CONFIG,
@@ -259,6 +261,63 @@ test("selecciona verificaciones según consumidores", () => {
   assert.equal(verificationCommands(["apps/pos/src/a.ts"]).length, 2);
   assert.equal(verificationCommands(["backend/api/src/a.ts"]).length, 4);
   assert.equal(verificationCommands(["packages/types/src/a.ts"]).length, 6);
+});
+test("reintenta únicamente operaciones que agotan su tiempo", () => {
+  let attempts = 0;
+  assert.equal(
+    retryTimedOut(() => {
+      attempts++;
+      if (attempts < 3) {
+        const error = new Error("spawnSync git ETIMEDOUT");
+        error.code = "ETIMEDOUT";
+        throw error;
+      }
+      return "confirmado";
+    }, "Git sintético"),
+    "confirmado",
+  );
+  assert.equal(attempts, 3);
+  attempts = 0;
+  assert.throws(() =>
+    retryTimedOut(() => {
+      attempts++;
+      throw new Error("rechazo real");
+    }, "Git sintético"),
+  );
+  assert.equal(attempts, 1);
+});
+test("un push con timeout continúa sólo al confirmar el SHA remoto", () => {
+  const base = "base",
+    sha = "publicado";
+  let remoteReads = 0,
+    pushes = 0;
+  publish("/fixture", queue([task]), sha, base, {
+    remoteHead: () => (++remoteReads === 1 ? base : sha),
+    push: () => {
+      pushes++;
+      const error = new Error("spawnSync git ETIMEDOUT");
+      error.code = "ETIMEDOUT";
+      throw error;
+    },
+  });
+  assert.equal(pushes, 1);
+  assert.equal(remoteReads, 2);
+
+  pushes = 0;
+  assert.throws(
+    () =>
+      publish("/fixture", queue([task]), sha, base, {
+        remoteHead: () => base,
+        push: () => {
+          pushes++;
+          const error = new Error("spawnSync git ETIMEDOUT");
+          error.code = "ETIMEDOUT";
+          throw error;
+        },
+      }),
+    /ETIMEDOUT/,
+  );
+  assert.equal(pushes, 3);
 });
 test("dry-run no crea runtime ni cambia Git", async (t) => {
   const { root, options } = fixture(t);
