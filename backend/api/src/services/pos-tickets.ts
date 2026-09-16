@@ -946,6 +946,7 @@ interface AppliedTicketRevisionSnapshot {
     unitCosts: Record<string, string>;
     owedProducts?: AppliedOwedProductSnapshot[];
     memberships?: PosTicketMembershipRevisionSnapshot[];
+    appointments?: PreservedTicketAppointmentSnapshot[];
   };
   differences: PosTicketRevisionDifferenceDto[];
   effects: Record<string, unknown>;
@@ -1040,6 +1041,260 @@ export const ticketInclude = {
 type TicketPayload = Prisma.PosTicketGetPayload<{
   include: typeof ticketInclude;
 }>;
+
+const appointmentPreservationInclude = {
+  agendaReservation: {
+    select: {
+      id: true,
+      ticketId: true,
+      status: true,
+      mode: true,
+      seats: true,
+      resourceId: true,
+      primarySlotId: true,
+    },
+  },
+  schedulerAppointment: {
+    include: {
+      branchProfile: { select: { branchId: true } },
+      services: {
+        include: {
+          serviceProfile: { select: { catalogItemId: true } },
+          participants: {
+            select: { professionalProfileId: true, role: true },
+            orderBy: { id: "asc" as const },
+          },
+          resources: {
+            select: {
+              resourceId: true,
+              units: true,
+              exclusiveSnapshot: true,
+            },
+            orderBy: { id: "asc" as const },
+          },
+          membershipBenefit: {
+            select: { membershipId: true, status: true },
+          },
+        },
+        orderBy: { sequence: "asc" as const },
+      },
+    },
+  },
+} satisfies Prisma.PosAppointmentInclude;
+
+interface PreservedTicketAppointmentSnapshot {
+  id: string;
+  kind: "COURTESY" | "NEXT_SESSION" | "NO_APPOINTMENT";
+  status: "PENDING" | "SCHEDULED" | "CANCELED" | "COMPLETED" | "NO_SHOW";
+  customerId: string;
+  serviceItemId: string | null;
+  serviceName: string;
+  branchId: string;
+  sellerId: string | null;
+  scheduledAt: string | null;
+  agendaSlotId: string | null;
+  agendaReservationId: string | null;
+  externalReservationId: string | null;
+  externalAppointmentId: string | null;
+  agendaVersion: number | null;
+  capacitySnapshot: number | null;
+  startsAtSnapshot: string | null;
+  endsAtSnapshot: string | null;
+  membershipId: string | null;
+  schedulerAppointment: {
+    id: string;
+    status: string;
+    version: number;
+    branchId: string;
+    customerId: string;
+    startsAt: string;
+    endsAt: string;
+    serviceItemId: string;
+    serviceName: string;
+    capacityUnits: number;
+    occupiesFrom: string;
+    occupiesUntil: string;
+    professionalAssignments: Array<{ id: string; role: string }>;
+    resourceAssignments: Array<{
+      id: string;
+      units: number;
+      exclusive: boolean;
+    }>;
+    membershipBenefit: { membershipId: string; status: string } | null;
+  } | null;
+}
+
+const schedulerStatusMatchesPos = (
+  posStatus: PreservedTicketAppointmentSnapshot["status"],
+  schedulerStatus: string,
+) => {
+  if (posStatus === "SCHEDULED")
+    return ["PENDING", "RESERVED", "CONFIRMED", "ARRIVED", "WAITING"].includes(
+      schedulerStatus,
+    );
+  if (posStatus === "COMPLETED") return schedulerStatus === "ATTENDED";
+  if (posStatus === "NO_SHOW") return schedulerStatus === "NO_SHOW";
+  if (posStatus === "CANCELED") return schedulerStatus === "CANCELED";
+  return false;
+};
+
+async function preserveInternalTicketAppointments(
+  tx: Transaction,
+  ticket: TicketPayload,
+): Promise<PreservedTicketAppointmentSnapshot[]> {
+  if (ticket.appointments.length === 0) return [];
+  const schedulerIds = [
+    ...new Set(
+      ticket.appointments.flatMap((appointment) =>
+        appointment.schedulerAppointmentId
+          ? [appointment.schedulerAppointmentId]
+          : [],
+      ),
+    ),
+  ].sort((left, right) => left.localeCompare(right));
+  for (const schedulerId of schedulerIds) {
+    await tx.$queryRaw(
+      Prisma.sql`SELECT "id" FROM "SchedulerAppointment" WHERE "id" = ${schedulerId}::uuid FOR UPDATE`,
+    );
+  }
+  for (const appointment of [...ticket.appointments].sort((left, right) =>
+    left.id.localeCompare(right.id),
+  )) {
+    await tx.$queryRaw(
+      Prisma.sql`SELECT "id" FROM "PosAppointment" WHERE "id" = ${appointment.id}::uuid FOR UPDATE`,
+    );
+  }
+  const lockedAppointments = await tx.posAppointment.findMany({
+    where: { ticketId: ticket.id },
+    include: appointmentPreservationInclude,
+    orderBy: { creadoEn: "asc" },
+  });
+  if (lockedAppointments.length !== ticket.appointments.length)
+    throw new PosTicketError(
+      "Las citas cambiaron durante la revisión del ticket",
+      409,
+    );
+
+  return lockedAppointments.map((appointment) => {
+    if (appointment.customerId !== ticket.customerId)
+      throw new PosTicketError(
+        "La cita no conserva la identidad canónica de la clienta",
+        409,
+      );
+    if (appointment.kind === "NO_APPOINTMENT") {
+      if (appointment.schedulerAppointmentId)
+        throw new PosTicketError(
+          "El registro sin cita contiene una reservación inconsistente",
+          409,
+        );
+      return {
+        id: appointment.id,
+        kind: appointment.kind,
+        status: appointment.status,
+        customerId: appointment.customerId,
+        serviceItemId: appointment.serviceItemId,
+        serviceName: appointment.serviceNameSnapshot,
+        branchId: appointment.branchId,
+        sellerId: appointment.sellerId,
+        scheduledAt: appointment.scheduledAt?.toISOString() ?? null,
+        agendaSlotId: appointment.agendaSlotId,
+        agendaReservationId: appointment.agendaReservationId,
+        externalReservationId: appointment.externalReservationId,
+        externalAppointmentId: appointment.externalAppointmentId,
+        agendaVersion: appointment.agendaVersion,
+        capacitySnapshot: appointment.capacitySnapshot,
+        startsAtSnapshot: appointment.startsAtSnapshot?.toISOString() ?? null,
+        endsAtSnapshot: appointment.endsAtSnapshot?.toISOString() ?? null,
+        membershipId: appointment.membershipId,
+        schedulerAppointment: null,
+      };
+    }
+
+    const scheduler = appointment.schedulerAppointment;
+    const service = scheduler?.services[0];
+    const reservation = appointment.agendaReservation;
+    const schedulerIdentity = scheduler ? `scheduler:${scheduler.id}` : null;
+    const valid =
+      scheduler &&
+      scheduler.services.length === 1 &&
+      service &&
+      appointment.serviceItemId !== null &&
+      service.serviceProfile.catalogItemId === appointment.serviceItemId &&
+      scheduler.branchProfile.branchId === appointment.branchId &&
+      scheduler.customerId === appointment.customerId &&
+      scheduler.startsAt.getTime() === appointment.scheduledAt?.getTime() &&
+      scheduler.startsAt.getTime() ===
+        appointment.startsAtSnapshot?.getTime() &&
+      scheduler.endsAt.getTime() === appointment.endsAtSnapshot?.getTime() &&
+      schedulerStatusMatchesPos(appointment.status, scheduler.status) &&
+      appointment.externalReservationId === schedulerIdentity &&
+      appointment.externalAppointmentId === schedulerIdentity &&
+      reservation?.ticketId === ticket.id &&
+      reservation.id === appointment.agendaReservationId &&
+      reservation.resourceId === appointment.agendaResourceId &&
+      reservation.primarySlotId === appointment.agendaSlotId &&
+      (service.membershipBenefit?.membershipId ?? null) ===
+        appointment.membershipId &&
+      service.capacityUnits > 0;
+    if (!valid)
+      throw new PosTicketError(
+        scheduler
+          ? "La cita interna no coincide con su servicio o capacidad en Scheduler"
+          : "La revisión de una cita externa requiere recuperación durable del proveedor",
+        409,
+      );
+
+    return {
+      id: appointment.id,
+      kind: appointment.kind,
+      status: appointment.status,
+      customerId: appointment.customerId,
+      serviceItemId: appointment.serviceItemId,
+      serviceName: appointment.serviceNameSnapshot,
+      branchId: appointment.branchId,
+      sellerId: appointment.sellerId,
+      scheduledAt: appointment.scheduledAt?.toISOString() ?? null,
+      agendaSlotId: appointment.agendaSlotId,
+      agendaReservationId: appointment.agendaReservationId,
+      externalReservationId: appointment.externalReservationId,
+      externalAppointmentId: appointment.externalAppointmentId,
+      agendaVersion: appointment.agendaVersion,
+      capacitySnapshot: appointment.capacitySnapshot,
+      startsAtSnapshot: appointment.startsAtSnapshot?.toISOString() ?? null,
+      endsAtSnapshot: appointment.endsAtSnapshot?.toISOString() ?? null,
+      membershipId: appointment.membershipId,
+      schedulerAppointment: {
+        id: scheduler.id,
+        status: scheduler.status,
+        version: scheduler.version,
+        branchId: scheduler.branchProfile.branchId,
+        customerId: scheduler.customerId,
+        startsAt: scheduler.startsAt.toISOString(),
+        endsAt: scheduler.endsAt.toISOString(),
+        serviceItemId: service.serviceProfile.catalogItemId,
+        serviceName: service.serviceNameSnapshot,
+        capacityUnits: service.capacityUnits,
+        occupiesFrom: service.occupiesFrom.toISOString(),
+        occupiesUntil: service.occupiesUntil.toISOString(),
+        professionalAssignments: service.participants.map((participant) => ({
+          id: participant.professionalProfileId,
+          role: participant.role,
+        })),
+        resourceAssignments: service.resources.map((resource) => ({
+          id: resource.resourceId,
+          units: resource.units,
+          exclusive: resource.exclusiveSnapshot,
+        })),
+        membershipBenefit: service.membershipBenefit
+          ? {
+              membershipId: service.membershipBenefit.membershipId,
+              status: service.membershipBenefit.status,
+            }
+          : null,
+      },
+    };
+  });
+}
 
 export function ticketDto(ticket: TicketPayload): PosTicketDto {
   const applied = appliedTicketRevisionSnapshot(ticket.events[0]?.snapshot);
@@ -2141,21 +2396,25 @@ export async function appendTicketRevision(
   await tx.$queryRaw(
     Prisma.sql`SELECT "id" FROM "PosTicket" WHERE "id" = ${input.ticketId}::uuid FOR UPDATE`,
   );
-  const ticket = await findTicket(tx, input.ticketId);
+  let ticket = await findTicket(tx, input.ticketId);
   if (!ticket || ticket.branchId !== context.branchId)
     throw new PosTicketError("Ticket no encontrado", 404);
   if (ticket.status === "CANCELED" || ticket.status === "REFUNDED")
     throw new PosTicketError("El ticket cancelado no admite revisiones", 409);
 
+  const preservedAppointments = await preserveInternalTicketAppointments(
+    tx,
+    ticket,
+  );
+  if (preservedAppointments.length > 0) {
+    ticket = await findTicket(tx, input.ticketId);
+    if (!ticket)
+      throw new PosTicketError("Ticket no encontrado durante la revisión", 409);
+  }
   const current = ticketDto(ticket);
   const previousApplied = appliedTicketRevisionSnapshot(
     ticket.events[0]?.snapshot,
   );
-  if (ticket.appointments.length > 0)
-    throw new PosTicketError(
-      "La revisión de tickets con citas requiere el motor compensatorio de Agenda pendiente",
-      409,
-    );
   if (
     current.lines.some(
       (line) => line.kind === "GIFT" || line.packageId !== null,
@@ -2656,6 +2915,7 @@ export async function appendTicketRevision(
     itemKinds: currentItemKinds,
     unitCosts: currentUnitCosts,
     owedProducts: currentOwedProducts,
+    appointments: preservedAppointments,
   };
   const afterSnapshot: AppliedTicketRevisionSnapshot["after"] = {
     customerName: input.revision.clientName,
@@ -2679,6 +2939,7 @@ export async function appendTicketRevision(
     unitCosts: nextUnitCosts,
     owedProducts: nextOwedProducts,
     memberships: membershipPlan?.after,
+    appointments: preservedAppointments,
   };
   const differences: PosTicketRevisionDifferenceDto[] = [];
   const addDifference = (
@@ -2773,6 +3034,7 @@ export async function appendTicketRevision(
                   : [];
               })
             : [],
+          appointmentPreservations: preservedAppointments,
         },
       } as unknown as Prisma.InputJsonValue,
       actorCredentialId: context.credentialId,

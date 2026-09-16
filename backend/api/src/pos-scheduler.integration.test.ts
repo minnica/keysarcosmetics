@@ -10,7 +10,8 @@ import {
   refreshAgendaAvailability,
   reserveMembershipNextSession,
 } from "./services/pos-agenda";
-import { createTicket } from "./services/pos-tickets";
+import { hashOpaqueToken } from "./services/pos-security";
+import { appendTicketRevision, createTicket } from "./services/pos-tickets";
 
 const enabled = process.env["RUN_DATABASE_TESTS"] === "true";
 const integrationDescribe = enabled ? describe : describe.skip;
@@ -508,6 +509,247 @@ integrationDescribe("POS con proveedor Scheduler interno", () => {
         where: { id: singleAppointment.agendaReservationId! },
       }),
     ).resolves.toMatchObject({ status: "CANCELED" });
+  });
+
+  it("revisa el ticket sin reprogramar ni duplicar la capacidad interna", async () => {
+    const slot = await slotAt(12);
+    const input = ticketInput({ id: customerId }, [
+      {
+        kind: "NEXT_SESSION",
+        serviceItemId,
+        serviceName: `Servicio Scheduler RV6-P2 ${suffix}`,
+        branchId,
+        sellerId: employeeId,
+        scheduledAt: slot.startsAt,
+        agendaSlotId: slot.id,
+        agendaReservationMode: "SINGLE",
+      },
+    ]);
+    input.courtesies = [];
+    const ticket = await createCourtesyTicket(input);
+    const appointment = await prisma.posAppointment.findFirstOrThrow({
+      where: { ticketId: ticket.id },
+    });
+    const schedulerAppointmentId = appointment.schedulerAppointmentId!;
+    const appointmentBefore = await prisma.posAppointment.findUniqueOrThrow({
+      where: { id: appointment.id },
+    });
+    const schedulerBefore = await prisma.schedulerAppointment.findUniqueOrThrow(
+      {
+        where: { id: schedulerAppointmentId },
+        include: {
+          services: {
+            include: {
+              participants: true,
+              resources: true,
+              membershipBenefit: true,
+            },
+          },
+        },
+      },
+    );
+    const reservationBefore = await prisma.agendaReservation.findUniqueOrThrow({
+      where: { id: appointment.agendaReservationId! },
+    });
+    const syncEventCountBefore = await prisma.agendaSyncEvent.count({
+      where: { appointmentId: appointment.id },
+    });
+    const authorizationToken = randomUUID();
+    const authorization = await prisma.masterAuthorization.create({
+      data: {
+        tokenHash: hashOpaqueToken(authorizationToken),
+        purpose: "RECEIPT_HISTORY_ADMIN",
+        actorCredentialId: credentialId,
+        terminalId,
+        expiresAt: new Date(Date.now() + 60_000),
+      },
+    });
+    const customer = await prisma.customer.findUniqueOrThrow({
+      where: { id: customerId },
+    });
+
+    const revision = await prisma.$transaction((tx) =>
+      appendTicketRevision(
+        tx,
+        {
+          ticketId: ticket.id,
+          reason: "Corregir importe sin alterar la cita interna",
+          authorizationToken,
+          revision: {
+            clientName: `${customer.displayName} corregida`,
+            clientPhone: customer.phone ?? "",
+            sellerIds: [employeeId],
+            products: [
+              {
+                itemId: serviceItemId,
+                quantity: "1.00",
+                unitPrice: "110.00",
+              },
+            ],
+            discountAmount: "0.00",
+            paymentStatus: "PAID",
+            amountPaid: "110.00",
+            payments: [{ methodId: paymentMethodId, amount: "110.00" }],
+          },
+        },
+        {
+          credentialId,
+          terminalId,
+          branchId,
+          businessDate,
+          isMaster: true,
+        },
+      ),
+    );
+    expect(revision.version).toBe(2);
+
+    const [
+      appointmentAfter,
+      schedulerAfter,
+      reservationAfter,
+      storedAuthorization,
+      revisionEvent,
+      reloadedTicket,
+    ] = await Promise.all([
+      prisma.posAppointment.findUniqueOrThrow({
+        where: { id: appointment.id },
+      }),
+      prisma.schedulerAppointment.findUniqueOrThrow({
+        where: { id: schedulerAppointmentId },
+        include: {
+          services: {
+            include: {
+              participants: true,
+              resources: true,
+              membershipBenefit: true,
+            },
+          },
+        },
+      }),
+      prisma.agendaReservation.findUniqueOrThrow({
+        where: { id: appointment.agendaReservationId! },
+      }),
+      prisma.masterAuthorization.findUniqueOrThrow({
+        where: { id: authorization.id },
+      }),
+      prisma.posTicketEvent.findUniqueOrThrow({
+        where: { id: revision.id },
+      }),
+      prisma.posTicket.findUniqueOrThrow({ where: { id: ticket.id } }),
+    ]);
+    expect(appointmentAfter).toEqual(appointmentBefore);
+    expect(schedulerAfter).toEqual(schedulerBefore);
+    expect(reservationAfter).toEqual(reservationBefore);
+    expect(storedAuthorization.usedAt).not.toBeNull();
+    expect(reloadedTicket.version).toBe(2);
+    expect(reloadedTicket.total.toFixed(2)).toBe("110.00");
+    expect(revisionEvent.snapshot).toEqual(
+      expect.objectContaining({
+        before: expect.objectContaining({
+          appointments: [expect.objectContaining({ id: appointment.id })],
+        }),
+        after: expect.objectContaining({
+          appointments: [expect.objectContaining({ id: appointment.id })],
+        }),
+        effects: expect.objectContaining({
+          appointmentPreservations: [
+            expect.objectContaining({
+              id: appointment.id,
+              agendaSlotId: slot.id,
+              schedulerAppointment: expect.objectContaining({
+                id: schedulerAppointmentId,
+                serviceItemId,
+                capacityUnits: 1,
+                professionalAssignments: [
+                  expect.objectContaining({ id: firstProfessionalId }),
+                ],
+              }),
+            }),
+          ],
+        }),
+      }),
+    );
+    await expect(
+      prisma.agendaSyncEvent.count({
+        where: { appointmentId: appointment.id },
+      }),
+    ).resolves.toBe(syncEventCountBefore);
+    await expect(
+      prisma.posAppointment.count({ where: { ticketId: ticket.id } }),
+    ).resolves.toBe(1);
+    await expect(
+      prisma.schedulerAppointment.count({
+        where: { id: schedulerAppointmentId },
+      }),
+    ).resolves.toBe(1);
+
+    const externalTicketInput = ticketInput({ id: customerId }, []);
+    externalTicketInput.courtesies = [];
+    const externalTicket = await createCourtesyTicket(externalTicketInput);
+    await prisma.posAppointment.create({
+      data: {
+        ticketId: externalTicket.id,
+        customerId,
+        kind: "NEXT_SESSION",
+        status: "SCHEDULED",
+        serviceItemId,
+        serviceNameSnapshot: `Servicio externo ${suffix}`,
+        branchId,
+        sellerId: employeeId,
+        scheduledAt: atUtcHour(date, 16),
+        createdByCredentialId: credentialId,
+      },
+    });
+    const externalAuthorizationToken = randomUUID();
+    const externalAuthorization = await prisma.masterAuthorization.create({
+      data: {
+        tokenHash: hashOpaqueToken(externalAuthorizationToken),
+        purpose: "RECEIPT_HISTORY_ADMIN",
+        actorCredentialId: credentialId,
+        terminalId,
+        expiresAt: new Date(Date.now() + 60_000),
+      },
+    });
+    await expect(
+      prisma.$transaction((tx) =>
+        appendTicketRevision(
+          tx,
+          {
+            ticketId: externalTicket.id,
+            reason: "No revisar sin recuperación durable externa",
+            authorizationToken: externalAuthorizationToken,
+            revision: {
+              clientName: customer.displayName,
+              clientPhone: customer.phone ?? "",
+              sellerIds: [employeeId],
+              products: [
+                {
+                  itemId: serviceItemId,
+                  quantity: "1.00",
+                  unitPrice: "110.00",
+                },
+              ],
+              discountAmount: "0.00",
+              paymentStatus: "PAID",
+              amountPaid: "110.00",
+              payments: [{ methodId: paymentMethodId, amount: "110.00" }],
+            },
+          },
+          {
+            credentialId,
+            terminalId,
+            branchId,
+            businessDate,
+            isMaster: true,
+          },
+        ),
+      ),
+    ).rejects.toMatchObject({ status: 409 });
+    await expect(
+      prisma.masterAuthorization.findUniqueOrThrow({
+        where: { id: externalAuthorization.id },
+      }),
+    ).resolves.toMatchObject({ usedAt: null });
   });
 
   it("reintenta próxima sesión y concilia ATTENDED/NO_SHOW/cancelación una sola vez", async () => {
