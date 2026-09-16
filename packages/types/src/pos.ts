@@ -1397,6 +1397,7 @@ export interface PosTicketRevisionRequestDto {
     clientPhone: string;
     sellerIds: PosId[];
     products: Array<{
+      ticketLineId?: PosId;
       itemId: PosId;
       quantity: Money;
       unitPrice: Money;

@@ -2528,10 +2528,38 @@ export async function appendTicketRevision(
       "La revisión no puede agregar ni retirar líneas de paquetes o cortesías",
       409,
     );
+  const currentLineById = new Map(
+    current.lines.map((line) => [line.id, line] as const),
+  );
+  const identifiedLineIds = input.revision.products.flatMap((line) =>
+    line.ticketLineId ? [line.ticketLineId] : [],
+  );
+  if (new Set(identifiedLineIds).size !== identifiedLineIds.length)
+    throw new PosTicketError(
+      "La revisión contiene identidades de línea duplicadas",
+      409,
+    );
+  if (identifiedLineIds.some((lineId) => !currentLineById.has(lineId)))
+    throw new PosTicketError(
+      "La revisión contiene una identidad de línea que no pertenece al ticket",
+      409,
+    );
   const revisionLinePlans = input.revision.products.map((line, index) => {
+    const identifiedLine = line.ticketLineId
+      ? currentLineById.get(line.ticketLineId)
+      : undefined;
     const currentLine = hasPreservedComposition
       ? current.lines[index]
-      : undefined;
+      : identifiedLine;
+    if (
+      hasPreservedComposition &&
+      identifiedLine &&
+      identifiedLine.id !== currentLine?.id
+    )
+      throw new PosTicketError(
+        "La revisión no puede reordenar líneas de paquetes o cortesías",
+        409,
+      );
     if (!currentLine) return { line, currentLine: null, gift: false };
     if (currentLine.kind === "GIFT") {
       if (
@@ -2772,11 +2800,7 @@ export async function appendTicketRevision(
       if (gift) return { ...currentLine! };
       const line = quote.lines[quotedLineIndex++]!;
       return {
-        id:
-          currentLine?.packageId !== null &&
-          currentLine?.packageId !== undefined
-            ? currentLine.id
-            : `revision-${ticket.version + 1}-${index + 1}`,
+        id: currentLine?.id ?? `revision-${ticket.version + 1}-${index + 1}`,
         kind: "SALE",
         itemId: line.item.id,
         itemName: currentLine?.packageId
@@ -2897,19 +2921,36 @@ export async function appendTicketRevision(
     const nextMatchingLines = nextLines.filter(
       (line) => line.itemId === currentOwed.itemId,
     );
-    if (
-      duplicateOwed.length !== 1 ||
+    const exactCurrentLine = currentLineById.get(currentOwed.ticketLineId);
+    const exactNextLine = nextLines.find(
+      (line) => line.id === currentOwed.ticketLineId,
+    );
+    const duplicateOwedLineIds = new Set(
+      duplicateOwed.map((owed) => owed.ticketLineId),
+    );
+    const requiresExactLineIdentity =
+      duplicateOwed.length > 1 ||
       currentMatchingLines.length > 1 ||
+      nextMatchingLines.length > 1;
+    const hasExactLineIdentity =
+      duplicateOwedLineIds.size === duplicateOwed.length &&
+      exactCurrentLine?.itemId === currentOwed.itemId &&
+      exactNextLine?.itemId === currentOwed.itemId;
+    if (
+      (requiresExactLineIdentity && !hasExactLineIdentity) ||
       (currentMatchingLines.length === 0 &&
         !new Prisma.Decimal(currentOwed.quantity).isZero()) ||
-      nextMatchingLines.length > 1
+      (!requiresExactLineIdentity && nextMatchingLines.length > 1)
     )
       throw new PosTicketError(
         "La revisión contiene adeudos duplicados que requieren conciliación manual",
         409,
       );
-    const desiredQuantity = nextMatchingLines[0]
-      ? new Prisma.Decimal(nextMatchingLines[0].quantity)
+    const desiredLine = requiresExactLineIdentity
+      ? exactNextLine
+      : nextMatchingLines[0];
+    const desiredQuantity = desiredLine
+      ? new Prisma.Decimal(desiredLine.quantity)
       : new Prisma.Decimal(0);
     const deliveredQuantity = new Prisma.Decimal(currentOwed.deliveredQuantity);
     if (desiredQuantity.lessThan(deliveredQuantity))

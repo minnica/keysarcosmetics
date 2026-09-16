@@ -14135,6 +14135,9 @@ function App() {
             clientPhone: changes.clientPhone,
             sellerIds: changes.sellerIds,
             products: changes.products.map((product) => ({
+              ...(product.ticketLineId
+                ? { ticketLineId: product.ticketLineId }
+                : {}),
               itemId: product.productId,
               quantity: product.quantity.toFixed(2),
               unitPrice: product.unitPrice.toFixed(2),

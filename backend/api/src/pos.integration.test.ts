@@ -1388,6 +1388,336 @@ integrationDescribe("seguridad y terminales POS", () => {
       }),
     );
 
+    await prisma.inventoryBalance.update({
+      where: {
+        locationId_itemId: {
+          locationId: branchLocation.id,
+          itemId: owedItemId,
+        },
+      },
+      data: { availableQuantity: 10 },
+    });
+    const duplicateOwedPackage = await prisma.posPackage.create({
+      data: {
+        name: `Paquete con adeudo repetido RV5 ${suffix}`,
+        sku: `RV5-OWED-PKG-${suffix}`.toUpperCase(),
+        description: "Identidad de línea para adeudos del mismo artículo",
+        price: "100.00",
+        status: "PUBLISHED",
+        branchAssignments: { create: [{ branchId }] },
+        lines: { create: [{ itemId: owedItemId, quantity: "1.00" }] },
+      },
+    });
+    const duplicateOwedCheckout = await request(
+      "/api/pos/tickets",
+      mutationJson(
+        "POST",
+        {
+          branchId,
+          customer: { id: checkoutData.customerId },
+          lines: [
+            {
+              itemId: owedItemId,
+              quantity: "2.00",
+              unitPrice: "100.00",
+              delivered: false,
+            },
+            {
+              itemId: owedItemId,
+              packageId: duplicateOwedPackage.id,
+              quantity: "3.00",
+              unitPrice: "100.00",
+              delivered: false,
+            },
+          ],
+          sellers: [{ employeeId, share: "500.00" }],
+          payments: [{ methodId: cash.id, amount: "500.00" }],
+        },
+        employeeToken,
+      ),
+    );
+    expect(duplicateOwedCheckout.response.status).toBe(201);
+    const duplicateOwedTicket = duplicateOwedCheckout.body["data"] as {
+      id: string;
+      lines: Array<{
+        id: string;
+        itemId: string;
+        packageId: string | null;
+        quantity: string;
+      }>;
+      owedProducts: Array<{
+        id: string;
+        ticketLineId: string;
+        quantity: string;
+      }>;
+    };
+    expect(duplicateOwedTicket.lines).toHaveLength(2);
+    expect(duplicateOwedTicket.owedProducts).toHaveLength(2);
+    expect(
+      new Set(duplicateOwedTicket.owedProducts.map((owed) => owed.ticketLineId))
+        .size,
+    ).toBe(2);
+    expect(
+      duplicateOwedTicket.owedProducts.map((owed) => ({
+        ticketLineId: owed.ticketLineId,
+        quantity: owed.quantity,
+      })),
+    ).toEqual(
+      expect.arrayContaining(
+        duplicateOwedTicket.lines.map((line) => ({
+          ticketLineId: line.id,
+          quantity: line.quantity,
+        })),
+      ),
+    );
+    const duplicateOwedByQuantity = new Map(
+      duplicateOwedTicket.owedProducts.map((owed) => [owed.quantity, owed]),
+    );
+    const deliverDuplicateOwed = (owedId: string, quantity: string) =>
+      request(`/api/pos/owed-products/${owedId}/deliveries`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${employeeToken}`,
+          "idempotency-key": randomUUID(),
+        },
+        body: JSON.stringify({ quantity }),
+      });
+    expect(
+      (
+        await deliverDuplicateOwed(
+          duplicateOwedByQuantity.get("2.00")!.id,
+          "1.00",
+        )
+      ).response.status,
+    ).toBe(201);
+    expect(
+      (
+        await deliverDuplicateOwed(
+          duplicateOwedByQuantity.get("3.00")!.id,
+          "2.00",
+        )
+      ).response.status,
+    ).toBe(201);
+    const duplicateRevisionAuthorization = await request(
+      "/api/pos/authorizations",
+      json(
+        "POST",
+        { pin: masterPin, purpose: "RECEIPT_HISTORY_ADMIN" },
+        masterToken,
+      ),
+    );
+    const duplicateRevisionAuthorizationToken = (
+      duplicateRevisionAuthorization.body["data"] as {
+        authorizationToken: string;
+      }
+    ).authorizationToken;
+    const duplicateRevisionProducts = duplicateOwedTicket.lines.map((line) => ({
+      ticketLineId: line.id,
+      itemId: owedItemId,
+      quantity: line.packageId ? line.quantity : "4.00",
+      unitPrice: "100.00",
+    }));
+    const duplicateRevisionPayload = {
+      reason: "Conciliar adeudos repetidos por identidad de fila RV5-P1",
+      authorizationToken: duplicateRevisionAuthorizationToken,
+      revision: {
+        clientName: "Clienta Checkout RV5",
+        clientPhone: "5512345678",
+        sellerIds: [employeeId],
+        products: duplicateRevisionProducts,
+        discountAmount: "0.00",
+        paymentStatus: "PAID" as const,
+        amountPaid: "700.00",
+        payments: [{ methodId: cash.id, amount: "700.00" }],
+      },
+    };
+    const rejectedMismatchedDuplicateRevision = await request(
+      `/api/pos/tickets/${duplicateOwedTicket.id}/revisions`,
+      mutationJson(
+        "POST",
+        {
+          ...duplicateRevisionPayload,
+          revision: {
+            ...duplicateRevisionPayload.revision,
+            products: duplicateRevisionProducts.map((product, index) => ({
+              ...product,
+              ticketLineId:
+                duplicateRevisionProducts[
+                  duplicateRevisionProducts.length - index - 1
+                ]!.ticketLineId,
+            })),
+          },
+        },
+        masterToken,
+      ),
+    );
+    expect(rejectedMismatchedDuplicateRevision.response.status).toBe(409);
+    await expect(
+      prisma.masterAuthorization.findUniqueOrThrow({
+        where: {
+          tokenHash: hashOpaqueToken(duplicateRevisionAuthorizationToken),
+        },
+      }),
+    ).resolves.toMatchObject({ usedAt: null });
+    const duplicateRevisionKey = randomUUID();
+    const postDuplicateRevision = () =>
+      request(`/api/pos/tickets/${duplicateOwedTicket.id}/revisions`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${masterToken}`,
+          "idempotency-key": duplicateRevisionKey,
+        },
+        body: JSON.stringify(duplicateRevisionPayload),
+      });
+    const appliedDuplicateRevision = await postDuplicateRevision();
+    expect(appliedDuplicateRevision.response.status).toBe(201);
+    const replayedDuplicateRevision = await postDuplicateRevision();
+    expect(replayedDuplicateRevision.response.status).toBe(201);
+    expect(replayedDuplicateRevision.body["data"]).toEqual(
+      appliedDuplicateRevision.body["data"],
+    );
+    const reloadedDuplicateOwed = await request(
+      `/api/pos/tickets/${duplicateOwedTicket.id}`,
+      { headers: { authorization: `Bearer ${masterToken}` } },
+    );
+    expect(reloadedDuplicateOwed.response.status).toBe(200);
+    const reloadedDuplicateOwedData = reloadedDuplicateOwed.body["data"] as {
+      total: string;
+      lines: Array<{ id: string; quantity: string }>;
+      owedProducts: Array<{
+        id: string;
+        ticketLineId: string;
+        quantity: string;
+        deliveredQuantity: string;
+        pendingQuantity: string;
+      }>;
+    };
+    expect(reloadedDuplicateOwedData.total).toBe("700.00");
+    expect(reloadedDuplicateOwedData.lines).toEqual(
+      expect.arrayContaining(
+        duplicateRevisionProducts.map((product) =>
+          expect.objectContaining({
+            id: product.ticketLineId,
+            quantity: product.quantity,
+          }),
+        ),
+      ),
+    );
+    expect(reloadedDuplicateOwedData.owedProducts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: duplicateOwedByQuantity.get("2.00")!.id,
+          ticketLineId: duplicateOwedByQuantity.get("2.00")!.ticketLineId,
+          quantity: "4.00",
+          deliveredQuantity: "1.00",
+          pendingQuantity: "3.00",
+        }),
+        expect.objectContaining({
+          id: duplicateOwedByQuantity.get("3.00")!.id,
+          ticketLineId: duplicateOwedByQuantity.get("3.00")!.ticketLineId,
+          quantity: "3.00",
+          deliveredQuantity: "2.00",
+          pendingQuantity: "1.00",
+        }),
+      ]),
+    );
+    const [
+      duplicateRevisionEvents,
+      duplicateRevisionOperations,
+      duplicateRevisionBalance,
+      duplicateProjectionSum,
+    ] = await Promise.all([
+      prisma.posTicketEvent.findMany({
+        where: { ticketId: duplicateOwedTicket.id, type: "REVISION" },
+      }),
+      prisma.posPaymentOperation.findMany({
+        where: { ticketId: duplicateOwedTicket.id },
+        orderBy: { creadoEn: "asc" },
+      }),
+      prisma.inventoryBalance.findUniqueOrThrow({
+        where: {
+          locationId_itemId: {
+            locationId: branchLocation.id,
+            itemId: owedItemId,
+          },
+        },
+      }),
+      prisma.posLegacySaleProjection.aggregate({
+        where: { operation: { ticketId: duplicateOwedTicket.id } },
+        _sum: { amount: true },
+      }),
+    ]);
+    expect(duplicateRevisionEvents).toHaveLength(1);
+    expect(duplicateRevisionEvents[0]?.snapshot).toEqual(
+      expect.objectContaining({
+        effects: expect.objectContaining({
+          inventoryMovementId: null,
+          owedProductChanges: expect.arrayContaining([
+            expect.objectContaining({
+              id: duplicateOwedByQuantity.get("2.00")!.id,
+              before: { quantity: "2.00", status: "PENDING" },
+              after: { quantity: "4.00", status: "PENDING" },
+            }),
+          ]),
+        }),
+      }),
+    );
+    expect(
+      duplicateRevisionOperations.map((operation) => operation.kind),
+    ).toEqual(["SALE", "REFUND", "REVISION"]);
+    expect(
+      duplicateRevisionOperations.map((operation) =>
+        operation.amount.toFixed(2),
+      ),
+    ).toEqual(["500.00", "500.00", "700.00"]);
+    expect(duplicateRevisionBalance.availableQuantity.toFixed(2)).toBe("7.00");
+    expect(duplicateProjectionSum._sum.amount?.toFixed(2)).toBe("700.00");
+    const ambiguousOwedLine = duplicateOwedByQuantity.get("2.00")!;
+    await prisma.posOwedProduct.create({
+      data: {
+        ticketId: duplicateOwedTicket.id,
+        ticketLineId: ambiguousOwedLine.ticketLineId,
+        itemId: owedItemId,
+        quantity: "4.00",
+        inventoryCommitted: false,
+      },
+    });
+    const ambiguousRevisionAuthorization = await request(
+      "/api/pos/authorizations",
+      json(
+        "POST",
+        { pin: masterPin, purpose: "RECEIPT_HISTORY_ADMIN" },
+        masterToken,
+      ),
+    );
+    const ambiguousRevisionAuthorizationToken = (
+      ambiguousRevisionAuthorization.body["data"] as {
+        authorizationToken: string;
+      }
+    ).authorizationToken;
+    const rejectedSharedLineRevision = await request(
+      `/api/pos/tickets/${duplicateOwedTicket.id}/revisions`,
+      mutationJson(
+        "POST",
+        {
+          ...duplicateRevisionPayload,
+          reason: "Rechazar dos adeudos sin identidad de fila única RV5-P1",
+          authorizationToken: ambiguousRevisionAuthorizationToken,
+        },
+        masterToken,
+      ),
+    );
+    expect(rejectedSharedLineRevision.response.status).toBe(409);
+    await expect(
+      prisma.masterAuthorization.findUniqueOrThrow({
+        where: {
+          tokenHash: hashOpaqueToken(ambiguousRevisionAuthorizationToken),
+        },
+      }),
+    ).resolves.toMatchObject({ usedAt: null });
+
     const retailRevisionAuthorization = await request(
       "/api/pos/authorizations",
       json(
@@ -2522,7 +2852,7 @@ integrationDescribe("seguridad y terminales POS", () => {
         },
       }),
     ).toBeGreaterThan(0);
-  });
+  }, 15_000);
 
   it("persiste correcciones y anulaciones de gastos con autorización consumible", async () => {
     const employeeLogin = await request(

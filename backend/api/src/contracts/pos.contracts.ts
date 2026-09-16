@@ -1247,6 +1247,7 @@ export const posTicketRevisionRequestSchema = z
           .array(
             z
               .object({
+                ticketLineId: idSchema.optional(),
                 itemId: idSchema,
                 quantity: positiveQuantitySchema,
                 unitPrice: moneySchema,

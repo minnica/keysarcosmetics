@@ -476,6 +476,7 @@ export interface TicketCancellationRequest {
 }
 
 export interface TicketEditProductInput {
+  ticketLineId?: string;
   productId: string;
   quantity: number;
   unitPrice: number;

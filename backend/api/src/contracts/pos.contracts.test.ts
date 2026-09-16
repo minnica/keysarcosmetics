@@ -206,7 +206,14 @@ describe("contratos públicos del POS", () => {
         clientName: "Clienta corregida",
         clientPhone: "5512345678",
         sellerIds: ["employee-1"],
-        products: [{ itemId: "item-1", quantity: "2.00", unitPrice: "50.00" }],
+        products: [
+          {
+            ticketLineId: "ticket-line-1",
+            itemId: "item-1",
+            quantity: "2.00",
+            unitPrice: "50.00",
+          },
+        ],
         discountAmount: "0.00",
         paymentStatus: "PAID" as const,
         amountPaid: "100.00",
@@ -216,6 +223,20 @@ describe("contratos públicos del POS", () => {
     expect(posTicketRevisionRequestSchema.safeParse(request).success).toBe(
       true,
     );
+    expect(
+      posTicketRevisionRequestSchema.safeParse({
+        ...request,
+        revision: {
+          ...request.revision,
+          products: [
+            {
+              ...request.revision.products[0],
+              ticketLineId: "",
+            },
+          ],
+        },
+      }).success,
+    ).toBe(false);
     expect(
       posTicketRevisionRequestSchema.safeParse({
         ...request,

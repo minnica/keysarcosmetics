@@ -118,6 +118,7 @@ export function TicketEditDialog({
     setLines(
       ticket.products.map((line, index) => ({
         id: `${line.productId}-${index}-${crypto.randomUUID()}`,
+        ...(line.backendLineId ? { ticketLineId: line.backendLineId } : {}),
         productId: line.productId,
         quantity: line.quantity,
         unitPrice:
@@ -803,11 +804,14 @@ export function TicketEditDialog({
                   clientName: clientName.trim(),
                   clientPhone: clientPhone.trim(),
                   sellerIds,
-                  products: lines.map(({ productId, quantity, unitPrice }) => ({
-                    productId,
-                    quantity,
-                    unitPrice,
-                  })),
+                  products: lines.map(
+                    ({ ticketLineId, productId, quantity, unitPrice }) => ({
+                      ...(ticketLineId ? { ticketLineId } : {}),
+                      productId,
+                      quantity,
+                      unitPrice,
+                    }),
+                  ),
                   discountAmount: normalizedDiscount,
                   paymentStatus,
                   amountPaid: normalizedAmountPaid,

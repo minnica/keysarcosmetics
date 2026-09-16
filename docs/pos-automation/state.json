@@ -137,54 +137,67 @@
     },
     "RV5-P1": {
       "id": "RV5-P1",
-      "runId": "2026-09-16T21-54-29-655Z-RV5-P1",
-      "base": "30ccbcc531cdedee5bc6028335aa2320e97199d1",
+      "runId": "2026-09-16T22-10-12-534Z-RV5-P1",
+      "base": "b892d9b5dab0493f047e35277012ec0e8fcaffb0",
       "status": "partial",
-      "attempts": 6,
-      "summary": "Checkpoint 6 implementado. Las revisiones preservan la identidad COMPANY aprobada, rechazan sustituciones antes de consumir autorización y proyectan únicamente la fracción humana en Venta/PosLegacySaleProjection. Informe: docs/pos-automation/runs/2026-09-16T21-54-29-655Z-RV5-P1.md.",
+      "attempts": 7,
+      "summary": "Checkpoint 7 implementado. Las revisiones ahora conservan `ticketLineId` sin cambiar la interfaz y concilian adeudos repetidos cuando cada fila tiene identidad única. Los casos con identidad cruzada o compartida devuelven 409 antes de consumir autorización. Informe: docs/pos-automation/runs/2026-09-16T22-10-12-534Z-RV5-P1.md.",
       "checks": [
         {
-          "command": "pnpm --filter @cosmetics/api type-check && pnpm --filter @cosmetics/api lint",
+          "command": "pnpm --filter @cosmetics/types type-check && pnpm --filter @cosmetics/api-client type-check && pnpm --filter @cosmetics/api type-check && pnpm --filter @cosmetics/pos type-check",
           "result": "passed",
-          "evidence": "TypeScript y ESLint aprobaron sin errores ni warnings."
+          "evidence": "Contrato compartido, cliente API, backend y renderer compilaron sin errores."
         },
         {
           "command": "DATABASE_URL=<PostgreSQL-16-local-desechable> DIRECT_URL=<misma-BD> pnpm --filter @cosmetics/api exec prisma migrate deploy && RUN_DATABASE_TESTS=true DATABASE_URL=<misma-BD> DIRECT_URL=<misma-BD> pnpm --filter @cosmetics/api exec vitest run src/pos.integration.test.ts src/pos-scheduler.integration.test.ts --reporter=verbose",
           "result": "passed",
-          "evidence": "46/46 migraciones y 13/13 casos. La sustitución COMPANY devolvió 409 sin consumir el token; revisión y replay conservaron un evento, el participante original y el neto humano 110.00."
+          "evidence": "46/46 migraciones y 13/13 casos. Adeudos del mismo artículo conservaron líneas y entregas distintas; replay único, inventario 7.00 y proyección neta 700.00."
         },
         {
-          "command": "pnpm --filter @cosmetics/api prisma:schemas && pnpm --filter @cosmetics/api test:unit && pnpm --filter @cosmetics/api build",
+          "command": "pnpm --filter @cosmetics/api prisma:schemas && DATABASE_URL=postgresql://postgres:local-only@127.0.0.1:1/validation DIRECT_URL=postgresql://postgres:local-only@127.0.0.1:1/validation pnpm --filter @cosmetics/api prisma:validate",
           "result": "passed",
-          "evidence": "Schemas sincronizados, 25 archivos y 136/136 pruebas unitarias, y build API aprobados."
+          "evidence": "Schemas sincronizados y schema Prisma válido; la URL sintética sólo satisfizo la carga de configuración."
         },
         {
-          "command": "pnpm --filter @cosmetics/pos type-check && pnpm --filter @cosmetics/pos build:web && pnpm pos:visual:manifest",
+          "command": "pnpm --filter @cosmetics/api lint && pnpm --filter @cosmetics/api test:unit && pnpm --filter @cosmetics/api build",
           "result": "passed",
-          "evidence": "POS compiló renderer, main y preload; la referencia 12fb804 permanece intacta con 208 capturas programadas."
+          "evidence": "ESLint sin warnings, 25 archivos y 136/136 pruebas unitarias, y build API aprobado."
         },
         {
-          "command": "git show 12fb8045cc264b565cb6e764d95ad7b2447fbfa1:apps/pos/src/renderer/src/components/TicketEditDialog.tsx | rg 'La empresa permanece incluida|Participación obligatoria|sellerIds'",
+          "command": "pnpm --filter @cosmetics/pos build:web && pnpm pos:visual:manifest",
           "result": "passed",
-          "evidence": "El diálogo aprobado conserva y envía la empresa como participación obligatoria sin permitir sustituirla."
+          "evidence": "Renderer, main y preload compilaron; la referencia 12fb804 permanece intacta con 208 capturas programadas."
         },
         {
-          "command": "pnpm exec prettier --check backend/api/src/services/pos-tickets.ts backend/api/src/pos.integration.test.ts CLAUDE.md PLAN_RESTAURACION_VISUAL_POS.md docs/POS_MVP_HANDOFF.md docs/pos-automation/runs/2026-09-16T21-54-29-655Z-RV5-P1.md && git diff --check",
+          "command": "git show 12fb8045cc264b565cb6e764d95ad7b2447fbfa1:apps/pos/src/renderer/src/components/TicketEditDialog.tsx | rg -n 'ticket.products.map|PRODUCTOS Y SERVICIOS|Quitar producto|Guardar y actualizar registros'",
+          "result": "passed",
+          "evidence": "Los controles aprobados permanecen; `ticketLineId` se transporta internamente sin nuevo DOM."
+        },
+        {
+          "command": "pnpm exec prettier --check packages/types/src/pos.ts backend/api/src/contracts/pos.contracts.ts backend/api/src/contracts/pos.contracts.test.ts backend/api/src/services/pos-tickets.ts backend/api/src/pos.integration.test.ts apps/pos/src/renderer/src/types.ts apps/pos/src/renderer/src/components/TicketEditDialog.tsx apps/pos/src/renderer/src/App.tsx CLAUDE.md PLAN_RESTAURACION_VISUAL_POS.md docs/POS_MVP_HANDOFF.md docs/pos-automation/runs/2026-09-16T22-10-12-534Z-RV5-P1.md && git diff --check",
           "result": "passed",
           "evidence": "Formato y whitespace correctos en todos los archivos modificados."
         },
         {
-          "command": "podman stop keysar-rv5-p1-pg-20260916-company",
+          "command": "podman stop keysar-rv5-p1-pg-20260916-duplicate-final2",
           "result": "passed",
-          "evidence": "Contenedor detenido; conserva dos bases sintéticas locales que estuvieron ligadas únicamente a 127.0.0.1:55461."
+          "evidence": "El contenedor final se detuvo; los cinco PostgreSQL locales sintéticos quedaron detenidos y ligados únicamente a loopback durante las pruebas."
         },
         {
           "command": "pnpm pos:visual:capture && pnpm pos:visual:compare",
           "result": "not_run",
-          "evidence": "No cambiaron renderer, markup, CSS, fixtures ni baseline; se ejecutó el manifiesto proporcional al cambio backend."
+          "evidence": "No cambiaron JSX visible, CSS, assets, fixtures ni baseline; se ejecutaron build y manifiesto proporcionales."
         }
       ],
       "independentChecks": [
+        {
+          "command": "pnpm --filter @cosmetics/pos type-check",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/pos build:web",
+          "result": "passed"
+        },
         {
           "command": "pnpm --filter @cosmetics/api prisma:schemas",
           "result": "passed"
@@ -203,14 +216,14 @@
         }
       ],
       "remaining": [
-        "Mantener bloqueadas composición variable y sustituciones de paquetes o cortesías hasta disponer de identidad y controles aprobados.",
+        "Mantener bloqueadas altas, bajas o sustituciones de membresías sin identidad inequívoca y dos adeudos que compartan la misma línea.",
+        "Mantener bloqueada la composición variable o sustitución de paquetes/cortesías hasta disponer de controles aprobados.",
         "Resolver reprogramación y Agenda HTTP únicamente mediante recuperación durable.",
-        "Resolver altas/bajas de membresía y adeudos duplicados ambiguos sólo cuando pueda identificarse la unidad desde controles aprobados.",
         "Completar la certificación transversal restante antes de marcar RV5-P1."
       ],
-      "nextStep": "Continuar RV5-P1 auditando adeudos duplicados y la certificación transversal; conservar 409 previo al token para toda operación que el diálogo aprobado no identifique inequívocamente.",
-      "report": "docs/pos-automation/runs/2026-09-16T21-54-29-655Z-RV5-P1.md",
-      "updatedAt": "2026-09-16T22:10:09.507Z"
+      "nextStep": "Continuar RV5-P1 con la certificación transversal de segundas revisiones, reportes y exportaciones; conservar 409 previo al token para toda operación que el diálogo aprobado no identifique inequívocamente.",
+      "report": "docs/pos-automation/runs/2026-09-16T22-10-12-534Z-RV5-P1.md",
+      "updatedAt": "2026-09-16T22:31:13.035Z"
     },
     "RV6-P1": {
       "id": "RV6-P1",
@@ -1372,6 +1385,96 @@
       "nextStep": "Continuar RV5-P1 auditando adeudos duplicados y la certificación transversal; conservar 409 previo al token para toda operación que el diálogo aprobado no identifique inequívocamente.",
       "report": "docs/pos-automation/runs/2026-09-16T21-54-29-655Z-RV5-P1.md",
       "updatedAt": "2026-09-16T22:10:09.507Z"
+    },
+    {
+      "id": "RV5-P1",
+      "runId": "2026-09-16T22-10-12-534Z-RV5-P1",
+      "base": "b892d9b5dab0493f047e35277012ec0e8fcaffb0",
+      "status": "partial",
+      "attempts": 7,
+      "summary": "Checkpoint 7 implementado. Las revisiones ahora conservan `ticketLineId` sin cambiar la interfaz y concilian adeudos repetidos cuando cada fila tiene identidad única. Los casos con identidad cruzada o compartida devuelven 409 antes de consumir autorización. Informe: docs/pos-automation/runs/2026-09-16T22-10-12-534Z-RV5-P1.md.",
+      "checks": [
+        {
+          "command": "pnpm --filter @cosmetics/types type-check && pnpm --filter @cosmetics/api-client type-check && pnpm --filter @cosmetics/api type-check && pnpm --filter @cosmetics/pos type-check",
+          "result": "passed",
+          "evidence": "Contrato compartido, cliente API, backend y renderer compilaron sin errores."
+        },
+        {
+          "command": "DATABASE_URL=<PostgreSQL-16-local-desechable> DIRECT_URL=<misma-BD> pnpm --filter @cosmetics/api exec prisma migrate deploy && RUN_DATABASE_TESTS=true DATABASE_URL=<misma-BD> DIRECT_URL=<misma-BD> pnpm --filter @cosmetics/api exec vitest run src/pos.integration.test.ts src/pos-scheduler.integration.test.ts --reporter=verbose",
+          "result": "passed",
+          "evidence": "46/46 migraciones y 13/13 casos. Adeudos del mismo artículo conservaron líneas y entregas distintas; replay único, inventario 7.00 y proyección neta 700.00."
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api prisma:schemas && DATABASE_URL=postgresql://postgres:local-only@127.0.0.1:1/validation DIRECT_URL=postgresql://postgres:local-only@127.0.0.1:1/validation pnpm --filter @cosmetics/api prisma:validate",
+          "result": "passed",
+          "evidence": "Schemas sincronizados y schema Prisma válido; la URL sintética sólo satisfizo la carga de configuración."
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api lint && pnpm --filter @cosmetics/api test:unit && pnpm --filter @cosmetics/api build",
+          "result": "passed",
+          "evidence": "ESLint sin warnings, 25 archivos y 136/136 pruebas unitarias, y build API aprobado."
+        },
+        {
+          "command": "pnpm --filter @cosmetics/pos build:web && pnpm pos:visual:manifest",
+          "result": "passed",
+          "evidence": "Renderer, main y preload compilaron; la referencia 12fb804 permanece intacta con 208 capturas programadas."
+        },
+        {
+          "command": "git show 12fb8045cc264b565cb6e764d95ad7b2447fbfa1:apps/pos/src/renderer/src/components/TicketEditDialog.tsx | rg -n 'ticket.products.map|PRODUCTOS Y SERVICIOS|Quitar producto|Guardar y actualizar registros'",
+          "result": "passed",
+          "evidence": "Los controles aprobados permanecen; `ticketLineId` se transporta internamente sin nuevo DOM."
+        },
+        {
+          "command": "pnpm exec prettier --check packages/types/src/pos.ts backend/api/src/contracts/pos.contracts.ts backend/api/src/contracts/pos.contracts.test.ts backend/api/src/services/pos-tickets.ts backend/api/src/pos.integration.test.ts apps/pos/src/renderer/src/types.ts apps/pos/src/renderer/src/components/TicketEditDialog.tsx apps/pos/src/renderer/src/App.tsx CLAUDE.md PLAN_RESTAURACION_VISUAL_POS.md docs/POS_MVP_HANDOFF.md docs/pos-automation/runs/2026-09-16T22-10-12-534Z-RV5-P1.md && git diff --check",
+          "result": "passed",
+          "evidence": "Formato y whitespace correctos en todos los archivos modificados."
+        },
+        {
+          "command": "podman stop keysar-rv5-p1-pg-20260916-duplicate-final2",
+          "result": "passed",
+          "evidence": "El contenedor final se detuvo; los cinco PostgreSQL locales sintéticos quedaron detenidos y ligados únicamente a loopback durante las pruebas."
+        },
+        {
+          "command": "pnpm pos:visual:capture && pnpm pos:visual:compare",
+          "result": "not_run",
+          "evidence": "No cambiaron JSX visible, CSS, assets, fixtures ni baseline; se ejecutaron build y manifiesto proporcionales."
+        }
+      ],
+      "independentChecks": [
+        {
+          "command": "pnpm --filter @cosmetics/pos type-check",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/pos build:web",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api prisma:schemas",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api type-check",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api lint",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api test:unit",
+          "result": "passed"
+        }
+      ],
+      "remaining": [
+        "Mantener bloqueadas altas, bajas o sustituciones de membresías sin identidad inequívoca y dos adeudos que compartan la misma línea.",
+        "Mantener bloqueada la composición variable o sustitución de paquetes/cortesías hasta disponer de controles aprobados.",
+        "Resolver reprogramación y Agenda HTTP únicamente mediante recuperación durable.",
+        "Completar la certificación transversal restante antes de marcar RV5-P1."
+      ],
+      "nextStep": "Continuar RV5-P1 con la certificación transversal de segundas revisiones, reportes y exportaciones; conservar 409 previo al token para toda operación que el diálogo aprobado no identifique inequívocamente.",
+      "report": "docs/pos-automation/runs/2026-09-16T22-10-12-534Z-RV5-P1.md",
+      "updatedAt": "2026-09-16T22:31:13.035Z"
     }
   ]
 }
