@@ -189,6 +189,44 @@ test("rechaza documentación incompleta, pruebas fallidas y cierre de otro check
   assert.throws(() =>
     validateResult(result(), task, before, after, [PLAN], report),
   );
+  validateResult(
+    {
+      ...result(),
+      checks: [
+        ...result().checks,
+        {
+          command: "suite amplia",
+          result: "failed_unrelated",
+          evidence:
+            "Falló únicamente una prueba fechada de otro módulo; la prueba dirigida del bloque aprobó.",
+        },
+      ],
+    },
+    task,
+    before,
+    after,
+    files,
+    report,
+  );
+  assert.throws(() =>
+    validateResult(
+      {
+        ...result(),
+        checks: [
+          {
+            command: "suite amplia",
+            result: "failed_unrelated",
+            evidence: "ajena",
+          },
+        ],
+      },
+      task,
+      before,
+      after,
+      files,
+      report,
+    ),
+  );
   assert.throws(() =>
     validateResult(
       {
@@ -250,6 +288,30 @@ test("dos sesiones nuevas publican documentación y estado antes de continuar", 
   );
   assert.equal(runGit(root, "status", "--porcelain"), "");
   assert.equal(existsSync(path.join(root, ".pos-runner/journal.json")), false);
+});
+test("publica un checkpoint con pruebas dirigidas verdes y una falla amplia ajena", async (t) => {
+  const { root, remote, options } = fixture(t);
+  await execute(
+    options,
+    dependencies(async (context) => {
+      const completed = finish(context);
+      completed.checks.push({
+        command: "suite amplia",
+        result: "failed_unrelated",
+        evidence:
+          "Falló únicamente una prueba fechada de otro módulo; la prueba dirigida del bloque aprobó.",
+      });
+      return completed;
+    }),
+  );
+  assert.equal(
+    runGit(root, "rev-parse", "HEAD"),
+    runGit(remote, "rev-parse", "refs/heads/feature/pos-frontend-clean"),
+  );
+  assert.equal(
+    JSON.parse(readFileSync(path.join(root, STATE))).history.length,
+    1,
+  );
 });
 test("parcial conserva check abierto y la siguiente sesión recibe su contexto", async (t) => {
   const { root, options } = fixture(t);

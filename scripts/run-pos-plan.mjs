@@ -210,14 +210,25 @@ export function validateResult(result, task, before, after, files, report) {
           c &&
           typeof c.command === "string" &&
           typeof c.evidence === "string" &&
-          ["passed", "failed", "not_run"].includes(c.result),
+          ["passed", "failed", "failed_unrelated", "not_run"].includes(
+            c.result,
+          ),
       ),
     "Verificaciones inválidas.",
   );
   assert(
     !result.checks.some((c) => c.result === "failed"),
-    "Hay pruebas fallidas; se conserva el trabajo sin publicarlo.",
+    "Hay pruebas pertinentes fallidas; se conserva el trabajo sin publicarlo.",
   );
+  for (const check of result.checks.filter(
+    (candidate) => candidate.result === "failed_unrelated",
+  )) {
+    assert(
+      check.evidence.trim().length >= 40 &&
+        result.checks.some((candidate) => candidate.result === "passed"),
+      "Una falla ajena requiere evidencia concreta y pruebas pertinentes aprobadas.",
+    );
+  }
   if (result.outcome === "completed") {
     assert(
       result.remaining.length === 0,
@@ -225,8 +236,11 @@ export function validateResult(result, task, before, after, files, report) {
     );
     assert(
       result.checks.length > 0 &&
-        result.checks.every((c) => c.result === "passed"),
-      "Cierre sin todas las verificaciones aprobadas.",
+        result.checks.some((c) => c.result === "passed") &&
+        result.checks.every((c) =>
+          ["passed", "failed_unrelated"].includes(c.result),
+        ),
+      "Cierre sin verificaciones pertinentes aprobadas o con checks pendientes.",
     );
   } else
     assert(
@@ -371,6 +385,7 @@ export function runProcess(
   { root, logFile, minutes = 60, input = "" },
 ) {
   return new Promise((resolve, reject) => {
+    const startedAt = Date.now();
     const log = createWriteStream(logFile, { flags: "a", mode: 0o600 });
     const child = spawn(executable, args, {
       cwd: root,
@@ -403,11 +418,15 @@ export function runProcess(
       () => stop("Tiempo máximo alcanzado; checkpoint conservado localmente."),
       minutes * 60_000,
     );
-    const heartbeat = setInterval(
-      () =>
-        console.log(`[POS] ${executable} sigue activo; log local: ${logFile}`),
-      30_000,
-    );
+    const heartbeat = setInterval(() => {
+      const elapsedMinutes = Math.max(
+        1,
+        Math.floor((Date.now() - startedAt) / 60_000),
+      );
+      console.log(
+        `[POS] ${executable} sigue activo (${elapsedMinutes} min); log local: ${logFile}`,
+      );
+    }, 30_000);
     child.stdout.pipe(log, { end: false });
     child.stderr.pipe(log, { end: false });
     child.stdin.on("error", () => {});

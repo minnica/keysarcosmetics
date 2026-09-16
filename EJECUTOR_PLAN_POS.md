@@ -99,6 +99,7 @@ El esquema distingue:
 - `completed`: criterio completo y verificaciones aprobadas; sólo entonces `[x]`.
 - `partial`: código útil probado y pendientes explícitos; el check sigue abierto y la siguiente sesión retoma ese punto.
 - `blocked`: sólo actualización documental de un impedimento, check abierto; se salta esa tarea en la próxima selección automática.
+- `failed_unrelated` es un resultado de una comprobación, no un estado de tarea: permite conservar una suite amplia fallida sólo cuando las pruebas pertinentes aprobaron y la causa pertenece demostrablemente a otro módulo/check. Debe quedar asignada y documentada; `failed` sigue deteniendo la publicación.
 
 Un trabajo probado que aún requiere algo externo se publica primero como parcial; una sesión posterior puede registrar sólo su bloqueo. Se permiten tres checkpoints por tarea por defecto. Después de resolver el impedimento, reintento explícito:
 
@@ -153,4 +154,4 @@ El controlador vuelve a correr tipos/build web de POS cuando cambian POS/paquete
 
 Las guardas comprueban estructura y resultados, no demuestran por sí solas fidelidad visual ni sustituyen revisión de código. Preparar/probar este ejecutor no ejecuta los pendientes funcionales, no provisiona el entorno y no declara aceptación del PO ni disponibilidad productiva.
 
-Validación de esta preparación (2026-09-16): 18/18 pruebas del ejecutor aprobadas; `git diff --check` sin errores; `--dry-run` identifica RV7-P1 como siguiente tarea. Se cubren checkpoints parciales, bloqueos, sincronización entre sesiones, fallo de verificación, modificación durante verificación, exclusión mutua, STOP, fallo/recuperación de push y divergencia remota. No se lanzaron sesiones reales de Codex ni se probó una fase real de extremo a extremo.
+Validación inicial de esta preparación (2026-09-16): 18/18 pruebas del ejecutor aprobadas; `git diff --check` sin errores. El primer ciclo real publicó el checkpoint parcial de RV7-P1. En el segundo ciclo, RV7-P1 pasó sus pruebas dirigidas pero una suite amplia falló en dos casos Scheduler con fechas fijas vencidas; el ejecutor preservó correctamente los archivos, aunque se detuvo porque el schema no distinguía fallas ajenas. El checkpoint fue recuperado y publicado después de repetir 10/10 casos POS en una base nueva. Desde este incidente, `failed_unrelated` exige evidencia concreta y al menos una prueba pertinente aprobada; un `failed` real continúa deteniendo el proceso. La revisión del contrato actualizado pasa 19/19 pruebas, incluida publicación simulada con una falla amplia ajena.

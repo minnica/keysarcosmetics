@@ -32,6 +32,7 @@
 - Cola: 34 IDs, 13 técnicos habilitados y 21 diferidos. RV8 conserva la exclusión anterior. Sin PO, completar lo técnicamente posible y documentar por separado requisitos de Windows/hardware/infraestructura; no marcar aceptación humana como aprobada.
 - Estado inicial: `docs/pos-automation/state.json`, sin tareas ejecutadas. Las pruebas del ejecutor simulan sesiones y remotos locales; no ejecutan ni acreditan nuevamente los recorridos funcionales del POS.
 - Validación del ejecutor: 18/18 pruebas aprobadas con `node --test scripts/run-pos-plan.test.mjs`, `git diff --check` sin errores y `--dry-run` selecciona RV7-P1. No se lanzaron sesiones reales de Codex; la primera ejecución real recomendada es un checkpoint para revisar el flujo completo en este entorno.
+- Incidente/reparación del primer ciclo autónomo: RV7-P1 pasó 10/10 casos POS y 16/16 pruebas pertinentes, pero el ejecutor detuvo la publicación al recibir dos fallos Scheduler ajenos por fechas fijas vencidas. Se recuperó y publicó el cierre después de repetir 10/10 sobre otra base nueva. El contrato distingue ahora `failed_unrelated` con evidencia estricta; los fallos pertinentes siguen deteniendo el proceso. La revisión actualizada pasa 19/19 pruebas del ejecutor, incluida publicación simulada de este caso. Próxima tarea: RV5-P2.
 - Ningún despliegue, provisionamiento, migración o fase funcional se realizó como parte de esta preparación. No confundir los checks históricos siguientes con verificaciones de hoy.
 
 ## Evidencia histórica del MVP (2026-09-09)

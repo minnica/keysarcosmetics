@@ -26,7 +26,7 @@
           "command": { "type": "string" },
           "result": {
             "type": "string",
-            "enum": ["passed", "failed", "not_run"]
+            "enum": ["passed", "failed", "failed_unrelated", "not_run"]
           },
           "evidence": { "type": "string" }
         }
