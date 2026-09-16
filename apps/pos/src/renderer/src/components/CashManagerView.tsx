@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Badge,
   Button,
@@ -128,9 +128,16 @@ interface CashManagerViewProps {
   isMasterCode: (code: string) => boolean;
   apiManaged?: boolean;
   operator?: { id: string; name: string; isMaster: boolean } | null;
+  onAuthorizeMaster?: (code: string) => Promise<boolean>;
   onCreateExpense: (expense: CashExpense) => void;
-  onUpdateExpense: (expense: CashExpense) => void;
-  onVoidExpense: (id: string) => void;
+  onUpdateExpense: (
+    expense: CashExpense,
+    authorizationCode?: string,
+  ) => boolean | void | Promise<boolean | void>;
+  onVoidExpense: (
+    id: string,
+    authorizationCode?: string,
+  ) => boolean | void | Promise<boolean | void>;
 }
 
 export function CashManagerView({
@@ -144,6 +151,7 @@ export function CashManagerView({
   isMasterCode,
   apiManaged = false,
   operator = null,
+  onAuthorizeMaster,
   onCreateExpense,
   onUpdateExpense,
   onVoidExpense,
@@ -155,6 +163,7 @@ export function CashManagerView({
   const [loggedSellerId, setLoggedSellerId] = useState("");
   const [masterAuthorized, setMasterAuthorized] = useState(false);
   const [masterCode, setMasterCode] = useState("");
+  const masterAuthorizationCode = useRef("");
   const [reminderOpen, setReminderOpen] = useState(false);
   const [movementCode, setMovementCode] = useState("");
   const [formOpen, setFormOpen] = useState(false);
@@ -196,15 +205,17 @@ export function CashManagerView({
   useEffect(() => {
     if (apiManaged && operator) {
       setLoggedSellerId(operator.id);
-      setMasterAuthorized(operator.isMaster);
+      setMasterAuthorized(false);
+      masterAuthorizationCode.current = "";
     }
-  }, [apiManaged, operator]);
+  }, [apiManaged, operator?.id, operator?.isMaster]);
 
   useEffect(() => {
     if (!masterAuthorized) return;
     let timeout = window.setTimeout(() => {
       setMasterAuthorized(false);
       setMasterCode("");
+      masterAuthorizationCode.current = "";
       setDateFilter(today);
       setBranchFilter(activeBranch);
       toast.info("Cash Manager master se bloqueó por inactividad.");
@@ -214,6 +225,7 @@ export function CashManagerView({
       timeout = window.setTimeout(() => {
         setMasterAuthorized(false);
         setMasterCode("");
+        masterAuthorizationCode.current = "";
         setDateFilter(today);
         setBranchFilter(activeBranch);
         toast.info("Cash Manager master se bloqueó por inactividad.");
@@ -363,11 +375,16 @@ export function CashManagerView({
     toast.success(`Cash Manager abierto para ${seller.name}.`);
   };
 
-  const unlockMaster = () => {
-    if (!isMasterCode(masterCode)) {
+  const unlockMaster = async () => {
+    const code = masterCode.trim();
+    const authorized = apiManaged
+      ? await onAuthorizeMaster?.(code).catch(() => false)
+      : isMasterCode(code);
+    if (!authorized) {
       toast.error("Código master incorrecto.");
       return;
     }
+    masterAuthorizationCode.current = apiManaged ? code : "";
     setMasterAuthorized(true);
     setMasterCode("");
     setBranchFilter("ALL");
@@ -430,7 +447,7 @@ export function CashManagerView({
     setFormOpen(true);
   };
 
-  const saveExpense = () => {
+  const saveExpense = async () => {
     const amount = Number(form.amount);
     const seller =
       sellers.find((item) => item.id === form.sellerId) ??
@@ -450,21 +467,26 @@ export function CashManagerView({
       return;
     }
     if (editingExpense) {
-      onUpdateExpense({
-        ...editingExpense,
-        expenseDate: form.expenseDate,
-        typeId: type.id,
-        typeName: type.name,
-        amount,
-        branch: form.branch,
-        sellerId: seller.id,
-        sellerName: seller.name,
-        concept: form.concept.trim(),
-        comment: form.comment.trim(),
-        authorizedBy: `${loggedSeller?.name ?? "Master"} · edición master`,
-        updatedAtIso: new Date().toISOString(),
-      });
-      toast.success(`Gasto ${editingExpense.folio} actualizado.`);
+      const updated = await onUpdateExpense(
+        {
+          ...editingExpense,
+          expenseDate: form.expenseDate,
+          typeId: type.id,
+          typeName: type.name,
+          amount,
+          branch: form.branch,
+          sellerId: seller.id,
+          sellerName: seller.name,
+          concept: form.concept.trim(),
+          comment: form.comment.trim(),
+          authorizedBy: `${loggedSeller?.name ?? "Master"} · edición master`,
+          updatedAtIso: new Date().toISOString(),
+        },
+        masterAuthorizationCode.current || undefined,
+      );
+      if (updated === false) return;
+      if (!apiManaged)
+        toast.success(`Gasto ${editingExpense.folio} actualizado.`);
     } else {
       const now = new Date();
       const expense: CashExpense = {
@@ -707,6 +729,7 @@ export function CashManagerView({
                 onClick={() => {
                   setLoggedSellerId("");
                   setMasterAuthorized(false);
+                  masterAuthorizationCode.current = "";
                   setLoginSellerId("");
                 }}
               >
@@ -1055,7 +1078,11 @@ export function CashManagerView({
                                     `¿Anular el gasto ${expense.folio}?`,
                                   )
                                 )
-                                  onVoidExpense(expense.id);
+                                  void onVoidExpense(
+                                    expense.id,
+                                    masterAuthorizationCode.current ||
+                                      undefined,
+                                  );
                               }}
                               aria-label={`Borrar ${expense.folio}`}
                             >

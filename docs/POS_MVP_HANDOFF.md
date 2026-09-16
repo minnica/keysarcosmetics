@@ -8,10 +8,20 @@
 
 - MVP online RV0–RV7 y RV9 bloqueante: implementado.
 - RV10 técnica: 208/208 visual, builds, tipos, lint, unitarias e integración PostgreSQL en `PASS`.
-- Siguiente trabajo: RV7-P1, sustituir los prompts de corrección/anulación de gastos por los controles de autorización aprobados. Seguir después el orden técnico de la sección 6 del plan. La revisión del PO y sus decisiones quedan aplazadas; `12fb804` basta como dirección visual.
-- Pendientes visuales explícitos: RV3-B01 (copy de cierre/gasto) y RV7-P1/R03 (prompts alias/PIN todavía presentes en corrección/anulación de gastos). No equiparar 208 capturas con cobertura universal del modo API.
+- Checkpoint actual: `RV7-P1`, parcial. Los prompts alias/PIN de corrección/anulación ya no existen en el renderer; ambas operaciones reutilizan el campo aprobado `Código master` y las autorizaciones consumibles del servidor. Falta ejecutar el recorrido HTTP contra PostgreSQL desechable antes de cerrar el check.
+- Siguiente trabajo: preparar una PostgreSQL 16 local desechable, ejecutar la integración dirigida de RV7-P1 y comprobar persistencia, permiso `CASH_MANAGE`, importes/compensaciones y rechazo de reutilización. Después seguir el orden técnico de la sección 6 del plan. La revisión del PO y sus decisiones quedan aplazadas; `12fb804` basta como dirección visual.
+- Pendiente visual explícito: RV3-B01 (copy de cierre/gasto). RV7-P1/R03 conserva su check abierto por validación funcional pendiente, no porque permanezca el prompt. No equiparar 208 capturas históricas con cobertura universal del modo API.
 - Backlog: revisiones complejas/historial de entregas, administración avanzada de membresías e incidencias Scheduler, RV8/offline, hardware/escala, migraciones/consumidores/limpieza y OP01–OP06 (piloto, respaldo, rollback y release). Agenda externa sólo si se habilita el proveedor HTTP o se conserva como rollback.
 - Referencia reconfirmada por GitHub MCP el 2026-09-16: `feature/pos` sigue en `12fb8045cc264b565cb6e764d95ad7b2447fbfa1`. La presentación aprobada gobierna la adaptación del backend; no se rediseña para ajustar contratos.
+
+## Checkpoint RV7-P1 (2026-09-16, ejecución actual)
+
+- Se modificaron `App.tsx` y `CashManagerView.tsx`. En modo API, el control visible `Código master` valida primero un token efímero `CASH_MANAGER_ACCESS`; el código queda sólo en memoria durante el desbloqueo de tres minutos y se usa para solicitar tokens nuevos `CASH_EXPENSE_EDIT` o `CASH_EXPENSE_VOID`, ligados al `PosCashExpense` exacto. No se agregó alias, diálogo ni otro DOM.
+- La corrección ahora espera la respuesta del API antes de cerrar el formulario. Si autorización o persistencia fallan, conserva el formulario y muestra el error del servidor. Anulación mantiene la confirmación aprobada y actualiza estado sólo desde el DTO persistido.
+- Se reutilizaron sin cambios los endpoints `POST /api/pos/authorizations`, `POST /api/pos/auth/verify`, `PUT /api/pos/expenses/:id` y `POST /api/pos/expenses/:id/void`, así como su auditoría, idempotencia, compensaciones y tokens de un solo uso. No cambiaron Prisma, migraciones, API client ni contratos compartidos.
+- Verificación de esta ejecución: POS type-check y build Vite en `PASS`; Prettier en `PASS`; API unitarias 25 archivos/135 pruebas en `PASS`; búsqueda dirigida confirma cero `window.prompt` en el renderer; `git diff --check` en `PASS`.
+- No ejecutado: integración HTTP/BD. No hay `DATABASE_URL` de prueba, `psql` no está instalado y Podman no puede crear su runtime por el filesystem de `/run/user/1000`; no se usó ningún `.env`, servicio compartido ni seed general. Por eso RV7-P1 sigue `[ ]` y el resultado es `partial`.
+- B01 sigue diferido y el copy `REGISTRO MOCK · CASH MANAGER` no fue modificado. Informe durable: `docs/pos-automation/runs/2026-09-16T08-55-40-652Z-RV7-P1.md`.
 
 ## Preparación del ejecutor (2026-09-16)
 

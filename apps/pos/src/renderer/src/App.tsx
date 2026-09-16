@@ -8631,6 +8631,21 @@ function App() {
     toast.success("Costos y reportes mensuales desbloqueados.");
     return true;
   };
+  const authorizeCashManagerMaster = async (code: string) => {
+    if (!posApiEnabled) return isMasterAccessCode(code);
+    try {
+      const authorization = await posApi.createAuthorization({
+        pin: code,
+        purpose: "CASH_MANAGER_ACCESS",
+      });
+      return posApi.verifyAuthorization(
+        authorization.authorizationToken,
+        "CASH_MANAGER_ACCESS",
+      );
+    } catch {
+      return false;
+    }
+  };
   const activeTickets = useMemo(
     () => tickets.filter((ticket) => ticket.status === "COMPLETED"),
     [tickets],
@@ -19113,6 +19128,7 @@ function App() {
                   }
                 : null
             }
+            onAuthorizeMaster={authorizeCashManagerMaster}
             onCreateExpense={(expense) => {
               if (posApiEnabled) {
                 void posApi
@@ -19159,17 +19175,12 @@ function App() {
                 createdAtIso: expense.createdAtIso,
               });
             }}
-            onUpdateExpense={(expense) => {
+            onUpdateExpense={async (expense, authorizationCode) => {
               if (posApiEnabled) {
-                const alias = window.prompt(
-                  "Alias master para corregir el gasto:",
-                );
-                const pin = alias ? window.prompt("PIN master:") : null;
-                if (!alias || !pin) return;
-                void posApi
+                if (!authorizationCode) return false;
+                return posApi
                   .createAuthorization({
-                    alias,
-                    pin,
+                    pin: authorizationCode,
                     purpose: "CASH_EXPENSE_EDIT",
                     entityType: "PosCashExpense",
                     entityId: expense.id,
@@ -19203,6 +19214,7 @@ function App() {
                       ),
                     ]);
                     toast.success(`Gasto corregido mediante ${mapped.folio}.`);
+                    return true;
                   })
                   .catch((error: unknown) => {
                     const response = error as {
@@ -19214,8 +19226,8 @@ function App() {
                         response.message ??
                         "No se pudo corregir el gasto.",
                     );
+                    return false;
                   });
-                return;
               }
               setCashExpenses((current) =>
                 current.map((item) =>
@@ -19233,18 +19245,14 @@ function App() {
                 reference: expense.folio,
                 createdAtIso: new Date().toISOString(),
               });
+              return true;
             }}
-            onVoidExpense={(expenseId) => {
+            onVoidExpense={async (expenseId, authorizationCode) => {
               if (posApiEnabled) {
-                const alias = window.prompt(
-                  "Alias master para anular el gasto:",
-                );
-                const pin = alias ? window.prompt("PIN master:") : null;
-                if (!alias || !pin) return;
-                void posApi
+                if (!authorizationCode) return false;
+                return posApi
                   .createAuthorization({
-                    alias,
-                    pin,
+                    pin: authorizationCode,
                     purpose: "CASH_EXPENSE_VOID",
                     entityType: "PosCashExpense",
                     entityId: expenseId,
@@ -19265,6 +19273,7 @@ function App() {
                     toast.success(
                       "El gasto fue anulado mediante una compensación auditada.",
                     );
+                    return true;
                   })
                   .catch((error: unknown) => {
                     const response = error as {
@@ -19276,8 +19285,8 @@ function App() {
                         response.message ??
                         "No se pudo anular el gasto.",
                     );
+                    return false;
                   });
-                return;
               }
               const voidedExpense = cashExpenses.find(
                 (expense) => expense.id === expenseId,
@@ -19309,6 +19318,7 @@ function App() {
               toast.success(
                 "El gasto quedó anulado y dejó de afectar el corte.",
               );
+              return true;
             }}
           />
         );
