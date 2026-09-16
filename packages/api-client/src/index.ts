@@ -55,6 +55,7 @@ import type {
   PosTicketDto,
   PosTicketEventDto,
   PosTicketEventRequestDto,
+  PosTicketRevisionRequestDto,
   PosTicketQuoteDto,
   PosTicketQuoteRequestDto,
   PosTicketPaymentInputDto,
@@ -1496,7 +1497,7 @@ export interface PosApiClient {
   ): Promise<PosOwedProductDeliveryDto>;
   reviseTicket(
     id: string,
-    input: PosTicketEventRequestDto,
+    input: PosTicketRevisionRequestDto,
     idempotencyKey?: string,
   ): Promise<PosTicketEventDto>;
   cancelTicket(

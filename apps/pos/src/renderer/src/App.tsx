@@ -14086,18 +14086,54 @@ function App() {
             clientName: changes.clientName,
             clientPhone: changes.clientPhone,
             sellerIds: changes.sellerIds,
-            products: changes.products,
-            discountAmount: changes.discountAmount,
+            products: changes.products.map((product) => ({
+              itemId: product.productId,
+              quantity: product.quantity.toFixed(2),
+              unitPrice: product.unitPrice.toFixed(2),
+            })),
+            discountAmount: changes.discountAmount.toFixed(2),
             paymentStatus: changes.paymentStatus,
-            amountPaid: changes.amountPaid,
-            payments: changes.payments,
+            amountPaid: changes.amountPaid.toFixed(2),
+            payments: changes.payments.map((payment) => ({
+              methodId: payment.methodId,
+              amount: payment.amount.toFixed(2),
+              ...(payment.authorizationCode
+                ? {
+                    reference: payment.authorizationCode,
+                    authorizationLastFour: payment.authorizationCode,
+                  }
+                : {}),
+              ...(payment.cardOrBank
+                ? { institution: payment.cardOrBank }
+                : {}),
+              ...(payment.cardType ? { cardType: payment.cardType } : {}),
+              ...(payment.cardNetwork
+                ? {
+                    cardNetworkId:
+                      cardNetworkIds[payment.cardNetwork] ??
+                      payment.cardNetwork,
+                  }
+                : {}),
+              ...(payment.bankId ? { bankId: payment.bankId } : {}),
+              ...(payment.installmentMonths
+                ? { installmentMonths: payment.installmentMonths }
+                : {}),
+            })),
           },
         });
+        const revisedTicket = ticketFromDto(
+          await posApi.ticket(ticket.backendId),
+        );
+        setTickets((current) =>
+          current.map((candidate) =>
+            candidate.backendId === ticket.backendId
+              ? revisedTicket
+              : candidate,
+          ),
+        );
         setReceiptHistoryAuthorized(false);
         setReceiptHistoryAuthorizationToken(null);
-        toast.success(
-          `Revisión de ${ticket.id} registrada sin alterar el ticket original.`,
-        );
+        toast.success(`Revisión de ${ticket.id} aplicada y conciliada.`);
         return true;
       } catch (error) {
         toast.error(

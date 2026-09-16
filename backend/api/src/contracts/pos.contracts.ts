@@ -1234,6 +1234,57 @@ export const posTicketEventRequestSchema = z
   })
   .strict();
 
+export const posTicketRevisionRequestSchema = z
+  .object({
+    reason: z.string().trim().min(3).max(1_000),
+    authorizationToken: z.string().uuid(),
+    revision: z
+      .object({
+        clientName: z.string().trim().min(1).max(240),
+        clientPhone: z.string().trim().max(32),
+        sellerIds: z.array(idSchema).min(1).max(100),
+        products: z
+          .array(
+            z
+              .object({
+                itemId: idSchema,
+                quantity: positiveQuantitySchema,
+                unitPrice: moneySchema,
+              })
+              .strict(),
+          )
+          .min(1)
+          .max(500),
+        discountAmount: moneySchema,
+        paymentStatus: z.enum(["PAID", "LAYAWAY", "PENDING"]),
+        amountPaid: moneySchema,
+        payments: z.array(posTicketPaymentInputSchema).max(20),
+      })
+      .strict(),
+  })
+  .strict()
+  .superRefine((input, context) => {
+    const paid = Number(input.revision.amountPaid);
+    const paymentTotal = input.revision.payments.reduce(
+      (sum, payment) => sum + Number(payment.amount),
+      0,
+    );
+    if (Math.abs(paid - paymentTotal) > 0.001) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["revision", "payments"],
+        message: "Los pagos no coinciden con el importe cobrado",
+      });
+    }
+    if (input.revision.paymentStatus === "PENDING" && paid !== 0) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["revision", "amountPaid"],
+        message: "Un ticket pendiente no puede registrar cobros",
+      });
+    }
+  });
+
 const posMembershipStatusSchema = z.enum([
   "PENDING",
   "ACTIVE",

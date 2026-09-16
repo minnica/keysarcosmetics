@@ -1124,6 +1124,224 @@ integrationDescribe("seguridad y terminales POS", () => {
       deliveredOwed.deliveries,
     );
 
+    const revisionItem = await request(
+      "/api/pos/catalog/items",
+      json(
+        "POST",
+        {
+          sku: `RV5-REV-${suffix}`.toUpperCase(),
+          name: `Producto revisable RV5 ${suffix}`,
+          kind: "PRODUCT",
+          description: "Producto para revisión compensatoria",
+          benefits: ["Conciliación incremental"],
+          branchIds: [branchId],
+          published: true,
+          listPrice: "50.00",
+          minimumPrice: "40.00",
+          unitCost: "20.00",
+          unitCostUsd: "0.00",
+          partnerCost: "25.00",
+          taxRate: "16.00",
+        },
+        masterToken,
+      ),
+    );
+    expect(revisionItem.response.status).toBe(201);
+    const revisionItemId = (revisionItem.body["data"] as { id: string }).id;
+    await prisma.inventoryBalance.create({
+      data: {
+        locationId: branchLocation.id,
+        itemId: revisionItemId,
+        availableQuantity: 10,
+      },
+    });
+    const revisableCheckout = await request(
+      "/api/pos/tickets",
+      mutationJson(
+        "POST",
+        {
+          branchId,
+          customer: { id: checkoutData.customerId },
+          lines: [
+            {
+              itemId: revisionItemId,
+              quantity: "2.00",
+              unitPrice: "50.00",
+              delivered: true,
+            },
+          ],
+          sellers: [{ employeeId, share: "100.00" }],
+          payments: [{ methodId: cash.id, amount: "100.00" }],
+        },
+        employeeToken,
+      ),
+    );
+    expect(revisableCheckout.response.status).toBe(201);
+    const revisableTicket = revisableCheckout.body["data"] as {
+      id: string;
+      folio: string;
+    };
+    const revisionAuthorization = await request(
+      "/api/pos/authorizations",
+      json(
+        "POST",
+        { pin: masterPin, purpose: "RECEIPT_HISTORY_ADMIN" },
+        masterToken,
+      ),
+    );
+    const revisionAuthorizationToken = (
+      revisionAuthorization.body["data"] as { authorizationToken: string }
+    ).authorizationToken;
+    const blockedOwedRevision = await request(
+      `/api/pos/tickets/${owedTicket.id}/revisions`,
+      mutationJson(
+        "POST",
+        {
+          reason: "No materializar adeudo sin motor compensatorio",
+          authorizationToken: revisionAuthorizationToken,
+          revision: {
+            clientName: "Clienta Checkout RV5",
+            clientPhone: "5512345678",
+            sellerIds: [employeeId],
+            products: [
+              {
+                itemId: owedItemId,
+                quantity: "3.00",
+                unitPrice: "100.00",
+              },
+            ],
+            discountAmount: "0.00",
+            paymentStatus: "PAID",
+            amountPaid: "300.00",
+            payments: [{ methodId: cash.id, amount: "300.00" }],
+          },
+        },
+        masterToken,
+      ),
+    );
+    expect(blockedOwedRevision.response.status).toBe(409);
+    const revisionKey = randomUUID();
+    const revisionPayload = {
+      reason: "Ajuste de cantidad y precio RV5-P1",
+      authorizationToken: revisionAuthorizationToken,
+      revision: {
+        clientName: "Clienta Checkout RV5 Corregida",
+        clientPhone: "5512345678",
+        sellerIds: [employeeId],
+        products: [
+          {
+            itemId: revisionItemId,
+            quantity: "3.00",
+            unitPrice: "40.00",
+          },
+        ],
+        discountAmount: "0.00",
+        paymentStatus: "PAID",
+        amountPaid: "120.00",
+        payments: [{ methodId: cash.id, amount: "120.00" }],
+      },
+    };
+    const postRevision = () =>
+      request(`/api/pos/tickets/${revisableTicket.id}/revisions`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${masterToken}`,
+          "idempotency-key": revisionKey,
+        },
+        body: JSON.stringify(revisionPayload),
+      });
+    const appliedRevision = await postRevision();
+    expect(appliedRevision.response.status).toBe(201);
+    expect(appliedRevision.body["data"]).toEqual(
+      expect.objectContaining({
+        actorCredentialId: expect.any(String),
+        version: 2,
+        differences: expect.arrayContaining([
+          expect.objectContaining({ field: "LINES" }),
+          expect.objectContaining({ field: "TOTALS" }),
+          expect.objectContaining({ field: "PAYMENTS" }),
+        ]),
+      }),
+    );
+    const replayedRevision = await postRevision();
+    expect(replayedRevision.response.status).toBe(201);
+    expect(replayedRevision.body["data"]).toEqual(appliedRevision.body["data"]);
+
+    const revisedReload = await request(
+      `/api/pos/tickets/${revisableTicket.id}`,
+      { headers: { authorization: `Bearer ${masterToken}` } },
+    );
+    expect(revisedReload.response.status).toBe(200);
+    expect(revisedReload.body["data"]).toEqual(
+      expect.objectContaining({
+        customerName: "Clienta Checkout RV5 Corregida",
+        customerPhone: "5512345678",
+        total: "120.00",
+        amountReceived: "120.00",
+        pendingAmount: "0.00",
+        settlementStatus: "PAID",
+      }),
+    );
+    const revisedReloadData = revisedReload.body["data"] as {
+      lines: Array<{ itemId: string; quantity: string; unitPrice: string }>;
+      paymentOperations: Array<{ kind: string; amount: string }>;
+    };
+    expect(revisedReloadData.lines).toEqual([
+      expect.objectContaining({
+        itemId: revisionItemId,
+        quantity: "3.00",
+        unitPrice: "40.00",
+      }),
+    ]);
+    expect(revisedReloadData.paymentOperations).toEqual([
+      expect.objectContaining({ kind: "REVISION", amount: "120.00" }),
+    ]);
+    const [revisionEvents, revisionOperations, revisionBalance, projectionSum] =
+      await Promise.all([
+        prisma.posTicketEvent.findMany({
+          where: { ticketId: revisableTicket.id, type: "REVISION" },
+        }),
+        prisma.posPaymentOperation.findMany({
+          where: { ticketId: revisableTicket.id },
+          orderBy: { creadoEn: "asc" },
+        }),
+        prisma.inventoryBalance.findUniqueOrThrow({
+          where: {
+            locationId_itemId: {
+              locationId: branchLocation.id,
+              itemId: revisionItemId,
+            },
+          },
+        }),
+        prisma.posLegacySaleProjection.aggregate({
+          where: { operation: { ticketId: revisableTicket.id } },
+          _sum: { amount: true },
+        }),
+      ]);
+    expect(revisionEvents).toHaveLength(1);
+    expect(revisionEvents[0]?.snapshot).toEqual(
+      expect.objectContaining({
+        schemaVersion: 1,
+        appliedVersion: 2,
+        effects: expect.objectContaining({
+          compensationOperationId: expect.any(String),
+          revisionOperationId: expect.any(String),
+          inventoryMovementId: expect.any(String),
+        }),
+      }),
+    );
+    expect(revisionOperations.map((operation) => operation.kind)).toEqual([
+      "SALE",
+      "REFUND",
+      "REVISION",
+    ]);
+    expect(
+      revisionOperations.map((operation) => operation.amount.toFixed(2)),
+    ).toEqual(["100.00", "100.00", "120.00"]);
+    expect(revisionBalance.availableQuantity.toFixed(2)).toBe("7.00");
+    expect(projectionSum._sum.amount?.toFixed(2)).toBe("120.00");
+
     const receiptsAuthorization = await request(
       "/api/pos/authorizations",
       json(
@@ -1141,7 +1359,25 @@ integrationDescribe("seguridad y terminales POS", () => {
         "POST",
         {
           reason: "Corrección de prueba RV5",
-          revision: { clientName: "Clienta Checkout RV5" },
+          revision: {
+            clientName: "Clienta Checkout RV5 Ajustada",
+            clientPhone: "5598765432",
+            sellerIds: [employeeId],
+            products: [
+              {
+                itemId: serviceId,
+                quantity: "1.00",
+                unitPrice: "199.00",
+              },
+            ],
+            discountAmount: "0.00",
+            paymentStatus: "PAID",
+            amountPaid: "199.00",
+            payments: [
+              { methodId: cash.id, amount: "100.00" },
+              { methodId: transfer.id, amount: "99.00" },
+            ],
+          },
           authorizationToken: receiptsAuthorizationToken,
         },
         masterToken,

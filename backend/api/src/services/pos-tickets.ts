@@ -6,6 +6,8 @@ import type {
   PosTicketParticipantInputDto,
   PosTicketQuoteDto,
   PosTicketQuoteRequestDto,
+  PosTicketRevisionDifferenceDto,
+  PosTicketRevisionRequestDto,
 } from "@cosmetics/types";
 import { hashOpaqueToken } from "./pos-security";
 import {
@@ -916,6 +918,57 @@ const deliveryInclude = {
   actorCredential: { include: deliveryCredentialInclude },
 } as const;
 
+interface AppliedTicketRevisionSnapshot {
+  schemaVersion: 1;
+  appliedVersion: number;
+  before: Record<string, unknown>;
+  after: {
+    customerName: string;
+    customerPhone: string;
+    subtotal: string;
+    minimumTotal: string;
+    spareTotal: string;
+    discountTotal: string;
+    taxTotal: string;
+    total: string;
+    amountReceived: string;
+    pendingAmount: string;
+    settlementStatus: "PAID" | "LAYAWAY" | "PENDING";
+    lines: PosTicketDto["lines"];
+    sellers: PosTicketDto["sellers"];
+    participants: PosTicketDto["participants"];
+    effectivePaymentOperationIds: string[];
+    itemKinds: Record<string, string>;
+    unitCosts: Record<string, string>;
+  };
+  differences: PosTicketRevisionDifferenceDto[];
+  effects: Record<string, unknown>;
+}
+
+function appliedTicketRevisionSnapshot(
+  value: Prisma.JsonValue | null | undefined,
+): AppliedTicketRevisionSnapshot | null {
+  if (!isRecord(value)) return null;
+  if (
+    value["schemaVersion"] !== 1 ||
+    typeof value["appliedVersion"] !== "number" ||
+    !isRecord(value["after"]) ||
+    !Array.isArray(value["differences"])
+  )
+    return null;
+  const after = value["after"];
+  if (
+    !Array.isArray(after["lines"]) ||
+    !Array.isArray(after["sellers"]) ||
+    !Array.isArray(after["participants"]) ||
+    !Array.isArray(after["effectivePaymentOperationIds"]) ||
+    !isRecord(after["itemKinds"]) ||
+    !isRecord(after["unitCosts"])
+  )
+    return null;
+  return value as unknown as AppliedTicketRevisionSnapshot;
+}
+
 export const ticketInclude = {
   branch: { select: { nombre: true } },
   customer: { select: { id: true } },
@@ -928,6 +981,12 @@ export const ticketInclude = {
   paymentOperations: {
     include: { payments: true },
     orderBy: { creadoEn: "asc" as const },
+  },
+  events: {
+    where: { type: "REVISION" as const },
+    select: { snapshot: true },
+    orderBy: [{ creadoEn: "desc" as const }, { id: "desc" as const }],
+    take: 1,
   },
   layaway: true,
   owedProducts: {
@@ -966,7 +1025,8 @@ type TicketPayload = Prisma.PosTicketGetPayload<{
 }>;
 
 export function ticketDto(ticket: TicketPayload): PosTicketDto {
-  const lines = ticket.lines.map((line) => ({
+  const applied = appliedTicketRevisionSnapshot(ticket.events[0]?.snapshot);
+  const originalLines = ticket.lines.map((line) => ({
     id: line.id,
     kind: line.kind,
     itemId: line.itemId,
@@ -984,78 +1044,89 @@ export function ticketDto(ticket: TicketPayload): PosTicketDto {
     packageName: line.packageNameSnapshot,
     notes: line.notes,
   }));
+  const originalSellers = ticket.sellers.map((seller) => ({
+    employeeId: seller.employeeId,
+    name: seller.sellerNameSnapshot,
+    shareAmount: money(seller.shareAmount)!,
+    sharePercent: money(seller.sharePercent)!,
+    clockedIn: seller.clockedInSnapshot,
+    presenceBranchId: seller.presenceBranchIdSnapshot,
+    attendanceId: seller.attendanceIdSnapshot,
+  }));
+  const originalParticipants = ticket.participants.map((participant) => ({
+    id: participant.id,
+    kind: participant.kind,
+    employeeId: participant.employeeId,
+    companyId: participant.companyId,
+    code: participant.participantCodeSnapshot,
+    name: participant.participantNameSnapshot,
+    shareAmount: money(participant.shareAmount)!,
+    sharePercent: money(participant.sharePercent)!,
+    clockedIn: participant.clockedInSnapshot,
+    presenceBranchId: participant.presenceBranchIdSnapshot,
+    attendanceId: participant.attendanceIdSnapshot,
+  }));
+  const visibleOperationIds = applied
+    ? new Set(applied.after.effectivePaymentOperationIds)
+    : null;
   return {
     id: ticket.id,
     folio: ticket.folio,
     status: ticket.status,
-    settlementStatus: ticket.settlementStatus,
+    settlementStatus:
+      applied?.after.settlementStatus ?? ticket.settlementStatus,
     businessDate: ticket.businessDate.toISOString().slice(0, 10),
     createdAt: ticket.creadoEn.toISOString(),
     branchId: ticket.branchId,
     branchName: ticket.branch.nombre,
     customerId: ticket.customerId,
-    customerName: ticket.customerNameSnapshot,
-    customerPhone: ticket.customerPhoneSnapshot,
-    subtotal: money(ticket.subtotal)!,
-    minimumTotal: money(ticket.minimumTotal)!,
-    spareTotal: money(ticket.spareTotal)!,
-    discountTotal: money(ticket.discountTotal)!,
-    taxTotal: money(ticket.taxTotal)!,
-    total: money(ticket.total)!,
-    amountReceived: money(ticket.amountPaid)!,
-    pendingAmount: money(ticket.pendingAmount)!,
+    customerName: applied?.after.customerName ?? ticket.customerNameSnapshot,
+    customerPhone: applied?.after.customerPhone ?? ticket.customerPhoneSnapshot,
+    subtotal: applied?.after.subtotal ?? money(ticket.subtotal)!,
+    minimumTotal: applied?.after.minimumTotal ?? money(ticket.minimumTotal)!,
+    spareTotal: applied?.after.spareTotal ?? money(ticket.spareTotal)!,
+    discountTotal: applied?.after.discountTotal ?? money(ticket.discountTotal)!,
+    taxTotal: applied?.after.taxTotal ?? money(ticket.taxTotal)!,
+    total: applied?.after.total ?? money(ticket.total)!,
+    amountReceived: applied?.after.amountReceived ?? money(ticket.amountPaid)!,
+    pendingAmount: applied?.after.pendingAmount ?? money(ticket.pendingAmount)!,
     requiresAuthorization:
       ticket.total.lessThan(ticket.minimumTotal) && !ticket.authorizationId,
     authorizationPurpose: ticket.total.lessThan(ticket.minimumTotal)
       ? "SALE_BELOW_MINIMUM"
       : null,
-    lines,
-    sellers: ticket.sellers.map((seller) => ({
-      employeeId: seller.employeeId,
-      name: seller.sellerNameSnapshot,
-      shareAmount: money(seller.shareAmount)!,
-      sharePercent: money(seller.sharePercent)!,
-      clockedIn: seller.clockedInSnapshot,
-      presenceBranchId: seller.presenceBranchIdSnapshot,
-      attendanceId: seller.attendanceIdSnapshot,
-    })),
-    paymentOperations: ticket.paymentOperations.map((operation) => ({
-      id: operation.id,
-      folio: operation.folio,
-      kind: operation.kind,
-      amount: money(operation.amount)!,
-      businessDate: operation.businessDate.toISOString().slice(0, 10),
-      createdAt: operation.creadoEn.toISOString(),
-      payments: operation.payments.map((payment) => ({
-        id: payment.id,
-        methodId: payment.paymentMethodId,
-        methodName: payment.methodNameSnapshot,
-        methodType: payment.methodTypeSnapshot,
-        amount: money(payment.amount)!,
-        reference: payment.reference,
-        institution: payment.institution,
-        authorizationLastFour: payment.authorizationLastFour,
-        cardType: payment.cardType,
-        cardNetworkId: payment.cardNetworkId,
-        cardNetworkName: payment.cardNetworkNameSnapshot,
-        bankId: payment.bankId,
-        bankName: payment.bankNameSnapshot,
-        installmentMonths: payment.installmentMonths,
+    lines: applied?.after.lines ?? originalLines,
+    sellers: applied?.after.sellers ?? originalSellers,
+    paymentOperations: ticket.paymentOperations
+      .filter(
+        (operation) =>
+          !visibleOperationIds || visibleOperationIds.has(operation.id),
+      )
+      .map((operation) => ({
+        id: operation.id,
+        folio: operation.folio,
+        kind: operation.kind,
+        amount: money(operation.amount)!,
+        businessDate: operation.businessDate.toISOString().slice(0, 10),
+        createdAt: operation.creadoEn.toISOString(),
+        payments: operation.payments.map((payment) => ({
+          id: payment.id,
+          methodId: payment.paymentMethodId,
+          methodName: payment.methodNameSnapshot,
+          methodType: payment.methodTypeSnapshot,
+          amount: money(payment.amount)!,
+          reference: payment.reference,
+          institution: payment.institution,
+          authorizationLastFour: payment.authorizationLastFour,
+          cardType: payment.cardType,
+          cardNetworkId: payment.cardNetworkId,
+          cardNetworkName: payment.cardNetworkNameSnapshot,
+          bankId: payment.bankId,
+          bankName: payment.bankNameSnapshot,
+          installmentMonths: payment.installmentMonths,
+        })),
       })),
-    })),
-    participants: ticket.participants.map((participant) => ({
-      id: participant.id,
-      kind: participant.kind,
-      employeeId: participant.employeeId,
-      companyId: participant.companyId,
-      code: participant.participantCodeSnapshot,
-      name: participant.participantNameSnapshot,
-      shareAmount: money(participant.shareAmount)!,
-      sharePercent: money(participant.sharePercent)!,
-      clockedIn: participant.clockedInSnapshot,
-      presenceBranchId: participant.presenceBranchIdSnapshot,
-      attendanceId: participant.attendanceIdSnapshot,
-    })),
+    participants: applied?.after.participants ?? originalParticipants,
     owedProducts: ticket.owedProducts.map((owed) => {
       const deliveries: PosOwedProductDeliveryDto[] = owed.deliveryLines
         .map(({ quantity, delivery }) => ({
@@ -2038,7 +2109,7 @@ export async function appendTicketRevision(
     ticketId: string;
     reason: string;
     authorizationToken: string;
-    snapshot: Prisma.InputJsonValue;
+    revision: PosTicketRevisionRequestDto["revision"];
   },
   context: {
     credentialId: string;
@@ -2050,10 +2121,199 @@ export async function appendTicketRevision(
   },
 ) {
   await requireOpenBusinessDay(tx, context.branchId, context.businessDate);
-  await validateRevisionPaymentSnapshot(tx, input.snapshot);
+  await tx.$queryRaw(
+    Prisma.sql`SELECT "id" FROM "PosTicket" WHERE "id" = ${input.ticketId}::uuid FOR UPDATE`,
+  );
   const ticket = await findTicket(tx, input.ticketId);
   if (!ticket || ticket.branchId !== context.branchId)
     throw new PosTicketError("Ticket no encontrado", 404);
+  if (ticket.status === "CANCELED" || ticket.status === "REFUNDED")
+    throw new PosTicketError("El ticket cancelado no admite revisiones", 409);
+
+  const current = ticketDto(ticket);
+  const previousApplied = appliedTicketRevisionSnapshot(
+    ticket.events[0]?.snapshot,
+  );
+  if (ticket.owedProducts.length > 0)
+    throw new PosTicketError(
+      "La revisión de tickets con adeudos o entregas requiere el motor compensatorio pendiente",
+      409,
+    );
+  if (ticket.clientMemberships.length > 0)
+    throw new PosTicketError(
+      "La revisión de tickets con membresías requiere el motor compensatorio de membresías pendiente",
+      409,
+    );
+  if (ticket.appointments.length > 0)
+    throw new PosTicketError(
+      "La revisión de tickets con citas requiere el motor compensatorio de Agenda pendiente",
+      409,
+    );
+  if (
+    current.lines.some(
+      (line) => line.kind === "GIFT" || line.packageId !== null,
+    )
+  )
+    throw new PosTicketError(
+      "La revisión de paquetes o cortesías requiere su motor compensatorio pendiente",
+      409,
+    );
+  const revisionPaymentsInput = input.revision.payments;
+  assertNoSensitivePaymentData(revisionPaymentsInput);
+  const validatedPayments = await validatePayments(tx, revisionPaymentsInput);
+  const quote = await calculateAuthoritativeQuote(
+    tx,
+    {
+      branchId: context.branchId,
+      customerId: ticket.customerId ?? undefined,
+      lines: input.revision.products.map((line) => ({
+        itemId: line.itemId,
+        quantity: line.quantity,
+        unitPrice: line.unitPrice,
+        delivered: true,
+      })),
+      sellers: [],
+      payments: revisionPaymentsInput,
+      discount: { kind: "FIXED", value: input.revision.discountAmount },
+    },
+    context.branchId,
+  );
+  const declaredPaidCents = toCents(input.revision.amountPaid);
+  if (declaredPaidCents !== quote.amountReceivedCents)
+    throw new PosTicketError("Los pagos no coinciden con el importe cobrado");
+  if (
+    (input.revision.paymentStatus === "PAID" &&
+      declaredPaidCents !== quote.totalCents) ||
+    (input.revision.paymentStatus === "LAYAWAY" &&
+      (declaredPaidCents <= 0 || declaredPaidCents >= quote.totalCents)) ||
+    (input.revision.paymentStatus === "PENDING" && declaredPaidCents !== 0)
+  )
+    throw new PosTicketError(
+      "El estado de pago no coincide con el total y el importe cobrado",
+    );
+
+  const sellerIds = [...new Set(input.revision.sellerIds)];
+  if (sellerIds.length !== input.revision.sellerIds.length)
+    throw new PosTicketError("La revisión contiene vendedores duplicados");
+  if (
+    current.participants.some((participant) => participant.kind === "COMPANY")
+  )
+    throw new PosTicketError(
+      "La revisión de tickets con participación de empresa requiere el motor comercial pendiente",
+      409,
+    );
+  const employees = await tx.empleado.findMany({
+    where: {
+      id: { in: sellerIds },
+      activo: true,
+      OR: [{ todasSucursales: true }, { sucursalId: context.branchId }],
+    },
+    select: { id: true, nombreCompleto: true },
+  });
+  if (employees.length !== sellerIds.length)
+    throw new PosTicketError(
+      "La revisión contiene vendedores inactivos o fuera de sucursal",
+    );
+  const employeeById = new Map(
+    employees.map((employee) => [employee.id, employee]),
+  );
+  const openAttendances = await tx.posAttendance.findMany({
+    where: {
+      employeeId: { in: sellerIds },
+      branchId: context.branchId,
+      status: "OPEN",
+      clockOutAt: null,
+    },
+    select: { id: true, employeeId: true, branchId: true },
+  });
+  const attendanceByEmployee = new Map(
+    openAttendances.map((attendance) => [attendance.employeeId, attendance]),
+  );
+  const sellerShares = allocateLargestRemainder(
+    quote.totalCents,
+    sellerIds.map(() => 1),
+  );
+  const sellerPercentUnits = allocateLargestRemainder(
+    1_000_000,
+    sellerIds.map(() => 1),
+  );
+  const nextSellers: PosTicketDto["sellers"] = sellerIds.map(
+    (employeeId, index) => {
+      const attendance = attendanceByEmployee.get(employeeId);
+      return {
+        employeeId,
+        name: employeeById.get(employeeId)!.nombreCompleto,
+        shareAmount: fromCents(sellerShares[index]!),
+        sharePercent: (sellerPercentUnits[index]! / 10_000).toFixed(4),
+        clockedIn: Boolean(attendance),
+        presenceBranchId: attendance?.branchId ?? null,
+        attendanceId: attendance?.id ?? null,
+      };
+    },
+  );
+  const nextParticipants: PosTicketDto["participants"] = nextSellers.map(
+    (seller, index) => ({
+      id: `revision-${ticket.version + 1}-${index + 1}`,
+      kind: "SELLER",
+      employeeId: seller.employeeId,
+      companyId: null,
+      code: seller.employeeId,
+      name: seller.name,
+      shareAmount: seller.shareAmount,
+      sharePercent: seller.sharePercent,
+      clockedIn: seller.clockedIn,
+      presenceBranchId: seller.presenceBranchId,
+      attendanceId: seller.attendanceId,
+    }),
+  );
+  const nextLines: PosTicketDto["lines"] = quote.lines.map((line, index) => ({
+    id: `revision-${ticket.version + 1}-${index + 1}`,
+    kind: "SALE",
+    itemId: line.item.id,
+    itemName: line.item.name,
+    sku: line.item.sku,
+    quantity: line.quantityDecimal,
+    unitPrice: fromCents(line.unitPriceCents),
+    unitListPrice: fromCents(line.item.listPriceCents),
+    unitMinimumPrice: fromCents(line.item.minimumPriceCents),
+    subtotal: fromCents(line.subtotalCents),
+    discountTotal: fromCents(line.discountCents),
+    taxTotal: fromCents(line.taxCents),
+    total: fromCents(line.totalCents),
+    packageId: line.packageId,
+    packageName: line.packageName,
+    notes: line.notes,
+  }));
+  const nextItemKinds = Object.fromEntries(
+    quote.lines.map((line) => [line.item.id, line.item.kind]),
+  );
+  const nextUnitCosts = Object.fromEntries(
+    quote.lines.map((line) => [
+      line.item.id,
+      fromCents(line.item.unitCostCents),
+    ]),
+  );
+  const currentItemKinds =
+    previousApplied?.after.itemKinds ??
+    Object.fromEntries(
+      ticket.lines.flatMap((line) =>
+        line.itemId && line.item ? [[line.itemId, line.item.kind]] : [],
+      ),
+    );
+  const currentUnitCosts =
+    previousApplied?.after.unitCosts ??
+    Object.fromEntries(
+      ticket.lines.flatMap((line) =>
+        line.itemId ? [[line.itemId, line.unitCostSnapshot.toFixed(2)]] : [],
+      ),
+    );
+  const comparableLines = (lines: PosTicketDto["lines"]) =>
+    lines.map((line) => ({
+      itemId: line.itemId,
+      quantity: line.quantity,
+      unitPrice: line.unitPrice,
+      total: line.total,
+    }));
   const authorization = await consumeTicketAuthorization(
     tx,
     input.authorizationToken,
@@ -2064,19 +2324,346 @@ export async function appendTicketRevision(
   );
   if (!authorization)
     throw new PosTicketError("La revisión requiere autorización master", 403);
+
+  const currentOperationIds = new Set(
+    previousApplied?.after.effectivePaymentOperationIds ??
+      current.paymentOperations.map((operation) => operation.id),
+  );
+  const currentOperations = ticket.paymentOperations.filter((operation) =>
+    currentOperationIds.has(operation.id),
+  );
+  const currentPaymentCents = currentOperations.reduce(
+    (sum, operation) => sum + toCents(operation.amount),
+    0,
+  );
+  let compensationOperationId: string | null = null;
+  if (currentPaymentCents > 0) {
+    const sequence = await nextSequence(tx, "PosPaymentFolioSeq");
+    const operation = await tx.posPaymentOperation.create({
+      data: {
+        ticketId: ticket.id,
+        folio: `DEV-${sequence.toString().padStart(6, "0")}`,
+        kind: "REFUND",
+        amount: decimalFromCents(currentPaymentCents),
+        businessDate: businessDateValue(context.businessDate),
+        actorCredentialId: context.credentialId,
+        terminalId: context.terminalId,
+        payments: {
+          create: currentOperations.flatMap((currentOperation) =>
+            currentOperation.payments.map((payment) => ({
+              paymentMethodId: payment.paymentMethodId,
+              methodNameSnapshot: payment.methodNameSnapshot,
+              methodTypeSnapshot: payment.methodTypeSnapshot,
+              amount: payment.amount,
+              reference: `REVISIÓN ${ticket.folio}`,
+              institution: payment.institution,
+              authorizationLastFour: payment.authorizationLastFour,
+              cardType: payment.cardType,
+              cardNetworkId: payment.cardNetworkId,
+              cardNetworkNameSnapshot: payment.cardNetworkNameSnapshot,
+              bankId: payment.bankId,
+              bankNameSnapshot: payment.bankNameSnapshot,
+              installmentMonths: payment.installmentMonths,
+            })),
+          ),
+        },
+      },
+    });
+    compensationOperationId = operation.id;
+    await projectPaymentOperation(tx, {
+      operationId: operation.id,
+      branchId: context.branchId,
+      businessDate: context.businessDate,
+      note: `Compensación por revisión POS ${ticket.folio} / ${operation.folio}`,
+      negative: true,
+      sellers: current.sellers.map((seller) => ({
+        employeeId: seller.employeeId,
+        weightCents: toCents(seller.shareAmount),
+      })),
+      payments: currentOperations.flatMap((currentOperation) =>
+        currentOperation.payments.map((payment) => ({
+          methodId: payment.paymentMethodId,
+          amountCents: toCents(payment.amount),
+        })),
+      ),
+    });
+  }
+
+  let revisionOperationId: string | null = null;
+  if (quote.amountReceivedCents > 0) {
+    const sequence = await nextSequence(tx, "PosPaymentFolioSeq");
+    const operation = await tx.posPaymentOperation.create({
+      data: {
+        ticketId: ticket.id,
+        folio: `REV-${sequence.toString().padStart(6, "0")}`,
+        kind: "REVISION",
+        amount: decimalFromCents(quote.amountReceivedCents),
+        businessDate: businessDateValue(context.businessDate),
+        actorCredentialId: context.credentialId,
+        terminalId: context.terminalId,
+        payments: {
+          create: validatedPayments.map(
+            ({ payment, method, bank, network }) => ({
+              paymentMethodId: method.id,
+              methodNameSnapshot: method.nombre,
+              methodTypeSnapshot: method.tipo,
+              amount: new Prisma.Decimal(payment.amount),
+              reference: payment.reference ?? null,
+              institution: bank?.name ?? payment.institution ?? null,
+              authorizationLastFour: payment.authorizationLastFour ?? null,
+              cardType: payment.cardType ?? null,
+              cardNetworkId: network?.id ?? null,
+              cardNetworkNameSnapshot: network?.name ?? null,
+              bankId: bank?.id ?? null,
+              bankNameSnapshot: bank?.name ?? null,
+              installmentMonths: payment.installmentMonths ?? null,
+            }),
+          ),
+        },
+      },
+    });
+    revisionOperationId = operation.id;
+    await projectPaymentOperation(tx, {
+      operationId: operation.id,
+      branchId: context.branchId,
+      businessDate: context.businessDate,
+      note: `Proyección de revisión POS ${ticket.folio} / ${operation.folio}`,
+      sellers: nextSellers.map((seller) => ({
+        employeeId: seller.employeeId,
+        weightCents: toCents(seller.shareAmount),
+      })),
+      payments: validatedPayments.map(({ payment, method }) => ({
+        methodId: method.id,
+        amountCents: toCents(payment.amount),
+      })),
+    });
+  }
+
+  const quantitiesByItem = (
+    lines: PosTicketDto["lines"],
+    kinds: Record<string, string>,
+  ) => {
+    const values = new Map<string, Prisma.Decimal>();
+    for (const line of lines) {
+      if (!line.itemId || kinds[line.itemId] !== "PRODUCT") continue;
+      values.set(
+        line.itemId,
+        (values.get(line.itemId) ?? new Prisma.Decimal(0)).plus(line.quantity),
+      );
+    }
+    return values;
+  };
+  const previousQuantities = quantitiesByItem(current.lines, currentItemKinds);
+  const nextQuantities = quantitiesByItem(nextLines, nextItemKinds);
+  const changedItemIds = [
+    ...new Set([...previousQuantities.keys(), ...nextQuantities.keys()]),
+  ].filter(
+    (itemId) =>
+      !(previousQuantities.get(itemId) ?? new Prisma.Decimal(0)).equals(
+        nextQuantities.get(itemId) ?? new Prisma.Decimal(0),
+      ),
+  );
+  let inventoryMovementId: string | null = null;
+  if (changedItemIds.length > 0) {
+    const location = await tx.inventoryLocation.findUnique({
+      where: { branchId: context.branchId },
+    });
+    if (!location)
+      throw new PosTicketError(
+        "La sucursal no tiene ubicación de inventario",
+        409,
+      );
+    const movement = await createInventoryLedgerMovement(tx, {
+      type: "COUNT_ADJUSTMENT",
+      reason: `REVISION_${ticket.folio}`,
+      notes: input.reason,
+      businessDate: context.businessDate,
+      actorCredentialId: context.credentialId,
+      terminalId: context.terminalId,
+      lines: changedItemIds.map((itemId) => {
+        const previous =
+          previousQuantities.get(itemId) ?? new Prisma.Decimal(0);
+        const next = nextQuantities.get(itemId) ?? new Prisma.Decimal(0);
+        const delta = next.minus(previous);
+        return {
+          itemId,
+          fromLocationId: delta.isPositive() ? location.id : null,
+          toLocationId: delta.isNegative() ? location.id : null,
+          quantity: delta.abs(),
+          unitCostSnapshot: new Prisma.Decimal(
+            nextUnitCosts[itemId] ?? currentUnitCosts[itemId] ?? "0.00",
+          ),
+          metadata: {
+            ticketId: ticket.id,
+            ticketFolio: ticket.folio,
+            revisionVersion: ticket.version + 1,
+          },
+          requireSourceStock: false,
+        };
+      }),
+    });
+    inventoryMovementId = movement.id;
+  }
+
+  const nextVersion = ticket.version + 1;
+  const beforeSnapshot = {
+    customerName: current.customerName ?? "",
+    customerPhone: current.customerPhone ?? "",
+    subtotal: current.subtotal,
+    minimumTotal: current.minimumTotal,
+    spareTotal: current.spareTotal,
+    discountTotal: current.discountTotal,
+    taxTotal: current.taxTotal,
+    total: current.total,
+    amountReceived: current.amountReceived,
+    pendingAmount: current.pendingAmount,
+    settlementStatus: current.settlementStatus,
+    lines: current.lines,
+    sellers: current.sellers,
+    participants: current.participants,
+    effectivePaymentOperationIds: [...currentOperationIds],
+    itemKinds: currentItemKinds,
+    unitCosts: currentUnitCosts,
+  };
+  const afterSnapshot: AppliedTicketRevisionSnapshot["after"] = {
+    customerName: input.revision.clientName,
+    customerPhone: input.revision.clientPhone,
+    subtotal: fromCents(quote.subtotalCents),
+    minimumTotal: fromCents(quote.minimumCents),
+    spareTotal: fromCents(quote.spareCents),
+    discountTotal: fromCents(quote.discountCents),
+    taxTotal: fromCents(quote.taxCents),
+    total: fromCents(quote.totalCents),
+    amountReceived: fromCents(quote.amountReceivedCents),
+    pendingAmount: fromCents(quote.pendingCents),
+    settlementStatus: input.revision.paymentStatus,
+    lines: nextLines,
+    sellers: nextSellers,
+    participants: nextParticipants,
+    effectivePaymentOperationIds: revisionOperationId
+      ? [revisionOperationId]
+      : [],
+    itemKinds: nextItemKinds,
+    unitCosts: nextUnitCosts,
+  };
+  const differences: PosTicketRevisionDifferenceDto[] = [];
+  const addDifference = (
+    field: PosTicketRevisionDifferenceDto["field"],
+    before: unknown,
+    after: unknown,
+  ) => {
+    if (JSON.stringify(before) !== JSON.stringify(after))
+      differences.push({ field, before, after });
+  };
+  addDifference(
+    "CUSTOMER",
+    {
+      name: beforeSnapshot.customerName,
+      phone: beforeSnapshot.customerPhone,
+    },
+    {
+      name: afterSnapshot.customerName,
+      phone: afterSnapshot.customerPhone,
+    },
+  );
+  addDifference("SELLERS", beforeSnapshot.sellers, afterSnapshot.sellers);
+  addDifference(
+    "LINES",
+    comparableLines(current.lines),
+    comparableLines(nextLines),
+  );
+  addDifference(
+    "TOTALS",
+    {
+      subtotal: beforeSnapshot.subtotal,
+      discountTotal: beforeSnapshot.discountTotal,
+      total: beforeSnapshot.total,
+    },
+    {
+      subtotal: afterSnapshot.subtotal,
+      discountTotal: afterSnapshot.discountTotal,
+      total: afterSnapshot.total,
+    },
+  );
+  addDifference(
+    "PAYMENTS",
+    {
+      amountReceived: beforeSnapshot.amountReceived,
+      settlementStatus: beforeSnapshot.settlementStatus,
+    },
+    {
+      amountReceived: afterSnapshot.amountReceived,
+      settlementStatus: afterSnapshot.settlementStatus,
+    },
+  );
+  if (differences.length === 0)
+    throw new PosTicketError("La revisión no contiene cambios", 409);
+
   const event = await tx.posTicketEvent.create({
     data: {
       ticketId: ticket.id,
       type: "REVISION",
       reason: input.reason,
-      snapshot: input.snapshot,
+      snapshot: {
+        schemaVersion: 1,
+        appliedVersion: nextVersion,
+        before: beforeSnapshot,
+        after: afterSnapshot,
+        differences,
+        effects: {
+          compensationOperationId,
+          revisionOperationId,
+          inventoryMovementId,
+        },
+      } as unknown as Prisma.InputJsonValue,
       actorCredentialId: context.credentialId,
       authorizationId: authorization.id,
+      inventoryMovementId,
     },
   });
   await tx.posTicket.update({
     where: { id: ticket.id },
-    data: { version: { increment: 1 } },
+    data: {
+      customerNameSnapshot: afterSnapshot.customerName,
+      customerPhoneSnapshot: afterSnapshot.customerPhone || null,
+      subtotal: decimalFromCents(quote.subtotalCents),
+      minimumTotal: decimalFromCents(quote.minimumCents),
+      spareTotal: decimalFromCents(quote.spareCents),
+      discountTotal: decimalFromCents(quote.discountCents),
+      taxTotal: decimalFromCents(quote.taxCents),
+      total: decimalFromCents(quote.totalCents),
+      amountPaid: decimalFromCents(quote.amountReceivedCents),
+      pendingAmount: decimalFromCents(quote.pendingCents),
+      settlementStatus: afterSnapshot.settlementStatus,
+      status:
+        afterSnapshot.settlementStatus === "PAID" ? "COMPLETED" : "LAYAWAY",
+      version: nextVersion,
+      layaway:
+        afterSnapshot.settlementStatus === "PAID"
+          ? ticket.layaway
+            ? {
+                update: {
+                  amountPaid: decimalFromCents(quote.amountReceivedCents),
+                  pendingAmount: new Prisma.Decimal(0),
+                  paidAt: new Date(),
+                },
+              }
+            : undefined
+          : ticket.layaway
+            ? {
+                update: {
+                  amountPaid: decimalFromCents(quote.amountReceivedCents),
+                  pendingAmount: decimalFromCents(quote.pendingCents),
+                  paidAt: null,
+                },
+              }
+            : {
+                create: {
+                  amountPaid: decimalFromCents(quote.amountReceivedCents),
+                  pendingAmount: decimalFromCents(quote.pendingCents),
+                },
+              },
+    },
   });
   return {
     id: event.id,
@@ -2084,6 +2671,9 @@ export async function appendTicketRevision(
     amount: money(event.amount)!,
     reason: event.reason,
     createdAt: event.creadoEn.toISOString(),
+    actorCredentialId: event.actorCredentialId,
+    version: nextVersion,
+    differences,
   };
 }
 

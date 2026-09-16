@@ -13,6 +13,7 @@ import {
   posOwedProductDeliveryRequestSchema,
   posTicketCreateRequestSchema,
   posTicketEventRequestSchema,
+  posTicketRevisionRequestSchema,
   posTicketListQuerySchema,
   posTicketQuoteRequestSchema,
   posSaleSellerQuerySchema,
@@ -511,7 +512,7 @@ router.post(
   asyncRoute(async (req, res) => {
     const key = idempotencyKey(req, res);
     if (!key) return;
-    const parsed = posTicketEventRequestSchema.safeParse(req.body);
+    const parsed = posTicketRevisionRequestSchema.safeParse(req.body);
     if (!parsed.success)
       return res.status(400).json({
         success: false,
@@ -534,7 +535,7 @@ router.post(
               ticketId: req.params["id"]!,
               reason: parsed.data.reason,
               authorizationToken: parsed.data.authorizationToken,
-              snapshot: (parsed.data.revision ?? {}) as Prisma.InputJsonValue,
+              revision: parsed.data.revision,
             },
             saleContext(req),
           ),

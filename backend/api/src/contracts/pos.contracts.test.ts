@@ -15,6 +15,7 @@ import {
   posTerminalStatusUpdateSchema,
   posTicketQuoteRequestSchema,
   posTicketAppointmentInputSchema,
+  posTicketRevisionRequestSchema,
   posBusinessDayCloseSchema,
   posBusinessDayCountInputSchema,
   posCashExpenseCorrectionSchema,
@@ -194,6 +195,41 @@ describe("contratos públicos del POS", () => {
     expect(
       posMutationHeadersSchema.safeParse({ "idempotency-key": "invalid" })
         .success,
+    ).toBe(false);
+  });
+
+  it("tipa la revisión materializable y concilia el total de sus pagos", () => {
+    const request = {
+      reason: "Corrección autorizada",
+      authorizationToken: "f8b7b231-2157-4533-a9e1-16d53452b7c8",
+      revision: {
+        clientName: "Clienta corregida",
+        clientPhone: "5512345678",
+        sellerIds: ["employee-1"],
+        products: [{ itemId: "item-1", quantity: "2.00", unitPrice: "50.00" }],
+        discountAmount: "0.00",
+        paymentStatus: "PAID" as const,
+        amountPaid: "100.00",
+        payments: [{ methodId: "cash-1", amount: "100.00" }],
+      },
+    };
+    expect(posTicketRevisionRequestSchema.safeParse(request).success).toBe(
+      true,
+    );
+    expect(
+      posTicketRevisionRequestSchema.safeParse({
+        ...request,
+        revision: {
+          ...request.revision,
+          payments: [{ methodId: "cash-1", amount: "99.99" }],
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      posTicketRevisionRequestSchema.safeParse({
+        ...request,
+        revision: { ...request.revision, inventedField: true },
+      }).success,
     ).toBe(false);
   });
 

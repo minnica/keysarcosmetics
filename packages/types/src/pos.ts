@@ -1389,12 +1389,40 @@ export interface PosTicketEventRequestDto {
   authorizationToken: string;
 }
 
+export interface PosTicketRevisionRequestDto {
+  reason: string;
+  authorizationToken: string;
+  revision: {
+    clientName: string;
+    clientPhone: string;
+    sellerIds: PosId[];
+    products: Array<{
+      itemId: PosId;
+      quantity: Money;
+      unitPrice: Money;
+    }>;
+    discountAmount: Money;
+    paymentStatus: "PAID" | "LAYAWAY" | "PENDING";
+    amountPaid: Money;
+    payments: PosTicketPaymentInputDto[];
+  };
+}
+
+export interface PosTicketRevisionDifferenceDto {
+  field: "CUSTOMER" | "SELLERS" | "LINES" | "TOTALS" | "PAYMENTS";
+  before: unknown;
+  after: unknown;
+}
+
 export interface PosTicketEventDto {
   id: PosId;
   type: "REVISION" | "CANCELLATION" | "RETURN";
   amount: Money;
   reason: string;
   createdAt: IsoUtcDateTime;
+  actorCredentialId?: PosId;
+  version?: number;
+  differences?: PosTicketRevisionDifferenceDto[];
 }
 
 export interface PosVoucherIssueDto {
