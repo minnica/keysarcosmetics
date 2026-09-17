@@ -1377,14 +1377,16 @@ export function EmployeesView({
                   id="employee-personal-code"
                   type="password"
                   inputMode="numeric"
-                  maxLength={12}
+                  maxLength={4}
                   value={sellerDraft.accessCode}
                   onChange={(event) =>
                     setSellerDraft((current) =>
                       current
                         ? {
                             ...current,
-                            accessCode: event.target.value.replace(/\D/g, ""),
+                            accessCode: event.target.value
+                              .replace(/\D/g, "")
+                              .slice(0, 4),
                           }
                         : current,
                     )

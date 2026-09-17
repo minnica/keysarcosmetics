@@ -428,6 +428,70 @@
       "nextStep": "Continuar con RV9-P4: auditar R01–R17 y ejecutar sólo limpieza local con reemplazo y consumidores demostrados.",
       "report": "docs/pos-automation/runs/2026-09-16T20-27-47-323Z-RV9-P3.md",
       "updatedAt": "2026-09-16T21:05:23.346Z"
+    },
+    "RV9-P4": {
+      "id": "RV9-P4",
+      "runId": "2026-09-16T22-51-26-680Z-RV9-P4",
+      "base": "4bf4dafea066ac580c7b91439509e84088c47240",
+      "status": "completed",
+      "attempts": 1,
+      "summary": "R01–R17 fueron reauditorados y clasificados. Se corrigió el único residuo local seguro: Employees limita a cuatro dígitos los códigos personales nuevos, conservando compatibilidad histórica 4–12. Mocks, Agenda, proyecciones, datos y outboxes condicionados se preservaron.",
+      "checks": [
+        {
+          "command": "pnpm --filter @cosmetics/pos type-check",
+          "result": "passed",
+          "evidence": "TypeScript del renderer, main y preload terminó sin errores."
+        },
+        {
+          "command": "pnpm --filter @cosmetics/pos build:web",
+          "result": "passed",
+          "evidence": "Renderer y bundles Electron construidos correctamente; sólo apareció el warning preexistente de tamaño de chunk."
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api exec vitest run src/contracts/pos.contracts.test.ts",
+          "result": "passed",
+          "evidence": "1 archivo y 16/16 pruebas de contratos POS aprobadas."
+        },
+        {
+          "command": "pnpm pos:visual:manifest",
+          "result": "passed",
+          "evidence": "Referencia 12fb804 intacta: 25 pantallas y 208 capturas programadas."
+        },
+        {
+          "command": "if rg -n 'managedByApi|window\\.prompt|Generando folio|cancela y crea' apps/pos/src/renderer/src; then exit 1; else echo 'PASS'; fi",
+          "result": "passed",
+          "evidence": "No quedan los residuos R01/R03/R06/R07 buscados."
+        },
+        {
+          "command": "pnpm exec prettier --check apps/pos/src/renderer/src/components/EmployeesView.tsx docs/POS_UI_BACKEND_COMPATIBILITY.md PLAN_RESTAURACION_VISUAL_POS.md docs/POS_MVP_HANDOFF.md CLAUDE.md docs/pos-automation/runs/2026-09-16T22-51-26-680Z-RV9-P4.md && git diff --check",
+          "result": "passed",
+          "evidence": "Todos los archivos modificados tienen formato correcto y el diff no contiene errores de whitespace."
+        }
+      ],
+      "independentChecks": [
+        {
+          "command": "pnpm --filter @cosmetics/pos type-check",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/pos build:web",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api exec vitest run src/contracts/pos.contracts.test.ts",
+          "result": "passed"
+        }
+      ],
+      "remaining": [],
+      "followUps": [
+        "R10–R12 requieren inventario autorizado de despliegues y, según corresponda, RV8 antes de retirarse.",
+        "R13 requiere decidir RV6-P3 y cerrar formalmente la ventana de rollback antes de retirar provider o tablas Agenda.",
+        "R14 debe conservarse mientras Envelope, Payroll y reconciliación consuman sus proyecciones.",
+        "R15–R17 permanecen sujetos a las decisiones aplazadas B01–B03."
+      ],
+      "nextStep": "Continuar con RV10-P1; conservar RV9-P1/P2, RV8, RV6-P3 y B01–B03 como seguimientos diferidos que requieren evidencia o decisiones externas.",
+      "report": "docs/pos-automation/runs/2026-09-16T22-51-26-680Z-RV9-P4.md",
+      "updatedAt": "2026-09-17T18:25:28.597Z"
     }
   },
   "history": [
@@ -1567,6 +1631,70 @@
       "nextStep": "Reanudar RV5-P1 sólo cuando Producto apruebe una identidad/regla de compensación inequívoca y, para Agenda HTTP, un mecanismo durable de recuperación; mientras tanto conservar los rechazos 409 antes del token.",
       "report": "docs/pos-automation/runs/2026-09-16T22-46-34-049Z-RV5-P1.md",
       "updatedAt": "2026-09-16T22:51:23.672Z"
+    },
+    {
+      "id": "RV9-P4",
+      "runId": "2026-09-16T22-51-26-680Z-RV9-P4",
+      "base": "4bf4dafea066ac580c7b91439509e84088c47240",
+      "status": "completed",
+      "attempts": 1,
+      "summary": "R01–R17 fueron reauditorados y clasificados. Se corrigió el único residuo local seguro: Employees limita a cuatro dígitos los códigos personales nuevos, conservando compatibilidad histórica 4–12. Mocks, Agenda, proyecciones, datos y outboxes condicionados se preservaron.",
+      "checks": [
+        {
+          "command": "pnpm --filter @cosmetics/pos type-check",
+          "result": "passed",
+          "evidence": "TypeScript del renderer, main y preload terminó sin errores."
+        },
+        {
+          "command": "pnpm --filter @cosmetics/pos build:web",
+          "result": "passed",
+          "evidence": "Renderer y bundles Electron construidos correctamente; sólo apareció el warning preexistente de tamaño de chunk."
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api exec vitest run src/contracts/pos.contracts.test.ts",
+          "result": "passed",
+          "evidence": "1 archivo y 16/16 pruebas de contratos POS aprobadas."
+        },
+        {
+          "command": "pnpm pos:visual:manifest",
+          "result": "passed",
+          "evidence": "Referencia 12fb804 intacta: 25 pantallas y 208 capturas programadas."
+        },
+        {
+          "command": "if rg -n 'managedByApi|window\\.prompt|Generando folio|cancela y crea' apps/pos/src/renderer/src; then exit 1; else echo 'PASS'; fi",
+          "result": "passed",
+          "evidence": "No quedan los residuos R01/R03/R06/R07 buscados."
+        },
+        {
+          "command": "pnpm exec prettier --check apps/pos/src/renderer/src/components/EmployeesView.tsx docs/POS_UI_BACKEND_COMPATIBILITY.md PLAN_RESTAURACION_VISUAL_POS.md docs/POS_MVP_HANDOFF.md CLAUDE.md docs/pos-automation/runs/2026-09-16T22-51-26-680Z-RV9-P4.md && git diff --check",
+          "result": "passed",
+          "evidence": "Todos los archivos modificados tienen formato correcto y el diff no contiene errores de whitespace."
+        }
+      ],
+      "independentChecks": [
+        {
+          "command": "pnpm --filter @cosmetics/pos type-check",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/pos build:web",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api exec vitest run src/contracts/pos.contracts.test.ts",
+          "result": "passed"
+        }
+      ],
+      "remaining": [],
+      "followUps": [
+        "R10–R12 requieren inventario autorizado de despliegues y, según corresponda, RV8 antes de retirarse.",
+        "R13 requiere decidir RV6-P3 y cerrar formalmente la ventana de rollback antes de retirar provider o tablas Agenda.",
+        "R14 debe conservarse mientras Envelope, Payroll y reconciliación consuman sus proyecciones.",
+        "R15–R17 permanecen sujetos a las decisiones aplazadas B01–B03."
+      ],
+      "nextStep": "Continuar con RV10-P1; conservar RV9-P1/P2, RV8, RV6-P3 y B01–B03 como seguimientos diferidos que requieren evidencia o decisiones externas.",
+      "report": "docs/pos-automation/runs/2026-09-16T22-51-26-680Z-RV9-P4.md",
+      "updatedAt": "2026-09-17T18:25:28.597Z"
     }
   ]
 }
