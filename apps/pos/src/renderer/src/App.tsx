@@ -3522,6 +3522,7 @@ function App() {
         if (
           !login.offline &&
           login.session.actor.isMaster &&
+          credentials.requestedBranch &&
           credentials.requestedBranch !== login.session.terminal.branch.name
         ) {
           const target = login.session.authorizedBranches.find(

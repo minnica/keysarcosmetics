@@ -668,6 +668,73 @@
       "nextStep": "Cuando existan equipo y canal autorizados, provisionar allí una terminal distinta con el helper, cargar sus secretos privadamente en el proceso principal de Electron y registrar el recorrido sin reutilizar la terminal sintética local PO-PREP.",
       "report": "docs/pos-automation/runs/2026-09-17T19-25-59-775Z-RV10-P3.md",
       "updatedAt": "2026-09-17T19:30:37.632Z"
+    },
+    "RV10-P4": {
+      "id": "RV10-P4",
+      "runId": "2026-09-17T19-30-40-620Z-RV10-P4",
+      "base": "f3d4db30a66dbb75410d2deb1ac3a841e8493a32",
+      "status": "partial",
+      "attempts": 1,
+      "summary": "Preparación local completada: se añadió verificación segura para Windows, guía PowerShell y una corrección al primer login API. Electron 35.7.5 inició, autenticó y repitió el login tras reinicio contra PostgreSQL/API sintéticos. Falta comprobarlo en Windows con terminal real y acceso del PO.",
+      "checks": [
+        {
+          "command": "node --test scripts/verify-pos-windows-demo.test.mjs",
+          "result": "passed",
+          "evidence": "4/4 pruebas aprobaron guardas de modo API, URLs, SHA, placeholders y redacción de secretos."
+        },
+        {
+          "command": "prepare-pos-local-demo.sh up; provision-pos-local-demo.ts provision|verify; provision-pos-terminal-local.ts provision|verify; node scripts/verify-pos-windows-demo.mjs probe",
+          "result": "passed",
+          "evidence": "PostgreSQL 16 aplicó 46/46 migraciones; dataset y terminal sintéticos verificados; health.release, /ready y CORS aprobaron."
+        },
+        {
+          "command": "pnpm --filter @cosmetics/pos type-check && VITE_POS_DATA_MODE=api VITE_API_URL=http://127.0.0.1:4413 pnpm --filter @cosmetics/pos build:web",
+          "result": "passed",
+          "evidence": "TypeScript y builds de renderer, main y preload aprobaron después de corregir la sucursal inicial."
+        },
+        {
+          "command": "pnpm --filter @cosmetics/pos dev; cerrar; comprobar puerto/proceso; pnpm --filter @cosmetics/pos dev",
+          "result": "passed",
+          "evidence": "Electron 35.7.5 abrió dos veces; login y relogin alcanzaron Conteo inicial de inventario con la sucursal fija y Terminal conectada."
+        },
+        {
+          "command": "pnpm pos:visual:manifest",
+          "result": "passed",
+          "evidence": "Referencia 12fb804 intacta: 25 pantallas, 10 secciones, 11 reportes, 10 vistas de bodega y 208 capturas."
+        },
+        {
+          "command": "pnpm exec prettier --check <archivos RV10-P4> && node --check scripts/verify-pos-windows-demo.mjs && git diff --check",
+          "result": "passed",
+          "evidence": "Código/documentación formateados, helper sintácticamente válido y diff sin errores."
+        },
+        {
+          "command": "prepare-pos-local-demo.sh down; prepare-pos-local-demo.sh status; revisar listeners 3005/4413/55473/9223",
+          "result": "passed",
+          "evidence": "API, PostgreSQL, Vite y Electron quedaron detenidos; contenedor, BD sintética y estado privado se conservaron sin listeners."
+        }
+      ],
+      "independentChecks": [
+        {
+          "command": "node --test scripts/verify-pos-windows-demo.test.mjs",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/pos type-check",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/pos build:web",
+          "result": "passed"
+        }
+      ],
+      "remaining": [
+        "Ejecutar docs/POS_WINDOWS_API_DEMO.md en el equipo Windows objetivo con el SHA/API/terminal autorizados y registrar inicio, reinicio y parada.",
+        "Comprobar desde Windows que el PO puede abrir Electron e ingresar con actores master y operador, sucursal fija y permisos correctos, sin exponer credenciales."
+      ],
+      "followUps": [],
+      "nextStep": "Publicar la preparación local y registrar RV10-P4 como bloqueado hasta disponer de Windows, terminal/canal privados y acceso del PO; continuar después con RV10-P7.",
+      "report": "docs/pos-automation/runs/2026-09-17T19-30-40-620Z-RV10-P4.md",
+      "updatedAt": "2026-09-17T20:05:44.955Z"
     }
   },
   "history": [
@@ -2199,6 +2266,73 @@
       "nextStep": "Cuando existan equipo y canal autorizados, provisionar allí una terminal distinta con el helper, cargar sus secretos privadamente en el proceso principal de Electron y registrar el recorrido sin reutilizar la terminal sintética local PO-PREP.",
       "report": "docs/pos-automation/runs/2026-09-17T19-25-59-775Z-RV10-P3.md",
       "updatedAt": "2026-09-17T19:30:37.632Z"
+    },
+    {
+      "id": "RV10-P4",
+      "runId": "2026-09-17T19-30-40-620Z-RV10-P4",
+      "base": "f3d4db30a66dbb75410d2deb1ac3a841e8493a32",
+      "status": "partial",
+      "attempts": 1,
+      "summary": "Preparación local completada: se añadió verificación segura para Windows, guía PowerShell y una corrección al primer login API. Electron 35.7.5 inició, autenticó y repitió el login tras reinicio contra PostgreSQL/API sintéticos. Falta comprobarlo en Windows con terminal real y acceso del PO.",
+      "checks": [
+        {
+          "command": "node --test scripts/verify-pos-windows-demo.test.mjs",
+          "result": "passed",
+          "evidence": "4/4 pruebas aprobaron guardas de modo API, URLs, SHA, placeholders y redacción de secretos."
+        },
+        {
+          "command": "prepare-pos-local-demo.sh up; provision-pos-local-demo.ts provision|verify; provision-pos-terminal-local.ts provision|verify; node scripts/verify-pos-windows-demo.mjs probe",
+          "result": "passed",
+          "evidence": "PostgreSQL 16 aplicó 46/46 migraciones; dataset y terminal sintéticos verificados; health.release, /ready y CORS aprobaron."
+        },
+        {
+          "command": "pnpm --filter @cosmetics/pos type-check && VITE_POS_DATA_MODE=api VITE_API_URL=http://127.0.0.1:4413 pnpm --filter @cosmetics/pos build:web",
+          "result": "passed",
+          "evidence": "TypeScript y builds de renderer, main y preload aprobaron después de corregir la sucursal inicial."
+        },
+        {
+          "command": "pnpm --filter @cosmetics/pos dev; cerrar; comprobar puerto/proceso; pnpm --filter @cosmetics/pos dev",
+          "result": "passed",
+          "evidence": "Electron 35.7.5 abrió dos veces; login y relogin alcanzaron Conteo inicial de inventario con la sucursal fija y Terminal conectada."
+        },
+        {
+          "command": "pnpm pos:visual:manifest",
+          "result": "passed",
+          "evidence": "Referencia 12fb804 intacta: 25 pantallas, 10 secciones, 11 reportes, 10 vistas de bodega y 208 capturas."
+        },
+        {
+          "command": "pnpm exec prettier --check <archivos RV10-P4> && node --check scripts/verify-pos-windows-demo.mjs && git diff --check",
+          "result": "passed",
+          "evidence": "Código/documentación formateados, helper sintácticamente válido y diff sin errores."
+        },
+        {
+          "command": "prepare-pos-local-demo.sh down; prepare-pos-local-demo.sh status; revisar listeners 3005/4413/55473/9223",
+          "result": "passed",
+          "evidence": "API, PostgreSQL, Vite y Electron quedaron detenidos; contenedor, BD sintética y estado privado se conservaron sin listeners."
+        }
+      ],
+      "independentChecks": [
+        {
+          "command": "node --test scripts/verify-pos-windows-demo.test.mjs",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/pos type-check",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/pos build:web",
+          "result": "passed"
+        }
+      ],
+      "remaining": [
+        "Ejecutar docs/POS_WINDOWS_API_DEMO.md en el equipo Windows objetivo con el SHA/API/terminal autorizados y registrar inicio, reinicio y parada.",
+        "Comprobar desde Windows que el PO puede abrir Electron e ingresar con actores master y operador, sucursal fija y permisos correctos, sin exponer credenciales."
+      ],
+      "followUps": [],
+      "nextStep": "Publicar la preparación local y registrar RV10-P4 como bloqueado hasta disponer de Windows, terminal/canal privados y acceso del PO; continuar después con RV10-P7.",
+      "report": "docs/pos-automation/runs/2026-09-17T19-30-40-620Z-RV10-P4.md",
+      "updatedAt": "2026-09-17T20:05:44.955Z"
     }
   ]
 }
