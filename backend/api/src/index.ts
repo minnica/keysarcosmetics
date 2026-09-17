@@ -3,7 +3,7 @@ import { app } from "./app";
 import { prisma } from "./prisma/client";
 
 const port = Number(process.env["PORT"] ?? 4000);
-const host = "0.0.0.0";
+const host = process.env["HOST"]?.trim() || "0.0.0.0";
 const server = app.listen(port, host, () => {
   console.log(`API corriendo en http://${host}:${port}`);
 });

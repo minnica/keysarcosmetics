@@ -492,6 +492,71 @@
       "nextStep": "Continuar con RV10-P1; conservar RV9-P1/P2, RV8, RV6-P3 y B01–B03 como seguimientos diferidos que requieren evidencia o decisiones externas.",
       "report": "docs/pos-automation/runs/2026-09-16T22-51-26-680Z-RV9-P4.md",
       "updatedAt": "2026-09-17T18:25:28.597Z"
+    },
+    "RV10-P1": {
+      "id": "RV10-P1",
+      "runId": "2026-09-17T18-28-31-657Z-RV10-P1",
+      "base": "27b92cacc195f48020033940166a9f5f6460522b",
+      "status": "partial",
+      "attempts": 1,
+      "summary": "Preparación local reproducible completada para el SHA 27b92cacc195f48020033940166a9f5f6460522b: PostgreSQL 16 aislado, 46 migraciones, API compilada, identidad de release, readiness y CORS verificados. El check permanece abierto por falta de Windows o development autorizado para comprobar acceso desde el entorno objetivo.",
+      "checks": [
+        {
+          "command": "POS_DEMO_CONFIRMATION=LOCAL_SYNTHETIC_ONLY POS_DEMO_EXPECTED_SHA=27b92cacc195f48020033940166a9f5f6460522b backend/api/scripts/prepare-pos-local-demo.sh up && backend/api/scripts/prepare-pos-local-demo.sh verify",
+          "result": "passed",
+          "evidence": "Creación y reentrada aprobaron con 46 migraciones, SHA exacto, /ready conectado, CORS permitido/rechazado y listeners limitados a loopback."
+        },
+        {
+          "command": "RUN_DATABASE_TESTS=true DATABASE_URL=<local-desechable> DIRECT_URL=<misma-BD> pnpm --filter @cosmetics/api exec vitest run src/app.integration.test.ts",
+          "result": "passed",
+          "evidence": "1 archivo y 5/5 pruebas HTTP/BD aprobadas sobre keysar_pos_demo."
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api prisma:schemas && pnpm --filter @cosmetics/api prisma:validate && pnpm --filter @cosmetics/api type-check && pnpm --filter @cosmetics/api lint && pnpm --filter @cosmetics/api test:unit",
+          "result": "passed",
+          "evidence": "Schemas sincronizados/válidos, tipos y lint aprobados; 25 archivos y 136/136 pruebas unitarias."
+        },
+        {
+          "command": "pnpm --filter @cosmetics/pos type-check && pnpm --filter @cosmetics/pos build:web",
+          "result": "passed",
+          "evidence": "Renderer, main y preload compilaron correctamente."
+        },
+        {
+          "command": "backend/api/scripts/prepare-pos-local-demo.sh down && backend/api/scripts/prepare-pos-local-demo.sh status",
+          "result": "passed",
+          "evidence": "API y PostgreSQL quedaron detenidos; puertos 4410/55470 libres. El contenedor y la BD sintética se conservaron."
+        },
+        {
+          "command": "pnpm exec prettier --check PLAN_RESTAURACION_VISUAL_POS.md docs/POS_MVP_HANDOFF.md CLAUDE.md docs/pos-automation/runs/2026-09-17T18-28-31-657Z-RV10-P1.md && bash -n backend/api/scripts/prepare-pos-local-demo.sh && git diff --check",
+          "result": "passed",
+          "evidence": "Documentación, sintaxis Bash y diff aprobaron; RV10-P1 permanece sin marcar y el estado del ejecutor quedó intacto."
+        }
+      ],
+      "independentChecks": [
+        {
+          "command": "pnpm --filter @cosmetics/api prisma:schemas",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api type-check",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api lint",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api test:unit",
+          "result": "passed"
+        }
+      ],
+      "remaining": [
+        "Verificar desde Windows/WSL autorizado, o desde un development aislado autorizado, la URL/configuración, health.release, /ready y CORS del mismo candidato."
+      ],
+      "followUps": [],
+      "nextStep": "Ejecutar la comprobación externa descrita en docs/pos-automation/runs/2026-09-17T18-28-31-657Z-RV10-P1.md; no ampliar bindings ni desplegar sin autorización.",
+      "report": "docs/pos-automation/runs/2026-09-17T18-28-31-657Z-RV10-P1.md",
+      "updatedAt": "2026-09-17T18:42:50.778Z"
     }
   },
   "history": [
@@ -1695,6 +1760,71 @@
       "nextStep": "Continuar con RV10-P1; conservar RV9-P1/P2, RV8, RV6-P3 y B01–B03 como seguimientos diferidos que requieren evidencia o decisiones externas.",
       "report": "docs/pos-automation/runs/2026-09-16T22-51-26-680Z-RV9-P4.md",
       "updatedAt": "2026-09-17T18:25:28.597Z"
+    },
+    {
+      "id": "RV10-P1",
+      "runId": "2026-09-17T18-28-31-657Z-RV10-P1",
+      "base": "27b92cacc195f48020033940166a9f5f6460522b",
+      "status": "partial",
+      "attempts": 1,
+      "summary": "Preparación local reproducible completada para el SHA 27b92cacc195f48020033940166a9f5f6460522b: PostgreSQL 16 aislado, 46 migraciones, API compilada, identidad de release, readiness y CORS verificados. El check permanece abierto por falta de Windows o development autorizado para comprobar acceso desde el entorno objetivo.",
+      "checks": [
+        {
+          "command": "POS_DEMO_CONFIRMATION=LOCAL_SYNTHETIC_ONLY POS_DEMO_EXPECTED_SHA=27b92cacc195f48020033940166a9f5f6460522b backend/api/scripts/prepare-pos-local-demo.sh up && backend/api/scripts/prepare-pos-local-demo.sh verify",
+          "result": "passed",
+          "evidence": "Creación y reentrada aprobaron con 46 migraciones, SHA exacto, /ready conectado, CORS permitido/rechazado y listeners limitados a loopback."
+        },
+        {
+          "command": "RUN_DATABASE_TESTS=true DATABASE_URL=<local-desechable> DIRECT_URL=<misma-BD> pnpm --filter @cosmetics/api exec vitest run src/app.integration.test.ts",
+          "result": "passed",
+          "evidence": "1 archivo y 5/5 pruebas HTTP/BD aprobadas sobre keysar_pos_demo."
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api prisma:schemas && pnpm --filter @cosmetics/api prisma:validate && pnpm --filter @cosmetics/api type-check && pnpm --filter @cosmetics/api lint && pnpm --filter @cosmetics/api test:unit",
+          "result": "passed",
+          "evidence": "Schemas sincronizados/válidos, tipos y lint aprobados; 25 archivos y 136/136 pruebas unitarias."
+        },
+        {
+          "command": "pnpm --filter @cosmetics/pos type-check && pnpm --filter @cosmetics/pos build:web",
+          "result": "passed",
+          "evidence": "Renderer, main y preload compilaron correctamente."
+        },
+        {
+          "command": "backend/api/scripts/prepare-pos-local-demo.sh down && backend/api/scripts/prepare-pos-local-demo.sh status",
+          "result": "passed",
+          "evidence": "API y PostgreSQL quedaron detenidos; puertos 4410/55470 libres. El contenedor y la BD sintética se conservaron."
+        },
+        {
+          "command": "pnpm exec prettier --check PLAN_RESTAURACION_VISUAL_POS.md docs/POS_MVP_HANDOFF.md CLAUDE.md docs/pos-automation/runs/2026-09-17T18-28-31-657Z-RV10-P1.md && bash -n backend/api/scripts/prepare-pos-local-demo.sh && git diff --check",
+          "result": "passed",
+          "evidence": "Documentación, sintaxis Bash y diff aprobaron; RV10-P1 permanece sin marcar y el estado del ejecutor quedó intacto."
+        }
+      ],
+      "independentChecks": [
+        {
+          "command": "pnpm --filter @cosmetics/api prisma:schemas",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api type-check",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api lint",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api test:unit",
+          "result": "passed"
+        }
+      ],
+      "remaining": [
+        "Verificar desde Windows/WSL autorizado, o desde un development aislado autorizado, la URL/configuración, health.release, /ready y CORS del mismo candidato."
+      ],
+      "followUps": [],
+      "nextStep": "Ejecutar la comprobación externa descrita en docs/pos-automation/runs/2026-09-17T18-28-31-657Z-RV10-P1.md; no ampliar bindings ni desplegar sin autorización.",
+      "report": "docs/pos-automation/runs/2026-09-17T18-28-31-657Z-RV10-P1.md",
+      "updatedAt": "2026-09-17T18:42:50.778Z"
     }
   ]
 }
