@@ -540,6 +540,79 @@
       "nextStep": "Preparar el SHA f7fc12037fe0c8815b78315cf8ac9d9f86c57c44 en un estado/contenedor dedicado dentro del entorno autorizado, registrar la evidencia externa y detener los recursos sin ampliar bindings ni desplegar sin autorización.",
       "report": "docs/pos-automation/runs/2026-09-17T18-42-54-135Z-RV10-P1.md",
       "updatedAt": "2026-09-17T18:46:22.294Z"
+    },
+    "RV10-P2": {
+      "id": "RV10-P2",
+      "runId": "2026-09-17T18-46-25-737Z-RV10-P2",
+      "base": "c1b6749f3c7180d306d65648c88a455fd733d725",
+      "status": "completed",
+      "attempts": 1,
+      "summary": "Provisionamiento sintético local reproducible completado. El helper opt-in protege contra bases remotas, no dedicadas o con datos previos; genera secretos locales 0600 y provisiona actores, permisos, catálogo, inventario, clientas, pagos, membresía, cortesías y Scheduler sin usar el seed general.",
+      "checks": [
+        {
+          "command": "POS_DEMO_CONFIRMATION=LOCAL_SYNTHETIC_ONLY DATABASE_URL=<local-dedicada> DIRECT_URL=<misma-BD> pnpm --dir backend/api exec tsx scripts/provision-pos-local-demo.ts provision",
+          "result": "passed",
+          "evidence": "Creación y reentrada idempotente sobre PostgreSQL 16: 46 migraciones, 2 actores, 35 permisos operador, 4 artículos, 4 saldos, 2 clientas, 3 métodos, membresía, 2 cortesías y 12 reglas Scheduler."
+        },
+        {
+          "command": "POS_DEMO_CONFIRMATION=LOCAL_SYNTHETIC_ONLY DATABASE_URL=<local-dedicada> DIRECT_URL=<misma-BD> pnpm --dir backend/api exec tsx scripts/provision-pos-local-demo.ts verify",
+          "result": "passed",
+          "evidence": "Verificó hashes, fingerprints, permisos diferenciados, catálogos, existencias, configuraciones, marcador sintético y credenciales locales con modo 0600."
+        },
+        {
+          "command": "node -e '<validación HTTP local de login, catálogo, pagos y agenda>'",
+          "result": "passed",
+          "evidence": "Login master/operador correcto, 69/35 permisos, 4 artículos demo, 3 métodos demo y 220 slots Scheduler."
+        },
+        {
+          "command": "<migrar keysar_pos_demo_guard, insertar dato no marcado y ejecutar provision>",
+          "result": "passed",
+          "evidence": "La base local con datos previos fue rechazada antes de crear credenciales; también se rechazaron falta de confirmación, host remoto y nombre no dedicado."
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api prisma:schemas && DATABASE_URL=<local-dedicada> DIRECT_URL=<misma-BD> pnpm --filter @cosmetics/api prisma:validate && pnpm --filter @cosmetics/api type-check && pnpm --filter @cosmetics/api lint && pnpm --filter @cosmetics/api test:unit && pnpm --filter @cosmetics/api build",
+          "result": "passed",
+          "evidence": "Schemas sincronizados y válidos, tipos/build correctos, lint limpio y 25 archivos con 136 pruebas unitarias aprobadas."
+        },
+        {
+          "command": "pnpm --filter @cosmetics/pos type-check && pnpm --filter @cosmetics/pos build:web && pnpm pos:visual:manifest",
+          "result": "passed",
+          "evidence": "Renderer, main y preload compilaron; referencia 12fb804 intacta con matriz 25/10/11/10 y 208 capturas."
+        },
+        {
+          "command": "pnpm --dir backend/api exec tsc --noEmit --target ES2022 --module Node16 --moduleResolution Node16 --esModuleInterop --skipLibCheck scripts/provision-pos-local-demo.ts && pnpm --dir backend/api exec eslint scripts/provision-pos-local-demo.ts --max-warnings=0 && pnpm exec prettier --check backend/api/scripts/provision-pos-local-demo.ts PLAN_RESTAURACION_VISUAL_POS.md docs/POS_MVP_HANDOFF.md CLAUDE.md docs/pos-automation/runs/2026-09-17T18-46-25-737Z-RV10-P2.md && git diff --check",
+          "result": "passed",
+          "evidence": "Helper tipado y sin warnings; código y documentación formateados sin errores de whitespace."
+        },
+        {
+          "command": "POS_DEMO_STATE_DIR=\"$PWD/.pos-runner/rv10-p2-local\" POS_DEMO_POSTGRES_CONTAINER=keysar-rv10-p1-rv10-p2 POS_DEMO_DB_PORT=55471 POS_DEMO_API_PORT=4411 backend/api/scripts/prepare-pos-local-demo.sh down",
+          "result": "passed",
+          "evidence": "API y PostgreSQL detenidos sin borrar datos; contenedor exited, bindings loopback sin listeners y credenciales conservadas en estado ignorado 0600."
+        }
+      ],
+      "independentChecks": [
+        {
+          "command": "pnpm --filter @cosmetics/api prisma:schemas",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api type-check",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api lint",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api test:unit",
+          "result": "passed"
+        }
+      ],
+      "remaining": [],
+      "followUps": [],
+      "nextStep": "Continuar con RV10-P3 únicamente en el entorno autorizado: registrar la terminal del PO, mantener su secreto fuera del repositorio y entregar credenciales por canal privado. RV10-P1 conserva separadamente su comprobación externa Windows/development.",
+      "report": "docs/pos-automation/runs/2026-09-17T18-46-25-737Z-RV10-P2.md",
+      "updatedAt": "2026-09-17T19:12:21.731Z"
     }
   },
   "history": [
@@ -1856,6 +1929,79 @@
       "nextStep": "Preparar el SHA f7fc12037fe0c8815b78315cf8ac9d9f86c57c44 en un estado/contenedor dedicado dentro del entorno autorizado, registrar la evidencia externa y detener los recursos sin ampliar bindings ni desplegar sin autorización.",
       "report": "docs/pos-automation/runs/2026-09-17T18-42-54-135Z-RV10-P1.md",
       "updatedAt": "2026-09-17T18:46:22.294Z"
+    },
+    {
+      "id": "RV10-P2",
+      "runId": "2026-09-17T18-46-25-737Z-RV10-P2",
+      "base": "c1b6749f3c7180d306d65648c88a455fd733d725",
+      "status": "completed",
+      "attempts": 1,
+      "summary": "Provisionamiento sintético local reproducible completado. El helper opt-in protege contra bases remotas, no dedicadas o con datos previos; genera secretos locales 0600 y provisiona actores, permisos, catálogo, inventario, clientas, pagos, membresía, cortesías y Scheduler sin usar el seed general.",
+      "checks": [
+        {
+          "command": "POS_DEMO_CONFIRMATION=LOCAL_SYNTHETIC_ONLY DATABASE_URL=<local-dedicada> DIRECT_URL=<misma-BD> pnpm --dir backend/api exec tsx scripts/provision-pos-local-demo.ts provision",
+          "result": "passed",
+          "evidence": "Creación y reentrada idempotente sobre PostgreSQL 16: 46 migraciones, 2 actores, 35 permisos operador, 4 artículos, 4 saldos, 2 clientas, 3 métodos, membresía, 2 cortesías y 12 reglas Scheduler."
+        },
+        {
+          "command": "POS_DEMO_CONFIRMATION=LOCAL_SYNTHETIC_ONLY DATABASE_URL=<local-dedicada> DIRECT_URL=<misma-BD> pnpm --dir backend/api exec tsx scripts/provision-pos-local-demo.ts verify",
+          "result": "passed",
+          "evidence": "Verificó hashes, fingerprints, permisos diferenciados, catálogos, existencias, configuraciones, marcador sintético y credenciales locales con modo 0600."
+        },
+        {
+          "command": "node -e '<validación HTTP local de login, catálogo, pagos y agenda>'",
+          "result": "passed",
+          "evidence": "Login master/operador correcto, 69/35 permisos, 4 artículos demo, 3 métodos demo y 220 slots Scheduler."
+        },
+        {
+          "command": "<migrar keysar_pos_demo_guard, insertar dato no marcado y ejecutar provision>",
+          "result": "passed",
+          "evidence": "La base local con datos previos fue rechazada antes de crear credenciales; también se rechazaron falta de confirmación, host remoto y nombre no dedicado."
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api prisma:schemas && DATABASE_URL=<local-dedicada> DIRECT_URL=<misma-BD> pnpm --filter @cosmetics/api prisma:validate && pnpm --filter @cosmetics/api type-check && pnpm --filter @cosmetics/api lint && pnpm --filter @cosmetics/api test:unit && pnpm --filter @cosmetics/api build",
+          "result": "passed",
+          "evidence": "Schemas sincronizados y válidos, tipos/build correctos, lint limpio y 25 archivos con 136 pruebas unitarias aprobadas."
+        },
+        {
+          "command": "pnpm --filter @cosmetics/pos type-check && pnpm --filter @cosmetics/pos build:web && pnpm pos:visual:manifest",
+          "result": "passed",
+          "evidence": "Renderer, main y preload compilaron; referencia 12fb804 intacta con matriz 25/10/11/10 y 208 capturas."
+        },
+        {
+          "command": "pnpm --dir backend/api exec tsc --noEmit --target ES2022 --module Node16 --moduleResolution Node16 --esModuleInterop --skipLibCheck scripts/provision-pos-local-demo.ts && pnpm --dir backend/api exec eslint scripts/provision-pos-local-demo.ts --max-warnings=0 && pnpm exec prettier --check backend/api/scripts/provision-pos-local-demo.ts PLAN_RESTAURACION_VISUAL_POS.md docs/POS_MVP_HANDOFF.md CLAUDE.md docs/pos-automation/runs/2026-09-17T18-46-25-737Z-RV10-P2.md && git diff --check",
+          "result": "passed",
+          "evidence": "Helper tipado y sin warnings; código y documentación formateados sin errores de whitespace."
+        },
+        {
+          "command": "POS_DEMO_STATE_DIR=\"$PWD/.pos-runner/rv10-p2-local\" POS_DEMO_POSTGRES_CONTAINER=keysar-rv10-p1-rv10-p2 POS_DEMO_DB_PORT=55471 POS_DEMO_API_PORT=4411 backend/api/scripts/prepare-pos-local-demo.sh down",
+          "result": "passed",
+          "evidence": "API y PostgreSQL detenidos sin borrar datos; contenedor exited, bindings loopback sin listeners y credenciales conservadas en estado ignorado 0600."
+        }
+      ],
+      "independentChecks": [
+        {
+          "command": "pnpm --filter @cosmetics/api prisma:schemas",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api type-check",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api lint",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api test:unit",
+          "result": "passed"
+        }
+      ],
+      "remaining": [],
+      "followUps": [],
+      "nextStep": "Continuar con RV10-P3 únicamente en el entorno autorizado: registrar la terminal del PO, mantener su secreto fuera del repositorio y entregar credenciales por canal privado. RV10-P1 conserva separadamente su comprobación externa Windows/development.",
+      "report": "docs/pos-automation/runs/2026-09-17T18-46-25-737Z-RV10-P2.md",
+      "updatedAt": "2026-09-17T19:12:21.731Z"
     }
   ]
 }
