@@ -198,7 +198,9 @@ export function nextTask(queue, state, plan, maxAttempts = 3, retry = null) {
 
 export function allowedPath(file, report) {
   const parts = file.split("/");
+  const publicPosEnvironmentExample = file === "apps/pos/.env.example";
   if (
+    !publicPosEnvironmentExample &&
     parts.some(
       (p) =>
         p.startsWith(".") ||
@@ -215,7 +217,7 @@ export function allowedPath(file, report) {
   )
     return false;
   if (
-    /^scripts\/(?:verify|prepare|provision|audit|check|seed)-pos-[a-z0-9-]+\.(?:sh|mjs|ts)$/.test(
+    /^scripts\/(?:verify|prepare|provision|audit|check|seed)-pos-[a-z0-9-]+(?:\.(?:sh|mjs|ts)|\.test\.(?:mjs|ts))$/.test(
       file,
     )
   )
